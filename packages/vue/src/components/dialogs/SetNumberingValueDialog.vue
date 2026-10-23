@@ -13,7 +13,9 @@
     <div class="dialog__header">{{ t("dialogs.setNumberingValue.title") }}</div>
     <div class="dialog__body">
       <label class="field">
-        <span class="field__label">{{ t("dialogs.setNumberingValue.valueLabel") }}</span>
+        <span class="field__label">{{
+          t("dialogs.setNumberingValue.valueLabel")
+        }}</span>
         <input
           v-model.number="value"
           class="field__input"
@@ -24,7 +26,9 @@
       </label>
     </div>
     <div class="dialog__footer">
-      <button class="dialog__btn" @click="$emit('close')">{{ t("common.cancel") }}</button>
+      <button class="dialog__btn" @click="$emit('close')">
+        {{ t("common.cancel") }}
+      </button>
       <button class="dialog__btn dialog__btn--primary" @click="apply">
         {{ t("common.apply") }}
       </button>
@@ -63,7 +67,9 @@ watch(
 );
 
 function apply() {
-  const number = Number.isFinite(value.value) ? Math.trunc(value.value) : MIN_VALUE;
+  const number = Number.isFinite(value.value)
+    ? Math.trunc(value.value)
+    : MIN_VALUE;
   emit("apply", Math.min(MAX_VALUE, Math.max(MIN_VALUE, number)));
   emit("close");
 }

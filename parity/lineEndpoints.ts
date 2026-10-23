@@ -76,10 +76,14 @@ export const createWordLineEndpointManifest = ({
   capturedAt = new Date().toISOString(),
 }: CreateManifestOptions): WordLineEndpointManifest => {
   if (reference.source !== "word") {
-    throw new LineEndpointManifestError("Line-endpoint manifests must be captured from Word.");
+    throw new LineEndpointManifestError(
+      "Line-endpoint manifests must be captured from Word.",
+    );
   }
   if (!SHA256_PATTERN.test(sourceSha256)) {
-    throw new LineEndpointManifestError("The source SHA-256 must be 64 lowercase hex characters.");
+    throw new LineEndpointManifestError(
+      "The source SHA-256 must be 64 lowercase hex characters.",
+    );
   }
   const fileName = requireSourceFileName(sourceFileName);
 
@@ -104,7 +108,10 @@ export const extractLineEndpointPages = (geom: DocGeom): LineEndpointPage[] =>
   geom.pages.map((page) => ({
     number: page.number,
     lines: mergeVisualRows(page.lines)
-      .map((line) => ({ text: normalizeLineText(line.text), region: line.region }))
+      .map((line) => ({
+        text: normalizeLineText(line.text),
+        region: line.region,
+      }))
       .filter(({ text }) => text.length > 0),
   }));
 
@@ -118,7 +125,11 @@ export const compareLineEndpoints = (
     file: manifest.source.fileName,
   });
   const folioPages = extractLineEndpointPages(folio);
-  const folioGeom = endpointPagesToGeom({ pages: folioPages, source: "folio", file: folio.file });
+  const folioGeom = endpointPagesToGeom({
+    pages: folioPages,
+    source: "folio",
+    file: folio.file,
+  });
 
   // The shared comparison engine owns sequence alignment, pagination matching,
   // and one-to-many line-break reconciliation. Canonical geometry deliberately
@@ -140,7 +151,11 @@ type EndpointPagesToGeomOptions = {
   file: string;
 };
 
-const endpointPagesToGeom = ({ pages, source, file }: EndpointPagesToGeomOptions): DocGeom => ({
+const endpointPagesToGeom = ({
+  pages,
+  source,
+  file,
+}: EndpointPagesToGeomOptions): DocGeom => ({
   source,
   file,
   meta: { canonicalizedFor: "line-endpoints" },
@@ -154,7 +169,10 @@ const endpointPageToGeom = (page: LineEndpointPage): PageGeom => ({
   lines: page.lines.map(endpointToLineBox),
 });
 
-const endpointToLineBox = ({ text, region }: LineEndpoint, index: number): LineBox => {
+const endpointToLineBox = (
+  { text, region }: LineEndpoint,
+  index: number,
+): LineBox => {
   const normText = normalizeLineText(text);
   return {
     text,
@@ -169,7 +187,9 @@ const endpointToLineBox = ({ text, region }: LineEndpoint, index: number): LineB
   };
 };
 
-const isLineEndpointDivergence = (divergence: Divergence): divergence is LineEndpointDivergence => {
+const isLineEndpointDivergence = (
+  divergence: Divergence,
+): divergence is LineEndpointDivergence => {
   switch (divergence.kind) {
     case "page-count":
     case "pagination":
@@ -191,10 +211,14 @@ const countLines = (pages: LineEndpointPage[]): number =>
 const nonEmpty = (value: string | undefined): string | undefined =>
   value === undefined || value.length === 0 ? undefined : value;
 
-export const parseLineEndpointManifest = (value: unknown): WordLineEndpointManifest => {
+export const parseLineEndpointManifest = (
+  value: unknown,
+): WordLineEndpointManifest => {
   const root = requireRecord(value, "manifest");
   if (root["schema"] !== LINE_ENDPOINT_MANIFEST_SCHEMA) {
-    throw new LineEndpointManifestError("Unsupported line-endpoint manifest schema.");
+    throw new LineEndpointManifestError(
+      "Unsupported line-endpoint manifest schema.",
+    );
   }
   if (root["version"] !== LINE_ENDPOINT_MANIFEST_VERSION) {
     throw new LineEndpointManifestError(
@@ -203,22 +227,37 @@ export const parseLineEndpointManifest = (value: unknown): WordLineEndpointManif
   }
 
   const source = requireRecord(root["source"], "source");
-  const fileName = requireSourceFileName(requireString(source["fileName"], "source.fileName"));
+  const fileName = requireSourceFileName(
+    requireString(source["fileName"], "source.fileName"),
+  );
   const sha256 = requireString(source["sha256"], "source.sha256");
   if (!SHA256_PATTERN.test(sha256)) {
-    throw new LineEndpointManifestError("source.sha256 must be 64 lowercase hex characters.");
+    throw new LineEndpointManifestError(
+      "source.sha256 must be 64 lowercase hex characters.",
+    );
   }
 
   const reference = requireRecord(root["reference"], "reference");
   if (reference["renderer"] !== "word") {
     throw new LineEndpointManifestError("reference.renderer must be word.");
   }
-  const capturedAt = requireString(reference["capturedAt"], "reference.capturedAt");
+  const capturedAt = requireString(
+    reference["capturedAt"],
+    "reference.capturedAt",
+  );
   if (Number.isNaN(Date.parse(capturedAt))) {
-    throw new LineEndpointManifestError("reference.capturedAt must be an ISO timestamp.");
+    throw new LineEndpointManifestError(
+      "reference.capturedAt must be an ISO timestamp.",
+    );
   }
-  const wordVersion = optionalString(reference["wordVersion"], "reference.wordVersion");
-  const mutoolVersion = optionalString(reference["mutoolVersion"], "reference.mutoolVersion");
+  const wordVersion = optionalString(
+    reference["wordVersion"],
+    "reference.wordVersion",
+  );
+  const mutoolVersion = optionalString(
+    reference["mutoolVersion"],
+    "reference.mutoolVersion",
+  );
 
   if (!Array.isArray(root["pages"])) {
     throw new LineEndpointManifestError("pages must be an array.");
@@ -227,8 +266,14 @@ export const parseLineEndpointManifest = (value: unknown): WordLineEndpointManif
   for (let index = 1; index < pages.length; index += 1) {
     const previous = pages[index - 1];
     const current = pages[index];
-    if (previous !== undefined && current !== undefined && current.number <= previous.number) {
-      throw new LineEndpointManifestError("Page numbers must be strictly increasing.");
+    if (
+      previous !== undefined &&
+      current !== undefined &&
+      current.number <= previous.number
+    ) {
+      throw new LineEndpointManifestError(
+        "Page numbers must be strictly increasing.",
+      );
     }
   }
 
@@ -250,15 +295,28 @@ const parsePage = (value: unknown, pageIndex: number): LineEndpointPage => {
   const page = requireRecord(value, `pages[${pageIndex}]`);
   const number = page["number"];
   if (typeof number !== "number" || !Number.isInteger(number) || number <= 0) {
-    throw new LineEndpointManifestError(`pages[${pageIndex}].number must be a positive integer.`);
+    throw new LineEndpointManifestError(
+      `pages[${pageIndex}].number must be a positive integer.`,
+    );
   }
   if (!Array.isArray(page["lines"])) {
-    throw new LineEndpointManifestError(`pages[${pageIndex}].lines must be an array.`);
+    throw new LineEndpointManifestError(
+      `pages[${pageIndex}].lines must be an array.`,
+    );
   }
-  return { number, lines: page["lines"].map((line, index) => parseLine(line, pageIndex, index)) };
+  return {
+    number,
+    lines: page["lines"].map((line, index) =>
+      parseLine(line, pageIndex, index),
+    ),
+  };
 };
 
-const parseLine = (value: unknown, pageIndex: number, lineIndex: number): LineEndpoint => {
+const parseLine = (
+  value: unknown,
+  pageIndex: number,
+  lineIndex: number,
+): LineEndpoint => {
   const prefix = `pages[${pageIndex}].lines[${lineIndex}]`;
   const line = requireRecord(value, prefix);
   const text = requireString(line["text"], `${prefix}.text`);
@@ -276,7 +334,10 @@ const isRegion = (value: string): value is Region =>
   value === "footnote" ||
   value === "unknown";
 
-const requireRecord = (value: unknown, field: string): Record<string, unknown> => {
+const requireRecord = (
+  value: unknown,
+  field: string,
+): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new LineEndpointManifestError(`${field} must be an object.`);
   }
@@ -297,7 +358,9 @@ const optionalString = (value: unknown, field: string): string | undefined => {
 
 const requireSourceFileName = (value: string): string => {
   if (value.length === 0 || value.includes("/") || value.includes("\\")) {
-    throw new LineEndpointManifestError("source.fileName must be a basename without directories.");
+    throw new LineEndpointManifestError(
+      "source.fileName must be a basename without directories.",
+    );
   }
   return value;
 };
@@ -310,7 +373,9 @@ export const readLineEndpointManifest = async (
     parsed = JSON.parse(await Bun.file(manifestPath).text());
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new LineEndpointManifestError(`Cannot read line-endpoint manifest: ${message}`);
+    throw new LineEndpointManifestError(
+      `Cannot read line-endpoint manifest: ${message}`,
+    );
   }
   return parseLineEndpointManifest(parsed);
 };

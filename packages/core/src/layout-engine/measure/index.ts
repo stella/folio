@@ -31,7 +31,12 @@ export {
   pxToHalfPt,
 } from "./measureHelpers";
 
-export type { FontStyle, FontMetrics, TextMeasurement, RunMeasurement } from "./measureTypes";
+export type {
+  FontStyle,
+  FontMetrics,
+  TextMeasurement,
+  RunMeasurement,
+} from "./measureTypes";
 
 export {
   defaultLineBreakProvider,

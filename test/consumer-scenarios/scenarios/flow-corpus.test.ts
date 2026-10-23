@@ -12,18 +12,27 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 import { readFlowDir } from "../support/corpus.ts";
 import { reportScenarioFailure } from "../support/failure-fingerprints.ts";
 import { type FlowFile, parseFlowFile } from "../support/flow-file.ts";
-import { flowReplay, flowTestName, relationInputs } from "../support/fuzz-loop.ts";
-import { type FlowRun, runFlowFile, unstableFixtureRefs, vacuousSteps } from "../support/fuzz.ts";
+import {
+  flowReplay,
+  flowTestName,
+  relationInputs,
+} from "../support/fuzz-loop.ts";
+import {
+  type FlowRun,
+  runFlowFile,
+  unstableFixtureRefs,
+  vacuousSteps,
+} from "../support/fuzz.ts";
 import {
   expectedFailure,
   FINDING_SYMPTOMS,
   KNOWN_FAILING_CHECKED_IN_FLOWS,
   VACUOUS_CHECKED_IN_FLOWS,
 } from "../support/known-issues.ts";
+import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 
 const FLOWS_DIR = fileURLToPath(new URL("../flows/", import.meta.url));
 
@@ -37,7 +46,12 @@ const replay =
     try {
       run = await runFlowFile(flow);
     } catch (error) {
-      reportScenarioFailure({ test: flowTestName(flow), seed: flow.seed, repro, failure: error });
+      reportScenarioFailure({
+        test: flowTestName(flow),
+        seed: flow.seed,
+        repro,
+        failure: error,
+      });
       return;
     }
     switch (source.type) {
@@ -67,7 +81,11 @@ test("flow files retain explicit tool coverage and reject misplaced options", ()
     operationTypes: ["commentOnBlock", "deleteBlock", "insertTable"],
     expectedApplied: 3,
     operations: [
-      { type: "commentOnBlock", blockId: "12345678", comment: { text: "Note" } },
+      {
+        type: "commentOnBlock",
+        blockId: "12345678",
+        comment: { text: "Note" },
+      },
       { type: "deleteBlock", blockId: "12345678" },
       { type: "insertTable", blockId: "23456789", rows: [["Term", "Value"]] },
     ],
@@ -87,7 +105,10 @@ test("flow files retain explicit tool coverage and reject misplaced options", ()
     { ...step, operationTypes: ["commentOnBlock", "commentOnBlock"] },
     { ...step, expectedApplied: 0 },
   ])
-    assert.throws(() => parseFlowFile({ ...flow, steps: [invalid] }), TypeError);
+    assert.throws(
+      () => parseFlowFile({ ...flow, steps: [invalid] }),
+      TypeError,
+    );
 });
 
 const requested = process.env["FOLIO_SCENARIO_FLOW"];

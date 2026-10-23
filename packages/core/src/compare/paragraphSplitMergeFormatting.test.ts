@@ -1,16 +1,19 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIParagraphSpacing } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
 import type { Paragraph, ParagraphAlignment, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
-const OPTIONS = { author: "compare", timestamp: "2026-09-11T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2026-09-11T00:00:00.000Z",
+} as const;
 
 type DirectParagraphFormatting = {
   styleId: string;
@@ -68,13 +71,25 @@ const documentWith = async (
   document.package.styles = {
     styles: [
       { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
-      { type: "paragraph", styleId: JOINED_FORMATTING.styleId, name: "Joined Body" },
-      { type: "paragraph", styleId: FIRST_SPLIT_FORMATTING.styleId, name: "Opening Body" },
-      { type: "paragraph", styleId: SECOND_SPLIT_FORMATTING.styleId, name: "Closing Body" },
+      {
+        type: "paragraph",
+        styleId: JOINED_FORMATTING.styleId,
+        name: "Joined Body",
+      },
+      {
+        type: "paragraph",
+        styleId: FIRST_SPLIT_FORMATTING.styleId,
+        name: "Opening Body",
+      },
+      {
+        type: "paragraph",
+        styleId: SECOND_SPLIT_FORMATTING.styleId,
+        name: "Closing Body",
+      },
     ],
   };
-  document.package.document.content = blocks.map(({ paraId, text, formatting }) =>
-    paragraph(paraId, text, formatting),
+  document.package.document.content = blocks.map(
+    ({ paraId, text, formatting }) => paragraph(paraId, text, formatting),
   );
   return await createDocx(document);
 };
@@ -90,9 +105,21 @@ const tableDocumentWith = async (
   document.package.styles = {
     styles: [
       { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
-      { type: "paragraph", styleId: JOINED_FORMATTING.styleId, name: "Joined Body" },
-      { type: "paragraph", styleId: FIRST_SPLIT_FORMATTING.styleId, name: "Opening Body" },
-      { type: "paragraph", styleId: SECOND_SPLIT_FORMATTING.styleId, name: "Closing Body" },
+      {
+        type: "paragraph",
+        styleId: JOINED_FORMATTING.styleId,
+        name: "Joined Body",
+      },
+      {
+        type: "paragraph",
+        styleId: FIRST_SPLIT_FORMATTING.styleId,
+        name: "Opening Body",
+      },
+      {
+        type: "paragraph",
+        styleId: SECOND_SPLIT_FORMATTING.styleId,
+        name: "Closing Body",
+      },
     ],
   };
   const table: Table = {
@@ -178,7 +205,8 @@ const expectReviewedProjection = async (
   expected: readonly ReturnType<typeof projectedBlocks>[number][],
 ): Promise<void> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-  const revisionCount = action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+  const revisionCount =
+    action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
   expect(revisionCount).toBeGreaterThan(0);
   expect(reviewer.getChanges()).toEqual([]);
   expect(projectedBlocks(reviewer)).toEqual(expected);
@@ -195,7 +223,9 @@ const expectReviewedProjection = async (
 
 describe("paragraph split and merge formatting", () => {
   test("direct split and merge operations apply their complete paragraph property payloads", async () => {
-    const splitting = await FolioDocxReviewer.fromBuffer(await joinedDocument());
+    const splitting = await FolioDocxReviewer.fromBuffer(
+      await joinedDocument(),
+    );
     const joinedBlockId = splitting.snapshot().blocks.at(0)?.id;
     if (!joinedBlockId) {
       panic("expected a joined paragraph block id");
@@ -259,7 +289,11 @@ describe("paragraph split and merge formatting", () => {
   });
 
   test("a split carries each resulting paragraph's style, alignment, and spacing", async () => {
-    const result = await compareDocx(await joinedDocument(), await splitDocument(), OPTIONS);
+    const result = await compareDocx(
+      await joinedDocument(),
+      await splitDocument(),
+      OPTIONS,
+    );
     if (result.isErr()) {
       throw result.error;
     }
@@ -287,13 +321,27 @@ describe("paragraph split and merge formatting", () => {
         },
       }),
     ]);
-    expect((await mainDocumentXml(result.value.buffer)).match(/<w:pPrChange\b/gu)).toHaveLength(2);
-    await expectReviewedProjection(result.value.buffer, "accept", SPLIT_PROJECTION);
-    await expectReviewedProjection(result.value.buffer, "reject", JOINED_PROJECTION);
+    expect(
+      (await mainDocumentXml(result.value.buffer)).match(/<w:pPrChange\b/gu),
+    ).toHaveLength(2);
+    await expectReviewedProjection(
+      result.value.buffer,
+      "accept",
+      SPLIT_PROJECTION,
+    );
+    await expectReviewedProjection(
+      result.value.buffer,
+      "reject",
+      JOINED_PROJECTION,
+    );
   });
 
   test("the reverse merge carries the joined paragraph's style, alignment, and spacing", async () => {
-    const result = await compareDocx(await splitDocument(), await joinedDocument(), OPTIONS);
+    const result = await compareDocx(
+      await splitDocument(),
+      await joinedDocument(),
+      OPTIONS,
+    );
     if (result.isErr()) {
       throw result.error;
     }
@@ -312,9 +360,19 @@ describe("paragraph split and merge formatting", () => {
         },
       }),
     ]);
-    expect((await mainDocumentXml(result.value.buffer)).match(/<w:pPrChange\b/gu)).toHaveLength(1);
-    await expectReviewedProjection(result.value.buffer, "accept", JOINED_PROJECTION);
-    await expectReviewedProjection(result.value.buffer, "reject", SPLIT_PROJECTION);
+    expect(
+      (await mainDocumentXml(result.value.buffer)).match(/<w:pPrChange\b/gu),
+    ).toHaveLength(1);
+    await expectReviewedProjection(
+      result.value.buffer,
+      "accept",
+      JOINED_PROJECTION,
+    );
+    await expectReviewedProjection(
+      result.value.buffer,
+      "reject",
+      SPLIT_PROJECTION,
+    );
   });
 
   test.each([
@@ -387,8 +445,12 @@ describe("paragraph split and merge formatting", () => {
             blockId,
             offset: 5,
             separator: " ",
-            firstParagraphProperties: { styleId: FIRST_SPLIT_FORMATTING.styleId },
-            secondParagraphProperties: { styleId: SECOND_SPLIT_FORMATTING.styleId },
+            firstParagraphProperties: {
+              styleId: FIRST_SPLIT_FORMATTING.styleId,
+            },
+            secondParagraphProperties: {
+              styleId: SECOND_SPLIT_FORMATTING.styleId,
+            },
           },
         ],
       },
@@ -397,8 +459,12 @@ describe("paragraph split and merge formatting", () => {
 
     expect(outcome.status).toBe("rejected");
     expect(outcome.applied).toEqual([]);
-    expect(outcome.skipped).toEqual([{ id: "split", reason: "pendingParagraphPropertyChange" }]);
-    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual(["Alpha Beta"]);
+    expect(outcome.skipped).toEqual([
+      { id: "split", reason: "pendingParagraphPropertyChange" },
+    ]);
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
+      "Alpha Beta",
+    ]);
   });
 
   test("refuses a formatting merge when the first paragraph has a pending pPrChange", async () => {
@@ -445,7 +511,12 @@ describe("paragraph split and merge formatting", () => {
 
     expect(outcome.status).toBe("rejected");
     expect(outcome.applied).toEqual([]);
-    expect(outcome.skipped).toEqual([{ id: "merge", reason: "pendingParagraphPropertyChange" }]);
-    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual(["Alpha", "Beta"]);
+    expect(outcome.skipped).toEqual([
+      { id: "merge", reason: "pendingParagraphPropertyChange" },
+    ]);
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
   });
 });

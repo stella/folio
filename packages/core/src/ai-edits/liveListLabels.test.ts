@@ -6,13 +6,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
-import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toMarkdown } from "../markdown";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 import { isFolioAIContentBlock } from "./snapshot";
 
@@ -23,12 +23,16 @@ const LIST = [
 ].join("\n\n");
 
 const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
-  const { docx } = await ensureParaIds(await createDocx(fromMarkdown(markdown)));
+  const { docx } = await ensureParaIds(
+    await createDocx(fromMarkdown(markdown)),
+  );
   return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
 };
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`no block reads "${text}"`);
   }
@@ -74,11 +78,16 @@ const markdownLabels = (reviewer: FolioDocxReviewer): string[] =>
     .filter((line) => line.length > 0);
 
 /** Every reader of the reviewer, and of its saved package, reads `expected`. */
-const expectLabels = async (reviewer: FolioDocxReviewer, expected: string[]): Promise<void> => {
+const expectLabels = async (
+  reviewer: FolioDocxReviewer,
+  expected: string[],
+): Promise<void> => {
   expect(contentLabels(reviewer)).toEqual(expected);
   expect(textLabels(reviewer)).toEqual(expected);
   expect(markdownLabels(reviewer)).toEqual(expected);
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   expect(contentLabels(reopened)).toEqual(expected);
 };
 
@@ -107,7 +116,11 @@ describe("list labels after an operation", () => {
   test("the items after a deleted item renumber", async () => {
     const reviewer = await reviewerOf(LIST);
     apply(reviewer, "direct", [
-      { id: "1", type: "deleteBlock", blockId: blockId(reviewer, "Deposit on signature") },
+      {
+        id: "1",
+        type: "deleteBlock",
+        blockId: blockId(reviewer, "Deposit on signature"),
+      },
     ]);
 
     await expectLabels(reviewer, [
@@ -193,7 +206,9 @@ describe("list labels after an operation", () => {
     ];
     expect(contentLabels(reviewer)).toEqual(expected);
     expect(textLabels(reviewer)).toEqual(expected);
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(contentLabels(reopened)).toEqual(expected);
   });
 
@@ -249,13 +264,15 @@ describe("a paragraph numbered at a level its list does not define", () => {
       reviewer,
       await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
     ]) {
-      expect(current.getContent().find(({ text }) => text === "Level eight.")).toMatchObject({
+      expect(
+        current.getContent().find(({ text }) => text === "Level eight."),
+      ).toMatchObject({
         kind: "paragraph",
         statedNumbering: { kind: "reference", numId, ilvl: 8 },
       });
-      expect(current.getContent().find(({ text }) => text === "Level eight.")).not.toHaveProperty(
-        "listReference",
-      );
+      expect(
+        current.getContent().find(({ text }) => text === "Level eight."),
+      ).not.toHaveProperty("listReference");
     }
   });
 });

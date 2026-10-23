@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+
 import type { ComparisonTolerances } from "./types";
 
 export const PARITY_ROOT = import.meta.dir;
@@ -12,13 +13,19 @@ export const CACHE_DIR = path.join(PARITY_ROOT, ".cache");
 /** Points reference-renderer exports at a directory shared across checkouts. */
 export const REFERENCE_CACHE_DIR_ENV = "FOLIO_PARITY_CACHE_DIR";
 
-export const resolveReferenceCacheDir = (override: string | undefined): string =>
-  override === undefined || override.trim() === "" ? CACHE_DIR : path.resolve(override);
+export const resolveReferenceCacheDir = (
+  override: string | undefined,
+): string =>
+  override === undefined || override.trim() === ""
+    ? CACHE_DIR
+    : path.resolve(override);
 
 /** Reference-renderer exports keyed by sha256 of the .docx content. Folio's own
  * screenshots and diffs always stay in the checkout's CACHE_DIR, so checkouts
  * sharing this directory never overwrite each other's results. */
-export const REFERENCE_CACHE_DIR = resolveReferenceCacheDir(Bun.env[REFERENCE_CACHE_DIR_ENV]);
+export const REFERENCE_CACHE_DIR = resolveReferenceCacheDir(
+  Bun.env[REFERENCE_CACHE_DIR_ENV],
+);
 
 /** Generated HTML report output. */
 export const REPORT_DIR = path.join(PARITY_ROOT, "report");
@@ -41,17 +48,33 @@ const PORT_BASE = 4200;
 const PORT_SPAN = 400;
 export const PLAYGROUND_PORT =
   PORT_BASE +
-  (Number.parseInt(createHash("sha256").update(REPO_ROOT).digest("hex").slice(0, 8), 16) %
+  (Number.parseInt(
+    createHash("sha256").update(REPO_ROOT).digest("hex").slice(0, 8),
+    16,
+  ) %
     PORT_SPAN);
 export const PLAYGROUND_URL = `http://localhost:${PLAYGROUND_PORT}`;
 /** The dev server reads its port from `FOLIO_PLAYGROUND_PORT` (see the
  * playground `vite.config.ts`); folioExtract sets it when spawning. */
-export const PLAYGROUND_DEV_COMMAND = ["bun", "--filter", "@stll/playground", "dev"];
+export const PLAYGROUND_DEV_COMMAND = [
+  "bun",
+  "--filter",
+  "@stll/playground",
+  "dev",
+];
 
 /** Default corpus scanned when the CLI gets no explicit paths. */
 export const DEFAULT_CORPUS_DIRS = [
   FIXTURES_DIR,
-  path.join(REPO_ROOT, "packages", "core", "src", "docx", "__tests__", "__fixtures__"),
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "core",
+    "src",
+    "docx",
+    "__tests__",
+    "__fixtures__",
+  ),
 ];
 
 export const DEFAULT_TOLERANCES: ComparisonTolerances = {

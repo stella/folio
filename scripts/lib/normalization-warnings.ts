@@ -42,7 +42,13 @@ export type NormalizationWarningViolation = {
  * sees.
  */
 const referencesWarningCodes = (path: string, source: string): boolean => {
-  const file = ts.createSourceFile(path, source, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS);
+  const file = ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.ESNext,
+    true,
+    ts.ScriptKind.TS,
+  );
   let found = false;
   const visit = (node: ts.Node): void => {
     if (found) {
@@ -66,7 +72,10 @@ const exemptionReason = (source: string): string | undefined => {
   }
   const lineEnd = source.indexOf("\n", marker);
   return source
-    .slice(marker + EXEMPTION_MARKER.length, lineEnd === -1 ? undefined : lineEnd)
+    .slice(
+      marker + EXEMPTION_MARKER.length,
+      lineEnd === -1 ? undefined : lineEnd,
+    )
     .trim();
 };
 
@@ -77,7 +86,8 @@ export const findNormalizationWarningViolations = (
     return [
       {
         path: `*${NORMALIZATION_MODULE_SUFFIX}`,
-        detail: "normalisation warning coverage scanned no modules; check module discovery",
+        detail:
+          "normalisation warning coverage scanned no modules; check module discovery",
       },
     ];
   }

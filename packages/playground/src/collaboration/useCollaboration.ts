@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import * as Y from "yjs";
-import { WebrtcProvider } from "y-webrtc";
+
 import { yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
+import { WebrtcProvider } from "y-webrtc";
+import * as Y from "yjs";
 
 import type { Comment } from "@stll/folio-core/types/content";
 import type { DocxEditorCollaboration } from "@stll/folio-react";
@@ -22,11 +23,16 @@ export type CollaborationState = {
   setComments: (next: Comment[]) => void;
 };
 
-const SIGNALING_SERVERS = ["wss://signaling.yjs.dev", "wss://y-webrtc-signaling-eu.herokuapp.com"];
+const SIGNALING_SERVERS = [
+  "wss://signaling.yjs.dev",
+  "wss://y-webrtc-signaling-eu.herokuapp.com",
+];
 
 const createCollaborationResources = (roomName: string) => {
   const doc = new Y.Doc();
-  const collabProvider = new WebrtcProvider(roomName, doc, { signaling: SIGNALING_SERVERS });
+  const collabProvider = new WebrtcProvider(roomName, doc, {
+    signaling: SIGNALING_SERVERS,
+  });
   const xmlFragment = doc.getXmlFragment("prosemirror");
   const collabPlugins = [
     ySyncPlugin(xmlFragment),
@@ -54,7 +60,9 @@ const syncYComments = (yComments: Y.Array<Comment>, next: Comment[]): void => {
     }
   }
 
-  const indexById = new Map(yComments.toArray().map((comment, index) => [comment.id, index]));
+  const indexById = new Map(
+    yComments.toArray().map((comment, index) => [comment.id, index]),
+  );
 
   for (const comment of next) {
     const index = indexById.get(comment.id);
@@ -76,7 +84,9 @@ type CollaborationSnapshot = Pick<
 >;
 
 /** Connection resources exist only while React is subscribed, including StrictMode remounts. */
-export const createCollaborationStore = (createResources: () => CollaborationResources) => {
+export const createCollaborationStore = (
+  createResources: () => CollaborationResources,
+) => {
   const disconnected: CollaborationSnapshot = {
     collaboration: null,
     users: [],
@@ -102,16 +112,25 @@ export const createCollaborationStore = (createResources: () => CollaborationRes
         const refreshUsers = () => {
           const users: CollaborativeUser[] = [];
           provider.awareness.getStates().forEach((state, clientId) => {
-            const user = (state as { user?: { name: string; color: string } }).user;
+            const user = (state as { user?: { name: string; color: string } })
+              .user;
             if (user)
-              users.push({ clientId, ...user, isLocal: clientId === provider.awareness.clientID });
+              users.push({
+                clientId,
+                ...user,
+                isLocal: clientId === provider.awareness.clientID,
+              });
           });
           publish({ ...snapshot, users });
         };
         const handleStatus = (event: { connected: boolean }) => {
-          publish({ ...snapshot, status: event.connected ? "connected" : "disconnected" });
+          publish({
+            ...snapshot,
+            status: event.connected ? "connected" : "disconnected",
+          });
         };
-        const refreshComments = () => publish({ ...snapshot, comments: yComments.toArray() });
+        const refreshComments = () =>
+          publish({ ...snapshot, comments: yComments.toArray() });
         provider.awareness.on("change", refreshUsers);
         provider.on("status", handleStatus);
         yComments.observeDeep(refreshComments);
@@ -160,13 +179,17 @@ export const useCollaboration = (
   localUser: { name: string; color: string },
 ): CollaborationState => {
   const store = useMemo(
-    () => createCollaborationStore(() => createCollaborationResources(roomName)),
+    () =>
+      createCollaborationStore(() => createCollaborationResources(roomName)),
     [roomName],
   );
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   useEffect(() => {
     store.setUser({ name: localUser.name, color: localUser.color });
   }, [localUser.color, localUser.name, store]);
-  const setComments = useCallback((next: Comment[]) => store.setComments(next), [store]);
+  const setComments = useCallback(
+    (next: Comment[]) => store.setComments(next),
+    [store],
+  );
   return { ...snapshot, roomName, setComments };
 };

@@ -13,12 +13,15 @@
  * Folio editor wires up whenever the suggestion list changes.
  */
 
-import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
-import type { AISuggestion, AISuggestionSeverity } from "../../ai-suggestions/types";
+import type {
+  AISuggestion,
+  AISuggestionSeverity,
+} from "../../ai-suggestions/types";
+import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 
 export const aiSuggestionDecorationsKey =
   createPluginKeyOwner<AISuggestionDecorationState>("aiSuggestionDecorations");
@@ -36,7 +39,10 @@ type AISuggestionDecorationState = {
  * Severity → CSS modifier class. Shared with the paged editor's
  * suggestion overlay so both renderers stay on the same class names.
  */
-export const AI_SUGGESTION_SEVERITY_CLASS: Record<AISuggestionSeverity, string> = {
+export const AI_SUGGESTION_SEVERITY_CLASS: Record<
+  AISuggestionSeverity,
+  string
+> = {
   typo: "folio-ai-suggestion--typo",
   style: "folio-ai-suggestion--style",
   substantive: "folio-ai-suggestion--substantive",
@@ -148,7 +154,11 @@ export function createAISuggestionDecorationsPlugin(): Plugin<AISuggestionDecora
           return {
             suggestions: setMeta.suggestions,
             focusedId: prev.focusedId,
-            decorationSet: buildDecorationSet(newState.doc, setMeta.suggestions, prev.focusedId),
+            decorationSet: buildDecorationSet(
+              newState.doc,
+              setMeta.suggestions,
+              prev.focusedId,
+            ),
           };
         }
 
@@ -156,7 +166,11 @@ export function createAISuggestionDecorationsPlugin(): Plugin<AISuggestionDecora
           return {
             suggestions: prev.suggestions,
             focusedId: setMeta.focusedId,
-            decorationSet: buildDecorationSet(newState.doc, prev.suggestions, setMeta.focusedId),
+            decorationSet: buildDecorationSet(
+              newState.doc,
+              prev.suggestions,
+              setMeta.focusedId,
+            ),
           };
         }
 
@@ -191,7 +205,9 @@ export function createAISuggestionDecorationsPlugin(): Plugin<AISuggestionDecora
     },
     props: {
       decorations(state) {
-        return aiSuggestionDecorationsKey.getState(state)?.decorationSet ?? null;
+        return (
+          aiSuggestionDecorationsKey.getState(state)?.decorationSet ?? null
+        );
       },
     },
   });

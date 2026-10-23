@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+
 import config from "../playwright.config";
 
 const requireRecord = (value: unknown): Record<string, unknown> => {
@@ -22,7 +23,9 @@ test("second-engine specs run only in the report-only projects", () => {
   if (!projects) throw new Error("Playwright projects unavailable");
   const matching = (file: string) =>
     projects
-      .filter(({ testMatch }) => testMatch instanceof RegExp && testMatch.test(file))
+      .filter(
+        ({ testMatch }) => testMatch instanceof RegExp && testMatch.test(file),
+      )
       .map(({ name }) => name);
   expect(matching("engine-layout-parity.spec.ts").toSorted()).toEqual([
     "engine-layout-record",
@@ -42,9 +45,14 @@ test("second-engine specs run only in the report-only projects", () => {
 });
 
 test("the WebKit workflow is manual, on macOS, read-only and never files issues", () => {
-  const source = readFileSync(".github/workflows/nightly-webkit-parity.yml", "utf8");
+  const source = readFileSync(
+    ".github/workflows/nightly-webkit-parity.yml",
+    "utf8",
+  );
   const workflow = requireRecord(Bun.YAML.parse(source));
-  expect(Object.keys(requireRecord(workflow["on"])).toSorted()).toEqual(["workflow_dispatch"]);
+  expect(Object.keys(requireRecord(workflow["on"])).toSorted()).toEqual([
+    "workflow_dispatch",
+  ]);
   const jobs = requireRecord(workflow["jobs"]);
   expect(Object.keys(jobs)).toEqual(["webkit-layout-parity"]);
   const job = requireRecord(jobs["webkit-layout-parity"]);
@@ -59,7 +67,7 @@ test("the WebKit workflow is manual, on macOS, read-only and never files issues"
   }
   expect(source).toContain("playwright install chromium webkit");
   expect(source).not.toContain("issues:");
-  expect(JSON.stringify(readFileSync(".github/workflows/ci.yml", "utf8"))).not.toContain(
-    "webkit-layout-parity",
-  );
+  expect(
+    JSON.stringify(readFileSync(".github/workflows/ci.yml", "utf8")),
+  ).not.toContain("webkit-layout-parity");
 });

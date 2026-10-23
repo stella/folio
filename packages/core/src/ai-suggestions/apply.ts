@@ -11,11 +11,13 @@
  * skipped and reported back to the caller.
  */
 
-import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { EditorView } from "prosemirror-view";
 
-import { mintRevisionId, seedRevisionIdsFromDoc } from "../prosemirror/plugins/revisionIds";
-
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
+import {
+  mintRevisionId,
+  seedRevisionIdsFromDoc,
+} from "../prosemirror/plugins/revisionIds";
 import { resolveSuggestionAnchor } from "./conflict";
 import type { AISuggestion, AISuggestionApplyMode } from "./types";
 
@@ -80,7 +82,11 @@ export function applySuggestions(options: ApplyOptions): ApplyResult {
 
       if (suggestion.suggestedText.length > 0) {
         tr.insertText(suggestion.suggestedText, to, to);
-        tr.addMark(to, to + suggestion.suggestedText.length, insertionType.create(attrs));
+        tr.addMark(
+          to,
+          to + suggestion.suggestedText.length,
+          insertionType.create(attrs),
+        );
       }
       if (to > from) {
         addTrackedDeletionMark({

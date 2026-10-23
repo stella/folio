@@ -153,7 +153,10 @@ export default library({
       },
     },
     {
-      files: ["scripts/**/*.{ts,js,mts,mjs,cts,cjs}", "test/__fixtures__/clean-room-install.*.ts"],
+      files: [
+        "scripts/**/*.{ts,js,mts,mjs,cts,cjs}",
+        "test/__fixtures__/clean-room-install.*.ts",
+      ],
       rules: { "folio-clean-room-install/install-owner": "error" },
     },
     {
@@ -219,7 +222,10 @@ export default library({
       // `docx/verbatimCapture` owns the conversion a Strict fragment needs
       // before a Transitional part replays it. The fixtures verify this custom
       // rule; repo-wide lint ignores their deliberate violation.
-      files: ["packages/core/src/docx/**/*.ts", "test/__fixtures__/verbatim-capture.*.ts"],
+      files: [
+        "packages/core/src/docx/**/*.ts",
+        "test/__fixtures__/verbatim-capture.*.ts",
+      ],
       rules: {
         "folio-verbatim-capture/no-direct-element-to-xml": "error",
       },
@@ -229,7 +235,10 @@ export default library({
       // the parsers that predate the dispatcher at their current count.
       // The fixtures verify this custom rule; repo-wide lint ignores their
       // deliberate violation.
-      files: ["packages/core/src/docx/**/*.ts", "test/__fixtures__/container-children.*.ts"],
+      files: [
+        "packages/core/src/docx/**/*.ts",
+        "test/__fixtures__/container-children.*.ts",
+      ],
       rules: {
         "folio-container-children/no-hand-rolled-child-dispatch": "error",
       },
@@ -238,7 +247,10 @@ export default library({
       // A child-dispatch table is built once per module, not once per element
       // walked. See `.oxlint-plugins/folio-container-children.ts`; the
       // fixtures verify the rule and repo-wide lint ignores them.
-      files: ["packages/*/src/**/*.ts", "test/__fixtures__/dispatch-handler-tables.*.ts"],
+      files: [
+        "packages/*/src/**/*.ts",
+        "test/__fixtures__/dispatch-handler-tables.*.ts",
+      ],
       rules: {
         "folio-container-children/module-level-handler-tables": "error",
       },
@@ -316,7 +328,10 @@ export default library({
       // a branded id, so the compiler holds that field; the references still
       // typed as plain strings are held here. The fixtures verify this custom
       // rule; repo-wide lint ignores their deliberate violation.
-      files: ["packages/*/src/**/*.{ts,tsx}", "test/__fixtures__/relationship-ids.*.ts"],
+      files: [
+        "packages/*/src/**/*.{ts,tsx}",
+        "test/__fixtures__/relationship-ids.*.ts",
+      ],
       rules: {
         "folio-relationship-ids/no-empty-relationship-id": "error",
       },
@@ -355,7 +370,10 @@ export default library({
       // of the input. See `.oxlint-plugins/folio-base64.ts` and the matching
       // test at `scripts/base64-owner-lint.test.ts`, which lints the
       // `test/__fixtures__` files covered here.
-      files: ["packages/*/src/**/*.{ts,tsx}", "test/__fixtures__/base64-owner.*.ts"],
+      files: [
+        "packages/*/src/**/*.{ts,tsx}",
+        "test/__fixtures__/base64-owner.*.ts",
+      ],
       rules: {
         "folio-base64/no-hand-rolled-base64": "error",
       },
@@ -371,7 +389,10 @@ export default library({
       // patches serialized parts: slicing display text elsewhere risks no
       // marker, and a test assembles expected markup rather than patching a
       // package.
-      files: ["packages/core/src/docx/**/*.ts", "test/__fixtures__/xml-splice-owner.*.ts"],
+      files: [
+        "packages/core/src/docx/**/*.ts",
+        "test/__fixtures__/xml-splice-owner.*.ts",
+      ],
       excludeFiles: ["packages/core/src/docx/**/*.test.ts"],
       rules: {
         "folio-xml-splice/no-hand-rolled-splice": [
@@ -431,7 +452,10 @@ export default library({
       // dependency-cruiser rule; this one checks the shape of the remaining
       // edge, which dependency-cruiser cannot see: the display-list types must
       // arrive as types, so that data crosses the seam and behaviour does not.
-      files: ["packages/core/src/pdf/**/*.ts", "packages/core/src/display-list/dom/**/*.ts"],
+      files: [
+        "packages/core/src/pdf/**/*.ts",
+        "packages/core/src/display-list/dom/**/*.ts",
+      ],
       rules: {
         "folio-layer-boundaries/paint-backend-seam": "error",
       },
@@ -470,9 +494,18 @@ export default library({
         // rules strict at every component boundary without forcing no-op
         // memoization around native event handlers and style objects.
         "react-perf/jsx-no-jsx-as-prop": ["error", { nativeAllowList: "all" }],
-        "react-perf/jsx-no-new-array-as-prop": ["error", { nativeAllowList: "all" }],
-        "react-perf/jsx-no-new-function-as-prop": ["error", { nativeAllowList: "all" }],
-        "react-perf/jsx-no-new-object-as-prop": ["error", { nativeAllowList: "all" }],
+        "react-perf/jsx-no-new-array-as-prop": [
+          "error",
+          { nativeAllowList: "all" },
+        ],
+        "react-perf/jsx-no-new-function-as-prop": [
+          "error",
+          { nativeAllowList: "all" },
+        ],
+        "react-perf/jsx-no-new-object-as-prop": [
+          "error",
+          { nativeAllowList: "all" },
+        ],
       },
     },
     {
@@ -480,7 +513,10 @@ export default library({
       // elsewhere is overwritten by the next render and defeats identity
       // checks against the ref. See `.oxlint-plugins/folio-ref-mirrors.ts`
       // and the matching test at `scripts/ref-mirror-lint.test.ts`.
-      files: ["packages/react/src/**/*.{ts,tsx}", "test/__fixtures__/ref-mirror.*.ts"],
+      files: [
+        "packages/react/src/**/*.{ts,tsx}",
+        "test/__fixtures__/ref-mirror.*.ts",
+      ],
       rules: {
         "folio-ref-mirrors/no-write-to-render-mirrored-ref": "error",
       },
@@ -504,7 +540,10 @@ export default library({
       // projection of the model (issue #845). See
       // `.oxlint-plugins/folio-model-types.ts` and the matching test at
       // `scripts/model-types-lint.test.ts`.
-      files: ["packages/*/src/**/*.{ts,tsx}", "test/__fixtures__/model-types.*.ts"],
+      files: [
+        "packages/*/src/**/*.{ts,tsx}",
+        "test/__fixtures__/model-types.*.ts",
+      ],
       rules: {
         "folio-model-types/no-model-intersection-widening": "error",
         "folio-model-types/no-in-check-on-model": "error",
@@ -532,7 +571,11 @@ export default library({
       // `.oxlint-plugins/folio-typecheck-proofs.ts` and the matching test at
       // `scripts/typecheck-proofs-lint.test.ts`, which lints the
       // `test/__fixtures__` files covered here.
-      files: ["**/*.test.ts", "**/*.test.tsx", "test/__fixtures__/typecheck-proofs.*.ts"],
+      files: [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "test/__fixtures__/typecheck-proofs.*.ts",
+      ],
       rules: {
         "folio-typecheck-proofs/no-type-suppression-in-test": [
           "error",
@@ -569,7 +612,8 @@ export default library({
         "test/__fixtures__/harness-workspace*.ts",
       ],
       rules: {
-        "folio-harness-workspaces/no-undeclared-workspace-runtime-import": "error",
+        "folio-harness-workspaces/no-undeclared-workspace-runtime-import":
+          "error",
       },
     },
     {

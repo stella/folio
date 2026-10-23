@@ -36,7 +36,9 @@ describe("empty-paragraph 1.15× line-height floor (eigenpal #391/#394)", () => 
     );
     const expected = ARIAL_PX * 1.15;
     expect(measure.lines).toHaveLength(1);
-    expect(measure.lines[0]!.lineHeight).toBeGreaterThanOrEqual(expected - 0.01);
+    expect(measure.lines[0]!.lineHeight).toBeGreaterThanOrEqual(
+      expected - 0.01,
+    );
   });
 
   test("atLeast rule below the floor is also floored", () => {
@@ -45,7 +47,9 @@ describe("empty-paragraph 1.15× line-height floor (eigenpal #391/#394)", () => 
       600,
     );
     const expected = ARIAL_PX * 1.15;
-    expect(measure.lines[0]!.lineHeight).toBeGreaterThanOrEqual(expected - 0.01);
+    expect(measure.lines[0]!.lineHeight).toBeGreaterThanOrEqual(
+      expected - 0.01,
+    );
   });
 
   test("exact rule is NOT floored — exact means exact per OOXML", () => {

@@ -8,7 +8,14 @@
  * shared `openDropdown` ref that gates which named menu is visible.
  */
 
-import { ref, computed, onMounted, onBeforeUnmount, type Ref, type CSSProperties } from "vue";
+import {
+  computed,
+  type CSSProperties,
+  onBeforeUnmount,
+  onMounted,
+  type Ref,
+  ref,
+} from "vue";
 
 export type UseToolbarDropdownsOptions = {
   zoom: Ref<HTMLElement | null>;
@@ -62,14 +69,23 @@ export function useToolbarDropdowns(refs: UseToolbarDropdownsOptions) {
   function closeDropdowns(e: MouseEvent) {
     const target = e.target;
     if (!(target instanceof Node)) return;
-    const allRefs = [refs.zoom, refs.style, refs.font, refs.size, refs.align, refs.spacing];
+    const allRefs = [
+      refs.zoom,
+      refs.style,
+      refs.font,
+      refs.size,
+      refs.align,
+      refs.spacing,
+    ];
     if (!allRefs.some((r) => r.value?.contains(target))) {
       openDropdown.value = null;
     }
   }
 
   onMounted(() => document.addEventListener("mousedown", closeDropdowns));
-  onBeforeUnmount(() => document.removeEventListener("mousedown", closeDropdowns));
+  onBeforeUnmount(() =>
+    document.removeEventListener("mousedown", closeDropdowns),
+  );
 
   return {
     openDropdown,

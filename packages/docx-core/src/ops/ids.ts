@@ -21,8 +21,14 @@ const isPlainRecord = (value: object): boolean => {
 };
 
 /** A record's fields, and the key of the field (or of the list) that holds it. */
-type VisitContext = { heldBy: string | undefined; ownerType: string | undefined };
-type Visit = (entries: readonly [string, unknown][], context: VisitContext) => void;
+type VisitContext = {
+  heldBy: string | undefined;
+  ownerType: string | undefined;
+};
+type Visit = (
+  entries: readonly [string, unknown][],
+  context: VisitContext,
+) => void;
 type WalkOptions = { value: unknown; visit: Visit; context?: VisitContext };
 
 const walk = ({
@@ -54,10 +60,14 @@ const storiesOf = (pkg: DocxPackage): unknown => ({
   document: { ...pkg.document, sections: undefined },
 });
 
-const fieldOf = (entries: readonly [string, unknown][], name: string): unknown =>
-  entries.find(([key]) => key === name)?.[1];
+const fieldOf = (
+  entries: readonly [string, unknown][],
+  name: string,
+): unknown => entries.find(([key]) => key === name)?.[1];
 
-const paragraphIdOf = (entries: readonly [string, unknown][]): string | undefined => {
+const paragraphIdOf = (
+  entries: readonly [string, unknown][],
+): string | undefined => {
   if (fieldOf(entries, "type") !== "paragraph") return undefined;
   const id = fieldOf(entries, "paraId");
   return typeof id === "string" ? id : undefined;
@@ -77,7 +87,8 @@ export const paragraphIdsIn = (value: unknown): string[] => {
 };
 
 /** Every paragraph id of a package, each story walked once. */
-export const packageParagraphIds = (pkg: DocxPackage): string[] => paragraphIdsIn(storiesOf(pkg));
+export const packageParagraphIds = (pkg: DocxPackage): string[] =>
+  paragraphIdsIn(storiesOf(pkg));
 
 export type PackageBookmark = { id: number; name: string };
 export type PackageBookmarkCensus = {
@@ -87,7 +98,9 @@ export type PackageBookmarkCensus = {
 };
 
 /** Bookmark ids, names and uniquely paired starts from every package story. */
-export const packageBookmarkCensus = (pkg: DocxPackage): PackageBookmarkCensus => {
+export const packageBookmarkCensus = (
+  pkg: DocxPackage,
+): PackageBookmarkCensus => {
   const ids = new Set<number>();
   const names = new Set<string>();
   const starts = new Map<number, { name: string; count: number }>();
@@ -132,7 +145,8 @@ export const countKeys = (keys: readonly string[]): Map<string, number> => {
 };
 
 /** How many paragraphs carry each id, by {@link idKey}. */
-export const countIds = (ids: readonly string[]): Map<string, number> => countKeys(ids.map(idKey));
+export const countIds = (ids: readonly string[]): Map<string, number> =>
+  countKeys(ids.map(idKey));
 
 /** Whether `incoming` repeats an id of `existing` or of itself, by {@link idKey}. */
 export const collides = (
@@ -158,21 +172,29 @@ export const isParaId = (id: string): boolean =>
   PARA_ID_PATTERN.test(id) && !RESERVED_PARA_ID_PATTERN.test(id);
 
 /** The id spaces of revisions and content controls. */
-export const IDENTITY_SPACES = Object.freeze({ REVISION: "revision", CONTROL: "control" } as const);
+export const IDENTITY_SPACES = Object.freeze({
+  REVISION: "revision",
+  CONTROL: "control",
+} as const);
 
-export type IdentitySpace = (typeof IDENTITY_SPACES)[keyof typeof IDENTITY_SPACES];
+export type IdentitySpace =
+  (typeof IDENTITY_SPACES)[keyof typeof IDENTITY_SPACES];
 
 /** One id a record carries, in its space. */
 export type IdentitySlot = { space: IdentitySpace; id: number };
 
-export const slotKey = ({ space, id }: IdentitySlot): string => `${space}:${id}`;
+export const slotKey = ({ space, id }: IdentitySlot): string =>
+  `${space}:${id}`;
 
 const revisionIdOf = (
   entries: readonly [string, unknown][],
   heldBy: string | undefined,
 ): number | undefined => {
   // Grid changes carry a physical revision id without author metadata.
-  if (heldBy === "gridChange" && Array.isArray(fieldOf(entries, "columnWidths"))) {
+  if (
+    heldBy === "gridChange" &&
+    Array.isArray(fieldOf(entries, "columnWidths"))
+  ) {
     const id = fieldOf(entries, "id");
     return typeof id === "number" ? id : undefined;
   }
@@ -180,7 +202,8 @@ const revisionIdOf = (
   if (typeof info !== "object" || info === null) return undefined;
   const infoEntries = Object.entries(info);
   const id = fieldOf(infoEntries, "id");
-  return typeof id === "number" && typeof fieldOf(infoEntries, "author") === "string"
+  return typeof id === "number" &&
+    typeof fieldOf(infoEntries, "author") === "string"
     ? id
     : undefined;
 };
@@ -192,7 +215,8 @@ const controlIdOf = (
   const id = fieldOf(entries, "id");
   if (typeof id !== "number") return undefined;
   const ownedProperties =
-    heldBy === "properties" && (ownerType === "inlineSdt" || ownerType === "blockSdt");
+    heldBy === "properties" &&
+    (ownerType === "inlineSdt" || ownerType === "blockSdt");
   return ownedProperties ||
     heldBy === CONTENT_CONTROL_STACK ||
     typeof fieldOf(entries, "sdtType") === "string"
@@ -246,7 +270,8 @@ export const reservedIdentityKeysIn = (value: unknown): string[] => {
         const blockers = fieldOf(entries, "blockers");
         if (Array.isArray(blockers)) {
           for (const id of blockers) {
-            if (typeof id === "number") out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+            if (typeof id === "number")
+              out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
           }
         }
         return;
@@ -256,10 +281,16 @@ export const reservedIdentityKeysIn = (value: unknown): string[] => {
         const slots = fieldOf(entries, field);
         if (!Array.isArray(slots)) continue;
         for (const slot of slots) {
-          if (typeof slot !== "object" || slot === null || !("space" in slot) || !("id" in slot))
+          if (
+            typeof slot !== "object" ||
+            slot === null ||
+            !("space" in slot) ||
+            !("id" in slot)
+          )
             continue;
           if (
-            (slot.space === IDENTITY_SPACES.REVISION || slot.space === IDENTITY_SPACES.CONTROL) &&
+            (slot.space === IDENTITY_SPACES.REVISION ||
+              slot.space === IDENTITY_SPACES.CONTROL) &&
             typeof slot.id === "number"
           ) {
             out.push(slotKey({ space: slot.space, id: slot.id }));
@@ -272,4 +303,5 @@ export const reservedIdentityKeysIn = (value: unknown): string[] => {
 };
 
 /** Every revision and content-control id of a package, each story walked once. */
-export const packageIdentityKeys = (pkg: DocxPackage): string[] => identityKeysIn(storiesOf(pkg));
+export const packageIdentityKeys = (pkg: DocxPackage): string[] =>
+  identityKeysIn(storiesOf(pkg));

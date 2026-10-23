@@ -1,8 +1,7 @@
 /** Document-scoped numbering definitions for list-editing commands. */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
+import { type EditorState, Plugin, type Transaction } from "prosemirror-state";
 import {
   AddMarkStep,
   DocAttrStep,
@@ -12,9 +11,16 @@ import {
   type Step,
 } from "prosemirror-transform";
 
-import { getCachedNumberingMap, type NumberingMap } from "../../docx/numberingParser";
+import {
+  getCachedNumberingMap,
+  type NumberingMap,
+} from "../../docx/numberingParser";
 import type { NumberingDefinitions } from "../../types/document";
-import { completeNumberingForDoc, paragraphListReferences } from "../listInstanceReferences";
+import {
+  completeNumberingForDoc,
+  paragraphListReferences,
+} from "../listInstanceReferences";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 
 /**
  * The package's own definitions (`null` when it has no numbering part) and
@@ -27,23 +33,33 @@ type DocumentNumberingState = {
   map: NumberingMap | null;
 };
 
-const documentNumberingKey = createPluginKeyOwner<DocumentNumberingState>("documentNumbering");
+const documentNumberingKey =
+  createPluginKeyOwner<DocumentNumberingState>("documentNumbering");
 
 const completedState = (
   definitions: NumberingDefinitions | null,
   doc: PMNode,
 ): DocumentNumberingState => {
   const completed = completeNumberingForDoc(definitions ?? undefined, doc);
-  return { definitions, map: completed ? getCachedNumberingMap(completed) : null };
+  return {
+    definitions,
+    map: completed ? getCachedNumberingMap(completed) : null,
+  };
 };
 
 const isReplace = (step: Step): step is ReplaceStep | ReplaceAroundStep =>
   step instanceof ReplaceStep || step instanceof ReplaceAroundStep;
 
 const leavesNumberingUnchanged = (step: Step): boolean =>
-  step instanceof AddMarkStep || step instanceof RemoveMarkStep || step instanceof DocAttrStep;
+  step instanceof AddMarkStep ||
+  step instanceof RemoveMarkStep ||
+  step instanceof DocAttrStep;
 
-const containsNumberedParagraph = (node: PMNode, from: number, to: number): boolean => {
+const containsNumberedParagraph = (
+  node: PMNode,
+  from: number,
+  to: number,
+): boolean => {
   let found = false;
   node.nodesBetween(from, to, (child, pos) => {
     if (
@@ -73,7 +89,8 @@ const changesNumberingInputs = (tr: Transaction): boolean =>
 
     let insertsNumberedParagraph = false;
     step.slice.content.descendants((node) => {
-      if (paragraphListReferences(node).length === 0) return !insertsNumberedParagraph;
+      if (paragraphListReferences(node).length === 0)
+        return !insertsNumberedParagraph;
       insertsNumberedParagraph = true;
       return false;
     });
@@ -111,7 +128,9 @@ export const createDocumentNumberingPlugin = (
 const untrackedNumbering = new WeakMap<PMNode, DocumentNumberingState>();
 
 /** Numbering derived from a document when no editor plugin owns package definitions. */
-export const getDocumentNumberingForDoc = (doc: PMNode): NumberingMap | null => {
+export const getDocumentNumberingForDoc = (
+  doc: PMNode,
+): NumberingMap | null => {
   let untracked = untrackedNumbering.get(doc);
   if (!untracked) {
     untracked = completedState(null, doc);
@@ -126,7 +145,9 @@ export const getDocumentNumberingForDoc = (doc: PMNode): NumberingMap | null => 
  * An instance whose paragraphs were all deleted may linger until the next
  * completion; the save completes from the document itself.
  */
-export const getDocumentNumbering = (state: EditorState): NumberingMap | null => {
+export const getDocumentNumbering = (
+  state: EditorState,
+): NumberingMap | null => {
   const tracked = documentNumberingKey.getState(state);
   if (tracked) {
     return tracked.map;
@@ -137,7 +158,9 @@ export const getDocumentNumbering = (state: EditorState): NumberingMap | null =>
 };
 
 /** The package's own definitions, without the instances the document defines. */
-export const getPackageNumberingDefinitions = (state: EditorState): NumberingDefinitions | null =>
+export const getPackageNumberingDefinitions = (
+  state: EditorState,
+): NumberingDefinitions | null =>
   documentNumberingKey.getState(state)?.definitions ?? null;
 
 /**
@@ -167,7 +190,9 @@ export const getStatedDocumentNumbering = (
  * the state carries no numbering plugin and so cannot say. A document without
  * a numbering part defines none.
  */
-export const getDocumentNumberingInstanceIds = (state: EditorState): ReadonlySet<number> | null => {
+export const getDocumentNumberingInstanceIds = (
+  state: EditorState,
+): ReadonlySet<number> | null => {
   const numbering = getStatedDocumentNumbering(state);
   if (numbering === undefined) {
     return null;

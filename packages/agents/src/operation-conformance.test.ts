@@ -6,16 +6,19 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationResult,
+  type FolioDocumentOperationType,
   FolioDocxReviewer,
   InvalidFolioDocumentOperationBatchError,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
-  type FolioDocumentOperationBatch,
-  type FolioDocumentOperationResult,
-  type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
-import { createEditorRefBridge, type FolioAgentEditorRefLike } from "./bridges/editor-ref";
+import {
+  createEditorRefBridge,
+  type FolioAgentEditorRefLike,
+} from "./bridges/editor-ref";
 import { createReviewerBridge } from "./bridges/reviewer";
 import {
   FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,
@@ -36,11 +39,16 @@ const OPERATION_FIXTURE_PATH = path.join(
 
 const readArrayBuffer = (filePath: string): ArrayBuffer => {
   const bytes = readFileSync(filePath);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 const readOperationFixture = (): FolioDocumentOperationBatch =>
-  parseFolioDocumentOperationBatch(JSON.parse(readFileSync(OPERATION_FIXTURE_PATH, "utf8")));
+  parseFolioDocumentOperationBatch(
+    JSON.parse(readFileSync(OPERATION_FIXTURE_PATH, "utf8")),
+  );
 
 type ConformanceSurface = {
   name: string;
@@ -48,10 +56,16 @@ type ConformanceSurface = {
   apply(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult;
 };
 
-const createEditorRef = (reviewer: FolioDocxReviewer): FolioAgentEditorRefLike => ({
+const createEditorRef = (
+  reviewer: FolioDocxReviewer,
+): FolioAgentEditorRefLike => ({
   createAIEditSnapshot: () => reviewer.snapshot(),
   applyAIEditOperations: ({ operations, mode, author }) =>
-    reviewer.applyOperations(operations, { undefinedReferences: "refuse", mode, author }),
+    reviewer.applyOperations(operations, {
+      undefinedReferences: "refuse",
+      mode,
+      author,
+    }),
   applyDocumentOperations: ({ batch }) =>
     reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
   scrollToBlock: () => false,
@@ -61,9 +75,15 @@ const createEditorRef = (reviewer: FolioDocxReviewer): FolioAgentEditorRefLike =
 
 const createSurfaces = async (): Promise<ConformanceSurface[]> => {
   const source = readArrayBuffer(SOURCE_PATH);
-  const headlessReviewer = await FolioDocxReviewer.fromBuffer(source, { author: AUTHOR });
-  const reviewerBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, { author: AUTHOR });
-  const editorBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, { author: AUTHOR });
+  const headlessReviewer = await FolioDocxReviewer.fromBuffer(source, {
+    author: AUTHOR,
+  });
+  const reviewerBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, {
+    author: AUTHOR,
+  });
+  const editorBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, {
+    author: AUTHOR,
+  });
   const reviewerBridge = createReviewerBridge(reviewerBridgeReviewer);
   const editorBridge = createEditorRefBridge({
     ref: createEditorRef(editorBridgeReviewer),
@@ -77,7 +97,9 @@ const createSurfaces = async (): Promise<ConformanceSurface[]> => {
       name: "headless",
       reviewer: headlessReviewer,
       apply: (batch) =>
-        headlessReviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
+        headlessReviewer.applyDocumentOperations(batch, {
+          undefinedReferences: "refuse",
+        }),
     },
     {
       name: "reviewer bridge",
@@ -123,7 +145,9 @@ describe("document operation cross-surface conformance", () => {
 
     for (const surface of await createSurfaces()) {
       const result = surface.apply(batch);
-      const savedReviewer = await FolioDocxReviewer.fromBuffer(await surface.reviewer.toBuffer());
+      const savedReviewer = await FolioDocxReviewer.fromBuffer(
+        await surface.reviewer.toBuffer(),
+      );
       outputs.push({
         name: surface.name,
         result: normalizeResult(result),
@@ -193,7 +217,8 @@ describe("document operation cross-surface conformance", () => {
       expect(withoutChangeBlockIds(output.savedChanges), output.name).toEqual(
         withoutChangeBlockIds(expected.changes),
       );
-      const editedBlockId = /^\[(?<id>[0-9A-F]{8})\]/u.exec(output.savedContent)?.groups?.["id"];
+      const editedBlockId = /^\[(?<id>[0-9A-F]{8})\]/u.exec(output.savedContent)
+        ?.groups?.["id"];
       expect(
         output.savedChanges.map(({ blockId }) => blockId),
         output.name,
@@ -263,7 +288,10 @@ const admitsObject = (schema: JsonSchemaNode, value: unknown): boolean => {
     return false;
   }
   const keys = Object.keys(value);
-  if (schema.minProperties !== undefined && keys.length < schema.minProperties) {
+  if (
+    schema.minProperties !== undefined &&
+    keys.length < schema.minProperties
+  ) {
     return false;
   }
   const properties = schema.properties ?? {};
@@ -283,7 +311,8 @@ const admits = (schema: JsonSchemaNode, value: unknown): boolean => {
     // stays a real discriminated union.
     const { oneOf, ...baseSchema } = schema;
     return (
-      admits(baseSchema, value) && oneOf.filter((variant) => admits(variant, value)).length === 1
+      admits(baseSchema, value) &&
+      oneOf.filter((variant) => admits(variant, value)).length === 1
     );
   }
   if (schema.enum !== undefined && !schema.enum.includes(value)) {
@@ -294,7 +323,8 @@ const admits = (schema: JsonSchemaNode, value: unknown): boolean => {
       return (
         typeof value === "string" &&
         (schema.minLength === undefined || value.length >= schema.minLength) &&
-        (schema.pattern === undefined || new RegExp(schema.pattern, "u").test(value))
+        (schema.pattern === undefined ||
+          new RegExp(schema.pattern, "u").test(value))
       );
     case "integer":
       return (
@@ -340,7 +370,10 @@ const CONTRACT_RANGE = {
  * optional field the parser accepts for that type at least once across the
  * set.
  */
-const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<string, unknown>> = {
+const CONTRACT_OPERATION_FIXTURES: Record<
+  FolioDocumentOperationType,
+  Record<string, unknown>
+> = {
   replaceInBlock: {
     id: "op-replace-in-block",
     type: "replaceInBlock",
@@ -414,7 +447,11 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
       styleId: "ClauseHeading1",
       numbering: { kind: "levelOnly", ilvl: 1 },
       alignment: "both",
-      spacing: { spaceAfter: 360, lineSpacingRule: "atLeast", afterAutospacing: true },
+      spacing: {
+        spaceAfter: 360,
+        lineSpacingRule: "atLeast",
+        afterAutospacing: true,
+      },
     },
   },
   splitBlock: {
@@ -508,10 +545,13 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
   },
 };
 
-const variantTypeOf = (variant: JsonSchemaNode): unknown => variant.properties?.["type"]?.enum?.[0];
+const variantTypeOf = (variant: JsonSchemaNode): unknown =>
+  variant.properties?.["type"]?.enum?.[0];
 
 const variantForType = (type: FolioDocumentOperationType): JsonSchemaNode => {
-  const variant = OPERATION_SCHEMA.oneOf?.find((candidate) => variantTypeOf(candidate) === type);
+  const variant = OPERATION_SCHEMA.oneOf?.find(
+    (candidate) => variantTypeOf(candidate) === type,
+  );
   if (variant === undefined) {
     throw new Error(`no schema variant for operation type "${type}"`);
   }
@@ -531,7 +571,12 @@ describe("document operation contract JSON schema conformance", () => {
         { text: "text", numbering: { kind: "inherit" } },
         { text: "text", numbering: null },
       ]) {
-        const operation = { id: "insert", type, blockId: "0304003A", ...options };
+        const operation = {
+          id: "insert",
+          type,
+          blockId: "0304003A",
+          ...options,
+        };
         const result = folioDocumentOperationBatchSchema["~standard"].validate({
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           operations: [operation],
@@ -539,8 +584,11 @@ describe("document operation contract JSON schema conformance", () => {
           atomic: true,
           dryRun: true,
         });
-        if (result instanceof Promise) throw new Error("expected synchronous parser");
-        expect(admits(OPERATION_SCHEMA, operation)).toBe(result.issues === undefined);
+        if (result instanceof Promise)
+          throw new Error("expected synchronous parser");
+        expect(admits(OPERATION_SCHEMA, operation)).toBe(
+          result.issues === undefined,
+        );
       }
     }
   });
@@ -555,9 +603,9 @@ describe("document operation contract JSON schema conformance", () => {
       blockId: "0304003A",
       properties,
     };
-    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
-      InvalidFolioDocumentOperationBatchError,
-    );
+    expect(() =>
+      parseFolioDocumentOperationBatch({ version: 1, operations: [operation] }),
+    ).toThrow(InvalidFolioDocumentOperationBatchError);
     expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
   });
 
@@ -571,8 +619,12 @@ describe("document operation contract JSON schema conformance", () => {
     // property added to a type must be decided there; this keeps the wire
     // schema from drifting away from that decision.
     for (const type of FOLIO_DOCUMENT_OPERATION_TYPES) {
-      const schemaKeys = Object.keys(variantForType(type).properties ?? {}).sort();
-      const contractKeys = [...FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]].sort();
+      const schemaKeys = Object.keys(
+        variantForType(type).properties ?? {},
+      ).sort();
+      const contractKeys = [
+        ...FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type],
+      ].sort();
       expect(schemaKeys, type).toEqual(contractKeys);
     }
   });
@@ -636,18 +688,21 @@ describe("document operation contract JSON schema conformance", () => {
         styleId: null,
       },
     },
-  ] as const)("admits explicit style and numbering clears for $label", ({ operation }) => {
-    const batch = {
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      operations: [operation],
-      mode: "direct" as const,
-      atomic: true,
-      dryRun: true,
-    };
-    expect(parseFolioDocumentOperationBatch(batch)).toEqual(batch);
-    expect(admits(OPERATION_SCHEMA, operation)).toBe(true);
-    expect(admits(BATCH_SCHEMA, batch)).toBe(true);
-  });
+  ] as const)(
+    "admits explicit style and numbering clears for $label",
+    ({ operation }) => {
+      const batch = {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        operations: [operation],
+        mode: "direct" as const,
+        atomic: true,
+        dryRun: true,
+      };
+      expect(parseFolioDocumentOperationBatch(batch)).toEqual(batch);
+      expect(admits(OPERATION_SCHEMA, operation)).toBe(true);
+      expect(admits(BATCH_SCHEMA, batch)).toBe(true);
+    },
+  );
 
   test.each([
     {
@@ -669,17 +724,26 @@ describe("document operation contract JSON schema conformance", () => {
       blockId: "0304003A",
       properties: { spacing },
     };
-    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
-      InvalidFolioDocumentOperationBatchError,
-    );
+    expect(() =>
+      parseFolioDocumentOperationBatch({ version: 1, operations: [operation] }),
+    ).toThrow(InvalidFolioDocumentOperationBatchError);
     expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
   });
 
   test.each([
-    { label: "an out-of-range heading", outlineLevel: { kind: "heading", level: 9 } },
+    {
+      label: "an out-of-range heading",
+      outlineLevel: { kind: "heading", level: 9 },
+    },
     { label: "an unknown kind", outlineLevel: { kind: "unknown" } },
-    { label: "a body-text heading level", outlineLevel: { kind: "bodyText", level: 3 } },
-    { label: "an undefined body-text level", outlineLevel: { kind: "bodyText", level: undefined } },
+    {
+      label: "a body-text heading level",
+      outlineLevel: { kind: "bodyText", level: 3 },
+    },
+    {
+      label: "an undefined body-text level",
+      outlineLevel: { kind: "bodyText", level: undefined },
+    },
   ] as const)(
     "rejects $label in both the parser and schema for every outline operation",
     ({ outlineLevel }) => {
@@ -692,7 +756,11 @@ describe("document operation contract JSON schema conformance", () => {
           outlineLevel,
         };
         expect(
-          () => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] }),
+          () =>
+            parseFolioDocumentOperationBatch({
+              version: 1,
+              operations: [operation],
+            }),
           type,
         ).toThrow(InvalidFolioDocumentOperationBatchError);
         expect(admits(OPERATION_SCHEMA, operation), type).toBe(false);
@@ -704,32 +772,47 @@ describe("document operation contract JSON schema conformance", () => {
         properties: { outlineLevel },
       };
       expect(() =>
-        parseFolioDocumentOperationBatch({ version: 1, operations: [operation] }),
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [operation],
+        }),
       ).toThrow(InvalidFolioDocumentOperationBatchError);
       expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
     },
   );
 
   test.each([
-    { label: "an unknown list format", numbering: { kind: "newList", format: "roman" } },
-    { label: "a level past the ninth", numbering: { kind: "newList", format: "bullet", level: 9 } },
+    {
+      label: "an unknown list format",
+      numbering: { kind: "newList", format: "roman" },
+    },
+    {
+      label: "a level past the ninth",
+      numbering: { kind: "newList", format: "bullet", level: 9 },
+    },
     {
       label: "a new list naming an instance",
       numbering: { kind: "newList", format: "bullet", numId: 3 },
     },
     { label: "a new list without a format", numbering: { kind: "newList" } },
-  ] as const)("rejects $label in both the parser and schema", ({ numbering }) => {
-    const operation = {
-      id: "invalid-new-list",
-      type: "setBlockParagraphProperties",
-      blockId: "0304003A",
-      properties: { numbering },
-    };
-    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
-      InvalidFolioDocumentOperationBatchError,
-    );
-    expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
-  });
+  ] as const)(
+    "rejects $label in both the parser and schema",
+    ({ numbering }) => {
+      const operation = {
+        id: "invalid-new-list",
+        type: "setBlockParagraphProperties",
+        blockId: "0304003A",
+        properties: { numbering },
+      };
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [operation],
+        }),
+      ).toThrow(InvalidFolioDocumentOperationBatchError);
+      expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
+    },
+  );
 
   test("admits a new list in both the parser and schema", () => {
     const operation = {
@@ -738,8 +821,13 @@ describe("document operation contract JSON schema conformance", () => {
       blockId: "0304003A",
       properties: { numbering: { kind: "newList", format: "numbered" } },
     };
-    const batch = { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations: [operation] };
-    expect(parseFolioDocumentOperationBatch(batch).operations).toEqual([operation]);
+    const batch = {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations: [operation],
+    };
+    expect(parseFolioDocumentOperationBatch(batch).operations).toEqual([
+      operation,
+    ]);
     expect(admits(OPERATION_SCHEMA, operation)).toBe(true);
   });
 
@@ -787,12 +875,18 @@ describe("document operation contract JSON schema conformance", () => {
         rowCount: 1e100,
       },
     },
-  ] as const)("rejects $label wherever the shared reader is exposed", ({ operation }) => {
-    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
-      InvalidFolioDocumentOperationBatchError,
-    );
-    expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
-  });
+  ] as const)(
+    "rejects $label wherever the shared reader is exposed",
+    ({ operation }) => {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [operation],
+        }),
+      ).toThrow(InvalidFolioDocumentOperationBatchError);
+      expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
+    },
+  );
 
   test("cell merge targeting admits exactly one endpoint form", () => {
     const anchored = CONTRACT_OPERATION_FIXTURES.mergeTableCells;
@@ -827,17 +921,30 @@ describe("document operation contract JSON schema conformance", () => {
   });
 
   test("rejects an unknown operation type in both the parser and the schema", () => {
-    const unknownType = { id: "op-unknown", type: "renameBlock", blockId: "0304003A" };
+    const unknownType = {
+      id: "op-unknown",
+      type: "renameBlock",
+      blockId: "0304003A",
+    };
     expect(() =>
-      parseFolioDocumentOperationBatch({ version: 1, operations: [unknownType] }),
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [unknownType],
+      }),
     ).toThrow(InvalidFolioDocumentOperationBatchError);
     expect(admits(OPERATION_SCHEMA, unknownType)).toBe(false);
   });
 
   test("rejects an unexpected property in both the parser and the schema", () => {
-    const extraProperty = { ...CONTRACT_OPERATION_FIXTURES.deleteBlock, bogus: true };
+    const extraProperty = {
+      ...CONTRACT_OPERATION_FIXTURES.deleteBlock,
+      bogus: true,
+    };
     expect(() =>
-      parseFolioDocumentOperationBatch({ version: 1, operations: [extraProperty] }),
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [extraProperty],
+      }),
     ).toThrow(InvalidFolioDocumentOperationBatchError);
     expect(admits(OPERATION_SCHEMA, extraProperty)).toBe(false);
   });
@@ -845,10 +952,15 @@ describe("document operation contract JSON schema conformance", () => {
   test("rejects each missing required field in both the parser and the schema", () => {
     for (const type of FOLIO_DOCUMENT_OPERATION_TYPES) {
       for (const missingKey of variantForType(type).required ?? []) {
-        const { [missingKey]: _removed, ...broken } = CONTRACT_OPERATION_FIXTURES[type];
+        const { [missingKey]: _removed, ...broken } =
+          CONTRACT_OPERATION_FIXTURES[type];
         const label = `${type} without ${missingKey}`;
         expect(
-          () => parseFolioDocumentOperationBatch({ version: 1, operations: [broken] }),
+          () =>
+            parseFolioDocumentOperationBatch({
+              version: 1,
+              operations: [broken],
+            }),
           label,
         ).toThrow(InvalidFolioDocumentOperationBatchError);
         expect(admits(OPERATION_SCHEMA, broken), label).toBe(false);
@@ -891,7 +1003,8 @@ describe("document operation batch standard schema", () => {
     }
     expect(result.issues).toEqual([
       {
-        message: "Invalid document operation batch at $.operations[0].blockId: expected a string.",
+        message:
+          "Invalid document operation batch at $.operations[0].blockId: expected a string.",
         path: ["operations", 0, "blockId"],
       },
     ]);
@@ -903,7 +1016,10 @@ describe("document operation batch standard schema", () => {
       throw new Error("expected a failure result");
     }
     expect(result.issues).toEqual([
-      { message: "Unsupported document operation contract version.", path: ["version"] },
+      {
+        message: "Unsupported document operation contract version.",
+        path: ["version"],
+      },
     ]);
   });
 
@@ -918,7 +1034,11 @@ describe("document operation batch standard schema", () => {
       { version: "1", operations: [] },
       { version: 1 },
       { version: 1, operations: [{}] },
-      { version: 1, operations: [{ id: "a", type: "deleteBlock", blockId: "b" }], mode: "bulk" },
+      {
+        version: 1,
+        operations: [{ id: "a", type: "deleteBlock", blockId: "b" }],
+        mode: "bulk",
+      },
     ];
     for (const input of inputs) {
       const result = validate(input);

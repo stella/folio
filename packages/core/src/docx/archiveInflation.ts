@@ -61,7 +61,10 @@ const CENTRAL_DIRECTORY_RECORD_SIGNATURE = [0x50, 0x4b, 0x01, 0x02] as const;
  * signature occurrences cannot be lower than the number of entries JSZip would
  * build, whatever the end-of-central-directory record claims.
  */
-export const countCentralDirectoryRecords = (bytes: Uint8Array, stopAfter: number): number => {
+export const countCentralDirectoryRecords = (
+  bytes: Uint8Array,
+  stopAfter: number,
+): number => {
   const [first, second, third, fourth] = CENTRAL_DIRECTORY_RECORD_SIGNATURE;
   let count = 0;
   let offset = bytes.indexOf(first);
@@ -88,7 +91,9 @@ export type ZipEntrySizes = {
 };
 
 const finiteSize = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
 
 /** Declared sizes of an entry JSZip loaded from an archive. */
 export const getZipEntrySizes = (entry: JSZip.JSZipObject): ZipEntrySizes => {
@@ -97,8 +102,10 @@ export const getZipEntrySizes = (entry: JSZip.JSZipObject): ZipEntrySizes => {
     return { compressedBytes: null, uncompressedBytes: null };
   }
   return {
-    compressedBytes: "compressedSize" in data ? finiteSize(data.compressedSize) : null,
-    uncompressedBytes: "uncompressedSize" in data ? finiteSize(data.uncompressedSize) : null,
+    compressedBytes:
+      "compressedSize" in data ? finiteSize(data.compressedSize) : null,
+    uncompressedBytes:
+      "uncompressedSize" in data ? finiteSize(data.uncompressedSize) : null,
   };
 };
 
@@ -141,11 +148,15 @@ const RATIO_BOUNDED_EXTENSIONS: ReadonlySet<string> = new Set([
  * by the byte caps and the package-wide ratio instead.
  */
 export const isRatioBoundedPart = (path: string): boolean =>
-  RATIO_BOUNDED_EXTENSIONS.has(path.slice(path.lastIndexOf(".") + 1).toLowerCase());
+  RATIO_BOUNDED_EXTENSIONS.has(
+    path.slice(path.lastIndexOf(".") + 1).toLowerCase(),
+  );
 
 /** The per-entry ratio cap for `path`: `maxRatio`, or none for a binary part. */
-export const compressionRatioLimitFor = (path: string, maxRatio: number): number =>
-  isRatioBoundedPart(path) ? maxRatio : Number.POSITIVE_INFINITY;
+export const compressionRatioLimitFor = (
+  path: string,
+  maxRatio: number,
+): number => (isRatioBoundedPart(path) ? maxRatio : Number.POSITIVE_INFINITY);
 
 type CompressionRatioCheck = {
   inflatedBytes: number;
@@ -178,7 +189,9 @@ export type InflationBudget = {
   aborted: boolean;
 };
 
-export const createInflationBudget = (maxTotalBytes: number): InflationBudget => ({
+export const createInflationBudget = (
+  maxTotalBytes: number,
+): InflationBudget => ({
   maxTotalBytes,
   inflatedBytes: 0,
   aborted: false,
@@ -193,7 +206,8 @@ export const createInflationBudget = (maxTotalBytes: number): InflationBudget =>
  * - `total` — the package passed its cumulative budget.
  * - `aborted` — another inflation sharing the budget already failed.
  */
-export type InflationLimit = "declared-size" | "compression-ratio" | "entry" | "total" | "aborted";
+export type InflationLimit =
+  "declared-size" | "compression-ratio" | "entry" | "total" | "aborted";
 
 export type InflateEntryResult =
   | { readonly ok: true; readonly bytes: Uint8Array<ArrayBuffer> }

@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+
 import { writeZipEntry } from "../src/zip";
 
 const zip = new JSZip();

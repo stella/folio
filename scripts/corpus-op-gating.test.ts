@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { baselineFromCensus } from "./lib/corpus-baseline";
 import { CensusBuilder, CORPUS_EVIDENCE } from "./lib/corpus-census";
 import {
-  compareZeroFamilies,
   compareFamilyToBaseline,
+  compareZeroFamilies,
   FAMILY_BASELINE_FAMILIES,
   familyBaselineFromCensus,
   writeFamilyBaselines,
@@ -19,11 +19,24 @@ import {
 } from "./lib/corpus-invariants/contract";
 import { failureFromAssertion } from "./lib/corpus-signature";
 
-const FILE = { sourceId: "fixture", path: "document.docx", sha256: "a".repeat(64) };
-const OPS = [EXTENDED_CORPUS_INVARIANTS.opInverse, EXTENDED_CORPUS_INVARIANTS.opLocality];
+const FILE = {
+  sourceId: "fixture",
+  path: "document.docx",
+  sha256: "a".repeat(64),
+};
+const OPS = [
+  EXTENDED_CORPUS_INVARIANTS.opInverse,
+  EXTENDED_CORPUS_INVARIANTS.opLocality,
+];
 
-const observed = (invariant: (typeof OPS)[number], evidence: "gating" | "report-only") => {
-  const failure = failureFromAssertion(invariant, "generated operation changed an untouched block");
+const observed = (
+  invariant: (typeof OPS)[number],
+  evidence: "gating" | "report-only",
+) => {
+  const failure = failureFromAssertion(
+    invariant,
+    "generated operation changed an untouched block",
+  );
   const builder = new FamilyCensusBuilder("lock", "report-only");
   builder.add({
     file: FILE,
@@ -58,10 +71,16 @@ describe("operation invariants have an immutable zero allowance", () => {
         failedFiles: 1,
         entries: observation.family.signatures,
       } as const;
-      expect(compareFamilyToBaseline(fabricated, observation.family)).toHaveLength(1);
-      expect(() => familyBaselineFromCensus(observation.family, family)).toThrow("fixed zero");
+      expect(
+        compareFamilyToBaseline(fabricated, observation.family),
+      ).toHaveLength(1);
+      expect(() =>
+        familyBaselineFromCensus(observation.family, family),
+      ).toThrow("fixed zero");
       // This refuses before any family file can be written.
-      await expect(writeFamilyBaselines(observation.family)).rejects.toThrow("cannot be written");
+      await expect(writeFamilyBaselines(observation.family)).rejects.toThrow(
+        "cannot be written",
+      );
     });
 
     test(`${invariant} findings survive report-only and truncated evidence`, () => {
@@ -81,7 +100,9 @@ describe("operation invariants have an immutable zero allowance", () => {
             : { kind, declaredRefusals: [], failures: [observation.failure] },
         );
         const census = builder.build();
-        expect(census.signatures.map((signature) => signature.invariant)).toEqual([invariant]);
+        expect(
+          census.signatures.map((signature) => signature.invariant),
+        ).toEqual([invariant]);
         expect(baselineFromCensus(census).entries).toEqual([]);
       }
     });

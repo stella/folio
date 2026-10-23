@@ -5,8 +5,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { parseDocx } from "@stll/folio-core/docx/parser";
 import JSZip from "jszip";
+
+import { parseDocx } from "@stll/folio-core/docx/parser";
 
 import {
   type CorpusInvariantInput,
@@ -19,9 +20,12 @@ import {
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-const WORDPROCESSING = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const RELATIONSHIP_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const WORDPROCESSING =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const RELATIONSHIP_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const DOCUMENT_PART = "word/document.xml";
 const HEADER_PART = "word/header1.xml";
 const MACRO_PART = "word/vbaProject.bin";
@@ -37,7 +41,9 @@ const APP_PROPS_XML = `${XML_DECL}<Properties xmlns="http://schemas.openxmlforma
 
 const HEADER_XML = `${XML_DECL}<w:hdr xmlns:w="${WORDPROCESSING}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:p w14:paraId="60000010"><w:r><w:t>Header text</w:t></w:r></w:p></w:hdr>`;
 
-const MACRO_BYTES = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0x5a, 0x5a, 0x5a, 0x5a]);
+const MACRO_BYTES = new Uint8Array([
+  0xd0, 0xcf, 0x11, 0xe0, 0x5a, 0x5a, 0x5a, 0x5a,
+]);
 
 const PACKAGE_RELS = `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"><Relationship Id="rId1" Type="${OFFICE_RELATIONSHIP}/officeDocument" Target="${DOCUMENT_PART}"/><Relationship Id="rId2" Type="${RELATIONSHIP_NAMESPACE}/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="${OFFICE_RELATIONSHIP}/extended-properties" Target="docProps/app.xml"/></Relationships>`;
 
@@ -59,14 +65,16 @@ const HEADER: ExtraPart = {
   content: HEADER_XML,
   relationshipType: `${OFFICE_RELATIONSHIP}/header`,
   relationshipId: HEADER_RELATIONSHIP_ID,
-  contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+  contentType:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
 };
 
 /** A part folio never models: it is carried as bytes, so it exercises the binary comparison. */
 const MACRO_PROJECT: ExtraPart = {
   path: MACRO_PART,
   content: MACRO_BYTES,
-  relationshipType: "http://schemas.microsoft.com/office/2006/relationships/vbaProject",
+  relationshipType:
+    "http://schemas.microsoft.com/office/2006/relationships/vbaProject",
   relationshipId: MACRO_RELATIONSHIP_ID,
   contentType: "application/vnd.ms-office.vbaProject",
 };
@@ -81,7 +89,8 @@ const buildPackage = (extras: readonly ExtraPart[]): Promise<ArrayBuffer> => {
     `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>`,
     `<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>`,
     ...extras.map(
-      ({ path, contentType }) => `<Override PartName="/${path}" ContentType="${contentType}"/>`,
+      ({ path, contentType }) =>
+        `<Override PartName="/${path}" ContentType="${contentType}"/>`,
     ),
   ];
   const relationships = extras.map(
@@ -112,7 +121,9 @@ const buildPackage = (extras: readonly ExtraPart[]): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const invariantInput = async (extras: readonly ExtraPart[]): Promise<CorpusInvariantInput> => {
+const invariantInput = async (
+  extras: readonly ExtraPart[],
+): Promise<CorpusInvariantInput> => {
   const buffer = await buildPackage(extras);
   return {
     bytes: new Uint8Array(buffer),
@@ -138,13 +149,17 @@ describe("saving a package folio has already saved changes nothing", () => {
   });
 
   test("a package with a header part is a fixed point too", async () => {
-    const outcome = await runSaveIdempotenceInvariant(await invariantInput([HEADER]));
+    const outcome = await runSaveIdempotenceInvariant(
+      await invariantInput([HEADER]),
+    );
 
     expect(outcome.failures).toEqual([]);
   });
 
   test("a part folio carries as bytes is a fixed point too", async () => {
-    const outcome = await runSaveIdempotenceInvariant(await invariantInput([MACRO_PROJECT]));
+    const outcome = await runSaveIdempotenceInvariant(
+      await invariantInput([MACRO_PROJECT]),
+    );
 
     expect(outcome.failures).toEqual([]);
   });
@@ -153,7 +168,9 @@ describe("saving a package folio has already saved changes nothing", () => {
 describe("generalizePartPath", () => {
   test("erases the numbers that distinguish sibling parts", () => {
     expect(generalizePartPath("word/header12.xml")).toBe("word/headerN.xml");
-    expect(generalizePartPath("word/media/image3.png")).toBe("word/media/imageN.png");
+    expect(generalizePartPath("word/media/image3.png")).toBe(
+      "word/media/imageN.png",
+    );
   });
 
   test("keeps a path that carries no number", () => {
@@ -161,6 +178,8 @@ describe("generalizePartPath", () => {
   });
 
   test("gives two sibling parts one signature", () => {
-    expect(generalizePartPath("word/header2.xml")).toBe(generalizePartPath("word/header7.xml"));
+    expect(generalizePartPath("word/header2.xml")).toBe(
+      generalizePartPath("word/header7.xml"),
+    );
   });
 });

@@ -10,9 +10,10 @@
  * does not exist in our core).
  */
 
-import { ref, type Ref } from "vue";
 import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { type Ref, ref } from "vue";
+
 import {
   editHyperlinkAtCursor,
   removeHyperlinkAtCursor,
@@ -22,6 +23,7 @@ import {
   sanitizeExternalUrl,
   windowFeaturesFor,
 } from "@stll/folio-core/utils/urlSecurity";
+
 import type { HyperlinkPopupData } from "../components/ui/hyperlinkPopupTypes";
 
 export type { HyperlinkPopupData };
@@ -58,7 +60,10 @@ export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
     if (empty && data.displayText) {
       const factory = cmds["insertHyperlink"];
       if (factory) {
-        runCommand(view, factory(data.displayText, href, data.tooltip || undefined));
+        runCommand(
+          view,
+          factory(data.displayText, href, data.tooltip || undefined),
+        );
       }
     } else {
       const factory = cmds["setHyperlink"];
@@ -98,7 +103,9 @@ export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
   function handleHyperlinkPopupRemove() {
     const view = opts.editorView.value;
     if (!view) return;
-    removeHyperlinkAtCursor(view, { popupHref: hyperlinkPopupData.value?.href });
+    removeHyperlinkAtCursor(view, {
+      popupHref: hyperlinkPopupData.value?.href,
+    });
     hyperlinkPopupData.value = null;
     view.focus();
   }

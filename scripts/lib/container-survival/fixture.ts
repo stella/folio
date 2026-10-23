@@ -16,24 +16,24 @@
  */
 
 import {
-  type ModelledAttributes,
   modelledAttributeNames,
+  type ModelledAttributes,
   PROPERTY_ELEMENT_ATTRIBUTES,
 } from "@stll/folio-core/docx/propertyElementAttributes";
 
 import {
   type AttributeSlot,
   attributesOf,
-  type ChildSlot,
   childrenOf,
+  type ChildSlot,
   type Container,
   type ContainerId,
   containerKey,
   type ContainerSpace,
-  qualify,
   type QualifiedName,
-  type RebuiltPart,
+  qualify,
   REBUILT_PARTS,
+  type RebuiltPart,
   type RebuiltPartRoot,
   type SchemaIndex,
   WML_NAMESPACE,
@@ -53,13 +53,17 @@ const rebuiltPartOf = ({
   return { root, part: REBUILT_PARTS[root] };
 };
 
-const isRebuiltPartRoot = (element: QualifiedName): boolean => rebuiltPartOf(element) !== undefined;
+const isRebuiltPartRoot = (element: QualifiedName): boolean =>
+  rebuiltPartOf(element) !== undefined;
 
 const NAMESPACE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ["w", WML_NAMESPACE],
   ["r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"],
   ["a", "http://schemas.openxmlformats.org/drawingml/2006/main"],
-  ["wp", "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"],
+  [
+    "wp",
+    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+  ],
   ["pic", "http://schemas.openxmlformats.org/drawingml/2006/picture"],
   ["lc", "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas"],
   ["m", "http://schemas.openxmlformats.org/officeDocument/2006/math"],
@@ -74,7 +78,10 @@ export const XMLNS_DECLARATIONS = NAMESPACE_PREFIXES.map(
 ).join("");
 
 /** An attribute in no namespace is spelled without a prefix; that is not a missing value. */
-export const spell = ({ namespace, name }: QualifiedName): string | undefined => {
+export const spell = ({
+  namespace,
+  name,
+}: QualifiedName): string | undefined => {
   if (namespace === "") {
     return name;
   }
@@ -82,8 +89,10 @@ export const spell = ({ namespace, name }: QualifiedName): string | undefined =>
   return prefix === undefined ? undefined : `${prefix}:${name}`;
 };
 
-const DRAWINGML_MAIN_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const PICTURE_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const DRAWINGML_MAIN_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/main";
+const PICTURE_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
 /**
  * The relationship the seeded `a:blip` binds to. The law's package carries a
@@ -117,16 +126,23 @@ const REQUIRED_SIBLING_LIMIT = 6;
  */
 const requiredInstances = (minOccurs: string): number => {
   const declared = Number.parseInt(minOccurs, 10);
-  return Number.isInteger(declared) ? Math.min(declared, REQUIRED_SIBLING_LIMIT) : 1;
+  return Number.isInteger(declared)
+    ? Math.min(declared, REQUIRED_SIBLING_LIMIT)
+    : 1;
 };
 
 export const escapeAttribute = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll('"', "&quot;");
 
 export type WrittenAttribute = { spelled: string; value: string };
 
 const writeAttributes = (attributes: readonly WrittenAttribute[]): string =>
-  attributes.map(({ spelled, value }) => ` ${spelled}="${escapeAttribute(value)}"`).join("");
+  attributes
+    .map(({ spelled, value }) => ` ${spelled}="${escapeAttribute(value)}"`)
+    .join("");
 
 /** The attributes a type requires, each with the representative value of its simple type. */
 const requiredAttributesOf = (
@@ -144,7 +160,8 @@ const requiredAttributesOf = (
       continue;
     }
     const spelled = spell(declared.attribute);
-    const value = declared.fixed ?? representativeValue(index, declared.typeQName);
+    const value =
+      declared.fixed ?? representativeValue(index, declared.typeQName);
     if (spelled !== undefined && value !== undefined) {
       written.push({ spelled, value });
     }
@@ -169,8 +186,13 @@ const particlesOf = (index: SchemaIndex, typeQName: string): Particle[] =>
     order,
   }));
 
-const compositorKind = (index: SchemaIndex, compositorId: string | undefined): string =>
-  compositorId === undefined ? "sequence" : (index.compositorKinds.get(compositorId) ?? "sequence");
+const compositorKind = (
+  index: SchemaIndex,
+  compositorId: string | undefined,
+): string =>
+  compositorId === undefined
+    ? "sequence"
+    : (index.compositorKinds.get(compositorId) ?? "sequence");
 
 /**
  * The children a content model requires, in declaration order.
@@ -189,7 +211,9 @@ const renderChildren = (
 ): string => {
   const pieces = [...extra];
   const satisfied = new Set<string>();
-  for (const particle of extra.length === 0 ? [] : particlesOf(index, typeQName)) {
+  for (const particle of extra.length === 0
+    ? []
+    : particlesOf(index, typeQName)) {
     if (extra.some(({ order }) => order === particle.order)) {
       satisfied.add(particle.compositorId ?? "");
     }
@@ -207,7 +231,9 @@ const renderChildren = (
     // The subject and the seeds are written at their particle's ordinal, and a
     // particle that declares more than one instance still owes the rest: the
     // fixture tops it up rather than skipping it.
-    const present = pieces.filter(({ order }) => order === particle.order).length;
+    const present = pieces.filter(
+      ({ order }) => order === particle.order,
+    ).length;
     const wanted = requiredInstances(particle.minOccurs);
     if (present >= wanted) {
       continue;
@@ -216,15 +242,27 @@ const renderChildren = (
     // A choice takes one member. The exclusion is about which member, so it
     // only applies to a particle with nothing at its ordinal yet: one that is
     // being topped up is the member already chosen.
-    if (present === 0 && compositorKind(index, particle.compositorId) === "choice") {
+    if (
+      present === 0 &&
+      compositorKind(index, particle.compositorId) === "choice"
+    ) {
       if (satisfied.has(compositor)) {
         continue;
       }
       satisfied.add(compositor);
     }
-    const rendered = renderFiller(index, particle.child, particle.typeQName, depth, nextEntered);
+    const rendered = renderFiller(
+      index,
+      particle.child,
+      particle.typeQName,
+      depth,
+      nextEntered,
+    );
     if (rendered !== undefined) {
-      pieces.push({ order: particle.order, xml: rendered.repeat(wanted - present) });
+      pieces.push({
+        order: particle.order,
+        xml: rendered.repeat(wanted - present),
+      });
       filled += 1;
     }
   }
@@ -261,7 +299,11 @@ const renderFiller = (
     return undefined;
   }
   const attributes = writeAttributes(requiredAttributesOf(index, typeQName));
-  if (typeQName === undefined || depth >= REQUIRED_DEPTH_LIMIT || entered.has(typeQName)) {
+  if (
+    typeQName === undefined ||
+    depth >= REQUIRED_DEPTH_LIMIT ||
+    entered.has(typeQName)
+  ) {
     return `<${spelled}${attributes}/>`;
   }
   const inner = renderChildren(
@@ -292,7 +334,9 @@ const renderFiller = (
  * there (`inlineRangeMarkerTolerance.property.test.ts`); it is not what these
  * pairs are testing.
  */
-const PARTNER_MARKERS: Readonly<Record<string, { xml: string; before: boolean }>> = {
+const PARTNER_MARKERS: Readonly<
+  Record<string, { xml: string; before: boolean }>
+> = {
   commentRangeStart: { xml: '<w:commentRangeEnd w:id="1"/>', before: false },
   commentRangeEnd: { xml: '<w:commentRangeStart w:id="1"/>', before: true },
   moveFromRangeStart: { xml: '<w:moveFromRangeEnd w:id="1"/>', before: false },
@@ -313,11 +357,16 @@ const PARTNER_MARKERS: Readonly<Record<string, { xml: string; before: boolean }>
 
 type PartnerMarker = (typeof PARTNER_MARKERS)[string];
 
-const withPartnerMarker = (childXml: string, partner: PartnerMarker | undefined): string => {
+const withPartnerMarker = (
+  childXml: string,
+  partner: PartnerMarker | undefined,
+): string => {
   if (partner === undefined) {
     return childXml;
   }
-  return partner.before ? `${partner.xml}${childXml}` : `${childXml}${partner.xml}`;
+  return partner.before
+    ? `${partner.xml}${childXml}`
+    : `${childXml}${partner.xml}`;
 };
 
 export type Subject =
@@ -368,7 +417,8 @@ export type FixtureResult =
   | { status: "built"; fixture: BuiltFixture }
   | { status: "unrepresentable"; reason: string };
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /**
  * One candidate seed: the child to write, and what that child's own type must
@@ -499,16 +549,26 @@ const renderLevel = (
   // caller having to say which level it is rendering.
   const namespaces = isRebuiltPartRoot(id.element) ? XMLNS_DECLARATIONS : "";
 
-  const seeded = [...extra, ...seedsFor(space.index, id.element.name, id.typeQName, extra)];
+  const seeded = [
+    ...extra,
+    ...seedsFor(space.index, id.element.name, id.typeQName, extra),
+  ];
 
   // `w:body` without a `w:sectPr` is valid but nothing folio ever reads, and a
   // section it has to invent is a difference the law would charge to the pair.
   const withSection =
-    id.element.name === "body" && !seeded.some(({ xml }) => xml.startsWith("<w:sectPr"))
+    id.element.name === "body" &&
+    !seeded.some(({ xml }) => xml.startsWith("<w:sectPr"))
       ? [...seeded, { order: Number.MAX_SAFE_INTEGER, xml: "<w:sectPr/>" }]
       : seeded;
 
-  const body = renderChildren(space.index, id.typeQName, 1, new Set(), withSection);
+  const body = renderChildren(
+    space.index,
+    id.typeQName,
+    1,
+    new Set(),
+    withSection,
+  );
   return body === ""
     ? `<${spelled}${namespaces}${attributes}/>`
     : `<${spelled}${namespaces}${attributes}>${body}</${spelled}>`;
@@ -520,7 +580,9 @@ const declaredParticle = (
   child: QualifiedName,
 ): Particle | undefined => {
   const wanted = qualify(child);
-  return particlesOf(index, typeQName).find((particle) => qualify(particle.child) === wanted);
+  return particlesOf(index, typeQName).find(
+    (particle) => qualify(particle.child) === wanted,
+  );
 };
 
 const declaredOrdinal = (
@@ -530,14 +592,23 @@ const declaredOrdinal = (
 ): number | undefined => declaredParticle(index, typeQName, child)?.order;
 
 /** Whether the seeded child's own type declares what the candidate writes inside it. */
-const holdsThrough = (index: SchemaIndex, particle: Particle, through: string | undefined) =>
+const holdsThrough = (
+  index: SchemaIndex,
+  particle: Particle,
+  through: string | undefined,
+) =>
   through === undefined ||
   (particle.typeQName !== undefined &&
-    declaredParticle(index, particle.typeQName, { namespace: WML_NAMESPACE, name: through }) !==
-      undefined);
+    declaredParticle(index, particle.typeQName, {
+      namespace: WML_NAMESPACE,
+      name: through,
+    }) !== undefined);
 
-const ordinalOf = (index: SchemaIndex, typeQName: string, child: QualifiedName): number =>
-  declaredOrdinal(index, typeQName, child) ?? 0;
+const ordinalOf = (
+  index: SchemaIndex,
+  typeQName: string,
+  child: QualifiedName,
+): number => declaredOrdinal(index, typeQName, child) ?? 0;
 
 /** The seeds a container needs, placed at the ordinals its content model gives them. */
 const seedsFor = (
@@ -551,11 +622,16 @@ const seedsFor = (
       namespace: seed.namespace ?? WML_NAMESPACE,
       name: seed.child,
     });
-    if (particle === undefined || !holdsThrough(index, particle, seed.through)) {
+    if (
+      particle === undefined ||
+      !holdsThrough(index, particle, seed.through)
+    ) {
       continue;
     }
     const { order } = particle;
-    return present.some((piece) => piece.order === order) ? [] : [{ order, xml: seed.xml }];
+    return present.some((piece) => piece.order === order)
+      ? []
+      : [{ order, xml: seed.xml }];
   }
   return [];
 };
@@ -570,10 +646,16 @@ const seedsFor = (
  * result in a package that carries the part at its own path, with the
  * content-type override and the relationship that make a reader find it.
  */
-export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureResult => {
+export const buildFixture = (
+  space: ContainerSpace,
+  subject: Subject,
+): FixtureResult => {
   const container = space.containers.get(containerKey(subject.slot.container));
   if (container === undefined) {
-    return { status: "unrepresentable", reason: "container is not in the reachable space" };
+    return {
+      status: "unrepresentable",
+      reason: "container is not in the reachable space",
+    };
   }
   const root = container.path.at(0);
   const rooted = root === undefined ? undefined : rebuiltPartOf(root.element);
@@ -585,7 +667,9 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
   }
 
   const subjectSpelling = spell(
-    subject.kind === "child" ? subject.slot.child : subject.slot.container.element,
+    subject.kind === "child"
+      ? subject.slot.child
+      : subject.slot.container.element,
   );
   const attributeSpelling =
     subject.kind === "attribute" ? spell(subject.slot.attribute) : undefined;
@@ -593,12 +677,18 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
     subjectSpelling === undefined ||
     (subject.kind === "attribute" && attributeSpelling === undefined)
   ) {
-    return { status: "unrepresentable", reason: "no prefix is bound for the subject's namespace" };
+    return {
+      status: "unrepresentable",
+      reason: "no prefix is bound for the subject's namespace",
+    };
   }
 
   let xml = renderSubjectLevel(space, container, subject, attributeSpelling);
   if (xml === undefined) {
-    return { status: "unrepresentable", reason: "no prefix is bound for the child's namespace" };
+    return {
+      status: "unrepresentable",
+      reason: "no prefix is bound for the child's namespace",
+    };
   }
 
   for (let level = container.path.length - 2; level >= 0; level -= 1) {
@@ -619,9 +709,12 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
       documentXml: `${XML_DECLARATION}${xml}`,
       subjectSpelling,
       subjectElement:
-        subject.kind === "child" ? subject.slot.child : subject.slot.container.element,
+        subject.kind === "child"
+          ? subject.slot.child
+          : subject.slot.container.element,
       attributeSpelling,
-      attributeLocalName: subject.kind === "attribute" ? subject.slot.attribute.name : undefined,
+      attributeLocalName:
+        subject.kind === "attribute" ? subject.slot.attribute.name : undefined,
       attributeValue: subject.kind === "attribute" ? subject.value : undefined,
     },
   };
@@ -661,7 +754,8 @@ export const modelledCompanionFor = (
   );
   for (const name of modelledAttributeNames(modelled)) {
     const declared = container.attributes.find(
-      ({ attribute }) => attribute.namespace === WML_NAMESPACE && attribute.name === name,
+      ({ attribute }) =>
+        attribute.namespace === WML_NAMESPACE && attribute.name === name,
     );
     if (declared?.required) {
       return undefined;
@@ -677,13 +771,15 @@ export const modelledCompanionFor = (
     }
     for (const name of field) {
       const declared = container.attributes.find(
-        ({ attribute }) => attribute.namespace === WML_NAMESPACE && attribute.name === name,
+        ({ attribute }) =>
+          attribute.namespace === WML_NAMESPACE && attribute.name === name,
       );
       if (declared === undefined) {
         continue;
       }
       const spelled = spell(declared.attribute);
-      const value = declared.fixed ?? representativeValue(space.index, declared.typeQName);
+      const value =
+        declared.fixed ?? representativeValue(space.index, declared.typeQName);
       if (spelled !== undefined && value !== undefined) {
         return { spelled, value };
       }
@@ -692,7 +788,8 @@ export const modelledCompanionFor = (
   return undefined;
 };
 
-const localTypeName = (typeQName: string): string => typeQName.slice(typeQName.indexOf("}") + 1);
+const localTypeName = (typeQName: string): string =>
+  typeQName.slice(typeQName.indexOf("}") + 1);
 
 const renderSubjectLevel = (
   space: ContainerSpace,
@@ -731,7 +828,11 @@ const renderSubjectLevel = (
   if (childXml === undefined) {
     return undefined;
   }
-  const order = ordinalOf(space.index, container.id.typeQName, subject.slot.child);
+  const order = ordinalOf(
+    space.index,
+    container.id.typeQName,
+    subject.slot.child,
+  );
   const partner =
     subject.slot.child.namespace === WML_NAMESPACE
       ? PARTNER_MARKERS[subject.slot.child.name]

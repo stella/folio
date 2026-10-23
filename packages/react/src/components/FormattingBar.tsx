@@ -12,7 +12,14 @@
  * keyboard shortcuts or host app chrome.
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
@@ -22,10 +29,10 @@ import {
   ImageIcon,
   ItalicIcon,
   MoreHorizontalIcon,
+  OmegaIcon,
   PaintbrushIcon,
   PilcrowIcon,
   Redo2Icon,
-  OmegaIcon,
   RulerIcon,
   SeparatorHorizontalIcon,
   TableIcon,
@@ -36,18 +43,23 @@ import {
 import { useTranslations } from "use-intl";
 
 import type { ParagraphAlignment } from "@stll/folio-core/types/document";
+
 import { cn } from "../lib/utils";
 import { useFolioUI } from "../ui/folio-ui";
 import type { ColorPreset } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
 import { shouldClaimRightAlignmentShortcut } from "./formattingShortcutPolicy";
-import { ToolbarButton, ToolbarGroup, ToolbarSeparator } from "./toolbarPrimitives";
-import type { ToolbarProps, FormattingAction } from "./toolbarPrimitives";
+import {
+  ToolbarButton,
+  ToolbarGroup,
+  ToolbarSeparator,
+} from "./toolbarPrimitives";
+import type { FormattingAction, ToolbarProps } from "./toolbarPrimitives";
 import { AlignmentButtons } from "./ui/AlignmentButtons";
 import { FontPicker } from "./ui/FontPicker";
-import { normalizeFontFamilies } from "./ui/normalizeFontFamilies";
 import { FontSizePicker } from "./ui/FontSizePicker";
-import { ListButtons, createDefaultListState } from "./ui/ListButtons";
+import { createDefaultListState, ListButtons } from "./ui/ListButtons";
+import { normalizeFontFamilies } from "./ui/normalizeFontFamilies";
 import { StylePicker } from "./ui/StylePicker";
 import { ZoomControl } from "./ui/ZoomControl";
 
@@ -185,8 +197,14 @@ export function FormattingBar(props: FormattingBarProps) {
     [disabled, onFormat],
   );
   const handleBold = useCallback(() => handleFormat("bold"), [handleFormat]);
-  const handleItalic = useCallback(() => handleFormat("italic"), [handleFormat]);
-  const handleUnderline = useCallback(() => handleFormat("underline"), [handleFormat]);
+  const handleItalic = useCallback(
+    () => handleFormat("italic"),
+    [handleFormat],
+  );
+  const handleUnderline = useCallback(
+    () => handleFormat("underline"),
+    [handleFormat],
+  );
 
   const handleUndo = useCallback(() => {
     if (!disabled && canUndo && onUndo) {
@@ -242,7 +260,10 @@ export function FormattingBar(props: FormattingBarProps) {
   // FormattingBar is a guarded React Compiler bailout, so this memo remains
   // load-bearing: it keeps a stable list reference across renders (undefined
   // falls back to defaults).
-  const fontPickerOptions = useMemo(() => normalizeFontFamilies(fontFamilies), [fontFamilies]);
+  const fontPickerOptions = useMemo(
+    () => normalizeFontFamilies(fontFamilies),
+    [fontFamilies],
+  );
 
   const handleFontFamilyChange = useCallback(
     (fontFamily: string) => {
@@ -395,7 +416,10 @@ export function FormattingBar(props: FormattingBarProps) {
       const target = event.target;
       const editorContainer = editorRef?.current;
       const barContainer = barRef.current;
-      if (!editorContainer?.contains(target) && !barContainer?.contains(target)) {
+      if (
+        !editorContainer?.contains(target) &&
+        !barContainer?.contains(target)
+      ) {
         return;
       }
 
@@ -592,7 +616,9 @@ export function FormattingBar(props: FormattingBarProps) {
         {showFontSizePicker && (
           <FontSizePicker
             value={
-              currentFormatting.fontSize !== undefined ? currentFormatting.fontSize / 2 : undefined
+              currentFormatting.fontSize !== undefined
+                ? currentFormatting.fontSize / 2
+                : undefined
             }
             onChange={handleFontSizeChange}
             disabled={disabled}
@@ -607,7 +633,11 @@ export function FormattingBar(props: FormattingBarProps) {
             onSelect={handleTextColorSelect}
             onClear={handleTextColorClear}
           >
-            <ToolbarButton disabled={disabled} title={t("fontColor")} ariaLabel={t("fontColor")}>
+            <ToolbarButton
+              disabled={disabled}
+              title={t("fontColor")}
+              ariaLabel={t("fontColor")}
+            >
               <div className="flex flex-col items-center gap-0">
                 <BaselineIcon size={ICON_SIZE} />
                 <span
@@ -855,9 +885,14 @@ export function FormattingBar(props: FormattingBarProps) {
         </div>
 
         {showSecondaryInline && (
-          <div ref={attachSecondary} className="flex shrink-0 items-center gap-0.5">
+          <div
+            ref={attachSecondary}
+            className="flex shrink-0 items-center gap-0.5"
+          >
             <ToolbarSeparator />
-            <div className="flex shrink-0 items-center gap-0.5">{secondaryControls}</div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              {secondaryControls}
+            </div>
           </div>
         )}
       </div>
@@ -873,7 +908,10 @@ export function FormattingBar(props: FormattingBarProps) {
             <MenuTrigger render={overflowTrigger}>
               <MoreHorizontalIcon size={ICON_SIZE} />
             </MenuTrigger>
-            <MenuPopup align="end" className="max-w-[min(520px,calc(100vw-24px))]">
+            <MenuPopup
+              align="end"
+              className="max-w-[min(520px,calc(100vw-24px))]"
+            >
               <div className="flex w-[min(480px,calc(100vw-48px))] flex-wrap items-center gap-1 p-1">
                 {secondaryControls}
               </div>
@@ -898,11 +936,18 @@ export function FormattingBar(props: FormattingBarProps) {
             </ToolbarButton>
           </ToolbarGroup>
         )}
-        {showZoomControl !== false && zoom !== undefined && onZoomChange !== undefined && (
-          <ToolbarGroup label={t("zoomGroup")}>
-            <ZoomControl value={zoom} onChange={onZoomChange} disabled={disabled} compact />
-          </ToolbarGroup>
-        )}
+        {showZoomControl !== false &&
+          zoom !== undefined &&
+          onZoomChange !== undefined && (
+            <ToolbarGroup label={t("zoomGroup")}>
+              <ZoomControl
+                value={zoom}
+                onChange={onZoomChange}
+                disabled={disabled}
+                compact
+              />
+            </ToolbarGroup>
+          )}
         {children}
       </div>
     </div>

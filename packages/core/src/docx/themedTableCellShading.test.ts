@@ -8,7 +8,8 @@ import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
   const zip = new JSZip();
@@ -107,7 +108,9 @@ const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const tableCellBackgrounds = (document: ReturnType<typeof toProseDoc>): string[] => {
+const tableCellBackgrounds = (
+  document: ReturnType<typeof toProseDoc>,
+): string[] => {
   const table = document.child(1);
   const row = table.firstChild;
   if (!row) {
@@ -127,15 +130,22 @@ describe("themed table cell shading", () => {
 
     expect(tableCellBackgrounds(pmDocument)).toEqual(["DAE3F3", "70AD47"]);
 
-    const rebuilt = fromProseDoc(pmDocument, original, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDocument, original, {
+      stylesheetSource: { type: "package" },
+    });
     const repacked = await repackDocx(rebuilt, { updateModifiedDate: false });
     const repackedZip = await JSZip.loadAsync(repacked);
-    const documentXml = await repackedZip.file("word/document.xml")?.async("string");
+    const documentXml = await repackedZip
+      .file("word/document.xml")
+      ?.async("string");
 
     expect(documentXml).toContain('w:themeFill="accent1"');
     expect(documentXml).toContain('w:themeFillTint="33"');
 
     const reopened = await parseDocx(repacked);
-    expect(tableCellBackgrounds(toProseDoc(reopened))).toEqual(["DAE3F3", "70AD47"]);
+    expect(tableCellBackgrounds(toProseDoc(reopened))).toEqual([
+      "DAE3F3",
+      "70AD47",
+    ]);
   }, 15_000);
 });

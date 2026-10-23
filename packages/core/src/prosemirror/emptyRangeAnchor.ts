@@ -58,7 +58,10 @@ export const RANGE_END_FOR_START = {
 export type RangeAnchorAttrs = {
   [Start in RangeStartType]: {
     start: Extract<ParagraphContent, { type: Start }>;
-    end: Extract<ParagraphContent, { type: (typeof RANGE_END_FOR_START)[Start] }>;
+    end: Extract<
+      ParagraphContent,
+      { type: (typeof RANGE_END_FOR_START)[Start] }
+    >;
   };
 }[RangeStartType];
 
@@ -106,7 +109,9 @@ const NO_EMPTY_RANGES: EmptyRangePlan = {
  * stays at its own start's index. A start whose end is outside the run is a
  * range over content and keeps the mark path; so does an end with no start.
  */
-export const planEmptyRanges = (content: readonly ParagraphContent[]): EmptyRangePlan => {
+export const planEmptyRanges = (
+  content: readonly ParagraphContent[],
+): EmptyRangePlan => {
   const anchorAt = new Map<number, RangeAnchorAttrs>();
   const closedAt = new Set<number>();
 
@@ -176,7 +181,13 @@ type PairWithinRunOptions = {
   closedAt: Set<number>;
 };
 
-const pairWithinRun = ({ content, from, to, anchorAt, closedAt }: PairWithinRunOptions): void => {
+const pairWithinRun = ({
+  content,
+  from,
+  to,
+  anchorAt,
+  closedAt,
+}: PairWithinRunOptions): void => {
   const endIndexesByTypeAndId = new Map<string, number[]>();
   for (let end = from; end < to; end += 1) {
     const closer = content[end];
@@ -227,4 +238,5 @@ const pairWithinRun = ({ content, from, to, anchorAt, closedAt }: PairWithinRunO
   }
 };
 
-const rangeKey = (type: ParagraphContent["type"], id: number): string => `${type}:${id}`;
+const rangeKey = (type: ParagraphContent["type"], id: number): string =>
+  `${type}:${id}`;

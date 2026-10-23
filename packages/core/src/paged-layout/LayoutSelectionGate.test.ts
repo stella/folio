@@ -4,7 +4,7 @@
  * Tests sequence-based synchronization between document changes and layout rendering.
  */
 
-import { describe, expect, it, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 
 import { LayoutSelectionGate } from "./LayoutSelectionGate";
 

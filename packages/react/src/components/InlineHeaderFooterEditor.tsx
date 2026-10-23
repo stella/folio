@@ -29,10 +29,10 @@ import {
   useState,
 } from "react";
 import type { CSSProperties } from "react";
-import { useTranslations } from "use-intl";
 
 import { redo, undo } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
+import { useTranslations } from "use-intl";
 
 import { schema } from "@stll/folio-core/prosemirror";
 import "prosemirror-view/style/prosemirror.css";
@@ -98,7 +98,11 @@ const separatorBarStyle: CSSProperties = {
 
 // Footer bar mirrors the header bar but sits BELOW its painted content (its top
 // edge anchored to the container's bottom) so it never overlaps the footer text.
-const footerBarStyle: CSSProperties = { ...separatorBarStyle, bottom: "auto", top: "100%" };
+const footerBarStyle: CSSProperties = {
+  ...separatorBarStyle,
+  bottom: "auto",
+  top: "100%",
+};
 
 const labelStyle: CSSProperties = {
   fontWeight: 500,
@@ -154,7 +158,8 @@ export const InlineHeaderFooterEditor = forwardRef<
     const resizeObserver = new ResizeObserver(computePosition);
     resizeObserver.observe(targetElement);
 
-    const scrollParent = parentElement.closest('[style*="overflow"]') || parentElement;
+    const scrollParent =
+      parentElement.closest('[style*="overflow"]') || parentElement;
     scrollParent.addEventListener("scroll", computePosition);
     window.addEventListener("resize", computePosition);
     return () => {
@@ -225,7 +230,10 @@ export const InlineHeaderFooterEditor = forwardRef<
       return;
     }
     function handleClick(e: MouseEvent) {
-      if (optionsRef.current && !optionsRef.current.contains(e.target as Node)) {
+      if (
+        optionsRef.current &&
+        !optionsRef.current.contains(e.target as Node)
+      ) {
         setShowOptions(false);
       }
     }
@@ -252,7 +260,8 @@ export const InlineHeaderFooterEditor = forwardRef<
     },
   }));
 
-  const label = position === "header" ? t("headerFooter.header") : t("headerFooter.footer");
+  const label =
+    position === "header" ? t("headerFooter.header") : t("headerFooter.footer");
 
   if (!overlayPos) {
     return null;
@@ -275,7 +284,11 @@ export const InlineHeaderFooterEditor = forwardRef<
   };
 
   return (
-    <div role="presentation" className="hf-inline-editor" style={containerStyle}>
+    <div
+      role="presentation"
+      className="hf-inline-editor"
+      style={containerStyle}
+    >
       {position === "footer" && (
         <div className="hf-separator-bar" style={footerBarStyle}>
           <span style={labelStyle}>{label}</span>

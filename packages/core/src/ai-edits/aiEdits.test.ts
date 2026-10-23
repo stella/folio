@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
-import { Schema, type MarkSpec } from "prosemirror-model";
+import { type MarkSpec, Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { ReplaceStep } from "prosemirror-transform";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { applyFolioDocumentOperations } from "../document-operations";
 import {
   acceptAIEditRevision,
@@ -15,10 +15,10 @@ import {
 } from "../prosemirror/commands/comments";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import { schema as editorSchema } from "../prosemirror/schema";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
-import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   createFolioAIEditSnapshot,
   createFolioAIEditSnapshotWithStyleResolver,
@@ -31,10 +31,13 @@ import { createScopedWordDiffOptions } from "./word-diff";
  * The test's own marks, plus the editor's run-formatting marks it lacks:
  * formatting is written with the marks of the schema the text belongs to.
  */
-const withEditorRunMarks = (own: Record<string, MarkSpec>): Record<string, MarkSpec> => {
+const withEditorRunMarks = (
+  own: Record<string, MarkSpec>,
+): Record<string, MarkSpec> => {
   const marks = { ...own };
   editorSchema.spec.marks.forEach((name, spec) => {
-    if (!(name in marks) && RUN_FORMATTING_MARK_NAMES.has(name)) marks[name] = spec;
+    if (!(name in marks) && RUN_FORMATTING_MARK_NAMES.has(name))
+      marks[name] = spec;
   });
   return marks;
 };
@@ -62,7 +65,12 @@ const schema = new Schema({
     // An inline image is content a block deletion has to take with it; a
     // bookmark boundary is a zero-width anchor it must leave alone, because
     // the format cannot say one was deleted outside a hyperlink.
-    image: { inline: true, group: "inline", atom: true, attrs: { src: { default: "" } } },
+    image: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: { src: { default: "" } },
+    },
     pageBreakRun: {
       inline: true,
       group: "inline",
@@ -141,7 +149,11 @@ const schema = new Schema({
       attrs: {
         commentId: {},
       },
-      toDOM: (mark) => ["span", { "data-comment-id": mark.attrs["commentId"] }, 0],
+      toDOM: (mark) => [
+        "span",
+        { "data-comment-id": mark.attrs["commentId"] },
+        0,
+      ],
     },
     bold: {
       toDOM: () => ["strong", 0],
@@ -153,7 +165,11 @@ const schema = new Schema({
       attrs: {
         size: { default: 24 },
       },
-      toDOM: (mark) => ["span", { style: `font-size: ${Number(mark.attrs["size"]) / 2}pt` }, 0],
+      toDOM: (mark) => [
+        "span",
+        { style: `font-size: ${Number(mark.attrs["size"]) / 2}pt` },
+        0,
+      ],
     },
     fontFamily: {
       attrs: {
@@ -200,7 +216,11 @@ const makeState = (blocks: BlockSpec[]) =>
                 styleId: block.styleId ?? null,
                 textId: block.textId ?? null,
               };
-        return schema.node("paragraph", attrs, text.length === 0 ? [] : [schema.text(text)]);
+        return schema.node(
+          "paragraph",
+          attrs,
+          text.length === 0 ? [] : [schema.text(text)],
+        );
       }),
     ),
   });
@@ -255,7 +275,9 @@ const makeTrackedDoc = (
         : deletionType.create({ revisionId, author: "PriorUser", date });
     return [schema.text(text, [mark])];
   });
-  const doc = schema.node("doc", null, [schema.node("paragraph", {}, textNodes)]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", {}, textNodes),
+  ]);
   return { state: EditorState.create({ schema, doc }), doc };
 };
 
@@ -302,7 +324,11 @@ describe("Folio AI edit operations", () => {
                 },
               ],
             },
-            [schema.node("paragraph", { paraId: "merge-origin" }, [schema.text("Merged content")])],
+            [
+              schema.node("paragraph", { paraId: "merge-origin" }, [
+                schema.text("Merged content"),
+              ]),
+            ],
           ),
         ]),
         schema.node("tableRow"),
@@ -362,7 +388,9 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view,
       snapshot,
-      operations: [{ id: "range-1", type: "replaceRange", range, replace: "done" }],
+      operations: [
+        { id: "range-1", type: "replaceRange", range, replace: "done" },
+      ],
       mode: "direct",
     });
 
@@ -418,8 +446,18 @@ describe("Folio AI edit operations", () => {
       snapshot,
       operations: [
         { id: "replace-range", type: "replaceRange", range, replace: "X" },
-        { id: "comment-range", type: "commentOnRange", range, comment: { text: "Review" } },
-        { id: "format-range", type: "formatRange", range, formatting: { bold: true } },
+        {
+          id: "comment-range",
+          type: "commentOnRange",
+          range,
+          comment: { text: "Review" },
+        },
+        {
+          id: "format-range",
+          type: "formatRange",
+          range,
+          formatting: { bold: true },
+        },
         {
           id: "replace-inline",
           type: "replaceInBlock",
@@ -427,7 +465,12 @@ describe("Folio AI edit operations", () => {
           find: "AB",
           replace: "X",
         },
-        { id: "replace-block", type: "replaceBlock", blockId: "AAAA0001", text: "X" },
+        {
+          id: "replace-block",
+          type: "replaceBlock",
+          blockId: "AAAA0001",
+          text: "X",
+        },
       ],
       mode: "direct",
       createCommentId: () => 42,
@@ -466,14 +509,27 @@ describe("Folio AI edit operations", () => {
       view,
       snapshot,
       operations: [
-        { id: "comment", type: "commentOnRange", range, comment: { text: "Review" } },
-        { id: "format", type: "formatRange", range, formatting: { bold: true } },
+        {
+          id: "comment",
+          type: "commentOnRange",
+          range,
+          comment: { text: "Review" },
+        },
+        {
+          id: "format",
+          type: "formatRange",
+          range,
+          formatting: { bold: true },
+        },
       ],
       mode: "direct",
       createCommentId: () => 42,
     });
 
-    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["comment", "format"]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "comment",
+      "format",
+    ]);
     const target = view.state.doc.nodeAt(8);
     expect(target?.marks.map((mark) => mark.type.name).toSorted()).toEqual([
       "bold",
@@ -507,7 +563,14 @@ describe("Folio AI edit operations", () => {
         undefinedReferences: "refuse",
         view,
         snapshot,
-        operations: [{ id: "format", type: "formatRange", range, formatting: { italic: true } }],
+        operations: [
+          {
+            id: "format",
+            type: "formatRange",
+            range,
+            formatting: { italic: true },
+          },
+        ],
         author: "Reviewer",
       });
       const revisionId = result.applied.at(0)?.revisionId;
@@ -529,17 +592,24 @@ describe("Folio AI edit operations", () => {
         text: "target",
       }),
     ]);
-    acceptAIEditRevision(accepting.revisionId)(accepting.view.state, accepting.view.dispatch);
+    acceptAIEditRevision(accepting.revisionId)(
+      accepting.view.state,
+      accepting.view.dispatch,
+    );
     expect(collectMarksByText(accepting.view.state)).toEqual({
       target: ["italic", "runFormattingOverride"],
     });
     expect(
-      createFolioAIEditSnapshot(accepting.view.state.doc).blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+      createFolioAIEditSnapshot(accepting.view.state.doc)
+        .blocks.at(0)
+        ?.previewRuns?.at(0)?.directFormatting,
     ).toEqual({ italic: true });
 
     const rejecting = applyFormatting();
-    rejectAIEditRevision(rejecting.revisionId)(rejecting.view.state, rejecting.view.dispatch);
+    rejectAIEditRevision(rejecting.revisionId)(
+      rejecting.view.state,
+      rejecting.view.dispatch,
+    );
     expect(collectMarksByText(rejecting.view.state)).toEqual({ target: [] });
   });
 
@@ -567,7 +637,14 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view,
       snapshot,
-      operations: [{ id: "format", type: "formatRange", range, formatting: { italic: true } }],
+      operations: [
+        {
+          id: "format",
+          type: "formatRange",
+          range,
+          formatting: { italic: true },
+        },
+      ],
     });
     expect(result.skipped).toEqual([{ id: "format", reason: "noopOperation" }]);
   });
@@ -593,12 +670,24 @@ describe("Folio AI edit operations", () => {
         view,
         snapshot,
         operations: [
-          { id: "bold", type: "formatRange", range, formatting: { bold: true } },
-          { id: "italic", type: "formatRange", range, formatting: { italic: true } },
+          {
+            id: "bold",
+            type: "formatRange",
+            range,
+            formatting: { bold: true },
+          },
+          {
+            id: "italic",
+            type: "formatRange",
+            range,
+            formatting: { italic: true },
+          },
         ],
       });
       expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
-      expect(result.skipped).toEqual([{ id: "bold", reason: "pendingRunPropertyChange" }]);
+      expect(result.skipped).toEqual([
+        { id: "bold", reason: "pendingRunPropertyChange" },
+      ]);
       expect(getTrackedChangesFromDoc(view.state.doc)).toHaveLength(1);
       return view;
     };
@@ -635,7 +724,9 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view,
       snapshot,
-      operations: [{ id: "range-1", type: "replaceRange", range, replace: "done" }],
+      operations: [
+        { id: "range-1", type: "replaceRange", range, replace: "done" },
+      ],
       mode: "direct",
     });
 
@@ -644,7 +735,10 @@ describe("Folio AI edit operations", () => {
   });
 
   test("creates a simple AI-facing block snapshot", () => {
-    const state = makeState(["Opening paragraph.", { listMarker: "7.5.1", text: "Payment one." }]);
+    const state = makeState([
+      "Opening paragraph.",
+      { listMarker: "7.5.1", text: "Payment one." },
+    ]);
 
     const snapshot = createFolioAIEditSnapshot(state.doc);
 
@@ -701,7 +795,9 @@ describe("Folio AI edit operations", () => {
       throw new Error("Expected text range handle");
     }
 
-    expect(expectParagraphBlock(snapshot.blocks.at(0)).structuralBoundaries).toBeUndefined();
+    expect(
+      expectParagraphBlock(snapshot.blocks.at(0)).structuralBoundaries,
+    ).toBeUndefined();
     expect(resolveFolioAITextRange({ range, doc, snapshot })).toBeNull();
   });
 
@@ -759,7 +855,9 @@ describe("Folio AI edit operations", () => {
   test("an empty table cell is a blank block that names its cell", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
-        schema.node("tableRow", null, [schema.node("tableCell", null, [schema.node("paragraph")])]),
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [schema.node("paragraph")]),
+        ]),
       ]),
     ]);
     const state = EditorState.create({ schema, doc });
@@ -787,7 +885,10 @@ describe("Folio AI edit operations", () => {
         },
       },
     ]);
-    expect(snapshot.anchors["blank-0001"]).toMatchObject({ id: "blank-0001", text: "" });
+    expect(snapshot.anchors["blank-0001"]).toMatchObject({
+      id: "blank-0001",
+      text: "",
+    });
   });
 
   test("hides text inside a hidden table row from the AI-facing snapshot", () => {
@@ -811,7 +912,9 @@ describe("Folio AI edit operations", () => {
 
     expect(snapshot.blocks.map((block) => block.text)).toEqual(["Visible"]);
     expect(
-      Object.values(snapshot.anchors).some((anchor) => anchor.text.includes("Hidden secret")),
+      Object.values(snapshot.anchors).some((anchor) =>
+        anchor.text.includes("Hidden secret"),
+      ),
     ).toBe(false);
   });
 
@@ -824,12 +927,16 @@ describe("Folio AI edit operations", () => {
       schema.node("table", null, [
         schema.node("tableRow", { hidden: true }, [
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: "AAAA0001" }, [schema.text("Hidden secret")]),
+            schema.node("paragraph", { paraId: "AAAA0001" }, [
+              schema.text("Hidden secret"),
+            ]),
           ]),
         ]),
         schema.node("tableRow", null, [
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: "AAAA0001" }, [schema.text("Visible")]),
+            schema.node("paragraph", { paraId: "AAAA0001" }, [
+              schema.text("Visible"),
+            ]),
           ]),
         ]),
       ]),
@@ -841,7 +948,14 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "replace", type: "replaceBlock", blockId: "AAAA0001", text: "Rewritten" }],
+      operations: [
+        {
+          id: "replace",
+          type: "replaceBlock",
+          blockId: "AAAA0001",
+          text: "Rewritten",
+        },
+      ],
       mode: "direct",
     });
 
@@ -864,14 +978,20 @@ describe("Folio AI edit operations", () => {
 
     const snapshot = createFolioAIEditSnapshot(state.doc);
 
-    expect(snapshot.blocks.map((block) => block.id)).toEqual(["AAAA0001", "seq-0002", "BBBB0002"]);
+    expect(snapshot.blocks.map((block) => block.id)).toEqual([
+      "AAAA0001",
+      "seq-0002",
+      "BBBB0002",
+    ]);
     expect(snapshot.anchors["AAAA0001"]?.text).toBe("First paragraph.");
     expect(snapshot.anchors["seq-0002"]?.text).toBe("Second paragraph.");
     expect(snapshot.anchors["BBBB0002"]?.text).toBe("Third paragraph.");
   });
 
   test("captures paragraph style ids in the AI-facing block snapshot", () => {
-    const state = makeState([{ styleId: "ClauseHeading1", text: "Payment terms" }]);
+    const state = makeState([
+      { styleId: "ClauseHeading1", text: "Payment terms" },
+    ]);
 
     const snapshot = createFolioAIEditSnapshot(state.doc);
 
@@ -899,8 +1019,14 @@ describe("Folio AI edit operations", () => {
     for (const styleId of ["Heading2", "Cmsor2"]) {
       const state = makeState([{ styleId, text: "Payment terms" }]);
       expect(
-        createFolioAIEditSnapshotWithStyleResolver(state.doc, styles).blocks.at(0),
-      ).toMatchObject({ kind: "heading", headingLevel: 2, displayLabel: styleId });
+        createFolioAIEditSnapshotWithStyleResolver(state.doc, styles).blocks.at(
+          0,
+        ),
+      ).toMatchObject({
+        kind: "heading",
+        headingLevel: 2,
+        displayLabel: styleId,
+      });
     }
   });
 
@@ -922,7 +1048,9 @@ describe("Folio AI edit operations", () => {
             fontSizeType.create({ size: 28 }),
             fontFamilyType.create({ ascii: "Aptos", hAnsi: "Aptos" }),
           ]),
-          schema.text(" No underline", [underlineType.create({ style: "none" })]),
+          schema.text(" No underline", [
+            underlineType.create({ style: "none" }),
+          ]),
         ]),
       ]),
     });
@@ -979,7 +1107,9 @@ describe("Folio AI edit operations", () => {
       ]),
     });
 
-    expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns).toEqual([
+    expect(
+      createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns,
+    ).toEqual([
       { text: "Inherited ", fontFamily: "Arial", fontSizePt: 11 },
       {
         text: "Direct",
@@ -994,9 +1124,11 @@ describe("Folio AI edit operations", () => {
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [
-        schema.node("paragraph", { defaultTextFormatting: { underline: { style: "none" } } }, [
-          schema.text("Cleared underline"),
-        ]),
+        schema.node(
+          "paragraph",
+          { defaultTextFormatting: { underline: { style: "none" } } },
+          [schema.text("Cleared underline")],
+        ),
       ]),
     });
 
@@ -1074,7 +1206,9 @@ describe("Folio AI edit operations", () => {
   });
 
   test("inserts a new block after a list item and inherits its marker attrs", () => {
-    const view = makeView(makeState([{ listMarker: "7.5.1", text: "Payment one." }]));
+    const view = makeView(
+      makeState([{ listMarker: "7.5.1", text: "Payment one." }]),
+    );
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
@@ -1216,7 +1350,9 @@ describe("Folio AI edit operations", () => {
   test("paraId-anchored op still skips when the target block changed after snapshot", () => {
     const originalState = makeState([{ text: "Payment.", paraId: "AAAA0001" }]);
     const snapshot = createFolioAIEditSnapshot(originalState.doc);
-    const view = makeView(makeState([{ text: "Payment changed.", paraId: "AAAA0001" }]));
+    const view = makeView(
+      makeState([{ text: "Payment changed.", paraId: "AAAA0001" }]),
+    );
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
@@ -1245,7 +1381,9 @@ describe("Folio AI edit operations", () => {
   test("serialized precondition detects a stale target with a fresh apply snapshot", () => {
     const originalState = makeState([{ text: "Payment.", paraId: "AAAA0001" }]);
     const originalSnapshot = createFolioAIEditSnapshot(originalState.doc);
-    const view = makeView(makeState([{ text: "Payment changed.", paraId: "AAAA0001" }]));
+    const view = makeView(
+      makeState([{ text: "Payment changed.", paraId: "AAAA0001" }]),
+    );
     const currentSnapshot = createFolioAIEditSnapshot(view.state.doc);
     const blockTextHash = originalSnapshot.anchors["AAAA0001"]?.textHash;
     if (blockTextHash === undefined) {
@@ -1280,7 +1418,9 @@ describe("Folio AI edit operations", () => {
   test("paraId-anchored op skips when the live paraId is gone", () => {
     const originalState = makeState([{ text: "Payment.", paraId: "AAAA0001" }]);
     const snapshot = createFolioAIEditSnapshot(originalState.doc);
-    const view = makeView(makeState([{ text: "Payment.", paraId: "BBBB0002" }]));
+    const view = makeView(
+      makeState([{ text: "Payment.", paraId: "BBBB0002" }]),
+    );
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
@@ -1346,41 +1486,48 @@ describe("Folio AI edit operations", () => {
   });
 
   test("coalesces a same-position insertion run into one document replacement", () => {
-    const replacementStepsByOperationCount = [64, 128, 256].map((operationCount) => {
-      const state = makeState(["Anchor block."]);
-      let replacementSteps = 0;
-      const view = {
-        state,
-        dispatch(transaction: Transaction) {
-          replacementSteps = transaction.steps.filter((step) => step instanceof ReplaceStep).length;
-          view.state = view.state.apply(transaction);
-        },
-      };
-      const snapshot = createFolioAIEditSnapshot(view.state.doc);
-      const operations = Array.from({ length: operationCount }, (_, index) => ({
-        id: `op-${String(index)}`,
-        type: "insertAfterBlock" as const,
-        blockId: "seq-0001",
-        text: `Inserted ${String(index)}.`,
-      }));
+    const replacementStepsByOperationCount = [64, 128, 256].map(
+      (operationCount) => {
+        const state = makeState(["Anchor block."]);
+        let replacementSteps = 0;
+        const view = {
+          state,
+          dispatch(transaction: Transaction) {
+            replacementSteps = transaction.steps.filter(
+              (step) => step instanceof ReplaceStep,
+            ).length;
+            view.state = view.state.apply(transaction);
+          },
+        };
+        const snapshot = createFolioAIEditSnapshot(view.state.doc);
+        const operations = Array.from(
+          { length: operationCount },
+          (_, index) => ({
+            id: `op-${String(index)}`,
+            type: "insertAfterBlock" as const,
+            blockId: "seq-0001",
+            text: `Inserted ${String(index)}.`,
+          }),
+        );
 
-      const result = applyFolioAIEditOperations({
-        undefinedReferences: "refuse",
-        view,
-        snapshot,
-        operations,
-        mode: "direct",
-      });
+        const result = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
+          view,
+          snapshot,
+          operations,
+          mode: "direct",
+        });
 
-      expect(result.skipped).toEqual([]);
-      expect(result.applied).toHaveLength(operationCount);
-      expect(view.state.doc.childCount).toBe(operationCount + 1);
-      expect(view.state.doc.child(1).textContent).toBe("Inserted 0.");
-      expect(view.state.doc.child(operationCount).textContent).toBe(
-        `Inserted ${String(operationCount - 1)}.`,
-      );
-      return replacementSteps;
-    });
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(operationCount);
+        expect(view.state.doc.childCount).toBe(operationCount + 1);
+        expect(view.state.doc.child(1).textContent).toBe("Inserted 0.");
+        expect(view.state.doc.child(operationCount).textContent).toBe(
+          `Inserted ${String(operationCount - 1)}.`,
+        );
+        return replacementSteps;
+      },
+    );
 
     expect(replacementStepsByOperationCount).toEqual([1, 1, 1]);
   });
@@ -1433,7 +1580,9 @@ describe("Folio AI edit operations", () => {
 
   test("preserves formatting and revision ownership across a coalesced insertion run", () => {
     const applyInsertions = () => {
-      const view = makeView(makeState([{ text: "Anchor block.", styleId: "Anchor" }]));
+      const view = makeView(
+        makeState([{ text: "Anchor block.", styleId: "Anchor" }]),
+      );
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
       const result = applyFolioAIEditOperations({
         undefinedReferences: "refuse",
@@ -1520,7 +1669,9 @@ describe("Folio AI edit operations", () => {
       revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 200 },
     });
 
-    expect(result.skipped).toEqual([{ id: "blank", reason: "unsupportedBlock" }]);
+    expect(result.skipped).toEqual([
+      { id: "blank", reason: "unsupportedBlock" },
+    ]);
     expect(result.applied).toEqual([
       {
         id: "text",
@@ -1534,10 +1685,9 @@ describe("Folio AI edit operations", () => {
     expect(nextCommentId).toBe(41);
     expect(view.state.doc.childCount).toBe(2);
     expect(view.state.doc.child(1).textContent).toBe("Commented text.");
-    expect(view.state.doc.child(1).firstChild?.marks.map(({ type }) => type.name)).toEqual([
-      "insertion",
-      "comment",
-    ]);
+    expect(
+      view.state.doc.child(1).firstChild?.marks.map(({ type }) => type.name),
+    ).toEqual(["insertion", "comment"]);
   });
 
   test("commented edits without a surviving inline anchor refuse transactionally", () => {
@@ -1690,7 +1840,9 @@ describe("Folio AI edit operations", () => {
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.childCount).toBe(3);
     for (const index of [1, 2]) {
-      expect(view.state.doc.child(index).attrs["styleId"]).toBe("ListParagraph");
+      expect(view.state.doc.child(index).attrs["styleId"]).toBe(
+        "ListParagraph",
+      );
     }
     // Page control stays a property of the first inserted paragraph.
     expect(view.state.doc.child(1).attrs["pageBreakBefore"]).toBe(true);
@@ -1718,7 +1870,9 @@ describe("Folio AI edit operations", () => {
 
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.childCount).toBe(2);
-    expect(view.state.doc.child(1).textContent).toBe("Single paragraph, no line breaks.");
+    expect(view.state.doc.child(1).textContent).toBe(
+      "Single paragraph, no line breaks.",
+    );
     expect(result.normalizations).toBeUndefined();
   });
 
@@ -1774,7 +1928,9 @@ describe("Folio AI edit operations", () => {
     // trailing newlines do not add a trailing empty block.
     expect(view.state.doc.childCount).toBe(3);
     expect(view.state.doc.child(1).textContent).toBe("6. Force Majeure");
-    expect(view.state.doc.child(2).textContent).toBe("Neither party shall be liable.");
+    expect(view.state.doc.child(2).textContent).toBe(
+      "Neither party shall be liable.",
+    );
     expect(result.normalizations).toEqual([
       { id: "op-1", code: "splitMultilineText", paragraphCount: 2 },
     ]);
@@ -1813,7 +1969,9 @@ describe("Folio AI edit operations", () => {
     // baseAttrs (inherited from the anchor) must only land on the first
     // paragraph. A body-text continuation line is not a list item just
     // because the anchor it followed was.
-    const view = makeView(makeState([{ text: "Payment one.", listMarker: "7.5.1" }]));
+    const view = makeView(
+      makeState([{ text: "Payment one.", listMarker: "7.5.1" }]),
+    );
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
@@ -1836,7 +1994,9 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.childCount).toBe(3);
     expect(view.state.doc.child(1).textContent).toBe("Payment two.");
     expect(view.state.doc.child(1).attrs["listMarker"]).toBe("7.5.1");
-    expect(view.state.doc.child(2).textContent).toBe("Subject to the schedule in Annex A.");
+    expect(view.state.doc.child(2).textContent).toBe(
+      "Subject to the schedule in Annex A.",
+    );
     expect(view.state.doc.child(2).attrs["listMarker"]).toBeNull();
   });
 
@@ -1844,7 +2004,9 @@ describe("Folio AI edit operations", () => {
     // Same contract from the other direction: when the ANCHOR (not the
     // operation's own styleId override) carries a styleId, only the first
     // synthesized paragraph may inherit it.
-    const view = makeView(makeState([{ text: "1. Definitions", styleId: "Heading2" }]));
+    const view = makeView(
+      makeState([{ text: "1. Definitions", styleId: "Heading2" }]),
+    );
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
@@ -1920,7 +2082,9 @@ describe("Folio AI edit operations", () => {
     // `preserveFormatting=false` lets the model request "drop the
     // list marker, this is just plain text now". The flag is
     // exposed in the operation schema; honour it.
-    const view = makeView(makeState([{ listMarker: "1.", text: "List item content." }]));
+    const view = makeView(
+      makeState([{ listMarker: "1.", text: "List item content." }]),
+    );
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
@@ -1945,7 +2109,9 @@ describe("Folio AI edit operations", () => {
   });
 
   test("replaceBlock applies requested styleId in tracked-changes mode", () => {
-    const view = makeView(makeState([{ styleId: "BodyText", text: "Intro paragraph." }]));
+    const view = makeView(
+      makeState([{ styleId: "BodyText", text: "Intro paragraph." }]),
+    );
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
@@ -1973,35 +2139,42 @@ describe("Folio AI edit operations", () => {
   test.each([
     { label: "omits styleId", styleId: undefined },
     { label: "keeps the existing styleId", styleId: "BodyText" },
-  ] as const)("replaceBlock $label without allocating a paragraph revision", ({ styleId }) => {
-    const view = makeView(makeState([{ styleId: "BodyText", text: "Intro paragraph." }]));
-    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+  ] as const)(
+    "replaceBlock $label without allocating a paragraph revision",
+    ({ styleId }) => {
+      const view = makeView(
+        makeState([{ styleId: "BodyText", text: "Intro paragraph." }]),
+      );
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
-    const result = applyFolioAIEditOperations({
-      undefinedReferences: "refuse",
-      view,
-      snapshot,
-      operations: [
-        {
-          id: "op-1",
-          type: "replaceBlock",
-          blockId: "seq-0001",
-          text: "Rewritten introduction.",
-          ...(styleId === undefined ? {} : { styleId }),
-        },
-      ],
-      revisionStamp: { idSeed: 1, date: "2026-09-08T00:00:00.000Z" },
-    });
+      const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
+        view,
+        snapshot,
+        operations: [
+          {
+            id: "op-1",
+            type: "replaceBlock",
+            blockId: "seq-0001",
+            text: "Rewritten introduction.",
+            ...(styleId === undefined ? {} : { styleId }),
+          },
+        ],
+        revisionStamp: { idSeed: 1, date: "2026-09-08T00:00:00.000Z" },
+      });
 
-    expect(result.skipped).toEqual([]);
-    expect(result.applied[0]?.revisionIds).toEqual([1, 2]);
-    expect(result.nextRevisionId).toBe(3);
-  });
+      expect(result.skipped).toEqual([]);
+      expect(result.applied[0]?.revisionIds).toEqual([1, 2]);
+      expect(result.nextRevisionId).toBe(3);
+    },
+  );
 
   test.each(["direct", "tracked-changes"] as const)(
     "replaceBlock clears styleId in %s mode",
     (mode) => {
-      const view = makeView(makeState([{ styleId: "BodyText", text: "Intro paragraph." }]));
+      const view = makeView(
+        makeState([{ styleId: "BodyText", text: "Intro paragraph." }]),
+      );
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
       const result = applyFolioAIEditOperations({
@@ -2030,7 +2203,9 @@ describe("Folio AI edit operations", () => {
     // unchanged, only the changed runs get insertion/deletion marks.
     // A coarse "mark whole block deletion + insert whole block"
     // would tag every shared word and is what we're guarding against.
-    const view = makeView(makeState(["The buyer shall pay the seller within thirty days."]));
+    const view = makeView(
+      makeState(["The buyer shall pay the seller within thirty days."]),
+    );
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
@@ -2071,9 +2246,9 @@ describe("Folio AI edit operations", () => {
     "%s replacements share one bounded inline-diff allowance and remain reversible",
     (operationKind) => {
       const alternating = (first: string, second: string): string =>
-        Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
-          " ",
-        );
+        Array.from({ length: 2000 }, (_unused, index) =>
+          index % 2 === 0 ? first : second,
+        ).join(" ");
       const before = alternating("a", "b");
       const after = alternating("b", "a");
 
@@ -2082,7 +2257,8 @@ describe("Folio AI edit operations", () => {
         const snapshot = createFolioAIEditSnapshot(view.state.doc);
         const operations = snapshot.blocks.map(({ id }, index) => {
           const replaceWholeBlock =
-            operationKind === "replaceBlock" || (operationKind === "mixed" && index % 2 === 0);
+            operationKind === "replaceBlock" ||
+            (operationKind === "mixed" && index % 2 === 0);
           return replaceWholeBlock
             ? {
                 id: `replace-${String(index)}`,
@@ -2130,7 +2306,9 @@ describe("Folio AI edit operations", () => {
 
       const accepting = makeView(first.state);
       acceptAllChanges()(accepting.state, accepting.dispatch);
-      expect(accepting.state.doc.toJSON()).toEqual(makeState([after, after, after]).doc.toJSON());
+      expect(accepting.state.doc.toJSON()).toEqual(
+        makeState([after, after, after]).doc.toJSON(),
+      );
 
       const rejecting = makeView(first.state);
       rejectAllChanges()(rejecting.state, rejecting.dispatch);
@@ -2142,9 +2320,9 @@ describe("Folio AI edit operations", () => {
 
   test("atomic preflight cannot spend the committed batch's inline-diff allowance", () => {
     const alternating = (first: string, second: string): string =>
-      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
-        " ",
-      );
+      Array.from({ length: 2000 }, (_unused, index) =>
+        index % 2 === 0 ? first : second,
+      ).join(" ");
     const before = alternating("a", "b");
     const after = alternating("b", "a");
     const applyBatch = ({
@@ -2227,7 +2405,9 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.status).toBe("rejected");
-    expect(result.skipped).toEqual([{ id: "markers-only", reason: "noopOperation" }]);
+    expect(result.skipped).toEqual([
+      { id: "markers-only", reason: "noopOperation" },
+    ]);
     expect(view.state.doc.toJSON()).toEqual(before);
   });
 
@@ -2371,7 +2551,12 @@ describe("Folio AI edit operations", () => {
     // with "seller should". The find spans across the (skipped)
     // "shall" deletion in the live doc; mark boundaries must use
     // the right PM positions and leave "shall" untouched.
-    const { state } = makeTrackedDoc(["The buyer ", ["del", "shall "], ["ins", "must "], "pay."]);
+    const { state } = makeTrackedDoc([
+      "The buyer ",
+      ["del", "shall "],
+      ["ins", "must "],
+      "pay.",
+    ]);
     const view = makeView(state);
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
@@ -2398,7 +2583,11 @@ describe("Folio AI edit operations", () => {
     // so a direct lookup by full text isn't reliable).
     let shallNodeMarks: string[] | null = null;
     view.state.doc.descendants((node) => {
-      if (node.isText && node.text !== undefined && node.text.includes("shall")) {
+      if (
+        node.isText &&
+        node.text !== undefined &&
+        node.text.includes("shall")
+      ) {
         shallNodeMarks = node.marks.map((m) => m.type.name);
       }
     });
@@ -2469,7 +2658,12 @@ describe("Folio AI edit operations", () => {
     // said "accepted" but the document didn't change. Lock in
     // that the op is either applied AND the doc mutated, or
     // skipped — never phantom-applied.
-    const { state } = makeTrackedDoc(["The buyer ", ["del", "shall "], ["ins", "must "], "pay."]);
+    const { state } = makeTrackedDoc([
+      "The buyer ",
+      ["del", "shall "],
+      ["ins", "must "],
+      "pay.",
+    ]);
     const view = makeView(state);
     const docBefore = view.state.doc.toString();
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
@@ -2538,7 +2732,11 @@ describe("Folio AI edit operations", () => {
     // lookup. A fresh-snapshot-per-accept approach would break op
     // 3 because block ids would have re-numbered.
     const view = makeView(
-      makeState(["Section 1 intro.", "Section 2 body.", "Section 3 conclusion."]),
+      makeState([
+        "Section 1 intro.",
+        "Section 2 body.",
+        "Section 3 conclusion.",
+      ]),
     );
     const originalSnapshot = createFolioAIEditSnapshot(view.state.doc);
 
@@ -2624,7 +2822,9 @@ describe("Folio AI edit operations", () => {
     //      different id (e.g. seq-0003 → seq-0004), and the queued
     //      op's blockId="seq-0003" would either miss or hit the
     //      wrong block.
-    const view = makeView(makeState(["Alpha block.", "Bravo block.", "Charlie block."]));
+    const view = makeView(
+      makeState(["Alpha block.", "Bravo block.", "Charlie block."]),
+    );
     const originalSnapshot = createFolioAIEditSnapshot(view.state.doc);
 
     // Mutate the doc by inserting a new block above Charlie. This
@@ -2687,7 +2887,9 @@ describe("Folio AI edit operations", () => {
     // the same LCS path applies — only the diverging Czech token
     // should carry tracked-change marks. Locks in that the tokeniser
     // handles diacritics without pre/post-processing.
-    const view = makeView(makeState(["Kupující musí zaplatit do třiceti dnů."]));
+    const view = makeView(
+      makeState(["Kupující musí zaplatit do třiceti dnů."]),
+    );
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
@@ -2714,7 +2916,9 @@ describe("Folio AI edit operations", () => {
     });
     expect(marksByText[" třiceti"]).toContain("deletion");
     expect(marksByText[" šedesáti"]).toContain("insertion");
-    expect(marksByText["Kupující musí zaplatit do"] ?? []).not.toContain("deletion");
+    expect(marksByText["Kupující musí zaplatit do"] ?? []).not.toContain(
+      "deletion",
+    );
   });
 
   test("insertAfterBlock anchored inside a table cell lands after the table, not in the cell", () => {
@@ -2731,16 +2935,22 @@ describe("Folio AI edit operations", () => {
       [schema.text("Cell text.")],
     );
     const table = schema.node("table", null, [
-      schema.node("tableRow", null, [schema.node("tableCell", null, [cellParagraph])]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [cellParagraph]),
+      ]),
     ]);
     const docNode = schema.node("doc", null, [
-      schema.node("paragraph", { listMarker: null, paraId: null, textId: null }, [
-        schema.text("Before."),
-      ]),
+      schema.node(
+        "paragraph",
+        { listMarker: null, paraId: null, textId: null },
+        [schema.text("Before.")],
+      ),
       table,
-      schema.node("paragraph", { listMarker: null, paraId: null, textId: null }, [
-        schema.text("After."),
-      ]),
+      schema.node(
+        "paragraph",
+        { listMarker: null, paraId: null, textId: null },
+        [schema.text("After.")],
+      ),
     ]);
     const state = EditorState.create({ schema, doc: docNode });
     const snapshot = createFolioAIEditSnapshot(state.doc);
@@ -2788,12 +2998,16 @@ describe("Folio AI edit operations", () => {
       [schema.text("Cell text.")],
     );
     const table = schema.node("table", null, [
-      schema.node("tableRow", null, [schema.node("tableCell", null, [cellParagraph])]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [cellParagraph]),
+      ]),
     ]);
     const docNode = schema.node("doc", null, [
-      schema.node("paragraph", { listMarker: null, paraId: null, textId: null }, [
-        schema.text("Before."),
-      ]),
+      schema.node(
+        "paragraph",
+        { listMarker: null, paraId: null, textId: null },
+        [schema.text("Before.")],
+      ),
       table,
     ]);
     const state = EditorState.create({ schema, doc: docNode });
@@ -3024,7 +3238,9 @@ describe("Folio AI edit operations", () => {
       expect(view.state.doc.child(1).attrs).toMatchObject({
         pageBreakBefore: true,
       });
-      expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({ kind: "ins" });
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({
+        kind: "ins",
+      });
       expect(view.state.doc.child(1).attrs["pPrMark"]).toBeNull();
       return view;
     };
@@ -3060,17 +3276,21 @@ describe("Folio AI edit operations", () => {
 
       expect(result.skipped).toEqual([]);
       expect(view.state.doc.childCount).toBe(2);
-      expect(view.state.doc.child(1).firstChild?.type.name).toBe("pageBreakRun");
-      expect(view.state.doc.child(1).firstChild?.marks.map((mark) => mark.type.name)).toEqual([
-        "insertion",
-      ]);
+      expect(view.state.doc.child(1).firstChild?.type.name).toBe(
+        "pageBreakRun",
+      );
+      expect(
+        view.state.doc.child(1).firstChild?.marks.map((mark) => mark.type.name),
+      ).toEqual(["insertion"]);
       return view;
     };
 
     const accepting = applyHardPageBreak();
     acceptAllChanges()(accepting.state, accepting.dispatch);
     expect(accepting.state.doc.childCount).toBe(2);
-    expect(accepting.state.doc.child(1).firstChild?.type.name).toBe("pageBreakRun");
+    expect(accepting.state.doc.child(1).firstChild?.type.name).toBe(
+      "pageBreakRun",
+    );
 
     const rejecting = applyHardPageBreak();
     rejectAllChanges()(rejecting.state, rejecting.dispatch);
@@ -3107,16 +3327,22 @@ describe("Folio AI edit operations", () => {
       [schema.text("Cell text.")],
     );
     const table = schema.node("table", null, [
-      schema.node("tableRow", null, [schema.node("tableCell", null, [cellParagraph])]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [cellParagraph]),
+      ]),
     ]);
     const docNode = schema.node("doc", null, [
-      schema.node("paragraph", { listMarker: null, paraId: null, textId: null }, [
-        schema.text("Before."),
-      ]),
+      schema.node(
+        "paragraph",
+        { listMarker: null, paraId: null, textId: null },
+        [schema.text("Before.")],
+      ),
       table,
-      schema.node("paragraph", { listMarker: null, paraId: null, textId: null }, [
-        schema.text("After."),
-      ]),
+      schema.node(
+        "paragraph",
+        { listMarker: null, paraId: null, textId: null },
+        [schema.text("After.")],
+      ),
     ]);
     const state = EditorState.create({ schema, doc: docNode });
     const snapshot = createFolioAIEditSnapshot(state.doc);
@@ -3164,7 +3390,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const snapshot = createFolioAIEditSnapshot(state.doc);
     const view = makeView(state);
 
@@ -3209,7 +3438,9 @@ describe("Folio AI edit operations", () => {
     const innerTable = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "inner-cell" }, [schema.text("Inner")]),
+          schema.node("paragraph", { paraId: "inner-cell" }, [
+            schema.text("Inner"),
+          ]),
         ]),
       ]),
     ]);
@@ -3221,7 +3452,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [outerTable]),
+    });
     const snapshot = createFolioAIEditSnapshot(state.doc);
     const view = makeView(state);
 
@@ -3250,23 +3484,32 @@ describe("Folio AI edit operations", () => {
 
   test("deletes rows while preserving cells that span the deletion boundary", () => {
     const makeMergedTableState = () => {
-      const spanningCell = schema.node("tableCell", { colspan: 2, rowspan: 2 }, [
-        schema.node("paragraph", { paraId: "delete-a" }, [schema.text("A")]),
-      ]);
+      const spanningCell = schema.node(
+        "tableCell",
+        { colspan: 2, rowspan: 2 },
+        [schema.node("paragraph", { paraId: "delete-a" }, [schema.text("A")])],
+      );
       const table = schema.node("table", null, [
         schema.node("tableRow", null, [
           spanningCell,
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: "delete-b" }, [schema.text("B")]),
+            schema.node("paragraph", { paraId: "delete-b" }, [
+              schema.text("B"),
+            ]),
           ]),
         ]),
         schema.node("tableRow", null, [
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: "delete-c" }, [schema.text("C")]),
+            schema.node("paragraph", { paraId: "delete-c" }, [
+              schema.text("C"),
+            ]),
           ]),
         ]),
       ]);
-      return EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+      return EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [table]),
+      });
     };
 
     const originState = makeMergedTableState();
@@ -3275,7 +3518,9 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view: originView,
       snapshot: createFolioAIEditSnapshot(originState.doc),
-      operations: [{ id: "delete-origin", type: "deleteTableRow", blockId: "delete-a" }],
+      operations: [
+        { id: "delete-origin", type: "deleteTableRow", blockId: "delete-a" },
+      ],
       mode: "direct",
     });
 
@@ -3293,7 +3538,13 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view: continuationView,
       snapshot: createFolioAIEditSnapshot(continuationState.doc),
-      operations: [{ id: "delete-continuation", type: "deleteTableRow", blockId: "delete-c" }],
+      operations: [
+        {
+          id: "delete-continuation",
+          type: "deleteTableRow",
+          blockId: "delete-c",
+        },
+      ],
       mode: "direct",
     });
 
@@ -3309,7 +3560,9 @@ describe("Folio AI edit operations", () => {
     const innerTable = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "delete-inner" }, [schema.text("Inner")]),
+          schema.node("paragraph", { paraId: "delete-inner" }, [
+            schema.text("Inner"),
+          ]),
         ]),
       ]),
     ]);
@@ -3322,14 +3575,23 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [outerTable]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "delete-inner-row", type: "deleteTableRow", blockId: "delete-inner" }],
+      operations: [
+        {
+          id: "delete-inner-row",
+          type: "deleteTableRow",
+          blockId: "delete-inner",
+        },
+      ],
       mode: "direct",
     });
 
@@ -3344,18 +3606,29 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "delete-only" }, [schema.text("Only")]),
+          schema.node("paragraph", { paraId: "delete-only" }, [
+            schema.text("Only"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "delete-only-row", type: "deleteTableRow", blockId: "delete-only" }],
+      operations: [
+        {
+          id: "delete-only-row",
+          type: "deleteTableRow",
+          blockId: "delete-only",
+        },
+      ],
       mode: "direct",
     });
 
@@ -3370,10 +3643,14 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "same-row-a" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "same-row-a" }, [
+            schema.text("A"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "same-row-b" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "same-row-b" }, [
+            schema.text("B"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
@@ -3382,7 +3659,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -3397,7 +3677,9 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.applied).toEqual([{ id: "delete-row-a" }]);
-    expect(result.skipped).toEqual([{ id: "delete-row-b", reason: "noopOperation" }]);
+    expect(result.skipped).toEqual([
+      { id: "delete-row-b", reason: "noopOperation" },
+    ]);
     expect(view.state.doc.child(0).childCount).toBe(1);
     expect(view.state.doc.textContent).toBe("C");
   });
@@ -3406,7 +3688,9 @@ describe("Folio AI edit operations", () => {
     const rows = ["A", "B", "C"].map((text) =>
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: `batch-${text}` }, [schema.text(text)]),
+          schema.node("paragraph", { paraId: `batch-${text}` }, [
+            schema.text(text),
+          ]),
         ]),
       ]),
     );
@@ -3428,7 +3712,10 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.skipped).toEqual([]);
-    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["delete-last", "delete-middle"]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "delete-last",
+      "delete-middle",
+    ]);
     expect(view.state.doc.child(0).childCount).toBe(1);
     expect(view.state.doc.textContent).toBe("A");
   });
@@ -3437,19 +3724,28 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "column-span" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "column-span" }, [
+            schema.text("A"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "column-left" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "column-left" }, [
+            schema.text("B"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "column-right" }, [schema.text("C")]),
+          schema.node("paragraph", { paraId: "column-right" }, [
+            schema.text("C"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -3481,17 +3777,26 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "column-span-top" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "column-span-top" }, [
+            schema.text("A"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "column-anchor" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "column-anchor" }, [
+            schema.text("B"),
+          ]),
         ]),
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("C")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("C")]),
+        ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -3524,7 +3829,9 @@ describe("Folio AI edit operations", () => {
     const innerTable = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "inner-column" }, [schema.text("Inner")]),
+          schema.node("paragraph", { paraId: "inner-column" }, [
+            schema.text("Inner"),
+          ]),
         ]),
       ]),
     ]);
@@ -3536,7 +3843,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [outerTable]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -3564,7 +3874,9 @@ describe("Folio AI edit operations", () => {
 
   test("skips column insertion when a cell has no table ancestors", () => {
     const shallowCell = schema.nodes.tableCell.create(null, [
-      schema.node("paragraph", { paraId: "shallow-column" }, [schema.text("Cell")]),
+      schema.node("paragraph", { paraId: "shallow-column" }, [
+        schema.text("Cell"),
+      ]),
     ]);
     const malformedDoc = schema.nodes.doc.create(null, [shallowCell]);
     const state = EditorState.create({ schema, doc: malformedDoc });
@@ -3603,7 +3915,9 @@ describe("Folio AI edit operations", () => {
           null,
           texts.map((text) =>
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: `column-${text}` }, [schema.text(text)]),
+              schema.node("paragraph", { paraId: `column-${text}` }, [
+                schema.text(text),
+              ]),
             ]),
           ),
         ),
@@ -3638,7 +3952,9 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(sameBoundaryResult.skipped).toEqual([]);
-    expect(sameBoundaryView.state.doc.child(0).child(0).textContent).toBe("AFirst topSecond topB");
+    expect(sameBoundaryView.state.doc.child(0).child(0).textContent).toBe(
+      "AFirst topSecond topB",
+    );
     expect(sameBoundaryView.state.doc.child(0).child(1).textContent).toBe(
       "CFirst bottomSecond bottomD",
     );
@@ -3667,8 +3983,12 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(distinctResult.skipped).toEqual([]);
-    expect(distinctView.state.doc.child(0).child(0).textContent).toBe("ALeft topBRight top");
-    expect(distinctView.state.doc.child(0).child(1).textContent).toBe("CLeft bottomDRight bottom");
+    expect(distinctView.state.doc.child(0).child(0).textContent).toBe(
+      "ALeft topBRight top",
+    );
+    expect(distinctView.state.doc.child(0).child(1).textContent).toBe(
+      "CLeft bottomDRight bottom",
+    );
   });
 
   test("maps column insertion through earlier operations in a mixed batch", () => {
@@ -3681,7 +4001,9 @@ describe("Folio AI edit operations", () => {
         null,
         texts.map((text) =>
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: `mixed-${text}` }, [schema.text(text)]),
+            schema.node("paragraph", { paraId: `mixed-${text}` }, [
+              schema.text(text),
+            ]),
           ]),
         ),
       ),
@@ -3733,21 +4055,34 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2, colwidth: [100, 200] }, [
-          schema.node("paragraph", { paraId: "delete-column-span" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "delete-column-span" }, [
+            schema.text("A"),
+          ]),
         ]),
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("B")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("B")]),
+        ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "delete-column-left" }, [schema.text("C")]),
+          schema.node("paragraph", { paraId: "delete-column-left" }, [
+            schema.text("C"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "delete-column-middle" }, [schema.text("D")]),
+          schema.node("paragraph", { paraId: "delete-column-middle" }, [
+            schema.text("D"),
+          ]),
         ]),
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("E")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("E")]),
+        ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -3781,9 +4116,13 @@ describe("Folio AI edit operations", () => {
     const innerTable = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "delete-inner-column" }, [schema.text("Inner A")]),
+          schema.node("paragraph", { paraId: "delete-inner-column" }, [
+            schema.text("Inner A"),
+          ]),
         ]),
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Inner B")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Inner B")]),
+        ]),
       ]),
     ]);
     const outerTable = schema.node("table", null, [
@@ -3794,7 +4133,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [outerTable]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -3823,11 +4165,16 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "delete-only-column" }, [schema.text("Cell")]),
+          schema.node("paragraph", { paraId: "delete-only-column" }, [
+            schema.text("Cell"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -3864,7 +4211,9 @@ describe("Folio AI edit operations", () => {
         null,
         texts.map((text) =>
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: `duplicate-column-${text}` }, [schema.text(text)]),
+            schema.node("paragraph", { paraId: `duplicate-column-${text}` }, [
+              schema.text(text),
+            ]),
           ]),
         ),
       ),
@@ -3880,14 +4229,24 @@ describe("Folio AI edit operations", () => {
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
-        { id: "delete-top", type: "deleteTableColumn", blockId: "duplicate-column-A" },
-        { id: "delete-bottom", type: "deleteTableColumn", blockId: "duplicate-column-C" },
+        {
+          id: "delete-top",
+          type: "deleteTableColumn",
+          blockId: "duplicate-column-A",
+        },
+        {
+          id: "delete-bottom",
+          type: "deleteTableColumn",
+          blockId: "duplicate-column-C",
+        },
       ],
       mode: "direct",
     });
 
     expect(result.applied).toEqual([{ id: "delete-top" }]);
-    expect(result.skipped).toEqual([{ id: "delete-bottom", reason: "noopOperation" }]);
+    expect(result.skipped).toEqual([
+      { id: "delete-bottom", reason: "noopOperation" },
+    ]);
     expect(TableMap.get(view.state.doc.child(0)).width).toBe(1);
     expect(view.state.doc.child(0).textContent).toBe("BD");
   });
@@ -3902,7 +4261,9 @@ describe("Folio AI edit operations", () => {
         null,
         texts.map((text) =>
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: `batch-column-${text}` }, [schema.text(text)]),
+            schema.node("paragraph", { paraId: `batch-column-${text}` }, [
+              schema.text(text),
+            ]),
           ]),
         ),
       ),
@@ -3930,8 +4291,16 @@ describe("Folio AI edit operations", () => {
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
-        { id: "delete-middle", type: "deleteTableColumn", blockId: "batch-column-B" },
-        { id: "delete-right", type: "deleteTableColumn", blockId: "batch-column-C" },
+        {
+          id: "delete-middle",
+          type: "deleteTableColumn",
+          blockId: "batch-column-B",
+        },
+        {
+          id: "delete-right",
+          type: "deleteTableColumn",
+          blockId: "batch-column-C",
+        },
       ],
       mode: "direct",
     });
@@ -3964,9 +4333,11 @@ describe("Folio AI edit operations", () => {
           null,
           texts.map((text, columnIndex) =>
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: `grid-${rowIndex}-${columnIndex}` }, [
-                schema.text(text),
-              ]),
+              schema.node(
+                "paragraph",
+                { paraId: `grid-${rowIndex}-${columnIndex}` },
+                [schema.text(text)],
+              ),
             ]),
           ),
         ),
@@ -4004,7 +4375,9 @@ describe("Folio AI edit operations", () => {
       });
 
       expect(result.skipped).toEqual([]);
-      expect(view.state.doc.child(0).attrs["columnWidths"]).toEqual(expectedWidths);
+      expect(view.state.doc.child(0).attrs["columnWidths"]).toEqual(
+        expectedWidths,
+      );
       expect(view.state.doc.child(0).attrs["_originalFormatting"]).toEqual({
         sourceXml: "<w:tblPr/>",
       });
@@ -4021,7 +4394,9 @@ describe("Folio AI edit operations", () => {
         null,
         texts.map((text) =>
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: `mixed-column-${text}` }, [schema.text(text)]),
+            schema.node("paragraph", { paraId: `mixed-column-${text}` }, [
+              schema.text(text),
+            ]),
           ]),
         ),
       ),
@@ -4037,7 +4412,11 @@ describe("Folio AI edit operations", () => {
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
-        { id: "delete-column", type: "deleteTableColumn", blockId: "mixed-column-B" },
+        {
+          id: "delete-column",
+          type: "deleteTableColumn",
+          blockId: "mixed-column-B",
+        },
         {
           id: "insert-column",
           type: "insertTableColumn",
@@ -4064,7 +4443,9 @@ describe("Folio AI edit operations", () => {
         null,
         texts.map((text) =>
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: `mapped-column-${text}` }, [schema.text(text)]),
+            schema.node("paragraph", { paraId: `mapped-column-${text}` }, [
+              schema.text(text),
+            ]),
           ]),
         ),
       ),
@@ -4080,7 +4461,11 @@ describe("Folio AI edit operations", () => {
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
-        { id: "delete-column", type: "deleteTableColumn", blockId: "mapped-column-C" },
+        {
+          id: "delete-column",
+          type: "deleteTableColumn",
+          blockId: "mapped-column-C",
+        },
         {
           id: "insert-row",
           type: "insertTableRow",
@@ -4101,7 +4486,8 @@ describe("Folio AI edit operations", () => {
       {
         id: "insert-row",
         reason: "overlappingOperation",
-        message: 'operation "delete-column", earlier in this batch, already claims its target.',
+        message:
+          'operation "delete-column", earlier in this batch, already claims its target.',
       },
     ]);
     expect(view.state.doc.child(0).textContent).toBe("Before table");
@@ -4122,9 +4508,11 @@ describe("Folio AI edit operations", () => {
           null,
           texts.map((text) =>
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: `tracked-delete-column-${text}` }, [
-                schema.text(text),
-              ]),
+              schema.node(
+                "paragraph",
+                { paraId: `tracked-delete-column-${text}` },
+                [schema.text(text)],
+              ),
             ]),
           ),
         ),
@@ -4156,7 +4544,13 @@ describe("Folio AI edit operations", () => {
     // The save writes each cell's marker as a revision of its own.
     expect(acceptedResult).toEqual({
       nextRevisionId: expect.any(Number),
-      applied: [{ id: "delete-column", revisionId, revisionIds: [revisionId, revisionId + 1] }],
+      applied: [
+        {
+          id: "delete-column",
+          revisionId,
+          revisionIds: [revisionId, revisionId + 1],
+        },
+      ],
       skipped: [],
     });
     const pendingTable = accepting.state.doc.child(0);
@@ -4167,10 +4561,16 @@ describe("Folio AI edit operations", () => {
     });
     expect(pendingTable.child(1).child(1).attrs["cellMarker"]).toEqual({
       kind: "del",
-      info: { revisionId: revisionId + 1, author: "AI", date: expect.any(String) },
+      info: {
+        revisionId: revisionId + 1,
+        author: "AI",
+        date: expect.any(String),
+      },
     });
     const deletedCells = () =>
-      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellDeleted");
+      getTrackedChangesFromDoc(accepting.state.doc).filter(
+        ({ type }) => type === "cellDeleted",
+      );
     expect(deletedCells()).toEqual(
       ["B", "D"].map((text, index) => ({
         id: revisionId + index,
@@ -4183,9 +4583,13 @@ describe("Folio AI edit operations", () => {
     );
 
     // Accepting one cell's revision leaves the other pending.
-    expect(acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(
+      acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch),
+    ).toBe(true);
     expect(deletedCells()).toHaveLength(1);
-    expect(acceptAIEditRevision(revisionId + 1)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(
+      acceptAIEditRevision(revisionId + 1)(accepting.state, accepting.dispatch),
+    ).toBe(true);
     const acceptedTable = accepting.state.doc.child(0);
     expect(TableMap.get(acceptedTable).width).toBe(1);
     expect(acceptedTable.textContent).toBe("AC");
@@ -4209,7 +4613,9 @@ describe("Folio AI edit operations", () => {
       throw new Error("expected a column deletion revision");
     }
     for (const id of [rejectedRevisionId, rejectedRevisionId + 1]) {
-      expect(rejectAIEditRevision(id)(rejecting.state, rejecting.dispatch)).toBe(true);
+      expect(
+        rejectAIEditRevision(id)(rejecting.state, rejecting.dispatch),
+      ).toBe(true);
     }
     const rejectedTable = rejecting.state.doc.child(0);
     expect(TableMap.get(rejectedTable).width).toBe(2);
@@ -4222,19 +4628,28 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "tracked-delete-column-span" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "tracked-delete-column-span" }, [
+            schema.text("A"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-delete-column-left" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "tracked-delete-column-left" }, [
+            schema.text("B"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-delete-column-right" }, [schema.text("C")]),
+          schema.node("paragraph", { paraId: "tracked-delete-column-right" }, [
+            schema.text("C"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -4270,7 +4685,9 @@ describe("Folio AI edit operations", () => {
           null,
           texts.map((text) =>
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: `tracked-column-${text}` }, [schema.text(text)]),
+              schema.node("paragraph", { paraId: `tracked-column-${text}` }, [
+                schema.text(text),
+              ]),
             ]),
           ),
         ),
@@ -4303,7 +4720,13 @@ describe("Folio AI edit operations", () => {
     // The save writes each cell's marker as a revision of its own.
     expect(acceptedResult).toEqual({
       nextRevisionId: expect.any(Number),
-      applied: [{ id: "insert-column", revisionId, revisionIds: [revisionId, revisionId + 1] }],
+      applied: [
+        {
+          id: "insert-column",
+          revisionId,
+          revisionIds: [revisionId, revisionId + 1],
+        },
+      ],
       skipped: [],
     });
     const pendingTable = accepting.state.doc.child(0);
@@ -4313,10 +4736,16 @@ describe("Folio AI edit operations", () => {
     });
     expect(pendingTable.child(1).child(1).attrs["cellMarker"]).toEqual({
       kind: "ins",
-      info: { revisionId: revisionId + 1, author: "AI", date: expect.any(String) },
+      info: {
+        revisionId: revisionId + 1,
+        author: "AI",
+        date: expect.any(String),
+      },
     });
     const insertedCells = () =>
-      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellInserted");
+      getTrackedChangesFromDoc(accepting.state.doc).filter(
+        ({ type }) => type === "cellInserted",
+      );
     expect(insertedCells()).toEqual(
       ["New top", "New bottom"].map((text, index) => ({
         id: revisionId + index,
@@ -4329,9 +4758,13 @@ describe("Folio AI edit operations", () => {
     );
 
     // Accepting one cell's revision leaves the other pending.
-    expect(acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(
+      acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch),
+    ).toBe(true);
     expect(insertedCells()).toHaveLength(1);
-    expect(acceptAIEditRevision(revisionId + 1)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(
+      acceptAIEditRevision(revisionId + 1)(accepting.state, accepting.dispatch),
+    ).toBe(true);
     const acceptedTable = accepting.state.doc.child(0);
     expect(TableMap.get(acceptedTable).width).toBe(3);
     expect(acceptedTable.child(0).child(1).attrs["cellMarker"]).toBeNull();
@@ -4359,7 +4792,9 @@ describe("Folio AI edit operations", () => {
     expect(accepting.state.doc.textContent).toBe("ANew topBCNew bottomD");
     expect(rejecting.state.doc.textContent).toBe("ANew topBCNew bottomD");
     for (const id of [rejectedRevisionId, rejectedRevisionId + 1]) {
-      expect(rejectAIEditRevision(id)(rejecting.state, rejecting.dispatch)).toBe(true);
+      expect(
+        rejectAIEditRevision(id)(rejecting.state, rejecting.dispatch),
+      ).toBe(true);
     }
     const rejectedTable = rejecting.state.doc.child(0);
     expect(TableMap.get(rejectedTable).width).toBe(2);
@@ -4370,19 +4805,28 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "tracked-column-span" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "tracked-column-span" }, [
+            schema.text("A"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-column-left" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "tracked-column-left" }, [
+            schema.text("B"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-column-right" }, [schema.text("C")]),
+          schema.node("paragraph", { paraId: "tracked-column-right" }, [
+            schema.text("C"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -4417,7 +4861,9 @@ describe("Folio AI edit operations", () => {
         null,
         texts.map((text) =>
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: `merge-${text}` }, [schema.text(text)]),
+            schema.node("paragraph", { paraId: `merge-${text}` }, [
+              schema.text(text),
+            ]),
           ]),
         ),
       ),
@@ -4455,7 +4901,10 @@ describe("Folio AI edit operations", () => {
     expect(TableMap.get(table)).toMatchObject({ width: 2, height: 1 });
     expect(table.childCount).toBe(1);
     expect(table.child(0).childCount).toBe(1);
-    expect(table.child(0).child(0).attrs).toMatchObject({ colspan: 2, rowspan: 1 });
+    expect(table.child(0).child(0).attrs).toMatchObject({
+      colspan: 2,
+      rowspan: 1,
+    });
     expect(table.child(0).child(0).textContent).toBe("ABCD");
     expect(table.child(0).child(0).childCount).toBe(4);
   });
@@ -4464,19 +4913,28 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "merge-span-A" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "merge-span-A" }, [
+            schema.text("A"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "merge-span-B" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "merge-span-B" }, [
+            schema.text("B"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "merge-span-C" }, [schema.text("C")]),
+          schema.node("paragraph", { paraId: "merge-span-C" }, [
+            schema.text("C"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -4524,7 +4982,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -4554,14 +5015,21 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "mapped-merge-A" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "mapped-merge-A" }, [
+            schema.text("A"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "mapped-merge-B" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "mapped-merge-B" }, [
+            schema.text("B"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -4609,7 +5077,9 @@ describe("Folio AI edit operations", () => {
         null,
         texts.map((text) =>
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: `claim-${text}` }, [schema.text(text)]),
+            schema.node("paragraph", { paraId: `claim-${text}` }, [
+              schema.text(text),
+            ]),
           ]),
         ),
       ),
@@ -4659,14 +5129,21 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "structural-A" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "structural-A" }, [
+            schema.text("A"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "structural-B" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "structural-B" }, [
+            schema.text("B"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -4690,7 +5167,9 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.applied).toEqual([{ id: "insert-column" }]);
-    expect(result.skipped).toEqual([{ id: "merge", reason: "unsupportedBlock" }]);
+    expect(result.skipped).toEqual([
+      { id: "merge", reason: "unsupportedBlock" },
+    ]);
     expect(TableMap.get(view.state.doc.child(0)).width).toBe(3);
   });
 
@@ -4698,34 +5177,51 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-merge-start" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "tracked-merge-start" }, [
+            schema.text("A"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-merge-side-a" }, [schema.text("X")]),
+          schema.node("paragraph", { paraId: "tracked-merge-side-a" }, [
+            schema.text("X"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node(
           "tableCell",
-          { verticalAlign: "bottom", _originalFormatting: { verticalAlign: "bottom" } },
+          {
+            verticalAlign: "bottom",
+            _originalFormatting: { verticalAlign: "bottom" },
+          },
           [schema.node("paragraph", { paraId: "tracked-merge-empty-b" })],
         ),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-merge-side-b" }, [schema.text("Y")]),
+          schema.node("paragraph", { paraId: "tracked-merge-side-b" }, [
+            schema.text("Y"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node(
           "tableCell",
-          { verticalAlign: "center", _originalFormatting: { verticalAlign: "center" } },
+          {
+            verticalAlign: "center",
+            _originalFormatting: { verticalAlign: "center" },
+          },
           [schema.node("paragraph", { paraId: "tracked-merge-empty-c" })],
         ),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-merge-side-c" }, [schema.text("Z")]),
+          schema.node("paragraph", { paraId: "tracked-merge-side-c" }, [
+            schema.text("Z"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -4753,7 +5249,10 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.child(0).child(2).childCount).toBe(1);
     expect(mergedCell.attrs["_docxVMergeContinuationCells"]).toEqual([
       expect.objectContaining({
-        formatting: expect.objectContaining({ vMerge: "continue", verticalAlign: "bottom" }),
+        formatting: expect.objectContaining({
+          vMerge: "continue",
+          verticalAlign: "bottom",
+        }),
         structuralChange: {
           type: "tableCellMerge",
           info: { id: revisionId, author: "AI", date: expect.any(String) },
@@ -4762,7 +5261,10 @@ describe("Folio AI edit operations", () => {
         },
       }),
       expect.objectContaining({
-        formatting: expect.objectContaining({ vMerge: "continue", verticalAlign: "center" }),
+        formatting: expect.objectContaining({
+          vMerge: "continue",
+          verticalAlign: "center",
+        }),
         structuralChange: expect.objectContaining({
           type: "tableCellMerge",
           info: expect.objectContaining({ id: revisionId }),
@@ -4773,10 +5275,11 @@ describe("Folio AI edit operations", () => {
     if (revisionId === undefined) {
       throw new Error("expected a vertical merge revision");
     }
-    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
-    const acceptedContinuations = view.state.doc.child(0).child(0).child(0).attrs[
-      "_docxVMergeContinuationCells"
-    ];
+    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(
+      true,
+    );
+    const acceptedContinuations = view.state.doc.child(0).child(0).child(0)
+      .attrs["_docxVMergeContinuationCells"];
     expect(acceptedContinuations).toEqual([
       expect.not.objectContaining({ structuralChange: expect.anything() }),
       expect.not.objectContaining({ structuralChange: expect.anything() }),
@@ -4802,7 +5305,10 @@ describe("Folio AI edit operations", () => {
       throw new Error("expected a vertical merge revision");
     }
     expect(
-      rejectAIEditRevision(rejectingRevisionId)(rejectingView.state, rejectingView.dispatch),
+      rejectAIEditRevision(rejectingRevisionId)(
+        rejectingView.state,
+        rejectingView.dispatch,
+      ),
     ).toBe(true);
     const rejectedTable = rejectingView.state.doc.child(0);
     expect(rejectedTable.child(0).child(0).attrs["rowspan"]).toBe(1);
@@ -4823,14 +5329,18 @@ describe("Folio AI edit operations", () => {
         table: schema.node("table", null, [
           schema.node("tableRow", null, [
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: "tracked-merge-horizontal-a" }, [
-                schema.text("A"),
-              ]),
+              schema.node(
+                "paragraph",
+                { paraId: "tracked-merge-horizontal-a" },
+                [schema.text("A")],
+              ),
             ]),
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: "tracked-merge-horizontal-b" }, [
-                schema.text("B"),
-              ]),
+              schema.node(
+                "paragraph",
+                { paraId: "tracked-merge-horizontal-b" },
+                [schema.text("B")],
+              ),
             ]),
           ]),
         ]),
@@ -4846,12 +5356,16 @@ describe("Folio AI edit operations", () => {
         table: schema.node("table", null, [
           schema.node("tableRow", null, [
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: "tracked-merge-content-a" }, [schema.text("A")]),
+              schema.node("paragraph", { paraId: "tracked-merge-content-a" }, [
+                schema.text("A"),
+              ]),
             ]),
           ]),
           schema.node("tableRow", null, [
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: "tracked-merge-content-b" }, [schema.text("B")]),
+              schema.node("paragraph", { paraId: "tracked-merge-content-b" }, [
+                schema.text("B"),
+              ]),
             ]),
           ]),
         ]),
@@ -4867,7 +5381,9 @@ describe("Folio AI edit operations", () => {
         table: schema.node("table", null, [
           schema.node("tableRow", null, [
             schema.node("tableCell", null, [
-              schema.node("paragraph", { paraId: "tracked-merge-marked-a" }, [schema.text("A")]),
+              schema.node("paragraph", { paraId: "tracked-merge-marked-a" }, [
+                schema.text("A"),
+              ]),
             ]),
           ]),
           schema.node("tableRow", null, [
@@ -4897,7 +5413,10 @@ describe("Folio AI edit operations", () => {
     ];
 
     for (const { name, table, operation } of cases) {
-      const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+      const state = EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [table]),
+      });
       const view = makeView(state);
       expect(
         applyFolioAIEditOperations({
@@ -4921,11 +5440,16 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "single-merge" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "single-merge" }, [
+            schema.text("A"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
 
     const directView = makeView(state);
     expect(
@@ -4975,20 +5499,31 @@ describe("Folio AI edit operations", () => {
   test("splits a rectangular cell while preserving content and column widths", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
-        schema.node("tableCell", { colspan: 2, rowspan: 2, colwidth: [100, 200] }, [
-          schema.node("paragraph", { paraId: "split-all" }, [schema.text("Content")]),
-        ]),
+        schema.node(
+          "tableCell",
+          { colspan: 2, rowspan: 2, colwidth: [100, 200] },
+          [
+            schema.node("paragraph", { paraId: "split-all" }, [
+              schema.text("Content"),
+            ]),
+          ],
+        ),
       ]),
       schema.node("tableRow"),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "split-cell", type: "splitTableCell", blockId: "split-all" }],
+      operations: [
+        { id: "split-cell", type: "splitTableCell", blockId: "split-all" },
+      ],
       mode: "direct",
     });
 
@@ -5064,20 +5599,29 @@ describe("Folio AI edit operations", () => {
             _originalFormatting: { vMerge: "restart" },
             _docxVMergeContinuationCells: continuationCells,
           },
-          [schema.node("paragraph", { paraId: "tracked-split" }, [schema.text("Content")])],
+          [
+            schema.node("paragraph", { paraId: "tracked-split" }, [
+              schema.text("Content"),
+            ]),
+          ],
         ),
       ]),
       schema.node("tableRow"),
       schema.node("tableRow"),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "split-cell", type: "splitTableCell", blockId: "tracked-split" }],
+      operations: [
+        { id: "split-cell", type: "splitTableCell", blockId: "tracked-split" },
+      ],
       mode: "tracked-changes",
     });
 
@@ -5116,10 +5660,18 @@ describe("Folio AI edit operations", () => {
     if (revisionId === undefined) {
       throw new Error("expected a vertical split revision");
     }
-    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
-    expect(view.state.doc.child(0).child(1).child(0).attrs["cellMarker"]).toBeNull();
-    expect(view.state.doc.child(0).child(2).child(0).attrs["cellMarker"]).toBeNull();
-    expect(view.state.doc.child(0).child(1).child(0).textContent).toBe("Second");
+    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(
+      true,
+    );
+    expect(
+      view.state.doc.child(0).child(1).child(0).attrs["cellMarker"],
+    ).toBeNull();
+    expect(
+      view.state.doc.child(0).child(2).child(0).attrs["cellMarker"],
+    ).toBeNull();
+    expect(view.state.doc.child(0).child(1).child(0).textContent).toBe(
+      "Second",
+    );
     expect(view.state.doc.child(0).child(2).child(0).textContent).toBe("Third");
 
     const rejectingView = makeView(state);
@@ -5127,7 +5679,9 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view: rejectingView,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "split-cell", type: "splitTableCell", blockId: "tracked-split" }],
+      operations: [
+        { id: "split-cell", type: "splitTableCell", blockId: "tracked-split" },
+      ],
       mode: "tracked-changes",
     });
     const rejectingRevisionId = rejectingResult.applied.at(0)?.revisionId;
@@ -5135,15 +5689,18 @@ describe("Folio AI edit operations", () => {
       throw new Error("expected a vertical split revision");
     }
     expect(
-      rejectAIEditRevision(rejectingRevisionId)(rejectingView.state, rejectingView.dispatch),
+      rejectAIEditRevision(rejectingRevisionId)(
+        rejectingView.state,
+        rejectingView.dispatch,
+      ),
     ).toBe(true);
     const restoredTable = rejectingView.state.doc.child(0);
     expect(restoredTable.child(0).child(0).attrs["rowspan"]).toBe(3);
     expect(restoredTable.child(1).childCount).toBe(0);
     expect(restoredTable.child(2).childCount).toBe(0);
-    expect(restoredTable.child(0).child(0).attrs["_docxVMergeContinuationCells"]).toEqual(
-      continuationCells,
-    );
+    expect(
+      restoredTable.child(0).child(0).attrs["_docxVMergeContinuationCells"],
+    ).toEqual(continuationCells);
   });
 
   test("tracked splitting refuses to restore a stored continuation cell with gridSpan > 1", () => {
@@ -5165,7 +5722,12 @@ describe("Folio AI edit operations", () => {
           {
             _docxParagraphSourceBinding: { type: "authored" as const },
             type: "paragraph" as const,
-            content: [{ type: "run" as const, content: [{ type: "text" as const, text: "Wide" }] }],
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "Wide" }],
+              },
+            ],
           },
         ],
       },
@@ -5188,7 +5750,10 @@ describe("Folio AI edit operations", () => {
       ]),
       schema.node("tableRow"),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -5196,13 +5761,19 @@ describe("Folio AI edit operations", () => {
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
-        { id: "split-cell", type: "splitTableCell", blockId: "wide-continuation-split" },
+        {
+          id: "split-cell",
+          type: "splitTableCell",
+          blockId: "wide-continuation-split",
+        },
       ],
       mode: "tracked-changes",
     });
 
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "split-cell", reason: "unsupportedBlock" }]);
+    expect(result.skipped).toEqual([
+      { id: "split-cell", reason: "unsupportedBlock" },
+    ]);
     const untouchedTable = view.state.doc.child(0);
     expect(untouchedTable.child(0).child(0).attrs["rowspan"]).toBe(2);
     expect(untouchedTable.child(1).childCount).toBe(0);
@@ -5218,7 +5789,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -5247,11 +5821,16 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "mapped-split" }, [schema.text("Before")]),
+          schema.node("paragraph", { paraId: "mapped-split" }, [
+            schema.text("Before"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -5289,14 +5868,21 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "split-left" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "split-left" }, [
+            schema.text("A"),
+          ]),
         ]),
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "split-right" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "split-right" }, [
+            schema.text("B"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -5311,8 +5897,13 @@ describe("Folio AI edit operations", () => {
       mode: "direct",
     });
 
-    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["left", "right"]);
-    expect(result.skipped).toEqual([{ id: "left-again", reason: "noopOperation" }]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "left",
+      "right",
+    ]);
+    expect(result.skipped).toEqual([
+      { id: "left-again", reason: "noopOperation" },
+    ]);
     expect(view.state.doc.child(0).child(0).childCount).toBe(4);
     expect(view.state.doc.child(0).child(0).textContent).toBe("AB");
   });
@@ -5321,7 +5912,9 @@ describe("Folio AI edit operations", () => {
     const innerTable = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2 }, [
-          schema.node("paragraph", { paraId: "inner-split" }, [schema.text("Inner")]),
+          schema.node("paragraph", { paraId: "inner-split" }, [
+            schema.text("Inner"),
+          ]),
         ]),
       ]),
     ]);
@@ -5333,14 +5926,19 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [outerTable]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "split-inner", type: "splitTableCell", blockId: "inner-split" }],
+      operations: [
+        { id: "split-inner", type: "splitTableCell", blockId: "inner-split" },
+      ],
       mode: "direct",
     });
 
@@ -5363,7 +5961,10 @@ describe("Folio AI edit operations", () => {
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -5394,11 +5995,16 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "plain-cell" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "plain-cell" }, [
+            schema.text("A"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
 
     const directView = makeView(state);
     expect(
@@ -5406,7 +6012,9 @@ describe("Folio AI edit operations", () => {
         undefinedReferences: "refuse",
         view: directView,
         snapshot: createFolioAIEditSnapshot(state.doc),
-        operations: [{ id: "plain", type: "splitTableCell", blockId: "plain-cell" }],
+        operations: [
+          { id: "plain", type: "splitTableCell", blockId: "plain-cell" },
+        ],
         mode: "direct",
       }),
     ).toEqual({
@@ -5421,7 +6029,9 @@ describe("Folio AI edit operations", () => {
         undefinedReferences: "refuse",
         view: trackedView,
         snapshot: createFolioAIEditSnapshot(state.doc),
-        operations: [{ id: "tracked", type: "splitTableCell", blockId: "plain-cell" }],
+        operations: [
+          { id: "tracked", type: "splitTableCell", blockId: "plain-cell" },
+        ],
         mode: "tracked-changes",
       }),
     ).toEqual({
@@ -5435,23 +6045,32 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-delete" }, [schema.text("Cell")]),
+          schema.node("paragraph", { paraId: "tracked-delete" }, [
+            schema.text("Cell"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "untouched-row" }, [schema.text("Untouched")]),
+          schema.node("paragraph", { paraId: "untouched-row" }, [
+            schema.text("Untouched"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "delete-row", type: "deleteTableRow", blockId: "tracked-delete" }],
+      operations: [
+        { id: "delete-row", type: "deleteTableRow", blockId: "tracked-delete" },
+      ],
       mode: "tracked-changes",
     });
 
@@ -5483,19 +6102,26 @@ describe("Folio AI edit operations", () => {
         },
         [
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: "pending-row" }, [schema.text("Cell")]),
+            schema.node("paragraph", { paraId: "pending-row" }, [
+              schema.text("Cell"),
+            ]),
           ]),
         ],
       ),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "delete-row", type: "deleteTableRow", blockId: "pending-row" }],
+      operations: [
+        { id: "delete-row", type: "deleteTableRow", blockId: "pending-row" },
+      ],
       mode: "tracked-changes",
     });
 
@@ -5511,19 +6137,28 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { colspan: 2, rowspan: 2 }, [
-          schema.node("paragraph", { paraId: "tracked-span-origin" }, [schema.text("A")]),
+          schema.node("paragraph", { paraId: "tracked-span-origin" }, [
+            schema.text("A"),
+          ]),
         ]),
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-span-peer" }, [schema.text("B")]),
+          schema.node("paragraph", { paraId: "tracked-span-peer" }, [
+            schema.text("B"),
+          ]),
         ]),
       ]),
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-span-continuation" }, [schema.text("C")]),
+          schema.node("paragraph", { paraId: "tracked-span-continuation" }, [
+            schema.text("C"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
@@ -5544,7 +6179,9 @@ describe("Folio AI edit operations", () => {
       throw new Error("expected a row deletion revision");
     }
 
-    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(
+      true,
+    );
     const acceptedTable = view.state.doc.child(0);
     expect(acceptedTable.childCount).toBe(1);
     expect(acceptedTable.child(0).childCount).toBe(2);
@@ -5557,11 +6194,16 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-cell" }, [schema.text("Cell")]),
+          schema.node("paragraph", { paraId: "tracked-cell" }, [
+            schema.text("Cell"),
+          ]),
         ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const snapshot = createFolioAIEditSnapshot(state.doc);
     const view = makeView(state);
 
@@ -5569,7 +6211,9 @@ describe("Folio AI edit operations", () => {
       undefinedReferences: "refuse",
       view,
       snapshot,
-      operations: [{ id: "insert-row", type: "insertTableRow", blockId: "tracked-cell" }],
+      operations: [
+        { id: "insert-row", type: "insertTableRow", blockId: "tracked-cell" },
+      ],
       mode: "tracked-changes",
     });
 
@@ -5595,13 +6239,17 @@ describe("Folio AI edit operations", () => {
   describe("a row inserted under a vertical span", () => {
     const spannedTable = () => {
       const cell = (text: string, attrs: Record<string, unknown> = {}) =>
-        schema.node("tableCell", attrs, [schema.node("paragraph", null, [schema.text(text)])]);
+        schema.node("tableCell", attrs, [
+          schema.node("paragraph", null, [schema.text(text)]),
+        ]);
       return schema.node("table", null, [
         schema.node("tableRow", null, [
           cell("spans down", { rowspan: 2 }),
           cell("b1"),
           schema.node("tableCell", null, [
-            schema.node("paragraph", { paraId: "anchor-cell" }, [schema.text("c1")]),
+            schema.node("paragraph", { paraId: "anchor-cell" }, [
+              schema.text("c1"),
+            ]),
           ]),
         ]),
         schema.node("tableRow", null, [cell("b2"), cell("c2")]),
@@ -5618,7 +6266,12 @@ describe("Folio AI edit operations", () => {
         view,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [
-          { id: "insert-row", type: "insertTableRow", blockId: "anchor-cell", cellTexts },
+          {
+            id: "insert-row",
+            type: "insertTableRow",
+            blockId: "anchor-cell",
+            cellTexts,
+          },
         ],
         mode,
       });
@@ -5643,7 +6296,10 @@ describe("Folio AI edit operations", () => {
     test.each(["direct", "tracked-changes"] as const)(
       "refuses a text it has no cell for, naming it (%s)",
       (mode) => {
-        const { state, view, result } = insertRow(["first", "second", "third"], mode);
+        const { state, view, result } = insertRow(
+          ["first", "second", "third"],
+          mode,
+        );
 
         expect(result.applied).toEqual([]);
         expect(result.skipped).toEqual([
@@ -5658,13 +6314,18 @@ describe("Folio AI edit operations", () => {
     );
 
     test("rejecting the tracked row shortens the span it grew", () => {
-      const { state, view, result } = insertRow(["first", "second"], "tracked-changes");
+      const { state, view, result } = insertRow(
+        ["first", "second"],
+        "tracked-changes",
+      );
       const revisionId = result.applied.at(0)?.revisionId;
       if (revisionId === undefined) {
         throw new Error("expected a row insertion revision");
       }
 
-      expect(rejectAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+      expect(rejectAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(
+        true,
+      );
       expect(view.state.doc.eq(state.doc)).toBe(true);
     });
   });
@@ -5673,19 +6334,26 @@ describe("Folio AI edit operations", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", { rowspan: 2 }, [
-          schema.node("paragraph", { paraId: "spanned-cell" }, [schema.text("Cell")]),
+          schema.node("paragraph", { paraId: "spanned-cell" }, [
+            schema.text("Cell"),
+          ]),
         ]),
       ]),
       schema.node("tableRow"),
     ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [table]),
+    });
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "insert-row", type: "insertTableRow", blockId: "spanned-cell" }],
+      operations: [
+        { id: "insert-row", type: "insertTableRow", blockId: "spanned-cell" },
+      ],
       mode: "tracked-changes",
     });
 
@@ -5724,7 +6392,10 @@ describe("deleteBlock over inline content that is not text", () => {
   // outside the words was left unmarked and accepting the deletion kept a
   // paragraph standing around it.
   test("takes an inline image with it", () => {
-    const view = deleteFirstBlock([schema.text("words"), schema.node("image", { src: "data:," })]);
+    const view = deleteFirstBlock([
+      schema.text("words"),
+      schema.node("image", { src: "data:," }),
+    ]);
 
     acceptAllChanges()(view.state, view.dispatch);
 
@@ -5739,7 +6410,8 @@ describe("deleteBlock over inline content that is not text", () => {
       schema.node("paragraph", { paraId: "gone" }, [
         schema.node("math", {
           display: "block",
-          ommlXml: "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>",
+          ommlXml:
+            "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>",
           plainText: "x",
         }),
       ]),
@@ -5761,7 +6433,9 @@ describe("deleteBlock over inline content that is not text", () => {
     expect(result.applied).toHaveLength(1);
     const pendingMath = view.state.doc.firstChild?.firstChild;
     expect(pendingMath?.type.name).toBe("math");
-    expect(pendingMath?.marks.some(({ type }) => type.name === "deletion")).toBe(true);
+    expect(
+      pendingMath?.marks.some(({ type }) => type.name === "deletion"),
+    ).toBe(true);
 
     const accepting = makeView(view.state);
     acceptAllChanges()(accepting.state, accepting.dispatch);
@@ -5773,7 +6447,10 @@ describe("deleteBlock over inline content that is not text", () => {
   });
 
   test("leaves a bookmark boundary unmarked and still removes the paragraph", () => {
-    const view = deleteFirstBlock([schema.node("bookmarkBoundary"), schema.text("words")]);
+    const view = deleteFirstBlock([
+      schema.node("bookmarkBoundary"),
+      schema.text("words"),
+    ]);
 
     let markedAnchors = 0;
     view.state.doc.descendants((node) => {
@@ -5810,7 +6487,14 @@ describe("deleteBlock over inline content that is not text", () => {
       undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "insert", type: "insertAfterBlock", blockId: "target", text: "new" }],
+      operations: [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: "target",
+          text: "new",
+        },
+      ],
       mode: "tracked-changes",
     });
 
@@ -5834,7 +6518,8 @@ describe("deleteBlock over inline content that is not text", () => {
       mode: "tracked-changes",
     });
 
-    const paragraphRevisionId = view.state.doc.child(0).attrs["pPrMark"]?.info.id;
+    const paragraphRevisionId =
+      view.state.doc.child(0).attrs["pPrMark"]?.info.id;
     expect(result.applied.at(0)?.revisionIds).toEqual([paragraphRevisionId]);
   });
 });

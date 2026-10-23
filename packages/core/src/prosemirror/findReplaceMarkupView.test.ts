@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
 import { createDefaultFindOptions } from "../utils/findReplace";

@@ -1,13 +1,16 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 
 import type { ParagraphBlock } from "../types";
-import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
 import {
-  type HyphenationDictionaryId,
-  hyphenationDictionaryFor,
-  hyphenationDictionaryStatus,
   collectRequestedHyphenationDictionaries,
+  hyphenationDictionaryFor,
+  type HyphenationDictionaryId,
+  hyphenationDictionaryStatus,
   resetHyphenationDictionaries,
 } from "./hyphenationDictionaries";
 import { preloadHyphenationDictionaries } from "./hyphenationPreload";
@@ -37,7 +40,13 @@ const paragraphs = (attrs?: ParagraphBlock["attrs"]): ParagraphBlock[] =>
   DICTIONARIES.map((id) => ({
     kind: "paragraph",
     id: `lazy-hyphenation-${id}`,
-    runs: [{ kind: "text", text: WORDS[id], language: { val: DICTIONARY_LOCALES[id] } }],
+    runs: [
+      {
+        kind: "text",
+        text: WORDS[id],
+        language: { val: DICTIONARY_LOCALES[id] },
+      },
+    ],
     attrs,
   }));
 
@@ -54,7 +63,8 @@ const measureAtNarrowWidth = (blocks: readonly ParagraphBlock[]) => {
   return lines;
 };
 
-const statuses = () => DICTIONARIES.map((id) => hyphenationDictionaryStatus(id));
+const statuses = () =>
+  DICTIONARIES.map((id) => hyphenationDictionaryStatus(id));
 
 beforeEach(() => {
   resetHyphenationDictionaries();
@@ -69,8 +79,12 @@ describe("hyphenation dictionaries", () => {
     expect(DICTIONARIES).toHaveLength(Object.keys(DICTIONARY_LOCALES).length);
     for (const id of DICTIONARIES) {
       expect(hyphenationDictionaryFor(DICTIONARY_LOCALES[id])).toBe(id);
-      expect(hyphenationDictionaryFor(DICTIONARY_LOCALES[id].replace("-", "_"))).toBe(id);
-      expect(hyphenationDictionaryFor(` ${id.toUpperCase()}-x-private `)).toBe(id);
+      expect(
+        hyphenationDictionaryFor(DICTIONARY_LOCALES[id].replace("-", "_")),
+      ).toBe(id);
+      expect(hyphenationDictionaryFor(` ${id.toUpperCase()}-x-private `)).toBe(
+        id,
+      );
     }
     expect(hyphenationDictionaryFor("en")).toBeUndefined();
     expect(hyphenationDictionaryFor("csb")).toBeUndefined();
@@ -81,13 +95,18 @@ describe("hyphenation dictionaries", () => {
     const lines = measureAtNarrowWidth(paragraphs());
 
     expect(lines.length).toBeGreaterThan(1);
-    expect(lines.some((line) => line.discretionaryHyphen !== undefined)).toBe(false);
+    expect(lines.some((line) => line.discretionaryHyphen !== undefined)).toBe(
+      false,
+    );
     expect(statuses().every((status) => status === "unloaded")).toBe(true);
   });
 
   test("capitals excluded by doNotHyphenateCaps never request a dictionary", () => {
     expect(
-      findHyphenationBreaks("HYPHENATION", { locale: "en-US", doNotHyphenateCaps: true }),
+      findHyphenationBreaks("HYPHENATION", {
+        locale: "en-US",
+        doNotHyphenateCaps: true,
+      }),
     ).toEqual([]);
     expect(hyphenationDictionaryStatus("en-us")).toBe("unloaded");
   });
@@ -96,24 +115,33 @@ describe("hyphenation dictionaries", () => {
     const blocks = paragraphs({ automaticHyphenation: { enabled: true } });
     const hashesBeforeLoad = blocks.map(hashParagraphBlock);
 
-    const { result: unloadedLines, missing } = collectRequestedHyphenationDictionaries(() =>
-      measureAtNarrowWidth(blocks),
-    );
+    const { result: unloadedLines, missing } =
+      collectRequestedHyphenationDictionaries(() =>
+        measureAtNarrowWidth(blocks),
+      );
 
-    expect(unloadedLines.some((line) => line.discretionaryHyphen !== undefined)).toBe(false);
+    expect(
+      unloadedLines.some((line) => line.discretionaryHyphen !== undefined),
+    ).toBe(false);
     expect([...missing].toSorted()).toEqual([...DICTIONARIES].toSorted());
     expect(statuses().every((status) => status === "loading")).toBe(true);
 
-    const preloaded = await preloadHyphenationDictionaries(Object.values(DICTIONARY_LOCALES));
+    const preloaded = await preloadHyphenationDictionaries(
+      Object.values(DICTIONARY_LOCALES),
+    );
 
     expect(preloaded.isOk()).toBe(true);
     expect(statuses().every((status) => status === "loaded")).toBe(true);
     expect(
-      collectRequestedHyphenationDictionaries(() => measureAtNarrowWidth(blocks)).missing.size,
+      collectRequestedHyphenationDictionaries(() =>
+        measureAtNarrowWidth(blocks),
+      ).missing.size,
     ).toBe(0);
     for (const [index, block] of blocks.entries()) {
       expect(hashParagraphBlock(block)).not.toBe(hashesBeforeLoad[index]);
-      expect(measureAtNarrowWidth([block]).at(0)?.discretionaryHyphen).toEqual({ runIndex: 0 });
+      expect(measureAtNarrowWidth([block]).at(0)?.discretionaryHyphen).toEqual({
+        runIndex: 0,
+      });
     }
   });
 
@@ -124,7 +152,9 @@ describe("hyphenation dictionaries", () => {
       () => {
         for (let run = 0; run < 2; run += 1) {
           missingPerRun.push(
-            collectRequestedHyphenationDictionaries(() => measureBlocks(blocks, 70)).missing.size,
+            collectRequestedHyphenationDictionaries(() =>
+              measureBlocks(blocks, 70),
+            ).missing.size,
           );
         }
       },
@@ -132,18 +162,22 @@ describe("hyphenation dictionaries", () => {
     );
 
     expect(missingPerRun).toEqual([DICTIONARIES.length, DICTIONARIES.length]);
-    expect((await preloadHyphenationDictionaries(Object.values(DICTIONARY_LOCALES))).isOk()).toBe(
-      true,
-    );
+    expect(
+      (
+        await preloadHyphenationDictionaries(Object.values(DICTIONARY_LOCALES))
+      ).isOk(),
+    ).toBe(true);
   });
 
   test("a loaded dictionary hyphenates exactly as a preloaded one", async () => {
     const preloaded = await preloadHyphenationDictionaries(["cs-CZ"]);
 
     expect(preloaded.isOk()).toBe(true);
-    expect(findHyphenationBreaks("nejneobhospodářovávatelnější", { locale: "cs-CZ" })).toEqual([
-      3, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26,
-    ]);
+    expect(
+      findHyphenationBreaks("nejneobhospodářovávatelnější", {
+        locale: "cs-CZ",
+      }),
+    ).toEqual([3, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26]);
     expect(hyphenationDictionaryStatus("en-us")).toBe("unloaded");
   });
 });

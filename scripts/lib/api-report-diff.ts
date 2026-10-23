@@ -19,7 +19,9 @@ const commonSubsequence = (
       const next = lengths[i + 1];
       if (!row || !next) continue;
       row[j] =
-        left[i] === right[j] ? (next[j + 1] ?? 0) + 1 : Math.max(next[j] ?? 0, row[j + 1] ?? 0);
+        left[i] === right[j]
+          ? (next[j + 1] ?? 0) + 1
+          : Math.max(next[j] ?? 0, row[j + 1] ?? 0);
     }
   }
 
@@ -78,7 +80,10 @@ export const renderReportDiff = ({
 
   if (lines.length <= maxLines) return lines.join("\n");
   const dropped = lines.length - maxLines;
-  return [...lines.slice(0, maxLines), `… ${dropped} more diff line(s) truncated`].join("\n");
+  return [
+    ...lines.slice(0, maxLines),
+    `… ${dropped} more diff line(s) truncated`,
+  ].join("\n");
 };
 
 export type StaleBuildInput = {

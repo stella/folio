@@ -11,7 +11,10 @@ import { schema } from "../../schema";
 import { FootnoteRefExtension } from "./FootnoteRefExtension";
 import { expandNoteReferenceDeletionRange } from "./noteReferenceDeletion";
 
-const makeState = (id: number, noteType: "footnote" | "endnote" = "footnote") => {
+const makeState = (
+  id: number,
+  noteType: "footnote" | "endnote" = "footnote",
+) => {
   const mark = schema.mark("footnoteRef", {
     occurrenceId: "fixture-note",
     id: String(id),
@@ -29,7 +32,8 @@ const makeState = (id: number, noteType: "footnote" | "endnote" = "footnote") =>
 };
 
 const press = (state: EditorState, key: "Backspace" | "Delete") => {
-  const command = FootnoteRefExtension().onSchemaReady({ schema }).keyboardShortcuts?.[key];
+  const command = FootnoteRefExtension().onSchemaReady({ schema })
+    .keyboardShortcuts?.[key];
   if (!command) {
     throw new Error(`missing ${key} shortcut`);
   }
@@ -69,7 +73,10 @@ describe("note reference deletion", () => {
       selection: TextSelection.create(doc, start + 1, end),
     });
 
-    expect(expandNoteReferenceDeletionRange(doc, start + 1, end)).toEqual({ from: start, to: end });
+    expect(expandNoteReferenceDeletionRange(doc, start + 1, end)).toEqual({
+      from: start,
+      to: end,
+    });
     expect(press(state, "Delete").state.doc.textContent).toBe("Before  after.");
   });
 
@@ -89,9 +96,15 @@ describe("note reference deletion", () => {
       ]),
     ]);
     const end = 1 + "Before 100".length;
-    const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, end) });
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, end),
+    });
 
-    expect(press(state, "Backspace").state.doc.textContent).toBe("Before  after.");
+    expect(press(state, "Backspace").state.doc.textContent).toBe(
+      "Before  after.",
+    );
   });
 
   for (const id of [10, 100]) {
@@ -114,14 +127,20 @@ describe("note reference deletion", () => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Note body" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Note body" }] },
+              ],
             },
           ],
         },
       ];
       const doc = toProseDoc(source);
       const pos = 1 + `Before ${id}`.length;
-      const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, pos) });
+      const state = EditorState.create({
+        schema,
+        doc,
+        selection: TextSelection.create(doc, pos),
+      });
       const edited = fromProseDoc(press(state, "Backspace").state.doc, source, {
         stylesheetSource: { type: "package" },
       });

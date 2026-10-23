@@ -3,9 +3,9 @@ import { type Node as PMNode, Schema } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import {
-  findOutermostTableBoundary,
   findEnclosingTableCell,
   findEnclosingTableRow,
+  findOutermostTableBoundary,
   tableRectangleCutsMergedCell,
 } from "./table-targets";
 
@@ -42,8 +42,10 @@ const schema = new Schema({
 const paragraph = (paraId: string): PMNode =>
   schema.node("paragraph", { paraId }, [schema.text(paraId)]);
 
-const cell = (content: PMNode[], attrs?: { colspan?: number; rowspan?: number }): PMNode =>
-  schema.node("tableCell", attrs, content);
+const cell = (
+  content: PMNode[],
+  attrs?: { colspan?: number; rowspan?: number },
+): PMNode => schema.node("tableCell", attrs, content);
 
 const findParagraphPosition = (doc: PMNode, paraId: string): number => {
   let position: number | null = null;
@@ -99,7 +101,9 @@ describe("table targets", () => {
     ]);
     const doc = schema.node("doc", null, [table]);
 
-    expect(findEnclosingTableCell(doc, findParagraphPosition(doc, "span"))).toMatchObject({
+    expect(
+      findEnclosingTableCell(doc, findParagraphPosition(doc, "span")),
+    ).toMatchObject({
       leftColumnIndex: 0,
       rightColumnIndex: 2,
       topRowIndex: 0,
@@ -121,10 +125,29 @@ describe("table targets", () => {
     ]);
     const map = TableMap.get(table);
 
-    expect(tableRectangleCutsMergedCell(map, { left: 1, top: 0, right: 3, bottom: 2 })).toBe(true);
-    expect(tableRectangleCutsMergedCell(map, { left: 0, top: 0, right: 3, bottom: 2 })).toBe(false);
-    expect(tableRectangleCutsMergedCell(map, { left: -1, top: 0, right: 1, bottom: 2 })).toBe(
-      false,
-    );
+    expect(
+      tableRectangleCutsMergedCell(map, {
+        left: 1,
+        top: 0,
+        right: 3,
+        bottom: 2,
+      }),
+    ).toBe(true);
+    expect(
+      tableRectangleCutsMergedCell(map, {
+        left: 0,
+        top: 0,
+        right: 3,
+        bottom: 2,
+      }),
+    ).toBe(false);
+    expect(
+      tableRectangleCutsMergedCell(map, {
+        left: -1,
+        top: 0,
+        right: 1,
+        bottom: 2,
+      }),
+    ).toBe(false);
   });
 });

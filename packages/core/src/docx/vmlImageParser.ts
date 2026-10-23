@@ -39,22 +39,12 @@ import type {
   MediaFile,
   RelationshipMap,
 } from "../types/document";
-import { imageRawXmlFingerprint } from "./imageRawXml";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import { pixelsToEmu } from "../utils/units";
 import { resolveImageData } from "./imageParser";
-import { isWatermarkShape } from "./watermarkParser";
+import { imageRawXmlFingerprint } from "./imageRawXml";
+import type { PreviewLedger } from "./previewBudget";
 import { captureVerbatimXml } from "./verbatimCapture";
-import {
-  cloneWithXmlnsDeclarations,
-  findAllDeep,
-  findChild,
-  findDeep,
-  getChildElements,
-  getAttribute,
-  getLocalName,
-  type XmlElement,
-} from "./xmlParser";
 import {
   fitsVmlSvgCap,
   isValidVmlPreviewDimension,
@@ -65,7 +55,17 @@ import {
   vmlCssLengthToPx,
   type VmlPreviewResult,
 } from "./vmlPreview";
-import type { PreviewLedger } from "./previewBudget";
+import { isWatermarkShape } from "./watermarkParser";
+import {
+  cloneWithXmlnsDeclarations,
+  findAllDeep,
+  findChild,
+  findDeep,
+  getAttribute,
+  getChildElements,
+  getLocalName,
+  type XmlElement,
+} from "./xmlParser";
 
 const VML_POSITION_ABSOLUTE = "absolute";
 const IMAGE_WRAP_INLINE = "inline";
@@ -102,7 +102,9 @@ const horizontalRelativeTo = (
   }
 };
 
-const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"]["relativeTo"] => {
+const verticalRelativeTo = (
+  value: string | undefined,
+): ImagePosition["vertical"]["relativeTo"] => {
   switch (value?.toLowerCase()) {
     case "line":
       return "line";
@@ -137,11 +139,16 @@ const vmlImageLayout = (
   const zIndex = parseVmlNumber(style["z-index"]);
   return {
     wrap: {
-      type: zIndex !== undefined && zIndex < 0 ? IMAGE_WRAP_BEHIND : IMAGE_WRAP_IN_FRONT,
+      type:
+        zIndex !== undefined && zIndex < 0
+          ? IMAGE_WRAP_BEHIND
+          : IMAGE_WRAP_IN_FRONT,
     },
     position: {
       horizontal: {
-        relativeTo: horizontalRelativeTo(style["mso-position-horizontal-relative"]),
+        relativeTo: horizontalRelativeTo(
+          style["mso-position-horizontal-relative"],
+        ),
         posOffset: pixelsToSafeEmu(leftPx) ?? 0,
       },
       vertical: {
@@ -155,7 +162,9 @@ const vmlImageLayout = (
 type RenderedVmlPreview = Extract<VmlPreviewResult, { type: "rendered" }>;
 
 /** A render the model may retain: one that painted, within the SVG output cap. */
-const retainableRender = (preview: VmlPreviewResult): RenderedVmlPreview | null => {
+const retainableRender = (
+  preview: VmlPreviewResult,
+): RenderedVmlPreview | null => {
   switch (preview.type) {
     case "rendered":
       return fitsVmlSvgCap(preview.svg) ? preview : null;
@@ -184,7 +193,11 @@ const vmlPictPreview = (pictElement: XmlElement): RenderedVmlPreview | null => {
       }
       continue;
     }
-    if (localName === "rect" || localName === "roundrect" || localName === "oval") {
+    if (
+      localName === "rect" ||
+      localName === "roundrect" ||
+      localName === "oval"
+    ) {
       const preview = retainableRender(renderStandaloneVmlPreview(child));
       if (preview) {
         return preview;
@@ -202,7 +215,8 @@ const previewDrawing = (
 ): DrawingContent => {
   const leftPx = vmlCssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
   const topPx = vmlCssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
-  const horizontalRelative = style["mso-position-horizontal-relative"] === "page";
+  const horizontalRelative =
+    style["mso-position-horizontal-relative"] === "page";
   const verticalRelative = style["mso-position-vertical-relative"] === "page";
   const zIndex = parseVmlNumber(style["z-index"]);
   const image = previews.svgImage("vmlShape", svg, {
@@ -228,7 +242,9 @@ const previewDrawing = (
   return {
     type: "drawing",
     image,
-    rawXml: captureVerbatimXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
+    rawXml: captureVerbatimXml(
+      cloneWithXmlnsDeclarations(pictElement, rootXmlns),
+    ),
     rawImageFingerprint: imageRawXmlFingerprint(image),
     rawXmlMode: DRAWING_RAW_XML_MODES.PREVIEW_ONLY,
   };
@@ -270,7 +286,9 @@ export function shouldPreserveRawVmlPict(pictElement: XmlElement): boolean {
   if (findDeep(pictElement, "v", "textbox")) {
     return false;
   }
-  return VML_DRAWABLE_SHAPES.some((localName) => findDeep(pictElement, "v", localName) !== null);
+  return VML_DRAWABLE_SHAPES.some(
+    (localName) => findDeep(pictElement, "v", localName) !== null,
+  );
 }
 
 /**
@@ -397,11 +415,15 @@ export function parseVmlImageContent(
     return {
       type: "drawing",
       image,
-      rawXml: captureVerbatimXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
+      rawXml: captureVerbatimXml(
+        cloneWithXmlnsDeclarations(pictElement, rootXmlns),
+      ),
     };
   }
   const preview = vmlPictPreview(pictElement);
-  return preview ? previewDrawing(pictElement, preview, rootXmlns, previews) : null;
+  return preview
+    ? previewDrawing(pictElement, preview, rootXmlns, previews)
+    : null;
 }
 
 /**

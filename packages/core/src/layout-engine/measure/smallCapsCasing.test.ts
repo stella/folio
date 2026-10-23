@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  SMALL_CAPS_SCALE,
   isSmallCapsLetter,
+  SMALL_CAPS_SCALE,
   smallCapsMask,
   smallCapsSegments,
 } from "./smallCapsCasing";
@@ -63,11 +63,15 @@ describe("smallCapsMask", () => {
 
 describe("smallCapsSegments", () => {
   test("returns one full-size segment when nothing is lowercase", () => {
-    expect(smallCapsSegments("HEADING")).toEqual([{ text: "HEADING", small: false }]);
+    expect(smallCapsSegments("HEADING")).toEqual([
+      { text: "HEADING", small: false },
+    ]);
   });
 
   test("returns one full-size segment for text with no case at all", () => {
-    expect(smallCapsSegments("123 / 456")).toEqual([{ text: "123 / 456", small: false }]);
+    expect(smallCapsSegments("123 / 456")).toEqual([
+      { text: "123 / 456", small: false },
+    ]);
   });
 
   test("splits mixed-case text into alternating segments, uppercasing the small ones", () => {

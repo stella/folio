@@ -3,30 +3,63 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { LocalFontDefinition } from "./folioExtract";
-import { indexFontDirectories, type FontFaceRecord } from "./fontFaces";
+import { type FontFaceRecord, indexFontDirectories } from "./fontFaces";
 import type { ReferenceRendererId } from "./types";
 
-const WORD_FONT_DIR = "/Applications/Microsoft Word.app/Contents/Resources/DFonts";
+const WORD_FONT_DIR =
+  "/Applications/Microsoft Word.app/Contents/Resources/DFonts";
 const WORD_CLOUD_FONT_DIR = path.join(
   homedir(),
   "Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts",
 );
 
-type WordFontFace = Omit<LocalFontDefinition, "filePath"> & { fileName: string };
+type WordFontFace = Omit<LocalFontDefinition, "filePath"> & {
+  fileName: string;
+};
 
 const APTOS_FACES = [
   { fileName: "Aptos-Light.ttf", family: "Aptos", weight: 300 },
-  { fileName: "Aptos-Light-Italic.ttf", family: "Aptos", weight: 300, style: "italic" },
+  {
+    fileName: "Aptos-Light-Italic.ttf",
+    family: "Aptos",
+    weight: 300,
+    style: "italic",
+  },
   { fileName: "Aptos.ttf", family: "Aptos", weight: 400 },
-  { fileName: "Aptos-Italic.ttf", family: "Aptos", weight: 400, style: "italic" },
+  {
+    fileName: "Aptos-Italic.ttf",
+    family: "Aptos",
+    weight: 400,
+    style: "italic",
+  },
   { fileName: "Aptos-SemiBold.ttf", family: "Aptos", weight: 600 },
-  { fileName: "Aptos-SemiBold-Italic.ttf", family: "Aptos", weight: 600, style: "italic" },
+  {
+    fileName: "Aptos-SemiBold-Italic.ttf",
+    family: "Aptos",
+    weight: 600,
+    style: "italic",
+  },
   { fileName: "Aptos-Bold.ttf", family: "Aptos", weight: 700 },
-  { fileName: "Aptos-Bold-Italic.ttf", family: "Aptos", weight: 700, style: "italic" },
+  {
+    fileName: "Aptos-Bold-Italic.ttf",
+    family: "Aptos",
+    weight: 700,
+    style: "italic",
+  },
   { fileName: "Aptos-ExtraBold.ttf", family: "Aptos", weight: 800 },
-  { fileName: "Aptos-ExtraBold-Italic.ttf", family: "Aptos", weight: 800, style: "italic" },
+  {
+    fileName: "Aptos-ExtraBold-Italic.ttf",
+    family: "Aptos",
+    weight: 800,
+    style: "italic",
+  },
   { fileName: "Aptos-Black.ttf", family: "Aptos", weight: 900 },
-  { fileName: "Aptos-Black-Italic.ttf", family: "Aptos", weight: 900, style: "italic" },
+  {
+    fileName: "Aptos-Black-Italic.ttf",
+    family: "Aptos",
+    weight: 900,
+    style: "italic",
+  },
   { fileName: "Aptos-Narrow.ttf", family: "Aptos Narrow", weight: 400 },
   {
     fileName: "Aptos-Narrow-Italic.ttf",
@@ -53,9 +86,13 @@ const WORD_FONT_FACES = [...APTOS_FACES, ...HEBREW_FACES];
 const CLOUD_FONT_FACES = [
   { directory: "FrankRuehl", family: "FrankRuehl", weight: 400 },
   { directory: "Miriam", family: "Miriam", weight: 400 },
-] as const satisfies ReadonlyArray<Omit<WordFontFace, "fileName"> & { directory: string }>;
+] as const satisfies ReadonlyArray<
+  Omit<WordFontFace, "fileName"> & { directory: string }
+>;
 
-export const wordFontDefinitions = (fontDirectory: string): LocalFontDefinition[] =>
+export const wordFontDefinitions = (
+  fontDirectory: string,
+): LocalFontDefinition[] =>
   WORD_FONT_FACES.map((face) => {
     const font: LocalFontDefinition = {
       family: face.family,
@@ -94,7 +131,10 @@ const getAvailableCloudFonts = async (): Promise<LocalFontDefinition[]> => {
       const files = await readdir(path.join(WORD_CLOUD_FONT_DIR, directory), {
         withFileTypes: true,
       }).catch(() => []);
-      return [directory, files.filter((file) => file.isFile()).map(({ name }) => name)] as const;
+      return [
+        directory,
+        files.filter((file) => file.isFile()).map(({ name }) => name),
+      ] as const;
     }),
   );
   return cloudFontDefinitions(WORD_CLOUD_FONT_DIR, Object.fromEntries(entries));
@@ -102,7 +142,9 @@ const getAvailableCloudFonts = async (): Promise<LocalFontDefinition[]> => {
 
 /** Fonts bundled with Word but not normally visible to Chromium. Missing
  * faces are skipped so an older Word installation remains usable. */
-export const getAvailableWordFonts = async (): Promise<LocalFontDefinition[]> => {
+export const getAvailableWordFonts = async (): Promise<
+  LocalFontDefinition[]
+> => {
   const [bundled, cloud] = await Promise.all([
     Promise.all(
       wordFontDefinitions(WORD_FONT_DIR).map(async (font) =>
@@ -124,7 +166,10 @@ export const getReferenceLocalFonts = (
 ): Promise<LocalFontDefinition[]> =>
   referenceId === "word" ? loadWordFonts() : Promise.resolve([]);
 
-const USER_FONT_DIRS = ["/Library/Fonts", path.join(homedir(), "Library/Fonts")];
+const USER_FONT_DIRS = [
+  "/Library/Fonts",
+  path.join(homedir(), "Library/Fonts"),
+];
 
 /** Local font files a comparison run may alias into Chromium: the faces
  * bundled with the reference application plus user-installed fonts. Indexing
@@ -133,5 +178,7 @@ export const getReferenceFontFaces = (
   referenceId: ReferenceRendererId,
 ): Promise<FontFaceRecord[]> =>
   indexFontDirectories(
-    referenceId === "word" ? [WORD_FONT_DIR, ...USER_FONT_DIRS] : USER_FONT_DIRS,
+    referenceId === "word"
+      ? [WORD_FONT_DIR, ...USER_FONT_DIRS]
+      : USER_FONT_DIRS,
   );

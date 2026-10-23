@@ -14,13 +14,14 @@
  * to add it, and the order assertion fails until somebody places it.
  */
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { readFileSync } from "node:fs";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { NUMBER_FORMAT_VALUES } from "../types/documentEnumValues";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseNumbering } from "./numberingParser";
@@ -41,7 +42,10 @@ type NamedChild = readonly [name: string, xml: string];
  * none can quietly fall behind the schema.
  */
 const NUMBERING_CHILDREN: readonly NamedChild[] = [
-  ["numPicBullet", '<w:numPicBullet w:numPicBulletId="0"><w:pict/></w:numPicBullet>'],
+  [
+    "numPicBullet",
+    '<w:numPicBullet w:numPicBulletId="0"><w:pict/></w:numPicBullet>',
+  ],
   ["abstractNum", '<w:abstractNum w:abstractNumId="1"/>'],
   ["num", '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>'],
   ["numIdMacAtCleanup", '<w:numIdMacAtCleanup w:val="7"/>'],
@@ -66,7 +70,10 @@ const LVL_CHILDREN: readonly NamedChild[] = [
   ["suff", '<w:suff w:val="space"/>'],
   ["lvlText", '<w:lvlText w:val="%1."/>'],
   ["lvlPicBulletId", '<w:lvlPicBulletId w:val="0"/>'],
-  ["legacy", '<w:legacy w:legacy="1" w:legacySpace="120" w:legacyIndent="240"/>'],
+  [
+    "legacy",
+    '<w:legacy w:legacy="1" w:legacySpace="120" w:legacyIndent="240"/>',
+  ],
   ["lvlJc", '<w:lvlJc w:val="right"/>'],
   ["pPr", '<w:pPr><w:ind w:left="720"/></w:pPr>'],
   ["rPr", "<w:rPr><w:b/></w:rPr>"],
@@ -78,7 +85,10 @@ const LVL_CHILDREN: readonly NamedChild[] = [
  * states neither comes back stating both. Recorded here rather than worked
  * around, because it is what the sink's index is measured against.
  */
-const ALWAYS_WRITTEN_LVL_CHILDREN: ReadonlySet<string> = new Set(["numFmt", "lvlText"]);
+const ALWAYS_WRITTEN_LVL_CHILDREN: ReadonlySet<string> = new Set([
+  "numFmt",
+  "lvlText",
+]);
 
 const NUM_CHILDREN: readonly NamedChild[] = [
   ["abstractNumId", '<w:abstractNumId w:val="1"/>'],
@@ -100,7 +110,9 @@ const partWith = (body: string, rootAttributes = ""): string =>
   `${body}</w:numbering>`;
 
 const abstractNumWith = (children: string, attributes = ""): string =>
-  partWith(`<w:abstractNum w:abstractNumId="1"${attributes}>${children}</w:abstractNum>`);
+  partWith(
+    `<w:abstractNum w:abstractNumId="1"${attributes}>${children}</w:abstractNum>`,
+  );
 
 const lvlWith = (children: string, attributes = ""): string =>
   abstractNumWith(`<w:lvl w:ilvl="0"${attributes}>${children}</w:lvl>`);
@@ -113,7 +125,8 @@ const lvlOverrideWith = (children: string, attributes = ""): string =>
     `<w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"${attributes}>${children}</w:lvlOverride>`,
   );
 
-const rebuild = (xml: string): string => serializeNumberingXml(parseNumbering(xml).definitions);
+const rebuild = (xml: string): string =>
+  serializeNumberingXml(parseNumbering(xml).definitions);
 
 /** The child element names at `path`, in document order. */
 const childNamesAt = (xml: string, path: readonly string[]): string[] => {
@@ -123,7 +136,9 @@ const childNamesAt = (xml: string, path: readonly string[]): string[] => {
   }
   let element = root;
   for (const step of path) {
-    const next = getChildElements(element).find((node) => getLocalName(node.name) === step);
+    const next = getChildElements(element).find(
+      (node) => getLocalName(node.name) === step,
+    );
     if (!next) {
       throw new Error(`the rebuilt part has no ${path.join("/")}: ${xml}`);
     }
@@ -142,9 +157,14 @@ describe("the numbering reader covers what the schema declares", () => {
     ["w:lvl", LVL_CHILDREN],
     ["w:num", NUM_CHILDREN],
     ["w:lvlOverride", LVL_OVERRIDE_CHILDREN],
-  ] as const)("every declared child of %s has a case here", (container, children) => {
-    expect(declaredNames(children)).toEqual([...CONTAINER_CHILDREN[container]].toSorted());
-  });
+  ] as const)(
+    "every declared child of %s has a case here",
+    (container, children) => {
+      expect(declaredNames(children)).toEqual(
+        [...CONTAINER_CHILDREN[container]].toSorted(),
+      );
+    },
+  );
 });
 
 type PlacementCase = {
@@ -200,14 +220,22 @@ const PLACEMENT_CASES: readonly PlacementCase[] = [
 ];
 
 describe("a numbering definition survives a rebuild from the model", () => {
-  test.each(PLACEMENT_CASES.map((placement) => [placement.container, placement] as const))(
+  test.each(
+    PLACEMENT_CASES.map(
+      (placement) => [placement.container, placement] as const,
+    ),
+  )(
     "any subset of %s's children comes back, in place",
     (_container, placement) => {
       fc.assert(
         fc.property(
-          fc.subarray([...placement.children], { minLength: placement.minLength }),
+          fc.subarray([...placement.children], {
+            minLength: placement.minLength,
+          }),
           (children) => {
-            const source = placement.wrap(children.map(([, xml]) => xml).join(""));
+            const source = placement.wrap(
+              children.map(([, xml]) => xml).join(""),
+            );
             const expected = placement.children
               .filter(
                 ([name]) =>
@@ -215,7 +243,9 @@ describe("a numbering definition survives a rebuild from the model", () => {
                   children.some(([chosen]) => chosen === name),
               )
               .map(([name]) => name);
-            expect(childNamesAt(rebuild(source), placement.path)).toEqual(expected);
+            expect(childNamesAt(rebuild(source), placement.path)).toEqual(
+              expected,
+            );
           },
         ),
         propertyConfig({ numRuns: 60 }),
@@ -223,14 +253,22 @@ describe("a numbering definition survives a rebuild from the model", () => {
     },
   );
 
-  test.each(PLACEMENT_CASES.map((placement) => [placement.container, placement] as const))(
+  test.each(
+    PLACEMENT_CASES.map(
+      (placement) => [placement.container, placement] as const,
+    ),
+  )(
     "a rebuilt part is a fixed point of the reader for %s",
     (_container, placement) => {
       fc.assert(
         fc.property(
-          fc.subarray([...placement.children], { minLength: placement.minLength }),
+          fc.subarray([...placement.children], {
+            minLength: placement.minLength,
+          }),
           (children) => {
-            const source = placement.wrap(children.map(([, xml]) => xml).join(""));
+            const source = placement.wrap(
+              children.map(([, xml]) => xml).join(""),
+            );
             const once = parseNumbering(rebuild(source)).definitions;
             const twice = parseNumbering(rebuild(rebuild(source))).definitions;
             expect(twice).toEqual(once);
@@ -279,7 +317,9 @@ describe("what a rebuild used to lose", () => {
   test("a justification outside the three folio lays out is still carried", () => {
     // `both` is an `ST_Jc` member the marker has no layout for; refusing it
     // used to take the whole `w:lvlJc` with it.
-    expect(rebuild(lvlWith('<w:lvlJc w:val="both"/>'))).toContain('<w:lvlJc w:val="both"/>');
+    expect(rebuild(lvlWith('<w:lvlJc w:val="both"/>'))).toContain(
+      '<w:lvlJc w:val="both"/>',
+    );
   });
 
   test("an empty w:pPr is not an absent one", () => {
@@ -293,7 +333,10 @@ describe("what a rebuild used to lose", () => {
   test("an explicit w:isLgl of off stays off", () => {
     const rebuilt = rebuild(lvlWith('<w:isLgl w:val="0"/>'));
     expect(rebuilt).toContain("<w:isLgl");
-    expect(parseNumbering(rebuilt).definitions.abstractNums.at(0)?.levels.at(0)?.isLgl).toBe(false);
+    expect(
+      parseNumbering(rebuilt).definitions.abstractNums.at(0)?.levels.at(0)
+        ?.isLgl,
+    ).toBe(false);
   });
 
   test("w:legacy reads its own attribute rather than a w:val it has none of", () => {
@@ -302,11 +345,15 @@ describe("what a rebuild used to lose", () => {
   });
 
   test("a legacy measure spelled with its unit becomes the twips it counts", () => {
-    expect(rebuild(lvlWith('<w:legacy w:legacySpace="72pt"/>'))).toContain('w:legacySpace="1440"');
+    expect(rebuild(lvlWith('<w:legacy w:legacySpace="72pt"/>'))).toContain(
+      'w:legacySpace="1440"',
+    );
   });
 
   test("w:lvlText keeps the null flag beside the text", () => {
-    expect(rebuild(lvlWith('<w:lvlText w:val="" w:null="1"/>'))).toContain('w:null="1"');
+    expect(rebuild(lvlWith('<w:lvlText w:val="" w:null="1"/>'))).toContain(
+      'w:null="1"',
+    );
   });
 
   test("a picture bullet keeps its place among the definitions", () => {
@@ -317,36 +364,48 @@ describe("what a rebuild used to lose", () => {
       ),
     );
     expect(rebuilt).toContain("<w:numPicBullet");
-    expect(rebuilt.indexOf("<w:numPicBullet")).toBeLessThan(rebuilt.indexOf("<w:abstractNum"));
+    expect(rebuilt.indexOf("<w:numPicBullet")).toBeLessThan(
+      rebuilt.indexOf("<w:abstractNum"),
+    );
   });
 
   test("the id high-water mark comes back after the definitions", () => {
     const rebuilt = rebuild(
-      partWith('<w:abstractNum w:abstractNumId="1"/><w:numIdMacAtCleanup w:val="7"/>'),
+      partWith(
+        '<w:abstractNum w:abstractNumId="1"/><w:numIdMacAtCleanup w:val="7"/>',
+      ),
     );
     expect(rebuilt).toContain("<w:numIdMacAtCleanup");
-    expect(rebuilt.indexOf("<w:abstractNum")).toBeLessThan(rebuilt.indexOf("<w:numIdMacAtCleanup"));
+    expect(rebuilt.indexOf("<w:abstractNum")).toBeLessThan(
+      rebuilt.indexOf("<w:numIdMacAtCleanup"),
+    );
   });
 
   test("an unmodelled attribute of w:abstractNum rides the element's remainder", () => {
-    expect(rebuild(abstractNumWith("", ' w15:restartNumberingAfterBreak="0"'))).toContain(
-      'w15:restartNumberingAfterBreak="0"',
-    );
+    expect(
+      rebuild(abstractNumWith("", ' w15:restartNumberingAfterBreak="0"')),
+    ).toContain('w15:restartNumberingAfterBreak="0"');
   });
 
   test("an unmodelled attribute of w:num rides the element's remainder", () => {
     expect(
-      rebuild(numWith('<w:abstractNumId w:val="1"/>', ' w15:durableId="1451425873"')),
+      rebuild(
+        numWith('<w:abstractNumId w:val="1"/>', ' w15:durableId="1451425873"'),
+      ),
     ).toContain('w15:durableId="1451425873"');
   });
 
   test("an unmodelled attribute of w:lvlOverride rides the element's remainder", () => {
-    expect(rebuild(lvlOverrideWith("", ' w14:unknown="3"'))).toContain('w14:unknown="3"');
+    expect(rebuild(lvlOverrideWith("", ' w14:unknown="3"'))).toContain(
+      'w14:unknown="3"',
+    );
   });
 
   test("a level whose ilvl names no level is still a definition the part carries", () => {
     const rebuilt = rebuild(
-      partWith('<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="-1"/></w:abstractNum>'),
+      partWith(
+        '<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="-1"/></w:abstractNum>',
+      ),
     );
     expect(rebuilt).toContain('w:ilvl="-1"');
     expect(parseNumbering(rebuilt).getAbstract(1)?.levels).toHaveLength(1);
@@ -363,13 +422,23 @@ describe("what a rebuild used to lose", () => {
 describe("a part root states its ignorable prefixes rather than replaying them", () => {
   test("a source mc:Ignorable does not reach the rebuilt root", () => {
     expect(
-      rebuild(partWith('<w:abstractNum w:abstractNumId="1"/>', ' mc:Ignorable="w14 w15"')),
+      rebuild(
+        partWith(
+          '<w:abstractNum w:abstractNumId="1"/>',
+          ' mc:Ignorable="w14 w15"',
+        ),
+      ),
     ).not.toContain('mc:Ignorable="w14 w15"');
   });
 
   test("another unmodelled root attribute does", () => {
     expect(
-      rebuild(partWith('<w:abstractNum w:abstractNumId="1"/>', ' w:unknownRootFlag="1"')),
+      rebuild(
+        partWith(
+          '<w:abstractNum w:abstractNumId="1"/>',
+          ' w:unknownRootFlag="1"',
+        ),
+      ),
     ).toContain('w:unknownRootFlag="1"');
   });
 });
@@ -392,12 +461,20 @@ describe("the number formats folio models are the schema's", () => {
         ),
         "utf8",
       ),
-    ) as { symbols: { kind?: string; name?: string; namespace?: string; enumValues?: string[] }[] };
+    ) as {
+      symbols: {
+        kind?: string;
+        name?: string;
+        namespace?: string;
+        enumValues?: string[];
+      }[];
+    };
     const symbol = graph.symbols.find(
       (candidate) =>
         candidate.kind === "simpleType" &&
         candidate.name === "ST_NumberFormat" &&
-        candidate.namespace === "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        candidate.namespace ===
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     );
     if (!symbol?.enumValues) {
       throw new Error("the committed schema graph declares no ST_NumberFormat");
@@ -414,14 +491,18 @@ describe("the number formats folio models are the schema's", () => {
   test("every schema member but the reader-owned one is modelled", () => {
     const modelled = new Set<string>(NUMBER_FORMAT_VALUES);
     expect(
-      ST_NUMBER_FORMAT_VALUES.filter((value) => !READER_OWNED.has(value) && !modelled.has(value)),
+      ST_NUMBER_FORMAT_VALUES.filter(
+        (value) => !READER_OWNED.has(value) && !modelled.has(value),
+      ),
     ).toEqual([]);
   });
 
   test("no modelled format is outside the schema but the synthetic ones", () => {
     const schema = new Set(ST_NUMBER_FORMAT_VALUES);
     expect(
-      NUMBER_FORMAT_VALUES.filter((value) => !schema.has(value) && !SYNTHETIC.has(value)),
+      NUMBER_FORMAT_VALUES.filter(
+        (value) => !schema.has(value) && !SYNTHETIC.has(value),
+      ),
     ).toEqual([]);
   });
 });

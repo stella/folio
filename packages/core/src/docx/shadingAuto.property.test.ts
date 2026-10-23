@@ -15,13 +15,15 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { parseDocx } from "./parser";
 import { parseParagraphProperties } from "./paragraphProperties";
+import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 import { parseRun } from "./runParser";
@@ -29,15 +31,18 @@ import { parseStyles } from "./styleParser";
 import { parseTableCellProperties } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** `auto`, a valid hex colour, and a value that is neither. */
 const FILL_VALUES = ["auto", "E0E0E0", "notacolour"] as const;
 
 type FillValue = (typeof FILL_VALUES)[number];
 
-const shd = (fill: FillValue): string => `<w:shd w:val="clear" w:fill="${fill}"/>`;
+const shd = (fill: FillValue): string =>
+  `<w:shd w:val="clear" w:fill="${fill}"/>`;
 
 const expectedFill = (fill: FillValue) => {
   switch (fill) {
@@ -59,12 +64,17 @@ const parseOne = (xml: string) => {
 };
 
 const runShading = (fill: FillValue) =>
-  parseRun(parseOne(`<w:r ${WORD_NAMESPACE}><w:rPr>${shd(fill)}</w:rPr></w:r>`), null, null)
-    .formatting?.shading;
+  parseRun(
+    parseOne(`<w:r ${WORD_NAMESPACE}><w:rPr>${shd(fill)}</w:rPr></w:r>`),
+    null,
+    null,
+  ).formatting?.shading;
 
 const paragraphShading = (fill: FillValue) =>
-  parseParagraphProperties(parseOne(`<w:pPr ${WORD_NAMESPACE}>${shd(fill)}</w:pPr>`), null)
-    ?.shading;
+  parseParagraphProperties(
+    parseOne(`<w:pPr ${WORD_NAMESPACE}>${shd(fill)}</w:pPr>`),
+    null,
+  )?.shading;
 
 const styleShading = (fill: FillValue) =>
   parseStyles(
@@ -78,7 +88,9 @@ const styleShading = (fill: FillValue) =>
   ).get("Shaded")?.pPr?.shading;
 
 const cellShading = (fill: FillValue) =>
-  parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${shd(fill)}</w:tcPr>`))?.shading;
+  parseTableCellProperties(
+    parseOne(`<w:tcPr ${WORD_NAMESPACE}>${shd(fill)}</w:tcPr>`),
+  )?.shading;
 
 const styledTableFixture = (): Promise<ArrayBuffer> => {
   const zip = new JSZip();

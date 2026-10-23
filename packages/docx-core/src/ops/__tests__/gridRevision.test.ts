@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-import { MAX_REVISION_ID, type Document } from "../../model/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { type Document, MAX_REVISION_ID } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { validateOpsDocument } from "../contract";
 import { IDENTITY_SPACES, identityKeysIn, slotKey } from "../ids";
@@ -25,7 +28,9 @@ const documentOf = (
               cells: [
                 {
                   type: "tableCell",
-                  content: [{ type: "paragraph", paraId: "00000001", content: [] }],
+                  content: [
+                    { type: "paragraph", paraId: "00000001", content: [] },
+                  ],
                 },
               ],
             },
@@ -88,7 +93,9 @@ test(
         });
         expect(tracked.isErr()).toBe(true);
         if (tracked.isErr())
-          expect(tracked.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION);
+          expect(tracked.error.reason).toBe(
+            DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+          );
         const duplicate = documentOf(id);
         duplicate.package.document.content.push({
           type: "table",
@@ -98,7 +105,9 @@ test(
         const valid = validateOpsDocument(duplicate);
         expect(valid.isErr()).toBe(true);
         if (valid.isErr())
-          expect(valid.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID);
+          expect(valid.error.reason).toBe(
+            DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID,
+          );
       }),
       propertyConfig({ numRuns: 2_000 }),
     );

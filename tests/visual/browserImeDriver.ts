@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+
 import type { BrowserInputAction } from "./browserInputTrace";
 
 type BrowserImeAction = Extract<BrowserInputAction, { kind: "imeReplacement" }>;
@@ -34,7 +35,10 @@ export const runBrowserImeLifecycle = async (
 export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
   const lifecycle = await page.evaluateHandle(() => {
     const editor = document.activeElement;
-    if (!(editor instanceof HTMLElement) || !editor.classList.contains("ProseMirror"))
+    if (
+      !(editor instanceof HTMLElement) ||
+      !editor.classList.contains("ProseMirror")
+    )
       throw new TypeError("Native IME requires a focused editor");
     let phase: "active" | "ended" = "active";
     const controller = new AbortController();
@@ -78,7 +82,8 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
           });
         },
         finish: async (completion) => {
-          if (await lifecycle.evaluate(({ phase }) => phase === "ended")) return;
+          if (await lifecycle.evaluate(({ phase }) => phase === "ended"))
+            return;
           // An explicit cancellation must discard a pending projection before
           // blur recovery can commit it when Chromium omitted the end event.
           if (completion === "cancel") await page.keyboard.press("Escape");

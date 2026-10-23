@@ -61,8 +61,8 @@ export { createDefaultListState } from "../../utils/listState";
 </script>
 
 <script setup lang="ts">
-import MaterialSymbol from "./MaterialSymbol.vue";
 import type { ListState } from "../../utils/listState";
+import MaterialSymbol from "./MaterialSymbol.vue";
 
 withDefaults(
   defineProps<{

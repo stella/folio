@@ -289,7 +289,10 @@ describe("renderLine inline image handling", () => {
 
     expect(wrapperEl?.style.width).toBe("480px");
     expect(wrapperEl?.style.height).toBe("48px");
-    expect(Number.parseFloat(imgEl?.style.height ?? "")).toBeCloseTo((1 / 0.7) * 100, 6);
+    expect(Number.parseFloat(imgEl?.style.height ?? "")).toBeCloseTo(
+      (1 / 0.7) * 100,
+      6,
+    );
     expect(imgEl?.style.transform).toBe("translateY(-20%)");
     expect(imgEl?.style.marginTop).toBeFalsy();
   });
@@ -509,9 +512,9 @@ describe("renderLine text styling", () => {
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
     expect(textEl?.style.getPropertyValue("--doc-run-color")).toBe("#000000");
-    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
-      TEST_HIGHLIGHT_COLOR,
-    );
+    expect(
+      textEl?.style.getPropertyValue("--doc-authored-background-color"),
+    ).toBe(TEST_HIGHLIGHT_COLOR);
   });
 
   test("keeps automatic text readable on dark DOCX highlights", () => {
@@ -542,9 +545,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
-    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
-      TEST_DARK_HIGHLIGHT_COLOR,
-    );
+    expect(
+      textEl?.style.getPropertyValue("--doc-authored-background-color"),
+    ).toBe(TEST_DARK_HIGHLIGHT_COLOR);
   });
 
   test("keeps inherited default-black text readable on dark DOCX highlights", () => {
@@ -807,9 +810,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
-    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
-      TEST_HIGHLIGHT_COLOR,
-    );
+    expect(
+      textEl?.style.getPropertyValue("--doc-authored-background-color"),
+    ).toBe(TEST_HIGHLIGHT_COLOR);
   });
 
   test("preserves resolved theme text colors on DOCX highlights", () => {
@@ -841,16 +844,18 @@ describe("renderLine text styling", () => {
     const textEl = lineEl.children[0] as HTMLElement | undefined;
 
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
-    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
-      TEST_HIGHLIGHT_COLOR,
-    );
+    expect(
+      textEl?.style.getPropertyValue("--doc-authored-background-color"),
+    ).toBe(TEST_HIGHLIGHT_COLOR);
   });
 
   test("exposes explicit run color as --doc-run-color for dark-mode inversion", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "p1",
-      runs: [{ kind: "text", text: "Colored", color: TEST_EXPLICIT_TEXT_COLOR }],
+      runs: [
+        { kind: "text", text: "Colored", color: TEST_EXPLICIT_TEXT_COLOR },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -869,7 +874,9 @@ describe("renderLine text styling", () => {
     // Inline color is kept verbatim (light mode); the custom property lets the
     // dark-mode CSS invert lightness while preserving hue/chroma.
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
-    expect(textEl?.style.getPropertyValue("--doc-run-color")).toBe(TEST_EXPLICIT_TEXT_COLOR);
+    expect(textEl?.style.getPropertyValue("--doc-run-color")).toBe(
+      TEST_EXPLICIT_TEXT_COLOR,
+    );
   });
 
   test("preserves explicit black text colors on DOCX highlights", () => {
@@ -901,9 +908,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
-    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
-      TEST_DARK_HIGHLIGHT_COLOR,
-    );
+    expect(
+      textEl?.style.getPropertyValue("--doc-authored-background-color"),
+    ).toBe(TEST_DARK_HIGHLIGHT_COLOR);
   });
 
   test("preserves tracked-change author colors on DOCX highlights", () => {
@@ -1040,7 +1047,9 @@ describe("renderParagraphFragment indentation handling", () => {
     );
 
     expect(fragmentEl.style.color).toBe("#000000");
-    expect(fragmentEl.style.getPropertyValue("--doc-run-color")).toBe("#000000");
+    expect(fragmentEl.style.getPropertyValue("--doc-run-color")).toBe(
+      "#000000",
+    );
   });
 
   test("renders list marker revisions with tracked-change classes", () => {

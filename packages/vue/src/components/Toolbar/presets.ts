@@ -34,7 +34,9 @@ export const defaultFonts: FontOption[] = [
   { name: "Consolas", fontFamily: "Consolas", category: "monospace" },
 ];
 
-export const fontSizePresets = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
+export const fontSizePresets = [
+  8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72,
+];
 
 export type ParagraphStylePreset = {
   id: string;

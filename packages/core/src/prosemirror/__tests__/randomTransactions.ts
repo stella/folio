@@ -11,9 +11,14 @@
  */
 
 import fc from "fast-check";
-import { Schema, type Node as PMNode } from "prosemirror-model";
+import { type Node as PMNode, Schema } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
-import { canJoin, canSplit, findWrapping, liftTarget } from "prosemirror-transform";
+import {
+  canJoin,
+  canSplit,
+  findWrapping,
+  liftTarget,
+} from "prosemirror-transform";
 
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
@@ -51,9 +56,23 @@ export const randomSchema = new Schema({
 });
 
 /** Few enough ids that duplicates and collisions are common. */
-const PARA_IDS = ["00000001", "00000002", "00000003", "0000000A", "0000000B", null] as const;
+const PARA_IDS = [
+  "00000001",
+  "00000002",
+  "00000003",
+  "0000000A",
+  "0000000B",
+  null,
+] as const;
 const TOKENS = ["token-a", "token-b", "token-c", null] as const;
-const WORDS = ["alpha", "beta", "gamma delta", "مرحبا بالعالم", "שלום", " "] as const;
+const WORDS = [
+  "alpha",
+  "beta",
+  "gamma delta",
+  "مرحبا بالعالم",
+  "שלום",
+  " ",
+] as const;
 
 type ParagraphSpec = {
   paraId: (typeof PARA_IDS)[number];
@@ -77,7 +96,10 @@ const paragraphSpec: fc.Arbitrary<ParagraphSpec> = fc.record({
 const blockSpec: fc.Arbitrary<BlockSpec> = fc.oneof(
   {
     weight: 6,
-    arbitrary: paragraphSpec.map((paragraph): BlockSpec => ({ kind: "paragraph", paragraph })),
+    arbitrary: paragraphSpec.map((paragraph): BlockSpec => ({
+      kind: "paragraph",
+      paragraph,
+    })),
   },
   {
     weight: 1,
@@ -93,9 +115,16 @@ const blockSpec: fc.Arbitrary<BlockSpec> = fc.oneof(
   },
 );
 
-const buildParagraph = ({ paraId, token, word, identity }: ParagraphSpec): PMNode => {
+const buildParagraph = ({
+  paraId,
+  token,
+  word,
+  identity,
+}: ParagraphSpec): PMNode => {
   const marks =
-    identity === null ? [] : [randomSchema.mark(RUN_IDENTITY_MARK_NAME, { id: identity })];
+    identity === null
+      ? []
+      : [randomSchema.mark(RUN_IDENTITY_MARK_NAME, { id: identity })];
   return randomSchema.node(
     "paragraph",
     { paraId, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: token },
@@ -108,7 +137,11 @@ const buildBlock = (block: BlockSpec): PMNode => {
     return buildParagraph(block.paragraph);
   }
   if (block.kind === "quote") {
-    return randomSchema.node("blockquote", null, block.paragraphs.map(buildParagraph));
+    return randomSchema.node(
+      "blockquote",
+      null,
+      block.paragraphs.map(buildParagraph),
+    );
   }
   return randomSchema.node("table", null, [
     randomSchema.node(
@@ -162,7 +195,9 @@ export const randomOperation: fc.Arbitrary<RandomOperation> = fc.record({
   c: fc.nat({ max: 10_000 }),
 });
 
-export const randomOperations = (maxLength: number): fc.Arbitrary<RandomOperation[]> =>
+export const randomOperations = (
+  maxLength: number,
+): fc.Arbitrary<RandomOperation[]> =>
   fc.array(randomOperation, { minLength: 1, maxLength, size: "large" });
 
 const paragraphPositions = (doc: PMNode): number[] => {
@@ -190,7 +225,10 @@ const markFor = (index: number) => {
 };
 
 /** Apply one operation to `tr`, or nothing when it does not fit. */
-export const applyRandomOperation = (tr: Transaction, operation: RandomOperation): void => {
+export const applyRandomOperation = (
+  tr: Transaction,
+  operation: RandomOperation,
+): void => {
   const { kind, a, b, c } = operation;
   const size = tr.doc.content.size;
   const at = a % (size + 1);
@@ -219,9 +257,11 @@ export const applyRandomOperation = (tr: Transaction, operation: RandomOperation
         tr.replaceWith(
           at,
           at,
-          randomSchema.node("paragraph", { paraId: pick(PARA_IDS, c) ?? null }, [
-            randomSchema.text(pick(WORDS, b) ?? "x"),
-          ]),
+          randomSchema.node(
+            "paragraph",
+            { paraId: pick(PARA_IDS, c) ?? null },
+            [randomSchema.text(pick(WORDS, b) ?? "x")],
+          ),
         );
         return;
       case "addMark":
@@ -238,9 +278,16 @@ export const applyRandomOperation = (tr: Transaction, operation: RandomOperation
           return;
         }
         if (kind === "setMarkup") {
-          tr.setNodeMarkup(pos, undefined, { ...paragraph.attrs, paraId: pick(PARA_IDS, b) });
+          tr.setNodeMarkup(pos, undefined, {
+            ...paragraph.attrs,
+            paraId: pick(PARA_IDS, b),
+          });
         } else {
-          tr.setNodeAttribute(pos, "direction", b % 2 === 0 ? null : { source: "manual" });
+          tr.setNodeAttribute(
+            pos,
+            "direction",
+            b % 2 === 0 ? null : { source: "manual" },
+          );
         }
         return;
       }
@@ -248,7 +295,11 @@ export const applyRandomOperation = (tr: Transaction, operation: RandomOperation
         // A bounded slice: repeated pastes of the whole document would double
         // it every time.
         const source = c % (size + 1);
-        tr.replace(at, at, tr.doc.slice(source, Math.min(size, source + (b % 40))));
+        tr.replace(
+          at,
+          at,
+          tr.doc.slice(source, Math.min(size, source + (b % 40))),
+        );
         return;
       }
       case "wrap":

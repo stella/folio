@@ -86,11 +86,23 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
   // template's levels, a concrete instance and an instance's per-level
   // override. Their content models have fixed order, so the same generated
   // sequence drives capture positions and serialization.
-  { key: "w:numbering", members: [["numbering", "CT_Numbering"]], sequence: true },
-  { key: "w:abstractNum", members: [["abstractNum", "CT_AbstractNum"]], sequence: true },
+  {
+    key: "w:numbering",
+    members: [["numbering", "CT_Numbering"]],
+    sequence: true,
+  },
+  {
+    key: "w:abstractNum",
+    members: [["abstractNum", "CT_AbstractNum"]],
+    sequence: true,
+  },
   { key: "w:lvl", members: [["lvl", "CT_Lvl"]], sequence: true },
   { key: "w:num", members: [["num", "CT_Num"]], sequence: true },
-  { key: "w:lvlOverride", members: [["lvlOverride", "CT_NumLvl"]], sequence: true },
+  {
+    key: "w:lvlOverride",
+    members: [["lvlOverride", "CT_NumLvl"]],
+    sequence: true,
+  },
   // A link and a simple field each hold their own subset of `EG_PContent`
   // and each has its own parser, so each gets its own row rather than
   // borrowing `run-level-content`: the union would make a handler map total

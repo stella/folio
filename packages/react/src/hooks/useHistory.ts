@@ -11,15 +11,18 @@
  */
 
 import {
-  useLayoutEffect,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 
-import { HistoryManager, classifyHistoryShortcut } from "@stll/folio-core/managers/HistoryManager";
+import {
+  classifyHistoryShortcut,
+  HistoryManager,
+} from "@stll/folio-core/managers/HistoryManager";
 import type { HistoryEntry } from "@stll/folio-core/managers/HistoryManager";
 
 export type { HistoryEntry } from "@stll/folio-core/managers/HistoryManager";
@@ -156,11 +159,13 @@ export function useHistory<T>(
     };
 
     return {
-      push: (newState: T, description?: string) => manager.push(newState, description),
+      push: (newState: T, description?: string) =>
+        manager.push(newState, description),
       undo,
       redo,
       clear: () => manager.clear(),
-      reset: (newInitialState?: T) => manager.reset(newInitialState ?? initialStateRef.current),
+      reset: (newInitialState?: T) =>
+        manager.reset(newInitialState ?? initialStateRef.current),
       getUndoStack: () => manager.getUndoStack(),
       getRedoStack: () => manager.getRedoStack(),
       transformAll: (fn: (state: T) => T) => manager.transformAll(fn),
@@ -241,7 +246,10 @@ export function useDocumentHistory<
       footers?: unknown;
     } | null;
   } | null,
->(document: T, options: Omit<UseHistoryOptions<T>, "isEqual"> = {}): UseHistoryReturn<T> {
+>(
+  document: T,
+  options: Omit<UseHistoryOptions<T>, "isEqual"> = {},
+): UseHistoryReturn<T> {
   // Hot path for editor typing: callers produce fresh references for real
   // document edits, so avoid serializing the whole document to prove equality.
   const isEqual = useCallback((a: T, b: T): boolean => {

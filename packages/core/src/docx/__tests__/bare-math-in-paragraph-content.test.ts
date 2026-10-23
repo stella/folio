@@ -24,7 +24,9 @@ const NS =
   'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 
 const paragraphFrom = (inner: string) => {
-  const node = parseXmlDocument(`<w:p ${NS}>${inner}</w:p>`) as XmlElement | null;
+  const node = parseXmlDocument(
+    `<w:p ${NS}>${inner}</w:p>`,
+  ) as XmlElement | null;
   if (!node) {
     throw new Error("the fixture did not parse");
   }
@@ -46,12 +48,18 @@ describe("a bare OMML element survives as paragraph content", () => {
   });
 
   test("a bare accent outside any wrapper survives too", () => {
-    const paragraph = paragraphFrom("<w:r><w:t>before</w:t></w:r><m:acc><m:e/></m:acc>");
+    const paragraph = paragraphFrom(
+      "<w:r><w:t>before</w:t></w:r><m:acc><m:e/></m:acc>",
+    );
     expect(serializeParagraph(paragraph)).toContain("<m:acc><m:e/></m:acc>");
   });
 
   test("an m:oMath wrapper is unchanged", () => {
-    const paragraph = paragraphFrom("<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>");
-    expect(serializeParagraph(paragraph)).toContain("<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>");
+    const paragraph = paragraphFrom(
+      "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>",
+    );
+    expect(serializeParagraph(paragraph)).toContain(
+      "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>",
+    );
   });
 });

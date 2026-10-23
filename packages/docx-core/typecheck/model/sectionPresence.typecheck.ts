@@ -20,4 +20,8 @@ const BODY = {
   finalSectionProperties: undefined,
 } satisfies DocumentBody;
 
-export type SectionPresenceProof = [typeof PARAGRAPH, typeof SECTION, typeof BODY];
+export type SectionPresenceProof = [
+  typeof PARAGRAPH,
+  typeof SECTION,
+  typeof BODY,
+];

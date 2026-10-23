@@ -5,11 +5,11 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
@@ -19,13 +19,22 @@ const buildDocument = async (): Promise<ArrayBuffer> => {
     paragraph("First clause."),
     paragraph("Signed in two copies."),
   ];
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
-  return docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength) as ArrayBuffer;
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
+  return docx.buffer.slice(
+    docx.byteOffset,
+    docx.byteOffset + docx.byteLength,
+  ) as ArrayBuffer;
 };
 
 const suggest = async (): Promise<FolioDocxReviewer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
-  const anchor = reviewer.getContent().find(({ text }) => text === "Signed in two copies.");
+  const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+    author: "AI",
+  });
+  const anchor = reviewer
+    .getContent()
+    .find(({ text }) => text === "Signed in two copies.");
   if (!anchor) {
     throw new Error("the fixture paragraph is missing");
   }
@@ -34,7 +43,12 @@ const suggest = async (): Promise<FolioDocxReviewer> => {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       mode: "suggested",
       operations: [
-        { id: "insert", type: "insertAfterBlock", blockId: anchor.id, text: "Suggested clause." },
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: anchor.id,
+          text: "Suggested clause.",
+        },
         {
           id: "replace",
           type: "replaceInBlock",
@@ -57,12 +71,19 @@ const savedTexts = async (reviewer: FolioDocxReviewer): Promise<string[]> =>
 
 describe("resolving every suggestion headlessly", () => {
   test("a save before resolving keeps the document as it was", async () => {
-    expect(await savedTexts(await suggest())).toEqual(["First clause.", "Signed in two copies."]);
+    expect(await savedTexts(await suggest())).toEqual([
+      "First clause.",
+      "Signed in two copies.",
+    ]);
   });
 
   test("a suggested block deletion leaves no tracked change in the saved package", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
-    const target = reviewer.getContent().find(({ text }) => text === "First clause.");
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      author: "AI",
+    });
+    const target = reviewer
+      .getContent()
+      .find(({ text }) => text === "First clause.");
     if (!target) {
       throw new Error("the fixture paragraph is missing");
     }
@@ -88,31 +109,47 @@ describe("resolving every suggestion headlessly", () => {
   });
 
   test("a suggested deletion cannot retract an ordinary tracked split", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
-    const target = reviewer.getContent().find(({ text }) => text === "Signed in two copies.");
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      author: "AI",
+    });
+    const target = reviewer
+      .getContent()
+      .find(({ text }) => text === "Signed in two copies.");
     if (!target) throw new Error("fixture paragraph missing");
     const split = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
-        operations: [{ id: "split", type: "splitBlock", blockId: target.id, offset: 10 }],
+        operations: [
+          { id: "split", type: "splitBlock", blockId: target.id, offset: 10 },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
     expect(split.applied).toHaveLength(1);
-    const firstHalf = reviewer.getContent().find(({ text }) => text === "Signed in ");
+    const firstHalf = reviewer
+      .getContent()
+      .find(({ text }) => text === "Signed in ");
     if (!firstHalf) throw new Error("split paragraph missing");
     const deletion = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "suggested",
-        operations: [{ id: "delete", type: "deleteBlock", blockId: firstHalf.id }],
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: firstHalf.id },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
     expect(deletion.applied).toEqual([]);
-    expect(deletion.skipped).toEqual([{ id: "delete", reason: "unsupportedMode" }]);
-    expect(await savedTexts(reviewer)).toEqual(["First clause.", "Signed in ", "two copies."]);
+    expect(deletion.skipped).toEqual([
+      { id: "delete", reason: "unsupportedMode" },
+    ]);
+    expect(await savedTexts(reviewer)).toEqual([
+      "First clause.",
+      "Signed in ",
+      "two copies.",
+    ]);
   });
 
   test("acceptAll leaves suggested edits staged and out of the saved package", async () => {
@@ -125,7 +162,10 @@ describe("resolving every suggestion headlessly", () => {
       "Signed in three copies.",
       "Suggested clause.",
     ]);
-    expect(await savedTexts(reviewer)).toEqual(["First clause.", "Signed in two copies."]);
+    expect(await savedTexts(reviewer)).toEqual([
+      "First clause.",
+      "Signed in two copies.",
+    ]);
   });
 
   test("explicit acceptance after bulk acceptance persists the suggestion", async () => {
@@ -141,9 +181,15 @@ describe("resolving every suggestion headlessly", () => {
   });
 
   test("acceptAll resolves ordinary revisions while preserving a pending suggestion", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
-    const first = reviewer.getContent().find(({ text }) => text === "First clause.");
-    const last = reviewer.getContent().find(({ text }) => text === "Signed in two copies.");
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      author: "AI",
+    });
+    const first = reviewer
+      .getContent()
+      .find(({ text }) => text === "First clause.");
+    const last = reviewer
+      .getContent()
+      .find(({ text }) => text === "Signed in two copies.");
     if (!first || !last) throw new Error("the fixture paragraphs are missing");
     const tracked = reviewer.applyDocumentOperations(
       {
@@ -182,26 +228,45 @@ describe("resolving every suggestion headlessly", () => {
 
     expect(reviewer.acceptAll()).toBe(2);
     expect(reviewer.getChanges()).toHaveLength(2);
-    expect(await savedTexts(reviewer)).toEqual(["Opening clause.", "Signed in two copies."]);
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-      author: "AI",
-    });
+    expect(await savedTexts(reviewer)).toEqual([
+      "Opening clause.",
+      "Signed in two copies.",
+    ]);
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        author: "AI",
+      },
+    );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "pending" },
     ]);
     expect(
-      reopened.getContent().map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
+      reopened
+        .getContent()
+        .map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
     ).toEqual(
-      reviewer.getContent().map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
+      reviewer
+        .getContent()
+        .map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
     );
     expect(reviewer.acceptSuggestion("pending")).toBe(true);
-    expect(await savedTexts(reviewer)).toEqual(["Opening clause.", "Signed in three copies."]);
+    expect(await savedTexts(reviewer)).toEqual([
+      "Opening clause.",
+      "Signed in three copies.",
+    ]);
   });
 
   test("a suggested deletion cannot overwrite a tracked paragraph revision", async () => {
-    const document = fromMarkdown("# Delivery Terms\n\nThe following apply to every order.");
-    const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+    const document = fromMarkdown(
+      "# Delivery Terms\n\nThe following apply to every order.",
+    );
+    const { docx } = await ensureParaIds(
+      new Uint8Array(await createDocx(document)),
+    );
     const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "AI" });
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
@@ -241,7 +306,9 @@ describe("resolving every suggestion headlessly", () => {
       { undefinedReferences: "refuse" },
     );
     expect(result.applied.map(({ id }) => id)).toEqual(["pending"]);
-    expect(result.skipped).toEqual([{ id: "delete", reason: "unsupportedMode" }]);
+    expect(result.skipped).toEqual([
+      { id: "delete", reason: "unsupportedMode" },
+    ]);
     reviewer.acceptAll();
     expect(await savedTexts(reviewer)).toEqual([
       "Delivery Terms",
@@ -250,7 +317,9 @@ describe("resolving every suggestion headlessly", () => {
   });
 
   test("acceptAll fails without changing the document when a suggestion cannot be restaged", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      author: "AI",
+    });
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
     expect(
@@ -331,19 +400,28 @@ describe("resolving every suggestion headlessly", () => {
       ).applied,
     ).toHaveLength(1);
     expect(reviewer.acceptAll()).toBe(2);
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
     expect(records).toHaveLength(2);
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-      author: "AI",
-    });
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        author: "AI",
+      },
+    );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "insert" },
       { status: "restaged", suggestionId: "replace" },
     ]);
     expect(
-      reopened.getContent().map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
+      reopened
+        .getContent()
+        .map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
     ).toEqual(
-      reviewer.getContent().map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
+      reviewer
+        .getContent()
+        .map(({ kind, text, previewRuns }) => ({ kind, text, previewRuns })),
     );
   });
 
@@ -391,9 +469,15 @@ describe("resolving every suggestion headlessly", () => {
     const commentId = comment.applied.at(0)?.commentId;
     expect(commentId).toBeDefined();
     expect(reviewer.acceptAll()).toBeGreaterThan(0);
-    expect(reviewer.exportPendingSuggestions().at(0)?.commentId).toBe(commentId);
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reviewer.exportPendingSuggestions().at(0)?.commentId).toBe(
+      commentId,
+    );
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reopened.getComments()).toEqual([]);
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "pending-comment" },
@@ -430,7 +514,9 @@ describe("resolving every suggestion headlessly", () => {
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "tracked-changes",
-          operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: first.id }],
+          operations: [
+            { id: "merge", type: "mergeBlockWithNext", blockId: first.id },
+          ],
         },
         { undefinedReferences: "refuse" },
       ).applied,
@@ -440,7 +526,9 @@ describe("resolving every suggestion headlessly", () => {
   });
 
   test("refuses a suggestion that would retract a tracked insertion", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      author: "AI",
+    });
     const first = reviewer.getContent()[0];
     if (!first) throw new Error("the fixture paragraph is missing");
     expect(
@@ -449,7 +537,12 @@ describe("resolving every suggestion headlessly", () => {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "tracked-changes",
           operations: [
-            { id: "tracked", type: "insertAfterBlock", blockId: first.id, text: "Added." },
+            {
+              id: "tracked",
+              type: "insertAfterBlock",
+              blockId: first.id,
+              text: "Added.",
+            },
           ],
         },
         { undefinedReferences: "refuse" },
@@ -466,7 +559,9 @@ describe("resolving every suggestion headlessly", () => {
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "pending", reason: "unsupportedMode" }]);
+    expect(result.skipped).toEqual([
+      { id: "pending", reason: "unsupportedMode" },
+    ]);
     reviewer.acceptAll();
     expect(await savedTexts(reviewer)).toEqual([
       "First clause.",
@@ -476,7 +571,9 @@ describe("resolving every suggestion headlessly", () => {
   });
 
   test("refuses suggestions anchored to a tracked deletion", async () => {
-    const writer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
+    const writer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      author: "AI",
+    });
     const first = writer.getContent()[0];
     if (!first) throw new Error("fixture paragraph missing");
     expect(
@@ -484,33 +581,51 @@ describe("resolving every suggestion headlessly", () => {
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "tracked-changes",
-          operations: [{ id: "tracked", type: "deleteBlock", blockId: first.id }],
+          operations: [
+            { id: "tracked", type: "deleteBlock", blockId: first.id },
+          ],
         },
         { undefinedReferences: "refuse" },
       ).applied,
     ).toHaveLength(1);
     const bytes = await writer.toBuffer();
     for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
-      const baseline = await FolioDocxReviewer.fromBuffer(bytes, { author: "AI" });
-      const staged = await FolioDocxReviewer.fromBuffer(bytes, { author: "AI" });
+      const baseline = await FolioDocxReviewer.fromBuffer(bytes, {
+        author: "AI",
+      });
+      const staged = await FolioDocxReviewer.fromBuffer(bytes, {
+        author: "AI",
+      });
       const blank = staged.getContent().find(({ text }) => text === "");
       if (!blank) throw new Error("deleted paragraph missing");
       const result = staged.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "suggested",
-          operations: [{ id: "pending", type, blockId: blank.id, text: "Added." }],
+          operations: [
+            { id: "pending", type, blockId: blank.id, text: "Added." },
+          ],
         },
         { undefinedReferences: "refuse" },
       );
       expect(result.applied).toEqual([]);
-      expect(result.skipped).toEqual([{ id: "pending", reason: "pendingDeletion" }]);
-      const beforeBulk = await FolioDocxReviewer.fromBuffer(await staged.toBuffer());
+      expect(result.skipped).toEqual([
+        { id: "pending", reason: "pendingDeletion" },
+      ]);
+      const beforeBulk = await FolioDocxReviewer.fromBuffer(
+        await staged.toBuffer(),
+      );
       expect(beforeBulk.getContent()).toEqual(baseline.getContent());
       baseline.acceptAll();
       staged.acceptAll();
-      expect((await FolioDocxReviewer.fromBuffer(await staged.toBuffer())).getContent()).toEqual(
-        (await FolioDocxReviewer.fromBuffer(await baseline.toBuffer())).getContent(),
+      expect(
+        (
+          await FolioDocxReviewer.fromBuffer(await staged.toBuffer())
+        ).getContent(),
+      ).toEqual(
+        (
+          await FolioDocxReviewer.fromBuffer(await baseline.toBuffer())
+        ).getContent(),
       );
     }
   });
@@ -521,7 +636,10 @@ describe("resolving every suggestion headlessly", () => {
     );
     const { docx } = await ensureParaIds(new Uint8Array(await createDocx(doc)));
     const reviewer = await FolioDocxReviewer.fromBuffer(
-      docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength) as ArrayBuffer,
+      docx.buffer.slice(
+        docx.byteOffset,
+        docx.byteOffset + docx.byteLength,
+      ) as ArrayBuffer,
       { author: "AI" },
     );
     const block = (prefix: string) =>
@@ -529,13 +647,20 @@ describe("resolving every suggestion headlessly", () => {
     const opening = block("The following");
     const payment = block("Payment happens");
     const insured = block("Goods are insured");
-    if (!opening || !payment || !insured) throw new Error("fixture block missing");
+    if (!opening || !payment || !insured)
+      throw new Error("fixture block missing");
     const tracked = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
         operations: [
-          { id: "t1", type: "replaceInBlock", blockId: opening.id, find: "every", replace: "each" },
+          {
+            id: "t1",
+            type: "replaceInBlock",
+            blockId: opening.id,
+            find: "every",
+            replace: "each",
+          },
           {
             id: "t2",
             type: "insertAfterBlock",
@@ -548,12 +673,18 @@ describe("resolving every suggestion headlessly", () => {
       { undefinedReferences: "refuse" },
     );
     expect(tracked.applied).toHaveLength(3);
-    const trackedReopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-      author: "AI",
-    });
-    const baseline = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-      author: "AI",
-    });
+    const trackedReopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        author: "AI",
+      },
+    );
+    const baseline = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        author: "AI",
+      },
+    );
     baseline.acceptAll();
     const baselineContent = (
       await FolioDocxReviewer.fromBuffer(await baseline.toBuffer())
@@ -580,7 +711,9 @@ describe("resolving every suggestion headlessly", () => {
     expect(result.applied.map(({ id }) => id)).toEqual(["replace"]);
     expect(result.skipped.map(({ id }) => id)).toEqual(["delete"]);
     trackedReopened.acceptAll();
-    const reopened = await FolioDocxReviewer.fromBuffer(await trackedReopened.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await trackedReopened.toBuffer(),
+    );
     expect(reopened.getContent()).toEqual(baselineContent);
   });
 
@@ -588,7 +721,10 @@ describe("resolving every suggestion headlessly", () => {
     const reviewer = await suggest();
     const insertion = reviewer
       .getChanges()
-      .find(({ type, text }) => type === "insertion" && text === "Suggested clause.");
+      .find(
+        ({ type, text }) =>
+          type === "insertion" && text === "Suggested clause.",
+      );
     if (!insertion) {
       throw new Error("the suggested insertion is not listed");
     }
@@ -600,13 +736,18 @@ describe("resolving every suggestion headlessly", () => {
     const reviewer = await suggest();
     const insertion = reviewer
       .getChanges()
-      .find(({ type, text }) => type === "insertion" && text === "Suggested clause.");
+      .find(
+        ({ type, text }) =>
+          type === "insertion" && text === "Suggested clause.",
+      );
     if (!insertion) {
       throw new Error("the suggested insertion is not listed");
     }
     expect(reviewer.rejectChange(insertion)).toBe(true);
     expect(reviewer.getContent().map(({ text }) => text)).not.toContain("");
-    expect(reviewer.getContent().map(({ text }) => text)).not.toContain("Suggested clause.");
+    expect(reviewer.getContent().map(({ text }) => text)).not.toContain(
+      "Suggested clause.",
+    );
   });
 
   test("rejectAll removes every suggestion", async () => {
@@ -616,6 +757,9 @@ describe("resolving every suggestion headlessly", () => {
       "First clause.",
       "Signed in two copies.",
     ]);
-    expect(await savedTexts(reviewer)).toEqual(["First clause.", "Signed in two copies."]);
+    expect(await savedTexts(reviewer)).toEqual([
+      "First clause.",
+      "Signed in two copies.",
+    ]);
   });
 });

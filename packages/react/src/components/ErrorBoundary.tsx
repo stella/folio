@@ -8,20 +8,27 @@
 import React, {
   Component,
   createContext,
-  useContext,
-  useState,
   useCallback,
+  useContext,
   useMemo,
+  useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactNode, ErrorInfo } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 
 import { panic } from "better-result";
-import { AlertCircleIcon, AlertTriangleIcon, FileWarningIcon, InfoIcon, XIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  AlertTriangleIcon,
+  FileWarningIcon,
+  InfoIcon,
+  XIcon,
+} from "lucide-react";
 import { useTranslations } from "use-intl";
 
 import { ErrorManager } from "@stll/folio-core/managers/ErrorManager";
 import type { ErrorNotification } from "@stll/folio-core/managers/types";
+
 import { cn } from "../lib/utils";
 import { useFolioUI } from "../ui/folio-ui";
 
@@ -171,7 +178,10 @@ type NotificationContainerProps = {
   onDismiss: (id: string) => void;
 };
 
-function NotificationContainer({ notifications, onDismiss }: NotificationContainerProps) {
+function NotificationContainer({
+  notifications,
+  onDismiss,
+}: NotificationContainerProps) {
   const visibleNotifications = notifications.filter((n) => !n.dismissed);
 
   if (visibleNotifications.length === 0) {
@@ -196,8 +206,10 @@ function NotificationContainer({ notifications, onDismiss }: NotificationContain
 // ============================================================================
 
 const SEVERITY_STYLES = {
-  error: "border-destructive/30 bg-destructive/10 text-destructive [&_svg]:text-destructive",
-  warning: "border-border bg-muted text-foreground [&_svg]:text-muted-foreground",
+  error:
+    "border-destructive/30 bg-destructive/10 text-destructive [&_svg]:text-destructive",
+  warning:
+    "border-border bg-muted text-foreground [&_svg]:text-muted-foreground",
   info: "border-border bg-card text-card-foreground [&_svg]:text-muted-foreground",
 } as const;
 
@@ -212,11 +224,17 @@ type NotificationToastProps = {
   onDismiss: (id: string) => void;
 };
 
-function NotificationToast({ notification, onDismiss }: NotificationToastProps) {
+function NotificationToast({
+  notification,
+  onDismiss,
+}: NotificationToastProps) {
   const t = useTranslations("folio");
   const [isExpanded, setIsExpanded] = useState(false);
   const SeverityIcon = SEVERITY_ICONS[notification.severity];
-  const handleDismiss = useCallback(() => onDismiss(notification.id), [notification.id, onDismiss]);
+  const handleDismiss = useCallback(
+    () => onDismiss(notification.id),
+    [notification.id, onDismiss],
+  );
 
   return (
     <div
@@ -228,7 +246,9 @@ function NotificationToast({ notification, onDismiss }: NotificationToastProps) 
       <div className="flex items-start gap-2">
         <SeverityIcon className="mt-0.5 size-5 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium break-words">{notification.message}</p>
+          <p className="text-sm font-medium break-words">
+            {notification.message}
+          </p>
           {notification.details && (
             <>
               <button
@@ -268,7 +288,10 @@ function NotificationToast({ notification, onDismiss }: NotificationToastProps) 
  *
  * Catches render errors in child components and displays fallback UI.
  */
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
@@ -350,7 +373,9 @@ function DefaultErrorFallback({
   return (
     <div className="bg-background m-5 flex min-h-[200px] flex-col items-center justify-center rounded-lg border p-10 text-center">
       <AlertCircleIcon className="text-destructive mb-4 size-12" />
-      <h2 className="text-foreground mb-2 text-lg font-semibold">{t("somethingWentWrong")}</h2>
+      <h2 className="text-foreground mb-2 text-lg font-semibold">
+        {t("somethingWentWrong")}
+      </h2>
       <p className="text-muted-foreground mb-4 max-w-[400px] text-sm">
         {t("renderErrorDescription")}
       </p>
@@ -405,8 +430,12 @@ export function ParseErrorDisplay({
       )}
     >
       <FileWarningIcon className="text-destructive mb-4 size-10" />
-      <h3 className="text-foreground mb-2 text-base font-semibold">{t("parseErrorTitle")}</h3>
-      <p className="text-muted-foreground mb-4 max-w-[400px] text-sm">{message}</p>
+      <h3 className="text-foreground mb-2 text-base font-semibold">
+        {t("parseErrorTitle")}
+      </h3>
+      <p className="text-muted-foreground mb-4 max-w-[400px] text-sm">
+        {message}
+      </p>
       {details && (
         <pre className="bg-muted mb-4 max-w-full overflow-auto rounded p-3 text-start font-mono text-xs">
           {details}
@@ -484,7 +513,11 @@ export function getUserFriendlyMessage(error: Error): string {
     return "Network error. Please check your internet connection and try again.";
   }
 
-  if (message.includes("parse") || message.includes("xml") || message.includes("invalid")) {
+  if (
+    message.includes("parse") ||
+    message.includes("xml") ||
+    message.includes("invalid")
+  ) {
     return "The document could not be parsed. It may be corrupted or in an unsupported format.";
   }
 

@@ -80,14 +80,25 @@ const brand = (value: string): FolioBlockId => value as unknown as FolioBlockId;
  * a hand-written or synthesized source cannot break the round trip.)
  */
 const isReservedShape = (paraId: string): boolean =>
-  paraId.startsWith(SEQUENTIAL_BLOCK_ID_PREFIX) || paraId.startsWith(BLANK_BLOCK_ID_PREFIX);
+  paraId.startsWith(SEQUENTIAL_BLOCK_ID_PREFIX) ||
+  paraId.startsWith(BLANK_BLOCK_ID_PREFIX);
 
-const usableParaId = (paraId: string | null, taken: ReadonlySet<string>): string | null =>
-  paraId !== null && paraId.length > 0 && !taken.has(paraId) && !isReservedShape(paraId)
+const usableParaId = (
+  paraId: string | null,
+  taken: ReadonlySet<string>,
+): string | null =>
+  paraId !== null &&
+  paraId.length > 0 &&
+  !taken.has(paraId) &&
+  !isReservedShape(paraId)
     ? paraId
     : null;
 
-export const deriveBlockId = ({ paraId, index, taken }: DeriveBlockIdInput): FolioBlockId => {
+export const deriveBlockId = ({
+  paraId,
+  index,
+  taken,
+}: DeriveBlockIdInput): FolioBlockId => {
   const usable = usableParaId(paraId, taken);
   if (usable !== null) {
     return brand(usable);
@@ -106,7 +117,11 @@ export const deriveBlockId = ({ paraId, index, taken }: DeriveBlockIdInput): Fol
  * paraId to be named by. Numbered in its own sequence so the
  * published `seq-NNNN` positions stay where they are.
  */
-export const deriveBlankBlockId = ({ paraId, index, taken }: DeriveBlockIdInput): FolioBlockId => {
+export const deriveBlankBlockId = ({
+  paraId,
+  index,
+  taken,
+}: DeriveBlockIdInput): FolioBlockId => {
   const usable = usableParaId(paraId, taken);
   if (usable !== null) {
     return brand(usable);
@@ -123,7 +138,8 @@ export const deriveBlankBlockId = ({ paraId, index, taken }: DeriveBlockIdInput)
 export const isSequentialFolioBlockId = (id: string): boolean =>
   SEQUENTIAL_BLOCK_ID_PATTERN.test(id);
 
-export const isBlankFolioBlockId = (id: string): boolean => BLANK_BLOCK_ID_PATTERN.test(id);
+export const isBlankFolioBlockId = (id: string): boolean =>
+  BLANK_BLOCK_ID_PATTERN.test(id);
 
 /**
  * Extract the paraId an id was derived from, if any. Returns `null`

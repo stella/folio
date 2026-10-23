@@ -35,7 +35,10 @@ const ENGINE_PREFIX = "packages/core/src/layout-engine/";
 
 type Layer = "painter" | "bridge" | "engine";
 
-const matchesLayerPrefix = (normalizedPath: string, prefix: string): boolean => {
+const matchesLayerPrefix = (
+  normalizedPath: string,
+  prefix: string,
+): boolean => {
   // Anchor on a path separator (or the string start) so a directory that merely
   // contains the prefix as a substring cannot false-match, mirroring isCoreFile.
   // `bare` is the prefix without its trailing slash, for the barrel-target case
@@ -67,11 +70,17 @@ const layerOf = (absolutePath: string): Layer | null => {
 // directory. Returns a normalized path string we can prefix-match against the
 // layer constants. Non-relative specifiers (bare packages, "@stll/...") are
 // out of scope for this rule and return null.
-const resolveCoreTarget = (importerPath: string, specifier: string): string | null => {
+const resolveCoreTarget = (
+  importerPath: string,
+  specifier: string,
+): string | null => {
   if (!specifier.startsWith(".")) {
     return null;
   }
-  const importerDir = importerPath.replaceAll("\\", "/").split("/").slice(0, -1);
+  const importerDir = importerPath
+    .replaceAll("\\", "/")
+    .split("/")
+    .slice(0, -1);
   const parts = specifier.split("/");
   const stack = [...importerDir];
   for (const part of parts) {
@@ -103,7 +112,10 @@ const stripExtAndIndex = (resolved: string): string => {
   return value;
 };
 
-const ALLOWED_PAINTER_TO_ENGINE_SUFFIXES = ["layout-engine/types", "layout-engine/measure"];
+const ALLOWED_PAINTER_TO_ENGINE_SUFFIXES = [
+  "layout-engine/types",
+  "layout-engine/measure",
+];
 
 const isAllowedPainterToEngine = (resolvedTarget: string): boolean => {
   const stripped = stripExtAndIndex(resolvedTarget);
@@ -247,7 +259,9 @@ const isCoreFile = (importerPath: string): boolean => {
   const normalized = importerPath.replaceAll("\\", "/");
   // Anchor on a path separator (or the string start) so a directory that merely
   // contains the prefix as a substring cannot false-match.
-  return normalized.startsWith(CORE_PREFIX) || normalized.includes(`/${CORE_PREFIX}`);
+  return (
+    normalized.startsWith(CORE_PREFIX) || normalized.includes(`/${CORE_PREFIX}`)
+  );
 };
 
 const isForbiddenInCore = (specifier: string): boolean => {
@@ -259,7 +273,10 @@ const isForbiddenInCore = (specifier: string): boolean => {
   return false;
 };
 
-const checkReactFreeCore = (context: RuleContext, importNode: AstNode): void => {
+const checkReactFreeCore = (
+  context: RuleContext,
+  importNode: AstNode,
+): void => {
   const specifier = importSpecifierOf(importNode);
   if (specifier === null || !isForbiddenInCore(specifier)) {
     return;
@@ -369,7 +386,10 @@ const checkModelPurity = (context: RuleContext, importNode: AstNode): void => {
     return;
   }
 
-  if (stripped.includes("/layout-engine/") && !isAllowedModelEngineTarget(stripped)) {
+  if (
+    stripped.includes("/layout-engine/") &&
+    !isAllowedModelEngineTarget(stripped)
+  ) {
     context.report({ node: importNode, messageId: "modelImpureData" });
   }
 };
@@ -415,7 +435,10 @@ const targetTopLevelCoreDirectory = (resolved: string): string | null => {
   );
 };
 
-const resolveCoreImportTarget = (importerPath: string, specifier: string): string | null => {
+const resolveCoreImportTarget = (
+  importerPath: string,
+  specifier: string,
+): string | null => {
   if (specifier.startsWith(".")) {
     return resolveCoreTarget(importerPath, specifier);
   }
@@ -425,18 +448,28 @@ const resolveCoreImportTarget = (importerPath: string, specifier: string): strin
   return null;
 };
 
-const checkControllerAndEngineSeams = (context: RuleContext, importNode: AstNode): void => {
+const checkControllerAndEngineSeams = (
+  context: RuleContext,
+  importNode: AstNode,
+): void => {
   const specifier = importSpecifierOf(importNode);
   const importerPath = filenameOf(context);
   if (specifier === null || importerPath === "") {
     return;
   }
 
-  const importerInController = isInsideSegment(importerPath, CONTROLLER_SEGMENT);
+  const importerInController = isInsideSegment(
+    importerPath,
+    CONTROLLER_SEGMENT,
+  );
   const resolved = resolveCoreImportTarget(importerPath, specifier);
-  const targetDirectory = resolved === null ? null : targetTopLevelCoreDirectory(resolved);
+  const targetDirectory =
+    resolved === null ? null : targetTopLevelCoreDirectory(resolved);
   if (!importerInController && targetDirectory === "controller") {
-    context.report({ node: importNode, messageId: "controllerImportedUpstream" });
+    context.report({
+      node: importNode,
+      messageId: "controllerImportedUpstream",
+    });
     return;
   }
 
@@ -447,7 +480,10 @@ const checkControllerAndEngineSeams = (context: RuleContext, importNode: AstNode
     context.report({ node: importNode, messageId: "engineImportsRuntime" });
     return;
   }
-  if (targetDirectory !== null && FORBIDDEN_ENGINE_DIRS.includes(targetDirectory)) {
+  if (
+    targetDirectory !== null &&
+    FORBIDDEN_ENGINE_DIRS.includes(targetDirectory)
+  ) {
     context.report({ node: importNode, messageId: "engineImportsRuntime" });
   }
 };
@@ -487,7 +523,9 @@ const isUrlConstruction = (node: AstNode): boolean => {
     return false;
   }
   const callee = node.callee;
-  return isAstNode(callee) && callee.type === "Identifier" && callee.name === "URL";
+  return (
+    isAstNode(callee) && callee.type === "Identifier" && callee.name === "URL"
+  );
 };
 
 // `new URL(specifier, import.meta.url)` resolves a module-relative asset,
@@ -495,7 +533,9 @@ const isUrlConstruction = (node: AstNode): boolean => {
 // URL(value)` only parses an absolute URL (link validation) and cannot reach
 // a package asset, so it is not a boundary reference.
 const isModuleRelativeUrlConstruction = (node: AstNode): boolean =>
-  isUrlConstruction(node) && Array.isArray(node.arguments) && node.arguments.length >= 2;
+  isUrlConstruction(node) &&
+  Array.isArray(node.arguments) &&
+  node.arguments.length >= 2;
 
 const generatedKernelAssetOf = (node: AstNode): string | null => {
   if (!isUrlConstruction(node)) {
@@ -520,7 +560,9 @@ const checkProjectionBoundary = (context: RuleContext, node: AstNode): void => {
     (node.type === "ImportExpression" && specifier === null);
   const importerPath = filenameOf(context);
   if (
-    (specifier === null && generatedAsset === null && !opaqueBoundaryReference) ||
+    (specifier === null &&
+      generatedAsset === null &&
+      !opaqueBoundaryReference) ||
     importerPath === ""
   ) {
     return;
@@ -563,14 +605,18 @@ const checkProjectionBoundary = (context: RuleContext, node: AstNode): void => {
 // Safe:
 //   import type { DisplayList } from "../types";
 //   import { STROKE_DASH_FACTORS } from "../primitives";  // no layout facts
-const PAINT_BACKEND_PREFIXES = ["packages/core/src/pdf/", "packages/core/src/display-list/dom/"];
+const PAINT_BACKEND_PREFIXES = [
+  "packages/core/src/pdf/",
+  "packages/core/src/display-list/dom/",
+];
 
 const DISPLAY_LIST_TYPES_SUFFIX = "packages/core/src/display-list/types";
 
 const isPaintBackendFile = (absolutePath: string): boolean => {
   const normalized = normalizedWithLeadingSlash(absolutePath);
   return PAINT_BACKEND_PREFIXES.some(
-    (prefix) => normalized.includes(`/${prefix}`) || normalized.startsWith(prefix),
+    (prefix) =>
+      normalized.includes(`/${prefix}`) || normalized.startsWith(prefix),
   );
 };
 
@@ -589,7 +635,9 @@ const isValueImportDeclaration = (node: AstNode): boolean => {
     Array.isArray(specifiers) &&
     specifiers.length > 0 &&
     specifiers.every(
-      (entry) => isAstNode(entry) && (entry as { importKind?: unknown }).importKind === "type",
+      (entry) =>
+        isAstNode(entry) &&
+        (entry as { importKind?: unknown }).importKind === "type",
     )
   );
 };
@@ -604,7 +652,10 @@ const checkPaintBackendSeam = (context: RuleContext, node: AstNode): void => {
     return;
   }
   const resolved = resolveCoreTarget(importerPath, specifier);
-  if (resolved === null || !stripExtAndIndex(resolved).endsWith(DISPLAY_LIST_TYPES_SUFFIX)) {
+  if (
+    resolved === null ||
+    !stripExtAndIndex(resolved).endsWith(DISPLAY_LIST_TYPES_SUFFIX)
+  ) {
     return;
   }
   // `require()` and `import()` load the module at runtime whatever they are

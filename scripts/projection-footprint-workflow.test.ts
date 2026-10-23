@@ -1,11 +1,19 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const directories: string[] = [];
 afterEach(() => {
-  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true });
+  for (const directory of directories.splice(0))
+    rmSync(directory, { recursive: true });
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -13,7 +21,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const workflowJobs = () => {
   const workflow: unknown = Bun.YAML.parse(
-    readFileSync(join(import.meta.dir, "../.github/workflows/canonical-wasm.yml"), "utf8"),
+    readFileSync(
+      join(import.meta.dir, "../.github/workflows/canonical-wasm.yml"),
+      "utf8",
+    ),
   );
   if (!isRecord(workflow) || !isRecord(workflow["jobs"]))
     throw new TypeError("Canonical workflow has no jobs.");
@@ -135,9 +146,17 @@ test.each([
   writeFileSync(join(directory, "cli-version"), head);
   writeFileSync(join(directory, "calls"), "");
   for (const name of ["cargo", "git", "wasm-bindgen", "bun", "jq"])
-    writeFileSync(join(bin, name), `#!${process.execPath}\n${mockTool}`, { mode: 0o755 });
+    writeFileSync(join(bin, name), `#!${process.execPath}\n${mockTool}`, {
+      mode: 0o755,
+    });
   const result = Bun.spawnSync(
-    ["bash", "-euo", "pipefail", "-c", workflowStep("Compare named base and head projections")],
+    [
+      "bash",
+      "-euo",
+      "pipefail",
+      "-c",
+      workflowStep("Compare named base and head projections"),
+    ],
     {
       cwd: directory,
       env: {
@@ -155,7 +174,9 @@ test.each([
     },
   );
   expect(result.exitCode, result.stderr.toString()).toBe(exitCode);
-  expect(readFileSync(join(directory, "calls"), "utf8").trim().split("\n")).toEqual(calls);
+  expect(
+    readFileSync(join(directory, "calls"), "utf8").trim().split("\n"),
+  ).toEqual(calls);
   const report = join(directory, "projection-footprint.json");
   if (exitCode === 0) {
     expect(readFileSync(report, "utf8")).toBe("{}");
@@ -213,7 +234,13 @@ test.each([
       { mode: 0o755 },
     );
     const result = Bun.spawnSync(
-      ["bash", "-euo", "pipefail", "-c", workflowStep("Generate canonical projection artifact")],
+      [
+        "bash",
+        "-euo",
+        "pipefail",
+        "-c",
+        workflowStep("Generate canonical projection artifact"),
+      ],
       {
         cwd: directory,
         env: {
@@ -230,9 +257,9 @@ test.each([
     );
     expect(result.exitCode, result.stderr.toString()).toBe(exitCode);
     expect(readFileSync(githubOutput, "utf8")).toBe(output);
-    expect(readFileSync(join(directory, "canonical-projection-build.log"), "utf8")).toContain(
-      message,
-    );
+    expect(
+      readFileSync(join(directory, "canonical-projection-build.log"), "utf8"),
+    ).toContain(message);
   },
 );
 
@@ -240,7 +267,11 @@ test("budget failure automatically schedules attribution even when the canonical
   const jobs = workflowJobs();
   const canonical = jobs["canonical-wasm"];
   const footprint = jobs["footprint"];
-  if (!isRecord(canonical) || !isRecord(canonical["outputs"]) || !isRecord(footprint))
+  if (
+    !isRecord(canonical) ||
+    !isRecord(canonical["outputs"]) ||
+    !isRecord(footprint)
+  )
     throw new TypeError("Canonical artifact and footprint jobs must exist.");
   expect(canonical["outputs"]["budget_exceeded"]).toBe(
     "${{ steps.generate.outputs.budget_exceeded }}",

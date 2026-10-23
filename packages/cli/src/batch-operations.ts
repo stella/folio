@@ -17,8 +17,8 @@ import type { FolioAgentBridge } from "@stll/folio-agents/bridge";
 import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
 import {
   DEFAULT_MAX_OPERATIONS_PER_CALL,
-  MAX_OPERATIONS_PER_CALL_LIMIT,
   type FolioAgentToolOptions,
+  MAX_OPERATIONS_PER_CALL_LIMIT,
 } from "@stll/folio-agents/suggest-changes-options";
 import { SUGGEST_CHANGES_OPERATION_TYPES } from "@stll/folio-agents/tools";
 import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
@@ -30,13 +30,34 @@ export const BATCH_OPERATION_TYPES = ["replaceAll", "addComment"] as const;
 
 /** Fields each batch operation accepts, besides `type`. */
 const BATCH_OPERATION_KEYS: Readonly<Record<string, ReadonlySet<string>>> = {
-  replaceAll: new Set(["id", "find", "replace", "matchCase", "wholeWord", "severity", "area"]),
-  addComment: new Set(["id", "blockId", "quote", "comment", "severity", "area"]),
+  replaceAll: new Set([
+    "id",
+    "find",
+    "replace",
+    "matchCase",
+    "wholeWord",
+    "severity",
+    "area",
+  ]),
+  addComment: new Set([
+    "id",
+    "blockId",
+    "quote",
+    "comment",
+    "severity",
+    "area",
+  ]),
 };
 
 const BATCH_PROPERTY_SCHEMAS = {
-  matchCase: { type: "boolean", description: "For `replaceAll`: match case exactly." },
-  wholeWord: { type: "boolean", description: "For `replaceAll`: match whole words only." },
+  matchCase: {
+    type: "boolean",
+    description: "For `replaceAll`: match case exactly.",
+  },
+  wholeWord: {
+    type: "boolean",
+    description: "For `replaceAll`: match whole words only.",
+  },
 } as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -46,7 +67,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * `suggest_changes`' arguments with the batch operations added to the
  * operation schema: their types in the `type` enum and their extra fields.
  */
-export const withBatchOperations = (schema: JsonObjectSchema): JsonObjectSchema => {
+export const withBatchOperations = (
+  schema: JsonObjectSchema,
+): JsonObjectSchema => {
   const operations = schema.properties["operations"];
   if (!isRecord(operations) || !isRecord(operations["items"])) return schema;
   const items = operations["items"];
@@ -97,7 +120,10 @@ const findMatches = (
   query: string,
   matchCase: boolean,
   wholeWord: boolean,
-): Result<{ matches: Match[]; truncated: boolean; total: number }, FolioCliError> => {
+): Result<
+  { matches: Match[]; truncated: boolean; total: number },
+  FolioCliError
+> => {
   const found = executeFolioToolCallUntyped(
     FOLIO_AGENT_TOOL_NAMES.findText,
     { query, matchCase, wholeWord },
@@ -105,16 +131,22 @@ const findMatches = (
   );
   if (!found.ok) return Result.err(invalidInput(found.error));
   const result = isRecord(found.result) ? found.result : {};
-  const matches = (Array.isArray(result["matches"]) ? result["matches"] : []).flatMap(
-    (match: unknown) =>
-      isRecord(match) && typeof match["blockId"] === "string" && isRecord(match["range"])
-        ? [{ blockId: match["blockId"], range: match["range"] }]
-        : [],
+  const matches = (
+    Array.isArray(result["matches"]) ? result["matches"] : []
+  ).flatMap((match: unknown) =>
+    isRecord(match) &&
+    typeof match["blockId"] === "string" &&
+    isRecord(match["range"])
+      ? [{ blockId: match["blockId"], range: match["range"] }]
+      : [],
   );
   return Result.ok({
     matches,
     truncated: result["truncated"] === true,
-    total: typeof result["totalMatches"] === "number" ? result["totalMatches"] : matches.length,
+    total:
+      typeof result["totalMatches"] === "number"
+        ? result["totalMatches"]
+        : matches.length,
   });
 };
 
@@ -124,7 +156,9 @@ const checkKeys = (
   index: number,
 ): FolioCliError | null => {
   const allowed = BATCH_OPERATION_KEYS[type] ?? new Set();
-  const extra = Object.keys(operation).filter((key) => key !== "type" && !allowed.has(key));
+  const extra = Object.keys(operation).filter(
+    (key) => key !== "type" && !allowed.has(key),
+  );
   return extra.length === 0
     ? null
     : invalidInput(
@@ -133,8 +167,12 @@ const checkKeys = (
       );
 };
 
-const metaOf = (operation: Record<string, unknown>): Record<string, unknown> => ({
-  ...(operation["severity"] !== undefined && { severity: operation["severity"] }),
+const metaOf = (
+  operation: Record<string, unknown>,
+): Record<string, unknown> => ({
+  ...(operation["severity"] !== undefined && {
+    severity: operation["severity"],
+  }),
   ...(operation["area"] !== undefined && { area: operation["area"] }),
 });
 
@@ -145,10 +183,14 @@ const expandReplaceAll = (
 ): Result<unknown[], FolioCliError> => {
   const { find, replace, id } = operation;
   if (typeof find !== "string" || find === "") {
-    return Result.err(invalidInput(`operations[${index}] (replaceAll) needs a non-empty find.`));
+    return Result.err(
+      invalidInput(`operations[${index}] (replaceAll) needs a non-empty find.`),
+    );
   }
   if (typeof replace !== "string") {
-    return Result.err(invalidInput(`operations[${index}] (replaceAll) needs replace.`));
+    return Result.err(
+      invalidInput(`operations[${index}] (replaceAll) needs replace.`),
+    );
   }
   const found = findMatches(
     bridge,
@@ -196,10 +238,14 @@ const expandAddComment = (
 ): Result<unknown, FolioCliError> => {
   const { blockId, quote, comment, id } = operation;
   if (typeof comment !== "string" || comment === "") {
-    return Result.err(invalidInput(`operations[${index}] (addComment) needs comment text.`));
+    return Result.err(
+      invalidInput(`operations[${index}] (addComment) needs comment text.`),
+    );
   }
   if (quote !== undefined && (typeof quote !== "string" || quote === "")) {
-    return Result.err(invalidInput(`operations[${index}] (addComment) quote must be text.`));
+    return Result.err(
+      invalidInput(`operations[${index}] (addComment) quote must be text.`),
+    );
   }
   const anchored = (target: string): Result<unknown, FolioCliError> =>
     Result.ok({
@@ -212,11 +258,15 @@ const expandAddComment = (
     });
   if (typeof blockId === "string" && blockId !== "") return anchored(blockId);
   if (quote === undefined) {
-    return Result.err(invalidInput(`operations[${index}] (addComment) needs blockId or quote.`));
+    return Result.err(
+      invalidInput(`operations[${index}] (addComment) needs blockId or quote.`),
+    );
   }
   const found = findMatches(bridge, quote, true, false);
   if (found.isErr()) return found;
-  const blocks = [...new Set(found.value.matches.map((match) => match.blockId))];
+  const blocks = [
+    ...new Set(found.value.matches.map((match) => match.blockId)),
+  ];
   if (blocks.length === 0) {
     return Result.err(
       cliError({
@@ -257,7 +307,10 @@ export const expandBatchOperations = (
   let batchOperations = false;
   for (const [index, operation] of operations.entries()) {
     const type = isRecord(operation) ? operation["type"] : undefined;
-    if (!isRecord(operation) || (type !== "replaceAll" && type !== "addComment")) {
+    if (
+      !isRecord(operation) ||
+      (type !== "replaceAll" && type !== "addComment")
+    ) {
       expanded.push(operation);
       continue;
     }
@@ -268,7 +321,10 @@ export const expandBatchOperations = (
       const replacements = expandReplaceAll(operation, index, bridge);
       if (replacements.isErr()) return replacements;
       expanded.push(...replacements.value);
-      replaced.push({ find: String(operation["find"]), count: replacements.value.length });
+      replaced.push({
+        find: String(operation["find"]),
+        count: replacements.value.length,
+      });
     } else {
       const comment = expandAddComment(operation, index, bridge);
       if (comment.isErr()) return comment;
@@ -289,9 +345,15 @@ export const expandBatchOperations = (
     operations: expanded,
     options: {
       suggestChanges: {
-        maxOperations: Math.max(DEFAULT_MAX_OPERATIONS_PER_CALL, expanded.length),
+        maxOperations: Math.max(
+          DEFAULT_MAX_OPERATIONS_PER_CALL,
+          expanded.length,
+        ),
         ...(comments && {
-          operationTypes: [...SUGGEST_CHANGES_OPERATION_TYPES, "commentOnBlock"],
+          operationTypes: [
+            ...SUGGEST_CHANGES_OPERATION_TYPES,
+            "commentOnBlock",
+          ],
         }),
       },
     },

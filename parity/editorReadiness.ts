@@ -1,4 +1,5 @@
-const UNSUPPORTED_PROJECTION_ERROR_NAME = "UnsupportedDocxToProseMirrorConversionError";
+const UNSUPPORTED_PROJECTION_ERROR_NAME =
+  "UnsupportedDocxToProseMirrorConversionError";
 
 export const parseUnsupportedProjectionConsoleError = (
   type: string,
@@ -23,13 +24,19 @@ export const readEditorReadinessState = ({
   playgroundErrorSelector,
   readySelector,
 }: EditorReadinessProbeOptions) => {
-  const loadError = document.querySelector(".folio-editor-error p")?.textContent?.trim();
+  const loadError = document
+    .querySelector(".folio-editor-error p")
+    ?.textContent?.trim();
   if (loadError) {
     return { type: "error" as const, message: loadError };
   }
-  const playgroundError = document.querySelector(playgroundErrorSelector)?.textContent?.trim();
+  const playgroundError = document
+    .querySelector(playgroundErrorSelector)
+    ?.textContent?.trim();
   if (playgroundError) {
     return { type: "error" as const, message: playgroundError };
   }
-  return document.querySelector(readySelector) ? { type: "ready" as const } : null;
+  return document.querySelector(readySelector)
+    ? { type: "ready" as const }
+    : null;
 };

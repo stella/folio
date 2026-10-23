@@ -3,13 +3,29 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { commitForVersion, readCommitForVersion, updatedNotice } from "./journal";
+import {
+  commitForVersion,
+  readCommitForVersion,
+  updatedNotice,
+} from "./journal";
 
 const V1 = "1".repeat(64);
 const V2 = "2".repeat(64);
 
-const commit = (txId: string, toVersion: string, tool: string, author: string) =>
-  JSON.stringify({ type: "commit", txId, tool, author, time: "2026-09-26T10:00:00Z", toVersion });
+const commit = (
+  txId: string,
+  toVersion: string,
+  tool: string,
+  author: string,
+) =>
+  JSON.stringify({
+    type: "commit",
+    txId,
+    tool,
+    author,
+    time: "2026-09-26T10:00:00Z",
+    toVersion,
+  });
 
 describe("commitForVersion", () => {
   test("finds the newest commit that produced the version", () => {
@@ -35,7 +51,12 @@ describe("commitForVersion", () => {
     const journal = [
       commit("a", V1, "add_comment", "Grace"),
       commit("b", V1, "replace_text", "Agent"),
-      JSON.stringify({ type: "recovery", txId: "b", action: "discarded", reason: "stageChanged" }),
+      JSON.stringify({
+        type: "recovery",
+        txId: "b",
+        action: "discarded",
+        reason: "stageChanged",
+      }),
     ].join("\n");
 
     expect(commitForVersion(journal, V1)?.author).toBe("Grace");
@@ -53,19 +74,35 @@ describe("readCommitForVersion", () => {
       `${commit("a", V1, "add_comment", "Grace")}\n`,
     );
 
-    expect((await readCommitForVersion(path.join(directory, "R.docx"), V1))?.author).toBe("Grace");
-    expect(await readCommitForVersion(path.join(directory, "missing", "R.docx"), V1)).toBeNull();
+    expect(
+      (await readCommitForVersion(path.join(directory, "R.docx"), V1))?.author,
+    ).toBe("Grace");
+    expect(
+      await readCommitForVersion(path.join(directory, "missing", "R.docx"), V1),
+    ).toBeNull();
   });
 });
 
 describe("updatedNotice", () => {
   test("names the author and the tool", () => {
     expect(
-      updatedNotice("R.docx", { tool: "add_comment", author: "Agent", time: "", toVersion: V1 }),
+      updatedNotice("R.docx", {
+        tool: "add_comment",
+        author: "Agent",
+        time: "",
+        toVersion: V1,
+      }),
     ).toBe("R.docx updated by Agent (add comment).");
     expect(
-      updatedNotice("R.docx", { tool: "editor_save", author: "Grace", time: "", toVersion: V1 }),
+      updatedNotice("R.docx", {
+        tool: "editor_save",
+        author: "Grace",
+        time: "",
+        toVersion: V1,
+      }),
     ).toBe("R.docx updated by Grace (saved in an editor).");
-    expect(updatedNotice("R.docx", null)).toBe("R.docx changed on disk; reloaded.");
+    expect(updatedNotice("R.docx", null)).toBe(
+      "R.docx changed on disk; reloaded.",
+    );
   });
 });

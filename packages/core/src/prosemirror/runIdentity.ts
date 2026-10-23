@@ -23,7 +23,11 @@ export const RUN_IDENTITY_ATTRIBUTE = "data-docx-run-identity";
 export const RUN_IDENTITY_MARK_NAME = "runIdentity";
 
 /** One remainder entry with its keys in canonical order. */
-const preservedAttribute = ({ namespace, name, value }: PreservedAttribute): PreservedAttribute =>
+const preservedAttribute = ({
+  namespace,
+  name,
+  value,
+}: PreservedAttribute): PreservedAttribute =>
   namespace === undefined ? { name, value } : { namespace, name, value };
 
 /** The property-set sink with its keys in canonical order. */

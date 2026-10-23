@@ -1,11 +1,18 @@
-import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { history, undo } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
-import { history, undo } from "prosemirror-history";
 
-import type { Document, Paragraph, StyleDefinitions } from "../../types/document";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  Document,
+  Paragraph,
+  StyleDefinitions,
+} from "../../types/document";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
 import { schema } from "../schema";
@@ -44,7 +51,10 @@ const loadedParagraph = (text: string): Paragraph => ({
 
 const loadState = (): EditorState => {
   const document: Document = {
-    package: { document: { content: [loadedParagraph("Loaded")] }, styles: STYLES },
+    package: {
+      document: { content: [loadedParagraph("Loaded")] },
+      styles: STYLES,
+    },
   };
   return EditorState.create({
     doc: toProseDoc(document),
@@ -70,14 +80,19 @@ const paragraphs = (doc: PMNode): PMNode[] => {
 };
 
 const byText = (doc: PMNode, text: string): PMNode => {
-  const node = paragraphs(doc).find((candidate) => candidate.textContent === text);
+  const node = paragraphs(doc).find(
+    (candidate) => candidate.textContent === text,
+  );
   if (!node) {
     throw new Error(`No paragraph "${text}"`);
   }
   return node;
 };
 
-const savedFormatting = (doc: PMNode, text: string): Paragraph["formatting"] => {
+const savedFormatting = (
+  doc: PMNode,
+  text: string,
+): Paragraph["formatting"] => {
   const saved = fromProseDoc(
     doc,
     { package: { document: { content: [] } } },
@@ -89,7 +104,9 @@ const savedFormatting = (doc: PMNode, text: string): Paragraph["formatting"] => 
       candidate.content.some(
         (item) =>
           item.type === "run" &&
-          item.content.some((content) => content.type === "text" && content.text === text),
+          item.content.some(
+            (content) => content.type === "text" && content.text === text,
+          ),
       ),
   );
   return block?.formatting;
@@ -102,7 +119,12 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
     const reference = byText(after.doc, "Loaded").attrs;
     const created = byText(after.doc, "Pasted").attrs;
 
-    for (const key of ["spaceAfter", "lineSpacing", "lineSpacingRule", "defaultTextFormatting"]) {
+    for (const key of [
+      "spaceAfter",
+      "lineSpacing",
+      "lineSpacingRule",
+      "defaultTextFormatting",
+    ]) {
       expect(created[key]).toEqual(reference[key]);
     }
     expect(created["spaceAfter"]).toBe(160);
@@ -121,7 +143,10 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
     expect(heading["spaceBefore"]).toBe(240);
     expect(heading["spaceAfter"]).toBe(160);
     expect(heading["keepNext"]).toBe(true);
-    expect(heading["defaultTextFormatting"]).toMatchObject({ bold: true, fontSize: 32 });
+    expect(heading["defaultTextFormatting"]).toMatchObject({
+      bold: true,
+      fontSize: 32,
+    });
     expect(savedFormatting(after.doc, "Heading")?.spaceBefore).toBeUndefined();
     expect(savedFormatting(after.doc, "Heading")?.keepNext).toBeUndefined();
 
@@ -182,10 +207,19 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
       });
       const node = edited.doc.nodeAt(found)!;
       edited = edited.apply(
-        edited.tr.replaceWith(found, found + node.nodeSize, paragraph(`New ${text}`)),
+        edited.tr.replaceWith(
+          found,
+          found + node.nodeSize,
+          paragraph(`New ${text}`),
+        ),
       );
     }
-    const keys = ["spaceBefore", "spaceAfter", "lineSpacing", "lineSpacingRule"];
+    const keys = [
+      "spaceBefore",
+      "spaceAfter",
+      "lineSpacing",
+      "lineSpacingRule",
+    ];
     for (const text of ["Header", "First", "Second"]) {
       const reference = byText(loaded.doc, text).attrs;
       const created = byText(edited.doc, `New ${text}`).attrs;
@@ -231,15 +265,21 @@ test(
                 content: [
                   {
                     ...loadedParagraph("Before"),
-                    formatting: { styleId: headingFirst ? "Heading1" : "Normal" },
+                    formatting: {
+                      styleId: headingFirst ? "Heading1" : "Normal",
+                    },
                   },
                   {
                     type: "paragraph",
-                    formatting: { styleId: headingFirst ? "Normal" : "Heading1" },
+                    formatting: {
+                      styleId: headingFirst ? "Normal" : "Heading1",
+                    },
                     content: [
                       {
                         type: "run",
-                        ...(explicitBold ? { formatting: { bold: false } } : {}),
+                        ...(explicitBold
+                          ? { formatting: { bold: false } }
+                          : {}),
                         content: [{ type: "text", text: "After!" }],
                       },
                     ],
@@ -253,10 +293,14 @@ test(
             plugins: [history(), createDocumentStylesPlugin(STYLES)],
           });
           const boundary = state.doc.firstChild!.nodeSize;
-          const joined = state.apply(state.tr.delete(boundary - 1, boundary + 1 + cut));
+          const joined = state.apply(
+            state.tr.delete(boundary - 1, boundary + 1 + cut),
+          );
           expect(joined.doc.childCount).toBe(1);
           expect(joined.doc.textContent).toBe("Before" + "After!".slice(cut));
-          const saved = fromProseDoc(joined.doc, model, { stylesheetSource: { type: "package" } });
+          const saved = fromProseDoc(joined.doc, model, {
+            stylesheetSource: { type: "package" },
+          });
           const reopened = toProseDoc(saved);
           expect(reopened.textContent).toBe(joined.doc.textContent);
           const tail = joined.doc.firstChild!.lastChild!;
@@ -264,7 +308,9 @@ test(
             headingFirst && !explicitBold,
           );
           expect(
-            reopened.firstChild!.lastChild!.marks.some(({ type }) => type.name === "bold"),
+            reopened.firstChild!.lastChild!.marks.some(
+              ({ type }) => type.name === "bold",
+            ),
           ).toBe(headingFirst && !explicitBold);
           let undone = joined;
           expect(

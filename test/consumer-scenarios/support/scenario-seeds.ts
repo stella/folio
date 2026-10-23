@@ -18,7 +18,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const parseFlow = (value: unknown): PinnedScenarioFlow => {
   if (!isRecord(value)) {
-    throw new TypeError(`Invalid pinned consumer scenario flow: ${JSON.stringify(value)}`);
+    throw new TypeError(
+      `Invalid pinned consumer scenario flow: ${JSON.stringify(value)}`,
+    );
   }
   const seed = value["seed"];
   const steps = value["steps"];
@@ -38,7 +40,9 @@ const parseFlow = (value: unknown): PinnedScenarioFlow => {
     typeof title !== "string" ||
     title.length === 0
   ) {
-    throw new TypeError(`Invalid pinned consumer scenario flow: ${JSON.stringify(value)}`);
+    throw new TypeError(
+      `Invalid pinned consumer scenario flow: ${JSON.stringify(value)}`,
+    );
   }
   return {
     seed,
@@ -57,15 +61,23 @@ const titleSlug = (title: string): string =>
     .replaceAll(/[^a-z0-9]+/gu, "-")
     .replaceAll(/^-|-$/gu, "");
 
-export const scenarioSeedFileName = ({ seed, kind, title }: PinnedScenarioFlow): string =>
+export const scenarioSeedFileName = ({
+  seed,
+  kind,
+  title,
+}: PinnedScenarioFlow): string =>
   `${String(seed)}-${kind}-${titleSlug(title)}.json`;
 
-export const loadScenarioSeedRegistry = (directory: string): PinnedScenarioFlow[] => {
+export const loadScenarioSeedRegistry = (
+  directory: string,
+): PinnedScenarioFlow[] => {
   const fileNames = readdirSync(directory)
     .filter((fileName) => fileName.endsWith(".json"))
     .sort();
   const flows = fileNames.map((fileName) => {
-    const flow = parseFlow(JSON.parse(readFileSync(path.join(directory, fileName), "utf8")));
+    const flow = parseFlow(
+      JSON.parse(readFileSync(path.join(directory, fileName), "utf8")),
+    );
     const expectedFileName = scenarioSeedFileName(flow);
     if (fileName !== expectedFileName) {
       throw new TypeError(
@@ -76,7 +88,9 @@ export const loadScenarioSeedRegistry = (directory: string): PinnedScenarioFlow[
   });
   const keys = flows.map(({ seed, kind }) => `${String(seed)}:${kind}`);
   if (new Set(keys).size !== keys.length) {
-    throw new TypeError("Invalid pinned consumer scenario registry: duplicate seed and kind");
+    throw new TypeError(
+      "Invalid pinned consumer scenario registry: duplicate seed and kind",
+    );
   }
   return flows;
 };

@@ -8,11 +8,17 @@
 import React from "react";
 import type { CSSProperties, ReactNode } from "react";
 
-import type { ColorValue, ParagraphAlignment, Style, Theme } from "@stll/folio-core/types/document";
+import type {
+  ColorValue,
+  ParagraphAlignment,
+  Style,
+  Theme,
+} from "@stll/folio-core/types/document";
+import type { TableAction } from "@stll/folio-core/utils/tableOperations";
+
 import { cn } from "../lib/utils";
 import type { FontOption } from "./ui/FontPicker";
 import type { ListState } from "./ui/ListButtons";
-import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { Tooltip } from "./ui/Tooltip";
 
 // ============================================================================
@@ -195,7 +201,9 @@ export type ToolbarProps = {
   /** Callback when image wrap type changes */
   onImageWrapType?: ((wrapType: string) => void) | undefined;
   /** Callback for image transform (rotate/flip) */
-  onImageTransform?: (action: "rotateCW" | "rotateCCW" | "flipH" | "flipV") => void;
+  onImageTransform?: (
+    action: "rotateCW" | "rotateCCW" | "flipH" | "flipV",
+  ) => void;
   /** Callback to open image properties dialog (alt text + border) */
   onOpenImageProperties?: (() => void) | undefined;
   /** Callback to open page setup dialog */
@@ -273,8 +281,10 @@ export function ToolbarButton({
   testId,
 }: ToolbarButtonProps) {
   const derivedTestId =
-    toToolbarTestId(ariaLabel) || toToolbarTestId(title, { stripParentheses: true });
-  const resolvedTestId = testId ?? (derivedTestId ? `toolbar-${derivedTestId}` : undefined);
+    toToolbarTestId(ariaLabel) ||
+    toToolbarTestId(title, { stripParentheses: true });
+  const resolvedTestId =
+    testId ?? (derivedTestId ? `toolbar-${derivedTestId}` : undefined);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -321,7 +331,9 @@ function toToolbarTestId(
     return undefined;
   }
 
-  const normalized = options.stripParentheses ? stripParentheticalText(value) : value;
+  const normalized = options.stripParentheses
+    ? stripParentheticalText(value)
+    : value;
   return normalized.trim().toLowerCase().split(/\s+/u).join("-");
 }
 
@@ -347,9 +359,17 @@ function stripParentheticalText(value: string): string {
 /**
  * Toolbar button group. No built-in border; use ToolbarSeparator between groups.
  */
-export function ToolbarGroup({ label, children, className }: ToolbarGroupProps) {
+export function ToolbarGroup({
+  label,
+  children,
+  className,
+}: ToolbarGroupProps) {
   return (
-    <div className={cn("flex items-center gap-0.5", className)} role="group" aria-label={label}>
+    <div
+      className={cn("flex items-center gap-0.5", className)}
+      role="group"
+      aria-label={label}
+    >
       {children}
     </div>
   );
@@ -359,5 +379,10 @@ export function ToolbarGroup({ label, children, className }: ToolbarGroupProps) 
  * Toolbar separator.
  */
 export function ToolbarSeparator() {
-  return <div className="mx-1 h-6 w-px shrink-0 bg-[var(--doc-border)] sm:mx-2" role="separator" />;
+  return (
+    <div
+      className="mx-1 h-6 w-px shrink-0 bg-[var(--doc-border)] sm:mx-2"
+      role="separator"
+    />
+  );
 }

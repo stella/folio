@@ -24,7 +24,10 @@ import { resolveCssBorderStroke } from "../../layout-painter/borderStroke";
 import type { CssBorderStyle } from "../../utils/borderCss";
 import type { DisplayStroke, DisplayStrokePattern } from "../types";
 import { parseDisplayColor } from "./colors";
-import { HEAVY_UNDERLINE_WEIGHT, PLAIN_UNDERLINE_WEIGHT } from "./textDecorations";
+import {
+  HEAVY_UNDERLINE_WEIGHT,
+  PLAIN_UNDERLINE_WEIGHT,
+} from "./textDecorations";
 
 /** A pattern, or the absence of a line: an edge that paints nothing. */
 type StrokePattern = DisplayStrokePattern | "none";
@@ -117,15 +120,35 @@ export const UNDERLINE_STROKES = {
   double: { pattern: "double", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
   thick: { pattern: "solid", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
   dotted: { pattern: "dotted", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
-  dottedHeavy: { pattern: "dotted", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dottedHeavy: {
+    pattern: "dotted",
+    weight: HEAVY_UNDERLINE_WEIGHT,
+    strokes: 1,
+  },
   dash: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
-  dashedHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dashedHeavy: {
+    pattern: "dashed",
+    weight: HEAVY_UNDERLINE_WEIGHT,
+    strokes: 1,
+  },
   dashLong: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
-  dashLongHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dashLongHeavy: {
+    pattern: "dashed",
+    weight: HEAVY_UNDERLINE_WEIGHT,
+    strokes: 1,
+  },
   dotDash: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
-  dashDotHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dashDotHeavy: {
+    pattern: "dashed",
+    weight: HEAVY_UNDERLINE_WEIGHT,
+    strokes: 1,
+  },
   dotDotDash: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
-  dashDotDotHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dashDotDotHeavy: {
+    pattern: "dashed",
+    weight: HEAVY_UNDERLINE_WEIGHT,
+    strokes: 1,
+  },
   wave: { pattern: "wavy", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
   wavyHeavy: { pattern: "wavy", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
   wavyDouble: { pattern: "wavy", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 2 },
@@ -140,7 +163,10 @@ export type ResolveStrokeResult = {
   readonly unresolvedColor?: string;
 };
 
-const strokeWith = (border: BorderInput, pattern: StrokePattern): ResolveStrokeResult => {
+const strokeWith = (
+  border: BorderInput,
+  pattern: StrokePattern,
+): ResolveStrokeResult => {
   if (pattern === "none") {
     return {};
   }
@@ -156,7 +182,9 @@ const strokeWith = (border: BorderInput, pattern: StrokePattern): ResolveStrokeR
     return {};
   }
 
-  const colorSource = isSubPixelEncoded ? (border.color ?? "#000000") : css.color;
+  const colorSource = isSubPixelEncoded
+    ? (border.color ?? "#000000")
+    : css.color;
   const color = parseDisplayColor(colorSource);
   if (!color) {
     return { unresolvedColor: colorSource };
@@ -173,16 +201,26 @@ const strokeWith = (border: BorderInput, pattern: StrokePattern): ResolveStrokeR
 export const resolveBorderStroke = (border: BorderInput): ResolveStrokeResult =>
   strokeWith(
     border,
-    border.style === undefined ? DEFAULT_PATTERN : CSS_BORDER_STROKE_PATTERNS[border.style],
+    border.style === undefined
+      ? DEFAULT_PATTERN
+      : CSS_BORDER_STROKE_PATTERNS[border.style],
   );
 
-type OutlineInput = { color?: string; dash?: PresetLineDashVal; width?: number };
+type OutlineInput = {
+  color?: string;
+  dash?: PresetLineDashVal;
+  width?: number;
+};
 
 /** Turn a shape or text-box outline into a paintable stroke. */
-export const resolveOutlineStroke = (outline: OutlineInput): ResolveStrokeResult =>
+export const resolveOutlineStroke = (
+  outline: OutlineInput,
+): ResolveStrokeResult =>
   strokeWith(
     { color: outline.color, width: outline.width },
-    outline.dash === undefined ? DEFAULT_PATTERN : PRESET_DASH_STROKE_PATTERNS[outline.dash],
+    outline.dash === undefined
+      ? DEFAULT_PATTERN
+      : PRESET_DASH_STROKE_PATTERNS[outline.dash],
   );
 
 /**
@@ -190,14 +228,18 @@ export const resolveOutlineStroke = (outline: OutlineInput): ResolveStrokeResult
  * which Word draws as the plain single rule, so it resolves to that member's
  * row rather than to a default per field.
  */
-const underlineStrokes = (style: UnderlineStyle | undefined): UnderlineStrokes =>
+const underlineStrokes = (
+  style: UnderlineStyle | undefined,
+): UnderlineStrokes =>
   style === undefined ? UNDERLINE_STROKES.single : UNDERLINE_STROKES[style];
 
-export const underlinePattern = (style: UnderlineStyle | undefined): StrokePattern =>
-  underlineStrokes(style).pattern;
+export const underlinePattern = (
+  style: UnderlineStyle | undefined,
+): StrokePattern => underlineStrokes(style).pattern;
 
 export const underlineWeight = (style: UnderlineStyle | undefined): number =>
   underlineStrokes(style).weight;
 
-export const underlineStrokeCount = (style: UnderlineStyle | undefined): number =>
-  underlineStrokes(style).strokes;
+export const underlineStrokeCount = (
+  style: UnderlineStyle | undefined,
+): number => underlineStrokes(style).strokes;

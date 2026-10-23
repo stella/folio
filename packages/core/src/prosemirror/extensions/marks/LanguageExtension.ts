@@ -15,7 +15,9 @@ export const LanguageExtension = createMarkExtension({
       {
         tag: "span[lang]",
         getAttrs: (dom) =>
-          typeof dom === "string" ? false : { val: dom.getAttribute("lang") ?? undefined },
+          typeof dom === "string"
+            ? false
+            : { val: dom.getAttribute("lang") ?? undefined },
       },
     ],
     toDOM(mark) {

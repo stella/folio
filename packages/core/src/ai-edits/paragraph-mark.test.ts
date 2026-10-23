@@ -11,14 +11,19 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { FolioDocxReviewer } from "./headless";
 import { buildParagraphsDocx } from "./__fixtures__/paragraphs";
+import { FolioDocxReviewer } from "./headless";
 
 const STAMP = { date: "2024-03-01T00:00:00.000Z", idSeed: 500 };
 
-const textsOf = async (buffer: ArrayBuffer, view: "original" | "final"): Promise<string[]> => {
+const textsOf = async (
+  buffer: ArrayBuffer,
+  view: "original" | "final",
+): Promise<string[]> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-  return (reviewer.readReviewedStory({ view })?.snapshot.blocks ?? []).map(({ text }) => text);
+  return (reviewer.readReviewedStory({ view })?.snapshot.blocks ?? []).map(
+    ({ text }) => text,
+  );
 };
 
 type RunOptions = {
@@ -32,19 +37,30 @@ type RunOptions = {
 };
 
 /** Apply one operation to a generated document and hand back its two views. */
-const run = async ({ paragraphs, operation, mode, blockIndex, inTableCell }: RunOptions) => {
+const run = async ({
+  paragraphs,
+  operation,
+  mode,
+  blockIndex,
+  inTableCell,
+}: RunOptions) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
-    await buildParagraphsDocx(paragraphs, { ...(inTableCell === true && { inTableCell }) }),
+    await buildParagraphsDocx(paragraphs, {
+      ...(inTableCell === true && { inTableCell }),
+    }),
     { author: "compare" },
   );
   const snapshot = reviewer.snapshot();
   const blockId = snapshot.blocks[blockIndex]?.id ?? "";
-  const { applied, skipped } = reviewer.applyOperations([{ ...operation, blockId }], {
-    undefinedReferences: "refuse",
-    mode: mode ?? "tracked-changes",
-    snapshot,
-    revisionStamp: STAMP,
-  });
+  const { applied, skipped } = reviewer.applyOperations(
+    [{ ...operation, blockId }],
+    {
+      undefinedReferences: "refuse",
+      mode: mode ?? "tracked-changes",
+      snapshot,
+      revisionStamp: STAMP,
+    },
+  );
   const buffer = await reviewer.toBuffer();
   return {
     applied,
@@ -58,13 +74,26 @@ describe("splitBlock", () => {
   test("an inserted paragraph mark: accepting keeps the break, rejecting closes it", async () => {
     const { skipped, original, final } = await run({
       paragraphs: ["The buyer shall pay the seller.", "Delivery follows."],
-      operation: { id: "split", type: "splitBlock", blockId: "", offset: 15, separator: " " },
+      operation: {
+        id: "split",
+        type: "splitBlock",
+        blockId: "",
+        offset: 15,
+        separator: " ",
+      },
       blockIndex: 0,
     });
 
     expect(skipped).toEqual([]);
-    expect(original).toEqual(["The buyer shall pay the seller.", "Delivery follows."]);
-    expect(final).toEqual(["The buyer shall", "pay the seller.", "Delivery follows."]);
+    expect(original).toEqual([
+      "The buyer shall pay the seller.",
+      "Delivery follows.",
+    ]);
+    expect(final).toEqual([
+      "The buyer shall",
+      "pay the seller.",
+      "Delivery follows.",
+    ]);
   });
 
   test("without a separator the break keeps every character", async () => {
@@ -82,7 +111,13 @@ describe("splitBlock", () => {
   test("direct mode splits without a revision", async () => {
     const { skipped, original, final } = await run({
       paragraphs: ["The buyer shall pay the seller."],
-      operation: { id: "split", type: "splitBlock", blockId: "", offset: 15, separator: " " },
+      operation: {
+        id: "split",
+        type: "splitBlock",
+        blockId: "",
+        offset: 15,
+        separator: " ",
+      },
       mode: "direct",
       blockIndex: 0,
     });
@@ -95,7 +130,13 @@ describe("splitBlock", () => {
   test("refuses a separator that is not there any more", async () => {
     const { skipped } = await run({
       paragraphs: ["The buyer shall pay the seller."],
-      operation: { id: "split", type: "splitBlock", blockId: "", offset: 4, separator: " " },
+      operation: {
+        id: "split",
+        type: "splitBlock",
+        blockId: "",
+        offset: 4,
+        separator: " ",
+      },
       blockIndex: 0,
     });
 
@@ -118,7 +159,12 @@ describe("mergeBlockWithNext", () => {
   test("a deleted paragraph mark: accepting closes the break, rejecting keeps it", async () => {
     const { skipped, original, final } = await run({
       paragraphs: ["The buyer shall", "pay the seller."],
-      operation: { id: "merge", type: "mergeBlockWithNext", blockId: "", separator: " " },
+      operation: {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: "",
+        separator: " ",
+      },
       blockIndex: 0,
     });
 
@@ -130,7 +176,12 @@ describe("mergeBlockWithNext", () => {
   test("direct mode joins without a revision", async () => {
     const { skipped, final } = await run({
       paragraphs: ["The buyer shall", "pay the seller."],
-      operation: { id: "merge", type: "mergeBlockWithNext", blockId: "", separator: " " },
+      operation: {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: "",
+        separator: " ",
+      },
       mode: "direct",
       blockIndex: 0,
     });
@@ -142,7 +193,12 @@ describe("mergeBlockWithNext", () => {
   test("refuses the last paragraph of the story, which has nothing to join with", async () => {
     const { skipped } = await run({
       paragraphs: ["The buyer shall", "pay the seller."],
-      operation: { id: "merge", type: "mergeBlockWithNext", blockId: "", separator: " " },
+      operation: {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: "",
+        separator: " ",
+      },
       blockIndex: 1,
     });
 
@@ -156,7 +212,12 @@ describe("mergeBlockWithNext", () => {
     // would then have to do something no OOXML consumer can express.
     const { skipped } = await run({
       paragraphs: ["The buyer shall", "pay the seller."],
-      operation: { id: "merge", type: "mergeBlockWithNext", blockId: "", separator: " " },
+      operation: {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: "",
+        separator: " ",
+      },
       blockIndex: 1,
       inTableCell: true,
     });
@@ -167,13 +228,25 @@ describe("mergeBlockWithNext", () => {
   test("joins inside a table cell when there is a sibling paragraph in it", async () => {
     const { skipped, original, final } = await run({
       paragraphs: ["The buyer shall", "pay the seller."],
-      operation: { id: "merge", type: "mergeBlockWithNext", blockId: "", separator: " " },
+      operation: {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: "",
+        separator: " ",
+      },
       blockIndex: 0,
       inTableCell: true,
     });
 
     expect(skipped).toEqual([]);
-    expect(original).toEqual(["The buyer shall", "pay the seller.", "After the table."]);
-    expect(final).toEqual(["The buyer shall pay the seller.", "After the table."]);
+    expect(original).toEqual([
+      "The buyer shall",
+      "pay the seller.",
+      "After the table.",
+    ]);
+    expect(final).toEqual([
+      "The buyer shall pay the seller.",
+      "After the table.",
+    ]);
   });
 });

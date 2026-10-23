@@ -17,11 +17,16 @@ export type ParagraphFrame = {
 const paragraphFrames = new WeakMap<ParagraphBlock, ParagraphFrame>();
 const paragraphFrameTextBoxes = new WeakSet<TextBoxBlock>();
 
-export function setParagraphFrame(block: ParagraphBlock, frame: ParagraphFrame): void {
+export function setParagraphFrame(
+  block: ParagraphBlock,
+  frame: ParagraphFrame,
+): void {
   paragraphFrames.set(block, frame);
 }
 
-export function getParagraphFrame(block: ParagraphBlock): ParagraphFrame | undefined {
+export function getParagraphFrame(
+  block: ParagraphBlock,
+): ParagraphFrame | undefined {
   return paragraphFrames.get(block);
 }
 

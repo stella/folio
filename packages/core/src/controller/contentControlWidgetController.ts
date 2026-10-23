@@ -10,6 +10,7 @@
 
 import type { EditorView } from "prosemirror-view";
 
+import { Subscribable } from "../managers/Subscribable";
 import {
   CONTENT_CONTROL_WIDGET_EVENT_NAME,
   dispatchDatePick,
@@ -17,7 +18,6 @@ import {
   handleContentControlWidgetClick,
 } from "../prosemirror/plugins/contentControlWidgets";
 import type { ContentControlWidgetEvent } from "../prosemirror/plugins/contentControlWidgets";
-import { Subscribable } from "../managers/Subscribable";
 
 export type ContentControlListItem = {
   displayText: string;
@@ -60,10 +60,14 @@ const isListItem = (value: unknown): value is ContentControlListItem => {
   if (!("displayText" in value) || !("value" in value)) {
     return false;
   }
-  return typeof value.displayText === "string" && typeof value.value === "string";
+  return (
+    typeof value.displayText === "string" && typeof value.value === "string"
+  );
 };
 
-export const parseContentControlListItems = (raw: string | undefined): ContentControlListItem[] => {
+export const parseContentControlListItems = (
+  raw: string | undefined,
+): ContentControlListItem[] => {
   if (!raw) {
     return [];
   }
@@ -80,13 +84,18 @@ export const parseContentControlListItems = (raw: string | undefined): ContentCo
 };
 
 const pickerPosition = (
-  event: Extract<ContentControlWidgetEvent, { kind: "dropdownOpen" | "datePick" }>,
+  event: Extract<
+    ContentControlWidgetEvent,
+    { kind: "dropdownOpen" | "datePick" }
+  >,
 ): ContentControlPickerPosition => {
   const rect = event.anchor.getBoundingClientRect();
   return { x: rect.left, y: rect.bottom + PICKER_GAP_PX };
 };
 
-const isContentControlWidgetEvent = (value: unknown): value is ContentControlWidgetEvent => {
+const isContentControlWidgetEvent = (
+  value: unknown,
+): value is ContentControlWidgetEvent => {
   if (typeof value !== "object" || value === null || !("kind" in value)) {
     return false;
   }
@@ -108,13 +117,15 @@ const isContentControlWidgetEvent = (value: unknown): value is ContentControlWid
       "sdtType" in value &&
       (value.sdtType === "dropdown" || value.sdtType === "comboBox") &&
       "listItemsJson" in value &&
-      (value.listItemsJson === undefined || typeof value.listItemsJson === "string")
+      (value.listItemsJson === undefined ||
+        typeof value.listItemsJson === "string")
     );
   }
   if (value.kind === "datePick") {
     return (
       "currentValue" in value &&
-      (value.currentValue === undefined || typeof value.currentValue === "string")
+      (value.currentValue === undefined ||
+        typeof value.currentValue === "string")
     );
   }
   return value.kind === "refused" && "sdtType" in value && "error" in value;
@@ -140,7 +151,10 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
     this.view = view;
     this.viewDom = view?.dom ?? null;
     this.eventRoot = eventRoot;
-    this.viewDom?.addEventListener(CONTENT_CONTROL_WIDGET_EVENT_NAME, this.onDomEvent);
+    this.viewDom?.addEventListener(
+      CONTENT_CONTROL_WIDGET_EVENT_NAME,
+      this.onDomEvent,
+    );
     this.eventRoot?.addEventListener("click", this.onPaintedClick);
   }
 
@@ -230,7 +244,9 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
 
   private readonly onPointerDown = (): void => this.close();
 
-  private open(snapshot: Exclude<ContentControlWidgetSnapshot, { status: "closed" }>): void {
+  private open(
+    snapshot: Exclude<ContentControlWidgetSnapshot, { status: "closed" }>,
+  ): void {
     this.removeDismissListeners();
     this.ownerWindow = this.viewDom?.ownerDocument.defaultView ?? null;
     this.ownerWindow?.addEventListener("keydown", this.onKeyDown);
@@ -248,7 +264,10 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
 
   private unbindView(): void {
     this.close();
-    this.viewDom?.removeEventListener(CONTENT_CONTROL_WIDGET_EVENT_NAME, this.onDomEvent);
+    this.viewDom?.removeEventListener(
+      CONTENT_CONTROL_WIDGET_EVENT_NAME,
+      this.onDomEvent,
+    );
     this.eventRoot?.removeEventListener("click", this.onPaintedClick);
     this.viewDom = null;
     this.eventRoot = null;

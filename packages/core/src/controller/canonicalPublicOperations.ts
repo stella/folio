@@ -1,53 +1,74 @@
 /** Public batches compile against the read projection; only the canonical journal publishes. */
 import { panic, Result, TaggedError } from "better-result";
-import {
-  applyDocumentOps,
-  freshCommentId,
-  findStoryBody,
-  paragraphLength,
-  type TextPosition,
-  OP_STORIES,
-  compileEditorIntent,
-  createEditorIntentIdAllocator,
-  documentStories,
-  type DocumentOp,
-  type EditorIntent,
-  type OpStory,
-  type RunPropsPatch,
-} from "@stll/docx-core/ops";
-import type { Document } from "../types/document";
-import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
-import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import { Mark } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
+
 import {
+  applyDocumentOps,
+  compileEditorIntent,
+  createEditorIntentIdAllocator,
+  type DocumentOp,
+  documentStories,
+  type EditorIntent,
+  findStoryBody,
+  freshCommentId,
+  OP_STORIES,
+  type OpStory,
+  paragraphLength,
+  type RunPropsPatch,
+  type TextPosition,
+} from "@stll/docx-core/ops";
+
+import {
+  splitsGraphemeCluster,
+  splitsSurrogatePair,
+} from "../ai-edits/character-boundaries";
+import {
+  buildCleanBlockText,
+  resolveCleanTextRange,
+} from "../ai-edits/clean-text";
+import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
+import {
+  collectNoteReferenceLabels,
+  hashFolioAIBlockText,
+} from "../ai-edits/snapshot";
+import type {
+  FolioAIEditNormalization,
+  FolioAIEditSkippedOperation,
+  FolioAIEditSkipReason,
+} from "../ai-edits/types";
+import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
+import {
+  type ApplyFolioDocumentOperationsOptions,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperation,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationResult,
+  type FolioDocumentOperationStory,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
   getFolioDocumentOperationIssues,
   getFolioDocumentOperationReceiptsForStory,
   parseFolioDocumentOperationBatch,
-  type ApplyFolioDocumentOperationsOptions,
-  type FolioDocumentOperation,
-  type FolioDocumentOperationResult,
-  type FolioDocumentOperationStory,
-  type FolioDocumentOperationBatch,
-  type FolioDocumentOperationUndoHandle,
-  type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import { buildCleanBlockText, resolveCleanTextRange } from "../ai-edits/clean-text";
-import { collectNoteReferenceLabels, hashFolioAIBlockText } from "../ai-edits/snapshot";
-import type {
-  FolioAIEditSkippedOperation,
-  FolioAIEditSkipReason,
-  FolioAIEditNormalization,
-} from "../ai-edits/types";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
-import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
-import { type CanonicalCommit, type CanonicalSession } from "./canonicalSession";
+import {
+  CANONICAL_GAP,
+  type CanonicalGap,
+} from "../types/canonicalCapabilities";
+import type { Document } from "../types/document";
+import {
+  canonicalCommentBody,
+  compileCanonicalComments,
+} from "./canonicalComments";
+import {
+  type CanonicalCommit,
+  type CanonicalSession,
+} from "./canonicalSession";
 
-import { canonicalCommentBody, compileCanonicalComments } from "./canonicalComments";
-import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
-
-type CanonicalPublicOperationRefusal = NonNullable<FolioAIEditSkippedOperation["canonicalRefusal"]>;
+type CanonicalPublicOperationRefusal = NonNullable<
+  FolioAIEditSkippedOperation["canonicalRefusal"]
+>;
 
 /** A new public kind cannot bypass a canonical compiler/refusal decision. */
 export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS = {
@@ -72,7 +93,10 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS = {
   deleteTableColumn: CANONICAL_GAP.publicTableStructure,
   mergeTableCells: CANONICAL_GAP.publicTableStructure,
   splitTableCell: CANONICAL_GAP.publicTableStructure,
-} as const satisfies Record<FolioDocumentOperation["type"], "compile" | CanonicalGap>;
+} as const satisfies Record<
+  FolioDocumentOperation["type"],
+  "compile" | CanonicalGap
+>;
 
 export type CanonicalPublicOperationOptions = Omit<
   ApplyFolioDocumentOperationsOptions,
@@ -80,9 +104,9 @@ export type CanonicalPublicOperationOptions = Omit<
 >;
 
 type CommentOperation = {
-  [Operation in FolioDocumentOperation as Operation["type"]]: "comment" extends keyof Operation
-    ? Operation
-    : never;
+  [
+    Operation in FolioDocumentOperation as Operation["type"]
+  ]: "comment" extends keyof Operation ? Operation : never;
 }[FolioDocumentOperation["type"]];
 
 type ResolvedOperation = {
@@ -171,7 +195,9 @@ const compilePublicIntents = ({
               revision: { id: firstRevisionId, author, date },
               newIds: {
                 control: ids.newIds.control,
-                revision: ids.newIds.revision.map((_, index) => firstRevisionId + index + 1),
+                revision: ids.newIds.revision.map(
+                  (_, index) => firstRevisionId + index + 1,
+                ),
               },
             },
     });
@@ -181,7 +207,8 @@ const compilePublicIntents = ({
     document = applied.value.document;
     ops.push(...compiled.value.ops);
     revisions.push(...applied.value.revisions);
-    for (const id of applied.value.revisions) nextRevisionId = Math.max(nextRevisionId, id + 1);
+    for (const id of applied.value.revisions)
+      nextRevisionId = Math.max(nextRevisionId, id + 1);
   }
   return Result.ok({ document, ops, revisions, nextRevisionId });
 };
@@ -217,7 +244,10 @@ const canonicalPublicStory = (story: FolioDocumentOperationStory): OpStory => {
   }
 };
 
-const batchStatus = (batch: FolioDocumentOperationBatch, skippedCount: number) => {
+const batchStatus = (
+  batch: FolioDocumentOperationBatch,
+  skippedCount: number,
+) => {
   if (batch.dryRun) return "previewed" as const;
   if (batch.atomic && skippedCount > 0) return "rejected" as const;
   return "committed" as const;
@@ -238,7 +268,9 @@ export class CanonicalPublicOperations {
     this.options = options;
   }
 
-  apply(options: CanonicalPublicOperationOptions): FolioDocumentOperationResult {
+  apply(
+    options: CanonicalPublicOperationOptions,
+  ): FolioDocumentOperationResult {
     const batch = parseFolioDocumentOperationBatch(options.batch);
     const { session } = this.options;
     const publicStory = options.story ?? "main";
@@ -261,8 +293,16 @@ export class CanonicalPublicOperations {
           );
       }
     }
-    const skip = (id: string, reason: FolioAIEditSkipReason, message?: string) => {
-      skipped.push({ id, reason, ...(message === undefined ? {} : { message }) });
+    const skip = (
+      id: string,
+      reason: FolioAIEditSkipReason,
+      message?: string,
+    ) => {
+      skipped.push({
+        id,
+        reason,
+        ...(message === undefined ? {} : { message }),
+      });
     };
     const result = (
       applied: FolioDocumentOperationResult["applied"],
@@ -293,7 +333,9 @@ export class CanonicalPublicOperations {
     };
     for (const operation of batch.operations) {
       if (story !== OP_STORIES.MAIN) {
-        refusals.set(operation.id, { gap: CANONICAL_GAP.publicSecondaryStories });
+        refusals.set(operation.id, {
+          gap: CANONICAL_GAP.publicSecondaryStories,
+        });
         skip(
           operation.id,
           "unsupportedBlock",
@@ -309,10 +351,17 @@ export class CanonicalPublicOperations {
         refusals.set(operation.id, {
           gap: CANONICAL_GAP.publicSuggestedMode,
         });
-        skip(operation.id, "unsupportedMode", "Canonical pending suggestions are unavailable.");
+        skip(
+          operation.id,
+          "unsupportedMode",
+          "Canonical pending suggestions are unavailable.",
+        );
         continue;
       }
-      if (options.tableTemplates !== undefined || options.undefinedReferences === "keep") {
+      if (
+        options.tableTemplates !== undefined ||
+        options.undefinedReferences === "keep"
+      ) {
         refusals.set(operation.id, {
           gap: CANONICAL_GAP.publicUnsupportedInline,
         });
@@ -323,7 +372,8 @@ export class CanonicalPublicOperations {
         );
         continue;
       }
-      const disposition = CANONICAL_PUBLIC_OPERATION_DISPOSITIONS[operation.type];
+      const disposition =
+        CANONICAL_PUBLIC_OPERATION_DISPOSITIONS[operation.type];
       if (disposition !== "compile") {
         refusals.set(operation.id, {
           gap: disposition,
@@ -344,7 +394,9 @@ export class CanonicalPublicOperations {
         resolved.some(
           ({ from, to }) =>
             (compiled.value.from < to && compiled.value.to > from) ||
-            (from === to && compiled.value.from <= from && compiled.value.to >= from) ||
+            (from === to &&
+              compiled.value.from <= from &&
+              compiled.value.to >= from) ||
             (compiled.value.from === compiled.value.to &&
               compiled.value.from >= from &&
               compiled.value.from <= to),
@@ -356,19 +408,28 @@ export class CanonicalPublicOperations {
       resolved.push(compiled.value);
     }
     if (batch.atomic && skipped.length > 0) {
-      for (const { operation } of resolved) skip(operation.id, "atomicBatchRejected");
+      for (const { operation } of resolved)
+        skip(operation.id, "atomicBatchRejected");
       return result([], null);
     }
-    if (!state || projected.isErr() || session.isComposing) return result([], null);
+    if (!state || projected.isErr() || session.isComposing)
+      return result([], null);
     // Descending read positions keep independent snapshot coordinates valid.
     resolved.sort((left, right) => right.from - left.from);
     let document = session.document;
     const ops: DocumentOp[] = [];
-    const appliedById = new Map<string, FolioDocumentOperationResult["applied"][number]>();
+    const appliedById = new Map<
+      string,
+      FolioDocumentOperationResult["applied"][number]
+    >();
     const allocate = createEditorIntentIdAllocator();
     const date = options.revisionStamp?.date ?? new Date().toISOString();
     for (const resolvedOperation of resolved) {
-      const { operation, intents, normalizations: adjustments } = resolvedOperation;
+      const {
+        operation,
+        intents,
+        normalizations: adjustments,
+      } = resolvedOperation;
       const compiled = compilePublicIntents({
         document,
         intents,
@@ -395,23 +456,36 @@ export class CanonicalPublicOperations {
           const { comment } = resolvedOperation;
           const id = freshCommentId(nextDocument);
           const before = findStoryBody(document, story)?.content.find(
-            (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
+            (block) =>
+              block.type === "paragraph" &&
+              block.paraId === comment.from.blockId,
           );
           const after = findStoryBody(nextDocument, story)?.content.find(
-            (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
+            (block) =>
+              block.type === "paragraph" &&
+              block.paraId === comment.from.blockId,
           );
-          if (id.isErr() || before?.type !== "paragraph" || after?.type !== "paragraph") {
+          if (
+            id.isErr() ||
+            before?.type !== "paragraph" ||
+            after?.type !== "paragraph"
+          ) {
             refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
             skip(
               operation.id,
               "unsupportedBlock",
-              id.isErr() ? id.error.message : "The comment anchor no longer exists.",
+              id.isErr()
+                ? id.error.message
+                : "The comment anchor no longer exists.",
             );
             continue;
           }
           const to = {
             ...comment.to,
-            offset: comment.to.offset + paragraphLength(after) - paragraphLength(before),
+            offset:
+              comment.to.offset +
+              paragraphLength(after) -
+              paragraphLength(before),
           };
           const commented = compileCanonicalComments({
             document: nextDocument,
@@ -452,7 +526,10 @@ export class CanonicalPublicOperations {
       normalizations.push(...adjustments);
       document = nextDocument;
       ops.push(...operationOps);
-      nextRevisionId = Math.max(compiled.value.nextRevisionId, (commentId ?? -1) + 1);
+      nextRevisionId = Math.max(
+        compiled.value.nextRevisionId,
+        (commentId ?? -1) + 1,
+      );
       const revisionIds = compiled.value.revisions;
       const revisionId = revisionIds.at(0);
       appliedById.set(operation.id, {
@@ -462,7 +539,8 @@ export class CanonicalPublicOperations {
       });
     }
     if (batch.atomic && skipped.length > 0) {
-      for (const { id } of appliedById.values()) skip(id, "atomicBatchRejected");
+      for (const { id } of appliedById.values())
+        skip(id, "atomicBatchRejected");
       return result([], null);
     }
     if (ops.length === 0) return result([], null);
@@ -477,7 +555,9 @@ export class CanonicalPublicOperations {
         });
         skip(
           id,
-          prepared.error.reason === "noChange" ? "noopOperation" : "unsupportedBlock",
+          prepared.error.reason === "noChange"
+            ? "noopOperation"
+            : "unsupportedBlock",
           prepared.error.message,
         );
       }
@@ -500,26 +580,48 @@ export class CanonicalPublicOperations {
     return result(applied, handle);
   }
 
-  undo(handle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult {
+  undo(
+    handle: FolioDocumentOperationUndoHandle,
+  ): FolioDocumentOperationUndoResult {
     const index = this.handles.findIndex(
-      ({ handle: existing }) => existing.id === handle.id && existing.type === handle.type,
+      ({ handle: existing }) =>
+        existing.id === handle.id && existing.type === handle.type,
     );
-    if (index < 0) return { status: "rejected", undoHandle: handle, reason: "unknownHandle" };
+    if (index < 0)
+      return {
+        status: "rejected",
+        undoHandle: handle,
+        reason: "unknownHandle",
+      };
     if (index !== this.handles.length - 1)
       return { status: "rejected", undoHandle: handle, reason: "notLatest" };
     const entry = this.handles.at(-1);
     const { session } = this.options;
     if (!entry || entry.version !== session.version)
-      return { status: "rejected", undoHandle: handle, reason: "documentChanged" };
+      return {
+        status: "rejected",
+        undoHandle: handle,
+        reason: "documentChanged",
+      };
     const state = this.options.getState(entry.story);
-    if (!state) return { status: "rejected", undoHandle: handle, reason: "documentChanged" };
+    if (!state)
+      return {
+        status: "rejected",
+        undoHandle: handle,
+        reason: "documentChanged",
+      };
     const prepared = session.prepareUndo(state, entry.story);
     if (prepared.isErr() || !this.options.publish(prepared.value))
-      return { status: "rejected", undoHandle: handle, reason: "documentChanged" };
+      return {
+        status: "rejected",
+        undoHandle: handle,
+        reason: "documentChanged",
+      };
     this.handles.pop();
     // Undo advances the version while exposing the preceding unchanged journal group.
     const previous = this.handles.at(-1);
-    if (previous && previous.version === entry.version - 1) previous.version = session.version;
+    if (previous && previous.version === entry.version - 1)
+      previous.version = session.version;
     return { status: "undone", undoHandle: handle };
   }
 
@@ -566,7 +668,10 @@ export class CanonicalPublicOperations {
     if (!anchor || projection.isErr()) return refusal("missingBlock");
     const paragraph = projection.value.paragraph(blockId);
     if (!paragraph) return refusal("missingBlock");
-    if (paragraph.source.pPrMark?.kind === "del" || paragraph.source.pPrMark?.kind === "moveFrom")
+    if (
+      paragraph.source.pPrMark?.kind === "del" ||
+      paragraph.source.pPrMark?.kind === "moveFrom"
+    )
       return refusal("pendingDeletion");
     const clean = buildCleanBlockText(paragraph.node, paragraph.start - 1, {
       fieldResults: "text",
@@ -584,7 +689,8 @@ export class CanonicalPublicOperations {
         if (operation.find === "") return refusal("emptyOperation");
         start = clean.text.indexOf(operation.find);
         if (start < 0) return refusal("missingFind");
-        if (clean.text.indexOf(operation.find, start + 1) >= 0) return refusal("ambiguousFind");
+        if (clean.text.indexOf(operation.find, start + 1) >= 0)
+          return refusal("ambiguousFind");
         end = start + operation.find.length;
         text = operation.replace;
         break;
@@ -593,7 +699,8 @@ export class CanonicalPublicOperations {
         if (operation.quote !== undefined) {
           start = clean.text.indexOf(operation.quote);
           if (start < 0) return refusal("missingFind");
-          if (clean.text.indexOf(operation.quote, start + 1) >= 0) return refusal("ambiguousFind");
+          if (clean.text.indexOf(operation.quote, start + 1) >= 0)
+            return refusal("ambiguousFind");
           end = start + operation.quote.length;
         }
         break;
@@ -602,12 +709,18 @@ export class CanonicalPublicOperations {
       case "commentOnRange":
         start = operation.range.startOffset;
         end = operation.range.endOffset;
-        if (hashFolioAIBlockText(clean.text.slice(start, end)) !== operation.range.selectedTextHash)
+        if (
+          hashFolioAIBlockText(clean.text.slice(start, end)) !==
+          operation.range.selectedTextHash
+        )
           return refusal("staleRange");
         text = operation.type === "replaceRange" ? operation.replace : "";
         break;
       case "replaceBlock":
-        if (operation.styleId !== undefined || operation.preserveFormatting === false)
+        if (
+          operation.styleId !== undefined ||
+          operation.preserveFormatting === false
+        )
           return refusal(
             "unsupportedBlock",
             "Canonical replacement paragraph properties are unavailable.",
@@ -615,7 +728,10 @@ export class CanonicalPublicOperations {
         text = operation.text;
         break;
       case "splitBlock":
-        if (operation.firstParagraphProperties || operation.secondParagraphProperties)
+        if (
+          operation.firstParagraphProperties ||
+          operation.secondParagraphProperties
+        )
           return refusal(
             "unsupportedBlock",
             "Canonical split paragraph properties are unavailable.",
@@ -646,7 +762,8 @@ export class CanonicalPublicOperations {
     if (
       [start, end].some(
         (offset) =>
-          splitsSurrogatePair(clean.text, offset) || splitsGraphemeCluster(clean.text, offset),
+          splitsSurrogatePair(clean.text, offset) ||
+          splitsGraphemeCluster(clean.text, offset),
       )
     )
       return refusal("splitsCharacter");
@@ -660,16 +777,33 @@ export class CanonicalPublicOperations {
     )
       return refusal("protectedReference");
     if (stripInlineEmphasisMarkers(text) !== text)
-      return refusal("unsupportedBlock", "Canonical public emphasis replacements are unavailable.");
+      return refusal(
+        "unsupportedBlock",
+        "Canonical public emphasis replacements are unavailable.",
+      );
     if (/\[\^(?:e)?\d+\]/u.test(text) || /[\t\r\n]/u.test(text))
-      return refusal("unsupportedBlock", "Canonical public replacements require plain text.");
-    const range = resolveCleanTextRange({ cleanBlock: clean, startOffset: start, endOffset: end });
+      return refusal(
+        "unsupportedBlock",
+        "Canonical public replacements require plain text.",
+      );
+    const range = resolveCleanTextRange({
+      cleanBlock: clean,
+      startOffset: start,
+      endOffset: end,
+    });
     if (!range) return refusal("staleRange");
     const from = projection.value.addressAt(range.from);
     const to = projection.value.addressAt(range.to);
     if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
-    const resolvedComment = resolveComment({ operation, from: from.value, to: to.value });
-    if (operation.type === "commentOnBlock" || operation.type === "commentOnRange")
+    const resolvedComment = resolveComment({
+      operation,
+      from: from.value,
+      to: to.value,
+    });
+    if (
+      operation.type === "commentOnBlock" ||
+      operation.type === "commentOnRange"
+    )
       return Result.ok({
         ...resolvedComment,
         intents: [],
@@ -692,24 +826,34 @@ export class CanonicalPublicOperations {
           type: "splitParagraph",
           at: from.value,
           to: to.value,
-          newBlockId: createEditorIntentIdAllocator()(this.options.session.document, {
-            type: "splitParagraph",
-            at: from.value,
-            to: to.value,
-          }).newBlockId,
+          newBlockId: createEditorIntentIdAllocator()(
+            this.options.session.document,
+            {
+              type: "splitParagraph",
+              at: from.value,
+              to: to.value,
+            },
+          ).newBlockId,
         };
         break;
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
-        intent = { type: "joinParagraphs", story, blockId, nextBlockId: next.blockId };
+        intent = {
+          type: "joinParagraphs",
+          story,
+          blockId,
+          nextBlockId: next.blockId,
+        };
         break;
       }
       case "formatRange": {
         const formatting = operation.formatting;
         const patch = {
           ...(formatting.bold === undefined ? {} : { bold: formatting.bold }),
-          ...(formatting.italic === undefined ? {} : { italic: formatting.italic }),
+          ...(formatting.italic === undefined
+            ? {}
+            : { italic: formatting.italic }),
           ...(formatting.underline === undefined
             ? {}
             : {
@@ -723,14 +867,22 @@ export class CanonicalPublicOperations {
             : { strike: formatting.strike, doubleStrike: null }),
           ...(formatting.fontSizePt === undefined
             ? {}
-            : { fontSize: formatting.fontSizePt === null ? null : formatting.fontSizePt * 2 }),
+            : {
+                fontSize:
+                  formatting.fontSizePt === null
+                    ? null
+                    : formatting.fontSizePt * 2,
+              }),
           ...(formatting.fontFamily === undefined
             ? {}
             : {
                 fontFamily:
                   formatting.fontFamily === null
                     ? null
-                    : { ascii: formatting.fontFamily, hAnsi: formatting.fontFamily },
+                    : {
+                        ascii: formatting.fontFamily,
+                        hAnsi: formatting.fontFamily,
+                      },
               }),
           ...(formatting.color === undefined
             ? {}
@@ -738,7 +890,9 @@ export class CanonicalPublicOperations {
                 color:
                   formatting.color === null
                     ? null
-                    : { rgb: formatting.color.replace(/^#/u, "").toUpperCase() },
+                    : {
+                        rgb: formatting.color.replace(/^#/u, "").toUpperCase(),
+                      },
               }),
         } as const satisfies RunPropsPatch;
         intent = { type: "formatRun", from: from.value, to: to.value, patch };
@@ -805,35 +959,51 @@ export class CanonicalPublicOperations {
             gap.from - paragraph.start,
             gap.to - paragraph.start,
             (node) => {
-              if (!node.isText || node.marks.some((mark) => mark.type.name === "deletion")) return;
-              const marks = node.marks.filter((mark) => mark.type.name !== "insertion");
+              if (
+                !node.isText ||
+                node.marks.some((mark) => mark.type.name === "deletion")
+              )
+                return;
+              const marks = node.marks.filter(
+                (mark) => mark.type.name !== "insertion",
+              );
               if (first === null) first = marks;
               else if (!Mark.sameSet(first, marks)) uniform = false;
             },
           );
           if (!uniform && normalizations.length === 0)
-            normalizations.push({ id: operation.id, code: "uniformReplacementFormatting" });
+            normalizations.push({
+              id: operation.id,
+              code: "uniformReplacementFormatting",
+            });
         }
         const changeFrom = projection.value.addressAt(gap.from);
         const changeTo = projection.value.addressAt(gap.to);
-        if (changeFrom.isErr() || changeTo.isErr()) return refusal("unsupportedBlock");
+        if (changeFrom.isErr() || changeTo.isErr())
+          return refusal("unsupportedBlock");
         intents.push({
           type: "replaceText",
           from: changeFrom.value,
           to: changeTo.value,
           text: change.text,
-          ...(intent.runPropsPatch === undefined ? {} : { runPropsPatch: intent.runPropsPatch }),
+          ...(intent.runPropsPatch === undefined
+            ? {}
+            : { runPropsPatch: intent.runPropsPatch }),
         });
       }
     } else intents.push(intent);
-    const structural = operation.type === "splitBlock" || operation.type === "mergeBlockWithNext";
+    const structural =
+      operation.type === "splitBlock" ||
+      operation.type === "mergeBlockWithNext";
     const nextParagraph =
-      operation.type === "mergeBlockWithNext" && intent.type === "joinParagraphs"
+      operation.type === "mergeBlockWithNext" &&
+      intent.type === "joinParagraphs"
         ? projection.value.paragraph(intent.nextBlockId)
         : undefined;
     let claimedTo = range.to;
     if (structural) claimedTo = paragraph.start + paragraph.node.content.size;
-    if (nextParagraph) claimedTo = nextParagraph.start + nextParagraph.node.content.size;
+    if (nextParagraph)
+      claimedTo = nextParagraph.start + nextParagraph.node.content.size;
     return Result.ok({
       ...resolvedComment,
       intents,

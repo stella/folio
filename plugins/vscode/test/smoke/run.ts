@@ -16,7 +16,13 @@ import path from "node:path";
 const extensionRoot = path.resolve(import.meta.dir, "..", "..");
 const repoRoot = path.resolve(extensionRoot, "..", "..");
 const suiteOut = path.join(extensionRoot, "out", "smoke", "suite.js");
-const FIXTURE = path.join(repoRoot, "packages", "playground", "public", "folio-showcase.docx");
+const FIXTURE = path.join(
+  repoRoot,
+  "packages",
+  "playground",
+  "public",
+  "folio-showcase.docx",
+);
 
 await stat(path.join(extensionRoot, "dist", "extension.js")).catch(() => {
   throw new Error("Build the extension first: bun run build");
@@ -33,15 +39,21 @@ await build({
   logLevel: "warning",
 });
 
-const workspace = await realpath(await mkdtemp(path.join(tmpdir(), "folio-smoke-workspace-")));
-const userData = await realpath(await mkdtemp(path.join(tmpdir(), "folio-smoke-profile-")));
+const workspace = await realpath(
+  await mkdtemp(path.join(tmpdir(), "folio-smoke-workspace-")),
+);
+const userData = await realpath(
+  await mkdtemp(path.join(tmpdir(), "folio-smoke-profile-")),
+);
 const documentPath = path.join(workspace, "Smoke test.docx");
 await copyFile(FIXTURE, documentPath);
 
 // A VS Code that hangs (a dialog nobody answers) fails the run instead of the job.
 const TIMEOUT_MS = 10 * 60 * 1000;
 const watchdog = setTimeout(() => {
-  console.error(`The smoke test did not finish within ${String(TIMEOUT_MS / 60_000)} minutes.`);
+  console.error(
+    `The smoke test did not finish within ${String(TIMEOUT_MS / 60_000)} minutes.`,
+  );
   process.exit(1);
 }, TIMEOUT_MS);
 
@@ -65,7 +77,9 @@ try {
       "--skip-welcome",
       "--skip-release-notes",
       // CI runners cannot give Chromium its sandbox.
-      ...(process.platform === "linux" ? ["--no-sandbox", "--disable-gpu"] : []),
+      ...(process.platform === "linux"
+        ? ["--no-sandbox", "--disable-gpu"]
+        : []),
     ],
   });
 } finally {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { ALL_SYMBOLS, SYMBOL_CATEGORIES, filterSymbols } from "./symbols";
+import { ALL_SYMBOLS, filterSymbols, SYMBOL_CATEGORIES } from "./symbols";
 
 describe("filterSymbols", () => {
   it("returns [] for an empty or whitespace query so callers fall back to the active category", () => {
@@ -30,7 +30,10 @@ describe("filterSymbols", () => {
 
 describe("symbol catalog", () => {
   it("flattens every category into ALL_SYMBOLS", () => {
-    const total = SYMBOL_CATEGORIES.reduce((sum, category) => sum + category.symbols.length, 0);
+    const total = SYMBOL_CATEGORIES.reduce(
+      (sum, category) => sum + category.symbols.length,
+      0,
+    );
     expect(ALL_SYMBOLS).toHaveLength(total);
   });
 

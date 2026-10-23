@@ -1,38 +1,47 @@
+import { panic } from "better-result";
 /** Reproducible, bounded operation sequences over seeded corpus models. */
 import { isDeepStrictEqual } from "node:util";
-import { panic } from "better-result";
-import type { Document, Paragraph, Table } from "../../../packages/docx-core/src/model/document";
-import {
-  applyDocumentOp,
-  allocateCommentAnchorIds,
-  freshCommentId,
-  normalizeForOps,
-  validateOpsDocument,
-  DOCUMENT_OP_TYPES,
-  OP_STORIES,
-  INHERIT_RUN_PROPS,
-  REVISION_DECISIONS,
-  type DocumentOp,
-  type AppliedDocumentOp,
-  type NoteStory,
-  sectionPropertiesAt,
-  type TableEditOp,
-} from "../../../packages/docx-core/src/ops/documentOps";
+
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
-import { repackDocx } from "@stll/folio-core/docx/rezip";
-import { unzipDocx } from "@stll/folio-core/docx/unzip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { serializeDocument } from "@stll/folio-core/docx/serializer/documentSerializer";
-import { storyParagraphs, blockListAt } from "../../../packages/docx-core/src/ops/blocks";
-import { leafSpans } from "../../../packages/docx-core/src/ops/leaves";
-import { tableGrid } from "../../../packages/docx-core/src/ops/tableGrid";
-import { paragraphLength } from "../../../packages/docx-core/src/ops/offsets";
+import { unzipDocx } from "@stll/folio-core/docx/unzip";
+
+import type {
+  Document,
+  Paragraph,
+  Table,
+} from "../../../packages/docx-core/src/model/document";
 import {
+  blockListAt,
+  storyParagraphs,
+} from "../../../packages/docx-core/src/ops/blocks";
+import {
+  allocateCommentAnchorIds,
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  freshCommentId,
+  INHERIT_RUN_PROPS,
+  normalizeForOps,
+  type NoteStory,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  sectionPropertiesAt,
+  type TableEditOp,
+  validateOpsDocument,
+} from "../../../packages/docx-core/src/ops/documentOps";
+import {
+  idKey,
   packageIdentityKeys,
   packageParagraphIds,
-  idKey,
 } from "../../../packages/docx-core/src/ops/ids";
+import { leafSpans } from "../../../packages/docx-core/src/ops/leaves";
+import { paragraphLength } from "../../../packages/docx-core/src/ops/offsets";
+import { tableGrid } from "../../../packages/docx-core/src/ops/tableGrid";
 import type { CorpusInvariantInput } from "./contract";
 
 export const OP_SEQUENCE_SEEDS = [0x17a3, 0x5b91, 0xcf27] as const;
@@ -45,7 +54,9 @@ export const exactOpModel = (value: unknown): unknown => {
   if (value instanceof Date) return new Date(value);
   if (Array.isArray(value)) return value.map(exactOpModel);
   if (value instanceof Map)
-    return new Map([...value].map(([key, entry]) => [key, exactOpModel(entry)]));
+    return new Map(
+      [...value].map(([key, entry]) => [key, exactOpModel(entry)]),
+    );
   if (
     typeof value !== "object" ||
     value === null ||
@@ -62,10 +73,13 @@ export const exactOpModel = (value: unknown): unknown => {
 export const sameOpModel = (left: unknown, right: unknown): boolean =>
   isDeepStrictEqual(exactOpModel(left), exactOpModel(right));
 
-export const serializeOpDocument = (document: Document): string => serializeDocument(document);
+export const serializeOpDocument = (document: Document): string =>
+  serializeDocument(document);
 
 /** ZIP metadata/compression is transport; compare all uncompressed part bytes. */
-export const serializedOpParts = async (document: Document): Promise<Map<string, Uint8Array>> => {
+export const serializedOpParts = async (
+  document: Document,
+): Promise<Map<string, Uint8Array>> => {
   const saved = await repackDocx(document, {
     updateModifiedDate: false,
     onDiagnostic: ({ type, part }) => panic(`${type}: ${part}`),
@@ -75,7 +89,10 @@ export const serializedOpParts = async (document: Document): Promise<Map<string,
     await Promise.all(
       Object.entries(raw.originalZip.files)
         .filter(([, file]) => !file.dir)
-        .map(async ([path, file]) => [path, await file.async("uint8array")] as const),
+        .map(
+          async ([path, file]) =>
+            [path, await file.async("uint8array")] as const,
+        ),
     ),
   );
 };
@@ -88,14 +105,18 @@ export const seedFromBytes = (bytes: Uint8Array): number => {
 
 const prepared = new WeakMap<Document, Promise<Document>>();
 /** Establish the public operations contract before measuring edits, once per parse. */
-export const prepareOpDocument = (input: CorpusInvariantInput): Promise<Document> => {
+export const prepareOpDocument = (
+  input: CorpusInvariantInput,
+): Promise<Document> => {
   const existing = prepared.get(input.parsed);
   if (existing !== undefined) return existing;
   const pending = (async () => {
     const seeded = await ensureParaIds(input.bytes);
     const parsed = seeded.alreadyComplete
       ? input.parsed
-      : await parseDocx(Uint8Array.from(seeded.docx).buffer, { preloadFonts: false });
+      : await parseDocx(Uint8Array.from(seeded.docx).buffer, {
+          preloadFonts: false,
+        });
     const document = normalizeForOps(parsed);
     const valid = validateOpsDocument(document);
     if (valid.isErr()) throw valid.error;
@@ -163,13 +184,15 @@ export const OP_GENERATOR_ROLES = {
 } as const satisfies Record<DocumentOp["type"], "generated" | "inverse">;
 
 type GeneratedOpType = {
-  [Kind in keyof typeof OP_GENERATOR_ROLES]: (typeof OP_GENERATOR_ROLES)[Kind] extends "generated"
-    ? Kind
-    : never;
+  [
+    Kind in keyof typeof OP_GENERATOR_ROLES
+  ]: (typeof OP_GENERATOR_ROLES)[Kind] extends "generated" ? Kind : never;
 }[keyof typeof OP_GENERATOR_ROLES];
-const isGeneratedFamily = (family: DocumentOp["type"]): family is GeneratedOpType =>
-  OP_GENERATOR_ROLES[family] === "generated";
-export const OP_SEQUENCE_FAMILIES = Object.values(DOCUMENT_OP_TYPES).filter(isGeneratedFamily);
+const isGeneratedFamily = (
+  family: DocumentOp["type"],
+): family is GeneratedOpType => OP_GENERATOR_ROLES[family] === "generated";
+export const OP_SEQUENCE_FAMILIES =
+  Object.values(DOCUMENT_OP_TYPES).filter(isGeneratedFamily);
 export const OP_SEQUENCE_LENGTH = OP_SEQUENCE_FAMILIES.length;
 
 /** The semantic subset also has a total decision, including newly added edit kinds. */
@@ -183,15 +206,18 @@ const TABLE_EDIT_FAMILIES = {
   setRowProps: true,
   setTableProps: true,
 } as const satisfies Record<TableEditOp["type"], true>;
-const isTableEditFamily = (family: GeneratedOpType): family is TableEditOp["type"] =>
-  Object.hasOwn(TABLE_EDIT_FAMILIES, family);
+const isTableEditFamily = (
+  family: GeneratedOpType,
+): family is TableEditOp["type"] => Object.hasOwn(TABLE_EDIT_FAMILIES, family);
 
 /** Resolve the table path already captured by the story walker, without rescanning the story. */
 const tableForParagraph = (
   document: Document,
   location: ReturnType<typeof storyParagraphs>[number],
 ) => {
-  const stepIndex = location.list.findLastIndex((step) => step.kind === "tableCell");
+  const stepIndex = location.list.findLastIndex(
+    (step) => step.kind === "tableCell",
+  );
   const step = location.list.at(stepIndex);
   if (step?.kind !== "tableCell") return undefined;
   const table = blockListAt(
@@ -209,7 +235,10 @@ const inferredGridWidth = (table: Table) => {
   return (
     table.columnWidths?.length ??
     (first?.formatting?.gridBefore ?? 0) +
-      (first?.cells.reduce((sum, cell) => sum + (cell.formatting?.gridSpan ?? 1), 0) ?? 0) +
+      (first?.cells.reduce(
+        (sum, cell) => sum + (cell.formatting?.gridSpan ?? 1),
+        0,
+      ) ?? 0) +
       (first?.formatting?.gridAfter ?? 0)
   );
 };
@@ -232,7 +261,8 @@ const candidate = ({
   let candidates = paragraphs;
   if (isTableEditFamily(family)) {
     const inTables = paragraphs.filter(
-      (candidateLocation) => tableForParagraph(document, candidateLocation) !== undefined,
+      (candidateLocation) =>
+        tableForParagraph(document, candidateLocation) !== undefined,
     );
     if (inTables.length > 0) candidates = inTables;
     if (family === DOCUMENT_OP_TYPES.SPLIT_CELL) {
@@ -256,7 +286,8 @@ const candidate = ({
       paragraph: { type: "paragraph", paraId: "00000001", content: [] },
     };
   }
-  if (location === undefined || location.paragraph.paraId === undefined) return undefined;
+  if (location === undefined || location.paragraph.paraId === undefined)
+    return undefined;
   const paragraph = location.paragraph;
   const blockId = location.paragraph.paraId;
   const length = paragraphLength(paragraph);
@@ -285,14 +316,20 @@ const candidate = ({
     freshRevision.length < MAX_NEW_IDS || freshControl.length < MAX_NEW_IDS;
     id += 1
   ) {
-    if (freshRevision.length < MAX_NEW_IDS && !taken.has(`revision:${id}`)) freshRevision.push(id);
-    if (freshControl.length < MAX_NEW_IDS && !taken.has(`control:${id}`)) freshControl.push(id);
+    if (freshRevision.length < MAX_NEW_IDS && !taken.has(`revision:${id}`))
+      freshRevision.push(id);
+    if (freshControl.length < MAX_NEW_IDS && !taken.has(`control:${id}`))
+      freshControl.push(id);
   }
   const revisionId = freshRevision.at(0);
   if (revisionId === undefined) return undefined;
   const review = tracked
     ? {
-        revision: { id: revisionId, author: "Corpus", date: "2026-01-01T00:00:00Z" },
+        revision: {
+          id: revisionId,
+          author: "Corpus",
+          date: "2026-01-01T00:00:00Z",
+        },
       }
     : {};
   const newIds = { revision: freshRevision.slice(1), control: freshControl };
@@ -304,7 +341,8 @@ const candidate = ({
   const end = { ...at, offset: Math.min(length, at.offset + 1 + choose(3)) };
   const sectionCount =
     document.package.document.content.filter(
-      (block) => block.type === "paragraph" && block.sectionProperties !== undefined,
+      (block) =>
+        block.type === "paragraph" && block.sectionProperties !== undefined,
     ).length + 1;
   switch (family) {
     case "createComment": {
@@ -312,7 +350,12 @@ const candidate = ({
       if (id.isErr()) return undefined;
       const op = {
         type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
-        comment: { id: id.value, author: "Corpus", done: false, content: [freshParagraph] },
+        comment: {
+          id: id.value,
+          author: "Corpus",
+          done: false,
+          content: [freshParagraph],
+        },
         anchor: { kind: "point", at },
       } as const satisfies DocumentOp;
       const anchorIds = allocateCommentAnchorIds(document, op);
@@ -345,7 +388,9 @@ const candidate = ({
         ? {
             type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
             id: comment.id,
-            scope: comments.some(({ id }) => id === comment.parentId) ? "reply" : "thread",
+            scope: comments.some(({ id }) => id === comment.parentId)
+              ? "reply"
+              : "thread",
           }
         : undefined;
     }
@@ -355,11 +400,15 @@ const candidate = ({
       if (!properties) return undefined;
       const kind = choose(2) === 0 ? "header" : "footer";
       const references =
-        kind === "header" ? properties.headerReferences : properties.footerReferences;
+        kind === "header"
+          ? properties.headerReferences
+          : properties.footerReferences;
       const availableVariants = (["default", "first", "even"] as const).filter(
         (variant) => !references?.some(({ type }) => type === variant),
       );
-      const referenceType = availableVariants.at(choose(availableVariants.length));
+      const referenceType = availableVariants.at(
+        choose(availableVariants.length),
+      );
       if (!referenceType) return undefined;
       let identity = 1;
       const used = (rId: string) =>
@@ -376,31 +425,46 @@ const candidate = ({
       };
     }
     case "removeHeaderFooter": {
-      const removableStories = Array.from({ length: sectionCount }, (_, sectionIndex) => {
-        const properties = sectionPropertiesAt(document, sectionIndex);
-        const headers =
-          properties?.headerReferences
-            ?.filter(({ rId }) => document.package.headers?.has(rId))
-            .map(
-              ({ type, rId }) =>
-                ({ sectionIndex, story: { kind: "header", rId }, referenceType: type }) as const,
-            ) ?? [];
-        const footers =
-          properties?.footerReferences
-            ?.filter(({ rId }) => document.package.footers?.has(rId))
-            .map(
-              ({ type, rId }) =>
-                ({ sectionIndex, story: { kind: "footer", rId }, referenceType: type }) as const,
-            ) ?? [];
-        return [...headers, ...footers];
-      }).flat();
+      const removableStories = Array.from(
+        { length: sectionCount },
+        (_, sectionIndex) => {
+          const properties = sectionPropertiesAt(document, sectionIndex);
+          const headers =
+            properties?.headerReferences
+              ?.filter(({ rId }) => document.package.headers?.has(rId))
+              .map(
+                ({ type, rId }) =>
+                  ({
+                    sectionIndex,
+                    story: { kind: "header", rId },
+                    referenceType: type,
+                  }) as const,
+              ) ?? [];
+          const footers =
+            properties?.footerReferences
+              ?.filter(({ rId }) => document.package.footers?.has(rId))
+              .map(
+                ({ type, rId }) =>
+                  ({
+                    sectionIndex,
+                    story: { kind: "footer", rId },
+                    referenceType: type,
+                  }) as const,
+              ) ?? [];
+          return [...headers, ...footers];
+        },
+      ).flat();
       const selected = removableStories.at(choose(removableStories.length));
-      return selected ? { type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER, ...selected } : undefined;
+      return selected
+        ? { type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER, ...selected }
+        : undefined;
     }
     case "addNote": {
       const kind = choose(2) === 0 ? "footnote" : "endnote";
       const collection =
-        kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+        kind === "footnote"
+          ? document.package.footnotes
+          : document.package.endnotes;
       let id = 1;
       while (collection?.some((note) => note.id === id)) id += 1;
       return {
@@ -410,41 +474,55 @@ const candidate = ({
       };
     }
     case "removeNote": {
-      const references = paragraphs.flatMap(({ paragraph: referenceParagraph }) =>
-        leafSpans(referenceParagraph.content).flatMap(({ node, before }) => {
-          if (node.type !== "footnoteRef" && node.type !== "endnoteRef") return [];
-          if (!referenceParagraph.paraId) return [];
-          const kind = node.type === "footnoteRef" ? "footnote" : "endnote";
-          const notes =
-            kind === "footnote" ? document.package.footnotes : document.package.endnotes;
-          if (!notes?.some(({ id }) => id === node.id)) return [];
-          return [
-            {
-              at: {
-                story: OP_STORIES.MAIN,
-                blockId: referenceParagraph.paraId,
-                offset: before.offset,
+      const references = paragraphs.flatMap(
+        ({ paragraph: referenceParagraph }) =>
+          leafSpans(referenceParagraph.content).flatMap(({ node, before }) => {
+            if (node.type !== "footnoteRef" && node.type !== "endnoteRef")
+              return [];
+            if (!referenceParagraph.paraId) return [];
+            const kind = node.type === "footnoteRef" ? "footnote" : "endnote";
+            const notes =
+              kind === "footnote"
+                ? document.package.footnotes
+                : document.package.endnotes;
+            if (!notes?.some(({ id }) => id === node.id)) return [];
+            return [
+              {
+                at: {
+                  story: OP_STORIES.MAIN,
+                  blockId: referenceParagraph.paraId,
+                  offset: before.offset,
+                },
+                story: { kind, id: node.id } satisfies NoteStory,
               },
-              story: { kind, id: node.id } satisfies NoteStory,
-            },
-          ];
-        }),
+            ];
+          }),
       );
       const selected = references.at(choose(references.length));
-      return selected ? { type: DOCUMENT_OP_TYPES.REMOVE_NOTE, ...selected } : undefined;
+      return selected
+        ? { type: DOCUMENT_OP_TYPES.REMOVE_NOTE, ...selected }
+        : undefined;
     }
     case "createNumberingInstance": {
       let numId = 1;
-      while (document.package.numbering?.nums.some((num) => num.numId === numId)) numId += 1;
+      while (
+        document.package.numbering?.nums.some((num) => num.numId === numId)
+      )
+        numId += 1;
       let abstractNumId = 1;
       while (
-        document.package.numbering?.abstractNums.some((num) => num.abstractNumId === abstractNumId)
+        document.package.numbering?.abstractNums.some(
+          (num) => num.abstractNumId === abstractNumId,
+        )
       )
         abstractNumId += 1;
       return {
         type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
         num: { numId, abstractNumId },
-        abstractNum: { abstractNumId, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+        abstractNum: {
+          abstractNumId,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
       };
     }
     case "setSectionProps": {
@@ -456,7 +534,8 @@ const candidate = ({
         sectionIndex,
         patch: {
           marginTop: properties.marginTop === 720 ? 1440 : 720,
-          evenAndOddHeaders: ([true, false, null] as const).at(choose(3)) ?? null,
+          evenAndOddHeaders:
+            ([true, false, null] as const).at(choose(3)) ?? null,
         },
       };
     }
@@ -478,7 +557,13 @@ const candidate = ({
         ...review,
       };
     case "deleteRange":
-      return { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at, to: end, newIds, ...review };
+      return {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at,
+        to: end,
+        newIds,
+        ...review,
+      };
     case "setRunProps":
       return {
         type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
@@ -493,16 +578,27 @@ const candidate = ({
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
         story: OP_STORIES.MAIN,
         blockId,
-        patch: { alignment: paragraph.formatting?.alignment === "center" ? "left" : "center" },
+        patch: {
+          alignment:
+            paragraph.formatting?.alignment === "center" ? "left" : "center",
+        },
         ...review,
       };
     case "splitBlock":
-      return { type: DOCUMENT_OP_TYPES.SPLIT_BLOCK, at, newBlockId, newIds, ...review };
+      return {
+        type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        at,
+        newBlockId,
+        newIds,
+        ...review,
+      };
     case "joinBlocks": {
-      const next = blockListAt(document.package.document.content, location.list).at(
-        location.index + 1,
-      );
-      if (next?.type !== "paragraph" || next.paraId === undefined) return undefined;
+      const next = blockListAt(
+        document.package.document.content,
+        location.list,
+      ).at(location.index + 1);
+      if (next?.type !== "paragraph" || next.paraId === undefined)
+        return undefined;
       return {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
         story: OP_STORIES.MAIN,
@@ -541,17 +637,29 @@ const candidate = ({
             {
               type: "tableRow",
               cells: [
-                { type: "tableCell", formatting: { gridSpan: 2 }, content: [freshParagraph] },
+                {
+                  type: "tableCell",
+                  formatting: { gridSpan: 2 },
+                  content: [freshParagraph],
+                },
               ],
             },
           ],
         },
       };
     case "deleteTable":
-      if (!location.list.some((step) => step.kind === "tableCell")) return undefined;
-      return { type: DOCUMENT_OP_TYPES.DELETE_TABLE, story: OP_STORIES.MAIN, blockId };
+      if (!location.list.some((step) => step.kind === "tableCell"))
+        return undefined;
+      return {
+        type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+        story: OP_STORIES.MAIN,
+        blockId,
+      };
     case "setContainerBlocks": {
-      const expected = blockListAt(document.package.document.content, location.list);
+      const expected = blockListAt(
+        document.package.document.content,
+        location.list,
+      );
       const blocks = [...expected];
       blocks.splice(location.index, 0, {
         type: "table",
@@ -559,7 +667,13 @@ const candidate = ({
         rows: [
           {
             type: "tableRow",
-            cells: [{ type: "tableCell", formatting: { gridSpan: 2 }, content: [freshParagraph] }],
+            cells: [
+              {
+                type: "tableCell",
+                formatting: { gridSpan: 2 },
+                content: [freshParagraph],
+              },
+            ],
           },
         ],
       });
@@ -595,7 +709,8 @@ const candidate = ({
       };
     }
     case "deleteRow":
-      if (!location.list.some((step) => step.kind === "tableCell")) return undefined;
+      if (!location.list.some((step) => step.kind === "tableCell"))
+        return undefined;
       return {
         type: DOCUMENT_OP_TYPES.DELETE_ROW,
         story: OP_STORIES.MAIN,
@@ -605,13 +720,16 @@ const candidate = ({
       };
     case "insertColumn": {
       const target = tableForParagraph(document, location);
-      const grid = target === undefined ? undefined : tableGrid(target.table, family);
+      const grid =
+        target === undefined ? undefined : tableGrid(target.table, family);
       const width = target === undefined ? 1 : inferredGridWidth(target.table);
       const column = choose(width + 1);
       const count = grid?.isOk()
         ? grid.value.rows.filter((cells, row) => {
-            const before = target?.table.rows.at(row)?.formatting?.gridBefore ?? 0;
-            const rowEnd = width - (target?.table.rows.at(row)?.formatting?.gridAfter ?? 0);
+            const before =
+              target?.table.rows.at(row)?.formatting?.gridBefore ?? 0;
+            const rowEnd =
+              width - (target?.table.rows.at(row)?.formatting?.gridAfter ?? 0);
             return (
               column >= before &&
               column <= rowEnd &&
@@ -636,14 +754,17 @@ const candidate = ({
         type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
         story: OP_STORIES.MAIN,
         blockId,
-        column: choose(target === undefined ? 1 : inferredGridWidth(target.table)),
+        column: choose(
+          target === undefined ? 1 : inferredGridWidth(target.table),
+        ),
         newIds,
         ...review,
       };
     }
     case "mergeCells": {
       const target = tableForParagraph(document, location);
-      const grid = target === undefined ? undefined : tableGrid(target.table, family);
+      const grid =
+        target === undefined ? undefined : tableGrid(target.table, family);
       const rowIndex = target?.rowIndex ?? 0;
       const cells = grid?.isOk() ? grid.value.rows.at(rowIndex) : undefined;
       return {
@@ -678,7 +799,10 @@ const candidate = ({
         type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
         story: OP_STORIES.MAIN,
         blockId,
-        columnWidths: Array.from({ length: Math.min(width, MAX_NEW_IDS) }, () => 900 + choose(600)),
+        columnWidths: Array.from(
+          { length: Math.min(width, MAX_NEW_IDS) },
+          () => 900 + choose(600),
+        ),
         newIds,
         ...review,
       };
@@ -711,7 +835,10 @@ const candidate = ({
         type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
         story: OP_STORIES.MAIN,
         blockId,
-        patch: { layout: target?.table.formatting?.layout === "fixed" ? "autofit" : "fixed" },
+        patch: {
+          layout:
+            target?.table.formatting?.layout === "fixed" ? "autofit" : "fixed",
+        },
         newIds,
         ...review,
       };
@@ -722,7 +849,10 @@ const candidate = ({
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
         revisionIds: revisions.slice(),
-        decision: choose(2) === 0 ? REVISION_DECISIONS.ACCEPT : REVISION_DECISIONS.REJECT,
+        decision:
+          choose(2) === 0
+            ? REVISION_DECISIONS.ACCEPT
+            : REVISION_DECISIONS.REJECT,
       };
     default: {
       const unreachable: never = family;
@@ -731,7 +861,11 @@ const candidate = ({
   }
 };
 
-export type OpSequenceStep = { before: Document; op: DocumentOp; edit: AppliedDocumentOp };
+export type OpSequenceStep = {
+  before: Document;
+  op: DocumentOp;
+  edit: AppliedDocumentOp;
+};
 export type OpSequence = {
   original: Document;
   originalModel: unknown;
@@ -744,7 +878,10 @@ export type OpSequence = {
 };
 
 /** A schedule covers every family; the file seed varies positions, modes and order. */
-export const generateOpSequence = (document: Document, seed: number): OpSequence => {
+export const generateOpSequence = (
+  document: Document,
+  seed: number,
+): OpSequence => {
   const original = cloneDocumentWithParagraphPropertySources(document);
   const originalModel = exactOpModel(original);
   const originalXml = serializeOpDocument(original);
@@ -757,7 +894,9 @@ export const generateOpSequence = (document: Document, seed: number): OpSequence
   const refusals: string[] = [];
   const inverseGroups: (readonly DocumentOp[])[] = [];
   for (let index = 0; index < OP_SEQUENCE_LENGTH; index += 1) {
-    const family = OP_SEQUENCE_FAMILIES.at((index + shift) % OP_SEQUENCE_FAMILIES.length);
+    const family = OP_SEQUENCE_FAMILIES.at(
+      (index + shift) % OP_SEQUENCE_FAMILIES.length,
+    );
     if (family === undefined)
       panic("The generated operation schedule must cover its declared family.");
     const op = candidate({
@@ -771,7 +910,8 @@ export const generateOpSequence = (document: Document, seed: number): OpSequence
     const before = current;
     const snapshot = exactOpModel(before);
     const applied = applyDocumentOp(before, op);
-    if (!isDeepStrictEqual(snapshot, exactOpModel(before))) mutations.push(op.type);
+    if (!isDeepStrictEqual(snapshot, exactOpModel(before)))
+      mutations.push(op.type);
     if (applied.isErr()) {
       refusals.push(`${op.type}:${applied.error.reason}`);
       continue;

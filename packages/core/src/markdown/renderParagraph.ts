@@ -13,23 +13,27 @@
  */
 
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
-import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
+import {
+  computeListRendering,
+  getCachedNumberingMap,
+} from "../docx/numberingParser";
 import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
-import { resolveParagraphList } from "../prosemirror/paragraphList";
 import {
   effectiveParagraphNumberingReference,
   paragraphNumberingAttr,
 } from "../prosemirror/numberingAttr";
+import { resolveParagraphList } from "../prosemirror/paragraphList";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
-import { renderParagraphInline } from "./renderRuns";
 import { inlineBreaksToHtml } from "./escape";
+import { renderParagraphInline } from "./renderRuns";
 import type { RenderContext } from "./types";
 
 /** Markdown has six heading levels; Word has nine. */
 const MAX_MARKDOWN_HEADING_LEVEL = 6;
 
 /** Explicit projection carried by canonical models that are not attached to a package. */
-const standaloneListRendering = (para: Paragraph): ListRendering | undefined => para.listRendering;
+const standaloneListRendering = (para: Paragraph): ListRendering | undefined =>
+  para.listRendering;
 
 /**
  * Render a paragraph and return the block text. No surrounding blank line: the
@@ -70,17 +74,22 @@ export function renderParagraphBlock(
     numPr: para.formatting?.numPr,
     numPrFromStyle: para.formatting?.numPrFromStyle,
   };
-  const numbering = pkg?.numbering ? getCachedNumberingMap(pkg.numbering) : null;
+  const numbering = pkg?.numbering
+    ? getCachedNumberingMap(pkg.numbering)
+    : null;
   const resolvedList = resolveParagraphList(
     { ...sources, inheritedReference: inheritedReference ?? null },
     numbering,
     standaloneListRendering(para),
   );
-  const resolvedRendering = resolvedList.kind === "marker" ? resolvedList.rendering : undefined;
+  const resolvedRendering =
+    resolvedList.kind === "marker" ? resolvedList.rendering : undefined;
   const counterAttrs = listLabelAttrsFromRendering(resolvedRendering, {
     ...sources,
     numPrFromStyle:
-      resolvedList.kind === "none" ? undefined : (inherited ?? sources.numPrFromStyle),
+      resolvedList.kind === "none"
+        ? undefined
+        : (inherited ?? sources.numPrFromStyle),
   });
   if (
     sources.numPr === undefined &&
@@ -97,11 +106,15 @@ export function renderParagraphBlock(
     counterAttrs._propertyChanges = para.propertyChanges.map(
       ({ previousFormatting, ...change }) => {
         if (!previousFormatting) return change;
-        const previousInherited = ctx.paragraphNumbering(previousFormatting.styleId);
-        const previousInheritedReference = effectiveParagraphNumberingReference({
-          numPr: undefined,
-          numPrFromStyle: previousInherited,
-        });
+        const previousInherited = ctx.paragraphNumbering(
+          previousFormatting.styleId,
+        );
+        const previousInheritedReference = effectiveParagraphNumberingReference(
+          {
+            numPr: undefined,
+            numPrFromStyle: previousInherited,
+          },
+        );
         const previousSources = {
           numPr: previousFormatting.numPr,
           numPrFromStyle: previousFormatting.numPrFromStyle,
@@ -154,11 +167,15 @@ export function renderParagraphBlock(
       // Whitespace without a visible list label carries no text block.
       return { type: "paragraph", markdown: "" };
     }
-    const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
+    const hashes = "#".repeat(
+      Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1),
+    );
     // ATX headings occupy one source line; physical newlines create new blocks.
     const headingInline = inlineBreaksToHtml(inline);
     return {
-      markdown: label ? `${hashes} ${label} ${headingInline}` : `${hashes} ${headingInline}`,
+      markdown: label
+        ? `${hashes} ${label} ${headingInline}`
+        : `${hashes} ${headingInline}`,
       type: "paragraph",
     };
   }
@@ -168,8 +185,9 @@ export function renderParagraphBlock(
   // predecessor); render that same reference.
   const resolvedThroughPredecessor =
     sources.numPr?.kind === "levelOnly" &&
-    para.propertyChanges?.some(({ previousFormatting }) => previousFormatting !== undefined) ===
-      true;
+    para.propertyChanges?.some(
+      ({ previousFormatting }) => previousFormatting !== undefined,
+    ) === true;
   const countedRendering =
     resolvedThroughPredecessor &&
     countedList.kind === "marker" &&
@@ -201,9 +219,15 @@ export function renderParagraphBlock(
 }
 
 /** The paragraph's 0-based heading level, as `builtInStyles` classifies it. */
-function markdownHeadingLevel(ctx: RenderContext, para: Paragraph): number | undefined {
+function markdownHeadingLevel(
+  ctx: RenderContext,
+  para: Paragraph,
+): number | undefined {
   return resolveHeadingLevel(
-    { outlineLevel: para.formatting?.outlineLevel, styleId: para.formatting?.styleId },
+    {
+      outlineLevel: para.formatting?.outlineLevel,
+      styleId: para.formatting?.styleId,
+    },
     ctx.builtInStyles,
   );
 }
@@ -272,7 +296,8 @@ function renderListItem(
   const indent = " ".repeat(listIndentWidth(ctx, list.level));
   const marker = list.isBullet ? "- " : `${label} `;
   ctx.listIndentWidths[list.level] = marker.length;
-  const markdown = `${indent}${marker}${escapeLeadingBlockMarker(inline)}`.trimEnd();
+  const markdown =
+    `${indent}${marker}${escapeLeadingBlockMarker(inline)}`.trimEnd();
   return {
     type: "listItem",
     markdown,

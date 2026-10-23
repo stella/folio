@@ -1,8 +1,8 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
-import { panic } from "better-result";
 
 const REPOSITORY_ROOT = path.join(import.meta.dir, "..");
 
@@ -11,12 +11,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 test("local and required kernel lint use one command for every tested crate", async () => {
   const workflow: unknown = Bun.YAML.parse(
-    await readFile(path.join(REPOSITORY_ROOT, ".github/workflows/ci.yml"), "utf8"),
+    await readFile(
+      path.join(REPOSITORY_ROOT, ".github/workflows/ci.yml"),
+      "utf8",
+    ),
   );
   const manifest: unknown = JSON.parse(
     await readFile(path.join(REPOSITORY_ROOT, "package.json"), "utf8"),
   );
-  if (!isRecord(workflow) || !isRecord(workflow["jobs"]) || !isRecord(manifest)) {
+  if (
+    !isRecord(workflow) ||
+    !isRecord(workflow["jobs"]) ||
+    !isRecord(manifest)
+  ) {
     return panic("Expected the workflow and package manifest");
   }
   const job = workflow["jobs"]["docx-kernel"];
@@ -25,15 +32,20 @@ test("local and required kernel lint use one command for every tested crate", as
     return panic("Expected kernel steps and package scripts");
   }
   const command = scripts["kernel:check"];
-  if (typeof command !== "string") return panic("Missing local kernel check command");
+  if (typeof command !== "string")
+    return panic("Missing local kernel check command");
   const steps = job["steps"].filter(isRecord);
-  expect(steps.filter((step) => step["run"] === "bun run kernel:check")).toHaveLength(1);
+  expect(
+    steps.filter((step) => step["run"] === "bun run kernel:check"),
+  ).toHaveLength(1);
   const ciCommands = steps.flatMap((step) =>
     typeof step["run"] === "string" ? step["run"].split("\n") : [],
   );
-  expect(ciCommands.some((line) => /cargo (?:clippy|fmt)|bun run rust:hawk/u.test(line))).toBe(
-    false,
-  );
+  expect(
+    ciCommands.some((line) =>
+      /cargo (?:clippy|fmt)|bun run rust:hawk/u.test(line),
+    ),
+  ).toBe(false);
   const crates = ciCommands.flatMap((line) => {
     const crate = line.match(/^cargo test -p ([\w-]+)$/u)?.at(1);
     return crate === undefined ? [] : [crate];

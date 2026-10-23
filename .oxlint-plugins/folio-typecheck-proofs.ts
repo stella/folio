@@ -28,17 +28,24 @@ type RuleContext = {
 
 // Mirrors TypeScript's own directive scan: only a comment that opens with the
 // directive suppresses anything, so prose naming one is left alone.
-const TS_SUPPRESSION = /^[/*]*\s*@ts-(?<directive>expect-error|ignore|nocheck)\b/u;
+const TS_SUPPRESSION =
+  /^[/*]*\s*@ts-(?<directive>expect-error|ignore|nocheck)\b/u;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const stringArrayOption = (options: Record<string, unknown>, key: string): string[] => {
+const stringArrayOption = (
+  options: Record<string, unknown>,
+  key: string,
+): string[] => {
   const value = options[key];
-  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((entry) => typeof entry === "string")
+    : [];
 };
 
-const normalizedPath = (filename: string): string => filename.replaceAll("\\", "/");
+const normalizedPath = (filename: string): string =>
+  filename.replaceAll("\\", "/");
 
 export default {
   meta: { name: "folio-typecheck-proofs" },
@@ -71,10 +78,16 @@ export default {
         ],
       },
       create(context: RuleContext) {
-        const options = isRecord(context.options?.[0]) ? context.options[0] : {};
+        const options = isRecord(context.options?.[0])
+          ? context.options[0]
+          : {};
         const allowedFiles = stringArrayOption(options, "allowedFiles");
         const filename = normalizedPath(context.filename);
-        if (allowedFiles.some((allowed) => filename.endsWith(normalizedPath(allowed)))) {
+        if (
+          allowedFiles.some((allowed) =>
+            filename.endsWith(normalizedPath(allowed)),
+          )
+        ) {
           return {};
         }
 
@@ -88,7 +101,9 @@ export default {
               return;
             }
             for (const comment of comments) {
-              const directive = TS_SUPPRESSION.exec(comment.value)?.groups?.["directive"];
+              const directive = TS_SUPPRESSION.exec(comment.value)?.groups?.[
+                "directive"
+              ];
               if (directive !== undefined) {
                 context.report({
                   node: comment,

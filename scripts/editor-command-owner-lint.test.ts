@@ -24,9 +24,19 @@ const lintFixture = (fixture: string) => {
 };
 
 test("editor command owner lint covers adapter dispatch and owner registration", () => {
-  expect(lintFixture("invalid/packages/react/src/components/DocxEditor.tsx")).toBe(4);
-  expect(lintFixture("invalid/packages/vue/src/composables/useFormattingActions.ts")).toBe(1);
-  expect(lintFixture("invalid/packages/vue/src/components/Toolbar.vue")).toBe(1);
-  expect(lintFixture("valid/packages/react/src/components/DocxEditor.tsx")).toBe(0);
-  expect(lintFixture("valid/packages/core/src/controller/hiddenEditorManager.ts")).toBe(0);
+  expect(
+    lintFixture("invalid/packages/react/src/components/DocxEditor.tsx"),
+  ).toBe(4);
+  expect(
+    lintFixture("invalid/packages/vue/src/composables/useFormattingActions.ts"),
+  ).toBe(1);
+  expect(lintFixture("invalid/packages/vue/src/components/Toolbar.vue")).toBe(
+    1,
+  );
+  expect(
+    lintFixture("valid/packages/react/src/components/DocxEditor.tsx"),
+  ).toBe(0);
+  expect(
+    lintFixture("valid/packages/core/src/controller/hiddenEditorManager.ts"),
+  ).toBe(0);
 });

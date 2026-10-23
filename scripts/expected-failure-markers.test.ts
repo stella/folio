@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+
 import { reportScenarioFailure } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   FINDING_SYMPTOMS,
@@ -32,9 +33,11 @@ describe("expected failures and the failure markers fuzz reporters file", () => 
   let restore = () => {};
   beforeEach(() => {
     logged = [];
-    const spy = spyOn(console, "error").mockImplementation((...parts: unknown[]) => {
-      logged.push(parts.map(String).join(" "));
-    });
+    const spy = spyOn(console, "error").mockImplementation(
+      (...parts: unknown[]) => {
+        logged.push(parts.map(String).join(" "));
+      },
+    );
     restore = () => spy.mockRestore();
   });
   afterEach(() => restore());
@@ -47,11 +50,16 @@ describe("expected failures and the failure markers fuzz reporters file", () => 
   });
 
   test("a failure with another symptom keeps its marker and fails", async () => {
-    const settled = settleExpectedFailure(FINDING, NAME, SYMPTOM, failWith(OTHER));
+    const settled = settleExpectedFailure(
+      FINDING,
+      NAME,
+      SYMPTOM,
+      failWith(OTHER),
+    );
     await expect(settled).rejects.toThrow("refused in the batch");
-    expect(markers().map((marker) => ({ test: marker.test, seed: marker.seed }))).toEqual([
-      { test: FLOW.test, seed: FLOW.seed },
-    ]);
+    expect(
+      markers().map((marker) => ({ test: marker.test, seed: marker.seed })),
+    ).toEqual([{ test: FLOW.test, seed: FLOW.seed }]);
   });
 
   test("a body that passes fails as no longer reproducing, with no marker", async () => {
@@ -61,9 +69,9 @@ describe("expected failures and the failure markers fuzz reporters file", () => 
   });
 
   test("an unknown finding fails with its name", () => {
-    expect(() => matchesFailureSymptom("REMOVED_FINDING", undefined, new Error(KNOWN))).toThrow(
-      "Unknown expected-failure finding: REMOVED_FINDING",
-    );
+    expect(() =>
+      matchesFailureSymptom("REMOVED_FINDING", undefined, new Error(KNOWN)),
+    ).toThrow("Unknown expected-failure finding: REMOVED_FINDING");
   });
 
   test("markers logged outside an expected failure are logged at once", () => {

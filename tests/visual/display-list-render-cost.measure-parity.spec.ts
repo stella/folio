@@ -20,16 +20,17 @@
  * reader waits for is a screen, not a document.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // Repeated repaints of a 91-page document for both renderers.
 test.setTimeout(180_000);
 
-import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import type { LayoutInstrumentation } from "../../packages/core/src/layout-engine/layoutInstrumentation";
+import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
   var __folioLayoutInstrumentation: LayoutInstrumentation | undefined;
   var __folioRenderPagesMs: number[] | undefined;
 }
@@ -81,9 +82,13 @@ const installInstrumentation = async (page: Page): Promise<void> => {
 const open = async (page: Page, renderer: string): Promise<void> => {
   // A ninety-page document takes a while to lay out for the first time, and
   // this spec opens it twice in one test.
-  await page.goto(`/?file=${FIXTURE}&pageRenderer=${renderer}`, { timeout: 60_000 });
+  await page.goto(`/?file=${FIXTURE}&pageRenderer=${renderer}`, {
+    timeout: 60_000,
+  });
   await page.waitForSelector('[data-testid="folio-editor"]');
-  await page.waitForFunction(() => document.querySelectorAll(".layout-page").length > 4);
+  await page.waitForFunction(
+    () => document.querySelectorAll(".layout-page").length > 4,
+  );
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
@@ -129,9 +134,13 @@ const repaint = (page: Page): Promise<RepaintCost> =>
     const frameMs = performance.now() - startedAt;
     const recorded = globalThis.__folioRenderPagesMs ?? [];
     if (recorded.length === before) {
-      throw new Error("the repaint produced no render-pages timing before the deadline");
+      throw new Error(
+        "the repaint produced no render-pages timing before the deadline",
+      );
     }
-    const ourMs = recorded.slice(before).reduce((total, value) => total + value, 0);
+    const ourMs = recorded
+      .slice(before)
+      .reduce((total, value) => total + value, 0);
     // A page the container has not filled yet paints nothing, and counting it
     // would flatter whichever renderer happened to be given fewer.
     const paintedPages = [...document.querySelectorAll(".layout-page")].filter(
@@ -145,10 +154,16 @@ const median = (values: readonly number[]): number => {
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 };
 
-const perPage = (costs: readonly RepaintCost[], read: (cost: RepaintCost) => number): number =>
+const perPage = (
+  costs: readonly RepaintCost[],
+  read: (cost: RepaintCost) => number,
+): number =>
   median(costs.map((cost) => read(cost) / Math.max(1, cost.paintedPages)));
 
-const measure = async (page: Page, renderer: string): Promise<readonly RepaintCost[]> => {
+const measure = async (
+  page: Page,
+  renderer: string,
+): Promise<readonly RepaintCost[]> => {
   await open(page, renderer);
   const costs: RepaintCost[] = [];
   for (let index = 0; index < WARMUP_REPAINTS + MEASURED_REPAINTS; index += 1) {
@@ -171,10 +186,18 @@ test.describe("what each renderer costs per page", () => {
       `render-pages ${perPage(costs, (cost) => cost.ourMs).toFixed(3)} ms/page | ` +
       `to painted frame ${perPage(costs, (cost) => cost.frameMs).toFixed(3)} ms/page`;
     // eslint-disable-next-line no-console -- the measurement is the deliverable
-    console.log(`${report("legacy", legacy)}\n${report("display-list", displayList)}`);
+    console.log(
+      `${report("legacy", legacy)}\n${report("display-list", displayList)}`,
+    );
 
-    expect(legacy.length, "no repaints measured for the painter").toBeGreaterThan(0);
-    expect(displayList.length, "no repaints measured for the display list").toBeGreaterThan(0);
+    expect(
+      legacy.length,
+      "no repaints measured for the painter",
+    ).toBeGreaterThan(0);
+    expect(
+      displayList.length,
+      "no repaints measured for the display list",
+    ).toBeGreaterThan(0);
     expect(
       legacy.every((cost) => cost.paintedPages > 0),
       "the painter painted no pages",
@@ -190,7 +213,10 @@ test.describe("what each renderer costs per page", () => {
         0.001,
         perPage(legacy, (cost) => cost.ourMs),
       );
-    expect({ ratio: Number(ratio.toFixed(2)), budget: COST_RATIO_BUDGET }).toEqual({
+    expect({
+      ratio: Number(ratio.toFixed(2)),
+      budget: COST_RATIO_BUDGET,
+    }).toEqual({
       ratio: Number(Math.min(ratio, COST_RATIO_BUDGET).toFixed(2)),
       budget: COST_RATIO_BUDGET,
     });

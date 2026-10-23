@@ -13,7 +13,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MeasuredLine, ParagraphBlock, TabStop } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TabStop,
+} from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 const readFontSizePx = (font: string): number | undefined => {
@@ -25,7 +29,8 @@ const readFontSizePx = (font: string): number | undefined => {
   let start = pxIndex;
   while (start > 0) {
     const codePoint = font.codePointAt(start - 1);
-    const isDigit = codePoint !== undefined && codePoint >= 48 && codePoint <= 57;
+    const isDigit =
+      codePoint !== undefined && codePoint >= 48 && codePoint <= 57;
     const isDecimalPoint = codePoint === 46;
     if (!isDigit && !isDecimalPoint) {
       break;
@@ -170,7 +175,10 @@ describe("renderLine — decimal tab respects trailing run font", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "decimal-bold",
-      runs: [{ kind: "tab" }, { kind: "text", text: "1.5", bold: true, italic: true }],
+      runs: [
+        { kind: "tab" },
+        { kind: "text", text: "1.5", bold: true, italic: true },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,

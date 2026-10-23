@@ -2,14 +2,17 @@
 import { expect, test } from "bun:test";
 
 import type { Document, ParagraphContent, Run } from "../../types/document";
-
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 const CONTENTS = [
   [{ type: "tab" }, { type: "text", text: "after" }],
   [{ type: "text", text: "before" }, { type: "tab" }],
-  [{ type: "text", text: "before" }, { type: "tab" }, { type: "text", text: "after" }],
+  [
+    { type: "text", text: "before" },
+    { type: "tab" },
+    { type: "text", text: "after" },
+  ],
   [
     { type: "text", text: "before" },
     { type: "break", breakType: "textWrapping" },
@@ -28,9 +31,17 @@ const wrap = (host: (typeof HOSTS)[number], run: Run): ParagraphContent => {
     case "paragraph":
       return run;
     case "hyperlink":
-      return { type: "hyperlink", href: "https://example.test", children: [run] };
+      return {
+        type: "hyperlink",
+        href: "https://example.test",
+        children: [run],
+      };
     case "insertion":
-      return { type: "insertion", info: { id: 7, author: "Reviewer" }, content: [run] };
+      return {
+        type: "insertion",
+        info: { id: 7, author: "Reviewer" },
+        content: [run],
+      };
   }
 };
 
@@ -39,7 +50,9 @@ const innerRuns = (item: ParagraphContent): Run[] => {
     case "run":
       return [item];
     case "hyperlink":
-      return item.children.filter((child): child is Run => child.type === "run");
+      return item.children.filter(
+        (child): child is Run => child.type === "run",
+      );
     case "insertion":
       return item.content.filter((child): child is Run => child.type === "run");
     default:
@@ -52,7 +65,11 @@ for (const host of HOSTS) {
     test(`${host} keeps one mixed run in position ${index}`, () => {
       const run: Run = { type: "run", content: [...contents] };
       const document: Document = {
-        package: { document: { content: [{ type: "paragraph", content: [wrap(host, run)] }] } },
+        package: {
+          document: {
+            content: [{ type: "paragraph", content: [wrap(host, run)] }],
+          },
+        },
       };
       const saved = fromProseDoc(toProseDoc(document), document, {
         stylesheetSource: { type: "package" },
@@ -67,13 +84,17 @@ for (const host of HOSTS) {
         throw new Error("Expected paragraph content");
       }
       expect(item.type).toBe(host === "paragraph" ? "run" : host);
-      expect(innerRuns(item).map((part) => part.content)).toEqual([run.content]);
+      expect(innerRuns(item).map((part) => part.content)).toEqual([
+        run.content,
+      ]);
 
       const savedAgain = fromProseDoc(toProseDoc(saved), saved, {
         stylesheetSource: { type: "package" },
       });
       const again = savedAgain.package.document.content.at(0);
-      expect(again?.type === "paragraph" ? again.content : []).toEqual(paragraph.content);
+      expect(again?.type === "paragraph" ? again.content : []).toEqual(
+        paragraph.content,
+      );
     });
   }
 }
@@ -88,13 +109,18 @@ test("adjacent mixed runs retain distinct authored boundaries", () => {
     content: [{ type: "tab" }, { type: "text", text: "second" }],
   };
   const document: Document = {
-    package: { document: { content: [{ type: "paragraph", content: [first, second] }] } },
+    package: {
+      document: { content: [{ type: "paragraph", content: [first, second] }] },
+    },
   };
   const saved = fromProseDoc(toProseDoc(document), document, {
     stylesheetSource: { type: "package" },
   });
   const paragraph = saved.package.document.content.at(0);
-  expect(paragraph?.type === "paragraph" ? paragraph.content : []).toEqual([first, second]);
+  expect(paragraph?.type === "paragraph" ? paragraph.content : []).toEqual([
+    first,
+    second,
+  ]);
 });
 
 test("an inline atom and text retain their shared direct formatting", () => {
@@ -110,5 +136,7 @@ test("an inline atom and text retain their shared direct formatting", () => {
     stylesheetSource: { type: "package" },
   });
   const paragraph = saved.package.document.content.at(0);
-  expect(paragraph?.type === "paragraph" ? paragraph.content : []).toEqual([run]);
+  expect(paragraph?.type === "paragraph" ? paragraph.content : []).toEqual([
+    run,
+  ]);
 });

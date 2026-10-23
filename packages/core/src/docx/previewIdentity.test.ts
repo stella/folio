@@ -33,21 +33,25 @@ const isProductModule = (file: string): boolean =>
 
 const productModules = async (): Promise<string[]> => {
   const entries = await readdir(PACKAGE_SOURCE_ROOT, { recursive: true });
-  return entries.map((entry) => path.join(PACKAGE_SOURCE_ROOT, entry)).filter(isProductModule);
+  return entries
+    .map((entry) => path.join(PACKAGE_SOURCE_ROOT, entry))
+    .filter(isProductModule);
 };
 
 /** The file's code without its comments, so prose may name a media type. */
 const codeOf = async (file: string): Promise<string> =>
-  new Bun.Transpiler({ loader: file.endsWith(".tsx") ? "tsx" : "ts" }).transformSync(
-    await Bun.file(file).text(),
-  );
+  new Bun.Transpiler({
+    loader: file.endsWith(".tsx") ? "tsx" : "ts",
+  }).transformSync(await Bun.file(file).text());
 
 test("no module spells a data-URL media type the preview table should own", async () => {
   const pattern = new RegExp(STATIC_MEDIA_TYPE_URL, "gu");
   const offenders: string[] = [];
   for (const file of await productModules()) {
     for (const match of (await codeOf(file)).matchAll(pattern)) {
-      offenders.push(`${path.relative(PACKAGE_SOURCE_ROOT, file)}: ${match[0]}`);
+      offenders.push(
+        `${path.relative(PACKAGE_SOURCE_ROOT, file)}: ${match[0]}`,
+      );
     }
   }
   expect(offenders).toEqual([]);

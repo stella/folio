@@ -2,25 +2,30 @@ import { TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
-import { sanitizeXmlCharacters, type ValidateDocumentModelIssue } from "@stll/docx-core";
-import { isNumberingReference, paragraphNumberingReference } from "@stll/docx-core/model";
+import {
+  sanitizeXmlCharacters,
+  type ValidateDocumentModelIssue,
+} from "@stll/docx-core";
+import {
+  isNumberingReference,
+  paragraphNumberingReference,
+} from "@stll/docx-core/model";
 
-import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
-import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
-import type { FolioTableTemplates } from "./ai-edits/table-template";
 import {
   applyFolioAIEditOperations,
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
   type FolioReplacementBackground,
+  type FolioRevisionStamp,
   type FolioUndefinedReferencePolicy,
   type FolioWordDiffOptions,
-  type FolioRevisionStamp,
   previewFolioAIEditOperationsWithResult,
 } from "./ai-edits/apply";
-import { describeModelError, findIntroducedModelErrors } from "./ai-edits/result-validation";
-import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
-import { getStatedDocumentNumbering } from "./prosemirror/plugins/documentNumbering";
+import {
+  describeModelError,
+  findIntroducedModelErrors,
+} from "./ai-edits/result-validation";
+import type { FolioTableTemplates } from "./ai-edits/table-template";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -39,13 +44,20 @@ import type {
   FolioAIParagraphSpacing,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
+import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
+import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
+import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
+import { getStatedDocumentNumbering } from "./prosemirror/plugins/documentNumbering";
 import type {
   BreakContent,
   LineSpacingRule,
   OutlineLevel,
   ParagraphAlignment,
 } from "./types/document";
-import { LINE_SPACING_RULE_VALUES, PARAGRAPH_ALIGNMENT_VALUES } from "./types/documentEnumValues";
+import {
+  LINE_SPACING_RULE_VALUES,
+  PARAGRAPH_ALIGNMENT_VALUES,
+} from "./types/documentEnumValues";
 
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
 
@@ -57,14 +69,12 @@ export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
 // asserts and the API-surface gate reads.
 
 /** Direct paragraph-alignment values accepted by the operation contract. */
-export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ParagraphAlignment[] = Object.freeze([
-  ...PARAGRAPH_ALIGNMENT_VALUES,
-]);
+export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ParagraphAlignment[] =
+  Object.freeze([...PARAGRAPH_ALIGNMENT_VALUES]);
 
 /** `w:spacing/@w:lineRule` values accepted by the operation contract. */
-export const FOLIO_LINE_SPACING_RULE_VALUES: readonly LineSpacingRule[] = Object.freeze([
-  ...LINE_SPACING_RULE_VALUES,
-]);
+export const FOLIO_LINE_SPACING_RULE_VALUES: readonly LineSpacingRule[] =
+  Object.freeze([...LINE_SPACING_RULE_VALUES]);
 
 /** `w:br/@w:clear` values accepted on an authored hard page break. */
 export const FOLIO_PAGE_BREAK_CLEAR_VALUES = Object.freeze([
@@ -111,7 +121,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES = Object.freeze([
   "footnote",
   "endnote",
 ] as const);
-export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS = Object.freeze(["blockTextHash"] as const);
+export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS = Object.freeze([
+  "blockTextHash",
+] as const);
 /**
  * Batch-level preconditions. `documentVersion` is an opaque host token (an
  * entity version id, a collaboration checkpoint) pinning the document the
@@ -200,8 +212,8 @@ const DOCUMENT_OPERATION_CAPABILITIES = Object.freeze({
   stories: FOLIO_DOCUMENT_OPERATION_STORIES,
 } as const satisfies FolioDocumentOperationCapabilities);
 
-export const getFolioDocumentOperationCapabilities = (): FolioDocumentOperationCapabilities =>
-  DOCUMENT_OPERATION_CAPABILITIES;
+export const getFolioDocumentOperationCapabilities =
+  (): FolioDocumentOperationCapabilities => DOCUMENT_OPERATION_CAPABILITIES;
 
 const includesDocumentOperationMode = (
   supportedModes: readonly FolioDocumentOperationMode[],
@@ -275,7 +287,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 const isParsedFolioDocumentOperationBatch = (
   value: unknown,
 ): value is FolioDocumentOperationBatch =>
-  typeof value === "object" && value !== null && parsedFolioDocumentOperationBatches.has(value);
+  typeof value === "object" &&
+  value !== null &&
+  parsedFolioDocumentOperationBatches.has(value);
 
 const freezeParsedValue = (value: unknown): void => {
   if (Array.isArray(value)) {
@@ -307,7 +321,9 @@ const assertAllowedKeys = (
   path: string,
   allowedKeys: readonly string[],
 ): void => {
-  const unexpected = Object.keys(value).find((key) => !allowedKeys.includes(key));
+  const unexpected = Object.keys(value).find(
+    (key) => !allowedKeys.includes(key),
+  );
   if (unexpected !== undefined) {
     invalidBatch(`${path}.${unexpected}`, "unexpected property");
   }
@@ -323,7 +339,11 @@ const assertAllowedKeys = (
  * rejecting a whole edit over a stray control character. The parsed batch is
  * both what folio applies and what the receipt reports, so the two agree.
  */
-const readString = (value: Record<string, unknown>, key: string, path: string): string => {
+const readString = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): string => {
   const candidate = value[key];
   if (typeof candidate === "string") {
     return sanitizeXmlCharacters(candidate);
@@ -373,7 +393,10 @@ const readClearableBoolean = (
   if (typeof candidate === "boolean") {
     return candidate;
   }
-  return invalidBatch(`${path}.${key}`, "expected a boolean or null when provided");
+  return invalidBatch(
+    `${path}.${key}`,
+    "expected a boolean or null when provided",
+  );
 };
 
 const readClearableNonEmptyString = (
@@ -388,7 +411,10 @@ const readClearableNonEmptyString = (
   if (typeof candidate === "string" && candidate.trim().length > 0) {
     return candidate.trim();
   }
-  return invalidBatch(`${path}.${key}`, "expected a non-empty string or null when provided");
+  return invalidBatch(
+    `${path}.${key}`,
+    "expected a non-empty string or null when provided",
+  );
 };
 
 const readClearableFontSize = (
@@ -400,10 +426,17 @@ const readClearableFontSize = (
   if (candidate === undefined || candidate === null) {
     return candidate;
   }
-  if (typeof candidate === "number" && candidate > 0 && Number.isInteger(candidate * 2)) {
+  if (
+    typeof candidate === "number" &&
+    candidate > 0 &&
+    Number.isInteger(candidate * 2)
+  ) {
     return candidate;
   }
-  return invalidBatch(`${path}.${key}`, "expected a positive half-point value or null");
+  return invalidBatch(
+    `${path}.${key}`,
+    "expected a positive half-point value or null",
+  );
 };
 
 const readClearableRgbColor = (
@@ -418,7 +451,10 @@ const readClearableRgbColor = (
   if (typeof candidate === "string" && /^#?[0-9a-fA-F]{6}$/u.test(candidate)) {
     return candidate.replace(/^#/u, "").toUpperCase();
   }
-  return invalidBatch(`${path}.${key}`, "expected a six-digit RGB color or null");
+  return invalidBatch(
+    `${path}.${key}`,
+    "expected a six-digit RGB color or null",
+  );
 };
 
 const readOptionalStringArray = (
@@ -447,7 +483,11 @@ const readNonNegativeInteger = (
   path: string,
 ): number => {
   const candidate = value[key];
-  if (typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0) {
+  if (
+    typeof candidate === "number" &&
+    Number.isSafeInteger(candidate) &&
+    candidate >= 0
+  ) {
     return candidate;
   }
   return invalidBatch(`${path}.${key}`, "expected a non-negative safe integer");
@@ -463,7 +503,8 @@ const readClearableParagraphAlignment = ({
   value,
   key,
   path,
-}: ReadClearableParagraphAlignmentParams): ParagraphAlignment | null | undefined => {
+}: ReadClearableParagraphAlignmentParams):
+  ParagraphAlignment | null | undefined => {
   const candidate = value[key];
   if (candidate === undefined || candidate === null) {
     return candidate;
@@ -505,14 +546,18 @@ const readClearableParagraphSpacing = ({
   value,
   key,
   path,
-}: ReadClearableParagraphSpacingParams): FolioAIParagraphSpacing | null | undefined => {
+}: ReadClearableParagraphSpacingParams):
+  FolioAIParagraphSpacing | null | undefined => {
   const candidate = value[key];
   if (candidate === undefined || candidate === null) {
     return candidate;
   }
   const spacingPath = `${path}.${key}`;
   if (!isPlainObject(candidate)) {
-    return invalidBatch(spacingPath, "expected an object or null when provided");
+    return invalidBatch(
+      spacingPath,
+      "expected an object or null when provided",
+    );
   }
   assertAllowedKeys(candidate, spacingPath, PARAGRAPH_SPACING_KEYS);
   if (Object.keys(candidate).length === 0) {
@@ -522,7 +567,11 @@ const readClearableParagraphSpacing = ({
   const spacing: FolioAIParagraphSpacing = {};
   for (const unsignedKey of ["spaceBefore", "spaceAfter"] as const) {
     if (candidate[unsignedKey] !== undefined) {
-      spacing[unsignedKey] = readNonNegativeInteger(candidate, unsignedKey, spacingPath);
+      spacing[unsignedKey] = readNonNegativeInteger(
+        candidate,
+        unsignedKey,
+        spacingPath,
+      );
     }
   }
   const lineSpacing = candidate["lineSpacing"];
@@ -551,7 +600,10 @@ const readClearableParagraphSpacing = ({
       continue;
     }
     if (typeof booleanValue !== "boolean") {
-      return invalidBatch(`${spacingPath}.${booleanKey}`, "expected a boolean when provided");
+      return invalidBatch(
+        `${spacingPath}.${booleanKey}`,
+        "expected a boolean when provided",
+      );
     }
     spacing[booleanKey] = booleanValue;
   }
@@ -576,21 +628,32 @@ const readClearableParagraphIndentation = ({
   value,
   key,
   path,
-}: ReadClearableParagraphIndentationParams): FolioAIParagraphIndentation | null | undefined => {
+}: ReadClearableParagraphIndentationParams):
+  FolioAIParagraphIndentation | null | undefined => {
   const candidate = value[key];
   if (candidate === undefined || candidate === null) {
     return candidate;
   }
   const indentationPath = `${path}.${key}`;
   if (!isPlainObject(candidate)) {
-    return invalidBatch(indentationPath, "expected an object or null when provided");
+    return invalidBatch(
+      indentationPath,
+      "expected an object or null when provided",
+    );
   }
   assertAllowedKeys(candidate, indentationPath, PARAGRAPH_INDENTATION_KEYS);
   if (Object.keys(candidate).length === 0) {
-    return invalidBatch(indentationPath, "expected at least one indentation property");
+    return invalidBatch(
+      indentationPath,
+      "expected at least one indentation property",
+    );
   }
   const indentation: FolioAIParagraphIndentation = {};
-  for (const numberKey of ["indentLeft", "indentRight", "indentFirstLine"] as const) {
+  for (const numberKey of [
+    "indentLeft",
+    "indentRight",
+    "indentFirstLine",
+  ] as const) {
     const number = candidate[numberKey];
     if (number === undefined) {
       continue;
@@ -606,7 +669,10 @@ const readClearableParagraphIndentation = ({
   const hangingIndent = candidate["hangingIndent"];
   if (hangingIndent !== undefined) {
     if (typeof hangingIndent !== "boolean") {
-      return invalidBatch(`${indentationPath}.hangingIndent`, "expected a boolean when provided");
+      return invalidBatch(
+        `${indentationPath}.hangingIndent`,
+        "expected a boolean when provided",
+      );
     }
     indentation.hangingIndent = hangingIndent;
   }
@@ -618,7 +684,8 @@ const MAX_NEW_LIST_LEVEL = 8;
 
 const LIST_KIND_SET: ReadonlySet<string> = new Set(LIST_KINDS);
 
-const isListKind = (value: string): value is ListKind => LIST_KIND_SET.has(value);
+const isListKind = (value: string): value is ListKind =>
+  LIST_KIND_SET.has(value);
 
 /** `{ kind: "newList", format, level? }`: a list the operation starts. */
 const readNewListReference = (
@@ -628,14 +695,20 @@ const readNewListReference = (
   assertAllowedKeys(candidate, numberingPath, ["kind", "format", "level"]);
   const format = candidate["format"];
   if (typeof format !== "string" || !isListKind(format)) {
-    return invalidBatch(`${numberingPath}.format`, `expected one of ${LIST_KINDS.join(", ")}`);
+    return invalidBatch(
+      `${numberingPath}.format`,
+      `expected one of ${LIST_KINDS.join(", ")}`,
+    );
   }
   if (candidate["level"] === undefined) {
     return { kind: "newList", format };
   }
   const level = readNonNegativeInteger(candidate, "level", numberingPath);
   if (level > MAX_NEW_LIST_LEVEL) {
-    return invalidBatch(`${numberingPath}.level`, `expected at most ${MAX_NEW_LIST_LEVEL}`);
+    return invalidBatch(
+      `${numberingPath}.level`,
+      `expected at most ${MAX_NEW_LIST_LEVEL}`,
+    );
   }
   return { kind: "newList", format, level };
 };
@@ -644,11 +717,13 @@ const readClearableNumbering = ({
   value,
   key,
   path,
-}: ReadClearableParagraphIndentationParams): FolioAIListNumbering | undefined => {
+}: ReadClearableParagraphIndentationParams):
+  FolioAIListNumbering | undefined => {
   const candidate = value[key];
   if (candidate === undefined) return undefined;
   const numberingPath = `${path}.${key}`;
-  if (!isPlainObject(candidate)) return invalidBatch(numberingPath, "expected a numbering object");
+  if (!isPlainObject(candidate))
+    return invalidBatch(numberingPath, "expected a numbering object");
   const kind = candidate["kind"];
   if (kind === "none" || kind === "inherit") {
     assertAllowedKeys(candidate, numberingPath, ["kind"]);
@@ -658,7 +733,10 @@ const readClearableNumbering = ({
     assertAllowedKeys(candidate, numberingPath, ["kind", "ilvl"]);
     const ilvl = readNonNegativeInteger(candidate, "ilvl", numberingPath);
     if (ilvl > MAX_NEW_LIST_LEVEL) {
-      return invalidBatch(`${numberingPath}.ilvl`, `expected at most ${MAX_NEW_LIST_LEVEL}`);
+      return invalidBatch(
+        `${numberingPath}.ilvl`,
+        `expected at most ${MAX_NEW_LIST_LEVEL}`,
+      );
     }
     return { kind, ilvl };
   }
@@ -666,12 +744,19 @@ const readClearableNumbering = ({
     assertAllowedKeys(candidate, numberingPath, ["kind", "numId", "ilvl"]);
     const numId = readNonNegativeInteger(candidate, "numId", numberingPath);
     if (!isNumberingReference(numId)) {
-      return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
+      return invalidBatch(
+        `${numberingPath}.numId`,
+        "expected a positive integer",
+      );
     }
-    if (candidate["ilvl"] === undefined) return paragraphNumberingReference({ numId });
+    if (candidate["ilvl"] === undefined)
+      return paragraphNumberingReference({ numId });
     const ilvl = readNonNegativeInteger(candidate, "ilvl", numberingPath);
     if (ilvl > MAX_NEW_LIST_LEVEL) {
-      return invalidBatch(`${numberingPath}.ilvl`, `expected at most ${MAX_NEW_LIST_LEVEL}`);
+      return invalidBatch(
+        `${numberingPath}.ilvl`,
+        `expected at most ${MAX_NEW_LIST_LEVEL}`,
+      );
     }
     return paragraphNumberingReference({ numId, ilvl });
   }
@@ -700,7 +785,10 @@ const readTableRows = (
   }
   const parsed = rows.map((row, index) => {
     if (!Array.isArray(row) || row.length === 0) {
-      return invalidBatch(`${rowsPath}[${String(index)}]`, "expected a non-empty array");
+      return invalidBatch(
+        `${rowsPath}[${String(index)}]`,
+        "expected a non-empty array",
+      );
     }
     return row.map((cell, cellIndex) => {
       if (typeof cell !== "string") {
@@ -714,7 +802,10 @@ const readTableRows = (
   });
   const width = parsed[0]?.length ?? 0;
   if (parsed.some((row) => row.length !== width)) {
-    return invalidBatch(rowsPath, "expected every row to hold the same number of cells");
+    return invalidBatch(
+      rowsPath,
+      "expected every row to hold the same number of cells",
+    );
   }
   return parsed;
 };
@@ -741,7 +832,10 @@ const readClearableOutlineLevel = (
   assertAllowedKeys(candidate, `${path}.outlineLevel`, ["kind", "level"]);
   const outlineLevel = outlineLevelFromAttrValue(candidate);
   if (outlineLevel === null) {
-    return invalidBatch(`${path}.outlineLevel`, "expected a valid outline level");
+    return invalidBatch(
+      `${path}.outlineLevel`,
+      "expected a valid outline level",
+    );
   }
   return outlineLevel;
 };
@@ -766,7 +860,9 @@ const readParagraphProperties = ({
   ]);
   const rawStyleId = candidate["styleId"];
   const styleId =
-    rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
+    rawStyleId === null
+      ? null
+      : readOptionalString(candidate, "styleId", propertiesPath);
   const outlineLevel = readClearableOutlineLevel(candidate, propertiesPath);
   const numbering = readClearableNumbering({
     value: candidate,
@@ -796,7 +892,10 @@ const readParagraphProperties = ({
     spacing === undefined &&
     indentation === undefined
   ) {
-    return invalidBatch(propertiesPath, "expected at least one property to set");
+    return invalidBatch(
+      propertiesPath,
+      "expected at least one property to set",
+    );
   }
   return {
     ...(styleId !== undefined && { styleId }),
@@ -808,7 +907,10 @@ const readParagraphProperties = ({
   };
 };
 
-const readTextRange = (value: Record<string, unknown>, path: string): FolioAITextRangeHandle => {
+const readTextRange = (
+  value: Record<string, unknown>,
+  path: string,
+): FolioAITextRangeHandle => {
   const candidate = value["range"];
   const rangePath = `${path}.range`;
   if (!isPlainObject(candidate)) {
@@ -832,14 +934,24 @@ const readTextRange = (value: Record<string, unknown>, path: string): FolioAITex
   if (blockId.length === 0) {
     return invalidBatch(`${rangePath}.blockId`, "expected a non-empty string");
   }
-  const startOffset = readNonNegativeInteger(candidate, "startOffset", rangePath);
+  const startOffset = readNonNegativeInteger(
+    candidate,
+    "startOffset",
+    rangePath,
+  );
   const endOffset = readNonNegativeInteger(candidate, "endOffset", rangePath);
   if (endOffset <= startOffset) {
-    return invalidBatch(`${rangePath}.endOffset`, "expected a value greater than startOffset");
+    return invalidBatch(
+      `${rangePath}.endOffset`,
+      "expected a value greater than startOffset",
+    );
   }
   const selectedTextHash = readString(candidate, "selectedTextHash", rangePath);
   if (!/^h[0-9a-z]+$/.test(selectedTextHash)) {
-    return invalidBatch(`${rangePath}.selectedTextHash`, "expected a normalized text hash");
+    return invalidBatch(
+      `${rangePath}.selectedTextHash`,
+      "expected a normalized text hash",
+    );
   }
   return {
     type: "textRange",
@@ -871,10 +983,22 @@ const readInlineFormatting = (
   ]);
   const bold = readClearableBoolean(candidate, "bold", formattingPath);
   const italic = readClearableBoolean(candidate, "italic", formattingPath);
-  const underline = readClearableBoolean(candidate, "underline", formattingPath);
+  const underline = readClearableBoolean(
+    candidate,
+    "underline",
+    formattingPath,
+  );
   const strike = readClearableBoolean(candidate, "strike", formattingPath);
-  const fontFamily = readClearableNonEmptyString(candidate, "fontFamily", formattingPath);
-  const fontSizePt = readClearableFontSize(candidate, "fontSizePt", formattingPath);
+  const fontFamily = readClearableNonEmptyString(
+    candidate,
+    "fontFamily",
+    formattingPath,
+  );
+  const fontSizePt = readClearableFontSize(
+    candidate,
+    "fontSizePt",
+    formattingPath,
+  );
   const color = readClearableRgbColor(candidate, "color", formattingPath);
   if (
     bold === undefined &&
@@ -885,7 +1009,10 @@ const readInlineFormatting = (
     fontSizePt === undefined &&
     color === undefined
   ) {
-    return invalidBatch(formattingPath, "expected at least one formatting property");
+    return invalidBatch(
+      formattingPath,
+      "expected at least one formatting property",
+    );
   }
   return {
     ...(bold !== undefined && { bold }),
@@ -922,11 +1049,18 @@ const readOptionalPrecondition = (
     return undefined;
   }
   if (!isPlainObject(candidate)) {
-    return invalidBatch(`${path}.precondition`, "expected an object when provided");
+    return invalidBatch(
+      `${path}.precondition`,
+      "expected an object when provided",
+    );
   }
   const preconditionPath = `${path}.precondition`;
   assertAllowedKeys(candidate, preconditionPath, ["blockTextHash"]);
-  const blockTextHash = readString(candidate, "blockTextHash", preconditionPath);
+  const blockTextHash = readString(
+    candidate,
+    "blockTextHash",
+    preconditionPath,
+  );
   if (!/^h[0-9a-z]+$/.test(blockTextHash)) {
     return invalidBatch(
       `${preconditionPath}.blockTextHash`,
@@ -939,10 +1073,16 @@ const readOptionalPrecondition = (
 const isReviewSeverity = (value: unknown): value is FolioAIEditSeverity =>
   value === "low" || value === "medium" || value === "high";
 
-const readReviewMeta = (value: Record<string, unknown>, path: string): FolioAIEditReviewMeta => {
+const readReviewMeta = (
+  value: Record<string, unknown>,
+  path: string,
+): FolioAIEditReviewMeta => {
   const severity = value["severity"];
   if (severity !== undefined && !isReviewSeverity(severity)) {
-    return invalidBatch(`${path}.severity`, 'expected "low", "medium", or "high" when provided');
+    return invalidBatch(
+      `${path}.severity`,
+      'expected "low", "medium", or "high" when provided',
+    );
   }
   const area = readOptionalString(value, "area", path);
   return {
@@ -964,7 +1104,9 @@ type OperationsByType = {
  * property the type lacks is an excess property.
  */
 type OperationKeyDecisions = {
-  [T in FolioDocumentOperationType]: Readonly<Record<keyof OperationsByType[T], boolean>>;
+  [T in FolioDocumentOperationType]: Readonly<
+    Record<keyof OperationsByType[T], boolean>
+  >;
 };
 
 const COMMON_OPERATION_KEY_DECISIONS = {
@@ -987,15 +1129,28 @@ const RANGE_OPERATION_KEY_DECISIONS = {
 } as const;
 
 const OPERATION_KEY_DECISIONS = {
-  replaceInBlock: { ...COMMON_OPERATION_KEY_DECISIONS, find: true, replace: true, comment: true },
+  replaceInBlock: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    find: true,
+    replace: true,
+    comment: true,
+  },
   replaceRange: {
     ...RANGE_OPERATION_KEY_DECISIONS,
     suggestionId: true,
     replace: true,
     comment: true,
   },
-  commentOnRange: { ...RANGE_OPERATION_KEY_DECISIONS, suggestionId: false, comment: true },
-  formatRange: { ...RANGE_OPERATION_KEY_DECISIONS, suggestionId: true, formatting: true },
+  commentOnRange: {
+    ...RANGE_OPERATION_KEY_DECISIONS,
+    suggestionId: false,
+    comment: true,
+  },
+  formatRange: {
+    ...RANGE_OPERATION_KEY_DECISIONS,
+    suggestionId: true,
+    formatting: true,
+  },
   insertAfterBlock: {
     ...COMMON_OPERATION_KEY_DECISIONS,
     text: true,
@@ -1037,7 +1192,11 @@ const OPERATION_KEY_DECISIONS = {
     styleId: true,
     comment: true,
   },
-  deleteBlock: { ...COMMON_OPERATION_KEY_DECISIONS, moveId: true, comment: true },
+  deleteBlock: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    moveId: true,
+    comment: true,
+  },
   splitBlock: {
     ...COMMON_OPERATION_KEY_DECISIONS,
     offset: true,
@@ -1050,25 +1209,50 @@ const OPERATION_KEY_DECISIONS = {
     separator: true,
     mergedParagraphProperties: true,
   },
-  setBlockParagraphProperties: { ...COMMON_OPERATION_KEY_DECISIONS, properties: true },
-  insertTable: { ...COMMON_OPERATION_KEY_DECISIONS, position: true, rows: true },
+  setBlockParagraphProperties: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    properties: true,
+  },
+  insertTable: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    position: true,
+    rows: true,
+  },
   deleteTable: COMMON_OPERATION_KEY_DECISIONS,
-  commentOnBlock: { ...COMMON_OPERATION_KEY_DECISIONS, quote: true, comment: true },
+  commentOnBlock: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    quote: true,
+    comment: true,
+  },
   insertSignatureTable: {
     ...COMMON_OPERATION_KEY_DECISIONS,
     position: true,
     parties: true,
     comment: true,
   },
-  insertTableRow: { ...COMMON_OPERATION_KEY_DECISIONS, position: true, cellTexts: true },
+  insertTableRow: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    position: true,
+    cellTexts: true,
+  },
   deleteTableRow: COMMON_OPERATION_KEY_DECISIONS,
-  insertTableColumn: { ...COMMON_OPERATION_KEY_DECISIONS, position: true, cellTexts: true },
+  insertTableColumn: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    position: true,
+    cellTexts: true,
+  },
   deleteTableColumn: COMMON_OPERATION_KEY_DECISIONS,
-  mergeTableCells: { ...COMMON_OPERATION_KEY_DECISIONS, endBlockId: true, rowCount: true },
+  mergeTableCells: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    endBlockId: true,
+    rowCount: true,
+  },
   splitTableCell: COMMON_OPERATION_KEY_DECISIONS,
 } as const satisfies OperationKeyDecisions;
 
-const acceptedKeys = (decisions: Readonly<Record<string, boolean>>): readonly string[] =>
+const acceptedKeys = (
+  decisions: Readonly<Record<string, boolean>>,
+): readonly string[] =>
   Object.keys(decisions).filter((key) => decisions[key] === true);
 
 /**
@@ -1088,20 +1272,28 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
   deleteBlock: acceptedKeys(OPERATION_KEY_DECISIONS.deleteBlock),
   splitBlock: acceptedKeys(OPERATION_KEY_DECISIONS.splitBlock),
   mergeBlockWithNext: acceptedKeys(OPERATION_KEY_DECISIONS.mergeBlockWithNext),
-  setBlockParagraphProperties: acceptedKeys(OPERATION_KEY_DECISIONS.setBlockParagraphProperties),
+  setBlockParagraphProperties: acceptedKeys(
+    OPERATION_KEY_DECISIONS.setBlockParagraphProperties,
+  ),
   insertTable: acceptedKeys(OPERATION_KEY_DECISIONS.insertTable),
   deleteTable: acceptedKeys(OPERATION_KEY_DECISIONS.deleteTable),
   commentOnBlock: acceptedKeys(OPERATION_KEY_DECISIONS.commentOnBlock),
-  insertSignatureTable: acceptedKeys(OPERATION_KEY_DECISIONS.insertSignatureTable),
+  insertSignatureTable: acceptedKeys(
+    OPERATION_KEY_DECISIONS.insertSignatureTable,
+  ),
   insertTableRow: acceptedKeys(OPERATION_KEY_DECISIONS.insertTableRow),
   deleteTableRow: acceptedKeys(OPERATION_KEY_DECISIONS.deleteTableRow),
   insertTableColumn: acceptedKeys(OPERATION_KEY_DECISIONS.insertTableColumn),
   deleteTableColumn: acceptedKeys(OPERATION_KEY_DECISIONS.deleteTableColumn),
   mergeTableCells: acceptedKeys(OPERATION_KEY_DECISIONS.mergeTableCells),
   splitTableCell: acceptedKeys(OPERATION_KEY_DECISIONS.splitTableCell),
-} as const satisfies Readonly<Record<FolioDocumentOperationType, readonly string[]>>);
+} as const satisfies Readonly<
+  Record<FolioDocumentOperationType, readonly string[]>
+>);
 
-const isFolioDocumentOperationType = (value: string): value is FolioDocumentOperationType =>
+const isFolioDocumentOperationType = (
+  value: string,
+): value is FolioDocumentOperationType =>
   Object.hasOwn(FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE, value);
 
 const parseSignatureParties = (
@@ -1142,7 +1334,10 @@ const readOptionalHardPageBreak = (
     return undefined;
   }
   if (!isPlainObject(candidate)) {
-    return invalidBatch(`${path}.hardPageBreak`, "expected an object when provided");
+    return invalidBatch(
+      `${path}.hardPageBreak`,
+      "expected an object when provided",
+    );
   }
   const hardPageBreakPath = `${path}.hardPageBreak`;
   assertAllowedKeys(candidate, hardPageBreakPath, ["clear"]);
@@ -1150,14 +1345,22 @@ const readOptionalHardPageBreak = (
   if (clear === undefined) {
     return {};
   }
-  const validatedClear = FOLIO_PAGE_BREAK_CLEAR_VALUES.find((supported) => supported === clear);
+  const validatedClear = FOLIO_PAGE_BREAK_CLEAR_VALUES.find(
+    (supported) => supported === clear,
+  );
   if (validatedClear === undefined) {
-    return invalidBatch(`${hardPageBreakPath}.clear`, "expected a supported break clear value");
+    return invalidBatch(
+      `${hardPageBreakPath}.clear`,
+      "expected a supported break clear value",
+    );
   }
   return { clear: validatedClear };
 };
 
-const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOperation => {
+const parseDocumentOperation = (
+  value: unknown,
+  index: number,
+): FolioDocumentOperation => {
   const path = `$.operations[${index}]`;
   if (!isPlainObject(value)) {
     return invalidBatch(path, "expected an object");
@@ -1194,7 +1397,13 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     if (comment === undefined) {
       return invalidBatch(`${path}.comment`, "expected an object");
     }
-    return { ...operationMeta, id, type, range: readTextRange(value, path), comment };
+    return {
+      ...operationMeta,
+      id,
+      type,
+      range: readTextRange(value, path),
+      comment,
+    };
   }
 
   if (type === "formatRange") {
@@ -1211,8 +1420,15 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   if (type === "insertTable") {
     const position = value["position"];
-    if (position !== undefined && position !== "after" && position !== "before") {
-      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    if (
+      position !== undefined &&
+      position !== "after" &&
+      position !== "before"
+    ) {
+      return invalidBatch(
+        `${path}.position`,
+        'expected "after" or "before" when provided',
+      );
     }
     return {
       ...operationMeta,
@@ -1244,24 +1460,38 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       const mergedParagraphProperties =
         value["mergedParagraphProperties"] === undefined
           ? undefined
-          : readParagraphProperties({ value, key: "mergedParagraphProperties", path });
+          : readParagraphProperties({
+              value,
+              key: "mergedParagraphProperties",
+              path,
+            });
       return {
         ...operationMeta,
         id,
         type,
         blockId,
         ...(separator !== undefined && { separator }),
-        ...(mergedParagraphProperties !== undefined && { mergedParagraphProperties }),
+        ...(mergedParagraphProperties !== undefined && {
+          mergedParagraphProperties,
+        }),
       };
     }
     const firstParagraphProperties =
       value["firstParagraphProperties"] === undefined
         ? undefined
-        : readParagraphProperties({ value, key: "firstParagraphProperties", path });
+        : readParagraphProperties({
+            value,
+            key: "firstParagraphProperties",
+            path,
+          });
     const secondParagraphProperties =
       value["secondParagraphProperties"] === undefined
         ? undefined
-        : readParagraphProperties({ value, key: "secondParagraphProperties", path });
+        : readParagraphProperties({
+            value,
+            key: "secondParagraphProperties",
+            path,
+          });
     return {
       ...operationMeta,
       id,
@@ -1269,8 +1499,12 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       blockId,
       offset: readNonNegativeInteger(value, "offset", path),
       ...(separator !== undefined && { separator }),
-      ...(firstParagraphProperties !== undefined && { firstParagraphProperties }),
-      ...(secondParagraphProperties !== undefined && { secondParagraphProperties }),
+      ...(firstParagraphProperties !== undefined && {
+        firstParagraphProperties,
+      }),
+      ...(secondParagraphProperties !== undefined && {
+        secondParagraphProperties,
+      }),
     };
   }
 
@@ -1287,16 +1521,35 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "insertAfterBlock" || type === "insertBeforeBlock") {
-    const inheritFormatting = readOptionalBoolean(value, "inheritFormatting", path);
+    const inheritFormatting = readOptionalBoolean(
+      value,
+      "inheritFormatting",
+      path,
+    );
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
     const hardPageBreak = readOptionalHardPageBreak(value, path);
-    const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
+    const styleId =
+      value["styleId"] === null
+        ? null
+        : readOptionalString(value, "styleId", path);
     const outlineLevel = readClearableOutlineLevel(value, path);
     const moveId = readOptionalString(value, "moveId", path);
     const numbering = readClearableNumbering({ value, key: "numbering", path });
-    const alignment = readClearableParagraphAlignment({ value, key: "alignment", path });
-    const spacing = readClearableParagraphSpacing({ value, key: "spacing", path });
-    const indentation = readClearableParagraphIndentation({ value, key: "indentation", path });
+    const alignment = readClearableParagraphAlignment({
+      value,
+      key: "alignment",
+      path,
+    });
+    const spacing = readClearableParagraphSpacing({
+      value,
+      key: "spacing",
+      path,
+    });
+    const indentation = readClearableParagraphIndentation({
+      value,
+      key: "indentation",
+      path,
+    });
     const lineBreakMode = value["lineBreakMode"];
     if (
       lineBreakMode !== undefined &&
@@ -1361,8 +1614,15 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "replaceBlock") {
-    const preserveFormatting = readOptionalBoolean(value, "preserveFormatting", path);
-    const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
+    const preserveFormatting = readOptionalBoolean(
+      value,
+      "preserveFormatting",
+      path,
+    );
+    const styleId =
+      value["styleId"] === null
+        ? null
+        : readOptionalString(value, "styleId", path);
     return {
       ...operationMeta,
       id,
@@ -1404,8 +1664,15 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   if (type === "insertSignatureTable") {
     const position = value["position"];
-    if (position !== undefined && position !== "after" && position !== "before") {
-      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    if (
+      position !== undefined &&
+      position !== "after" &&
+      position !== "before"
+    ) {
+      return invalidBatch(
+        `${path}.position`,
+        'expected "after" or "before" when provided',
+      );
     }
     return {
       ...operationMeta,
@@ -1420,8 +1687,15 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   if (type === "insertTableRow") {
     const position = value["position"];
-    if (position !== undefined && position !== "after" && position !== "before") {
-      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    if (
+      position !== undefined &&
+      position !== "after" &&
+      position !== "before"
+    ) {
+      return invalidBatch(
+        `${path}.position`,
+        'expected "after" or "before" when provided',
+      );
     }
     const cellTexts = readOptionalStringArray(value, "cellTexts", path);
     return {
@@ -1440,8 +1714,15 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   if (type === "insertTableColumn") {
     const position = value["position"];
-    if (position !== undefined && position !== "after" && position !== "before") {
-      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    if (
+      position !== undefined &&
+      position !== "after" &&
+      position !== "before"
+    ) {
+      return invalidBatch(
+        `${path}.position`,
+        'expected "after" or "before" when provided',
+      );
     }
     const cellTexts = readOptionalStringArray(value, "cellTexts", path);
     return {
@@ -1462,17 +1743,26 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const endBlockId = readOptionalString(value, "endBlockId", path);
     const rawRowCount = value["rowCount"];
     if ((endBlockId === undefined) === (rawRowCount === undefined)) {
-      return invalidBatch(path, "expected exactly one of endBlockId or rowCount");
+      return invalidBatch(
+        path,
+        "expected exactly one of endBlockId or rowCount",
+      );
     }
     if (endBlockId !== undefined) {
       if (endBlockId.length === 0) {
-        return invalidBatch(`${path}.endBlockId`, "expected a non-empty string");
+        return invalidBatch(
+          `${path}.endBlockId`,
+          "expected a non-empty string",
+        );
       }
       return { ...operationMeta, id, type, blockId, endBlockId };
     }
     const rowCount = readNonNegativeInteger(value, "rowCount", path);
     if (rowCount < 2) {
-      return invalidBatch(`${path}.rowCount`, "expected an integer greater than or equal to 2");
+      return invalidBatch(
+        `${path}.rowCount`,
+        "expected an integer greater than or equal to 2",
+      );
     }
     return { ...operationMeta, id, type, blockId, rowCount };
   }
@@ -1491,15 +1781,28 @@ const readOptionalBatchPrecondition = (
   if (!isPlainObject(candidate)) {
     return invalidBatch("$.precondition", "expected an object when provided");
   }
-  assertAllowedKeys(candidate, "$.precondition", FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS);
-  const documentVersion = readString(candidate, "documentVersion", "$.precondition");
+  assertAllowedKeys(
+    candidate,
+    "$.precondition",
+    FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS,
+  );
+  const documentVersion = readString(
+    candidate,
+    "documentVersion",
+    "$.precondition",
+  );
   if (documentVersion.length === 0) {
-    return invalidBatch("$.precondition.documentVersion", "expected a non-empty string");
+    return invalidBatch(
+      "$.precondition.documentVersion",
+      "expected a non-empty string",
+    );
   }
   return { documentVersion };
 };
 
-export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentOperationBatch => {
+export const parseFolioDocumentOperationBatch = (
+  value: unknown,
+): FolioDocumentOperationBatch => {
   if (isParsedFolioDocumentOperationBatch(value)) {
     return value;
   }
@@ -1514,7 +1817,9 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
     "dryRun",
     "precondition",
   ]);
-  const version = assertSupportedFolioDocumentOperationVersion(value["version"]);
+  const version = assertSupportedFolioDocumentOperationVersion(
+    value["version"],
+  );
   const operations = value["operations"];
   if (!Array.isArray(operations)) {
     return invalidBatch("$.operations", "expected an array");
@@ -1538,7 +1843,10 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
   const operationIds = new Set<string>();
   for (const [index, operation] of parsedOperations.entries()) {
     if (operationIds.has(operation.id)) {
-      return invalidBatch(`$.operations[${index}].id`, "expected a unique operation id");
+      return invalidBatch(
+        `$.operations[${index}].id`,
+        "expected a unique operation id",
+      );
     }
     operationIds.add(operation.id);
   }
@@ -1559,7 +1867,8 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
  * `queued` is reported by a surface that routes the batch into a host-owned
  * review queue instead of applying it; the core apply path never produces it.
  */
-export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";
+export type FolioDocumentOperationStatus =
+  "committed" | "previewed" | "rejected" | "queued";
 
 export type FolioDocumentOperationRecovery =
   | "refreshDocument"
@@ -1609,7 +1918,8 @@ export type FolioDocumentOperationAffectedTarget =
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
       position: "before" | "after";
-      content: "block" | "signatureTable" | "table" | "tableRow" | "tableColumn";
+      content:
+        "block" | "signatureTable" | "table" | "tableRow" | "tableColumn";
     }
   | {
       type: "comment";
@@ -1657,9 +1967,7 @@ export type FolioDocumentOperationUndoHandle = {
 };
 
 export type FolioDocumentOperationUndoFailureReason =
-  | "unknownHandle"
-  | "notLatest"
-  | "documentChanged";
+  "unknownHandle" | "notLatest" | "documentChanged";
 
 export type FolioDocumentOperationUndoResult =
   | {
@@ -1748,7 +2056,10 @@ const recoveryByReason = {
   invalidResult: "refreshDocument",
   pendingDeletion: "resolveTrackedChange",
   pendingParagraphMarkDeletion: "resolveTrackedChange",
-} as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
+} as const satisfies Record<
+  FolioAIEditSkippedOperation["reason"],
+  FolioDocumentOperationRecovery
+>;
 
 export const getFolioDocumentOperationIssues = (
   operations: readonly FolioDocumentOperation[],
@@ -1939,7 +2250,11 @@ export const getFolioDocumentOperationReceipts = (
   operations: readonly FolioDocumentOperation[],
   applied: readonly FolioAIEditAppliedOperation[],
 ): FolioDocumentOperationReceipt[] =>
-  getFolioDocumentOperationReceiptsForStory({ operations, applied, story: "main" });
+  getFolioDocumentOperationReceiptsForStory({
+    operations,
+    applied,
+    story: "main",
+  });
 
 type GetFolioDocumentOperationReceiptsForStoryOptions = {
   operations: readonly FolioDocumentOperation[];
@@ -2030,7 +2345,8 @@ const inOperationOrder = (
 ): FolioAIEditSkippedOperation[] => {
   const indexById = new Map(operations.map(({ id }, index) => [id, index]));
   return [...skipped].sort(
-    (left, right) => (indexById.get(left.id) ?? -1) - (indexById.get(right.id) ?? -1),
+    (left, right) =>
+      (indexById.get(left.id) ?? -1) - (indexById.get(right.id) ?? -1),
   );
 };
 
@@ -2129,7 +2445,8 @@ export const applyFolioDocumentOperations = ({
     const numbering =
       packageNumbering === undefined
         ? undefined
-        : (completeNumberingForDoc(packageNumbering ?? undefined, run.doc) ?? null);
+        : (completeNumberingForDoc(packageNumbering ?? undefined, run.doc) ??
+          null);
     return findIntroducedModelErrors(beforeDoc, run.doc, {
       numbering,
       createdCommentIds: run.commentIds,
@@ -2145,7 +2462,10 @@ export const applyFolioDocumentOperations = ({
   const checkedAttempt = (
     operations: readonly FolioDocumentOperation[],
     preview: boolean,
-  ): { run: BatchAttempt | null; error: ValidateDocumentModelIssue | undefined } => {
+  ): {
+    run: BatchAttempt | null;
+    error: ValidateDocumentModelIssue | undefined;
+  } => {
     try {
       const run = attempt(operations, preview);
       return { run, error: introducedErrors(run)[0] };
@@ -2183,7 +2503,11 @@ export const applyFolioDocumentOperations = ({
       }
       const alone = checkedAttempt([operation], true).error;
       if (alone !== undefined) {
-        refused.push({ id, reason: "invalidResult", message: describeModelError(alone) });
+        refused.push({
+          id,
+          reason: "invalidResult",
+          message: describeModelError(alone),
+        });
       }
     }
     if (refused.length > 0) {
@@ -2209,7 +2533,10 @@ export const applyFolioDocumentOperations = ({
       return {
         outcome: {
           ...first.outcome,
-          skipped: inOperationOrder(parsedBatch.operations, first.outcome.skipped),
+          skipped: inOperationOrder(
+            parsedBatch.operations,
+            first.outcome.skipped,
+          ),
         },
         commit: first.commit,
       };
@@ -2223,7 +2550,10 @@ export const applyFolioDocumentOperations = ({
         outcome: {
           ...first.outcome,
           applied: [],
-          skipped: inOperationOrder(parsedBatch.operations, [...first.outcome.skipped, ...refused]),
+          skipped: inOperationOrder(parsedBatch.operations, [
+            ...first.outcome.skipped,
+            ...refused,
+          ]),
         },
         commit: NO_COMMIT,
       };
@@ -2305,7 +2635,10 @@ export const applyFolioDocumentOperations = ({
       status: "previewed",
       applied: previewResult.applied.map(({ id }) => ({ id })),
       skipped: previewResult.skipped,
-      issues: getFolioDocumentOperationIssues(parsedBatch.operations, previewResult.skipped),
+      issues: getFolioDocumentOperationIssues(
+        parsedBatch.operations,
+        previewResult.skipped,
+      ),
       receipts: getFolioDocumentOperationReceiptsForStory({
         operations: parsedBatch.operations,
         applied: previewResult.applied,
@@ -2328,7 +2661,10 @@ export const applyFolioDocumentOperations = ({
 
   const guarded = guardedAttempt(false);
   const result = guarded.outcome;
-  if (isAtomic && result.skipped.some(({ reason }) => reason === "invalidResult")) {
+  if (
+    isAtomic &&
+    result.skipped.some(({ reason }) => reason === "invalidResult")
+  ) {
     return atomicResult(result, "rejected");
   }
   guarded.commit();
@@ -2336,13 +2672,18 @@ export const applyFolioDocumentOperations = ({
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     status: "committed",
     ...result,
-    issues: getFolioDocumentOperationIssues(parsedBatch.operations, result.skipped),
+    issues: getFolioDocumentOperationIssues(
+      parsedBatch.operations,
+      result.skipped,
+    ),
     receipts: getFolioDocumentOperationReceiptsForStory({
       operations: parsedBatch.operations,
       applied: result.applied,
       story,
     }),
     undoHandle:
-      result.applied.length > 0 && createUndoHandle !== undefined ? createUndoHandle() : null,
+      result.applied.length > 0 && createUndoHandle !== undefined
+        ? createUndoHandle()
+        : null,
   };
 };

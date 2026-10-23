@@ -5,8 +5,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { parseDocx } from "@stll/folio-core/docx/parser";
 import JSZip from "jszip";
+
+import { parseDocx } from "@stll/folio-core/docx/parser";
 
 import {
   type CorpusInvariantInput,
@@ -16,9 +17,12 @@ import { runEditorRoundTripInvariant } from "./lib/corpus-invariants/editor-roun
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-const WORDPROCESSING = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const RELATIONSHIP_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const WORDPROCESSING =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const RELATIONSHIP_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const DOCUMENT_PART = "word/document.xml";
 
 const documentXml = (body: string): string =>
@@ -64,7 +68,9 @@ const invariantInput = async (body: string): Promise<CorpusInvariantInput> => {
 
 describe("the editor round trip preserves the package", () => {
   test("a minimal well-formed package survives parse, edit model and save", async () => {
-    const outcome = await runEditorRoundTripInvariant(await invariantInput(PLAIN_BODY));
+    const outcome = await runEditorRoundTripInvariant(
+      await invariantInput(PLAIN_BODY),
+    );
 
     expect(outcome.failures).toEqual([]);
     expect(Object.keys(outcome.timings)).toEqual([
@@ -77,7 +83,9 @@ describe("the editor round trip preserves the package", () => {
   });
 
   test("a heading, direct formatting and a table survive it too", async () => {
-    const outcome = await runEditorRoundTripInvariant(await invariantInput(RICH_BODY));
+    const outcome = await runEditorRoundTripInvariant(
+      await invariantInput(RICH_BODY),
+    );
 
     expect(outcome.failures).toEqual([]);
   });

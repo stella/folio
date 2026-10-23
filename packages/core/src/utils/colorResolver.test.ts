@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { isValidHexColor, resolveColor, resolveColorToHex } from "./colorResolver";
+import {
+  isValidHexColor,
+  resolveColor,
+  resolveColorToHex,
+} from "./colorResolver";
 
 // A crafted `w:val`/`w:fill` (or a themeN.xml color-scheme swatch) that
 // smuggles a CSS `url()` payload instead of a real color — this is the
@@ -33,7 +37,9 @@ describe("resolveColor", () => {
 
   test("falls back to the safe default when rgb carries a CSS injection payload", () => {
     expect(resolveColor({ rgb: MALICIOUS_COLOR }, null)).toBe("#000000");
-    expect(resolveColor({ rgb: MALICIOUS_COLOR }, null, "FF0000")).toBe("#FF0000");
+    expect(resolveColor({ rgb: MALICIOUS_COLOR }, null, "FF0000")).toBe(
+      "#FF0000",
+    );
   });
 
   test("falls back to the safe default when a theme-resolved swatch is malformed", () => {
@@ -53,7 +59,9 @@ describe("resolveColor", () => {
         folHlink: "954F72",
       },
     };
-    expect(resolveColor({ themeColor: "accent1" }, maliciousTheme)).toBe("#000000");
+    expect(resolveColor({ themeColor: "accent1" }, maliciousTheme)).toBe(
+      "#000000",
+    );
   });
 
   test("auto and undefined color both resolve to the default", () => {

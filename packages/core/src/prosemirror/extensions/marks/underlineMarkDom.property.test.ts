@@ -18,7 +18,11 @@ import { describe, expect, test } from "bun:test";
 import type { ParseRule, StyleParseRule } from "prosemirror-model";
 
 import { UNDERLINE_STROKES } from "../../../display-list/build/strokes";
-import type { MeasuredLine, ParagraphBlock, TextRun } from "../../../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TextRun,
+} from "../../../layout-engine/types";
 import { renderLine } from "../../../layout-painter/renderParagraph";
 import type { UnderlineStyle } from "../../../types/document";
 import {
@@ -32,7 +36,9 @@ import { schema } from "../../schema";
 const isUnderlineStyle = (value: string): value is UnderlineStyle =>
   Object.hasOwn(UNDERLINE_DECORATION_STYLES, value);
 
-const UNDERLINE_STYLES = Object.keys(UNDERLINE_DECORATION_STYLES).filter(isUnderlineStyle);
+const UNDERLINE_STYLES = Object.keys(UNDERLINE_DECORATION_STYLES).filter(
+  isUnderlineStyle,
+);
 
 /** What a backend decided to paint, in the terms both backends share. */
 type PaintedUnderline = {
@@ -55,7 +61,8 @@ if (!toDOM) {
   throw new Error("the underline mark declares no toDOM");
 }
 
-const isStyleRule = (rule: ParseRule): rule is StyleParseRule => rule.style !== undefined;
+const isStyleRule = (rule: ParseRule): rule is StyleParseRule =>
+  rule.style !== undefined;
 
 const textDecorationRule = (parseDOM ?? [])
   .filter(isStyleRule)
@@ -70,11 +77,15 @@ const declarationsOf = (inlineStyle: string): ReadonlyMap<string, string> =>
       .map(([property, value]) => [property.trim(), value.trim()]),
   );
 
-const editorDeclarations = (style: UnderlineStyle): ReadonlyMap<string, string> => {
+const editorDeclarations = (
+  style: UnderlineStyle,
+): ReadonlyMap<string, string> => {
   const output = toDOM(underlineMarkType.create({ style }), true);
   const attrs = Array.isArray(output) ? output[1] : undefined;
   const inlineStyle =
-    attrs !== null && typeof attrs === "object" && "style" in attrs ? attrs["style"] : undefined;
+    attrs !== null && typeof attrs === "object" && "style" in attrs
+      ? attrs["style"]
+      : undefined;
   return declarationsOf(typeof inlineStyle === "string" ? inlineStyle : "");
 };
 
@@ -88,7 +99,9 @@ const paintedByEditor = (style: UnderlineStyle): PaintedUnderline => {
   const underlines = tokens.includes("underline");
   return {
     underlines,
-    decorationStyle: underlines ? tokens.find((token) => token !== "underline") : undefined,
+    decorationStyle: underlines
+      ? tokens.find((token) => token !== "underline")
+      : undefined,
     decorationThickness: declarations.get("text-decoration-thickness"),
   };
 };
@@ -101,7 +114,9 @@ const parsedUnderlineStyle = (value: string): UnderlineStyle | false => {
   }
   const style = String(attrs["style"]);
   if (!isUnderlineStyle(style)) {
-    throw new Error(`the parse rule produced a value outside ST_Underline: ${style}`);
+    throw new Error(
+      `the parse rule produced a value outside ST_Underline: ${style}`,
+    );
   }
   return style;
 };
@@ -144,11 +159,17 @@ class FakeElement {
     return this.children.at(0) ?? null;
   }
 
-  getContext(): { font: string; measureText: (text: string) => { width: number } } | null {
+  getContext(): {
+    font: string;
+    measureText: (text: string) => { width: number };
+  } | null {
     if (this.tagName !== "canvas") {
       return null;
     }
-    return { font: "", measureText: (text: string) => ({ width: text.length * 7 }) };
+    return {
+      font: "",
+      measureText: (text: string) => ({ width: text.length * 7 }),
+    };
   }
 }
 
@@ -157,7 +178,9 @@ const fakeDocument = {
 } as unknown as Document;
 
 const paintedByPage = (style: UnderlineStyle): PaintedUnderline => {
-  const runs: TextRun[] = [{ kind: "text", text: "text", underline: { style } }];
+  const runs: TextRun[] = [
+    { kind: "text", text: "text", underline: { style } },
+  ];
   const block: ParagraphBlock = { kind: "paragraph", id: "p", runs };
   const line: MeasuredLine = {
     fromRun: 0,
@@ -179,12 +202,16 @@ const paintedByPage = (style: UnderlineStyle): PaintedUnderline => {
     lineRightEdgePx: 600,
   }) as unknown as FakeElement;
 
-  const runEl = lineEl.children.find((child) => child.className.includes("layout-run-text"));
+  const runEl = lineEl.children.find((child) =>
+    child.className.includes("layout-run-text"),
+  );
   if (!runEl) {
     throw new Error("the painter rendered no text run");
   }
   return {
-    underlines: (runEl.style["textDecorationLine"] ?? "").split(/\s+/u).includes("underline"),
+    underlines: (runEl.style["textDecorationLine"] ?? "")
+      .split(/\s+/u)
+      .includes("underline"),
     decorationStyle: runEl.style["textDecorationStyle"],
     decorationThickness: runEl.style["textDecorationThickness"],
   };
@@ -192,22 +219,31 @@ const paintedByPage = (style: UnderlineStyle): PaintedUnderline => {
 
 describe("the underline mark's DOM is the painter's DOM", () => {
   test("the member list is the display list's, which is the schema's", () => {
-    expect(UNDERLINE_STYLES.toSorted()).toEqual(Object.keys(UNDERLINE_STROKES).toSorted());
+    expect(UNDERLINE_STYLES.toSorted()).toEqual(
+      Object.keys(UNDERLINE_STROKES).toSorted(),
+    );
   });
 
-  test.each(UNDERLINE_STYLES)("`%s` paints the same in the editor and on the page", (style) => {
-    expect(paintedByEditor(style)).toEqual(paintedByPage(style));
-  });
+  test.each(UNDERLINE_STYLES)(
+    "`%s` paints the same in the editor and on the page",
+    (style) => {
+      expect(paintedByEditor(style)).toEqual(paintedByPage(style));
+    },
+  );
 
-  test.each(UNDERLINE_STYLES)("`%s` paints what the one table says", (style) => {
-    const { decorationStyle, decorationThickness } = underlineDecorationCss(style);
+  test.each(UNDERLINE_STYLES)(
+    "`%s` paints what the one table says",
+    (style) => {
+      const { decorationStyle, decorationThickness } =
+        underlineDecorationCss(style);
 
-    expect(paintedByEditor(style)).toEqual({
-      underlines: decorationStyle !== undefined,
-      decorationStyle,
-      decorationThickness,
-    });
-  });
+      expect(paintedByEditor(style)).toEqual({
+        underlines: decorationStyle !== undefined,
+        decorationStyle,
+        decorationThickness,
+      });
+    },
+  );
 });
 
 describe("a `text-decoration` value parses back through the same table", () => {
@@ -215,16 +251,21 @@ describe("a `text-decoration` value parses back through the same table", () => {
     expect(textDecorationRule).toBeDefined();
   });
 
-  test.each(UNDERLINE_STYLES)("`%s` parses back as a member drawn with the same line", (style) => {
-    const parsed = parsedUnderlineStyle(editorShorthand(style));
-    if (parsed === false) {
-      throw new Error(`the rule refused the editor's own output for ${style}`);
-    }
+  test.each(UNDERLINE_STYLES)(
+    "`%s` parses back as a member drawn with the same line",
+    (style) => {
+      const parsed = parsedUnderlineStyle(editorShorthand(style));
+      if (parsed === false) {
+        throw new Error(
+          `the rule refused the editor's own output for ${style}`,
+        );
+      }
 
-    expect(underlineDecorationCss(parsed).decorationStyle).toBe(
-      underlineDecorationCss(style).decorationStyle,
-    );
-  });
+      expect(underlineDecorationCss(parsed).decorationStyle).toBe(
+        underlineDecorationCss(style).decorationStyle,
+      );
+    },
+  );
 
   test("each keyword resolves to its canonical author", () => {
     expect(underlineStyleFromCssDecoration("underline solid")).toBe("single");
@@ -236,14 +277,20 @@ describe("a `text-decoration` value parses back through the same table", () => {
 
   test("the weight and the word-only line do not survive CSS, which cannot spell them", () => {
     expect(parsedUnderlineStyle(editorShorthand("dottedHeavy"))).toBe("dotted");
-    expect(parsedUnderlineStyle(editorShorthand("words"))).toBe(PLAIN_UNDERLINE);
+    expect(parsedUnderlineStyle(editorShorthand("words"))).toBe(
+      PLAIN_UNDERLINE,
+    );
     expect(parsedUnderlineStyle(editorShorthand("wavyDouble"))).toBe("double");
   });
 
   test("a value naming no keyword folio writes parses as the plain underline", () => {
     expect(underlineStyleFromCssDecoration("underline")).toBe(PLAIN_UNDERLINE);
-    expect(underlineStyleFromCssDecoration("underline groove")).toBe(PLAIN_UNDERLINE);
-    expect(underlineStyleFromCssDecoration("underline dottedheavy")).toBe(PLAIN_UNDERLINE);
+    expect(underlineStyleFromCssDecoration("underline groove")).toBe(
+      PLAIN_UNDERLINE,
+    );
+    expect(underlineStyleFromCssDecoration("underline dottedheavy")).toBe(
+      PLAIN_UNDERLINE,
+    );
   });
 
   test("`none` still cancels an inherited underline, and a strike is not an underline", () => {

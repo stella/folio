@@ -27,7 +27,8 @@
   /* The canvas as an opaque surface, for chrome that pages scroll under (the
      ruler, a drawer): --doc-bg may be translucent (a tint over the host's
      background), so it is laid over the page colour. A `background` value. */
-  --doc-canvas-surface: linear-gradient(var(--doc-bg), var(--doc-bg)) var(--doc-page);
+  --doc-canvas-surface: linear-gradient(var(--doc-bg), var(--doc-bg))
+    var(--doc-page);
   --doc-bg-subtle: var(--muted);
   --doc-bg-muted: var(--muted);
   --doc-bg-hover: var(--accent);
@@ -62,7 +63,11 @@
   --doc-find-highlight: rgba(250, 204, 21, 0.5);
   --doc-find-current: rgba(249, 115, 22, 0.6);
   --doc-image-selection: var(--doc-link);
-  --doc-image-selection-muted: color-mix(in srgb, var(--doc-image-selection) 12%, transparent);
+  --doc-image-selection-muted: color-mix(
+    in srgb,
+    var(--doc-image-selection) 12%,
+    transparent
+  );
   --doc-handle-border: var(--background);
   --doc-dimension-bg: color-mix(in srgb, var(--foreground) 75%, transparent);
   --doc-dimension-text: var(--background);
@@ -342,8 +347,12 @@
  * have no var and keep --doc-canvas-text above. Relative-color syntax computes
  * the inverted OKLCH lightness, so e.g. #575757 reads near-#B2B2B2, amber
  * darkens to brown, and saturated hues stay on-hue. */
-.dark .layout-page [style*="--doc-run-color"]:not(.docx-insertion):not(.docx-deletion) {
-  color: oklch(from var(--doc-run-color) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h) !important;
+.dark
+  .layout-page
+  [style*="--doc-run-color"]:not(.docx-insertion):not(.docx-deletion) {
+  color: oklch(
+    from var(--doc-run-color) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h
+  ) !important;
 }
 
 /* Word adapts authored document surfaces with the same lightness inversion as
@@ -352,7 +361,8 @@
  * inversion above (for example, direct black becomes white on darkened yellow). */
 .dark .layout-page [style*="--doc-authored-background-color"] {
   background-color: oklch(
-    from var(--doc-authored-background-color) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h
+    from var(--doc-authored-background-color) clamp(0, 1.22 - 0.95 * l, 1)
+      calc(c * 0.6) h
   ) !important;
 }
 
@@ -362,7 +372,9 @@
  * Decoration (underline/strike) follows the same inverted colour. */
 .dark .layout-page .docx-insertion,
 .dark .layout-page .docx-deletion {
-  --tc-inverted: oklch(from var(--tc-color, #c00000) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h);
+  --tc-inverted: oklch(
+    from var(--tc-color, #c00000) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h
+  );
   color: var(--tc-inverted) !important;
   text-decoration-color: var(--tc-inverted) !important;
 }
@@ -373,7 +385,8 @@
 .dark .layout-page .docx-insertion--suggested,
 .dark .layout-page .docx-deletion--suggested {
   --suggestion-inverted: oklch(
-    from var(--suggestion-color, #6d3bd6) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h
+    from var(--suggestion-color, #6d3bd6) clamp(0, 1.22 - 0.95 * l, 1)
+      calc(c * 0.6) h
   );
   color: var(--suggestion-inverted) !important;
   text-decoration-color: var(--suggestion-inverted) !important;
@@ -405,7 +418,12 @@
 /* Firefox */
 .folio-editor {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--foreground, #262626) 20%, transparent) transparent;
+  scrollbar-color: color-mix(
+      in srgb,
+      var(--foreground, #262626) 20%,
+      transparent
+    )
+    transparent;
 }
 
 .docx-list-marker,
@@ -817,17 +835,29 @@
    paged-canvas projection below can reuse it as a border color
    (text-decoration cannot paint on the overlay's empty rects). */
 .folio-ai-suggestion--typo {
-  --folio-ai-underline-color: color-mix(in oklch, var(--doc-text-muted) 65%, transparent);
+  --folio-ai-underline-color: color-mix(
+    in oklch,
+    var(--doc-text-muted) 65%,
+    transparent
+  );
   text-decoration-color: var(--folio-ai-underline-color);
 }
 
 .folio-ai-suggestion--style {
-  --folio-ai-underline-color: color-mix(in oklch, var(--doc-text) 35%, transparent);
+  --folio-ai-underline-color: color-mix(
+    in oklch,
+    var(--doc-text) 35%,
+    transparent
+  );
   text-decoration-color: var(--folio-ai-underline-color);
 }
 
 .folio-ai-suggestion--substantive {
-  --folio-ai-underline-color: color-mix(in oklch, var(--doc-error, currentColor) 60%, transparent);
+  --folio-ai-underline-color: color-mix(
+    in oklch,
+    var(--doc-error, currentColor) 60%,
+    transparent
+  );
   text-decoration-color: var(--folio-ai-underline-color);
   text-decoration-thickness: 1.5px;
 }
@@ -845,7 +875,11 @@
  * injected right after it as a tinted insertion widget, so stepping
  * through suggestions previews each change in the document itself. */
 .folio-ai-suggestion--focused-original {
-  --folio-ai-strike-color: color-mix(in oklch, var(--doc-text-muted) 75%, transparent);
+  --folio-ai-strike-color: color-mix(
+    in oklch,
+    var(--doc-text-muted) 75%,
+    transparent
+  );
   text-decoration-line: line-through;
   text-decoration-style: solid;
   text-decoration-thickness: 1px;
@@ -901,7 +935,10 @@
   /* Opaque page base under the translucent tint so the chip stays
      legible when it overlaps the following painted text. */
   background:
-    linear-gradient(var(--folio-ai-replacement-bg), var(--folio-ai-replacement-bg)),
+    linear-gradient(
+      var(--folio-ai-replacement-bg),
+      var(--folio-ai-replacement-bg)
+    ),
     var(--doc-canvas, #ffffff);
 }
 
@@ -978,13 +1015,21 @@
     transparent
   );
   box-shadow: 0 0 0 2px
-    color-mix(in oklch, var(--doc-find-current, rgba(249, 115, 22, 0.6)) 30%, transparent);
+    color-mix(
+      in oklch,
+      var(--doc-find-current, rgba(249, 115, 22, 0.6)) 30%,
+      transparent
+    );
 }
 
 /* Brief flash when a heading is jumped to from the document outline rail. */
 @keyframes folio-outline-flash {
   0% {
-    background-color: color-mix(in oklch, var(--color-primary, oklch(0.6 0.2 24)) 18%, transparent);
+    background-color: color-mix(
+      in oklch,
+      var(--color-primary, oklch(0.6 0.2 24)) 18%,
+      transparent
+    );
   }
   100% {
     background-color: transparent;
@@ -1022,32 +1067,41 @@
    middle. `only` and the unmarked legacy case keep the full closed box.
    Use logical corner properties so the rounded corners stay on the
    inline-leading/trailing sides regardless of writing-mode / RTL. */
-.layout-page-content [data-sdt-boundary="true"][data-sdt-position="first"]::before {
+.layout-page-content
+  [data-sdt-boundary="true"][data-sdt-position="first"]::before {
   border-bottom-width: 0;
   border-start-start-radius: 2px;
   border-start-end-radius: 2px;
   border-end-start-radius: 0;
   border-end-end-radius: 0;
 }
-.layout-page-content [data-sdt-boundary="true"][data-sdt-position="middle"]::before {
+.layout-page-content
+  [data-sdt-boundary="true"][data-sdt-position="middle"]::before {
   border-top-width: 0;
   border-bottom-width: 0;
   border-radius: 0;
 }
-.layout-page-content [data-sdt-boundary="true"][data-sdt-position="last"]::before {
+.layout-page-content
+  [data-sdt-boundary="true"][data-sdt-position="last"]::before {
   border-top-width: 0;
   border-start-start-radius: 0;
   border-start-end-radius: 0;
   border-end-start-radius: 2px;
   border-end-end-radius: 2px;
 }
-.layout-page-content [data-sdt-boundary="true"][data-sdt-position="only"]::before,
-.layout-page-content [data-sdt-boundary="true"]:not([data-sdt-position])::before {
+.layout-page-content
+  [data-sdt-boundary="true"][data-sdt-position="only"]::before,
+.layout-page-content
+  [data-sdt-boundary="true"]:not([data-sdt-position])::before {
   border-radius: 2px;
 }
 .layout-page-content [data-sdt-boundary="true"]:hover::before,
 .layout-page-content [data-sdt-boundary="true"]:focus-within::before {
-  border-color: color-mix(in oklch, var(--color-border, oklch(0.85 0 0)) 60%, transparent);
+  border-color: color-mix(
+    in oklch,
+    var(--color-border, oklch(0.85 0 0)) 60%,
+    transparent
+  );
 }
 
 /* ============================================================================
@@ -1166,12 +1220,14 @@
    rail without shifting layout — so one block is easy to trace end-to-end. */
 .folio-template-band-rail--for.folio-template-band-rail--active {
   background: color-mix(in srgb, var(--doc-tmpl-loop) 90%, transparent);
-  box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-loop) 45%, transparent);
+  box-shadow: 0 0 0 0.75px
+    color-mix(in srgb, var(--doc-tmpl-loop) 45%, transparent);
 }
 
 .folio-template-band-rail--if.folio-template-band-rail--active {
   background: color-mix(in srgb, var(--doc-tmpl-cond) 90%, transparent);
-  box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-cond) 45%, transparent);
+  box-shadow: 0 0 0 0.75px
+    color-mix(in srgb, var(--doc-tmpl-cond) 45%, transparent);
 }
 
 /* ── Template fill preview ─────────────────────────────────────────────
@@ -1193,7 +1249,11 @@
 }
 
 .folio-template-preview-value--highlighted {
-  --folio-template-preview-accent-bg: color-mix(in srgb, #f97316 28%, transparent);
+  --folio-template-preview-accent-bg: color-mix(
+    in srgb,
+    #f97316 28%,
+    transparent
+  );
   padding: 0 2px;
   border-radius: 3px;
   background: var(--folio-template-preview-accent-bg);
@@ -1348,7 +1408,10 @@
   background: var(--doc-page);
   color: var(--doc-text);
   font-size: 0.8125rem;
-  padding-block-end: max(env(safe-area-inset-bottom, 0px), var(--document-panel-bottom-inset, 0px));
+  padding-block-end: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--document-panel-bottom-inset, 0px)
+  );
 }
 
 .folio-outline--column {

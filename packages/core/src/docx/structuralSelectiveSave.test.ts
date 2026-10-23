@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
@@ -21,10 +21,17 @@ import { parseDocx } from "./parser";
 import { attemptSelectiveSave } from "./selectiveSave";
 import { findParagraphOffsets } from "./selectiveXmlPatch";
 
-const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const PARA_ID_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml";
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const PARAGRAPH_TEXTS = ["Alpha beta", "Middle paragraph", "Last paragraph"] as const;
+const WORD_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const PARA_ID_NAMESPACE =
+  "http://schemas.microsoft.com/office/word/2010/wordml";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const PARAGRAPH_TEXTS = [
+  "Alpha beta",
+  "Middle paragraph",
+  "Last paragraph",
+] as const;
 const PARAGRAPH_IDS = ["10000001", "10000002", "10000003"] as const;
 const FINAL_SECTION = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
 
@@ -71,7 +78,8 @@ const packageBytes = async (
     zip.file("word/comments.xml", options.commentsXml);
     const contentTypes = zip.file("[Content_Types].xml");
     const relationships = zip.file("word/_rels/document.xml.rels");
-    if (!contentTypes || !relationships) panic("Expected fixture package metadata");
+    if (!contentTypes || !relationships)
+      panic("Expected fixture package metadata");
     zip.file(
       "[Content_Types].xml",
       (await contentTypes.async("text")).replace(
@@ -109,7 +117,11 @@ const saveOptions = (state: EditorState) => ({
   hasUntrackedChanges: hasUntrackedChanges(state),
 });
 
-type SaveEditorOptions = { base: Document; state: EditorState; buffer: ArrayBuffer };
+type SaveEditorOptions = {
+  base: Document;
+  state: EditorState;
+  buffer: ArrayBuffer;
+};
 const saveEditor = ({ base, state, buffer }: SaveEditorOptions) =>
   attemptSelectiveSave(
     fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
@@ -124,7 +136,11 @@ const firstBlockSize = (state: EditorState): number => {
 };
 
 const newParagraph = (state: EditorState, text: string): PMNode =>
-  state.schema.node("paragraph", null, text ? state.schema.text(text) : undefined);
+  state.schema.node(
+    "paragraph",
+    null,
+    text ? state.schema.text(text) : undefined,
+  );
 
 const bodyParagraphs = (doc: PMNode) => {
   const paragraphs: { node: PMNode; position: number; id: string }[] = [];
@@ -144,15 +160,22 @@ const readDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
 };
 
 type PreservedPartsOptions = { original: ArrayBuffer; saved: ArrayBuffer };
-const expectOtherPartsUnchanged = async ({ original, saved }: PreservedPartsOptions) => {
+const expectOtherPartsUnchanged = async ({
+  original,
+  saved,
+}: PreservedPartsOptions) => {
   const before = await JSZip.loadAsync(original);
   const after = await JSZip.loadAsync(saved);
-  expect(Object.keys(after.files).sort()).toEqual(Object.keys(before.files).sort());
+  expect(Object.keys(after.files).sort()).toEqual(
+    Object.keys(before.files).sort(),
+  );
   for (const [path, entry] of Object.entries(before.files)) {
     if (entry.dir || path === "word/document.xml") continue;
     const savedEntry = after.file(path);
     if (!savedEntry) panic(`Expected preserved part ${path}`);
-    expect(await savedEntry.async("uint8array")).toEqual(await entry.async("uint8array"));
+    expect(await savedEntry.async("uint8array")).toEqual(
+      await entry.async("uint8array"),
+    );
   }
 };
 
@@ -164,7 +187,8 @@ const removeParagraphs = (xml: string, ids: ReadonlySet<string>): string => {
     })
     .sort((left, right) => right.start - left.start);
   let result = xml;
-  for (const { start, end } of ranges) result = result.slice(0, start) + result.slice(end);
+  for (const { start, end } of ranges)
+    result = result.slice(0, start) + result.slice(end);
   return result;
 };
 
@@ -184,9 +208,16 @@ const CASES = [
     edit: (state: EditorState) => {
       const target = bodyParagraphs(state.doc).at(deletedIndex);
       if (!target) panic("Expected paragraph to delete");
-      return state.apply(state.tr.delete(target.position, target.position + target.node.nodeSize));
+      return state.apply(
+        state.tr.delete(
+          target.position,
+          target.position + target.node.nodeSize,
+        ),
+      );
     },
-    expectedTexts: PARAGRAPH_TEXTS.filter((_text, index) => index !== deletedIndex),
+    expectedTexts: PARAGRAPH_TEXTS.filter(
+      (_text, index) => index !== deletedIndex,
+    ),
   })),
   {
     name: "delete all paragraphs to an empty document",
@@ -202,7 +233,9 @@ const CASES = [
           firstBlockSize(state),
           new Slice(
             Fragment.from(
-              ["Paste one", "Paste two", "Paste three"].map((text) => newParagraph(state, text)),
+              ["Paste one", "Paste two", "Paste three"].map((text) =>
+                newParagraph(state, text),
+              ),
             ),
             0,
             0,
@@ -257,29 +290,45 @@ describe("structural selective save through the editor pipeline", () => {
       if (!saved) panic(`Expected selective save for ${scenario.name}`);
       const reloaded = await openEditor(saved);
       const actualParagraphs = bodyParagraphs(reloaded.state.doc);
-      expect(actualParagraphs.map(({ node }) => node.textContent)).toEqual(scenario.expectedTexts);
+      expect(actualParagraphs.map(({ node }) => node.textContent)).toEqual(
+        scenario.expectedTexts,
+      );
       expect(actualParagraphs.map(({ id }) => id)).toEqual(expectedIds);
       const xml = await readDocumentXml(saved);
       const originalParagraphs = bodyParagraphs(state.doc);
       const untouched = new Set(
         originalParagraphs
           .filter(({ node, id }) =>
-            expectedParagraphs.some((current) => current.id === id && current.node.eq(node)),
+            expectedParagraphs.some(
+              (current) => current.id === id && current.node.eq(node),
+            ),
           )
           .map(({ id }) => id),
       );
       for (const id of untouched) {
         const before = findParagraphOffsets(source, id);
         const after = findParagraphOffsets(xml, id);
-        if (!before || !after) panic("Expected untouched paragraph in source and result");
-        expect(xml.slice(after.start, after.end)).toBe(source.slice(before.start, before.end));
+        if (!before || !after)
+          panic("Expected untouched paragraph in source and result");
+        expect(xml.slice(after.start, after.end)).toBe(
+          source.slice(before.start, before.end),
+        );
       }
       // Removing the edited/inserted/deleted spans exposes exactly the same
       // source scaffold: whitespace, body attributes and final section bytes.
-      expect(removeParagraphs(xml, new Set(expectedIds.filter((id) => !untouched.has(id))))).toBe(
+      expect(
+        removeParagraphs(
+          xml,
+          new Set(expectedIds.filter((id) => !untouched.has(id))),
+        ),
+      ).toBe(
         removeParagraphs(
           source,
-          new Set(originalParagraphs.filter(({ id }) => !untouched.has(id)).map(({ id }) => id)),
+          new Set(
+            originalParagraphs
+              .filter(({ id }) => !untouched.has(id))
+              .map(({ id }) => id),
+          ),
         ),
       );
       await expectOtherPartsUnchanged({ original: buffer, saved });
@@ -295,16 +344,18 @@ describe("structural selective save through the editor pipeline", () => {
     const cleared = split.apply(clearTrackedChanges(split));
     const target = bodyParagraphs(cleared.doc).at(1);
     if (!target) panic("Expected inserted paragraph");
-    const typed = cleared.apply(cleared.tr.insertText("!", target.position + 1));
+    const typed = cleared.apply(
+      cleared.tr.insertText("!", target.position + 1),
+    );
     const second = await saveEditor({ base, state: typed, buffer: first });
-    if (!second) panic("Expected edit of previously inserted paragraph to save selectively");
+    if (!second)
+      panic(
+        "Expected edit of previously inserted paragraph to save selectively",
+      );
     const reloaded = await openEditor(second);
-    expect(bodyParagraphs(reloaded.state.doc).map(({ node }) => node.textContent)).toEqual([
-      "Alpha",
-      "! beta",
-      "Middle paragraph",
-      "Last paragraph",
-    ]);
+    expect(
+      bodyParagraphs(reloaded.state.doc).map(({ node }) => node.textContent),
+    ).toEqual(["Alpha", "! beta", "Middle paragraph", "Last paragraph"]);
     expect(bodyParagraphs(reloaded.state.doc).map(({ id }) => id)).toEqual(
       bodyParagraphs(typed.doc).map(({ id }) => id),
     );
@@ -321,7 +372,8 @@ describe("structural selective save through the editor pipeline", () => {
     const { base, state } = await openEditor(buffer);
     const edited = state.apply(state.tr.split(6));
     const saved = await saveEditor({ base, state: edited, buffer });
-    if (!saved) panic("Expected split beside unchanged table to save selectively");
+    if (!saved)
+      panic("Expected split beside unchanged table to save selectively");
     expect(await readDocumentXml(saved)).toContain(TABLE);
     await expectOtherPartsUnchanged({ original: buffer, saved });
   });
@@ -338,13 +390,12 @@ describe("structural selective save through the editor pipeline", () => {
     const saved = await saveEditor({ base, state: edited, buffer });
     if (!saved) panic("Expected aliased source to save selectively");
     const reloaded = await openEditor(saved);
-    expect(bodyParagraphs(reloaded.state.doc).map(({ node }) => node.textContent)).toEqual([
-      "Alpha",
-      " beta",
-      "Middle paragraph",
-      "Last paragraph",
-    ]);
-    expect(await readDocumentXml(saved)).toContain('<word:p identity:paraId="10000003"');
+    expect(
+      bodyParagraphs(reloaded.state.doc).map(({ node }) => node.textContent),
+    ).toEqual(["Alpha", " beta", "Middle paragraph", "Last paragraph"]);
+    expect(await readDocumentXml(saved)).toContain(
+      '<word:p identity:paraId="10000003"',
+    );
     await expectOtherPartsUnchanged({ original: buffer, saved });
   });
 });
@@ -355,7 +406,10 @@ describe("structural save fallback boundaries", () => {
     const { base, state } = await openEditor(buffer);
     let cellParagraphPosition: number | undefined;
     state.doc.descendants((node, position) => {
-      if (node.type.name === "paragraph" && node.attrs["paraId"] === "20000001") {
+      if (
+        node.type.name === "paragraph" &&
+        node.attrs["paraId"] === "20000001"
+      ) {
         cellParagraphPosition = position;
       }
     });
@@ -372,12 +426,17 @@ describe("structural save fallback boundaries", () => {
       if (node.type.name === "tableRow") row = { node, position };
     });
     if (!row) panic("Expected table row");
-    const edited = state.apply(state.tr.insert(row.position + row.node.nodeSize, row.node));
+    const edited = state.apply(
+      state.tr.insert(row.position + row.node.nodeSize, row.node),
+    );
     expect(await saveEditor({ base, state: edited, buffer })).toBeNull();
   });
 
   test("paragraph section endpoint deletion falls back", async () => {
-    const sectionParagraph = paragraphXml({ text: "Section end", id: "10000004" }).replace(
+    const sectionParagraph = paragraphXml({
+      text: "Section end",
+      id: "10000004",
+    }).replace(
       "<w:r>",
       '<w:pPr><w:sectPr><w:type w:val="nextPage"/></w:sectPr></w:pPr><w:r>',
     );
@@ -410,22 +469,35 @@ describe("structural save fallback boundaries", () => {
     const buffer = await packageBytes(documentXml());
     const { base, state } = await openEditor(buffer);
     const edited = state.apply(state.tr.split(6));
-    const model = fromProseDoc(edited.doc, base, { stylesheetSource: { type: "package" } });
+    const model = fromProseDoc(edited.doc, base, {
+      stylesheetSource: { type: "package" },
+    });
     model.package.numbering = {
       abstractNums: [
-        { abstractNumId: 0, levels: [{ ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1." }] },
+        {
+          abstractNumId: 0,
+          levels: [{ ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1." }],
+        },
       ],
       nums: [{ numId: 1, abstractNumId: 0 }],
     };
     const first = model.package.document.content.at(0);
-    if (!first || first.type !== "paragraph") panic("Expected numbered paragraph");
-    first.formatting = { ...first.formatting, numPr: { kind: "reference", numId: 1, ilvl: 0 } };
+    if (!first || first.type !== "paragraph")
+      panic("Expected numbered paragraph");
+    first.formatting = {
+      ...first.formatting,
+      numPr: { kind: "reference", numId: 1, ilvl: 0 },
+    };
     expect(validateFolioDocumentModel(model).valid).toBe(true);
-    expect(await attemptSelectiveSave(model, buffer, saveOptions(edited))).toBeNull();
+    expect(
+      await attemptSelectiveSave(model, buffer, saveOptions(edited)),
+    ).toBeNull();
   });
 
   test("source paragraphs without authored identities fall back", async () => {
-    const buffer = await packageBytes(documentXml().replaceAll(/ w14:paraId="[0-9A-F]{8}"/gu, ""));
+    const buffer = await packageBytes(
+      documentXml().replaceAll(/ w14:paraId="[0-9A-F]{8}"/gu, ""),
+    );
     const { base, state } = await openEditor(buffer);
     const edited = state.apply(state.tr.split(6));
     expect(await saveEditor({ base, state: edited, buffer })).toBeNull();

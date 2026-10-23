@@ -56,15 +56,22 @@ export const commentAnchorIds = (element: CommentAnchor): readonly string[] => {
  * by the host app is not runtime-checked, so the value is escaped before it is
  * spliced into the selector.
  */
-export const commentAnchorSelector = (id: string | number, scope = ""): string => {
+export const commentAnchorSelector = (
+  id: string | number,
+  scope = "",
+): string => {
   const value = CSS.escape(String(id));
   return `${scope}[${PRIMARY_ATTRIBUTE}="${value}"], ${scope}[${MEMBERSHIP_ATTRIBUTE}~="${value}"]`;
 };
 
 /** First painted anchor per comment id, in one pass over `container`. */
-export const indexCommentAnchors = (container: ParentNode): Map<string, HTMLElement> => {
+export const indexCommentAnchors = (
+  container: ParentNode,
+): Map<string, HTMLElement> => {
   const anchors = new Map<string, HTMLElement>();
-  for (const element of container.querySelectorAll<HTMLElement>(COMMENT_ANCHOR_SELECTOR)) {
+  for (const element of container.querySelectorAll<HTMLElement>(
+    COMMENT_ANCHOR_SELECTOR,
+  )) {
     for (const id of commentAnchorIds(element)) {
       if (!anchors.has(id)) {
         anchors.set(id, element);

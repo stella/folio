@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FlowBlock, Measure, ParagraphBlock } from "../layout-engine/types";
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+} from "../layout-engine/types";
 import { tryBuildIncrementalMeasures } from "./incrementalMeasure";
 
 type ParagraphSpec = {

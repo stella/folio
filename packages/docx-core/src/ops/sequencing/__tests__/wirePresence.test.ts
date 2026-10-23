@@ -1,21 +1,22 @@
 import { expect, test } from "bun:test";
 import { deepStrictEqual, notDeepStrictEqual } from "node:assert/strict";
+
 import type { Document, Paragraph } from "../../../model/document";
 import { applyDocumentOps } from "../../apply";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
-  toOpEnvelope,
   type DocumentOp,
+  toOpEnvelope,
 } from "../../types";
 import { restoreDocumentOp } from "../../wire";
 import { createClient } from "../client";
 import {
   BATCH_REJECTION_REASONS,
-  parseDocumentBatch,
-  validateDocumentBatch,
   type DocumentBatch,
+  parseDocumentBatch,
   type SequencedBatch,
+  validateDocumentBatch,
 } from "../envelope";
 import { createSequencer } from "../sequencer";
 import { transformBatch } from "../transform";
@@ -55,7 +56,8 @@ const batch = (ops: readonly DocumentOp[]): DocumentBatch => ({
   baseRev: 0,
   ops: ops.map((op) => toOpEnvelope(op).op),
 });
-const position = (offset: number) => ({ story: "main", blockId: "00000001", offset }) as const;
+const position = (offset: number) =>
+  ({ story: "main", blockId: "00000001", offset }) as const;
 const insertion = {
   type: DOCUMENT_OP_TYPES.INSERT_TEXT,
   at: position(0),
@@ -69,8 +71,18 @@ test("batch validation and parsing preserve owned undefined patches through auth
   const runPatch = { italic: true };
   ownUndefined(runPatch, "bold");
   const ops = [
-    { type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS, story: "main", blockId: "00000001", patch },
-    { type: DOCUMENT_OP_TYPES.SET_RUN_PROPS, from: position(0), to: position(3), patch: runPatch },
+    {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      story: "main",
+      blockId: "00000001",
+      patch,
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+      from: position(0),
+      to: position(3),
+      patch: runPatch,
+    },
   ] satisfies DocumentOp[];
   const incoming = batch(ops);
   const parsed = parseDocumentBatch(JSON.stringify(incoming)).unwrap();
@@ -83,7 +95,8 @@ test("batch validation and parsing preserve owned undefined patches through auth
   const original = documentFixture();
   const expected = structuredClone(original);
   const paragraph = expected.package.document.content.at(0);
-  const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+  const run =
+    paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
   if (
     paragraph?.type !== "paragraph" ||
     !paragraph.formatting ||
@@ -120,7 +133,11 @@ test("admitted paragraph snapshot arrays retain undefined formatting after JSON 
     paraId: "00000002",
     formatting: { keepNext: false },
     content: [
-      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "snapshot" }] },
+      {
+        type: "run",
+        formatting: { italic: true },
+        content: [{ type: "text", text: "snapshot" }],
+      },
     ],
   } satisfies Paragraph;
   ownUndefined(paragraph.formatting, "alignment");
@@ -142,7 +159,10 @@ test("admitted paragraph snapshot arrays retain undefined formatting after JSON 
   const original = documentFixture();
   const applied = applyDocumentOps(original, parsed.ops).unwrap();
   deepStrictEqual(applied.document.package.document.content.at(0), paragraph);
-  const undo = applyDocumentOps(applied.document, jsonTransport(applied.inverse)).unwrap();
+  const undo = applyDocumentOps(
+    applied.document,
+    jsonTransport(applied.inverse),
+  ).unwrap();
   deepStrictEqual(undo.document, original);
 });
 
@@ -157,7 +177,12 @@ test.each(["paragraph", "run"] as const)(
     ownUndefined(runPatch, "strike");
     const incomingOp: DocumentOp =
       kind === "paragraph"
-        ? { type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS, story: "main", blockId: "00000001", patch }
+        ? {
+            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+            story: "main",
+            blockId: "00000001",
+            patch,
+          }
         : {
             type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
             from: position(0),
@@ -185,7 +210,9 @@ test.each(["paragraph", "run"] as const)(
       opId: "foreign",
       revision: 1,
     } satisfies SequencedBatch;
-    const transformed = transformBatch(incoming, [foreign], { order: "before" }).unwrap();
+    const transformed = transformBatch(incoming, [foreign], {
+      order: "before",
+    }).unwrap();
     const expectedOp: DocumentOp =
       kind === "paragraph"
         ? {
@@ -205,7 +232,9 @@ test.each(["paragraph", "run"] as const)(
     if (expectedOp.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS)
       ownUndefined(expectedOp.patch, "strike");
     deepStrictEqual(
-      transformed.ops.map((op) => restoreDocumentOp(jsonTransport(op)).unwrap()),
+      transformed.ops.map((op) =>
+        restoreDocumentOp(jsonTransport(op)).unwrap(),
+      ),
       [expectedOp],
     );
     expect(
@@ -225,7 +254,10 @@ const unproven = [
     num: { numId: 1, abstractNumId: 1 },
     abstractNum: { abstractNumId: 1, levels: [] },
   },
-  { type: DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE, num: { numId: 1, abstractNumId: 1 } },
+  {
+    type: DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE,
+    num: { numId: 1, abstractNumId: 1 },
+  },
   {
     type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
     endpoint: { type: "paragraph", blockId: "00000002" },
@@ -246,8 +278,11 @@ test("unproven numbering and unrelated section transforms refuse atomically in e
       const foreignBefore = structuredClone(foreign);
       const transformed = transformBatch(incoming, [foreign]);
       expect(transformed.isErr()).toBe(true);
-      if (transformed.isOk()) throw new TypeError("Unproven transform pair unexpectedly accepted.");
-      expect(transformed.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR);
+      if (transformed.isOk())
+        throw new TypeError("Unproven transform pair unexpectedly accepted.");
+      expect(transformed.error.reason).toBe(
+        BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+      );
       deepStrictEqual(incoming, before);
       deepStrictEqual(foreign, foreignBefore);
     }

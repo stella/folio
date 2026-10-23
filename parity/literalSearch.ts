@@ -4,7 +4,9 @@ import { AhoCorasick } from "@stll/aho-corasick";
 export const createLiteralSearchScope = () => {
   const matcherCache = new Map<string, AhoCorasick>();
   const literalMatcher = (patterns: string[]) => {
-    const wellFormedPatterns = patterns.map((pattern) => pattern.toWellFormed());
+    const wellFormedPatterns = patterns.map((pattern) =>
+      pattern.toWellFormed(),
+    );
     const key = JSON.stringify(wellFormedPatterns);
     let matcher = matcherCache.get(key);
     if (!matcher) {
@@ -22,16 +24,23 @@ export const createLiteralSearchScope = () => {
   };
 
   /** Both containment directions give an inspector candidate full similarity. */
-  const createCandidateContainment = (query: string, candidates: readonly string[]) => {
+  const createCandidateContainment = (
+    query: string,
+    candidates: readonly string[],
+  ) => {
     const wellFormedQuery = query.toWellFormed();
-    const distinctCandidates = new Set(candidates.map((candidate) => candidate.toWellFormed()));
+    const distinctCandidates = new Set(
+      candidates.map((candidate) => candidate.toWellFormed()),
+    );
     const contained = new Set([""]);
     // Each candidate needs one first-occurrence check, irrespective of repetitions.
     for (const candidate of distinctCandidates) {
-      if (candidate.length > 0 && wellFormedQuery.includes(candidate)) contained.add(candidate);
+      if (candidate.length > 0 && wellFormedQuery.includes(candidate))
+        contained.add(candidate);
     }
     const matchesQuery = createLiteralSearch(wellFormedQuery);
-    return (text: string) => matchesQuery(text) || contained.has(text.toWellFormed());
+    return (text: string) =>
+      matchesQuery(text) || contained.has(text.toWellFormed());
   };
 
   return { createLiteralSearch, createCandidateContainment };

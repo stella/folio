@@ -38,7 +38,10 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   alignment: { kind: "direct-provenance" },
   bidi: { kind: "style-resolved-attr", attr: "direction" },
   kinsoku: { kind: "style-resolved-attr", attr: "kinsoku" },
-  overflowPunctuation: { kind: "style-resolved-attr", attr: "overflowPunctuation" },
+  overflowPunctuation: {
+    kind: "style-resolved-attr",
+    attr: "overflowPunctuation",
+  },
   spaceBefore: { kind: "direct-provenance" },
   spaceAfter: { kind: "direct-provenance" },
   lineSpacing: { kind: "direct-provenance" },
@@ -87,7 +90,10 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   // for a save to read back. Give it an attr and it becomes
   // `style-resolved-attr` like the toggles above.
   suppressLineNumbers: { kind: "original-only" },
-  suppressAutoHyphens: { kind: "style-resolved-attr", attr: "suppressAutoHyphens" },
+  suppressAutoHyphens: {
+    kind: "style-resolved-attr",
+    attr: "suppressAutoHyphens",
+  },
   runProperties: { kind: "original-only" },
   // `<w:specVanish/>` on the paragraph mark, not a `w:pPr` child, but the attr
   // carries the style-resolved value the same way the toggles above do.
@@ -109,10 +115,13 @@ export type StyleResolvedParagraphField = {
     : never;
 }[keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK];
 
-export const STYLE_RESOLVED_PARAGRAPH_FIELDS = Object.keys(PARAGRAPH_FORMATTING_WRITE_BACK).filter(
+export const STYLE_RESOLVED_PARAGRAPH_FIELDS = Object.keys(
+  PARAGRAPH_FORMATTING_WRITE_BACK,
+).filter(
   (field) =>
-    PARAGRAPH_FORMATTING_WRITE_BACK[field as keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK].kind ===
-    "style-resolved-attr",
+    PARAGRAPH_FORMATTING_WRITE_BACK[
+      field as keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK
+    ].kind === "style-resolved-attr",
 ) as StyleResolvedParagraphField[];
 
 /**
@@ -138,7 +147,10 @@ export const styleResolvedParagraphFormatting = (
   }
   // First-line distance and its hanging interpretation travel as one value.
   // List removal must restore the style's interpretation, not a default.
-  if (resolved.indentFirstLine !== undefined && resolved.hangingIndent !== undefined) {
+  if (
+    resolved.indentFirstLine !== undefined &&
+    resolved.hangingIndent !== undefined
+  ) {
     governed.hangingIndent = resolved.hangingIndent;
   }
   return found ? governed : undefined;

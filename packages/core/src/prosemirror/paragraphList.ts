@@ -1,15 +1,26 @@
+import { panic } from "better-result";
+
 import {
   levelShowsMarker,
   paragraphNumberingReference,
-  resolveNumberingLevel,
   type ResolvedParagraphNumbering,
+  resolveNumberingLevel,
 } from "@stll/docx-core/model";
-import { panic } from "better-result";
-import { computeListRendering, type NumberingMap } from "../docx/numberingParser";
-import type { ListRendering } from "../types/document";
-import { effectiveParagraphNumbering, type ParagraphNumberingSources } from "./numberingAttr";
 
-type ParagraphListReference = Extract<ResolvedParagraphNumbering, { kind: "reference" }>;
+import {
+  computeListRendering,
+  type NumberingMap,
+} from "../docx/numberingParser";
+import type { ListRendering } from "../types/document";
+import {
+  effectiveParagraphNumbering,
+  type ParagraphNumberingSources,
+} from "./numberingAttr";
+
+type ParagraphListReference = Extract<
+  ResolvedParagraphNumbering,
+  { kind: "reference" }
+>;
 
 const standaloneList = (
   reference: ParagraphListReference,
@@ -80,7 +91,9 @@ export const resolveParagraphList = (
   // and only while the paragraph's own numbering does not cancel the list.
   // With a package, the definitions alone decide.
   const projectionStandsIn =
-    numbering === null && standaloneRendering !== undefined && sources.numPr?.kind !== "none";
+    numbering === null &&
+    standaloneRendering !== undefined &&
+    sources.numPr?.kind !== "none";
   switch (resolved.kind) {
     case "none": {
       if (projectionStandsIn) {
@@ -96,7 +109,12 @@ export const resolveParagraphList = (
       const reference = resolved;
       if (numbering === null) {
         return standaloneRendering === undefined
-          ? { kind: "markerless", reference, source: "authored", reason: "noNumbering" }
+          ? {
+              kind: "markerless",
+              reference,
+              source: "authored",
+              reason: "noNumbering",
+            }
           : standaloneList(reference, standaloneRendering, "authored");
       }
       const resolution = resolveNumberingLevel(
@@ -105,9 +123,20 @@ export const resolveParagraphList = (
         reference.ilvl,
       );
       if (resolution.kind === "undefined") {
-        return { kind: "markerless", reference, source: "authored", reason: resolution.reason };
+        return {
+          kind: "markerless",
+          reference,
+          source: "authored",
+          reason: resolution.reason,
+        };
       }
-      if (!levelShowsMarker(numbering.definitions, reference.numId, reference.ilvl)) {
+      if (
+        !levelShowsMarker(
+          numbering.definitions,
+          reference.numId,
+          reference.ilvl,
+        )
+      ) {
         const rendering = computeListRendering(reference, numbering);
         return {
           kind: "markerless",
@@ -119,12 +148,19 @@ export const resolveParagraphList = (
       }
       const rendering = computeListRendering(reference, numbering);
       return rendering === null
-        ? { kind: "markerless", reference, source: "authored", reason: "markerHiddenOrBlank" }
+        ? {
+            kind: "markerless",
+            reference,
+            source: "authored",
+            reason: "markerHiddenOrBlank",
+          }
         : { kind: "marker", reference, source: "authored", rendering };
     }
     default: {
       const unhandled: never = resolved;
-      return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);
+      return panic(
+        `Unhandled paragraph numbering ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };

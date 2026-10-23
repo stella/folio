@@ -9,7 +9,13 @@
  * - Dimension tooltip during resize
  */
 
-import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
 
 // =============================================================================
@@ -175,11 +181,14 @@ export function calculateNewDimensions(
   const signX = handle.includes("w") ? -1 : 1;
   const signY = handle.includes("n") ? -1 : 1;
 
-  const clamp = (n: number) => Math.max(MIN_IMAGE_PX, Math.min(MAX_IMAGE_PX, n));
+  const clamp = (n: number) =>
+    Math.max(MIN_IMAGE_PX, Math.min(MAX_IMAGE_PX, n));
 
   if (isCorner && lockAspect) {
-    const scaleX = startWidth > 0 ? (startWidth + deltaX * signX) / startWidth : 1;
-    const scaleY = startHeight > 0 ? (startHeight + deltaY * signY) / startHeight : 1;
+    const scaleX =
+      startWidth > 0 ? (startWidth + deltaX * signX) / startWidth : 1;
+    const scaleY =
+      startHeight > 0 ? (startHeight + deltaY * signY) / startHeight : 1;
     let scale = Math.abs(scaleX - 1) > Math.abs(scaleY - 1) ? scaleX : scaleY;
 
     // Clamp the scale itself (not each dimension) so neither side can drift off
@@ -206,7 +215,10 @@ export function calculateNewDimensions(
   };
 }
 
-function applyDragGhostTheme(ghostEl: HTMLElement, sourceEl: HTMLElement | null): void {
+function applyDragGhostTheme(
+  ghostEl: HTMLElement,
+  sourceEl: HTMLElement | null,
+): void {
   const themeRoot = sourceEl?.closest(".folio-root") ?? sourceEl;
 
   if (!themeRoot) {
@@ -219,8 +231,14 @@ function applyDragGhostTheme(ghostEl: HTMLElement, sourceEl: HTMLElement | null)
   themeRoot.append(probe);
 
   const computedStyles = window.getComputedStyle(probe);
-  ghostEl.style.setProperty(DRAG_GHOST_SELECTION_VAR, computedStyles.borderColor);
-  ghostEl.style.setProperty(DRAG_GHOST_SELECTION_MUTED_VAR, computedStyles.backgroundColor);
+  ghostEl.style.setProperty(
+    DRAG_GHOST_SELECTION_VAR,
+    computedStyles.borderColor,
+  );
+  ghostEl.style.setProperty(
+    DRAG_GHOST_SELECTION_MUTED_VAR,
+    computedStyles.backgroundColor,
+  );
   probe.remove();
 }
 
@@ -272,7 +290,16 @@ export function ImageSelectionOverlay({
 
     imageInfoRef.current = imageInfo;
     zoomRef.current = zoom;
-  }, [onResize, onResizeStart, onResizeEnd, onDragMove, onDragStart, onDragEnd, imageInfo, zoom]);
+  }, [
+    onResize,
+    onResizeStart,
+    onResizeEnd,
+    onDragMove,
+    onDragStart,
+    onDragEnd,
+    imageInfo,
+    zoom,
+  ]);
 
   // Update overlay position when imageInfo or layout changes
   const updatePosition = useCallback(() => {
@@ -483,7 +510,11 @@ export function ImageSelectionOverlay({
         if (dragStarted) {
           const info = imageInfoRef.current;
           if (info) {
-            onDragMoveRef.current?.(info.pmPos, upEvent.clientX, upEvent.clientY);
+            onDragMoveRef.current?.(
+              info.pmPos,
+              upEvent.clientX,
+              upEvent.clientY,
+            );
           }
           onDragEndRef.current?.();
         }
@@ -512,7 +543,11 @@ export function ImageSelectionOverlay({
   const { left, top, width, height } = overlayRect;
 
   return (
-    <div ref={overlayRef} style={overlayStyles} className="image-selection-overlay">
+    <div
+      ref={overlayRef}
+      style={overlayStyles}
+      className="image-selection-overlay"
+    >
       {/* Selection border */}
       <div
         style={{
@@ -582,7 +617,12 @@ type HandleProps = {
   onMouseDown: (handle: ResizeHandle, e: React.MouseEvent) => void;
 };
 
-function Handle({ handle, left, top, onMouseDown }: HandleProps): React.ReactElement {
+function Handle({
+  handle,
+  left,
+  top,
+  onMouseDown,
+}: HandleProps): React.ReactElement {
   return (
     <div
       role="presentation"

@@ -1,4 +1,4 @@
-import { TextSelection, type Command } from "prosemirror-state";
+import { type Command, TextSelection } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../attrs";
 
@@ -8,12 +8,18 @@ export const clearIndentOnBackspace: Command = (state, dispatch) => {
     return false;
   }
   const { $cursor } = state.selection;
-  if (!$cursor || $cursor.parentOffset !== 0 || $cursor.parent.type.name !== "paragraph") {
+  if (
+    !$cursor ||
+    $cursor.parentOffset !== 0 ||
+    $cursor.parent.type.name !== "paragraph"
+  ) {
     return false;
   }
   const attrs = expectParagraphAttrs($cursor.parent);
-  const hasFirstLine = typeof attrs.indentFirstLine === "number" && attrs.indentFirstLine > 0;
-  const hasIndentLeft = typeof attrs.indentLeft === "number" && attrs.indentLeft > 0;
+  const hasFirstLine =
+    typeof attrs.indentFirstLine === "number" && attrs.indentFirstLine > 0;
+  const hasIndentLeft =
+    typeof attrs.indentLeft === "number" && attrs.indentLeft > 0;
   if (!hasFirstLine && !attrs.hangingIndent && !hasIndentLeft) {
     return false;
   }

@@ -15,7 +15,8 @@ import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const COMMENTS_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 const COMMENTS_RELATIONSHIP =
@@ -60,13 +61,20 @@ const buildDocx = async (commentBody: string): Promise<ArrayBuffer> => {
 };
 
 const commentsPart = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file("word/comments.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/comments.xml")
+    ?.async("text")) ?? "";
 
 const save = async (commentBody: string): Promise<string> =>
   commentsPart(
-    await repackDocx(await parseDocx(await buildDocx(commentBody), { preloadFonts: false }), {
-      updateModifiedDate: false,
-    }),
+    await repackDocx(
+      await parseDocx(await buildDocx(commentBody), { preloadFonts: false }),
+      {
+        updateModifiedDate: false,
+      },
+    ),
   );
 
 describe("a comment body survives a rebuild", () => {

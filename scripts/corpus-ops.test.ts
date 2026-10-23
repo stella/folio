@@ -1,32 +1,38 @@
-import { propertyTestTimeout } from "../test/property-testing";
-import { createDocx } from "@stll/folio-core/docx/rezip";
 import { describe, expect, test } from "bun:test";
+
+import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
+import { parseDocx } from "@stll/folio-core/docx/parser";
+import { createDocx } from "@stll/folio-core/docx/rezip";
+import { OOXML_NAMESPACES } from "@stll/folio-core/docx/serializer/partNamespaces";
+
 import type {
   BlockContent,
   Document,
   Paragraph,
   PreservedAttribute,
 } from "../packages/docx-core/src/model/document";
-import { OOXML_NAMESPACES } from "@stll/folio-core/docx/serializer/partNamespaces";
 import { DEFAULT_TAB_STOP_TWIPS } from "../packages/docx-core/src/model/document";
+import { storyParagraphs } from "../packages/docx-core/src/ops/blocks";
 import {
   applyDocumentOp,
   applyDocumentOps,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   INHERIT_RUN_PROPS,
   normalizeForOps,
   OP_STORIES,
-  type DocumentOp,
 } from "../packages/docx-core/src/ops/documentOps";
-import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
-import { parseDocx } from "@stll/folio-core/docx/parser";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../packages/docx-core/src/ops/refusal";
-
-import { documentStories, storyBody } from "../packages/docx-core/src/ops/stories";
-import { storyParagraphs } from "../packages/docx-core/src/ops/blocks";
-
+import {
+  documentStories,
+  storyBody,
+} from "../packages/docx-core/src/ops/stories";
+import { propertyTestTimeout } from "../test/property-testing";
 import type { CorpusInvariantInput } from "./lib/corpus-invariants/contract";
-import { inverseSequenceFailures, runOpInverseInvariant } from "./lib/corpus-invariants/op-inverse";
+import {
+  inverseSequenceFailures,
+  runOpInverseInvariant,
+} from "./lib/corpus-invariants/op-inverse";
 import {
   localityStepFailures,
   runOpLocalityInvariant,
@@ -34,13 +40,13 @@ import {
 } from "./lib/corpus-invariants/op-locality";
 import {
   generateOpSequence,
-  OP_SEQUENCE_FAMILIES,
   OP_GENERATOR_ROLES,
+  OP_SEQUENCE_FAMILIES,
   prepareOpDocument,
   sameOpModel,
+  seedFromBytes,
   serializedOpParts,
   serializeOpDocument,
-  seedFromBytes,
 } from "./lib/corpus-invariants/op-sequences";
 
 const makeParagraph = (paraId: string, text: string) =>
@@ -51,7 +57,9 @@ const makeParagraph = (paraId: string, text: string) =>
   }) satisfies Paragraph;
 
 const sourceParagraphAttributes = (value: string) =>
-  [{ namespace: OOXML_NAMESPACES.w.uri, name: "rsidR", value }] satisfies PreservedAttribute[];
+  [
+    { namespace: OOXML_NAMESPACES.w.uri, name: "rsidR", value },
+  ] satisfies PreservedAttribute[];
 
 const documentFixture = () =>
   normalizeForOps({
@@ -72,7 +80,10 @@ const documentFixture = () =>
                     formatting: { gridSpan: 2 },
                     content: [makeParagraph("60000003", "Left cell")],
                   },
-                  { type: "tableCell", content: [makeParagraph("60000004", "Right cell")] },
+                  {
+                    type: "tableCell",
+                    content: [makeParagraph("60000004", "Right cell")],
+                  },
                 ],
               },
               {
@@ -83,21 +94,30 @@ const documentFixture = () =>
                     formatting: { gridSpan: 2 },
                     content: [makeParagraph("60000005", "Second row")],
                   },
-                  { type: "tableCell", content: [makeParagraph("60000006", "")] },
+                  {
+                    type: "tableCell",
+                    content: [makeParagraph("60000006", "")],
+                  },
                 ],
               },
             ],
           },
           {
             type: "blockSdt",
-            properties: { sdtType: "richText", id: 9001, tag: "corpus-sequence" },
+            properties: {
+              sdtType: "richText",
+              id: 9001,
+              tag: "corpus-sequence",
+            },
             content: [makeParagraph("60000007", "Inside a content control")],
           },
           {
             type: "blockCustomXml",
             openingXml: '<w:customXml w:element="record" w:uri="urn:corpus">',
             closingXml: "</w:customXml>",
-            content: [makeParagraph("60000008", "Inside a transparent wrapper")],
+            content: [
+              makeParagraph("60000008", "Inside a transparent wrapper"),
+            ],
           },
           {
             type: "paragraph",
@@ -105,8 +125,17 @@ const documentFixture = () =>
             content: [
               {
                 type: "insertion",
-                info: { id: 9002, author: "Fixture", date: "2026-01-01T00:00:00Z" },
-                content: [{ type: "run", content: [{ type: "text", text: "Reviewed text" }] }],
+                info: {
+                  id: 9002,
+                  author: "Fixture",
+                  date: "2026-01-01T00:00:00Z",
+                },
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Reviewed text" }],
+                  },
+                ],
               },
             ],
           },
@@ -140,7 +169,9 @@ const insertionStep = (blockId = "60000001") => {
   return { before, op, edit: result.value };
 };
 
-const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => ({
+const inputFor = async (
+  buffer: ArrayBuffer,
+): Promise<CorpusInvariantInput> => ({
   bytes: new Uint8Array(buffer),
   buffer,
   parsed: await parseDocx(buffer, { preloadFonts: false }),
@@ -158,11 +189,15 @@ describe("corpus operation invariants", () => {
         done: false,
         content: [makeParagraph("60000020", "Owned")],
       },
-      anchor: { kind: "point", at: { story: OP_STORIES.MAIN, blockId: "60000001", offset: 0 } },
+      anchor: {
+        kind: "point",
+        at: { story: OP_STORIES.MAIN, blockId: "60000001", offset: 0 },
+      },
     } as const satisfies DocumentOp;
     const source = documentFixture();
     const sourceParagraph = source.package.document.content.at(1);
-    if (sourceParagraph?.type !== "paragraph") throw new Error("Missing source paragraph");
+    if (sourceParagraph?.type !== "paragraph")
+      throw new Error("Missing source paragraph");
     sourceParagraph.preservedAttributes = sourceParagraphAttributes("00112233");
     const first = applyDocumentOp(source, create).unwrap().document;
     const before = applyDocumentOp(first, {
@@ -185,11 +220,14 @@ describe("corpus operation invariants", () => {
     expect(serializeOpDocument(edit.document)).toContain('rsidR="00112233"');
     expect(localityStepFailures({ before, op, edit })).toEqual([]);
     const changed = structuredClone(edit.document);
-    const foreign = changed.package.document.comments?.find(({ id }) => id === 9101);
+    const foreign = changed.package.document.comments?.find(
+      ({ id }) => id === 9101,
+    );
     if (!foreign) throw new Error("Missing foreign definition");
     foreign.author = "Changed";
     expect(
-      localityStepFailures({ before, op, edit: { ...edit, document: changed } }).length,
+      localityStepFailures({ before, op, edit: { ...edit, document: changed } })
+        .length,
     ).toBeGreaterThan(0);
     const changedRelationship = structuredClone(edit.document);
     const commentRelationship = [
@@ -198,15 +236,24 @@ describe("corpus operation invariants", () => {
     if (!commentRelationship) throw new Error("Missing comment relationship");
     commentRelationship.target = "other.xml";
     expect(
-      localityStepFailures({ before, op, edit: { ...edit, document: changedRelationship } }).length,
+      localityStepFailures({
+        before,
+        op,
+        edit: { ...edit, document: changedRelationship },
+      }).length,
     ).toBeGreaterThan(0);
     const changedSource = structuredClone(edit.document);
     const untouched = changedSource.package.document.content.at(1);
-    if (untouched?.type !== "paragraph") throw new Error("Missing untouched source paragraph");
+    if (untouched?.type !== "paragraph")
+      throw new Error("Missing untouched source paragraph");
     untouched.preservedAttributes = sourceParagraphAttributes("44556677");
     expect(serializeOpDocument(changedSource)).toContain('rsidR="44556677"');
     expect(
-      localityStepFailures({ before, op, edit: { ...edit, document: changedSource } }).length,
+      localityStepFailures({
+        before,
+        op,
+        edit: { ...edit, document: changedSource },
+      }).length,
     ).toBeGreaterThan(0);
     const relationshipPath = "word/_rels/document.xml.rels";
     const relXml = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${commentRelationship.id}" Type="${commentRelationship.type}" Target="comments.xml" opaque="authored"/></Relationships>`;
@@ -221,12 +268,19 @@ describe("corpus operation invariants", () => {
       control: parts(relXml),
       documentPart: "word/document.xml",
     };
-    expect(serializedLocalityFailures({ ...localOptions, edited: parts(relXml) })).toEqual([]);
+    expect(
+      serializedLocalityFailures({ ...localOptions, edited: parts(relXml) }),
+    ).toEqual([]);
     for (const changedXml of [
       relXml.replace('Target="comments.xml"', 'Target="other.xml"'),
       relXml.replace('opaque="authored"', 'opaque="changed"'),
     ]) {
-      expect(serializedLocalityFailures({ ...localOptions, edited: parts(changedXml) })).toContain(
+      expect(
+        serializedLocalityFailures({
+          ...localOptions,
+          edited: parts(changedXml),
+        }),
+      ).toContain(
         `sequence changed an existing comment relationship payload: ${relationshipPath}#${commentRelationship.id}`,
       );
     }
@@ -238,10 +292,15 @@ describe("corpus operation invariants", () => {
         op: create,
         edit: {
           ...inserted,
-          touched: { ...inserted.touched, modified: [...inserted.touched.modified, "60000010"] },
+          touched: {
+            ...inserted.touched,
+            modified: [...inserted.touched.modified, "60000010"],
+          },
         },
       }),
-    ).toContain("createComment declared a touched block outside its addressed story");
+    ).toContain(
+      "createComment declared a touched block outside its addressed story",
+    );
   });
 
   test("omitted section patches do not own fields or hide foreign changes", () => {
@@ -259,12 +318,16 @@ describe("corpus operation invariants", () => {
     if (section === undefined) throw new Error("Section fixture missing");
     section.titlePg = true;
     expect(
-      localityStepFailures({ ...step, edit: { ...result, document: changed } }).length,
+      localityStepFailures({ ...step, edit: { ...result, document: changed } })
+        .length,
     ).toBeGreaterThan(0);
   });
 
   test("settings locality covers absent and authored settings without hiding foreign defaults", () => {
-    for (const settings of [undefined, { defaultTabStop: 900, mirrorMargins: true }]) {
+    for (const settings of [
+      undefined,
+      { defaultTabStop: 900, mirrorMargins: true },
+    ]) {
       for (const evenAndOddHeaders of [true, false, null]) {
         const before = documentFixture();
         if (settings !== undefined) before.package.settings = settings;
@@ -279,11 +342,16 @@ describe("corpus operation invariants", () => {
         expect(localityStepFailures(step)).toEqual([]);
         const changed = structuredClone(result.value.document);
         changed.package.settings = {
-          ...(changed.package.settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+          ...(changed.package.settings ?? {
+            defaultTabStop: DEFAULT_TAB_STOP_TWIPS,
+          }),
           defaultTabStop: 123,
         };
         expect(
-          localityStepFailures({ ...step, edit: { ...step.edit, document: changed } }).length,
+          localityStepFailures({
+            ...step,
+            edit: { ...step.edit, document: changed },
+          }).length,
         ).toBeGreaterThan(0);
       }
     }
@@ -296,9 +364,13 @@ describe("corpus operation invariants", () => {
       if (reviewState === "pending") {
         let revisionId = 9100;
         for (const story of documentStories(document)) {
-          for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
+          for (const { paragraph } of storyParagraphs(
+            storyBody(document, story),
+          )) {
             // Adjacent pending paragraphs must differ so a join exercises property folding.
-            paragraph.formatting = { alignment: revisionId % 2 === 0 ? "end" : "center" };
+            paragraph.formatting = {
+              alignment: revisionId % 2 === 0 ? "end" : "center",
+            };
             paragraph.propertyChanges = [
               {
                 type: "paragraphPropertyChange",
@@ -347,13 +419,16 @@ describe("corpus operation invariants", () => {
               op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) &&
             op.revision !== undefined
           ) {
-            const blockId = op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ? op.nextBlockId : op.blockId;
+            const blockId =
+              op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
+                ? op.nextBlockId
+                : op.blockId;
             const previous = storyParagraphs(storyBody(before, op.story)).find(
               ({ paragraph }) => paragraph.paraId === blockId,
             )?.paragraph;
-            const next = storyParagraphs(storyBody(edit.document, op.story)).find(
-              ({ paragraph }) => paragraph.paraId === blockId,
-            )?.paragraph;
+            const next = storyParagraphs(
+              storyBody(edit.document, op.story),
+            ).find(({ paragraph }) => paragraph.paraId === blockId)?.paragraph;
             const review = previous?.propertyChanges?.at(0);
             const folded = next?.propertyChanges?.at(0);
             if (
@@ -362,14 +437,18 @@ describe("corpus operation invariants", () => {
               !sameOpModel(previous?.formatting, next?.formatting)
             ) {
               expect(folded.info.id).toBe(review.info.id);
-              expect(folded.previousFormatting).toEqual(review.previousFormatting);
+              expect(folded.previousFormatting).toEqual(
+                review.previousFormatting,
+              );
               expect(folded.info.author).toBe(op.revision.author);
               expect(folded.info.date).toBe(op.revision.date);
               foldedReviewFamilies.add(op.type);
             }
           }
           for (const story of documentStories(edit.document)) {
-            for (const { paragraph } of storyParagraphs(storyBody(edit.document, story))) {
+            for (const { paragraph } of storyParagraphs(
+              storyBody(edit.document, story),
+            )) {
               expect(
                 paragraph.propertyChanges?.length ?? 0,
                 `sequence seed ${seed}, ${op.type}, paragraph ${paragraph.paraId}`,
@@ -399,7 +478,9 @@ describe("corpus operation invariants", () => {
         const replay = generateOpSequence(document, seed);
         expect(sameOpModel(sequence, replay)).toBe(true);
       }
-      expect([...checkedStructuralFamilies].sort()).toEqual([...structuralFamilies].sort());
+      expect([...checkedStructuralFamilies].sort()).toEqual(
+        [...structuralFamilies].sort(),
+      );
       expect([...exercised].sort()).toEqual([...OP_SEQUENCE_FAMILIES].sort());
       expect(
         Object.entries(OP_GENERATOR_ROLES)
@@ -412,7 +493,10 @@ describe("corpus operation invariants", () => {
       );
       if (reviewState === "pending") {
         expect([...foldedReviewFamilies].sort()).toEqual(
-          [DOCUMENT_OP_TYPES.JOIN_BLOCKS, DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS].sort(),
+          [
+            DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+            DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+          ].sort(),
         );
       }
       expect(sameOpModel(document, snapshot)).toBe(true);
@@ -430,19 +514,36 @@ describe("corpus operation invariants", () => {
         op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||
         op.type === DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
     );
-    if (!lifecycle) throw new Error("The seeded schedule must execute a lifecycle operation.");
+    if (!lifecycle)
+      throw new Error(
+        "The seeded schedule must execute a lifecycle operation.",
+      );
     const changed = structuredClone(lifecycle.edit.document);
-    changed.package.properties = { ...changed.package.properties, title: "foreign change" };
+    changed.package.properties = {
+      ...changed.package.properties,
+      title: "foreign change",
+    };
     expect(
-      localityStepFailures({ ...lifecycle, edit: { ...lifecycle.edit, document: changed } }).length,
+      localityStepFailures({
+        ...lifecycle,
+        edit: { ...lifecycle.edit, document: changed },
+      }).length,
     ).toBeGreaterThan(0);
     const control = await serializedOpParts(sequence.original);
     const edited = await serializedOpParts(sequence.document);
     expect(
-      serializedLocalityFailures({ sequence, control, edited, documentPart: "word/document.xml" }),
+      serializedLocalityFailures({
+        sequence,
+        control,
+        edited,
+        documentPart: "word/document.xml",
+      }),
     ).toEqual([]);
     const corrupt = new Map(edited);
-    corrupt.set("word/styles.xml", new TextEncoder().encode("foreign style change"));
+    corrupt.set(
+      "word/styles.xml",
+      new TextEncoder().encode("foreign style change"),
+    );
     expect(
       serializedLocalityFailures({
         sequence,
@@ -455,7 +556,9 @@ describe("corpus operation invariants", () => {
 
   test("semantic families record bounded explicit refusals on initially table-free documents", () => {
     const document: Document = {
-      package: { document: { content: [makeParagraph("60000001", "Plain body")] } },
+      package: {
+        document: { content: [makeParagraph("60000001", "Plain body")] },
+      },
     };
     const semantic = {
       insertColumn: true,
@@ -479,7 +582,9 @@ describe("corpus operation invariants", () => {
         const [type, reason] = entry.split(":");
         const family = OP_SEQUENCE_FAMILIES.find((kind) => kind === type);
         if (family === undefined)
-          throw new Error("A recorded refusal must name a declared generator family.");
+          throw new Error(
+            "A recorded refusal must name a declared generator family.",
+          );
         if (!Object.hasOwn(semantic, family)) continue;
         attempts++;
         expect(
@@ -520,7 +625,13 @@ describe("corpus operation invariants", () => {
               cells: [
                 {
                   type: "tableCell",
-                  content: [nested, makeParagraph(`6100000${index + 1}`, "Nested final paragraph")],
+                  content: [
+                    nested,
+                    makeParagraph(
+                      `6100000${index + 1}`,
+                      "Nested final paragraph",
+                    ),
+                  ],
                 },
               ],
             },
@@ -542,10 +653,15 @@ describe("corpus operation invariants", () => {
       if (inverse?.type !== DOCUMENT_OP_TYPES.SET_TABLE_ROWS)
         throw new Error("row inverse is missing");
       expect(inverse.blockId).toBe("60000005");
-      const restored = applyDocumentOps(applied.value.document, applied.value.inverse);
+      const restored = applyDocumentOps(
+        applied.value.document,
+        applied.value.inverse,
+      );
       if (restored.isErr()) throw restored.error;
       expect(sameOpModel(restored.value.document, before)).toBe(true);
-      expect(localityStepFailures({ before, op, edit: applied.value })).toEqual([]);
+      expect(localityStepFailures({ before, op, edit: applied.value })).toEqual(
+        [],
+      );
     }
   });
 
@@ -560,7 +676,9 @@ describe("corpus operation invariants", () => {
   test("an incomplete inverse cannot pass the sequence detector", () => {
     const sequence = generateOpSequence(documentFixture(), 0x17a3);
     expect(inverseSequenceFailures(sequence)).toEqual([]);
-    expect(inverseSequenceFailures({ ...sequence, inverse: [] }).length).toBeGreaterThan(0);
+    expect(
+      inverseSequenceFailures({ ...sequence, inverse: [] }).length,
+    ).toBeGreaterThan(0);
     const brokenStep = insertionStep();
     expect(
       inverseSequenceFailures({
@@ -576,19 +694,29 @@ describe("corpus operation invariants", () => {
     expect(
       localityStepFailures({
         ...step,
-        edit: { ...step.edit, touched: { modified: [], inserted: [], removed: [] } },
+        edit: {
+          ...step.edit,
+          touched: { modified: [], inserted: [], removed: [] },
+        },
       }).length,
     ).toBeGreaterThan(0);
   });
 
   test("the locality detector catches an untouched paragraph and a sibling table cell", () => {
     for (const targetId of ["60000002", "60000004"]) {
-      const step = insertionStep(targetId === "60000004" ? "60000003" : "60000001");
+      const step = insertionStep(
+        targetId === "60000004" ? "60000003" : "60000001",
+      );
       const document = structuredClone(step.edit.document);
-      const mutate = (blocks: typeof document.package.document.content): boolean => {
+      const mutate = (
+        blocks: typeof document.package.document.content,
+      ): boolean => {
         for (const block of blocks) {
           if (block.type === "paragraph" && block.paraId === targetId) {
-            block.content = makeParagraph(targetId, "Unexpected replacement").content;
+            block.content = makeParagraph(
+              targetId,
+              "Unexpected replacement",
+            ).content;
             return true;
           }
           if (block.type === "table") {
@@ -609,7 +737,8 @@ describe("corpus operation invariants", () => {
       };
       expect(mutate(document.package.document.content)).toBe(true);
       expect(
-        localityStepFailures({ ...step, edit: { ...step.edit, document } }).length,
+        localityStepFailures({ ...step, edit: { ...step.edit, document } })
+          .length,
       ).toBeGreaterThan(0);
     }
   });
@@ -619,14 +748,20 @@ describe("corpus operation invariants", () => {
     const metadata = structuredClone(step.edit.document);
     metadata.package.properties = { title: "Unexpected title" };
     expect(
-      localityStepFailures({ ...step, edit: { ...step.edit, document: metadata } }).length,
+      localityStepFailures({
+        ...step,
+        edit: { ...step.edit, document: metadata },
+      }).length,
     ).toBeGreaterThan(0);
     const headerDocument = structuredClone(step.edit.document);
     const header = headerDocument.package.headers?.get("rId10");
     if (header === undefined) throw new Error("fixture header is missing");
     header.content = [makeParagraph("60000010", "Unexpected header")];
     expect(
-      localityStepFailures({ ...step, edit: { ...step.edit, document: headerDocument } }).length,
+      localityStepFailures({
+        ...step,
+        edit: { ...step.edit, document: headerDocument },
+      }).length,
     ).toBeGreaterThan(0);
   });
 
@@ -648,7 +783,10 @@ describe("corpus operation invariants", () => {
     const input = await inputFor(buffer);
     const prepared = await prepareOpDocument(input);
     expect(await prepareOpDocument(input)).toBe(prepared);
-    expect(await runOpInverseInvariant(input)).toMatchObject({ status: "evaluated", failures: [] });
+    expect(await runOpInverseInvariant(input)).toMatchObject({
+      status: "evaluated",
+      failures: [],
+    });
     expect(await runOpLocalityInvariant(input)).toMatchObject({
       status: "evaluated",
       failures: [],

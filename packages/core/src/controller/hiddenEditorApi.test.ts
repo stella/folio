@@ -1,12 +1,15 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import type { Command, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { createEmptyDocument } from "../utils/createDocument";
 import { schema } from "../prosemirror/schema";
-import { createHiddenEditorApi, type HiddenEditorApiDeps } from "./hiddenEditorApi";
+import { createEmptyDocument } from "../utils/createDocument";
+import {
+  createHiddenEditorApi,
+  type HiddenEditorApiDeps,
+} from "./hiddenEditorApi";
 
 // The API only touches a handful of EditorView members; a structural stub
 // keeps the tests free of a real DOM-backed view (the repo convention).
@@ -33,7 +36,10 @@ const makeStubView = (options: StubViewOptions = {}): StubView => ({
 // eslint-disable-next-line typescript/no-unsafe-type-assertion
 const asView = (view: StubView): EditorView => view as EditorView;
 
-const makeDeps = (view: StubView | null, isDestroying = false): HiddenEditorApiDeps => ({
+const makeDeps = (
+  view: StubView | null,
+  isDestroying = false,
+): HiddenEditorApiDeps => ({
   getView: () => (view === null ? null : asView(view)),
   getDocumentContext: () => null,
   isDestroying: () => isDestroying,
@@ -107,10 +113,16 @@ describe("createHiddenEditorApi", () => {
   });
 
   test("isFocused reflects hasFocus()", () => {
-    expect(createHiddenEditorApi(makeDeps(makeStubView({ focused: true }))).isFocused()).toBe(true);
-    expect(createHiddenEditorApi(makeDeps(makeStubView({ focused: false }))).isFocused()).toBe(
-      false,
-    );
+    expect(
+      createHiddenEditorApi(
+        makeDeps(makeStubView({ focused: true })),
+      ).isFocused(),
+    ).toBe(true);
+    expect(
+      createHiddenEditorApi(
+        makeDeps(makeStubView({ focused: false })),
+      ).isFocused(),
+    ).toBe(false);
     expect(createHiddenEditorApi(makeDeps(null)).isFocused()).toBe(false);
   });
 

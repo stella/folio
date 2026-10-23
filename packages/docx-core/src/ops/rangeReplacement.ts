@@ -1,24 +1,28 @@
 /** Tracked replacement fragments share deletion's validation and physical-id pool. */
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
 import { idKey } from "./ids";
-import {
-  childNodes,
-  rebuildNode,
-  asParagraphContent,
-  type InlineNode,
-  defaultInsertionGap,
-} from "./leaves";
 import { gapAfterInserted } from "./inline";
-import { appendTrackedDeletion, createTrackedPlan, type PlanTrackedDeletionOptions } from "./plan";
+import {
+  asParagraphContent,
+  childNodes,
+  defaultInsertionGap,
+  type InlineNode,
+  rebuildNode,
+} from "./leaves";
+import {
+  appendTrackedDeletion,
+  createTrackedPlan,
+  type PlanTrackedDeletionOptions,
+} from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   DOCUMENT_OP_TYPES,
-  SPLIT_HALVES,
   type DocumentOp,
   type InlineSlice,
+  SPLIT_HALVES,
   type TextPosition,
 } from "./types";
 
@@ -54,12 +58,14 @@ export const rangeStartAfterDeletion = ({
   if (retained === undefined)
     panic("A successful range deletion must retain a selected paragraph.");
   const source = original.at(first)?.paragraph;
-  if (source === undefined) panic("A successful deletion must have its input paragraph.");
+  if (source === undefined)
+    panic("A successful deletion must have its input paragraph.");
   return {
     ...from,
     blockId: retained.paragraph.paraId ?? from.blockId,
     zeroWidthBefore:
-      from.zeroWidthBefore ?? defaultInsertionGap(source.content, from.offset).zeroWidthBefore,
+      from.zeroWidthBefore ??
+      defaultInsertionGap(source.content, from.offset).zeroWidthBefore,
   };
 };
 
@@ -102,8 +108,14 @@ export const planTrackedReplace = (
   if (replacement.tail.openStart !== 0 || replacement.tail.openEnd !== 0) {
     return refuse("Tracked replacement requires a closed tail slice.");
   }
-  if (replacement.paragraphs.some(({ sectionProperties }) => sectionProperties !== undefined)) {
-    return refuse("Tracked replacement cannot import section-bearing paragraphs.");
+  if (
+    replacement.paragraphs.some(
+      ({ sectionProperties }) => sectionProperties !== undefined,
+    )
+  ) {
+    return refuse(
+      "Tracked replacement cannot import section-bearing paragraphs.",
+    );
   }
   const plan = createTrackedPlan({ document, revision, newIds });
   const deleted = appendTrackedDeletion({ document, options, plan });
@@ -122,8 +134,10 @@ export const planTrackedReplace = (
     );
     const deletionBlocks = new Set(
       plan.ops.flatMap((op) => {
-        if (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE) return [idKey(op.from.blockId)];
-        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) return [idKey(op.nextBlockId)];
+        if (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE)
+          return [idKey(op.from.blockId)];
+        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS)
+          return [idKey(op.nextBlockId)];
         return [];
       }),
     );
@@ -136,7 +150,9 @@ export const planTrackedReplace = (
         node.resolutionJoins.remove > 0
       ) {
         next = Object.assign({}, node, {
-          resolutionJoins: Object.assign({}, node.resolutionJoins, { remove: 0 }),
+          resolutionJoins: Object.assign({}, node.resolutionJoins, {
+            remove: 0,
+          }),
         });
       }
       const children = childNodes(next);
@@ -149,10 +165,13 @@ export const planTrackedReplace = (
     // The new authored payload separates the source's two cut pieces.
     // Removing this deletion must retain its identity transfers without
     // joining the payload to the retained suffix.
-    for (const { paragraph } of storyParagraphs(storyBody(plan.document(), from.story))) {
+    for (const { paragraph } of storyParagraphs(
+      storyBody(plan.document(), from.story),
+    )) {
       if (!deletionBlocks.has(idKey(paragraph.paraId ?? ""))) continue;
       const content = paragraph.content.map(breakRemovedSeam);
-      if (content.every((node, index) => node === paragraph.content[index])) continue;
+      if (content.every((node, index) => node === paragraph.content[index]))
+        continue;
       const patched = plan.append({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
         story: from.story,
@@ -177,7 +196,8 @@ export const planTrackedReplace = (
       ({ paragraph: sourceParagraph }) =>
         idKey(sourceParagraph.paraId ?? "") === idKey(sourceBlockId),
     );
-    if (source === undefined) return refuse("The replacement's source paragraph does not exist.");
+    if (source === undefined)
+      return refuse("The replacement's source paragraph does not exist.");
     const gap =
       at.zeroWidthBefore === undefined
         ? defaultInsertionGap(source.paragraph.content, at.offset)
@@ -188,7 +208,9 @@ export const planTrackedReplace = (
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         at,
         slice: { content: paragraph.content, openStart: 0, openEnd: 0 },
-        ...(options.seamPolicy === undefined ? {} : { seamPolicy: options.seamPolicy }),
+        ...(options.seamPolicy === undefined
+          ? {}
+          : { seamPolicy: options.seamPolicy }),
         revision,
       });
       if (inserted.isErr()) return Result.err(inserted.error);
@@ -211,14 +233,21 @@ export const planTrackedReplace = (
       revision,
     });
     if (split.isErr()) return Result.err(split.error);
-    at = { story: from.story, blockId: at.blockId, offset: 0, zeroWidthBefore: 0 };
+    at = {
+      story: from.story,
+      blockId: at.blockId,
+      offset: 0,
+      zeroWidthBefore: 0,
+    };
   }
   if (replacement.tail.content.length > 0) {
     const inserted = plan.append({
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at,
       slice: replacement.tail,
-      ...(options.seamPolicy === undefined ? {} : { seamPolicy: options.seamPolicy }),
+      ...(options.seamPolicy === undefined
+        ? {}
+        : { seamPolicy: options.seamPolicy }),
       revision,
     });
     if (inserted.isErr()) return Result.err(inserted.error);

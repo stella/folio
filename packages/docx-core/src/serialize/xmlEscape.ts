@@ -49,8 +49,14 @@ const ILLEGAL_XML_CHARACTER_CLASS =
  */
 const LONE_SURROGATE_PATTERN = /[\uD800-\uDFFF]/gu;
 
-const ILLEGAL_XML_CHARACTER_PATTERN = new RegExp(ILLEGAL_XML_CHARACTER_CLASS, "gu");
-const ILLEGAL_XML_CHARACTER_PROBE = new RegExp(ILLEGAL_XML_CHARACTER_CLASS, "u");
+const ILLEGAL_XML_CHARACTER_PATTERN = new RegExp(
+  ILLEGAL_XML_CHARACTER_CLASS,
+  "gu",
+);
+const ILLEGAL_XML_CHARACTER_PROBE = new RegExp(
+  ILLEGAL_XML_CHARACTER_CLASS,
+  "u",
+);
 
 /** What an unpaired surrogate becomes at an input boundary: U+FFFD. */
 const REPLACEMENT_CHARACTER = "�";
@@ -73,9 +79,18 @@ const ATTRIBUTE_ESCAPES: Record<string, string> = {
 // An illegal character reaches the replacer, misses the escape map, and
 // becomes the empty string — so one pass both escapes and strips.
 const TEXT_PROBE = new RegExp(`[&<>"'\\r]|${ILLEGAL_XML_CHARACTER_CLASS}`, "u");
-const TEXT_PATTERN = new RegExp(`[&<>"'\\r]|${ILLEGAL_XML_CHARACTER_CLASS}`, "gu");
-const ATTRIBUTE_PROBE = new RegExp(`[&<>"'\\t\\n\\r]|${ILLEGAL_XML_CHARACTER_CLASS}`, "u");
-const ATTRIBUTE_PATTERN = new RegExp(`[&<>"'\\t\\n\\r]|${ILLEGAL_XML_CHARACTER_CLASS}`, "gu");
+const TEXT_PATTERN = new RegExp(
+  `[&<>"'\\r]|${ILLEGAL_XML_CHARACTER_CLASS}`,
+  "gu",
+);
+const ATTRIBUTE_PROBE = new RegExp(
+  `[&<>"'\\t\\n\\r]|${ILLEGAL_XML_CHARACTER_CLASS}`,
+  "u",
+);
+const ATTRIBUTE_PATTERN = new RegExp(
+  `[&<>"'\\t\\n\\r]|${ILLEGAL_XML_CHARACTER_CLASS}`,
+  "gu",
+);
 
 /** Escape a value for XML element content. Tab and LF survive as themselves. */
 export const escapeXmlText = (value: string): string =>
@@ -90,7 +105,10 @@ export const escapeXmlText = (value: string): string =>
  */
 export const escapeXmlAttribute = (value: string): string =>
   ATTRIBUTE_PROBE.test(value)
-    ? value.replace(ATTRIBUTE_PATTERN, (character) => ATTRIBUTE_ESCAPES[character] ?? "")
+    ? value.replace(
+        ATTRIBUTE_PATTERN,
+        (character) => ATTRIBUTE_ESCAPES[character] ?? "",
+      )
     : value;
 
 /** Whether `value` holds a character XML 1.0 cannot represent at all. */

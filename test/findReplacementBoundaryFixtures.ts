@@ -6,7 +6,10 @@ import type {
   TrackedRunContent,
 } from "@stll/folio-core/types/document";
 
-const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const textRun = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
 type SourceDisposition = {
   status: "search-text" | "container";
@@ -45,20 +48,40 @@ export const RUN_SEARCH_SOURCE_CENSUS = {
   // field fixtures below exercise their surviving PM carrier.
   fieldChar: {
     status: "field-structure",
-    source: { type: "fieldChar", charType: "begin", fldLock: true, dirty: false },
+    source: {
+      type: "fieldChar",
+      charType: "begin",
+      fldLock: true,
+      dirty: false,
+    },
   },
-  instrText: { status: "field-structure", source: { type: "instrText", text: "REF target" } },
+  instrText: {
+    status: "field-structure",
+    source: { type: "instrText", text: "REF target" },
+  },
   footnoteRef: {
     status: "zero-text",
-    content: [{ type: "run", content: [{ type: "footnoteRef", id: 37, customMarkFollows: true }] }],
+    content: [
+      {
+        type: "run",
+        content: [{ type: "footnoteRef", id: 37, customMarkFollows: true }],
+      },
+    ],
   },
   endnoteRef: {
     status: "zero-text",
-    content: [{ type: "run", content: [{ type: "endnoteRef", id: 41, customMarkFollows: true }] }],
+    content: [
+      {
+        type: "run",
+        content: [{ type: "endnoteRef", id: 41, customMarkFollows: true }],
+      },
+    ],
   },
   noteMarker: {
     status: "zero-text",
-    content: [{ type: "run", content: [{ type: "noteMarker", kind: "footnote" }] }],
+    content: [
+      { type: "run", content: [{ type: "noteMarker", kind: "footnote" }] },
+    ],
   },
   renderedPageBreak: {
     status: "zero-text",
@@ -203,7 +226,14 @@ export const PARAGRAPH_SEARCH_SOURCE_CENSUS = {
   },
   simpleField: {
     status: "zero-text",
-    content: [{ type: "simpleField", fieldType: "REF", instruction: "REF target", content: [] }],
+    content: [
+      {
+        type: "simpleField",
+        fieldType: "REF",
+        instruction: "REF target",
+        content: [],
+      },
+    ],
   },
   complexField: {
     status: "zero-text",
@@ -223,7 +253,8 @@ export const PARAGRAPH_SEARCH_SOURCE_CENSUS = {
       {
         type: "mathEquation",
         display: "inline",
-        ommlXml: '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"/>',
+        ommlXml:
+          '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"/>',
       },
     ],
   },
@@ -241,9 +272,13 @@ export const PARAGRAPH_SEARCH_SOURCE_CENSUS = {
 
 const zeroTextBoundaryFixtures = () => {
   const fixtures: Record<string, TrackedRunContent[]> = {};
-  for (const census of [RUN_SEARCH_SOURCE_CENSUS, PARAGRAPH_SEARCH_SOURCE_CENSUS]) {
+  for (const census of [
+    RUN_SEARCH_SOURCE_CENSUS,
+    PARAGRAPH_SEARCH_SOURCE_CENSUS,
+  ]) {
     for (const [kind, disposition] of Object.entries(census)) {
-      if (disposition.status === "zero-text") fixtures[kind] = disposition.content;
+      if (disposition.status === "zero-text")
+        fixtures[kind] = disposition.content;
     }
   }
   return fixtures;
@@ -252,12 +287,16 @@ const zeroTextBoundaryFixtures = () => {
 export const ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES = zeroTextBoundaryFixtures();
 
 const sourceZeroTextBoundaryFixtures = () => {
-  const fixtures: Record<string, TrackedRunContent[]> = { ...ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES };
+  const fixtures: Record<string, TrackedRunContent[]> = {
+    ...ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES,
+  };
   for (const [kind, disposition] of Object.entries(RUN_SEARCH_SOURCE_CENSUS)) {
     if (disposition.status === "field-structure")
       fixtures[kind] = [{ type: "run", content: [disposition.source] }];
   }
-  for (const [kind, disposition] of Object.entries(PARAGRAPH_SEARCH_SOURCE_CENSUS)) {
+  for (const [kind, disposition] of Object.entries(
+    PARAGRAPH_SEARCH_SOURCE_CENSUS,
+  )) {
     if (disposition.status !== "structural-marker") continue;
     const content = disposition.source.type.endsWith("End")
       ? [...disposition.companions, disposition.source]
@@ -265,17 +304,26 @@ const sourceZeroTextBoundaryFixtures = () => {
     // Comment markers are legal inside this transparent wrapper, including
     // when the wrapper itself sits in a tracked deletion or move.
     fixtures[kind] = [
-      { type: "inlineWrapper", kind: "customXml", element: "SearchBoundary", content },
+      {
+        type: "inlineWrapper",
+        kind: "customXml",
+        element: "SearchBoundary",
+        content,
+      },
     ];
   }
   return fixtures;
 };
 
-export const SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES = sourceZeroTextBoundaryFixtures();
+export const SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES =
+  sourceZeroTextBoundaryFixtures();
 
 export const CONDITIONAL_SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES = {
   undecodableSymbol: [
-    { type: "run", content: [{ type: "symbol", font: "Wingdings", char: "invalid" }] },
+    {
+      type: "run",
+      content: [{ type: "symbol", font: "Wingdings", char: "invalid" }],
+    },
   ],
   pageBreak: [{ type: "run", content: [{ type: "break", breakType: "page" }] }],
 } satisfies Record<string, TrackedRunContent[]>;
@@ -289,7 +337,9 @@ export const buildBoundaryDocument = (content: ParagraphContent[]) =>
           {
             id: 91,
             author: "Reviewer",
-            content: [{ type: "paragraph", content: [textRun("Comment record")] }],
+            content: [
+              { type: "paragraph", content: [textRun("Comment record")] },
+            ],
           },
         ],
       },
@@ -297,14 +347,18 @@ export const buildBoundaryDocument = (content: ParagraphContent[]) =>
         {
           type: "footnote",
           id: 37,
-          content: [{ type: "paragraph", content: [textRun("Footnote record")] }],
+          content: [
+            { type: "paragraph", content: [textRun("Footnote record")] },
+          ],
         },
       ],
       endnotes: [
         {
           type: "endnote",
           id: 41,
-          content: [{ type: "paragraph", content: [textRun("Endnote record")] }],
+          content: [
+            { type: "paragraph", content: [textRun("Endnote record")] },
+          ],
         },
       ],
     },
@@ -317,7 +371,12 @@ export const surroundHiddenBoundary = (
   textRun("A"),
   {
     type: revisionType,
-    info: { id: 1701037, author: "Reviewer", initials: "R", date: "2026-10-14T10:00:00Z" },
+    info: {
+      id: 1701037,
+      author: "Reviewer",
+      initials: "R",
+      date: "2026-10-14T10:00:00Z",
+    },
     content,
   },
   textRun("B"),

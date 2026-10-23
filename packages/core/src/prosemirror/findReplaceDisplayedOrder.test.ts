@@ -7,8 +7,14 @@ import { createDefaultFindOptions } from "../utils/findReplace";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { findInDisplayedDocument } from "./findReplaceSelection";
 
-const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
-const paragraph = (text: string): Paragraph => ({ type: "paragraph", content: [run(text)] });
+const run = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
+const paragraph = (text: string): Paragraph => ({
+  type: "paragraph",
+  content: [run(text)],
+});
 
 const document: Document = {
   package: {
@@ -38,7 +44,11 @@ const document: Document = {
         {
           type: "paragraph",
           content: [
-            { type: "deletion", info: { id: 1, author: "Author" }, content: [run("deleted hit ")] },
+            {
+              type: "deletion",
+              info: { id: 1, author: "Author" },
+              content: [run("deleted hit ")],
+            },
             {
               type: "insertion",
               info: { id: 2, author: "Author" },
@@ -64,7 +74,10 @@ describe("search in a resolved review view", () => {
         options: { ...createDefaultFindOptions(), displayMode },
       });
       expect(
-        matches?.map(({ paragraphIndex, textBoxIndex }) => ({ paragraphIndex, textBoxIndex })),
+        matches?.map(({ paragraphIndex, textBoxIndex }) => ({
+          paragraphIndex,
+          textBoxIndex,
+        })),
       ).toEqual([
         { paragraphIndex: 0, textBoxIndex: undefined },
         { paragraphIndex: 1, textBoxIndex: undefined },

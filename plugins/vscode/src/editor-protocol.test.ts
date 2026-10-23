@@ -6,7 +6,9 @@ describe("isEditorMessage", () => {
   test("accepts what the editor webview sends", () => {
     expect(isEditorMessage({ type: "ready" })).toBe(true);
     expect(isEditorMessage({ type: "edit" })).toBe(true);
-    expect(isEditorMessage({ type: "modeChanged", mode: "suggesting" })).toBe(true);
+    expect(isEditorMessage({ type: "modeChanged", mode: "suggesting" })).toBe(
+      true,
+    );
     expect(
       isEditorMessage({
         type: "serialized",
@@ -37,15 +39,17 @@ describe("isEditorMessage", () => {
         strategy: { type: "full-repack", reason: "because" },
       }),
     ).toBe(false);
-    expect(isEditorMessage({ type: "modeChanged", mode: "drafting" })).toBe(false);
+    expect(isEditorMessage({ type: "modeChanged", mode: "drafting" })).toBe(
+      false,
+    );
   });
 });
 
 describe("saveStrategyFlag", () => {
   test("maps the editor's strategy to folio save's", () => {
     expect(saveStrategyFlag({ type: "selective-first" })).toBe("selective");
-    expect(saveStrategyFlag({ type: "full-repack", reason: "untrackedChange" })).toBe(
-      "full-repack",
-    );
+    expect(
+      saveStrategyFlag({ type: "full-repack", reason: "untrackedChange" }),
+    ).toBe("full-repack");
   });
 });

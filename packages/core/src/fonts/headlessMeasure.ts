@@ -30,14 +30,18 @@ import {
 } from "../layout-engine/measure/measureHelpers";
 import type { MeasureProvider } from "../layout-engine/measure/measureProvider";
 import { setMeasureProvider } from "../layout-engine/measure/measureProvider";
-import { advancesPerCodePointPx, needsShaping, placeRun } from "../shaping/placeRun";
-import { resolvedShaper, type Shaper } from "../shaping/shaper";
 import type {
   FontMetrics,
   FontStyle,
   RunMeasurement,
   TextMeasurement,
 } from "../layout-engine/measure/measureTypes";
+import {
+  advancesPerCodePointPx,
+  needsShaping,
+  placeRun,
+} from "../shaping/placeRun";
+import { resolvedShaper, type Shaper } from "../shaping/shaper";
 import { parseSfnt } from "./sfnt/parse";
 import type { SfntFont } from "./sfnt/parse";
 import { toSfntBytes } from "./sfnt/woff";
@@ -153,7 +157,10 @@ const coveringFont = (face: LoadedFace, codePoint: number): SfntFont | null => {
  */
 type FaceSegment = { readonly font: SfntFont | null; readonly text: string };
 
-const segmentByBinary = (face: LoadedFace, text: string): readonly FaceSegment[] => {
+const segmentByBinary = (
+  face: LoadedFace,
+  text: string,
+): readonly FaceSegment[] => {
   const segments: FaceSegment[] = [];
   let current: { font: SfntFont | null; text: string } | null = null;
   for (const character of text) {
@@ -182,7 +189,10 @@ const createFaceCache = (source: HeadlessFontSource) => {
     substitutions.push({ requested: request, reason });
   };
 
-  const decode = (request: HeadlessFontRequest, bytes: Uint8Array): SfntFont | null => {
+  const decode = (
+    request: HeadlessFontRequest,
+    bytes: Uint8Array,
+  ): SfntFont | null => {
     const sfnt = toSfntBytes(bytes);
     if (sfnt.isErr()) {
       record(request, sfnt.error.message);
@@ -215,7 +225,8 @@ const createFaceCache = (source: HeadlessFontSource) => {
     return loaded;
   };
 
-  const readSubstitutions = (): readonly HeadlessFontSubstitution[] => substitutions;
+  const readSubstitutions = (): readonly HeadlessFontSubstitution[] =>
+    substitutions;
 
   return { load, substitutions: readSubstitutions };
 };
@@ -253,7 +264,9 @@ const advanceOfText = (
       total += fontSizePx * 0.5;
       continue;
     }
-    total += (font.advanceWidthFor(font.glyphIdFor(cp)) * fontSizePx) / font.unitsPerEm;
+    total +=
+      (font.advanceWidthFor(font.glyphIdFor(cp)) * fontSizePx) /
+      font.unitsPerEm;
   }
   return total;
 };
@@ -319,7 +332,10 @@ const advancesOfText = (
   for (const segment of segmentByBinary(face, text)) {
     const characters = [...segment.text];
     if (segment.font === null || !needsShaping(segment.text)) {
-      const single = { fonts: segment.font === null ? [] : [segment.font], primary: segment.font };
+      const single = {
+        fonts: segment.font === null ? [] : [segment.font],
+        primary: segment.font,
+      };
       for (const character of characters) {
         advances.push(advanceOfText(single, character, fontSizePx, null));
       }
@@ -343,7 +359,9 @@ const createAdvancesOf =
     const face = faces.load(requestFor(style));
     const fontSizePx = ptToPx(style.fontSize ?? DEFAULT_FONT_SIZE);
     if (shaper === null) {
-      return [...text].map((character) => advanceOfText(face, character, fontSizePx, null));
+      return [...text].map((character) =>
+        advanceOfText(face, character, fontSizePx, null),
+      );
     }
     return advancesOfText(face, text, fontSizePx, shaper);
   };
@@ -358,7 +376,10 @@ const createAdvanceOf =
       shaperNow(),
     );
 
-const probeInk = (font: SfntFont, probe: string): { yMin: number; yMax: number } | null => {
+const probeInk = (
+  font: SfntFont,
+  probe: string,
+): { yMin: number; yMax: number } | null => {
   const cp = probe.codePointAt(0);
   if (cp === undefined) {
     return null;

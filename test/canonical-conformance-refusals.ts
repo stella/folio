@@ -1,6 +1,10 @@
 import { panic } from "better-result";
+
+import type {
+  EditorMode,
+  SelectionPlacement,
+} from "../packages/core/src/__tests__/editorHarness";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
-import type { EditorMode, SelectionPlacement } from "../packages/core/src/__tests__/editorHarness";
 import type { HarnessRefusalRow } from "./canonical-refusal-rows";
 
 // These are fixture contracts, independent of the command planner's verdict.
@@ -8,12 +12,14 @@ const REFUSAL_ROWS = {
   hyperlinkSuggestion: {
     id: CANONICAL_GAP.trackedHyperlinkResolution,
     gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message: "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
+    message:
+      "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
   },
   hyperlinkReview: {
     id: CANONICAL_GAP.trackedHyperlinkResolution,
     gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message: "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
+    message:
+      "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
   },
   fieldProjection: {
     id: CANONICAL_GAP.storyContentProjection,
@@ -87,8 +93,12 @@ type RefusalCase = {
   mode: EditorMode;
 };
 
-export const canonicalRefusalCaseId = ({ shape, operation, placement, mode }: RefusalCase) =>
-  `${shape} › ${operation} @ ${placement} [${mode}]`;
+export const canonicalRefusalCaseId = ({
+  shape,
+  operation,
+  placement,
+  mode,
+}: RefusalCase) => `${shape} › ${operation} @ ${placement} [${mode}]`;
 
 export const STORY_PROJECTION_REFUSAL_CASES = [
   {
@@ -131,29 +141,42 @@ const STORY_PROJECTION_ROWS = {
 >;
 
 // The fixture source/heading collector assertion binds this applicability set.
-export const TOC_HEADING_SHAPES = ["style-numbered-headings", "outline-level-numbered"] as const;
+export const TOC_HEADING_SHAPES = [
+  "style-numbered-headings",
+  "outline-level-numbered",
+] as const;
 
 /** Every declared case has an explicit expectation, including supported cases with no rows. */
-export const canonicalConformanceRefusalRows = (key: RefusalCase): readonly HarnessRefusalRow[] => {
-  const commandContract = Object.values(COMMAND_REFUSAL_CONTRACTS).find(({ operations }) =>
-    operations.some((operation) => operation === key.operation),
+export const canonicalConformanceRefusalRows = (
+  key: RefusalCase,
+): readonly HarnessRefusalRow[] => {
+  const commandContract = Object.values(COMMAND_REFUSAL_CONTRACTS).find(
+    ({ operations }) =>
+      operations.some((operation) => operation === key.operation),
   );
   if (commandContract) return commandContract.rows;
   const projection = STORY_PROJECTION_REFUSAL_CASES.find(
-    (candidate) => canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
+    (candidate) =>
+      canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
   );
   if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
   if (key.operation === "command:generateTOC")
-    return key.mode === "suggesting" && TOC_HEADING_SHAPES.some((shape) => shape === key.shape)
+    return key.mode === "suggesting" &&
+      TOC_HEADING_SHAPES.some((shape) => shape === key.shape)
       ? [REFUSAL_ROWS.hyperlinkSuggestion]
       : [];
-  const range = ["word", "paragraph", "cross-paragraph", "document", "node"].includes(
-    key.placement,
-  );
+  const range = [
+    "word",
+    "paragraph",
+    "cross-paragraph",
+    "document",
+    "node",
+  ].includes(key.placement);
   const hyperlink =
     key.operation === "command:insertHyperlink" ||
     (range &&
-      (key.operation === "command:setHyperlink" || key.operation === "command:removeHyperlink"));
+      (key.operation === "command:setHyperlink" ||
+        key.operation === "command:removeHyperlink"));
   if (!hyperlink) return [];
   if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
   if (key.shape === "comments" || key.shape === "tracked-changes")

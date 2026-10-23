@@ -12,7 +12,10 @@ import type { FolioContentAlignmentStep } from "./content-alignment";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 
-const block = (id: string, overrides: Partial<FolioContentBlock> = {}): FolioContentBlock => ({
+const block = (
+  id: string,
+  overrides: Partial<FolioContentBlock> = {},
+): FolioContentBlock => ({
   id,
   kind: "paragraph",
   statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
@@ -50,7 +53,9 @@ describe("neutral comparison resource boundaries", () => {
   test("shares one cumulative text allowance across every block on a side", () => {
     const text = "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits);
     const count =
-      Math.floor(FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot / text.length) + 1;
+      Math.floor(
+        FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot / text.length,
+      ) + 1;
 
     expectLimit(
       compareContent({
@@ -61,7 +66,11 @@ describe("neutral comparison resource boundaries", () => {
         },
         revised: { blocks: [] },
       }),
-      { input: "base", limit: "textCodeUnitsPerSnapshot", blockIndex: count - 1 },
+      {
+        input: "base",
+        limit: "textCodeUnitsPerSnapshot",
+        blockIndex: count - 1,
+      },
     );
   });
 
@@ -84,7 +93,10 @@ describe("neutral comparison resource boundaries", () => {
       () => emptyRun,
     );
     const count =
-      Math.floor(FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot / maximumRuns.length) + 1;
+      Math.floor(
+        FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot /
+          maximumRuns.length,
+      ) + 1;
     expectLimit(
       compareContent({
         base: {
@@ -118,7 +130,8 @@ describe("neutral comparison resource boundaries", () => {
     );
     const count =
       Math.floor(
-        FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot / maximumDepth.length,
+        FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot /
+          maximumDepth.length,
       ) + 1;
     expectLimit(
       compareContent({
@@ -129,7 +142,11 @@ describe("neutral comparison resource boundaries", () => {
         },
         revised: { blocks: [] },
       }),
-      { input: "base", limit: "containerEntriesPerSnapshot", blockIndex: count - 1 },
+      {
+        input: "base",
+        limit: "containerEntriesPerSnapshot",
+        blockIndex: count - 1,
+      },
     );
   });
 
@@ -137,17 +154,27 @@ describe("neutral comparison resource boundaries", () => {
     expectLimit(
       compareContent({
         base: {
-          blocks: [block("x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits + 1))],
+          blocks: [
+            block(
+              "x".repeat(
+                FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits + 1,
+              ),
+            ),
+          ],
         },
         revised: { blocks: [] },
       }),
       { input: "base", limit: "attributeCodeUnits", blockIndex: 0 },
     );
 
-    const styleId = "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits);
+    const styleId = "x".repeat(
+      FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits,
+    );
     const count =
-      Math.floor(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot / styleId.length) +
-      1;
+      Math.floor(
+        FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot /
+          styleId.length,
+      ) + 1;
     expectLimit(
       compareContent({
         base: {
@@ -211,7 +238,9 @@ describe("neutral comparison resource boundaries", () => {
     });
     expect(unsafeExtent.isErr()).toBe(true);
     if (!unsafeExtent.isErr()) return;
-    expect(unsafeExtent.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(unsafeExtent.error).toBeInstanceOf(
+      InvalidFolioContentComparisonError,
+    );
     expect(unsafeExtent.error).toMatchObject({
       input: "base",
       field: "blocks[0].table.rowSpan",
@@ -231,7 +260,11 @@ describe("neutral comparison resource boundaries", () => {
     } as const;
     const result = compareContent({
       base: {
-        blocks: [block("table-before", { table }), block("body"), block("table-after", { table })],
+        blocks: [
+          block("table-before", { table }),
+          block("body"),
+          block("table-after", { table }),
+        ],
       },
       revised: { blocks: [] },
     });
@@ -288,7 +321,9 @@ describe("neutral comparison resource boundaries", () => {
     });
     expect(precedingOuter.isErr()).toBe(true);
     if (!precedingOuter.isErr()) return;
-    expect(precedingOuter.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(precedingOuter.error).toBeInstanceOf(
+      InvalidFolioContentComparisonError,
+    );
     expect(precedingOuter.error).toMatchObject({
       input: "base",
       blockIndex: 0,
@@ -322,7 +357,12 @@ describe("neutral comparison resource boundaries", () => {
     for (const blocks of [
       [
         block("wide", {
-          table: cell({ rowIndex: 0, cellIndex: 0, gridColumnIndex: 0, columnSpan: 2 }),
+          table: cell({
+            rowIndex: 0,
+            cellIndex: 0,
+            gridColumnIndex: 0,
+            columnSpan: 2,
+          }),
         }),
         block("inside-wide", {
           table: cell({ rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
@@ -330,14 +370,22 @@ describe("neutral comparison resource boundaries", () => {
       ],
       [
         block("tall", {
-          table: cell({ rowIndex: 0, cellIndex: 0, gridColumnIndex: 0, rowSpan: 2 }),
+          table: cell({
+            rowIndex: 0,
+            cellIndex: 0,
+            gridColumnIndex: 0,
+            rowSpan: 2,
+          }),
         }),
         block("inside-tall", {
           table: cell({ rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
         }),
       ],
     ]) {
-      const result = compareContent({ base: { blocks }, revised: { blocks: [] } });
+      const result = compareContent({
+        base: { blocks },
+        revised: { blocks: [] },
+      });
       expect(result.isErr()).toBe(true);
       if (!result.isErr()) continue;
       expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);

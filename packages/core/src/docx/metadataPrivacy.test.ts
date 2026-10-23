@@ -30,7 +30,9 @@ const buildDocument = async (): Promise<ArrayBuffer> => {
           {
             type: "paragraph",
             paraId: "00000001",
-            content: [{ type: "run", content: [{ type: "text", text: "Body text." }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Body text." }] },
+            ],
           },
         ],
       },
@@ -50,7 +52,9 @@ const readCorePropertiesXml = async (buffer: ArrayBuffer): Promise<string> => {
   return file.async("text");
 };
 
-const expectPrivateMetadataAbsent = async (buffer: ArrayBuffer): Promise<void> => {
+const expectPrivateMetadataAbsent = async (
+  buffer: ArrayBuffer,
+): Promise<void> => {
   const xml = await readCorePropertiesXml(buffer);
   for (const property of [
     "title",
@@ -72,11 +76,19 @@ const expectPrivateMetadataAbsent = async (buffer: ArrayBuffer): Promise<void> =
 describe("rewriteDocxMetadataPrivacy", () => {
   test("removes selected metadata and reports fields that existed", async () => {
     const result = await rewriteDocxMetadataPrivacy(await buildDocument(), {
-      transforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],
+      transforms: [
+        "remove-attribution",
+        "remove-timestamps",
+        "remove-descriptive-metadata",
+      ],
     });
 
     expect(result.privacyReport).toEqual({
-      appliedTransforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],
+      appliedTransforms: [
+        "remove-attribution",
+        "remove-timestamps",
+        "remove-descriptive-metadata",
+      ],
       removedMetadataProperties: [
         "title",
         "subject",
@@ -89,7 +101,9 @@ describe("rewriteDocxMetadataPrivacy", () => {
       ],
     });
     await expectPrivateMetadataAbsent(result.buffer);
-    expect(parseCoreProperties(await readCorePropertiesXml(result.buffer))).toEqual({
+    expect(
+      parseCoreProperties(await readCorePropertiesXml(result.buffer)),
+    ).toEqual({
       revision: 7,
     });
   });
@@ -109,7 +123,12 @@ describe("rewriteDocxMetadataPrivacy", () => {
             {
               type: "paragraph",
               paraId: "00000001",
-              content: [{ type: "run", content: [{ type: "text", text: "Body text." }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Body text." }],
+                },
+              ],
             },
           ],
         },
@@ -121,7 +140,11 @@ describe("rewriteDocxMetadataPrivacy", () => {
     const casedBuffer = await zip.generateAsync({ type: "arraybuffer" });
 
     const result = await rewriteDocxMetadataPrivacy(casedBuffer, {
-      transforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],
+      transforms: [
+        "remove-attribution",
+        "remove-timestamps",
+        "remove-descriptive-metadata",
+      ],
     });
 
     expect(result.privacyReport.removedMetadataProperties).toEqual([
@@ -140,7 +163,9 @@ describe("rewriteDocxMetadataPrivacy", () => {
     expect(rewrittenZip.file("docProps/core.xml")).toBeNull();
     const rewrittenFile = rewrittenZip.file("docProps/Core.xml");
     if (!rewrittenFile) {
-      throw new Error("expected the cased core properties part to survive the rewrite");
+      throw new Error(
+        "expected the cased core properties part to survive the rewrite",
+      );
     }
     const xml = await rewrittenFile.async("text");
     expect(xml).not.toContain("<dc:creator>");
@@ -150,21 +175,35 @@ describe("rewriteDocxMetadataPrivacy", () => {
 
   test("keeps removed timestamps absent through selective and structural saves", async () => {
     const rewritten = await rewriteDocxMetadataPrivacy(await buildDocument(), {
-      transforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],
+      transforms: [
+        "remove-attribution",
+        "remove-timestamps",
+        "remove-descriptive-metadata",
+      ],
     });
-    const selectiveReviewer = await FolioDocxReviewer.fromBuffer(rewritten.buffer);
+    const selectiveReviewer = await FolioDocxReviewer.fromBuffer(
+      rewritten.buffer,
+    );
     const target = selectiveReviewer.snapshot().blocks.at(0);
     if (!target) {
       throw new Error("expected a body block");
     }
     selectiveReviewer.applyOperations(
-      [{ id: "replace", type: "replaceBlock", blockId: target.id, text: "Updated body." }],
+      [
+        {
+          id: "replace",
+          type: "replaceBlock",
+          blockId: target.id,
+          text: "Updated body.",
+        },
+      ],
       { undefinedReferences: "refuse", mode: "direct" },
     );
     const selectivelySaved = await selectiveReviewer.toBuffer();
     await expectPrivateMetadataAbsent(selectivelySaved);
 
-    const structuralReviewer = await FolioDocxReviewer.fromBuffer(selectivelySaved);
+    const structuralReviewer =
+      await FolioDocxReviewer.fromBuffer(selectivelySaved);
     const structuralTarget = structuralReviewer.snapshot().blocks.at(0);
     if (!structuralTarget) {
       throw new Error("expected a body block");
@@ -187,15 +226,21 @@ describe("rewriteDocxMetadataPrivacy", () => {
     const buffer = await buildDocument();
 
     await expect(
-      Reflect.apply(rewriteDocxMetadataPrivacy, undefined, [buffer, { transforms: ["unknown"] }]),
+      Reflect.apply(rewriteDocxMetadataPrivacy, undefined, [
+        buffer,
+        { transforms: ["unknown"] },
+      ]),
     ).rejects.toBeInstanceOf(InvalidFolioDocumentPrivacyOptionsError);
   });
 
   test("rejects an unreadable package with a tagged error", async () => {
     await expect(
-      rewriteDocxMetadataPrivacy(new TextEncoder().encode("not a package").buffer, {
-        transforms: ["remove-attribution"],
-      }),
+      rewriteDocxMetadataPrivacy(
+        new TextEncoder().encode("not a package").buffer,
+        {
+          transforms: ["remove-attribution"],
+        },
+      ),
     ).rejects.toBeInstanceOf(FolioDocumentPrivacyArchiveError);
   });
 
@@ -204,10 +249,13 @@ describe("rewriteDocxMetadataPrivacy", () => {
       entryPath: "docProps/core.xml",
       inflatedMebibytes: 3,
     });
-    const buffer = withDeclaredSize(source, "docProps/core.xml", 64).slice().buffer;
+    const buffer = withDeclaredSize(source, "docProps/core.xml", 64).slice()
+      .buffer;
 
     await expect(
-      rewriteDocxMetadataPrivacy(buffer, { transforms: ["remove-attribution"] }),
+      rewriteDocxMetadataPrivacy(buffer, {
+        transforms: ["remove-attribution"],
+      }),
     ).rejects.toMatchObject({
       _tag: "FolioDocumentPrivacyArchiveError",
       reason: "core-properties-too-large",
@@ -218,7 +266,9 @@ describe("rewriteDocxMetadataPrivacy", () => {
     const buffer = (await manyEntryArchive(5001)).slice().buffer;
 
     await expect(
-      rewriteDocxMetadataPrivacy(buffer, { transforms: ["remove-attribution"] }),
+      rewriteDocxMetadataPrivacy(buffer, {
+        transforms: ["remove-attribution"],
+      }),
     ).rejects.toMatchObject({ reason: "too-many-entries" });
   });
 });

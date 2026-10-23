@@ -8,13 +8,15 @@ import {
 
 describe("border stroke painting", () => {
   test("projects authored subpixel width into optical coverage", () => {
-    expect(borderStrokeToCss({ width: 1 / 3, style: "solid", color: "#123456" })).toBe(
-      "1px solid color-mix(in srgb, #123456 33.3333%, transparent)",
-    );
+    expect(
+      borderStrokeToCss({ width: 1 / 3, style: "solid", color: "#123456" }),
+    ).toBe("1px solid color-mix(in srgb, #123456 33.3333%, transparent)");
   });
 
   test("keeps full-pixel and explicit hairline strokes opaque", () => {
-    expect(resolveCssBorderStroke({ width: 2, style: "dashed", color: "#123456" })).toEqual({
+    expect(
+      resolveCssBorderStroke({ width: 2, style: "dashed", color: "#123456" }),
+    ).toEqual({
       width: 2,
       style: "dashed",
       color: "#123456",
@@ -27,7 +29,9 @@ describe("border stroke painting", () => {
   });
 
   test("extends horizontal paragraph rules beyond text when side borders are absent", () => {
-    expect(resolveParagraphBorderHorizontalOutsets({ bottom: { width: 1 } }, true)).toEqual({
+    expect(
+      resolveParagraphBorderHorizontalOutsets({ bottom: { width: 1 } }, true),
+    ).toEqual({
       left: 2,
       right: 2,
     });

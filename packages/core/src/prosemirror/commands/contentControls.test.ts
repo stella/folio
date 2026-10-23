@@ -5,7 +5,10 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
-import { ContentControlLockedError, ContentControlTypeError } from "../../content-controls";
+import {
+  ContentControlLockedError,
+  ContentControlTypeError,
+} from "../../content-controls";
 import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { schema, singletonManager } from "../schema";
 import {
@@ -26,9 +29,11 @@ function makeState(docNode = defaultDoc()): EditorState {
 }
 
 function defaultDoc() {
-  const sdt = schema.node("blockSdt", { sdtType: "richText", tag: "name", alias: "Name" }, [
-    schema.node("paragraph", {}, [schema.text("original")]),
-  ]);
+  const sdt = schema.node(
+    "blockSdt",
+    { sdtType: "richText", tag: "name", alias: "Name" },
+    [schema.node("paragraph", {}, [schema.text("original")])],
+  );
   const tail = schema.node("paragraph", {}, [schema.text("after")]);
   return schema.node("doc", null, [sdt, tail]);
 }
@@ -70,12 +75,16 @@ describe("findBlockSdtMatches", () => {
     // Two SDTs share the tag "name"; setContentControlValueTr must land on
     // the one the user actually clicked (identified by pmPos), not the
     // first one in document order.
-    const first = schema.node("blockSdt", { sdtType: "richText", tag: "name" }, [
-      schema.node("paragraph", {}, [schema.text("first")]),
-    ]);
-    const second = schema.node("blockSdt", { sdtType: "richText", tag: "name" }, [
-      schema.node("paragraph", {}, [schema.text("second")]),
-    ]);
+    const first = schema.node(
+      "blockSdt",
+      { sdtType: "richText", tag: "name" },
+      [schema.node("paragraph", {}, [schema.text("first")])],
+    );
+    const second = schema.node(
+      "blockSdt",
+      { sdtType: "richText", tag: "name" },
+      [schema.node("paragraph", {}, [schema.text("second")])],
+    );
     const state = makeState(schema.node("doc", null, [first, second]));
     const allByTag = findBlockSdtMatches(state.doc, { tag: "name" });
     expect(allByTag).toHaveLength(2);
@@ -141,7 +150,9 @@ describe("setContentControlContentTr", () => {
 
   test("returns null when no control matches", () => {
     const state = makeState();
-    expect(setContentControlContentTr(state, { tag: "missing" }, "x")).toBeNull();
+    expect(
+      setContentControlContentTr(state, { tag: "missing" }, "x"),
+    ).toBeNull();
   });
 
   test("refuses to write into a locked control without force", () => {
@@ -151,9 +162,9 @@ describe("setContentControlContentTr", () => {
       [schema.node("paragraph", {}, [schema.text("x")])],
     );
     const state = makeState(schema.node("doc", null, [lockedSdt]));
-    expect(() => setContentControlContentTr(state, { tag: "locked" }, "boom")).toThrow(
-      ContentControlLockedError,
-    );
+    expect(() =>
+      setContentControlContentTr(state, { tag: "locked" }, "boom"),
+    ).toThrow(ContentControlLockedError);
   });
 });
 
@@ -257,9 +268,11 @@ describe("setContentControlValueTr", () => {
     // Without fractional-seconds support, the regex missed it and the
     // helper fell back to `new Date(iso)`, which would format the value
     // via UTC accessors and shift the rendered day in non-UTC zones.
-    const sdt = schema.node("blockSdt", { sdtType: "date", tag: "due", dateFormat: "yyyy-MM-dd" }, [
-      schema.node("paragraph", {}, []),
-    ]);
+    const sdt = schema.node(
+      "blockSdt",
+      { sdtType: "date", tag: "due", dateFormat: "yyyy-MM-dd" },
+      [schema.node("paragraph", {}, [])],
+    );
     const state = makeState(schema.node("doc", null, [sdt]));
     const tr = setContentControlValueTr(
       state,
@@ -280,9 +293,11 @@ describe("setContentControlValueTr", () => {
     // formatDate happily rendered the well-formed slice. The model would
     // still store the malformed ISO, so the visible body silently
     // disagreed with the bound value.
-    const sdt = schema.node("blockSdt", { sdtType: "date", tag: "due", dateFormat: "yyyy-MM-dd" }, [
-      schema.node("paragraph", {}, []),
-    ]);
+    const sdt = schema.node(
+      "blockSdt",
+      { sdtType: "date", tag: "due", dateFormat: "yyyy-MM-dd" },
+      [schema.node("paragraph", {}, [])],
+    );
     const state = makeState(schema.node("doc", null, [sdt]));
     const tr = setContentControlValueTr(
       state,
@@ -367,10 +382,16 @@ describe("removeContentControlTr", () => {
     // inner blockSdt without substituting a block would leave the parent
     // empty and fail schema validation. The PM helper must substitute a
     // placeholder paragraph here too, matching the doc-root case.
-    const inner = schema.node("blockSdt", { sdtType: "richText", tag: "inner" }, [
-      schema.node("paragraph", {}, [schema.text("solo")]),
-    ]);
-    const outer = schema.node("blockSdt", { sdtType: "richText", tag: "outer" }, [inner]);
+    const inner = schema.node(
+      "blockSdt",
+      { sdtType: "richText", tag: "inner" },
+      [schema.node("paragraph", {}, [schema.text("solo")])],
+    );
+    const outer = schema.node(
+      "blockSdt",
+      { sdtType: "richText", tag: "outer" },
+      [inner],
+    );
     const state = makeState(schema.node("doc", null, [outer]));
     const tr = removeContentControlTr(state, { tag: "inner" });
     if (!tr) {
@@ -386,9 +407,11 @@ describe("removeContentControlTr", () => {
   });
 
   test("contentLocked allows container removal (OOXML lock semantics)", () => {
-    const sdt = schema.node("blockSdt", { sdtType: "richText", tag: "a", lock: "contentLocked" }, [
-      schema.node("paragraph", {}, [schema.text("x")]),
-    ]);
+    const sdt = schema.node(
+      "blockSdt",
+      { sdtType: "richText", tag: "a", lock: "contentLocked" },
+      [schema.node("paragraph", {}, [schema.text("x")])],
+    );
     const state = makeState(schema.node("doc", null, [sdt]));
     const tr = removeContentControlTr(state, { tag: "a" });
     if (!tr) {
@@ -399,11 +422,15 @@ describe("removeContentControlTr", () => {
   });
 
   test("sdtLocked refuses container removal but allows content edits", () => {
-    const sdt = schema.node("blockSdt", { sdtType: "richText", tag: "a", lock: "sdtLocked" }, [
-      schema.node("paragraph", {}, [schema.text("x")]),
-    ]);
+    const sdt = schema.node(
+      "blockSdt",
+      { sdtType: "richText", tag: "a", lock: "sdtLocked" },
+      [schema.node("paragraph", {}, [schema.text("x")])],
+    );
     const state = makeState(schema.node("doc", null, [sdt]));
-    expect(() => removeContentControlTr(state, { tag: "a" })).toThrow(ContentControlLockedError);
+    expect(() => removeContentControlTr(state, { tag: "a" })).toThrow(
+      ContentControlLockedError,
+    );
     // ... but content edits succeed.
     const tr = setContentControlContentTr(state, { tag: "a" }, "edit ok");
     expect(tr).not.toBeNull();
@@ -424,7 +451,10 @@ describe("removeContentControlTr", () => {
     const state = EditorState.create({
       doc: schema.node("doc", null, [checkbox]),
       schema,
-      plugins: [createSuggestionModePlugin(true, "Reviewer"), ...singletonManager.getPlugins()],
+      plugins: [
+        createSuggestionModePlugin(true, "Reviewer"),
+        ...singletonManager.getPlugins(),
+      ],
     });
     const tr = setContentControlValueTr(
       state,
@@ -447,7 +477,9 @@ describe("removeContentControlTr", () => {
     if (!insertionType) {
       throw new TypeError("expected insertion mark in schema");
     }
-    const hasInsertion = firstText?.marks.some((mark) => mark.type === insertionType);
+    const hasInsertion = firstText?.marks.some(
+      (mark) => mark.type === insertionType,
+    );
     expect(hasInsertion).toBe(false);
   });
 
@@ -457,13 +489,15 @@ describe("removeContentControlTr", () => {
       {
         sdtType: "richText",
         tag: "parties",
-        _preserved: { children: [{ index: 10, xml: "<w15:repeatingSection/>" }] },
+        _preserved: {
+          children: [{ index: 10, xml: "<w15:repeatingSection/>" }],
+        },
       },
       [schema.node("paragraph", {}, [])],
     );
     const state = makeState(schema.node("doc", null, [repeating]));
-    expect(() => removeContentControlTr(state, { tag: "parties" }, { keepContent: true })).toThrow(
-      ContentControlTypeError,
-    );
+    expect(() =>
+      removeContentControlTr(state, { tag: "parties" }, { keepContent: true }),
+    ).toThrow(ContentControlTypeError);
   });
 });

@@ -16,7 +16,8 @@
  * the reviewer noticing.
  */
 
-const STYLE_REFERENCE = /<w:(?:pStyle|rStyle|tblStyle)\b[^>]*\bw:val="(?<id>[^"]*)"/gu;
+const STYLE_REFERENCE =
+  /<w:(?:pStyle|rStyle|tblStyle)\b[^>]*\bw:val="(?<id>[^"]*)"/gu;
 const STYLE_LINK = /<w:(?:basedOn|next|link)\b[^>]*\bw:val="(?<id>[^"]*)"/gu;
 const STYLE_DEFINITION = /<w:style\b[^>]*\bw:styleId="(?<id>[^"]*)"/gu;
 

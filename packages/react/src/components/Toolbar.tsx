@@ -17,13 +17,17 @@ import React, { useCallback, useRef } from "react";
 import { cn } from "../lib/utils";
 import { containedHandler } from "../utils/contained-handler";
 import { FormattingBar } from "./FormattingBar";
-import { ToolbarButton, ToolbarGroup, ToolbarSeparator } from "./toolbarPrimitives";
+import {
+  ToolbarButton,
+  ToolbarGroup,
+  ToolbarSeparator,
+} from "./toolbarPrimitives";
 import type {
-  SelectionFormatting,
   FormattingAction,
-  ToolbarProps,
+  SelectionFormatting,
   ToolbarButtonProps,
   ToolbarGroupProps,
+  ToolbarProps,
 } from "./toolbarPrimitives";
 
 // Re-export types and primitives so existing consumers keep working
@@ -86,9 +90,12 @@ export function Toolbar({
       }
       const target = e.target;
       const activeEl = document.activeElement;
-      const activeTagName = activeEl instanceof HTMLElement ? activeEl.tagName : null;
+      const activeTagName =
+        activeEl instanceof HTMLElement ? activeEl.tagName : null;
       const isSelectActive =
-        target.tagName === "SELECT" || target.tagName === "OPTION" || activeTagName === "SELECT";
+        target.tagName === "SELECT" ||
+        target.tagName === "OPTION" ||
+        activeTagName === "SELECT";
 
       if (isSelectActive) {
         return;

@@ -3,21 +3,39 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { Document, Paragraph, Table, TableCell, TableRow } from "../../model/document";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  Document,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { endsItsContainer, storyParagraphs } from "../blocks";
-import { permitsCellFinalMark } from "../tableTracking";
 import { contractViolation } from "../contract";
 import { paragraphIdsIn } from "../ids";
-import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp, type RevisionStamp } from "../types";
+import { permitsCellFinalMark } from "../tableTracking";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  type RevisionStamp,
+} from "../types";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
 // CI scales runs (5x on PRs, 10x nightly), so the laws still see 10^4+ cases per run there.
 const NUM_RUNS = 2_000;
 const DATE = "2026-05-06T07:08:09Z";
-const stamp = (id: number): RevisionStamp => ({ id, author: "Reviewer", date: DATE });
+const stamp = (id: number): RevisionStamp => ({
+  id,
+  author: "Reviewer",
+  date: DATE,
+});
 const newIds = (start: number) => ({
   revision: Array.from({ length: 128 }, (_, index) => start + index),
 });
@@ -52,7 +70,11 @@ const runFormatting = (seed: number) => {
   }
 };
 
-const makeParagraph = (paragraphId: string, text: string, formatting: number): Paragraph => ({
+const makeParagraph = (
+  paragraphId: string,
+  text: string,
+  formatting: number,
+): Paragraph => ({
   type: "paragraph",
   paraId: paragraphId,
   content:
@@ -71,49 +93,67 @@ const rowFor = (shape: Shape, rowIndex: number, firstId: number): TableRow => ({
   type: "tableRow",
   formatting: rowIndex % 2 === 0 ? { cantSplit: true } : { header: true },
   preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
-  cells: Array.from({ length: 1 + ((shape.cells + rowIndex) % 3) }, (_, cellIndex) => {
-    const paragraphCount = 1 + ((shape.paragraphs + rowIndex + cellIndex) % 3);
-    const content = Array.from({ length: paragraphCount }, (_paragraphValue, paragraphIndex) => {
-      const paragraphId = firstId + cellIndex * 9 + paragraphIndex;
-      const text =
-        (shape.text + rowIndex + cellIndex + paragraphIndex) % 5 === 0
-          ? ""
-          : `cell-${rowIndex}-${cellIndex}-${paragraphIndex}-${shape.text % 997}`;
-      const paragraph = makeParagraph(
-        formatParagraphId(paragraphId),
-        text,
-        shape.formatting + paragraphId,
-      );
-      if (paragraphIndex >= paragraphCount - 1 || shape.formatting % 2 === 0) return paragraph;
-      return {
-        ...paragraph,
-        pPrMark: { kind: "ins", info: { id: 300_000 + paragraphId, author: "Other", date: DATE } },
-      } satisfies Paragraph;
-    });
-    switch ((shape.formatting + rowIndex + cellIndex) % 3) {
-      case 0:
-        return { type: "tableCell", content } satisfies TableCell;
-      case 1:
-        return {
-          type: "tableCell",
-          content: [
-            { type: "blockSdt", properties: { sdtType: "richText", tag: "cell" }, content },
-          ],
-        } satisfies TableCell;
-      default:
-        return {
-          type: "tableCell",
-          content: [
-            {
-              type: "blockCustomXml",
-              openingXml: '<w:customXml w:element="cell">',
-              closingXml: "</w:customXml>",
-              content,
+  cells: Array.from(
+    { length: 1 + ((shape.cells + rowIndex) % 3) },
+    (_, cellIndex) => {
+      const paragraphCount =
+        1 + ((shape.paragraphs + rowIndex + cellIndex) % 3);
+      const content = Array.from(
+        { length: paragraphCount },
+        (_paragraphValue, paragraphIndex) => {
+          const paragraphId = firstId + cellIndex * 9 + paragraphIndex;
+          const text =
+            (shape.text + rowIndex + cellIndex + paragraphIndex) % 5 === 0
+              ? ""
+              : `cell-${rowIndex}-${cellIndex}-${paragraphIndex}-${shape.text % 997}`;
+          const paragraph = makeParagraph(
+            formatParagraphId(paragraphId),
+            text,
+            shape.formatting + paragraphId,
+          );
+          if (
+            paragraphIndex >= paragraphCount - 1 ||
+            shape.formatting % 2 === 0
+          )
+            return paragraph;
+          return {
+            ...paragraph,
+            pPrMark: {
+              kind: "ins",
+              info: { id: 300_000 + paragraphId, author: "Other", date: DATE },
             },
-          ],
-        } satisfies TableCell;
-    }
-  }),
+          } satisfies Paragraph;
+        },
+      );
+      switch ((shape.formatting + rowIndex + cellIndex) % 3) {
+        case 0:
+          return { type: "tableCell", content } satisfies TableCell;
+        case 1:
+          return {
+            type: "tableCell",
+            content: [
+              {
+                type: "blockSdt",
+                properties: { sdtType: "richText", tag: "cell" },
+                content,
+              },
+            ],
+          } satisfies TableCell;
+        default:
+          return {
+            type: "tableCell",
+            content: [
+              {
+                type: "blockCustomXml",
+                openingXml: '<w:customXml w:element="cell">',
+                closingXml: "</w:customXml>",
+                content,
+              },
+            ],
+          } satisfies TableCell;
+      }
+    },
+  ),
 });
 
 type Fixture = { document: Document; rows: TableRow[]; nextId: number };
@@ -122,9 +162,17 @@ const fixtureFor = (shape: Shape): Fixture => {
   const rows = Array.from({ length: shape.rows }, (_, rowIndex) =>
     rowFor(shape, rowIndex, 0x100 + rowIndex * 27),
   );
-  const table: Table = { type: "table", formatting: { justification: "center" }, rows };
+  const table: Table = {
+    type: "table",
+    formatting: { justification: "center" },
+    rows,
+  };
   const before = makeParagraph("00000001", "outside-before", shape.formatting);
-  const after = makeParagraph("00000002", "outside-after", shape.formatting + 1);
+  const after = makeParagraph(
+    "00000002",
+    "outside-after",
+    shape.formatting + 1,
+  );
   return {
     document: { package: { document: { content: [before, table, after] } } },
     rows,
@@ -134,13 +182,17 @@ const fixtureFor = (shape: Shape): Fixture => {
 
 const operationTarget = (row: TableRow): string => {
   const paragraphId = paragraphIdsIn(row).at(0);
-  if (paragraphId === undefined) throw new Error("Generated rows have a paragraph target.");
+  if (paragraphId === undefined)
+    throw new Error("Generated rows have a paragraph target.");
   return paragraphId;
 };
 
 const tableOf = (document: Document): Table => {
-  const table = document.package.document.content.find((block) => block.type === "table");
-  if (table?.type !== "table") throw new Error("Generated document has a table.");
+  const table = document.package.document.content.find(
+    (block) => block.type === "table",
+  );
+  if (table?.type !== "table")
+    throw new Error("Generated document has a table.");
   return table;
 };
 
@@ -189,7 +241,8 @@ const operationFor = (
     const at = seed % (fixture.rows.length + 1);
     const row = rowFor(shape, fixture.rows.length + 1, fixture.nextId);
     const anchor = fixture.rows[Math.min(at, fixture.rows.length - 1)];
-    if (anchor === undefined) throw new Error("Generated table has an insertion anchor.");
+    if (anchor === undefined)
+      throw new Error("Generated table has an insertion anchor.");
     return {
       ...fixture,
       op: {
@@ -205,7 +258,8 @@ const operationFor = (
   }
   const targetIndex = seed % fixture.rows.length;
   const target = fixture.rows[targetIndex];
-  if (target === undefined) throw new Error("Generated table has a target row.");
+  if (target === undefined)
+    throw new Error("Generated table has a target row.");
   if (kind === "deleteRow") {
     return {
       ...fixture,
@@ -238,11 +292,14 @@ const rowHasRevision = (
   row: TableRow,
   type: "tableRowInsertion" | "tableRowDeletion",
   id: number,
-): boolean => row.structuralChange?.type === type && row.structuralChange.info.id === id;
+): boolean =>
+  row.structuralChange?.type === type && row.structuralChange.info.id === id;
 
 const rowParagraphs = (row: TableRow): Paragraph[] =>
   row.cells.flatMap((cell) =>
-    storyParagraphs({ content: cell.content }).map(({ paragraph }) => paragraph),
+    storyParagraphs({ content: cell.content }).map(
+      ({ paragraph }) => paragraph,
+    ),
   );
 
 type AssertTrackedRowOptions = {
@@ -252,7 +309,13 @@ type AssertTrackedRowOptions = {
   revisionIds: ReadonlySet<number>;
   before: TableRow;
 };
-const assertTrackedRow = ({ row, type, wrapper, revisionIds, before }: AssertTrackedRowOptions) => {
+const assertTrackedRow = ({
+  row,
+  type,
+  wrapper,
+  revisionIds,
+  before,
+}: AssertTrackedRowOptions) => {
   expect(rowHasRevision(row, type, 100_000)).toBe(true);
   const physicalIds = new Set([100_000]);
   const originalParagraphs = new Map(
@@ -265,7 +328,8 @@ const assertTrackedRow = ({ row, type, wrapper, revisionIds, before }: AssertTra
       if (endsItsContainer(body, location)) {
         const mark = paragraph.pPrMark;
         expect(mark).toBeDefined();
-        if (mark === undefined) throw new Error("Tracked cells have a final mark.");
+        if (mark === undefined)
+          throw new Error("Tracked cells have a final mark.");
         expect(mark.kind).toBe(wrapper === "insertion" ? "ins" : "del");
         expect(mark.info.author).toBe("Reviewer");
         expect(mark.info.date).toBe(DATE);
@@ -273,10 +337,14 @@ const assertTrackedRow = ({ row, type, wrapper, revisionIds, before }: AssertTra
         expect(physicalIds.has(mark.info.id)).toBe(false);
         physicalIds.add(mark.info.id);
       } else {
-        expect(paragraph.pPrMark).toStrictEqual(originalParagraphs.get(paragraph.paraId)?.pPrMark);
+        expect(paragraph.pPrMark).toStrictEqual(
+          originalParagraphs.get(paragraph.paraId)?.pPrMark,
+        );
       }
       if (paragraph.content.length === 0) continue;
-      const wrappers = paragraph.content.filter((content) => content.type === wrapper);
+      const wrappers = paragraph.content.filter(
+        (content) => content.type === wrapper,
+      );
       expect(wrappers.length).toBeGreaterThan(0);
       for (const content of wrappers) {
         expect(content.info.author).toBe("Reviewer");
@@ -290,7 +358,8 @@ const assertTrackedRow = ({ row, type, wrapper, revisionIds, before }: AssertTra
   expect(physicalIds.size).toBe(
     1 +
       row.cells.length +
-      rowParagraphs(row).filter((paragraph) => paragraph.content.length > 0).length,
+      rowParagraphs(row).filter((paragraph) => paragraph.content.length > 0)
+        .length,
   );
 };
 
@@ -298,19 +367,25 @@ const operationFamilies = ["insertRow", "deleteRow", "setTableRows"] as const;
 
 describe("table row operation properties", () => {
   test("removing a table's final row removes the table with an exact inverse", () => {
-    const fixture = fixtureFor({ rows: 1, cells: 1, paragraphs: 1, text: 0, formatting: 0 });
+    const fixture = fixtureFor({
+      rows: 1,
+      cells: 1,
+      paragraphs: 1,
+      text: 0,
+      formatting: 0,
+    });
     const onlyRow = fixture.rows.at(0);
-    if (onlyRow === undefined) throw new Error("Generated table has its only row.");
+    if (onlyRow === undefined)
+      throw new Error("Generated table has its only row.");
     const result = applied(fixture.document, {
       type: DOCUMENT_OP_TYPES.DELETE_ROW,
       story: OP_STORIES.MAIN,
       blockId: operationTarget(onlyRow),
       expected: onlyRow,
     });
-    expect(result.document.package.document.content.map((block) => block.type)).toEqual([
-      "paragraph",
-      "paragraph",
-    ]);
+    expect(
+      result.document.package.document.content.map((block) => block.type),
+    ).toEqual(["paragraph", "paragraph"]);
     const undone = applyDocumentOps(result.document, result.inverse);
     if (undone.isErr()) throw undone.error;
     expect(undone.value.document).toStrictEqual(fixture.document);
@@ -319,111 +394,141 @@ describe("table row operation properties", () => {
   for (const kind of operationFamilies) {
     test(`${kind}: L1 acceptance, L2 rejection, inverse, determinism and locality`, () => {
       assertProperty(
-        fc.property(shapeArbitrary, fc.integer({ min: 0, max: 0xffff_ffff }), (shape, seed) => {
-          const { document, op } = operationFor(shape, seed, kind);
-          const direct = applied(document, directOf(op));
-          const tracked = applied(document, op);
-          if (kind === "setTableRows") {
-            expect(tracked.document).toStrictEqual(direct.document);
-            expect(tracked.revisions).toEqual([]);
-          } else {
-            expect(tracked.revisions.length).toBeGreaterThan(0);
-            expect(resolve(tracked.document, tracked.revisions, "accept")).toStrictEqual(
-              direct.document,
-            );
-            expect(resolve(tracked.document, tracked.revisions, "reject")).toStrictEqual(document);
+        fc.property(
+          shapeArbitrary,
+          fc.integer({ min: 0, max: 0xffff_ffff }),
+          (shape, seed) => {
+            const { document, op } = operationFor(shape, seed, kind);
+            const direct = applied(document, directOf(op));
+            const tracked = applied(document, op);
+            if (kind === "setTableRows") {
+              expect(tracked.document).toStrictEqual(direct.document);
+              expect(tracked.revisions).toEqual([]);
+            } else {
+              expect(tracked.revisions.length).toBeGreaterThan(0);
+              expect(
+                resolve(tracked.document, tracked.revisions, "accept"),
+              ).toStrictEqual(direct.document);
+              expect(
+                resolve(tracked.document, tracked.revisions, "reject"),
+              ).toStrictEqual(document);
 
-            const revisionIds = new Set(tracked.revisions);
-            const expectedStructuralChange =
-              kind === "insertRow" ? "tableRowInsertion" : "tableRowDeletion";
-            const expectedWrapper = kind === "insertRow" ? "insertion" : "deletion";
-            const changedRows = tableOf(tracked.document).rows.filter((row) =>
-              rowHasRevision(row, expectedStructuralChange, 100_000),
-            );
-            expect(changedRows.length).toBeGreaterThan(0);
-            for (const row of changedRows) {
-              const original =
-                op.type === DOCUMENT_OP_TYPES.INSERT_ROW
-                  ? op.row
-                  : tableOf(document).rows.find(
-                      (candidate) => operationTarget(candidate) === operationTarget(row),
-                    );
-              if (original === undefined)
-                throw new Error("Tracked rows retain their original target.");
-              assertTrackedRow({
-                row,
-                type: expectedStructuralChange,
-                wrapper: expectedWrapper,
-                revisionIds,
-                before: original,
-              });
-            }
-          }
-
-          const undone = applyDocumentOps(tracked.document, tracked.inverse);
-          if (undone.isErr()) throw undone.error;
-          expect(undone.value.document).toStrictEqual(document);
-
-          if (kind !== "setTableRows") {
-            for (const decision of ["accept", "reject"] as const) {
-              const resolved = applied(
-                tracked.document,
-                resolveOperation(tracked.revisions, decision),
+              const revisionIds = new Set(tracked.revisions);
+              const expectedStructuralChange =
+                kind === "insertRow" ? "tableRowInsertion" : "tableRowDeletion";
+              const expectedWrapper =
+                kind === "insertRow" ? "insertion" : "deletion";
+              const changedRows = tableOf(tracked.document).rows.filter((row) =>
+                rowHasRevision(row, expectedStructuralChange, 100_000),
               );
-              const restored = applyDocumentOps(resolved.document, resolved.inverse);
-              if (restored.isErr()) throw restored.error;
-              expect(restored.value.document).toStrictEqual(tracked.document);
+              expect(changedRows.length).toBeGreaterThan(0);
+              for (const row of changedRows) {
+                const original =
+                  op.type === DOCUMENT_OP_TYPES.INSERT_ROW
+                    ? op.row
+                    : tableOf(document).rows.find(
+                        (candidate) =>
+                          operationTarget(candidate) === operationTarget(row),
+                      );
+                if (original === undefined)
+                  throw new Error("Tracked rows retain their original target.");
+                assertTrackedRow({
+                  row,
+                  type: expectedStructuralChange,
+                  wrapper: expectedWrapper,
+                  revisionIds,
+                  before: original,
+                });
+              }
             }
-          }
 
-          const repeated = applied(structuredClone(document), JSON.parse(JSON.stringify(op)));
-          expect(repeated.document).toStrictEqual(tracked.document);
-          expect(repeated.inverse).toStrictEqual(tracked.inverse);
+            const undone = applyDocumentOps(tracked.document, tracked.inverse);
+            if (undone.isErr()) throw undone.error;
+            expect(undone.value.document).toStrictEqual(document);
 
-          const touched = new Set([
-            ...tracked.touched.modified,
-            ...tracked.touched.inserted,
-            ...tracked.touched.removed,
-          ]);
-          const beforeParagraphs = storyParagraphs(document.package.document);
-          const afterParagraphs = new Map(
-            storyParagraphs(tracked.document.package.document).map(({ paragraph }) => [
-              paragraph.paraId ?? "",
-              paragraph,
-            ]),
-          );
-          for (const { paragraph } of beforeParagraphs) {
-            if (touched.has(paragraph.paraId ?? "")) continue;
-            expect(afterParagraphs.get(paragraph.paraId ?? "")).toBe(paragraph);
-          }
-          const body = tracked.document.package.document;
-          for (const location of storyParagraphs(body)) {
-            if (location.paragraph.pPrMark === undefined || !endsItsContainer(body, location))
-              continue;
-            expect(permitsCellFinalMark(body, location)).toBe(true);
-          }
+            if (kind !== "setTableRows") {
+              for (const decision of ["accept", "reject"] as const) {
+                const resolved = applied(
+                  tracked.document,
+                  resolveOperation(tracked.revisions, decision),
+                );
+                const restored = applyDocumentOps(
+                  resolved.document,
+                  resolved.inverse,
+                );
+                if (restored.isErr()) throw restored.error;
+                expect(restored.value.document).toStrictEqual(tracked.document);
+              }
+            }
 
-          if (kind === "insertRow") {
-            const row = tableOf(tracked.document).rows.find((candidate) =>
-              rowHasRevision(candidate, "tableRowInsertion", 100_000),
+            const repeated = applied(
+              structuredClone(document),
+              JSON.parse(JSON.stringify(op)),
             );
-            expect(row).toBeDefined();
-            if (row === undefined) throw new Error("Tracked insertion retains its row.");
-            expect(rowHasRevision(row, "tableRowInsertion", 100_000)).toBe(true);
-          } else if (kind === "deleteRow") {
-            const row = tableOf(tracked.document).rows.find((candidate) =>
-              rowHasRevision(candidate, "tableRowDeletion", 100_000),
-            );
-            expect(row).toBeDefined();
-            if (row === undefined) throw new Error("Tracked deletion retains its row.");
-            expect(rowHasRevision(row, "tableRowDeletion", 100_000)).toBe(true);
-          }
+            expect(repeated.document).toStrictEqual(tracked.document);
+            expect(repeated.inverse).toStrictEqual(tracked.inverse);
 
-          if (kind !== "setTableRows") {
-            const rejectedOnce = resolve(tracked.document, tracked.revisions, "reject");
-            expect(resolve(rejectedOnce, tracked.revisions, "reject")).toStrictEqual(document);
-          }
-        }),
+            const touched = new Set([
+              ...tracked.touched.modified,
+              ...tracked.touched.inserted,
+              ...tracked.touched.removed,
+            ]);
+            const beforeParagraphs = storyParagraphs(document.package.document);
+            const afterParagraphs = new Map(
+              storyParagraphs(tracked.document.package.document).map(
+                ({ paragraph }) => [paragraph.paraId ?? "", paragraph],
+              ),
+            );
+            for (const { paragraph } of beforeParagraphs) {
+              if (touched.has(paragraph.paraId ?? "")) continue;
+              expect(afterParagraphs.get(paragraph.paraId ?? "")).toBe(
+                paragraph,
+              );
+            }
+            const body = tracked.document.package.document;
+            for (const location of storyParagraphs(body)) {
+              if (
+                location.paragraph.pPrMark === undefined ||
+                !endsItsContainer(body, location)
+              )
+                continue;
+              expect(permitsCellFinalMark(body, location)).toBe(true);
+            }
+
+            if (kind === "insertRow") {
+              const row = tableOf(tracked.document).rows.find((candidate) =>
+                rowHasRevision(candidate, "tableRowInsertion", 100_000),
+              );
+              expect(row).toBeDefined();
+              if (row === undefined)
+                throw new Error("Tracked insertion retains its row.");
+              expect(rowHasRevision(row, "tableRowInsertion", 100_000)).toBe(
+                true,
+              );
+            } else if (kind === "deleteRow") {
+              const row = tableOf(tracked.document).rows.find((candidate) =>
+                rowHasRevision(candidate, "tableRowDeletion", 100_000),
+              );
+              expect(row).toBeDefined();
+              if (row === undefined)
+                throw new Error("Tracked deletion retains its row.");
+              expect(rowHasRevision(row, "tableRowDeletion", 100_000)).toBe(
+                true,
+              );
+            }
+
+            if (kind !== "setTableRows") {
+              const rejectedOnce = resolve(
+                tracked.document,
+                tracked.revisions,
+                "reject",
+              );
+              expect(
+                resolve(rejectedOnce, tracked.revisions, "reject"),
+              ).toStrictEqual(document);
+            }
+          },
+        ),
         {
           numRuns: NUM_RUNS,
           id: "${kind}: L1 acceptance, L2 rejection, inverse, determinism and locality",
@@ -441,11 +546,17 @@ describe("table row operation properties", () => {
         (shape, insertionSeed, deletionSeed) => {
           const fixture = fixtureFor(shape);
           const insertionIndex = insertionSeed % (fixture.rows.length + 1);
-          const insertedRow = rowFor(shape, fixture.rows.length + 1, fixture.nextId);
+          const insertedRow = rowFor(
+            shape,
+            fixture.rows.length + 1,
+            fixture.nextId,
+          );
           const originalIndex = deletionSeed % fixture.rows.length;
           const originalRow = fixture.rows[originalIndex];
-          if (originalRow === undefined) throw new Error("Generated table has an original row.");
-          const shiftedIndex = originalIndex >= insertionIndex ? originalIndex + 1 : originalIndex;
+          if (originalRow === undefined)
+            throw new Error("Generated table has an original row.");
+          const shiftedIndex =
+            originalIndex >= insertionIndex ? originalIndex + 1 : originalIndex;
           const insert: DocumentOp = {
             type: DOCUMENT_OP_TYPES.INSERT_ROW,
             story: OP_STORIES.MAIN,
@@ -473,22 +584,30 @@ describe("table row operation properties", () => {
           const trackedBatch = applied(first.document, remove);
           const directFirst = applied(fixture.document, directOf(insert));
           const directBatch = applied(directFirst.document, directOf(remove));
-          const revisionIds = [...new Set([...first.revisions, ...trackedBatch.revisions])];
+          const revisionIds = [
+            ...new Set([...first.revisions, ...trackedBatch.revisions]),
+          ];
           const undoneBatch = applyDocumentOps(trackedBatch.document, [
             ...trackedBatch.inverse,
             ...first.inverse,
           ]);
           if (undoneBatch.isErr()) throw undoneBatch.error;
           expect(undoneBatch.value.document).toStrictEqual(fixture.document);
-          expect(resolve(trackedBatch.document, revisionIds, "accept")).toStrictEqual(
-            directBatch.document,
-          );
-          expect(resolve(trackedBatch.document, revisionIds, "reject")).toStrictEqual(
-            fixture.document,
-          );
+          expect(
+            resolve(trackedBatch.document, revisionIds, "accept"),
+          ).toStrictEqual(directBatch.document);
+          expect(
+            resolve(trackedBatch.document, revisionIds, "reject"),
+          ).toStrictEqual(fixture.document);
 
-          const acceptedOnce = resolve(trackedBatch.document, revisionIds, "accept");
-          expect(resolve(acceptedOnce, revisionIds, "accept")).toStrictEqual(acceptedOnce);
+          const acceptedOnce = resolve(
+            trackedBatch.document,
+            revisionIds,
+            "accept",
+          );
+          expect(resolve(acceptedOnce, revisionIds, "accept")).toStrictEqual(
+            acceptedOnce,
+          );
         },
       ),
       {

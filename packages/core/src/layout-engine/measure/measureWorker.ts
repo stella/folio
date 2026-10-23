@@ -48,7 +48,10 @@ import type {
 export type MeasureWorkerTransport = {
   postMessage: (message: MeasureWorkerRequest) => void;
   addEventListener: {
-    (type: "message", listener: (event: { data: MeasureWorkerResponse }) => void): void;
+    (
+      type: "message",
+      listener: (event: { data: MeasureWorkerResponse }) => void,
+    ): void;
     (type: "error", listener: (event: unknown) => void): void;
   };
   terminate: () => void;
@@ -62,7 +65,9 @@ let injectedTransportFactory: TransportFactory | null = null;
  * Test-only: inject a transport factory in place of the real `Worker`
  * constructor. Pass `null` to restore production behaviour.
  */
-export function __setMeasureWorkerTransport(factory: TransportFactory | null): void {
+export function __setMeasureWorkerTransport(
+  factory: TransportFactory | null,
+): void {
   injectedTransportFactory = factory;
   // Reset state so the next enqueue picks up the new factory.
   disposeProxy();
@@ -138,7 +143,11 @@ function disposeProxy(unrecoverable = false): void {
   }
 }
 
-function makeKey(text: string, fontCacheKey: string, letterSpacing: number): string {
+function makeKey(
+  text: string,
+  fontCacheKey: string,
+  letterSpacing: number,
+): string {
   return `${text}|${fontCacheKey}|${letterSpacing}`;
 }
 
@@ -154,9 +163,12 @@ function createTransport(): MeasureWorkerTransport | null {
     // Vite-compatible worker construction. The bundler resolves the
     // URL at build time. We cast to the transport shape so this file
     // does not depend on the global `Worker` type at module load.
-    const worker = new Worker(new URL("font-metrics.worker.js", import.meta.url), {
-      type: "module",
-    });
+    const worker = new Worker(
+      new URL("font-metrics.worker.js", import.meta.url),
+      {
+        type: "module",
+      },
+    );
     return worker as unknown as MeasureWorkerTransport;
   } catch {
     return null;
@@ -240,7 +252,9 @@ function flush(current: ProxyState): void {
       break;
     }
     const { cacheGeneration: entryGeneration, ...request } = entry;
-    current.pending.delete(makeKey(request.text, request.fontCacheKey, request.letterSpacing));
+    current.pending.delete(
+      makeKey(request.text, request.fontCacheKey, request.letterSpacing),
+    );
     if (entryGeneration !== cacheGeneration) {
       continue;
     }
@@ -270,7 +284,10 @@ function flush(current: ProxyState): void {
   }
 }
 
-function handleResponse(current: ProxyState, message: MeasureWorkerResponse): void {
+function handleResponse(
+  current: ProxyState,
+  message: MeasureWorkerResponse,
+): void {
   if (state !== current || current.dead) {
     return;
   }
@@ -289,7 +306,12 @@ function handleResponse(current: ProxyState, message: MeasureWorkerResponse): vo
     return;
   }
   for (const entry of message.entries) {
-    setCachedTextWidth(entry.text, entry.fontCacheKey, entry.letterSpacing, entry.width);
+    setCachedTextWidth(
+      entry.text,
+      entry.fontCacheKey,
+      entry.letterSpacing,
+      entry.width,
+    );
   }
 }
 
@@ -319,7 +341,11 @@ export function prefetchMeasurement(request: MeasureRequestEntry): void {
   if (current === null) {
     return;
   }
-  const key = makeKey(request.text, request.fontCacheKey, request.letterSpacing);
+  const key = makeKey(
+    request.text,
+    request.fontCacheKey,
+    request.letterSpacing,
+  );
   if (current.pending.has(key)) {
     return;
   }
@@ -331,7 +357,9 @@ export function prefetchMeasurement(request: MeasureRequestEntry): void {
 }
 
 export function canPrefetchMeasurement(): boolean {
-  return isWorkerFontMetricsEnabled() && !isDead && isWorkerMeasurementSupported();
+  return (
+    isWorkerFontMetricsEnabled() && !isDead && isWorkerMeasurementSupported()
+  );
 }
 
 /**

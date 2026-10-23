@@ -11,18 +11,19 @@
  * @packageDocumentation
  * @public
  */
-import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { createTranslator } from "use-intl/core";
 import {
-  computed,
-  inject,
-  provide,
-  toValue,
   type App,
+  computed,
   type ComputedRef,
+  inject,
   type InjectionKey,
   type MaybeRefOrGetter,
+  provide,
+  toValue,
 } from "vue";
+
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 
 /** BCP-47 tag folio falls back to when a host supplies no locale. */
 export const defaultLocale = "en";
@@ -40,12 +41,20 @@ export type FolioTranslator = ReturnType<typeof createFolioTranslator>;
  * folio's components address keys as plain paths (matching `presets.ts`), so the
  * public binding exposes this string-keyed signature.
  */
-export type TranslateFn = (key: string, values?: Record<string, unknown>) => string;
+export type TranslateFn = (
+  key: string,
+  values?: Record<string, unknown>,
+) => string;
 
 const createFolioTranslator = (locale: string) =>
-  createTranslator({ locale, messages: getFolioMessages(locale), namespace: "folio" });
+  createTranslator({
+    locale,
+    messages: getFolioMessages(locale),
+    namespace: "folio",
+  });
 
-const TRANSLATOR_KEY: InjectionKey<ComputedRef<FolioTranslator>> = Symbol("folioTranslator");
+const TRANSLATOR_KEY: InjectionKey<ComputedRef<FolioTranslator>> =
+  Symbol("folioTranslator");
 
 // Standalone fallback: when no provider is mounted, default to English so an
 // un-provided `<DocxEditor>` still renders localized chrome instead of throwing.
@@ -56,7 +65,9 @@ const fallbackTranslator = computed(() => createFolioTranslator(defaultLocale));
  * getter, or plain string; the translator recomputes when a reactive locale
  * changes. Call inside a parent component `setup()` (e.g. the editor shell).
  */
-export const provideLocale = (locale: MaybeRefOrGetter<string> = defaultLocale): void => {
+export const provideLocale = (
+  locale: MaybeRefOrGetter<string> = defaultLocale,
+): void => {
   provide(
     TRANSLATOR_KEY,
     computed(() => createFolioTranslator(toValue(locale))),
@@ -74,7 +85,10 @@ export const useTranslation = (): { t: TranslateFn } => {
   const t: TranslateFn = (key, values) =>
     // SAFETY: use-intl's translator is callable with (key, values); the cast
     // narrows the broad overload set to the shape folio's SFCs use.
-    (translator.value as (k: string, v?: Record<string, unknown>) => string)(key, values);
+    (translator.value as (k: string, v?: Record<string, unknown>) => string)(
+      key,
+      values,
+    );
   return { t };
 };
 

@@ -1,12 +1,13 @@
-/** Row edits and their exact inverse, addressed through a paragraph in the row. */
-import { cloneModel } from "./modelClone";
-import { replaceStoryBody } from "./stories";
+import { panic, Result } from "better-result";
 
-import { Result, panic } from "better-result";
-import { applyTableOp } from "./tables";
-import { locateTableRow, tableRowAnchor, type TableRowLocation } from "./tableLocation";
-
-import type { Document, DocumentBody, Paragraph, Table, TableRow } from "../model/document";
+import type {
+  Document,
+  DocumentBody,
+  Paragraph,
+  Table,
+  TableRow,
+} from "../model/document";
+import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
   endsItsContainer,
   storyBody,
@@ -29,13 +30,21 @@ import {
   paragraphIdsIn,
 } from "./ids";
 import { textsIn } from "./leaves";
-import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+/** Row edits and their exact inverse, addressed through a paragraph in the row. */
+import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { WRAP_KINDS } from "./review";
+import { replaceStoryBody } from "./stories";
+import {
+  locateTableRow,
+  tableRowAnchor,
+  type TableRowLocation,
+} from "./tableLocation";
+import { applyTableOp } from "./tables";
 import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
 import {
-  DOCUMENT_OP_TYPES,
   type DeleteRowOp,
+  DOCUMENT_OP_TYPES,
   type InsertRowOp,
   type OpStory,
   type SetTableRowsOp,
@@ -60,7 +69,10 @@ const needsTableEdit = (table: Table): boolean =>
   table.preserved !== undefined ||
   table.bookmarks !== undefined ||
   table.carrierStack !== undefined ||
-  table.rows.some((row) => row.contentControls !== undefined || row.carrierStack !== undefined);
+  table.rows.some(
+    (row) =>
+      row.contentControls !== undefined || row.carrierStack !== undefined,
+  );
 
 type WithRowsOptions = {
   document: Document;
@@ -68,7 +80,12 @@ type WithRowsOptions = {
   location: TableRowLocation;
   rows: TableRow[];
 };
-const withRows = ({ document, story, location, rows }: WithRowsOptions): Document => {
+const withRows = ({
+  document,
+  story,
+  location,
+  rows,
+}: WithRowsOptions): Document => {
   const body = storyBody(document, story);
   const content = updateBlockList(body.content, location.list, (blocks) => {
     const out = [...blocks];
@@ -78,7 +95,11 @@ const withRows = ({ document, story, location, rows }: WithRowsOptions): Documen
     };
     return out;
   });
-  return replaceStoryBody({ document, story, body: withBodyContent(body, content) });
+  return replaceStoryBody({
+    document,
+    story,
+    body: withBodyContent(body, content),
+  });
 };
 
 /** Commit a row list after checking the resulting package, before it is trusted. */
@@ -122,7 +143,9 @@ const commitRows = ({
     rows.some(
       (row) =>
         row.cells.length === 0 ||
-        row.cells.some((cell) => storyParagraphs({ content: cell.content }).length === 0),
+        row.cells.some(
+          (cell) => storyParagraphs({ content: cell.content }).length === 0,
+        ),
     )
   ) {
     return refused({
@@ -131,7 +154,11 @@ const commitRows = ({
       message: "Every row has cells, and every cell has a paragraph.",
     });
   }
-  if (afterParagraphs.some(({ content }) => textsIn(content).some(hasIllegalXmlCharacters))) {
+  if (
+    afterParagraphs.some(({ content }) =>
+      textsIn(content).some(hasIllegalXmlCharacters),
+    )
+  ) {
     return refused({
       op: op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_TEXT,
@@ -140,7 +167,10 @@ const commitRows = ({
   }
   const body = { content: [{ type: "table", rows }] } satisfies DocumentBody;
   const originalParagraphs = new Map(
-    paragraphsIn(before).map((paragraph) => [idKey(paragraph.paraId ?? ""), paragraph]),
+    paragraphsIn(before).map((paragraph) => [
+      idKey(paragraph.paraId ?? ""),
+      paragraph,
+    ]),
   );
   for (const paragraphLocation of storyParagraphs(body)) {
     const mark = paragraphLocation.paragraph.pPrMark;
@@ -150,20 +180,24 @@ const commitRows = ({
       !permitsCellFinalMark(body, paragraphLocation) &&
       !structurallyEqual(
         mark,
-        originalParagraphs.get(idKey(paragraphLocation.paragraph.paraId ?? ""))?.pPrMark,
+        originalParagraphs.get(idKey(paragraphLocation.paragraph.paraId ?? ""))
+          ?.pPrMark,
       )
     ) {
       return refused({
         op: op,
         reason: DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
-        message: "A cell-final mark must belong to its row structural revision.",
+        message:
+          "A cell-final mark must belong to its row structural revision.",
       });
     }
   }
   const beforeIds = new Set(paragraphIdsIn(before).map(idKey));
   if (
     afterParagraphs.some(
-      ({ paraId }) => paraId === undefined || (!beforeIds.has(idKey(paraId)) && !isParaId(paraId)),
+      ({ paraId }) =>
+        paraId === undefined ||
+        (!beforeIds.has(idKey(paraId)) && !isParaId(paraId)),
     )
   ) {
     return refused({
@@ -174,7 +208,10 @@ const commitRows = ({
   }
   const remainingParagraphs = countIds(packageParagraphIds(document.package));
   for (const id of paragraphIdsIn(before)) {
-    remainingParagraphs.set(idKey(id), (remainingParagraphs.get(idKey(id)) ?? 1) - 1);
+    remainingParagraphs.set(
+      idKey(id),
+      (remainingParagraphs.get(idKey(id)) ?? 1) - 1,
+    );
   }
   if (collides(remainingParagraphs, paragraphIdsIn(rows))) {
     return refused({
@@ -194,13 +231,23 @@ const commitRows = ({
     return refused({
       op: op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      message: "A row revision or content-control id is already used in the package.",
+      message:
+        "A row revision or content-control id is already used in the package.",
     });
   }
-  const next = withRows({ document: document, story: op.story, location: location, rows: rows });
+  const next = withRows({
+    document: document,
+    story: op.story,
+    location: location,
+    rows: rows,
+  });
   const valid = validateOpsDocument(next);
   if (valid.isErr()) {
-    return refused({ op: op, reason: valid.error.reason, message: valid.error.message });
+    return refused({
+      op: op,
+      reason: valid.error.reason,
+      message: valid.error.message,
+    });
   }
   const afterIds = new Set(paragraphIdsIn(rows).map(idKey));
   const beforeParagraphIds = paragraphIdsIn(before);
@@ -262,13 +309,16 @@ export const applyRowOp = (
         return refused({
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "Indexed table markup or shared row wrappers require a table operation.",
+          message:
+            "Indexed table markup or shared row wrappers require a table operation.",
         });
       }
       const incoming = cloneModel(op.row);
       if (
         paragraphIdsIn(incoming).some((id) =>
-          paragraphIdsIn(before).some((existing) => idKey(existing) === idKey(id)),
+          paragraphIdsIn(before).some(
+            (existing) => idKey(existing) === idKey(id),
+          ),
         )
       ) {
         return refused({
@@ -289,9 +339,15 @@ export const applyRowOp = (
               kind: WRAP_KINDS.INSERTION,
             });
       if (tracked.isErr()) return Result.err(tracked.error);
-      const row = tracked.value.at(0) ?? panic("A tracked insertion lost its row.");
+      const row =
+        tracked.value.at(0) ?? panic("A tracked insertion lost its row.");
       rows.splice(op.at, 0, row);
-      return commitRows({ document: document, op: op, location: location, rows: rows });
+      return commitRows({
+        document: document,
+        op: op,
+        location: location,
+        rows: rows,
+      });
     }
     case DOCUMENT_OP_TYPES.DELETE_ROW: {
       const row = before[location.rowIndex];
@@ -310,7 +366,8 @@ export const applyRowOp = (
         return refused({
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "Indexed table markup or shared row wrappers require a table operation.",
+          message:
+            "Indexed table markup or shared row wrappers require a table operation.",
         });
       }
       if (op.revision === undefined) {
@@ -325,9 +382,15 @@ export const applyRowOp = (
           kind: WRAP_KINDS.DELETION,
         });
         if (tracked.isErr()) return Result.err(tracked.error);
-        rows[location.rowIndex] = tracked.value.at(0) ?? panic("A tracked deletion lost its row.");
+        rows[location.rowIndex] =
+          tracked.value.at(0) ?? panic("A tracked deletion lost its row.");
       }
-      return commitRows({ document: document, op: op, location: location, rows: rows });
+      return commitRows({
+        document: document,
+        op: op,
+        location: location,
+        rows: rows,
+      });
     }
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS: {
       if (!equalForStaleness(before, op.expected)) {
@@ -345,13 +408,21 @@ export const applyRowOp = (
         return refused({
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "Indexed table markup or shared row wrappers require a table operation.",
+          message:
+            "Indexed table markup or shared row wrappers require a table operation.",
         });
       }
       const replacement = op.rows.map(
-        (row) => before.find((existing) => structurallyEqual(existing, row)) ?? cloneModel(row),
+        (row) =>
+          before.find((existing) => structurallyEqual(existing, row)) ??
+          cloneModel(row),
       );
-      return commitRows({ document: document, op: op, location: location, rows: replacement });
+      return commitRows({
+        document: document,
+        op: op,
+        location: location,
+        rows: replacement,
+      });
     }
     default: {
       const unreachable: never = op;

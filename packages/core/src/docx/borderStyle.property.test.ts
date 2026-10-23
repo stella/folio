@@ -16,18 +16,23 @@
  * from, so this file checks the two agree.
  */
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { readFileSync } from "node:fs";
 
-import { BORDER_STYLES, borderStyleToken, PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import {
+  BORDER_STYLES,
+  borderStyleToken,
+  PARSE_WARNING_CODES,
+} from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseBorderSpec } from "./borderParser";
-import { createParseWarningCollector } from "./parseContext";
 import { parseParagraphProperties } from "./paragraphProperties";
+import { createParseWarningCollector } from "./parseContext";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";
 import { parseStyles } from "./styleParser";
@@ -57,7 +62,8 @@ const ST_BORDER_VALUES: readonly string[] = (() => {
   return border.enumValues;
 })();
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const parseOne = (xml: string) => {
   const element = parseXmlDocument(xml);
@@ -108,15 +114,21 @@ const TIERS = {
     ).get("Bordered")?.pPr?.borders?.top,
   table: (border: string) =>
     parseTableProperties(
-      parseOne(`<w:tblPr ${WORD_NAMESPACE}><w:tblBorders>${border}</w:tblBorders></w:tblPr>`),
+      parseOne(
+        `<w:tblPr ${WORD_NAMESPACE}><w:tblBorders>${border}</w:tblBorders></w:tblPr>`,
+      ),
     )?.borders?.top,
   cell: (border: string) =>
     parseTableCellProperties(
-      parseOne(`<w:tcPr ${WORD_NAMESPACE}><w:tcBorders>${border}</w:tcBorders></w:tcPr>`),
+      parseOne(
+        `<w:tcPr ${WORD_NAMESPACE}><w:tcBorders>${border}</w:tcBorders></w:tcPr>`,
+      ),
     )?.borders?.top,
   page: (border: string) =>
     parseSectionProperties(
-      parseOne(`<w:sectPr ${WORD_NAMESPACE}><w:pgBorders>${border}</w:pgBorders></w:sectPr>`),
+      parseOne(
+        `<w:sectPr ${WORD_NAMESPACE}><w:pgBorders>${border}</w:pgBorders></w:sectPr>`,
+      ),
     ).pageBorders?.top,
 } as const;
 
@@ -196,7 +208,10 @@ describe("ST_Border members", () => {
     parseBorderSpec(element, collector.context);
     expect(collector.warnings()).toEqual([]);
 
-    parseBorderSpec(parseOne(`<w:top ${WORD_NAMESPACE} w:val="notAStyle"/>`), collector.context);
+    parseBorderSpec(
+      parseOne(`<w:top ${WORD_NAMESPACE} w:val="notAStyle"/>`),
+      collector.context,
+    );
     expect(collector.warnings()).toEqual([
       {
         code: PARSE_WARNING_CODES.borderStyleOutsideEnum,
@@ -208,7 +223,9 @@ describe("ST_Border members", () => {
   });
 
   test("a border element with no w:val reads the same on every tier", () => {
-    const specs = TIER_NAMES.map((tier) => TIERS[tier]('<w:top w:sz="8" w:space="0"/>'));
+    const specs = TIER_NAMES.map((tier) =>
+      TIERS[tier]('<w:top w:sz="8" w:space="0"/>'),
+    );
     for (const spec of specs) {
       expect(spec).toEqual(specs[0]);
     }
@@ -222,7 +239,9 @@ describe("ST_Border members", () => {
           fc.constantFrom(...ST_BORDER_VALUES),
           fc.constantFrom(...BORDER_ATTRIBUTE_VARIANTS),
           (style, extra) => {
-            const specs = TIER_NAMES.map((tier) => TIERS[tier](topBorderXml(style, extra)));
+            const specs = TIER_NAMES.map((tier) =>
+              TIERS[tier](topBorderXml(style, extra)),
+            );
             for (const spec of specs) {
               expect(spec).toEqual(specs[0]);
             }

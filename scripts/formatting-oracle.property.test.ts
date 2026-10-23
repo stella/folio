@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+
 import {
   compareWithModel,
   expectOperation,
   modelOf,
   type Row,
 } from "../test/consumer-scenarios/support/oracle";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
 test(
   "range formatting composes with restyling without permitting direct formatting leaks",
@@ -30,7 +31,9 @@ test(
               {
                 text,
                 [property]: direct ?? false,
-                ...(direct === undefined ? {} : { directFormatting: { [property]: direct } }),
+                ...(direct === undefined
+                  ? {}
+                  : { directFormatting: { [property]: direct } }),
               },
             ],
           } satisfies Row;
@@ -62,7 +65,9 @@ test(
               properties: { styleId: "Heading2" },
             },
           ];
-          for (const operation of reverse ? operations.toReversed() : operations)
+          for (const operation of reverse
+            ? operations.toReversed()
+            : operations)
             expectOperation(model, operation);
           const after = {
             id: pre.id,
@@ -71,11 +76,17 @@ test(
             headingLevel: 2,
             styleId: "Heading2",
             previewRuns: [
-              { text: "😀", [property]: true, directFormatting: { [property]: true } },
+              {
+                text: "😀",
+                [property]: true,
+                directFormatting: { [property]: true },
+              },
               {
                 text: text.slice(2),
                 [property]: direct ?? inherited,
-                ...(direct === undefined ? {} : { directFormatting: { [property]: direct } }),
+                ...(direct === undefined
+                  ? {}
+                  : { directFormatting: { [property]: direct } }),
               },
             ],
           } satisfies Row;
@@ -84,12 +95,19 @@ test(
           const missing = {
             ...after,
             previewRuns: [
-              { text, [property]: inherited, directFormatting: { [property]: direct } },
+              {
+                text,
+                [property]: inherited,
+                directFormatting: { [property]: direct },
+              },
             ],
           } satisfies Row;
           if (direct !== true)
             expect(
-              compareWithModel(model, styleExample ? [missing, sample] : [missing]).length,
+              compareWithModel(
+                model,
+                styleExample ? [missing, sample] : [missing],
+              ).length,
             ).toBeGreaterThan(0);
           const leaked = {
             ...after,
@@ -98,12 +116,15 @@ test(
               {
                 text: text.slice(2),
                 [property]: !(direct ?? inherited),
-                directFormatting: { [property]: direct === undefined ? true : !direct },
+                directFormatting: {
+                  [property]: direct === undefined ? true : !direct,
+                },
               },
             ],
           } satisfies Row;
           expect(
-            compareWithModel(model, styleExample ? [leaked, sample] : [leaked]).length,
+            compareWithModel(model, styleExample ? [leaked, sample] : [leaked])
+              .length,
           ).toBeGreaterThan(0);
         },
       ),

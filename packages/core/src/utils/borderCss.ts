@@ -18,8 +18,8 @@
 import {
   type BorderStyle,
   type BorderStyleValue,
-  type PresetLineDashValue,
   type PresetLineDashVal,
+  type PresetLineDashValue,
   statesNoBorder,
 } from "@stll/docx-core/model";
 
@@ -39,7 +39,9 @@ export const CSS_BORDER_STYLE_VALUES = [
 /** The CSS `border-style` keywords folio paints a border with. */
 export type CssBorderStyle = (typeof CSS_BORDER_STYLE_VALUES)[number];
 
-const CSS_BORDER_STYLES_DECLARED: ReadonlySet<string> = new Set<string>(CSS_BORDER_STYLE_VALUES);
+const CSS_BORDER_STYLES_DECLARED: ReadonlySet<string> = new Set<string>(
+  CSS_BORDER_STYLE_VALUES,
+);
 
 /** Whether folio paints a border with this CSS keyword. */
 const isCssBorderStyle = (value: string): value is CssBorderStyle =>
@@ -52,7 +54,9 @@ const isCssBorderStyle = (value: string): value is CssBorderStyle =>
  * into it. A keyword folio does not paint is not guessed at: the caller gets
  * `undefined` and applies its own default.
  */
-export const cssBorderStyleOf = (value: string | undefined): CssBorderStyle | undefined =>
+export const cssBorderStyleOf = (
+  value: string | undefined,
+): CssBorderStyle | undefined =>
   value !== undefined && isCssBorderStyle(value) ? value : undefined;
 
 /**
@@ -280,7 +284,9 @@ export const paintsCssBorder = (style: CssBorderStyle | undefined): boolean =>
  * A token the schema does not declare paints as a plain line: the member is
  * kept for the round trip, but nothing can be inferred about how it draws.
  */
-export const cssBorderStyle = (style: BorderStyleValue | undefined): CssBorderStyle => {
+export const cssBorderStyle = (
+  style: BorderStyleValue | undefined,
+): CssBorderStyle => {
   if (style === undefined) {
     return "solid";
   }
@@ -323,11 +329,15 @@ const PRESET_DASH_CSS_BORDER_STYLES = {
  * undeclared `ST_Border` member does: the member is kept for the round trip,
  * but nothing can be inferred about how it draws.
  */
-export const cssBorderStyleForDash = (dash: PresetLineDashValue | undefined): CssBorderStyle => {
+export const cssBorderStyleForDash = (
+  dash: PresetLineDashValue | undefined,
+): CssBorderStyle => {
   if (dash === undefined) {
     return "solid";
   }
-  return typeof dash === "string" ? PRESET_DASH_CSS_BORDER_STYLES[dash] : "solid";
+  return typeof dash === "string"
+    ? PRESET_DASH_CSS_BORDER_STYLES[dash]
+    : "solid";
 };
 
 /**
@@ -350,5 +360,7 @@ const CSS_BORDER_PRESET_DASHES = {
 } as const satisfies Record<CssBorderStyle, PresetLineDashVal>;
 
 /** The preset dash an authored CSS border style serializes to. */
-export const presetDashForCssBorderStyle = (style: string | undefined): PresetLineDashVal =>
+export const presetDashForCssBorderStyle = (
+  style: string | undefined,
+): PresetLineDashVal =>
   CSS_BORDER_PRESET_DASHES[cssBorderStyleOf(style) ?? "solid"];

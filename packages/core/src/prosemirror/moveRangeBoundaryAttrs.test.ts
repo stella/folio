@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { schema } from "./schema";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
+import { schema } from "./schema";
 
 const read = (marker: unknown) =>
   readMoveRangeBoundaryAttrs(schema.node("moveRangeBoundary", { marker }));
@@ -36,16 +36,33 @@ describe("move range boundary attrs", () => {
 
   test.each([
     [{ type: "moveFromRangeStart", id: 1, name: "n" }, ".author"],
-    [{ type: "moveFromRangeStart", id: 1, name: "n", author: "a", date: null }, ".date"],
+    [
+      { type: "moveFromRangeStart", id: 1, name: "n", author: "a", date: null },
+      ".date",
+    ],
     [{ type: "moveToRangeStart", id: -1, name: "n", author: "a" }, ".id"],
-    [{ type: "moveToRangeStart", id: 1, name: "n", author: "a", colFirst: 1.5 }, ".colFirst"],
-    [{ type: "moveToRangeEnd", id: 1, displacedByCustomXml: "sideways" }, ".displacedByCustomXml"],
+    [
+      {
+        type: "moveToRangeStart",
+        id: 1,
+        name: "n",
+        author: "a",
+        colFirst: 1.5,
+      },
+      ".colFirst",
+    ],
+    [
+      { type: "moveToRangeEnd", id: 1, displacedByCustomXml: "sideways" },
+      ".displacedByCustomXml",
+    ],
   ] as const)("rejects malformed marker field %s", (marker, path) => {
     const result = read(marker);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.some((issue) => issue.path.endsWith(path))).toBe(true);
+      expect(result.issues.some((issue) => issue.path.endsWith(path))).toBe(
+        true,
+      );
     }
   });
 });

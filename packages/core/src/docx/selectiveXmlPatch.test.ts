@@ -2,18 +2,18 @@
  * Unit tests for selectiveXmlPatch
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import {
-  findParagraphOffsets,
-  extractParagraphXml,
   buildParagraphOffsetIndex,
-  validatePatchSafety,
   buildPatchedDocumentXml,
   buildPatchedNotePartXml,
   countParagraphElements,
-  scanParagraphs,
+  extractParagraphXml,
+  findParagraphOffsets,
   type NotePartPatch,
+  scanParagraphs,
+  validatePatchSafety,
 } from "./selectiveXmlPatch";
 
 const patchedXmlOf = (patch: NotePartPatch): string => {
@@ -246,7 +246,11 @@ describe("countParagraphElements", () => {
 
 describe("validatePatchSafety", () => {
   test("safe when all changed IDs exist in both XMLs", () => {
-    const result = validatePatchSafety(SIMPLE_DOC, SIMPLE_DOC, new Set(["AAA111"]));
+    const result = validatePatchSafety(
+      SIMPLE_DOC,
+      SIMPLE_DOC,
+      new Set(["AAA111"]),
+    );
     expect(result.safe).toBe(true);
   });
 
@@ -256,14 +260,22 @@ describe("validatePatchSafety", () => {
   });
 
   test("unsafe when paraId not found in original", () => {
-    const result = validatePatchSafety(SIMPLE_DOC, SIMPLE_DOC, new Set(["MISSING"]));
+    const result = validatePatchSafety(
+      SIMPLE_DOC,
+      SIMPLE_DOC,
+      new Set(["MISSING"]),
+    );
     expect(result.safe).toBe(false);
     expect(result.reason).toContain("paraId-not-found-in-original");
   });
 
   test("unsafe when paraId not found in serialized", () => {
     const serializedWithout = SIMPLE_DOC.replace("AAA111", "NEWID1");
-    const result = validatePatchSafety(SIMPLE_DOC, serializedWithout, new Set(["AAA111"]));
+    const result = validatePatchSafety(
+      SIMPLE_DOC,
+      serializedWithout,
+      new Set(["AAA111"]),
+    );
     expect(result.safe).toBe(false);
     expect(result.reason).toContain("paraId-not-found-in-serialized");
   });
@@ -283,7 +295,11 @@ describe("validatePatchSafety", () => {
       "</w:body>",
       '<w:p w14:paraId="DDD444"><w:r><w:t>Extra</w:t></w:r></w:p></w:body>',
     );
-    const result = validatePatchSafety(SIMPLE_DOC, serializedExtra, new Set(["AAA111"]));
+    const result = validatePatchSafety(
+      SIMPLE_DOC,
+      serializedExtra,
+      new Set(["AAA111"]),
+    );
     expect(result.safe).toBe(true);
   });
 });
@@ -300,8 +316,15 @@ describe("buildPatchedDocumentXml", () => {
 
   test("replaces a single paragraph", () => {
     // Create a "serialized" version where the first paragraph has different text
-    const serialized = SIMPLE_DOC.replace("First paragraph", "MODIFIED paragraph");
-    const result = buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]));
+    const serialized = SIMPLE_DOC.replace(
+      "First paragraph",
+      "MODIFIED paragraph",
+    );
+    const result = buildPatchedDocumentXml(
+      SIMPLE_DOC,
+      serialized,
+      new Set(["AAA111"]),
+    );
 
     expect(result).not.toBeNull();
     // Changed paragraph should have new content
@@ -312,11 +335,15 @@ describe("buildPatchedDocumentXml", () => {
   });
 
   test("replaces multiple paragraphs", () => {
-    const serialized = SIMPLE_DOC.replace("First paragraph", "MODIFIED first").replace(
-      "Third paragraph",
-      "MODIFIED third",
+    const serialized = SIMPLE_DOC.replace(
+      "First paragraph",
+      "MODIFIED first",
+    ).replace("Third paragraph", "MODIFIED third");
+    const result = buildPatchedDocumentXml(
+      SIMPLE_DOC,
+      serialized,
+      new Set(["AAA111", "CCC333"]),
     );
-    const result = buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111", "CCC333"]));
 
     expect(result).not.toBeNull();
     expect(result).toContain("MODIFIED first");
@@ -329,7 +356,11 @@ describe("buildPatchedDocumentXml", () => {
       "<w:r><w:t>First paragraph</w:t></w:r>",
       "<w:r><w:rPr><w:b/></w:rPr><w:t>Much longer first paragraph with bold formatting and extra content</w:t></w:r>",
     );
-    const result = buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]));
+    const result = buildPatchedDocumentXml(
+      SIMPLE_DOC,
+      serialized,
+      new Set(["AAA111"]),
+    );
 
     expect(result).not.toBeNull();
     expect(result).toContain("Much longer first paragraph");
@@ -341,7 +372,11 @@ describe("buildPatchedDocumentXml", () => {
       '<w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>First paragraph</w:t></w:r>',
       "<w:r><w:t>Hi</w:t></w:r>",
     );
-    const result = buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]));
+    const result = buildPatchedDocumentXml(
+      SIMPLE_DOC,
+      serialized,
+      new Set(["AAA111"]),
+    );
 
     expect(result).not.toBeNull();
     expect(result).toContain("Hi");
@@ -349,35 +384,62 @@ describe("buildPatchedDocumentXml", () => {
   });
 
   test("returns null when paraId missing from original", () => {
-    const result = buildPatchedDocumentXml(SIMPLE_DOC, SIMPLE_DOC, new Set(["MISSING"]));
+    const result = buildPatchedDocumentXml(
+      SIMPLE_DOC,
+      SIMPLE_DOC,
+      new Set(["MISSING"]),
+    );
     expect(result).toBeNull();
   });
 
   test("splices only the changed paragraph when the serialization has an extra one", () => {
-    const serializedExtra = SIMPLE_DOC.replace("First paragraph", "MODIFIED first").replace(
+    const serializedExtra = SIMPLE_DOC.replace(
+      "First paragraph",
+      "MODIFIED first",
+    ).replace(
       "</w:body>",
       '<w:p w14:paraId="DDD444"><w:r><w:t>Extra</w:t></w:r></w:p></w:body>',
     );
-    const result = buildPatchedDocumentXml(SIMPLE_DOC, serializedExtra, new Set(["AAA111"]));
-    expect(result).toBe(SIMPLE_DOC.replace("First paragraph", "MODIFIED first"));
+    const result = buildPatchedDocumentXml(
+      SIMPLE_DOC,
+      serializedExtra,
+      new Set(["AAA111"]),
+    );
+    expect(result).toBe(
+      SIMPLE_DOC.replace("First paragraph", "MODIFIED first"),
+    );
   });
 
   test("preserves bytes around unchanged paragraphs exactly", () => {
     const serialized = SIMPLE_DOC.replace("Second paragraph", "CHANGED second");
-    const result = buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["BBB222"]));
+    const result = buildPatchedDocumentXml(
+      SIMPLE_DOC,
+      serialized,
+      new Set(["BBB222"]),
+    );
     expect(result).not.toBeNull();
 
     // Extract the part before the changed paragraph — should be identical
-    const origBeforeBBB = SIMPLE_DOC.slice(0, SIMPLE_DOC.indexOf('<w:p w14:paraId="BBB222"'));
+    const origBeforeBBB = SIMPLE_DOC.slice(
+      0,
+      SIMPLE_DOC.indexOf('<w:p w14:paraId="BBB222"'),
+    );
     if (!result) {
       throw new Error("Expected result");
     }
-    const resultBeforeBBB = result.slice(0, result.indexOf('<w:p w14:paraId="BBB222"'));
+    const resultBeforeBBB = result.slice(
+      0,
+      result.indexOf('<w:p w14:paraId="BBB222"'),
+    );
     expect(resultBeforeBBB).toBe(origBeforeBBB);
 
     // Extract the part after the changed paragraph
-    const origAfterBBB = SIMPLE_DOC.slice(SIMPLE_DOC.indexOf('<w:p w14:paraId="CCC333"'));
-    const resultAfterBBB = result.slice(result.indexOf('<w:p w14:paraId="CCC333"'));
+    const origAfterBBB = SIMPLE_DOC.slice(
+      SIMPLE_DOC.indexOf('<w:p w14:paraId="CCC333"'),
+    );
+    const resultAfterBBB = result.slice(
+      result.indexOf('<w:p w14:paraId="CCC333"'),
+    );
     expect(resultAfterBBB).toBe(origAfterBBB);
   });
 });
@@ -412,10 +474,16 @@ const alternateContent = (choice: string, fallback: string): string =>
 const tableCell = (content: string): string =>
   `<w:tbl><w:tr><w:tc>${content}</w:tc></w:tr></w:tbl>`;
 
-const refusalOf = (original: string, serialized: string, id: string): string | undefined => {
+const refusalOf = (
+  original: string,
+  serialized: string,
+  id: string,
+): string | undefined => {
   const result = validatePatchSafety(original, serialized, new Set([id]));
   expect(result.safe).toBe(false);
-  expect(buildPatchedDocumentXml(original, serialized, new Set([id]))).toBeNull();
+  expect(
+    buildPatchedDocumentXml(original, serialized, new Set([id])),
+  ).toBeNull();
   return result.reason;
 };
 
@@ -442,23 +510,28 @@ describe("selective patch routes each changed paragraph locally", () => {
         vmlTextBox(para("B0000002", "Box")),
       ),
     );
-    const original = routingDoc(para("A0000001", "Edit me") + box + para("A0000002", "Tail"));
+    const original = routingDoc(
+      para("A0000001", "Edit me") + box + para("A0000002", "Tail"),
+    );
     const serialized = routingDoc(
       para("A0000001", "Edit me!") +
         hostPara("B0000001", drawingTextBox(para("B0000002", "Box"))) +
         para("A0000002", "Tail"),
     );
 
-    expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).toBe(
-      original.replace("Edit me", "Edit me!"),
-    );
+    expect(
+      buildPatchedDocumentXml(original, serialized, new Set(["A0000001"])),
+    ).toBe(original.replace("Edit me", "Edit me!"));
   });
 
   test("splices an id-less paragraph by its main-flow ordinal when a text box reads differently", () => {
     // The source's VML box holds two paragraphs; the model's box holds one.
     const original = routingDoc(
       para(undefined, "One") +
-        hostPara(undefined, vmlTextBox(para(undefined, "Box a") + para(undefined, "Box b"))) +
+        hostPara(
+          undefined,
+          vmlTextBox(para(undefined, "Box a") + para(undefined, "Box b")),
+        ) +
         para(undefined, "Two"),
     );
     const serialized = routingDoc(
@@ -468,28 +541,34 @@ describe("selective patch routes each changed paragraph locally", () => {
     );
 
     // The minted id names nothing in the file, so it is not written into it.
-    expect(buildPatchedDocumentXml(original, serialized, new Set(["0000000D"]))).toBe(
-      original.replace("Two", "Two!"),
-    );
+    expect(
+      buildPatchedDocumentXml(original, serialized, new Set(["0000000D"])),
+    ).toBe(original.replace("Two", "Two!"));
   });
 
   test("splices an id-less text-box paragraph when the text boxes line up", () => {
     const original = routingDoc(
-      para(undefined, "One") + hostPara(undefined, vmlTextBox(para(undefined, "Box"))),
+      para(undefined, "One") +
+        hostPara(undefined, vmlTextBox(para(undefined, "Box"))),
     );
     const serialized = routingDoc(
-      para("0000000A", "One") + hostPara("0000000B", vmlTextBox(para("0000000C", "Box!"))),
+      para("0000000A", "One") +
+        hostPara("0000000B", vmlTextBox(para("0000000C", "Box!"))),
     );
 
-    expect(buildPatchedDocumentXml(original, serialized, new Set(["0000000C"]))).toBe(
-      original.replace("Box", "Box!"),
-    );
+    expect(
+      buildPatchedDocumentXml(original, serialized, new Set(["0000000C"])),
+    ).toBe(original.replace("Box", "Box!"));
   });
 
   test("refuses an id-less paragraph whose story's ordinals no longer line up", () => {
-    const original = routingDoc(para(undefined, "One") + para(undefined, "Two"));
+    const original = routingDoc(
+      para(undefined, "One") + para(undefined, "Two"),
+    );
     const serialized = routingDoc(
-      para("0000000A", "One") + para("0000000B", "Extra") + para("0000000C", "Two!"),
+      para("0000000A", "One") +
+        para("0000000B", "Extra") +
+        para("0000000C", "Two!"),
     );
 
     expect(refusalOf(original, serialized, "0000000C")).toBe(
@@ -500,10 +579,14 @@ describe("selective patch routes each changed paragraph locally", () => {
   test("refuses an id-less text-box paragraph when the text boxes disagree", () => {
     const original = routingDoc(
       para(undefined, "One") +
-        hostPara(undefined, vmlTextBox(para(undefined, "Box a") + para(undefined, "Box b"))),
+        hostPara(
+          undefined,
+          vmlTextBox(para(undefined, "Box a") + para(undefined, "Box b")),
+        ),
     );
     const serialized = routingDoc(
-      para("0000000A", "One") + hostPara("0000000B", drawingTextBox(para("0000000C", "Box a!"))),
+      para("0000000A", "One") +
+        hostPara("0000000B", drawingTextBox(para("0000000C", "Box a!"))),
     );
 
     expect(refusalOf(original, serialized, "0000000C")).toBe(
@@ -521,7 +604,9 @@ describe("selective patch routes each changed paragraph locally", () => {
         ),
       ),
     );
-    const serialized = routingDoc(hostPara("B0000001", drawingTextBox(para("B0000002", "Box!"))));
+    const serialized = routingDoc(
+      hostPara("B0000001", drawingTextBox(para("B0000002", "Box!"))),
+    );
 
     expect(refusalOf(original, serialized, "B0000002")).toBe(
       "paragraph-in-alternate-content: B0000002",
@@ -530,18 +615,31 @@ describe("selective patch routes each changed paragraph locally", () => {
 
   test("refuses an id the source writes only inside mc:Fallback", () => {
     const original = routingDoc(
-      hostPara("B0000001", alternateContent("<w:drawing/>", vmlTextBox(para("F0000001", "Old")))),
+      hostPara(
+        "B0000001",
+        alternateContent("<w:drawing/>", vmlTextBox(para("F0000001", "Old"))),
+      ),
     );
-    const serialized = routingDoc(hostPara("B0000001", vmlTextBox(para("F0000001", "New"))));
+    const serialized = routingDoc(
+      hostPara("B0000001", vmlTextBox(para("F0000001", "New"))),
+    );
 
-    expect(refusalOf(original, serialized, "F0000001")).toBe("paraId-only-in-fallback: F0000001");
+    expect(refusalOf(original, serialized, "F0000001")).toBe(
+      "paraId-only-in-fallback: F0000001",
+    );
   });
 
   test("refuses a paragraph whose container changed", () => {
-    const original = routingDoc(tableCell(para("C0000001", "Cell")) + para("A0000002", "Tail"));
-    const serialized = routingDoc(para("C0000001", "Cell!") + para("A0000002", "Tail"));
+    const original = routingDoc(
+      tableCell(para("C0000001", "Cell")) + para("A0000002", "Tail"),
+    );
+    const serialized = routingDoc(
+      para("C0000001", "Cell!") + para("A0000002", "Tail"),
+    );
 
-    expect(refusalOf(original, serialized, "C0000001")).toBe("container-changed: C0000001");
+    expect(refusalOf(original, serialized, "C0000001")).toBe(
+      "container-changed: C0000001",
+    );
   });
 
   test("refuses an authored paragraph that moved within its story", () => {
@@ -552,12 +650,16 @@ describe("selective patch routes each changed paragraph locally", () => {
       para("A0000002", "b") + para("A0000001", "a!") + para("A0000003", "c"),
     );
 
-    expect(refusalOf(original, serialized, "A0000001")).toBe("paragraph-moved: A0000001");
+    expect(refusalOf(original, serialized, "A0000001")).toBe(
+      "paragraph-moved: A0000001",
+    );
   });
 
   test("refuses a paraId the serialization writes twice", () => {
     const original = routingDoc(para("A0000001", "a") + para("A0000002", "b"));
-    const serialized = routingDoc(para("A0000001", "a!") + para("A0000001", "b"));
+    const serialized = routingDoc(
+      para("A0000001", "a!") + para("A0000001", "b"),
+    );
 
     expect(refusalOf(original, serialized, "A0000001")).toBe(
       "duplicate-paraId-in-serialized: A0000001",
@@ -578,15 +680,20 @@ describe("selective patch routes each changed paragraph locally", () => {
     const original = routingDoc(para("A0000001", "a"));
     const serialized = routingDoc(para("A0000001", "a!").replace("</w:p>", ""));
 
-    expect(refusalOf(original, serialized, "A0000001")).toBe("unterminated-paragraph: A0000001");
+    expect(refusalOf(original, serialized, "A0000001")).toBe(
+      "unterminated-paragraph: A0000001",
+    );
   });
 });
 
 describe("selective paragraph splices with aliased markup compatibility", () => {
   test("edits one character while keeping ve-bound fallback paragraphs out of routing", () => {
-    const first = '<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>';
-    const choice = '<w:p w14:paraId="B0000002"><w:r><w:t>Choice</w:t></w:r></w:p>';
-    const fallback = '<w:p w14:paraId="B0000002"><w:r><w:t>Fallback</w:t></w:r></w:p>';
+    const first =
+      '<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>';
+    const choice =
+      '<w:p w14:paraId="B0000002"><w:r><w:t>Choice</w:t></w:r></w:p>';
+    const fallback =
+      '<w:p w14:paraId="B0000002"><w:r><w:t>Fallback</w:t></w:r></w:p>';
     const last = '<w:p w14:paraId="C0000003"><w:r><w:t>Beta</w:t></w:r></w:p>';
     const original = veDocument(
       `${first}<ve:AlternateContent><ve:Choice Requires="w14">${choice}</ve:Choice><ve:Fallback>${fallback}</ve:Fallback></ve:AlternateContent>${last}`,
@@ -602,15 +709,12 @@ describe("selective paragraph splices with aliased markup compatibility", () => 
       true,
       false,
     ]);
-    expect(scanned.map(({ container }) => container.inAlternateContent)).toEqual([
-      false,
-      true,
-      true,
-      false,
-    ]);
-    expect(buildPatchedDocumentXml(original, serialized, new Set(["C0000003"]))).toBe(
-      original.replace("Beta", "Beto"),
-    );
+    expect(
+      scanned.map(({ container }) => container.inAlternateContent),
+    ).toEqual([false, true, true, false]);
+    expect(
+      buildPatchedDocumentXml(original, serialized, new Set(["C0000003"])),
+    ).toBe(original.replace("Beta", "Beto"));
   });
 
   test("an unrelated nested w14 and ve rebinding leaves the one-character edit local", () => {
@@ -620,9 +724,9 @@ describe("selective paragraph splices with aliased markup compatibility", () => 
     const original = veDocument(first + last);
     const serialized = canonicalDocument(first + last.replace("Beta", "Beto"));
 
-    expect(buildPatchedDocumentXml(original, serialized, new Set(["B0000002"]))).toBe(
-      original.replace("Beta", "Beto"),
-    );
+    expect(
+      buildPatchedDocumentXml(original, serialized, new Set(["B0000002"])),
+    ).toBe(original.replace("Beta", "Beto"));
   });
 
   test("refuses a nested binding that changes the meaning of a scanned prefix", () => {
@@ -635,26 +739,37 @@ describe("selective paragraph splices with aliased markup compatibility", () => 
         '<w:p w14:paraId="B0000002"><w:r><w:t>Beto</w:t></w:r></w:p>',
     );
 
-    expect(buildPatchedDocumentXml(original, serialized, new Set(["B0000002"]))).toBeNull();
+    expect(
+      buildPatchedDocumentXml(original, serialized, new Set(["B0000002"])),
+    ).toBeNull();
   });
 
   test("refuses serializer mc markup when the source binds only ve", () => {
-    const original = veDocument('<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>');
+    const original = veDocument(
+      '<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>',
+    );
     const serialized = canonicalDocument(
       '<w:p w14:paraId="A0000001"><w:r><mc:AlternateContent><mc:Choice Requires="w14"><w:t>Alpho</w:t></mc:Choice></mc:AlternateContent></w:r></w:p>',
     );
 
-    expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).toBeNull();
+    expect(
+      buildPatchedDocumentXml(original, serialized, new Set(["A0000001"])),
+    ).toBeNull();
   });
 });
 
 describe("buildPatchedNotePartXml", () => {
   test("binds every serializer namespace when patching an alternate-prefix source", () => {
-    const wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-    const word2010Namespace = "http://schemas.microsoft.com/office/word/2010/wordml";
-    const word2012Namespace = "http://schemas.microsoft.com/office/word/2012/wordml";
-    const word2018Namespace = "http://schemas.microsoft.com/office/word/2018/wordml";
-    const compatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+    const wordNamespace =
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const word2010Namespace =
+      "http://schemas.microsoft.com/office/word/2010/wordml";
+    const word2012Namespace =
+      "http://schemas.microsoft.com/office/word/2012/wordml";
+    const word2018Namespace =
+      "http://schemas.microsoft.com/office/word/2018/wordml";
+    const compatibilityNamespace =
+      "http://schemas.openxmlformats.org/markup-compatibility/2006";
     const originalXml = `<alt:footnotes xmlns:alt="${wordNamespace}" xmlns:p14="${word2010Namespace}" xmlns:p15="${word2012Namespace}" xmlns:compat="${compatibilityNamespace}"><alt:footnote alt:id="1"><alt:p p14:paraId="P1000001"><alt:r><alt:t>Old</alt:t></alt:r></alt:p></alt:footnote></alt:footnotes>`;
     const baselineXml = `<w:footnotes xmlns:w="${wordNamespace}" xmlns:w14="${word2010Namespace}"><w:footnote w:id="1"><w:p w14:paraId="P1000001"><w:r><w:t>Old</w:t></w:r></w:p></w:footnote></w:footnotes>`;
     const serializedXml = `<w:footnotes xmlns:w="${wordNamespace}" xmlns:w14="${word2010Namespace}"><w:footnote w:id="1"><w:p w14:paraId="P1000001"><w:r><w:t>New</w:t></w:r></w:p></w:footnote></w:footnotes>`;

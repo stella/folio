@@ -2,23 +2,27 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, spyOn, test } from "bun:test";
 import { panic } from "better-result";
-import type { Layout } from "@stll/folio-core/layout-engine/types";
-import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+
+import {
+  buildRawPackage,
+  SECTION,
+  WORD_STYLES,
+} from "@stll/folio-core/__tests__/documentShapes";
+import { parseDocx } from "@stll/folio-core/docx/parser";
+import { repackDocx } from "@stll/folio-core/docx/rezip";
+import type { Layout } from "@stll/folio-core/layout-engine/types";
 import { DISPLAY_MODES } from "@stll/folio-core/managers/EditorModeManager";
 import type {
   DisplayMode,
   EditorReadOnlyReason,
 } from "@stll/folio-core/managers/EditorModeManager";
-import { schema } from "@stll/folio-core/prosemirror/schema";
-import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
-import { repackDocx } from "@stll/folio-core/docx/rezip";
-import { parseDocx } from "@stll/folio-core/docx/parser";
-import { buildRawPackage, SECTION, WORD_STYLES } from "@stll/folio-core/__tests__/documentShapes";
+import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
+import { schema } from "@stll/folio-core/prosemirror/schema";
 import type {
   ComplexField,
   ParagraphContent,
@@ -26,17 +30,29 @@ import type {
   SimpleField,
 } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
-import type { FindOptions, FindResult } from "@stll/folio-core/utils/findReplace";
-import type { UseFindReplaceReturn } from "./useFindReplace";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+import type {
+  FindOptions,
+  FindResult,
+} from "@stll/folio-core/utils/findReplace";
 import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
+
 import {
   buildBoundaryDocument,
   surroundHiddenBoundary,
   ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES,
 } from "../../../../test/findReplacementBoundaryFixtures";
+import type { UseFindReplaceReturn } from "./useFindReplace";
 
-const { createApp, defineComponent, effectScope, h, nextTick, ref, shallowRef } =
-  await import("vue");
+const {
+  createApp,
+  defineComponent,
+  effectScope,
+  h,
+  nextTick,
+  ref,
+  shallowRef,
+} = await import("vue");
 const { useFindReplace } = await import("./useFindReplace");
 
 afterAll(() => GlobalRegistrator.unregister());
@@ -44,84 +60,100 @@ afterAll(() => GlobalRegistrator.unregister());
 // The previous adapter searched only the body and selected the result in PM.
 // Exercise host notifications and wraparound with a secondary story while
 // asserting that search leaves both document content and editor selection intact.
-test.each([true, false])("Vue search is view-only with readOnly=%s", (readOnly) => {
-  const doc = {
-    package: {
-      document: {
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "hit HIT" }] }],
-          },
-        ],
-      },
-      footnotes: [
-        {
-          type: "footnote",
-          id: 1,
+test.each([true, false])(
+  "Vue search is view-only with readOnly=%s",
+  (readOnly) => {
+    const doc = {
+      package: {
+        document: {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "hit" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "hit HIT" }] },
+              ],
             },
           ],
         },
-      ],
-    },
-  } satisfies Document;
-  const before = structuredClone(doc);
-  const host = document.createElement("div");
-  const hidden = document.createElement("div");
-  document.body.append(host, hidden);
-  const view = new EditorView(hidden, { state: EditorState.create({ doc: toProseDoc(doc) }) });
-  const state = view.state;
-  const notifications: (FindResult | null)[] = [];
-  const holder: { search: UseFindReplaceReturn | null } = { search: null };
-  const app = createApp(
-    defineComponent({
-      setup() {
-        holder.search = useFindReplace({
-          editorView: shallowRef(view),
-          pagesRef: shallowRef(null),
-          layout: shallowRef(null),
-          getDocument: () => doc,
-          displayMode: ref("no-markup"),
-          readOnly: ref(readOnly),
-          onResultChange: (result) => notifications.push(result),
-        });
-        return () => h("div");
+        footnotes: [
+          {
+            type: "footnote",
+            id: 1,
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "run", content: [{ type: "text", text: "hit" }] },
+                ],
+              },
+            ],
+          },
+        ],
       },
-    }),
-  );
-  app.mount(host);
-  try {
-    const search = holder.search ?? panic("Search composable was not mounted");
-    expect(search.find("hit")).toMatchObject({ totalCount: 3, currentIndex: 0 });
-    expect(search.findNext()?.story).toBe("main");
-    expect(search.findNext()?.story).toEqual({ kind: "footnote", id: 1 });
-    expect(search.getFindResult()?.currentIndex).toBe(2);
-    expect(search.findNext()?.story).toBe("main");
-    expect(search.findPrevious()?.story).toEqual({ kind: "footnote", id: 1 });
-    search.replaceText.value = "replacement";
-    expect(search.replaceCurrent()).toBe(false);
-    expect(search.find("hit", { matchCase: true })?.totalCount).toBe(2);
-    expect(view.state).toBe(state);
-    expect(doc).toEqual(before);
-    search.clear();
-    expect(search.getFindResult()).toBeNull();
-    expect(notifications.at(-1)).toBeNull();
-    expect(notifications.slice(0, 5).map((result) => result?.currentIndex)).toEqual([
-      0, 1, 2, 0, 2,
-    ]);
-  } finally {
-    app.unmount();
-    view.destroy();
-    host.remove();
-    hidden.remove();
-  }
-});
+    } satisfies Document;
+    const before = structuredClone(doc);
+    const host = document.createElement("div");
+    const hidden = document.createElement("div");
+    document.body.append(host, hidden);
+    const view = new EditorView(hidden, {
+      state: EditorState.create({ doc: toProseDoc(doc) }),
+    });
+    const state = view.state;
+    const notifications: (FindResult | null)[] = [];
+    const holder: { search: UseFindReplaceReturn | null } = { search: null };
+    const app = createApp(
+      defineComponent({
+        setup() {
+          holder.search = useFindReplace({
+            editorView: shallowRef(view),
+            pagesRef: shallowRef(null),
+            layout: shallowRef(null),
+            getDocument: () => doc,
+            displayMode: ref("no-markup"),
+            readOnly: ref(readOnly),
+            onResultChange: (result) => notifications.push(result),
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(host);
+    try {
+      const search =
+        holder.search ?? panic("Search composable was not mounted");
+      expect(search.find("hit")).toMatchObject({
+        totalCount: 3,
+        currentIndex: 0,
+      });
+      expect(search.findNext()?.story).toBe("main");
+      expect(search.findNext()?.story).toEqual({ kind: "footnote", id: 1 });
+      expect(search.getFindResult()?.currentIndex).toBe(2);
+      expect(search.findNext()?.story).toBe("main");
+      expect(search.findPrevious()?.story).toEqual({ kind: "footnote", id: 1 });
+      search.replaceText.value = "replacement";
+      expect(search.replaceCurrent()).toBe(false);
+      expect(search.find("hit", { matchCase: true })?.totalCount).toBe(2);
+      expect(view.state).toBe(state);
+      expect(doc).toEqual(before);
+      search.clear();
+      expect(search.getFindResult()).toBeNull();
+      expect(notifications.at(-1)).toBeNull();
+      expect(
+        notifications.slice(0, 5).map((result) => result?.currentIndex),
+      ).toEqual([0, 1, 2, 0, 2]);
+    } finally {
+      app.unmount();
+      view.destroy();
+      host.remove();
+      hidden.remove();
+    }
+  },
+);
 
-const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const textRun = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
 // Review views refuse replacement; hidden-content fixtures search No Markup.
 const withReplacementEditor = (
@@ -131,13 +163,19 @@ const withReplacementEditor = (
 ) => {
   const base = Array.isArray(contentOrDocument)
     ? ({
-        package: { document: { content: [{ type: "paragraph", content: contentOrDocument }] } },
+        package: {
+          document: {
+            content: [{ type: "paragraph", content: contentOrDocument }],
+          },
+        },
       } satisfies Document)
     : contentOrDocument;
   const host = document.createElement("div");
   const hidden = document.createElement("div");
   document.body.append(host, hidden);
-  const view = new EditorView(hidden, { state: EditorState.create({ doc: toProseDoc(base) }) });
+  const view = new EditorView(hidden, {
+    state: EditorState.create({ doc: toProseDoc(base) }),
+  });
   const holder: { search: UseFindReplaceReturn | null } = { search: null };
   const app = createApp(
     defineComponent({
@@ -147,7 +185,9 @@ const withReplacementEditor = (
           pagesRef: shallowRef(null),
           layout: shallowRef(null),
           getDocument: () =>
-            fromProseDoc(view.state.doc, base, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(view.state.doc, base, {
+              stylesheetSource: { type: "package" },
+            }),
           displayMode: ref(displayMode),
           readOnly: ref(false),
           onResultChange: () => {},
@@ -199,7 +239,10 @@ test.each(Object.entries(cachedFields))(
       expect(search.canReplaceCurrent.value).toBe(false);
       search.replaceText.value = "9";
       expect(search.replaceCurrent()).toBe(false);
-      expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+      expect(search.replaceAll()).toEqual({
+        replacedCount: 0,
+        skippedCount: 1,
+      });
       expect(view.state).toBe(before);
     });
   },
@@ -208,7 +251,10 @@ test.each(Object.entries(cachedFields))(
 test.each(["fields-only", "mixed"] as const)(
   "Vue replace all reports skipped fields in a %s result set",
   (kind) => {
-    const content: ParagraphContent[] = [cachedFields.simple, cachedFields.complex];
+    const content: ParagraphContent[] = [
+      cachedFields.simple,
+      cachedFields.complex,
+    ];
     if (kind === "mixed") content.push(textRun(" 4"));
     withReplacementEditor(content, (search, view) => {
       const fieldsBefore: unknown[] = [];
@@ -238,7 +284,11 @@ test("Vue refuses a replacement crossing hidden deleted content", () => {
   withReplacementEditor(
     [
       textRun("A"),
-      { type: "deletion", info: { id: 1, author: "Author" }, content: [textRun("X")] },
+      {
+        type: "deletion",
+        info: { id: 1, author: "Author" },
+        content: [textRun("X")],
+      },
       textRun("B"),
     ],
     (search, view) => {
@@ -251,7 +301,10 @@ test("Vue refuses a replacement crossing hidden deleted content", () => {
       expect(search.canReplaceCurrent.value).toBe(false);
       search.replaceText.value = "C";
       expect(search.replaceCurrent()).toBe(false);
-      expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+      expect(search.replaceAll()).toEqual({
+        replacedCount: 0,
+        skippedCount: 1,
+      });
       expect(view.state).toBe(before);
       expect(view.state.doc.textContent).toBe("AXB");
     },
@@ -262,7 +315,9 @@ test("Vue refuses a replacement crossing hidden deleted content", () => {
 test("Vue replaces an ordinary editable match", () => {
   withReplacementEditor([textRun("before hit after")], (search, view) => {
     expect(search.find("hit")?.totalCount).toBe(1);
-    expect(search.currentMatch.value?.replacement).toEqual({ status: "allowed" });
+    expect(search.currentMatch.value?.replacement).toEqual({
+      status: "allowed",
+    });
     expect(search.canReplaceCurrent.value).toBe(true);
     search.replaceText.value = "changed";
     expect(search.replaceCurrent()).toBe(true);
@@ -280,7 +335,11 @@ test.each(["current", "all"] as const)(
       const beforeJson = before.doc.toJSON();
       search.replaceText.value = "hit";
       if (operation === "current") expect(search.replaceCurrent()).toBe(true);
-      else expect(search.replaceAll()).toEqual({ replacedCount: 2, skippedCount: 0 });
+      else
+        expect(search.replaceAll()).toEqual({
+          replacedCount: 2,
+          skippedCount: 0,
+        });
       expect(view.state).toBe(before);
       expect(view.state.doc.toJSON()).toEqual(beforeJson);
       search.replaceText.value = "changed";
@@ -288,7 +347,10 @@ test.each(["current", "all"] as const)(
         expect(search.replaceCurrent()).toBe(true);
         expect(view.state.doc.textContent).toBe("changed hit");
       } else {
-        expect(search.replaceAll()).toEqual({ replacedCount: 2, skippedCount: 0 });
+        expect(search.replaceAll()).toEqual({
+          replacedCount: 2,
+          skippedCount: 0,
+        });
         expect(view.state.doc.textContent).toBe("changed changed");
       }
     });
@@ -298,28 +360,43 @@ test.each(["current", "all"] as const)(
 test("Vue mixed replace all leaves an exact-text source run untouched", () => {
   withReplacementEditor(
     [
-      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "hit" }] },
-      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: " Hit" }] },
+      {
+        type: "run",
+        formatting: { bold: true },
+        content: [{ type: "text", text: "hit" }],
+      },
+      {
+        type: "run",
+        formatting: { italic: true },
+        content: [{ type: "text", text: " Hit" }],
+      },
     ],
     (search, view) => {
       expect(search.find("hit")?.totalCount).toBe(2);
       const firstRun = view.state.doc.firstChild?.firstChild;
       expect(firstRun).toBeDefined();
       search.replaceText.value = "hit";
-      expect(search.replaceAll()).toEqual({ replacedCount: 2, skippedCount: 0 });
+      expect(search.replaceAll()).toEqual({
+        replacedCount: 2,
+        skippedCount: 0,
+      });
       expect(view.state.doc.textContent).toBe("hit hit");
       expect(view.state.doc.firstChild?.firstChild).toBe(firstRun);
     },
   );
 });
 
-for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)) {
+for (const [kind, content] of Object.entries(
+  ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES,
+)) {
   for (const revisionType of ["deletion", "moveFrom"] as const) {
     test.each(["current", "all"] as const)(
       `Vue refuses %s replacement across hidden zero-text ${kind} in ${revisionType} without losing source metadata`,
       (operation) => {
         expect(getFindParagraphText({ type: "paragraph", content })).toBe("");
-        const fixture = buildBoundaryDocument(surroundHiddenBoundary(content, revisionType));
+        const fixture = buildBoundaryDocument(
+          surroundHiddenBoundary(content, revisionType),
+        );
         withReplacementEditor(
           fixture,
           (search, view) => {
@@ -328,8 +405,13 @@ for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)
             expect(JSON.stringify(beforeJson)).toContain("1701037");
             expect(search.find("AB")?.totalCount).toBe(1);
             search.replaceText.value = "C";
-            if (operation === "current") expect(search.replaceCurrent()).toBe(false);
-            else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+            if (operation === "current")
+              expect(search.replaceCurrent()).toBe(false);
+            else
+              expect(search.replaceAll()).toEqual({
+                replacedCount: 0,
+                skippedCount: 1,
+              });
             expect(view.state).toBe(before);
             expect(view.state.doc.toJSON()).toEqual(beforeJson);
             expect(search.currentMatch.value?.replacement).toEqual({
@@ -347,11 +429,17 @@ for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)
 
 // A visible atom with no search text still sits between the matched letters in
 // PM; replacing the enclosing range would delete it.
-for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)) {
+for (const [kind, content] of Object.entries(
+  ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES,
+)) {
   test.each(["current", "all"] as const)(
     `Vue %s replacement keeps a visible zero-text ${kind} between the matched text`,
     (operation) => {
-      const fixture = buildBoundaryDocument([textRun("A"), ...content, textRun("B")]);
+      const fixture = buildBoundaryDocument([
+        textRun("A"),
+        ...content,
+        textRun("B"),
+      ]);
       withReplacementEditor(fixture, (search, view) => {
         const before = view.state;
         const beforeJson = before.doc.toJSON();
@@ -359,12 +447,19 @@ for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)
         expect(search.currentMatch.value?.replacement).toEqual({
           status: "blocked",
           reason:
-            kind === "simpleField" || kind === "complexField" ? "field-result" : "atomic-content",
+            kind === "simpleField" || kind === "complexField"
+              ? "field-result"
+              : "atomic-content",
         });
         expect(search.canReplaceCurrent.value).toBe(false);
         search.replaceText.value = "C";
-        if (operation === "current") expect(search.replaceCurrent()).toBe(false);
-        else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+        if (operation === "current")
+          expect(search.replaceCurrent()).toBe(false);
+        else
+          expect(search.replaceAll()).toEqual({
+            replacedCount: 0,
+            skippedCount: 1,
+          });
         expect(view.state).toBe(before);
         expect(view.state.doc.toJSON()).toEqual(beforeJson);
       });
@@ -379,15 +474,31 @@ test.each(["current", "all"] as const)(
   (command) => {
     withReplacementEditor([textRun("42")], (search, view) => {
       expect(search.find("4")?.totalCount).toBe(1);
-      expect(search.currentMatch.value?.replacement).toEqual({ status: "allowed" });
-      const fieldDoc = toProseDoc({
-        package: { document: { content: [{ type: "paragraph", content: [cachedFields.simple] }] } },
+      expect(search.currentMatch.value?.replacement).toEqual({
+        status: "allowed",
       });
-      view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, fieldDoc.content));
+      const fieldDoc = toProseDoc({
+        package: {
+          document: {
+            content: [{ type: "paragraph", content: [cachedFields.simple] }],
+          },
+        },
+      });
+      view.dispatch(
+        view.state.tr.replaceWith(
+          0,
+          view.state.doc.content.size,
+          fieldDoc.content,
+        ),
+      );
       const before = view.state;
       search.replaceText.value = "9";
       if (command === "current") expect(search.replaceCurrent()).toBe(false);
-      else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+      else
+        expect(search.replaceAll()).toEqual({
+          replacedCount: 0,
+          skippedCount: 1,
+        });
       expect(search.currentMatch.value?.replacement).toEqual({
         status: "blocked",
         reason: "field-result",
@@ -439,7 +550,9 @@ for (const [option, fixture] of Object.entries(matchingOptionFixtures)) {
     `Vue refreshes a changed ${option} before %s replacement while search is debounced`,
     (operation) => {
       withReplacementEditor([textRun(fixture.text)], (search, view) => {
-        expect(search.find(fixture.query, fixture.initialOptions)?.totalCount).toBe(1);
+        expect(
+          search.find(fixture.query, fixture.initialOptions)?.totalCount,
+        ).toBe(1);
         expect(search.canReplaceCurrent.value).toBe(true);
         const before = view.state;
         const beforeJson = before.doc.toJSON();
@@ -447,8 +560,13 @@ for (const [option, fixture] of Object.entries(matchingOptionFixtures)) {
         expect(search.canReplaceCurrent.value).toBe(false);
         search.scheduleSearch();
         search.replaceText.value = "replacement";
-        if (operation === "current") expect(search.replaceCurrent()).toBe(false);
-        else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+        if (operation === "current")
+          expect(search.replaceCurrent()).toBe(false);
+        else
+          expect(search.replaceAll()).toEqual({
+            replacedCount: 0,
+            skippedCount: 1,
+          });
         expect(view.state).toBe(before);
         expect(view.state.doc.toJSON()).toEqual(beforeJson);
         expect(search.getFindResult()?.totalCount).toBe(0);
@@ -460,7 +578,9 @@ for (const [option, fixture] of Object.entries(matchingOptionFixtures)) {
 // Adapter navigation previously covered only already-mounted story text. Model
 // a virtual page shell and collapsed reply with production DOM attributes.
 const navigationFixture = (kind: "body" | "header" | "reply"): Document => {
-  const doc = createEmptyDocument({ initialText: kind === "body" ? "needle" : "body" });
+  const doc = createEmptyDocument({
+    initialText: kind === "body" ? "needle" : "body",
+  });
   if (kind === "header") {
     doc.package.headers = new Map([
       [
@@ -471,14 +591,21 @@ const navigationFixture = (kind: "body" | "header" | "reply"): Document => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "needle" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "needle" }] },
+              ],
             },
           ],
         },
       ],
     ]);
     doc.package.document.sections = [
-      { properties: { headerReferences: [{ type: "default", rId: "h-default" }] }, content: [] },
+      {
+        properties: {
+          headerReferences: [{ type: "default", rId: "h-default" }],
+        },
+        content: [],
+      },
     ];
   }
   if (kind === "reply")
@@ -489,7 +616,9 @@ const navigationFixture = (kind: "body" | "header" | "reply"): Document => {
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "root" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "root" }] },
+            ],
           },
         ],
       },
@@ -500,7 +629,9 @@ const navigationFixture = (kind: "body" | "header" | "reply"): Document => {
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "needle" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "needle" }] },
+            ],
           },
         ],
       },
@@ -533,7 +664,8 @@ const navigationLayout = (kind: "body" | "header"): Layout => ({
             },
           ]
         : [],
-    headerFooterRefs: number === 2 && kind === "header" ? { headerDefault: "h-default" } : {},
+    headerFooterRefs:
+      number === 2 && kind === "header" ? { headerDefault: "h-default" } : {},
   })),
 });
 
@@ -542,7 +674,9 @@ for (const change of ["secondary-story", "rendered-scope"] as const) {
     `Vue refreshes ${change} changes before %s replacement with the same PM body`,
     (operation) => {
       const source = navigationFixture("header");
-      source.package.document.content = [{ type: "paragraph", content: [textRun("hit")] }];
+      source.package.document.content = [
+        { type: "paragraph", content: [textRun("hit")] },
+      ];
       const header = source.package.headers?.get("h-default");
       if (!header) throw new TypeError("Header fixture is missing");
       header.content = [{ type: "paragraph", content: [textRun("hit")] }];
@@ -562,7 +696,9 @@ for (const change of ["secondary-story", "rendered-scope"] as const) {
               pagesRef: shallowRef(null),
               layout: currentLayout,
               getDocument: () =>
-                fromProseDoc(view.state.doc, source, { stylesheetSource: { type: "package" } }),
+                fromProseDoc(view.state.doc, source, {
+                  stylesheetSource: { type: "package" },
+                }),
               displayMode: ref("all-markup"),
               readOnly: ref(false),
               onResultChange: () => {},
@@ -573,26 +709,37 @@ for (const change of ["secondary-story", "rendered-scope"] as const) {
       );
       app.mount(host);
       try {
-        const search = holder.search ?? panic("Search composable was not mounted");
+        const search =
+          holder.search ?? panic("Search composable was not mounted");
         expect(search.find("hit")?.totalCount).toBe(2);
         const before = view.state;
         const beforeJson = before.doc.toJSON();
         if (change === "secondary-story")
           header.content = [{ type: "paragraph", content: [textRun("miss")] }];
         else {
-          for (const page of currentLayout.value.pages) page.headerFooterRefs = {};
+          for (const page of currentLayout.value.pages)
+            page.headerFooterRefs = {};
           currentLayout.value = { ...currentLayout.value };
         }
         search.scheduleSearch();
         search.replaceText.value = "changed";
-        if (operation === "current") expect(search.replaceCurrent()).toBe(false);
-        else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 2 });
+        if (operation === "current")
+          expect(search.replaceCurrent()).toBe(false);
+        else
+          expect(search.replaceAll()).toEqual({
+            replacedCount: 0,
+            skippedCount: 2,
+          });
         expect(view.state).toBe(before);
         expect(view.state.doc.toJSON()).toEqual(beforeJson);
         expect(search.getFindResult()?.totalCount).toBe(1);
         // Fresh clones from the document getter cannot keep the command stale.
         if (operation === "current") expect(search.replaceCurrent()).toBe(true);
-        else expect(search.replaceAll()).toEqual({ replacedCount: 1, skippedCount: 0 });
+        else
+          expect(search.replaceAll()).toEqual({
+            replacedCount: 1,
+            skippedCount: 0,
+          });
         expect(view.state.doc.textContent).toBe("changed");
       } finally {
         app.unmount();
@@ -607,7 +754,10 @@ for (const change of ["secondary-story", "rendered-scope"] as const) {
 const navigationViewport = () => {
   const container = document.createElement("div");
   container.dataset["folioScroll"] = "";
-  Object.defineProperties(container, { clientHeight: { value: 100 }, clientWidth: { value: 500 } });
+  Object.defineProperties(container, {
+    clientHeight: { value: 100 },
+    clientWidth: { value: 500 },
+  });
   container.getBoundingClientRect = () => new DOMRect(0, 0, 500, 100);
   const shell = document.createElement("div");
   shell.className = "layout-page";
@@ -642,7 +792,8 @@ test.each(["body", "header"] as const)(
     });
     const holder: { search: UseFindReplaceReturn | null } = { search: null };
     const scroll = spyOn(container, "scrollTo").mockImplementation(() => {
-      if (!shell.querySelector("span")) queueMicrotask(() => mountNavigationMatch(shell, kind));
+      if (!shell.querySelector("span"))
+        queueMicrotask(() => mountNavigationMatch(shell, kind));
     });
     const app = createApp(
       defineComponent({
@@ -666,7 +817,9 @@ test.each(["body", "header"] as const)(
       await new Promise((resolve) => setTimeout(resolve, 40));
       expect(scroll).toHaveBeenCalled();
       expect(shell.querySelector("[data-pm-start]")).not.toBeNull();
-      expect(container.querySelector("[data-find-match-index='0']")).not.toBeNull();
+      expect(
+        container.querySelector("[data-find-match-index='0']"),
+      ).not.toBeNull();
       expect(scroll.mock.calls.length).toBeGreaterThan(1);
     } finally {
       app.unmount();
@@ -691,16 +844,18 @@ test.each(["collapsed", "visible", "deferred"] as const)(
     let active = false;
     let committed = visibility === "visible";
     const createRange = document.createRange.bind(document);
-    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
-      const range = createRange();
-      Object.defineProperty(range, "getClientRects", {
-        value: () => {
-          events.push(active ? "measure-active" : "measure-inactive");
-          return committed ? [new DOMRect(30, 200, 60, 18)] : [];
-        },
-      });
-      return range;
-    });
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(
+      () => {
+        const range = createRange();
+        Object.defineProperty(range, "getClientRects", {
+          value: () => {
+            events.push(active ? "measure-active" : "measure-inactive");
+            return committed ? [new DOMRect(30, 200, 60, 18)] : [];
+          },
+        });
+        return range;
+      },
+    );
     const scroll = spyOn(container, "scrollTo").mockImplementation(() => {
       events.push(active ? "scroll-active" : "scroll-inactive");
     });
@@ -750,10 +905,14 @@ test.each(["collapsed", "visible", "deferred"] as const)(
       expect(events).toContain("activate");
       expect(events).not.toContain("scroll-inactive");
       expect(
-        container.querySelector("[data-folio-find-comment-overlay] [data-find-match-index='0']"),
+        container.querySelector(
+          "[data-folio-find-comment-overlay] [data-find-match-index='0']",
+        ),
       ).not.toBeNull();
       expect(events).toContain("scroll-active");
-      expect(events.indexOf("scroll-active")).toBeGreaterThan(events.indexOf("commit"));
+      expect(events.indexOf("scroll-active")).toBeGreaterThan(
+        events.indexOf("commit"),
+      );
     } finally {
       app.unmount();
       view.destroy();
@@ -765,13 +924,17 @@ test.each(["collapsed", "visible", "deferred"] as const)(
 );
 
 test("initial projected searches defer until the lazy body editor mounts", () => {
-  const revisionAttrs = { revisionId: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
-  const insertion = (schema.marks["insertion"] ?? panic("Missing insertion mark")).create(
-    revisionAttrs,
-  );
-  const deletion = (schema.marks["deletion"] ?? panic("Missing deletion mark")).create(
-    revisionAttrs,
-  );
+  const revisionAttrs = {
+    revisionId: 1,
+    author: "Reviewer",
+    date: "2026-01-01T00:00:00Z",
+  };
+  const insertion = (
+    schema.marks["insertion"] ?? panic("Missing insertion mark")
+  ).create(revisionAttrs);
+  const deletion = (
+    schema.marks["deletion"] ?? panic("Missing deletion mark")
+  ).create(revisionAttrs);
   const state = EditorState.create({
     doc: schema.node("doc", null, [
       schema.node("paragraph", null, [
@@ -792,7 +955,9 @@ test("initial projected searches defer until the lazy body editor mounts", () =>
     if (!hiddenQuery) continue;
     const editorView = shallowRef<EditorView | null>(null);
     const scope = effectScope();
-    const source = createEmptyDocument({ initialText: "inserted deleted kept" });
+    const source = createEmptyDocument({
+      initialText: "inserted deleted kept",
+    });
     const find =
       scope.run(() =>
         useFindReplace({
@@ -823,13 +988,18 @@ test("initial projected searches defer until the lazy body editor mounts", () =>
 });
 
 test("Vue searches refresh with the markup view and replacement respects read-only state", async () => {
-  const deletion = (schema.marks["deletion"] ?? panic("Missing deletion mark")).create({
+  const deletion = (
+    schema.marks["deletion"] ?? panic("Missing deletion mark")
+  ).create({
     revisionId: 1,
     author: "Reviewer",
     date: "2026-01-01T00:00:00Z",
   });
   const doc = schema.node("doc", null, [
-    schema.node("paragraph", null, [schema.text("needle", [deletion]), schema.text(" kept")]),
+    schema.node("paragraph", null, [
+      schema.text("needle", [deletion]),
+      schema.text(" kept"),
+    ]),
   ]);
   const view = new EditorView(document.createElement("div"), {
     state: EditorState.create({ doc }),
@@ -845,7 +1015,9 @@ test("Vue searches refresh with the markup view and replacement respects read-on
         pagesRef: shallowRef(null),
         layout: shallowRef(null),
         getDocument: () =>
-          fromProseDoc(view.state.doc, source, { stylesheetSource: { type: "package" } }),
+          fromProseDoc(view.state.doc, source, {
+            stylesheetSource: { type: "package" },
+          }),
         displayMode: markupView,
         readOnly,
         onResultChange: () => {},
@@ -860,7 +1032,9 @@ test("Vue searches refresh with the markup view and replacement respects read-on
     markupView.value = "original";
     await nextTick();
     expect(find.matches.value).toHaveLength(1);
-    expect(find.currentMatch.value).toMatchObject({ authoredRange: { from: 1, to: 7 } });
+    expect(find.currentMatch.value).toMatchObject({
+      authoredRange: { from: 1, to: 7 },
+    });
     find.replaceText.value = "replacement";
     const refused = { replacedCount: 0, skippedCount: 1 };
     expect(find.replaceCurrent()).toBe(false);
@@ -893,7 +1067,10 @@ test("projected replacement refuses a match spanning hidden revisions without ch
       '<w:p><w:r><w:t>left</w:t></w:r><w:del w:id="1" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> hidden </w:delText></w:r></w:del><w:r><w:t>right</w:t></w:r></w:p>' +
       SECTION(),
   });
-  const source = await parseDocx(input, { preloadFonts: false, detectVariables: false });
+  const source = await parseDocx(input, {
+    preloadFonts: false,
+    detectVariables: false,
+  });
   const doc = toProseDoc(source);
   const view = new EditorView(document.createElement("div"), {
     state: EditorState.create({ doc }),
@@ -909,7 +1086,9 @@ test("projected replacement refuses a match spanning hidden revisions without ch
         pagesRef: shallowRef(null),
         layout: shallowRef(null),
         getDocument: () =>
-          fromProseDoc(view.state.doc, source, { stylesheetSource: { type: "package" } }),
+          fromProseDoc(view.state.doc, source, {
+            stylesheetSource: { type: "package" },
+          }),
         displayMode: markupView,
         readOnly: ref(false),
         onReadonlyEditAttempt: (reason) => reasons.push(reason),
@@ -920,7 +1099,9 @@ test("projected replacement refuses a match spanning hidden revisions without ch
   const serializeLiveDocument = async () =>
     new Uint8Array(
       await repackDocx(
-        fromProseDoc(view.state.doc, source, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(view.state.doc, source, {
+          stylesheetSource: { type: "package" },
+        }),
         { updateModifiedDate: false },
       ),
     );

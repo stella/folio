@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { PLAYGROUND_URL, PX_TO_PT } from "../config";
+import { parseUnsupportedProjectionConsoleError } from "../editorReadiness";
 import {
   CLEAN_SCREENSHOT_CSS,
-  FINAL_VIEW_SCREENSHOT_CSS,
   computeZoomFactor,
+  FINAL_VIEW_SCREENSHOT_CSS,
   formatNavigationFailure,
   formatServerStartFailure,
   isFullyClippedByAncestors,
@@ -21,9 +22,8 @@ import {
   toPageGeom,
   unresolvedRoutedFontFaces,
 } from "../folioExtract";
-import { countReviewChanges } from "../reviewProjection.mjs";
 import type { RawLine, RawPage } from "../folioExtract";
-import { parseUnsupportedProjectionConsoleError } from "../editorReadiness";
+import { countReviewChanges } from "../reviewProjection.mjs";
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   left,
@@ -69,7 +69,9 @@ describe("unresolvedRoutedFontFaces", () => {
       { family: "Title Face", weight: 400 },
       { family: "Title Face", weight: 700 },
     ];
-    const observed = [{ family: "Title Face", weight: 400, status: "loaded" as const }];
+    const observed = [
+      { family: "Title Face", weight: 400, status: "loaded" as const },
+    ];
 
     expect(unresolvedRoutedFontFaces(expected, observed)).toEqual([
       { family: "Title Face", weight: 700 },
@@ -98,11 +100,18 @@ describe("unresolvedRoutedFontFaces", () => {
   });
 
   test("matches family case-insensitively and ignores quoting, and normalizes weight/style keywords", () => {
-    const expected = [{ family: "Title Face", weight: "bold", style: "italic" }];
+    const expected = [
+      { family: "Title Face", weight: "bold", style: "italic" },
+    ];
 
     expect(
       unresolvedRoutedFontFaces(expected, [
-        { family: '"TITLE FACE"', weight: 700, style: "italic", status: "loaded" as const },
+        {
+          family: '"TITLE FACE"',
+          weight: 700,
+          style: "italic",
+          status: "loaded" as const,
+        },
       ]),
     ).toEqual([]);
   });
@@ -113,7 +122,12 @@ describe("unresolvedRoutedFontFaces", () => {
       { family: "Title Face", weight: 400, style: "italic" },
     ];
     const observed = [
-      { family: "Title Face", weight: 400, style: "normal", status: "loaded" as const },
+      {
+        family: "Title Face",
+        weight: 400,
+        style: "normal",
+        status: "loaded" as const,
+      },
     ];
 
     expect(unresolvedRoutedFontFaces(expected, observed)).toEqual([
@@ -125,7 +139,9 @@ describe("unresolvedRoutedFontFaces", () => {
 describe("clean screenshot style", () => {
   test("hides editor and playground chrome that can overlap a page", () => {
     expect(CLEAN_SCREENSHOT_CSS).toContain('[data-folio-toolbar="true"]');
-    expect(CLEAN_SCREENSHOT_CSS).toContain('[data-testid="playground-controls"]');
+    expect(CLEAN_SCREENSHOT_CSS).toContain(
+      '[data-testid="playground-controls"]',
+    );
   });
 
   test("keeps the page and its document content visible", () => {
@@ -135,7 +151,9 @@ describe("clean screenshot style", () => {
 
   test("suppresses comment decoration in the matched Final view", () => {
     expect(FINAL_VIEW_SCREENSHOT_CSS).toContain("[data-comment-id]");
-    expect(FINAL_VIEW_SCREENSHOT_CSS).toContain("background-color: transparent");
+    expect(FINAL_VIEW_SCREENSHOT_CSS).toContain(
+      "background-color: transparent",
+    );
   });
 });
 
@@ -164,7 +182,9 @@ describe("screenshot viewport height", () => {
   });
 
   test("ignores invalid page heights", () => {
-    expect(screenshotViewportHeight([Number.NaN, Number.POSITIVE_INFINITY], 1000)).toBe(1000);
+    expect(
+      screenshotViewportHeight([Number.NaN, Number.POSITIVE_INFINITY], 1000),
+    ).toBe(1000);
   });
 });
 
@@ -202,7 +222,9 @@ describe("editor error capture", () => {
         "error",
         "React caught UnsupportedDocxToProseMirrorConversionError: A nested break cannot be projected\n    at Editor",
       ),
-    ).toBe("UnsupportedDocxToProseMirrorConversionError: A nested break cannot be projected");
+    ).toBe(
+      "UnsupportedDocxToProseMirrorConversionError: A nested break cannot be projected",
+    );
   });
 
   test("ignores non-error and unrelated console output", () => {
@@ -220,7 +242,14 @@ describe("editor error capture", () => {
 
 describe("playground startup diagnostics", () => {
   test("includes an early exit code and captured output", () => {
-    expect(formatServerStartFailure("http://localhost:4200", 90_000, 127, "vite: not found")).toBe(
+    expect(
+      formatServerStartFailure(
+        "http://localhost:4200",
+        90_000,
+        127,
+        "vite: not found",
+      ),
+    ).toBe(
       "playground dev server exited with code 127 before becoming ready at http://localhost:4200\n" +
         "Playground output:\n" +
         "vite: not found",
@@ -228,7 +257,9 @@ describe("playground startup diagnostics", () => {
   });
 
   test("reports a quiet startup timeout without an empty output section", () => {
-    expect(formatServerStartFailure("http://localhost:4200", 90_000, undefined, "")).toBe(
+    expect(
+      formatServerStartFailure("http://localhost:4200", 90_000, undefined, ""),
+    ).toBe(
       "playground dev server did not become ready at http://localhost:4200 within 90000ms",
     );
   });
@@ -248,7 +279,9 @@ describe("playground startup diagnostics", () => {
   });
 
   test("omits an empty playground output section from navigation failures", () => {
-    expect(formatNavigationFailure("http://localhost:4200", "connection reset", "")).toBe(
+    expect(
+      formatNavigationFailure("http://localhost:4200", "connection reset", ""),
+    ).toBe(
       "playground navigation failed for http://localhost:4200: connection reset",
     );
   });
@@ -256,24 +289,29 @@ describe("playground startup diagnostics", () => {
 
 describe("parseCssFontFamilies", () => {
   test("preserves commas inside quoted family names", () => {
-    expect(parseCssFontFamilies('"Definitely, Missing Font", Arial, sans-serif')).toEqual([
-      "Definitely, Missing Font",
-      "Arial",
-      "sans-serif",
-    ]);
+    expect(
+      parseCssFontFamilies('"Definitely, Missing Font", Arial, sans-serif'),
+    ).toEqual(["Definitely, Missing Font", "Arial", "sans-serif"]);
   });
 
   test("handles single-quoted and unquoted families", () => {
-    expect(parseCssFontFamilies("'Times New Roman', serif")).toEqual(["Times New Roman", "serif"]);
+    expect(parseCssFontFamilies("'Times New Roman', serif")).toEqual([
+      "Times New Roman",
+      "serif",
+    ]);
   });
 });
 
-const makeRawLine = (overrides: Partial<RawLine> & Pick<RawLine, "text" | "rect">): RawLine => ({
+const makeRawLine = (
+  overrides: Partial<RawLine> & Pick<RawLine, "text" | "rect">,
+): RawLine => ({
   region: "body",
   ...overrides,
 });
 
-const makeRawPage = (overrides: Partial<RawPage> & Pick<RawPage, "lines">): RawPage => ({
+const makeRawPage = (
+  overrides: Partial<RawPage> & Pick<RawPage, "lines">,
+): RawPage => ({
   pageNumber: 1,
   domIndex: 0,
   pageRect: rect(0, 0, 816, 1056),
@@ -284,7 +322,9 @@ const makeRawPage = (overrides: Partial<RawPage> & Pick<RawPage, "lines">): RawP
 
 describe("meaningfulTextRange", () => {
   test("excludes surrounding whitespace and invisible controls from ink bounds", () => {
-    expect(meaningfulTextRange("   \u00ad\u200bč. NPU-450/74723/2025 \t")).toEqual({
+    expect(
+      meaningfulTextRange("   \u00ad\u200bč. NPU-450/74723/2025 \t"),
+    ).toEqual({
       start: 5,
       end: 26,
     });
@@ -344,18 +384,26 @@ describe("CSS clipping geometry", () => {
       clipPath: "inset(80px 0 40px)",
     };
 
-    expect(isFullyClippedByAncestors(rect(10, 10, 50, 10), [ancestor])).toBe(true);
-    expect(isFullyClippedByAncestors(rect(10, 45, 50, 10), [ancestor])).toBe(false);
+    expect(isFullyClippedByAncestors(rect(10, 10, 50, 10), [ancestor])).toBe(
+      true,
+    );
+    expect(isFullyClippedByAncestors(rect(10, 45, 50, 10), [ancestor])).toBe(
+      false,
+    );
   });
 });
 
 describe("parseFirstFontFamily", () => {
   test("takes the first family and strips double quotes", () => {
-    expect(parseFirstFontFamily('"Calibri", "Arial", sans-serif')).toBe("Calibri");
+    expect(parseFirstFontFamily('"Calibri", "Arial", sans-serif')).toBe(
+      "Calibri",
+    );
   });
 
   test("strips single quotes", () => {
-    expect(parseFirstFontFamily("'Times New Roman', serif")).toBe("Times New Roman");
+    expect(parseFirstFontFamily("'Times New Roman', serif")).toBe(
+      "Times New Roman",
+    );
   });
 
   test("passes through an unquoted single family unchanged", () => {
@@ -460,7 +508,11 @@ describe("toPageGeom", () => {
     const rawPage = makeRawPage({
       lines: [
         makeRawLine({ text: "Visible", rect: rect(0, 0, 100, 10) }),
-        makeRawLine({ text: "Clipped", rect: rect(0, 20, 100, 10), fullyClipped: true }),
+        makeRawLine({
+          text: "Clipped",
+          rect: rect(0, 20, 100, 10),
+          fullyClipped: true,
+        }),
       ],
     });
 
@@ -493,7 +545,9 @@ describe("toPageGeom", () => {
       ],
     });
 
-    expect(toPageGeom(rawPage).lines.map((line) => line.text)).toEqual(["Visible"]);
+    expect(toPageGeom(rawPage).lines.map((line) => line.text)).toEqual([
+      "Visible",
+    ]);
   });
 
   test("drops lines whose normalized text is empty (whitespace-only / soft hyphen only)", () => {
@@ -532,15 +586,31 @@ describe("toPageGeom", () => {
   test("maps region straight through from the raw line", () => {
     const rawPage = makeRawPage({
       lines: [
-        makeRawLine({ text: "Header text", rect: rect(0, 0, 40, 10), region: "header" }),
-        makeRawLine({ text: "Body text", rect: rect(0, 20, 40, 10), region: "body" }),
-        makeRawLine({ text: "Footer text", rect: rect(0, 40, 40, 10), region: "footer" }),
+        makeRawLine({
+          text: "Header text",
+          rect: rect(0, 0, 40, 10),
+          region: "header",
+        }),
+        makeRawLine({
+          text: "Body text",
+          rect: rect(0, 20, 40, 10),
+          region: "body",
+        }),
+        makeRawLine({
+          text: "Footer text",
+          rect: rect(0, 40, 40, 10),
+          region: "footer",
+        }),
       ],
     });
 
     const page = toPageGeom(rawPage);
 
-    expect(page.lines.map((line) => line.region)).toEqual(["header", "body", "footer"]);
+    expect(page.lines.map((line) => line.region)).toEqual([
+      "header",
+      "body",
+      "footer",
+    ]);
   });
 
   test("preserves table-cell visual groups", () => {
@@ -568,7 +638,9 @@ describe("toPageGeom", () => {
       ],
     });
 
-    expect(toPageGeom(rawPage).lines.at(0)?.logicalLineGroup).toBe("layout-line:4");
+    expect(toPageGeom(rawPage).lines.at(0)?.logicalLineGroup).toBe(
+      "layout-line:4",
+    );
   });
 
   test("derives segment direction symmetrically from first-strong text", () => {

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { hitTestTableCell } from "../layout-bridge/engine/hitTest";
+import { selectionToRects } from "../layout-bridge/engine/selectionRects";
 import { clearAllCaches } from "../layout-engine/measure";
 import {
   installCanvasMeasureProvider,
@@ -13,9 +15,10 @@ import type {
   TableFragment,
   TableMeasure,
 } from "../layout-engine/types";
-import { hitTestTableCell } from "../layout-bridge/engine/hitTest";
-import { selectionToRects } from "../layout-bridge/engine/selectionRects";
-import { renderTableFragment, TABLE_CLASS_NAMES } from "../layout-painter/renderTable";
+import {
+  renderTableFragment,
+  TABLE_CLASS_NAMES,
+} from "../layout-painter/renderTable";
 import type { RenderContext } from "../layout-painter/renderUtils";
 
 class FakeElement {
@@ -103,7 +106,9 @@ const emptyParagraphMeasure = (): ParagraphMeasure => ({
 });
 
 const findCells = (element: FakeElement): FakeElement[] => {
-  const cells = element.className.split(" ").includes(TABLE_CLASS_NAMES.cell) ? [element] : [];
+  const cells = element.className.split(" ").includes(TABLE_CLASS_NAMES.cell)
+    ? [element]
+    : [];
   for (const child of element.children) {
     cells.push(...findCells(child));
   }
@@ -175,9 +180,15 @@ const renderContinuation = (bidi: boolean): FakeElement[] => {
     continuesFromPrev: true,
   };
 
-  const rendered = renderTableFragment(fragment, block, measure, renderContext, {
-    document: fakeDocument,
-  }) as unknown as FakeElement;
+  const rendered = renderTableFragment(
+    fragment,
+    block,
+    measure,
+    renderContext,
+    {
+      document: fakeDocument,
+    },
+  ) as unknown as FakeElement;
   return findCells(rendered);
 };
 
@@ -213,7 +224,11 @@ describe("canonical table-cell placement", () => {
         { id: "spaced-r1", cells: [borderedCell("c"), borderedCell("d")] },
       ],
     };
-    const cellMeasure = { width: 94, height: 20, blocks: [emptyParagraphMeasure()] };
+    const cellMeasure = {
+      width: 94,
+      height: 20,
+      blocks: [emptyParagraphMeasure()],
+    };
     const measure: TableMeasure = {
       kind: "table",
       columnWidths: [100, 100],
@@ -235,9 +250,15 @@ describe("canonical table-cell placement", () => {
       toRow: 2,
     };
 
-    const rendered = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const rendered = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
     const [a, b, c, d] = findCells(rendered);
 
     expect([a, b, c, d].map((cell) => cell?.style["left"])).toEqual([
@@ -282,7 +303,9 @@ describe("canonical table-cell placement", () => {
       rows: [
         {
           height: 20,
-          cells: [{ width: 100, height: 20, blocks: [emptyParagraphMeasure()] }],
+          cells: [
+            { width: 100, height: 20, blocks: [emptyParagraphMeasure()] },
+          ],
         },
       ],
     };
@@ -297,9 +320,15 @@ describe("canonical table-cell placement", () => {
       toRow: 1,
     };
 
-    const rendered = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const rendered = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
     const cell = findCells(rendered)[0];
 
     expect(cell?.dataset["columnIndex"]).toBe("2");
@@ -394,14 +423,24 @@ describe("canonical table-cell placement", () => {
       throw new Error("expected table page");
     }
 
-    const leftHit = hitTestTableCell({ pageIndex: 0, page, pageY: 7 }, [block], [measure], {
-      x: 50,
-      y: 7,
-    });
-    const rightHit = hitTestTableCell({ pageIndex: 0, page, pageY: 7 }, [block], [measure], {
-      x: 250,
-      y: 7,
-    });
+    const leftHit = hitTestTableCell(
+      { pageIndex: 0, page, pageY: 7 },
+      [block],
+      [measure],
+      {
+        x: 50,
+        y: 7,
+      },
+    );
+    const rightHit = hitTestTableCell(
+      { pageIndex: 0, page, pageY: 7 },
+      [block],
+      [measure],
+      {
+        x: 250,
+        y: 7,
+      },
+    );
 
     expect(leftHit?.colIndex).toBe(1);
     expect(leftHit?.cellLocalX).toBe(33);

@@ -35,7 +35,10 @@ const FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
 
 const readFixture = (filename: string): ArrayBuffer => {
   const bytes = readFileSync(path.join(FIXTURES_DIR, filename));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 /**
@@ -46,7 +49,9 @@ const readFixture = (filename: string): ArrayBuffer => {
  */
 async function fullRoundTrip(original: Document): Promise<Document> {
   const pmDoc = toProseDoc(original);
-  const back = fromProseDoc(pmDoc, original, { stylesheetSource: { type: "package" } });
+  const back = fromProseDoc(pmDoc, original, {
+    stylesheetSource: { type: "package" },
+  });
   const repacked = await repackDocx(back, { updateModifiedDate: false });
   return await parseDocx(repacked);
 }
@@ -61,7 +66,9 @@ async function fullRoundTripWithXml(
   original: Document,
 ): Promise<{ document: Document; documentXml: string }> {
   const pmDoc = toProseDoc(original);
-  const back = fromProseDoc(pmDoc, original, { stylesheetSource: { type: "package" } });
+  const back = fromProseDoc(pmDoc, original, {
+    stylesheetSource: { type: "package" },
+  });
   const repacked = await repackDocx(back, { updateModifiedDate: false });
   const zip = await JSZip.loadAsync(repacked);
   const docFile = zip.file("word/document.xml");
@@ -125,7 +132,9 @@ function paragraphText(p: Paragraph): string {
 }
 
 function bodyText(doc: Document): string {
-  return collectParagraphs(doc.package.document.content).map(paragraphText).join("\n");
+  return collectParagraphs(doc.package.document.content)
+    .map(paragraphText)
+    .join("\n");
 }
 
 /** Find the first InlineSdt in the body, including nested ones. */
@@ -171,7 +180,9 @@ describe("corpus round-trip: block-sdt-richtext.docx", () => {
     const roundTripped = await fullRoundTrip(original);
 
     const originalParas = collectParagraphs(original.package.document.content);
-    const recoveredParas = collectParagraphs(roundTripped.package.document.content);
+    const recoveredParas = collectParagraphs(
+      roundTripped.package.document.content,
+    );
 
     expect(recoveredParas).toHaveLength(originalParas.length);
     expect(bodyText(roundTripped)).toBe(bodyText(original));
@@ -250,7 +261,9 @@ describe("corpus round-trip: inline-sdt-mixed-rpr.docx", () => {
     expect(outer.properties.lock).toBe("sdtLocked");
 
     // Inner SDT lives in the outer's content list.
-    const inner = outer.content.find((c): c is InlineSdt => c.type === "inlineSdt");
+    const inner = outer.content.find(
+      (c): c is InlineSdt => c.type === "inlineSdt",
+    );
     expect(inner).toBeDefined();
     if (!inner) {
       return;
@@ -400,10 +413,14 @@ describe("corpus round-trip: empty-sdt-content.docx", () => {
 
 describe("corpus round-trip: authored-empty-paragraph.docx", () => {
   test("authored empty paragraph is not dropped by the filler heuristic", async () => {
-    const original = await parseDocx(readFixture("authored-empty-paragraph.docx"));
+    const original = await parseDocx(
+      readFixture("authored-empty-paragraph.docx"),
+    );
     const roundTripped = await fullRoundTrip(original);
 
-    const recoveredParas = collectParagraphs(roundTripped.package.document.content);
+    const recoveredParas = collectParagraphs(
+      roundTripped.package.document.content,
+    );
     expect(recoveredParas).toHaveLength(3);
     expect(paragraphText(recoveredParas[0]!)).toBe("Heading paragraph.");
     expect(paragraphText(recoveredParas[1]!)).toBe("");
@@ -421,7 +438,9 @@ describe("corpus round-trip: authored-empty-paragraph.docx", () => {
 
 describe("corpus round-trip: date-fractional-seconds.docx", () => {
   test("fractional seconds in fullDate survive verbatim", async () => {
-    const original = await parseDocx(readFixture("date-fractional-seconds.docx"));
+    const original = await parseDocx(
+      readFixture("date-fractional-seconds.docx"),
+    );
     const roundTripped = await fullRoundTrip(original);
 
     const sdt = findFirstInlineSdt(roundTripped.package.document.content);
@@ -491,7 +510,9 @@ describe("corpus round-trip: lock-content-locked.docx", () => {
 
 describe("corpus round-trip: lock-sdt-content-locked.docx", () => {
   test("lock=sdtContentLocked round-trips", async () => {
-    const original = await parseDocx(readFixture("lock-sdt-content-locked.docx"));
+    const original = await parseDocx(
+      readFixture("lock-sdt-content-locked.docx"),
+    );
     const roundTripped = await fullRoundTrip(original);
     const sdt = findFirstInlineSdt(roundTripped.package.document.content);
     expect(sdt?.properties.lock).toBe("sdtContentLocked");
@@ -516,7 +537,9 @@ describe("corpus round-trip: repeating-section.docx", () => {
     // Wrapper unwraps to its paragraph (block SDT unwrap path); content
     // text must survive both round-trip stages.
     expect(bodyText(roundTripped)).toBe(bodyText(original));
-    expect(bodyText(roundTripped)).toContain("One row of the repeating section.");
+    expect(bodyText(roundTripped)).toContain(
+      "One row of the repeating section.",
+    );
   });
 });
 
@@ -607,7 +630,9 @@ describe("corpus round-trip: datahash-sdt.docx", () => {
 describe("corpus round-trip: extraspec-bookmark-sibling.docx", () => {
   test("sibling bookmark markers under <w:sdt> do not break parse", async () => {
     // Source: https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/1aee8ae1-fe3a-4ca4-96f4-e416cf43e461
-    const original = await parseDocx(readFixture("extraspec-bookmark-sibling.docx"));
+    const original = await parseDocx(
+      readFixture("extraspec-bookmark-sibling.docx"),
+    );
     const roundTripped = await fullRoundTrip(original);
 
     expect(bodyText(roundTripped)).toBe(bodyText(original));
@@ -628,7 +653,9 @@ describe("corpus round-trip: extraspec-bookmark-sibling.docx", () => {
 describe("corpus round-trip: extraspec-commentrange-sibling.docx", () => {
   test("sibling comment range markers under <w:sdt> do not break parse", async () => {
     // Source: https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/1aee8ae1-fe3a-4ca4-96f4-e416cf43e461
-    const original = await parseDocx(readFixture("extraspec-commentrange-sibling.docx"));
+    const original = await parseDocx(
+      readFixture("extraspec-commentrange-sibling.docx"),
+    );
     const roundTripped = await fullRoundTrip(original);
 
     expect(bodyText(roundTripped)).toBe(bodyText(original));
@@ -648,20 +675,25 @@ describe("corpus round-trip: extraspec-commentrange-sibling.docx", () => {
 describe("corpus round-trip: opendope-encoded-ampersand-tag.docx", () => {
   test("encoded ampersand decodes on parse and re-escapes once on save", async () => {
     // Source: https://www.opendope.org/opendope_conventions_v2.3.html
-    const original = await parseDocx(readFixture("opendope-encoded-ampersand-tag.docx"));
+    const original = await parseDocx(
+      readFixture("opendope-encoded-ampersand-tag.docx"),
+    );
     const decodedTag = "od:component=c1&od:continuousBefore=true";
 
     const originalSdt = findFirstInlineSdt(original.package.document.content);
     expect(originalSdt?.properties.tag).toBe(decodedTag);
 
-    const { document: roundTripped, documentXml } = await fullRoundTripWithXml(original);
+    const { document: roundTripped, documentXml } =
+      await fullRoundTripWithXml(original);
 
     const sdt = findFirstInlineSdt(roundTripped.package.document.content);
     expect(sdt?.properties.tag).toBe(decodedTag);
 
     // On-disk: the tag must be encoded exactly once. No double-escape
     // (`&amp;amp;`) and no raw `&` adjacent to `od:`.
-    expect(documentXml).toContain('<w:tag w:val="od:component=c1&amp;od:continuousBefore=true"/>');
+    expect(documentXml).toContain(
+      '<w:tag w:val="od:component=c1&amp;od:continuousBefore=true"/>',
+    );
     expect(documentXml).not.toContain("&amp;amp;");
     expect(documentXml).not.toContain("c1&od:");
   });
@@ -724,7 +756,9 @@ describe("corpus round-trip: sdt-self-closing.docx", () => {
 describe("corpus round-trip: placeholder-without-docpart.docx", () => {
   test("placeholder with no docPart leaves placeholder undefined", async () => {
     // Source: https://c-rex.net/samples/ooxml/e1/Part4/OOXML_P4_DOCX_Structured_topic_ID0ERWJS.html
-    const original = await parseDocx(readFixture("placeholder-without-docpart.docx"));
+    const original = await parseDocx(
+      readFixture("placeholder-without-docpart.docx"),
+    );
     const roundTripped = await fullRoundTrip(original);
 
     const sdt = findFirstInlineSdt(roundTripped.package.document.content);

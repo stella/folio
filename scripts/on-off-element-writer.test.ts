@@ -1,5 +1,4 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 /**
  * One writer for every `CT_OnOff` element in the tree.
  *
@@ -18,9 +17,9 @@ import { scanTestTimeout } from "../test/scan-timeout";
  * It scans emitted markup, not prose: a parser's comment about `w:val="off"` is
  * documentation of the lexical space, not a second writer.
  */
-
-import { setDefaultTimeout, describe, expect, test } from "bun:test";
 import path from "node:path";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -39,7 +38,9 @@ const SCHEMA_PATH = path.join(
  */
 const WRITER = "docx-core/src/serialize/xml.ts";
 
-type SchemaGraph = { children: ReadonlyArray<{ name?: string; type?: string }> };
+type SchemaGraph = {
+  children: ReadonlyArray<{ name?: string; type?: string }>;
+};
 
 const onOffElementNames = async (): Promise<ReadonlySet<string>> => {
   const graph = (await Bun.file(SCHEMA_PATH).json()) as SchemaGraph;
@@ -98,7 +99,9 @@ const handBuiltOnOffElements = async (): Promise<string[]> => {
         continue;
       }
       if (INTERPOLATED_ON_OFF.test(line)) {
-        offenders.push(`${relative}:${index + 1}  a second generic toggle writer`);
+        offenders.push(
+          `${relative}:${index + 1}  a second generic toggle writer`,
+        );
       }
       for (const match of line.matchAll(EMITTED_ELEMENT)) {
         const name = match.groups?.["name"];
@@ -127,16 +130,28 @@ describe("CT_OnOff element writer", () => {
     const seen = (line: string): string[] =>
       isComment(line)
         ? []
-        : [...line.matchAll(EMITTED_ELEMENT)].map((m) => m.groups?.["name"] ?? "");
+        : [...line.matchAll(EMITTED_ELEMENT)].map(
+            (m) => m.groups?.["name"] ?? "",
+          );
     expect(seen('  parts.push("<w:cantSplit/>");')).toEqual(["cantSplit"]);
-    expect(seen("  parts.push('<w:hideMark w:val=\"0\"/>');")).toEqual(["hideMark"]);
+    expect(seen("  parts.push('<w:hideMark w:val=\"0\"/>');")).toEqual([
+      "hideMark",
+    ]);
     // Prose about the markup is not markup.
-    expect(seen(" * A row that carries `<w:cantSplit/>` may not break.")).toEqual([]);
+    expect(
+      seen(" * A row that carries `<w:cantSplit/>` may not break."),
+    ).toEqual([]);
     // A call through the writer spells no element at all.
-    expect(seen('  pushOnOffElement(parts, formatting.cantSplit, "cantSplit");')).toEqual([]);
+    expect(
+      seen('  pushOnOffElement(parts, formatting.cantSplit, "cantSplit");'),
+    ).toEqual([]);
     // A generic writer has no element name to check, so it is refused by shape.
-    expect(INTERPOLATED_ON_OFF.test('  return `<w:${name} w:val="0"/>`;')).toBe(true);
-    expect(INTERPOLATED_ON_OFF.test('  return `<w:${name} w:type="dxa"/>`;')).toBe(false);
+    expect(INTERPOLATED_ON_OFF.test('  return `<w:${name} w:val="0"/>`;')).toBe(
+      true,
+    );
+    expect(
+      INTERPOLATED_ON_OFF.test('  return `<w:${name} w:type="dxa"/>`;'),
+    ).toBe(false);
   });
 
   test("no serializer builds a CT_OnOff element by hand", async () => {

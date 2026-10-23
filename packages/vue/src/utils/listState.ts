@@ -23,11 +23,15 @@ export function createDefaultListState(): ListState {
 }
 
 export function createBulletListState(level = 0, numId?: number): ListState {
-  return numId === undefined ? { type: "bullet", level } : { type: "bullet", level, numId };
+  return numId === undefined
+    ? { type: "bullet", level }
+    : { type: "bullet", level, numId };
 }
 
 export function createNumberedListState(level = 0, numId?: number): ListState {
-  return numId === undefined ? { type: "numbered", level } : { type: "numbered", level, numId };
+  return numId === undefined
+    ? { type: "numbered", level }
+    : { type: "numbered", level, numId };
 }
 
 export function isBulletListState(state: ListState | undefined): boolean {
@@ -50,7 +54,10 @@ export function getPreviousIndentLevel(currentLevel: number): number {
   return Math.max(currentLevel - 1, 0);
 }
 
-export function toggleListType(state: ListState | undefined, targetType: ListType): ListState {
+export function toggleListType(
+  state: ListState | undefined,
+  targetType: ListType,
+): ListState {
   if (state?.type === targetType) return createDefaultListState();
   const level = listStateLevel(state);
   if (targetType === "bullet") return createBulletListState(level);

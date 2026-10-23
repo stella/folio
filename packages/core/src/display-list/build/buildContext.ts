@@ -44,7 +44,8 @@ export const trackedChangeColor = (
   authorColors: AuthorColorTable,
   changeAuthor: string | undefined,
   isSuggestion: boolean | undefined,
-): DisplayColor => (isSuggestion ? SUGGESTION_COLOR : authorColors.colorFor(changeAuthor));
+): DisplayColor =>
+  isSuggestion ? SUGGESTION_COLOR : authorColors.colorFor(changeAuthor);
 
 /**
  * Which OOXML story the primitives being built belong to, named precisely

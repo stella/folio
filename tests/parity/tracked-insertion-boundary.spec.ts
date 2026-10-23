@@ -1,13 +1,20 @@
 import type { Page } from "@playwright/test";
 
-import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  forEachAdapter,
+  openEditor,
+} from "./parity-fixture";
 
 const FIXTURE = "tracked-insertion-boundary.docx";
 const ORIGINAL_DOCUMENT_TEXT = "The buyer promptly pays.";
 const TRACKED_INSERTION_TEXT = " promptly";
 
 const clickTrackedInsertionEnd = async (page: Page): Promise<void> => {
-  const insertion = page.locator(".paged-editor__pages .docx-insertion").first();
+  const insertion = page
+    .locator(".paged-editor__pages .docx-insertion")
+    .first();
   await expect(insertion).toHaveText(TRACKED_INSERTION_TEXT);
 
   const box = await insertion.boundingBox();
@@ -16,14 +23,21 @@ const clickTrackedInsertionEnd = async (page: Page): Promise<void> => {
   await page.mouse.click(box.x + box.width - 0.2, box.y + box.height / 2);
 };
 
-const expectBoundaryResult = async (page: Page, insertedText: string): Promise<void> => {
+const expectBoundaryResult = async (
+  page: Page,
+  insertedText: string,
+): Promise<void> => {
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""))
+    .poll(() =>
+      page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""),
+    )
     .toBe(`The buyer promptly${insertedText} pays.`);
-  await expect(page.locator(".paged-editor__pages .docx-insertion")).toHaveCount(1);
-  await expect(page.locator(".paged-editor__pages .docx-insertion").first()).toHaveText(
-    TRACKED_INSERTION_TEXT,
-  );
+  await expect(
+    page.locator(".paged-editor__pages .docx-insertion"),
+  ).toHaveCount(1);
+  await expect(
+    page.locator(".paged-editor__pages .docx-insertion").first(),
+  ).toHaveText(TRACKED_INSERTION_TEXT);
 };
 
 forEachAdapter(
@@ -32,7 +46,9 @@ forEachAdapter(
     await openEditor(page, adapter, FIXTURE);
     await ensureLiveView(page);
     await expect
-      .poll(() => page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""))
+      .poll(() =>
+        page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""),
+      )
       .toBe(ORIGINAL_DOCUMENT_TEXT);
     await clickTrackedInsertionEnd(page);
 
@@ -51,15 +67,22 @@ forEachAdapter(
     await page.evaluate(() => {
       document.documentElement.dataset["trackedBoundaryKeydowns"] = "0";
       document.addEventListener("keydown", () => {
-        const current = Number(document.documentElement.dataset["trackedBoundaryKeydowns"]);
-        document.documentElement.dataset["trackedBoundaryKeydowns"] = String(current + 1);
+        const current = Number(
+          document.documentElement.dataset["trackedBoundaryKeydowns"],
+        );
+        document.documentElement.dataset["trackedBoundaryKeydowns"] = String(
+          current + 1,
+        );
       });
     });
 
     await page.keyboard.insertText("日本語");
 
     await expectBoundaryResult(page, "日本語");
-    await expect(page.locator("html")).toHaveAttribute("data-tracked-boundary-keydowns", "0");
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-tracked-boundary-keydowns",
+      "0",
+    );
   },
 );
 

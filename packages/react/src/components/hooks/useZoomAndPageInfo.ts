@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
@@ -10,7 +16,11 @@ import {
   getViewportCenterZoomAnchorForZoomChange,
 } from "@stll/folio-core/paged-layout/zoomScrollAnchor";
 import type { ViewportCenterZoomAnchor } from "@stll/folio-core/paged-layout/zoomScrollAnchor";
-import { DEFAULT_PAGE_GAP, VIEWPORT_PADDING_TOP } from "../../paged-editor/PagedEditor";
+
+import {
+  DEFAULT_PAGE_GAP,
+  VIEWPORT_PADDING_TOP,
+} from "../../paged-editor/PagedEditor";
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
 
 const PAGE_INFO_FADE_MS = 600;
@@ -52,7 +62,9 @@ export function useZoomAndPageInfo({
   initialZoom,
 }: UseZoomAndPageInfoArgs): UseZoomAndPageInfoReturn {
   const fitToWidth = initialZoom === "fit-width";
-  const [zoom, setZoom] = useState(typeof initialZoom === "number" ? initialZoom : 1);
+  const [zoom, setZoom] = useState(
+    typeof initialZoom === "number" ? initialZoom : 1,
+  );
   const zoomRef = useRef(zoom);
   const pendingZoomAnchorRef = useRef<ViewportCenterZoomAnchor | null>(null);
 
@@ -139,10 +151,18 @@ export function useZoomAndPageInfo({
       return;
     }
     const nextScrollTop = getScrollTopForZoomAnchor(anchor, zoom);
-    scrollEditorTo(scrollContainer, { top: nextScrollTop, behavior: "instant" });
+    scrollEditorTo(scrollContainer, {
+      top: nextScrollTop,
+      behavior: "instant",
+    });
     updateScrollPageInfo(scrollContainer);
     scheduleScrollPageInfoFade();
-  }, [zoom, scheduleScrollPageInfoFade, updateScrollPageInfo, scrollContainerRef]);
+  }, [
+    zoom,
+    scheduleScrollPageInfoFade,
+    updateScrollPageInfo,
+    scrollContainerRef,
+  ]);
 
   // Subscribe when the callback ref publishes the committed scroll container.
   useEffect(() => {
@@ -179,7 +199,8 @@ export function useZoomAndPageInfo({
     let rafId = 0;
     let reservedEdge = 0;
     const applyFit = () => {
-      const pageWidth = pagedEditorRef.current?.getLayout()?.pages[0]?.size.w ?? 0;
+      const pageWidth =
+        pagedEditorRef.current?.getLayout()?.pages[0]?.size.w ?? 0;
       if (pageWidth <= 0) {
         rafId = requestAnimationFrame(applyFit); // layout not ready yet
         return;
@@ -207,7 +228,12 @@ export function useZoomAndPageInfo({
       cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [fitToWidth, scrollContainerEl, pagedEditorRef, setZoomWithViewportAnchor]);
+  }, [
+    fitToWidth,
+    scrollContainerEl,
+    pagedEditorRef,
+    setZoomWithViewportAnchor,
+  ]);
 
   return {
     zoom,

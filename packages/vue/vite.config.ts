@@ -1,8 +1,9 @@
-import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 import vue from "@vitejs/plugin-vue";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
+
+import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 
 // Library build for @stll/folio-vue. Vite (not tsdown) because the package
 // ships .vue SFCs that need the @vitejs/plugin-vue compiler step — the rest of
@@ -15,7 +16,11 @@ export default defineConfig({
       processor: "vue",
       include: ["src/**/*"],
       // Keep type-level conformance tests out of the published tarball.
-      exclude: ["src/**/__tests__/**", "src/**/*.test-d.ts", "src/**/*.test.ts"],
+      exclude: [
+        "src/**/__tests__/**",
+        "src/**/*.test-d.ts",
+        "src/**/*.test.ts",
+      ],
       // Pin the entry root so multi-entry builds flatten declarations to
       // dist/index.d.ts + dist/ui.d.ts (auto-detect drifts to a parent dir
       // once core's workspace types enter the graph).
@@ -46,7 +51,8 @@ export default defineConfig({
         ),
       },
       formats: ["es", "cjs"],
-      fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "cjs"}`,
+      fileName: (format, entryName) =>
+        `${entryName}.${format === "es" ? "js" : "cjs"}`,
       cssFileName: "folio-vue",
     },
     rollupOptions: {

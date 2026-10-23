@@ -6,10 +6,15 @@
 // skills bridge fixtures.
 
 import { describe, expect, test } from "bun:test";
-import { paragraphNumberingReference } from "@stll/docx-core/model";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
+import { compileMarkdownToContent } from "@stll/docx-core";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type {
   BlockContent,
   Document,
@@ -20,11 +25,10 @@ import type {
   StyleDefinitions,
   TextFormatting,
 } from "../types/document";
-import { toMarkdown } from "./index";
-import type { MarkdownOptions } from "./types";
-import { compileMarkdownToContent } from "@stll/docx-core";
-import { applyMarks } from "./renderRuns";
 import { escapeInline, inlineBreaksToHtml } from "./escape";
+import { toMarkdown } from "./index";
+import { applyMarks } from "./renderRuns";
+import type { MarkdownOptions } from "./types";
 
 const run = (text: string, formatting?: TextFormatting): Run => ({
   type: "run",
@@ -89,35 +93,46 @@ const STYLES: StyleDefinitions = {
   ],
 };
 
-const doc = (content: BlockContent[], styles: StyleDefinitions = STYLES): Document => ({
+const doc = (
+  content: BlockContent[],
+  styles: StyleDefinitions = STYLES,
+): Document => ({
   package: { document: { content }, styles },
 });
 
 const md = (content: BlockContent[], opts?: MarkdownOptions): string => {
   const document = doc(content);
   const renderings = content.flatMap((block) =>
-    block.type === "paragraph" && block.listRendering ? [block.listRendering] : [],
+    block.type === "paragraph" && block.listRendering
+      ? [block.listRendering]
+      : [],
   );
   if (renderings.length > 0) {
-    const levels = [...new Set(renderings.map(({ level }) => level))].map((level) => {
-      const rendering = renderings.find((candidate) => candidate.level === level)!;
-      const resolvedLevel = {
-        ilvl: level,
-        numFmt: rendering.isBullet ? ("bullet" as const) : ("decimal" as const),
-        lvlText: /^\d{1,9}([.)])$/u.test(rendering.marker)
-          ? `%${level + 1}${rendering.marker.slice(-1)}`
-          : rendering.marker,
-      };
-      if (rendering.markerHidden) {
-        return {
-          ilvl: resolvedLevel.ilvl,
-          numFmt: resolvedLevel.numFmt,
-          lvlText: resolvedLevel.lvlText,
-          rPr: { hidden: true },
+    const levels = [...new Set(renderings.map(({ level }) => level))].map(
+      (level) => {
+        const rendering = renderings.find(
+          (candidate) => candidate.level === level,
+        )!;
+        const resolvedLevel = {
+          ilvl: level,
+          numFmt: rendering.isBullet
+            ? ("bullet" as const)
+            : ("decimal" as const),
+          lvlText: /^\d{1,9}([.)])$/u.test(rendering.marker)
+            ? `%${level + 1}${rendering.marker.slice(-1)}`
+            : rendering.marker,
         };
-      }
-      return resolvedLevel;
-    });
+        if (rendering.markerHidden) {
+          return {
+            ilvl: resolvedLevel.ilvl,
+            numFmt: resolvedLevel.numFmt,
+            lvlText: resolvedLevel.lvlText,
+            rPr: { hidden: true },
+          };
+        }
+        return resolvedLevel;
+      },
+    );
     document.package.numbering = {
       abstractNums: [{ abstractNumId: 1, levels }],
       nums: [{ numId: 1, abstractNumId: 1 }],
@@ -126,7 +141,11 @@ const md = (content: BlockContent[], opts?: MarkdownOptions): string => {
   return toMarkdown(document, opts);
 };
 
-const list = (level: number, isBullet: boolean, marker: string): ListRendering => ({
+const list = (
+  level: number,
+  isBullet: boolean,
+  marker: string,
+): ListRendering => ({
   marker,
   level,
   numId: 1,
@@ -149,7 +168,8 @@ const parsedCharacters = (markdown: string) => {
         continue;
       }
       expect(item.type).toBe("run");
-      if (item.type !== "run") throw new Error(`Unexpected parsed inline ${item.type}`);
+      if (item.type !== "run")
+        throw new Error(`Unexpected parsed inline ${item.type}`);
       for (const part of item.content) {
         let text = "";
         if (part.type === "text") text = part.text;
@@ -170,7 +190,8 @@ const parsedCharacters = (markdown: string) => {
   };
   for (const block of compileMarkdownToContent(markdown).content) {
     expect(block.type).toBe("paragraph");
-    if (block.type !== "paragraph") throw new Error(`Unexpected parsed block ${block.type}`);
+    if (block.type !== "paragraph")
+      throw new Error(`Unexpected parsed block ${block.type}`);
     visit(block.content);
   }
   return characters;
@@ -199,7 +220,9 @@ test(
       fc.property(whitespace, whitespace, (leading, trailing) => {
         const variants = Object.values(marks);
         for (let mask = 0; mask < 2 ** variants.length; mask++) {
-          const active = variants.filter((_, index) => (mask & (1 << index)) !== 0);
+          const active = variants.filter(
+            (_, index) => (mask & (1 << index)) !== 0,
+          );
           const selected = active.map(({ mark }) => mark);
           const expectedMarks = {
             bold: selected.includes("bold") && !selected.includes("code"),
@@ -220,7 +243,8 @@ test(
             Array.from("First Second", (char) => ({ char, ...expectedMarks })),
           );
           const formatting: TextFormatting = {};
-          for (const { formatting: value } of active) Object.assign(formatting, value);
+          for (const { formatting: value } of active)
+            Object.assign(formatting, value);
           for (const linked of [false, true]) {
             const formatted: Run = {
               type: "run",
@@ -242,11 +266,18 @@ test(
             content.push(run(" Suffix"));
             const rendered = toMarkdown(doc([{ type: "paragraph", content }]));
             const read = parsedCharacters(rendered);
-            const control = parsedCharacters(`Prefix First  \n${leading}Second${trailing} Suffix`);
+            const control = parsedCharacters(
+              `Prefix First  \n${leading}Second${trailing} Suffix`,
+            );
             expect(read.map(({ char }) => char).join("")).toBe(
               control.map(({ char }) => char).join(""),
             );
-            const plainMarks = { bold: false, italic: false, strike: false, code: false };
+            const plainMarks = {
+              bold: false,
+              italic: false,
+              strike: false,
+              code: false,
+            };
             expect(read.filter(({ char }) => !/\s/u.test(char))).toEqual([
               ...Array.from("Prefix", (char) => ({ char, ...plainMarks })),
               ...Array.from("FirstSecond", (char) => ({
@@ -288,9 +319,11 @@ test(
         (lines, tail, spaces) => {
           const unfinished = tail + " ".repeat(spaces);
           const text =
-            lines.map((line) => line.core + " ".repeat(line.spaces) + line.ending).join("") +
-            unfinished;
-          const expected = lines.map((line) => line.core + "<br>").join("") + unfinished;
+            lines
+              .map((line) => line.core + " ".repeat(line.spaces) + line.ending)
+              .join("") + unfinished;
+          const expected =
+            lines.map((line) => line.core + "<br>").join("") + unfinished;
           expect(inlineBreaksToHtml(text)).toBe(expected);
           expect(inlineBreaksToHtml(expected)).toBe(expected);
         },
@@ -321,17 +354,23 @@ describe("toMarkdown — block structure", () => {
             maxLength: 12,
           }),
           fc.integer({ min: 1, max: 6 }),
-          fc.record({ bold: fc.boolean(), italic: fc.boolean(), strike: fc.boolean() }),
+          fc.record({
+            bold: fc.boolean(),
+            italic: fc.boolean(),
+            strike: fc.boolean(),
+          }),
           (whitespace, level, formatting) => {
             expect(
               md([
-                para([run(whitespace.join(""), formatting)], { styleId: `Heading${level}` }),
+                para([run(whitespace.join(""), formatting)], {
+                  styleId: `Heading${level}`,
+                }),
                 para([run("Tail.")]),
               ]),
             ).toBe("Tail.");
-            expect(md([para([run("Title")], { styleId: `Heading${level}` })])).toBe(
-              `${"#".repeat(level)} Title`,
-            );
+            expect(
+              md([para([run("Title")], { styleId: `Heading${level}` })]),
+            ).toBe(`${"#".repeat(level)} Title`);
           },
         ),
         {
@@ -349,13 +388,20 @@ describe("toMarkdown — block structure", () => {
     async () => {
       await assertProperty(
         fc.property(
-          fc.array(fc.constantFrom("line", "page", "column", "tab", "softHyphen"), {
-            minLength: 1,
-            maxLength: 8,
-          }),
+          fc.array(
+            fc.constantFrom("line", "page", "column", "tab", "softHyphen"),
+            {
+              minLength: 1,
+              maxLength: 8,
+            },
+          ),
           fc.integer({ min: 1, max: 6 }),
           fc.boolean(),
-          fc.record({ bold: fc.boolean(), italic: fc.boolean(), strike: fc.boolean() }),
+          fc.record({
+            bold: fc.boolean(),
+            italic: fc.boolean(),
+            strike: fc.boolean(),
+          }),
           (breaks, level, numbered, formatting) => {
             const content: Run["content"] = [{ type: "text", text: "First" }];
             for (const kind of breaks) {
@@ -386,12 +432,16 @@ describe("toMarkdown — block structure", () => {
                     {
                       type: "run",
                       content,
-                      formatting: code ? { fontFamily: { ascii: "Consolas" } } : formatting,
+                      formatting: code
+                        ? { fontFamily: { ascii: "Consolas" } }
+                        : formatting,
                     },
                   ],
                   {
                     styleId: `Heading${level}`,
-                    ...(numbered ? { listRendering: list(0, false, "1.") } : {}),
+                    ...(numbered
+                      ? { listRendering: list(0, false, "1.") }
+                      : {}),
                   },
                 ),
                 para([run("Tail.")]),
@@ -427,7 +477,12 @@ describe("toMarkdown — block structure", () => {
 
   test("a whitespace heading keeps its visible list label", () => {
     expect(
-      md([para([run(" ")], { styleId: "Heading1", listRendering: list(0, false, "1.") })]),
+      md([
+        para([run(" ")], {
+          styleId: "Heading1",
+          listRendering: list(0, false, "1."),
+        }),
+      ]),
     ).toBe("# 1.  ");
   });
 
@@ -471,10 +526,21 @@ describe("toMarkdown — block structure", () => {
     // `ClauseHeading1` is a custom style with no outline level and no built-in
     // name: matching the id would turn every clause into an ATX heading.
     const custom: StyleDefinitions = {
-      styles: [{ styleId: "ClauseHeading1", type: "paragraph", name: "Clause Heading" }],
+      styles: [
+        {
+          styleId: "ClauseHeading1",
+          type: "paragraph",
+          name: "Clause Heading",
+        },
+      ],
     };
     expect(
-      toMarkdown(doc([para([run("Definitions")], { styleId: "ClauseHeading1" })], custom)),
+      toMarkdown(
+        doc(
+          [para([run("Definitions")], { styleId: "ClauseHeading1" })],
+          custom,
+        ),
+      ),
     ).toBe("Definitions");
   });
 
@@ -490,7 +556,12 @@ describe("toMarkdown — block structure", () => {
       ],
     };
     expect(
-      toMarkdown(doc([para([run("Definitions")], { styleId: "ClauseHeading1" })], custom)),
+      toMarkdown(
+        doc(
+          [para([run("Definitions")], { styleId: "ClauseHeading1" })],
+          custom,
+        ),
+      ),
     ).toBe("## Definitions");
   });
 
@@ -537,7 +608,9 @@ describe("toMarkdown — block structure", () => {
     const document = doc([
       {
         type: "paragraph",
-        formatting: { numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }) },
+        formatting: {
+          numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+        },
         content: [run("first")],
       },
     ]);
@@ -556,7 +629,11 @@ describe("toMarkdown — block structure", () => {
 
   test("a stale cached projection without paragraph or style numbering exports as plain prose", () => {
     const document = doc([
-      { type: "paragraph", content: [run("text")], listRendering: list(0, false, "1.") },
+      {
+        type: "paragraph",
+        content: [run("text")],
+        listRendering: list(0, false, "1."),
+      },
     ]);
     document.package.numbering = {
       abstractNums: [
@@ -574,7 +651,13 @@ describe("toMarkdown — block structure", () => {
   test("a package-free paragraph carrying only its list projection exports as a list", () => {
     expect(
       toMarkdown(
-        doc([{ type: "paragraph", content: [run("text")], listRendering: list(0, false, "1.") }]),
+        doc([
+          {
+            type: "paragraph",
+            content: [run("text")],
+            listRendering: list(0, false, "1."),
+          },
+        ]),
       ),
     ).toBe("1. text");
   });
@@ -592,11 +675,20 @@ describe("toMarkdown — block structure", () => {
       levelNumFmts: Array.from({ length: level + 1 }, () => "decimal" as const),
     });
     const out = md([
-      para([run("Scope")], { styleId: "Heading2", listRendering: numbered(0, "%1.") }),
-      para([run("Definitions")], { styleId: "Heading3", listRendering: numbered(1, "%1.%2.") }),
+      para([run("Scope")], {
+        styleId: "Heading2",
+        listRendering: numbered(0, "%1."),
+      }),
+      para([run("Definitions")], {
+        styleId: "Heading3",
+        listRendering: numbered(1, "%1.%2."),
+      }),
       para([run("an item")], { listRendering: numbered(1, "%1.%2.") }),
       para([run("another")], { listRendering: numbered(1, "%1.%2.") }),
-      para([run("Payment")], { styleId: "Heading2", listRendering: numbered(0, "%1.") }),
+      para([run("Payment")], {
+        styleId: "Heading2",
+        listRendering: numbered(0, "%1."),
+      }),
     ]);
     // Headings and custom-label prose each occupy their own Markdown block.
     // A single newline between custom labels merges two authored paragraphs.
@@ -606,19 +698,24 @@ describe("toMarkdown — block structure", () => {
     const imported = compileMarkdownToContent(out).content;
     expect(imported).toHaveLength(5);
     const prose = imported.filter(
-      (block) => block.type === "paragraph" && block.formatting?.outlineLevel === undefined,
+      (block) =>
+        block.type === "paragraph" &&
+        block.formatting?.outlineLevel === undefined,
     );
     expect(
       prose.map((block) => {
         expect(block.type).toBe("paragraph");
-        if (block.type !== "paragraph") throw new Error(`Unexpected block ${block.type}`);
+        if (block.type !== "paragraph")
+          throw new Error(`Unexpected block ${block.type}`);
         expect(block.listRendering).toBeUndefined();
         return {
           kind: block.type,
           text: block.content
             .flatMap((item) =>
               item.type === "run"
-                ? item.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+                ? item.content.flatMap((part) =>
+                    part.type === "text" ? [part.text] : [],
+                  )
                 : [],
             )
             .join(""),
@@ -633,15 +730,25 @@ describe("toMarkdown — block structure", () => {
   });
 
   test("a numbered heading whose level hides its marker (w:vanish) stays unnumbered", () => {
-    const hidden: ListRendering = { ...list(0, false, "%1."), markerHidden: true };
-    expect(md([para([run("Scope")], { styleId: "Heading2", listRendering: hidden })])).toBe(
-      "## Scope",
-    );
+    const hidden: ListRendering = {
+      ...list(0, false, "%1."),
+      markerHidden: true,
+    };
+    expect(
+      md([
+        para([run("Scope")], { styleId: "Heading2", listRendering: hidden }),
+      ]),
+    ).toBe("## Scope");
   });
 
   test("a bulleted heading shows its glyph", () => {
     expect(
-      md([para([run("Note")], { styleId: "Heading2", listRendering: list(0, true, "•") })]),
+      md([
+        para([run("Note")], {
+          styleId: "Heading2",
+          listRendering: list(0, true, "•"),
+        }),
+      ]),
     ).toBe("## • Note");
   });
 });
@@ -650,11 +757,15 @@ describe("toMarkdown — inline marks", () => {
   test("bold, italic, and combined", () => {
     expect(md([para([run("x", { bold: true })])])).toBe("**x**");
     expect(md([para([run("x", { italic: true })])])).toBe("*x*");
-    expect(md([para([run("x", { bold: true, italic: true })])])).toBe("***x***");
+    expect(md([para([run("x", { bold: true, italic: true })])])).toBe(
+      "***x***",
+    );
   });
 
   test("hidden runs (w:vanish) are dropped", () => {
-    expect(md([para([run("Keep"), run("Hidden", { hidden: true })])])).toBe("Keep");
+    expect(md([para([run("Keep"), run("Hidden", { hidden: true })])])).toBe(
+      "Keep",
+    );
   });
 
   test("strikethrough", () => {
@@ -662,7 +773,9 @@ describe("toMarkdown — inline marks", () => {
   });
 
   test("inline code is inferred from a monospace font", () => {
-    expect(md([para([run("code()", { fontFamily: { ascii: "Consolas" } })])])).toBe("`code()`");
+    expect(
+      md([para([run("code()", { fontFamily: { ascii: "Consolas" } })])]),
+    ).toBe("`code()`");
   });
 
   test("inline code with backticks uses a longer fence", () => {
@@ -849,7 +962,9 @@ describe("toMarkdown — clean preset for skills", () => {
       {
         package: {
           document: { content: [{ type: "paragraph", content }] },
-          footnotes: [{ type: "footnote", id: 1, content: [para([run("note")])] }],
+          footnotes: [
+            { type: "footnote", id: 1, content: [para([run("note")])] },
+          ],
         },
       },
       clean,
@@ -865,14 +980,19 @@ describe("toMarkdown — clean preset for skills", () => {
     const out = toMarkdown({
       package: {
         document: { content: [{ type: "paragraph", content }] },
-        footnotes: [{ type: "footnote", id: 1, content: [para([run("note")])] }],
+        footnotes: [
+          { type: "footnote", id: 1, content: [para([run("note")])] },
+        ],
       },
     });
     expect(out).toBe("text[^1]\n\n[^1]: note");
   });
 
   test("a point comment (commentReference) is preserved in sidecar mode", () => {
-    const content: Paragraph["content"] = [run("text"), { type: "commentReference", id: 5 }];
+    const content: Paragraph["content"] = [
+      run("text"),
+      { type: "commentReference", id: 5 },
+    ];
     const out = toMarkdown(
       {
         package: {
@@ -899,7 +1019,10 @@ describe("toMarkdown — clean preset for skills", () => {
         },
       ],
     };
-    const content: Paragraph["content"] = [run("x"), { type: "commentReference", id: 7 }];
+    const content: Paragraph["content"] = [
+      run("x"),
+      { type: "commentReference", id: 7 },
+    ];
     const out = toMarkdown(
       {
         package: {
@@ -954,7 +1077,11 @@ describe("toMarkdown — clean preset for skills", () => {
       type: "paragraph",
       content: [
         { type: "bookmarkStart", id: 1, name: "item" },
-        { type: "deletion", info: { id: 2, author: "A" }, content: [run("Gone")] },
+        {
+          type: "deletion",
+          info: { id: 2, author: "A" },
+          content: [run("Gone")],
+        },
         { type: "bookmarkEnd", id: 1 },
       ],
       formatting: { styleId: "Heading1" },
@@ -972,7 +1099,13 @@ describe("toMarkdown — clean preset for skills", () => {
         {
           type: "insertion",
           info: { id: 3, author: "A" },
-          content: [{ type: "deletion", info: { id: 4, author: "B" }, content: [run("Gone")] }],
+          content: [
+            {
+              type: "deletion",
+              info: { id: 4, author: "B" },
+              content: [run("Gone")],
+            },
+          ],
         },
       ],
       formatting: { styleId: "Heading1" },
@@ -1007,7 +1140,10 @@ describe("toMarkdown — clean preset for skills", () => {
         {
           type: "tableRow",
           ...(pending && {
-            structuralChange: { type: "tableRowInsertion", info: { id: 5, author: "A" } },
+            structuralChange: {
+              type: "tableRowInsertion",
+              info: { id: 5, author: "A" },
+            },
           }),
           cells: [{ type: "tableCell", content: [para([run("X")])] }],
         },
@@ -1019,9 +1155,17 @@ describe("toMarkdown — clean preset for skills", () => {
     // Words before an emptied paragraph stop there; the emptied one goes.
     const emptied: Paragraph = {
       type: "paragraph",
-      content: [{ type: "deletion", info: { id: 2, author: "A" }, content: [run("Gone")] }],
+      content: [
+        {
+          type: "deletion",
+          info: { id: 2, author: "A" },
+          content: [run("Gone")],
+        },
+      ],
       pPrMark: delMark(),
     };
-    expect(md([para1, emptied, table(false)], clean)).toBe("Lead\n\n| X |\n| --- |");
+    expect(md([para1, emptied, table(false)], clean)).toBe(
+      "Lead\n\n| X |\n| --- |",
+    );
   });
 });

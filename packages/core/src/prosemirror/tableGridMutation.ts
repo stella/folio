@@ -45,12 +45,22 @@ export const removeTableRow = (
     const colspan = Math.max(1, Number(cell.attrs["colspan"]) || 1);
     const rowspan = Math.max(1, Number(cell.attrs["rowspan"]) || 1);
     if (row > 0 && position === map.map[index - map.width]) {
-      tr.setNodeMarkup(tr.mapping.slice(mapFrom).map(tableStart + position), null, {
-        ...cell.attrs,
-        rowspan: rowspan - 1,
-      });
-    } else if (row + 1 < map.height && position === map.map[index + map.width]) {
-      const moved = cell.type.create({ ...cell.attrs, rowspan: rowspan - 1 }, cell.content);
+      tr.setNodeMarkup(
+        tr.mapping.slice(mapFrom).map(tableStart + position),
+        null,
+        {
+          ...cell.attrs,
+          rowspan: rowspan - 1,
+        },
+      );
+    } else if (
+      row + 1 < map.height &&
+      position === map.map[index + map.width]
+    ) {
+      const moved = cell.type.create(
+        { ...cell.attrs, rowspan: rowspan - 1 },
+        cell.content,
+      );
       const below = map.positionAt(row + 1, column, table);
       tr.insert(tr.mapping.slice(mapFrom).map(tableStart + below), moved);
     }
@@ -101,7 +111,11 @@ export const markRowsEmptiedInBatch = ({
   if (!table || table.type.spec["tableRole"] !== "table") return;
   table.forEach((row, offset, index) => {
     if (row.childCount === 0 && previousTable.child(index).childCount > 0) {
-      markRowEmptiedInBatch({ tr, rowPosition: tablePosition + 1 + offset, emptied });
+      markRowEmptiedInBatch({
+        tr,
+        rowPosition: tablePosition + 1 + offset,
+        emptied,
+      });
     }
   });
 };
@@ -112,13 +126,23 @@ type RemoveEmptyRowsOptions = {
   shouldRemove: (row: PMNode) => boolean;
 };
 
-const removeEmptyRows = ({ tr, tablePosition, shouldRemove }: RemoveEmptyRowsOptions): void => {
+const removeEmptyRows = ({
+  tr,
+  tablePosition,
+  shouldRemove,
+}: RemoveEmptyRowsOptions): void => {
   for (;;) {
     const table = tr.doc.nodeAt(tablePosition);
-    if (!table || table.type.spec["tableRole"] !== "table" || table.childCount < 2) return;
+    if (
+      !table ||
+      table.type.spec["tableRole"] !== "table" ||
+      table.childCount < 2
+    )
+      return;
     let emptyRow = -1;
     table.forEach((row, _offset, index) => {
-      if (emptyRow === -1 && row.childCount === 0 && shouldRemove(row)) emptyRow = index;
+      if (emptyRow === -1 && row.childCount === 0 && shouldRemove(row))
+        emptyRow = index;
     });
     if (emptyRow === -1) return;
     removeTableRow(
@@ -134,7 +158,8 @@ const removeBatchRows = (tr: Transaction, tablePosition: number): void => {
   removeEmptyRows({
     tr,
     tablePosition,
-    shouldRemove: (row) => row.attrs["_batchRowCleanup"] === ROW_CLEANUP_PENDING,
+    shouldRemove: (row) =>
+      row.attrs["_batchRowCleanup"] === ROW_CLEANUP_PENDING,
   });
   tr.doc.nodeAt(tablePosition)?.forEach((row, offset) => {
     if (row.attrs["_batchRowCleanup"] === ROW_CLEANUP_PENDING) {
@@ -157,7 +182,11 @@ export const removeRowsWithoutCellsAfterBatch = (
   for (const position of tables.toReversed()) removeBatchRows(tr, position);
 };
 
-type RemoveRowsWithoutCellsInRangeOptions = { tr: Transaction; from: number; to: number };
+type RemoveRowsWithoutCellsInRangeOptions = {
+  tr: Transaction;
+  from: number;
+  to: number;
+};
 
 /** Close marked rows before their owning cell is captured into a continuation payload. */
 export const removeRowsWithoutCellsInRange = ({
@@ -167,14 +196,18 @@ export const removeRowsWithoutCellsInRange = ({
 }: RemoveRowsWithoutCellsInRangeOptions): void => {
   const tables: number[] = [];
   tr.doc.nodesBetween(from, to, (node, position) => {
-    if (position >= from && node.type.spec["tableRole"] === "table") tables.push(position);
+    if (position >= from && node.type.spec["tableRole"] === "table")
+      tables.push(position);
     return !node.isTextblock;
   });
   for (const position of tables.toReversed()) removeBatchRows(tr, position);
 };
 
 /** Close all cell-less rows after an immediate structural edit. */
-export const removeRowsWithoutCells = (tr: Transaction, tablePosition: number): void => {
+export const removeRowsWithoutCells = (
+  tr: Transaction,
+  tablePosition: number,
+): void => {
   removeEmptyRows({ tr, tablePosition, shouldRemove: () => true });
 };
 
@@ -254,7 +287,8 @@ export const reconcileTableGridAfterColumnInsertion = ({
   const previousWidths = expectTableAttrs(previousTable).columnWidths;
   const neighbourWidth = insertedColumnWidth(previousTable, insertedColumn);
   const columnWidths =
-    previousWidths?.length === previousColumnCount && neighbourWidth !== undefined
+    previousWidths?.length === previousColumnCount &&
+    neighbourWidth !== undefined
       ? previousWidths.toSpliced(
           insertedColumn,
           0,
@@ -265,13 +299,18 @@ export const reconcileTableGridAfterColumnInsertion = ({
 };
 
 /** The width a column inserted at `insertedColumn` takes: its left neighbour's, when the grid is known. */
-const insertedColumnWidth = (table: PMNode, insertedColumn: number): number | undefined => {
+const insertedColumnWidth = (
+  table: PMNode,
+  insertedColumn: number,
+): number | undefined => {
   const columnCount = TableMap.get(table).width;
   const widths = expectTableAttrs(table).columnWidths;
   if (widths?.length !== columnCount) {
     return undefined;
   }
-  return widths[Math.max(0, Math.min(insertedColumn, columnCount) - 1)] ?? widths[0];
+  return (
+    widths[Math.max(0, Math.min(insertedColumn, columnCount) - 1)] ?? widths[0]
+  );
 };
 
 /**
@@ -280,7 +319,11 @@ const insertedColumnWidth = (table: PMNode, insertedColumn: number): number | un
  * when the grid is unknown, so a merged cell must not keep its old one. A
  * percentage width, and the authored `w:tcW` kept beside it, stay as they are.
  */
-const resizeCellWidth = (tr: Transaction, position: number, delta: number): void => {
+const resizeCellWidth = (
+  tr: Transaction,
+  position: number,
+  delta: number,
+): void => {
   const cell = tr.doc.nodeAt(position);
   const width: unknown = cell?.attrs["width"];
   const widthType: unknown = cell?.attrs["widthType"];
@@ -292,7 +335,10 @@ const resizeCellWidth = (tr: Transaction, position: number, delta: number): void
   ) {
     return;
   }
-  tr.setNodeMarkup(position, null, { ...cell.attrs, width: Math.max(1, width + delta) });
+  tr.setNodeMarkup(position, null, {
+    ...cell.attrs,
+    width: Math.max(1, width + delta),
+  });
 };
 
 type SetTableGridOptions = {
@@ -320,7 +366,8 @@ const setTableGrid = ({
     tablePosition,
     undefined,
     mergeTableAttrs(table, {
-      columnWidths: columnWidths?.length === columnCount ? columnWidths : undefined,
+      columnWidths:
+        columnWidths?.length === columnCount ? columnWidths : undefined,
       _originalFormatting: originalFormatting,
     }),
   );
@@ -362,7 +409,10 @@ export const insertTableColumn = ({
     const index = row * map.width + column;
     const position = map.map[index];
     const straddling =
-      column > 0 && column < map.width && position !== undefined && map.map[index - 1] === position
+      column > 0 &&
+      column < map.width &&
+      position !== undefined &&
+      map.map[index - 1] === position
         ? table.nodeAt(position)
         : null;
     if (straddling && position !== undefined) {
@@ -372,16 +422,21 @@ export const insertTableColumn = ({
       tr.setNodeMarkup(mapped, null, {
         ...straddling.attrs,
         colspan: (Number(straddling.attrs["colspan"]) || 1) + 1,
-        colwidth: Array.isArray(colwidth) ? colwidth.toSpliced(offset, 0, 0) : colwidth,
+        colwidth: Array.isArray(colwidth)
+          ? colwidth.toSpliced(offset, 0, 0)
+          : colwidth,
       });
       resizeCellWidth(tr, mapped, addedWidth);
       row += (Number(straddling.attrs["rowspan"]) || 1) - 1;
       continue;
     }
     const templatePosition = map.map[row * map.width + templateColumn];
-    const template = templatePosition === undefined ? null : table.nodeAt(templatePosition);
+    const template =
+      templatePosition === undefined ? null : table.nodeAt(templatePosition);
     tr.insert(
-      tr.mapping.slice(mapFrom).map(tableStart + map.positionAt(row, column, table)),
+      tr.mapping
+        .slice(mapFrom)
+        .map(tableStart + map.positionAt(row, column, table)),
       createCell(template),
     );
   }
@@ -411,7 +466,8 @@ export const removeTableColumns = (
     }
     const map = TableMap.get(table);
     const widths = expectTableAttrs(table).columnWidths;
-    const removedWidth = widths?.length === map.width ? (widths[column] ?? 0) : 0;
+    const removedWidth =
+      widths?.length === map.width ? (widths[column] ?? 0) : 0;
     // The cells merged across the column narrow rather than go.
     const narrowed = new Set<number>();
     for (let row = 0; row < map.height; row++) {

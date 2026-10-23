@@ -8,13 +8,16 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  findNormalizationWarningViolations,
   NORMALIZATION_MODULE_SUFFIX,
   type NormalizationModule,
-  findNormalizationWarningViolations,
 } from "./lib/normalization-warnings";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
-const SCANNED_DIRECTORIES = ["packages/core/src/docx", "packages/core/src/style-sets"];
+const SCANNED_DIRECTORIES = [
+  "packages/core/src/docx",
+  "packages/core/src/style-sets",
+];
 
 const loadModules = async (): Promise<NormalizationModule[]> => {
   const modules: NormalizationModule[] = [];

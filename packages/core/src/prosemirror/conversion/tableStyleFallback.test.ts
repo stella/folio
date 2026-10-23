@@ -4,7 +4,8 @@ import { parseStyleDefinitions } from "../../docx/styleParser";
 import type { Document, Table } from "../../types/document";
 import { toProseDoc } from "./toProseDoc";
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const STYLES_XML = `<w:styles ${W}>
   <w:style w:type="table" w:default="1" w:styleId="PlainTable">
@@ -36,7 +37,9 @@ function tableWithStyle(styleId: string | undefined): Table {
     rows: [
       {
         type: "tableRow",
-        cells: [{ type: "tableCell", content: [{ type: "paragraph", content: [] }] }],
+        cells: [
+          { type: "tableCell", content: [{ type: "paragraph", content: [] }] },
+        ],
       },
     ],
   };
@@ -47,7 +50,10 @@ function tableAttrs(styleId: string | undefined): Record<string, unknown> {
   const document: Document = {
     package: { styles, document: { content: [tableWithStyle(styleId)] } },
   };
-  return (toProseDoc(document, { styles }).firstChild?.attrs ?? {}) as Record<string, unknown>;
+  return (toProseDoc(document, { styles }).firstChild?.attrs ?? {}) as Record<
+    string,
+    unknown
+  >;
 }
 
 describe("w:tblStyle fallback to the default table style", () => {
@@ -62,12 +68,20 @@ describe("w:tblStyle fallback to the default table style", () => {
 
   test("a w:tblStyle naming an undefined style takes the default table style", () => {
     const attrs = tableAttrs("NoSuchStyle");
-    expect(attrs["_resolvedCellMargins"]).toEqual({ top: 0, left: 100, bottom: 0, right: 100 });
+    expect(attrs["_resolvedCellMargins"]).toEqual({
+      top: 0,
+      left: 100,
+      bottom: 0,
+      right: 100,
+    });
     // The authored reference is kept for the save.
     expect(attrs["styleId"]).toBe("NoSuchStyle");
   });
 
   test("a w:tblStyle naming a defined style does not consult the default", () => {
-    expect(tableAttrs("Wide")["_resolvedCellMargins"]).toEqual({ left: 400, right: 400 });
+    expect(tableAttrs("Wide")["_resolvedCellMargins"]).toEqual({
+      left: 400,
+      right: 400,
+    });
   });
 });

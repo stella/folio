@@ -7,7 +7,11 @@ import { sliceText } from "@stll/folio-core/utils/sliceText";
  * failures as `error:` / `hint:` lines on stderr.
  */
 
-import type { FolioCliError, FolioCliErrorCode, PublicErrorDetails } from "./errors";
+import type {
+  FolioCliError,
+  FolioCliErrorCode,
+  PublicErrorDetails,
+} from "./errors";
 
 export const OUTPUT_FORMATS = ["json", "text"] as const;
 
@@ -23,11 +27,20 @@ export type FailureBody = {
   details?: PublicErrorDetails;
 };
 
-export type Envelope = { ok: true; data: unknown } | { ok: false; error: FailureBody };
+export type Envelope =
+  { ok: true; data: unknown } | { ok: false; error: FailureBody };
 
-export const successEnvelope = (data: unknown): Envelope => ({ ok: true, data });
+export const successEnvelope = (data: unknown): Envelope => ({
+  ok: true,
+  data,
+});
 
-export const failureEnvelope = ({ code, message, hint, details }: FolioCliError): Envelope => ({
+export const failureEnvelope = ({
+  code,
+  message,
+  hint,
+  details,
+}: FolioCliError): Envelope => ({
   ok: false,
   error: {
     code,
@@ -40,10 +53,13 @@ export const failureEnvelope = ({ code, message, hint, details }: FolioCliError)
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const text = (value: unknown): string => (typeof value === "string" ? value : "");
+const text = (value: unknown): string =>
+  typeof value === "string" ? value : "";
 
 const renderBlocks = (blocks: readonly unknown[]): string[] =>
-  blocks.filter(isRecord).map((block) => `[${text(block["blockId"])}] ${text(block["text"])}`);
+  blocks
+    .filter(isRecord)
+    .map((block) => `[${text(block["blockId"])}] ${text(block["text"])}`);
 
 const renderComments = (comments: readonly unknown[]): string[] => {
   const lines: string[] = [];
@@ -52,9 +68,13 @@ const renderComments = (comments: readonly unknown[]): string[] => {
     lines.push(
       `#${text(comment["id"])} ${text(comment["author"])}${status}: ${text(comment["text"])}`,
     );
-    const replies: unknown[] = Array.isArray(comment["replies"]) ? comment["replies"] : [];
+    const replies: unknown[] = Array.isArray(comment["replies"])
+      ? comment["replies"]
+      : [];
     for (const reply of replies.filter(isRecord)) {
-      lines.push(`  #${text(reply["id"])} ${text(reply["author"])}: ${text(reply["text"])}`);
+      lines.push(
+        `  #${text(reply["id"])} ${text(reply["author"])}: ${text(reply["text"])}`,
+      );
     }
   }
   return lines;
@@ -71,22 +91,40 @@ const renderChanges = (changes: readonly unknown[]): string[] =>
 const renderMatches = (matches: readonly unknown[]): string[] =>
   matches
     .filter(isRecord)
-    .map((match) => `[${text(match["blockId"]) || "story"}] ${text(match["context"])}`);
+    .map(
+      (match) =>
+        `[${text(match["blockId"]) || "story"}] ${text(match["context"])}`,
+    );
 
 /** Readable lines for a tool result, or `null` to fall back to pretty JSON. */
 const renderResult = (tool: string, result: unknown): string[] | null => {
-  if (tool === "read_document" && isRecord(result) && Array.isArray(result["blocks"])) {
+  if (
+    tool === "read_document" &&
+    isRecord(result) &&
+    Array.isArray(result["blocks"])
+  ) {
     const lines = renderBlocks(result["blocks"]);
     if (typeof result["nextCursor"] === "string") {
       lines.push(`(more: --cursor ${result["nextCursor"]})`);
     }
     return lines;
   }
-  if (tool === "read_section" && isRecord(result) && Array.isArray(result["blocks"])) {
+  if (
+    tool === "read_section" &&
+    isRecord(result) &&
+    Array.isArray(result["blocks"])
+  ) {
     return renderBlocks(result["blocks"]);
   }
-  if (tool === "find_text" && isRecord(result) && Array.isArray(result["matches"])) {
-    return [...renderMatches(result["matches"]), `(${String(result["totalMatches"])} matches)`];
+  if (
+    tool === "find_text" &&
+    isRecord(result) &&
+    Array.isArray(result["matches"])
+  ) {
+    return [
+      ...renderMatches(result["matches"]),
+      `(${String(result["totalMatches"])} matches)`,
+    ];
   }
   if (tool === "read_comments" && Array.isArray(result)) {
     return renderComments(result);
@@ -94,7 +132,11 @@ const renderResult = (tool: string, result: unknown): string[] | null => {
   if (tool === "read_changes" && Array.isArray(result)) {
     return renderChanges(result);
   }
-  if (tool === "compare_documents" && isRecord(result) && typeof result["text"] === "string") {
+  if (
+    tool === "compare_documents" &&
+    isRecord(result) &&
+    typeof result["text"] === "string"
+  ) {
     return [result["text"]];
   }
   return null;
@@ -105,8 +147,13 @@ const shortVersion = (value: unknown): string =>
 
 /** One line per committed or replayed transaction. */
 const renderReceipt = (receipt: Record<string, unknown>): string => {
-  const parts = Array.isArray(receipt["changedParts"]) ? receipt["changedParts"].length : 0;
-  const backup = typeof receipt["backup"] === "string" ? `\nbackup: ${receipt["backup"]}` : "";
+  const parts = Array.isArray(receipt["changedParts"])
+    ? receipt["changedParts"].length
+    : 0;
+  const backup =
+    typeof receipt["backup"] === "string"
+      ? `\nbackup: ${receipt["backup"]}`
+      : "";
   return (
     `${text(receipt["status"])} ${text(receipt["txId"])}: ${text(receipt["path"])} ` +
     `${shortVersion(receipt["fromVersion"])} -> ${shortVersion(receipt["fileVersion"])} ` +
@@ -152,6 +199,7 @@ export const renderEnvelope = ({
   if (envelope.ok) {
     return { stdout: renderData(tool, envelope.data), stderr: "" };
   }
-  const hint = envelope.error.hint === undefined ? "" : `hint: ${envelope.error.hint}\n`;
+  const hint =
+    envelope.error.hint === undefined ? "" : `hint: ${envelope.error.hint}\n`;
   return { stdout: "", stderr: `error: ${envelope.error.message}\n${hint}` };
 };

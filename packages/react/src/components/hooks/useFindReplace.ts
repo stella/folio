@@ -13,32 +13,41 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
-import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import type { Layout } from "@stll/folio-core/layout-engine/types";
 import { getReviewViewReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
 import type {
   DisplayMode,
   EditorReadOnlyReason,
 } from "@stll/folio-core/managers/EditorModeManager";
+import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
 import { findInDisplayedDocument } from "@stll/folio-core/prosemirror/findReplaceSelection";
-import { replaceEligibility } from "@stll/folio-core/utils/findReplace";
-import type { FindSearchContext, ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
-import {
-  createFindSearchKey,
-  createFindQueryKey,
-  sameFindSearchKey,
-  sameFindBodyVersion,
-} from "@stll/folio-core/utils/findSearchKey";
 import type { Document } from "@stll/folio-core/types/document";
 import {
   createFindMatchView,
   getRenderedSearchStories,
 } from "@stll/folio-core/utils/findMatchView";
-import type { Layout } from "@stll/folio-core/layout-engine/types";
-import type { FindMatch, FindOptions, FindResult } from "../dialogs/findReplaceUtils";
+import { replaceEligibility } from "@stll/folio-core/utils/findReplace";
+import type {
+  FindSearchContext,
+  ReplaceAllSummary,
+} from "@stll/folio-core/utils/findReplace";
+import {
+  createFindQueryKey,
+  createFindSearchKey,
+  sameFindBodyVersion,
+  sameFindSearchKey,
+} from "@stll/folio-core/utils/findSearchKey";
+
+import type {
+  FindMatch,
+  FindOptions,
+  FindResult,
+} from "../dialogs/findReplaceUtils";
 import type { UseFindReplaceReturn as FindReplaceStateReturn } from "../dialogs/useFindReplace";
 
 // ============================================================================
@@ -101,7 +110,10 @@ type PublishedFindResult =
 
 type ReplacementGate =
   | { status: "ready" }
-  | { status: "awaiting-document"; source: ReturnType<typeof createFindSearchKey> };
+  | {
+      status: "awaiting-document";
+      source: ReturnType<typeof createFindSearchKey>;
+    };
 
 // ============================================================================
 // HOOK
@@ -123,7 +135,9 @@ export function useFindReplace({
   onReadonlyEditAttempt,
 }: UseFindReplaceParams): UseFindReplaceReturn {
   const replacementRefusal =
-    getReviewViewReadOnlyReason(displayMode ?? "all-markup") ?? readOnlyReason ?? null;
+    getReviewViewReadOnlyReason(displayMode ?? "all-markup") ??
+    readOnlyReason ??
+    null;
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
   const [publishedResult, setPublishedResult] = useState<PublishedFindResult>({
     status: "cleared",
@@ -143,7 +157,11 @@ export function useFindReplace({
     if (result) {
       const source = searchSource.current;
       if (!source) panic("Find result published without a search key");
-      setPublishedResult({ status: "ready", queryKey: source.intentKey, result });
+      setPublishedResult({
+        status: "ready",
+        queryKey: source.intentKey,
+        result,
+      });
     } else setPublishedResult({ status: "cleared" });
     resultCallback.current?.(result);
   }, []);
@@ -193,9 +211,12 @@ export function useFindReplace({
     [selectMatch, manager],
   );
 
-  const handleQueryChange = useCallback((text: string, options: FindOptions) => {
-    query.current = { text, options };
-  }, []);
+  const handleQueryChange = useCallback(
+    (text: string, options: FindOptions) => {
+      query.current = { text, options };
+    },
+    [],
+  );
 
   const handleFind = useCallback(
     (searchText: string, options: FindOptions): FindResult | null => {
@@ -214,7 +235,12 @@ export function useFindReplace({
       const context = getLayout
         ? { renderedStories: getRenderedSearchStories(getLayout()) }
         : undefined;
-      const matches = findDisplayedMatches(currentDocument, searchText, effectiveOptions, context);
+      const matches = findDisplayedMatches(
+        currentDocument,
+        searchText,
+        effectiveOptions,
+        context,
+      );
       if (matches === null) {
         // A review view reads its body from the mounted editor; keep the query
         // so the body-view refresh repeats this search once the editor exists.
@@ -230,9 +256,14 @@ export function useFindReplace({
         ...(context && { context }),
       });
       const refresh = searchSource.current?.query === nextSource.query;
-      const currentIndex = refresh ? (manager.getResult()?.currentIndex ?? 0) : 0;
+      const currentIndex = refresh
+        ? (manager.getResult()?.currentIndex ?? 0)
+        : 0;
       query.current = { text: searchText, options };
-      searchSource.current = { ...nextSource, intentKey: createFindQueryKey(searchText, options) };
+      searchSource.current = {
+        ...nextSource,
+        intentKey: createFindQueryKey(searchText, options),
+      };
       const result = manager.setMatches(matches, currentIndex);
       matchView.current?.destroy();
       const container = containerRef.current;
@@ -322,14 +353,21 @@ export function useFindReplace({
         : undefined;
       const currentSource = createFindSearchKey({
         query: active.text,
-        options: { ...active.options, includeComments: true, ...(displayMode && { displayMode }) },
+        options: {
+          ...active.options,
+          includeComments: true,
+          ...(displayMode && { displayMode }),
+        },
         document: currentDocument,
         ...(bodyDoc && { bodyVersion: bodyDoc }),
         ...(context && { context }),
       });
       switch (replacementGate.current.status) {
         case "awaiting-document":
-          if (sameFindBodyVersion(replacementGate.current.source, currentSource)) return true;
+          if (
+            sameFindBodyVersion(replacementGate.current.source, currentSource)
+          )
+            return true;
           replacementGate.current = { status: "ready" };
           break;
         case "ready":
@@ -366,7 +404,8 @@ export function useFindReplace({
       if (refreshChangedSource(currentDocument)) return false;
       const result = manager.getResult();
       const match = result?.matches.at(result.currentIndex);
-      if (!match || replaceEligibility(match).status === "blocked") return false;
+      if (!match || replaceEligibility(match).status === "blocked")
+        return false;
       if (match.text === replaceText) return true;
 
       const newDoc = manager.replaceCurrent(currentDocument, replaceText);
@@ -381,7 +420,11 @@ export function useFindReplace({
   );
 
   const handleReplaceAll = useCallback(
-    (searchText: string, replaceText: string, options: FindOptions): ReplaceAllSummary => {
+    (
+      searchText: string,
+      replaceText: string,
+      options: FindOptions,
+    ): ReplaceAllSummary => {
       const currentDocument = readDocumentState();
       if (!currentDocument || !searchText.trim()) {
         return { replacedCount: 0, skippedCount: 0 };
@@ -399,15 +442,25 @@ export function useFindReplace({
           includeComments: true,
           ...(displayMode && { displayMode }),
         },
-        getLayout ? { renderedStories: getRenderedSearchStories(getLayout()) } : undefined,
+        getLayout
+          ? { renderedStories: getRenderedSearchStories(getLayout()) }
+          : undefined,
       );
-      if (matches === null) return { replacedCount: 0, skippedCount: previousCount };
+      if (matches === null)
+        return { replacedCount: 0, skippedCount: previousCount };
       const mutationMatches = matches.filter(
-        (match) => replaceEligibility(match).status === "blocked" || match.text !== replaceText,
+        (match) =>
+          replaceEligibility(match).status === "blocked" ||
+          match.text !== replaceText,
       );
       const unchangedCount = matches.length - mutationMatches.length;
-      if (mutationMatches.length === 0) return { replacedCount: unchangedCount, skippedCount: 0 };
-      const outcome = manager.replaceAll(currentDocument, mutationMatches, replaceText);
+      if (mutationMatches.length === 0)
+        return { replacedCount: unchangedCount, skippedCount: 0 };
+      const outcome = manager.replaceAll(
+        currentDocument,
+        mutationMatches,
+        replaceText,
+      );
       if (!outcome) {
         return { replacedCount: 0, skippedCount: 0 };
       }
@@ -439,11 +492,15 @@ export function useFindReplace({
   }, [replacementRefusal, onReadonlyEditAttempt]);
   const refuseReplaceAll = useCallback((): ReplaceAllSummary => {
     refuseReplace();
-    return { replacedCount: 0, skippedCount: manager.getResult()?.totalCount ?? 0 };
+    return {
+      replacedCount: 0,
+      skippedCount: manager.getResult()?.totalCount ?? 0,
+    };
   }, [refuseReplace, manager]);
 
   return {
-    currentResult: publishedResult.status === "ready" ? publishedResult.result : null,
+    currentResult:
+      publishedResult.status === "ready" ? publishedResult.result : null,
     currentSearch:
       publishedResult.status === "ready"
         ? { queryKey: publishedResult.queryKey, result: publishedResult.result }

@@ -1,8 +1,9 @@
 /** Preserve producer settings while updating the document-wide header/footer switch. */
 import { panic } from "better-result";
 
-import { spliceXml } from "./selectiveXmlPatch";
 import { SETTINGS_CHILDREN } from "@stll/docx-core/schema";
+
+import { spliceXml } from "./selectiveXmlPatch";
 import {
   getChildElements,
   getLocalName,
@@ -16,7 +17,8 @@ const XML_TOKEN =
 const SETTINGS_CHILD_ORDINALS: ReadonlyMap<string, number> = new Map(
   SETTINGS_CHILDREN.map((name, index) => [name, index] as const),
 );
-const EVEN_AND_ODD_HEADERS_ORDER = SETTINGS_CHILD_ORDINALS.get("evenAndOddHeaders");
+const EVEN_AND_ODD_HEADERS_ORDER =
+  SETTINGS_CHILD_ORDINALS.get("evenAndOddHeaders");
 
 /** Null means the source is malformed or outside the supported namespace profiles. */
 export const updateEvenAndOddHeaders = (
@@ -60,7 +62,11 @@ export const updateEvenAndOddHeaders = (
           getLocalName(child.name) === "evenAndOddHeaders" &&
           WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
         ) {
-          spans.push({ start: childStart, end: token.index + tag.length, newXml: "" });
+          spans.push({
+            start: childStart,
+            end: token.index + tag.length,
+            newXml: "",
+          });
         }
         childStart = -1;
       }
@@ -77,7 +83,8 @@ export const updateEvenAndOddHeaders = (
       if (
         firstFollowingChildStart < 0 &&
         WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
-        (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) > EVEN_AND_ODD_HEADERS_ORDER
+        (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) >
+          EVEN_AND_ODD_HEADERS_ORDER
       ) {
         firstFollowingChildStart = token.index;
       }
@@ -88,7 +95,11 @@ export const updateEvenAndOddHeaders = (
           getLocalName(child.name) === "evenAndOddHeaders" &&
           WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
         ) {
-          spans.push({ start: token.index, end: token.index + tag.length, newXml: "" });
+          spans.push({
+            start: token.index,
+            end: token.index + tag.length,
+            newXml: "",
+          });
         }
         childStart = -1;
       }
@@ -104,7 +115,11 @@ export const updateEvenAndOddHeaders = (
   if (selfClosingRootStart >= 0) {
     if (!flag) return xml;
     return spliceXml(xml, [
-      { start: rootOpenEnd - 2, end: rootOpenEnd, newXml: `>${flag}</${root.name}>` },
+      {
+        start: rootOpenEnd - 2,
+        end: rootOpenEnd,
+        newXml: `>${flag}</${root.name}>`,
+      },
     ]);
   }
   if (rootEnd < 0) return null;
@@ -112,7 +127,8 @@ export const updateEvenAndOddHeaders = (
   if (flag && existingFlag) {
     existingFlag.newXml = flag;
   } else if (flag) {
-    const insertAt = firstFollowingChildStart >= 0 ? firstFollowingChildStart : rootEnd;
+    const insertAt =
+      firstFollowingChildStart >= 0 ? firstFollowingChildStart : rootEnd;
     spans.push({ start: insertAt, end: insertAt, newXml: flag });
   }
   return spliceXml(xml, spans);

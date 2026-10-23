@@ -44,10 +44,15 @@ export const decodeBackup = (data: Uint8Array): Backup | null => {
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    return null;
   const version: unknown = Reflect.get(parsed, "version");
   const baseline: unknown = Reflect.get(parsed, "baseline");
-  if (version !== FORMAT_VERSION || typeof baseline !== "string" || !FILE_VERSION.test(baseline)) {
+  if (
+    version !== FORMAT_VERSION ||
+    typeof baseline !== "string" ||
+    !FILE_VERSION.test(baseline)
+  ) {
     return null;
   }
   return { baseline, bytes: data.slice(end + 1) };

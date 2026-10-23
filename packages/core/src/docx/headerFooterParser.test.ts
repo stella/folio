@@ -46,7 +46,11 @@ const textBoxDrawingXml = (text: string, anchor?: string): string => `
     </wp:anchor>
   </w:drawing>`;
 
-const textBoxRunXml = (text: string, alternateContent: boolean, anchor?: string): string => {
+const textBoxRunXml = (
+  text: string,
+  alternateContent: boolean,
+  anchor?: string,
+): string => {
   const drawing = textBoxDrawingXml(text, anchor);
 
   if (!alternateContent) {
@@ -122,22 +126,29 @@ describe("header/footer text boxes", () => {
   });
 
   test("parses bare drawing text boxes in headers", () => {
-    const header = parseHeader(headerFooterXml("hdr", "Bare Header Box", false));
+    const header = parseHeader(
+      headerFooterXml("hdr", "Bare Header Box", false),
+    );
 
     expect(getShapeTexts(header)).toEqual(["Bare Header Box"]);
   });
 
   test("carries DrawingML text-box anchors through the layout pipeline", () => {
-    const header = parseHeader(headerFooterXml("hdr", "Bottom Header Box", false, "b"));
+    const header = parseHeader(
+      headerFooterXml("hdr", "Bottom Header Box", false, "b"),
+    );
     const paragraph = header.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
     if (shapeContent?.type !== "shape") {
       throw new Error("Expected anchored DrawingML text box");
     }
     expect(shapeContent.shape.textBody?.anchor).toBe("bottom");
 
-    const document: Document = { package: { document: { content: header.content } } };
+    const document: Document = {
+      package: { document: { content: header.content } },
+    };
     expect(toFlowBlocks(toProseDoc(document)).at(0)).toMatchObject({
       kind: "textBox",
       verticalAlign: "bottom",
@@ -164,7 +175,8 @@ describe("header/footer text boxes", () => {
 
     expect(getShapeTexts(footer)).toEqual(["Positioned footer"]);
     const paragraph = footer.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
     if (shapeContent?.type !== "shape") {
       throw new Error("Expected positioned text box");
@@ -197,7 +209,8 @@ describe("header/footer text boxes", () => {
       </w:ftr>`);
 
     const paragraph = footer.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
     if (shapeContent?.type !== "shape") {
       throw new Error("Expected sparse-inset text box");
@@ -210,7 +223,9 @@ describe("header/footer text boxes", () => {
     });
     expect(shapeContent.shape.textBody?.anchor).toBe("bottom");
 
-    const document: Document = { package: { document: { content: footer.content } } };
+    const document: Document = {
+      package: { document: { content: footer.content } },
+    };
     const blocks = toFlowBlocks(toProseDoc(document));
     const textBox = blocks.at(0);
     if (textBox?.kind !== "textBox") {
@@ -239,7 +254,8 @@ describe("header/footer text boxes", () => {
       </w:ftr>`);
 
     const paragraph = footer.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
     if (shapeContent?.type !== "shape") {
       throw new Error("Expected default-inset text box");
@@ -265,7 +281,8 @@ describe("header/footer text boxes", () => {
       </w:ftr>`);
 
     const paragraph = footer.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
     if (shapeContent?.type !== "shape") {
       throw new Error("Expected bounded-inset text box");

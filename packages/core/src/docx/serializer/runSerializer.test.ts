@@ -164,15 +164,18 @@ describe("runSerializer relationship ids", () => {
 });
 
 describe("runSerializer emphasis marks", () => {
-  test.each(EMPHASIS_MARK_VALUES)("serializes the explicit %s value", (emphasisMark) => {
-    const xml = serializeRun({
-      type: "run",
-      formatting: { emphasisMark },
-      content: [{ type: "text", text: "Text" }],
-    });
+  test.each(EMPHASIS_MARK_VALUES)(
+    "serializes the explicit %s value",
+    (emphasisMark) => {
+      const xml = serializeRun({
+        type: "run",
+        formatting: { emphasisMark },
+        content: [{ type: "text", text: "Text" }],
+      });
 
-    expect(xml).toContain(`<w:em w:val="${emphasisMark}"/>`);
-  });
+      expect(xml).toContain(`<w:em w:val="${emphasisMark}"/>`);
+    },
+  );
 });
 
 describe("runSerializer property order", () => {
@@ -234,9 +237,9 @@ describe("runSerializer property order", () => {
       },
       content: [{ type: "text", text: "Text" }],
     });
-    const propertyNames = [...xml.matchAll(/<w:([A-Za-z]+)(?:\s[^>]*)?\/>/gu)].map(
-      ([, name]) => name,
-    );
+    const propertyNames = [
+      ...xml.matchAll(/<w:([A-Za-z]+)(?:\s[^>]*)?\/>/gu),
+    ].map(([, name]) => name);
 
     expect(propertyNames).toEqual([
       "rStyle",
@@ -399,7 +402,12 @@ describe("text box fitting serialization", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "Before" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "Before" }],
+                    },
+                  ],
                 },
                 {
                   type: "table",
@@ -415,7 +423,9 @@ describe("text box fitting serialization", () => {
                               content: [
                                 {
                                   type: "run",
-                                  content: [{ type: "text", text: "Cell value" }],
+                                  content: [
+                                    { type: "text", text: "Cell value" },
+                                  ],
                                 },
                               ],
                             },
@@ -427,7 +437,9 @@ describe("text box fitting serialization", () => {
                 },
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "After" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "After" }] },
+                  ],
                 },
               ],
             },
@@ -453,32 +465,35 @@ describe("text box fitting serialization", () => {
     ["shape", "<a:spAutoFit/>", "<a:normAutofit/>", "<a:noAutofit/>"],
     ["normal", "<a:normAutofit/>", "<a:spAutoFit/>", "<a:noAutofit/>"],
     ["none", "<a:noAutofit/>", "<a:spAutoFit/>", "<a:normAutofit/>"],
-  ] as const)("writes only the %s fitting element", (autoFit, expected, absentA, absentB) => {
-    const run: Run = {
-      type: "run",
-      content: [
-        {
-          type: "shape",
-          shape: {
+  ] as const)(
+    "writes only the %s fitting element",
+    (autoFit, expected, absentA, absentB) => {
+      const run: Run = {
+        type: "run",
+        content: [
+          {
             type: "shape",
-            shapeType: "textBox",
-            size: { width: 914_400, height: 457_200 },
-            textBody: {
-              autoFit,
-              textWrap: "none",
-              content: [{ type: "paragraph", content: [] }],
+            shape: {
+              type: "shape",
+              shapeType: "textBox",
+              size: { width: 914_400, height: 457_200 },
+              textBody: {
+                autoFit,
+                textWrap: "none",
+                content: [{ type: "paragraph", content: [] }],
+              },
             },
           },
-        },
-      ],
-    };
+        ],
+      };
 
-    const xml = serializeRun(run);
-    expect(xml).toContain(expected);
-    expect(xml).toContain('wrap="none"');
-    expect(xml).not.toContain(absentA);
-    expect(xml).not.toContain(absentB);
-  });
+      const xml = serializeRun(run);
+      expect(xml).toContain(expected);
+      expect(xml).toContain('wrap="none"');
+      expect(xml).not.toContain(absentA);
+      expect(xml).not.toContain(absentB);
+    },
+  );
 });
 
 describe("text box vertical alignment serialization", () => {
@@ -537,18 +552,21 @@ describe("run formatting integer attributes (issue #417)", () => {
     expect(xml).toContain('<w:position w:val="-6"/>');
   });
 
-  test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    "omits malformed horizontal scale %p",
-    (scale) => {
-      const xml = serializeRun({
-        type: "run",
-        content: [{ type: "text", text: "x" }],
-        formatting: { scale },
-      });
+  test.each([
+    -50,
+    601,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])("omits malformed horizontal scale %p", (scale) => {
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "text", text: "x" }],
+      formatting: { scale },
+    });
 
-      expect(xml).not.toContain("<w:w ");
-    },
-  );
+    expect(xml).not.toContain("<w:w ");
+  });
 
   test.each([0, 600])("preserves boundary horizontal scale %p", (scale) => {
     const xml = serializeRun({

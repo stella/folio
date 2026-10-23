@@ -11,7 +11,7 @@
  *   bunx playwright show-report                       # view diff report
  */
 
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import * as fs from "node:fs";
 import path from "node:path";
 
@@ -49,7 +49,9 @@ for (const fixture of fixtures) {
           toolbar.style.display = "none";
         }
         // Hide any status/control bars outside the editor
-        const controls = document.querySelectorAll('[data-testid="playground-controls"]');
+        const controls = document.querySelectorAll(
+          '[data-testid="playground-controls"]',
+        );
         for (const el of controls) {
           if (el instanceof HTMLElement) {
             el.style.display = "none";

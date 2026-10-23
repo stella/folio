@@ -19,8 +19,12 @@ import {
   NodeSelection,
   TextSelection,
 } from "prosemirror-state";
-import type { EditorState, Plugin, Transaction } from "prosemirror-state";
-import type { Command } from "prosemirror-state";
+import type {
+  Command,
+  EditorState,
+  Plugin,
+  Transaction,
+} from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
@@ -30,13 +34,17 @@ import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { toMarkdown } from "../markdown";
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { repackWithEditorSectionRemovals } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,
@@ -46,9 +54,8 @@ import {
   getDocumentStyleResolver,
 } from "../prosemirror/plugins/documentStyles";
 import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
-import { dispatchEditorTextInput } from "../prosemirror/textInput";
 import { singletonManager } from "../prosemirror/schema";
-import { createStarterKit } from "../prosemirror/extensions/StarterKit";
+import { dispatchEditorTextInput } from "../prosemirror/textInput";
 import type { Document } from "../types/document";
 
 export type EditorMode = "editing" | "suggesting";
@@ -64,7 +71,8 @@ export const HARNESS_AUTHOR = "Conformance";
 type PropHandler = (...args: never[]) => unknown;
 
 const isMacPlatform =
-  typeof navigator !== "undefined" && /Mac|iP(hone|[oa]d)/u.test(navigator.platform);
+  typeof navigator !== "undefined" &&
+  /Mac|iP(hone|[oa]d)/u.test(navigator.platform);
 
 /** The `KeyboardEvent` fields `prosemirror-keymap` reads, for a binding like `Mod-Shift-z`. */
 export const keyboardEventFor = (binding: string) => {
@@ -104,7 +112,8 @@ export class HeadlessEditorView {
     this.state = this.state.apply(tr);
   };
 
-  execute = (command: Command): boolean => command(this.state, this.dispatch, this as never);
+  execute = (command: Command): boolean =>
+    command(this.state, this.dispatch, this as never);
 
   /** `EditorView.someProp` over the state's plugins, in plugin order. */
   someProp(propName: string, f?: (handler: PropHandler) => unknown): unknown {
@@ -127,8 +136,11 @@ export class HeadlessEditorView {
     if (!$head.parent.isTextblock) {
       return false;
     }
-    const backward = direction === "backward" || direction === "left" || direction === "up";
-    return backward ? $head.parentOffset === 0 : $head.parentOffset === $head.parent.content.size;
+    const backward =
+      direction === "backward" || direction === "left" || direction === "up";
+    return backward
+      ? $head.parentOffset === 0
+      : $head.parentOffset === $head.parent.content.size;
   }
 
   /** Run the `handleKeyDown` chain; returns whether a handler claimed the key. */
@@ -136,7 +148,10 @@ export class HeadlessEditorView {
     const event = keyboardEventFor(binding);
     const handled = Boolean(
       this.someProp("handleKeyDown", (handler) =>
-        (handler as unknown as (view: unknown, event: unknown) => boolean)(this, event),
+        (handler as unknown as (view: unknown, event: unknown) => boolean)(
+          this,
+          event,
+        ),
       ),
     );
     if (handled) {
@@ -185,11 +200,13 @@ export class HeadlessEditorView {
     }
     const event = { clipboardData: null, preventDefault() {} };
     const handled = this.someProp("handlePaste", (handler) =>
-      (handler as unknown as (view: unknown, event: unknown, slice: Slice) => boolean)(
-        this,
-        event,
-        transformed,
-      ),
+      (
+        handler as unknown as (
+          view: unknown,
+          event: unknown,
+          slice: Slice,
+        ) => boolean
+      )(this, event, transformed),
     );
     if (!handled) {
       this.dispatch(
@@ -232,7 +249,10 @@ export const harnessManager = (): ExtensionManager => {
 };
 
 export const parseShapeDocument = (bytes: Uint8Array): Promise<Document> =>
-  parseDocx(bytes.slice().buffer, { preloadFonts: false, detectVariables: false });
+  parseDocx(bytes.slice().buffer, {
+    preloadFonts: false,
+    detectVariables: false,
+  });
 
 /**
  * Which extension runtime a harness state runs. `harness` (the default) is a
@@ -252,7 +272,9 @@ const runtimePlugins = (runtime: HarnessRuntime): readonly Plugin[] =>
     : // The harness reports an invalid document itself (see harnessManager).
       singletonManager
         .getPlugins()
-        .filter((plugin) => !TRANSACTION_INVARIANTS_KEY.test(pluginKeyName(plugin)));
+        .filter(
+          (plugin) => !TRANSACTION_INVARIANTS_KEY.test(pluginKeyName(plugin)),
+        );
 
 const pluginKeyName = (plugin: Plugin): string =>
   (plugin as unknown as { key?: unknown }).key?.toString() ?? "";
@@ -260,7 +282,9 @@ const pluginKeyName = (plugin: Plugin): string =>
 /** The extension runtime whose plugins `state` holds. */
 export const harnessRuntimeManager = (state: EditorState): ExtensionManager => {
   const [first] = singletonManager.getPlugins();
-  return first !== undefined && state.plugins.includes(first) ? singletonManager : harnessManager();
+  return first !== undefined && state.plugins.includes(first)
+    ? singletonManager
+    : harnessManager();
 };
 
 /**
@@ -307,7 +331,10 @@ export const createHarnessState = (
 export type TextblockMatch = { node: PMNode; pos: number };
 
 /** The first textblock whose text contains `text`. */
-export const findTextblock = (doc: PMNode, text: string): TextblockMatch | null => {
+export const findTextblock = (
+  doc: PMNode,
+  text: string,
+): TextblockMatch | null => {
   let found: TextblockMatch | null = null;
   doc.descendants((node, pos) => {
     if (found) {
@@ -371,7 +398,10 @@ export const placeSelection = (
   const create = (anchor: number, head: number) =>
     state.apply(
       state.tr.setSelection(
-        TextSelection.between(state.doc.resolve(anchor), state.doc.resolve(head)),
+        TextSelection.between(
+          state.doc.resolve(anchor),
+          state.doc.resolve(head),
+        ),
       ),
     );
   switch (placement) {
@@ -379,12 +409,15 @@ export const placeSelection = (
       let position: number | undefined;
       target.node.descendants((node, offset) => {
         if (position !== undefined) return false;
-        if (node.isAtom && NodeSelection.isSelectable(node)) position = start + offset;
+        if (node.isAtom && NodeSelection.isSelectable(node))
+          position = start + offset;
         return !node.isAtom;
       });
       return position === undefined
         ? null
-        : state.apply(state.tr.setSelection(NodeSelection.create(state.doc, position)));
+        : state.apply(
+            state.tr.setSelection(NodeSelection.create(state.doc, position)),
+          );
     }
     case "caret-start": {
       return create(start, start);
@@ -425,7 +458,9 @@ export const placeSelection = (
       const nextCell = cellAt(nextMiddle);
       if (firstCell !== null && nextCell !== null && firstCell !== nextCell) {
         return state.apply(
-          state.tr.setSelection(CellSelection.create(state.doc, firstCell, nextCell)),
+          state.tr.setSelection(
+            CellSelection.create(state.doc, firstCell, nextCell),
+          ),
         );
       }
       return create(middle, nextMiddle);
@@ -454,8 +489,9 @@ export const summarizeState = (state: EditorState): ContentSummary =>
     getDocumentNumbering(state),
   ).blocks.map(stripBlockIdentity);
 
-export const summarizeReviewer = (reviewer: FolioDocxReviewer): ContentSummary =>
-  reviewer.getContent().map(stripBlockIdentity);
+export const summarizeReviewer = (
+  reviewer: FolioDocxReviewer,
+): ContentSummary => reviewer.getContent().map(stripBlockIdentity);
 
 export const stripBlockIdentity = (block: object): Record<string, unknown> => {
   const {
@@ -468,9 +504,9 @@ export const stripBlockIdentity = (block: object): Record<string, unknown> => {
     ? rest
     : {
         ...rest,
-        containerPath: (containerPath as readonly Record<string, unknown>[]).map(
-          ({ id: _containerId, ...entry }) => entry,
-        ),
+        containerPath: (
+          containerPath as readonly Record<string, unknown>[]
+        ).map(({ id: _containerId, ...entry }) => entry),
       };
 };
 
@@ -484,8 +520,13 @@ export const saveHarnessState = async (
   state: EditorState,
   base: Document,
 ): Promise<SavedDocument> => {
-  const model = fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } });
-  assertValidFolioDocumentModel(model, "Editor state converts to an invalid DOCX model");
+  const model = fromProseDoc(state.doc, base, {
+    stylesheetSource: { type: "package" },
+  });
+  assertValidFolioDocumentModel(
+    model,
+    "Editor state converts to an invalid DOCX model",
+  );
   // As the editors save: with the section removals the edit made on purpose.
   const bytes = new Uint8Array(
     await repackWithEditorSectionRemovals({
@@ -514,9 +555,13 @@ const EFFECTIVE_PARAGRAPH_ATTRS = [
  * direct formatting only, so an edit that paints but does not save, or saves
  * as something else, shows up here.
  */
-export const summarizeEffectiveParagraphs = (state: EditorState): ContentSummary =>
+export const summarizeEffectiveParagraphs = (
+  state: EditorState,
+): ContentSummary =>
   textblocks(state.doc).map(({ node }) => {
-    const entry: Record<string, unknown> = { text: node.textContent.slice(0, 40) };
+    const entry: Record<string, unknown> = {
+      text: node.textContent.slice(0, 40),
+    };
     for (const key of EFFECTIVE_PARAGRAPH_ATTRS) {
       const value: unknown = node.attrs[key];
       if (value !== null && value !== undefined) {
@@ -528,7 +573,8 @@ export const summarizeEffectiveParagraphs = (state: EditorState): ContentSummary
       entry["indentFirstLine"] =
         node.attrs["hangingIndent"] === true ? -Math.abs(firstLine) : firstLine;
     }
-    const numPr = node.attrs["numPr"] as { numId?: number; ilvl?: number } | null | undefined;
+    const numPr = node.attrs["numPr"] as
+      { numId?: number; ilvl?: number } | null | undefined;
     if (numPr?.numId !== undefined) {
       entry["numbering"] = `${numPr.numId}:${numPr.ilvl ?? 0}`;
     }
@@ -547,7 +593,10 @@ export type Readback = {
  */
 export const readBack = async (bytes: Uint8Array): Promise<Readback> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
-  const reopened = createHarnessState(await parseShapeDocument(bytes), "editing");
+  const reopened = createHarnessState(
+    await parseShapeDocument(bytes),
+    "editing",
+  );
   return {
     summary: summarizeReviewer(reviewer),
     effective: summarizeEffectiveParagraphs(reopened),
@@ -558,7 +607,10 @@ export const readBack = async (bytes: Uint8Array): Promise<Readback> => {
 export const modelMarkdown = (model: Document): string => toMarkdown(model);
 
 /** Resolve every tracked change through the editor's accept-all / reject-all command. */
-export const resolveAllChanges = (state: EditorState, mode: "accept" | "reject"): EditorState => {
+export const resolveAllChanges = (
+  state: EditorState,
+  mode: "accept" | "reject",
+): EditorState => {
   let resolved = state;
   (mode === "accept" ? acceptAllChanges() : rejectAllChanges())(state, (tr) => {
     resolved = resolved.apply(tr);

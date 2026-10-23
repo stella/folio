@@ -32,7 +32,13 @@ export type DocumentRecord = {
 
 export type Difference =
   | { kind: "page-count"; document: string; expected: number; actual: number }
-  | { kind: "line-count"; document: string; page: number; expected: number; actual: number }
+  | {
+      kind: "line-count";
+      document: string;
+      page: number;
+      expected: number;
+      actual: number;
+    }
   | {
       kind: "first-word" | "last-word";
       document: string;
@@ -55,15 +61,23 @@ export type Difference =
 /** Width differences below this are sub-pixel noise, not a layout change. */
 export const WIDTH_NOISE_PX = 0.5;
 
-const widthDeltaOf = (expected: LineRecord, actual: LineRecord): number | null =>
-  expected.width === null || actual.width === null ? null : actual.width - expected.width;
+const widthDeltaOf = (
+  expected: LineRecord,
+  actual: LineRecord,
+): number | null =>
+  expected.width === null || actual.width === null
+    ? null
+    : actual.width - expected.width;
 
 /**
  * Every difference between the expected record and the actual one. Pages and
  * lines are 1-based in the output. When the line count of a page differs, lines
  * are still compared up to the shorter length so the first divergence is found.
  */
-export const diffRecords = (expected: DocumentRecord, actual: DocumentRecord): Difference[] => {
+export const diffRecords = (
+  expected: DocumentRecord,
+  actual: DocumentRecord,
+): Difference[] => {
   const document = expected.fixture;
   const out: Difference[] = [];
   if (expected.pages.length !== actual.pages.length) {
@@ -137,12 +151,18 @@ export const diffRecords = (expected: DocumentRecord, actual: DocumentRecord): D
 };
 
 /** One markdown table row per document, for the run summary. */
-export const summarizeDocument = (fixture: string, differences: readonly Difference[]): string => {
+export const summarizeDocument = (
+  fixture: string,
+  differences: readonly Difference[],
+): string => {
   const kinds = new Map<string, number>();
-  for (const { kind } of differences) kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+  for (const { kind } of differences)
+    kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
   const detail =
     kinds.size === 0
       ? "-"
-      : [...kinds].map(([kind, count]) => `${kind} x${String(count)}`).join(", ");
+      : [...kinds]
+          .map(([kind, count]) => `${kind} x${String(count)}`)
+          .join(", ");
   return `| ${fixture} | ${String(differences.length)} | ${detail} |`;
 };

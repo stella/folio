@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { canReusePagePngCache, refreshCachedReferenceGeom } from "../pdfReference";
+import {
+  canReusePagePngCache,
+  refreshCachedReferenceGeom,
+} from "../pdfReference";
 import type { DocGeom } from "../types";
 
 describe("PDF reference page cache", () => {
@@ -64,12 +67,9 @@ describe("PDF reference page cache", () => {
     const refreshed = refreshCachedReferenceGeom(cached, "/current.docx");
 
     expect(refreshed.file).toBe("/current.docx");
-    expect(refreshed.pages[0]?.lines.map(({ direction }) => direction)).toEqual([
-      "rtl",
-      "ltr",
-      "unknown",
-      "ltr",
-    ]);
+    expect(refreshed.pages[0]?.lines.map(({ direction }) => direction)).toEqual(
+      ["rtl", "ltr", "unknown", "ltr"],
+    );
     expect(refreshed.pages[0]?.lines[0]?.normText).toBe("عنوان عربي");
     expect(refreshed.pages[0]?.lines[3]).toMatchObject({
       text: "\uf0a8 Apply",
@@ -89,7 +89,9 @@ describe("PDF reference page cache", () => {
   test("reuses bounded and explicitly complete sequential page caches", () => {
     const existing = ["/cache/p1.png", "/cache/p2.png"];
 
-    expect(canReusePagePngCache({ existing, completePageCount: null, maxPages: 2 })).toBe(true);
+    expect(
+      canReusePagePngCache({ existing, completePageCount: null, maxPages: 2 }),
+    ).toBe(true);
     expect(canReusePagePngCache({ existing, completePageCount: 2 })).toBe(true);
   });
 

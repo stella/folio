@@ -16,38 +16,38 @@
  */
 
 import type {
-  Theme,
-  Style,
-  StyleType,
-  StyleDefinitions,
+  CellMargins,
   DocDefaults,
-  TableFormatting,
-  TableRowFormatting,
-  TableCellFormatting,
+  Style,
+  StyleDefinitions,
+  StyleType,
   TableBorders,
   TableCellBorders,
-  CellMargins,
+  TableCellFormatting,
+  TableFormatting,
   TableMeasurement,
+  TableRowFormatting,
+  Theme,
 } from "../types/document";
-import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
-import { parseParagraphProperties } from "./paragraphProperties";
-import { parseTableLook } from "./tableParser";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
+import { parseBorderSpec } from "./borderParser";
+import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
+import { parseParagraphProperties } from "./paragraphProperties";
 import {
   ConditionalStyleTypeSchema,
+  narrowEnum,
   StyleTypeSchema,
   TableAlignmentSchema,
   TableRowHeightRuleSchema,
   TableWidthTypeSchema,
   TextDirectionSchema,
-  narrowEnum,
 } from "./parserEnums";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { parseShading } from "./shadingParser";
-import { parseBorderSpec } from "./borderParser";
+import { findChildAnySpelling } from "./strictNames";
+import { parseTableLook } from "./tableParser";
 import {
-  parseXmlDocument,
   findChild,
   findChildren,
   getAttribute,
@@ -56,9 +56,9 @@ import {
   parseNumericAttribute,
   parseOnOffValue,
   parseTableMeasurementValue,
+  parseXmlDocument,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
-import { findChildAnySpelling } from "./strictNames";
 
 /**
  * Style map keyed by styleId
@@ -72,13 +72,16 @@ export type ParsedStylesPackage = {
 /**
  * Parse table measurement (width/height with type)
  */
-function parseTableMeasurement(element: XmlElement | null): TableMeasurement | undefined {
+function parseTableMeasurement(
+  element: XmlElement | null,
+): TableMeasurement | undefined {
   if (!element) {
     return undefined;
   }
 
   const rawType = getAttribute(element, "w", "type");
-  const type = rawType === null ? "dxa" : narrowEnum(rawType, TableWidthTypeSchema);
+  const type =
+    rawType === null ? "dxa" : narrowEnum(rawType, TableWidthTypeSchema);
   const w = type ? parseTableMeasurementValue(element, type) : undefined;
 
   if (w !== undefined && type) {
@@ -91,7 +94,9 @@ function parseTableMeasurement(element: XmlElement | null): TableMeasurement | u
 /**
  * Parse table borders
  */
-function parseTableBorders(tblBorders: XmlElement | null): TableBorders | undefined {
+function parseTableBorders(
+  tblBorders: XmlElement | null,
+): TableBorders | undefined {
   if (!tblBorders) {
     return undefined;
   }
@@ -108,12 +113,16 @@ function parseTableBorders(tblBorders: XmlElement | null): TableBorders | undefi
     borders.bottom = bottom;
   }
 
-  const left = parseBorderSpec(findChildAnySpelling(tblBorders, "CT_Border left"));
+  const left = parseBorderSpec(
+    findChildAnySpelling(tblBorders, "CT_Border left"),
+  );
   if (left) {
     borders.left = left;
   }
 
-  const right = parseBorderSpec(findChildAnySpelling(tblBorders, "CT_Border right"));
+  const right = parseBorderSpec(
+    findChildAnySpelling(tblBorders, "CT_Border right"),
+  );
   if (right) {
     borders.right = right;
   }
@@ -132,18 +141,24 @@ function parseTableBorders(tblBorders: XmlElement | null): TableBorders | undefi
 }
 
 /** Parse cell-only diagonal borders in addition to the shared table sides. */
-function parseTableCellBorders(tcBorders: XmlElement | null): TableCellBorders | undefined {
+function parseTableCellBorders(
+  tcBorders: XmlElement | null,
+): TableCellBorders | undefined {
   if (!tcBorders) {
     return undefined;
   }
 
   const borders: TableCellBorders = { ...parseTableBorders(tcBorders) };
-  const topLeftToBottomRight = parseBorderSpec(findChild(tcBorders, "w", "tl2br"));
+  const topLeftToBottomRight = parseBorderSpec(
+    findChild(tcBorders, "w", "tl2br"),
+  );
   if (topLeftToBottomRight) {
     borders.topLeftToBottomRight = topLeftToBottomRight;
   }
 
-  const topRightToBottomLeft = parseBorderSpec(findChild(tcBorders, "w", "tr2bl"));
+  const topRightToBottomLeft = parseBorderSpec(
+    findChild(tcBorders, "w", "tr2bl"),
+  );
   if (topRightToBottomLeft) {
     borders.topRightToBottomLeft = topRightToBottomLeft;
   }
@@ -154,7 +169,9 @@ function parseTableCellBorders(tcBorders: XmlElement | null): TableCellBorders |
 /**
  * Parse cell margins
  */
-function parseCellMargins(tblCellMar: XmlElement | null): CellMargins | undefined {
+function parseCellMargins(
+  tblCellMar: XmlElement | null,
+): CellMargins | undefined {
   if (!tblCellMar) {
     return undefined;
   }
@@ -171,12 +188,16 @@ function parseCellMargins(tblCellMar: XmlElement | null): CellMargins | undefine
     margins.bottom = bottom;
   }
 
-  const left = parseTableMeasurement(findChildAnySpelling(tblCellMar, "CT_TblWidth left"));
+  const left = parseTableMeasurement(
+    findChildAnySpelling(tblCellMar, "CT_TblWidth left"),
+  );
   if (left) {
     margins.left = left;
   }
 
-  const right = parseTableMeasurement(findChildAnySpelling(tblCellMar, "CT_TblWidth right"));
+  const right = parseTableMeasurement(
+    findChildAnySpelling(tblCellMar, "CT_TblWidth right"),
+  );
   if (right) {
     margins.right = right;
   }
@@ -299,7 +320,9 @@ function parseTableProperties(
 /**
  * Parse table row formatting properties (w:trPr)
  */
-function parseTableRowProperties(trPr: XmlElement | null): TableRowFormatting | undefined {
+function parseTableRowProperties(
+  trPr: XmlElement | null,
+): TableRowFormatting | undefined {
   if (!trPr) {
     return undefined;
   }
@@ -313,7 +336,10 @@ function parseTableRowProperties(trPr: XmlElement | null): TableRowFormatting | 
     if (heightResult) {
       formatting.height = heightResult;
     }
-    const hRule = narrowEnum(getAttribute(trHeight, "w", "hRule"), TableRowHeightRuleSchema);
+    const hRule = narrowEnum(
+      getAttribute(trHeight, "w", "hRule"),
+      TableRowHeightRuleSchema,
+    );
     if (hRule) {
       formatting.heightRule = hRule;
     }
@@ -410,7 +436,10 @@ function parseTableCellProperties(
   // Text direction
   const textDirection = findChild(tcPr, "w", "textDirection");
   if (textDirection) {
-    const val = narrowEnum(getAttribute(textDirection, "w", "val"), TextDirectionSchema);
+    const val = narrowEnum(
+      getAttribute(textDirection, "w", "val"),
+      TextDirectionSchema,
+    );
     if (val) {
       formatting.textDirection = val;
     }
@@ -639,7 +668,11 @@ function parseStyle(styleEl: XmlElement, theme: Theme | null): Style {
   // Run properties
   const rPr = children.rPr;
   if (rPr) {
-    const rPrResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.standalone);
+    const rPrResult = parseRunProperties(
+      rPr,
+      theme,
+      RUN_PROPERTY_OWNERS.standalone,
+    );
     if (rPrResult) {
       style.rPr = rPrResult;
     }
@@ -697,7 +730,11 @@ function parseStyle(styleEl: XmlElement, theme: Theme | null): Style {
 
         const condRPr = findChild(tblStylePr, "w", "rPr");
         if (condRPr) {
-          const condRPrResult = parseRunProperties(condRPr, theme, RUN_PROPERTY_OWNERS.standalone);
+          const condRPrResult = parseRunProperties(
+            condRPr,
+            theme,
+            RUN_PROPERTY_OWNERS.standalone,
+          );
           if (condRPrResult) {
             conditionalStyle.rPr = condRPrResult;
           }
@@ -753,7 +790,11 @@ function parseDocDefaults(
   if (rPrDefault) {
     const rPr = findChild(rPrDefault, "w", "rPr");
     if (rPr) {
-      const rPrResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.standalone);
+      const rPrResult = parseRunProperties(
+        rPr,
+        theme,
+        RUN_PROPERTY_OWNERS.standalone,
+      );
       if (rPrResult) {
         result.rPr = rPrResult;
       }
@@ -806,7 +847,11 @@ export function resolveStyleInheritance(
   }
 
   // Recursively resolve parent
-  const resolvedParent = resolveStyleInheritance(parentStyle, styleMap, visited);
+  const resolvedParent = resolveStyleInheritance(
+    parentStyle,
+    styleMap,
+    visited,
+  );
 
   // Merge parent into this style (this style overrides parent)
   const resolved: Style = { ...style };
@@ -824,12 +869,21 @@ export function resolveStyleInheritance(
   // Merge table properties if this is a table style
   if (style.type === "table") {
     if (resolvedParent.tblPr || style.tblPr) {
-      const tblPr: TableFormatting = { ...resolvedParent.tblPr, ...style.tblPr };
-      const borders = mergeSides(resolvedParent.tblPr?.borders, style.tblPr?.borders);
+      const tblPr: TableFormatting = {
+        ...resolvedParent.tblPr,
+        ...style.tblPr,
+      };
+      const borders = mergeSides(
+        resolvedParent.tblPr?.borders,
+        style.tblPr?.borders,
+      );
       if (borders) {
         tblPr.borders = borders;
       }
-      const cellMargins = mergeSides(resolvedParent.tblPr?.cellMargins, style.tblPr?.cellMargins);
+      const cellMargins = mergeSides(
+        resolvedParent.tblPr?.cellMargins,
+        style.tblPr?.cellMargins,
+      );
       if (cellMargins) {
         tblPr.cellMargins = cellMargins;
       }
@@ -839,12 +893,21 @@ export function resolveStyleInheritance(
       resolved.trPr = { ...resolvedParent.trPr, ...style.trPr };
     }
     if (resolvedParent.tcPr || style.tcPr) {
-      const tcPr: TableCellFormatting = { ...resolvedParent.tcPr, ...style.tcPr };
-      const borders = mergeSides(resolvedParent.tcPr?.borders, style.tcPr?.borders);
+      const tcPr: TableCellFormatting = {
+        ...resolvedParent.tcPr,
+        ...style.tcPr,
+      };
+      const borders = mergeSides(
+        resolvedParent.tcPr?.borders,
+        style.tcPr?.borders,
+      );
       if (borders) {
         tcPr.borders = borders;
       }
-      const margins = mergeSides(resolvedParent.tcPr?.margins, style.tcPr?.margins);
+      const margins = mergeSides(
+        resolvedParent.tcPr?.margins,
+        style.tcPr?.margins,
+      );
       if (margins) {
         tcPr.margins = margins;
       }
@@ -860,7 +923,10 @@ export function resolveStyleInheritance(
  * its own property, so a style that states one side inherits the others from
  * its `w:basedOn` parent (ECMA-376 §17.7.4.3).
  */
-function mergeSides<T extends object>(parent: T | undefined, child: T | undefined): T | undefined {
+function mergeSides<T extends object>(
+  parent: T | undefined,
+  child: T | undefined,
+): T | undefined {
   if (!parent || !child) {
     return child ?? parent;
   }
@@ -883,7 +949,10 @@ export function parseStyles(stylesXml: string, theme: Theme | null): StyleMap {
   return parseStylesFromDocument(doc, theme);
 }
 
-function parseStylesFromDocument(doc: XmlElement, theme: Theme | null): StyleMap {
+function parseStylesFromDocument(
+  doc: XmlElement,
+  theme: Theme | null,
+): StyleMap {
   const styleMap: StyleMap = new Map();
 
   try {
@@ -950,13 +1019,25 @@ function parseStyleDefinitionsFromDocument(
     if (latentStylesEl) {
       const latentStyles: NonNullable<StyleDefinitions["latentStyles"]> = {
         defLockedState:
-          parseOnOffValue(getAttribute(latentStylesEl, "w", "defLockedState")) ?? false,
-        defSemiHidden: parseOnOffValue(getAttribute(latentStylesEl, "w", "defSemiHidden")) ?? false,
+          parseOnOffValue(
+            getAttribute(latentStylesEl, "w", "defLockedState"),
+          ) ?? false,
+        defSemiHidden:
+          parseOnOffValue(getAttribute(latentStylesEl, "w", "defSemiHidden")) ??
+          false,
         defUnhideWhenUsed:
-          parseOnOffValue(getAttribute(latentStylesEl, "w", "defUnhideWhenUsed")) ?? false,
-        defQFormat: parseOnOffValue(getAttribute(latentStylesEl, "w", "defQFormat")) ?? false,
+          parseOnOffValue(
+            getAttribute(latentStylesEl, "w", "defUnhideWhenUsed"),
+          ) ?? false,
+        defQFormat:
+          parseOnOffValue(getAttribute(latentStylesEl, "w", "defQFormat")) ??
+          false,
       };
-      const defUIPriority = parseNumericAttribute(latentStylesEl, "w", "defUIPriority");
+      const defUIPriority = parseNumericAttribute(
+        latentStylesEl,
+        "w",
+        "defUIPriority",
+      );
       if (defUIPriority !== undefined) {
         latentStyles.defUIPriority = defUIPriority;
       }
@@ -977,7 +1058,10 @@ function parseStyleDefinitionsFromDocument(
   return result;
 }
 
-export function parseStylesPackage(stylesXml: string, theme: Theme | null): ParsedStylesPackage {
+export function parseStylesPackage(
+  stylesXml: string,
+  theme: Theme | null,
+): ParsedStylesPackage {
   const doc = parseXmlDocument(stylesXml);
   if (!doc) {
     return {
@@ -1000,21 +1084,28 @@ export function parseStylesPackage(stylesXml: string, theme: Theme | null): Pars
  * @param styleMap - Style map from parseStyles
  * @returns Resolved style or undefined
  */
-export function getResolvedStyle(styleId: string, styleMap: StyleMap): Style | undefined {
+export function getResolvedStyle(
+  styleId: string,
+  styleMap: StyleMap,
+): Style | undefined {
   return styleMap.get(styleId);
 }
 
 /**
  * Get the default paragraph style
  */
-export function getDefaultParagraphStyle(styleMap: StyleMap): Style | undefined {
+export function getDefaultParagraphStyle(
+  styleMap: StyleMap,
+): Style | undefined {
   return resolveDefaultParagraphStyle(styleMap.values());
 }
 
 /**
  * Get the default character style
  */
-export function getDefaultCharacterStyle(styleMap: StyleMap): Style | undefined {
+export function getDefaultCharacterStyle(
+  styleMap: StyleMap,
+): Style | undefined {
   for (const style of styleMap.values()) {
     if (style.type === "character" && style.default) {
       return style;

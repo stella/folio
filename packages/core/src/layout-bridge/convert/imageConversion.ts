@@ -4,7 +4,12 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import type { ImageBlock, ImageRun, RunFormatting } from "../../layout-engine/types";
+
+import type {
+  ImageBlock,
+  ImageRun,
+  RunFormatting,
+} from "../../layout-engine/types";
 import { expectImageAttrs } from "../../prosemirror/attrs";
 import type { ImageAttrs } from "../../prosemirror/schema/nodes";
 import { cssBorderStyleOf } from "../../utils/borderCss";
@@ -39,7 +44,11 @@ export function buildImageRun(
   // Tracked-change attrs lifted off the image node's PM marks. eigenpal #641.
   trackedChange?: Pick<
     RunFormatting,
-    "isInsertion" | "isDeletion" | "changeAuthor" | "changeDate" | "changeRevisionId"
+    | "isInsertion"
+    | "isDeletion"
+    | "changeAuthor"
+    | "changeDate"
+    | "changeRevisionId"
   >,
   // Compatibility mode 15+ ignores an authored `layoutInCell="0"`; see
   // `resolveAnchorLayoutInCellCompatibility`.
@@ -164,7 +173,9 @@ export const hasRelationshipBackedImageBox = (attrs: ImageAttrs): boolean =>
  * A preview counts as a source: the bytes are not in the attrs, but the
  * display list can produce them without I/O when it interns the descriptor.
  */
-export const hasPaintableImageSource = (attrs: Pick<ImageAttrs, "src" | "preview">): boolean =>
+export const hasPaintableImageSource = (
+  attrs: Pick<ImageAttrs, "src" | "preview">,
+): boolean =>
   attrs.preview !== undefined || sanitizeImageSrc(attrs.src) !== undefined;
 
 /**
@@ -176,7 +187,10 @@ export function convertImage(
   pageContentHeight?: number,
 ): ImageBlock | undefined {
   const attrs = expectImageAttrs(node);
-  if (!hasPaintableImageSource(attrs) && !hasRelationshipBackedImageBox(attrs)) {
+  if (
+    !hasPaintableImageSource(attrs) &&
+    !hasRelationshipBackedImageBox(attrs)
+  ) {
     return undefined;
   }
   const wrapType = attrs.wrapType;

@@ -1,11 +1,16 @@
 <template>
-  <div ref="overlayRef" class="paged-editor__decoration-overlay" aria-hidden="true" />
+  <div
+    ref="overlayRef"
+    class="paged-editor__decoration-overlay"
+    aria-hidden="true"
+  />
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { EditorState } from "prosemirror-state";
 import type { Decoration, DecorationSet, EditorView } from "prosemirror-view";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 
@@ -127,7 +132,12 @@ function collectDecorations(state: EditorState): CollectedDecoration[] {
     forEachSet.call(source, (set: DecorationSet) => {
       set.find().forEach((decoration) => {
         const spec = readField(decoration, "spec");
-        if (typeof spec === "object" && spec !== null && readField(spec, "noOverlay")) return;
+        if (
+          typeof spec === "object" &&
+          spec !== null &&
+          readField(spec, "noOverlay")
+        )
+          return;
         out.push({ decoration, from: decoration.from, to: decoration.to });
       });
     });
@@ -144,7 +154,10 @@ function readField(target: object, key: string): unknown {
   return Reflect.get(target, key);
 }
 
-function getWidgetDOM(decoration: Decoration, view: EditorView): HTMLElement | null {
+function getWidgetDOM(
+  decoration: Decoration,
+  view: EditorView,
+): HTMLElement | null {
   const type = readField(decoration, "type");
   if (typeof type !== "object" || type === null) return null;
   const toDOM = readField(type, "toDOM");
@@ -159,7 +172,9 @@ function getWidgetDOM(decoration: Decoration, view: EditorView): HTMLElement | n
   return null;
 }
 
-function getDecorationAttrs(decoration: Decoration): Record<string, string> | null {
+function getDecorationAttrs(
+  decoration: Decoration,
+): Record<string, string> | null {
   const type = readField(decoration, "type");
   if (typeof type !== "object" || type === null) return null;
   const attrs = readField(type, "attrs");

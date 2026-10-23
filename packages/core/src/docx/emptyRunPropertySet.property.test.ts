@@ -28,11 +28,13 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import type { Document, Paragraph } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseNumbering } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
@@ -78,7 +80,8 @@ type RunPropertySetOwner = Readonly<{
   reauthor: (saved: string) => string;
 }>;
 
-const saveRun = (xml: string): string => serializeRun(parseRun(parseOne(xml), null, null));
+const saveRun = (xml: string): string =>
+  serializeRun(parseRun(parseOne(xml), null, null));
 
 const saveParagraphMark = (xml: string): string => {
   const paragraph = parseParagraph(parseOne(xml), null, null, null);
@@ -97,7 +100,9 @@ const documentHolding = (paragraph: Paragraph): Document => {
 
 /** The mark's properties again, after the editor has had the paragraph. */
 const saveParagraphMarkThroughEditor = (xml: string): string => {
-  const document = documentHolding(parseParagraph(parseOne(xml), null, null, null));
+  const document = documentHolding(
+    parseParagraph(parseOne(xml), null, null, null),
+  );
   const projected = fromProseDoc(toProseDoc(document), document, {
     stylesheetSource: { type: "package" },
   });
@@ -112,18 +117,22 @@ const saveParagraphMarkThroughEditor = (xml: string): string => {
   );
 };
 
-const saveStyles = (xml: string): string => serializeStylesXml(parseStyleDefinitions(xml, null));
+const saveStyles = (xml: string): string =>
+  serializeStylesXml(parseStyleDefinitions(xml, null));
 
 const saveNumbering = (xml: string): string =>
   serializeNumberingXml(parseNumbering(xml).definitions);
 
-const wrapRun = (inner: string): string => `<w:r xmlns:w="${W}">${inner}<w:t>x</w:t></w:r>`;
-const wrapParagraph = (inner: string): string => `<w:p xmlns:w="${W}">${inner}</w:p>`;
+const wrapRun = (inner: string): string =>
+  `<w:r xmlns:w="${W}">${inner}<w:t>x</w:t></w:r>`;
+const wrapParagraph = (inner: string): string =>
+  `<w:p xmlns:w="${W}">${inner}</w:p>`;
 
 const REVISION = 'w:id="7" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"';
 
 /** A run writer emits `<w:r>` with no bindings; the reader needs them back. */
-const rebindRun = (saved: string): string => saved.replace("<w:r>", `<w:r xmlns:w="${W}">`);
+const rebindRun = (saved: string): string =>
+  saved.replace("<w:r>", `<w:r xmlns:w="${W}">`);
 
 /** A part writer emits the whole part, bindings included. */
 const asWritten = (saved: string): string => saved;
@@ -156,7 +165,8 @@ const OWNERS = [
       `<w:styles xmlns:w="${W}">` +
       '<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:rPr/></w:style>' +
       "</w:styles>",
-    expected: '<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:rPr/>',
+    expected:
+      '<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:rPr/>',
     save: saveStyles,
     reauthor: asWritten,
   },
@@ -184,7 +194,9 @@ const OWNERS = [
   },
   {
     name: "the snapshot inside a run's tracked property change",
-    authored: wrapRun(`<w:rPr><w:rPrChange ${REVISION}><w:rPr/></w:rPrChange></w:rPr>`),
+    authored: wrapRun(
+      `<w:rPr><w:rPrChange ${REVISION}><w:rPr/></w:rPrChange></w:rPr>`,
+    ),
     expected: `<w:rPrChange ${REVISION}><w:rPr/></w:rPrChange>`,
     save: saveRun,
     reauthor: rebindRun,
@@ -222,9 +234,13 @@ describe("an empty run property set is not an absent one", () => {
 
   test("an owner that never carried a run property set still writes none", () => {
     expect(saveRun(wrapRun(""))).not.toContain("<w:rPr");
-    expect(saveParagraphMark(wrapParagraph("<w:pPr/>"))).not.toContain("<w:rPr");
+    expect(saveParagraphMark(wrapParagraph("<w:pPr/>"))).not.toContain(
+      "<w:rPr",
+    );
     expect(saveParagraphMark(wrapParagraph(""))).toBe("");
-    expect(saveParagraphMarkThroughEditor(wrapParagraph("<w:pPr/>"))).not.toContain("<w:rPr");
+    expect(
+      saveParagraphMarkThroughEditor(wrapParagraph("<w:pPr/>")),
+    ).not.toContain("<w:rPr");
   });
 
   test("a constructed record whose fields emit nothing does not invent an empty set", () => {

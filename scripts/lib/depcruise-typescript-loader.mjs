@@ -1,5 +1,5 @@
-import { pathToFileURL } from "node:url";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 /**
  * dependency-cruiser's tsc-based extractor (needed to tag an import

@@ -25,7 +25,8 @@ export const SCHEMA_GRAPH_PATH = path.join(
   "specifications/generated/docx-transitional-schema.gen.json",
 );
 
-export const WML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+export const WML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /**
  * Namespaces whose content a WordprocessingML part can carry inline.
@@ -114,7 +115,9 @@ export type SchemaGraph = {
   symbols: SchemaSymbol[];
 };
 
-export const loadSchemaGraph = async (graphPath = SCHEMA_GRAPH_PATH): Promise<SchemaGraph> =>
+export const loadSchemaGraph = async (
+  graphPath = SCHEMA_GRAPH_PATH,
+): Promise<SchemaGraph> =>
   JSON.parse(await readFile(graphPath, "utf8")) as SchemaGraph;
 
 /**
@@ -135,7 +138,9 @@ export const loadSchemaGraph = async (graphPath = SCHEMA_GRAPH_PATH): Promise<Sc
  * sequence. So the ordering is this function, and both read it rather than
  * restating it.
  */
-export const orderedParticlesByOwner = <Particle extends { order: number; owner: string }>(
+export const orderedParticlesByOwner = <
+  Particle extends { order: number; owner: string },
+>(
   particles: readonly Particle[],
 ): ReadonlyMap<string, readonly Particle[]> => {
   const byOwner = new Map<string, Particle[]>();
@@ -164,7 +169,9 @@ export const buildIndex = (graph: SchemaGraph) => {
     }
     attributesByOwner.set(attribute.owner, [attribute]);
   }
-  const baseOf = new Map(graph.inheritance.map(({ derived, base }) => [derived, base]));
+  const baseOf = new Map(
+    graph.inheritance.map(({ derived, base }) => [derived, base]),
+  );
   const globalAttributes = new Map(
     graph.symbols
       .filter((symbol) => symbol.kind === "attribute")
@@ -175,7 +182,12 @@ export const buildIndex = (graph: SchemaGraph) => {
 
 export type Index = ReturnType<typeof buildIndex>;
 
-export type ResolvedAttribute = { name: string; type: string; default?: string; fixed?: string };
+export type ResolvedAttribute = {
+  name: string;
+  type: string;
+  default?: string;
+  fixed?: string;
+};
 
 /** Attributes a complex type declares, following attribute groups and its base. */
 export const attributesOf = (
@@ -192,7 +204,9 @@ export const attributesOf = (
   for (const attribute of index.attributesByOwner.get(ownerId) ?? []) {
     if (attribute.kind === "group") {
       if (attribute.ref) {
-        resolved.push(...attributesOf(index, `attributeGroup:${attribute.ref}`, seen));
+        resolved.push(
+          ...attributesOf(index, `attributeGroup:${attribute.ref}`, seen),
+        );
       }
       continue;
     }
@@ -207,14 +221,17 @@ export const attributesOf = (
       resolved.push({
         name: attribute.name,
         type: attribute.type,
-        ...(attribute.default === undefined ? {} : { default: attribute.default }),
+        ...(attribute.default === undefined
+          ? {}
+          : { default: attribute.default }),
         ...(attribute.fixed === undefined ? {} : { fixed: attribute.fixed }),
       });
     }
   }
 
   const base = index.baseOf.get(ownerId);
-  const baseType = base === undefined ? undefined : index.byId.get(`complexType:${base}`);
+  const baseType =
+    base === undefined ? undefined : index.byId.get(`complexType:${base}`);
   if (baseType) {
     resolved.push(...attributesOf(index, baseType.id, seen));
   }
@@ -264,7 +281,9 @@ export const reachableWmlElementTypes = (
       if (child.kind !== "element") {
         continue;
       }
-      const declared = child.ref ? index.byId.get(`element:${child.ref}`) : undefined;
+      const declared = child.ref
+        ? index.byId.get(`element:${child.ref}`)
+        : undefined;
       const namespace = declared?.namespace ?? child.namespace;
       const name = declared?.name ?? child.name;
       const type = declared?.type ?? child.type;
@@ -299,11 +318,18 @@ export const elementTypes = (
 ): Map<string, Set<string>> => {
   const reachable = reachableWmlElementTypes(graph, index, roots);
   const types = new Map<string, Set<string>>();
-  const record = (namespace: string, name: string, type: string | undefined): void => {
+  const record = (
+    namespace: string,
+    name: string,
+    type: string | undefined,
+  ): void => {
     if (type === undefined || !INLINE_NAMESPACES.has(namespace)) {
       return;
     }
-    if (namespace === WML_NAMESPACE && reachable.get(name)?.has(type) !== true) {
+    if (
+      namespace === WML_NAMESPACE &&
+      reachable.get(name)?.has(type) !== true
+    ) {
       return;
     }
     const key = `${namespace} ${name}`;
@@ -343,5 +369,9 @@ export const localName = (qualifiedName: string): string =>
   qualifiedName.slice(qualifiedName.indexOf("}") + 1);
 
 /** The slot key both checks use: `"<namespace URI> <element> @<attribute>"`. */
-export const slotKey = (namespace: string, element: string, attribute: string | null): string =>
+export const slotKey = (
+  namespace: string,
+  element: string,
+  attribute: string | null,
+): string =>
   `${namespace} ${element}${attribute === null ? "" : ` @${attribute}`}`;

@@ -2,33 +2,48 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
-import { panic } from "better-result";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
-import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
-import { HiddenProseMirror, type HiddenProseMirrorRef } from "./HiddenProseMirror";
-import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
-import { useSelectionOverlay } from "./SelectionOverlay";
-import { PagedEditor, type PagedEditorRef } from "./PagedEditor";
+
+import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
 import { Plugin } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
-import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import {
   getMeasureProvider,
-  setMeasureProvider,
   type MeasureProvider,
+  setMeasureProvider,
 } from "@stll/folio-core/layout-engine/measure/measureProvider";
+import type {
+  FlowBlock,
+  Layout,
+  Measure,
+} from "@stll/folio-core/layout-engine/types";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+import {
+  HiddenProseMirror,
+  type HiddenProseMirrorRef,
+} from "./HiddenProseMirror";
+import { PagedEditor, type PagedEditorRef } from "./PagedEditor";
+import { useSelectionOverlay } from "./SelectionOverlay";
+
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
   GlobalRegistrator.unregister();
 });
 
-const createTransactionCallbacks = (calls: string[], callbackLabel: string) => ({
+const createTransactionCallbacks = (
+  calls: string[],
+  callbackLabel: string,
+) => ({
   onTransaction: () => {
     calls.push(callbackLabel);
   },
@@ -88,7 +103,14 @@ const createSelectionFixture = () => {
       pmStart: 0,
       pmEnd: 5,
       runs: [
-        { kind: "text", text: "abc", fontFamily: "Calibri", fontSize: 11, pmStart: 1, pmEnd: 4 },
+        {
+          kind: "text",
+          text: "abc",
+          fontFamily: "Calibri",
+          fontSize: 11,
+          pmStart: 1,
+          pmEnd: 4,
+        },
       ],
     },
   ] satisfies FlowBlock[];
@@ -215,22 +237,41 @@ test("selection geometry follows collapsed, range, and cleared inputs without st
     );
   };
   try {
-    await act(async () => root.render(<Probe selection={collapsedSelection} layout={fixture} />));
-    expect(container.querySelector("output")?.getAttribute("data-caret")).toBe("present");
-    expect(container.querySelector("output")?.getAttribute("data-rects")).toBe("0");
-    await act(async () => root.render(<Probe selection={rangeSelection} layout={fixture} />));
-    expect(container.querySelector("output")?.getAttribute("data-caret")).toBe("absent");
-    expect(container.querySelector("output")?.getAttribute("data-rects")).toBe("1");
+    await act(async () =>
+      root.render(<Probe selection={collapsedSelection} layout={fixture} />),
+    );
+    expect(container.querySelector("output")?.getAttribute("data-caret")).toBe(
+      "present",
+    );
+    expect(container.querySelector("output")?.getAttribute("data-rects")).toBe(
+      "0",
+    );
+    await act(async () =>
+      root.render(<Probe selection={rangeSelection} layout={fixture} />),
+    );
+    expect(container.querySelector("output")?.getAttribute("data-caret")).toBe(
+      "absent",
+    );
+    expect(container.querySelector("output")?.getAttribute("data-rects")).toBe(
+      "1",
+    );
     expect(
-      JSON.parse(container.querySelector("output")?.getAttribute("data-selection") ?? "null"),
+      JSON.parse(
+        container.querySelector("output")?.getAttribute("data-selection") ??
+          "null",
+      ),
     ).toEqual([{ x: 10, y: 20, width: 21, height: 16, pageIndex: 0 }]);
     for (const input of [
       { selection: null, layout: fixture },
       { selection: { from: 1, to: 1 }, layout: null },
     ]) {
       await act(async () => root.render(<Probe {...input} />));
-      expect(container.querySelector("output")?.getAttribute("data-caret")).toBe("absent");
-      expect(container.querySelector("output")?.getAttribute("data-rects")).toBe("0");
+      expect(
+        container.querySelector("output")?.getAttribute("data-caret"),
+      ).toBe("absent");
+      expect(
+        container.querySelector("output")?.getAttribute("data-rects"),
+      ).toBe("0");
     }
   } finally {
     await act(async () => root.unmount());
@@ -263,7 +304,8 @@ test("persistent paged controller reads document I/O from the latest commit", as
   try {
     const first = new ArrayBuffer(1);
     await render(first);
-    const controller = editor.current?.getEditor() ?? panic("Expected an editor controller");
+    const controller =
+      editor.current?.getEditor() ?? panic("Expected an editor controller");
     expect(await controller.getDocx()).toBe(first);
     const replacement = new ArrayBuffer(2);
     await render(replacement);
@@ -304,15 +346,20 @@ test("deferred hidden view reuses the latest committed pre-view document seed", 
   };
   try {
     await render(createEmptyDocument({ initialText: "First" }), "first");
-    const controller = editor.current?.getEditor() ?? panic("Expected an editor controller");
+    const controller =
+      editor.current?.getEditor() ?? panic("Expected an editor controller");
     expect(controller.getView()).toBeNull();
-    await render(createEmptyDocument({ initialText: "Replacement" }), "replacement");
+    await render(
+      createEmptyDocument({ initialText: "Replacement" }),
+      "replacement",
+    );
     expect(editor.current?.getEditor()).toBe(controller);
     expect(controller.getView()).toBeNull();
     const initializedBeforeRequest = probe.getInitializations();
     expect(initializedBeforeRequest).toBeGreaterThan(0);
     await act(async () => editor.current?.ensureView({ focus: false }));
-    const view = controller.getView() ?? panic("Expected the requested hidden view");
+    const view =
+      controller.getView() ?? panic("Expected the requested hidden view");
     expect(view.state.doc.textContent).toBe("Replacement");
     expect(probe.getInitializations()).toBe(initializedBeforeRequest);
   } finally {

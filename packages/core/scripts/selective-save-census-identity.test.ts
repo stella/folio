@@ -1,9 +1,10 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
-import { createEmptyDocx } from "../src/docx/rezip";
+
 import { parseDocx } from "../src/docx/parser";
+import { createEmptyDocx } from "../src/docx/rezip";
 import { serializeDocument } from "../src/docx/serializer/documentSerializer";
 import { fromProseDoc } from "../src/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../src/prosemirror/conversion/toProseDoc";
@@ -27,21 +28,30 @@ for (const coverage of ["authored", "none"] as const) {
     );
     const zip = await JSZip.loadAsync(await createEmptyDocx());
     zip.file("word/document.xml", source);
-    const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }));
-    const state = ensureParaIdsInState(EditorState.create({ doc: toProseDoc(parsed) }));
+    const parsed = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+    );
+    const state = ensureParaIdsInState(
+      EditorState.create({ doc: toProseDoc(parsed) }),
+    );
     const directParagraphs: string[] = [];
     state.doc.forEach((node) => {
-      if (node.type.name === "paragraph") directParagraphs.push(node.attrs["paraId"]);
+      if (node.type.name === "paragraph")
+        directParagraphs.push(node.attrs["paraId"]);
     });
     // The text-box host is a source w:p but no longer a PM paragraph.
     expect(directParagraphs).toHaveLength(1);
     const targetId = directParagraphs.at(0);
     if (!targetId) panic("Expected allocated target ID");
     const serialized = serializeDocument(
-      fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(state.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     expect(censusParagraphOrdinals(source, serialized).get(targetId)).toBe(1);
-    expect(censusParagraphOrdinals(serialized, serialized).get(targetId)).toBe(1);
+    expect(censusParagraphOrdinals(serialized, serialized).get(targetId)).toBe(
+      1,
+    );
   });
 }
 
@@ -49,13 +59,17 @@ test("authored IDs follow XML positions even when serialization expands earlier 
   const source = wrap(paragraph("10000001"));
   const serialized = wrap(paragraph("10000002") + paragraph("10000001"));
   expect(censusParagraphOrdinals(source, serialized).get("10000001")).toBe(0);
-  expect(censusParagraphOrdinals(serialized, serialized).get("10000001")).toBe(1);
+  expect(censusParagraphOrdinals(serialized, serialized).get("10000001")).toBe(
+    1,
+  );
 });
 
 test("refuses ambiguous or unaligned minted identities", () => {
   expect(
-    censusParagraphOrdinals(wrap(paragraph()), wrap(paragraph("10000001") + paragraph("10000002")))
-      .size,
+    censusParagraphOrdinals(
+      wrap(paragraph()),
+      wrap(paragraph("10000001") + paragraph("10000002")),
+    ).size,
   ).toBe(0);
   expect(
     censusParagraphOrdinals(
@@ -64,11 +78,16 @@ test("refuses ambiguous or unaligned minted identities", () => {
     ).size,
   ).toBe(0);
   expect(
-    censusParagraphOrdinals(wrap(paragraph()), wrap(paragraph("10000001") + paragraph("10000001")))
-      .size,
+    censusParagraphOrdinals(
+      wrap(paragraph()),
+      wrap(paragraph("10000001") + paragraph("10000001")),
+    ).size,
   ).toBe(0);
   expect(
-    censusParagraphOrdinals(wrap(paragraph("10000001")), wrap(paragraph("10000002"))).size,
+    censusParagraphOrdinals(
+      wrap(paragraph("10000001")),
+      wrap(paragraph("10000002")),
+    ).size,
   ).toBe(0);
 });
 

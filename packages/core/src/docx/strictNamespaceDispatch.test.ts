@@ -18,7 +18,12 @@ import { CAPTURE, dispatchChildren } from "./containerChildren";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseParagraph } from "./paragraphParser";
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
-import { getChildElements, parseXml, parseXmlDocument, type XmlElement } from "./xmlParser";
+import {
+  getChildElements,
+  parseXml,
+  parseXmlDocument,
+  type XmlElement,
+} from "./xmlParser";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const STRICT_W = "http://purl.oclc.org/ooxml/wordprocessingml/main";
@@ -28,10 +33,9 @@ const DECLARED = CONTAINER_CHILDREN["w:comment"];
 
 // SAFETY: the entries come from `DECLARED` itself, so the record is total over
 // its element type; `Object.fromEntries` only widens the key back to `string`.
-const handlers = Object.fromEntries(DECLARED.map((name) => [name, CAPTURE] as const)) as Record<
-  (typeof DECLARED)[number],
-  typeof CAPTURE
->;
+const handlers = Object.fromEntries(
+  DECLARED.map((name) => [name, CAPTURE] as const),
+) as Record<(typeof DECLARED)[number], typeof CAPTURE>;
 
 /** The `w:comment` inside a wrapper, so the fixture's prefixes are in scope. */
 const container = (xml: string): XmlElement => {
@@ -47,9 +51,9 @@ const container = (xml: string): XmlElement => {
  * the handler map decides it by local name, so it never reaches a
  * namespace-keyed disposition.
  */
-const FOREIGN_NAMESPACE_PAIRS = [...TRANSITIONAL_NAMESPACE_BY_STRICT_URI].filter(
-  ([strict]) => strict !== STRICT_W,
-);
+const FOREIGN_NAMESPACE_PAIRS = [
+  ...TRANSITIONAL_NAMESPACE_BY_STRICT_URI,
+].filter(([strict]) => strict !== STRICT_W);
 
 describe("the child dispatcher under ISO Strict", () => {
   test.each(FOREIGN_NAMESPACE_PAIRS)(
@@ -57,7 +61,9 @@ describe("the child dispatcher under ISO Strict", () => {
     (strict, transitional) => {
       const reached: string[] = [];
       const preserved = dispatchChildren({
-        element: container(`<w:comment xmlns:w="${W}" xmlns:s="${strict}"><s:thing/></w:comment>`),
+        element: container(
+          `<w:comment xmlns:w="${W}" xmlns:s="${strict}"><s:thing/></w:comment>`,
+        ),
         container: "w:comment",
         handlers,
         capturePosition: () => 0,
@@ -84,6 +90,8 @@ describe("the child dispatcher under ISO Strict", () => {
     }
     const paragraph = parseParagraph(root, null, null, null, null, null);
 
-    expect(paragraph.content.map((content) => content.type)).toEqual(["mathEquation"]);
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "mathEquation",
+    ]);
   });
 });

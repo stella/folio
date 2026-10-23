@@ -1,9 +1,18 @@
-import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
-import type { OpStory } from "@stll/docx-core/ops";
-import { AllSelection, TextSelection, type Transaction } from "prosemirror-state";
+import {
+  AllSelection,
+  TextSelection,
+  type Transaction,
+} from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { CanonicalSessionError } from "./canonicalSession";
+
+import type { OpStory } from "@stll/docx-core/ops";
+
+import {
+  CANONICAL_GAP,
+  type CanonicalGap,
+} from "../types/canonicalCapabilities";
 import { createCanonicalInputBoundary } from "./canonicalInput";
+import { CanonicalSessionError } from "./canonicalSession";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 
 type CanonicalStoryEditorOptions = {
@@ -32,7 +41,8 @@ export const createCanonicalStoryEditor = ({
   };
   const history = (direction: "undo" | "redo") => {
     const view = getView();
-    const accepted = getApi()?.applyCanonicalStoryHistory({ view, story, direction }) ?? false;
+    const accepted =
+      getApi()?.applyCanonicalStoryHistory({ view, story, direction }) ?? false;
     if (accepted && !view.isDestroyed) onSelectionChange();
     return accepted;
   };
@@ -54,25 +64,37 @@ export const createCanonicalStoryEditor = ({
       Math.max(anchor, head) === view.state.doc.content.size
     )
       return;
-    if (anchor === view.state.selection.anchor && head === view.state.selection.head) return;
+    if (
+      anchor === view.state.selection.anchor &&
+      head === view.state.selection.head
+    )
+      return;
     if (
       !view.state.doc.resolve(anchor).parent.inlineContent ||
       !view.state.doc.resolve(head).parent.inlineContent
     )
       return;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, anchor, head),
+      ),
+    );
   };
   const boundary = createCanonicalInputBoundary({
     breakUndoGroup: () => {
       getApi()?.updateCanonicalInputLifecycle("breakUndoGroup");
     },
-    beginComposition: () => getApi()?.updateCanonicalInputLifecycle("beginComposition") ?? false,
+    beginComposition: () =>
+      getApi()?.updateCanonicalInputLifecycle("beginComposition") ?? false,
     endComposition: () => {
       getApi()?.updateCanonicalInputLifecycle("endComposition");
     },
     replace: (intent) => {
       const view = getView();
-      if (getApi()?.replaceCanonicalStoryText({ view, story, intent }) && !view.isDestroyed)
+      if (
+        getApi()?.replaceCanonicalStoryText({ view, story, intent }) &&
+        !view.isDestroyed
+      )
         onSelectionChange();
     },
     undo: () => history("undo"),
@@ -85,7 +107,8 @@ export const createCanonicalStoryEditor = ({
       const view = getView();
       if (transaction.docChanged) {
         if (boundary.acceptComposition(view, transaction)) return true;
-        if (!boundary.commitNativeProposal(view, transaction)) boundary.refuseNativeMutation(view);
+        if (!boundary.commitNativeProposal(view, transaction))
+          boundary.refuseNativeMutation(view);
         view.updateState(view.state);
         return true;
       }
@@ -98,21 +121,27 @@ export const createCanonicalStoryEditor = ({
         return true;
       }
       view.updateState(applied.state);
-      if (applied.transactions.some((step) => step.selectionSet)) onSelectionChange();
+      if (applied.transactions.some((step) => step.selectionSet))
+        onSelectionChange();
       return true;
     },
     props: {
       handleKeyDown: (view: EditorView, event: KeyboardEvent) =>
         enabled() && boundary.handleKeyDown(view, event),
-      handleTextInput: (view: EditorView, from: number, to: number, text: string) =>
-        enabled() && boundary.handleTextInput(view, from, to, text),
+      handleTextInput: (
+        view: EditorView,
+        from: number,
+        to: number,
+        text: string,
+      ) => enabled() && boundary.handleTextInput(view, from, to, text),
       handleDOMEvents: {
         keydown: (view: EditorView, event: KeyboardEvent) =>
           enabled() && boundary.handleDOMEvents.keydown(view, event),
         // Native navigation completes before keyup; synchronize it before typing
         // rather than waiting for the asynchronous selection observer.
         keyup: (view: EditorView, event: KeyboardEvent) => {
-          if (enabled() && /^(?:Arrow|Home$|End$|Page)/u.test(event.key)) syncNativeSelection(view);
+          if (enabled() && /^(?:Arrow|Home$|End$|Page)/u.test(event.key))
+            syncNativeSelection(view);
           return false;
         },
         mouseup: (view: EditorView) => {
@@ -121,13 +150,16 @@ export const createCanonicalStoryEditor = ({
         },
         beforeinput: (view: EditorView, event: InputEvent) =>
           enabled() && boundary.handleDOMEvents.beforeinput(view, event),
-        mousedown: (view: EditorView) => enabled() && boundary.handleDOMEvents.mousedown(view),
+        mousedown: (view: EditorView) =>
+          enabled() && boundary.handleDOMEvents.mousedown(view),
         compositionstart: (view: EditorView) =>
           enabled() && boundary.handleDOMEvents.compositionstart(view),
         compositionend: (view: EditorView, event: Event) =>
           enabled() && boundary.handleDOMEvents.compositionend(view, event),
-        input: (view: EditorView) => enabled() && boundary.handleDOMEvents.input(view),
-        blur: (view: EditorView) => enabled() && boundary.handleDOMEvents.blur(view),
+        input: (view: EditorView) =>
+          enabled() && boundary.handleDOMEvents.input(view),
+        blur: (view: EditorView) =>
+          enabled() && boundary.handleDOMEvents.blur(view),
         paste: (view: EditorView, event: ClipboardEvent) =>
           enabled() && boundary.handleDOMEvents.paste(view, event),
         cut: (view: EditorView, event: ClipboardEvent) =>

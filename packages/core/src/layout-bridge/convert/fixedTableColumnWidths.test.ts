@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { parseTable } from "../../docx/tableParser";
 import { parseXmlDocument } from "../../docx/xmlParser";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
@@ -28,7 +31,9 @@ const project = ({
 }: TableFixtureOptions) => {
   const rowXml = rows
     .map((cells) => {
-      const cellXml = cells.map((cell) => `<w:tc><w:tcPr>${cell}</w:tcPr><w:p/></w:tc>`).join("");
+      const cellXml = cells
+        .map((cell) => `<w:tc><w:tcPr>${cell}</w:tcPr><w:p/></w:tc>`)
+        .join("");
       return `<w:tr><w:trPr>${rowProperties}</w:trPr>${cellXml}</w:tr>`;
     })
     .join("");
@@ -46,13 +51,19 @@ const project = ({
   if (!table) {
     throw new TypeError("Expected parsed table");
   }
-  const document = { package: { document: { content: [table] } } } satisfies Document;
+  const document = {
+    package: { document: { content: [table] } },
+  } satisfies Document;
   const pmDoc = toProseDoc(document);
   const block = toFlowBlocks(pmDoc).at(0);
   if (block?.kind !== "table") {
     throw new TypeError("Expected table flow block");
   }
-  return { widths: block.columnWidths?.map((width) => width * 15), pmDoc, table };
+  return {
+    widths: block.columnWidths?.map((width) => width * 15),
+    pmDoc,
+    table,
+  };
 };
 
 describe("fixed table absolute cell preferences", () => {
@@ -62,7 +73,10 @@ describe("fixed table absolute cell preferences", () => {
       fc.assert(
         fc.property(
           fc.array(
-            fc.tuple(fc.integer({ min: 60, max: 5000 }), fc.integer({ min: 60, max: 5000 })),
+            fc.tuple(
+              fc.integer({ min: 60, max: 5000 }),
+              fc.integer({ min: 60, max: 5000 }),
+            ),
             { minLength: 1, maxLength: 5 },
           ),
           (columns) => {
@@ -81,7 +95,9 @@ describe("fixed table absolute cell preferences", () => {
             const repeated = toFlowBlocks(result.pmDoc).at(0);
             expect(repeated?.kind).toBe("table");
             if (repeated?.kind === "table") {
-              expect(repeated.columnWidths?.map((width) => width * 15)).toEqual(result.widths);
+              expect(repeated.columnWidths?.map((width) => width * 15)).toEqual(
+                result.widths,
+              );
             }
             const saved = fromProseDoc(result.pmDoc, undefined, {
               stylesheetSource: { type: "package" },
@@ -108,9 +124,10 @@ describe("fixed table absolute cell preferences", () => {
   ])(
     "retains the grid when a cell does not supply a single-column absolute preference: %s",
     (cell) => {
-      expect(project({ grid: [3000, 4500], rows: [[cell, absoluteCell(900)]] }).widths).toEqual([
-        3000, 4500,
-      ]);
+      expect(
+        project({ grid: [3000, 4500], rows: [[cell, absoluteCell(900)]] })
+          .widths,
+      ).toEqual([3000, 4500]);
     },
   );
 
@@ -136,14 +153,20 @@ describe("fixed table absolute cell preferences", () => {
       fc.assert(
         fc.property(
           fc.integer({ min: 60, max: 5000 }),
-          fc.array(fc.integer({ min: 60, max: 5000 }), { minLength: 1, maxLength: 5 }),
+          fc.array(fc.integer({ min: 60, max: 5000 }), {
+            minLength: 1,
+            maxLength: 5,
+          }),
           fc.constantFrom("restart", "continue", "chain"),
           fc.boolean(),
           (gridWidth, preferences, merge, companionColumn) => {
             const grid = companionColumn ? [gridWidth, 3000] : [gridWidth];
             const rows = preferences.map((width, index) => {
-              const restart = merge === "restart" || (merge === "chain" && index === 0);
-              const mergeXml = restart ? '<w:vMerge w:val="restart"/>' : "<w:vMerge/>";
+              const restart =
+                merge === "restart" || (merge === "chain" && index === 0);
+              const mergeXml = restart
+                ? '<w:vMerge w:val="restart"/>'
+                : "<w:vMerge/>";
               const cell = `${absoluteCell(width)}${mergeXml}`;
               return companionColumn ? [cell, absoluteCell(900)] : [cell];
             });
@@ -159,7 +182,9 @@ describe("fixed table absolute cell preferences", () => {
             const repeated = toFlowBlocks(result.pmDoc).at(0);
             expect(repeated?.kind).toBe("table");
             if (repeated?.kind === "table") {
-              expect(repeated.columnWidths?.map((width) => width * 15)).toEqual(result.widths);
+              expect(repeated.columnWidths?.map((width) => width * 15)).toEqual(
+                result.widths,
+              );
             }
           },
         ),
@@ -179,25 +204,31 @@ describe("fixed table absolute cell preferences", () => {
     ).toEqual([3000, 4500]);
   });
 
-  test.each(["dxa", "pct"])("retains the grid when w:tblW supplies a %s constraint", (type) => {
-    expect(
-      project({
-        grid: [3000, 4500],
-        rows: [[absoluteCell(600), absoluteCell(900)]],
-        properties: `<w:tblW w:type="${type}" w:w="5000"/>`,
-      }).widths,
-    ).toEqual([3000, 4500]);
-  });
+  test.each(["dxa", "pct"])(
+    "retains the grid when w:tblW supplies a %s constraint",
+    (type) => {
+      expect(
+        project({
+          grid: [3000, 4500],
+          rows: [[absoluteCell(600), absoluteCell(900)]],
+          properties: `<w:tblW w:type="${type}" w:w="5000"/>`,
+        }).widths,
+      ).toEqual([3000, 4500]);
+    },
+  );
 
-  test.each(["auto", "nil"])("ignores the numeric residue of a %s table width", (type) => {
-    expect(
-      project({
-        grid: [3000, 4500],
-        rows: [[absoluteCell(600), absoluteCell(900)]],
-        properties: `<w:tblW w:type="${type}" w:w="5000"/>`,
-      }).widths,
-    ).toEqual([600, 900]);
-  });
+  test.each(["auto", "nil"])(
+    "ignores the numeric residue of a %s table width",
+    (type) => {
+      expect(
+        project({
+          grid: [3000, 4500],
+          rows: [[absoluteCell(600), absoluteCell(900)]],
+          properties: `<w:tblW w:type="${type}" w:w="5000"/>`,
+        }).widths,
+      ).toEqual([600, 900]);
+    },
+  );
 
   test("preserves columns omitted by a row", () => {
     expect(
@@ -222,8 +253,11 @@ describe("fixed table absolute cell preferences", () => {
     '<w:del w:id="1" w:author="Reviewer"/>',
   ])("retains the grid when row visibility can change: %s", (rowProperties) => {
     expect(
-      project({ grid: [3000, 4500], rows: [[absoluteCell(600), absoluteCell(900)]], rowProperties })
-        .widths,
+      project({
+        grid: [3000, 4500],
+        rows: [[absoluteCell(600), absoluteCell(900)]],
+        rowProperties,
+      }).widths,
     ).toEqual([3000, 4500]);
   });
 });

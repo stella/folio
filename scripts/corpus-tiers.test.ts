@@ -19,7 +19,11 @@ const lock = (
     id,
     commit: "0".repeat(40),
     tier,
-    files: paths.map((path, index) => ({ path, sha256: `${id}-${index}`, bytes: 10 })),
+    files: paths.map((path, index) => ({
+      path,
+      sha256: `${id}-${index}`,
+      bytes: 10,
+    })),
   })),
 });
 
@@ -66,16 +70,24 @@ describe("tierScopedLockDigest", () => {
    * re-measurement of findings it cannot affect.
    */
   test("adding a tier-2 source leaves the tier-1 digest unchanged", () => {
-    const before = lock([{ id: "permissive", tier: 1, paths: ["a.docx", "b.docx"] }]);
-    expect(tierScopedLockDigest(TWO_TIERS, [1])).toBe(tierScopedLockDigest(before, [1]));
+    const before = lock([
+      { id: "permissive", tier: 1, paths: ["a.docx", "b.docx"] },
+    ]);
+    expect(tierScopedLockDigest(TWO_TIERS, [1])).toBe(
+      tierScopedLockDigest(before, [1]),
+    );
   });
 
   test("two tier selections never share a digest", () => {
-    expect(tierScopedLockDigest(TWO_TIERS, [1])).not.toBe(tierScopedLockDigest(TWO_TIERS, [1, 2]));
+    expect(tierScopedLockDigest(TWO_TIERS, [1])).not.toBe(
+      tierScopedLockDigest(TWO_TIERS, [1, 2]),
+    );
   });
 
   test("a tier selection contributing no files still has its own digest", () => {
-    const onlyTierOne = lock([{ id: "permissive", tier: 1, paths: ["a.docx"] }]);
+    const onlyTierOne = lock([
+      { id: "permissive", tier: 1, paths: ["a.docx"] },
+    ]);
     expect(tierScopedLockDigest(onlyTierOne, [1])).not.toBe(
       tierScopedLockDigest(onlyTierOne, [1, 2]),
     );
@@ -86,6 +98,8 @@ describe("tierScopedLockDigest", () => {
       { id: "permissive", tier: 1, paths: ["a.docx", "b.docx", "c.docx"] },
       { id: "copyleft", tier: 2, paths: ["c.docx"] },
     ]);
-    expect(tierScopedLockDigest(grown, [1])).not.toBe(tierScopedLockDigest(TWO_TIERS, [1]));
+    expect(tierScopedLockDigest(grown, [1])).not.toBe(
+      tierScopedLockDigest(TWO_TIERS, [1]),
+    );
   });
 });

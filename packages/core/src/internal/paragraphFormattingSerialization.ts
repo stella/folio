@@ -1,4 +1,11 @@
-import type { ExhaustiveFields, ParagraphFormatting, TextFormatting } from "../types/document";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
+import {
+  outlineLevelStatedValue,
+  type ParagraphNumberingOverride,
+  paragraphNumberingSlots,
+} from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
+
 import { serializePreservedAttributes } from "../docx/attributeRemainder";
 import { serializeBorder } from "../docx/serializer/borderSerializer";
 import {
@@ -6,31 +13,34 @@ import {
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
 import { intAttr } from "../docx/serializer/xmlUtils";
-import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
-import {
-  outlineLevelStatedValue,
-  paragraphNumberingSlots,
-  type ParagraphNumberingOverride,
-} from "@stll/docx-core/model";
-import { serializeSequenceChildren } from "@stll/docx-core/schema";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../docx/strictNames.gen";
 import { createCapturedXmlSanitizer } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
+import type {
+  ExhaustiveFields,
+  ParagraphFormatting,
+  TextFormatting,
+} from "../types/document";
 
 type RequiredFieldValues<Source, Fields extends keyof Source> = {
   [Field in Fields]: Source[Field] | undefined;
 };
 
 type ParagraphBorders = NonNullable<ParagraphFormatting["borders"]>;
-type ClassifiedParagraphBordersField = "top" | "left" | "bottom" | "right" | "between" | "bar";
+type ClassifiedParagraphBordersField =
+  "top" | "left" | "bottom" | "right" | "between" | "bar";
 type ExhaustiveParagraphBorders = ExhaustiveFields<
   ParagraphBorders,
   ClassifiedParagraphBordersField
 >;
 
 type ParagraphTab = NonNullable<ParagraphFormatting["tabs"]>[number];
-type ClassifiedParagraphTabField = "alignment" | "position" | "leader" | "preservedAttributes";
-type ExhaustiveParagraphTab = ExhaustiveFields<ParagraphTab, ClassifiedParagraphTabField>;
+type ClassifiedParagraphTabField =
+  "alignment" | "position" | "leader" | "preservedAttributes";
+type ExhaustiveParagraphTab = ExhaustiveFields<
+  ParagraphTab,
+  ClassifiedParagraphTabField
+>;
 
 type ParagraphFrame = NonNullable<ParagraphFormatting["frame"]>;
 type ClassifiedParagraphFrameField =
@@ -48,7 +58,10 @@ type ClassifiedParagraphFrameField =
   | "yAlign"
   | "wrap"
   | "preservedAttributes";
-type ExhaustiveParagraphFrame = ExhaustiveFields<ParagraphFrame, ClassifiedParagraphFrameField>;
+type ExhaustiveParagraphFrame = ExhaustiveFields<
+  ParagraphFrame,
+  ClassifiedParagraphFrameField
+>;
 
 type SpacingProvenance = NonNullable<ParagraphFormatting["spacingExplicit"]>;
 type ClassifiedSpacingProvenanceField = "before" | "after";
@@ -119,7 +132,9 @@ type MutableModeledParagraphFormattingEmission = {
   ]: ModeledParagraphFormattingEmission[Field];
 };
 
-const serializeParagraphBorders = (borders: ExhaustiveParagraphBorders | undefined): string => {
+const serializeParagraphBorders = (
+  borders: ExhaustiveParagraphBorders | undefined,
+): string => {
   if (!borders) {
     return "";
   }
@@ -162,7 +177,10 @@ type ClassifiedSpacingFormattingField =
   | "beforeAutospacing"
   | "afterAutospacing"
   | "spacingPreservedAttributes";
-type SpacingFormatting = RequiredFieldValues<ParagraphFormatting, ClassifiedSpacingFormattingField>;
+type SpacingFormatting = RequiredFieldValues<
+  ParagraphFormatting,
+  ClassifiedSpacingFormattingField
+>;
 
 const serializeSpacing = (formatting: SpacingFormatting): string => {
   const attrs: string[] = [];
@@ -179,12 +197,19 @@ const serializeSpacing = (formatting: SpacingFormatting): string => {
     attrs.push(`w:lineRule="${formatting.lineSpacingRule}"`);
   }
   if (formatting.beforeAutospacing !== undefined) {
-    attrs.push(`w:beforeAutospacing="${formatting.beforeAutospacing ? "1" : "0"}"`);
+    attrs.push(
+      `w:beforeAutospacing="${formatting.beforeAutospacing ? "1" : "0"}"`,
+    );
   }
   if (formatting.afterAutospacing !== undefined) {
-    attrs.push(`w:afterAutospacing="${formatting.afterAutospacing ? "1" : "0"}"`);
+    attrs.push(
+      `w:afterAutospacing="${formatting.afterAutospacing ? "1" : "0"}"`,
+    );
   }
-  const written = serializePreservedAttributes(attrs, formatting.spacingPreservedAttributes);
+  const written = serializePreservedAttributes(
+    attrs,
+    formatting.spacingPreservedAttributes,
+  );
   return written.length === 0 ? "" : `<w:spacing ${written.join(" ")}/>`;
 };
 
@@ -224,7 +249,10 @@ const serializeIndentation = (formatting: IndentationFormatting): string => {
       : formatting.indentFirstLine;
     attrs.push(`w:${attribute}="${intAttr(value)}"`);
   }
-  const written = serializePreservedAttributes(attrs, formatting.indentPreservedAttributes);
+  const written = serializePreservedAttributes(
+    attrs,
+    formatting.indentPreservedAttributes,
+  );
   return written.length === 0 ? "" : `<w:ind ${written.join(" ")}/>`;
 };
 
@@ -267,7 +295,9 @@ const serializeNumbering = ({
   return parts.length === 0 ? "" : `<w:numPr>${parts.join("")}</w:numPr>`;
 };
 
-const NUMBERING_CHANGE_ROOT_NAME: ReadonlySet<string> = new Set(["numberingChange"]);
+const NUMBERING_CHANGE_ROOT_NAME: ReadonlySet<string> = new Set([
+  "numberingChange",
+]);
 const NUMBERING_INSERTION_ROOT_NAME: ReadonlySet<string> = new Set(["ins"]);
 const WORDPROCESSINGML_NAMESPACE: ReadonlySet<string> = new Set([NAMESPACES.w]);
 
@@ -283,7 +313,9 @@ const replayableNumberingInsertionXml = createCapturedXmlSanitizer({
   inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
 });
 
-const serializeFrameProperties = (frame: ParagraphFormatting["frame"]): string => {
+const serializeFrameProperties = (
+  frame: ParagraphFormatting["frame"],
+): string => {
   if (!frame) {
     return "";
   }
@@ -433,20 +465,42 @@ export const modelParagraphFormattingEmission = (
     container: "paragraph-properties",
     preserved,
     modelled: [
-      ["pStyle", styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : ""],
+      [
+        "pStyle",
+        styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : "",
+      ],
       ["keepNext", serializeOnOffElement(keepNext, "keepNext")],
       ["keepLines", serializeOnOffElement(keepLines, "keepLines")],
-      ["pageBreakBefore", serializeOnOffElement(pageBreakBefore, "pageBreakBefore")],
+      [
+        "pageBreakBefore",
+        serializeOnOffElement(pageBreakBefore, "pageBreakBefore"),
+      ],
       ["framePr", serializeFrameProperties(frame)],
       ["widowControl", serializeOnOffElement(widowControl, "widowControl")],
-      ["numPr", serializeNumbering({ numPr, numberingChangeXml, numberingInsertionXml })],
-      ["suppressLineNumbers", serializeOnOffElement(suppressLineNumbers, "suppressLineNumbers")],
+      [
+        "numPr",
+        serializeNumbering({
+          numPr,
+          numberingChangeXml,
+          numberingInsertionXml,
+        }),
+      ],
+      [
+        "suppressLineNumbers",
+        serializeOnOffElement(suppressLineNumbers, "suppressLineNumbers"),
+      ],
       ["pBdr", serializeParagraphBorders(borders)],
       ["shd", serializeShading(shading)],
       ["tabs", serializeTabStops(tabs)],
-      ["suppressAutoHyphens", serializeOnOffElement(suppressAutoHyphens, "suppressAutoHyphens")],
+      [
+        "suppressAutoHyphens",
+        serializeOnOffElement(suppressAutoHyphens, "suppressAutoHyphens"),
+      ],
       ["kinsoku", serializeOnOffElement(kinsoku, "kinsoku")],
-      ["overflowPunct", serializeOnOffElement(overflowPunctuation, "overflowPunct")],
+      [
+        "overflowPunct",
+        serializeOnOffElement(overflowPunctuation, "overflowPunct"),
+      ],
       ["bidi", serializeOnOffElement(bidi, "bidi")],
       ["snapToGrid", serializeOnOffElement(snapToGrid, "snapToGrid")],
       [
@@ -471,7 +525,10 @@ export const modelParagraphFormattingEmission = (
           indentPreservedAttributes,
         }),
       ],
-      ["contextualSpacing", serializeOnOffElement(contextualSpacing, "contextualSpacing")],
+      [
+        "contextualSpacing",
+        serializeOnOffElement(contextualSpacing, "contextualSpacing"),
+      ],
       ["jc", alignment ? `<w:jc w:val="${alignment}"/>` : ""],
       [
         "outlineLvl",

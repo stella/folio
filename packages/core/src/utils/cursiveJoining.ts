@@ -50,10 +50,12 @@ function inRanges(ranges: readonly number[], cp: number): boolean {
 }
 
 /** Joining_Type D, L or C: this code point can connect to the one after it. */
-export const joinsToFollowing = (cp: number): boolean => inRanges(JOINS_FORWARD_RANGES, cp);
+export const joinsToFollowing = (cp: number): boolean =>
+  inRanges(JOINS_FORWARD_RANGES, cp);
 
 /** Joining_Type D, R or C: this code point can connect to the one before it. */
-export const joinsToPreceding = (cp: number): boolean => inRanges(JOINS_BACKWARD_RANGES, cp);
+export const joinsToPreceding = (cp: number): boolean =>
+  inRanges(JOINS_BACKWARD_RANGES, cp);
 
 /**
  * Joining_Type T: invisible to joining. Combining marks (harakat, Syriac
@@ -64,7 +66,8 @@ export const isJoiningTransparent = (cp: number): boolean =>
   inRanges(JOINING_TRANSPARENT_RANGES, cp);
 
 /** Joining_Type D, L or R: a cursive letter, as opposed to ZWJ or punctuation. */
-export const isCursiveLetter = (cp: number): boolean => inRanges(JOINING_LETTER_RANGES, cp);
+export const isCursiveLetter = (cp: number): boolean =>
+  inRanges(JOINING_LETTER_RANGES, cp);
 
 /**
  * Whether the text contains any cursive letter at all.

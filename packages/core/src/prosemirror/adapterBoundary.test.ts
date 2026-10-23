@@ -30,7 +30,8 @@ const PROPERTY_CHANGE_CONSUMER_FILES = [
 
 const FORBIDDEN_RAW_ATTR_PATTERNS = [
   {
-    pattern: /\b(?:node|child|rowNode|cellNode|contentNode|sdtChild)\.attrs\s+as\b/u,
+    pattern:
+      /\b(?:node|child|rowNode|cellNode|contentNode|sdtChild)\.attrs\s+as\b/u,
     reason: "Raw node attrs must be narrowed through the typed attr readers.",
   },
   {
@@ -38,7 +39,8 @@ const FORBIDDEN_RAW_ATTR_PATTERNS = [
     reason: "Bracket attr reads bypass path-aware validation diagnostics.",
   },
   {
-    pattern: /\bconst\s+attrs\s*=\s*(?:node|child|rowNode|cellNode|contentNode|sdtChild)\.attrs\b/u,
+    pattern:
+      /\bconst\s+attrs\s*=\s*(?:node|child|rowNode|cellNode|contentNode|sdtChild)\.attrs\b/u,
     reason: "Do not alias raw attrs at conversion/layout boundaries.",
   },
   {

@@ -14,20 +14,24 @@ import { describe, expect, test } from "bun:test";
 
 import type { TabStopAlignment } from "../types/document";
 import { TAB_STOP_ALIGNMENT_VALUES } from "../types/documentEnumValues";
-
+import { parseNumbering } from "./numberingParser";
 import { parseParagraphProperties } from "./paragraphProperties";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
-import { parseNumbering } from "./numberingParser";
 import { parseStyles } from "./styleParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const tabXml = (alignment: string): string =>
   `<w:tabs><w:tab w:val="${alignment}" w:pos="720"/></w:tabs>`;
 
-const parseParagraphTier = (alignment: string): TabStopAlignment | undefined => {
-  const pPr = parseXmlDocument(`<w:pPr ${WORD_NAMESPACE}>${tabXml(alignment)}</w:pPr>`);
+const parseParagraphTier = (
+  alignment: string,
+): TabStopAlignment | undefined => {
+  const pPr = parseXmlDocument(
+    `<w:pPr ${WORD_NAMESPACE}>${tabXml(alignment)}</w:pPr>`,
+  );
   if (!pPr) {
     throw new Error("fixture did not parse");
   }
@@ -59,7 +63,9 @@ const numberingXml = (alignment: string): string =>
      <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
    </w:numbering>`;
 
-const levelTabAlignment = (numberingXmlText: string): TabStopAlignment | undefined =>
+const levelTabAlignment = (
+  numberingXmlText: string,
+): TabStopAlignment | undefined =>
   parseNumbering(numberingXmlText).getLevel(1, 0)?.pPr?.tabs?.at(0)?.alignment;
 
 describe("ST_TabJc", () => {
@@ -71,20 +77,28 @@ describe("ST_TabJc", () => {
     expect(TAB_STOP_ALIGNMENT_VALUES).toContain("end");
   });
 
-  test.each(TAB_STOP_ALIGNMENT_VALUES)("a paragraph's w:tab reads %s", (alignment) => {
-    expect(parseParagraphTier(alignment)).toBe(alignment);
-  });
+  test.each(TAB_STOP_ALIGNMENT_VALUES)(
+    "a paragraph's w:tab reads %s",
+    (alignment) => {
+      expect(parseParagraphTier(alignment)).toBe(alignment);
+    },
+  );
 
-  test.each(TAB_STOP_ALIGNMENT_VALUES)("a style's w:tab reads %s", (alignment) => {
-    expect(parseStyleTier(alignment)).toBe(alignment);
-  });
+  test.each(TAB_STOP_ALIGNMENT_VALUES)(
+    "a style's w:tab reads %s",
+    (alignment) => {
+      expect(parseStyleTier(alignment)).toBe(alignment);
+    },
+  );
 
   test.each(TAB_STOP_ALIGNMENT_VALUES)(
     "a numbering level's %s tab survives parse, save and parse",
     (alignment) => {
       expect(levelTabAlignment(numberingXml(alignment))).toBe(alignment);
 
-      const saved = serializeNumberingXml(parseNumbering(numberingXml(alignment)).definitions);
+      const saved = serializeNumberingXml(
+        parseNumbering(numberingXml(alignment)).definitions,
+      );
       expect(saved).toContain(`<w:tab w:val="${alignment}" w:pos="720"/>`);
       expect(levelTabAlignment(saved)).toBe(alignment);
     },

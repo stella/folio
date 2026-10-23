@@ -42,7 +42,9 @@ export function clickToPositionDom(
   const elements = document.elementsFromPoint(clientX, clientY);
 
   // Find the page element
-  const pageEl = findHtmlElement(elements, (el) => el.classList.contains("layout-page"));
+  const pageEl = findHtmlElement(elements, (el) =>
+    el.classList.contains("layout-page"),
+  );
   if (!pageEl) {
     return null;
   }
@@ -61,7 +63,9 @@ export function clickToPositionDom(
   }
 
   // Check for empty paragraphs (including inside table cells)
-  const emptyRun = findHtmlElement(elements, (el) => el.classList.contains("layout-empty-run"));
+  const emptyRun = findHtmlElement(elements, (el) =>
+    el.classList.contains("layout-empty-run"),
+  );
   if (emptyRun) {
     const paragraph = closestHtmlElement(emptyRun, ".layout-paragraph");
     if (paragraph && paragraph.dataset["pmStart"]) {
@@ -74,7 +78,9 @@ export function clickToPositionDom(
   // isn't hit but the parent paragraph div is)
   const paragraphEl = findHtmlElement(
     elements,
-    (el) => el.classList.contains("layout-paragraph") && el.dataset["pmStart"] !== undefined,
+    (el) =>
+      el.classList.contains("layout-paragraph") &&
+      el.dataset["pmStart"] !== undefined,
   );
   if (paragraphEl && paragraphEl.dataset["pmStart"]) {
     // Try to find the nearest span within this paragraph so clicks to the
@@ -89,7 +95,9 @@ export function clickToPositionDom(
   // Check if click is within a table cell. When clicking in empty space below
   // text in a cell, restrict the search to spans within that cell to avoid
   // the cursor jumping to a different cell (fixes #54).
-  const cellEl = findHtmlElement(elements, (el) => el.classList.contains("layout-table-cell"));
+  const cellEl = findHtmlElement(elements, (el) =>
+    el.classList.contains("layout-table-cell"),
+  );
   if (cellEl) {
     return findNearestSpanInElement(cellEl, clientX, clientY);
   }
@@ -205,7 +213,10 @@ function caretOffsetFromPoint(
   // `caretRangeFromPoint` is the older WebKit-rooted API
   // still shipped by Chromium and Safari. Try both.
   type LegacyDocument = Document & {
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
     caretRangeFromPoint?: (x: number, y: number) => Range | null;
   };
   const doc: LegacyDocument = ownerDoc;
@@ -219,7 +230,11 @@ function caretOffsetFromPoint(
   if (typeof doc.caretRangeFromPoint === "function") {
     const range = doc.caretRangeFromPoint(clientX, clientY);
     if (range) {
-      const offset = logicalTextOffset(textNodes, range.startContainer, range.startOffset);
+      const offset = logicalTextOffset(
+        textNodes,
+        range.startContainer,
+        range.startOffset,
+      );
       if (offset !== null) return offset;
     }
   }
@@ -270,7 +285,10 @@ function findNearestSpanInElement(
 
   if (!closestLine) {
     // No lines - try paragraph directly
-    const paragraph = queryHtmlElement(element, ".layout-paragraph[data-pm-start]");
+    const paragraph = queryHtmlElement(
+      element,
+      ".layout-paragraph[data-pm-start]",
+    );
     if (paragraph?.dataset["pmStart"]) {
       return Number(paragraph.dataset["pmStart"]);
     }
@@ -282,7 +300,10 @@ function findNearestSpanInElement(
   }
 
   // Find closest span in that line
-  const lineSpans = htmlQueryAll(closestLine, "span[data-pm-start][data-pm-end]");
+  const lineSpans = htmlQueryAll(
+    closestLine,
+    "span[data-pm-start][data-pm-end]",
+  );
   if (lineSpans.length === 0) {
     const paragraph = closestHtmlElement(closestLine, ".layout-paragraph");
     if (paragraph?.dataset["pmStart"]) {
@@ -301,7 +322,8 @@ function findNearestSpanInElement(
       return findPositionInSpan(spanEl, clientX, clientY);
     }
 
-    const distance = clientX < rect.left ? rect.left - clientX : clientX - rect.right;
+    const distance =
+      clientX < rect.left ? rect.left - clientX : clientX - rect.right;
     if (distance < closestSpanDistance) {
       closestSpanDistance = distance;
       closestSpan = spanEl;
@@ -335,9 +357,15 @@ function findNearestSpan(
   // includes header/footer subtrees whose `data-pm-start` collides with body
   // PM positions (HF content is a separate ProseMirror doc). Without scoping,
   // a click outside any body span could resolve to an HF position.
-  const spans = htmlQueryAll(pageEl, ".layout-page-content span[data-pm-start][data-pm-end]");
+  const spans = htmlQueryAll(
+    pageEl,
+    ".layout-page-content span[data-pm-start][data-pm-end]",
+  );
   if (spans.length === 0) {
-    const firstP = htmlQueryAll(pageEl, ".layout-page-content .layout-paragraph").at(0);
+    const firstP = htmlQueryAll(
+      pageEl,
+      ".layout-page-content .layout-paragraph",
+    ).at(0);
     if (firstP) {
       return Number(firstP.dataset["pmStart"]) || 0;
     }
@@ -365,7 +393,10 @@ function findNearestSpan(
   }
 
   // Get spans in this line
-  const lineSpans = htmlQueryAll(closestLine, "span[data-pm-start][data-pm-end]");
+  const lineSpans = htmlQueryAll(
+    closestLine,
+    "span[data-pm-start][data-pm-end]",
+  );
   if (lineSpans.length === 0) {
     // Empty line - find PM position from paragraph
     const paragraph = closestHtmlElement(closestLine, ".layout-paragraph");
@@ -388,7 +419,8 @@ function findNearestSpan(
     }
 
     // Calculate distance to span
-    const distance = clientX < rect.left ? rect.left - clientX : clientX - rect.right;
+    const distance =
+      clientX < rect.left ? rect.left - clientX : clientX - rect.right;
 
     if (distance < closestSpanDistance) {
       closestSpanDistance = distance;
@@ -440,14 +472,20 @@ export function getSelectionRectsFromDom(
   // HF span can carry the same `data-pm-start` as a body run — without the
   // scope, body selections paint phantom rects on HF text and clicks in
   // body coords could resolve to HF positions.
-  const spans = htmlQueryAll(container, ".layout-page-content span[data-pm-start][data-pm-end]");
+  const spans = htmlQueryAll(
+    container,
+    ".layout-page-content span[data-pm-start][data-pm-end]",
+  );
 
   for (const spanEl of spans) {
     const measurement = measurePaintedSpanRange(spanEl, from, to);
     if (measurement.type === "outside") continue;
     const pageEl = closestHtmlElement(spanEl, ".layout-page");
-    const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
-    const clientRects = measurement.type === "element" ? [measurement.rect] : measurement.rects;
+    const pageIndex = pageEl
+      ? Number(pageEl.dataset["pageNumber"] || 1) - 1
+      : 0;
+    const clientRects =
+      measurement.type === "element" ? [measurement.rect] : measurement.rects;
     for (const clientRect of clientRects) {
       rects.push({
         x: clientRect.left - overlayRect.left,
@@ -510,20 +548,30 @@ export function getCollapsedLineEdgeCaretGeometry(
     (sibling.getAttribute("data-collapsed-leading-spaces") === "true" ||
       sibling.getAttribute("data-collapsed-trailing-spaces") === "true")
   ) {
-    sibling = isTrailing ? sibling.previousElementSibling : sibling.nextElementSibling;
+    sibling = isTrailing
+      ? sibling.previousElementSibling
+      : sibling.nextElementSibling;
   }
 
   const spanRect = spanEl.getBoundingClientRect();
   const line = closestHtmlElement(spanEl, ".layout-line");
-  const anchorRect = sibling?.getBoundingClientRect() ?? line?.getBoundingClientRect() ?? spanRect;
+  const anchorRect =
+    sibling?.getBoundingClientRect() ??
+    line?.getBoundingClientRect() ??
+    spanRect;
   const lineRect = line?.getBoundingClientRect();
   const pmStart = Number(spanEl.dataset["pmStart"]);
   const pmEnd = Number(spanEl.dataset["pmEnd"]);
   const storedSpaceAdvance = Number(spanEl.dataset["collapsedSpaceAdvance"]);
   const lineScale =
-    line && line.offsetWidth > 0 && lineRect ? lineRect.width / line.offsetWidth : 1;
+    line && line.offsetWidth > 0 && lineRect
+      ? lineRect.width / line.offsetWidth
+      : 1;
   const trailingSpaceCount =
-    isTrailing && pmPos !== undefined && Number.isFinite(pmStart) && Number.isFinite(pmEnd)
+    isTrailing &&
+    pmPos !== undefined &&
+    Number.isFinite(pmStart) &&
+    Number.isFinite(pmEnd)
       ? Math.max(0, Math.min(pmPos, pmEnd) - pmStart)
       : 0;
   const inlineDirection = spanRect.left <= anchorRect.left ? -1 : 1;
@@ -577,7 +625,8 @@ const getPaintedSpanCaretGeometry = (
 
   const spanRect = span.getBoundingClientRect();
   const line = closestHtmlElement(span, ".layout-line");
-  const lineHeight = line?.getBoundingClientRect().height || spanRect.height || 16;
+  const lineHeight =
+    line?.getBoundingClientRect().height || spanRect.height || 16;
   if (span.classList.contains("layout-run-tab")) {
     const pmEnd = Number(span.dataset["pmEnd"]);
     return {
@@ -593,7 +642,10 @@ const getPaintedSpanCaretGeometry = (
   }
 
   const pmStart = Number(span.dataset["pmStart"]);
-  const charIndex = Math.min(Math.max(0, pmPos - pmStart), totalTextLength(textNodes));
+  const charIndex = Math.min(
+    Math.max(0, pmPos - pmStart),
+    totalTextLength(textNodes),
+  );
   const boundary = textBoundaryAt(textNodes, charIndex, "start");
   if (!boundary) {
     return { left: spanRect.left, top: spanRect.top, height: lineHeight };
@@ -619,13 +671,20 @@ export function findParagraphGapCaretTarget(
   container: ParentNode,
   pmPos: number,
 ): CollapsedLineEdgeCaretTarget | null {
-  let best: { span: HTMLElement; boundaryPos: number; distance: number } | undefined;
-  for (const paragraph of htmlQueryAll(container, ".layout-page-content .layout-paragraph")) {
+  let best:
+    { span: HTMLElement; boundaryPos: number; distance: number } | undefined;
+  for (const paragraph of htmlQueryAll(
+    container,
+    ".layout-page-content .layout-paragraph",
+  )) {
     const paragraphStart = Number(paragraph.dataset["pmStart"]);
     const paragraphEnd = Number(paragraph.dataset["pmEnd"]);
     if (!(pmPos > paragraphStart && pmPos < paragraphEnd)) continue;
 
-    for (const span of htmlQueryAll(paragraph, "span[data-pm-start][data-pm-end]")) {
+    for (const span of htmlQueryAll(
+      paragraph,
+      "span[data-pm-start][data-pm-end]",
+    )) {
       const spanStart = Number(span.dataset["pmStart"]);
       const spanEnd = Number(span.dataset["pmEnd"]);
       if (!Number.isFinite(spanStart) || !Number.isFinite(spanEnd)) continue;
@@ -654,12 +713,17 @@ export function getCaretPositionFromDom(
   // HF span can carry the same `data-pm-start` as a body run — without the
   // scope, body selections paint phantom rects on HF text and clicks in
   // body coords could resolve to HF positions.
-  const spans = htmlQueryAll(container, ".layout-page-content span[data-pm-start][data-pm-end]");
+  const spans = htmlQueryAll(
+    container,
+    ".layout-page-content span[data-pm-start][data-pm-end]",
+  );
 
   const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
   if (collapsedTarget) {
     const pageEl = closestHtmlElement(collapsedTarget.span, ".layout-page");
-    const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+    const pageIndex = pageEl
+      ? Number(pageEl.dataset["pageNumber"] || 1) - 1
+      : 0;
     return {
       x: collapsedTarget.geometry.left - overlayRect.left,
       y: collapsedTarget.geometry.top - overlayRect.top,
@@ -678,7 +742,9 @@ export function getCaretPositionFromDom(
       if (pmPos >= pmStart && pmPos < pmEnd) {
         const spanRect = spanEl.getBoundingClientRect();
         const pageEl = closestHtmlElement(spanEl, ".layout-page");
-        const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+        const pageIndex = pageEl
+          ? Number(pageEl.dataset["pageNumber"] || 1) - 1
+          : 0;
         const lineEl = closestHtmlElement(spanEl, ".layout-line");
         const lineHeight = lineEl ? lineEl.offsetHeight : 16;
 
@@ -700,7 +766,9 @@ export function getCaretPositionFromDom(
         // No text - use span bounds
         const spanRect = spanEl.getBoundingClientRect();
         const pageEl = closestHtmlElement(spanEl, ".layout-page");
-        const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+        const pageIndex = pageEl
+          ? Number(pageEl.dataset["pageNumber"] || 1) - 1
+          : 0;
         const lineEl = closestHtmlElement(spanEl, ".layout-line");
         const lineHeight = lineEl ? lineEl.offsetHeight : 16;
 
@@ -726,7 +794,9 @@ export function getCaretPositionFromDom(
 
       const rangeRect = range.getBoundingClientRect();
       const pageEl = closestHtmlElement(spanEl, ".layout-page");
-      const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+      const pageIndex = pageEl
+        ? Number(pageEl.dataset["pageNumber"] || 1) - 1
+        : 0;
       const lineEl = closestHtmlElement(spanEl, ".layout-line");
       const lineHeight = lineEl ? lineEl.offsetHeight : 16;
 
@@ -742,7 +812,9 @@ export function getCaretPositionFromDom(
   const gapTarget = findParagraphGapCaretTarget(container, pmPos);
   if (gapTarget) {
     const pageEl = closestHtmlElement(gapTarget.span, ".layout-page");
-    const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+    const pageIndex = pageEl
+      ? Number(pageEl.dataset["pageNumber"] || 1) - 1
+      : 0;
     return {
       x: gapTarget.geometry.left - overlayRect.left,
       y: gapTarget.geometry.top - overlayRect.top,
@@ -763,9 +835,12 @@ export function getCaretPositionFromDom(
       const rect = targetEl.getBoundingClientRect();
 
       const pageEl = closestHtmlElement(pEl, ".layout-page");
-      const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+      const pageIndex = pageEl
+        ? Number(pageEl.dataset["pageNumber"] || 1) - 1
+        : 0;
       const lineCandidate = targetEl.closest(".layout-line") ?? targetEl;
-      const lineHeight = lineCandidate instanceof HTMLElement ? lineCandidate.offsetHeight : 16;
+      const lineHeight =
+        lineCandidate instanceof HTMLElement ? lineCandidate.offsetHeight : 16;
 
       return {
         x: rect.left - overlayRect.left,

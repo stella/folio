@@ -1,5 +1,10 @@
 import { continuesNumberedSequence } from "./paragraphSequence";
-import type { FlowBlock, ParagraphBlock, TableBlock, TextBoxBlock } from "./types";
+import type {
+  FlowBlock,
+  ParagraphBlock,
+  TableBlock,
+  TextBoxBlock,
+} from "./types";
 
 type EffectiveParagraphSpacing = Readonly<{
   before: number;
@@ -72,7 +77,9 @@ export const resolveEffectiveParagraphSpacing = (
  * OOXML formatting. Only changed branches are cloned; the input tree remains
  * untouched and repeated resolution is idempotent.
  */
-export const resolveEffectiveParagraphSpacingTree = (blocks: FlowBlock[]): FlowBlock[] => {
+export const resolveEffectiveParagraphSpacingTree = (
+  blocks: FlowBlock[],
+): FlowBlock[] => {
   let changed = false;
   const resolved = blocks.map((block, index) => {
     const next = resolveBlockSpacing(blocks, index);
@@ -84,10 +91,15 @@ export const resolveEffectiveParagraphSpacingTree = (blocks: FlowBlock[]): FlowB
   return changed ? resolved : blocks;
 };
 
-export const paragraphsShareStyle = (previous: ParagraphBlock, current: ParagraphBlock): boolean =>
-  previous.attrs?.styleId === current.attrs?.styleId;
+export const paragraphsShareStyle = (
+  previous: ParagraphBlock,
+  current: ParagraphBlock,
+): boolean => previous.attrs?.styleId === current.attrs?.styleId;
 
-const resolveBlockSpacing = (blocks: readonly FlowBlock[], index: number): FlowBlock => {
+const resolveBlockSpacing = (
+  blocks: readonly FlowBlock[],
+  index: number,
+): FlowBlock => {
   const block = blocks[index]!; // SAFETY: called from blocks.map with the same index.
   if (block.kind === "paragraph") {
     return resolveParagraphSequenceSpacing(blocks, index, block);
@@ -115,13 +127,16 @@ const resolveParagraphSequenceSpacing = (
   const next = blocks[index + 1];
   const suppressBefore =
     previous?.kind === "paragraph" &&
-    ((block.attrs?.contextualSpacing === true && paragraphsShareStyle(previous, block)) ||
+    ((block.attrs?.contextualSpacing === true &&
+      paragraphsShareStyle(previous, block)) ||
       (block.attrs?.automaticSpacing?.before === true &&
         continuesNumberedSequence(previous, block)));
   const suppressAfter =
     next?.kind === "paragraph" &&
-    ((block.attrs?.contextualSpacing === true && paragraphsShareStyle(block, next)) ||
-      (block.attrs?.automaticSpacing?.after === true && continuesNumberedSequence(block, next)));
+    ((block.attrs?.contextualSpacing === true &&
+      paragraphsShareStyle(block, next)) ||
+      (block.attrs?.automaticSpacing?.after === true &&
+        continuesNumberedSequence(block, next)));
 
   const beforeChanged = suppressBefore && spacing.before !== 0;
   const afterChanged = suppressAfter && spacing.after !== 0;
@@ -144,7 +159,9 @@ const resolveParagraphSequenceSpacing = (
   };
 };
 
-const resolveTextBoxContentSpacing = (blocks: TextBoxBlock["content"]): TextBoxBlock["content"] => {
+const resolveTextBoxContentSpacing = (
+  blocks: TextBoxBlock["content"],
+): TextBoxBlock["content"] => {
   let changed = false;
   const resolved = blocks.map((block, index) => {
     const next =

@@ -16,14 +16,19 @@
  * one at a time.
  */
 
+import type { BuiltInStyleIndex } from "../docx/builtInStyles";
 import type {
   ResolvedParagraphStyle,
   StyleResolver,
   TableCellParagraphSpacingOverlay,
 } from "../prosemirror/styles/styleResolver";
-import type { BuiltInStyleIndex } from "../docx/builtInStyles";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import type { DocDefaults, Style, StyleDefinitions, TextFormatting } from "../types/document";
+import type {
+  DocDefaults,
+  Style,
+  StyleDefinitions,
+  TextFormatting,
+} from "../types/document";
 
 /**
  * Sentinel key used for null / undefined styleId queries so that
@@ -91,7 +96,9 @@ export type StyleEngine = {
    * Resolve the full paragraph cascade for a given styleId.
    * Returned object is cached and must not be mutated.
    */
-  resolveParagraphStyle: (styleId: string | undefined | null) => ResolvedParagraphStyle;
+  resolveParagraphStyle: (
+    styleId: string | undefined | null,
+  ) => ResolvedParagraphStyle;
   /**
    * Resolve the paragraph cascade for a paragraph inside a table cell,
    * layering the modeled enclosing-table paragraph fields between
@@ -112,13 +119,17 @@ export type StyleEngine = {
    * Resolve a run/character style with docDefaults applied.
    * Returns `undefined` when the cascade yields nothing.
    */
-  resolveRunStyle: (styleId: string | undefined | null) => TextFormatting | undefined;
+  resolveRunStyle: (
+    styleId: string | undefined | null,
+  ) => TextFormatting | undefined;
   /**
    * Return a run style's own properties without docDefaults applied —
    * used when the caller has already merged docDefaults via the
    * paragraph cascade and would otherwise double-apply font defaults.
    */
-  getRunStyleOwnProperties: (styleId: string | undefined | null) => TextFormatting | undefined;
+  getRunStyleOwnProperties: (
+    styleId: string | undefined | null,
+  ) => TextFormatting | undefined;
 
   /** Drop every memoized cascade result. */
   invalidate: () => void;
@@ -163,7 +174,11 @@ export function createStyleEngine(
   let hits = 0;
   let misses = 0;
 
-  const memoize = <T>(cache: Map<string, Cached<T>>, key: string, compute: () => T): T => {
+  const memoize = <T>(
+    cache: Map<string, Cached<T>>,
+    key: string,
+    compute: () => T,
+  ): T => {
     if (!cacheEnabled) {
       misses += 1;
       return compute();
@@ -185,7 +200,10 @@ export function createStyleEngine(
   ): ResolvedParagraphStyle => {
     if (!cacheEnabled) {
       misses += 1;
-      return resolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
+      return resolver.resolveParagraphStyleInTable(
+        styleId,
+        tableParagraphOverlay,
+      );
     }
     let overlayCache = tableOverlayCache.get(tableParagraphOverlay);
     if (!overlayCache) {
@@ -211,7 +229,9 @@ export function createStyleEngine(
     },
 
     resolveParagraphStyle: (styleId) =>
-      memoize(paragraphCache, cacheKey(styleId), () => resolver.resolveParagraphStyle(styleId)),
+      memoize(paragraphCache, cacheKey(styleId), () =>
+        resolver.resolveParagraphStyle(styleId),
+      ),
     resolveParagraphStyleInTable: (styleId, tableParagraphOverlay) =>
       tableParagraphOverlay === undefined
         ? memoize(paragraphCache, cacheKey(styleId), () =>
@@ -219,9 +239,13 @@ export function createStyleEngine(
           )
         : memoizeInTable(styleId, tableParagraphOverlay),
     resolveRunStyle: (styleId) =>
-      memoize(runCache, cacheKey(styleId), () => resolver.resolveRunStyle(styleId)),
+      memoize(runCache, cacheKey(styleId), () =>
+        resolver.resolveRunStyle(styleId),
+      ),
     getRunStyleOwnProperties: (styleId) =>
-      memoize(ownPropsCache, cacheKey(styleId), () => resolver.getRunStyleOwnProperties(styleId)),
+      memoize(ownPropsCache, cacheKey(styleId), () =>
+        resolver.getRunStyleOwnProperties(styleId),
+      ),
 
     invalidate: () => {
       paragraphCache.clear();

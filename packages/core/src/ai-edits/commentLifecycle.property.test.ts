@@ -25,8 +25,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createDocx } from "../docx/rezip";
 import type {
@@ -48,10 +50,20 @@ const BODY_SLOTS = 6;
 const TABLE_SLOTS = new Set([2, 3]);
 const NOTE_SLOTS = 3;
 const EDIT_MODES = ["direct", "tracked-changes"] as const;
-const EDIT_KINDS = ["replaceInBlock", "replaceBlock", "insertAfterBlock", "deleteBlock"] as const;
+const EDIT_KINDS = [
+  "replaceInBlock",
+  "replaceBlock",
+  "insertAfterBlock",
+  "deleteBlock",
+] as const;
 
 type Story = "body" | "note";
-type GeneratedComment = { story: Story; first: number; last: number; text: string };
+type GeneratedComment = {
+  story: Story;
+  first: number;
+  last: number;
+  text: string;
+};
 type Step =
   | {
       type: "edit";
@@ -75,22 +87,33 @@ const span = (slots: number) =>
     fc.nat({ max: slots - 1 }).map((slot) => ({ first: slot, last: slot })),
     fc
       .tuple(fc.nat({ max: slots - 1 }), fc.nat({ max: slots - 1 }))
-      .map(([one, other]) => ({ first: Math.min(one, other), last: Math.max(one, other) })),
+      .map(([one, other]) => ({
+        first: Math.min(one, other),
+        last: Math.max(one, other),
+      })),
   );
 
 const commentArbitrary: fc.Arbitrary<GeneratedComment> = fc
   .oneof(
     {
       weight: 3,
-      arbitrary: fc.record({ story: fc.constant<Story>("body"), span: span(BODY_SLOTS) }),
+      arbitrary: fc.record({
+        story: fc.constant<Story>("body"),
+        span: span(BODY_SLOTS),
+      }),
     },
     {
       weight: 1,
-      arbitrary: fc.record({ story: fc.constant<Story>("note"), span: span(NOTE_SLOTS) }),
+      arbitrary: fc.record({
+        story: fc.constant<Story>("note"),
+        span: span(NOTE_SLOTS),
+      }),
     },
   )
   .chain(({ story, span: { first, last } }) =>
-    fc.stringMatching(/^[A-Za-z]{1,10}$/u).map((text) => ({ story, first, last, text })),
+    fc
+      .stringMatching(/^[A-Za-z]{1,10}$/u)
+      .map((text) => ({ story, first, last, text })),
   );
 
 const storyArbitrary = fc.oneof(
@@ -113,11 +136,28 @@ const stepArbitrary: fc.Arbitrary<Step> = fc.oneof(
   },
   {
     weight: 2,
-    arbitrary: fc.record({ type: fc.constant("comment" as const), story: storyArbitrary, pick }),
+    arbitrary: fc.record({
+      type: fc.constant("comment" as const),
+      story: storyArbitrary,
+      pick,
+    }),
   },
-  { weight: 1, arbitrary: fc.record({ type: fc.constant("reply" as const), pick }) },
-  { weight: 2, arbitrary: fc.record({ type: fc.constant("resolveAll" as const), how }) },
-  { weight: 2, arbitrary: fc.record({ type: fc.constant("resolveOne" as const), how, pick }) },
+  {
+    weight: 1,
+    arbitrary: fc.record({ type: fc.constant("reply" as const), pick }),
+  },
+  {
+    weight: 2,
+    arbitrary: fc.record({ type: fc.constant("resolveAll" as const), how }),
+  },
+  {
+    weight: 2,
+    arbitrary: fc.record({
+      type: fc.constant("resolveOne" as const),
+      how,
+      pick,
+    }),
+  },
 );
 
 const sessionArbitrary: fc.Arbitrary<GeneratedSession> = fc.record({
@@ -158,11 +198,17 @@ const storyParagraphs = (
     }
     content.push(run(slotText(story, index)));
     if (story === "body" && index === BODY_SLOTS - 1) {
-      content.push({ type: "run", content: [{ type: "footnoteRef", id: FOOTNOTE_ID }] });
+      content.push({
+        type: "run",
+        content: [{ type: "footnoteRef", id: FOOTNOTE_ID }],
+      });
     }
     for (const [id, comment] of comments.entries()) {
       if (comment.story === story && comment.last === index) {
-        content.push({ type: "commentRangeEnd", id }, { type: "commentReference", id });
+        content.push(
+          { type: "commentRangeEnd", id },
+          { type: "commentReference", id },
+        );
       }
     }
     return { type: "paragraph", paraId: `${paraIdPrefix}${index}`, content };
@@ -210,7 +256,8 @@ const buildDocument = (comments: readonly GeneratedComment[]): Document => {
 };
 
 const blocksOf = (reviewer: FolioDocxReviewer, story: Story) =>
-  (story === "body" ? reviewer.snapshot() : reviewer.snapshotStory(NOTE))?.blocks ?? [];
+  (story === "body" ? reviewer.snapshot() : reviewer.snapshotStory(NOTE))
+    ?.blocks ?? [];
 
 const editFor = (
   { kind }: Extract<Step, { type: "edit" }>,
@@ -228,9 +275,19 @@ const editFor = (
             replace: "Revised.",
           };
     case "replaceBlock":
-      return { id: "edit", type: "replaceBlock", blockId: block.id, text: "Revised." };
+      return {
+        id: "edit",
+        type: "replaceBlock",
+        blockId: block.id,
+        text: "Revised.",
+      };
     case "insertAfterBlock":
-      return { id: "edit", type: "insertAfterBlock", blockId: block.id, text: "Inserted clause." };
+      return {
+        id: "edit",
+        type: "insertAfterBlock",
+        blockId: block.id,
+        text: "Inserted clause.",
+      };
     case "deleteBlock":
       return { id: "edit", type: "deleteBlock", blockId: block.id };
     default: {
@@ -263,7 +320,10 @@ const applyStep = (reviewer: FolioDocxReviewer, step: Step): void => {
       }
       const mode = step.type === "edit" ? step.mode : "direct";
       if (step.story === "body") {
-        reviewer.applyOperations([operation], { undefinedReferences: "refuse", mode });
+        reviewer.applyOperations([operation], {
+          undefinedReferences: "refuse",
+          mode,
+        });
       } else {
         reviewer.applyDocumentOperationsToStory({
           undefinedReferences: "refuse",
@@ -314,29 +374,41 @@ const applyStep = (reviewer: FolioDocxReviewer, step: Step): void => {
 
 /** The thread fields the reviewer and the package must agree on. */
 const threadsOf = (comments: readonly FolioReviewComment[]) =>
-  comments.map(({ id, author, text, anchoredText, blockId, replies, done }) => ({
-    id,
-    blockId,
-    author,
-    text,
-    anchoredText,
-    done,
-    replies: replies.map((reply) => ({ id: reply.id, text: reply.text })),
-  }));
+  comments.map(
+    ({ id, author, text, anchoredText, blockId, replies, done }) => ({
+      id,
+      blockId,
+      author,
+      text,
+      anchoredText,
+      done,
+      replies: replies.map((reply) => ({ id: reply.id, text: reply.text })),
+    }),
+  );
 
 const ids = (xml: string, element: string): number[] =>
-  [...xml.matchAll(new RegExp(`<w:${element}\\s[^>]*w:id="(-?\\d+)"`, "gu"))].map(([, id]) =>
-    Number(id),
-  );
+  [
+    ...xml.matchAll(new RegExp(`<w:${element}\\s[^>]*w:id="(-?\\d+)"`, "gu")),
+  ].map(([, id]) => Number(id));
 
 /** Every range opens before it closes, in each story part on its own. */
 const expectBalanced = (part: string, xml: string): void => {
   const starts = ids(xml, "commentRangeStart");
   const ends = ids(xml, "commentRangeEnd");
   for (const id of new Set([...starts, ...ends])) {
-    const start = xml.search(new RegExp(`<w:commentRangeStart\\s[^>]*w:id="${id}"`, "u"));
-    const end = xml.search(new RegExp(`<w:commentRangeEnd\\s[^>]*w:id="${id}"`, "u"));
-    expect({ part, id, opens: start >= 0, closes: end >= 0, ordered: start < end }).toEqual({
+    const start = xml.search(
+      new RegExp(`<w:commentRangeStart\\s[^>]*w:id="${id}"`, "u"),
+    );
+    const end = xml.search(
+      new RegExp(`<w:commentRangeEnd\\s[^>]*w:id="${id}"`, "u"),
+    );
+    expect({
+      part,
+      id,
+      opens: start >= 0,
+      closes: end >= 0,
+      ordered: start < end,
+    }).toEqual({
       part,
       id,
       opens: true,
@@ -356,18 +428,24 @@ const expectPackageConsistent = async (
   threads: readonly { id: number }[],
 ): Promise<void> => {
   const zip = await JSZip.loadAsync(saved);
-  const read = async (path: string) => (await zip.file(path)?.async("text")) ?? "";
+  const read = async (path: string) =>
+    (await zip.file(path)?.async("text")) ?? "";
   const documentXml = await read("word/document.xml");
   const footnotesXml = await read("word/footnotes.xml");
   expectBalanced("document", documentXml);
   expectBalanced("footnotes", footnotesXml);
   const referenced = new Set<number>();
   for (const xml of [documentXml, footnotesXml]) {
-    for (const id of [...ids(xml, "commentRangeStart"), ...ids(xml, "commentReference")]) {
+    for (const id of [
+      ...ids(xml, "commentRangeStart"),
+      ...ids(xml, "commentReference"),
+    ]) {
       referenced.add(id);
     }
   }
-  const ghosts = threads.map(({ id }) => id).filter((id) => !referenced.has(id));
+  const ghosts = threads
+    .map(({ id }) => id)
+    .filter((id) => !referenced.has(id));
   expect({ ghosts }).toEqual({ ghosts: [] });
 };
 
@@ -385,16 +463,24 @@ describe("live comment threads match the saved package after every step", () => 
             applyStep(reviewer, step);
             const live = threadsOf(reviewer.getComments());
             const saved = await reviewer.toBuffer();
-            const reopened = await FolioDocxReviewer.fromBuffer(saved, { author: "Editor" });
+            const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+              author: "Editor",
+            });
             const persisted = threadsOf(reopened.getComments());
             await expectPackageConsistent(saved, persisted);
-            expect({ step: index, threads: persisted }).toEqual({ step: index, threads: live });
+            expect({ step: index, threads: persisted }).toEqual({
+              step: index,
+              threads: live,
+            });
             if (reopen) {
               reviewer = reopened;
             }
           }
         }),
-        { numRuns: 40, id: "over generated sessions across a table and a note" },
+        {
+          numRuns: 40,
+          id: "over generated sessions across a table and a note",
+        },
       );
     },
     propertyTestTimeout(240_000),

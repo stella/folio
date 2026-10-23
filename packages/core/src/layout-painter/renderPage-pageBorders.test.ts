@@ -93,9 +93,15 @@ const classFromSelector = (selector: string): string => {
   return match ? (match.groups?.["cls"] ?? "") : selector;
 };
 
-const findByClass = (root: FakeElement, className: string): FakeElement | null => {
+const findByClass = (
+  root: FakeElement,
+  className: string,
+): FakeElement | null => {
   for (const child of root.children) {
-    if (child.className.split(/\s+/u).includes(className) || child.tagName === className) {
+    if (
+      child.className.split(/\s+/u).includes(className) ||
+      child.tagName === className
+    ) {
       return child;
     }
     const inner = findByClass(child, className);
@@ -106,9 +112,16 @@ const findByClass = (root: FakeElement, className: string): FakeElement | null =
   return null;
 };
 
-const collectByClass = (root: FakeElement, className: string, out: FakeElement[]): void => {
+const collectByClass = (
+  root: FakeElement,
+  className: string,
+  out: FakeElement[],
+): void => {
   for (const child of root.children) {
-    if (child.className.split(/\s+/u).includes(className) || child.tagName === className) {
+    if (
+      child.className.split(/\s+/u).includes(className) ||
+      child.tagName === className
+    ) {
       out.push(child);
     }
     collectByClass(child, className, out);
@@ -270,7 +283,9 @@ describe("renderPageBorderOverlay", () => {
       top: { style: "single", size: 8, space: 12, color: { rgb: "000000" } },
     });
 
-    const backIdx = backPage.children.findIndex((c) => c.className.includes("layout-page-border"));
+    const backIdx = backPage.children.findIndex((c) =>
+      c.className.includes("layout-page-border"),
+    );
     const frontIdx = frontPage.children.findIndex((c) =>
       c.className.includes("layout-page-border"),
     );
@@ -300,9 +315,13 @@ describe("renderPageBorderOverlay", () => {
     expect(overlay.style["borderLeftStyle"]).toBe("double");
     expect(overlay.style["borderRightStyle"]).toBe("dotted");
     expect(overlay.style["borderTopColor"]?.toUpperCase()).toContain("FF0000");
-    expect(overlay.style["borderBottomColor"]?.toUpperCase()).toContain("00FF00");
+    expect(overlay.style["borderBottomColor"]?.toUpperCase()).toContain(
+      "00FF00",
+    );
     expect(overlay.style["borderLeftColor"]?.toUpperCase()).toContain("0000FF");
-    expect(overlay.style["borderRightColor"]?.toUpperCase()).toContain("123456");
+    expect(overlay.style["borderRightColor"]?.toUpperCase()).toContain(
+      "123456",
+    );
   });
 
   test("none/nil sides are no-ops and do not contribute CSS", () => {
@@ -367,6 +386,9 @@ describe("renderPageBorderOverlay", () => {
     // `54 - pointsToPixels(12) - eighthsToPixels(8)` (sz=8 = 1pt ≈ 1.333px).
     const strokeWidth = Math.max(1, eighthsToPixels(8));
     const expected = Math.max(0, 54 - pointsToPixels(12) - strokeWidth);
-    expect(Number.parseFloat(overlay.style["top"] ?? "")).toBeCloseTo(expected, 5);
+    expect(Number.parseFloat(overlay.style["top"] ?? "")).toBeCloseTo(
+      expected,
+      5,
+    );
   });
 });

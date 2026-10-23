@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import type { BlockContent, Document, Paragraph, Table } from "../../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Table,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp } from "../types";
+import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES } from "../types";
 
 const paragraph = (paraId: string, text = "kept"): Paragraph => ({
   type: "paragraph",
@@ -13,9 +18,16 @@ const paragraph = (paraId: string, text = "kept"): Paragraph => ({
 });
 const table = (paraId = "00000010"): Table => ({
   type: "table",
-  rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [paragraph(paraId)] }] }],
+  rows: [
+    {
+      type: "tableRow",
+      cells: [{ type: "tableCell", content: [paragraph(paraId)] }],
+    },
+  ],
 });
-const documentOf = (content: BlockContent[]): Document => ({ package: { document: { content } } });
+const documentOf = (content: BlockContent[]): Document => ({
+  package: { document: { content } },
+});
 const insertion = (value: Table): DocumentOp => ({
   type: DOCUMENT_OP_TYPES.INSERT_TABLE,
   story: OP_STORIES.MAIN,
@@ -45,9 +57,16 @@ describe("whole table operations", () => {
     const document = documentOf([anchor]);
     const inserted = table();
     const result = applied(document, insertion(inserted));
-    expect(result.document.package.document.content).toStrictEqual([inserted, anchor]);
+    expect(result.document.package.document.content).toStrictEqual([
+      inserted,
+      anchor,
+    ]);
     expect(result.document.package.document.content.at(-1)).toBe(anchor);
-    expect(result.touched).toEqual({ modified: [], inserted: ["00000010"], removed: [] });
+    expect(result.touched).toEqual({
+      modified: [],
+      inserted: ["00000010"],
+      removed: [],
+    });
     const deleted = applied(result.document, {
       type: DOCUMENT_OP_TYPES.DELETE_TABLE,
       story: OP_STORIES.MAIN,
@@ -55,7 +74,11 @@ describe("whole table operations", () => {
       expected: inserted,
     });
     expect(deleted.document).toStrictEqual(document);
-    expect(deleted.touched).toEqual({ modified: [], inserted: [], removed: ["00000010"] });
+    expect(deleted.touched).toEqual({
+      modified: [],
+      inserted: [],
+      removed: ["00000010"],
+    });
   });
 
   test("deletion selects the innermost table and preserves its outer siblings", () => {
@@ -65,7 +88,10 @@ describe("whole table operations", () => {
     const outer: Table = {
       type: "table",
       rows: [
-        { type: "tableRow", cells: [{ type: "tableCell", content: [inner, sibling, carrier] }] },
+        {
+          type: "tableRow",
+          cells: [{ type: "tableCell", content: [inner, sibling, carrier] }],
+        },
       ],
     };
     const document = documentOf([outer, paragraph("00000001")]);
@@ -76,7 +102,8 @@ describe("whole table operations", () => {
       expected: inner,
     });
     const nextOuter = result.document.package.document.content.at(0);
-    if (nextOuter?.type !== "table") throw new Error("Outer table remains present.");
+    if (nextOuter?.type !== "table")
+      throw new Error("Outer table remains present.");
     const blocks = nextOuter.rows.at(0)?.cells.at(0)?.content;
     expect(blocks).toEqual([sibling, carrier]);
     expect(blocks?.at(0)).toBe(sibling);
@@ -96,7 +123,10 @@ describe("whole table operations", () => {
       },
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
     );
-    const inserted = applied(documentOf([paragraph("00000001")]), insertion(original));
+    const inserted = applied(
+      documentOf([paragraph("00000001")]),
+      insertion(original),
+    );
     const inverse = inserted.inverse.at(0);
     if (inverse === undefined) throw new Error("Insertion has an inverse.");
     const changed = documentOf([original, paragraph("00000001", "changed")]);
@@ -113,7 +143,12 @@ describe("whole table operations", () => {
           : [
               {
                 type: "table",
-                rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [final] }] }],
+                rows: [
+                  {
+                    type: "tableRow",
+                    cells: [{ type: "tableCell", content: [final] }],
+                  },
+                ],
               },
               paragraph("00000002"),
             ],
@@ -172,7 +207,11 @@ describe("whole table operations", () => {
       table("00000001"),
       { ...table(), rows: [...table().rows, ...table().rows] },
     ]) {
-      refused(document, insertion(value), DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION);
+      refused(
+        document,
+        insertion(value),
+        DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      );
     }
   });
 
@@ -184,7 +223,9 @@ describe("whole table operations", () => {
         {
           type: "insertion",
           info,
-          content: [{ type: "run", content: [{ type: "text", text: "tracked" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "tracked" }] },
+          ],
         },
       ],
     });
@@ -203,7 +244,11 @@ describe("whole table operations", () => {
         },
       ],
     };
-    refused(document, insertion(value), DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION);
+    refused(
+      document,
+      insertion(value),
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+    );
   });
 
   test("deletion preserves section-bearing cell paragraphs", () => {
@@ -238,14 +283,28 @@ describe("whole table operations", () => {
     const malformed: Table[] = [
       {
         type: "table",
-        rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [table("00000020")] }] }],
+        rows: [
+          {
+            type: "tableRow",
+            cells: [{ type: "tableCell", content: [table("00000020")] }],
+          },
+        ],
       },
       { type: "table", rows: [] },
       { type: "table", rows: [{ type: "tableRow", cells: [] }] },
-      { type: "table", rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [] }] }] },
+      {
+        type: "table",
+        rows: [
+          { type: "tableRow", cells: [{ type: "tableCell", content: [] }] },
+        ],
+      },
     ];
     for (const value of malformed)
-      refused(document, insertion(value), DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+      refused(
+        document,
+        insertion(value),
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      );
   });
 
   test("insertion rejects missing paragraph ids, section boundaries and XML-invalid text", () => {
@@ -268,10 +327,17 @@ describe("whole table operations", () => {
     }
     refused(
       document,
-      insertion(withParagraph({ ...paragraph("00000010"), sectionProperties: {} })),
+      insertion(
+        withParagraph({ ...paragraph("00000010"), sectionProperties: {} }),
+      ),
       DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
     );
-    for (const text of ["bad\u0000text", "bad\u000Btext", "bad\uD800text", "bad\uFFFEtext"]) {
+    for (const text of [
+      "bad\u0000text",
+      "bad\u000Btext",
+      "bad\uD800text",
+      "bad\uFFFEtext",
+    ]) {
       refused(
         document,
         insertion(withParagraph(paragraph("00000010", text))),

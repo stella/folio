@@ -70,12 +70,12 @@
 
 <script setup lang="ts">
 import type { EditorView } from "prosemirror-view";
-import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
 
-import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { SectionProperties } from "@stll/folio-core/types/document";
+import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { Watermark } from "@stll/folio-core/watermark";
 
+import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
 import FindReplaceDialog from "../dialogs/FindReplaceDialog.vue";
 import HyperlinkDialog from "../dialogs/HyperlinkDialog.vue";
 import ImagePropertiesDialog from "../dialogs/ImagePropertiesDialog.vue";

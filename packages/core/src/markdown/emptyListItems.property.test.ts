@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { BlockContent, ListRendering, Paragraph } from "../types/document";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
@@ -32,7 +35,9 @@ const paragraphText = ({ content }: Paragraph): string =>
   content
     .flatMap((item) =>
       item.type === "run"
-        ? item.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+        ? item.content.flatMap((part) =>
+            part.type === "text" ? [part.text] : [],
+          )
         : [],
     )
     .join("");
@@ -40,7 +45,10 @@ const paragraphText = ({ content }: Paragraph): string =>
 const emptyListCaseArbitrary = fc.integer({ min: 1, max: 8 }).chain((level) =>
   fc.record({
     level: fc.constant(level),
-    parentMarkers: fc.array(fc.boolean(), { minLength: level, maxLength: level }),
+    parentMarkers: fc.array(fc.boolean(), {
+      minLength: level,
+      maxLength: level,
+    }),
     isBullet: fc.boolean(),
     text: fc.constantFrom("", " ", "\t"),
     hasSibling: fc.boolean(),
@@ -54,17 +62,23 @@ const verifyRoundTrip = ({
   text,
   hasSibling,
 }: EmptyListCase): void => {
-  const source: BlockContent[] = parentMarkers.map((isParentBullet, parentLevel) =>
-    paragraph(`Parent ${parentLevel}`, listRendering(parentLevel, isParentBullet)),
+  const source: BlockContent[] = parentMarkers.map(
+    (isParentBullet, parentLevel) =>
+      paragraph(
+        `Parent ${parentLevel}`,
+        listRendering(parentLevel, isParentBullet),
+      ),
   );
   source.push(paragraph(text, listRendering(level, isBullet)));
-  if (hasSibling) source.push(paragraph("Sibling", listRendering(level, isBullet)));
+  if (hasSibling)
+    source.push(paragraph("Sibling", listRendering(level, isBullet)));
 
   const markdown = toMarkdown({ package: { document: { content: source } } });
   const imported = fromMarkdown(markdown);
   const actual = imported.package.document.content.map((block) => {
     expect(block.type).toBe("paragraph");
-    if (block.type !== "paragraph") throw new Error(`Unexpected block ${block.type}`);
+    if (block.type !== "paragraph")
+      throw new Error(`Unexpected block ${block.type}`);
     return {
       text: paragraphText(block),
       level: block.listRendering?.level,
@@ -84,21 +98,23 @@ const verifyRoundTrip = ({
 
 // Earlier list-context fixtures only used nonempty children. Exercise every
 // native marker and supported depth with empty and whitespace-only children.
-const REGRESSION_EXAMPLES: EmptyListCase[] = Array.from({ length: 8 }, (_, index) =>
-  [true, false].flatMap((isBullet) =>
-    ["", " ", "\t"].flatMap((text) =>
-      [true, false].map((hasSibling) => ({
-        level: index + 1,
-        parentMarkers: Array.from(
-          { length: index + 1 },
-          (_parent, parentLevel) => parentLevel % 2 === 0,
-        ),
-        isBullet,
-        text,
-        hasSibling,
-      })),
+const REGRESSION_EXAMPLES: EmptyListCase[] = Array.from(
+  { length: 8 },
+  (_, index) =>
+    [true, false].flatMap((isBullet) =>
+      ["", " ", "\t"].flatMap((text) =>
+        [true, false].map((hasSibling) => ({
+          level: index + 1,
+          parentMarkers: Array.from(
+            { length: index + 1 },
+            (_parent, parentLevel) => parentLevel % 2 === 0,
+          ),
+          isBullet,
+          text,
+          hasSibling,
+        })),
+      ),
     ),
-  ),
 ).flat();
 
 test(
@@ -113,7 +129,15 @@ test(
   propertyTestTimeout(30_000),
 );
 
-const markerArbitrary = fc.constantFrom("-", "1.", "a.", "i)", "1.2.", "=", "---");
+const markerArbitrary = fc.constantFrom(
+  "-",
+  "1.",
+  "a.",
+  "i)",
+  "1.2.",
+  "=",
+  "---",
+);
 const mixedItemArbitrary = fc.record({
   level: fc.integer({ min: 0, max: 8 }),
   marker: markerArbitrary,
@@ -125,14 +149,16 @@ const markdownParagraphKinds = (markdown: string) => {
   expect(imported.warnings ?? []).toEqual([]);
   return imported.package.document.content.map((block) => {
     expect(block.type).toBe("paragraph");
-    if (block.type !== "paragraph") throw new Error(`Unexpected block ${block.type}`);
+    if (block.type !== "paragraph")
+      throw new Error(`Unexpected block ${block.type}`);
     expect(block.formatting?.outlineLevel).toBeUndefined();
     expect(block.formatting?.styleId).toBeUndefined();
     // The consumer parser projects code blocks as paragraphs with monospace
     // runs. These generated source paragraphs author no code or font changes.
     for (const item of block.content) {
       expect(item.type).toBe("run");
-      if (item.type === "run") expect(item.formatting?.fontFamily).toBeUndefined();
+      if (item.type === "run")
+        expect(item.formatting?.fontFamily).toBeUndefined();
     }
     return {
       text: paragraphText(block),
@@ -180,7 +206,10 @@ test(
   "mixed native and custom list labels preserve Markdown block kinds",
   async () => {
     await assertProperty(
-      fc.property(fc.array(mixedItemArbitrary, { minLength: 1, maxLength: 24 }), verifyMixedKinds),
+      fc.property(
+        fc.array(mixedItemArbitrary, { minLength: 1, maxLength: 24 }),
+        verifyMixedKinds,
+      ),
       {
         id: "mixed native and custom list labels preserve Markdown block kinds",
         numRuns: 100,

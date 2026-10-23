@@ -8,17 +8,20 @@
  * case; the copied-through package parts for the structural full-repack case).
  */
 
-import { describe, expect, spyOn, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, spyOn, test } from "bun:test";
 import JSZip from "jszip";
-import { EditorState } from "prosemirror-state";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { EditorState } from "prosemirror-state";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
-import { buildTextBoxTableDocument, findTextBoxShape } from "../__tests__/textBoxTableDocument";
-import { parseDocx } from "../docx/parser";
+import {
+  buildTextBoxTableDocument,
+  findTextBoxShape,
+} from "../__tests__/textBoxTableDocument";
 import { ensureParaIds } from "../docx/ensureParaIds";
+import { parseDocx } from "../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -31,11 +34,11 @@ import type {
 } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import {
+  applyFolioAIEditsToBuffer,
   FolioDocumentStoryNotFoundError,
   FolioDocxReviewer,
-  UnsupportedFolioReviewedViewError,
-  applyFolioAIEditsToBuffer,
   getFolioDocxComparisonAccess,
+  UnsupportedFolioReviewedViewError,
 } from "./headless";
 import type { FolioReviewChange } from "./headless";
 import { getTrackedChangesFromSnapshot } from "./read";
@@ -49,14 +52,21 @@ const FIXTURE = path.join(
 
 const readFixture = (): ArrayBuffer => {
   const bytes = readFileSync(FIXTURE);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 const HEADER_RELATIONSHIP_ID = "rId_header_story";
 const FOOTER_RELATIONSHIP_ID = "rId_footer_story";
 const ALIGNED_STORY_STYLE_ID = "AlignedStory";
 
-const textStory = (type: "header" | "footer", text: string, paraId: string): HeaderFooter => ({
+const textStory = (
+  type: "header" | "footer",
+  text: string,
+  paraId: string,
+): HeaderFooter => ({
   type,
   hdrFtrType: "default",
   content: [
@@ -70,7 +80,10 @@ const textStory = (type: "header" | "footer", text: string, paraId: string): Hea
 
 const makeHeaderFooterBaseline = async (): Promise<ArrayBuffer> => {
   const source = await createEmptyDocx();
-  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+  const document = await parseDocx(source, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   document.package.headers = new Map([
     [HEADER_RELATIONSHIP_ID, textStory("header", "Header text", "21000001")],
   ]);
@@ -82,7 +95,9 @@ const makeHeaderFooterBaseline = async (): Promise<ArrayBuffer> => {
     headerReferences: [{ type: "default", rId: HEADER_RELATIONSHIP_ID }],
     footerReferences: [{ type: "default", rId: FOOTER_RELATIONSHIP_ID }],
   };
-  const materialized = await repackDocx(document, { updateModifiedDate: false });
+  const materialized = await repackDocx(document, {
+    updateModifiedDate: false,
+  });
   const { docx } = await ensureParaIds(materialized);
   return new Uint8Array(docx).buffer;
 };
@@ -132,7 +147,9 @@ const SECONDARY_ALIGNMENT_TRANSITIONS = [
 }[];
 
 const SECONDARY_ALIGNMENT_CASES = SECONDARY_ALIGNMENT_STORIES.flatMap((story) =>
-  SECONDARY_ALIGNMENT_TRANSITIONS.map((transition) => Object.assign({}, story, transition)),
+  SECONDARY_ALIGNMENT_TRANSITIONS.map((transition) =>
+    Object.assign({}, story, transition),
+  ),
 );
 
 const alignedStoryParagraph = (
@@ -147,7 +164,9 @@ const alignedStoryParagraph = (
     styleId: ALIGNED_STORY_STYLE_ID,
     ...(directAlignment === undefined ? {} : { alignment: directAlignment }),
   },
-  content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
+  content: [
+    { type: "run" as const, content: [{ type: "text" as const, text }] },
+  ],
 });
 
 const alignedSecondaryStoriesBaseline = async (
@@ -172,7 +191,13 @@ const alignedSecondaryStoriesBaseline = async (
       {
         type: "header",
         hdrFtrType: "default",
-        content: [alignedStoryParagraph("Aligned header text", "22000001", directAlignment)],
+        content: [
+          alignedStoryParagraph(
+            "Aligned header text",
+            "22000001",
+            directAlignment,
+          ),
+        ],
       },
     ],
   ]);
@@ -182,7 +207,13 @@ const alignedSecondaryStoriesBaseline = async (
       {
         type: "footer",
         hdrFtrType: "default",
-        content: [alignedStoryParagraph("Aligned footer text", "22000002", directAlignment)],
+        content: [
+          alignedStoryParagraph(
+            "Aligned footer text",
+            "22000002",
+            directAlignment,
+          ),
+        ],
       },
     ],
   ]);
@@ -196,7 +227,13 @@ const alignedSecondaryStoriesBaseline = async (
       type: "footnote",
       id: 2,
       noteType: "normal",
-      content: [alignedStoryParagraph("Aligned footnote text", "22000003", directAlignment)],
+      content: [
+        alignedStoryParagraph(
+          "Aligned footnote text",
+          "22000003",
+          directAlignment,
+        ),
+      ],
     },
   ];
   document.package.endnotes = [
@@ -204,7 +241,13 @@ const alignedSecondaryStoriesBaseline = async (
       type: "endnote",
       id: 3,
       noteType: "normal",
-      content: [alignedStoryParagraph("Aligned endnote text", "22000004", directAlignment)],
+      content: [
+        alignedStoryParagraph(
+          "Aligned endnote text",
+          "22000004",
+          directAlignment,
+        ),
+      ],
     },
   ];
   return createDocx(document);
@@ -216,8 +259,13 @@ const alignedSecondaryStoriesBaseline = async (
  * saves take the selective path. Reproduce that here so the reviewer under test
  * sees a paraId-bearing baseline and can exercise selective save.
  */
-const makeParaIdBaseline = async (source: ArrayBuffer): Promise<ArrayBuffer> => {
-  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+const makeParaIdBaseline = async (
+  source: ArrayBuffer,
+): Promise<ArrayBuffer> => {
+  const document = await parseDocx(source, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   const state = ensureParaIdsInState(
     EditorState.create({
       schema,
@@ -225,7 +273,10 @@ const makeParaIdBaseline = async (source: ArrayBuffer): Promise<ArrayBuffer> => 
       plugins: singletonManager.getPlugins(),
     }),
   );
-  return repackDocx({ ...updateDocumentContent(document, state.doc), originalBuffer: source });
+  return repackDocx({
+    ...updateDocumentContent(document, state.doc),
+    originalBuffer: source,
+  });
 };
 
 const partText = async (buffer: ArrayBuffer, part: string): Promise<string> => {
@@ -238,16 +289,18 @@ const partText = async (buffer: ArrayBuffer, part: string): Promise<string> => {
 };
 
 const paragraphXmlContaining = (xml: string, text: string): string => {
-  const paragraph = (xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/gu) ?? []).find((candidate) =>
-    candidate.includes(text),
-  );
+  const paragraph = (
+    xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/gu) ?? []
+  ).find((candidate) => candidate.includes(text));
   if (!paragraph) {
     panic(`missing paragraph containing ${text}`);
   }
   return paragraph;
 };
 
-const trackedParagraphProperties = (paragraph: string): { current: string; previous: string } => {
+const trackedParagraphProperties = (
+  paragraph: string,
+): { current: string; previous: string } => {
   const propertiesStart = paragraph.indexOf("<w:pPr>");
   const changeStart = paragraph.indexOf("<w:pPrChange ");
   const previous = paragraph
@@ -256,7 +309,10 @@ const trackedParagraphProperties = (paragraph: string): { current: string; previ
   if (propertiesStart < 0 || changeStart < 0 || previous === undefined) {
     panic("expected tracked paragraph properties");
   }
-  return { current: paragraph.slice(propertiesStart + "<w:pPr>".length, changeStart), previous };
+  return {
+    current: paragraph.slice(propertiesStart + "<w:pPr>".length, changeStart),
+    previous,
+  };
 };
 
 const untrackedParagraphProperties = (paragraph: string): string => {
@@ -267,10 +323,15 @@ const untrackedParagraphProperties = (paragraph: string): string => {
   return properties;
 };
 
-const alignedStoryProperties = (alignment: ParagraphAlignment | undefined): string =>
+const alignedStoryProperties = (
+  alignment: ParagraphAlignment | undefined,
+): string =>
   `<w:pStyle w:val="${ALIGNED_STORY_STYLE_ID}"/>${alignment ? `<w:jc w:val="${alignment}"/>` : ""}`;
 
-const partBytes = async (buffer: ArrayBuffer, part: string): Promise<Uint8Array> => {
+const partBytes = async (
+  buffer: ArrayBuffer,
+  part: string,
+): Promise<Uint8Array> => {
   const zip = await JSZip.loadAsync(buffer);
   const file = zip.file(part);
   if (!file) {
@@ -283,8 +344,13 @@ const buildTextBoxCellRevisionDocument = async (
   structuralChange: TableStructuralChangeInfo,
 ): Promise<ArrayBuffer> => {
   const baseline = await buildTextBoxTableDocument();
-  const document = await parseDocx(baseline, { detectVariables: false, preloadFonts: false });
-  const table = findTextBoxShape(document).textBody?.content.find(({ type }) => type === "table");
+  const document = await parseDocx(baseline, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
+  const table = findTextBoxShape(document).textBody?.content.find(
+    ({ type }) => type === "table",
+  );
   if (table?.type !== "table") {
     throw new Error("expected a text-box table");
   }
@@ -298,8 +364,13 @@ const buildTextBoxCellRevisionDocument = async (
 
 const buildTextBoxVerticalMergeDocument = async (): Promise<ArrayBuffer> => {
   const baseline = await buildTextBoxTableDocument();
-  const document = await parseDocx(baseline, { detectVariables: false, preloadFonts: false });
-  const table = findTextBoxShape(document).textBody?.content.find(({ type }) => type === "table");
+  const document = await parseDocx(baseline, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
+  const table = findTextBoxShape(document).textBody?.content.find(
+    ({ type }) => type === "table",
+  );
   if (table?.type !== "table") {
     throw new Error("expected a text-box table");
   }
@@ -314,7 +385,9 @@ const buildTextBoxVerticalMergeDocument = async (): Promise<ArrayBuffer> => {
     content: [
       {
         type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "Peer top" }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: "Peer top" }] },
+        ],
       },
     ],
   });
@@ -331,7 +404,9 @@ const buildTextBoxVerticalMergeDocument = async (): Promise<ArrayBuffer> => {
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "Peer bottom" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Peer bottom" }] },
+            ],
           },
         ],
       },
@@ -340,47 +415,60 @@ const buildTextBoxVerticalMergeDocument = async (): Promise<ArrayBuffer> => {
   return repackDocx(document, { updateModifiedDate: false });
 };
 
-const buildTextBoxVerticalMergeCandidateDocument = async (): Promise<ArrayBuffer> => {
-  const baseline = await buildTextBoxTableDocument();
-  const document = await parseDocx(baseline, { detectVariables: false, preloadFonts: false });
-  const table = findTextBoxShape(document).textBody?.content.find(({ type }) => type === "table");
-  if (table?.type !== "table") {
-    throw new Error("expected a text-box table");
-  }
-  const firstRow = table.rows.at(0);
-  if (!firstRow?.cells.at(0)) {
-    throw new Error("expected a text-box table cell");
-  }
-  firstRow.cells.push({
-    type: "tableCell",
-    content: [
-      {
-        type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "Peer top" }] }],
-      },
-    ],
-  });
-  table.rows.push({
-    type: "tableRow",
-    cells: [
-      {
-        type: "tableCell",
-        formatting: { verticalAlign: "bottom" },
-        content: [{ type: "paragraph", content: [] }],
-      },
-      {
-        type: "tableCell",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "Peer bottom" }] }],
-          },
-        ],
-      },
-    ],
-  });
-  return repackDocx(document, { updateModifiedDate: false });
-};
+const buildTextBoxVerticalMergeCandidateDocument =
+  async (): Promise<ArrayBuffer> => {
+    const baseline = await buildTextBoxTableDocument();
+    const document = await parseDocx(baseline, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const table = findTextBoxShape(document).textBody?.content.find(
+      ({ type }) => type === "table",
+    );
+    if (table?.type !== "table") {
+      throw new Error("expected a text-box table");
+    }
+    const firstRow = table.rows.at(0);
+    if (!firstRow?.cells.at(0)) {
+      throw new Error("expected a text-box table cell");
+    }
+    firstRow.cells.push({
+      type: "tableCell",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "Peer top" }] },
+          ],
+        },
+      ],
+    });
+    table.rows.push({
+      type: "tableRow",
+      cells: [
+        {
+          type: "tableCell",
+          formatting: { verticalAlign: "bottom" },
+          content: [{ type: "paragraph", content: [] }],
+        },
+        {
+          type: "tableCell",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Peer bottom" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    return repackDocx(document, { updateModifiedDate: false });
+  };
 
 /** Extract the `<w:p …>…</w:p>` element that contains `needle`. */
 const paragraphContaining = (documentXml: string, needle: string): string => {
@@ -407,9 +495,12 @@ const findBlock = (blocks: FolioAIBlock[], needle: string) => {
 
 describe("headless docx review round-trip", () => {
   test("keeps text-box table projections isolated across tracked review views", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxTableDocument(), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildTextBoxTableDocument(),
+      {
+        author: "Reviewer",
+      },
+    );
     const before = reviewer.snapshot();
     const target = findBlock(before.blocks, "Cell value");
 
@@ -423,14 +514,22 @@ describe("headless docx review round-trip", () => {
           replace: "Updated projection",
         },
       ],
-      { undefinedReferences: "refuse", mode: "tracked-changes", snapshot: before },
+      {
+        undefinedReferences: "refuse",
+        mode: "tracked-changes",
+        snapshot: before,
+      },
     );
     expect(result.skipped).toEqual([]);
 
     const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
-    const markup = comparisonAccess.snapshotReviewedStory({ view: "current-markup" });
+    const markup = comparisonAccess.snapshotReviewedStory({
+      view: "current-markup",
+    });
     const accepted = comparisonAccess.snapshotReviewedStory({ view: "final" });
-    const rejected = comparisonAccess.snapshotReviewedStory({ view: "original" });
+    const rejected = comparisonAccess.snapshotReviewedStory({
+      view: "original",
+    });
     if (!markup || !accepted || !rejected) {
       throw new Error("expected every main-story review view");
     }
@@ -441,7 +540,9 @@ describe("headless docx review round-trip", () => {
         .toSorted(),
     ).toEqual(["deletion", "insertion"]);
     expect(storyTablesOf(before).at(0)?.node.textContent).toBe("Cell value");
-    expect(storyTablesOf(accepted).at(0)?.node.textContent).toBe("Updated projection");
+    expect(storyTablesOf(accepted).at(0)?.node.textContent).toBe(
+      "Updated projection",
+    );
     expect(storyTablesOf(rejected).at(0)?.node.textContent).toBe("Cell value");
   });
 
@@ -463,7 +564,9 @@ describe("headless docx review round-trip", () => {
       { undefinedReferences: "refuse", mode: "direct" },
     );
 
-    expect(result.applied.map(({ id }) => id)).toEqual(["replace-shape-table-cell"]);
+    expect(result.applied.map(({ id }) => id)).toEqual([
+      "replace-shape-table-cell",
+    ]);
     expect(result.skipped).toEqual([]);
 
     const saved = await reviewer.toBuffer();
@@ -473,7 +576,10 @@ describe("headless docx review round-trip", () => {
     expect(documentXml).toContain("Updated value");
     expect(documentXml).not.toContain("Cell value");
 
-    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const reparsed = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const shape = findTextBoxShape(reparsed);
     expect(shape.size).toEqual({ width: 1_828_800, height: 914_400 });
     expect(shape.textBody?.margins).toEqual({
@@ -496,7 +602,9 @@ describe("headless docx review round-trip", () => {
     const cellParagraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
     expect(cellParagraph?.type).toBe("paragraph");
     expect(
-      await FolioDocxReviewer.fromBuffer(saved).then((reopened) => reopened.getContentAsText()),
+      await FolioDocxReviewer.fromBuffer(saved).then((reopened) =>
+        reopened.getContentAsText(),
+      ),
     ).toContain("Updated value");
   });
 
@@ -562,16 +670,25 @@ describe("headless docx review round-trip", () => {
     ]);
 
     const saved = await reviewer.toBuffer();
-    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const reparsed = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const table = findTextBoxShape(reparsed).textBody?.content.at(1);
     expect(table?.type).toBe("table");
     if (table?.type !== "table") {
       throw new Error("expected a nested table");
     }
     expect(table.rows).toHaveLength(2);
-    expect(table.rows.at(0)?.cells.at(0)?.content.at(0)?.type).toBe("paragraph");
-    expect(table.rows.at(1)?.cells.at(0)?.content.at(0)?.type).toBe("paragraph");
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).toContain("Added value");
+    expect(table.rows.at(0)?.cells.at(0)?.content.at(0)?.type).toBe(
+      "paragraph",
+    );
+    expect(table.rows.at(1)?.cells.at(0)?.content.at(0)?.type).toBe(
+      "paragraph",
+    );
+    expect(
+      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+    ).toContain("Added value");
 
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
@@ -595,7 +712,9 @@ describe("headless docx review round-trip", () => {
 
   test("tracks, persists, accepts, and rejects a row insertion", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const result = reviewer.applyDocumentOperations(
@@ -617,7 +736,9 @@ describe("headless docx review round-trip", () => {
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
     expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    const pendingChange = reviewer.getChanges().find(({ type }) => type === "rowInserted");
+    const pendingChange = reviewer
+      .getChanges()
+      .find(({ type }) => type === "rowInserted");
     if (!pendingChange) {
       throw new Error("expected a pending row insertion");
     }
@@ -629,17 +750,24 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("Added value");
 
     const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened.getChanges().find(({ type }) => type === "rowInserted");
+    const reopenedChange = reopened
+      .getChanges()
+      .find(({ type }) => type === "rowInserted");
     if (!reopenedChange) {
       throw new Error("expected the row insertion after reopen");
     }
 
     expect(reopened.acceptChange(reopenedChange)).toBe(true);
     const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:ins ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:ins ",
+    );
     expect(reopened.getContentAsText()).toContain("Added value");
     const acceptedTable = findTextBoxShape(
-      await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(accepted, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(acceptedTable?.type).toBe("table");
     if (acceptedTable?.type !== "table") {
@@ -648,16 +776,23 @@ describe("headless docx review round-trip", () => {
     expect(acceptedTable.rows).toHaveLength(2);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "rowInserted");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "rowInserted");
     if (!rejectChange) {
       throw new Error("expected the row insertion before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:ins ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:ins ",
+    );
     expect(rejecting.getContentAsText()).not.toContain("Added value");
     const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(rejected, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(rejectedTable?.type).toBe("table");
     if (rejectedTable?.type !== "table") {
@@ -725,14 +860,16 @@ describe("headless docx review round-trip", () => {
     ]);
 
     const saved = await reviewer.toBuffer();
-    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
-    expect(findTextBoxShape(reparsed).textBody?.content.map(({ type }) => type)).toEqual([
-      "paragraph",
-      "paragraph",
-    ]);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).not.toContain(
-      "Cell value",
-    );
+    const reparsed = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(
+      findTextBoxShape(reparsed).textBody?.content.map(({ type }) => type),
+    ).toEqual(["paragraph", "paragraph"]);
+    expect(
+      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+    ).not.toContain("Cell value");
 
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
@@ -756,7 +893,9 @@ describe("headless docx review round-trip", () => {
 
   test("tracks, persists, accepts, and rejects a row deletion", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const result = reviewer.applyDocumentOperations(
@@ -777,7 +916,9 @@ describe("headless docx review round-trip", () => {
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
     expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    const pendingChange = reviewer.getChanges().find(({ type }) => type === "rowDeleted");
+    const pendingChange = reviewer
+      .getChanges()
+      .find(({ type }) => type === "rowDeleted");
     if (!pendingChange) {
       throw new Error("expected a pending row deletion");
     }
@@ -790,32 +931,46 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("Cell value");
 
     const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened.getChanges().find(({ type }) => type === "rowDeleted");
+    const reopenedChange = reopened
+      .getChanges()
+      .find(({ type }) => type === "rowDeleted");
     if (!reopenedChange) {
       throw new Error("expected the row deletion after reopen");
     }
 
     expect(reopened.acceptChange(reopenedChange)).toBe(true);
     const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:del ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:del ",
+    );
     expect(reopened.getContentAsText()).not.toContain("Cell value");
     expect(
       findTextBoxShape(
-        await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+        await parseDocx(accepted, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
       ).textBody?.content.map(({ type }) => type),
     ).toEqual(["paragraph", "paragraph"]);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "rowDeleted");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "rowDeleted");
     if (!rejectChange) {
       throw new Error("expected the row deletion before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:del ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:del ",
+    );
     expect(rejecting.getContentAsText()).toContain("Cell value");
     const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(rejected, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(rejectedTable?.type).toBe("table");
     if (rejectedTable?.type !== "table") {
@@ -834,7 +989,9 @@ describe("headless docx review round-trip", () => {
       },
     });
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
-    const change = reviewer.getChanges().find(({ type }) => type === "cellInserted");
+    const change = reviewer
+      .getChanges()
+      .find(({ type }) => type === "cellInserted");
     if (!change) {
       throw new Error("expected a tracked cell insertion");
     }
@@ -842,26 +999,36 @@ describe("headless docx review round-trip", () => {
     expect(change.text).toContain("Cell value");
 
     const pending = await reviewer.toBuffer();
-    expect(await partText(pending, "word/document.xml")).toContain("<w:cellIns ");
+    expect(await partText(pending, "word/document.xml")).toContain(
+      "<w:cellIns ",
+    );
     const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened.getChanges().find(({ type }) => type === "cellInserted");
+    const reopenedChange = reopened
+      .getChanges()
+      .find(({ type }) => type === "cellInserted");
     if (!reopenedChange) {
       throw new Error("expected the cell insertion after reopen");
     }
 
     expect(reopened.acceptChange(reopenedChange)).toBe(true);
     const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:cellIns ",
+    );
     expect(reopened.getContentAsText()).toContain("Cell value");
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellInserted");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "cellInserted");
     if (!rejectChange) {
       throw new Error("expected the cell insertion before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:cellIns ",
+    );
     expect(rejecting.getContentAsText()).not.toContain("Cell value");
   });
 
@@ -875,7 +1042,9 @@ describe("headless docx review round-trip", () => {
       },
     });
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
-    const change = reviewer.getChanges().find(({ type }) => type === "cellDeleted");
+    const change = reviewer
+      .getChanges()
+      .find(({ type }) => type === "cellDeleted");
     if (!change) {
       throw new Error("expected a tracked cell deletion");
     }
@@ -883,32 +1052,44 @@ describe("headless docx review round-trip", () => {
     expect(change.text).toContain("Cell value");
 
     const pending = await reviewer.toBuffer();
-    expect(await partText(pending, "word/document.xml")).toContain("<w:cellDel ");
+    expect(await partText(pending, "word/document.xml")).toContain(
+      "<w:cellDel ",
+    );
     const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened.getChanges().find(({ type }) => type === "cellDeleted");
+    const reopenedChange = reopened
+      .getChanges()
+      .find(({ type }) => type === "cellDeleted");
     if (!reopenedChange) {
       throw new Error("expected the cell deletion after reopen");
     }
 
     expect(reopened.acceptChange(reopenedChange)).toBe(true);
     const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellDel ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:cellDel ",
+    );
     expect(reopened.getContentAsText()).not.toContain("Cell value");
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellDeleted");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "cellDeleted");
     if (!rejectChange) {
       throw new Error("expected the cell deletion before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellDel ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:cellDel ",
+    );
     expect(rejecting.getContentAsText()).toContain("Cell value");
   });
 
   test("tracks, persists, accepts, and rejects an empty vertical cell merge", async () => {
     const baseline = await buildTextBoxVerticalMergeCandidateDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const rejectedBatch = reviewer.applyDocumentOperations(
@@ -967,7 +1148,9 @@ describe("headless docx review round-trip", () => {
         ],
       },
     ]);
-    const pendingChange = reviewer.getChanges().find(({ type }) => type === "cellMerged");
+    const pendingChange = reviewer
+      .getChanges()
+      .find(({ type }) => type === "cellMerged");
     if (!pendingChange) {
       throw new Error("expected a pending vertical merge");
     }
@@ -985,7 +1168,9 @@ describe("headless docx review round-trip", () => {
     if (pendingTable?.type !== "table") {
       throw new Error("expected a pending table");
     }
-    expect(pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
+    expect(pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+      "restart",
+    );
     const pendingContinuation = pendingTable.rows.at(1)?.cells.at(0);
     expect(pendingContinuation?.formatting).toMatchObject({
       vMerge: "continue",
@@ -998,21 +1183,30 @@ describe("headless docx review round-trip", () => {
     });
 
     const accepting = await FolioDocxReviewer.fromBuffer(pending);
-    const acceptChange = accepting.getChanges().find(({ type }) => type === "cellMerged");
+    const acceptChange = accepting
+      .getChanges()
+      .find(({ type }) => type === "cellMerged");
     if (!acceptChange) {
       throw new Error("expected the vertical merge after reopen");
     }
     expect(accepting.acceptChange(acceptChange)).toBe(true);
     const accepted = await accepting.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellMerge ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:cellMerge ",
+    );
     const acceptedTable = findTextBoxShape(
-      await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(accepted, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(acceptedTable?.type).toBe("table");
     if (acceptedTable?.type !== "table") {
       throw new Error("expected an accepted table");
     }
-    expect(acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
+    expect(acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+      "restart",
+    );
     const acceptedContinuation = acceptedTable.rows.at(1)?.cells.at(0);
     expect(acceptedContinuation?.formatting).toMatchObject({
       vMerge: "continue",
@@ -1021,21 +1215,30 @@ describe("headless docx review round-trip", () => {
     expect(acceptedContinuation?.structuralChange).toBeUndefined();
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellMerged");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "cellMerged");
     if (!rejectChange) {
       throw new Error("expected the vertical merge before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellMerge ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:cellMerge ",
+    );
     const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(rejected, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(rejectedTable?.type).toBe("table");
     if (rejectedTable?.type !== "table") {
       throw new Error("expected a rejected table");
     }
-    expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+    expect(
+      rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+    ).toBeUndefined();
     const rejectedContinuation = rejectedTable.rows.at(1)?.cells.at(0);
     expect(rejectedContinuation?.formatting?.verticalAlign).toBe("bottom");
     expect(rejectedContinuation?.formatting?.vMerge).toBeUndefined();
@@ -1043,19 +1246,25 @@ describe("headless docx review round-trip", () => {
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
     }
-    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe("undone");
+    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
+      "undone",
+    );
   });
 
   test("tracks, persists, accepts, and rejects a vertical cell split", async () => {
     const baseline = await buildTextBoxVerticalMergeDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const result = reviewer.applyDocumentOperations(
       {
         version: 1,
         mode: "tracked-changes",
-        operations: [{ id: "split-cell", type: "splitTableCell", blockId: target.id }],
+        operations: [
+          { id: "split-cell", type: "splitTableCell", blockId: target.id },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -1064,7 +1273,9 @@ describe("headless docx review round-trip", () => {
     expect(result.skipped).toEqual([]);
     expect(result.applied).toHaveLength(1);
     expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    const pendingChange = reviewer.getChanges().find(({ type }) => type === "cellMerged");
+    const pendingChange = reviewer
+      .getChanges()
+      .find(({ type }) => type === "cellMerged");
     if (!pendingChange) {
       throw new Error("expected a pending vertical split");
     }
@@ -1081,7 +1292,9 @@ describe("headless docx review round-trip", () => {
     if (pendingTable?.type !== "table") {
       throw new Error("expected a pending table");
     }
-    expect(pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+    expect(
+      pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+    ).toBeUndefined();
     const pendingContinuation = pendingTable.rows.at(1)?.cells.at(0);
     expect(pendingContinuation?.formatting?.verticalAlign).toBe("bottom");
     expect(pendingContinuation?.structuralChange).toMatchObject({
@@ -1090,41 +1303,59 @@ describe("headless docx review round-trip", () => {
     });
 
     const accepting = await FolioDocxReviewer.fromBuffer(pending);
-    const acceptChange = accepting.getChanges().find(({ type }) => type === "cellMerged");
+    const acceptChange = accepting
+      .getChanges()
+      .find(({ type }) => type === "cellMerged");
     if (!acceptChange) {
       throw new Error("expected the vertical split after reopen");
     }
     expect(accepting.acceptChange(acceptChange)).toBe(true);
     const accepted = await accepting.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellMerge ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:cellMerge ",
+    );
     const acceptedTable = findTextBoxShape(
-      await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(accepted, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(acceptedTable?.type).toBe("table");
     if (acceptedTable?.type !== "table") {
       throw new Error("expected an accepted table");
     }
-    expect(acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+    expect(
+      acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+    ).toBeUndefined();
     const acceptedContinuation = acceptedTable.rows.at(1)?.cells.at(0);
     expect(acceptedContinuation?.formatting?.verticalAlign).toBe("bottom");
     expect(acceptedContinuation?.formatting?.vMerge).toBeUndefined();
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellMerged");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "cellMerged");
     if (!rejectChange) {
       throw new Error("expected the vertical split before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellMerge ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:cellMerge ",
+    );
     const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(rejected, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(rejectedTable?.type).toBe("table");
     if (rejectedTable?.type !== "table") {
       throw new Error("expected a rejected table");
     }
-    expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
+    expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+      "restart",
+    );
     const rejectedContinuation = rejectedTable.rows.at(1)?.cells.at(0);
     expect(rejectedContinuation?.formatting?.verticalAlign).toBe("bottom");
     expect(rejectedContinuation?.formatting?.vMerge).toBe("continue");
@@ -1132,7 +1363,9 @@ describe("headless docx review round-trip", () => {
 
   test("tracks, persists, accepts, and rejects a column insertion", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const result = reviewer.applyDocumentOperations(
@@ -1154,7 +1387,9 @@ describe("headless docx review round-trip", () => {
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
     expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    const pendingChange = reviewer.getChanges().find(({ type }) => type === "cellInserted");
+    const pendingChange = reviewer
+      .getChanges()
+      .find(({ type }) => type === "cellInserted");
     if (!pendingChange) {
       throw new Error("expected a pending column insertion");
     }
@@ -1167,16 +1402,23 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("Added value");
 
     const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened.getChanges().find(({ type }) => type === "cellInserted");
+    const reopenedChange = reopened
+      .getChanges()
+      .find(({ type }) => type === "cellInserted");
     if (!reopenedChange) {
       throw new Error("expected the column insertion after reopen");
     }
     expect(reopened.acceptChange(reopenedChange)).toBe(true);
     const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:cellIns ",
+    );
     expect(reopened.getContentAsText()).toContain("Added value");
     const acceptedTable = findTextBoxShape(
-      await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(accepted, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(acceptedTable?.type).toBe("table");
     if (acceptedTable?.type !== "table") {
@@ -1185,16 +1427,23 @@ describe("headless docx review round-trip", () => {
     expect(acceptedTable.rows.at(0)?.cells).toHaveLength(2);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellInserted");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "cellInserted");
     if (!rejectChange) {
       throw new Error("expected the column insertion before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:cellIns ",
+    );
     expect(rejecting.getContentAsText()).not.toContain("Added value");
     const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(rejected, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(rejectedTable?.type).toBe("table");
     if (rejectedTable?.type !== "table") {
@@ -1205,7 +1454,9 @@ describe("headless docx review round-trip", () => {
 
   test("tracks, persists, accepts, and rejects a column deletion", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const result = reviewer.applyDocumentOperations(
@@ -1226,7 +1477,9 @@ describe("headless docx review round-trip", () => {
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
     expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    const pendingChange = reviewer.getChanges().find(({ type }) => type === "cellDeleted");
+    const pendingChange = reviewer
+      .getChanges()
+      .find(({ type }) => type === "cellDeleted");
     if (!pendingChange) {
       throw new Error("expected a pending column deletion");
     }
@@ -1239,30 +1492,47 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("Cell value");
 
     const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened.getChanges().find(({ type }) => type === "cellDeleted");
+    const reopenedChange = reopened
+      .getChanges()
+      .find(({ type }) => type === "cellDeleted");
     if (!reopenedChange) {
       throw new Error("expected the column deletion after reopen");
     }
     expect(reopened.acceptChange(reopenedChange)).toBe(true);
     const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellDel ");
+    expect(await partText(accepted, "word/document.xml")).not.toContain(
+      "<w:cellDel ",
+    );
     expect(reopened.getContentAsText()).not.toContain("Cell value");
     const acceptedContent = findTextBoxShape(
-      await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(accepted, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content;
-    expect(acceptedContent?.map(({ type }) => type)).toEqual(["paragraph", "paragraph"]);
+    expect(acceptedContent?.map(({ type }) => type)).toEqual([
+      "paragraph",
+      "paragraph",
+    ]);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellDeleted");
+    const rejectChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "cellDeleted");
     if (!rejectChange) {
       throw new Error("expected the column deletion before rejection");
     }
     expect(rejecting.rejectChange(rejectChange)).toBe(true);
     const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellDel ");
+    expect(await partText(rejected, "word/document.xml")).not.toContain(
+      "<w:cellDel ",
+    );
     expect(rejecting.getContentAsText()).toContain("Cell value");
     const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+      await parseDocx(rejected, {
+        detectVariables: false,
+        preloadFonts: false,
+      }),
     ).textBody?.content.at(1);
     expect(rejectedTable?.type).toBe("table");
     if (rejectedTable?.type !== "table") {
@@ -1333,7 +1603,10 @@ describe("headless docx review round-trip", () => {
     ]);
 
     const saved = await reviewer.toBuffer();
-    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const reparsed = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const table = findTextBoxShape(reparsed).textBody?.content.at(1);
     expect(table?.type).toBe("table");
     if (table?.type !== "table") {
@@ -1341,7 +1614,9 @@ describe("headless docx review round-trip", () => {
     }
     expect(table.rows).toHaveLength(1);
     expect(table.rows.at(0)?.cells).toHaveLength(2);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).toContain("Added value");
+    expect(
+      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+    ).toContain("Added value");
 
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
@@ -1411,7 +1686,8 @@ describe("headless docx review round-trip", () => {
       detectVariables: false,
       preloadFonts: false,
     });
-    const rejectedTable = findTextBoxShape(afterRejected).textBody?.content.at(1);
+    const rejectedTable =
+      findTextBoxShape(afterRejected).textBody?.content.at(1);
     expect(rejectedTable?.type).toBe("table");
     if (rejectedTable?.type !== "table") {
       throw new Error("expected a nested table");
@@ -1453,15 +1729,22 @@ describe("headless docx review round-trip", () => {
     ]);
 
     const saved = await reviewer.toBuffer();
-    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const reparsed = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const table = findTextBoxShape(reparsed).textBody?.content.at(1);
     expect(table?.type).toBe("table");
     if (table?.type !== "table") {
       throw new Error("expected a nested table");
     }
     expect(table.rows.at(0)?.cells).toHaveLength(1);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).toContain("Cell value");
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).toContain("Added value");
+    expect(
+      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+    ).toContain("Cell value");
+    expect(
+      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+    ).toContain("Added value");
 
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
@@ -1494,7 +1777,11 @@ describe("headless docx review round-trip", () => {
           version: 1,
           mode: "direct",
           operations: [
-            { id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id },
+            {
+              id: "insert-column",
+              type: "insertTableColumn",
+              blockId: initialTarget.id,
+            },
           ],
         },
         { undefinedReferences: "refuse" },
@@ -1553,7 +1840,9 @@ describe("headless docx review round-trip", () => {
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
     }
-    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe("undone");
+    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
+      "undone",
+    );
     const restored = await parseDocx(await reviewer.toBuffer(), {
       detectVariables: false,
       preloadFonts: false,
@@ -1563,8 +1852,12 @@ describe("headless docx review round-trip", () => {
     if (restoredTable?.type !== "table") {
       throw new Error("expected a nested table");
     }
-    expect(restoredTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
-    expect(restoredTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+    expect(
+      restoredTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+    ).toBeUndefined();
+    expect(
+      restoredTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge,
+    ).toBeUndefined();
   });
 
   test("splits, persists, and undoes a merged cell inside shape text", async () => {
@@ -1629,7 +1922,9 @@ describe("headless docx review round-trip", () => {
       {
         version: 1,
         mode: "direct",
-        operations: [{ id: "split-cell", type: "splitTableCell", blockId: splitTarget.id }],
+        operations: [
+          { id: "split-cell", type: "splitTableCell", blockId: splitTarget.id },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -1666,7 +1961,9 @@ describe("headless docx review round-trip", () => {
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
     }
-    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe("undone");
+    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
+      "undone",
+    );
     const restored = await parseDocx(await reviewer.toBuffer(), {
       detectVariables: false,
       preloadFonts: false,
@@ -1692,7 +1989,11 @@ describe("headless docx review round-trip", () => {
           version: 1,
           mode: "direct",
           operations: [
-            { id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id },
+            {
+              id: "insert-column",
+              type: "insertTableColumn",
+              blockId: initialTarget.id,
+            },
           ],
         },
         { undefinedReferences: "refuse" },
@@ -1741,7 +2042,9 @@ describe("headless docx review round-trip", () => {
       {
         version: 1,
         mode: "direct",
-        operations: [{ id: "split", type: "splitTableCell", blockId: splitTarget.id }],
+        operations: [
+          { id: "split", type: "splitTableCell", blockId: splitTarget.id },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -1820,14 +2123,16 @@ describe("headless docx review round-trip", () => {
     ]);
 
     const saved = await reviewer.toBuffer();
-    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
-    expect(findTextBoxShape(reparsed).textBody?.content.map(({ type }) => type)).toEqual([
-      "paragraph",
-      "paragraph",
-    ]);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).not.toContain(
-      "Cell value",
-    );
+    const reparsed = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(
+      findTextBoxShape(reparsed).textBody?.content.map(({ type }) => type),
+    ).toEqual(["paragraph", "paragraph"]);
+    expect(
+      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+    ).not.toContain("Cell value");
 
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
@@ -1851,8 +2156,13 @@ describe("headless docx review round-trip", () => {
 
   test("edits a header through story-scoped document operations", async () => {
     const baseline = await makeHeaderFooterBaseline();
-    const story = { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const;
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const story = {
+      type: "header",
+      relationshipId: HEADER_RELATIONSHIP_ID,
+    } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
       throw new Error("expected the header story");
@@ -1887,7 +2197,9 @@ describe("headless docx review round-trip", () => {
       effect: "updated",
     });
     expect(reviewer.readStory(story)?.text).toBe("Updated header");
-    expect(reviewer.getNotesAsText()).toContain("[header default] Updated header");
+    expect(reviewer.getNotesAsText()).toContain(
+      "[header default] Updated header",
+    );
 
     const saved = await reviewer.toBuffer();
     const headerXml = await partText(saved, "word/header1.xml");
@@ -1908,8 +2220,13 @@ describe("headless docx review round-trip", () => {
 
   test("tracks and undoes a footer operation batch", async () => {
     const baseline = await makeHeaderFooterBaseline();
-    const story = { type: "footer", relationshipId: FOOTER_RELATIONSHIP_ID } as const;
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const story = {
+      type: "footer",
+      relationshipId: FOOTER_RELATIONSHIP_ID,
+    } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
       throw new Error("expected the footer story");
@@ -1952,20 +2269,26 @@ describe("headless docx review round-trip", () => {
       undoHandle: result.undoHandle,
     });
     expect(reviewer.readStory(story)?.text).toBe("Footer text");
-    expect(await partBytes(await reviewer.toBuffer(), "word/footer1.xml")).toEqual(
-      await partBytes(baseline, "word/footer1.xml"),
-    );
+    expect(
+      await partBytes(await reviewer.toBuffer(), "word/footer1.xml"),
+    ).toEqual(await partBytes(baseline, "word/footer1.xml"));
   });
 
   test.each([
     {
-      story: { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const,
+      story: {
+        type: "header",
+        relationshipId: HEADER_RELATIONSHIP_ID,
+      } as const,
       part: "word/header1.xml",
       originalText: "Header text",
       paraId: "21000001",
     },
     {
-      story: { type: "footer", relationshipId: FOOTER_RELATIONSHIP_ID } as const,
+      story: {
+        type: "footer",
+        relationshipId: FOOTER_RELATIONSHIP_ID,
+      } as const,
       part: "word/footer1.xml",
       originalText: "Footer text",
       paraId: "21000002",
@@ -1988,16 +2311,20 @@ describe("headless docx review round-trip", () => {
         .replace(` w14:paraId="${paraId}"`, "")
         .replace(`<w:r><w:t>${originalText}</w:t></w:r>`, reviewedRuns);
       expect(rewrittenPart).not.toContain(`w14:paraId="${paraId}"`);
-      expect(rewrittenPart).not.toContain(`<w:r><w:t>${originalText}</w:t></w:r>`);
+      expect(rewrittenPart).not.toContain(
+        `<w:r><w:t>${originalText}</w:t></w:r>`,
+      );
       zip.file(part, rewrittenPart);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await zip.generateAsync({ type: "arraybuffer" }),
       );
 
-      expect(reviewer.readReviewedStory({ story, view: "final" })?.text).toEndWith(
-        "Kept INSERTED MOVED TO",
+      expect(
+        reviewer.readReviewedStory({ story, view: "final" })?.text,
+      ).toEndWith("Kept INSERTED MOVED TO");
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
+        true,
       );
-      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
 
       const saved = await reviewer.toBuffer();
       const xml = await partText(saved, part);
@@ -2007,7 +2334,9 @@ describe("headless docx review round-trip", () => {
       expect(xml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
 
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
-      expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+      expect(
+        reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual([]);
       expect(reopened.readStory(story)?.text).toBe("Kept INSERTED MOVED TO");
     },
   );
@@ -2016,7 +2345,9 @@ describe("headless docx review round-trip", () => {
     "tracks $transition paragraph alignment in a $story.type story",
     async ({ story, part, text, before, after }) => {
       const baseline = await alignedSecondaryStoriesBaseline(before);
-      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "Reviewer",
+      });
       const initial = reviewer.snapshotStory(story);
       if (!initial) {
         panic(`expected ${story.type} story`);
@@ -2044,7 +2375,8 @@ describe("headless docx review round-trip", () => {
 
       expect(result.status).toBe("committed");
       expect(
-        expectParagraphBlock(reviewer.snapshotStory(story)?.blocks.at(0)).directAlignment,
+        expectParagraphBlock(reviewer.snapshotStory(story)?.blocks.at(0))
+          .directAlignment,
       ).toBe(after);
       expect(
         reviewer
@@ -2054,45 +2386,63 @@ describe("headless docx review round-trip", () => {
       const pending = await reviewer.toBuffer();
       const pendingXml = await partText(pending, part);
       expect(pendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
-      expect(trackedParagraphProperties(paragraphXmlContaining(pendingXml, text))).toEqual({
+      expect(
+        trackedParagraphProperties(paragraphXmlContaining(pendingXml, text)),
+      ).toEqual({
         current: alignedStoryProperties(after),
         previous: alignedStoryProperties(before),
       });
 
       const accepting = await FolioDocxReviewer.fromBuffer(pending);
-      expect(accepting.resolveReviewedStory({ story, view: "final" })).toBe(true);
+      expect(accepting.resolveReviewedStory({ story, view: "final" })).toBe(
+        true,
+      );
       expect(
-        expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0)).directAlignment,
+        expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0))
+          .directAlignment,
       ).toBe(after);
       const accepted = await accepting.toBuffer();
       const acceptedXml = await partText(accepted, part);
       const acceptedParagraph = paragraphXmlContaining(acceptedXml, text);
       expect(acceptedParagraph).not.toContain("<w:pPrChange");
-      expect(untrackedParagraphProperties(acceptedParagraph)).toBe(alignedStoryProperties(after));
+      expect(untrackedParagraphProperties(acceptedParagraph)).toBe(
+        alignedStoryProperties(after),
+      );
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
       expect(
-        expectParagraphBlock(reopenedAccepted.snapshotStory(story)?.blocks.at(0)).directAlignment,
+        expectParagraphBlock(
+          reopenedAccepted.snapshotStory(story)?.blocks.at(0),
+        ).directAlignment,
       ).toBe(after);
 
       const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-      expect(rejecting.resolveReviewedStory({ story, view: "original" })).toBe(true);
+      expect(rejecting.resolveReviewedStory({ story, view: "original" })).toBe(
+        true,
+      );
       expect(
-        expectParagraphBlock(rejecting.snapshotStory(story)?.blocks.at(0)).directAlignment,
+        expectParagraphBlock(rejecting.snapshotStory(story)?.blocks.at(0))
+          .directAlignment,
       ).toBe(before);
       const rejected = await rejecting.toBuffer();
       const rejectedXml = await partText(rejected, part);
       const rejectedParagraph = paragraphXmlContaining(rejectedXml, text);
       expect(rejectedParagraph).not.toContain("<w:pPrChange");
-      expect(untrackedParagraphProperties(rejectedParagraph)).toBe(alignedStoryProperties(before));
+      expect(untrackedParagraphProperties(rejectedParagraph)).toBe(
+        alignedStoryProperties(before),
+      );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(
-        expectParagraphBlock(reopenedRejected.snapshotStory(story)?.blocks.at(0)).directAlignment,
+        expectParagraphBlock(
+          reopenedRejected.snapshotStory(story)?.blocks.at(0),
+        ).directAlignment,
       ).toBe(before);
     },
   );
 
   test("rejects a missing editable story before applying operations", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeHeaderFooterBaseline());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await makeHeaderFooterBaseline(),
+    );
     const story = { type: "header", relationshipId: "missing" } as const;
     expect(reviewer.snapshotStory(story)).toBeNull();
     expect(() =>
@@ -2106,11 +2456,21 @@ describe("headless docx review round-trip", () => {
 
   test("replaceInBlock (direct) rewrites the text with no tracked marks", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
     const result = reviewer.applyOperations(
-      [{ id: "r1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      [
+        {
+          id: "r1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
       { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(result.applied.map((a) => a.id)).toEqual(["r1"]);
@@ -2126,16 +2486,28 @@ describe("headless docx review round-trip", () => {
 
     // Selective save leaves the untouched paragraph byte-for-byte identical.
     const baseXml = await partText(baseline, "word/document.xml");
-    expect(outXml).toContain(paragraphContaining(baseXml, "Trailing paragraph."));
+    expect(outXml).toContain(
+      paragraphContaining(baseXml, "Trailing paragraph."),
+    );
   });
 
   test("replaceInBlock (tracked-changes) redlines old vs new and preserves untouched parts", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
     const result = reviewer.applyOperations(
-      [{ id: "t1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      [
+        {
+          id: "t1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toHaveLength(1);
@@ -2156,7 +2528,9 @@ describe("headless docx review round-trip", () => {
 
     // Byte-exact: the untouched paragraph and unrelated parts survive intact.
     const baseXml = await partText(baseline, "word/document.xml");
-    expect(outXml).toContain(paragraphContaining(baseXml, "Trailing paragraph."));
+    expect(outXml).toContain(
+      paragraphContaining(baseXml, "Trailing paragraph."),
+    );
     expect(await partBytes(out, "word/styles.xml")).toEqual(
       await partBytes(baseline, "word/styles.xml"),
     );
@@ -2197,7 +2571,10 @@ describe("headless docx review round-trip", () => {
 
   test("story-scoped headless apply honors character-granularity redlines", async () => {
     const baseline = await makeHeaderFooterBaseline();
-    const story = { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const;
+    const story = {
+      type: "header",
+      relationshipId: HEADER_RELATIONSHIP_ID,
+    } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
@@ -2227,14 +2604,16 @@ describe("headless docx review round-trip", () => {
     });
 
     expect(result.status).toBe("committed");
-    expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.text).toContain(
-      'Hea<del author="AI">d</del><ins author="AI">t</ins>er text',
-    );
+    expect(
+      reviewer.readReviewedStory({ story, view: "current-markup" })?.text,
+    ).toContain('Hea<del author="AI">d</del><ins author="AI">t</ins>er text');
   });
 
   test("applyDocumentOperations executes a versioned tracked-change batch", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     const contentBefore = reviewer.getContentAsText();
 
@@ -2263,14 +2642,23 @@ describe("headless docx review round-trip", () => {
       {
         operationId: "v1",
         operationIndex: 0,
-        affected: [{ type: "block", story: "main", blockId: target.id, effect: "updated" }],
+        affected: [
+          {
+            type: "block",
+            story: "main",
+            blockId: target.id,
+            effect: "updated",
+          },
+        ],
       },
     ]);
     expect(result.undoHandle).toEqual({
       type: "documentOperationUndo",
       id: expect.any(String),
     });
-    expect(await partText(await reviewer.toBuffer(), "word/document.xml")).toContain("<w:ins ");
+    expect(
+      await partText(await reviewer.toBuffer(), "word/document.xml"),
+    ).toContain("<w:ins ");
     if (!result.undoHandle) {
       throw new Error("expected an undo handle");
     }
@@ -2284,7 +2672,9 @@ describe("headless docx review round-trip", () => {
 
   test("atomic batches reject every operation without document or comment changes", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     const contentBefore = reviewer.getContentAsText();
 
@@ -2344,7 +2734,9 @@ describe("headless docx review round-trip", () => {
 
   test("atomic batches commit all operations after a successful preflight", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     const contentBefore = reviewer.getContentAsText();
 
@@ -2374,14 +2766,22 @@ describe("headless docx review round-trip", () => {
     );
 
     expect(result.status).toBe("committed");
-    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["insert", "replace"]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "insert",
+      "replace",
+    ]);
     expect(result.skipped).toEqual([]);
     expect(result.receipts).toEqual([
       {
         operationId: "replace",
         operationIndex: 0,
         affected: [
-          { type: "block", story: "main", blockId: target.id, effect: "updated" },
+          {
+            type: "block",
+            story: "main",
+            blockId: target.id,
+            effect: "updated",
+          },
           { type: "comment", commentId: expect.any(Number) },
         ],
       },
@@ -2416,7 +2816,9 @@ describe("headless docx review round-trip", () => {
     expect(reviewer.getContentAsText()).toBe(contentBefore);
     expect(reviewer.getComments()).toEqual([]);
 
-    const reparsed = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reparsed = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reparsed.getContentAsText()).toBe(contentBefore);
     expect(reparsed.getComments()).toEqual([]);
   });
@@ -2428,7 +2830,9 @@ describe("headless docx review round-trip", () => {
       {
         version: 1,
         mode: "direct",
-        operations: [{ id: "missing", type: "deleteBlock", blockId: "missing" }],
+        operations: [
+          { id: "missing", type: "deleteBlock", blockId: "missing" },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -2485,7 +2889,10 @@ describe("headless docx review round-trip", () => {
       status: "undone",
       undoHandle: first.undoHandle,
     });
-    const unknownHandle = { type: "documentOperationUndo", id: "unknown" } as const;
+    const unknownHandle = {
+      type: "documentOperationUndo",
+      id: "unknown",
+    } as const;
     expect(reviewer.undoDocumentOperations(unknownHandle)).toEqual({
       status: "rejected",
       undoHandle: unknownHandle,
@@ -2493,7 +2900,10 @@ describe("headless docx review round-trip", () => {
     });
 
     const changedReviewer = await FolioDocxReviewer.fromBuffer(baseline);
-    const changedTarget = findBlock(changedReviewer.snapshot().blocks, "Heading");
+    const changedTarget = findBlock(
+      changedReviewer.snapshot().blocks,
+      "Heading",
+    );
     const changed = changedReviewer.applyDocumentOperations(
       {
         version: 1,
@@ -2519,7 +2929,10 @@ describe("headless docx review round-trip", () => {
     });
 
     const commentReviewer = await FolioDocxReviewer.fromBuffer(baseline);
-    const commentTarget = findBlock(commentReviewer.snapshot().blocks, "Heading");
+    const commentTarget = findBlock(
+      commentReviewer.snapshot().blocks,
+      "Heading",
+    );
     const commented = commentReviewer.applyDocumentOperations(
       {
         version: 1,
@@ -2540,12 +2953,16 @@ describe("headless docx review round-trip", () => {
       throw new Error("expected an undo handle and comment");
     }
     commentReviewer.replyTo(parentComment.id, { text: "Keep this reply." });
-    expect(commentReviewer.undoDocumentOperations(commented.undoHandle)).toEqual({
+    expect(
+      commentReviewer.undoDocumentOperations(commented.undoHandle),
+    ).toEqual({
       status: "rejected",
       undoHandle: commented.undoHandle,
       reason: "documentChanged",
     });
-    expect(commentReviewer.getComments().at(0)?.replies.at(0)?.text).toBe("Keep this reply.");
+    expect(commentReviewer.getComments().at(0)?.replies.at(0)?.text).toBe(
+      "Keep this reply.",
+    );
 
     changedReviewer.acceptAll();
     expect(changedReviewer.undoDocumentOperations(changed.undoHandle)).toEqual({
@@ -2557,7 +2974,9 @@ describe("headless docx review round-trip", () => {
 
   test("dry runs predict best-effort results without document or comment changes", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     const contentBefore = reviewer.getContentAsText();
     const operations = [
@@ -2602,7 +3021,14 @@ describe("headless docx review round-trip", () => {
         {
           operationId: "valid",
           operationIndex: 0,
-          affected: [{ type: "block", story: "main", blockId: target.id, effect: "updated" }],
+          affected: [
+            {
+              type: "block",
+              story: "main",
+              blockId: target.id,
+              effect: "updated",
+            },
+          ],
         },
       ],
       undoHandle: null,
@@ -2620,14 +3046,18 @@ describe("headless docx review round-trip", () => {
     );
     expect(committed.status).toBe("committed");
     expect(committed.applied.map(({ id }) => id)).toEqual(["valid"]);
-    expect(committed.skipped).toEqual([{ id: "missing", reason: "missingBlock" }]);
+    expect(committed.skipped).toEqual([
+      { id: "missing", reason: "missingBlock" },
+    ]);
     expect(reviewer.getContentAsText()).toContain("Intro paragraph.");
     expect(reviewer.getComments()).toHaveLength(1);
   });
 
   test("dry runs predict atomic rejection without exposing generated ids", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
     const preview = reviewer.applyDocumentOperations(
@@ -2708,8 +3138,12 @@ describe("headless docx review round-trip", () => {
     expect(outXml).not.toContain("<w:del ");
 
     const reparsed = await parseDocx(out);
-    const blocks = reparsed.package.document.content.filter((b) => b.type === "paragraph");
-    const joined = blocks.map((b) => (b.type === "paragraph" ? JSON.stringify(b) : "")).join(" ");
+    const blocks = reparsed.package.document.content.filter(
+      (b) => b.type === "paragraph",
+    );
+    const joined = blocks
+      .map((b) => (b.type === "paragraph" ? JSON.stringify(b) : ""))
+      .join(" ");
     expect(joined).toContain("Newly inserted clause.");
     expect(joined).toContain("Heading paragraph.");
     expect(joined).toContain("Trailing paragraph.");
@@ -2717,7 +3151,9 @@ describe("headless docx review round-trip", () => {
 
   test("insertAfterBlock (tracked-changes) marks the new paragraph as an insertion", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
     const result = reviewer.applyOperations(
@@ -2739,7 +3175,9 @@ describe("headless docx review round-trip", () => {
     expect(outXml).toContain("Newly inserted clause.");
     expect(outXml).toContain("<w:ins ");
     // The inserted run sits inside a tracked insertion.
-    expect(paragraphContaining(outXml, "Newly inserted clause.")).toContain("<w:ins ");
+    expect(paragraphContaining(outXml, "Newly inserted clause.")).toContain(
+      "<w:ins ",
+    );
 
     // A structural edit falls back to full repack, which copies unrelated parts
     // through untouched.
@@ -2758,13 +3196,23 @@ describe("headless docx review round-trip", () => {
 
     const { buffer, applied, skipped } = await applyFolioAIEditsToBuffer(
       baseline,
-      [{ id: "o1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      [
+        {
+          id: "o1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
       { mode: "direct", snapshot },
     );
     expect(applied.map((a) => a.id)).toEqual(["o1"]);
     expect(skipped).toEqual([]);
     expect(blockText(target)).toContain("Heading");
-    expect(await partText(buffer, "word/document.xml")).toContain("Intro paragraph.");
+    expect(await partText(buffer, "word/document.xml")).toContain(
+      "Intro paragraph.",
+    );
   });
 });
 
@@ -2840,10 +3288,20 @@ describe("headless docx review discovery + resolve", () => {
 
   test("getChanges surfaces the deletion and insertion of a tracked replace", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
-      [{ id: "t1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      [
+        {
+          id: "t1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
       { undefinedReferences: "refuse" },
     );
 
@@ -2865,7 +3323,9 @@ describe("headless docx review discovery + resolve", () => {
   test("acceptChange keeps the insertion as plain text; rejectChange drops it", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
 
-    const accepting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const accepting = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI",
+    });
     const acceptTarget = findBlock(accepting.snapshot().blocks, "Heading");
     accepting.applyOperations(
       [
@@ -2880,13 +3340,20 @@ describe("headless docx review discovery + resolve", () => {
       { undefinedReferences: "refuse" },
     );
     expect(accepting.acceptChange(insertionChange(accepting))).toBe(true);
-    const acceptedXml = await partText(await accepting.toBuffer(), "word/document.xml");
+    const acceptedXml = await partText(
+      await accepting.toBuffer(),
+      "word/document.xml",
+    );
     expect(acceptedXml).toContain("Intro");
     expect(acceptedXml).not.toContain("<w:ins ");
     // The accepted change no longer shows up in discovery.
-    expect(accepting.getChanges().some((c) => c.type === "insertion")).toBe(false);
+    expect(accepting.getChanges().some((c) => c.type === "insertion")).toBe(
+      false,
+    );
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const rejecting = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI",
+    });
     const rejectTarget = findBlock(rejecting.snapshot().blocks, "Heading");
     rejecting.applyOperations(
       [
@@ -2901,7 +3368,10 @@ describe("headless docx review discovery + resolve", () => {
       { undefinedReferences: "refuse" },
     );
     expect(rejecting.rejectChange(insertionChange(rejecting))).toBe(true);
-    const rejectedXml = await partText(await rejecting.toBuffer(), "word/document.xml");
+    const rejectedXml = await partText(
+      await rejecting.toBuffer(),
+      "word/document.xml",
+    );
     expect(rejectedXml).not.toContain("Intro");
     expect(rejectedXml).not.toContain("<w:ins ");
   });
@@ -2909,7 +3379,9 @@ describe("headless docx review discovery + resolve", () => {
   test("acceptAll and rejectAll resolve every tracked change", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
 
-    const accepting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const accepting = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI",
+    });
     const acceptBlocks = accepting.snapshot().blocks;
     accepting.applyOperations(
       [
@@ -2932,14 +3404,19 @@ describe("headless docx review discovery + resolve", () => {
     );
     expect(accepting.getChanges().length).toBeGreaterThanOrEqual(4);
     expect(accepting.acceptAll()).toBeGreaterThanOrEqual(4);
-    const acceptedXml = await partText(await accepting.toBuffer(), "word/document.xml");
+    const acceptedXml = await partText(
+      await accepting.toBuffer(),
+      "word/document.xml",
+    );
     expect(acceptedXml).toContain("Intro paragraph.");
     expect(acceptedXml).toContain("Closing paragraph.");
     expect(acceptedXml).not.toContain("<w:ins ");
     expect(acceptedXml).not.toContain("<w:del ");
     expect(accepting.getChanges()).toEqual([]);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const rejecting = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI",
+    });
     const rejectBlocks = rejecting.snapshot().blocks;
     rejecting.applyOperations(
       [
@@ -2961,7 +3438,10 @@ describe("headless docx review discovery + resolve", () => {
       { undefinedReferences: "refuse" },
     );
     expect(rejecting.rejectAll()).toBeGreaterThanOrEqual(4);
-    const rejectedXml = await partText(await rejecting.toBuffer(), "word/document.xml");
+    const rejectedXml = await partText(
+      await rejecting.toBuffer(),
+      "word/document.xml",
+    );
     expect(rejectedXml).toContain("Heading paragraph.");
     expect(rejectedXml).toContain("Trailing paragraph.");
     expect(rejectedXml).not.toContain("Intro");
@@ -2972,7 +3452,9 @@ describe("headless docx review discovery + resolve", () => {
 
   test("getComments returns authored comments with their anchor", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
       [
@@ -2997,10 +3479,19 @@ describe("headless docx review discovery + resolve", () => {
 
   test("replyTo threads a reply under a comment and round-trips it", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
-      [{ id: "c1", type: "commentOnBlock", blockId: target.id, comment: { text: "Parent note." } }],
+      [
+        {
+          id: "c1",
+          type: "commentOnBlock",
+          blockId: target.id,
+          comment: { text: "Parent note." },
+        },
+      ],
       { undefinedReferences: "refuse" },
     );
     const parent = reviewer.getComments()[0];
@@ -3009,7 +3500,10 @@ describe("headless docx review discovery + resolve", () => {
       return;
     }
 
-    const reply = reviewer.replyTo(parent, { text: "Threaded response.", author: "Second" });
+    const reply = reviewer.replyTo(parent, {
+      text: "Threaded response.",
+      author: "Second",
+    });
     expect(reply).not.toBeNull();
 
     // The thread now carries the reply.
@@ -3027,8 +3521,12 @@ describe("headless docx review discovery + resolve", () => {
     const extended = await partText(saved, "word/commentsExtended.xml");
     expect(extended).toContain("w15:paraIdParent");
     const documentXml = await partText(saved, "word/document.xml");
-    expect(documentXml).toContain(`<w:commentRangeStart w:id="${savedReply?.id}"/>`);
-    expect(documentXml).toContain(`<w:commentReference w:id="${savedReply?.id}"/>`);
+    expect(documentXml).toContain(
+      `<w:commentRangeStart w:id="${savedReply?.id}"/>`,
+    );
+    expect(documentXml).toContain(
+      `<w:commentReference w:id="${savedReply?.id}"/>`,
+    );
 
     // Adding comments.xml AND commentsExtended.xml in one repack must wire both
     // parts' content-type overrides and relationships (they edit the same two
@@ -3046,7 +3544,9 @@ describe("headless docx review discovery + resolve", () => {
 
   test("resolveComment marks a thread resolved, round-trips, and can reopen it", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
       [
@@ -3082,18 +3582,27 @@ describe("headless docx review discovery + resolve", () => {
     );
     expect(savedComment?.done).toBe(true);
 
-    const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved, { author: "AI Reviewer" });
+    const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved, {
+      author: "AI Reviewer",
+    });
     expect(reopenedReviewer.getComments()[0]?.done).toBe(true);
-    expect(reopenedReviewer.resolveComment(String(comment.id), { resolved: false })).toBe(true);
+    expect(
+      reopenedReviewer.resolveComment(String(comment.id), { resolved: false }),
+    ).toBe(true);
     expect(reopenedReviewer.getComments()[0]?.done).toBe(false);
 
     const reopenedSaved = await reopenedReviewer.toBuffer();
-    const reopenedExtended = await partText(reopenedSaved, "word/commentsExtended.xml");
-    expect(reopenedExtended).toContain('w15:done="0"');
-    const reopenedReparsed = await parseDocx(reopenedSaved, { preloadFonts: false });
-    const reopenedSavedComment = (reopenedReparsed.package.document.comments ?? []).find(
-      (c) => c.id === comment.id,
+    const reopenedExtended = await partText(
+      reopenedSaved,
+      "word/commentsExtended.xml",
     );
+    expect(reopenedExtended).toContain('w15:done="0"');
+    const reopenedReparsed = await parseDocx(reopenedSaved, {
+      preloadFonts: false,
+    });
+    const reopenedSavedComment = (
+      reopenedReparsed.package.document.comments ?? []
+    ).find((c) => c.id === comment.id);
     expect(reopenedSavedComment?.done).toBe(false);
   });
 
@@ -3103,14 +3612,26 @@ describe("headless docx review discovery + resolve", () => {
     // snapshot resolve against the second rather than skipping as missingBlock.
     const first = await FolioDocxReviewer.fromBuffer(readFixture());
     const snapshot = first.snapshot();
-    expect(snapshot.blocks.every(({ idStability }) => idStability === "positional")).toBe(true);
+    expect(
+      snapshot.blocks.every(({ idStability }) => idStability === "positional"),
+    ).toBe(true);
     const target = findBlock(snapshot.blocks, "Heading");
 
     const second = await FolioDocxReviewer.fromBuffer(readFixture());
-    expect(second.getContent().map((b) => b.id)).toEqual(first.getContent().map((b) => b.id));
+    expect(second.getContent().map((b) => b.id)).toEqual(
+      first.getContent().map((b) => b.id),
+    );
 
     const result = second.applyOperations(
-      [{ id: "d1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      [
+        {
+          id: "d1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
       { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(result.skipped).toEqual([]);
@@ -3124,7 +3645,9 @@ describe("headless docx review discovery + resolve", () => {
 describe("headless docx review annotated read surface", () => {
   test("reads original, current-markup, and final views without mutating the reviewer", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
       [
@@ -3141,14 +3664,18 @@ describe("headless docx review annotated read surface", () => {
     const changesBefore = reviewer.getChanges();
 
     const original = reviewer.readReviewedStory({ view: "original" });
-    const currentMarkup = reviewer.readReviewedStory({ view: "current-markup" });
+    const currentMarkup = reviewer.readReviewedStory({
+      view: "current-markup",
+    });
     const final = reviewer.readReviewedStory({ view: "final" });
 
     expect(original?.text).toContain("Heading paragraph.");
     expect(original?.text).not.toContain("Intro paragraph.");
     expect(original?.changes).toEqual([]);
     expect(currentMarkup?.text).toContain('<ins author="Reviewer">Intro</ins>');
-    expect(currentMarkup?.text).toContain('<del author="Reviewer">Heading</del>');
+    expect(currentMarkup?.text).toContain(
+      '<del author="Reviewer">Heading</del>',
+    );
     expect(currentMarkup?.changes).toEqual(changesBefore);
     expect(final?.text).toContain("Intro paragraph.");
     expect(final?.text).not.toContain("Heading paragraph.");
@@ -3158,9 +3685,12 @@ describe("headless docx review annotated read surface", () => {
   });
 
   test("persists a resolved final main story and reopens with no revisions", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await makeParaIdBaseline(readFixture()),
+      {
+        author: "Reviewer",
+      },
+    );
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
       [
@@ -3183,14 +3713,19 @@ describe("headless docx review annotated read surface", () => {
     expect(documentXml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
 
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    expect(reopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
+    expect(
+      reopened.readReviewedStory({ view: "current-markup" })?.changes,
+    ).toEqual([]);
     expect(reopened.getContentAsText()).toContain("Intro paragraph.");
   });
 
   test("persists a resolved final main story with a comment anchor", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await makeParaIdBaseline(readFixture()),
+      {
+        author: "Reviewer",
+      },
+    );
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
       [
@@ -3214,7 +3749,9 @@ describe("headless docx review annotated read surface", () => {
     expect(reviewer.resolveReviewedStory({ view: "final" })).toBe(true);
     const saved = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    expect(reopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
+    expect(
+      reopened.readReviewedStory({ view: "current-markup" })?.changes,
+    ).toEqual([]);
     expect(reopened.getComments().at(0)).toMatchObject({
       text: "Keep this comment.",
       anchoredText: expect.stringContaining("Intro paragraph."),
@@ -3222,15 +3759,21 @@ describe("headless docx review annotated read surface", () => {
   });
 
   test("rejects an unsupported reviewed view at the public boundary", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await makeParaIdBaseline(readFixture()),
+    );
     expect(() =>
-      Reflect.apply(reviewer.readReviewedStory, reviewer, [{ view: "unsupported" }]),
+      Reflect.apply(reviewer.readReviewedStory, reviewer, [
+        { view: "unsupported" },
+      ]),
     ).toThrow(UnsupportedFolioReviewedViewError);
   });
 
   test("getContentAsText({ annotated }) inlines redline + comment tags; default stays clean", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "AI Reviewer",
+    });
     const blocks = reviewer.snapshot().blocks;
     reviewer.applyOperations(
       [
@@ -3257,7 +3800,9 @@ describe("headless docx review annotated read surface", () => {
     expect(annotated).toContain('<ins author="AI Reviewer">Intro</ins>');
     expect(annotated).toContain('<del author="AI Reviewer">Heading</del>');
     // The comment anchor wraps its block text with its allocated id.
-    expect(annotated).toMatch(/<comment id="\d+">[^<]*Trailing paragraph\.[^<]*<\/comment>/u);
+    expect(annotated).toMatch(
+      /<comment id="\d+">[^<]*Trailing paragraph\.[^<]*<\/comment>/u,
+    );
 
     // Default (clean) output flattens tracked changes and carries no tags.
     const clean = reviewer.getContentAsText();
@@ -3280,7 +3825,10 @@ const NOTES_FIXTURE = path.join(
  */
 const readNotesFixture = async (): Promise<ArrayBuffer> => {
   const bytes = readFileSync(NOTES_FIXTURE);
-  const src = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const src = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
   const zip = await JSZip.loadAsync(src);
   const footnotesFile = zip.file("word/footnotes.xml");
   if (!footnotesFile) {
@@ -3349,7 +3897,10 @@ const withSecondaryStoryPropertyParagraphs = async ({
   const replacement =
     `<w:p${editedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText}</w:t></w:r></w:p>` +
     `<w:p${untouchedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText} untouched</w:t></w:r></w:p>`;
-  zip.file(part, `${xml.slice(0, paragraphStart)}${replacement}${xml.slice(paragraphEnd + 6)}`);
+  zip.file(
+    part,
+    `${xml.slice(0, paragraphStart)}${replacement}${xml.slice(paragraphEnd + 6)}`,
+  );
   await defineStoryEditedStyle(zip);
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -3389,30 +3940,33 @@ const secondaryStoryPropertyCases = [
   },
 ] as const;
 
-const secondaryStoryPropertyIdentityCases = secondaryStoryPropertyCases.flatMap((entry) => [
-  { ...entry, identity: "source paraIds", includeParaIds: true },
-  { ...entry, identity: "allocated paraIds", includeParaIds: false },
-]);
+const secondaryStoryPropertyIdentityCases = secondaryStoryPropertyCases.flatMap(
+  (entry) => [
+    { ...entry, identity: "source paraIds", includeParaIds: true },
+    { ...entry, identity: "allocated paraIds", includeParaIds: false },
+  ],
+);
 
-const mainDocumentWithIdlessPropertyParagraphs = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentFile = zip.file("word/document.xml");
-  const documentXml = await documentFile?.async("text");
-  if (!documentXml) {
-    panic("The generated package has no main document part.");
-  }
-  zip.file(
-    "word/document.xml",
-    documentXml.replace(
-      /<w:body>[\s\S]*<\/w:body>/u,
-      `<w:body><w:p>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>Main edited source</w:t></w:r></w:p>` +
-        `<w:p>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>Main untouched source</w:t></w:r></w:p>` +
-        "<w:sectPr/></w:body>",
-    ),
-  );
-  await defineStoryEditedStyle(zip);
-  return zip.generateAsync({ type: "arraybuffer" });
-};
+const mainDocumentWithIdlessPropertyParagraphs =
+  async (): Promise<ArrayBuffer> => {
+    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const documentFile = zip.file("word/document.xml");
+    const documentXml = await documentFile?.async("text");
+    if (!documentXml) {
+      panic("The generated package has no main document part.");
+    }
+    zip.file(
+      "word/document.xml",
+      documentXml.replace(
+        /<w:body>[\s\S]*<\/w:body>/u,
+        `<w:body><w:p>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>Main edited source</w:t></w:r></w:p>` +
+          `<w:p>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>Main untouched source</w:t></w:r></w:p>` +
+          "<w:sectPr/></w:body>",
+      ),
+    );
+    await defineStoryEditedStyle(zip);
+    return zip.generateAsync({ type: "arraybuffer" });
+  };
 
 test("preserves an id-less main paragraph source after a neighboring property edit", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
@@ -3449,7 +4003,10 @@ test("preserves an id-less main paragraph source after a neighboring property ed
   const saved = await reviewer.toBuffer();
   const documentXml = await partText(saved, "word/document.xml");
   const editedParagraph = paragraphContaining(documentXml, "Main edited");
-  const untouchedParagraph = paragraphContaining(documentXml, "Main untouched source");
+  const untouchedParagraph = paragraphContaining(
+    documentXml,
+    "Main untouched source",
+  );
   expect(editedParagraph).toContain('<w:pStyle w:val="StoryEdited"/>');
   expect(editedParagraph).toContain('w:leftChars="100"');
   expect(editedParagraph).toContain('w:oddHBand="1"');
@@ -3457,14 +4014,22 @@ test("preserves an id-less main paragraph source after a neighboring property ed
 
   const reopened = await FolioDocxReviewer.fromBuffer(saved);
   expect(reopened.getContentAsText()).toContain("Main edited");
-  expect(await partBytes(await reopened.toBuffer(), "word/document.xml")).toEqual(
-    await partBytes(saved, "word/document.xml"),
-  );
+  expect(
+    await partBytes(await reopened.toBuffer(), "word/document.xml"),
+  ).toEqual(await partBytes(saved, "word/document.xml"));
 });
 
 test.each(secondaryStoryPropertyIdentityCases)(
   "preserves untouched $story.type paragraph properties with $identity after a neighboring property edit",
-  async ({ story, part, source, originalText, editedParaId, untouchedParaId, includeParaIds }) => {
+  async ({
+    story,
+    part,
+    source,
+    originalText,
+    editedParaId,
+    untouchedParaId,
+    includeParaIds,
+  }) => {
     const baseline = await withSecondaryStoryPropertyParagraphs({
       source: await source(),
       part,
@@ -3473,7 +4038,9 @@ test.each(secondaryStoryPropertyIdentityCases)(
       untouchedParaId,
       includeParaIds,
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
       panic(`expected the ${story.type} story`);
@@ -3508,8 +4075,14 @@ test.each(secondaryStoryPropertyIdentityCases)(
 
     const saved = await reviewer.toBuffer();
     const savedPart = await partText(saved, part);
-    const editedParagraph = paragraphContaining(savedPart, `${story.type} edited`);
-    const untouchedParagraph = paragraphContaining(savedPart, `${originalText} untouched`);
+    const editedParagraph = paragraphContaining(
+      savedPart,
+      `${story.type} edited`,
+    );
+    const untouchedParagraph = paragraphContaining(
+      savedPart,
+      `${originalText} untouched`,
+    );
     expect(editedParagraph).toContain('<w:pStyle w:val="StoryEdited"/>');
     expect(editedParagraph).toContain('w:leftChars="100"');
     expect(editedParagraph).toContain('w:oddHBand="1"');
@@ -3517,13 +4090,22 @@ test.each(secondaryStoryPropertyIdentityCases)(
 
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
     expect(reopened.readStory(story)?.text).toContain(`${story.type} edited`);
-    expect(await partBytes(await reopened.toBuffer(), part)).toEqual(await partBytes(saved, part));
+    expect(await partBytes(await reopened.toBuffer(), part)).toEqual(
+      await partBytes(saved, part),
+    );
   },
 );
 
 test.each(secondaryStoryPropertyCases)(
   "preserves the edited id-less $story.type paragraph properties after a text-only edit",
-  async ({ story, part, source, originalText, editedParaId, untouchedParaId }) => {
+  async ({
+    story,
+    part,
+    source,
+    originalText,
+    editedParaId,
+    untouchedParaId,
+  }) => {
     const baseline = await withSecondaryStoryPropertyParagraphs({
       source: await source(),
       part,
@@ -3532,7 +4114,9 @@ test.each(secondaryStoryPropertyCases)(
       untouchedParaId,
       includeParaIds: false,
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
       panic(`expected the ${story.type} story`);
@@ -3562,11 +4146,15 @@ test.each(secondaryStoryPropertyCases)(
 
     const saved = await reviewer.toBuffer();
     const savedPart = await partText(saved, part);
-    expect(paragraphContaining(savedPart, editedText)).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
+    expect(paragraphContaining(savedPart, editedText)).toContain(
+      SECONDARY_STORY_PROPERTY_SOURCE,
+    );
 
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
     expect(reopened.readStory(story)?.text).toContain(editedText);
-    expect(await partBytes(await reopened.toBuffer(), part)).toEqual(await partBytes(saved, part));
+    expect(await partBytes(await reopened.toBuffer(), part)).toEqual(
+      await partBytes(saved, part),
+    );
   },
 );
 
@@ -3610,12 +4198,16 @@ const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
 
 describe("headless docx review notes read surface", () => {
   test("reads every visible note content kind in the accepted view", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await readRichNotesFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await readRichNotesFixture(),
+    );
     const footnote = reviewer
       .listStories()
       .find(({ handle }) => handle.type === "footnote" && handle.noteId === 2);
 
-    expect(footnote?.text).toBe("See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL");
+    expect(footnote?.text).toBe(
+      "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL",
+    );
     expect(reviewer.readStory({ type: "endnote", noteId: 3 })?.text).toBe(
       "Endnote INSERTED MOVED TO ENDNOTE CELL",
     );
@@ -3628,7 +4220,8 @@ describe("headless docx review notes read surface", () => {
       removedParaId: "32000001",
       idProfile: "without paragraph ids",
       expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL",
-      preservedParagraph: '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
+      preservedParagraph:
+        '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
     },
     {
       story: { type: "endnote", noteId: 3 } as const,
@@ -3636,7 +4229,8 @@ describe("headless docx review notes read surface", () => {
       removedParaId: "32000002",
       idProfile: "without paragraph ids",
       expectedText: "Endnote INSERTED MOVED TO ENDNOTE CELL",
-      preservedParagraph: '<w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
+      preservedParagraph:
+        '<w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
     },
     {
       story: { type: "footnote", noteId: 2 } as const,
@@ -3644,7 +4238,8 @@ describe("headless docx review notes read surface", () => {
       removedParaId: null,
       idProfile: "with paragraph ids",
       expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL",
-      preservedParagraph: '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
+      preservedParagraph:
+        '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
     },
     {
       story: { type: "endnote", noteId: 3 } as const,
@@ -3652,11 +4247,18 @@ describe("headless docx review notes read surface", () => {
       removedParaId: null,
       idProfile: "with paragraph ids",
       expectedText: "Endnote INSERTED MOVED TO ENDNOTE CELL",
-      preservedParagraph: '<w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
+      preservedParagraph:
+        '<w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
     },
   ])(
     "persists a resolved final $story.type $idProfile",
-    async ({ story, part, removedParaId, expectedText, preservedParagraph }) => {
+    async ({
+      story,
+      part,
+      removedParaId,
+      expectedText,
+      preservedParagraph,
+    }) => {
       const zip = await JSZip.loadAsync(await readRichNotesFixture());
       const notesFile = zip.file(part);
       if (!notesFile) {
@@ -3664,17 +4266,25 @@ describe("headless docx review notes read surface", () => {
       }
       const notesXml = await notesFile.async("text");
       const rewrittenNotesXml =
-        removedParaId === null ? notesXml : notesXml.replace(` w14:paraId="${removedParaId}"`, "");
+        removedParaId === null
+          ? notesXml
+          : notesXml.replace(` w14:paraId="${removedParaId}"`, "");
       if (removedParaId !== null) {
-        expect(rewrittenNotesXml).not.toContain(`w14:paraId="${removedParaId}"`);
+        expect(rewrittenNotesXml).not.toContain(
+          `w14:paraId="${removedParaId}"`,
+        );
       }
       zip.file(part, rewrittenNotesXml);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await zip.generateAsync({ type: "arraybuffer" }),
       );
 
-      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
-      expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
+        true,
+      );
+      expect(
+        reviewer.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual([]);
 
       const saved = await reviewer.toBuffer();
       const savedNotesXml = await partText(saved, part);
@@ -3688,7 +4298,9 @@ describe("headless docx review notes read surface", () => {
       expect(savedNotesXml).toContain(preservedParagraph);
 
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
-      expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+      expect(
+        reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual([]);
       expect(reopened.readStory(story)?.text).toBe(expectedText);
     },
   );
@@ -3729,7 +4341,9 @@ describe("headless docx review notes read surface", () => {
         await zip.generateAsync({ type: "arraybuffer" }),
       );
 
-      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
+        true,
+      );
       const saved = await reviewer.toBuffer();
       const savedNotesXml = await partText(saved, part);
       expect(savedNotesXml).toContain(`xmlns:${prefix}="${namespace}"`);
@@ -3744,7 +4358,9 @@ describe("headless docx review notes read surface", () => {
       }
 
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
-      expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+      expect(
+        reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual([]);
       expect(reopened.readStory(story)?.text).toBe(expectedText);
     },
   );
@@ -3779,15 +4395,23 @@ describe("headless docx review notes read surface", () => {
         throw new Error(`fixture missing ${element} ${story.noteId}`);
       }
       const replacement = `<w:${element} w:id="${story.noteId}"><w:p><w:pPr><w:rPr><w:del w:id="50" w:author="Reviewer"/></w:rPr></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>First</w:t></w:r></w:p><w:p><w:r><w:rPr><w:i/></w:rPr><w:t>Second</w:t></w:r></w:p></w:${element}>`;
-      zip.file(part, notesXml.slice(0, noteStart) + replacement + notesXml.slice(noteEnd));
+      zip.file(
+        part,
+        notesXml.slice(0, noteStart) + replacement + notesXml.slice(noteEnd),
+      );
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await zip.generateAsync({ type: "arraybuffer" }),
       );
 
-      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
+        true,
+      );
       const saved = await reviewer.toBuffer();
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
-      const reviewed = reopened.readReviewedStory({ story, view: "current-markup" });
+      const reviewed = reopened.readReviewedStory({
+        story,
+        view: "current-markup",
+      });
       expect(reviewed?.changes).toEqual([]);
       expect(reopened.readStory(story)?.text).toBe("FirstSecond");
       expect(reviewed?.snapshot.blocks).toEqual([
@@ -3805,9 +4429,12 @@ describe("headless docx review notes read surface", () => {
   test("edits a footnote through story-scoped document operations", async () => {
     const baseline = await readNotesFixture();
     const imported = await parseDocx(baseline, { preloadFonts: false });
-    if (!imported.originalBuffer) panic("parser must retain the imported package");
+    if (!imported.originalBuffer)
+      panic("parser must retain the imported package");
     const story = { type: "footnote", noteId: 2 } as const;
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
       throw new Error("expected the footnote story");
@@ -3841,10 +4468,14 @@ describe("headless docx review notes read surface", () => {
       effect: "updated",
     });
     expect(reviewer.readStory(story)?.text).toBe("Updated footnote body text.");
-    expect(reviewer.getNotesAsText()).toContain("[footnote #2] Updated footnote body text.");
+    expect(reviewer.getNotesAsText()).toContain(
+      "[footnote #2] Updated footnote body text.",
+    );
 
     const saved = await reviewer.toBuffer();
-    expect(await partText(saved, "word/footnotes.xml")).toContain("Updated footnote");
+    expect(await partText(saved, "word/footnotes.xml")).toContain(
+      "Updated footnote",
+    );
     expect(await partBytes(saved, "word/document.xml")).toEqual(
       await partBytes(imported.originalBuffer, "word/document.xml"),
     );
@@ -3859,7 +4490,9 @@ describe("headless docx review notes read surface", () => {
   test("tracks and undoes an endnote operation batch", async () => {
     const baseline = await readNotesFixture();
     const story = { type: "endnote", noteId: 3 } as const;
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
       throw new Error("expected the endnote story");
@@ -3886,15 +4519,15 @@ describe("headless docx review notes read surface", () => {
     });
 
     expect(result.status).toBe("committed");
-    expect(reviewer.readReviewedStory({ story, view: "original" })?.text).toContain(
-      "Injected endnote body text.",
-    );
-    expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.text).toContain(
-      '<ins author="Reviewer">Updated</ins>',
-    );
-    expect(reviewer.readReviewedStory({ story, view: "final" })?.text).toContain(
-      "Updated endnote body text.",
-    );
+    expect(
+      reviewer.readReviewedStory({ story, view: "original" })?.text,
+    ).toContain("Injected endnote body text.");
+    expect(
+      reviewer.readReviewedStory({ story, view: "current-markup" })?.text,
+    ).toContain('<ins author="Reviewer">Updated</ins>');
+    expect(
+      reviewer.readReviewedStory({ story, view: "final" })?.text,
+    ).toContain("Updated endnote body text.");
     const saved = await reviewer.toBuffer();
     const endnotesXml = await partText(saved, "word/endnotes.xml");
     expect(endnotesXml).toContain("Updated");
@@ -3911,13 +4544,15 @@ describe("headless docx review notes read surface", () => {
       undoHandle: result.undoHandle,
     });
     expect(reviewer.readStory(story)?.text).toBe("Injected endnote body text.");
-    expect(await partBytes(await reviewer.toBuffer(), "word/endnotes.xml")).toEqual(
-      await partBytes(baseline, "word/endnotes.xml"),
-    );
+    expect(
+      await partBytes(await reviewer.toBuffer(), "word/endnotes.xml"),
+    ).toEqual(await partBytes(baseline, "word/endnotes.xml"));
   });
 
   test("rejects a missing note story before applying operations", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await readNotesFixture(),
+    );
     const story = { type: "footnote", noteId: 999_999 } as const;
     expect(reviewer.snapshotStory(story)).toBeNull();
     expect(reviewer.readReviewedStory({ story, view: "final" })).toBeNull();
@@ -3931,20 +4566,30 @@ describe("headless docx review notes read surface", () => {
   });
 
   test("listStories discovers typed handles that readStory resolves", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await readNotesFixture(),
+    );
     const stories = reviewer.listStories();
     expect(stories.at(0)?.handle).toEqual({ type: "main" });
     const footnote = stories.find(({ handle }) => handle.type === "footnote");
     expect(footnote?.text).toBe("Injected footnote body text.");
-    expect(footnote ? reviewer.readStory(footnote.handle) : null).toEqual(footnote);
+    expect(footnote ? reviewer.readStory(footnote.handle) : null).toEqual(
+      footnote,
+    );
     const endnote = stories.find(({ handle }) => handle.type === "endnote");
     expect(endnote?.text).toBe("Injected endnote body text.");
-    expect(endnote ? reviewer.readStory(endnote.handle) : null).toEqual(endnote);
-    expect(reviewer.readStory({ type: "footnote", noteId: 999_999 })).toBeNull();
+    expect(endnote ? reviewer.readStory(endnote.handle) : null).toEqual(
+      endnote,
+    );
+    expect(
+      reviewer.readStory({ type: "footnote", noteId: 999_999 }),
+    ).toBeNull();
   });
 
   test("getNotesAsText surfaces header, footer, and footnote text with labels", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await readNotesFixture(),
+    );
     const notes = reviewer.getNotesAsText();
 
     expect(notes).toContain(

@@ -9,9 +9,14 @@
  */
 
 import { describe, expect, test } from "bun:test";
+
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 
-import type { FolioAIBlock, FolioAIEditSnapshot, FolioAIParagraphBlock } from "../ai-edits/types";
+import type {
+  FolioAIBlock,
+  FolioAIEditSnapshot,
+  FolioAIParagraphBlock,
+} from "../ai-edits/types";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentStatedNumbering } from "./content-types";
 import { planStoryCompare } from "./plan";
@@ -106,7 +111,10 @@ const snapshotOf = (blocks: readonly FolioAIBlock[]): FolioAIEditSnapshot => ({
   ),
 });
 
-const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) => {
+const planOf = (
+  base: readonly FolioAIBlock[],
+  target: readonly FolioAIBlock[],
+) => {
   const plan = planStoryCompare({
     story: MAIN_STORY,
     baseSnapshot: snapshotOf(base),
@@ -154,13 +162,22 @@ test("numbering source and effective list projection round-trip across style sou
   for (const styleCase of styleCases) {
     for (const statedNumbering of statedCases) {
       let targetLevel = styleCase.inheritedReference?.level ?? 0;
-      if (statedNumbering.kind === "levelOnly") targetLevel = statedNumbering.ilvl;
-      if (statedNumbering.kind === "reference") targetLevel = statedNumbering.ilvl ?? 0;
+      if (statedNumbering.kind === "levelOnly")
+        targetLevel = statedNumbering.ilvl;
+      if (statedNumbering.kind === "reference")
+        targetLevel = statedNumbering.ilvl ?? 0;
 
-      let effectiveReference: FolioAIParagraphBlock["listReference"] = undefined;
+      let effectiveReference: FolioAIParagraphBlock["listReference"] =
+        undefined;
       if (statedNumbering.kind === "reference") {
-        effectiveReference = { numId: statedNumbering.numId, level: targetLevel };
-      } else if (statedNumbering.kind !== "none" && styleCase.inheritedReference !== undefined) {
+        effectiveReference = {
+          numId: statedNumbering.numId,
+          level: targetLevel,
+        };
+      } else if (
+        statedNumbering.kind !== "none" &&
+        styleCase.inheritedReference !== undefined
+      ) {
         effectiveReference = {
           numId: styleCase.inheritedReference.numId,
           level: targetLevel,
@@ -175,7 +192,10 @@ test("numbering source and effective list projection round-trip across style sou
       const base: FolioAIParagraphBlock = {
         ...block("paragraph", "Same words"),
         statedNumbering: baseReference,
-        listReference: { numId: baseReference.numId, level: baseReference.ilvl ?? 0 },
+        listReference: {
+          numId: baseReference.numId,
+          level: baseReference.ilvl ?? 0,
+        },
       };
       const plan = planOf([base], [target]);
       const propertyOperation = plan.operations.find(
@@ -241,7 +261,11 @@ describe("table row pairing", () => {
       ],
     );
 
-    expect(changes.map(({ kind }) => kind)).toEqual(["table-row-delete", "replace", "replace"]);
+    expect(changes.map(({ kind }) => kind)).toEqual([
+      "table-row-delete",
+      "replace",
+      "replace",
+    ]);
   });
 
   test("an unchanged table reports nothing", () => {
@@ -255,8 +279,16 @@ describe("table row pairing", () => {
   test("a span change that cannot align by column replaces the whole table", () => {
     const base = [
       block("before", "Before the table."),
-      gridCell("a", "Shared", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("b", "Shared", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("a", "Shared", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("b", "Shared", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
       block("after", "After the table."),
     ];
     const target = [
@@ -272,7 +304,10 @@ describe("table row pairing", () => {
 
     const { changes, operations } = planOf(base, target);
 
-    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+    expect(changes.map(({ kind }) => kind)).toEqual([
+      "table-delete",
+      "table-insert",
+    ]);
     expect(operations).toEqual([
       { id: "compare-1", type: "deleteTable", blockId: "a" },
       {
@@ -354,7 +389,11 @@ describe("table row pairing", () => {
 
     const { changes } = planOf(base, target);
 
-    expect(changes.map(({ kind }) => kind)).toEqual(["replace", "delete", "delete"]);
+    expect(changes.map(({ kind }) => kind)).toEqual([
+      "replace",
+      "delete",
+      "delete",
+    ]);
   });
 });
 
@@ -366,7 +405,10 @@ describe("document-terminal paragraph carrier", () => {
       cell("removed", "Removed row", 0, 1),
       block("base-carrier", ""),
     ];
-    const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
+    const target = [
+      cell("kept-target", "Kept row", 0),
+      block("target-carrier", ""),
+    ];
 
     const { changes, operations } = planOf(base, target);
 
@@ -400,7 +442,11 @@ describe("document-terminal paragraph carrier", () => {
 
     const { changes, operations } = planOf(base, target);
 
-    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert", "delete"]);
+    expect(changes.map(({ kind }) => kind)).toEqual([
+      "table-delete",
+      "table-insert",
+      "delete",
+    ]);
     expect(operations).toEqual([
       { id: "compare-1", type: "deleteTable", blockId: "source" },
       {
@@ -416,7 +462,10 @@ describe("document-terminal paragraph carrier", () => {
 
   test("still compares paragraph properties on the reserved carrier", () => {
     const baseCarrier = block("base-carrier", "");
-    const targetCarrier = { ...block("target-carrier", ""), styleId: "CustomStyle" };
+    const targetCarrier = {
+      ...block("target-carrier", ""),
+      styleId: "CustomStyle",
+    };
 
     const { changes, operations } = planOf([baseCarrier], [targetCarrier]);
 
@@ -434,8 +483,16 @@ describe("document-terminal paragraph carrier", () => {
   test("reserves empty heading and list carriers while comparing their properties", () => {
     const cases = [
       {
-        base: { ...block("base-heading", ""), kind: "heading" as const, styleId: "Heading1" },
-        target: { ...block("target-heading", ""), kind: "heading" as const, styleId: "Heading2" },
+        base: {
+          ...block("base-heading", ""),
+          kind: "heading" as const,
+          styleId: "Heading1",
+        },
+        target: {
+          ...block("target-heading", ""),
+          kind: "heading" as const,
+          styleId: "Heading2",
+        },
         properties: { styleId: "Heading2" },
       },
       {
@@ -478,14 +535,19 @@ describe("document-terminal paragraph carrier", () => {
       block("bravo", UNRELATED),
       block("charlie", RELOCATED_EDITED),
     ];
-    const target = [block("alpha-target", RELOCATED), block("bravo-target", UNRELATED)];
+    const target = [
+      block("alpha-target", RELOCATED),
+      block("bravo-target", UNRELATED),
+    ];
 
     const { changes, operations } = planOf(base, target);
 
     expect(changes).toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "charlie" }),
     );
-    expect(changes).not.toContainEqual(expect.objectContaining({ baseBlockId: "bravo" }));
+    expect(changes).not.toContainEqual(
+      expect.objectContaining({ baseBlockId: "bravo" }),
+    );
     expect(operations).toContainEqual(
       expect.objectContaining({ type: "mergeBlockWithNext", blockId: "bravo" }),
     );
@@ -559,7 +621,10 @@ describe("document-terminal paragraph carrier", () => {
       cell("removed", "Removed row", 0, 1),
       block("base-carrier", ""),
     ];
-    const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
+    const target = [
+      cell("kept-target", "Kept row", 0),
+      block("target-carrier", ""),
+    ];
     const plan = planStoryCompare({
       story: { type: "header", relationshipId: "rId1" },
       baseSnapshot: snapshotOf(base),
@@ -582,18 +647,46 @@ describe("document-terminal paragraph carrier", () => {
 describe("table column pairing", () => {
   test("an inserted middle column is one structural edit and leaves its neighbours paired", () => {
     const base = [
-      gridCell("a0", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("b0", "Amount", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("a0", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("b0", "Amount", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
       gridCell("a1", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
       gridCell("b1", "100", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
     ];
     const target = [
-      gridCell("a0-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("x0", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("b0-target", "Amount", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
-      gridCell("a1-target", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("a0-target", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("x0", "Currency", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("b0-target", "Amount", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+      gridCell("a1-target", "Fees", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       gridCell("x1", "EUR", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("b1-target", "100", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("b1-target", "100", {
+        rowIndex: 1,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
     ];
 
     const { changes, operations } = planOf(base, target);
@@ -618,10 +711,22 @@ describe("table column pairing", () => {
         gridColumnIndex: 0,
         columnSpan: 2,
       }),
-      gridCell("tail", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 2 }),
+      gridCell("tail", "Status", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 2,
+      }),
       gridCell("a1", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("removed", "EUR", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("tail1", "Open", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("removed", "EUR", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("tail1", "Open", {
+        rowIndex: 1,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
     ];
     const target = [
       gridCell("a0-target", "Account details", {
@@ -634,7 +739,11 @@ describe("table column pairing", () => {
         cellIndex: 1,
         gridColumnIndex: 1,
       }),
-      gridCell("a1-target", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("a1-target", "Fees", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       gridCell("tail1-target", "Open", {
         rowIndex: 1,
         cellIndex: 1,
@@ -646,29 +755,61 @@ describe("table column pairing", () => {
 
     // The candidate cuts the merged first-row cell, so it is deliberately not
     // represented as a column deletion.
-    expect(changes.some(({ kind }) => kind === "table-column-delete")).toBe(false);
+    expect(changes.some(({ kind }) => kind === "table-column-delete")).toBe(
+      false,
+    );
   });
 
   test("a deleted middle column uses a physical-cell anchor for its grid coordinate", () => {
     const base = [
-      gridCell("a0", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("x0", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("b0", "Status", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("a0", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("x0", "Currency", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("b0", "Status", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
       gridCell("a1", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
       gridCell("x1", "EUR", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
       gridCell("b1", "Open", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
     ];
     const target = [
-      gridCell("a0-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("b0-target", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("a1-target", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("b1-target", "Open", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("a0-target", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("b0-target", "Status", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("a1-target", "Fees", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("b1-target", "Open", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
     ];
 
     const { changes, operations } = planOf(base, target);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
-    expect(operations).toEqual([{ id: "compare-1", type: "deleteTableColumn", blockId: "x0" }]);
+    expect(operations).toEqual([
+      { id: "compare-1", type: "deleteTableColumn", blockId: "x0" },
+    ]);
   });
 
   test("repeated empty columns stay ambiguous", () => {
@@ -677,26 +818,60 @@ describe("table column pairing", () => {
       gridCell("b", "", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
     ];
     const target = [
-      gridCell("a-target", "", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("a-target", "", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       gridCell("x", "", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("b-target", "", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("b-target", "", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
     ];
 
-    expect(planOf(base, target).changes.some(({ kind }) => kind === "table-column-insert")).toBe(
-      false,
-    );
+    expect(
+      planOf(base, target).changes.some(
+        ({ kind }) => kind === "table-column-insert",
+      ),
+    ).toBe(false);
   });
 
   test("several inserted columns retain target order at one boundary", () => {
     const base = [
-      gridCell("a", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("b", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("a", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("b", "Status", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
     ];
     const target = [
-      gridCell("a-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("x", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("y", "Region", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
-      gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
+      gridCell("a-target", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("x", "Currency", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("y", "Region", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+      gridCell("b-target", "Status", {
+        rowIndex: 0,
+        cellIndex: 3,
+        gridColumnIndex: 3,
+      }),
     ];
 
     expect(planOf(base, target).operations).toEqual([
@@ -719,14 +894,38 @@ describe("table column pairing", () => {
 
   test("several deleted columns use their own physical-cell anchors", () => {
     const base = [
-      gridCell("a", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("x", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      gridCell("y", "Region", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
-      gridCell("b", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
+      gridCell("a", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("x", "Currency", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("y", "Region", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+      gridCell("b", "Status", {
+        rowIndex: 0,
+        cellIndex: 3,
+        gridColumnIndex: 3,
+      }),
     ];
     const target = [
-      gridCell("a-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("a-target", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("b-target", "Status", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
     ];
 
     expect(planOf(base, target).operations).toEqual([
@@ -740,14 +939,19 @@ describe("move detection", () => {
   test("a relocated paragraph is a move even when a word changed on the way", () => {
     const { changes, operations } = planOf(
       [block("a", RELOCATED), block("b", "An unrelated closing paragraph.")],
-      [block("b2", "An unrelated closing paragraph."), block("a2", RELOCATED_EDITED)],
+      [
+        block("b2", "An unrelated closing paragraph."),
+        block("a2", RELOCATED_EDITED),
+      ],
     );
 
     expect(changes.map(({ kind }) => kind)).toEqual(["move"]);
     // Both halves of the pair carry the same link, so the applier writes
     // `w:moveFrom` and `w:moveTo` rather than two unrelated revisions.
     const moveIds = operations.flatMap((operation) =>
-      "moveId" in operation && operation.moveId !== undefined ? [operation.moveId] : [],
+      "moveId" in operation && operation.moveId !== undefined
+        ? [operation.moveId]
+        : [],
     );
     expect(moveIds).toHaveLength(2);
     expect(new Set(moveIds).size).toBe(1);
@@ -759,16 +963,25 @@ describe("move detection", () => {
       [block("b2", "An unrelated closing paragraph."), block("a2", UNRELATED)],
     );
 
-    expect(changes.map(({ kind }) => kind).toSorted()).toEqual(["delete", "insert"]);
+    expect(changes.map(({ kind }) => kind).toSorted()).toEqual([
+      "delete",
+      "insert",
+    ]);
     expect(operations.some((operation) => "moveId" in operation)).toBe(false);
   });
 
   test("a short relocated line does not pair, so boilerplate does not read as a move", () => {
     const { changes } = planOf(
       [block("a", "Schedule 1"), block("b", "An unrelated closing paragraph.")],
-      [block("b2", "An unrelated closing paragraph."), block("a2", "Schedule 1")],
+      [
+        block("b2", "An unrelated closing paragraph."),
+        block("a2", "Schedule 1"),
+      ],
     );
 
-    expect(changes.map(({ kind }) => kind).toSorted()).toEqual(["delete", "insert"]);
+    expect(changes.map(({ kind }) => kind).toSorted()).toEqual([
+      "delete",
+      "insert",
+    ]);
   });
 });

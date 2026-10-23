@@ -53,10 +53,14 @@ export const checkFuzzHealth = ({ log, outcome }: HealthOptions) => {
     else if (report.status === "infrastructure") problems.push(report.detail);
     else problems.push("Unknown fuzz health status");
   }
-  if (pending > 0) problems.push(`${pending} fuzz runs started without a completion report`);
-  if (completed === 0) problems.push("Zero completed cases or missing completion report");
+  if (pending > 0)
+    problems.push(`${pending} fuzz runs started without a completion report`);
+  if (completed === 0)
+    problems.push("Zero completed cases or missing completion report");
   if (outcome !== "success" && (outcome !== "failure" || findings === 0)) {
-    problems.push(`Fuzz step ${outcome}: crash, setup failure, or timeout without a finding`);
+    problems.push(
+      `Fuzz step ${outcome}: crash, setup failure, or timeout without a finding`,
+    );
   }
   const result = { completed, findings, problems };
   if (problems.length > 0) return { status: "infrastructure", ...result };
@@ -71,14 +75,17 @@ export const checkFuzzHealth = ({ log, outcome }: HealthOptions) => {
 if (import.meta.main) {
   const logPath = process.argv.at(2);
   const outcome = process.env["FUZZ_STEP_OUTCOME"] ?? "unknown";
-  const log = logPath && existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
+  const log =
+    logPath && existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
   const health = checkFuzzHealth({ log, outcome });
   const summary = `Fuzz health: **${health.status}**; ${health.completed} completed cases, ${health.findings} findings.\n${health.problems.map((problem) => `- ${problem}`).join("\n")}\n`;
   console.log(summary);
   const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
   if (summaryPath) appendFileSync(summaryPath, summary);
   if (health.status === "infrastructure") {
-    console.error("::error::Fuzz infrastructure failure; inspect the fuzz health summary and log");
+    console.error(
+      "::error::Fuzz infrastructure failure; inspect the fuzz health summary and log",
+    );
     process.exitCode = 1;
   }
 }

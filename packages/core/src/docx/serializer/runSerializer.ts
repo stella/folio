@@ -1,7 +1,4 @@
-import {
-  serializeEmptyRunProperties,
-  serializePreviousRunProperties,
-} from "../runPropertyPresence";
+import { panic } from "better-result";
 /**
  * Run Serializer - Serialize runs to OOXML XML
  *
@@ -14,37 +11,6 @@ import {
  * - Text content: w:t
  */
 
-import { getSingularRunPropertyChange } from "@stll/docx-core/model";
-import { panic } from "better-result";
-import { serializeBoundaryJoins } from "../reviewResolutionProvenance";
-import type {
-  Run,
-  RunContent,
-  TextContent,
-  TabContent,
-  BreakContent,
-  SymbolContent,
-  NoteReferenceContent,
-  FieldCharContent,
-  InstrTextContent,
-  SoftHyphenContent,
-  NoBreakHyphenContent,
-  DrawingContent,
-  ShapeContent,
-  TextFormatting,
-  ColorValue,
-  Image,
-  ImageTransform,
-  ShapeFill,
-  ShapeOutline,
-  ShapeTextBody,
-  ImagePadding,
-  ImagePosition,
-  ImageWrap,
-  BlockContent,
-  RunPropertyChange,
-  WrapDistances,
-} from "../../types/document";
 import {
   escapeXmlAttribute,
   escapeXmlText,
@@ -52,10 +18,40 @@ import {
   requiresXmlSpacePreserve,
 } from "@stll/docx-core";
 import {
+  getSingularRunPropertyChange,
   knownThemeColor,
   presetLineDashToken,
   SCHEME_COLOR_VALUE_BY_THEME_COLOR,
 } from "@stll/docx-core/model";
+
+import type {
+  BlockContent,
+  BreakContent,
+  ColorValue,
+  DrawingContent,
+  FieldCharContent,
+  Image,
+  ImagePadding,
+  ImagePosition,
+  ImageTransform,
+  ImageWrap,
+  InstrTextContent,
+  NoBreakHyphenContent,
+  NoteReferenceContent,
+  Run,
+  RunContent,
+  RunPropertyChange,
+  ShapeContent,
+  ShapeFill,
+  ShapeOutline,
+  ShapeTextBody,
+  SoftHyphenContent,
+  SymbolContent,
+  TabContent,
+  TextContent,
+  TextFormatting,
+  WrapDistances,
+} from "../../types/document";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { normalizeImageLuminancePercent } from "../../utils/imageLuminance";
 import { serializePreservedAttributes } from "../attributeRemainder";
@@ -70,12 +66,17 @@ import {
 } from "../drawingAnchor";
 import { fieldStateAttributes } from "../fieldState";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
-import { canReplayEditableImageRawXml } from "../imageRawXml";
-import { replayableShapeAlternateContent } from "../shapeAlternateContent";
-import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
-import { requiredWrapPolygon, serializeWrapPolygon } from "../wrapPolygon";
 import { DECORATIVE_EXTENSION_URI, DECORATIVE_NAMESPACE } from "../imageParser";
+import { canReplayEditableImageRawXml } from "../imageRawXml";
+import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
+import { serializeBoundaryJoins } from "../reviewResolutionProvenance";
 import { runHoldsPayload } from "../runPayload";
+import {
+  serializeEmptyRunProperties,
+  serializePreviousRunProperties,
+} from "../runPropertyPresence";
+import { replayableShapeAlternateContent } from "../shapeAlternateContent";
+import { requiredWrapPolygon, serializeWrapPolygon } from "../wrapPolygon";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -119,7 +120,8 @@ function serializeRunPropertyChange(change: RunPropertyChange): string {
   // The snapshot is `CT_RPrOriginal`, and an empty one is legal: the revision
   // is its author, date and id, and a change that set every property the run
   // now has had nothing of its own before.
-  const previousRPrXml = serializeTextFormatting(change.previousFormatting) || "<w:rPr/>";
+  const previousRPrXml =
+    serializeTextFormatting(change.previousFormatting) || "<w:rPr/>";
   return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}${serializeBoundaryJoins(change.boundaryJoins)}${serializePreviousRunProperties(change.previousFormatting)}>${previousRPrXml}</w:rPrChange>`;
 }
 
@@ -132,7 +134,9 @@ function serializeRunProperties(
   // generated sequence rather than from this call's concatenation order.
   return serializeTextFormatting(
     formatting,
-    propertyChange ? [["rPrChange", serializeRunPropertyChange(propertyChange)]] : [],
+    propertyChange
+      ? [["rPrChange", serializeRunPropertyChange(propertyChange)]]
+      : [],
   );
 }
 
@@ -165,7 +169,9 @@ function serializeTabContent(content: TabContent): string {
     content.positional.alignment
       ? ` w:alignment="${escapeXmlAttribute(content.positional.alignment)}"`
       : "",
-    content.positional.leader ? ` w:leader="${escapeXmlAttribute(content.positional.leader)}"` : "",
+    content.positional.leader
+      ? ` w:leader="${escapeXmlAttribute(content.positional.leader)}"`
+      : "",
   ].join("");
   return `<w:ptab${attrs}/>`;
 }
@@ -206,8 +212,10 @@ function serializeSymbolContent(content: SymbolContent): string {
   // Both attributes are optional on `CT_Sym`. An empty one is the parser's
   // record of an attribute the source did not write, so writing it back as
   // `w:font=""` would invent a value the document never had.
-  const font = content.font === "" ? "" : ` w:font="${escapeXmlAttribute(content.font)}"`;
-  const char = content.char === "" ? "" : ` w:char="${escapeXmlAttribute(content.char)}"`;
+  const font =
+    content.font === "" ? "" : ` w:font="${escapeXmlAttribute(content.font)}"`;
+  const char =
+    content.char === "" ? "" : ` w:char="${escapeXmlAttribute(content.char)}"`;
   return `<w:sym${font}${char}/>`;
 }
 
@@ -229,7 +237,10 @@ function serializeNoteReference(content: NoteReferenceContent): string {
  * Serialize field character (w:fldChar)
  */
 function serializeFieldChar(content: FieldCharContent): string {
-  const attrs: string[] = [`w:fldCharType="${content.charType}"`, ...fieldStateAttributes(content)];
+  const attrs: string[] = [
+    `w:fldCharType="${content.charType}"`,
+    ...fieldStateAttributes(content),
+  ];
 
   return `<w:fldChar ${attrs.join(" ")}/>`;
 }
@@ -239,7 +250,9 @@ function serializeFieldChar(content: FieldCharContent): string {
  */
 function serializeInstrText(content: InstrTextContent): string {
   const needsPreserve =
-    content.text.startsWith(" ") || content.text.endsWith(" ") || content.text.includes("  ");
+    content.text.startsWith(" ") ||
+    content.text.endsWith(" ") ||
+    content.text.includes("  ");
 
   const spaceAttr = needsPreserve ? ' xml:space="preserve"' : "";
 
@@ -275,7 +288,9 @@ function serializeDrawingColor(color: ColorValue | undefined): string {
   // A theme colour outside `ST_ThemeColor`, and `none`, name no DrawingML
   // scheme colour; the reference is then written as no fill at all.
   const themeColor = color.themeColor && knownThemeColor(color.themeColor);
-  const schemeColor = themeColor ? SCHEME_COLOR_VALUE_BY_THEME_COLOR[themeColor] : null;
+  const schemeColor = themeColor
+    ? SCHEME_COLOR_VALUE_BY_THEME_COLOR[themeColor]
+    : null;
   if (schemeColor !== null) {
     let clr = `<a:schemeClr val="${schemeColor}"`;
     if (color.themeTint) {
@@ -307,7 +322,10 @@ function serializeFill(fill: ShapeFill | undefined): string {
   if (fill.type === "gradient" && fill.gradient) {
     const g = fill.gradient;
     const stops = g.stops
-      .map((s) => `<a:gs pos="${s.position}">${serializeDrawingColor(s.color)}</a:gs>`)
+      .map(
+        (s) =>
+          `<a:gs pos="${s.position}">${serializeDrawingColor(s.color)}</a:gs>`,
+      )
       .join("");
     const direction = (() => {
       if (g.type === "linear") {
@@ -354,10 +372,14 @@ function serializeOutline(outline: ShapeOutline | undefined): string {
 
   const parts: string[] = [];
   if (outline.color) {
-    parts.push(`<a:solidFill>${serializeDrawingColor(outline.color)}</a:solidFill>`);
+    parts.push(
+      `<a:solidFill>${serializeDrawingColor(outline.color)}</a:solidFill>`,
+    );
   }
   if (outline.dash) {
-    parts.push(`<a:prstDash val="${escapeXmlAttribute(presetLineDashToken(outline.dash))}"/>`);
+    parts.push(
+      `<a:prstDash val="${escapeXmlAttribute(presetLineDashToken(outline.dash))}"/>`,
+    );
   }
   if (outline.join === "bevel") {
     parts.push("<a:bevel/>");
@@ -426,7 +448,10 @@ const WRAP_CHILD_DISTANCE_KEYS = {
   behind: [],
   inFront: [],
   inline: [],
-} as const satisfies Record<ImageWrap["type"], readonly (keyof WrapDistances)[]>;
+} as const satisfies Record<
+  ImageWrap["type"],
+  readonly (keyof WrapDistances)[]
+>;
 
 /**
  * Which `EG_WrapType` members declare a `wp:effectExtent` of their own.
@@ -446,8 +471,13 @@ const WRAP_CHILD_DECLARES_EFFECT_EXTENT = {
 } as const satisfies Record<ImageWrap["type"], boolean>;
 
 /** Serialize wrap type to wp:wrap* element */
-function serializeWrap(wrap: ImageWrap, effectExtent: ImagePadding | undefined): string {
-  const wrapText = wrap.wrapText ? ` wrapText="${wrap.wrapText}"` : ' wrapText="bothSides"';
+function serializeWrap(
+  wrap: ImageWrap,
+  effectExtent: ImagePadding | undefined,
+): string {
+  const wrapText = wrap.wrapText
+    ? ` wrapText="${wrap.wrapText}"`
+    : ' wrapText="bothSides"';
   const authored = resolveWrapDistances(wrap).wrapChild;
   const distances: WrapDistances = {};
   for (const key of WRAP_CHILD_DISTANCE_KEYS[wrap.type]) {
@@ -494,14 +524,20 @@ function serializeWrap(wrap: ImageWrap, effectExtent: ImagePadding | undefined):
  * truthiness guard cannot tell "the author said none" from "the author said
  * nothing", and a save erased an authored zero.
  */
-const serializeTransformAttrs = (transform: ImageTransform | undefined): string => {
+const serializeTransformAttrs = (
+  transform: ImageTransform | undefined,
+): string => {
   if (transform === undefined) {
     return "";
   }
   const rot =
-    transform.rotation === undefined ? "" : ` rot="${Math.round(transform.rotation * 60_000)}"`;
-  const flipH = transform.flipH === undefined ? "" : ` flipH="${transform.flipH ? 1 : 0}"`;
-  const flipV = transform.flipV === undefined ? "" : ` flipV="${transform.flipV ? 1 : 0}"`;
+    transform.rotation === undefined
+      ? ""
+      : ` rot="${Math.round(transform.rotation * 60_000)}"`;
+  const flipH =
+    transform.flipH === undefined ? "" : ` flipH="${transform.flipH ? 1 : 0}"`;
+  const flipV =
+    transform.flipV === undefined ? "" : ` flipV="${transform.flipV ? 1 : 0}"`;
   return `${rot}${flipH}${flipV}`;
 };
 
@@ -512,7 +548,11 @@ const serializeTransformAttrs = (transform: ImageTransform | undefined): string 
  * one. There is no default: a picture written against an invented id binds to
  * whichever relationship the part happens to hold under that name.
  */
-function serializePicGraphic(image: Image, imageRId: string, sharedId: string): string {
+function serializePicGraphic(
+  image: Image,
+  imageRId: string,
+  sharedId: string,
+): string {
   const cx = image.size.width;
   const cy = image.size.height;
   const rId = escapeXmlAttribute(imageRId);
@@ -545,20 +585,28 @@ function serializePicGraphic(image: Image, imageRId: string, sharedId: string): 
   if (image.crop?.bottom) {
     cropAttrs.push(`b="${Math.round(image.crop.bottom * 100_000)}"`);
   }
-  const srcRectEl = cropAttrs.length > 0 ? `<a:srcRect ${cropAttrs.join(" ")}/>` : "";
+  const srcRectEl =
+    cropAttrs.length > 0 ? `<a:srcRect ${cropAttrs.join(" ")}/>` : "";
 
   const luminanceAttrs: string[] = [];
-  if (image.effects?.brightness !== undefined && Number.isFinite(image.effects.brightness)) {
+  if (
+    image.effects?.brightness !== undefined &&
+    Number.isFinite(image.effects.brightness)
+  ) {
     luminanceAttrs.push(
       `bright="${Math.round(normalizeImageLuminancePercent(image.effects.brightness) * 1_000)}"`,
     );
   }
-  if (image.effects?.contrast !== undefined && Number.isFinite(image.effects.contrast)) {
+  if (
+    image.effects?.contrast !== undefined &&
+    Number.isFinite(image.effects.contrast)
+  ) {
     luminanceAttrs.push(
       `contrast="${Math.round(normalizeImageLuminancePercent(image.effects.contrast) * 1_000)}"`,
     );
   }
-  const luminanceChild = luminanceAttrs.length === 0 ? "" : `<a:lum ${luminanceAttrs.join(" ")}/>`;
+  const luminanceChild =
+    luminanceAttrs.length === 0 ? "" : `<a:lum ${luminanceAttrs.join(" ")}/>`;
 
   // <a:blip> with optional luminance and transparency children.
   // OOXML stores the alpha amount in 1/100000 units. Mirrors eigenpal #424.
@@ -665,7 +713,8 @@ function serializeDrawingContent(content: DrawingContent): string {
   // whether the image carries information. One `wp:docPr` for both anchorings:
   // an attribute written on one and omitted on the other loses the fact the
   // moment an inline image is anchored, or the reverse.
-  const docPrHidden = image.hidden === undefined ? "" : ` hidden="${image.hidden ? "1" : "0"}"`;
+  const docPrHidden =
+    image.hidden === undefined ? "" : ` hidden="${image.hidden ? "1" : "0"}"`;
   const docPrAttrs = `id="${docPrId}"${docPrNames}${docPrHidden}`;
   const docPrChildren = `${hlinkClick}${serializeDocPrExtensions(image)}`;
   const docPr = docPrChildren
@@ -678,7 +727,10 @@ function serializeDrawingContent(content: DrawingContent): string {
   // so it had no `pic:pic` either: a chart, an OLE frame, or an anchor with no
   // graphic at all. The anchor is written back as what it was, without a
   // graphic, rather than upgraded into a picture bound to a borrowed id.
-  const graphic = image.rId === undefined ? "" : serializePicGraphic(image, image.rId, docPrId);
+  const graphic =
+    image.rId === undefined
+      ? ""
+      : serializePicGraphic(image, image.rId, docPrId);
 
   if (!isFloating) {
     // Inline image
@@ -734,7 +786,9 @@ export function serializeShapeTextBody(
     .join("");
 }
 
-const serializeTextBodyAnchor = (anchor: NonNullable<ShapeTextBody["anchor"]>): string => {
+const serializeTextBodyAnchor = (
+  anchor: NonNullable<ShapeTextBody["anchor"]>,
+): string => {
   switch (anchor) {
     case "top":
       return "t";
@@ -958,7 +1012,9 @@ function serializeRunContent(content: RunContent): string {
     case "endnoteRef":
       return serializeNoteReference(content);
     case "noteMarker":
-      return content.kind === "footnote" ? "<w:footnoteRef/>" : "<w:endnoteRef/>";
+      return content.kind === "footnote"
+        ? "<w:footnoteRef/>"
+        : "<w:endnoteRef/>";
     case "fieldChar":
       return serializeFieldChar(content);
     case "instrText":
@@ -977,7 +1033,10 @@ function serializeRunContent(content: RunContent): string {
       }
       return serializeDrawingContent(content);
     case "shape":
-      return replayableShapeAlternateContent(content) ?? serializeShapeContent(content);
+      return (
+        replayableShapeAlternateContent(content) ??
+        serializeShapeContent(content)
+      );
     default:
       return "";
   }

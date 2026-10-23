@@ -1,14 +1,14 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
-import { declareCanonicalRefusalCases } from "../../../../../test/canonical-conformance-refusals";
+import { expect, test } from "bun:test";
 
+import { declareCanonicalRefusalCases } from "../../../../../test/canonical-conformance-refusals";
 import {
+  type ConformanceOperation,
   runConformanceCase,
   runLegacyConformanceCase,
-  type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
-import { EDITOR_MODES, textblocks } from "../../__tests__/editorHarness";
 import { LIST_PASTE_RESOLUTION_CASES } from "../../__tests__/editorCommandConformance.listPaste";
+import { EDITOR_MODES, textblocks } from "../../__tests__/editorHarness";
 
 // The matrix previously tolerated every paste resolution mismatch. Cross the
 // direct-list shapes, clipboard kinds and selection placements independently
@@ -17,7 +17,10 @@ import { LIST_PASTE_RESOLUTION_CASES } from "../../__tests__/editorCommandConfor
 test.each(
   LIST_PASTE_RESOLUTION_CASES.map(
     ({ shape, operation, placement }) =>
-      [`${shape.id} / ${operation.id} / ${placement}`, { shape, operation, placement }] as const,
+      [
+        `${shape.id} / ${operation.id} / ${placement}`,
+        { shape, operation, placement },
+      ] as const,
   ),
 )(
   "tracked list paste resolves like direct paste: %s",
@@ -27,7 +30,12 @@ test.each(
       operation: operation,
       placement,
       refusalCases: declareCanonicalRefusalCases(
-        EDITOR_MODES.map((mode) => ({ shape: shape.id, operation: operation.id, placement, mode })),
+        EDITOR_MODES.map((mode) => ({
+          shape: shape.id,
+          operation: operation.id,
+          placement,
+          mode,
+        })),
       ),
     });
     expect(result).not.toBeNull();
@@ -42,34 +50,41 @@ const singleParagraphPaste = {
   placements: [],
   run: ({ view, focus }) => {
     const { node, pos } =
-      textblocks(view.state.doc).find(({ node: candidate }) => candidate.textContent === focus) ??
-      panic("Missing copied paragraph");
+      textblocks(view.state.doc).find(
+        ({ node: candidate }) => candidate.textContent === focus,
+      ) ?? panic("Missing copied paragraph");
     view.paste(view.state.doc.slice(pos + 1, pos + 1 + node.content.size));
     return undefined;
   },
 } as const satisfies ConformanceOperation;
 
 test.each(
-  LIST_PASTE_RESOLUTION_CASES.filter(({ operation }) => operation.id === "paste:copied-blocks").map(
-    ({ shape, placement }) => [`${shape.id} / ${placement}`, { shape, placement }] as const,
+  LIST_PASTE_RESOLUTION_CASES.filter(
+    ({ operation }) => operation.id === "paste:copied-blocks",
+  ).map(
+    ({ shape, placement }) =>
+      [`${shape.id} / ${placement}`, { shape, placement }] as const,
   ),
-)("one copied paragraph restores its properties: %s", async (_label, { shape, placement }) => {
-  const result = await runConformanceCase({
-    shape: shape,
-    operation: singleParagraphPaste,
-    placement,
-    refusalCases: declareCanonicalRefusalCases(
-      EDITOR_MODES.map((mode) => ({
-        shape: shape.id,
-        operation: singleParagraphPaste.id,
-        placement,
-        mode,
-      })),
-    ),
-  });
-  expect(result).not.toBeNull();
-  expect(result?.violations).toEqual([]);
-});
+)(
+  "one copied paragraph restores its properties: %s",
+  async (_label, { shape, placement }) => {
+    const result = await runConformanceCase({
+      shape: shape,
+      operation: singleParagraphPaste,
+      placement,
+      refusalCases: declareCanonicalRefusalCases(
+        EDITOR_MODES.map((mode) => ({
+          shape: shape.id,
+          operation: singleParagraphPaste.id,
+          placement,
+          mode,
+        })),
+      ),
+    });
+    expect(result).not.toBeNull();
+    expect(result?.violations).toEqual([]);
+  },
+);
 
 // Legacy paragraph-property transfers preserve the same strict save/readback contract.
 const legacyPasteCases = LIST_PASTE_RESOLUTION_CASES.filter(
@@ -77,7 +92,11 @@ const legacyPasteCases = LIST_PASTE_RESOLUTION_CASES.filter(
 );
 const legacySingleParagraphCases = legacyPasteCases
   .filter(({ operation }) => operation.id === "paste:copied-blocks")
-  .map(({ shape, placement }) => ({ shape, placement, operation: singleParagraphPaste }));
+  .map(({ shape, placement }) => ({
+    shape,
+    placement,
+    operation: singleParagraphPaste,
+  }));
 test.each(
   [...legacyPasteCases, ...legacySingleParagraphCases].map(
     (input) => [`${input.shape.id} / ${input.operation.id}`, input] as const,
@@ -85,7 +104,11 @@ test.each(
 )(
   "explicit legacy cross-paragraph list paste readback: %s",
   async (_label, { shape, operation, placement }) => {
-    const result = await runLegacyConformanceCase({ shape, operation, placement });
+    const result = await runLegacyConformanceCase({
+      shape,
+      operation,
+      placement,
+    });
     expect(result).not.toBeNull();
     expect(result?.violations).toEqual([]);
   },

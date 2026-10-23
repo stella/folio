@@ -1,14 +1,22 @@
-import { INHERITED_PARAGRAPH_NUMBERING } from "../compare/content-types";
 import { panic } from "better-result";
 import { Fragment } from "prosemirror-model";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
+import { INHERITED_PARAGRAPH_NUMBERING } from "../compare/content-types";
+import { isAltChunkMarkup } from "../docx/altChunk";
 import {
   type BuiltInStyleIndex,
   EMPTY_BUILT_IN_STYLE_INDEX,
   resolveHeadingLevel,
 } from "../docx/builtInStyles";
+import type { NumberingMap } from "../docx/numberingParser";
+import {
+  isOpaqueNestedRowMarkup,
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+  opaqueRevisionCarrierName,
+} from "../docx/opaqueCarrier";
+import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import {
   expectCharacterStyleMarkAttrs,
   expectHyperlinkMarkAttrs,
@@ -17,32 +25,31 @@ import {
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
-import type { NumberingMap } from "../docx/numberingParser";
-import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
+import {
+  paragraphNumberingAttr,
+  readParagraphNumberingAttr,
+} from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
-import {
-  paragraphRunStyleContext,
-  resolveParagraphBodyRunFormatting,
-  type RunStyleResolver,
-} from "../prosemirror/runStyleFormatting";
 import { runFormattingInlineAtomCleanText } from "../prosemirror/runFormattingInlineCarriers";
 import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
-import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
-import { isAltChunkMarkup } from "../docx/altChunk";
 import {
-  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
-  isOpaqueNestedRowMarkup,
-  opaqueRevisionCarrierName,
-} from "../docx/opaqueCarrier";
+  paragraphRunStyleContext,
+  resolveParagraphBodyRunFormatting,
+  type RunStyleResolver,
+} from "../prosemirror/runStyleFormatting";
+import {
+  deriveBlankBlockId,
+  deriveBlockId,
+  type FolioBlockId,
+} from "../types/block-id";
 import type { TextFormatting } from "../types/document";
-import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { splitsSurrogatePair } from "./character-boundaries";
 import {
   buildCleanBlockText,
@@ -72,27 +79,35 @@ type FolioAIEditSnapshotMetadata = {
   storyTables: readonly FolioStoryTable[];
 };
 
-const metadataBySnapshot = new WeakMap<FolioAIEditSnapshot, FolioAIEditSnapshotMetadata>();
+const metadataBySnapshot = new WeakMap<
+  FolioAIEditSnapshot,
+  FolioAIEditSnapshotMetadata
+>();
 
-const metadataOf = (snapshot: FolioAIEditSnapshot): FolioAIEditSnapshotMetadata =>
+const metadataOf = (
+  snapshot: FolioAIEditSnapshot,
+): FolioAIEditSnapshotMetadata =>
   metadataBySnapshot.get(snapshot) ??
   panic("Metadata was requested for a snapshot that did not record it");
 
 /** @internal Numbering references collected during the snapshot's document walk. */
-export const numberingReferenceKeysOf = (snapshot: FolioAIEditSnapshot): readonly string[] =>
-  metadataOf(snapshot).numberingReferenceKeys;
+export const numberingReferenceKeysOf = (
+  snapshot: FolioAIEditSnapshot,
+): readonly string[] => metadataOf(snapshot).numberingReferenceKeys;
 
 /** @internal Tables collected during the snapshot's document walk. */
-export const storyTablesOf = (snapshot: FolioAIEditSnapshot): readonly FolioStoryTable[] =>
-  metadataOf(snapshot).storyTables;
+export const storyTablesOf = (
+  snapshot: FolioAIEditSnapshot,
+): readonly FolioStoryTable[] => metadataOf(snapshot).storyTables;
 
 /** @internal The immutable ProseMirror document that produced this snapshot. */
 export const sourceDocumentOf = (snapshot: FolioAIEditSnapshot): PMNode =>
   metadataOf(snapshot).sourceDocument;
 
 /** @internal Style context that produced the snapshot's authored run properties. */
-export const styleResolverOf = (snapshot: FolioAIEditSnapshot): RunStyleResolver | null =>
-  metadataOf(snapshot).styleResolver;
+export const styleResolverOf = (
+  snapshot: FolioAIEditSnapshot,
+): RunStyleResolver | null => metadataOf(snapshot).styleResolver;
 
 /**
  * Derive a comparison-only view with concrete numbering references rebound.
@@ -108,13 +123,21 @@ export const remapFolioAIEditSnapshotNumberingReferences = (
   }
   const metadata = metadataOf(snapshot);
   const remapNode = (node: PMNode): PMNode => {
-    const remapReference = (numPr: ReturnType<typeof readParagraphNumberingAttr>) => {
+    const remapReference = (
+      numPr: ReturnType<typeof readParagraphNumberingAttr>,
+    ) => {
       if (numPr?.kind !== "reference") return undefined;
       const numId = numIdMap.get(numPr.numId);
-      return numId === undefined ? undefined : paragraphNumberingAttr({ ...numPr, numId });
+      return numId === undefined
+        ? undefined
+        : paragraphNumberingAttr({ ...numPr, numId });
     };
-    const numPr = remapReference(readParagraphNumberingAttr(node.attrs["numPr"]));
-    const numPrFromStyle = remapReference(readParagraphNumberingAttr(node.attrs["numPrFromStyle"]));
+    const numPr = remapReference(
+      readParagraphNumberingAttr(node.attrs["numPr"]),
+    );
+    const numPrFromStyle = remapReference(
+      readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
+    );
     if (numPr === undefined && numPrFromStyle === undefined) {
       return node;
     }
@@ -133,7 +156,10 @@ export const remapFolioAIEditSnapshotNumberingReferences = (
   return createFolioAIEditSnapshotInternal(remapped, metadata.styleResolver);
 };
 
-const remapDocument = (doc: PMNode, remapNode: (node: PMNode) => PMNode): PMNode => {
+const remapDocument = (
+  doc: PMNode,
+  remapNode: (node: PMNode) => PMNode,
+): PMNode => {
   const rewrite = (node: PMNode): PMNode => {
     if (node.isText) return remapNode(node);
     const children: PMNode[] = [];
@@ -156,7 +182,10 @@ const remapDocument = (doc: PMNode, remapNode: (node: PMNode) => PMNode): PMNode
 const externalHrefCanCrossPackage = (href: string): boolean =>
   href.length > 0 && !href.startsWith("#");
 
-const hyperlinkCanCrossPackage = ({ href, rId }: ReturnType<typeof expectHyperlinkMarkAttrs>) =>
+const hyperlinkCanCrossPackage = ({
+  href,
+  rId,
+}: ReturnType<typeof expectHyperlinkMarkAttrs>) =>
   externalHrefCanCrossPackage(href) ||
   (href.length === 0 && !(typeof rId === "string" && rId.length > 0));
 
@@ -179,7 +208,8 @@ export const detachFolioAIEditSnapshotExternalHyperlinks = (
           hyperlink === null ||
           "anchor" in hyperlink ||
           ("rId" in hyperlink &&
-            (typeof hyperlink.href !== "string" || !externalHrefCanCrossPackage(hyperlink.href)))
+            (typeof hyperlink.href !== "string" ||
+              !externalHrefCanCrossPackage(hyperlink.href)))
         ) {
           portable = false;
           return false;
@@ -201,7 +231,9 @@ export const detachFolioAIEditSnapshotExternalHyperlinks = (
     const attrs = Array.isArray(emptyHyperlinks)
       ? {
           ...node.attrs,
-          _emptyHyperlinks: emptyHyperlinks.map(({ rId: _rId, ...hyperlink }) => hyperlink),
+          _emptyHyperlinks: emptyHyperlinks.map(
+            ({ rId: _rId, ...hyperlink }) => hyperlink,
+          ),
         }
       : node.attrs;
     let marks: readonly Mark[] = node.marks;
@@ -240,20 +272,26 @@ export const remapFolioAIEditSnapshotStyleReferences = ({
 }: RemapFolioAIEditSnapshotStyleReferencesOptions): FolioAIEditSnapshot => {
   if (
     defaultParagraphStyleId === undefined &&
-    (styleIdMap.size === 0 || [...styleIdMap].every(([source, target]) => source === target))
+    (styleIdMap.size === 0 ||
+      [...styleIdMap].every(([source, target]) => source === target))
   ) {
     return snapshot;
   }
   const metadata = metadataOf(snapshot);
   const remapNode = (node: PMNode): PMNode => {
     const styleId = node.attrs["styleId"];
-    const remappedStyleId = typeof styleId === "string" ? styleIdMap.get(styleId) : undefined;
+    const remappedStyleId =
+      typeof styleId === "string" ? styleIdMap.get(styleId) : undefined;
     if (remappedStyleId !== undefined) {
       return recreateProseNodeWithParagraphPropertySource(node, {
         attrs: { ...node.attrs, styleId: remappedStyleId },
       });
     }
-    if (node.isTextblock && typeof styleId !== "string" && defaultParagraphStyleId !== undefined) {
+    if (
+      node.isTextblock &&
+      typeof styleId !== "string" &&
+      defaultParagraphStyleId !== undefined
+    ) {
       return recreateProseNodeWithParagraphPropertySource(node, {
         attrs: { ...node.attrs, styleId: defaultParagraphStyleId },
       });
@@ -266,7 +304,9 @@ export const remapFolioAIEditSnapshotStyleReferences = ({
       const remapped = styleIdMap.get(attrs.styleId);
       if (remapped === undefined) continue;
       marks = marks.map((candidate) =>
-        candidate === mark ? mark.type.create({ ...attrs, styleId: remapped }) : candidate,
+        candidate === mark
+          ? mark.type.create({ ...attrs, styleId: remapped })
+          : candidate,
       );
     }
     return marks === node.marks ? node : node.mark(marks);
@@ -276,13 +316,18 @@ export const remapFolioAIEditSnapshotStyleReferences = ({
   if (!reconcileAuthoredFormatting) {
     return createFolioAIEditSnapshotInternal(remapped, importedStyleResolver);
   }
-  const rebindAuthoredInlineFormatting = (source: PMNode, candidate: PMNode): PMNode => {
+  const rebindAuthoredInlineFormatting = (
+    source: PMNode,
+    candidate: PMNode,
+  ): PMNode => {
     if (source.childCount !== candidate.childCount) {
       return panic("Style remapping changed the document structure");
     }
     if (source.isInline) {
       const hasAuthoredFormatting = source.marks.some(
-        ({ type }) => type.name === "runFormattingOverride" || type.name === "characterStyle",
+        ({ type }) =>
+          type.name === "runFormattingOverride" ||
+          type.name === "characterStyle",
       );
       if (!hasAuthoredFormatting) return candidate;
       // Inline nodes are reconciled by their paragraph parent below, where the
@@ -304,7 +349,9 @@ export const remapFolioAIEditSnapshotStyleReferences = ({
       let next = rebindAuthoredInlineFormatting(sourceChild, candidateChild);
       if (sourceContext && candidateContext && sourceChild.isInline) {
         const hasAuthoredFormatting = sourceChild.marks.some(
-          ({ type }) => type.name === "runFormattingOverride" || type.name === "characterStyle",
+          ({ type }) =>
+            type.name === "runFormattingOverride" ||
+            type.name === "characterStyle",
         );
         if (hasAuthoredFormatting) {
           const authoredFormatting = readAuthoredRunFormatting({
@@ -314,7 +361,8 @@ export const remapFolioAIEditSnapshotStyleReferences = ({
           });
           if (authoredFormatting.styleId !== undefined) {
             authoredFormatting.styleId =
-              styleIdMap.get(authoredFormatting.styleId) ?? authoredFormatting.styleId;
+              styleIdMap.get(authoredFormatting.styleId) ??
+              authoredFormatting.styleId;
           }
           const marks = reconcileRunFormattingMarks({
             authoredFormatting,
@@ -324,7 +372,9 @@ export const remapFolioAIEditSnapshotStyleReferences = ({
           });
           next = candidateChild.isText
             ? candidateChild.mark(marks)
-            : recreateProseNodeWithParagraphPropertySource(candidateChild, { marks });
+            : recreateProseNodeWithParagraphPropertySource(candidateChild, {
+                marks,
+              });
         }
       }
       if (next !== candidateChild) changed = true;
@@ -336,7 +386,10 @@ export const remapFolioAIEditSnapshotStyleReferences = ({
         })
       : candidate;
   };
-  const rebound = rebindAuthoredInlineFormatting(metadata.sourceDocument, remapped);
+  const rebound = rebindAuthoredInlineFormatting(
+    metadata.sourceDocument,
+    remapped,
+  );
   return createFolioAIEditSnapshotInternal(rebound, importedStyleResolver);
 };
 
@@ -357,7 +410,9 @@ export const normalizeFolioAIBlockText = (text: string): string =>
  * that it wants content by calling this. One helper, so "what counts as
  * content" has a single answer; five inline emptiness checks would drift.
  */
-export const isFolioAIContentBlock = ({ text }: Pick<FolioAIBlock, "text">): boolean =>
+export const isFolioAIContentBlock = ({
+  text,
+}: Pick<FolioAIBlock, "text">): boolean =>
   normalizeFolioAIBlockText(text).length > 0;
 
 /**
@@ -376,7 +431,9 @@ export const isFolioAIContentBlock = ({ text }: Pick<FolioAIBlock, "text">): boo
  * `null`; callers that can place a peer beside the table use its outer boundary
  * instead.
  */
-export const trailingBodyBlockId = ({ blocks }: FolioAIEditSnapshot): string | null => {
+export const trailingBodyBlockId = ({
+  blocks,
+}: FolioAIEditSnapshot): string | null => {
   for (let index = blocks.length - 1; index >= 0; index--) {
     const block = blocks[index];
     if (block !== undefined && block.table === undefined) {
@@ -410,7 +467,10 @@ const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH = hashFolioAIBlockText(
  */
 export const projectFolioAIBlockStructuralBoundaries = ({
   structuralBoundaries,
-}: Pick<CleanBlockText, "structuralBoundaries">): readonly FolioAIBlockStructuralBoundary[] => {
+}: Pick<
+  CleanBlockText,
+  "structuralBoundaries"
+>): readonly FolioAIBlockStructuralBoundary[] => {
   let projected: FolioAIBlockStructuralBoundary[] | undefined;
   for (const boundary of structuralBoundaries) {
     if (boundary.type === "noteReference") {
@@ -445,7 +505,9 @@ const hashFolioAIBlockStructuralBoundaryProjection = (
 export const hashFolioAIBlockStructuralBoundaries = (
   cleanBlock: Pick<CleanBlockText, "structuralBoundaries">,
 ): string =>
-  hashFolioAIBlockStructuralBoundaryProjection(projectFolioAIBlockStructuralBoundaries(cleanBlock));
+  hashFolioAIBlockStructuralBoundaryProjection(
+    projectFolioAIBlockStructuralBoundaries(cleanBlock),
+  );
 
 type CreateFolioAITextRangeHandleOptions = {
   blockId: string;
@@ -499,7 +561,12 @@ const TABLE_ROLE_ROW = "row";
  * is already known: a depth-first walk in document order visits every ancestor
  * before the block, so carrying it costs nothing and the snapshot is linear.
  */
-type AncestorPathEntry = { node: PMNode; start: number; end: number; index: number };
+type AncestorPathEntry = {
+  node: PMNode;
+  start: number;
+  end: number;
+  index: number;
+};
 
 /**
  * True for a `tableRow` marked `hidden` (OOXML `w:trPr/w:hidden` — Word never
@@ -523,7 +590,9 @@ const noteReferenceLabelsByStory = new WeakMap<PMNode, NoteReferenceLabels>();
  * whose walk meets no reference (most documents, and every revision-stats
  * read) never pays for a second walk of the story.
  */
-export const collectNoteReferenceLabels = (doc: PMNode): NoteReferenceLabels => {
+export const collectNoteReferenceLabels = (
+  doc: PMNode,
+): NoteReferenceLabels => {
   // A document node is immutable, so its numbering is too.
   const cached = noteReferenceLabelsByStory.get(doc);
   if (cached !== undefined) {
@@ -535,7 +604,9 @@ export const collectNoteReferenceLabels = (doc: PMNode): NoteReferenceLabels => 
 };
 
 /** Number the stories' references in reading order, one story after another, on first use. */
-const numberNoteReferencesLazily = (stories: readonly PMNode[]): NoteReferenceLabels => {
+const numberNoteReferencesLazily = (
+  stories: readonly PMNode[],
+): NoteReferenceLabels => {
   let numbered: NoteReferenceLabels | undefined;
   const numberStories = (): NoteReferenceLabels => {
     const labeler = createNoteReferenceLabeler();
@@ -553,7 +624,9 @@ const numberNoteReferencesLazily = (stories: readonly PMNode[]): NoteReferenceLa
     }
     return labeler;
   };
-  return { labelOf: (reference) => (numbered ??= numberStories()).labelOf(reference) };
+  return {
+    labelOf: (reference) => (numbered ??= numberStories()).labelOf(reference),
+  };
 };
 
 /**
@@ -568,8 +641,10 @@ const numberNoteReferencesLazily = (stories: readonly PMNode[]): NoteReferenceLa
  * reference's marker identical, and makes a reference the comparison brings
  * write the marker the base story (which the edits resolve against) gives it.
  */
-export const alignedNoteReferenceLabels = (base: PMNode, revised: PMNode): NoteReferenceLabels =>
-  numberNoteReferencesLazily([base, revised]);
+export const alignedNoteReferenceLabels = (
+  base: PMNode,
+  revised: PMNode,
+): NoteReferenceLabels => numberNoteReferencesLazily([base, revised]);
 
 /**
  * @internal The same snapshot with every note reference read through `labels`
@@ -589,7 +664,11 @@ export const relabelFolioAIEditSnapshotNoteReferences = (
         case "paragraph":
         case "heading":
         case "listItem":
-          return block.structuralBoundaries?.some(({ type }) => type === "noteReference") ?? false;
+          return (
+            block.structuralBoundaries?.some(
+              ({ type }) => type === "noteReference",
+            ) ?? false
+          );
         default: {
           const unreachable: never = block;
           return panic("Unhandled snapshot block kind", { block: unreachable });
@@ -599,7 +678,11 @@ export const relabelFolioAIEditSnapshotNoteReferences = (
   ) {
     return snapshot;
   }
-  return createFolioAIEditSnapshotInternal(metadata.sourceDocument, metadata.styleResolver, labels);
+  return createFolioAIEditSnapshotInternal(
+    metadata.sourceDocument,
+    metadata.styleResolver,
+    labels,
+  );
 };
 
 /** One table of a story, numbered the way {@link createFolioAIEditSnapshot} numbers it. */
@@ -621,11 +704,15 @@ type StoryTableNodeDisposition =
   | typeof STORY_TABLE;
 
 /** Shared visibility and table-role rule for both story projection walks. */
-const classifyNonTextblockStoryTableNode = (node: PMNode): StoryTableNodeDisposition => {
+const classifyNonTextblockStoryTableNode = (
+  node: PMNode,
+): StoryTableNodeDisposition => {
   if (isHiddenTableRow(node)) {
     return STORY_TABLE_HIDDEN_SUBTREE;
   }
-  return node.type.spec["tableRole"] === TABLE_ROLE_TABLE ? STORY_TABLE : STORY_TABLE_CONTAINER;
+  return node.type.spec["tableRole"] === TABLE_ROLE_TABLE
+    ? STORY_TABLE
+    : STORY_TABLE_CONTAINER;
 };
 
 /**
@@ -689,13 +776,19 @@ const getTableLocation = ({
       return undefined;
     }
     const tableIndex = tableIndexByStart.get(table.start);
-    const outerTable = path.find((entry) => entry.node.type.spec["tableRole"] === TABLE_ROLE_TABLE);
+    const outerTable = path.find(
+      (entry) => entry.node.type.spec["tableRole"] === TABLE_ROLE_TABLE,
+    );
     const outerTableIndex =
-      outerTable === undefined ? undefined : tableIndexByStart.get(outerTable.start);
+      outerTable === undefined
+        ? undefined
+        : tableIndexByStart.get(outerTable.start);
     if (tableIndex === undefined || outerTableIndex === undefined) {
       return undefined;
     }
-    const rectangle = TableMap.get(table.node).findCell(cell.start - table.start - 1);
+    const rectangle = TableMap.get(table.node).findCell(
+      cell.start - table.start - 1,
+    );
     return {
       outerTableIndex,
       tableIndex,
@@ -718,7 +811,8 @@ const createFolioAIEditSnapshotInternal = (
 ): FolioAIEditSnapshot => {
   // Resolved once: the walk below classifies every block, and the index is
   // what lets a localized heading style reach the model as a heading.
-  const builtInStyles = styleResolver?.builtInStyles ?? EMPTY_BUILT_IN_STYLE_INDEX;
+  const builtInStyles =
+    styleResolver?.builtInStyles ?? EMPTY_BUILT_IN_STYLE_INDEX;
   // Numbered block by block as the walk reads them, so each reference marker
   // carries the number the page shows (and the Markdown export writes), not the
   // package id; the same numbering `collectNoteReferenceLabels` gives. A
@@ -756,12 +850,18 @@ const createFolioAIEditSnapshotInternal = (
       }
       const preserved = node.attrs["_preserved"];
       const preservedChildren =
-        preserved !== null && typeof preserved === "object" && "children" in preserved
+        preserved !== null &&
+        typeof preserved === "object" &&
+        "children" in preserved
           ? preserved.children
           : undefined;
       if (Array.isArray(preservedChildren)) {
         for (const [carrierIndex, child] of preservedChildren.entries()) {
-          if (child === null || typeof child !== "object" || !("xml" in child)) {
+          if (
+            child === null ||
+            typeof child !== "object" ||
+            !("xml" in child)
+          ) {
             continue;
           }
           const xml = child.xml;
@@ -777,7 +877,10 @@ const createFolioAIEditSnapshotInternal = (
               id: `opaque-${String(pos)}-${String(carrierIndex)}`,
               kind: "diagnostic",
               text: diagnostic.text,
-              diagnostic: { type: "opaqueCarrier", carrier: diagnostic.carrier },
+              diagnostic: {
+                type: "opaqueCarrier",
+                carrier: diagnostic.carrier,
+              },
             },
           });
         }
@@ -797,7 +900,10 @@ const createFolioAIEditSnapshotInternal = (
                 id,
                 kind: "diagnostic",
                 text: diagnostic.text,
-                diagnostic: { type: "opaqueCarrier", carrier: diagnostic.carrier },
+                diagnostic: {
+                  type: "opaqueCarrier",
+                  carrier: diagnostic.carrier,
+                },
               },
             });
           }
@@ -823,9 +929,13 @@ const createFolioAIEditSnapshotInternal = (
     // confused string. Apply uses the same clean view to resolve
     // operation positions, so the offsets stay consistent.
     noteReferences.numberBlock(node);
-    const cleanBlock = buildCleanBlockText(node, pos, { fieldResults: "text", noteReferences });
+    const cleanBlock = buildCleanBlockText(node, pos, {
+      fieldResults: "text",
+      noteReferences,
+    });
     const { text } = cleanBlock;
-    const structuralBoundaries = projectFolioAIBlockStructuralBoundaries(cleanBlock);
+    const structuralBoundaries =
+      projectFolioAIBlockStructuralBoundaries(cleanBlock);
     const structuralBoundaryHash =
       hashFolioAIBlockStructuralBoundaryProjection(structuralBoundaries);
     const normalizedText = normalizeFolioAIBlockText(text);
@@ -849,14 +959,22 @@ const createFolioAIEditSnapshotInternal = (
     // paragraph with no text is numbered in the separate blank
     // sequence rather than consuming a position in it.
     const paraIdAttr: unknown = node.attrs["paraId"];
-    const paraId = typeof paraIdAttr === "string" && paraIdAttr.length > 0 ? paraIdAttr : null;
+    const paraId =
+      typeof paraIdAttr === "string" && paraIdAttr.length > 0
+        ? paraIdAttr
+        : null;
     const idStabilityAttr: unknown = node.attrs["idStability"];
-    const idStability = idStabilityAttr === "positional" ? "positional" : undefined;
+    const idStability =
+      idStabilityAttr === "positional" ? "positional" : undefined;
     const isBlank = normalizedText.length === 0;
     let id: FolioBlockId;
     if (isBlank) {
       blankIndex++;
-      id = deriveBlankBlockId({ paraId, index: blankIndex, taken: usedBlockIds });
+      id = deriveBlankBlockId({
+        paraId,
+        index: blankIndex,
+        taken: usedBlockIds,
+      });
     } else {
       blockIndex++;
       id = deriveBlockId({ paraId, index: blockIndex, taken: usedBlockIds });
@@ -867,7 +985,8 @@ const createFolioAIEditSnapshotInternal = (
       node.type.name === "paragraph"
         ? snapshotListAttrs(expectParagraphAttrs(node), styleResolver)
         : undefined;
-    const visibleList = listAttrs === undefined ? undefined : nextListLabel(listAttrs);
+    const visibleList =
+      listAttrs === undefined ? undefined : nextListLabel(listAttrs);
     const listLabel = visibleList?.label;
     const kind = getBlockKind(headingLevel, visibleList?.kind === "marker");
     const displayLabel = getDisplayLabel(node, listLabel, kind === "heading");
@@ -893,8 +1012,17 @@ const createFolioAIEditSnapshotInternal = (
     const directAlignment = getDirectAlignment(node);
     const directSpacing = getDirectSpacing(node);
     const directIndentation = getDirectIndentation(node);
-    const previewRuns = getPreviewRuns({ node, nodeFrom: pos, cleanBlock, styleResolver });
-    const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
+    const previewRuns = getPreviewRuns({
+      node,
+      nodeFrom: pos,
+      cleanBlock,
+      styleResolver,
+    });
+    const table = getTableLocation({
+      path,
+      blockIndex: index,
+      tableIndexByStart,
+    });
 
     draftBlocks.push({
       block: {
@@ -907,7 +1035,8 @@ const createFolioAIEditSnapshotInternal = (
         ...(styleId !== undefined && { styleId }),
         ...(directOutlineLevel !== undefined && { directOutlineLevel }),
         statedNumbering:
-          readParagraphNumberingAttr(node.attrs["numPr"]) ?? INHERITED_PARAGRAPH_NUMBERING,
+          readParagraphNumberingAttr(node.attrs["numPr"]) ??
+          INHERITED_PARAGRAPH_NUMBERING,
         ...(listReference !== undefined && { listReference }),
         ...(directAlignment !== undefined && { directAlignment }),
         ...(directSpacing !== undefined && { directSpacing }),
@@ -998,7 +1127,10 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
  * numbering) reads as prose and is a paragraph, keeping its `statedNumbering`
  * without claiming effective list membership.
  */
-const getBlockKind = (headingLevel: number | undefined, showsMarker: boolean) => {
+const getBlockKind = (
+  headingLevel: number | undefined,
+  showsMarker: boolean,
+) => {
   if (headingLevel !== undefined) {
     return "heading";
   }
@@ -1025,8 +1157,9 @@ const snapshotListAttrs = (
     ) === true;
   if (!needsStyleNumbering) return attrs;
   const styleNumbering = (styleId: unknown) =>
-    styleResolver.resolveParagraphStyle(typeof styleId === "string" ? styleId : null)
-      .paragraphFormatting?.numPr;
+    styleResolver.resolveParagraphStyle(
+      typeof styleId === "string" ? styleId : null,
+    ).paragraphFormatting?.numPr;
   const styleNumberingAttr = (styleId: unknown) => {
     const numbering = styleNumbering(styleId);
     return numbering === undefined ? null : paragraphNumberingAttr(numbering);
@@ -1042,8 +1175,12 @@ const snapshotListAttrs = (
     attrs._propertyChanges.length > 0;
   return {
     ...currentAttrs,
-    ...(cancelsStaleStyleNumbering ? { numPr: paragraphNumberingAttr({ kind: "none" }) } : {}),
-    ...(currentStyleNumbering === null ? {} : { numPrFromStyle: currentStyleNumbering }),
+    ...(cancelsStaleStyleNumbering
+      ? { numPr: paragraphNumberingAttr({ kind: "none" }) }
+      : {}),
+    ...(currentStyleNumbering === null
+      ? {}
+      : { numPrFromStyle: currentStyleNumbering }),
     ...(attrs._propertyChanges === null || attrs._propertyChanges === undefined
       ? {}
       : {
@@ -1054,7 +1191,9 @@ const snapshotListAttrs = (
               : {
                   previousFormatting: {
                     ...change.previousFormatting,
-                    numPrFromStyle: styleNumberingAttr(change.previousFormatting.styleId),
+                    numPrFromStyle: styleNumberingAttr(
+                      change.previousFormatting.styleId,
+                    ),
                   },
                 }),
           })),
@@ -1063,7 +1202,10 @@ const snapshotListAttrs = (
 };
 
 /** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */
-const getHeadingLevel = (node: PMNode, styles: BuiltInStyleIndex): number | undefined => {
+const getHeadingLevel = (
+  node: PMNode,
+  styles: BuiltInStyleIndex,
+): number | undefined => {
   const styleId: unknown = node.attrs["styleId"];
   const level = resolveHeadingLevel(
     {
@@ -1100,14 +1242,18 @@ const getDisplayLabel = (
 
 const getStyleId = (node: PMNode): string | undefined => {
   const styleId: unknown = node.attrs["styleId"];
-  return typeof styleId === "string" && styleId.length > 0 ? styleId : undefined;
+  return typeof styleId === "string" && styleId.length > 0
+    ? styleId
+    : undefined;
 };
 
 /** Read only authored `w:jc`, never the effective alignment resolved from a style. */
-const getDirectAlignment = (node: PMNode) => directParagraphAlignment(expectParagraphAttrs(node));
+const getDirectAlignment = (node: PMNode) =>
+  directParagraphAlignment(expectParagraphAttrs(node));
 
 /** Read only authored `w:spacing`, never effective spacing resolved from a style. */
-const getDirectSpacing = (node: PMNode) => directParagraphSpacing(expectParagraphAttrs(node));
+const getDirectSpacing = (node: PMNode) =>
+  directParagraphSpacing(expectParagraphAttrs(node));
 
 /** Read only authored `w:ind`, never effective indentation resolved from a style. */
 const getDirectIndentation = (node: PMNode) =>
@@ -1143,15 +1289,20 @@ const getPreviewRuns = ({
 }: GetPreviewRunsOptions): FolioAIBlockPreviewRun[] | undefined => {
   const runs: FolioAIBlockPreviewRun[] = [];
   const defaultStyle = getDefaultPreviewRunStyle(node, styleResolver);
-  let paragraphStyleContext: ReturnType<typeof paragraphRunStyleContext> | undefined;
+  let paragraphStyleContext:
+    ReturnType<typeof paragraphRunStyleContext> | undefined;
   let cleanOffset = 0;
 
   node.descendants((child, relativePosition) => {
     const start = nodeFrom + 1 + relativePosition;
     // A note reference previews as the marker the clean text shows for it.
     const noteReference = cleanBlock.structuralBoundaries.find(
-      (boundary): boundary is Extract<CleanTextStructuralBoundary, { type: "noteReference" }> =>
-        boundary.type === "noteReference" && boundary.from === start,
+      (
+        boundary,
+      ): boundary is Extract<
+        CleanTextStructuralBoundary,
+        { type: "noteReference" }
+      > => boundary.type === "noteReference" && boundary.from === start,
     );
     let text: string | null | undefined;
     if (noteReference !== undefined) {
@@ -1160,24 +1311,34 @@ const getPreviewRuns = ({
         noteReference.offset + noteReference.length,
       );
     } else {
-      text = child.isText ? child.text : runFormattingInlineAtomCleanText(child);
+      text = child.isText
+        ? child.text
+        : runFormattingInlineAtomCleanText(child);
     }
     if (text === undefined || text === null || text.length === 0) return true;
     if (
-      child.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
+      child.marks.some(
+        (mark) =>
+          mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
+      )
     ) {
       return false;
     }
-    while ((cleanBlock.offsets[cleanOffset] ?? Number.POSITIVE_INFINITY) < start) {
+    while (
+      (cleanBlock.offsets[cleanOffset] ?? Number.POSITIVE_INFINITY) < start
+    ) {
       cleanOffset++;
     }
     // A text node advances one PM position per character; an atom, and a note
     // reference's marker, hold all of their characters at one position.
     const lastCharacterPosition =
-      child.isText && noteReference === undefined ? start + text.length - 1 : start;
+      child.isText && noteReference === undefined
+        ? start + text.length - 1
+        : start;
     if (
       cleanBlock.offsets[cleanOffset] !== start ||
-      cleanBlock.offsets[cleanOffset + text.length - 1] !== lastCharacterPosition
+      cleanBlock.offsets[cleanOffset + text.length - 1] !==
+        lastCharacterPosition
     ) {
       return false;
     }
@@ -1186,21 +1347,30 @@ const getPreviewRuns = ({
     const style = getPreviewRunStyle(child.marks, defaultStyle);
     const hasAuthorshipCarrier = child.marks.some(
       ({ type }) =>
-        type.name === RUN_FORMATTING_OVERRIDE_MARK || type.name === CHARACTER_STYLE_MARK,
+        type.name === RUN_FORMATTING_OVERRIDE_MARK ||
+        type.name === CHARACTER_STYLE_MARK,
     );
     let directFormatting: PreviewRunStyle;
     if (!hasAuthorshipCarrier) {
-      directFormatting = getDirectPreviewRunStyleFromMarks(child.marks, defaultStyle);
+      directFormatting = getDirectPreviewRunStyleFromMarks(
+        child.marks,
+        defaultStyle,
+      );
     } else {
       paragraphStyleContext ??= paragraphRunStyleContext(node, styleResolver);
       const directTextFormatting = marksToTextFormatting(child.marks, {
         baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
         inheritedFormatting: paragraphStyleContext.paragraphFormatting,
         paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
+        paragraphMarkPrecedesStyle:
+          paragraphStyleContext.paragraphMarkPrecedesStyle,
         styleResolver,
       });
-      directFormatting = getDirectPreviewRunStyle(child.marks, directTextFormatting, styleResolver);
+      directFormatting = getDirectPreviewRunStyle(
+        child.marks,
+        directTextFormatting,
+        styleResolver,
+      );
     }
     const previous = runs.at(-1);
     if (
@@ -1312,7 +1482,9 @@ const getPreviewRunStyle = (
     }
   }
 
-  const overrideMark = marks.find(({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK);
+  const overrideMark = marks.find(
+    ({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK,
+  );
   if (!overrideMark) {
     return style;
   }
@@ -1362,7 +1534,10 @@ const getDirectPreviewRunStyleFromMarks = (
   ) {
     directStyle.fontSizePt = markedStyle.fontSizePt;
   }
-  if (markedStyle.color !== undefined && markedStyle.color !== inheritedStyle.color) {
+  if (
+    markedStyle.color !== undefined &&
+    markedStyle.color !== inheritedStyle.color
+  ) {
     directStyle.color = markedStyle.color;
   }
   return directStyle;
@@ -1375,9 +1550,13 @@ const getDirectPreviewRunStyle = (
 ): PreviewRunStyle => {
   let directFormatting = formatting;
   if (!styleResolver) {
-    const overrideMark = marks.find(({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK);
+    const overrideMark = marks.find(
+      ({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK,
+    );
     const authoredFormatting = overrideMark
-      ? authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(overrideMark))
+      ? authoredRunFormattingFromAttrs(
+          expectRunFormattingOverrideMarkAttrs(overrideMark),
+        )
       : undefined;
     if (authoredFormatting !== undefined) {
       directFormatting = authoredFormatting;
@@ -1410,7 +1589,9 @@ const getDirectPreviewRunStyle = (
   if (fontSizePt !== undefined) {
     directStyle.fontSizePt = fontSizePt;
   }
-  const color = directFormatting.color ? getColorFromAttrs(directFormatting.color) : undefined;
+  const color = directFormatting.color
+    ? getColorFromAttrs(directFormatting.color)
+    : undefined;
   if (color !== undefined) {
     directStyle.color = color;
   }
@@ -1496,7 +1677,10 @@ const getColorFromAttrs = (attrs: object): string | undefined => {
   return `#${rgb}`;
 };
 
-const samePreviewRunStyle = (run: FolioAIBlockPreviewRun, style: PreviewRunStyle): boolean =>
+const samePreviewRunStyle = (
+  run: FolioAIBlockPreviewRun,
+  style: PreviewRunStyle,
+): boolean =>
   run.bold === style.bold &&
   run.italic === style.italic &&
   run.underline === style.underline &&
@@ -1536,6 +1720,9 @@ const sameDirectFormatting = (
     left.fontSizePt === right.fontSizePt &&
     left.color === right.color);
 
-const isUnstyledPreviewRun = ({ directFormatting, ...style }: FolioAIBlockPreviewRun): boolean =>
+const isUnstyledPreviewRun = ({
+  directFormatting,
+  ...style
+}: FolioAIBlockPreviewRun): boolean =>
   isEmptyPreviewRunStyle(style) &&
   (directFormatting === undefined || isEmptyPreviewRunStyle(directFormatting));

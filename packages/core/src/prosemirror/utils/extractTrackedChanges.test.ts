@@ -7,11 +7,12 @@
  * clear every site in one click.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
-import { extractTrackedChanges } from "./extractTrackedChanges";
+
 import { PROPERTY_REVISION_SITES } from "../revisionCarriers";
+import { extractTrackedChanges } from "./extractTrackedChanges";
 
 const schema = new Schema({
   nodes: {
@@ -56,11 +57,19 @@ const schema = new Schema({
   },
   marks: {
     insertion: {
-      attrs: { revisionId: { default: 0 }, author: { default: "" }, date: { default: null } },
+      attrs: {
+        revisionId: { default: 0 },
+        author: { default: "" },
+        date: { default: null },
+      },
       toDOM: () => ["ins", 0],
     },
     deletion: {
-      attrs: { revisionId: { default: 0 }, author: { default: "" }, date: { default: null } },
+      attrs: {
+        revisionId: { default: 0 },
+        author: { default: "" },
+        date: { default: null },
+      },
       toDOM: () => ["del", 0],
     },
     comment: {
@@ -91,7 +100,9 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
     };
     const mark = schema.marks.runPropertyChange.create({ changes: [change] });
     const doc = schema.nodes.doc.create({}, [
-      schema.nodes.paragraph.create({}, [schema.text("formatted text", [mark])]),
+      schema.nodes.paragraph.create({}, [
+        schema.text("formatted text", [mark]),
+      ]),
     ]);
 
     const { entries } = extractTrackedChanges(makeState(doc));
@@ -109,7 +120,11 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
   test("5 insertions with distinct w:ids but same (author, date) collapse to ONE card", () => {
     const ins = (id: number, text: string) =>
       schema.text(text, [
-        schema.marks.insertion.create({ revisionId: id, author: AUTHOR, date: DATE }),
+        schema.marks.insertion.create({
+          revisionId: id,
+          author: AUTHOR,
+          date: DATE,
+        }),
       ]);
     const doc = schema.nodes.doc.create({}, [
       schema.nodes.paragraph.create({}, [ins(1388975360, "fdsfsd")]),
@@ -133,12 +148,24 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
   test("paragraph-mark insertions with distinct ids but same (author, date) hide behind one inline card", () => {
     const ins = (id: number, text: string) =>
       schema.text(text, [
-        schema.marks.insertion.create({ revisionId: id, author: AUTHOR, date: DATE }),
+        schema.marks.insertion.create({
+          revisionId: id,
+          author: AUTHOR,
+          date: DATE,
+        }),
       ]);
-    const pPrIns = (id: number) => ({ revisionId: id, author: AUTHOR, date: DATE });
+    const pPrIns = (id: number) => ({
+      revisionId: id,
+      author: AUTHOR,
+      date: DATE,
+    });
     const doc = schema.nodes.doc.create({}, [
-      schema.nodes.paragraph.create({ pPrIns: pPrIns(1694997150) }, [ins(1388975360, "fdsfsd")]),
-      schema.nodes.paragraph.create({ pPrIns: pPrIns(1254058768) }, [ins(47262383, "fdsfsdf")]),
+      schema.nodes.paragraph.create({ pPrIns: pPrIns(1694997150) }, [
+        ins(1388975360, "fdsfsd"),
+      ]),
+      schema.nodes.paragraph.create({ pPrIns: pPrIns(1254058768) }, [
+        ins(47262383, "fdsfsdf"),
+      ]),
     ]);
     const { entries } = extractTrackedChanges(makeState(doc));
     expect(entries).toHaveLength(1);
@@ -146,23 +173,43 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
   });
 
   test('whole-table insert: rows with distinct trIns ids but same (author, date) surface "Inserted table"', () => {
-    const trIns = (id: number) => ({ revisionId: id, author: AUTHOR, date: DATE });
+    const trIns = (id: number) => ({
+      revisionId: id,
+      author: AUTHOR,
+      date: DATE,
+    });
     const emptyCell = () =>
-      schema.nodes.tableCell.create({}, [schema.nodes.paragraph.create({}, [])]);
+      schema.nodes.tableCell.create({}, [
+        schema.nodes.paragraph.create({}, []),
+      ]);
     const row = (id: number) =>
-      schema.nodes.tableRow.create({ trIns: trIns(id) }, [emptyCell(), emptyCell()]);
-    const table = schema.nodes.table.create({}, [row(844706625), row(694611694)]);
+      schema.nodes.tableRow.create({ trIns: trIns(id) }, [
+        emptyCell(),
+        emptyCell(),
+      ]);
+    const table = schema.nodes.table.create({}, [
+      row(844706625),
+      row(694611694),
+    ]);
     const doc = schema.nodes.doc.create({}, [table]);
     const { entries } = extractTrackedChanges(makeState(doc));
     const tableEntry = entries.find((e) => e.type === "tableInserted");
     expect(tableEntry).toBeTruthy();
     // The two row ids should both be reachable from the card.
-    const allIds = new Set([tableEntry!.revisionId, ...(tableEntry!.coalescedRevisionIds ?? [])]);
+    const allIds = new Set([
+      tableEntry!.revisionId,
+      ...(tableEntry!.coalescedRevisionIds ?? []),
+    ]);
     expect(allIds).toEqual(new Set([844706625, 694611694]));
   });
 
   test("table-cell insertion and deletion markers surface as structural changes", () => {
-    const cell = (kind: "ins" | "del", revisionId: number, text: string, date = DATE) =>
+    const cell = (
+      kind: "ins" | "del",
+      revisionId: number,
+      text: string,
+      date = DATE,
+    ) =>
       schema.nodes.tableCell.create(
         {
           cellMarker: {
@@ -175,13 +222,17 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
     const doc = schema.nodes.doc.create({}, [
       schema.nodes.table.create({}, [
         schema.nodes.tableRow.create({}, [cell("ins", 101, "Inserted")]),
-        schema.nodes.tableRow.create({}, [cell("del", 102, "Deleted", "2026-05-28T20:30:00.000Z")]),
+        schema.nodes.tableRow.create({}, [
+          cell("del", 102, "Deleted", "2026-05-28T20:30:00.000Z"),
+        ]),
       ]),
     ]);
 
     const { entries } = extractTrackedChanges(makeState(doc));
 
-    expect(entries.map(({ type, revisionId, text }) => ({ type, revisionId, text }))).toEqual([
+    expect(
+      entries.map(({ type, revisionId, text }) => ({ type, revisionId, text })),
+    ).toEqual([
       { type: "cellInserted", revisionId: 101, text: "Inserted" },
       { type: "cellDeleted", revisionId: 102, text: "Deleted" },
     ]);
@@ -206,7 +257,11 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
             formatting: { vMerge: "continue" },
             structuralChange: {
               type: "tableCellMerge",
-              info: { id: 104, author: AUTHOR, date: "2026-05-29T20:28:35.944Z" },
+              info: {
+                id: 104,
+                author: AUTHOR,
+                date: "2026-05-29T20:28:35.944Z",
+              },
               verticalMerge: "continue",
             },
             content: [{ type: "paragraph", content: [] }],
@@ -224,7 +279,9 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
 
     const { entries } = extractTrackedChanges(makeState(doc));
 
-    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+    expect(
+      entries.map(({ type, revisionId }) => ({ type, revisionId })),
+    ).toEqual([
       { type: "cellMerged", revisionId: 103 },
       { type: "cellMerged", revisionId: 104 },
     ]);
@@ -250,7 +307,9 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
 
     const { entries } = extractTrackedChanges(makeState(doc));
 
-    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+    expect(
+      entries.map(({ type, revisionId }) => ({ type, revisionId })),
+    ).toEqual([
       { type: "cellInserted", revisionId: 201 },
       { type: "cellDeleted", revisionId: 202 },
     ]);
@@ -258,11 +317,19 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
 
   test("distinct (author, date) bursts stay as separate cards (we are not over-coalescing)", () => {
     const ins = (id: number, author: string, date: string, text: string) =>
-      schema.text(text, [schema.marks.insertion.create({ revisionId: id, author, date })]);
+      schema.text(text, [
+        schema.marks.insertion.create({ revisionId: id, author, date }),
+      ]);
     const doc = schema.nodes.doc.create({}, [
-      schema.nodes.paragraph.create({}, [ins(1, "Jane", "2026-05-28T20:28:35.944Z", "foo")]),
-      schema.nodes.paragraph.create({}, [ins(2, "Jane", "2026-05-28T20:30:00.000Z", "bar")]),
-      schema.nodes.paragraph.create({}, [ins(3, "Bob", "2026-05-28T20:28:35.944Z", "baz")]),
+      schema.nodes.paragraph.create({}, [
+        ins(1, "Jane", "2026-05-28T20:28:35.944Z", "foo"),
+      ]),
+      schema.nodes.paragraph.create({}, [
+        ins(2, "Jane", "2026-05-28T20:30:00.000Z", "bar"),
+      ]),
+      schema.nodes.paragraph.create({}, [
+        ins(3, "Bob", "2026-05-28T20:28:35.944Z", "baz"),
+      ]),
     ]);
     const { entries } = extractTrackedChanges(makeState(doc));
     expect(entries).toHaveLength(3);
@@ -275,13 +342,21 @@ describe("extractTrackedChanges: property revisions", () => {
   );
 
   /** One stored record, written where the site says it lives. */
-  const attrsCarrying = (site: (typeof nodeSites)[number], id: number): Record<string, unknown> => {
-    const record = { type: site.kind, info: { id, author: AUTHOR, date: DATE } };
+  const attrsCarrying = (
+    site: (typeof nodeSites)[number],
+    id: number,
+  ): Record<string, unknown> => {
+    const record = {
+      type: site.kind,
+      info: { id, author: AUTHOR, date: DATE },
+    };
     if (site.resolution === "node-attrs") {
       return { [site.attr]: [record] };
     }
     const [outer, inner] = site.path;
-    return inner === undefined ? { [outer]: [record] } : { [outer]: { [inner]: [record] } };
+    return inner === undefined
+      ? { [outer]: [record] }
+      : { [outer]: { [inner]: [record] } };
   };
 
   const cell = (attrs: Record<string, unknown> = {}) =>
@@ -289,7 +364,10 @@ describe("extractTrackedChanges: property revisions", () => {
       schema.nodes.paragraph.create({}, [schema.text("Cell")]),
     ]);
 
-  const docCarrying = (nodeTypeName: string, attrs: Record<string, unknown>) => {
+  const docCarrying = (
+    nodeTypeName: string,
+    attrs: Record<string, unknown>,
+  ) => {
     switch (nodeTypeName) {
       case "paragraph":
         return schema.nodes.doc.create({}, [
@@ -297,18 +375,26 @@ describe("extractTrackedChanges: property revisions", () => {
         ]);
       case "table":
         return schema.nodes.doc.create({}, [
-          schema.nodes.table.create(attrs, [schema.nodes.tableRow.create({}, [cell()])]),
+          schema.nodes.table.create(attrs, [
+            schema.nodes.tableRow.create({}, [cell()]),
+          ]),
         ]);
       case "tableRow":
         return schema.nodes.doc.create({}, [
-          schema.nodes.table.create({}, [schema.nodes.tableRow.create(attrs, [cell()])]),
+          schema.nodes.table.create({}, [
+            schema.nodes.tableRow.create(attrs, [cell()]),
+          ]),
         ]);
       case "tableCell":
         return schema.nodes.doc.create({}, [
-          schema.nodes.table.create({}, [schema.nodes.tableRow.create({}, [cell(attrs)])]),
+          schema.nodes.table.create({}, [
+            schema.nodes.tableRow.create({}, [cell(attrs)]),
+          ]),
         ]);
       default:
-        throw new Error(`the property-revision fixture has no ${nodeTypeName} node`);
+        throw new Error(
+          `the property-revision fixture has no ${nodeTypeName} node`,
+        );
     }
   };
 
@@ -334,13 +420,18 @@ describe("extractTrackedChanges: property revisions", () => {
 
   test("lists both revisions a row carries at once", () => {
     const doc = docCarrying("tableRow", {
-      ...attrsCarrying(PROPERTY_REVISION_SITES.tablePropertyExceptionChange, 80),
+      ...attrsCarrying(
+        PROPERTY_REVISION_SITES.tablePropertyExceptionChange,
+        80,
+      ),
       ...attrsCarrying(PROPERTY_REVISION_SITES.tableRowPropertyChange, 81),
     });
 
     const { entries } = extractTrackedChanges(makeState(doc));
 
-    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+    expect(
+      entries.map(({ type, revisionId }) => ({ type, revisionId })),
+    ).toEqual([
       { type: "tablePropertyExceptionsChanged", revisionId: 80 },
       { type: "rowPropertiesChanged", revisionId: 81 },
     ]);
@@ -355,7 +446,9 @@ describe("extractTrackedChanges: property revisions", () => {
 
     const { entries } = extractTrackedChanges(makeState(doc));
 
-    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+    expect(
+      entries.map(({ type, revisionId }) => ({ type, revisionId })),
+    ).toEqual([
       { type: "sectionPropertiesChanged", revisionId: 82 },
       { type: "sectionPropertiesChanged", revisionId: 83 },
     ]);
@@ -364,9 +457,13 @@ describe("extractTrackedChanges: property revisions", () => {
 
 describe("extractTrackedChanges: replacement pairing", () => {
   const del = (id: number, author: string, date: string, text: string) =>
-    schema.text(text, [schema.marks.deletion.create({ revisionId: id, author, date })]);
+    schema.text(text, [
+      schema.marks.deletion.create({ revisionId: id, author, date }),
+    ]);
   const ins = (id: number, author: string, date: string, text: string) =>
-    schema.text(text, [schema.marks.insertion.create({ revisionId: id, author, date })]);
+    schema.text(text, [
+      schema.marks.insertion.create({ revisionId: id, author, date }),
+    ]);
 
   test("pairs a replace whose halves carry different timestamps", () => {
     // One replace, but the clock ticked between the two halves. Requiring the
@@ -394,11 +491,17 @@ describe("extractTrackedChanges: replacement pairing", () => {
 
   test("does not pair across authors", () => {
     const doc = schema.nodes.doc.create({}, [
-      schema.nodes.paragraph.create({}, [del(1, "Jane", DATE, "old"), ins(2, "Bob", DATE, "new")]),
+      schema.nodes.paragraph.create({}, [
+        del(1, "Jane", DATE, "old"),
+        ins(2, "Bob", DATE, "new"),
+      ]),
     ]);
 
     const { entries } = extractTrackedChanges(makeState(doc));
 
-    expect(entries.map((entry) => entry.type)).toEqual(["deletion", "insertion"]);
+    expect(entries.map((entry) => entry.type)).toEqual([
+      "deletion",
+      "insertion",
+    ]);
   });
 });

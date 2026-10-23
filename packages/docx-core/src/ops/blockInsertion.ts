@@ -1,15 +1,24 @@
 /** Paragraph insertion, isolated from the inline and table operation implementations. */
 import { Result } from "better-result";
 
-import { finalizeParagraphFormatting, type Document, type Paragraph } from "../model/document";
-import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
+import {
+  type Document,
+  finalizeParagraphFormatting,
+  type Paragraph,
+} from "../model/document";
+import {
+  blockListAt,
+  endsItsContainer,
+  storyBody,
+  storyParagraphs,
+} from "./blocks";
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
+import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
-import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_TYPES, type InsertBlocksOp } from "./types";
 
 type BlockInsertionOptions = {
@@ -26,7 +35,10 @@ export const insertBlocks = ({
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
   if (op.blocks.length === 0) {
-    return refuse(DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST, "No paragraphs to insert.");
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+      "No paragraphs to insert.",
+    );
   }
   if (op.at.type !== "before" && op.at.type !== "after") {
     return refuse(
@@ -44,17 +56,23 @@ export const insertBlocks = ({
       "The insertion anchor does not exist.",
     );
   }
-  if (op.blocks.some(({ sectionProperties }) => sectionProperties !== undefined)) {
+  if (
+    op.blocks.some(({ sectionProperties }) => sectionProperties !== undefined)
+  ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "Inserting section breaks requires section operations.",
     );
   }
   // Use the following paragraph as the unchanged boundary whenever possible.
-  const following = blockListAt(body.content, location.list)[location.index + 1];
+  const following = blockListAt(body.content, location.list)[
+    location.index + 1
+  ];
   const before = op.at.type === "before" || following?.type === "paragraph";
   const anchor =
-    op.at.type === "after" && following?.type === "paragraph" ? following : location.paragraph;
+    op.at.type === "after" && following?.type === "paragraph"
+      ? following
+      : location.paragraph;
   if (op.revision !== undefined && !before) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -68,7 +86,8 @@ export const insertBlocks = ({
     blocks: before ? [...blocks, anchor] : [anchor, ...blocks],
   });
   const canonicalBlocks = op.blocks.map((paragraph) => {
-    if (finalizeParagraphFormatting(paragraph.formatting) !== undefined) return paragraph;
+    if (finalizeParagraphFormatting(paragraph.formatting) !== undefined)
+      return paragraph;
     const canonical = { ...paragraph };
     delete canonical.formatting;
     return canonical;
@@ -83,8 +102,12 @@ export const insertBlocks = ({
         opType: op.type,
       }),
     );
-  const insertedIds = new Set(canonicalBlocks.map(({ paraId }) => idKey(paraId ?? "")));
-  const finalMarks = storyParagraphs(storyBody(direct.value.document, op.story)).some(
+  const insertedIds = new Set(
+    canonicalBlocks.map(({ paraId }) => idKey(paraId ?? "")),
+  );
+  const finalMarks = storyParagraphs(
+    storyBody(direct.value.document, op.story),
+  ).some(
     (at) =>
       insertedIds.has(idKey(at.paragraph.paraId ?? "")) &&
       at.paragraph.pPrMark !== undefined &&
@@ -98,7 +121,9 @@ export const insertBlocks = ({
   }
   const touched = {
     modified: [],
-    inserted: op.blocks.flatMap(({ paraId }) => (paraId === undefined ? [] : [paraId])),
+    inserted: op.blocks.flatMap(({ paraId }) =>
+      paraId === undefined ? [] : [paraId],
+    ),
     removed: [],
   };
   if (op.revision === undefined) return Result.ok({ ...direct.value, touched });
@@ -113,7 +138,10 @@ export const insertBlocks = ({
     const wrapped = wrapTracked({
       items: paragraph.content,
       from: { offset: 0, zeroWidthBefore: 0 },
-      to: { offset: paragraphLength(paragraph), zeroWidthBefore: Number.MAX_SAFE_INTEGER },
+      to: {
+        offset: paragraphLength(paragraph),
+        zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+      },
       kind: WRAP_KINDS.INSERTION,
       stamp: op.revision,
     });

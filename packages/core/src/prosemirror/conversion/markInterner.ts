@@ -21,7 +21,12 @@ const sameAttrValue = (left: unknown, right: unknown): boolean => {
   if (sameLeaf(left, right)) {
     return true;
   }
-  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
+  if (
+    typeof left !== "object" ||
+    typeof right !== "object" ||
+    left === null ||
+    right === null
+  ) {
     return false;
   }
   if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right)) {
@@ -32,7 +37,10 @@ const sameAttrValue = (left: unknown, right: unknown): boolean => {
       return false;
     }
     for (let index = 0; index < left.length; index += 1) {
-      if (index in left !== index in right || !sameAttrValue(left[index], right[index])) {
+      if (
+        index in left !== index in right ||
+        !sameAttrValue(left[index], right[index])
+      ) {
         return false;
       }
     }
@@ -44,7 +52,8 @@ const sameAttrValue = (left: unknown, right: unknown): boolean => {
     leftKeys.length === rightKeys.length &&
     leftKeys.every(
       (key, index) =>
-        key === rightKeys[index] && sameAttrValue(Reflect.get(left, key), Reflect.get(right, key)),
+        key === rightKeys[index] &&
+        sameAttrValue(Reflect.get(left, key), Reflect.get(right, key)),
     )
   );
 };
@@ -55,7 +64,10 @@ type InternedMark = {
   nonDefault: ReadonlySet<string>;
 };
 
-const internedMark = (type: MarkType, attrs: Attrs | null | undefined): InternedMark => {
+const internedMark = (
+  type: MarkType,
+  attrs: Attrs | null | undefined,
+): InternedMark => {
   const mark = type.create(attrs);
   const nonDefault = new Set<string>();
   for (const [name, spec] of Object.entries(type.spec.attrs ?? {})) {
@@ -128,6 +140,8 @@ export const createMarkInterner = (schema: Schema): MarkFactory => {
       marks.set(key, interned);
       return interned.mark;
     }
-    return matchesInterned(type, attrs, cached) ? cached.mark : type.create(attrs);
+    return matchesInterned(type, attrs, cached)
+      ? cached.mark
+      : type.create(attrs);
   };
 };

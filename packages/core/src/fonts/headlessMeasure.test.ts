@@ -9,9 +9,12 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { assertNoSubstitutions, createHeadlessMeasureProvider } from "./headlessMeasure";
-import type { HeadlessFontSource } from "./headlessMeasure";
 import { ptToPx } from "../layout-engine/measure/measureHelpers";
+import {
+  assertNoSubstitutions,
+  createHeadlessMeasureProvider,
+} from "./headlessMeasure";
+import type { HeadlessFontSource } from "./headlessMeasure";
 
 /** The family folio substitutes for Arial, and the file that carries it. */
 const ARIMO_REGULAR = new URL(
@@ -21,7 +24,9 @@ const ARIMO_REGULAR = new URL(
 
 const loadFace = async (url: URL): Promise<Uint8Array | null> => {
   const file = Bun.file(url);
-  return (await file.exists()) ? new Uint8Array(await file.arrayBuffer()) : null;
+  return (await file.exists())
+    ? new Uint8Array(await file.arrayBuffer())
+    : null;
 };
 
 const arimo = await loadFace(ARIMO_REGULAR);
@@ -35,7 +40,9 @@ const ARIMO_LATIN_EXT = new URL(
 const arimoExt = await loadFace(ARIMO_LATIN_EXT);
 
 /** Serves the real binaries for upright requests and nothing for italic. */
-const sourceFrom = (...binaries: readonly Uint8Array[]): HeadlessFontSource => ({
+const sourceFrom = (
+  ...binaries: readonly Uint8Array[]
+): HeadlessFontSource => ({
   load: (request) => (request.italic ? [] : binaries),
 });
 
@@ -63,7 +70,10 @@ describe.skipIf(arimo === null)("headless measurement over a real face", () => {
   test("ascent and descent come from the ink bounds the canvas backend reads", () => {
     const { provider } = createHeadlessMeasureProvider(sourceFrom(face));
 
-    const metrics = provider.getFontMetrics({ fontFamily: "Arial", fontSize: 12 });
+    const metrics = provider.getFontMetrics({
+      fontFamily: "Arial",
+      fontSize: 12,
+    });
     const fontSizePx = ptToPx(12);
 
     // `H` sits above the baseline and `g` below it, so both must be positive
@@ -80,10 +90,15 @@ describe.skipIf(arimo === null)("headless measurement over a real face", () => {
     const spaced = { fontFamily: "Arial", fontSize: 11, letterSpacing: 2 };
 
     const run = provider.measureRun("abcd", spaced);
-    const plain = provider.measureRun("abcd", { fontFamily: "Arial", fontSize: 11 });
+    const plain = provider.measureRun("abcd", {
+      fontFamily: "Arial",
+      fontSize: 11,
+    });
 
     expect(run.charWidths).toHaveLength(4);
-    expect(run.charWidths.reduce((total, width) => total + width, 0)).toBeCloseTo(run.width, 6);
+    expect(
+      run.charWidths.reduce((total, width) => total + width, 0),
+    ).toBeCloseTo(run.width, 6);
     // Three gaps between four code points, none after the last.
     expect(run.width - plain.width).toBeCloseTo(6, 6);
   });
@@ -91,7 +106,10 @@ describe.skipIf(arimo === null)("headless measurement over a real face", () => {
   test("a face the source cannot supply is reported, never silently substituted", () => {
     const headless = createHeadlessMeasureProvider(sourceFrom(face));
 
-    headless.provider.measureTextWidth("italic", { fontFamily: "Arial", italic: true });
+    headless.provider.measureTextWidth("italic", {
+      fontFamily: "Arial",
+      italic: true,
+    });
 
     const substitutions = headless.substitutions();
     expect(substitutions).toHaveLength(1);

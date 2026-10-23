@@ -10,20 +10,34 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { consumerScenarioReplay, consumerScenarioReplayInputs } from "./replay-inputs.ts";
-
 import { admit, loadCorpus, prune } from "./corpus.ts";
 import {
   failureMarker,
-  failureRecord,
   type FailureRecord,
+  failureRecord,
   logFailureMarker,
   writeFailureRecord,
 } from "./failure-fingerprints.ts";
-import { compactFlow, type FlowFile, flowId, type FlowKind, flowShape } from "./flow-file.ts";
+import {
+  compactFlow,
+  type FlowFile,
+  flowId,
+  type FlowKind,
+  flowShape,
+} from "./flow-file.ts";
 import { mutateFlow } from "./flow-mutate.ts";
-import { describeFlow, FlowError, type FlowRun, runFlow, runFlowFile } from "./fuzz.ts";
+import {
+  describeFlow,
+  FlowError,
+  type FlowRun,
+  runFlow,
+  runFlowFile,
+} from "./fuzz.ts";
 import { createRandom } from "./random.ts";
+import {
+  consumerScenarioReplay,
+  consumerScenarioReplayInputs,
+} from "./replay-inputs.ts";
 import { shrinkFlow } from "./shrink.ts";
 
 /** The environment settings a replay needs to fail the same way. */
@@ -31,7 +45,11 @@ export const relationInputs = (): Readonly<Record<string, string>> =>
   consumerScenarioReplayInputs(process.env);
 
 /** The one line that replays a seeded flow through scenarios/fuzz.test.ts. */
-export const seedReplay = (seed: number, steps: number, kind: FlowKind): string => {
+export const seedReplay = (
+  seed: number,
+  steps: number,
+  kind: FlowKind,
+): string => {
   const label = kind === "random" ? "fuzz" : "collision";
   return consumerScenarioReplay({
     inputs: {
@@ -55,19 +73,26 @@ export const flowReplay = (flow: FlowFile): string =>
   });
 
 /** The test name a flow's failures are fingerprinted under (as in fuzz.test.ts). */
-export const flowTestName = (flow: Pick<FlowFile, "fixture" | "mode">): string =>
-  `consumer flow ${flow.fixture} / ${flow.mode}`;
+export const flowTestName = (
+  flow: Pick<FlowFile, "fixture" | "mode">,
+): string => `consumer flow ${flow.fixture} / ${flow.mode}`;
 
 const fingerprintOf = (flow: FlowFile, failure: unknown): string =>
-  failureMarker({ test: flowTestName(flow), seed: 0, repro: "", failure }).fingerprint;
+  failureMarker({ test: flowTestName(flow), seed: 0, repro: "", failure })
+    .fingerprint;
 
 /** Whether `flow` fails with `fingerprint`. */
-const failsWith = async (flow: FlowFile, fingerprint: string): Promise<boolean> => {
+const failsWith = async (
+  flow: FlowFile,
+  fingerprint: string,
+): Promise<boolean> => {
   try {
     await runFlowFile(flow);
     return false;
   } catch (error) {
-    return error instanceof FlowError && fingerprintOf(flow, error) === fingerprint;
+    return (
+      error instanceof FlowError && fingerprintOf(flow, error) === fingerprint
+    );
   }
 };
 
@@ -101,16 +126,29 @@ export const recordFailure = async (
   const shrunk = await shrinkFlow(error.flow, {
     holds: (candidate) => failsWith(candidate, primary.fingerprint),
     materialize,
-    budget: { maxAttempts: limits.maxAttempts, deadline: Date.now() + limits.seconds * 1_000 },
+    budget: {
+      maxAttempts: limits.maxAttempts,
+      deadline: Date.now() + limits.seconds * 1_000,
+    },
   });
   // What the minimized flow does is part of which bug this is.
-  const marker = failureMarker({ test, seed, repro, failure: error, flow: flowShape(shrunk.flow) });
+  const marker = failureMarker({
+    test,
+    seed,
+    repro,
+    failure: error,
+    flow: flowShape(shrunk.flow),
+  });
   logFailureMarker(marker);
   const replay = flowReplay(shrunk.flow);
   return failureRecord(marker, error, {
     replays: replay === repro ? [replay] : [replay, repro],
     flow: shrunk.flow,
-    shrink: { steps: shrunk.flow.steps.length, from: shrunk.from, attempts: shrunk.attempts },
+    shrink: {
+      steps: shrunk.flow.steps.length,
+      from: shrunk.from,
+      attempts: shrunk.attempts,
+    },
   });
 };
 
@@ -214,17 +252,22 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
   );
   for (let run = 0; Date.now() < deadline; run += 1) {
     const seed = options.seed + run;
-    const mutate = corpus.entries.length > 0 && control.chance(options.mutateShare);
+    const mutate =
+      corpus.entries.length > 0 && control.chance(options.mutateShare);
     let repro = "";
     let label = `run ${run}`;
     try {
       let running: Promise<FlowRun>;
       if (mutate) {
         const parent = control.pick(corpus.entries);
-        const { flow, mutations } = mutateFlow(parent.flow, createRandom(seed), {
-          donors: corpus.entries.map((entry) => entry.flow),
-          maxSteps: options.maxSteps,
-        });
+        const { flow, mutations } = mutateFlow(
+          parent.flow,
+          createRandom(seed),
+          {
+            donors: corpus.entries.map((entry) => entry.flow),
+            maxSteps: options.maxSteps,
+          },
+        );
         repro = flowReplay(flow);
         label = `mutant ${seed} (${mutations.join("+")} of ${parent.id}): ${flow.fixture} / ${flow.mode}, ${flow.steps.length} steps`;
         result.mutants += 1;
@@ -251,7 +294,11 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
         target !== undefined &&
         Date.now() < deadline
       ) {
-        const minimized = await minimizeReaching(ran.flow, [target], options.minimize.seconds);
+        const minimized = await minimizeReaching(
+          ran.flow,
+          [target],
+          options.minimize.seconds,
+        );
         if (minimized !== null) {
           result.minimized += 1;
           mkdirSync(options.minimize.dir, { recursive: true });
@@ -272,9 +319,14 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
         result.completedCases += 1;
         continue;
       }
-      const record = await recordFailure(error, { seed, repro }, shrinkLimits());
+      const record = await recordFailure(
+        error,
+        { seed, repro },
+        shrinkLimits(),
+      );
       failures.set(fingerprint, { record, count: 1 });
-      if (options.failuresDir !== null) writeFailureRecord(options.failuresDir, record);
+      if (options.failuresDir !== null)
+        writeFailureRecord(options.failuresDir, record);
       log(
         record.shrink === undefined
           ? "  not shrunk (no time left, or its flow file does not replay it)"

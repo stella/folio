@@ -5,8 +5,15 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { TextBoxBlock, TextBoxFragment, TextBoxMeasure } from "../../../layout-engine/types";
-import { cssLinearGradientAngle, TEXTBOX_CLASS_NAMES } from "../../renderTextBox";
+import type {
+  TextBoxBlock,
+  TextBoxFragment,
+  TextBoxMeasure,
+} from "../../../layout-engine/types";
+import {
+  cssLinearGradientAngle,
+  TEXTBOX_CLASS_NAMES,
+} from "../../renderTextBox";
 import type { RenderContext } from "../../renderUtils";
 import { textBoxModule } from "./textBox";
 
@@ -71,33 +78,55 @@ describe("textBoxModule", () => {
     ["lgDashDot", "dashed"],
     ["dot", "dotted"],
     ["dashed", "dashed"],
-  ] as const)("paints a %s outline as a CSS %s border", (outlineStyle, cssStyle) => {
-    // `outlineStyle` is a DrawingML dash, not a CSS keyword: interpolating it
-    // into the shorthand made the whole declaration invalid and the outline
-    // vanished.
-    const el = textBoxModule.render({
-      fragment: { kind: "textBox", blockId: "tb-dash", x: 0, y: 0, width: 200, height: 100 },
-      block: {
-        kind: "textBox",
-        id: "tb-dash",
-        width: 200,
-        height: 100,
-        outlineWidth: 2,
-        outlineColor: "var(--test-outline)",
-        outlineStyle,
-        content: [],
-      },
-      measure: { kind: "textBox", width: 200, height: 100, innerMeasures: [] },
-      context: ctx,
-      doc: fakeDocument,
-    }) as unknown as FakeElement;
+  ] as const)(
+    "paints a %s outline as a CSS %s border",
+    (outlineStyle, cssStyle) => {
+      // `outlineStyle` is a DrawingML dash, not a CSS keyword: interpolating it
+      // into the shorthand made the whole declaration invalid and the outline
+      // vanished.
+      const el = textBoxModule.render({
+        fragment: {
+          kind: "textBox",
+          blockId: "tb-dash",
+          x: 0,
+          y: 0,
+          width: 200,
+          height: 100,
+        },
+        block: {
+          kind: "textBox",
+          id: "tb-dash",
+          width: 200,
+          height: 100,
+          outlineWidth: 2,
+          outlineColor: "var(--test-outline)",
+          outlineStyle,
+          content: [],
+        },
+        measure: {
+          kind: "textBox",
+          width: 200,
+          height: 100,
+          innerMeasures: [],
+        },
+        context: ctx,
+        doc: fakeDocument,
+      }) as unknown as FakeElement;
 
-    expect(el.style["border"]).toBe(`2px ${cssStyle} var(--test-outline)`);
-  });
+      expect(el.style["border"]).toBe(`2px ${cssStyle} var(--test-outline)`);
+    },
+  );
 
   test("paints no border for the explicit no-outline sentinel", () => {
     const el = textBoxModule.render({
-      fragment: { kind: "textBox", blockId: "tb-none", x: 0, y: 0, width: 200, height: 100 },
+      fragment: {
+        kind: "textBox",
+        blockId: "tb-none",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+      },
       block: {
         kind: "textBox",
         id: "tb-none",
@@ -164,7 +193,14 @@ describe("textBoxModule", () => {
     // one. Stretched to 100x400 the isolines stay parallel to the stretched
     // diagonal, so the gradient itself turns towards the horizontal.
     const el = textBoxModule.render({
-      fragment: { kind: "textBox", blockId: "tb-grad", x: 0, y: 0, width: 100, height: 400 },
+      fragment: {
+        kind: "textBox",
+        blockId: "tb-grad",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 400,
+      },
       block: {
         kind: "textBox",
         id: "tb-grad",
@@ -202,13 +238,22 @@ describe("textBoxModule", () => {
   ] as const)(
     "turns a %s° gradient (scaled: %s) over %sx%s into a %s° CSS angle",
     (angle, scaled, width, height, cssAngle) => {
-      expect(cssLinearGradientAngle({ angle, scaled }, width, height)).toBeCloseTo(cssAngle, 6);
+      expect(
+        cssLinearGradientAngle({ angle, scaled }, width, height),
+      ).toBeCloseTo(cssAngle, 6);
     },
   );
 
   test("a solid fill color wins over a gradient", () => {
     const el = textBoxModule.render({
-      fragment: { kind: "textBox", blockId: "tb-both", x: 0, y: 0, width: 100, height: 100 },
+      fragment: {
+        kind: "textBox",
+        blockId: "tb-both",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      },
       block: {
         kind: "textBox",
         id: "tb-both",
@@ -237,42 +282,45 @@ describe("textBoxModule", () => {
   test.each([
     ["middle", "center"],
     ["bottom", "flex-end"],
-  ] as const)("renders %s-aligned text box content", (verticalAlign, justifyContent) => {
-    const fragment: TextBoxFragment = {
-      kind: "textBox",
-      blockId: `tb-${verticalAlign}`,
-      x: 0,
-      y: 0,
-      width: 200,
-      height: 100,
-    };
-    const block: TextBoxBlock = {
-      kind: "textBox",
-      id: `tb-${verticalAlign}`,
-      width: 200,
-      height: 100,
-      verticalAlign,
-      content: [],
-    };
-    const measure: TextBoxMeasure = {
-      kind: "textBox",
-      width: 200,
-      height: 100,
-      innerMeasures: [],
-    };
+  ] as const)(
+    "renders %s-aligned text box content",
+    (verticalAlign, justifyContent) => {
+      const fragment: TextBoxFragment = {
+        kind: "textBox",
+        blockId: `tb-${verticalAlign}`,
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+      };
+      const block: TextBoxBlock = {
+        kind: "textBox",
+        id: `tb-${verticalAlign}`,
+        width: 200,
+        height: 100,
+        verticalAlign,
+        content: [],
+      };
+      const measure: TextBoxMeasure = {
+        kind: "textBox",
+        width: 200,
+        height: 100,
+        innerMeasures: [],
+      };
 
-    const el = textBoxModule.render({
-      fragment,
-      block,
-      measure,
-      context: ctx,
-      doc: fakeDocument,
-    }) as unknown as FakeElement;
+      const el = textBoxModule.render({
+        fragment,
+        block,
+        measure,
+        context: ctx,
+        doc: fakeDocument,
+      }) as unknown as FakeElement;
 
-    expect(el.style["display"]).toBe("flex");
-    expect(el.style["flexDirection"]).toBe("column");
-    expect(el.style["justifyContent"]).toBe(justifyContent);
-  });
+      expect(el.style["display"]).toBe("flex");
+      expect(el.style["flexDirection"]).toBe("column");
+      expect(el.style["justifyContent"]).toBe(justifyContent);
+    },
+  );
 
   test.each(["distributed", "justified"] as const)(
     "does not approximate %s line alignment with block flex spacing",

@@ -8,23 +8,40 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
+import {
+  createReviewerBridge,
+  executeFolioToolCallUntyped,
+} from "@stll/folio-agents";
 
 import { FIXTURE_NAMES, FIXTURES, openReviewer } from "../support/documents.ts";
 import { assertHealthy, visibleState } from "../support/invariants.ts";
-import { type Block, MISTAKES, MODES, type Mode, REFUSED_MISTAKES } from "../support/operations.ts";
+import {
+  type Block,
+  MISTAKES,
+  type Mode,
+  MODES,
+  REFUSED_MISTAKES,
+} from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
-type Row = { blockId: string; kind: string; text: string; blockTextHash: string };
+type Row = {
+  blockId: string;
+  kind: string;
+  text: string;
+  blockTextHash: string;
+};
 type SuggestResult = {
   applied: unknown[];
   skipped: unknown[];
   issues: { code: string }[];
 };
 
-const call = (bridge: ReturnType<typeof createReviewerBridge>, name: string, args: unknown) =>
-  executeFolioToolCallUntyped(name, args, bridge, {});
+const call = (
+  bridge: ReturnType<typeof createReviewerBridge>,
+  name: string,
+  args: unknown,
+) => executeFolioToolCallUntyped(name, args, bridge, {});
 
 const ok = <T>(result: ReturnType<typeof call>, what: string): T => {
   if (!result.ok) {
@@ -44,7 +61,10 @@ describe("agent tools", () => {
         const persisted = persistedFor(reviewer, mode);
         const bridge = createReviewerBridge(reviewer, { mode });
 
-        const rows = ok<Row[]>(call(bridge, "read_document", {}), "read_document");
+        const rows = ok<Row[]>(
+          call(bridge, "read_document", {}),
+          "read_document",
+        );
         assert.ok(rows.length > 0);
         const outline = ok<{ sections: { handle: unknown }[] }>(
           call(bridge, "get_document_outline", {}),
@@ -52,16 +72,24 @@ describe("agent tools", () => {
         );
         const [firstSection] = outline.sections;
         if (firstSection) {
-          ok(call(bridge, "read_section", { handle: firstSection.handle }), "read_section");
+          ok(
+            call(bridge, "read_section", { handle: firstSection.handle }),
+            "read_section",
+          );
         }
         for (const story of ok<{ handle: unknown }[]>(
           call(bridge, "list_stories", {}),
           "list_stories",
         )) {
-          ok(call(bridge, "read_story", { handle: story.handle }), "read_story");
+          ok(
+            call(bridge, "read_story", { handle: story.handle }),
+            "read_story",
+          );
         }
 
-        const target = rows.find((row) => row.kind === "paragraph" && /\w{4,}/u.test(row.text));
+        const target = rows.find(
+          (row) => row.kind === "paragraph" && /\w{4,}/u.test(row.text),
+        );
         assert.ok(target, "no paragraph to edit");
         const word = /\w{4,}/u.exec(target.text)?.[0] ?? "";
         const found = ok<{ matches: { range: unknown }[] }>(
@@ -73,7 +101,11 @@ describe("agent tools", () => {
         const suggested = ok<SuggestResult>(
           call(bridge, "suggest_changes", {
             operations: [
-              { type: "replaceRange", range: found.matches[0]?.range, replace: "revised" },
+              {
+                type: "replaceRange",
+                range: found.matches[0]?.range,
+                replace: "revised",
+              },
               {
                 type: "insertAfterBlock",
                 blockId: target.blockId,
@@ -85,7 +117,11 @@ describe("agent tools", () => {
           "suggest_changes",
         );
         assert.equal(suggested.applied.length + suggested.skipped.length, 2);
-        await assertHealthy(reviewer, `${name} / ${mode} after suggest_changes`, persisted);
+        await assertHealthy(
+          reviewer,
+          `${name} / ${mode} after suggest_changes`,
+          persisted,
+        );
 
         const comment = call(bridge, "add_comment", {
           blockId: target.blockId,
@@ -109,18 +145,33 @@ describe("agent tools", () => {
         const [first] = comments;
         if (first) {
           ok(
-            call(bridge, "reply_comment", { commentId: first.id, text: "Confirmed." }),
+            call(bridge, "reply_comment", {
+              commentId: first.id,
+              text: "Confirmed.",
+            }),
             "reply_comment",
           );
-          ok(call(bridge, "resolve_comment", { commentId: first.id }), "resolve_comment");
+          ok(
+            call(bridge, "resolve_comment", { commentId: first.id }),
+            "resolve_comment",
+          );
         }
         ok(call(bridge, "read_changes", {}), "read_changes");
         // Comments are not suggestions: they reach the package in every mode.
         const afterComments =
           persisted.persisted === undefined
             ? {}
-            : { persisted: { ...persisted.persisted, comments: visibleState(reviewer).comments } };
-        await assertHealthy(reviewer, `${name} / ${mode} after the comment round`, afterComments);
+            : {
+                persisted: {
+                  ...persisted.persisted,
+                  comments: visibleState(reviewer).comments,
+                },
+              };
+        await assertHealthy(
+          reviewer,
+          `${name} / ${mode} after the comment round`,
+          afterComments,
+        );
       });
     }
   }
@@ -130,7 +181,8 @@ describe("model mistakes", () => {
   for (const [mistake, build] of Object.entries(MISTAKES)) {
     for (const mode of MODES) {
       test(`${mistake} / ${mode}: refused with a reason, or the document still saves`, async () => {
-        const fixture = FIXTURE_NAMES[mistake.length % FIXTURE_NAMES.length] ?? "plain";
+        const fixture =
+          FIXTURE_NAMES[mistake.length % FIXTURE_NAMES.length] ?? "plain";
         const reviewer = await openReviewer(await FIXTURES[fixture]());
         const persisted = persistedFor(reviewer, mode);
         const bridge = createReviewerBridge(reviewer, { mode });
@@ -146,9 +198,16 @@ describe("model mistakes", () => {
         );
         const refusedWith = REFUSED_MISTAKES[mistake];
         if (refusedWith !== undefined) {
-          assert.ok(result.ok, `${mistake}: the call failed instead of reporting an issue`);
+          assert.ok(
+            result.ok,
+            `${mistake}: the call failed instead of reporting an issue`,
+          );
           const outcome = result.result as SuggestResult;
-          assert.equal(outcome.applied.length, 0, `${mistake}: applied instead of refused`);
+          assert.equal(
+            outcome.applied.length,
+            0,
+            `${mistake}: applied instead of refused`,
+          );
           assert.deepEqual(
             outcome.issues.map(({ code }) => code),
             [refusedWith],
@@ -162,9 +221,16 @@ describe("model mistakes", () => {
             );
           }
         } else {
-          assert.ok(result.error.length > 0, `${mistake}: refused without a message`);
+          assert.ok(
+            result.error.length > 0,
+            `${mistake}: refused without a message`,
+          );
         }
-        await assertHealthy(reviewer, `${fixture} / ${mode} after ${mistake}`, persisted);
+        await assertHealthy(
+          reviewer,
+          `${fixture} / ${mode} after ${mistake}`,
+          persisted,
+        );
       });
     }
   }

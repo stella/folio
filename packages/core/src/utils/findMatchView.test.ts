@@ -3,13 +3,16 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
 import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
-import { OP_STORIES, sameStory, storyBody } from "@stll/docx-core/ops";
 import { Schema } from "prosemirror-model";
 
-import { navigationStories } from "../../typecheck/findNavigationStories.typecheck";
+import { OP_STORIES, sameStory, storyBody } from "@stll/docx-core/ops";
 
+import { navigationStories } from "../../typecheck/findNavigationStories.typecheck";
 import type { Layout, Page } from "../layout-engine/types";
-import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  headerFooterToProseDoc,
+  toProseDoc,
+} from "../prosemirror/conversion/toProseDoc";
 import type { Paragraph } from "../types/content";
 import type { Document } from "../types/document";
 import {
@@ -57,14 +60,18 @@ const fixture = (): Document => ({
       sections: [
         {
           properties: {
-            headerReferences: (["default", "first", "even"] as const).map((type) => ({
-              type,
-              rId: `h-${type}`,
-            })),
-            footerReferences: (["default", "first", "even"] as const).map((type) => ({
-              type,
-              rId: `f-${type}`,
-            })),
+            headerReferences: (["default", "first", "even"] as const).map(
+              (type) => ({
+                type,
+                rId: `h-${type}`,
+              }),
+            ),
+            footerReferences: (["default", "first", "even"] as const).map(
+              (type) => ({
+                type,
+                rId: `f-${type}`,
+              }),
+            ),
           },
           content: [],
         },
@@ -73,22 +80,66 @@ const fixture = (): Document => ({
     headers: new Map([
       [
         "h-default",
-        { type: "header", hdrFtrType: "default", content: [paragraph("header hit suffix")] },
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [paragraph("header hit suffix")],
+        },
       ],
-      ["h-first", { type: "header", hdrFtrType: "first", content: [paragraph("header hit")] }],
-      ["h-even", { type: "header", hdrFtrType: "even", content: [paragraph("header hit")] }],
+      [
+        "h-first",
+        {
+          type: "header",
+          hdrFtrType: "first",
+          content: [paragraph("header hit")],
+        },
+      ],
+      [
+        "h-even",
+        {
+          type: "header",
+          hdrFtrType: "even",
+          content: [paragraph("header hit")],
+        },
+      ],
     ]),
     footers: new Map([
-      ["f-default", { type: "footer", hdrFtrType: "default", content: [paragraph("footer hit")] }],
-      ["f-first", { type: "footer", hdrFtrType: "first", content: [paragraph("footer hit")] }],
-      ["f-even", { type: "footer", hdrFtrType: "even", content: [paragraph("footer hit")] }],
+      [
+        "f-default",
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [paragraph("footer hit")],
+        },
+      ],
+      [
+        "f-first",
+        {
+          type: "footer",
+          hdrFtrType: "first",
+          content: [paragraph("footer hit")],
+        },
+      ],
+      [
+        "f-even",
+        {
+          type: "footer",
+          hdrFtrType: "even",
+          content: [paragraph("footer hit")],
+        },
+      ],
     ]),
-    footnotes: [{ type: "footnote", id: 1, content: [paragraph("footnote hit")] }],
+    footnotes: [
+      { type: "footnote", id: 1, content: [paragraph("footnote hit")] },
+    ],
     endnotes: [{ type: "endnote", id: 2, content: [paragraph("endnote hit")] }],
   },
 });
 
-const page = (number: number, refs: NonNullable<Page["headerFooterRefs"]>): Page => ({
+const page = (
+  number: number,
+  refs: NonNullable<Page["headerFooterRefs"]>,
+): Page => ({
   number,
   logicalNumber: number,
   sectionPageNumber: number,
@@ -98,7 +149,10 @@ const page = (number: number, refs: NonNullable<Page["headerFooterRefs"]>): Page
   headerFooterRefs: refs,
 });
 
-const layout = (pages: Page[]): Layout => ({ pageSize: { w: 800, h: 1000 }, pages });
+const layout = (pages: Page[]): Layout => ({
+  pageSize: { w: 800, h: 1000 },
+  pages,
+});
 
 describe("rendered search story eligibility", () => {
   const refs = {
@@ -111,17 +165,26 @@ describe("rendered search story eligibility", () => {
   };
 
   test("inactive first/even variants are excluded and shared parts count once", () => {
-    const stories = getRenderedSearchStories(layout([page(1, refs), page(2, refs), page(3, refs)]));
+    const stories = getRenderedSearchStories(
+      layout([page(1, refs), page(2, refs), page(3, refs)]),
+    );
     expect(stories).toEqual([
       { kind: "header", rId: "h-default" },
       { kind: "footer", rId: "f-default" },
     ]);
-    const matches = findInDocument(fixture(), "hit", createDefaultFindOptions(), {
-      renderedStories: stories,
-    });
+    const matches = findInDocument(
+      fixture(),
+      "hit",
+      createDefaultFindOptions(),
+      {
+        renderedStories: stories,
+      },
+    );
     expect(matches).toHaveLength(6);
     expect(
-      matches.filter(({ story }) => story !== OP_STORIES.MAIN).map(({ story }) => story),
+      matches
+        .filter(({ story }) => story !== OP_STORIES.MAIN)
+        .map(({ story }) => story),
     ).toEqual([
       { kind: "header", rId: "h-default" },
       { kind: "footer", rId: "f-default" },
@@ -142,7 +205,9 @@ describe("rendered search story eligibility", () => {
     );
     expect(stories).toHaveLength(6);
     expect(
-      findInDocument(fixture(), "hit", createDefaultFindOptions(), { renderedStories: stories }),
+      findInDocument(fixture(), "hit", createDefaultFindOptions(), {
+        renderedStories: stories,
+      }),
     ).toHaveLength(10);
     expect(getRenderedSearchStories(null)).toEqual([]);
   });
@@ -151,7 +216,11 @@ describe("rendered search story eligibility", () => {
     expect(
       getRenderedSearchStories(
         layout([
-          page(1, { titlePg: true, headerDefault: "h-default", footerDefault: "f-default" }),
+          page(1, {
+            titlePg: true,
+            headerDefault: "h-default",
+            footerDefault: "f-default",
+          }),
         ]),
       ),
     ).toEqual([]);
@@ -169,14 +238,22 @@ describe("story-local painted search ranges", () => {
     for (const range of ranges) {
       const match = matches.at(range.index);
       expect(match).toBeDefined();
-      expect(sameStory(match?.story ?? OP_STORIES.MAIN, range.story)).toBe(true);
+      expect(sameStory(match?.story ?? OP_STORIES.MAIN, range.story)).toBe(
+        true,
+      );
       const source =
         range.story === OP_STORIES.MAIN
           ? toProseDoc(doc)
           : headerFooterToProseDoc(storyBody(doc, range.story).content, {
-              ...(doc.package.styles === undefined ? {} : { styles: doc.package.styles }),
-              ...(doc.package.theme === undefined ? {} : { theme: doc.package.theme }),
-              ...(doc.package.numbering === undefined ? {} : { numbering: doc.package.numbering }),
+              ...(doc.package.styles === undefined
+                ? {}
+                : { styles: doc.package.styles }),
+              ...(doc.package.theme === undefined
+                ? {}
+                : { theme: doc.package.theme }),
+              ...(doc.package.numbering === undefined
+                ? {}
+                : { numbering: doc.package.numbering }),
             });
       expect(source.textBetween(range.from, range.to)).toBe("hit");
     }
@@ -194,14 +271,24 @@ describe("story-local painted search ranges", () => {
     });
     const bodyDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("body hit")]),
-      schema.node("textBox", null, [schema.node("paragraph", null, [schema.text("box hit")])]),
+      schema.node("textBox", null, [
+        schema.node("paragraph", null, [schema.text("box hit")]),
+      ]),
     ]);
     const doc = fixture();
-    const matches = findInDocument(doc, "hit", createDefaultFindOptions()).filter(
-      ({ story }) => story === OP_STORIES.MAIN,
+    const matches = findInDocument(
+      doc,
+      "hit",
+      createDefaultFindOptions(),
+    ).filter(({ story }) => story === OP_STORIES.MAIN);
+    const ranges = resolveDocumentFindRanges({
+      document: doc,
+      bodyDoc,
+      matches,
+    });
+    expect(ranges.map(({ from, to }) => bodyDoc.textBetween(from, to))).toEqual(
+      ["hit", "hit"],
     );
-    const ranges = resolveDocumentFindRanges({ document: doc, bodyDoc, matches });
-    expect(ranges.map(({ from, to }) => bodyDoc.textBetween(from, to))).toEqual(["hit", "hit"]);
     expect(ranges.map(({ from, to }) => ({ from, to }))).toEqual([
       { from: 6, to: 9 },
       { from: 16, to: 19 },
@@ -308,8 +395,16 @@ describe("view-only search geometry", () => {
         text: "AB",
         replacement: { status: "blocked", reason: "atomic-content" },
       });
-      expect(resolveDocumentFindRanges({ document: doc, bodyDoc, matches })).toEqual([
-        { from: 1, to: 5, index: 0, story: "main", excludedRanges: [{ from: 2, to: 4 }] },
+      expect(
+        resolveDocumentFindRanges({ document: doc, bodyDoc, matches }),
+      ).toEqual([
+        {
+          from: 1,
+          to: 5,
+          index: 0,
+          story: "main",
+          excludedRanges: [{ from: 2, to: 4 }],
+        },
       ]);
       const container = viewport();
       const pageElement = document.createElement("div");
@@ -323,45 +418,69 @@ describe("view-only search geometry", () => {
       container.append(pageElement);
       const intervals: { start: number; end: number; text: string }[] = [];
       const createRange = document.createRange.bind(document);
-      const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
-        const range = createRange();
-        Object.defineProperty(range, "getClientRects", {
-          value: () => {
-            intervals.push({
-              start: range.startOffset,
-              end: range.endOffset,
-              text: range.toString(),
-            });
-            return [
-              new DOMRect(
-                30 + range.startOffset * 10,
-                200,
-                (range.endOffset - range.startOffset) * 10,
-                18,
-              ),
-            ];
-          },
-        });
-        return range;
-      });
+      const rangeFactory = spyOn(document, "createRange").mockImplementation(
+        () => {
+          const range = createRange();
+          Object.defineProperty(range, "getClientRects", {
+            value: () => {
+              intervals.push({
+                start: range.startOffset,
+                end: range.endOffset,
+                text: range.toString(),
+              });
+              return [
+                new DOMRect(
+                  30 + range.startOffset * 10,
+                  200,
+                  (range.endOffset - range.startOffset) * 10,
+                  18,
+                ),
+              ];
+            },
+          });
+          return range;
+        },
+      );
       const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
-      const view = createFindMatchView({ container, document: doc, bodyDoc, matches });
+      const view = createFindMatchView({
+        container,
+        document: doc,
+        bodyDoc,
+        matches,
+      });
       expect(intervals).toEqual([
         { start: 0, end: 1, text: "A" },
         { start: 3, end: 4, text: "B" },
       ]);
-      const marks = [...container.querySelectorAll<HTMLElement>("[data-find-match-index]")];
-      expect(marks.map((mark) => ({ left: mark.style.left, width: mark.style.width }))).toEqual([
+      const marks = [
+        ...container.querySelectorAll<HTMLElement>("[data-find-match-index]"),
+      ];
+      expect(
+        marks.map((mark) => ({
+          left: mark.style.left,
+          width: mark.style.width,
+        })),
+      ).toEqual([
         { left: "30px", width: "10px" },
         { left: "60px", width: "10px" },
       ]);
-      expect(marks.every((mark) => mark.dataset["current"] === "true")).toBe(true);
+      expect(marks.every((mark) => mark.dataset["current"] === "true")).toBe(
+        true,
+      );
       view.paint(-1);
-      expect(marks.every((mark) => mark.dataset["current"] === "false")).toBe(true);
+      expect(marks.every((mark) => mark.dataset["current"] === "false")).toBe(
+        true,
+      );
       view.paint(0);
-      expect(marks.every((mark) => mark.dataset["current"] === "true")).toBe(true);
+      expect(marks.every((mark) => mark.dataset["current"] === "true")).toBe(
+        true,
+      );
       expect(view.reveal(0)).toBe(true);
-      expect(scroll).toHaveBeenCalledWith({ top: 159, left: 0, behavior: "smooth" });
+      expect(scroll).toHaveBeenCalledWith({
+        top: 159,
+        left: 0,
+        behavior: "smooth",
+      });
       expect(doc).toEqual(before);
       expect(span.textContent).toBe("A12B");
       view.destroy();
@@ -384,10 +503,16 @@ describe("view-only search geometry", () => {
                   instruction: " DOCVARIABLE label ",
                   fieldCode: [],
                   fieldResult: [
-                    { type: "run", content: [{ type: "text", text: "field hit value" }] },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "field hit value" }],
+                    },
                   ],
                 },
-                { type: "run", content: [{ type: "text", text: " after hit" }] },
+                {
+                  type: "run",
+                  content: [{ type: "text", text: " after hit" }],
+                },
               ],
             },
           ],
@@ -399,7 +524,11 @@ describe("view-only search geometry", () => {
     expect(bodyDoc.child(0).child(0).type.name).toBe("field");
     const matches = findInDocument(doc, "hit", createDefaultFindOptions());
     expect(matches).toHaveLength(2);
-    const ranges = resolveDocumentFindRanges({ document: doc, bodyDoc, matches });
+    const ranges = resolveDocumentFindRanges({
+      document: doc,
+      bodyDoc,
+      matches,
+    });
     expect(ranges).toEqual([
       {
         from: 1,
@@ -425,36 +554,43 @@ describe("view-only search geometry", () => {
     container.append(pageElement);
     const measured: { text: string | null; start: number; end: number }[] = [];
     const createRange = document.createRange.bind(document);
-    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
-      const range = createRange();
-      Object.defineProperty(range, "getClientRects", {
-        value: () => {
-          measured.push({
-            text: range.startContainer.textContent,
-            start: range.startOffset,
-            end: range.endOffset,
-          });
-          return [
-            new DOMRect(
-              30 + range.startOffset * 10,
-              200,
-              (range.endOffset - range.startOffset) * 10,
-              18,
-            ),
-          ];
-        },
-      });
-      return range;
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(
+      () => {
+        const range = createRange();
+        Object.defineProperty(range, "getClientRects", {
+          value: () => {
+            measured.push({
+              text: range.startContainer.textContent,
+              start: range.startOffset,
+              end: range.endOffset,
+            });
+            return [
+              new DOMRect(
+                30 + range.startOffset * 10,
+                200,
+                (range.endOffset - range.startOffset) * 10,
+                18,
+              ),
+            ];
+          },
+        });
+        return range;
+      },
+    );
+    const view = createFindMatchView({
+      container,
+      document: doc,
+      bodyDoc,
+      matches,
     });
-    const view = createFindMatchView({ container, document: doc, bodyDoc, matches });
     expect(measured).toEqual([
       { text: "field hit value", start: 6, end: 9 },
       { text: " after hit", start: 7, end: 10 },
     ]);
     expect(
-      [...container.querySelectorAll<HTMLElement>("[data-find-match-index]")].map(
-        (mark) => mark.style.width,
-      ),
+      [
+        ...container.querySelectorAll<HTMLElement>("[data-find-match-index]"),
+      ].map((mark) => mark.style.width),
     ).toEqual(["30px", "30px"]);
     expect(fieldSpan.hasAttribute("data-pm-start")).toBe(false);
     expect(fieldSpan.hasAttribute("data-pm-end")).toBe(false);
@@ -466,7 +602,9 @@ describe("view-only search geometry", () => {
   test.each([0.5, 2])(
     "scaled paint surface keeps search marks in local coordinates at zoom %s",
     (zoom) => {
-      const doc: Document = { package: { document: { content: [paragraph("hit")] } } };
+      const doc: Document = {
+        package: { document: { content: [paragraph("hit")] } },
+      };
       const container = viewport();
       const span = appendPaintedSpan({
         container,
@@ -482,17 +620,22 @@ describe("view-only search geometry", () => {
         document: doc,
         matches: findInDocument(doc, "hit", createDefaultFindOptions()),
       });
-      const overlay = container.querySelector<HTMLElement>("[data-folio-find-overlay]");
+      const overlay = container.querySelector<HTMLElement>(
+        "[data-folio-find-overlay]",
+      );
       expect(overlay).not.toBeNull();
       if (!overlay) return;
       Object.defineProperties(overlay, {
         offsetWidth: { value: 500 },
         offsetHeight: { value: 100 },
       });
-      overlay.getBoundingClientRect = () => new DOMRect(10, 20, 500 * zoom, 100 * zoom);
+      overlay.getBoundingClientRect = () =>
+        new DOMRect(10, 20, 500 * zoom, 100 * zoom);
       // A missing target forces a fresh paint after installing browser geometry.
       expect(view.reveal(1)).toBe(false);
-      const mark = overlay.querySelector<HTMLElement>("[data-find-match-index]");
+      const mark = overlay.querySelector<HTMLElement>(
+        "[data-find-match-index]",
+      );
       expect({
         left: mark?.style.left,
         top: mark?.style.top,
@@ -509,7 +652,9 @@ describe("view-only search geometry", () => {
   );
 
   test("each text match measures only its character interval", () => {
-    const doc: Document = { package: { document: { content: [paragraph("hit hit")] } } };
+    const doc: Document = {
+      package: { document: { content: [paragraph("hit hit")] } },
+    };
     const container = viewport();
     const pageElement = document.createElement("div");
     pageElement.className = "layout-page";
@@ -521,23 +666,25 @@ describe("view-only search geometry", () => {
     container.append(pageElement);
     const createRange = document.createRange.bind(document);
     const intervals: { start: number; end: number }[] = [];
-    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
-      const range = createRange();
-      Object.defineProperty(range, "getClientRects", {
-        value: () => {
-          intervals.push({ start: range.startOffset, end: range.endOffset });
-          return [
-            new DOMRect(
-              30 + range.startOffset * 10,
-              200,
-              (range.endOffset - range.startOffset) * 10,
-              18,
-            ),
-          ];
-        },
-      });
-      return range;
-    });
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(
+      () => {
+        const range = createRange();
+        Object.defineProperty(range, "getClientRects", {
+          value: () => {
+            intervals.push({ start: range.startOffset, end: range.endOffset });
+            return [
+              new DOMRect(
+                30 + range.startOffset * 10,
+                200,
+                (range.endOffset - range.startOffset) * 10,
+                18,
+              ),
+            ];
+          },
+        });
+        return range;
+      },
+    );
     const view = createFindMatchView({
       container,
       document: doc,
@@ -547,8 +694,12 @@ describe("view-only search geometry", () => {
       { start: 0, end: 3 },
       { start: 4, end: 7 },
     ]);
-    const marks = [...container.querySelectorAll<HTMLElement>("[data-find-match-index]")];
-    expect(marks.map((mark) => ({ left: mark.style.left, width: mark.style.width }))).toEqual([
+    const marks = [
+      ...container.querySelectorAll<HTMLElement>("[data-find-match-index]"),
+    ];
+    expect(
+      marks.map((mark) => ({ left: mark.style.left, width: mark.style.width })),
+    ).toEqual([
       { left: "30px", width: "30px" },
       { left: "70px", width: "30px" },
     ]);
@@ -562,13 +713,21 @@ describe("view-only search geometry", () => {
       package: {
         document: {
           content: [paragraph("body hit")],
-          comments: [{ id: 7, author: "Author", content: [paragraph("comment hit")] }],
+          comments: [
+            { id: 7, author: "Author", content: [paragraph("comment hit")] },
+          ],
         },
       },
     };
     const before = structuredClone(doc);
     const container = viewport();
-    appendPaintedSpan({ container, from: 6, to: 9, top: 200, story: OP_STORIES.MAIN });
+    appendPaintedSpan({
+      container,
+      from: 6,
+      to: 9,
+      top: 200,
+      story: OP_STORIES.MAIN,
+    });
     const commentRoot = document.createElement("div");
     commentRoot.dataset["folioScroll"] = "";
     Object.defineProperties(commentRoot, {
@@ -583,33 +742,50 @@ describe("view-only search geometry", () => {
     commentText.getBoundingClientRect = () => new DOMRect(80, 260, 110, 18);
     commentRoot.append(commentText);
     document.body.append(commentRoot);
-    const commentScroll = spyOn(commentRoot, "scrollTo").mockImplementation(() => {});
-    const bodyScroll = spyOn(container, "scrollTo").mockImplementation(() => {});
+    const commentScroll = spyOn(commentRoot, "scrollTo").mockImplementation(
+      () => {},
+    );
+    const bodyScroll = spyOn(container, "scrollTo").mockImplementation(
+      () => {},
+    );
     const intervals: { start: number; end: number }[] = [];
     const createRange = document.createRange.bind(document);
-    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
-      const range = createRange();
-      Object.defineProperty(range, "getClientRects", {
-        value: () => {
-          intervals.push({ start: range.startOffset, end: range.endOffset });
-          return [new DOMRect(160, 260, 30, 18)];
-        },
-      });
-      return range;
-    });
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(
+      () => {
+        const range = createRange();
+        Object.defineProperty(range, "getClientRects", {
+          value: () => {
+            intervals.push({ start: range.startOffset, end: range.endOffset });
+            return [new DOMRect(160, 260, 30, 18)];
+          },
+        });
+        return range;
+      },
+    );
     const matches = findInDocument(doc, "hit", {
       ...createDefaultFindOptions(),
       includeComments: true,
     });
-    const view = createFindMatchView({ container, document: doc, matches, commentRoot });
+    const view = createFindMatchView({
+      container,
+      document: doc,
+      matches,
+      commentRoot,
+    });
     expect(intervals).toEqual([{ start: 8, end: 11 }]);
     expect(document.querySelectorAll("[data-find-match-index]").length).toBe(2);
     view.paint(1);
     expect(
-      document.querySelector('[data-current="true"]')?.getAttribute("data-find-match-index"),
+      document
+        .querySelector('[data-current="true"]')
+        ?.getAttribute("data-find-match-index"),
     ).toBe("1");
     expect(view.reveal(1)).toBe(true);
-    expect(commentScroll).toHaveBeenCalledWith({ top: 219, left: 0, behavior: "smooth" });
+    expect(commentScroll).toHaveBeenCalledWith({
+      top: 219,
+      left: 0,
+      behavior: "smooth",
+    });
     expect(bodyScroll).not.toHaveBeenCalled();
     expect(doc).toEqual(before);
     expect(commentText.textContent).toBe("comment hit");
@@ -629,36 +805,52 @@ describe("view-only search geometry", () => {
       const container = viewport();
       const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
       container.contentEditable = String(mode === "editing");
-      for (const range of resolveDocumentFindRanges({ document: doc, matches })) {
+      for (const range of resolveDocumentFindRanges({
+        document: doc,
+        matches,
+      })) {
         appendPaintedSpan({ container, ...range, top: 200 + range.index * 40 });
       }
       const paintedBefore = [...container.querySelectorAll(".layout-page")].map(
         (element) => element.outerHTML,
       );
       const view = createFindMatchView({ container, document: doc, matches });
-      const overlay = container.querySelector<HTMLElement>("[data-folio-find-overlay]");
+      const overlay = container.querySelector<HTMLElement>(
+        "[data-folio-find-overlay]",
+      );
       expect(overlay?.getAttribute("aria-hidden")).toBe("true");
       expect(overlay?.style.pointerEvents).toBe("none");
       expect(overlay?.children.length).toBe(matches.length);
       expect(overlay?.querySelectorAll('[data-current="true"]').length).toBe(1);
       view.paint(matches.length - 1);
       expect(
-        overlay?.querySelector('[data-current="true"]')?.getAttribute("data-find-match-index"),
+        overlay
+          ?.querySelector('[data-current="true"]')
+          ?.getAttribute("data-find-match-index"),
       ).toBe(String(matches.length - 1));
-      const currentMark = overlay?.querySelector<HTMLElement>('[data-current="true"]');
+      const currentMark = overlay?.querySelector<HTMLElement>(
+        '[data-current="true"]',
+      );
       expect(currentMark?.style.outlineWidth).toBe("2px");
       expect(currentMark?.style.outlineStyle).toBe("solid");
       expect(
-        overlay?.querySelector<HTMLElement>('[data-current="false"]')?.style.outlineWidth,
+        overlay?.querySelector<HTMLElement>('[data-current="false"]')?.style
+          .outlineWidth,
       ).toBe("0px");
       for (const [index] of matches.entries()) {
         scroll.mockClear();
         expect(view.reveal(index)).toBe(true);
-        expect(scroll).toHaveBeenCalledWith({ top: 159 + index * 40, left: 0, behavior: "smooth" });
+        expect(scroll).toHaveBeenCalledWith({
+          top: 159 + index * 40,
+          left: 0,
+          behavior: "smooth",
+        });
       }
       expect(view.reveal(matches.length)).toBe(false);
       expect(
-        [...container.querySelectorAll(".layout-page")].map((element) => element.outerHTML),
+        [...container.querySelectorAll(".layout-page")].map(
+          (element) => element.outerHTML,
+        ),
       ).toEqual(paintedBefore);
       expect(doc).toEqual(before);
       view.destroy();
@@ -669,9 +861,15 @@ describe("view-only search geometry", () => {
 
   test("shared-part navigation selects the first rendered occurrence despite different run segmentation", () => {
     const doc = fixture();
-    const matches = findInDocument(doc, "hit", createDefaultFindOptions()).filter(
+    const matches = findInDocument(
+      doc,
+      "hit",
+      createDefaultFindOptions(),
+    ).filter(
       ({ story }) =>
-        story !== OP_STORIES.MAIN && story?.kind === "header" && story.rId === "h-default",
+        story !== OP_STORIES.MAIN &&
+        story?.kind === "header" &&
+        story.rId === "h-default",
     );
     const range = resolveDocumentFindRanges({ document: doc, matches }).at(0);
     expect(range).toBeDefined();
@@ -680,20 +878,40 @@ describe("view-only search geometry", () => {
     const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
     appendPaintedSpan({ container, ...range, from: 1, to: 18, top: 200 });
     appendPaintedSpan({ container, ...range, from: 1, to: 7, top: 800 });
-    appendPaintedSpan({ container, ...range, from: 7, to: range.from + 1, top: 800 });
+    appendPaintedSpan({
+      container,
+      ...range,
+      from: 7,
+      to: range.from + 1,
+      top: 800,
+    });
     appendPaintedSpan({ container, ...range, from: range.from + 1, top: 800 });
-    appendPaintedSpan({ container, ...range, from: range.to, to: 15, top: 800 });
+    appendPaintedSpan({
+      container,
+      ...range,
+      from: range.to,
+      to: 15,
+      top: 800,
+    });
     appendPaintedSpan({ container, ...range, from: 15, to: 18, top: 800 });
     const view = createFindMatchView({ container, document: doc, matches });
-    expect(container.querySelectorAll("[data-find-match-index]").length).toBe(3);
+    expect(container.querySelectorAll("[data-find-match-index]").length).toBe(
+      3,
+    );
     expect(view.reveal(0)).toBe(true);
-    expect(scroll).toHaveBeenCalledWith({ top: 159, left: 0, behavior: "smooth" });
+    expect(scroll).toHaveBeenCalledWith({
+      top: 159,
+      left: 0,
+      behavior: "smooth",
+    });
     view.destroy();
     scroll.mockRestore();
   });
 
   test("scrolling an editor scroll root that encloses the surface repaints its clipping", async () => {
-    const doc: Document = { package: { document: { content: [paragraph("hit")] } } };
+    const doc: Document = {
+      package: { document: { content: [paragraph("hit")] } },
+    };
     const matches = findInDocument(doc, "hit", createDefaultFindOptions());
     const range = resolveDocumentFindRanges({ document: doc, matches }).at(0);
     if (!range) throw new Error("expected a body range");
@@ -706,7 +924,8 @@ describe("view-only search geometry", () => {
     const removeListener = spyOn(root, "removeEventListener");
     const view = createFindMatchView({ container, document: doc, matches });
     const clip = () =>
-      container.querySelector<HTMLElement>("[data-find-match-index]")?.style.clipPath;
+      container.querySelector<HTMLElement>("[data-find-match-index]")?.style
+        .clipPath;
     expect(clip()).toBe("inset(0px 0px 118px 0px)");
 
     span.getBoundingClientRect = () => new DOMRect(30, 20, 24, 18);
@@ -715,7 +934,11 @@ describe("view-only search geometry", () => {
     expect(clip()).toBe("inset(0px 0px 0px 0px)");
 
     view.destroy();
-    expect(addListener).toHaveBeenCalledWith("scroll", expect.any(Function), true);
+    expect(addListener).toHaveBeenCalledWith(
+      "scroll",
+      expect.any(Function),
+      true,
+    );
     expect(removeListener).toHaveBeenCalledWith(
       "scroll",
       addListener.mock.calls.find(([type]) => type === "scroll")?.[1],
@@ -728,7 +951,9 @@ describe("view-only search geometry", () => {
   test("destroy disconnects both observers", () => {
     const mutationDisconnect = spyOn(MutationObserver.prototype, "disconnect");
     const resizeDisconnect = spyOn(ResizeObserver.prototype, "disconnect");
-    const doc: Document = { package: { document: { content: [paragraph("hit")] } } };
+    const doc: Document = {
+      package: { document: { content: [paragraph("hit")] } },
+    };
     const container = viewport();
     const view = createFindMatchView({
       container,
@@ -747,10 +972,12 @@ describe("view-only search geometry", () => {
 // Exercise the geometry oracle with both empty and zero-area ranges.
 test.each(
   (["comment", "body"] as const).flatMap((surface) =>
-    (["empty", "zero-width", "zero-height", "clipped"] as const).map((visibility) => ({
-      surface,
-      visibility,
-    })),
+    (["empty", "zero-width", "zero-height", "clipped"] as const).map(
+      (visibility) => ({
+        surface,
+        visibility,
+      }),
+    ),
   ),
 )(
   "hidden $surface range ($visibility) cannot be revealed until it becomes visible",
@@ -759,7 +986,14 @@ test.each(
       package: {
         document: {
           content: [paragraph("body")],
-          comments: [{ id: 8, parentId: 7, author: "Author", content: [paragraph("reply hit")] }],
+          comments: [
+            {
+              id: 8,
+              parentId: 7,
+              author: "Author",
+              content: [paragraph("reply hit")],
+            },
+          ],
         },
       },
     } satisfies Document;
@@ -771,24 +1005,26 @@ test.each(
     container.append(reply);
     let visible = false;
     const createRange = document.createRange.bind(document);
-    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
-      const range = createRange();
-      Object.defineProperty(range, "getClientRects", {
-        value: () => {
-          if (visible) return [new DOMRect(20, 200, 30, 18)];
-          if (visibility === "empty") return [];
-          return [
-            new DOMRect(
-              20,
-              200,
-              visibility === "zero-width" ? 0 : 30,
-              visibility === "zero-height" ? 0 : 18,
-            ),
-          ];
-        },
-      });
-      return range;
-    });
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(
+      () => {
+        const range = createRange();
+        Object.defineProperty(range, "getClientRects", {
+          value: () => {
+            if (visible) return [new DOMRect(20, 200, 30, 18)];
+            if (visibility === "empty") return [];
+            return [
+              new DOMRect(
+                20,
+                200,
+                visibility === "zero-width" ? 0 : 30,
+                visibility === "zero-height" ? 0 : 18,
+              ),
+            ];
+          },
+        });
+        return range;
+      },
+    );
     if (surface === "body") {
       doc.package.document.content = [paragraph("reply hit")];
       const pageElement = document.createElement("div");
@@ -815,14 +1051,18 @@ test.each(
     const view = createFindMatchView({ container, document: doc, matches });
     try {
       expect(view.reveal(0)).toBe(false);
-      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(0);
+      expect(
+        container.querySelectorAll("[data-find-match-index]"),
+      ).toHaveLength(0);
       visible = true;
       if (visibility === "clipped") {
         clip.style.overflowX = "visible";
         clip.style.overflowY = "visible";
       }
       expect(view.reveal(0)).toBe(true);
-      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(1);
+      expect(
+        container.querySelectorAll("[data-find-match-index]"),
+      ).toHaveLength(1);
     } finally {
       view.destroy();
       rangeFactory.mockRestore();
@@ -834,9 +1074,14 @@ test.each(Object.entries(navigationStories))(
   "initially unmounted %s match scrolls its page shell then reveals after mount",
   async (_kind, story) => {
     const doc = fixture();
-    const matches = findInDocument(doc, "hit", createDefaultFindOptions()).filter(
+    const matches = findInDocument(
+      doc,
+      "hit",
+      createDefaultFindOptions(),
+    ).filter(
       (match) =>
-        match.textBoxIndex === undefined && sameStory(match.story ?? OP_STORIES.MAIN, story),
+        match.textBoxIndex === undefined &&
+        sameStory(match.story ?? OP_STORIES.MAIN, story),
     );
     const range = resolveDocumentFindRanges({ document: doc, matches }).at(0);
     expect(range).toBeDefined();
@@ -881,14 +1126,26 @@ test.each(Object.entries(navigationStories))(
       layout: layout([page(1, {}), targetPage]),
     });
     try {
-      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(0);
+      expect(
+        container.querySelectorAll("[data-find-match-index]"),
+      ).toHaveLength(0);
       view.navigate(0);
       expect(scroll).toHaveBeenCalledTimes(1);
-      expect(scroll).toHaveBeenCalledWith({ top: 1050, left: 0, behavior: "smooth" });
+      expect(scroll).toHaveBeenCalledWith({
+        top: 1050,
+        left: 0,
+        behavior: "smooth",
+      });
       await new Promise<void>((resolve) => setTimeout(resolve, 60));
       expect(scroll).toHaveBeenCalledTimes(2);
-      expect(scroll).toHaveBeenLastCalledWith({ top: 659, left: 0, behavior: "smooth" });
-      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(1);
+      expect(scroll).toHaveBeenLastCalledWith({
+        top: 659,
+        left: 0,
+        behavior: "smooth",
+      });
+      expect(
+        container.querySelectorAll("[data-find-match-index]"),
+      ).toHaveLength(1);
     } finally {
       view.destroy();
       scroll.mockRestore();

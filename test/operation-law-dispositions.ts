@@ -5,9 +5,7 @@ export type KnownOperationLawIssue = {
   fingerprint: string;
 };
 export type OperationLawDisposition =
-  | "holds"
-  | KnownOperationLawIssue
-  | readonly KnownOperationLawIssue[];
+  "holds" | KnownOperationLawIssue | readonly KnownOperationLawIssue[];
 
 /** Every operation needs an explicit law disposition; fixed cases return to holds. */
 export const OPERATION_LAW_DISPOSITIONS = {

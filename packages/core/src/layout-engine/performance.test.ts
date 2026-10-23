@@ -8,16 +8,16 @@
  * Run with: bun test src/layout-engine/performance.bench.ts
  */
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 import { layoutDocument } from "./index";
 import type {
+  FlowBlock,
+  LayoutOptions,
+  Measure,
+  MeasuredLine,
   ParagraphBlock,
   ParagraphMeasure,
-  MeasuredLine,
-  FlowBlock,
-  Measure,
-  LayoutOptions,
 } from "./types";
 
 // =============================================================================
@@ -81,7 +81,11 @@ const SCALING_SAMPLE_REPETITIONS = 100;
 /**
  * Create a paragraph block with specified text content.
  */
-function makeParagraphBlock(id: number, text: string, pmStart: number): ParagraphBlock {
+function makeParagraphBlock(
+  id: number,
+  text: string,
+  pmStart: number,
+): ParagraphBlock {
   return {
     kind: "paragraph",
     id,
@@ -163,7 +167,10 @@ function generateTenPageDocument(): {
   for (let i = 0; i < totalParagraphs; i++) {
     // Create paragraph text
     const textLength = 60; // Fixed length for predictability
-    const text = "Lorem ipsum dolor sit amet consectetur. ".slice(0, textLength);
+    const text = "Lorem ipsum dolor sit amet consectetur. ".slice(
+      0,
+      textLength,
+    );
 
     const block = makeParagraphBlock(i, text, pmStart);
     blocks.push(block);
@@ -272,7 +279,12 @@ describe("Layout Engine Performance", () => {
   describe("Initial Layout", () => {
     test("10-page document layout time", () => {
       const { stats } = benchmark(
-        () => layoutDocument(tenPageDoc.blocks, tenPageDoc.measures, DEFAULT_OPTIONS),
+        () =>
+          layoutDocument(
+            tenPageDoc.blocks,
+            tenPageDoc.measures,
+            DEFAULT_OPTIONS,
+          ),
         WARMUP_ITERATIONS,
         MEASURE_ITERATIONS,
       );
@@ -288,7 +300,11 @@ describe("Layout Engine Performance", () => {
       console.log(`  Target: <${TARGETS.layoutTime}ms`);
 
       // Verify layout produces expected output (around 10 pages, give or take due to spacing)
-      const layout = layoutDocument(tenPageDoc.blocks, tenPageDoc.measures, DEFAULT_OPTIONS);
+      const layout = layoutDocument(
+        tenPageDoc.blocks,
+        tenPageDoc.measures,
+        DEFAULT_OPTIONS,
+      );
       expect(layout.pages.length).toBeGreaterThanOrEqual(8);
       // With 500 paragraphs at 18px each + spacing, we may get more than 10 pages
       expect(layout.pages.length).toBeLessThanOrEqual(20);
@@ -316,14 +332,18 @@ describe("Layout Engine Performance", () => {
           WARMUP_ITERATIONS,
           MEASURE_ITERATIONS,
         );
-        const perRunTimings = timings.map((timing) => timing / SCALING_SAMPLE_REPETITIONS);
+        const perRunTimings = timings.map(
+          (timing) => timing / SCALING_SAMPLE_REPETITIONS,
+        );
         timePerBlock.push(calculateTrimmedMean(perRunTimings) / size);
       }
 
       // Log results
       console.log("\nLayout scaling:");
       for (const [i, size] of sizes.entries()) {
-        console.log(`  ${size} paragraphs: ${(timePerBlock[i] * 1000).toFixed(3)}µs/paragraph`);
+        console.log(
+          `  ${size} paragraphs: ${(timePerBlock[i] * 1000).toFixed(3)}µs/paragraph`,
+        );
       }
 
       // Batched measurements plus a trimmed mean keep the ratio sensitive to
@@ -332,7 +352,9 @@ describe("Layout Engine Performance", () => {
       const maxTime = Math.max(...timePerBlock);
 
       if (maxTime >= TARGETS.layoutTimePerBlockRatioNoiseFloor) {
-        expect(maxTime / minTime).toBeLessThanOrEqual(TARGETS.layoutTimePerBlockRatio);
+        expect(maxTime / minTime).toBeLessThanOrEqual(
+          TARGETS.layoutTimePerBlockRatio,
+        );
       }
       expect(maxTime).toBeLessThanOrEqual(TARGETS.layoutTimePerBlock);
     }, 30_000);
@@ -341,7 +363,11 @@ describe("Layout Engine Performance", () => {
   describe("Incremental Update", () => {
     test("single character edit repaint time", () => {
       // First, do initial layout
-      const layout = layoutDocument(tenPageDoc.blocks, tenPageDoc.measures, DEFAULT_OPTIONS);
+      const layout = layoutDocument(
+        tenPageDoc.blocks,
+        tenPageDoc.measures,
+        DEFAULT_OPTIONS,
+      );
       const originalPageCount = layout.pages.length;
 
       // Create modified document (simulate single char edit in first paragraph)
@@ -371,7 +397,8 @@ describe("Layout Engine Performance", () => {
 
       // Measure incremental layout time
       const { stats } = benchmark(
-        () => layoutDocument(modifiedBlocks, tenPageDoc.measures, DEFAULT_OPTIONS),
+        () =>
+          layoutDocument(modifiedBlocks, tenPageDoc.measures, DEFAULT_OPTIONS),
         WARMUP_ITERATIONS,
         MEASURE_ITERATIONS,
       );
@@ -385,7 +412,11 @@ describe("Layout Engine Performance", () => {
       console.log(`  Target: <${TARGETS.incrementalTime}ms`);
 
       // Verify layout still produces correct output
-      const newLayout = layoutDocument(modifiedBlocks, tenPageDoc.measures, DEFAULT_OPTIONS);
+      const newLayout = layoutDocument(
+        modifiedBlocks,
+        tenPageDoc.measures,
+        DEFAULT_OPTIONS,
+      );
       // Page count should stay the same for a single char edit
       expect(newLayout.pages.length).toBe(originalPageCount);
 
@@ -429,7 +460,11 @@ describe("Layout Engine Performance", () => {
       console.log(`  Target: <${TARGETS.incrementalTime}ms`);
 
       // Verify layout produces output
-      const layout = layoutDocument(modifiedBlocks, modifiedMeasures, DEFAULT_OPTIONS);
+      const layout = layoutDocument(
+        modifiedBlocks,
+        modifiedMeasures,
+        DEFAULT_OPTIONS,
+      );
       expect(layout.pages.length).toBeGreaterThanOrEqual(9);
 
       // Paragraph insertion might take slightly longer but should still be fast
@@ -574,7 +609,10 @@ function generateNParagraphDocument(n: number): {
 
   for (let i = 0; i < n; i++) {
     const textLength = 50;
-    const text = "Lorem ipsum dolor sit amet consectetur. ".slice(0, textLength);
+    const text = "Lorem ipsum dolor sit amet consectetur. ".slice(
+      0,
+      textLength,
+    );
 
     blocks.push(makeParagraphBlock(i, text, pmStart));
     measures.push(makeParagraphMeasure([makeLine(0, 0, 0, textLength, 400)]));

@@ -11,10 +11,11 @@
  * `setActiveCitationMeta` helpers below.
  */
 
-import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
+
+import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 
 export const aiCitationDecorationsKey =
   createPluginKeyOwner<AICitationDecorationState>("aiCitationDecorations");
@@ -57,7 +58,10 @@ function buildDecorationSet(
         from,
         to,
         {
-          class: ["folio-ai-citation", isActive ? "folio-ai-citation--active" : ""]
+          class: [
+            "folio-ai-citation",
+            isActive ? "folio-ai-citation--active" : "",
+          ]
             .filter(Boolean)
             .join(" "),
           "data-folio-ai-citation-id": c.id,
@@ -96,7 +100,11 @@ export function createAICitationDecorationsPlugin(): Plugin<AICitationDecoration
           return {
             citations: meta.citations,
             activeId: prev.activeId,
-            decorationSet: buildDecorationSet(newState.doc, meta.citations, prev.activeId),
+            decorationSet: buildDecorationSet(
+              newState.doc,
+              meta.citations,
+              prev.activeId,
+            ),
           };
         }
 
@@ -104,7 +112,11 @@ export function createAICitationDecorationsPlugin(): Plugin<AICitationDecoration
           return {
             citations: prev.citations,
             activeId: meta.activeId,
-            decorationSet: buildDecorationSet(newState.doc, prev.citations, meta.activeId),
+            decorationSet: buildDecorationSet(
+              newState.doc,
+              prev.citations,
+              meta.activeId,
+            ),
           };
         }
 

@@ -7,7 +7,9 @@ test("no split around a preserved reference can spell a new reference", () => {
     for (let split = 1; split < marker.length; split++) {
       const replacement = marker.slice(0, split) + marker + marker.slice(split);
       expect(
-        segmentsAroundNoteReferences(marker, replacement, [{ offset: 0, length: marker.length }]),
+        segmentsAroundNoteReferences(marker, replacement, [
+          { offset: 0, length: marker.length },
+        ]),
       ).toBeNull();
     }
   }

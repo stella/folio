@@ -1,6 +1,4 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   linkSync,
   mkdirSync,
@@ -13,30 +11,41 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ts from "typescript";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 import {
   INSTALL_SCOPES,
   installedPackageBytes,
   isInstallScope,
+  prunedLockChanges,
   scopeInstall,
 } from "./ci-scoped-install";
-
-import { installFrozenRepositoryDependencies } from "./clean-room-install";
+import {
+  installFrozenRepositoryDependencies,
+  settleRepositoryLockfile,
+} from "./clean-room-install";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
 const root = path.resolve(import.meta.dir, "..");
-type JobSteps = { steps: { run?: string; uses?: string; with?: { "no-cache"?: unknown } }[] };
+type JobSteps = {
+  steps: { run?: string; uses?: string; with?: { "no-cache"?: unknown } }[];
+};
 const checkScopedJobs = (jobs: Record<string, JobSteps>) => {
   for (const scope of Object.keys(INSTALL_SCOPES)) {
     const steps = jobs[scope]?.steps;
-    if (steps === undefined) throw new TypeError(`Missing scoped job: ${scope}`);
+    if (steps === undefined)
+      throw new TypeError(`Missing scoped job: ${scope}`);
     expect(
-      steps.filter((step) => step.run === `bun scripts/ci-scoped-install.ts ${scope}`),
+      steps.filter(
+        (step) => step.run === `bun scripts/ci-scoped-install.ts ${scope}`,
+      ),
     ).toHaveLength(1);
     for (const step of steps) {
       expect(step.run ?? "").not.toMatch(/bun\s+(?:install|ci)\b/u);
       expect(step.uses ?? "").not.toContain("setup-bun-cached");
-      if (step.uses?.startsWith("oven-sh/setup-bun@")) expect(step.with?.["no-cache"]).toBe(true);
+      if (step.uses?.startsWith("oven-sh/setup-bun@"))
+        expect(step.with?.["no-cache"]).toBe(true);
     }
   }
 };
@@ -59,10 +68,17 @@ describe("scoped CI environments", () => {
         '"1"',
         "true",
       ]) {
-        writeFileSync(path.join(fixture, "bunfig.toml"), `[install]\nminimumReleaseAge = ${age}\n`);
-        expect(() => installFrozenRepositoryDependencies(fixture)).toThrow(
-          "Frozen repository installs require the release-age policy",
+        writeFileSync(
+          path.join(fixture, "bunfig.toml"),
+          `[install]\nminimumReleaseAge = ${age}\n`,
         );
+        for (const install of [
+          installFrozenRepositoryDependencies,
+          settleRepositoryLockfile,
+        ])
+          expect(() => install(fixture)).toThrow(
+            "Repository installs require the release-age policy",
+          );
       }
     } finally {
       rmSync(fixture, { recursive: true, force: true });
@@ -92,8 +108,12 @@ describe("scoped CI environments", () => {
   });
   test("every scoped job uses its environment without restoring the full workspace cache", () => {
     const jobs: Record<string, JobSteps> = {};
-    for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({ cwd: root })) {
-      const workflow = Bun.YAML.parse(readFileSync(path.join(root, file), "utf8"));
+    for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({
+      cwd: root,
+    })) {
+      const workflow = Bun.YAML.parse(
+        readFileSync(path.join(root, file), "utf8"),
+      );
       for (const scope of Object.keys(INSTALL_SCOPES)) {
         const job = workflow.jobs?.[scope];
         if (job === undefined) continue;
@@ -116,39 +136,53 @@ describe("scoped CI environments", () => {
   });
 
   test("source-consuming environments retain root dependencies used by shared test helpers", () => {
-    const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+    const manifest = JSON.parse(
+      readFileSync(path.join(root, "package.json"), "utf8"),
+    );
     const rootDependencies = new Set(Object.keys(manifest.devDependencies));
     const imports = new Map<string, string>();
-    for (const file of new Bun.Glob("tests/**/*.{ts,tsx,mts,cts}").scanSync({ cwd: root })) {
+    for (const file of new Bun.Glob("tests/**/*.{ts,tsx,mts,cts}").scanSync({
+      cwd: root,
+    })) {
       const source = readFileSync(path.join(root, file), "utf8");
-      for (const { fileName } of ts.preProcessFile(source, true, true).importedFiles) {
+      for (const { fileName } of ts.preProcessFile(source, true, true)
+        .importedFiles) {
         const name = fileName.startsWith("@")
           ? fileName.split("/").slice(0, 2).join("/")
           : fileName.split("/").at(0);
-        if (name !== undefined && rootDependencies.has(name)) imports.set(name, file);
+        if (name !== undefined && rootDependencies.has(name))
+          imports.set(name, file);
       }
     }
     expect(imports.size).toBeGreaterThan(0);
     for (const [scope, profile] of Object.entries(INSTALL_SCOPES)) {
       if (profile.workspaces === "none") continue;
-      if (!isInstallScope(scope)) throw new TypeError(`Unknown install scope: ${scope}`);
-      const projected = JSON.parse(scopeInstall(scope, root).files.get("package.json") ?? "");
+      if (!isInstallScope(scope))
+        throw new TypeError(`Unknown install scope: ${scope}`);
+      const projected = JSON.parse(
+        scopeInstall(scope, root).files.get("package.json") ?? "",
+      );
       for (const [name, file] of imports)
-        expect(projected.devDependencies[name], `${scope}: ${file} imports ${name}`).toBe(
-          manifest.devDependencies[name],
-        );
+        expect(
+          projected.devDependencies[name],
+          `${scope}: ${file} imports ${name}`,
+        ).toBe(manifest.devDependencies[name]);
     }
   });
 
   test("all projections retain source pins, overrides and complete workspace references", () => {
-    const original = Bun.JSONC.parse(readFileSync(path.join(root, "bun.lock"), "utf8"));
+    const original = Bun.JSONC.parse(
+      readFileSync(path.join(root, "bun.lock"), "utf8"),
+    );
     const check = (scope: keyof typeof INSTALL_SCOPES) => {
       const { files } = scopeInstall(scope, root);
       const projected = Bun.JSONC.parse(files.get("bun.lock") ?? "");
       const manifest = JSON.parse(files.get("package.json") ?? "");
       expect(projected.overrides).toEqual(original.overrides);
       expect(manifest.devDependencies.binaryen).toBeUndefined();
-      expect(projected.workspaces[""].devDependencies).toEqual(manifest.devDependencies);
+      expect(projected.workspaces[""].devDependencies).toEqual(
+        manifest.devDependencies,
+      );
       for (const [name, entry] of Object.entries(projected.packages)) {
         expect(entry).toEqual(original.packages[name]);
       }
@@ -160,7 +194,8 @@ describe("scoped CI environments", () => {
           readFileSync(path.join(root, dir, "package.json"), "utf8");
         const source = JSON.parse(encoded);
         expect(workspace).toEqual(
-          original.workspaces[dir].devDependencies && scope === "browser-discovery"
+          original.workspaces[dir].devDependencies &&
+            scope === "browser-discovery"
             ? Object.fromEntries(
                 Object.entries(original.workspaces[dir]).filter(
                   ([key]) => key !== "devDependencies",
@@ -168,11 +203,14 @@ describe("scoped CI environments", () => {
               )
             : original.workspaces[dir],
         );
-        expect(source.dependencies).toEqual(original.workspaces[dir].dependencies);
+        expect(source.dependencies).toEqual(
+          original.workspaces[dir].dependencies,
+        );
       }
     };
     for (const scope of Object.keys(INSTALL_SCOPES)) {
-      if (!isInstallScope(scope)) throw new TypeError(`Unknown install scope: ${scope}`);
+      if (!isInstallScope(scope))
+        throw new TypeError(`Unknown install scope: ${scope}`);
       check(scope);
     }
   });
@@ -186,14 +224,60 @@ describe("scoped CI environments", () => {
       );
       writeFileSync(
         path.join(fixture, "bun.lock"),
-        JSON.stringify({ workspaces: { "": { name: "fixture" } }, packages: {} }),
+        JSON.stringify({
+          workspaces: { "": { name: "fixture" } },
+          packages: {},
+        }),
       );
-      expect(() => scopeInstall("docs-format", fixture)).toThrow("Undeclared scoped dependency");
-      const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
-      writeFileSync(path.join(fixture, "package.json"), JSON.stringify(manifest));
-      expect(() => scopeInstall("browser-discovery", fixture)).toThrow("Unknown workspace");
+      expect(() => scopeInstall("ci-plan", fixture)).toThrow(
+        "Undeclared scoped dependency",
+      );
+      const manifest = JSON.parse(
+        readFileSync(path.join(root, "package.json"), "utf8"),
+      );
+      writeFileSync(
+        path.join(fixture, "package.json"),
+        JSON.stringify(manifest),
+      );
+      expect(() => scopeInstall("browser-discovery", fixture)).toThrow(
+        "Unknown workspace",
+      );
     } finally {
       rmSync(fixture, { recursive: true, force: true });
     }
+  });
+});
+
+describe("settled scoped lockfile", () => {
+  const entry = (id: string, deps: Record<string, string> = {}) =>
+    [id, "", { dependencies: deps }, "sha512-x"] as [string, ...unknown[]];
+  const lock = (packages: Record<string, [string, ...unknown[]]>) => ({
+    workspaces: { "": { name: "root", devDependencies: { b: "1", a: "1" } } },
+    packages,
+  });
+  const before = lock({
+    a: entry("a@1.0.0", { y: "^1" }),
+    fsevents: entry("fsevents@2.3.3"),
+    "playwright/fsevents": entry("fsevents@2.3.2"),
+    unused: entry("unused@1.0.0"),
+  });
+
+  test("removing unreached packages and re-hoisting a locked copy pass", () => {
+    const after = lock({
+      a: entry("a@1.0.0", { y: "^1" }),
+      fsevents: entry("fsevents@2.3.2"),
+    });
+    after.workspaces[""].devDependencies = { a: "1", b: "1" };
+    expect(prunedLockChanges(before, after)).toEqual([]);
+  });
+
+  test("a new or re-resolved package and a changed field fail", () => {
+    const resolved = lock({ a: entry("a@1.1.0", { y: "^1" }) });
+    expect(prunedLockChanges(before, resolved)).toEqual(["re-resolved a"]);
+    const added = lock({ ...before.packages, extra: entry("extra@1.0.0") });
+    expect(prunedLockChanges(before, added)).toEqual(["re-resolved extra"]);
+    const widened = lock(before.packages);
+    widened.workspaces[""].devDependencies = { a: "2", b: "1" };
+    expect(prunedLockChanges(before, widened)).toEqual(["changed workspaces"]);
   });
 });

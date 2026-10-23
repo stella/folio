@@ -1,18 +1,25 @@
 import type { FolioDocumentOperation } from "../document-operations";
 import type { FolioAIBlock } from "./types";
 
-type BlockIdentity = Pick<FolioAIBlock, "id"> & { table?: FolioAIBlock["table"] };
+type BlockIdentity = Pick<FolioAIBlock, "id"> & {
+  table?: FolioAIBlock["table"];
+};
 
 const blockContainerKey = ({ table }: BlockIdentity): string =>
   table === undefined
     ? "body"
     : `${String(table.tableIndex)}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
 
-const isContainerCarrier = (blocks: readonly BlockIdentity[], anchorIndex: number): boolean => {
+const isContainerCarrier = (
+  blocks: readonly BlockIdentity[],
+  anchorIndex: number,
+): boolean => {
   const anchor = blocks[anchorIndex];
   if (anchor === undefined) return false;
   const containerKey = blockContainerKey(anchor);
-  return blocks.slice(anchorIndex + 1).every((block) => blockContainerKey(block) !== containerKey);
+  return blocks
+    .slice(anchorIndex + 1)
+    .every((block) => blockContainerKey(block) !== containerKey);
 };
 
 /**
@@ -27,7 +34,8 @@ const removedBlockIds = (
   operation: FolioDocumentOperation,
 ): ReadonlySet<string> => {
   const removed = new Set<string>();
-  const blockId = "range" in operation ? operation.range.blockId : operation.blockId;
+  const blockId =
+    "range" in operation ? operation.range.blockId : operation.blockId;
   const anchorIndex = blocks.findIndex(({ id }) => id === blockId);
   const anchor = blocks[anchorIndex];
 
@@ -46,7 +54,8 @@ const removedBlockIds = (
     case "deleteTable":
       if (anchor?.table !== undefined) {
         for (const block of blocks) {
-          if (block.table?.tableIndex === anchor.table.tableIndex) removed.add(block.id);
+          if (block.table?.tableIndex === anchor.table.tableIndex)
+            removed.add(block.id);
         }
       }
       break;
@@ -98,7 +107,9 @@ export const getTrackedFolioDocumentOperationRemovedBlockIds = (
   blocks: readonly BlockIdentity[],
   operation: FolioDocumentOperation,
 ): ReadonlySet<string> =>
-  operation.type === "mergeBlockWithNext" ? new Set() : removedBlockIds(blocks, operation);
+  operation.type === "mergeBlockWithNext"
+    ? new Set()
+    : removedBlockIds(blocks, operation);
 
 export const getTrackedFolioDocumentOperationCarrierBlockId = (
   blocks: readonly BlockIdentity[],
@@ -118,7 +129,8 @@ export const getTrackedFolioDocumentOperationCarrierBlockId = (
     carrierIndex++;
   }
   const carrier = blocks[carrierIndex];
-  if (carrier === undefined || !isContainerCarrier(blocks, carrierIndex)) return undefined;
+  if (carrier === undefined || !isContainerCarrier(blocks, carrierIndex))
+    return undefined;
   return blocks
     .slice(anchorIndex + 1, carrierIndex + 1)
     .every(({ id }) => previouslyRemovedBlockIds.has(id))

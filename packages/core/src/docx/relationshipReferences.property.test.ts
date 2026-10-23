@@ -19,18 +19,26 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
-import type { BlockContent, Document, RelationshipMap } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type {
+  BlockContent,
+  Document,
+  RelationshipMap,
+} from "../types/document";
 import { parseDocx } from "./parser";
 import { resolveRelationshipId } from "./relsParser";
 import { repackDocx } from "./rezip";
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const PACKAGE_RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 /** Relationship ids the generated package defines. */
 const STYLES_RID = "rId1";
@@ -45,7 +53,11 @@ const REFERENCE_STATES = ["valid", "absent", "empty", "dangling"] as const;
 type ReferenceState = (typeof REFERENCE_STATES)[number];
 
 /** `r:<name>="..."`, or nothing at all when the reference is absent. */
-const referenceAttribute = (name: string, state: ReferenceState, validId: string): string => {
+const referenceAttribute = (
+  name: string,
+  state: ReferenceState,
+  validId: string,
+): string => {
   switch (state) {
     case "valid":
       return ` r:${name}="${validId}"`;
@@ -94,7 +106,10 @@ const DOCUMENT_NAMESPACES = [
   'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
 ].join(" ");
 
-type PackageSpec = { items: readonly BodyItem[]; headerReference: ReferenceState };
+type PackageSpec = {
+  items: readonly BodyItem[];
+  headerReference: ReferenceState;
+};
 
 const documentXml = ({ items, headerReference }: PackageSpec): string => {
   const header = `<w:headerReference w:type="default"${referenceAttribute("id", headerReference, HEADER_RID)}/>`;
@@ -228,8 +243,11 @@ const referenceProjection = (document: Document): string[] => {
     }
   };
   visitBlocks(document.package.document.content);
-  for (const reference of document.package.document.finalSectionProperties.headerReferences ?? []) {
-    projected.push(`header:${reference.type}:${resolution(relationships, reference.rId)}`);
+  for (const reference of document.package.document.finalSectionProperties
+    .headerReferences ?? []) {
+    projected.push(
+      `header:${reference.type}:${resolution(relationships, reference.rId)}`,
+    );
   }
   return projected;
 };
@@ -244,14 +262,19 @@ const referenceProjection = (document: Document): string[] => {
 const writtenReferences = async (buffer: ArrayBuffer): Promise<string[]> => {
   const zip = await JSZip.loadAsync(buffer);
   const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
-  return [...xml.matchAll(/\sr:(?:id|embed|link)="([^"]*)"/gu)].map(([, id]) => id ?? "");
+  return [...xml.matchAll(/\sr:(?:id|embed|link)="([^"]*)"/gu)].map(
+    ([, id]) => id ?? "",
+  );
 };
 
 const referenceStateArbitrary = fc.constantFrom(...REFERENCE_STATES);
 
 const bodyItemArbitrary: fc.Arbitrary<BodyItem> = fc.oneof(
   fc.constant<BodyItem>({ kind: "graphicless" }),
-  referenceStateArbitrary.map<BodyItem>((state) => ({ kind: "picture", state })),
+  referenceStateArbitrary.map<BodyItem>((state) => ({
+    kind: "picture",
+    state,
+  })),
   referenceStateArbitrary.map<BodyItem>((state) => ({
     kind: "hyperlink",
     state,
@@ -271,11 +294,17 @@ describe("relationship references under a forced serialization (property)", () =
     async () => {
       await fc.assert(
         fc.asyncProperty(packageArbitrary, async (spec) => {
-          const source = await parseDocx(await buildPackage(spec), { preloadFonts: false });
-          const saved = await repackDocx(withoutCaptures(source), { updateModifiedDate: false });
+          const source = await parseDocx(await buildPackage(spec), {
+            preloadFonts: false,
+          });
+          const saved = await repackDocx(withoutCaptures(source), {
+            updateModifiedDate: false,
+          });
           const reparsed = await parseDocx(saved, { preloadFonts: false });
 
-          expect(referenceProjection(reparsed)).toEqual(referenceProjection(source));
+          expect(referenceProjection(reparsed)).toEqual(
+            referenceProjection(source),
+          );
 
           const defined = new Set(source.package.relationships?.keys() ?? []);
           for (const written of await writtenReferences(saved)) {
@@ -286,9 +315,15 @@ describe("relationship references under a forced serialization (property)", () =
           // absent one, so the two stay distinguishable to whoever opens it.
           // The structured warnings are what the parse states; the rendered
           // line is derived from them.
-          const expectReported = (kind: BodyItem["kind"], element: string): void => {
+          const expectReported = (
+            kind: BodyItem["kind"],
+            element: string,
+          ): void => {
             const expected = spec.items.filter(
-              (item) => item.kind === kind && "state" in item && item.state === "dangling",
+              (item) =>
+                item.kind === kind &&
+                "state" in item &&
+                item.state === "dangling",
             ).length;
             const reported = (source.parseWarnings ?? [])
               .filter(

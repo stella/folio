@@ -13,17 +13,26 @@
 // folio-react's transitive folio-core to the packed tarball) live in one place.
 
 import { panic } from "better-result";
-import reactManifest from "../packages/react/package.json";
-import coreManifest from "../packages/core/package.json";
 import { $ } from "bun";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+import coreManifest from "../packages/core/package.json";
+import reactManifest from "../packages/react/package.json";
 import { assertHostPeersExternal } from "./host-peer-policy";
 
 export const repoRoot = path.resolve(import.meta.dir, "..");
-export const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
+export const prepareScript = path.join(
+  repoRoot,
+  "scripts",
+  "prepare-publish.ts",
+);
 export const docxCoreDir = path.join(repoRoot, "packages", "docx-core");
-export const utf8BoundariesDir = path.join(repoRoot, "packages", "utf8-boundaries");
+export const utf8BoundariesDir = path.join(
+  repoRoot,
+  "packages",
+  "utf8-boundaries",
+);
 export const coreDir = path.join(repoRoot, "packages", "core");
 export const reactDir = path.join(repoRoot, "packages", "react");
 export const consumerSrc = path.join(repoRoot, "test", "packaged-consumer");
@@ -38,7 +47,8 @@ export const reactPeerFloor = (peers: ReactPeers) => {
   if (!match) panic("Consumer checks require one caret React peer range");
   return {
     version: peers.react.slice(1),
-    major: match.at(1) ?? panic("React peer range must include a major version"),
+    major:
+      match.at(1) ?? panic("React peer range must include a major version"),
   };
 };
 
@@ -46,7 +56,8 @@ export const REACT_PEER_FLOOR = reactPeerFloor(reactManifest.peerDependencies);
 
 const DOCX_KERNEL_WASM_ASSET = /(?:^|\/)docx_kernel_bg(?:-[^/]+)?\.wasm$/u;
 
-export const isDocxKernelWasmAsset = (file: string): boolean => DOCX_KERNEL_WASM_ASSET.test(file);
+export const isDocxKernelWasmAsset = (file: string): boolean =>
+  DOCX_KERNEL_WASM_ASSET.test(file);
 
 export const reactPeerInstallArgs = () => [
   `react@${REACT_PEER_FLOOR.version}`,
@@ -57,18 +68,27 @@ export const reactPeerInstallArgs = () => [
 
 // The host installs the runtime peers itself; no singleton override or alias.
 export const hostPeerInstallArgs = () =>
-  Object.entries(coreManifest.peerDependencies).map(([name, range]) => `${name}@${range}`);
+  Object.entries(coreManifest.peerDependencies).map(
+    ([name, range]) => `${name}@${range}`,
+  );
 
 // Build a package, transform its package.json to the published dist shape
 // (reversibly), pack a tarball into destDir, and return the tarball path.
-export const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> => {
+export const buildAndPack = async (
+  pkgDir: string,
+  destDir: string,
+): Promise<string> => {
   const name = path.basename(pkgDir);
-  const packageJson = (await Bun.file(path.join(pkgDir, "package.json")).json()) as {
+  const packageJson = (await Bun.file(
+    path.join(pkgDir, "package.json"),
+  ).json()) as {
     name: string;
   };
   const sharedTarballs = process.env["FOLIO_PACKED_TARBALLS"];
   if (sharedTarballs) {
-    const tarballs = await Bun.file(path.join(sharedTarballs, "tarballs.json")).json();
+    const tarballs = await Bun.file(
+      path.join(sharedTarballs, "tarballs.json"),
+    ).json();
     const tarball = tarballs[packageJson.name];
     if (typeof tarball !== "string" || !(await Bun.file(tarball).exists()))
       panic(`packaged-consumer: no shared tarball for ${packageJson.name}`);
@@ -87,11 +107,15 @@ export const buildAndPack = async (pkgDir: string, destDir: string): Promise<str
         (target) => typeof target === "string" && target.startsWith("./src/"),
       )
     ) {
-      console.log(`→ transforming ${packageJson.name} package.json to dist shape`);
+      console.log(
+        `→ transforming ${packageJson.name} package.json to dist shape`,
+      );
       await $`bun ${prepareScript} ${pkgDir}`.quiet();
     }
     console.log(`→ packing ${packageJson.name} tarball`);
-    await $`bun pm pack --ignore-scripts --destination ${destDir}`.cwd(pkgDir).quiet();
+    await $`bun pm pack --ignore-scripts --destination ${destDir}`
+      .cwd(pkgDir)
+      .quiet();
   } finally {
     // Always restore the in-repo source-shape package.json.
     await writeFile(pkgJsonPath, original);

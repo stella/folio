@@ -57,8 +57,9 @@ export type TextContextAction =
 /** Built-in actions — everything except host-provided `custom:*` entries. */
 type BuiltInTextContextAction = Exclude<TextContextAction, `custom:${string}`>;
 
-const isBuiltInAction = (action: TextContextAction): action is BuiltInTextContextAction =>
-  !action.startsWith("custom:");
+const isBuiltInAction = (
+  action: TextContextAction,
+): action is BuiltInTextContextAction => !action.startsWith("custom:");
 
 /**
  * Menu item configuration
@@ -414,7 +415,9 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
   });
 
   // Filter out separators for keyboard navigation
-  const navigableItems = menuItems.filter((item) => item.action !== "separator");
+  const navigableItems = menuItems.filter(
+    (item) => item.action !== "separator",
+  );
 
   // Handle click outside
   useEffect(() => {
@@ -465,7 +468,8 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
         case "ArrowUp":
           e.preventDefault();
           setHighlightedIndex((prev) => {
-            let next = (prev - 1 + navigableItems.length) % navigableItems.length;
+            let next =
+              (prev - 1 + navigableItems.length) % navigableItems.length;
             // Skip disabled items
             while (navigableItems[next]?.disabled && next !== prev) {
               next = (next - 1 + navigableItems.length) % navigableItems.length;
@@ -506,7 +510,9 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
 
     let x = position.x;
     let y =
-      hasSelection && position.y - menuHeight - 8 >= 10 ? position.y - menuHeight - 8 : position.y;
+      hasSelection && position.y - menuHeight - 8 >= 10
+        ? position.y - menuHeight - 8
+        : position.y;
 
     if (typeof window !== "undefined") {
       if (x + menuWidth > window.innerWidth) {
@@ -620,7 +626,8 @@ export function useTextContextMenu(
    */
   const checkSelection = useCallback(() => {
     const selection = window.getSelection();
-    const hasText = selection && !selection.isCollapsed && selection.toString().length > 0;
+    const hasText =
+      selection && !selection.isCollapsed && selection.toString().length > 0;
     setHasSelection(!!hasText);
     return !!hasText;
   }, []);

@@ -1,26 +1,29 @@
+import { panic, Result } from "better-result";
+
+import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
+import {
+  compareDocxVersions,
+  formatVersionDiffForLLM,
+} from "@stll/folio-agents/compare";
+import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
+import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
+import type { FolioAIBlock } from "@stll/folio-core/server";
 import {
   base64ToBytes,
   bytesToBase64Url,
   decodeText,
   encodeUtf8,
 } from "@stll/folio-core/utils/textEncoding";
-import { panic, Result } from "better-result";
-
-import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
-import { compareDocxVersions, formatVersionDiffForLLM } from "@stll/folio-agents/compare";
-import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
-import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
-import type { FolioAIBlock } from "@stll/folio-core/server";
 
 import {
   checkExpectedVersion,
-  openReviewer,
-  readDocumentFile,
   type FolioBlockIdSource,
   type OpenedDocument,
+  openReviewer,
+  readDocumentFile,
 } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
-import { MAX_READ_BLOCKS, type FolioFileToolSpec } from "./registry";
+import { type FolioFileToolSpec, MAX_READ_BLOCKS } from "./registry";
 
 /** One call against one file: the envelope plus the tool's own arguments. */
 export type FileToolCall = {
@@ -65,14 +68,23 @@ const idSourceOf = (
   return idStability === "positional" ? "synthetic" : "package";
 };
 
-export const blockIdSources = ({ reviewer, mintedIds }: OpenedDocument): BlockIdSources =>
-  new Map(reviewer.snapshot().blocks.map((block) => [block.id, idSourceOf(block, mintedIds)]));
+export const blockIdSources = ({
+  reviewer,
+  mintedIds,
+}: OpenedDocument): BlockIdSources =>
+  new Map(
+    reviewer
+      .snapshot()
+      .blocks.map((block) => [block.id, idSourceOf(block, mintedIds)]),
+  );
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const blockIdOf = (block: unknown): string | undefined =>
-  isRecord(block) && typeof block["blockId"] === "string" ? block["blockId"] : undefined;
+  isRecord(block) && typeof block["blockId"] === "string"
+    ? block["blockId"]
+    : undefined;
 
 /** Where a block inside a table sits: zero-based table, row, and cell indexes. */
 export type FolioTableCell = { table: number; row: number; cell: number };
@@ -82,13 +94,20 @@ type TableCells = ReadonlyMap<string, FolioTableCell>;
 /** The table cell of every block that sits in one. */
 export const tableCells = ({ reviewer }: OpenedDocument): TableCells =>
   new Map(
-    reviewer
-      .snapshot()
-      .blocks.flatMap(({ id, table }) =>
-        table === undefined
-          ? []
-          : [[id, { table: table.tableIndex, row: table.rowIndex, cell: table.cellIndex }]],
-      ),
+    reviewer.snapshot().blocks.flatMap(({ id, table }) =>
+      table === undefined
+        ? []
+        : [
+            [
+              id,
+              {
+                table: table.tableIndex,
+                row: table.rowIndex,
+                cell: table.cellIndex,
+              },
+            ],
+          ],
+    ),
   );
 
 /** Label each block of a read with where its id comes from and, in a table, its cell. */
@@ -112,8 +131,13 @@ const labelBlocks = (
 
 type ReadCursor = { fileVersion: string; afterBlockId: string };
 
-export const encodeReadCursor = ({ fileVersion, afterBlockId }: ReadCursor): string =>
-  bytesToBase64Url(encodeUtf8(JSON.stringify({ v: fileVersion, a: afterBlockId })));
+export const encodeReadCursor = ({
+  fileVersion,
+  afterBlockId,
+}: ReadCursor): string =>
+  bytesToBase64Url(
+    encodeUtf8(JSON.stringify({ v: fileVersion, a: afterBlockId })),
+  );
 
 const decodeReadCursor = (cursor: string): ReadCursor | null => {
   const parsed = Result.try((): unknown =>
@@ -131,7 +155,8 @@ const decodeReadCursor = (cursor: string): ReadCursor | null => {
 const invalidInput = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.invalidInput, message, hint });
 
-const byteLength = (value: unknown): number => encodeUtf8(JSON.stringify(value) ?? "").byteLength;
+const byteLength = (value: unknown): number =>
+  encodeUtf8(JSON.stringify(value) ?? "").byteLength;
 
 type ReadDocumentPage = {
   blocks: unknown[];
@@ -176,13 +201,20 @@ export const pageReadDocument = ({
       maxBlocks < 1 ||
       maxBlocks > MAX_READ_BLOCKS)
   ) {
-    return Result.err(invalidInput(`maxBlocks must be an integer from 1 to ${MAX_READ_BLOCKS}.`));
+    return Result.err(
+      invalidInput(
+        `maxBlocks must be an integer from 1 to ${MAX_READ_BLOCKS}.`,
+      ),
+    );
   }
   let start = 0;
   if (cursor !== undefined) {
-    const decoded = typeof cursor === "string" ? decodeReadCursor(cursor) : null;
+    const decoded =
+      typeof cursor === "string" ? decodeReadCursor(cursor) : null;
     if (decoded === null) {
-      return Result.err(invalidInput("cursor is not a nextCursor from read_document."));
+      return Result.err(
+        invalidInput("cursor is not a nextCursor from read_document."),
+      );
     }
     if (decoded.fileVersion !== fileVersion) {
       return Result.err(
@@ -194,14 +226,20 @@ export const pageReadDocument = ({
         }),
       );
     }
-    const index = blocks.findIndex((block) => blockIdOf(block) === decoded.afterBlockId);
+    const index = blocks.findIndex(
+      (block) => blockIdOf(block) === decoded.afterBlockId,
+    );
     if (index === -1) {
-      return Result.err(invalidInput("cursor names a block this version does not have."));
+      return Result.err(
+        invalidInput("cursor names a block this version does not have."),
+      );
     }
     start = index + 1;
   }
-  const limit = typeof maxBlocks === "number" ? maxBlocks : bounds.defaultMaxBlocks;
-  const end = limit === null ? blocks.length : Math.min(blocks.length, start + limit);
+  const limit =
+    typeof maxBlocks === "number" ? maxBlocks : bounds.defaultMaxBlocks;
+  const end =
+    limit === null ? blocks.length : Math.min(blocks.length, start + limit);
   const labelled = labelBlocks(blocks.slice(start, end), sources, cells);
   const page: unknown[] = [];
   let bytes = 0;
@@ -227,7 +265,8 @@ export const pageReadDocument = ({
     return Result.err(
       cliError({
         code: FOLIO_CLI_ERROR_CODES.internal,
-        message: "read_document page has no block with an id; cannot issue a cursor.",
+        message:
+          "read_document page has no block with an id; cannot issue a cursor.",
       }),
     );
   }
@@ -237,7 +276,10 @@ export const pageReadDocument = ({
     truncated,
     ...(truncated &&
       lastBlockId !== undefined && {
-        nextCursor: encodeReadCursor({ fileVersion, afterBlockId: lastBlockId }),
+        nextCursor: encodeReadCursor({
+          fileVersion,
+          afterBlockId: lastBlockId,
+        }),
       }),
   });
 };
@@ -268,7 +310,11 @@ const runAgentRead = ({
   const bridge = createReviewerBridge(opened.reviewer);
   const isReadDocument = tool.agentTool === FOLIO_AGENT_TOOL_NAMES.readDocument;
   const agentArgs = isReadDocument ? {} : args;
-  const executed = executeFolioToolCallUntyped(tool.agentTool, agentArgs, bridge);
+  const executed = executeFolioToolCallUntyped(
+    tool.agentTool,
+    agentArgs,
+    bridge,
+  );
   if (!executed.ok) {
     return Result.err(invalidInput(executed.error));
   }
@@ -291,7 +337,11 @@ const runAgentRead = ({
     }
     return Result.ok({
       ...result,
-      blocks: labelBlocks(result["blocks"], blockIdSources(opened), tableCells(opened)),
+      blocks: labelBlocks(
+        result["blocks"],
+        blockIdSources(opened),
+        tableCells(opened),
+      ),
     });
   }
   if (tool.agentTool === FOLIO_AGENT_TOOL_NAMES.findText) {
@@ -302,7 +352,11 @@ const runAgentRead = ({
     return Result.ok(
       matches.length <= bounds.maxMatches
         ? result
-        : { ...result, matches: matches.slice(0, bounds.maxMatches), truncated: true },
+        : {
+            ...result,
+            matches: matches.slice(0, bounds.maxMatches),
+            truncated: true,
+          },
     );
   }
   return Result.ok(result);
@@ -343,7 +397,10 @@ const compareFiles = async (
 
   const diff = await Result.tryPromise({
     try: () =>
-      compareDocxVersions(base.value.bytes.slice().buffer, revised.value.bytes.slice().buffer),
+      compareDocxVersions(
+        base.value.bytes.slice().buffer,
+        revised.value.bytes.slice().buffer,
+      ),
     catch: (error) =>
       cliError({
         code: FOLIO_CLI_ERROR_CODES.invalidDocument,
@@ -354,10 +411,14 @@ const compareFiles = async (
   const data = {
     path: base.value.path,
     fileVersion: base.value.fileVersion,
-    revised: { path: revised.value.path, fileVersion: revised.value.fileVersion },
+    revised: {
+      path: revised.value.path,
+      fileVersion: revised.value.fileVersion,
+    },
     result: { text: formatVersionDiffForLLM(diff.value), diff: diff.value },
   };
-  return bounds.maxResponseBytes !== null && byteLength(data) > bounds.maxResponseBytes
+  return bounds.maxResponseBytes !== null &&
+    byteLength(data) > bounds.maxResponseBytes
     ? Result.err(tooLarge(tool.name, bounds.maxResponseBytes))
     : Result.ok(data);
 };
@@ -384,12 +445,17 @@ const readWithAgentTool = async (
     pageByteBudget:
       bounds.maxResponseBytes === null
         ? null
-        : bounds.maxResponseBytes - byteLength({ path, fileVersion }) - PAGE_ENVELOPE_RESERVE_BYTES,
+        : bounds.maxResponseBytes -
+          byteLength({ path, fileVersion }) -
+          PAGE_ENVELOPE_RESERVE_BYTES,
   });
   if (result.isErr()) return Result.err(result.error);
 
   const data = { path, fileVersion, result: result.value };
-  if (bounds.maxResponseBytes !== null && byteLength(data) > bounds.maxResponseBytes) {
+  if (
+    bounds.maxResponseBytes !== null &&
+    byteLength(data) > bounds.maxResponseBytes
+  ) {
     return Result.err(tooLarge(tool.name, bounds.maxResponseBytes));
   }
   return Result.ok(data);
@@ -408,7 +474,9 @@ export const executeReadTool = async (
       return await compareFiles(tool, call, bounds);
     case "agentWrite":
     case "resolveChanges":
-      return panic("A write tool reached the read executor", { tool: tool.name });
+      return panic("A write tool reached the read executor", {
+        tool: tool.name,
+      });
     default: {
       const unreachable: never = tool;
       return panic("Unhandled tool type", { unreachable });

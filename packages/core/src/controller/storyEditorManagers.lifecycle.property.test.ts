@@ -1,27 +1,43 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { AllSelection, EditorState, NodeSelection, TextSelection } from "prosemirror-state";
-import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp } from "@stll/docx-core/ops";
+import {
+  AllSelection,
+  EditorState,
+  NodeSelection,
+  TextSelection,
+} from "prosemirror-state";
+
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+} from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { schema } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document, Paragraph } from "../types/document";
 import {
-  createCanonicalSession,
-  CanonicalSessionError,
   type CanonicalCommit,
+  CanonicalSessionError,
+  createCanonicalSession,
 } from "./canonicalSession";
-import { createHiddenEditorManager } from "./hiddenEditorManager";
-import { createHiddenEditorApi } from "./hiddenEditorApi";
-import { createNoteEditorManager, enumerateDocumentNoteStories } from "./noteEditorManager";
 import {
   createHeaderFooterEditorManager,
   enumerateDocumentHeaderFooterParts,
 } from "./headerFooterEditorManager";
+import { createHiddenEditorApi } from "./hiddenEditorApi";
+import { createHiddenEditorManager } from "./hiddenEditorManager";
+import {
+  createNoteEditorManager,
+  enumerateDocumentNoteStories,
+} from "./noteEditorManager";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
@@ -84,23 +100,36 @@ const harness = () => {
   const sync = () => {
     notes.sync();
     parts.sync();
-    expect(notes.listStories()).toEqual(enumerateDocumentNoteStories(session.document));
-    expect(parts.listSlots()).toEqual(enumerateDocumentHeaderFooterParts(session.document));
-    assertExactModel(notes.snapshotDocument(staleHostDocument), session.document);
-    assertExactModel(parts.snapshotDocument(staleHostDocument), session.document);
+    expect(notes.listStories()).toEqual(
+      enumerateDocumentNoteStories(session.document),
+    );
+    expect(parts.listSlots()).toEqual(
+      enumerateDocumentHeaderFooterParts(session.document),
+    );
+    assertExactModel(
+      notes.snapshotDocument(staleHostDocument),
+      session.document,
+    );
+    assertExactModel(
+      parts.snapshotDocument(staleHostDocument),
+      session.document,
+    );
     for (const story of notes.listStories()) {
       const view = notes.activate(story);
       if (!view) panic("An owned canonical note did not mount.");
       expect(
         view.state.doc.eq(
-          session.projectStory({ kind: story.kind, id: story.noteId }).unwrap().doc,
+          session.projectStory({ kind: story.kind, id: story.noteId }).unwrap()
+            .doc,
         ),
       ).toBe(true);
     }
     for (const story of parts.listSlots()) {
       const view = parts.getView(story.rId);
       if (!view) panic("An owned canonical header/footer did not mount.");
-      expect(view.state.doc.eq(session.projectStory(story).unwrap().doc)).toBe(true);
+      expect(view.state.doc.eq(session.projectStory(story).unwrap().doc)).toBe(
+        true,
+      );
     }
   };
   return {
@@ -115,7 +144,9 @@ const harness = () => {
       sync();
     },
     bodyEdit: (text: string) => {
-      commit(session.prepareReplace(bodyState, { from: 1, to: 1, text }).unwrap());
+      commit(
+        session.prepareReplace(bodyState, { from: 1, to: 1, text }).unwrap(),
+      );
       sync();
     },
     undo: () => {
@@ -165,12 +196,20 @@ test("generated canonical story lifecycle follows the owner while host props sta
               snapshots.push(owner.session.document);
               selections.push(owner.state().selection.toJSON());
             };
-            const at = { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 } as const;
+            const at = {
+              story: OP_STORIES.MAIN,
+              blockId: "12345678",
+              offset: 0,
+            } as const;
             owner.apply([
               {
                 type: DOCUMENT_OP_TYPES.ADD_NOTE,
                 at,
-                note: { type: "footnote", id, content: [paragraph("23456789", text)] },
+                note: {
+                  type: "footnote",
+                  id,
+                  content: [paragraph("23456789", text)],
+                },
               },
             ]);
             record();
@@ -178,7 +217,11 @@ test("generated canonical story lifecycle follows the owner while host props sta
               {
                 type: DOCUMENT_OP_TYPES.ADD_NOTE,
                 at,
-                note: { type: "endnote", id, content: [paragraph("34567890", text)] },
+                note: {
+                  type: "endnote",
+                  id,
+                  content: [paragraph("34567890", text)],
+                },
               },
             ]);
             record();
@@ -193,17 +236,27 @@ test("generated canonical story lifecycle follows the owner while host props sta
               },
             ]);
             record();
-            const footView = owner.notes.getView({ kind: "footnote", noteId: id });
-            const endView = owner.notes.getView({ kind: "endnote", noteId: id });
+            const footView = owner.notes.getView({
+              kind: "footnote",
+              noteId: id,
+            });
+            const endView = owner.notes.getView({
+              kind: "endnote",
+              noteId: id,
+            });
             const footerView = owner.parts.getView(footer.rId);
-            if (!footView || !endView || !footerView) panic("The lifecycle fixture lost a view.");
+            if (!footView || !endView || !footerView)
+              panic("The lifecycle fixture lost a view.");
             expect(footView === endView).toBe(false);
             owner.freeze();
             expect(() => {
               owner.notes.sync();
               owner.parts.sync();
             }).not.toThrow();
-            expect(owner.notes.getView({ kind: "footnote", noteId: id }) === footView).toBe(true);
+            expect(
+              owner.notes.getView({ kind: "footnote", noteId: id }) ===
+                footView,
+            ).toBe(true);
             expect(owner.parts.getView(footer.rId) === footerView).toBe(true);
             owner.unfreeze();
             owner.refuse();
@@ -211,7 +264,10 @@ test("generated canonical story lifecycle follows the owner while host props sta
               owner.notes.sync();
               owner.parts.sync();
             }).not.toThrow();
-            expect(owner.notes.getView({ kind: "footnote", noteId: id }) === footView).toBe(true);
+            expect(
+              owner.notes.getView({ kind: "footnote", noteId: id }) ===
+                footView,
+            ).toBe(true);
             expect(owner.parts.getView(footer.rId) === footerView).toBe(true);
             owner.resume();
             owner.sync();
@@ -226,7 +282,10 @@ test("generated canonical story lifecycle follows the owner while host props sta
             ]);
             record();
             expect(endView.isDestroyed).toBe(true);
-            expect(owner.notes.getView({ kind: "footnote", noteId: id }) === footView).toBe(true);
+            expect(
+              owner.notes.getView({ kind: "footnote", noteId: id }) ===
+                footView,
+            ).toBe(true);
             owner.apply([
               {
                 type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
@@ -250,12 +309,16 @@ test("generated canonical story lifecycle follows the owner while host props sta
             for (let index = snapshots.length - 2; index >= 0; index--) {
               owner.undo();
               assertExactModel(owner.session.document, snapshots.at(index));
-              expect(owner.state().selection.toJSON()).toEqual(selections.at(index));
+              expect(owner.state().selection.toJSON()).toEqual(
+                selections.at(index),
+              );
             }
             for (let index = 1; index < snapshots.length; index++) {
               owner.redo();
               assertExactModel(owner.session.document, snapshots.at(index));
-              expect(owner.state().selection.toJSON()).toEqual(selections.at(index));
+              expect(owner.state().selection.toJSON()).toEqual(
+                selections.at(index),
+              );
             }
             owner.refuse();
             expect(() => {
@@ -349,13 +412,16 @@ for (const target of [
         const parts = createHeaderFooterEditorManager(deps);
         try {
           manager.ensureView();
-          const bodyView = manager.getView() ?? panic("Expected native body view.");
+          const bodyView =
+            manager.getView() ?? panic("Expected native body view.");
           const selections = {
             text: () => TextSelection.create(bodyView.state.doc, 2, 4),
             all: () => new AllSelection(bodyView.state.doc),
             node: () => NodeSelection.create(bodyView.state.doc, 0),
           };
-          bodyView.dispatch(bodyView.state.tr.setSelection(selections[selectionType]()));
+          bodyView.dispatch(
+            bodyView.state.tr.setSelection(selections[selectionType]()),
+          );
           const original = manager.api.getCanonicalDocument();
           const originalSelection = manager.getView()?.state.selection.toJSON();
           const story =
@@ -373,13 +439,25 @@ for (const target of [
                 } as const satisfies DocumentOp)
               : ({
                   type: DOCUMENT_OP_TYPES.ADD_NOTE,
-                  at: { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 },
-                  note: { type: target.kind, id: 9, content: [paragraph("23456789", "Story")] },
+                  at: {
+                    story: OP_STORIES.MAIN,
+                    blockId: "12345678",
+                    offset: 0,
+                  },
+                  note: {
+                    type: target.kind,
+                    id: 9,
+                    content: [paragraph("23456789", "Story")],
+                  },
                 } as const satisfies DocumentOp);
           if (selectionType === "node") {
-            expect(manager.api.applyCanonicalOperations([operation])).toBe(false);
+            expect(manager.api.applyCanonicalOperations([operation])).toBe(
+              false,
+            );
             assertExactModel(manager.api.getCanonicalDocument(), original);
-            expect(manager.getView()?.state.selection.toJSON()).toEqual(originalSelection);
+            expect(manager.getView()?.state.selection.toJSON()).toEqual(
+              originalSelection,
+            );
             expect(notes.listStories()).toEqual([]);
             expect(parts.listSlots()).toEqual([]);
             expect(refusals).toHaveLength(1);
@@ -393,13 +471,19 @@ for (const target of [
             target.kind === "footer"
               ? parts.getView("rIdNewFooter")
               : notes.activate({ kind: target.kind, noteId: 9 });
-          if (!storyView) panic("The native history fixture did not mount its story.");
+          if (!storyView)
+            panic("The native history fixture did not mount its story.");
           if (editText) {
             const position = storyView.state.doc.content.size - 1;
             const accepted = manager.api.replaceCanonicalStoryText({
               view: storyView,
               story,
-              intent: { from: position, to: position, text: "X", semantic: "replacement" },
+              intent: {
+                from: position,
+                to: position,
+                text: "X",
+                semantic: "replacement",
+              },
             });
             expect(refusals).toEqual([]);
             expect(accepted).toBe(true);
@@ -418,12 +502,15 @@ for (const target of [
             assertExactModel(manager.api.getCanonicalDocument(), expected);
           }
           expect(storyView.isDestroyed).toBe(true);
-          if (target.kind === "footer") expect(parts.getView("rIdNewFooter")).toBeNull();
+          if (target.kind === "footer")
+            expect(parts.getView("rIdNewFooter")).toBeNull();
           else {
             expect(notes.getView({ kind: target.kind, noteId: 9 })).toBeNull();
             expect(notes.getActive()).toBeNull();
           }
-          expect(manager.getView()?.state.selection.toJSON()).toEqual(originalSelection);
+          expect(manager.getView()?.state.selection.toJSON()).toEqual(
+            originalSelection,
+          );
           expect(manager.api.redo()).toBe(true);
           assertExactModel(manager.api.getCanonicalDocument(), created);
           const restoredView =

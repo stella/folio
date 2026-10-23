@@ -11,9 +11,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { history, undo } from "prosemirror-history";
 import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
-import { history, undo } from "prosemirror-history";
 import { EditorState } from "prosemirror-state";
 
 import type { ParagraphDirection } from "../../paragraphDirection";
@@ -71,7 +71,11 @@ if (!plugin) {
 }
 
 const para = (text: string, direction: ParagraphDirection | null = null) =>
-  schema.node("paragraph", { direction }, text.length > 0 ? [schema.text(text)] : []);
+  schema.node(
+    "paragraph",
+    { direction },
+    text.length > 0 ? [schema.text(text)] : [],
+  );
 
 // Paragraph led by a field atom whose display text is `fieldText`.
 const fieldLedPara = (fieldText: string, trailing: string) =>
@@ -123,23 +127,33 @@ const LTR = { source: "manual", value: "ltr" } as const;
 
 describe("ensureBaseDirectionInState (initial load)", () => {
   test("auto-sets an Arabic-led paragraph", () => {
-    expect(dirs(ensureBaseDirectionInState(stateOf(para("هذا عقد"))))).toEqual(["auto"]);
+    expect(dirs(ensureBaseDirectionInState(stateOf(para("هذا عقد"))))).toEqual([
+      "auto",
+    ]);
   });
 
   test("leaves a Latin-led paragraph undecided", () => {
-    expect(dirs(ensureBaseDirectionInState(stateOf(para("Agreement"))))).toEqual(["none"]);
+    expect(
+      dirs(ensureBaseDirectionInState(stateOf(para("Agreement")))),
+    ).toEqual(["none"]);
   });
 
   test("is a no-op when the extension is disabled (plugin absent)", () => {
-    expect(dirs(ensureBaseDirectionInState(stateWithoutPlugin(para("هذا عقد"))))).toEqual(["none"]);
+    expect(
+      dirs(ensureBaseDirectionInState(stateWithoutPlugin(para("هذا عقد")))),
+    ).toEqual(["none"]);
   });
 
   test("does not override a manual LTR on Arabic text", () => {
-    expect(dirs(ensureBaseDirectionInState(stateOf(para("عربي", LTR))))).toEqual(["ltr"]);
+    expect(
+      dirs(ensureBaseDirectionInState(stateOf(para("عربي", LTR)))),
+    ).toEqual(["ltr"]);
   });
 
   test("leaves a manual RTL paragraph untouched (idempotent)", () => {
-    expect(dirs(ensureBaseDirectionInState(stateOf(para("عربي", RTL))))).toEqual(["rtl"]);
+    expect(
+      dirs(ensureBaseDirectionInState(stateOf(para("عربي", RTL)))),
+    ).toEqual(["rtl"]);
   });
 
   test("mixed: detects per paragraph", () => {
@@ -161,8 +175,13 @@ describe("ensureBaseDirectionInState (initial load)", () => {
       displayText: "",
       fieldKind: "complex",
     });
-    const paragraph = docxSchema.node("paragraph", null, [page, docxSchema.text(" عربي")]);
-    const docxRuntime = AutoBidiDetectionExtension().onSchemaReady({ schema: docxSchema });
+    const paragraph = docxSchema.node("paragraph", null, [
+      page,
+      docxSchema.text(" عربي"),
+    ]);
+    const docxRuntime = AutoBidiDetectionExtension().onSchemaReady({
+      schema: docxSchema,
+    });
     const state = EditorState.create({
       doc: docxSchema.node("doc", null, [paragraph]),
       plugins: docxRuntime.plugins ?? [],
@@ -177,9 +196,13 @@ describe("ensureBaseDirectionInState (initial load)", () => {
       { displayText: "عربي" },
       schema.text("Agreement"),
     );
-    const paragraph = schema.node("paragraph", { direction: null }, [structured]);
+    const paragraph = schema.node("paragraph", { direction: null }, [
+      structured,
+    ]);
 
-    expect(dirs(ensureBaseDirectionInState(stateOf(paragraph)))).toEqual(["none"]);
+    expect(dirs(ensureBaseDirectionInState(stateOf(paragraph)))).toEqual([
+      "none",
+    ]);
   });
 
   test("detects RTL from text inside an inline content control (SDT)", () => {
@@ -192,7 +215,9 @@ describe("ensureBaseDirectionInState (initial load)", () => {
       schema.text("عربي", [schema.mark("deletion")]),
       schema.text(" agreement"),
     ]);
-    expect(dirs(ensureBaseDirectionInState(stateOf(paragraph)))).toEqual(["none"]);
+    expect(dirs(ensureBaseDirectionInState(stateOf(paragraph)))).toEqual([
+      "none",
+    ]);
   });
 });
 
@@ -233,7 +258,9 @@ describe("appendTransaction (live editing)", () => {
 
   test("detects the edited paragraph in a multi-paragraph doc (scoped scan)", () => {
     let state = stateOf(para("First"), para(""));
-    state = state.apply(state.tr.insertText("مرحبا", state.doc.content.size - 1));
+    state = state.apply(
+      state.tr.insertText("مرحبا", state.doc.content.size - 1),
+    );
     expect(dirs(state)).toEqual(["none", "auto"]);
   });
 
@@ -260,17 +287,24 @@ describe("undo", () => {
         text: { group: "inline" },
       },
     });
-    const taggedPlugin = AutoBidiDetectionExtension().onSchemaReady({ schema: tagged })
-      .plugins?.[0];
+    const taggedPlugin = AutoBidiDetectionExtension().onSchemaReady({
+      schema: tagged,
+    }).plugins?.[0];
     if (!taggedPlugin) {
       throw new Error("Expected plugin from AutoBidiDetectionExtension");
     }
     let state = EditorState.create({
-      doc: tagged.node("doc", null, [tagged.node("paragraph", null, [tagged.text("x")])]),
+      doc: tagged.node("doc", null, [
+        tagged.node("paragraph", null, [tagged.text("x")]),
+      ]),
       plugins: [history(), taggedPlugin],
     });
-    state = state.apply(state.tr.setNodeAttribute(0, "tag", "edited").insertText("هذا ", 1));
-    expect(state.doc.firstChild?.attrs["direction"]).toEqual({ source: "auto" });
+    state = state.apply(
+      state.tr.setNodeAttribute(0, "tag", "edited").insertText("هذا ", 1),
+    );
+    expect(state.doc.firstChild?.attrs["direction"]).toEqual({
+      source: "auto",
+    });
 
     undo(state, (tr) => {
       state = state.apply(tr);

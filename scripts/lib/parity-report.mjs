@@ -60,12 +60,16 @@ export function formatDiff({
   if (leftOnly.length) {
     stream(`  ${leftLabel} (${leftOnly.length}):`);
     for (const k of leftOnly.slice(0, truncate)) stream(`    ${k}`);
-    if (leftOnly.length > truncate) stream(`    ... and ${leftOnly.length - truncate} more`);
+    if (leftOnly.length > truncate)
+      stream(`    ... and ${leftOnly.length - truncate} more`);
   }
   if (rightOnly.length) {
-    stream(`${leftOnly.length ? "\n" : ""}  ${rightLabel} (${rightOnly.length}):`);
+    stream(
+      `${leftOnly.length ? "\n" : ""}  ${rightLabel} (${rightOnly.length}):`,
+    );
     for (const k of rightOnly.slice(0, truncate)) stream(`    ${k}`);
-    if (rightOnly.length > truncate) stream(`    ... and ${rightOnly.length - truncate} more`);
+    if (rightOnly.length > truncate)
+      stream(`    ... and ${rightOnly.length - truncate} more`);
   }
   stream("");
   return true;

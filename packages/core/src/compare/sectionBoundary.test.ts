@@ -3,7 +3,12 @@ import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
-import type { Document, Paragraph, SectionProperties, Table } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  SectionProperties,
+  Table,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
 
@@ -62,7 +67,9 @@ const table = (text: string): Table => ({
   ],
 });
 
-const documentWith = (content: Document["package"]["document"]["content"]): Document => {
+const documentWith = (
+  content: Document["package"]["document"]["content"],
+): Document => {
   const document = createEmptyDocument();
   return {
     ...document,
@@ -76,7 +83,9 @@ const documentWith = (content: Document["package"]["document"]["content"]): Docu
 const paragraphSectionProjection = (reviewer: FolioDocxReviewer) =>
   reviewer
     .toDocument()
-    .package.document.content.filter((block): block is Paragraph => block.type === "paragraph")
+    .package.document.content.filter(
+      (block): block is Paragraph => block.type === "paragraph",
+    )
     .map(({ paraId, sectionProperties }) => ({
       paraId,
       sectionProperties:
@@ -86,9 +95,13 @@ const paragraphSectionProjection = (reviewer: FolioDocxReviewer) =>
     }));
 
 const storyProjection = (reviewer: FolioDocxReviewer) => ({
-  blocks: reviewer.snapshot().blocks.map(({ id, kind, text }) => ({ id, kind, text })),
+  blocks: reviewer
+    .snapshot()
+    .blocks.map(({ id, kind, text }) => ({ id, kind, text })),
   sections: paragraphSectionProjection(reviewer),
-  topLevelKinds: reviewer.toDocument().package.document.content.map(({ type }) => type),
+  topLevelKinds: reviewer
+    .toDocument()
+    .package.document.content.map(({ type }) => type),
 });
 
 const reopenResolved = async (
@@ -113,13 +126,17 @@ const reopenResolved = async (
   expect(await documentXml(second)).toBe(expectedXml);
   expect(await documentXml(concurrentFirst)).toBe(expectedXml);
   expect(await documentXml(concurrentSecond)).toBe(expectedXml);
-  const [reopenedFirst, reopenedSecond, reopenedConcurrentFirst, reopenedConcurrentSecond] =
-    await Promise.all([
-      FolioDocxReviewer.fromBuffer(first),
-      FolioDocxReviewer.fromBuffer(second),
-      FolioDocxReviewer.fromBuffer(concurrentFirst),
-      FolioDocxReviewer.fromBuffer(concurrentSecond),
-    ]);
+  const [
+    reopenedFirst,
+    reopenedSecond,
+    reopenedConcurrentFirst,
+    reopenedConcurrentSecond,
+  ] = await Promise.all([
+    FolioDocxReviewer.fromBuffer(first),
+    FolioDocxReviewer.fromBuffer(second),
+    FolioDocxReviewer.fromBuffer(concurrentFirst),
+    FolioDocxReviewer.fromBuffer(concurrentSecond),
+  ]);
   const expectedProjection = storyProjection(reopenedFirst);
   expect(storyProjection(reopenedSecond)).toEqual(expectedProjection);
   expect(storyProjection(reopenedConcurrentFirst)).toEqual(expectedProjection);
@@ -127,8 +144,14 @@ const reopenResolved = async (
   return reopenedFirst;
 };
 
-const expectResolvedTerminals = async (baseDocument: Document, targetDocument: Document) => {
-  const [base, target] = await Promise.all([createDocx(baseDocument), createDocx(targetDocument)]);
+const expectResolvedTerminals = async (
+  baseDocument: Document,
+  targetDocument: Document,
+) => {
+  const [base, target] = await Promise.all([
+    createDocx(baseDocument),
+    createDocx(targetDocument),
+  ]);
   const [baseReviewer, targetReviewer] = await Promise.all([
     FolioDocxReviewer.fromBuffer(base),
     FolioDocxReviewer.fromBuffer(target),
@@ -174,21 +197,30 @@ const expectPendingTerminals = async ({
     FolioDocxReviewer.fromBuffer(rejected),
   ]);
   const pendingXml = await pendingZip.file("word/document.xml")?.async("text");
-  expect(pendingXml).toMatch(/<w:pPr><w:rPr><w:ins\b[^>]*\/><\/w:rPr><w:sectPr>/u);
+  expect(pendingXml).toMatch(
+    /<w:pPr><w:rPr><w:ins\b[^>]*\/><\/w:rPr><w:sectPr>/u,
+  );
 
   const [resolvedAccepted, resolvedRejected] = await Promise.all([
     reopenResolved(pending, "accept"),
     reopenResolved(pending, "reject"),
   ]);
-  expect(storyProjection(resolvedAccepted)).toEqual(storyProjection(acceptedReviewer));
-  expect(storyProjection(resolvedRejected)).toEqual(storyProjection(rejectedReviewer));
+  expect(storyProjection(resolvedAccepted)).toEqual(
+    storyProjection(acceptedReviewer),
+  );
+  expect(storyProjection(resolvedRejected)).toEqual(
+    storyProjection(rejectedReviewer),
+  );
 };
 
 describe("tracked section-boundary ownership", () => {
   test("accept removes a source endpoint before an ordinary paragraph", async () => {
     // The paragraph left is the one whose mark stays: the second.
     await expectResolvedTerminals(
-      documentWith([paragraph("00000001", "Alpha", SECTION_A), paragraph("00000002", "Beta")]),
+      documentWith([
+        paragraph("00000001", "Alpha", SECTION_A),
+        paragraph("00000002", "Beta"),
+      ]),
       documentWith([paragraph("00000002", "AlphaBeta")]),
     );
   });
@@ -207,7 +239,32 @@ describe("tracked section-boundary ownership", () => {
         paragraph("00000001", "Alpha", SECTION_A),
         paragraph("00000002", "Beta", FOLLOWING_SECTION),
       ]),
-      rejectedDocument: documentWith([paragraph("00000002", "AlphaBeta", FOLLOWING_SECTION)]),
+      rejectedDocument: documentWith([
+        paragraph("00000002", "AlphaBeta", FOLLOWING_SECTION),
+      ]),
+    });
+  });
+
+  test("resolving a boundary after a table keeps its section after the table", async () => {
+    const insertedMark = {
+      kind: "ins" as const,
+      info: { id: 1, author: OPTIONS.author, date: OPTIONS.timestamp },
+    };
+    await expectPendingTerminals({
+      pendingDocument: documentWith([
+        table("Cell"),
+        { ...paragraph("00000001", "Alpha", SECTION_A), pPrMark: insertedMark },
+        paragraph("00000002", "Beta"),
+      ]),
+      acceptedDocument: documentWith([
+        table("Cell"),
+        paragraph("00000001", "Alpha", SECTION_A),
+        paragraph("00000002", "Beta"),
+      ]),
+      rejectedDocument: documentWith([
+        table("Cell"),
+        paragraph("00000002", "AlphaBeta", SECTION_A),
+      ]),
     });
   });
 
@@ -315,13 +372,19 @@ describe("tracked section-boundary ownership", () => {
         table("Cell"),
         paragraph("00000002", "Tail", FOLLOWING_SECTION),
       ]),
-      documentWith([table("Cell"), paragraph("00000002", "Tail", FOLLOWING_SECTION)]),
+      documentWith([
+        table("Cell"),
+        paragraph("00000002", "Tail", FOLLOWING_SECTION),
+      ]),
     );
   });
 });
 
 test("an inserted section imports its header part and keeps the rejected body unchanged", async () => {
-  const base = documentWith([paragraph("00000001", "Alpha"), paragraph("00000002", "Tail")]);
+  const base = documentWith([
+    paragraph("00000001", "Alpha"),
+    paragraph("00000002", "Tail"),
+  ]);
   const target = documentWith([
     paragraph("00000001", "Alpha"),
     paragraph("00000003", "", {
@@ -341,23 +404,31 @@ test("an inserted section imports its header part and keeps the rejected body un
     ],
   ]);
   const baseBuffer = await createDocx(base);
-  const result = await compareDocx(baseBuffer, await createDocx(target), OPTIONS);
+  const result = await compareDocx(
+    baseBuffer,
+    await createDocx(target),
+    OPTIONS,
+  );
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
   const accepted = await reopenResolved(result.value.buffer, "accept");
   const endpoint = accepted
     .toDocument()
     .package.document.content.find(
-      (block) => block.type === "paragraph" && block.sectionProperties?.headerReferences,
+      (block) =>
+        block.type === "paragraph" && block.sectionProperties?.headerReferences,
     );
-  if (endpoint?.type !== "paragraph") throw new Error("Missing inserted section");
+  if (endpoint?.type !== "paragraph")
+    throw new Error("Missing inserted section");
   const reference = endpoint.sectionProperties?.headerReferences?.at(0);
   if (!reference) throw new Error("Missing section header reference");
-  expect(accepted.readStory({ type: "header", relationshipId: reference.rId })?.text).toBe(
-    "Section heading",
-  );
+  expect(
+    accepted.readStory({ type: "header", relationshipId: reference.rId })?.text,
+  ).toBe("Section heading");
   const rejected = await reopenResolved(result.value.buffer, "reject");
   const original = await FolioDocxReviewer.fromBuffer(baseBuffer);
   expect(storyProjection(rejected)).toEqual(storyProjection(original));
-  expect(rejected.listStories().filter(({ handle }) => handle.type === "header")).toEqual([]);
+  expect(
+    rejected.listStories().filter(({ handle }) => handle.type === "header"),
+  ).toEqual([]);
 });

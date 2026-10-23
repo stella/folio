@@ -9,26 +9,51 @@
     <div class="dialog__body">
       <label class="field">
         <span class="field__label">Image file</span>
-        <input class="field__input" type="file" :accept="accept" @change="onFileChange" />
+        <input
+          class="field__input"
+          type="file"
+          :accept="accept"
+          @change="onFileChange"
+        />
       </label>
       <label class="field">
         <span class="field__label">Alt text</span>
-        <input v-model="alt" class="field__input" :placeholder="file?.name ?? ''" />
+        <input
+          v-model="alt"
+          class="field__input"
+          :placeholder="file?.name ?? ''"
+        />
       </label>
       <div class="grid">
         <label class="field">
           <span class="field__label">Width</span>
-          <input v-model="width" class="field__input" min="1" placeholder="Auto" type="number" />
+          <input
+            v-model="width"
+            class="field__input"
+            min="1"
+            placeholder="Auto"
+            type="number"
+          />
         </label>
         <label class="field">
           <span class="field__label">Height</span>
-          <input v-model="height" class="field__input" min="1" placeholder="Auto" type="number" />
+          <input
+            v-model="height"
+            class="field__input"
+            min="1"
+            placeholder="Auto"
+            type="number"
+          />
         </label>
       </div>
     </div>
     <div class="dialog__footer">
       <button class="dialog__btn" @click="$emit('close')">Cancel</button>
-      <button class="dialog__btn dialog__btn--primary" :disabled="!file" @click="insert">
+      <button
+        class="dialog__btn dialog__btn--primary"
+        :disabled="!file"
+        @click="insert"
+      >
         Insert
       </button>
     </div>
@@ -37,6 +62,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
 
 const { Dialog: FolioDialog } = useFolioUI();

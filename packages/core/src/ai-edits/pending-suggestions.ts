@@ -1,18 +1,19 @@
+import type { EditorState } from "prosemirror-state";
+
 import {
-  parseFolioDocumentOperationBatch,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  parseFolioDocumentOperationBatch,
 } from "../document-operations";
+import { rejectAllSuggestions } from "../prosemirror/commands/comments";
+import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { canonicalJson } from "../utils/canonicalJson";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
-import { rejectAllSuggestions } from "../prosemirror/commands/comments";
-import type { EditorState } from "prosemirror-state";
+import type { FolioDocumentStoryHandle } from "./headless";
 import {
   createFolioAIEditSnapshotWithStyleResolver,
   hashFolioAIBlockText,
   sourceDocumentOf,
 } from "./snapshot";
-import type { FolioDocumentStoryHandle } from "./headless";
 import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyResult,
@@ -81,7 +82,9 @@ type ReplaceRestagedStoryOptions = {
 
 type LoadPendingSuggestionsOptions = {
   records: readonly unknown[];
-  snapshotForStory: (story: FolioDocumentStoryHandle) => FolioAIEditSnapshot | null;
+  snapshotForStory: (
+    story: FolioDocumentStoryHandle,
+  ) => FolioAIEditSnapshot | null;
   sourceSnapshotForStory: (
     story: FolioDocumentStoryHandle,
     commentIds: ReadonlySet<number>,
@@ -110,8 +113,15 @@ export const withoutPendingSuggestionCommentMarks = (
   let transaction = state.tr;
   state.doc.descendants((node, position) => {
     for (const mark of node.marks) {
-      if (mark.type.name === "comment" && commentIds.has(mark.attrs["commentId"])) {
-        transaction = transaction.removeMark(position, position + node.nodeSize, mark);
+      if (
+        mark.type.name === "comment" &&
+        commentIds.has(mark.attrs["commentId"])
+      ) {
+        transaction = transaction.removeMark(
+          position,
+          position + node.nodeSize,
+          mark,
+        );
       }
     }
   });
@@ -128,7 +138,10 @@ export const createPendingSuggestionSourceSnapshot = (
     source = state.apply(transaction);
   });
   source = withoutPendingSuggestionCommentMarks(source, commentIds);
-  return createFolioAIEditSnapshotWithStyleResolver(source.doc, getDocumentStyleResolver(source));
+  return createFolioAIEditSnapshotWithStyleResolver(
+    source.doc,
+    getDocumentStyleResolver(source),
+  );
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -157,7 +170,8 @@ const storyFromUnknown = (value: unknown): FolioDocumentStoryHandle | null => {
         : null;
     case "footnote":
     case "endnote":
-      return typeof value["noteId"] === "number" && Number.isSafeInteger(value["noteId"])
+      return typeof value["noteId"] === "number" &&
+        Number.isSafeInteger(value["noteId"])
         ? { type: value["type"], noteId: value["noteId"] }
         : null;
     default:
@@ -165,11 +179,17 @@ const storyFromUnknown = (value: unknown): FolioDocumentStoryHandle | null => {
   }
 };
 
-const fingerprintOf = (snapshot: FolioAIEditSnapshot, story: FolioDocumentStoryHandle): string =>
+const fingerprintOf = (
+  snapshot: FolioAIEditSnapshot,
+  story: FolioDocumentStoryHandle,
+): string =>
   hashFolioAIBlockText(
     canonicalJson([
       story,
-      snapshot.blocks.map((block) => [block, snapshot.anchors[block.id]?.structuralBoundaryHash]),
+      snapshot.blocks.map((block) => [
+        block,
+        snapshot.anchors[block.id]?.structuralBoundaryHash,
+      ]),
     ]),
   );
 
@@ -198,7 +218,8 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
     value["provenance"] !== "suggested" ||
     typeof value["sourceDocumentFingerprint"] !== "string" ||
     (value["commentId"] !== undefined &&
-      (typeof value["commentId"] !== "number" || !Number.isSafeInteger(value["commentId"]))) ||
+      (typeof value["commentId"] !== "number" ||
+        !Number.isSafeInteger(value["commentId"]))) ||
     typeof anchor["blockId"] !== "string" ||
     (anchor["paraId"] !== null && typeof anchor["paraId"] !== "string") ||
     typeof anchor["originalTextHash"] !== "string"
@@ -249,13 +270,17 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
       ...(typeof anchor["startOffset"] === "number" && {
         startOffset: anchor["startOffset"],
       }),
-      ...(typeof anchor["endOffset"] === "number" && { endOffset: anchor["endOffset"] }),
+      ...(typeof anchor["endOffset"] === "number" && {
+        endOffset: anchor["endOffset"],
+      }),
     },
     author: value["author"],
     provenance: "suggested",
     sourceDocumentFingerprint: value["sourceDocumentFingerprint"],
     ...(typeof value["commentId"] === "number" &&
-      Number.isSafeInteger(value["commentId"]) && { commentId: value["commentId"] }),
+      Number.isSafeInteger(value["commentId"]) && {
+        commentId: value["commentId"],
+      }),
   };
 };
 
@@ -280,12 +305,18 @@ export class FolioPendingSuggestionRegistry {
     if (applied.length === 0) return;
     const storyKey = canonicalJson(story);
     for (const [key, record] of this.records) {
-      if (!activeSuggestionIds.has(record.suggestionId)) this.records.delete(key);
+      if (!activeSuggestionIds.has(record.suggestionId))
+        this.records.delete(key);
     }
-    if (![...this.records.values()].some((record) => canonicalJson(record.story) === storyKey)) {
+    if (
+      ![...this.records.values()].some(
+        (record) => canonicalJson(record.story) === storyKey,
+      )
+    ) {
       this.sourceFingerprints.delete(storyKey);
     }
-    const fingerprint = this.sourceFingerprints.get(storyKey) ?? fingerprintOf(snapshot, story);
+    const fingerprint =
+      this.sourceFingerprints.get(storyKey) ?? fingerprintOf(snapshot, story);
     this.sourceFingerprints.set(storyKey, fingerprint);
     const appliedById = new Map(applied.map((entry) => [entry.id, entry]));
     for (const operation of operations) {
@@ -316,7 +347,9 @@ export class FolioPendingSuggestionRegistry {
         author,
         provenance: "suggested",
         sourceDocumentFingerprint: fingerprint,
-        ...(outcome.commentId !== undefined && { commentId: outcome.commentId }),
+        ...(outcome.commentId !== undefined && {
+          commentId: outcome.commentId,
+        }),
       };
       this.records.set(recordKey(record), record);
     }
@@ -356,7 +389,11 @@ export class FolioPendingSuggestionRegistry {
     const fingerprints = new Map<string, string>();
     const commentIdsByStory = new Map<string, Set<number>>();
     for (const record of this.records.values()) {
-      if (!activeSuggestionIds.has(record.suggestionId) || record.commentId === undefined) continue;
+      if (
+        !activeSuggestionIds.has(record.suggestionId) ||
+        record.commentId === undefined
+      )
+        continue;
       const storyKey = canonicalJson(record.story);
       const commentIds = commentIdsByStory.get(storyKey) ?? new Set<number>();
       commentIds.add(record.commentId);
@@ -403,12 +440,18 @@ export class FolioPendingSuggestionRegistry {
     const changedStories = new Set<string>();
     return records.map((value): FolioPendingSuggestionLoadResult => {
       const suggestionId =
-        isObject(value) && typeof value["suggestionId"] === "string" ? value["suggestionId"] : null;
-      if (!isObject(value) || value["version"] !== FOLIO_PENDING_SUGGESTION_VERSION) {
+        isObject(value) && typeof value["suggestionId"] === "string"
+          ? value["suggestionId"]
+          : null;
+      if (
+        !isObject(value) ||
+        value["version"] !== FOLIO_PENDING_SUGGESTION_VERSION
+      ) {
         return { status: "stale", suggestionId, reason: "unsupportedVersion" };
       }
       const record = parseRecord(value);
-      if (!record) return { status: "stale", suggestionId, reason: "invalidRecord" };
+      if (!record)
+        return { status: "stale", suggestionId, reason: "invalidRecord" };
       const key = recordKey(record);
       const existing = this.records.get(key);
       if (existing && activeSuggestionIds().has(record.suggestionId)) {
@@ -452,8 +495,10 @@ export class FolioPendingSuggestionRegistry {
       const snapshot = changedStories.has(storyKey)
         ? snapshotForStory(record.story)
         : baseline.snapshot;
-      if (!snapshot) return { status: "stale", suggestionId, reason: "missingAnchor" };
-      const multiplicity = paraIdCountsOf(snapshot).get(record.anchor.paraId) ?? 0;
+      if (!snapshot)
+        return { status: "stale", suggestionId, reason: "missingAnchor" };
+      const multiplicity =
+        paraIdCountsOf(snapshot).get(record.anchor.paraId) ?? 0;
       if (multiplicity === 0 || !snapshot.anchors[record.anchor.paraId]) {
         return { status: "stale", suggestionId, reason: "missingAnchor" };
       }
@@ -469,7 +514,8 @@ export class FolioPendingSuggestionRegistry {
         startOffset !== undefined &&
         endOffset !== undefined &&
         selectedTextHash !== undefined &&
-        hashFolioAIBlockText(anchor.text.slice(startOffset, endOffset)) !== selectedTextHash
+        hashFolioAIBlockText(anchor.text.slice(startOffset, endOffset)) !==
+          selectedTextHash
       ) {
         return { status: "stale", suggestionId, reason: "textChanged" };
       }
@@ -477,7 +523,9 @@ export class FolioPendingSuggestionRegistry {
         return { status: "stale", suggestionId, reason: "documentChanged" };
       }
       const outcome = apply(record, snapshot);
-      const applied = outcome.applied.find((entry) => entry.id === record.operation.id);
+      const applied = outcome.applied.find(
+        (entry) => entry.id === record.operation.id,
+      );
       if (!applied) {
         return { status: "stale", suggestionId, reason: "applyFailed" };
       }
@@ -488,7 +536,9 @@ export class FolioPendingSuggestionRegistry {
           key,
           structuredClone({
             ...rest,
-            ...(applied.commentId !== undefined && { commentId: applied.commentId }),
+            ...(applied.commentId !== undefined && {
+              commentId: applied.commentId,
+            }),
           }),
         );
       }

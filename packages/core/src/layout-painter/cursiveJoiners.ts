@@ -136,7 +136,10 @@ function styleEntries(style: CSSStyleDeclaration): [string, string][] {
   );
 }
 
-const sameFace = (a: Record<string, string>, b: Record<string, string>): boolean => {
+const sameFace = (
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean => {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const key of keys) {
     if (a[key] !== b[key]) return false;
@@ -202,7 +205,10 @@ export function planCursiveJoiners<TRun>({
       existing[side] = true;
       return;
     }
-    plan.set(run, { leading: side === "leading", trailing: side === "trailing" });
+    plan.set(run, {
+      leading: side === "leading",
+      trailing: side === "trailing",
+    });
   };
 
   for (let i = 0; i < runs.length - 1; i++) {

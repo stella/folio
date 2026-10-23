@@ -4,19 +4,25 @@
  * Provides footnoteRef mark + insert/delete commands for footnotes and endnotes.
  */
 
+import { panic } from "better-result";
+import { type Command, TextSelection } from "prosemirror-state";
+
+import { expectFootnoteRefMarkAttrs } from "../../attrs";
+import { withCanonicalCommand } from "../../canonicalCommands";
 import {
   mintNoteReferenceOccurrenceId,
   noteReferenceOccurrencePlugin,
 } from "../../noteReferenceOccurrences";
-
-import { panic } from "better-result";
-import { TextSelection, type Command } from "prosemirror-state";
-import { expectFootnoteRefMarkAttrs } from "../../attrs";
-import { withCanonicalCommand } from "../../canonicalCommands";
-import { suggestRangeDeletion, suggestionModeKey } from "../../plugins/suggestionMode";
+import {
+  suggestionModeKey,
+  suggestRangeDeletion,
+} from "../../plugins/suggestionMode";
 import { createMarkExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
-import { expandNoteReferenceDeletionRange, noteReferenceRanges } from "./noteReferenceDeletion";
+import {
+  expandNoteReferenceDeletionRange,
+  noteReferenceRanges,
+} from "./noteReferenceDeletion";
 
 const NOTE_REFERENCE_PARSE_PRIORITY = 60;
 
@@ -25,7 +31,8 @@ const noteRefAttrsFromDom = (
   noteType: "footnote" | "endnote",
   vertAlign?: "baseline" | "superscript",
 ): Record<string, string> => ({
-  occurrenceId: dom.dataset["noteOccurrence"] ?? mintNoteReferenceOccurrenceId(),
+  occurrenceId:
+    dom.dataset["noteOccurrence"] ?? mintNoteReferenceOccurrenceId(),
   id: dom.dataset["id"] ?? "",
   noteType: dom.dataset["noteType"] ?? noteType,
   ...(vertAlign ? { vertAlign } : {}),
@@ -71,7 +78,9 @@ export const FootnoteRefExtension = createMarkExtension({
       const noteType = attrs.noteType ?? "footnote";
       const isSuperscript = attrs.vertAlign === "superscript";
       const tagName = isSuperscript ? "sup" : "span";
-      const alignClass = isSuperscript ? "docx-note-ref-superscript" : "docx-note-ref-baseline";
+      const alignClass = isSuperscript
+        ? "docx-note-ref-superscript"
+        : "docx-note-ref-baseline";
       return [
         tagName,
         {
@@ -95,7 +104,9 @@ export const FootnoteRefExtension = createMarkExtension({
         const range = expandNoteReferenceDeletionRange(
           state.doc,
           empty && direction === "backward" ? Math.max(0, from - 1) : from,
-          empty && direction === "forward" ? Math.min(state.doc.content.size, to + 1) : to,
+          empty && direction === "forward"
+            ? Math.min(state.doc.content.size, to + 1)
+            : to,
         );
         if (!range) {
           return false;
@@ -104,7 +115,9 @@ export const FootnoteRefExtension = createMarkExtension({
         return true;
       };
 
-    function makeInsertNote(noteType: "footnote" | "endnote"): (id: number) => Command {
+    function makeInsertNote(
+      noteType: "footnote" | "endnote",
+    ): (id: number) => Command {
       return (id: number): Command =>
         (state, dispatch) => {
           if (!dispatch) {
@@ -168,11 +181,23 @@ export const FootnoteRefExtension = createMarkExtension({
       commands: {
         insertFootnote: (id, content = [{ type: "paragraph", content: [] }]) =>
           withCanonicalCommand(makeInsertNote("footnote")(id), (state) => [
-            { type: "insertNote", at: state.selection.to, kind: "footnote", id, content },
+            {
+              type: "insertNote",
+              at: state.selection.to,
+              kind: "footnote",
+              id,
+              content,
+            },
           ]),
         insertEndnote: (id, content = [{ type: "paragraph", content: [] }]) =>
           withCanonicalCommand(makeInsertNote("endnote")(id), (state) => [
-            { type: "insertNote", at: state.selection.to, kind: "endnote", id, content },
+            {
+              type: "insertNote",
+              at: state.selection.to,
+              kind: "endnote",
+              id,
+              content,
+            },
           ]),
         deleteNoteRef: () =>
           withCanonicalCommand(deleteNoteRef, (state) => {
@@ -183,7 +208,9 @@ export const FootnoteRefExtension = createMarkExtension({
               empty ? Math.min(state.doc.content.size, to + 1) : to,
             ).flatMap((range) => {
               const node = state.doc.nodeAt(range.from);
-              const mark = node?.marks.find((candidate) => candidate.type.name === "footnoteRef");
+              const mark = node?.marks.find(
+                (candidate) => candidate.type.name === "footnoteRef",
+              );
               if (!mark) return [];
               const attrs = expectFootnoteRefMarkAttrs(mark);
               const id = Number(attrs.id);

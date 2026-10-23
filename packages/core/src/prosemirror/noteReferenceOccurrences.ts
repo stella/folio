@@ -1,14 +1,19 @@
-import { Result, TaggedError, panic } from "better-result";
-import { Fragment, Mark, Slice, type Node as PMNode } from "prosemirror-model";
-import { Plugin, type Transaction } from "prosemirror-state";
+import { panic, Result, TaggedError } from "better-result";
 import { isHistoryTransaction } from "prosemirror-history";
+import { Fragment, Mark, type Node as PMNode, Slice } from "prosemirror-model";
+import { Plugin, type Transaction } from "prosemirror-state";
+
 import { readFootnoteRefMarkAttrs } from "./attrs";
 
-export class NoteReferenceEditRefusal extends TaggedError("NoteReferenceEditRefusal")<{
+export class NoteReferenceEditRefusal extends TaggedError(
+  "NoteReferenceEditRefusal",
+)<{
   message: string;
 }> {}
 
-export class NoteReferenceReplayDefect extends TaggedError("NoteReferenceReplayDefect")<{
+export class NoteReferenceReplayDefect extends TaggedError(
+  "NoteReferenceReplayDefect",
+)<{
   message: string;
 }> {}
 
@@ -22,19 +27,29 @@ export const noteReferenceTransactionIssue = (
   transaction: Transaction,
 ): NoteReferenceEditRefusal | NoteReferenceReplayDefect | undefined => {
   const issue: unknown = transaction.getMeta(NOTE_OCCURRENCE_REPORT_META);
-  return issue instanceof NoteReferenceEditRefusal || issue instanceof NoteReferenceReplayDefect
+  return issue instanceof NoteReferenceEditRefusal ||
+    issue instanceof NoteReferenceReplayDefect
     ? issue
     : undefined;
 };
 
 export const mintNoteReferenceOccurrenceId = (): string => crypto.randomUUID();
 
-type Occurrence = { id: string; node: PMNode; text: string; from: number; to: number };
+type Occurrence = {
+  id: string;
+  node: PMNode;
+  text: string;
+  from: number;
+  to: number;
+};
 
 /** Identity establishes boundaries; text only validates the already bounded unit. */
 const readOccurrences = (paragraph: PMNode) => {
   const referenceType = paragraph.type.schema.marks["footnoteRef"];
-  if (!referenceType || !paragraph.rangeHasMark(0, paragraph.content.size, referenceType))
+  if (
+    !referenceType ||
+    !paragraph.rangeHasMark(0, paragraph.content.size, referenceType)
+  )
     return Result.ok([]);
   const occurrences: Occurrence[] = [];
   const seen = new Set<string>();
@@ -42,7 +57,9 @@ const readOccurrences = (paragraph: PMNode) => {
   let issue: string | undefined;
   paragraph.forEach((node, from) => {
     if (issue !== undefined) return;
-    const reference = node.marks.find((mark) => mark.type.name === "footnoteRef");
+    const reference = node.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
     if (!reference) {
       previous = undefined;
       return;
@@ -68,16 +85,27 @@ const readOccurrences = (paragraph: PMNode) => {
       return;
     }
     seen.add(id);
-    previous = { id, node, text: node.text ?? "", from, to: from + node.nodeSize };
+    previous = {
+      id,
+      node,
+      text: node.text ?? "",
+      from,
+      to: from + node.nodeSize,
+    };
     occurrences.push(previous);
   });
   for (const occurrence of occurrences) {
-    const reference = occurrence.node.marks.find((mark) => mark.type.name === "footnoteRef");
-    if (!reference) return panic("Missing note-reference mark in an occurrence.");
+    const reference = occurrence.node.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
+    if (!reference)
+      return panic("Missing note-reference mark in an occurrence.");
     const attrs = readFootnoteRefMarkAttrs(reference);
-    if (!attrs.ok) return panic("Invalid attributed note-reference occurrence.");
+    if (!attrs.ok)
+      return panic("Invalid attributed note-reference occurrence.");
     if (occurrence.text !== String(attrs.value.id))
-      issue ??= "Edit the whole note reference; its rendered label is indivisible.";
+      issue ??=
+        "Edit the whole note reference; its rendered label is indivisible.";
   }
   return issue === undefined
     ? Result.ok(occurrences)
@@ -86,14 +114,21 @@ const readOccurrences = (paragraph: PMNode) => {
 
 /** Saving asserts the edit-owner invariant and emits each occurrence once. */
 export const coalesceNoteReferenceOccurrences = (paragraph: PMNode): PMNode => {
-  if (saveOccurrenceValidator?.cachedIds(paragraph)?.length === 0) return paragraph;
+  if (saveOccurrenceValidator?.cachedIds(paragraph)?.length === 0)
+    return paragraph;
   const referenceType = paragraph.type.schema.marks["footnoteRef"];
-  if (!referenceType || !paragraph.rangeHasMark(0, paragraph.content.size, referenceType))
+  if (
+    !referenceType ||
+    !paragraph.rangeHasMark(0, paragraph.content.size, referenceType)
+  )
     return paragraph;
   const result = readOccurrences(paragraph);
   if (result.isErr()) return panic(result.error.message);
-  if (result.value.every(({ node, from, to }) => node.nodeSize === to - from)) return paragraph;
-  const byStart = new Map(result.value.map((occurrence) => [occurrence.from, occurrence]));
+  if (result.value.every(({ node, from, to }) => node.nodeSize === to - from))
+    return paragraph;
+  const byStart = new Map(
+    result.value.map((occurrence) => [occurrence.from, occurrence]),
+  );
   const nodes: PMNode[] = [];
   let through = -1;
   paragraph.forEach((node, from) => {
@@ -109,15 +144,21 @@ export const coalesceNoteReferenceOccurrences = (paragraph: PMNode): PMNode => {
 
 const createOccurrenceValidator = () => {
   // Immutable nodes share their validation result across transactions.
-  const cache = new WeakMap<PMNode, Result<readonly string[], NoteReferenceEditRefusal>>();
-  const validate = (node: PMNode): Result<readonly string[], NoteReferenceEditRefusal> => {
+  const cache = new WeakMap<
+    PMNode,
+    Result<readonly string[], NoteReferenceEditRefusal>
+  >();
+  const validate = (
+    node: PMNode,
+  ): Result<readonly string[], NoteReferenceEditRefusal> => {
     const cached = cache.get(node);
     if (cached) return cached;
     const ids = new Set<string>();
     const include = (id: string) => {
       if (ids.has(id))
         return new NoteReferenceEditRefusal({
-          message: "Separate note references require distinct occurrence identities.",
+          message:
+            "Separate note references require distinct occurrence identities.",
         });
       ids.add(id);
       return undefined;
@@ -162,7 +203,8 @@ const createOccurrenceValidator = () => {
 };
 
 // Saving reuses immutable subtrees just as the edit guard does. Weak keys do not retain documents.
-let saveOccurrenceValidator: ReturnType<typeof createOccurrenceValidator> | undefined;
+let saveOccurrenceValidator:
+  ReturnType<typeof createOccurrenceValidator> | undefined;
 export const assertNoteReferenceOccurrences = (doc: PMNode): void => {
   const validate = (saveOccurrenceValidator ??= createOccurrenceValidator());
   const result = validate.validateSave(doc);
@@ -184,7 +226,9 @@ export const noteReferenceOccurrencePlugin = () => {
         transaction.getMeta(NOTE_OCCURRENCE_REPLAY_META) === true;
       transaction.setMeta(
         NOTE_OCCURRENCE_REPORT_META,
-        replay ? new NoteReferenceReplayDefect({ message: result.error.message }) : result.error,
+        replay
+          ? new NoteReferenceReplayDefect({ message: result.error.message })
+          : result.error,
       );
       return replay;
     },
@@ -205,7 +249,10 @@ export const noteReferenceOccurrencePlugin = () => {
                 replacement = mintNoteReferenceOccurrenceId();
                 identities.set(id, replacement);
               }
-              return mark.type.create({ ...mark.attrs, occurrenceId: replacement });
+              return mark.type.create({
+                ...mark.attrs,
+                occurrenceId: replacement,
+              });
             });
             nodes.push(node.copy(remint(node.content)).mark(marks));
           });

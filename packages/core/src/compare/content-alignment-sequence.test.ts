@@ -5,7 +5,10 @@ import {
   createFolioContentAlignmentWorkSession,
 } from "./content-alignment";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
-import type { FolioContentBlock, FolioContentIdStability } from "./content-types";
+import type {
+  FolioContentBlock,
+  FolioContentIdStability,
+} from "./content-types";
 
 type TableBlockOptions = {
   id: string;
@@ -46,19 +49,25 @@ const tableBlock = ({
 const tableSequence = (
   entries: readonly Omit<TableBlockOptions, "outerTableIndex">[],
 ): FolioContentBlock[] =>
-  entries.map(({ id, text, tableIndex, rowIndex, paragraphIndex, idStability }, outerTableIndex) =>
-    tableBlock({
-      id,
-      text,
+  entries.map(
+    (
+      { id, text, tableIndex, rowIndex, paragraphIndex, idStability },
       outerTableIndex,
-      tableIndex,
-      rowIndex,
-      paragraphIndex,
-      idStability,
-    }),
+    ) =>
+      tableBlock({
+        id,
+        text,
+        outerTableIndex,
+        tableIndex,
+        rowIndex,
+        paragraphIndex,
+        idStability,
+      }),
   );
 
-const pairIds = (steps: ReturnType<typeof alignFolioContentStructure>): [string, string][] =>
+const pairIds = (
+  steps: ReturnType<typeof alignFolioContentStructure>,
+): [string, string][] =>
   steps.flatMap((step) =>
     step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
   );
@@ -76,9 +85,17 @@ describe("bounded table sequence alignment", () => {
       { id: "table-b", text: "Beta obligations" },
     ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
-    expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "revisedTable", "pair", "pair"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedTable",
+      "revisedTable",
+      "pair",
+      "pair",
+    ]);
     expect(pairIds(steps)).toEqual([
       ["table-a", "table-a"],
       ["table-b", "table-b"],
@@ -97,9 +114,16 @@ describe("bounded table sequence alignment", () => {
       { id: "table-b", text: repeated },
     ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
-    expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "pair", "pair"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedTable",
+      "pair",
+      "pair",
+    ]);
     expect(pairIds(steps)).toEqual([
       ["table-a", "table-a"],
       ["table-b", "table-b"],
@@ -137,9 +161,16 @@ describe("bounded table sequence alignment", () => {
       },
     ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
-    expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "pair", "pair"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedTable",
+      "pair",
+      "pair",
+    ]);
     expect(pairIds(steps)).toEqual([
       ["base-a", "revised-a"],
       ["base-b", "revised-b"],
@@ -159,7 +190,10 @@ describe("bounded table sequence alignment", () => {
       { id: "exact", text: "Exact substantive table wording" },
     ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
     expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "pair"]);
     expect(pairIds(steps)).toEqual([["persisted", "exact"]]);
@@ -181,7 +215,10 @@ describe("bounded table sequence alignment", () => {
       },
     ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
     expect(steps.map(({ type }) => type)).toEqual(["pair"]);
     expect(pairIds(steps)).toEqual([["base", "revised"]]);
@@ -212,8 +249,12 @@ describe("bounded table sequence alignment", () => {
         idStability: "positional",
       },
     ]);
-    const stableBase = tableSequence([{ id: "stable", text: "Original schedule" }]);
-    const stableRevised = tableSequence([{ id: "stable", text: "Revised appendix" }]);
+    const stableBase = tableSequence([
+      { id: "stable", text: "Original schedule" },
+    ]);
+    const stableRevised = tableSequence([
+      { id: "stable", text: "Revised appendix" },
+    ]);
 
     expect(
       alignFolioContentStructure({
@@ -241,11 +282,19 @@ describe("bounded table sequence alignment", () => {
 
   test("leaves unrelated table replacements unpaired", () => {
     const base = tableSequence([{ id: "base", text: "Payment schedule" }]);
-    const revised = tableSequence([{ id: "revised", text: "Witness addresses" }]);
+    const revised = tableSequence([
+      { id: "revised", text: "Witness addresses" },
+    ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
-    expect(steps.map(({ type }) => type)).toEqual(["baseTable", "revisedTable"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "baseTable",
+      "revisedTable",
+    ]);
     expect(pairIds(steps)).toEqual([]);
   });
 
@@ -283,9 +332,15 @@ describe("bounded table sequence alignment", () => {
       }),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
-    expect(steps.map(({ type }) => type)).toEqual(["baseTable", "revisedTable"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "baseTable",
+      "revisedTable",
+    ]);
   });
 
   test("pairs a sole rewritten table in a gap bounded by preserved body anchors", () => {
@@ -295,13 +350,21 @@ describe("bounded table sequence alignment", () => {
       statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text,
     });
-    const baseTable = tableBlock({ id: "base", text: "Payment schedule", outerTableIndex: 0 });
+    const baseTable = tableBlock({
+      id: "base",
+      text: "Payment schedule",
+      outerTableIndex: 0,
+    });
     const revisedTable = tableBlock({
       id: "revised",
       text: "Witness addresses",
       outerTableIndex: 0,
     });
-    const base = [body("before-base", "Before"), baseTable, body("after-base", "After")];
+    const base = [
+      body("before-base", "Before"),
+      baseTable,
+      body("after-base", "After"),
+    ];
     const revised = [
       body("before-revised", "Before"),
       revisedTable,
@@ -341,7 +404,11 @@ describe("bounded table sequence alignment", () => {
       stableIdMismatch: "pair",
     });
 
-    expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "pair", "baseTable"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedTable",
+      "pair",
+      "baseTable",
+    ]);
     expect(pairIds(steps)).toEqual([["body", "body"]]);
   });
 
@@ -368,7 +435,11 @@ describe("bounded table sequence alignment", () => {
           statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
           text: "Leading body paragraph",
         },
-        table: tableBlock({ id: "table", text: "Preserved schedule", outerTableIndex: 0 }),
+        table: tableBlock({
+          id: "table",
+          text: "Preserved schedule",
+          outerTableIndex: 0,
+        }),
         trailing: {
           id: "trailing",
           kind: "paragraph",
@@ -385,7 +456,11 @@ describe("bounded table sequence alignment", () => {
         revisedBlocks: materialize(revisedOrder),
       });
 
-      expect(steps.map(({ type }) => type)).toEqual([unmatchedType, "pair", "pair"]);
+      expect(steps.map(({ type }) => type)).toEqual([
+        unmatchedType,
+        "pair",
+        "pair",
+      ]);
       expect(pairIds(steps)).toEqual([
         ["table", "table"],
         ["trailing", "trailing"],
@@ -400,8 +475,16 @@ describe("bounded table sequence alignment", () => {
       statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text: "Preserved body anchor",
     });
-    const first = tableBlock({ id: "table-one", text: "First schedule", outerTableIndex: 0 });
-    const second = tableBlock({ id: "table-two", text: "Second schedule", outerTableIndex: 1 });
+    const first = tableBlock({
+      id: "table-one",
+      text: "First schedule",
+      outerTableIndex: 0,
+    });
+    const second = tableBlock({
+      id: "table-two",
+      text: "Second schedule",
+      outerTableIndex: 1,
+    });
     const revisedSecond = tableBlock({
       id: "table-two",
       text: "Second schedule",
@@ -437,7 +520,11 @@ describe("bounded table sequence alignment", () => {
         outerTableIndex: 0,
         paragraphIndex: 1,
       }),
-      tableBlock({ id: "anchor-b", text: "Second table anchor", outerTableIndex: 1 }),
+      tableBlock({
+        id: "anchor-b",
+        text: "Second table anchor",
+        outerTableIndex: 1,
+      }),
     ];
     const revised = [
       tableBlock({
@@ -466,7 +553,10 @@ describe("bounded table sequence alignment", () => {
       }),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
     const pairs = steps.filter((step) => step.type === "pair");
 
     expect(
@@ -492,7 +582,10 @@ describe("bounded table sequence alignment", () => {
       { id: "relocated", text: "Relocated substantive clause" },
     ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
     expect(pairIds(steps)).toEqual([]);
   });
@@ -530,15 +623,29 @@ describe("bounded table sequence alignment", () => {
   test("does not infer a table match from a truncated similarity profile", () => {
     const sharedPrefix = "standard boilerplate ".repeat(1_000);
     const base = tableSequence([
-      { id: "base", text: `${sharedPrefix}base ending`, idStability: "positional" },
+      {
+        id: "base",
+        text: `${sharedPrefix}base ending`,
+        idStability: "positional",
+      },
     ]);
     const revised = tableSequence([
-      { id: "revised", text: `${sharedPrefix}revised ending`, idStability: "positional" },
+      {
+        id: "revised",
+        text: `${sharedPrefix}revised ending`,
+        idStability: "positional",
+      },
     ]);
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
-    expect(steps.map(({ type }) => type)).toEqual(["baseTable", "revisedTable"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "baseTable",
+      "revisedTable",
+    ]);
   });
 
   test("reports an unpaired nested-only segment as its outer table", () => {
@@ -549,7 +656,10 @@ describe("bounded table sequence alignment", () => {
       tableIndex: 1,
     });
 
-    const steps = alignFolioContentStructure({ baseBlocks: [nested], revisedBlocks: [] });
+    const steps = alignFolioContentStructure({
+      baseBlocks: [nested],
+      revisedBlocks: [],
+    });
 
     expect(steps).toEqual([
       {
@@ -564,19 +674,57 @@ describe("bounded table sequence alignment", () => {
 describe("bounded table row sequence alignment", () => {
   test("keeps two consecutive inserted rows ahead of the original row sequence", () => {
     const base = [
-      tableBlock({ id: "row-a", text: "Alpha obligations", outerTableIndex: 0, rowIndex: 0 }),
-      tableBlock({ id: "row-b", text: "Beta obligations", outerTableIndex: 0, rowIndex: 1 }),
+      tableBlock({
+        id: "row-a",
+        text: "Alpha obligations",
+        outerTableIndex: 0,
+        rowIndex: 0,
+      }),
+      tableBlock({
+        id: "row-b",
+        text: "Beta obligations",
+        outerTableIndex: 0,
+        rowIndex: 1,
+      }),
     ];
     const revised = [
-      tableBlock({ id: "row-x", text: "Unrelated schedule", outerTableIndex: 0, rowIndex: 0 }),
-      tableBlock({ id: "row-y", text: "Unrelated appendix", outerTableIndex: 0, rowIndex: 1 }),
-      tableBlock({ id: "row-a", text: "Alpha obligations", outerTableIndex: 0, rowIndex: 2 }),
-      tableBlock({ id: "row-b", text: "Beta obligations", outerTableIndex: 0, rowIndex: 3 }),
+      tableBlock({
+        id: "row-x",
+        text: "Unrelated schedule",
+        outerTableIndex: 0,
+        rowIndex: 0,
+      }),
+      tableBlock({
+        id: "row-y",
+        text: "Unrelated appendix",
+        outerTableIndex: 0,
+        rowIndex: 1,
+      }),
+      tableBlock({
+        id: "row-a",
+        text: "Alpha obligations",
+        outerTableIndex: 0,
+        rowIndex: 2,
+      }),
+      tableBlock({
+        id: "row-b",
+        text: "Beta obligations",
+        outerTableIndex: 0,
+        rowIndex: 3,
+      }),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
-    expect(steps.map(({ type }) => type)).toEqual(["revisedRow", "revisedRow", "pair", "pair"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedRow",
+      "revisedRow",
+      "pair",
+      "pair",
+    ]);
     expect(pairIds(steps)).toEqual([
       ["row-a", "row-a"],
       ["row-b", "row-b"],
@@ -637,7 +785,10 @@ describe("bounded table row sequence alignment", () => {
       }),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
     const pairs = steps.filter((step) => step.type === "pair");
 
     expect(
@@ -700,7 +851,9 @@ describe("bounded table row sequence alignment", () => {
         idStability,
       }),
     ];
-    return pairIds(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised }));
+    return pairIds(
+      alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised }),
+    );
   };
 
   test("one shifted SIMILARITY match cannot define a row mapping with residue on both sides", () => {

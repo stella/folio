@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 
-import { findParagraphByParaId, findStartPosForParaId } from "./findParagraphByParaId";
+import {
+  findParagraphByParaId,
+  findStartPosForParaId,
+} from "./findParagraphByParaId";
 
 const schema = new Schema({
   nodes: {

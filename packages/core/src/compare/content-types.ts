@@ -1,5 +1,10 @@
 import type { ParagraphNumberingOverride } from "@stll/docx-core/model";
-import type { OutlineLevel, ParagraphAlignment, ParagraphFormatting } from "../types/document";
+
+import type {
+  OutlineLevel,
+  ParagraphAlignment,
+  ParagraphFormatting,
+} from "../types/document";
 
 /** How callers expect a block identifier to behave across document revisions. */
 export type FolioContentIdStability = "stable" | "positional";
@@ -14,7 +19,8 @@ export type FolioContentContainerPathEntry = {
 };
 
 /** Boolean inline properties represented by content snapshots. */
-export type FolioContentInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
+export type FolioContentInlineBooleanProperty =
+  "bold" | "italic" | "underline" | "strike";
 
 export type FolioContentInlineFormatting = Partial<
   Record<FolioContentInlineBooleanProperty, boolean>
@@ -29,7 +35,8 @@ export type FolioContentInlineFormatting = Partial<
  * `null` removes the direct property so its inherited value becomes effective.
  */
 export type FolioContentInlineFormattingPatch = {
-  [Property in keyof FolioContentInlineFormatting]?: FolioContentInlineFormatting[Property] | null;
+  [Property in keyof FolioContentInlineFormatting]?:
+    FolioContentInlineFormatting[Property] | null;
 };
 
 /** Presentation differences for one UTF-16 range in a text-aligned block pair. */
@@ -93,7 +100,9 @@ export type FolioContentTableLocation = {
 export type FolioContentParagraphAlignment = ParagraphAlignment;
 
 /** Line-height interpretation understood by the neutral comparison model. */
-export type FolioContentLineSpacingRule = NonNullable<ParagraphFormatting["lineSpacingRule"]>;
+export type FolioContentLineSpacingRule = NonNullable<
+  ParagraphFormatting["lineSpacingRule"]
+>;
 
 /** The complete modeled attribute set of direct paragraph indentation. */
 export type FolioContentParagraphIndentation = Pick<
@@ -105,7 +114,8 @@ export type FolioContentParagraphIndentation = Pick<
 export type FolioContentListReference = { numId: number; level: number };
 
 /** Authored paragraph numbering state, separate from effective list membership. */
-export type FolioContentStatedNumbering = ParagraphNumberingOverride | { readonly kind: "inherit" };
+export type FolioContentStatedNumbering =
+  ParagraphNumberingOverride | { readonly kind: "inherit" };
 
 export const INHERITED_PARAGRAPH_NUMBERING = {
   kind: "inherit",
@@ -123,7 +133,11 @@ export const sameFolioContentStatedNumbering = (
     case "levelOnly":
       return right.kind === "levelOnly" && left.ilvl === right.ilvl;
     case "reference":
-      return right.kind === "reference" && left.numId === right.numId && left.ilvl === right.ilvl;
+      return (
+        right.kind === "reference" &&
+        left.numId === right.numId &&
+        left.ilvl === right.ilvl
+      );
     default: {
       const unreachable: never = left;
       return unreachable;
@@ -167,23 +181,26 @@ export type FolioContentBlockIdentity<Kind extends string = string> = {
 };
 
 /** A paragraph block with authored paragraph numbering state. */
-export type FolioContentBlock<Kind extends FolioContentParagraphKind = FolioContentParagraphKind> =
-  FolioContentBlockIdentity<Kind> & {
-    /** Authored `w:outlineLvl`; absent when heading depth comes only from a style. */
-    directOutlineLevel?: OutlineLevel;
-    /** Direct paragraph alignment; absent when alignment comes only from a style. */
-    directAlignment?: FolioContentParagraphAlignment;
-    /** Direct paragraph spacing; absent when every spacing value is inherited. */
-    directSpacing?: FolioContentParagraphSpacing;
-    /** Direct paragraph indentation; absent when every indentation value is inherited. */
-    directIndentation?: FolioContentParagraphIndentation;
-    /** The list the shown label is counted in, from authored and inherited numbering. */
-    listReference?: FolioContentListReference;
-    /** Authored paragraph numbering override; `inherit` means no direct override. */
-    statedNumbering: FolioContentStatedNumbering;
-  };
+export type FolioContentBlock<
+  Kind extends FolioContentParagraphKind = FolioContentParagraphKind,
+> = FolioContentBlockIdentity<Kind> & {
+  /** Authored `w:outlineLvl`; absent when heading depth comes only from a style. */
+  directOutlineLevel?: OutlineLevel;
+  /** Direct paragraph alignment; absent when alignment comes only from a style. */
+  directAlignment?: FolioContentParagraphAlignment;
+  /** Direct paragraph spacing; absent when every spacing value is inherited. */
+  directSpacing?: FolioContentParagraphSpacing;
+  /** Direct paragraph indentation; absent when every indentation value is inherited. */
+  directIndentation?: FolioContentParagraphIndentation;
+  /** The list the shown label is counted in, from authored and inherited numbering. */
+  listReference?: FolioContentListReference;
+  /** Authored paragraph numbering override; `inherit` means no direct override. */
+  statedNumbering: FolioContentStatedNumbering;
+};
 
 /** Every block of one story, in document order. */
-export type FolioContentSnapshot<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
+export type FolioContentSnapshot<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> = {
   blocks: readonly Block[];
 };

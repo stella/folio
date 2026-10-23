@@ -27,8 +27,13 @@ const elementOf = (xml: string): XmlElement => {
 };
 
 /** The properties as a control folio rebuilds them holds them: no bytes left. */
-const withoutCaptures = (xml: string): ReturnType<typeof parseSdtProperties> => {
-  const properties = parseSdtProperties(elementOf("<w:sdtPr/>"), elementOf(xml));
+const withoutCaptures = (
+  xml: string,
+): ReturnType<typeof parseSdtProperties> => {
+  const properties = parseSdtProperties(
+    elementOf("<w:sdtPr/>"),
+    elementOf(xml),
+  );
   properties.rawEndPropertiesXml = undefined;
   return properties;
 };
@@ -36,12 +41,16 @@ const withoutCaptures = (xml: string): ReturnType<typeof parseSdtProperties> => 
 describe("w:sdtEndPr", () => {
   test("an end mark with run properties is rebuilt from the record", () => {
     expect(
-      serializeSdtEndProperties(withoutCaptures("<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>")),
+      serializeSdtEndProperties(
+        withoutCaptures("<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>"),
+      ),
     ).toBe("<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>");
   });
 
   test("an end mark that declares nothing still comes back", () => {
-    expect(serializeSdtEndProperties(withoutCaptures("<w:sdtEndPr/>"))).toBe("<w:sdtEndPr/>");
+    expect(serializeSdtEndProperties(withoutCaptures("<w:sdtEndPr/>"))).toBe(
+      "<w:sdtEndPr/>",
+    );
   });
 
   test("a control that never had one writes none", () => {
@@ -53,7 +62,9 @@ describe("w:sdtEndPr", () => {
   test("the captured bytes win while they last, so element order is the source's", () => {
     const properties = parseSdtProperties(
       elementOf("<w:sdtPr/>"),
-      elementOf('<w:sdtEndPr><w:rPr><w:rStyle w:val="Emphasis"/><w:b/></w:rPr></w:sdtEndPr>'),
+      elementOf(
+        '<w:sdtEndPr><w:rPr><w:rStyle w:val="Emphasis"/><w:b/></w:rPr></w:sdtEndPr>',
+      ),
     );
     expect(serializeSdtEndProperties(properties)).toBe(
       '<w:sdtEndPr><w:rPr><w:rStyle w:val="Emphasis"/><w:b/></w:rPr></w:sdtEndPr>',

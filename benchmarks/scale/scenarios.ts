@@ -1,7 +1,11 @@
-import { createDocx, FolioDocxReviewer } from "@stll/folio-core/server";
-import { compareDocx } from "@stll/folio-core/compare/compare";
-import { layoutDocument, type FlowBlock, type Measure } from "@stll/folio-core/layout-engine";
 import type { Document } from "@stll/folio-core";
+import { compareDocx } from "@stll/folio-core/compare/compare";
+import {
+  type FlowBlock,
+  layoutDocument,
+  type Measure,
+} from "@stll/folio-core/layout-engine";
+import { createDocx, FolioDocxReviewer } from "@stll/folio-core/server";
 
 import {
   commentDocument,
@@ -29,7 +33,10 @@ const COMPARE_OPTIONS = {
 
 const byteCache = new Map<string, Promise<ArrayBuffer>>();
 
-const bytesFor = (build: (size: number) => Document, size: number): Promise<ArrayBuffer> => {
+const bytesFor = (
+  build: (size: number) => Document,
+  size: number,
+): Promise<ArrayBuffer> => {
   const key = `${build.name}:${size}`;
   let bytes = byteCache.get(key);
   if (!bytes) {
@@ -45,18 +52,29 @@ type ReadArgs = {
   expectedBlocks: number;
 };
 
-const prepareRead = async ({ build, size, expectedBlocks }: ReadArgs): Promise<Operation> => {
+const prepareRead = async ({
+  build,
+  size,
+  expectedBlocks,
+}: ReadArgs): Promise<Operation> => {
   const bytes = await bytesFor(build, size);
   return async () => {
     const blocks = (await FolioDocxReviewer.fromBuffer(bytes)).getContent();
     if (blocks.length !== expectedBlocks)
-      throw new Error(`Expected ${expectedBlocks} content blocks, got ${blocks.length}`);
+      throw new Error(
+        `Expected ${expectedBlocks} content blocks, got ${blocks.length}`,
+      );
     return blocks;
   };
 };
 
-const prepareEdit = async (build: (size: number) => Document, size: number): Promise<Operation> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await bytesFor(build, size));
+const prepareEdit = async (
+  build: (size: number) => Document,
+  size: number,
+): Promise<Operation> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await bytesFor(build, size),
+  );
   const blocks = reviewer.getContent();
   const block = blocks.at(Math.floor(blocks.length / 2));
   if (!block) throw new Error("The scale fixture has no middle block");
@@ -74,13 +92,19 @@ const prepareEdit = async (build: (size: number) => Document, size: number): Pro
       { undefinedReferences: "refuse", mode: "direct" },
     );
     if (result.applied.length !== 1)
-      throw new Error(`Scale edit was skipped: ${JSON.stringify(result.skipped)}`);
+      throw new Error(
+        `Scale edit was skipped: ${JSON.stringify(result.skipped)}`,
+      );
   };
 };
 
 const prepareTableEdit = async (size: number): Promise<Operation> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await bytesFor(tableDocument, size));
-  const block = reviewer.getContent().find(({ text }) => text === `Row ${Math.floor(size / 2)} A`);
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await bytesFor(tableDocument, size),
+  );
+  const block = reviewer
+    .getContent()
+    .find(({ text }) => text === `Row ${Math.floor(size / 2)} A`);
   if (!block) throw new Error("The scale table has no middle cell");
   return () => {
     const result = reviewer.applyOperations(
@@ -96,15 +120,23 @@ const prepareTableEdit = async (size: number): Promise<Operation> => {
       { undefinedReferences: "refuse", mode: "direct" },
     );
     if (result.applied.length !== 1)
-      throw new Error(`Scale table edit was skipped: ${JSON.stringify(result.skipped)}`);
+      throw new Error(
+        `Scale table edit was skipped: ${JSON.stringify(result.skipped)}`,
+      );
   };
 };
 
-const prepareSave = async (build: (size: number) => Document, size: number): Promise<Operation> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await bytesFor(build, size));
+const prepareSave = async (
+  build: (size: number) => Document,
+  size: number,
+): Promise<Operation> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await bytesFor(build, size),
+  );
   return async () => {
     const bytes = await reviewer.toBuffer();
-    if (bytes.byteLength === 0) throw new Error("Scale save produced an empty package");
+    if (bytes.byteLength === 0)
+      throw new Error("Scale save produced an empty package");
     return bytes;
   };
 };
@@ -123,16 +155,20 @@ const prepareChangeRead = async (size: number): Promise<Operation> => {
   const bytes = await bytesFor(trackedChangeDocument, size);
   return async () => {
     const changes = (await FolioDocxReviewer.fromBuffer(bytes)).getChanges();
-    if (changes.length !== size) throw new Error(`Expected ${size} changes, got ${changes.length}`);
+    if (changes.length !== size)
+      throw new Error(`Expected ${size} changes, got ${changes.length}`);
     return changes;
   };
 };
 
 const prepareAcceptAll = async (size: number): Promise<Operation> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await bytesFor(trackedChangeDocument, size));
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await bytesFor(trackedChangeDocument, size),
+  );
   return () => {
     const count = reviewer.acceptAll();
-    if (count !== size) throw new Error(`Expected ${size} accepted changes, got ${count}`);
+    if (count !== size)
+      throw new Error(`Expected ${size} accepted changes, got ${count}`);
   };
 };
 
@@ -142,17 +178,26 @@ const prepareCompare = async (size: number): Promise<Operation> => {
   const middle = target.package.document.content.at(Math.floor(size / 2));
   if (!middle || middle.type !== "paragraph")
     throw new Error("Missing comparison target paragraph");
-  middle.content.push({ type: "run", content: [{ type: "text", text: " Revised." }] });
-  const [baseBytes, targetBytes] = await Promise.all([createDocx(base), createDocx(target)]);
+  middle.content.push({
+    type: "run",
+    content: [{ type: "text", text: " Revised." }],
+  });
+  const [baseBytes, targetBytes] = await Promise.all([
+    createDocx(base),
+    createDocx(target),
+  ]);
   return async () => {
     const result = await compareDocx(baseBytes, targetBytes, COMPARE_OPTIONS);
     if (result.isErr()) throw result.error;
-    if (result.value.changes.length === 0) throw new Error("Scale compare found no changes");
+    if (result.value.changes.length === 0)
+      throw new Error("Scale compare found no changes");
     return result.value.changes.length;
   };
 };
 
-const layoutInput = (size: number): { blocks: FlowBlock[]; measures: Measure[] } => {
+const layoutInput = (
+  size: number,
+): { blocks: FlowBlock[]; measures: Measure[] } => {
   const blocks: FlowBlock[] = [];
   const measures: Measure[] = [];
   let pmStart = 0;
@@ -194,7 +239,8 @@ const prepareLayout = (size: number): Operation => {
       pageSize: { w: 816, h: 1056 },
       margins: { top: 96, right: 96, bottom: 96, left: 96 },
     });
-    if (layout.pages.length === 0) throw new Error("Scale layout produced no pages");
+    if (layout.pages.length === 0)
+      throw new Error("Scale layout produced no pages");
     return layout;
   };
 };
@@ -203,7 +249,8 @@ export const SCALE_SCENARIOS: readonly ScaleScenario[] = [
   {
     name: "paragraph-read",
     sizes: PARAGRAPH_SIZES,
-    prepare: (size) => prepareRead({ build: paragraphDocument, size, expectedBlocks: size }),
+    prepare: (size) =>
+      prepareRead({ build: paragraphDocument, size, expectedBlocks: size }),
   },
   {
     name: "paragraph-edit",
@@ -215,16 +262,33 @@ export const SCALE_SCENARIOS: readonly ScaleScenario[] = [
     sizes: PARAGRAPH_SIZES,
     prepare: (size) => prepareSave(paragraphDocument, size),
   },
-  { name: "paragraph-compare", sizes: PARAGRAPH_SIZES, prepare: prepareCompare },
+  {
+    name: "paragraph-compare",
+    sizes: PARAGRAPH_SIZES,
+    prepare: prepareCompare,
+  },
   { name: "paragraph-layout", sizes: PARAGRAPH_SIZES, prepare: prepareLayout },
   {
     name: "table-read",
     sizes: TABLE_SIZES,
-    prepare: (size) => prepareRead({ build: tableDocument, size, expectedBlocks: 2 * (size + 1) }),
+    prepare: (size) =>
+      prepareRead({
+        build: tableDocument,
+        size,
+        expectedBlocks: 2 * (size + 1),
+      }),
   },
   { name: "table-edit", sizes: TABLE_SIZES, prepare: prepareTableEdit },
-  { name: "table-save", sizes: TABLE_SIZES, prepare: (size) => prepareSave(tableDocument, size) },
-  { name: "comment-read", sizes: ANNOTATION_SIZES, prepare: prepareCommentRead },
+  {
+    name: "table-save",
+    sizes: TABLE_SIZES,
+    prepare: (size) => prepareSave(tableDocument, size),
+  },
+  {
+    name: "comment-read",
+    sizes: ANNOTATION_SIZES,
+    prepare: prepareCommentRead,
+  },
   {
     name: "comment-save",
     sizes: ANNOTATION_SIZES,
@@ -236,5 +300,9 @@ export const SCALE_SCENARIOS: readonly ScaleScenario[] = [
     sizes: ANNOTATION_SIZES,
     prepare: (size) => prepareSave(trackedChangeDocument, size),
   },
-  { name: "change-accept-all", sizes: ANNOTATION_SIZES, prepare: prepareAcceptAll },
+  {
+    name: "change-accept-all",
+    sizes: ANNOTATION_SIZES,
+    prepare: prepareAcceptAll,
+  },
 ];

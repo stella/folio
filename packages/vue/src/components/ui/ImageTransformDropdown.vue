@@ -14,8 +14,9 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import IconGridDropdown, { type IconGridOption } from "./IconGridDropdown.vue";
+
 import { useTranslation } from "../../i18n";
+import IconGridDropdown, { type IconGridOption } from "./IconGridDropdown.vue";
 
 export type TransformAction = "rotateCW" | "rotateCCW" | "flipH" | "flipV";
 
@@ -29,18 +30,38 @@ defineEmits<{
 
 const { t } = useTranslation();
 
-const OPTION_DEFS: { value: TransformAction; labelKey: string; iconName: string }[] = [
-  { value: "rotateCW", labelKey: "imageTransform.rotateClockwise", iconName: "rotate_right" },
+const OPTION_DEFS: {
+  value: TransformAction;
+  labelKey: string;
+  iconName: string;
+}[] = [
+  {
+    value: "rotateCW",
+    labelKey: "imageTransform.rotateClockwise",
+    iconName: "rotate_right",
+  },
   {
     value: "rotateCCW",
     labelKey: "imageTransform.rotateCounterClockwise",
     iconName: "rotate_left",
   },
-  { value: "flipH", labelKey: "imageTransform.flipHorizontal", iconName: "swap_horiz" },
-  { value: "flipV", labelKey: "imageTransform.flipVertical", iconName: "swap_vert" },
+  {
+    value: "flipH",
+    labelKey: "imageTransform.flipHorizontal",
+    iconName: "swap_horiz",
+  },
+  {
+    value: "flipV",
+    labelKey: "imageTransform.flipVertical",
+    iconName: "swap_vert",
+  },
 ];
 
 const options = computed<IconGridOption<TransformAction>[]>(() =>
-  OPTION_DEFS.map((o) => ({ value: o.value, label: t(o.labelKey), iconName: o.iconName })),
+  OPTION_DEFS.map((o) => ({
+    value: o.value,
+    label: t(o.labelKey),
+    iconName: o.iconName,
+  })),
 );
 </script>

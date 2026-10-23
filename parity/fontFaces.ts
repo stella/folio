@@ -20,7 +20,9 @@ export type FontFaceRecord = {
   style: "normal" | "italic";
 };
 
-const SFNT_VERSIONS = new Set([0x0001_0000, 0x4f54_544f /* OTTO */, 0x7472_7565 /* true */]);
+const SFNT_VERSIONS = new Set([
+  0x0001_0000, 0x4f54_544f /* OTTO */, 0x7472_7565 /* true */,
+]);
 const TABLE_DIRECTORY_OFFSET = 12;
 const TABLE_RECORD_SIZE = 16;
 const NAME_RECORD_SIZE = 12;
@@ -52,21 +54,30 @@ const decodeName = (platformId: number, bytes: Uint8Array): string => {
   }
   let text = "";
   for (let index = 0; index + 1 < bytes.length; index += 2) {
-    text += String.fromCharCode(((bytes[index] ?? 0) << 8) | (bytes[index + 1] ?? 0));
+    text += String.fromCharCode(
+      ((bytes[index] ?? 0) << 8) | (bytes[index + 1] ?? 0),
+    );
   }
   return text;
 };
 
 /** Preference of a `name` record: Windows US English, then any Windows or
  * Unicode record, then Macintosh Roman. Lower is better. */
-const nameRecordRank = (platformId: number, languageId: number): number | undefined => {
-  if (platformId === PLATFORM_WINDOWS) return languageId === WINDOWS_ENGLISH_US ? 0 : 1;
+const nameRecordRank = (
+  platformId: number,
+  languageId: number,
+): number | undefined => {
+  if (platformId === PLATFORM_WINDOWS)
+    return languageId === WINDOWS_ENGLISH_US ? 0 : 1;
   if (platformId === PLATFORM_UNICODE) return 1;
   if (platformId === PLATFORM_MACINTOSH) return 2;
   return undefined;
 };
 
-const readNames = async (readAt: ReadAt, table: TableSlice): Promise<Map<number, string>> => {
+const readNames = async (
+  readAt: ReadAt,
+  table: TableSlice,
+): Promise<Map<number, string>> => {
   const bytes = await readAt(table.offset, table.length);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.byteLength < 6) return new Map();
@@ -87,13 +98,19 @@ const readNames = async (readAt: ReadAt, table: TableSlice): Promise<Map<number,
       continue;
     }
     const rank = nameRecordRank(platformId, languageId);
-    if (rank === undefined || (best.get(nameId)?.rank ?? Number.POSITIVE_INFINITY) <= rank) {
+    if (
+      rank === undefined ||
+      (best.get(nameId)?.rank ?? Number.POSITIVE_INFINITY) <= rank
+    ) {
       continue;
     }
     const length = view.getUint16(record + 8);
     const start = storageOffset + view.getUint16(record + 10);
     if (start + length > bytes.byteLength) continue;
-    const value = decodeName(platformId, bytes.subarray(start, start + length)).trim();
+    const value = decodeName(
+      platformId,
+      bytes.subarray(start, start + length),
+    ).trim();
     if (value.length > 0) best.set(nameId, { rank, value });
   }
   return new Map([...best].map(([nameId, { value }]) => [nameId, value]));
@@ -107,13 +124,24 @@ export const parseFontFace = async (
 ): Promise<FontFaceRecord | undefined> => {
   const header = await readAt(0, TABLE_DIRECTORY_OFFSET);
   if (header.byteLength < TABLE_DIRECTORY_OFFSET) return undefined;
-  const headerView = new DataView(header.buffer, header.byteOffset, header.byteLength);
+  const headerView = new DataView(
+    header.buffer,
+    header.byteOffset,
+    header.byteLength,
+  );
   if (!SFNT_VERSIONS.has(headerView.getUint32(0))) return undefined;
   const numTables = headerView.getUint16(4);
   if (numTables === 0 || numTables > MAX_TABLES) return undefined;
 
-  const directory = await readAt(TABLE_DIRECTORY_OFFSET, numTables * TABLE_RECORD_SIZE);
-  const directoryView = new DataView(directory.buffer, directory.byteOffset, directory.byteLength);
+  const directory = await readAt(
+    TABLE_DIRECTORY_OFFSET,
+    numTables * TABLE_RECORD_SIZE,
+  );
+  const directoryView = new DataView(
+    directory.buffer,
+    directory.byteOffset,
+    directory.byteLength,
+  );
   const tables = new Map<string, TableSlice>();
   for (let index = 0; index < numTables; index += 1) {
     const record = index * TABLE_RECORD_SIZE;
@@ -144,9 +172,17 @@ export const parseFontFace = async (
     italic = (fsSelection & (FS_SELECTION_ITALIC | FS_SELECTION_OBLIQUE)) !== 0;
   }
   const head = tables.get("head");
-  if ((weight === undefined || italic === undefined) && head && head.length >= 46) {
+  if (
+    (weight === undefined || italic === undefined) &&
+    head &&
+    head.length >= 46
+  ) {
     const bytes = await readAt(head.offset + HEAD_MAC_STYLE_OFFSET, 2);
-    const macStyle = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(0);
+    const macStyle = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    ).getUint16(0);
     weight ??= (macStyle & MAC_STYLE_BOLD) !== 0 ? BOLD_WEIGHT : DEFAULT_WEIGHT;
     italic ??= (macStyle & MAC_STYLE_ITALIC) !== 0;
   }
@@ -160,7 +196,9 @@ export const parseFontFace = async (
   };
 };
 
-const readFontFaceFile = async (filePath: string): Promise<FontFaceRecord | undefined> => {
+const readFontFaceFile = async (
+  filePath: string,
+): Promise<FontFaceRecord | undefined> => {
   const handle = await open(filePath, "r");
   try {
     return await parseFontFace(filePath, async (offset, length) => {
@@ -180,16 +218,21 @@ export const indexFontDirectories = async (
 ): Promise<FontFaceRecord[]> => {
   const perDirectory = await Promise.all(
     directories.map(async (directory) => {
-      const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+      const entries = await readdir(directory, { withFileTypes: true }).catch(
+        () => [],
+      );
       const files = entries
         .filter(
           (entry) =>
-            entry.isFile() && INDEXED_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
+            entry.isFile() &&
+            INDEXED_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
         )
         .map((entry) => path.join(directory, entry.name))
         .toSorted();
       const faces = await Promise.all(
-        files.map((filePath) => readFontFaceFile(filePath).catch(() => undefined)),
+        files.map((filePath) =>
+          readFontFaceFile(filePath).catch(() => undefined),
+        ),
       );
       return faces.filter((face): face is FontFaceRecord => face !== undefined);
     }),
@@ -205,7 +248,9 @@ export const findFamilyFacesForPostscriptName = (
   postscriptName: string,
 ): FontFaceRecord[] => {
   const wanted = normalizeFontName(postscriptName);
-  const owner = faces.find((face) => normalizeFontName(face.postscriptName) === wanted);
+  const owner = faces.find(
+    (face) => normalizeFontName(face.postscriptName) === wanted,
+  );
   if (owner === undefined) return [];
   const family = owner.family.toLowerCase();
   return faces.filter((face) => face.family.toLowerCase() === family);

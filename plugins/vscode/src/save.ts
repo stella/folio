@@ -10,7 +10,10 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { saveStrategyFlag, type FolioEditorSaveStrategy } from "./editor-protocol";
+import {
+  type FolioEditorSaveStrategy,
+  saveStrategyFlag,
+} from "./editor-protocol";
 import { runCli, stderrTail } from "./process";
 import type { CliRuntime } from "./runtime";
 
@@ -33,7 +36,10 @@ export type CliSaveRequest = {
   /** Save under the editor's own lease. */
   readonly leaseToken?: string;
   /** Save to another file (Save As); `expectedVersion` is that file's version when it exists. */
-  readonly destination?: { readonly path: string; readonly expectedVersion: string | null };
+  readonly destination?: {
+    readonly path: string;
+    readonly expectedVersion: string | null;
+  };
 };
 
 export type CliSaveOutcome =
@@ -55,7 +61,10 @@ export type CliSaveOutcome =
     };
 
 /** `folio save`'s arguments for a request whose bytes are at `fromPath`. */
-export const saveArgs = (request: CliSaveRequest, fromPath: string): string[] => [
+export const saveArgs = (
+  request: CliSaveRequest,
+  fromPath: string,
+): string[] => [
   "save",
   request.documentPath,
   "--from",
@@ -70,7 +79,9 @@ export const saveArgs = (request: CliSaveRequest, fromPath: string): string[] =>
   EDITOR_SURFACE,
   "--save-strategy",
   saveStrategyFlag(request.strategy),
-  ...(request.leaseToken === undefined ? [] : ["--lease-token", request.leaseToken]),
+  ...(request.leaseToken === undefined
+    ? []
+    : ["--lease-token", request.leaseToken]),
   ...(request.destination === undefined
     ? []
     : [
@@ -78,7 +89,11 @@ export const saveArgs = (request: CliSaveRequest, fromPath: string): string[] =>
         request.destination.path,
         ...(request.destination.expectedVersion === null
           ? []
-          : ["--overwrite", "--expect-destination-version", request.destination.expectedVersion]),
+          : [
+              "--overwrite",
+              "--expect-destination-version",
+              request.destination.expectedVersion,
+            ]),
       ]),
   "--output",
   "json",
@@ -103,7 +118,8 @@ export const parseSaveEnvelope = (stdout: string): CliSaveOutcome | null => {
   if (!isRecord(parsed)) return null;
   if (parsed["ok"] === true && isRecord(parsed["data"])) {
     const { fileVersion, status, backup } = parsed["data"];
-    if (typeof fileVersion !== "string" || typeof status !== "string") return null;
+    if (typeof fileVersion !== "string" || typeof status !== "string")
+      return null;
     return typeof backup === "string"
       ? { type: "saved", fileVersion, status, backup }
       : { type: "saved", fileVersion, status };
@@ -129,11 +145,17 @@ export const saveWithCli = async (
   request: CliSaveRequest,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<CliSaveOutcome> => {
-  const directory = await realpath(await mkdtemp(path.join(tmpdir(), "folio-save-")));
+  const directory = await realpath(
+    await mkdtemp(path.join(tmpdir(), "folio-save-")),
+  );
   try {
     const from = path.join(directory, "saved.docx");
     await writeFile(from, request.bytes);
-    const result = await runCli({ runtime, args: saveArgs(request, from), timeoutMs });
+    const result = await runCli({
+      runtime,
+      args: saveArgs(request, from),
+      timeoutMs,
+    });
     if (result.timedOut) {
       return {
         type: "error",

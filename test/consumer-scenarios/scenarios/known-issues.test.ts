@@ -7,14 +7,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import {
-  createFolioAITextRangeHandle,
-  type FolioDocumentOperation,
-  docxToMarkdown,
-  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-} from "@stll/folio-core/server";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { toMarkdown } from "@stll/folio-core/markdown";
+import {
+  createFolioAITextRangeHandle,
+  docxToMarkdown,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperation,
+} from "@stll/folio-core/server";
 
 import {
   commentDocument,
@@ -23,32 +23,53 @@ import {
   openReviewer,
   plainDocument,
   storiesDocument,
-  TEXT_BOX_TEXT,
-  toArrayBuffer,
   styleNumberedDocument,
   tableDocument,
+  TEXT_BOX_TEXT,
+  toArrayBuffer,
 } from "../support/documents.ts";
-import { saveAndReopen } from "../support/invariants.ts";
 import { runFlow } from "../support/fuzz.ts";
-import { expectedFailure, FINDING_SYMPTOMS, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
-import { coreBatch, MODES, type Mode, type Operation } from "../support/operations.ts";
+import { saveAndReopen } from "../support/invariants.ts";
+import {
+  expectedFailure,
+  FINDING_SYMPTOMS,
+  KNOWN_FAILING_FLOWS,
+} from "../support/known-issues.ts";
+import { ENABLED_RELATIONS } from "../support/metamorphic.ts";
+import {
+  coreBatch,
+  type Mode,
+  MODES,
+  type Operation,
+} from "../support/operations.ts";
 import { applyChecked, rowsOf } from "../support/oracle.ts";
 import { MARKDOWN_READ_OPTIONS } from "../support/readers.ts";
-import { ENABLED_RELATIONS } from "../support/metamorphic.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
 // Compare cloneable document facts on both sides: structuredClone excludes
 // source-binding symbols attached to the live document by the parser.
-const documentSnapshot = (reviewer: Reviewer) => structuredClone(reviewer.toDocument());
+const documentSnapshot = (reviewer: Reviewer) =>
+  structuredClone(reviewer.toDocument());
 type Story = Parameters<Reviewer["snapshotStory"]>[0];
 
-const applyTo = (reviewer: Reviewer, story: Story, operation: Operation, mode: Mode) => {
+const applyTo = (
+  reviewer: Reviewer,
+  story: Story,
+  operation: Operation,
+  mode: Mode,
+) => {
   const batch = coreBatch([operation], mode) as never;
   const result =
     story.type === "main"
-      ? reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" })
-      : reviewer.applyDocumentOperationsToStory({ undefinedReferences: "refuse", story, batch });
+      ? reviewer.applyDocumentOperations(batch, {
+          undefinedReferences: "refuse",
+        })
+      : reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
+          story,
+          batch,
+        });
   assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
 };
 
@@ -56,7 +77,8 @@ describe("findings not yet filed", () => {
   test("a footnote suggested twice around a save, with body suggestions, saves", async () => {
     const footnote = { type: "footnote", noteId: 1 } as const;
     let reviewer = await openReviewer(await notesDocument());
-    const note = () => rowsOf(reviewer, footnote)[0] as { id: string; text: string };
+    const note = () =>
+      rowsOf(reviewer, footnote)[0] as { id: string; text: string };
     const lastBody = () => reviewer.getContent().at(-1) as { id: string };
     const { id, text } = note();
     const range = createFolioAITextRangeHandle({
@@ -100,7 +122,9 @@ describe("findings not yet filed", () => {
     FINDING_SYMPTOMS.INSERT_AFTER_PENDING_MERGE,
     async () => {
       const reviewer = await openReviewer(await plainDocument());
-      const buyer = reviewer.getContent().find((block) => block.text.startsWith("The Buyer"));
+      const buyer = reviewer
+        .getContent()
+        .find((block) => block.text.startsWith("The Buyer"));
       assert.ok(buyer);
       for (const operation of [
         { type: "mergeBlockWithNext", blockId: buyer.id, separator: " " },
@@ -108,9 +132,13 @@ describe("findings not yet filed", () => {
       ]) {
         applyTo(reviewer, { type: "main" }, operation, "tracked-changes");
       }
-      const saved = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+      const saved = await openReviewer(
+        new Uint8Array(await reviewer.toBuffer()),
+      );
       saved.acceptAll();
-      const accepted = (await openReviewer(new Uint8Array(await saved.toBuffer())))
+      const accepted = (
+        await openReviewer(new Uint8Array(await saved.toBuffer()))
+      )
         .getContent()
         .map((block) => block.text);
       assert.ok(
@@ -127,8 +155,13 @@ describe("findings not yet filed", () => {
     async () => {
       const bytes = await storiesDocument();
       const reviewer = await openReviewer(bytes);
-      assert.ok(reviewer.getContent().some((block) => block.text === TEXT_BOX_TEXT));
-      const markdown = await docxToMarkdown(toArrayBuffer(bytes), MARKDOWN_READ_OPTIONS);
+      assert.ok(
+        reviewer.getContent().some((block) => block.text === TEXT_BOX_TEXT),
+      );
+      const markdown = await docxToMarkdown(
+        toArrayBuffer(bytes),
+        MARKDOWN_READ_OPTIONS,
+      );
       assert.ok(
         markdown.includes(TEXT_BOX_TEXT),
         `docxToMarkdown writes no text-box paragraph:\n${markdown}`,
@@ -179,7 +212,9 @@ describe("fixed findings", () => {
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
-        operations: [{ id: "delete", type: "deleteBlock", blockId: "5E88C024" }],
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: "5E88C024" },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -194,7 +229,9 @@ describe("fixed findings", () => {
             id: "numbering",
             type: "setBlockParagraphProperties",
             blockId: "31617F9A",
-            properties: { numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }) },
+            properties: {
+              numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }),
+            },
           },
         ],
       },
@@ -206,7 +243,10 @@ describe("fixed findings", () => {
       [{ id: "numbering", reason: "pendingParagraphMarkDeletion" }],
     );
     assert.deepEqual(documentSnapshot(reviewer), before);
-    await saveAndReopen(reviewer, "refused numbering of a pending deleted paragraph mark");
+    await saveAndReopen(
+      reviewer,
+      "refused numbering of a pending deleted paragraph mark",
+    );
   });
 
   for (const atomic of [false, true]) {
@@ -221,7 +261,12 @@ describe("fixed findings", () => {
           operations: [
             { id: "delete", type: "deleteBlock", blockId: "3CEFFC83" },
             { id: "split", type: "splitBlock", blockId: "3CEFFC83", offset: 9 },
-            { id: "merge", type: "mergeBlockWithNext", blockId: "412DDC7F", separator: " " },
+            {
+              id: "merge",
+              type: "mergeBlockWithNext",
+              blockId: "412DDC7F",
+              separator: " ",
+            },
           ],
         },
         { undefinedReferences: "refuse" },
@@ -230,7 +275,8 @@ describe("fixed findings", () => {
         assert.deepEqual(result.applied, []);
         assert.ok(
           result.skipped.some(
-            ({ id, reason }) => id === "split" && reason === "overlappingOperation",
+            ({ id, reason }) =>
+              id === "split" && reason === "overlappingOperation",
           ),
         );
         assert.deepEqual(documentSnapshot(reviewer), before);
@@ -244,18 +290,26 @@ describe("fixed findings", () => {
           [{ id: "split", reason: "overlappingOperation" }],
         );
         reviewer.acceptAll();
-        const expectedTexts = ["Terms Unnumbered body text.", "Numbered clause two"];
+        const expectedTexts = [
+          "Terms Unnumbered body text.",
+          "Numbered clause two",
+        ];
         assert.deepEqual(
           reviewer.getContent().map(({ text }) => text),
           expectedTexts,
         );
-        const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+        const reopened = await openReviewer(
+          new Uint8Array(await reviewer.toBuffer()),
+        );
         assert.deepEqual(
           reopened.getContent().map(({ text }) => text),
           expectedTexts,
         );
       }
-      await saveAndReopen(reviewer, `delete/split overlap and merge atomic=${atomic}`);
+      await saveAndReopen(
+        reviewer,
+        `delete/split overlap and merge atomic=${atomic}`,
+      );
     });
   }
 
@@ -276,7 +330,10 @@ describe("fixed findings", () => {
         { undefinedReferences: "refuse" },
       );
       assert.equal(deletion.applied.length, 1);
-      if (saved) reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+      if (saved)
+        reviewer = await openReviewer(
+          new Uint8Array(await reviewer.toBuffer()),
+        );
       const before = documentSnapshot(reviewer);
       const operation = {
         id: "restyle",
@@ -298,7 +355,10 @@ describe("fixed findings", () => {
         [{ id: "restyle", reason: "pendingParagraphMarkDeletion" }],
       );
       assert.deepEqual(documentSnapshot(reviewer), before);
-      await saveAndReopen(reviewer, "refused restyle of a pending deleted paragraph mark");
+      await saveAndReopen(
+        reviewer,
+        "refused restyle of a pending deleted paragraph mark",
+      );
     }
   });
 
@@ -306,7 +366,9 @@ describe("fixed findings", () => {
     test(`${resolution}ing tracked changes in a text box and the paragraph drawing it, after a reopen, saves a package that reopens`, async () => {
       const reviewer = await openReviewer(await storiesDocument());
       const blockOf = (prefix: string) => {
-        const block = reviewer.getContent().find((candidate) => candidate.text.startsWith(prefix));
+        const block = reviewer
+          .getContent()
+          .find((candidate) => candidate.text.startsWith(prefix));
         assert.ok(block, prefix);
         return block.id;
       };
@@ -314,12 +376,19 @@ describe("fixed findings", () => {
         applyTo(
           reviewer,
           { type: "main" },
-          { type: "replaceInBlock", blockId: blockOf(prefix), find, replace: "amended" },
+          {
+            type: "replaceInBlock",
+            blockId: blockOf(prefix),
+            find,
+            replace: "amended",
+          },
           "tracked-changes",
         );
       edit("The box beside", "beside");
       edit(TEXT_BOX_TEXT, "Boxed");
-      const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+      const reopened = await openReviewer(
+        new Uint8Array(await reviewer.toBuffer()),
+      );
       if (resolution === "accept") reopened.acceptAll();
       else reopened.rejectAll();
       await openReviewer(new Uint8Array(await reopened.toBuffer()));
@@ -337,12 +406,17 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode,
-        operations: operations.map((operation, index) => ({ id: `op-${index + 1}`, ...operation })),
+        operations: operations.map((operation, index) => ({
+          id: `op-${index + 1}`,
+          ...operation,
+        })),
       } as never,
       { undefinedReferences: "refuse" },
     );
   const blockId = (reviewer: Reviewer, text: string): string => {
-    const block = reviewer.getContent().find((candidate) => candidate.text === text);
+    const block = reviewer
+      .getContent()
+      .find((candidate) => candidate.text === text);
     assert.ok(block, `no block "${text}"`);
     return block.id;
   };
@@ -355,7 +429,9 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     field: "previewRuns" | "directIndentation",
   ): Promise<void> => {
     const pick = (from: Reviewer) => {
-      const block = from.getContent().find((candidate) => candidate.text === text);
+      const block = from
+        .getContent()
+        .find((candidate) => candidate.text === text);
       assert.ok(block, "Expected the paragraph under comparison");
       if (block.kind === "diagnostic")
         assert.fail("Expected paragraph fields, got a diagnostic block");
@@ -384,7 +460,11 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
   test("a paragraph inserted after a bold heading previews its own direct bold off before a save", async () => {
     const reviewer = await openReviewer(await styleNumberedDocument());
     apply(reviewer, "direct", [
-      { type: "insertAfterBlock", blockId: blockId(reviewer, "Definitions"), text: "Inserted." },
+      {
+        type: "insertAfterBlock",
+        blockId: blockId(reviewer, "Definitions"),
+        text: "Inserted.",
+      },
     ]);
     await assertFieldKept(reviewer, "Inserted.", "previewRuns");
   });
@@ -408,7 +488,10 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     apply(reviewer, "direct", [
       {
         type: "commentOnBlock",
-        blockId: blockId(reviewer, "The Buyer pays each invoice within thirty days."),
+        blockId: blockId(
+          reviewer,
+          "The Buyer pays each invoice within thirty days.",
+        ),
         comment: { text: "Why thirty?" },
       },
     ]);
@@ -427,11 +510,16 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     for (const mode of ["direct", "tracked-changes"] as const) {
       const reviewer = await openReviewer(await plainDocument());
       apply(reviewer, mode, [
-        { type: "deleteBlock", blockId: blockId(reviewer, "Signed in two copies.") },
+        {
+          type: "deleteBlock",
+          blockId: blockId(reviewer, "Signed in two copies."),
+        },
       ]);
       const saved = await reopen(reviewer);
       saved.acceptAll();
-      texts[mode] = (await reopen(saved)).getContent().map((block) => block.text);
+      texts[mode] = (await reopen(saved))
+        .getContent()
+        .map((block) => block.text);
     }
     assert.deepEqual(
       texts["tracked-changes"],
@@ -464,17 +552,30 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
       const text = "This agreement is made between the parties named below.";
       const id = blockId(reviewer, text);
       const range = (startOffset: number, endOffset: number) =>
-        createFolioAITextRangeHandle({ blockId: id, text, startOffset, endOffset });
+        createFolioAITextRangeHandle({
+          blockId: id,
+          text,
+          startOffset,
+          endOffset,
+        });
       apply(reviewer, mode, [
         { type: "commentOnRange", range: range(0, 4), comment: { text: "a" } },
       ]);
       apply(reviewer, mode, [
-        { type: "commentOnRange", range: range(31, 34), comment: { text: "b" } },
+        {
+          type: "commentOnRange",
+          range: range(31, 34),
+          comment: { text: "b" },
+        },
       ]);
-      apply(reviewer, mode, [{ type: "replaceBlock", blockId: id, text: "New clause text." }]);
+      apply(reviewer, mode, [
+        { type: "replaceBlock", blockId: id, text: "New clause text." },
+      ]);
       const saved = await reopen(reviewer);
       saved.acceptAll();
-      anchors[mode] = (await reopen(saved)).getComments().map((comment) => comment.anchoredText);
+      anchors[mode] = (await reopen(saved))
+        .getComments()
+        .map((comment) => comment.anchoredText);
     }
     assert.deepEqual(
       anchors["tracked-changes"],
@@ -489,7 +590,11 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
       reviewer,
       [
         { type: "deleteTableRow", blockId: blockId(reviewer, "Gadget") },
-        { type: "insertTableRow", blockId: blockId(reviewer, "Widget"), position: "after" },
+        {
+          type: "insertTableRow",
+          blockId: blockId(reviewer, "Widget"),
+          position: "after",
+        },
       ],
       "direct",
       "row insert and delete",

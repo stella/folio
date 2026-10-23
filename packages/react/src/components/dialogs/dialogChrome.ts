@@ -27,7 +27,8 @@ export const DIALOG_LABEL_CLASS = "text-muted-foreground text-[13px]";
 export const DIALOG_INPUT_CLASS =
   "border-input bg-background text-foreground rounded border px-2 py-1.5 text-[13px] outline-none";
 
-export const DIALOG_SECONDARY_BUTTON_CLASS = "border-input rounded border px-4 py-1.5 text-[13px]";
+export const DIALOG_SECONDARY_BUTTON_CLASS =
+  "border-input rounded border px-4 py-1.5 text-[13px]";
 
 export const DIALOG_PRIMARY_BUTTON_CLASS =
   "bg-primary text-primary-foreground rounded px-4 py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-50";

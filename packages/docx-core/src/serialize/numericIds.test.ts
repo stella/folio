@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
 import {
   assertProperty,
   propertyConfig,
@@ -55,12 +56,15 @@ describe("numeric OOXML identifier writer guard", () => {
         (id, attribute, element) => {
           const xml = `<x:${element} xmlns:x="${WORD_NAMESPACES[0]}" x:val="1" x:${attribute}="${id}"/>`;
           expect(mayContainInvalidOoxmlNumericIds(xml, "range")).toBe(true);
-          expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).toThrow(
-            InvalidOoxmlNumericIdError,
-          );
+          expect(() =>
+            assertValidOoxmlNumericIds(xml, "word/document.xml"),
+          ).toThrow(InvalidOoxmlNumericIdError);
         },
       ),
-      { numRuns: 100, id: "range preflight sees identity attributes inside identity-value tags" },
+      {
+        numRuns: 100,
+        id: "range preflight sees identity attributes inside identity-value tags",
+      },
     );
   });
 
@@ -77,9 +81,9 @@ describe("numeric OOXML identifier writer guard", () => {
       ]) {
         const xml = `<root xmlns:r="urn:relationship" xmlns:other="urn:other"><nested xmlns:r="${declaration}">${body}</nested></root>`;
         expect(mayContainInvalidOoxmlNumericIds(xml)).toBe(true);
-        expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).toThrow(
-          InvalidOoxmlNumericIdError,
-        );
+        expect(() =>
+          assertValidOoxmlNumericIds(xml, "word/document.xml"),
+        ).toThrow(InvalidOoxmlNumericIdError);
       }
     }
   });
@@ -103,7 +107,10 @@ describe("numeric OOXML identifier writer guard", () => {
         (id, domain, prefix, spelling) => {
           const value =
             spelling === "entity"
-              ? String(id).replace(/\d/u, (digit) => `&#${digit.charCodeAt(0)};`)
+              ? String(id).replace(
+                  /\d/u,
+                  (digit) => `&#${digit.charCodeAt(0)};`,
+                )
               : String(id);
           const body =
             domain === "signed32"
@@ -124,14 +131,16 @@ describe("numeric OOXML identifier writer guard", () => {
             ),
           ]) {
             if (valid) {
-              expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).not.toThrow();
+              expect(() =>
+                assertValidOoxmlNumericIds(xml, "word/document.xml"),
+              ).not.toThrow();
               continue;
             }
             expect(mayContainInvalidOoxmlNumericIds(xml)).toBe(true);
             expect(mayContainInvalidOoxmlNumericIds(xml, "range")).toBe(true);
-            expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).toThrow(
-              InvalidOoxmlNumericIdError,
-            );
+            expect(() =>
+              assertValidOoxmlNumericIds(xml, "word/document.xml"),
+            ).toThrow(InvalidOoxmlNumericIdError);
           }
         },
       ),
@@ -151,7 +160,10 @@ describe("numeric OOXML identifier writer guard", () => {
         ),
       ).toThrow(InvalidOoxmlNumericIdError);
     }
-    const namespace = WORD_NAMESPACES[0].replace("wordprocessingml", "wordprocessing&amp;#109;l");
+    const namespace = WORD_NAMESPACES[0].replace(
+      "wordprocessingml",
+      "wordprocessing&amp;#109;l",
+    );
     expect(() =>
       assertValidOoxmlNumericIds(
         `<x:comment xmlns:x="${namespace}" x:id="2147483648"/>`,
@@ -162,18 +174,21 @@ describe("numeric OOXML identifier writer guard", () => {
 
   test("rejects the complete decimal-id family beyond the signed 32-bit domain", () => {
     fc.assert(
-      fc.property(fc.integer({ min: 2_147_483_648, max: Number.MAX_SAFE_INTEGER }), (id) => {
-        for (const namespace of WORD_NAMESPACES) {
-          for (const body of decimalCases) {
-            expect(() =>
-              assertValidOoxmlNumericIds(
-                `<x:document xmlns:x="${namespace}">${body(String(id))}</x:document>`,
-                "word/document.xml",
-              ),
-            ).toThrow(InvalidOoxmlNumericIdError);
+      fc.property(
+        fc.integer({ min: 2_147_483_648, max: Number.MAX_SAFE_INTEGER }),
+        (id) => {
+          for (const namespace of WORD_NAMESPACES) {
+            for (const body of decimalCases) {
+              expect(() =>
+                assertValidOoxmlNumericIds(
+                  `<x:document xmlns:x="${namespace}">${body(String(id))}</x:document>`,
+                  "word/document.xml",
+                ),
+              ).toThrow(InvalidOoxmlNumericIdError);
+            }
           }
-        }
-      }),
+        },
+      ),
       propertyConfig({ numRuns: 20 }),
     );
   });
@@ -214,7 +229,9 @@ describe("numeric OOXML identifier writer guard", () => {
 
   test("allows permission string ids and unrelated vocabularies", () => {
     const xml = `<x:document xmlns:x="${WORD_NAMESPACES[0]}" xmlns:other="urn:other"><x:permStart x:id="everyone"/><x:permEnd x:id="99999999999"/><other:comment other:id="99999999999"/></x:document>`;
-    expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).not.toThrow();
+    expect(() =>
+      assertValidOoxmlNumericIds(xml, "word/document.xml"),
+    ).not.toThrow();
   });
 
   test("drawing identifiers use the unsigned 32-bit domain", () => {

@@ -9,20 +9,26 @@ import type {
   TableRow,
 } from "../packages/docx-core/src/model/document";
 import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+} from "../packages/docx-core/src/ops/ids";
+import {
   asParagraphContent,
   childNodes,
   type InlineNode,
   rebuildNode,
 } from "../packages/docx-core/src/ops/leaves";
 import { mergeAtSeam } from "../packages/docx-core/src/ops/resolve";
-import { IDENTITY_SPACES, identityKeysIn } from "../packages/docx-core/src/ops/ids";
 import { PARAGRAPH_MARK_FORMATTING_KEYS } from "../packages/docx-core/src/ops/types";
 
 /** XML captures in an otherwise empty formatting container state no authored properties. */
-const authoredFormatting = <Formatting extends object>(formatting: Formatting | undefined) =>
+const authoredFormatting = <Formatting extends object>(
+  formatting: Formatting | undefined,
+) =>
   formatting &&
   Object.entries(formatting).some(
-    ([key, value]) => key !== "sourceXml" && key !== "gridSourceXml" && value !== undefined,
+    ([key, value]) =>
+      key !== "sourceXml" && key !== "gridSourceXml" && value !== undefined,
   )
     ? formatting
     : undefined;
@@ -53,10 +59,17 @@ type CanonicalHistoryOptions<
 > = {
   changes: readonly Change[] | undefined;
   currentFormatting: Formatting | undefined;
-  canonicalFormatting: (formatting: Formatting | undefined) => Formatting | undefined;
-  canonicalCurrentFormatting?: (formatting: Formatting | undefined) => Formatting | undefined;
+  canonicalFormatting: (
+    formatting: Formatting | undefined,
+  ) => Formatting | undefined;
+  canonicalCurrentFormatting?: (
+    formatting: Formatting | undefined,
+  ) => Formatting | undefined;
 };
-const canonicalHistory = <Formatting extends object, Change extends PropertyHistory<Formatting>>({
+const canonicalHistory = <
+  Formatting extends object,
+  Change extends PropertyHistory<Formatting>,
+>({
   changes,
   currentFormatting,
   canonicalFormatting,
@@ -65,7 +78,9 @@ const canonicalHistory = <Formatting extends object, Change extends PropertyHist
   changes?.map((change) => {
     const normalized = { ...change };
     const previous = canonicalFormatting(change.previousFormatting);
-    const current = canonicalCurrentFormatting(change.currentFormatting ?? currentFormatting);
+    const current = canonicalCurrentFormatting(
+      change.currentFormatting ?? currentFormatting,
+    );
     if (previous === undefined) delete normalized.previousFormatting;
     else normalized.previousFormatting = previous;
     if (current === undefined) delete normalized.currentFormatting;
@@ -123,7 +138,9 @@ const canonicalRun = (run: Run): Run => {
     next.propertyChanges = run.propertyChanges.map((change) => {
       const normalized = { ...change };
       const previous = authoredFormatting(change.previousFormatting);
-      const current = authoredFormatting(change.currentFormatting ?? run.formatting);
+      const current = authoredFormatting(
+        change.currentFormatting ?? run.formatting,
+      );
       if (previous === undefined) delete normalized.previousFormatting;
       else normalized.previousFormatting = previous;
       if (current === undefined) delete normalized.currentFormatting;
@@ -138,7 +155,10 @@ const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
   const out: InlineNode[] = [];
   for (const node of nodes) {
     const children = childNodes(node);
-    const rebuilt = children === undefined ? node : rebuildNode(node, canonicalList(children));
+    const rebuilt =
+      children === undefined
+        ? node
+        : rebuildNode(node, canonicalList(children));
     const own = rebuilt.type === "run" ? canonicalRun(rebuilt) : rebuilt;
     const last = out.at(-1);
     if (last === undefined) out.push(own);
@@ -148,7 +168,10 @@ const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
 };
 
 const canonicalParagraph = (paragraph: Paragraph): Paragraph => {
-  const next = { ...paragraph, content: asParagraphContent(canonicalList(paragraph.content)) };
+  const next = {
+    ...paragraph,
+    content: asParagraphContent(canonicalList(paragraph.content)),
+  };
   const formatting = canonicalParagraphFormatting(paragraph.formatting);
   if (formatting === undefined) delete next.formatting;
   else next.formatting = formatting;
@@ -156,7 +179,9 @@ const canonicalParagraph = (paragraph: Paragraph): Paragraph => {
     next.propertyChanges = next.propertyChanges.map((change) => {
       const normalized = { ...change };
       const previous = canonicalParagraphFormatting(change.previousFormatting);
-      const current = canonicalParagraphFormatting(change.currentFormatting ?? next.formatting);
+      const current = canonicalParagraphFormatting(
+        change.currentFormatting ?? next.formatting,
+      );
       if (previous === undefined) delete normalized.previousFormatting;
       else normalized.previousFormatting = previous;
       if (current === undefined) delete normalized.currentFormatting;
@@ -169,14 +194,17 @@ const canonicalParagraph = (paragraph: Paragraph): Paragraph => {
   return next;
 };
 
-export const canonicalReviewBlocks = (blocks: readonly BlockContent[]): BlockContent[] =>
+export const canonicalReviewBlocks = (
+  blocks: readonly BlockContent[],
+): BlockContent[] =>
   blocks.map((block): BlockContent => {
     switch (block.type) {
       case "paragraph":
         return canonicalParagraph(block);
       case "table": {
         const table = { ...block, rows: block.rows.map(canonicalTableRow) };
-        if (table.formatting && !authoredFormatting(table.formatting)) delete table.formatting;
+        if (table.formatting && !authoredFormatting(table.formatting))
+          delete table.formatting;
         const propertyChanges = canonicalHistory({
           changes: table.propertyChanges,
           currentFormatting: table.formatting,
@@ -200,7 +228,11 @@ export const canonicalReviewBlocks = (blocks: readonly BlockContent[]): BlockCon
   });
 
 const MARK_KEYS: ReadonlySet<string> = new Set(PARAGRAPH_MARK_FORMATTING_KEYS);
-const PARAGRAPH_IDENTITY_KEYS = new Set(["paraId", "textId", "preservedAttributes"]);
+const PARAGRAPH_IDENTITY_KEYS = new Set([
+  "paraId",
+  "textId",
+  "preservedAttributes",
+]);
 
 type ProjectReviewOptions = {
   document: Document;
@@ -208,7 +240,10 @@ type ProjectReviewOptions = {
 };
 
 /** The existing ops-law projection; L8 uses canonicalReviewBlocks to preserve ids. */
-export const projectReview = ({ document, projection = "π" }: ProjectReviewOptions): unknown => {
+export const projectReview = ({
+  document,
+  projection = "π",
+}: ProjectReviewOptions): unknown => {
   const ids = new Map<string, number>();
   const number = (key: string): number => {
     const known = ids.get(key);
@@ -224,7 +259,8 @@ export const projectReview = ({ document, projection = "π" }: ProjectReviewOpti
     for (const [key, field] of Object.entries(value)) {
       // Optional undefined fields serialize exactly as absent fields.
       if (field === undefined) continue;
-      if (paragraph && projection === "π′" && PARAGRAPH_IDENTITY_KEYS.has(key)) continue;
+      if (paragraph && projection === "π′" && PARAGRAPH_IDENTITY_KEYS.has(key))
+        continue;
       out[key] = walk(field);
     }
     if (paragraph && projection === "π′") {
@@ -243,7 +279,10 @@ export const projectReview = ({ document, projection = "π" }: ProjectReviewOpti
       info !== null &&
       typeof Reflect.get(info, "author") === "string"
     ) {
-      out["info"] = { ...info, id: number(`r:${String(Reflect.get(info, "id"))}`) };
+      out["info"] = {
+        ...info,
+        id: number(`r:${String(Reflect.get(info, "id"))}`),
+      };
     }
     if (typeof out["sdtType"] === "string" && typeof out["id"] === "number") {
       out["id"] = number(`c:${out["id"]}`);

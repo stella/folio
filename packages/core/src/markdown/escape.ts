@@ -62,7 +62,10 @@ export const inlineBreaksToHtml = (text: string): string =>
 const LINK_URL_ENCODED: Record<string, string> = { "(": "%28", ")": "%29" };
 
 export function escapeLinkUrl(url: string): string {
-  return url.replace(/[()<>"\s]/gu, (ch) => LINK_URL_ENCODED[ch] ?? encodeURIComponent(ch));
+  return url.replace(
+    /[()<>"\s]/gu,
+    (ch) => LINK_URL_ENCODED[ch] ?? encodeURIComponent(ch),
+  );
 }
 
 /**

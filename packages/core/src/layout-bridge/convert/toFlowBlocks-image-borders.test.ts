@@ -15,16 +15,24 @@ describe("image border conversion", () => {
       borderStyle: "dashed",
     });
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("Before "), image, schema.text(" after")]),
+      schema.node("paragraph", null, [
+        schema.text("Before "),
+        image,
+        schema.text(" after"),
+      ]),
     ]);
 
-    const paragraph = toFlowBlocks(doc).find((block) => block.kind === "paragraph");
+    const paragraph = toFlowBlocks(doc).find(
+      (block) => block.kind === "paragraph",
+    );
     expect(paragraph?.kind).toBe("paragraph");
     if (!paragraph || paragraph.kind !== "paragraph") {
       return;
     }
 
-    const imageRun = paragraph.runs.find((run): run is ImageRun => run.kind === "image");
+    const imageRun = paragraph.runs.find(
+      (run): run is ImageRun => run.kind === "image",
+    );
     expect(imageRun).toMatchObject({
       borderWidth: 2,
       borderColor: "currentColor",

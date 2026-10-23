@@ -10,11 +10,21 @@ type SliceTextOptions = {
 let graphemeSegmenter: Intl.Segmenter | undefined;
 
 /** Slice in the named units; code-unit bounds clip inward to complete code points. */
-export const sliceText = ({ text, units, start, end }: SliceTextOptions): string => {
+export const sliceText = ({
+  text,
+  units,
+  start,
+  end,
+}: SliceTextOptions): string => {
   switch (units) {
     case "graphemes": {
-      graphemeSegmenter ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
-      return Array.from(graphemeSegmenter.segment(text), ({ segment }) => segment)
+      graphemeSegmenter ??= new Intl.Segmenter(undefined, {
+        granularity: "grapheme",
+      });
+      return Array.from(
+        graphemeSegmenter.segment(text),
+        ({ segment }) => segment,
+      )
         .slice(start, end)
         .join("");
     }

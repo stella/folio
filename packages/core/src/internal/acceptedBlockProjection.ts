@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -17,7 +18,9 @@ const hasBlockRevision = (blocks: readonly BlockContent[]): boolean =>
           (row) =>
             row.structuralChange !== undefined ||
             row.cells.some(
-              (cell) => cell.structuralChange !== undefined || hasBlockRevision(cell.content),
+              (cell) =>
+                cell.structuralChange !== undefined ||
+                hasBlockRevision(cell.content),
             ),
         );
       case "blockSdt":
@@ -29,7 +32,9 @@ const hasBlockRevision = (blocks: readonly BlockContent[]): boolean =>
         return false;
       default: {
         const unsupported: never = block;
-        return panic("Unsupported block in accepted projection", { unsupported });
+        return panic("Unsupported block in accepted projection", {
+          unsupported,
+        });
       }
     }
   });

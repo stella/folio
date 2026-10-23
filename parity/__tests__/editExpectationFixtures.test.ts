@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import path from "node:path";
-
 import JSZip from "jszip";
+import path from "node:path";
 
 import { buildEditExpectationSeeds } from "../fixtures/build-edit-expectation-fixtures";
 import { EDIT_OPERATION_SCRIPTS } from "../fixtures/edit-operation-scripts";
@@ -16,14 +15,19 @@ describe("synthetic edit expectation seeds", () => {
     );
 
     for (const [name, bytes] of first) {
-      expect(Buffer.from(bytes).equals(Buffer.from(second.get(name) ?? []))).toBeTrue();
+      expect(
+        Buffer.from(bytes).equals(Buffer.from(second.get(name) ?? [])),
+      ).toBeTrue();
       const committed = new Uint8Array(
-        await Bun.file(path.join(import.meta.dir, "../fixtures", name)).arrayBuffer(),
+        await Bun.file(
+          path.join(import.meta.dir, "../fixtures", name),
+        ).arrayBuffer(),
       );
       expect(Buffer.from(bytes).equals(Buffer.from(committed))).toBeTrue();
       const zip = await JSZip.loadAsync(bytes);
       const document = await zip.file("word/document.xml")?.async("text");
-      if (!document) throw new TypeError(`${name} is missing word/document.xml`);
+      if (!document)
+        throw new TypeError(`${name} is missing word/document.xml`);
       if (name === "edit-final-paragraph-seed.docx") {
         expect(document.match(/<w:p>/g)).toHaveLength(3);
         expect(document).toContain("Target final paragraph Omega 47.");

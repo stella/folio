@@ -1,14 +1,18 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import { ensureParaIds } from "../../docx/ensureParaIds";
-import { createDocx } from "../../docx/rezip";
-import { documentShape, type DocumentShape } from "../../__tests__/documentShapes";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import {
+  type DocumentShape,
+  documentShape,
+} from "../../__tests__/documentShapes";
 import {
   CONFORMANCE_OPERATIONS,
-  runLegacyConformanceCase,
   type ConformanceOperation,
+  runLegacyConformanceCase,
 } from "../../__tests__/editorCommandConformance";
 import {
   createHarnessState,
@@ -21,6 +25,8 @@ import {
   textblocks,
 } from "../../__tests__/editorHarness";
 import type { SelectionPlacement } from "../../__tests__/editorHarness";
+import { ensureParaIds } from "../../docx/ensureParaIds";
+import { createDocx } from "../../docx/rezip";
 
 const SHAPE_IDS = [
   "single-decimal-list",
@@ -30,7 +36,11 @@ const SHAPE_IDS = [
 ] as const;
 
 type ShapeId = (typeof SHAPE_IDS)[number];
-type PropertyCase = { shape: ShapeId; operation: string; placement: SelectionPlacement };
+type PropertyCase = {
+  shape: ShapeId;
+  operation: string;
+  placement: SelectionPlacement;
+};
 const CLIPBOARD_CASES = [
   { operation: "paste:paragraphs", placement: "cross-paragraph" },
   { operation: "paste:copied-blocks", placement: "cross-paragraph" },
@@ -43,14 +53,25 @@ const EDIT_CASES = [
   { operation: "command:applyStyle(Heading1)", placement: "caret-middle" },
   { operation: "command:applyStyle(Heading2)", placement: "caret-middle" },
   { operation: "command:clearStyle", placement: "caret-middle" },
-] as const satisfies readonly { operation: string; placement: SelectionPlacement }[];
+] as const satisfies readonly {
+  operation: string;
+  placement: SelectionPlacement;
+}[];
 
 const PROPERTY_CASES = [
   ...SHAPE_IDS.flatMap((shape) =>
-    CLIPBOARD_CASES.map(({ operation, placement }) => ({ shape, operation, placement })),
+    CLIPBOARD_CASES.map(({ operation, placement }) => ({
+      shape,
+      operation,
+      placement,
+    })),
   ),
   ...SHAPE_IDS.flatMap((shape) =>
-    EDIT_CASES.map(({ operation, placement }) => ({ shape, operation, placement })),
+    EDIT_CASES.map(({ operation, placement }) => ({
+      shape,
+      operation,
+      placement,
+    })),
   ),
 ] as const satisfies readonly PropertyCase[];
 
@@ -71,7 +92,9 @@ const generatedIndentation = fc.record({
     fc.integer({ min: 0, max: 720 }),
     fc.integer({ min: 0, max: 720 }),
   ),
-  authoredLeft: fc.option(fc.constantFrom(0, 240, 720, 1440), { nil: undefined }),
+  authoredLeft: fc.option(fc.constantFrom(0, 240, 720, 1440), {
+    nil: undefined,
+  }),
 });
 
 type GeneratedShapeOptions = {
@@ -96,7 +119,9 @@ const withGeneratedIndentation = async ({
         const indentLeft = indentation.levelLeft[index];
         const indentFirstLine = indentation.levelFirstLine[index];
         if (indentLeft === undefined || indentFirstLine === undefined) {
-          throw new Error("Missing generated indentation for level " + level.ilvl);
+          throw new Error(
+            "Missing generated indentation for level " + level.ilvl,
+          );
         }
         level.pPr = {
           ...level.pPr,
@@ -109,18 +134,28 @@ const withGeneratedIndentation = async ({
 
     let listParagraphIndex = 0;
     for (const block of document.package.document.content) {
-      if (block.type !== "paragraph" || block.formatting?.numPr?.kind !== "reference") continue;
+      if (
+        block.type !== "paragraph" ||
+        block.formatting?.numPr?.kind !== "reference"
+      )
+        continue;
       if (listParagraphIndex === 0 && indentation.authoredLeft !== undefined) {
-        block.formatting = { ...block.formatting, indentLeft: indentation.authoredLeft };
+        block.formatting = {
+          ...block.formatting,
+          indentLeft: indentation.authoredLeft,
+        };
       }
       listParagraphIndex += 1;
     }
     if (previousChange === "numbering") {
       const numbered = document.package.document.content.find(
-        (block) => block.type === "paragraph" && block.formatting?.numPr?.kind === "reference",
+        (block) =>
+          block.type === "paragraph" &&
+          block.formatting?.numPr?.kind === "reference",
       );
       const plain = document.package.document.content.find(
-        (block) => block.type === "paragraph" && block.formatting?.numPr === undefined,
+        (block) =>
+          block.type === "paragraph" && block.formatting?.numPr === undefined,
       );
       if (
         !numbered ||
@@ -134,7 +169,11 @@ const withGeneratedIndentation = async ({
       plain.propertyChanges = [
         {
           type: "paragraphPropertyChange",
-          info: { id: 950, author: "Property test", date: "2026-01-01T00:00:00Z" },
+          info: {
+            id: 950,
+            author: "Property test",
+            date: "2026-01-01T00:00:00Z",
+          },
           previousFormatting: { numPr: numbered.formatting.numPr },
         },
       ];
@@ -158,9 +197,16 @@ const copiedParagraph: ConformanceOperation = {
   id: "paste:single-copied-paragraph",
   placements: ["cross-paragraph"],
   run: ({ view, focus }) => {
-    const source = textblocks(view.state.doc).find(({ node }) => node.textContent.includes(focus));
+    const source = textblocks(view.state.doc).find(({ node }) =>
+      node.textContent.includes(focus),
+    );
     if (!source) return false;
-    view.paste(view.state.doc.slice(source.pos + 1, source.pos + 1 + source.node.content.size));
+    view.paste(
+      view.state.doc.slice(
+        source.pos + 1,
+        source.pos + 1 + source.node.content.size,
+      ),
+    );
     return true;
   },
 };
@@ -192,7 +238,10 @@ test(
             placement: entry.placement,
           });
           expect(result, `${entry.shape} / ${entry.operation}`).not.toBeNull();
-          expect(result?.violations, `${entry.shape} / ${entry.operation}`).toEqual([]);
+          expect(
+            result?.violations,
+            `${entry.shape} / ${entry.operation}`,
+          ).toEqual([]);
         }
       }),
       {
@@ -221,7 +270,9 @@ test(
           const saved = await saveHarnessState(rejected, base);
           const reopened = await readBack(saved.bytes);
           expect(summarizeState(rejected)).toEqual(reopened.summary);
-          expect(summarizeEffectiveParagraphs(rejected)).toEqual(reopened.effective);
+          expect(summarizeEffectiveParagraphs(rejected)).toEqual(
+            reopened.effective,
+          );
         }
       }),
       {

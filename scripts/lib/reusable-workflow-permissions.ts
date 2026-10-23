@@ -2,7 +2,8 @@ import { panic } from "better-result";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-export const REFRESH_REUSABLE_WORKFLOWS = "bun scripts/refresh-reusable-workflows.ts";
+export const REFRESH_REUSABLE_WORKFLOWS =
+  "bun scripts/refresh-reusable-workflows.ts";
 export const REUSABLE_WORKFLOW_FIXTURES = "test/workflow-contracts/reusable";
 
 const ACCESS = { none: 0, read: 1, write: 2 } as const;
@@ -30,7 +31,8 @@ const parsePermissions = (value: unknown): Permissions | undefined => {
 
 export const parsePermissionWorkflow = (source: string) => {
   const value: unknown = Bun.YAML.parse(source);
-  if (!isRecord(value) || !isRecord(value["jobs"])) return panic("Invalid workflow jobs");
+  if (!isRecord(value) || !isRecord(value["jobs"]))
+    return panic("Invalid workflow jobs");
   const permissions = parsePermissions(value["permissions"]);
   const jobs = Object.entries(value["jobs"]).map(([name, job]) => {
     if (!isRecord(job)) return panic("Invalid workflow job", { name });
@@ -43,14 +45,22 @@ export const parsePermissionWorkflow = (source: string) => {
 };
 
 export type WorkflowReference =
-  | { type: "remote"; repository: string; sha: string; file: string; key: string }
+  | {
+      type: "remote";
+      repository: string;
+      sha: string;
+      file: string;
+      key: string;
+    }
   | { type: "local"; file: string; key: string };
 
 export const workflowReference = (
   uses: string,
   parent?: WorkflowReference,
 ): WorkflowReference | undefined => {
-  const local = /^\.\/\.github\/workflows\/(?<file>[\w.-]+\.ya?ml)$/u.exec(uses)?.groups;
+  const local = /^\.\/\.github\/workflows\/(?<file>[\w.-]+\.ya?ml)$/u.exec(
+    uses,
+  )?.groups;
   if (local?.["file"] !== undefined) {
     const file = local["file"];
     if (parent?.type === "remote")
@@ -70,12 +80,23 @@ export const workflowReference = (
   const repository = remote?.["repository"];
   const sha = remote?.["sha"];
   const file = remote?.["file"];
-  if (repository === undefined || sha === undefined || file === undefined) return undefined;
-  if (repository.split("/").some((part) => part === "." || part === "..")) return undefined;
-  return { type: "remote", repository, sha, file, key: `${repository}/${sha}/${file}` };
+  if (repository === undefined || sha === undefined || file === undefined)
+    return undefined;
+  if (repository.split("/").some((part) => part === "." || part === ".."))
+    return undefined;
+  return {
+    type: "remote",
+    repository,
+    sha,
+    file,
+    key: `${repository}/${sha}/${file}`,
+  };
 };
 
-export const workflowFixturePath = (root: string, reference: WorkflowReference): string => {
+export const workflowFixturePath = (
+  root: string,
+  reference: WorkflowReference,
+): string => {
   switch (reference.type) {
     case "local":
       return path.join(root, ".github/workflows", reference.file);
@@ -88,22 +109,33 @@ export const workflowFixturePath = (root: string, reference: WorkflowReference):
   }
 };
 
-export const loadPermissionWorkflow = (root: string, reference: WorkflowReference) => {
+export const loadPermissionWorkflow = (
+  root: string,
+  reference: WorkflowReference,
+) => {
   const file = workflowFixturePath(root, reference);
-  return existsSync(file) ? parsePermissionWorkflow(readFileSync(file, "utf8")) : undefined;
+  return existsSync(file)
+    ? parsePermissionWorkflow(readFileSync(file, "utf8"))
+    : undefined;
 };
 
-const gaps = (available: Permissions, required: Permissions | undefined): string[] => {
+const gaps = (
+  available: Permissions,
+  required: Permissions | undefined,
+): string[] => {
   if (required === undefined) return [];
   switch (required.type) {
     case "all":
-      return available.type === "all" && ACCESS[available.access] >= ACCESS[required.access]
+      return available.type === "all" &&
+        ACCESS[available.access] >= ACCESS[required.access]
         ? []
         : [`*: ${required.access}`];
     case "scoped":
       return Array.from(required.grants).flatMap(([scope, access]) => {
         const granted =
-          available.type === "all" ? available.access : (available.grants.get(scope) ?? "none");
+          available.type === "all"
+            ? available.access
+            : (available.grants.get(scope) ?? "none");
         return ACCESS[granted] >= ACCESS[access] ? [] : [`${scope}: ${access}`];
       });
     default: {
@@ -116,7 +148,9 @@ const gaps = (available: Permissions, required: Permissions | undefined): string
 type PermissionCheckOptions = {
   source: string;
   workflow: ReturnType<typeof parsePermissionWorkflow>;
-  load: (reference: WorkflowReference) => ReturnType<typeof parsePermissionWorkflow> | undefined;
+  load: (
+    reference: WorkflowReference,
+  ) => ReturnType<typeof parsePermissionWorkflow> | undefined;
 };
 
 /** Every call is checked against immutable callee declarations, entirely offline. */
@@ -144,12 +178,16 @@ export const checkReusableWorkflowPermissions = ({
       const location = `${label}:${job.name}`;
       const reference = workflowReference(job.uses, parent);
       if (reference === undefined) {
-        problems.push(`${location}: reusable workflow must use a full commit SHA: ${job.uses}`);
+        problems.push(
+          `${location}: reusable workflow must use a full commit SHA: ${job.uses}`,
+        );
         continue;
       }
       const callee = load(reference);
       if (callee === undefined) {
-        problems.push(`${location}: no pinned workflow fixture for ${reference.key}`);
+        problems.push(
+          `${location}: no pinned workflow fixture for ${reference.key}`,
+        );
         continue;
       }
       const granted = job.permissions ?? current.permissions ?? available;
@@ -159,12 +197,19 @@ export const checkReusableWorkflowPermissions = ({
       }
       const missing = new Set(gaps(granted, callee.permissions));
       for (const calleeJob of callee.jobs)
-        for (const gap of gaps(granted, calleeJob.permissions ?? callee.permissions))
+        for (const gap of gaps(
+          granted,
+          calleeJob.permissions ?? callee.permissions,
+        ))
           missing.add(gap);
       if (missing.size > 0)
-        problems.push(`${location}: ${reference.key} requires ${[...missing].join(", ")}`);
+        problems.push(
+          `${location}: ${reference.key} requires ${[...missing].join(", ")}`,
+        );
       if (chain.has(reference.key)) {
-        problems.push(`${location}: reusable workflow cycle at ${reference.key}`);
+        problems.push(
+          `${location}: reusable workflow cycle at ${reference.key}`,
+        );
         continue;
       }
       visit({

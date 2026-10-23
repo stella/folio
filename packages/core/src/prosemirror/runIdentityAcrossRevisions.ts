@@ -8,7 +8,7 @@
 
 import { Fragment, Mark, type Node as PMNode } from "prosemirror-model";
 
-import { expectRunIdentityMarkAttrs, expectHyperlinkMarkAttrs } from "./attrs";
+import { expectHyperlinkMarkAttrs, expectRunIdentityMarkAttrs } from "./attrs";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "./extensions/nodes/SdtExtension";
 import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
 
@@ -20,16 +20,17 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
 
 /** Ordered source of truth for source-carrier identities and continuation. */
 export type SourceCarrierMarkName = "runIdentity" | "hyperlink";
-export const SOURCE_CARRIER_MARK_NAMES: readonly ["runIdentity", "hyperlink"] = [
-  RUN_IDENTITY_MARK_NAME,
-  "hyperlink",
-] as const;
+export const SOURCE_CARRIER_MARK_NAMES: readonly ["runIdentity", "hyperlink"] =
+  [RUN_IDENTITY_MARK_NAME, "hyperlink"] as const;
 type CarrierIdentity = { id: number; payloadKey: string } | undefined;
-type CarrierOwner<Name extends SourceCarrierMarkName = SourceCarrierMarkName> = {
-  markName: Name;
-  read: (mark: Mark) => CarrierIdentity;
+type CarrierOwner<Name extends SourceCarrierMarkName = SourceCarrierMarkName> =
+  {
+    markName: Name;
+    read: (mark: Mark) => CarrierIdentity;
+  };
+type CarrierOwners = {
+  readonly [Name in SourceCarrierMarkName]: CarrierOwner<Name>;
 };
-type CarrierOwners = { readonly [Name in SourceCarrierMarkName]: CarrierOwner<Name> };
 
 /** Every declared carrier has one owner; iteration follows the canonical tuple. */
 const CARRIER_OWNERS = {
@@ -55,7 +56,9 @@ const CARRIER_OWNERS = {
 type CarrierOwnerEntry = CarrierOwners[SourceCarrierMarkName];
 
 const identityOf = (node: PMNode, owner: CarrierOwnerEntry) => {
-  const mark = node.marks.find((candidate) => candidate.type.name === owner.markName);
+  const mark = node.marks.find(
+    (candidate) => candidate.type.name === owner.markName,
+  );
   if (!mark) return undefined;
   const identity = owner.read(mark);
   return identity === undefined ? undefined : { mark, ...identity };
@@ -73,10 +76,19 @@ type ContinuesCarrierOptions = {
 };
 
 /** Whether `right` continues `left`'s run across a revision boundary. */
-const continuesCarrier = ({ left, right, bridged, owner }: ContinuesCarrierOptions): boolean => {
+const continuesCarrier = ({
+  left,
+  right,
+  bridged,
+  owner,
+}: ContinuesCarrierOptions): boolean => {
   const leftIdentity = identityOf(left, owner);
   const rightIdentity = identityOf(right, owner);
-  if (!leftIdentity || !rightIdentity || leftIdentity.mark.eq(rightIdentity.mark)) {
+  if (
+    !leftIdentity ||
+    !rightIdentity ||
+    leftIdentity.mark.eq(rightIdentity.mark)
+  ) {
     return false;
   }
   return (
@@ -124,13 +136,19 @@ const continueIdentities = (
     }
     const id = identity.id;
     let replacement = renamed.get(id);
-    if (!replacement && anchor && continuesCarrier({ left: anchor, right: node, bridged, owner })) {
+    if (
+      !replacement &&
+      anchor &&
+      continuesCarrier({ left: anchor, right: node, bridged, owner })
+    ) {
       replacement = identityOf(anchor, owner)?.mark;
       if (replacement) {
         renamed.set(id, replacement);
       }
     }
-    const next = replacement ? node.mark(replacement.addToSet(node.marks)) : node;
+    const next = replacement
+      ? node.mark(replacement.addToSet(node.marks))
+      : node;
     changed ||= next !== node;
     anchor = next;
     bridged = false;

@@ -24,22 +24,22 @@
  */
 
 import type {
-  FieldType,
-  SimpleField,
-  ParagraphContent,
   ComplexField,
   Field,
+  FieldType,
+  NumberFormat,
+  ParagraphContent,
   Run,
+  SimpleField,
   TextContent,
   Theme,
-  NumberFormat,
 } from "../types/document";
 import { parseFieldState } from "./fieldState";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { FieldTypeSchema, narrowEnum } from "./parserEnums";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
-import { getAttribute, findChildren } from "./xmlParser";
+import { findChildren, getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -190,7 +190,9 @@ export type FieldSwitch = {
  * @param instruction - Raw instruction string
  * @returns Parsed instruction object
  */
-export function parseFieldInstruction(instruction: string): ParsedFieldInstruction {
+export function parseFieldInstruction(
+  instruction: string,
+): ParsedFieldInstruction {
   const type = parseFieldType(instruction);
   const trimmed = instruction.trim();
   const switches: FieldSwitch[] = [];
@@ -203,7 +205,8 @@ export function parseFieldInstruction(instruction: string): ParsedFieldInstructi
   const remaining = trimmed.slice(fieldNameEnd).trim();
 
   // Extract switches (start with \)
-  const switchRegex = /\\(?<switch>\*|@|#|!|[a-z])\s*(?:"(?<quoted>[^"]*)"|(?<unquoted>[\S]*))?/giu;
+  const switchRegex =
+    /\\(?<switch>\*|@|#|!|[a-z])\s*(?:"(?<quoted>[^"]*)"|(?<unquoted>[\S]*))?/giu;
   let switchMatch;
   const switchPositions: { start: number; end: number }[] = [];
 
@@ -259,8 +262,12 @@ export function parseFieldInstruction(instruction: string): ParsedFieldInstructi
  * @param instruction - Parsed instruction
  * @returns Format string or undefined
  */
-export function getFormatSwitch(instruction: ParsedFieldInstruction): string | undefined {
-  const formatSwitch = instruction.switches.find((s) => s.switch === "*" || s.switch === "@");
+export function getFormatSwitch(
+  instruction: ParsedFieldInstruction,
+): string | undefined {
+  const formatSwitch = instruction.switches.find(
+    (s) => s.switch === "*" || s.switch === "@",
+  );
   return formatSwitch?.value;
 }
 
@@ -270,7 +277,9 @@ export function getFormatSwitch(instruction: ParsedFieldInstruction): string | u
  * @param instruction - Parsed instruction
  * @returns Picture string or undefined
  */
-export function getNumericPictureSwitch(instruction: ParsedFieldInstruction): string | undefined {
+export function getNumericPictureSwitch(
+  instruction: ParsedFieldInstruction,
+): string | undefined {
   const pictureSwitch = instruction.switches.find((s) => s.switch === "#");
   return pictureSwitch?.value;
 }
@@ -433,7 +442,9 @@ export function getFieldDisplayValue(field: Field): string {
         }
       })
       .join("");
-  return displayText(field.type === "simpleField" ? field.content : field.fieldResult);
+  return displayText(
+    field.type === "simpleField" ? field.content : field.fieldResult,
+  );
 }
 
 /**
@@ -525,7 +536,14 @@ export function isReferenceField(field: Field): boolean {
  * @returns true if this is a mail merge field
  */
 export function isMergeField(field: Field): boolean {
-  const mergeTypes: FieldType[] = ["MERGEFIELD", "IF", "NEXT", "NEXTIF", "ASK", "SET"];
+  const mergeTypes: FieldType[] = [
+    "MERGEFIELD",
+    "IF",
+    "NEXT",
+    "NEXTIF",
+    "ASK",
+    "SET",
+  ];
   return mergeTypes.includes(field.fieldType);
 }
 
@@ -566,7 +584,9 @@ export function computePageNumber(
   instruction?: ParsedFieldInstruction,
   sectionFormat?: NumberFormat,
 ): string {
-  const picture = instruction ? getNumericPictureSwitch(instruction) : undefined;
+  const picture = instruction
+    ? getNumericPictureSwitch(instruction)
+    : undefined;
   if (picture !== undefined) {
     return applyNumericPicture(pageNumber, picture);
   }
@@ -595,8 +615,10 @@ export function computePageNumber(
   }
 }
 
-const formatSectionPageNumber = (pageNumber: number, format: NumberFormat | undefined): string =>
-  formatOoxmlCounter(pageNumber, format);
+const formatSectionPageNumber = (
+  pageNumber: number,
+  format: NumberFormat | undefined,
+): string => formatOoxmlCounter(pageNumber, format);
 
 /**
  * Apply a `\#` numeric picture (ECMA-376 §17.16.4.2) to an integer field
@@ -629,7 +651,8 @@ function applyNumericPicture(value: number, picture: string): string {
     }
   }
 
-  const overflow = digitIndex >= 0 ? digits.slice(0, digitIndex + 1).join("") : "";
+  const overflow =
+    digitIndex >= 0 ? digits.slice(0, digitIndex + 1).join("") : "";
   return (negative ? "-" : "") + overflow + output.join("");
 }
 
@@ -642,7 +665,21 @@ function toRoman(num: number): string {
   }
 
   const values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
-  const symbols = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"];
+  const symbols = [
+    "M",
+    "CM",
+    "D",
+    "CD",
+    "C",
+    "XC",
+    "L",
+    "XL",
+    "X",
+    "IX",
+    "V",
+    "IV",
+    "I",
+  ];
 
   let result = "";
   let remaining = num;
@@ -723,7 +760,15 @@ export function formatDate(date: Date, format: string): string {
     "Nov",
     "Dec",
   ];
-  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const days = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
   const shortDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -815,7 +860,10 @@ export function collectFields(content: unknown[]): Field[] {
  * @param fieldType - The field type to filter by
  * @returns Filtered array of fields
  */
-export function getFieldsByType(fields: Field[], fieldType: FieldType): Field[] {
+export function getFieldsByType(
+  fields: Field[],
+  fieldType: FieldType,
+): Field[] {
   return fields.filter((f) => f.fieldType === fieldType);
 }
 

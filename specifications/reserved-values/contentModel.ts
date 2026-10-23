@@ -1,6 +1,5 @@
 /** Reserved-value decisions for the content model. */
 
-import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   BlockSdt,
   BookmarkEnd,
@@ -16,8 +15,8 @@ import type {
   DocumentBackgroundDrawing,
   DocumentBody,
   DrawingAnchor,
-  DrawingGroupChild,
   DrawingContent,
+  DrawingGroupChild,
   FieldCharContent,
   FooterReference,
   HeaderFooter,
@@ -79,19 +78,20 @@ import type {
   TextContent,
   TextWatermark,
   TrackedChangeInfo,
-  WrapDistanceSlots,
   WrapDistances,
+  WrapDistanceSlots,
   WrapPolygonPoint,
 } from "../../packages/docx-core/src/model/content";
 import { RESERVED_NOTE_REFERENCE_IDS } from "../../packages/docx-core/src/model/content.ts";
+import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import {
   NO_RESERVED_VALUE,
   notModelled,
   readerOwned,
   type ReservedValueDisposition,
   toggle,
-  unrepresentable,
   type UnionFields,
+  unrepresentable,
 } from "./disposition.ts";
 import { RESERVED_VALUE_READERS } from "./readers.ts";
 
@@ -254,7 +254,10 @@ export const RUN_RESERVED = {
   preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof Run, ReservedValueDisposition>;
 
-export type ExhaustiveRunReserved = ExhaustiveFields<Run, keyof typeof RUN_RESERVED>;
+export type ExhaustiveRunReserved = ExhaustiveFields<
+  Run,
+  keyof typeof RUN_RESERVED
+>;
 
 export const HYPERLINK_RESERVED = {
   type: NO_RESERVED_VALUE,
@@ -420,7 +423,10 @@ export const IMAGE_POSITION_AXIS_RESERVED = {
   relativeTo: NO_RESERVED_VALUE,
   alignment: NO_RESERVED_VALUE,
   posOffset: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<ImagePosition["horizontal"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<ImagePosition["horizontal"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveImagePositionAxisReserved = ExhaustiveFields<
   NonNullable<ImagePosition["horizontal"]>,
@@ -514,7 +520,10 @@ export const IMAGE_RESERVED = {
   preview: NO_RESERVED_VALUE,
 } satisfies Record<keyof Image, ReservedValueDisposition>;
 
-export type ExhaustiveImageReserved = ExhaustiveFields<Image, keyof typeof IMAGE_RESERVED>;
+export type ExhaustiveImageReserved = ExhaustiveFields<
+  Image,
+  keyof typeof IMAGE_RESERVED
+>;
 
 export const DRAWING_ANCHOR_RESERVED = {
   useSimplePosition: toggle("wp:anchor@simplePos"),
@@ -558,7 +567,10 @@ export const IMAGE_EFFECTS_RESERVED = {
   brightness: NO_RESERVED_VALUE,
   contrast: NO_RESERVED_VALUE,
   saturation: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<Image["effects"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<Image["effects"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveImageEffectsReserved = ExhaustiveFields<
   NonNullable<Image["effects"]>,
@@ -596,7 +608,10 @@ export const SHAPE_FILL_GRADIENT_RESERVED = {
   angle: NO_RESERVED_VALUE,
   scaled: NO_RESERVED_VALUE,
   stops: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<ShapeFill["gradient"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<ShapeFill["gradient"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveShapeFillGradientReserved = ExhaustiveFields<
   NonNullable<ShapeFill["gradient"]>,
@@ -645,7 +660,10 @@ export const SHAPE_OUTLINE_END_RESERVED = {
   }),
   width: NO_RESERVED_VALUE,
   length: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<ShapeOutline["headEnd"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<ShapeOutline["headEnd"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveShapeOutlineEndReserved = ExhaustiveFields<
   NonNullable<ShapeOutline["headEnd"]>,
@@ -681,7 +699,10 @@ export const SHAPE_TEXT_BODY_WORD_ART_RESERVED = {
   fromWordArt: NO_RESERVED_VALUE,
   preset: NO_RESERVED_VALUE,
   adjustments: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<ShapeTextBody["wordArt"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<ShapeTextBody["wordArt"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveShapeTextBodyWordArtReserved = ExhaustiveFields<
   NonNullable<ShapeTextBody["wordArt"]>,
@@ -693,7 +714,10 @@ export const SHAPE_TEXT_BODY_MARGINS_RESERVED = {
   bottom: NO_RESERVED_VALUE,
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<ShapeTextBody["margins"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<ShapeTextBody["margins"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveShapeTextBodyMarginsReserved = ExhaustiveFields<
   NonNullable<ShapeTextBody["margins"]>,
@@ -721,7 +745,10 @@ export const SHAPE_RESERVED = {
   groupChild: NO_RESERVED_VALUE,
 } satisfies Record<keyof Shape, ReservedValueDisposition>;
 
-export type ExhaustiveShapeReserved = ExhaustiveFields<Shape, keyof typeof SHAPE_RESERVED>;
+export type ExhaustiveShapeReserved = ExhaustiveFields<
+  Shape,
+  keyof typeof SHAPE_RESERVED
+>;
 
 export const TEXT_BOX_RESERVED = {
   type: NO_RESERVED_VALUE,
@@ -753,14 +780,20 @@ export const TEXT_BOX_RESERVED = {
   groupChild: NO_RESERVED_VALUE,
 } satisfies Record<keyof TextBox, ReservedValueDisposition>;
 
-export type ExhaustiveTextBoxReserved = ExhaustiveFields<TextBox, keyof typeof TEXT_BOX_RESERVED>;
+export type ExhaustiveTextBoxReserved = ExhaustiveFields<
+  TextBox,
+  keyof typeof TEXT_BOX_RESERVED
+>;
 
 export const TEXT_BOX_MARGINS_RESERVED = {
   top: NO_RESERVED_VALUE,
   bottom: NO_RESERVED_VALUE,
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<TextBox["margins"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<TextBox["margins"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveTextBoxMarginsReserved = ExhaustiveFields<
   NonNullable<TextBox["margins"]>,
@@ -826,7 +859,10 @@ export const TABLE_RESERVED = {
   carrierStack: NO_RESERVED_VALUE,
 } satisfies Record<keyof Table, ReservedValueDisposition>;
 
-export type ExhaustiveTableReserved = ExhaustiveFields<Table, keyof typeof TABLE_RESERVED>;
+export type ExhaustiveTableReserved = ExhaustiveFields<
+  Table,
+  keyof typeof TABLE_RESERVED
+>;
 
 export const COMMENT_RESERVED = {
   id: NO_RESERVED_VALUE,
@@ -843,7 +879,10 @@ export const COMMENT_RESERVED = {
   preserved: NO_RESERVED_VALUE,
 } satisfies Record<keyof Comment, ReservedValueDisposition>;
 
-export type ExhaustiveCommentReserved = ExhaustiveFields<Comment, keyof typeof COMMENT_RESERVED>;
+export type ExhaustiveCommentReserved = ExhaustiveFields<
+  Comment,
+  keyof typeof COMMENT_RESERVED
+>;
 
 export const COMMENT_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
@@ -905,7 +944,10 @@ export type ExhaustiveTrackedChangeInfoReserved = ExhaustiveFields<
 export const TRACKED_CHANGE_UTC_DATE_RESERVED = {
   attribute: NO_RESERVED_VALUE,
   value: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<TrackedChangeInfo["utcDate"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<TrackedChangeInfo["utcDate"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveTrackedChangeUtcDateReserved = ExhaustiveFields<
   NonNullable<TrackedChangeInfo["utcDate"]>,
@@ -945,7 +987,10 @@ export const DELETION_RESERVED = {
   resolutionJoins: NO_RESERVED_VALUE,
 } satisfies Record<keyof Deletion, ReservedValueDisposition>;
 
-export type ExhaustiveDeletionReserved = ExhaustiveFields<Deletion, keyof typeof DELETION_RESERVED>;
+export type ExhaustiveDeletionReserved = ExhaustiveFields<
+  Deletion,
+  keyof typeof DELETION_RESERVED
+>;
 
 export const MOVE_FROM_RESERVED = {
   type: NO_RESERVED_VALUE,
@@ -966,7 +1011,10 @@ export const MOVE_TO_RESERVED = {
   resolutionJoins: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveTo, ReservedValueDisposition>;
 
-export type ExhaustiveMoveToReserved = ExhaustiveFields<MoveTo, keyof typeof MOVE_TO_RESERVED>;
+export type ExhaustiveMoveToReserved = ExhaustiveFields<
+  MoveTo,
+  keyof typeof MOVE_TO_RESERVED
+>;
 
 export const MOVE_FROM_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
@@ -1105,10 +1153,11 @@ export const SECTION_PROPERTY_CHANGE_REFERENCES_RESERVED = {
   ReservedValueDisposition
 >;
 
-export type ExhaustiveSectionPropertyChangeReferencesReserved = ExhaustiveFields<
-  NonNullable<SectionPropertyChange["previousReferences"]>,
-  keyof typeof SECTION_PROPERTY_CHANGE_REFERENCES_RESERVED
->;
+export type ExhaustiveSectionPropertyChangeReferencesReserved =
+  ExhaustiveFields<
+    NonNullable<SectionPropertyChange["previousReferences"]>,
+    keyof typeof SECTION_PROPERTY_CHANGE_REFERENCES_RESERVED
+  >;
 
 export const TABLE_STRUCTURAL_CHANGE_INFO_RESERVED = {
   type: NO_RESERVED_VALUE,
@@ -1125,7 +1174,10 @@ export const TABLE_STRUCTURAL_CHANGE_INFO_RESERVED = {
     reader: RESERVED_VALUE_READERS.tableCellProperties,
     evidence: "vmerge-absent-means-continue",
   }),
-} satisfies Record<UnionFields<TableStructuralChangeInfo>, ReservedValueDisposition>;
+} satisfies Record<
+  UnionFields<TableStructuralChangeInfo>,
+  ReservedValueDisposition
+>;
 
 export const SDT_PROPERTIES_RESERVED = {
   sdtType: NO_RESERVED_VALUE,
@@ -1169,7 +1221,10 @@ export type ExhaustiveSdtEndPropertiesReserved = ExhaustiveFields<
 export const SDT_LIST_ITEM_RESERVED = {
   displayText: NO_RESERVED_VALUE,
   value: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<SdtProperties["listItems"]>[number], ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<SdtProperties["listItems"]>[number],
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveSdtListItemReserved = ExhaustiveFields<
   NonNullable<SdtProperties["listItems"]>[number],
@@ -1316,7 +1371,10 @@ export const SECTION_RESERVED = {
   footers: NO_RESERVED_VALUE,
 } satisfies Record<keyof Section, ReservedValueDisposition>;
 
-export type ExhaustiveSectionReserved = ExhaustiveFields<Section, keyof typeof SECTION_RESERVED>;
+export type ExhaustiveSectionReserved = ExhaustiveFields<
+  Section,
+  keyof typeof SECTION_RESERVED
+>;
 
 export const DOCUMENT_BODY_RESERVED = {
   background: NO_RESERVED_VALUE,

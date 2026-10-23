@@ -1,24 +1,31 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
-import fc from "fast-check";
 import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
 import {
   AllSelection,
+  type Command,
   EditorState,
   Selection,
   TextSelection,
-  type Command,
 } from "prosemirror-state";
-import type { Document, ParagraphContent } from "../types/document";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { schema, singletonManager } from "../prosemirror/schema";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
 import { insertPageBreak } from "../prosemirror/commands/pageBreak";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
+import { schema, singletonManager } from "../prosemirror/schema";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { Document, ParagraphContent } from "../types/document";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
-import { createDocx } from "../docx/rezip";
-import { parseDocx } from "../docx/parser";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 const seed = (bookmarks: boolean): Document => ({
@@ -29,7 +36,9 @@ const seed = (bookmarks: boolean): Document => ({
           type: "paragraph",
           paraId: "12345678",
           content: [
-            ...(bookmarks ? [{ type: "bookmarkStart", id: 7, name: "anchor" } as const] : []),
+            ...(bookmarks
+              ? [{ type: "bookmarkStart", id: 7, name: "anchor" } as const]
+              : []),
             {
               type: "run",
               formatting: { bold: true, color: { rgb: "123456" } },
@@ -62,19 +71,31 @@ const authored = (document: Document) => {
   const tokens: unknown[] = [];
   const walk = (
     items: readonly ParagraphContent[],
-    link?: { href?: string; anchor?: string; tooltip?: string; target?: string },
+    link?: {
+      href?: string;
+      anchor?: string;
+      tooltip?: string;
+      target?: string;
+    },
   ) => {
     for (const item of items) {
       switch (item.type) {
         case "run":
           for (const child of item.content)
-            if (child.type === "text") for (const text of child.text) tokens.push({ text, link });
+            if (child.type === "text")
+              for (const text of child.text) tokens.push({ text, link });
           break;
         case "hyperlink":
           if (item.children.length === 0)
-            tokens.push({ type: "emptyHyperlink", href: item.href, anchor: item.anchor });
+            tokens.push({
+              type: "emptyHyperlink",
+              href: item.href,
+              anchor: item.anchor,
+            });
           walk(item.children, {
-            href: item.href ?? (item.anchor === undefined ? undefined : `#${item.anchor}`),
+            href:
+              item.href ??
+              (item.anchor === undefined ? undefined : `#${item.anchor}`),
             anchor: item.anchor,
             tooltip: item.tooltip,
             target: item.target,
@@ -97,7 +118,8 @@ const authored = (document: Document) => {
     }
   };
   for (const paragraph of document.package.document.content) {
-    if (paragraph.type !== "paragraph") return panic("Hyperlink history lost its paragraph.");
+    if (paragraph.type !== "paragraph")
+      return panic("Hyperlink history lost its paragraph.");
     walk(paragraph.content);
   }
   return tokens;
@@ -106,7 +128,12 @@ const inputArbitrary = fc.record({
   left: fc.nat(),
   right: fc.nat(),
   reverse: fc.boolean(),
-  href: fc.constantFrom("example.com", "#anchor", "https://new.example/path", "javascript:void 0"),
+  href: fc.constantFrom(
+    "example.com",
+    "#anchor",
+    "https://new.example/path",
+    "javascript:void 0",
+  ),
   tooltip: fc.constantFrom(undefined, "Tip", ""),
 });
 type HyperlinkInput = ReturnType<typeof inputArbitrary.generate>["value"];
@@ -119,9 +146,15 @@ const factories = {
 };
 
 const allSelectionCommands = {
-  setHyperlink: [() => singletonManager.requireCommand("setHyperlink")("https://new.example/")],
+  setHyperlink: [
+    () =>
+      singletonManager.requireCommand("setHyperlink")("https://new.example/"),
+  ],
   removeHyperlink: [() => singletonManager.requireCommand("removeHyperlink")()],
-  insertHyperlink: [() => singletonManager.requireCommand("insertHyperlink")("New😀", "#anchor")],
+  insertHyperlink: [
+    () =>
+      singletonManager.requireCommand("insertHyperlink")("New😀", "#anchor"),
+  ],
   formatRun: [
     () => singletonManager.requireCommand("toggleUnderline")(),
     () => singletonManager.requireCommand("setFontFamily")("New Font"),
@@ -134,74 +167,117 @@ const allSelectionCommands = {
 
 test("every range intent handles AllSelection and restores exact undo redo", () => {
   assertProperty(
-    fc.property(fc.boolean(), fc.integer({ min: 1, max: 3 }), (bookmarks, paragraphCount) => {
-      const exercised = new Set<string>();
-      for (const [name, commandFactories] of Object.entries(allSelectionCommands)) {
-        for (const factory of commandFactories) {
-          exercised.add(name);
-          const document = seed(bookmarks);
-          for (let index = 1; index < paragraphCount; index += 1) {
-            document.package.document.content.push({
-              type: "paragraph",
-              paraId: (0x12345678 + index).toString(16),
-              content: [{ type: "run", content: [{ type: "text", text: "tail😀" }] }],
+    fc.property(
+      fc.boolean(),
+      fc.integer({ min: 1, max: 3 }),
+      (bookmarks, paragraphCount) => {
+        const exercised = new Set<string>();
+        for (const [name, commandFactories] of Object.entries(
+          allSelectionCommands,
+        )) {
+          for (const factory of commandFactories) {
+            exercised.add(name);
+            const document = seed(bookmarks);
+            for (let index = 1; index < paragraphCount; index += 1) {
+              document.package.document.content.push({
+                type: "paragraph",
+                paraId: (0x12345678 + index).toString(16),
+                content: [
+                  { type: "run", content: [{ type: "text", text: "tail😀" }] },
+                ],
+              });
+            }
+            const session = createCanonicalSession(document).unwrap();
+            let state = EditorState.create({
+              schema,
+              doc: session.projection.doc,
             });
+            state = state.apply(
+              state.tr.setSelection(new AllSelection(state.doc)),
+            );
+            const before = session.document;
+            const beforeSelection = state.selection.toJSON();
+            const intents =
+              getCanonicalCommandIntents(factory(), state) ??
+              panic("Missing range descriptor.");
+            // Both document edges and normalized content gaps have one canonical owner.
+            const rawRange = {
+              from: state.selection.from,
+              to: state.selection.to,
+            };
+            expect(
+              session.projection.addressAt(rawRange.from).unwrap(),
+            ).toEqual(
+              session.projection
+                .addressAt(Selection.atStart(state.doc).from)
+                .unwrap(),
+            );
+            expect(session.projection.addressAt(rawRange.to).unwrap()).toEqual(
+              session.projection
+                .addressAt(Selection.atEnd(state.doc).to)
+                .unwrap(),
+            );
+            // Page breaks require a caret, so whole-document selection has no intent.
+            if (name === "insertBreak") {
+              expect(intents).toEqual([]);
+              continue;
+            }
+            expect(intents.length).toBeGreaterThan(0);
+            const rawIntents = intents.map((intent) => ({
+              ...intent,
+              ...rawRange,
+            }));
+            const rawPreparation = prepareCanonicalCommands(
+              session,
+              state,
+              rawIntents,
+            ).unwrap();
+            expect(session.document).toBe(before);
+            expect(state.selection.toJSON()).toEqual(beforeSelection);
+            const prepared = prepareCanonicalCommands(
+              session,
+              state,
+              intents,
+            ).unwrap();
+            expect(rawPreparation.document).toStrictEqual(prepared.document);
+            expect(rawPreparation.selection).toEqual(prepared.selection);
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: prepared,
+            }).unwrap().state;
+            const after = session.document;
+            const afterSelection = state.selection.toJSON();
+            if (name === "insertHyperlink") {
+              expect(state.doc.textContent).toBe("New😀");
+            } else {
+              expect(afterSelection).toEqual(beforeSelection);
+            }
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareUndo(state).unwrap(),
+            }).unwrap().state;
+            expect(session.document).toStrictEqual(before);
+            expect(state.selection.toJSON()).toEqual(beforeSelection);
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareRedo(state).unwrap(),
+            }).unwrap().state;
+            expect(session.document).toStrictEqual(after);
+            expect(state.selection.toJSON()).toEqual(afterSelection);
           }
-          const session = createCanonicalSession(document).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
-          state = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
-          const before = session.document;
-          const beforeSelection = state.selection.toJSON();
-          const intents =
-            getCanonicalCommandIntents(factory(), state) ?? panic("Missing range descriptor.");
-          // Both document edges and normalized content gaps have one canonical owner.
-          const rawRange = { from: state.selection.from, to: state.selection.to };
-          expect(session.projection.addressAt(rawRange.from).unwrap()).toEqual(
-            session.projection.addressAt(Selection.atStart(state.doc).from).unwrap(),
-          );
-          expect(session.projection.addressAt(rawRange.to).unwrap()).toEqual(
-            session.projection.addressAt(Selection.atEnd(state.doc).to).unwrap(),
-          );
-          // Page breaks require a caret, so whole-document selection has no intent.
-          if (name === "insertBreak") {
-            expect(intents).toEqual([]);
-            continue;
-          }
-          expect(intents.length).toBeGreaterThan(0);
-          const rawIntents = intents.map((intent) => ({ ...intent, ...rawRange }));
-          const rawPreparation = prepareCanonicalCommands(session, state, rawIntents).unwrap();
-          expect(session.document).toBe(before);
-          expect(state.selection.toJSON()).toEqual(beforeSelection);
-          const prepared = prepareCanonicalCommands(session, state, intents).unwrap();
-          expect(rawPreparation.document).toStrictEqual(prepared.document);
-          expect(rawPreparation.selection).toEqual(prepared.selection);
-          state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
-          const after = session.document;
-          const afterSelection = state.selection.toJSON();
-          if (name === "insertHyperlink") {
-            expect(state.doc.textContent).toBe("New😀");
-          } else {
-            expect(afterSelection).toEqual(beforeSelection);
-          }
-          state = publishCanonicalProjection({
-            session,
-            state,
-            commit: session.prepareUndo(state).unwrap(),
-          }).unwrap().state;
-          expect(session.document).toStrictEqual(before);
-          expect(state.selection.toJSON()).toEqual(beforeSelection);
-          state = publishCanonicalProjection({
-            session,
-            state,
-            commit: session.prepareRedo(state).unwrap(),
-          }).unwrap().state;
-          expect(session.document).toStrictEqual(after);
-          expect(state.selection.toJSON()).toEqual(afterSelection);
         }
-      }
-      expect([...exercised].sort()).toEqual(Object.keys(allSelectionCommands).sort());
-    }),
-    { numRuns: 12, id: "every range intent handles AllSelection and restores exact undo redo" },
+        expect([...exercised].sort()).toEqual(
+          Object.keys(allSelectionCommands).sort(),
+        );
+      },
+    ),
+    {
+      numRuns: 12,
+      id: "every range intent handles AllSelection and restores exact undo redo",
+    },
   );
 });
 
@@ -218,7 +294,10 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
           const document = seed(bookmarks);
           const session = createCanonicalSession(document).unwrap();
           session.setMode(mode);
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const baseline = session.document;
           const history: {
             before: Document;
@@ -230,10 +309,12 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
           const exercised = new Set<string>();
           for (const [index, input] of inputs.entries()) {
             const [name, factory] =
-              commands.at(index % commands.length) ?? panic("Missing hyperlink command factory.");
+              commands.at(index % commands.length) ??
+              panic("Missing hyperlink command factory.");
             exercised.add(name);
             const address =
-              session.projection.paragraph("12345678") ?? panic("Missing hyperlink paragraph.");
+              session.projection.paragraph("12345678") ??
+              panic("Missing hyperlink paragraph.");
             const text = address.text;
             const boundaries = [0];
             let offset = 0;
@@ -242,12 +323,18 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
               boundaries.push(offset);
             }
             const left =
-              boundaries.at(input.left % boundaries.length) ?? panic("Missing range start.");
+              boundaries.at(input.left % boundaries.length) ??
+              panic("Missing range start.");
             const right =
-              boundaries.at(input.right % boundaries.length) ?? panic("Missing range end.");
+              boundaries.at(input.right % boundaries.length) ??
+              panic("Missing range end.");
             const position = (logicalOffset: number) =>
               session.projection
-                .positionAt({ story: "main", blockId: address.blockId, offset: logicalOffset })
+                .positionAt({
+                  story: "main",
+                  blockId: address.blockId,
+                  offset: logicalOffset,
+                })
                 .unwrap();
             state = state.apply(
               state.tr.setSelection(
@@ -265,7 +352,8 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
             const command = factory(input);
             command(state);
             const intents =
-              getCanonicalCommandIntents(command, state) ?? panic(`Missing ${name} descriptor.`);
+              getCanonicalCommandIntents(command, state) ??
+              panic(`Missing ${name} descriptor.`);
             expect(getCanonicalCommandIntents(command, state)).toEqual(intents);
             expect(session.document).toBe(before);
             expect(session.version).toBe(version);
@@ -274,19 +362,27 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
             session.breakUndoGroup();
             const prepared = prepareCanonicalCommands(session, state, intents);
             if (prepared.isErr()) {
-              if (mode.type === "editing" && prepared.error.reason === "refused")
+              if (
+                mode.type === "editing" &&
+                prepared.error.reason === "refused"
+              )
                 panic(prepared.error.message);
               expect(["refused", "noChange"]).toContain(prepared.error.reason);
               if (mode.type === "suggesting" && intents.length > 0) {
-                expect(prepared.error.gap).toBe(CANONICAL_GAP.trackedHyperlinkResolution);
+                expect(prepared.error.gap).toBe(
+                  CANONICAL_GAP.trackedHyperlinkResolution,
+                );
               }
               expect(session.document).toBe(before);
               expect(session.version).toBe(version);
               expect(state.selection.toJSON()).toEqual(beforeSelection);
               continue;
             }
-            state = publishCanonicalProjection({ session, state, commit: prepared.value }).unwrap()
-              .state;
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: prepared.value,
+            }).unwrap().state;
             expect(state.doc.eq(session.projection.doc)).toBe(true);
             if (name !== "insertHyperlink")
               expect(state.selection.toJSON()).toEqual(beforeSelection);
@@ -297,12 +393,13 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
               afterSelection: state.selection.toJSON(),
             });
           }
-          if (mode.type === "editing") expect(history.length).toBeGreaterThan(0);
+          if (mode.type === "editing")
+            expect(history.length).toBeGreaterThan(0);
           else expect(history).toEqual([]);
           expect([...exercised].sort()).toEqual(Object.keys(factories).sort());
-          expect(authored(await parseDocx(await createDocx(session.document)))).toEqual(
-            authored(session.document),
-          );
+          expect(
+            authored(await parseDocx(await createDocx(session.document))),
+          ).toEqual(authored(session.document));
           for (const entry of history.toReversed()) {
             state = publishCanonicalProjection({
               session,
@@ -334,45 +431,66 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
 
 test("tracked input addresses skip rendered deletions after bookmark atoms", () => {
   assertProperty(
-    fc.property(fc.boolean(), fc.constantFrom("a", "😀ab"), (bookmarks, prefix) => {
-      const document = seed(bookmarks);
-      const paragraph =
-        document.package.document.content.at(0) ?? panic("Missing address fixture.");
-      if (paragraph.type !== "paragraph") panic("Missing paragraph.");
-      const start = bookmarks ? [{ type: "bookmarkStart", id: 7, name: "anchor" } as const] : [];
-      const end = bookmarks ? [{ type: "bookmarkEnd", id: 7 } as const] : [];
-      paragraph.content = [
-        ...start,
-        { type: "run", content: [{ type: "text", text: prefix }] },
-        {
-          type: "deletion",
-          info: { id: 1, author: "Reviewer" },
-          content: [{ type: "run", content: [{ type: "text", text: "deleted" }] }],
-        },
-        { type: "run", content: [{ type: "text", text: "tail" }] },
-        ...end,
-      ];
-      const session = createCanonicalSession(document).unwrap();
-      let exercised = 0;
-      session.projection.doc.descendants((node, position) => {
-        if (!node.isText || !node.marks.some((mark) => mark.type.name === "deletion")) return;
-        for (let offset = 1; offset < node.nodeSize; offset += 1) {
-          expect(session.projection.inputAddressAt(position + offset).unwrap()).toEqual(
-            session.projection.addressAt(position + node.nodeSize).unwrap(),
-          );
-          exercised += 1;
-        }
-      });
-      expect(exercised).toBeGreaterThan(0);
-    }),
-    { numRuns: 10, id: "tracked input addresses skip rendered deletions after bookmark atoms" },
+    fc.property(
+      fc.boolean(),
+      fc.constantFrom("a", "😀ab"),
+      (bookmarks, prefix) => {
+        const document = seed(bookmarks);
+        const paragraph =
+          document.package.document.content.at(0) ??
+          panic("Missing address fixture.");
+        if (paragraph.type !== "paragraph") panic("Missing paragraph.");
+        const start = bookmarks
+          ? [{ type: "bookmarkStart", id: 7, name: "anchor" } as const]
+          : [];
+        const end = bookmarks ? [{ type: "bookmarkEnd", id: 7 } as const] : [];
+        paragraph.content = [
+          ...start,
+          { type: "run", content: [{ type: "text", text: prefix }] },
+          {
+            type: "deletion",
+            info: { id: 1, author: "Reviewer" },
+            content: [
+              { type: "run", content: [{ type: "text", text: "deleted" }] },
+            ],
+          },
+          { type: "run", content: [{ type: "text", text: "tail" }] },
+          ...end,
+        ];
+        const session = createCanonicalSession(document).unwrap();
+        let exercised = 0;
+        session.projection.doc.descendants((node, position) => {
+          if (
+            !node.isText ||
+            !node.marks.some((mark) => mark.type.name === "deletion")
+          )
+            return;
+          for (let offset = 1; offset < node.nodeSize; offset += 1) {
+            expect(
+              session.projection.inputAddressAt(position + offset).unwrap(),
+            ).toEqual(
+              session.projection.addressAt(position + node.nodeSize).unwrap(),
+            );
+            exercised += 1;
+          }
+        });
+        expect(exercised).toBeGreaterThan(0);
+      },
+    ),
+    {
+      numRuns: 10,
+      id: "tracked input addresses skip rendered deletions after bookmark atoms",
+    },
   );
 });
 
 test("generated collapsed removal covers every formatting segment of exactly one contiguous hyperlink", () => {
   assertProperty(
     fc.property(
-      fc.array(fc.constantFrom("ab", "😀x", "éz"), { minLength: 2, maxLength: 5 }),
+      fc.array(fc.constantFrom("ab", "😀x", "éz"), {
+        minLength: 2,
+        maxLength: 5,
+      }),
       fc.constantFrom("https://old.example/", "https://other.example/"),
       (pieces, adjacentHref) => {
         const children = pieces.map(
@@ -387,12 +505,16 @@ test("generated collapsed removal covers every formatting segment of exactly one
           type: "hyperlink",
           href: adjacentHref,
           tooltip: "Adjacent",
-          children: [{ type: "run", content: [{ type: "text", text: "neighbor" }] }],
+          children: [
+            { type: "run", content: [{ type: "text", text: "neighbor" }] },
+          ],
         } satisfies ParagraphContent;
         const repeated = {
           type: "hyperlink",
           href: "https://old.example/",
-          children: [{ type: "run", content: [{ type: "text", text: "separate" }] }],
+          children: [
+            { type: "run", content: [{ type: "text", text: "separate" }] },
+          ],
         } satisfies ParagraphContent;
         const document = {
           package: {
@@ -402,7 +524,11 @@ test("generated collapsed removal covers every formatting segment of exactly one
                   type: "paragraph",
                   paraId: "12345678",
                   content: [
-                    { type: "hyperlink", href: "https://old.example/", children },
+                    {
+                      type: "hyperlink",
+                      href: "https://old.example/",
+                      children,
+                    },
                     adjacent,
                     { type: "run", content: [{ type: "text", text: " gap " }] },
                     repeated,
@@ -430,13 +556,19 @@ test("generated collapsed removal covers every formatting segment of exactly one
           const selection = state.selection.toJSON();
           const command = singletonManager.requireCommand("removeHyperlink")();
           const intents = getCanonicalCommandIntents(command, state);
-          expect(intents).toEqual([{ type: "removeHyperlink", from: 1, to: 1 + text.length }]);
+          expect(intents).toEqual([
+            { type: "removeHyperlink", from: 1, to: 1 + text.length },
+          ]);
           const prepared = prepareCanonicalCommands(
             session,
             state,
             intents ?? panic("Missing hyperlink descriptor."),
           ).unwrap();
-          state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: prepared,
+          }).unwrap().state;
           const expected = {
             package: {
               document: {
@@ -447,7 +579,10 @@ test("generated collapsed removal covers every formatting segment of exactly one
                     content: [
                       ...children,
                       adjacent,
-                      { type: "run", content: [{ type: "text", text: " gap " }] },
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: " gap " }],
+                      },
                       repeated,
                     ],
                   },
@@ -475,10 +610,16 @@ test("generated collapsed removal covers every formatting segment of exactly one
         const state = EditorState.create({
           schema,
           doc: session.projection.doc,
-          selection: TextSelection.create(session.projection.doc, 1 + text.length),
+          selection: TextSelection.create(
+            session.projection.doc,
+            1 + text.length,
+          ),
         });
         expect(
-          getCanonicalCommandIntents(singletonManager.requireCommand("removeHyperlink")(), state),
+          getCanonicalCommandIntents(
+            singletonManager.requireCommand("removeHyperlink")(),
+            state,
+          ),
         ).toEqual([]);
       },
     ),

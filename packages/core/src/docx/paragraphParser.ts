@@ -10,56 +10,80 @@
  * - Content: runs, hyperlinks, bookmarks, fields
  */
 
+import { panic } from "better-result";
+
+import {
+  PARAGRAPH_MARK_CHANGE_KINDS,
+  REVIEW_CARRIERS,
+} from "@stll/docx-core/model";
+
 import type {
+  BookmarkEnd,
+  BookmarkStart,
+  ComplexField,
+  Hyperlink,
+  InlineSdt,
+  InlineWrapper,
+  MathEquation,
+  MediaFile,
   Paragraph,
   ParagraphContent,
   ParagraphFormatting,
-  Run,
-  Hyperlink,
-  BookmarkStart,
-  BookmarkEnd,
-  SimpleField,
-  ComplexField,
-  TextFormatting,
-  Theme,
-  RelationshipMap,
-  MediaFile,
-  InlineSdt,
-  SdtProperties,
   ParagraphMarkChange,
   ParagraphPropertyChange,
+  RelationshipMap,
+  Run,
+  RunContent,
+  SdtProperties,
+  SimpleField,
+  TextFormatting,
+  Theme,
   TrackedChangeInfo,
   TrackedRunChange,
-  MathEquation,
-  InlineWrapper,
-  RunContent,
 } from "../types/document";
-import { PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
-import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
 import { attributeRemainder } from "./attributeRemainder";
-import { paraIdAttribute, textIdAttribute } from "./paraIdAttribute";
-import { paraIdInRange } from "./paraIdRangeNormalization";
-import { assignParagraphPropertySource } from "./paragraphPropertySource";
 import {
-  parseBookmarkStart as parseBookmarkStartFromModule,
   parseBookmarkEnd as parseBookmarkEndFromModule,
+  parseBookmarkStart as parseBookmarkStartFromModule,
 } from "./bookmarkParser";
-import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  type ChildReader,
+  dispatchChildrenWithContext,
+  ownedElsewhere,
+  transitionalNamespaceOf,
+  withPreservedChildren,
+} from "./containerChildren";
+import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
 import { parseFieldType } from "./fieldParser";
+import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
   foldListNumberFields,
   isListNumberField,
   isListNumberGapMarker,
   isTabOnlyRun,
 } from "./foldedListNumberFields";
-import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
   HYPERLINK_CHILD_HANDLERS,
   type HyperlinkChildContext,
   parseHyperlink as parseHyperlinkFromModule,
   parseHyperlinkShell,
 } from "./hyperlinkParser";
+import {
+  isHyperlinkContent,
+  isInlineSdtContent,
+  isSimpleFieldContent,
+  isTrackedChangeWrapperChild,
+} from "./inlineWrapperContent";
+import { inlineWrapperOf } from "./inlineWrapperParser";
+import type { InlineWrapperElement } from "./inlineWrapperParser";
+import { preserveLinkedSdt } from "./linkedSdtPreservation";
+import {
+  parseMarkupRangeMarker,
+  parseMoveBookmarkMarker,
+} from "./markupRangeMarker";
 import {
   counterFormatOf,
   markerAlignmentForLevel,
@@ -77,47 +101,43 @@ import {
   restoreEmptyMarkProperties,
 } from "./paragraphMarkPropertyPresence";
 import { parseParagraphProperties } from "./paragraphProperties";
-import {
-  CAPTURE,
-  type ChildHandlers,
-  type ChildReader,
-  dispatchChildrenWithContext,
-  ownedElsewhere,
-  transitionalNamespaceOf,
-  withPreservedChildren,
-} from "./containerChildren";
-import {
-  isHyperlinkContent,
-  isInlineSdtContent,
-  isTrackedChangeWrapperChild,
-  isSimpleFieldContent,
-} from "./inlineWrapperContent";
-import { preserveLinkedSdt } from "./linkedSdtPreservation";
-import { inlineWrapperOf } from "./inlineWrapperParser";
-import type { InlineWrapperElement } from "./inlineWrapperParser";
+import { assignParagraphPropertySource } from "./paragraphPropertySource";
+import { paraIdAttribute, textIdAttribute } from "./paraIdAttribute";
+import { paraIdInRange } from "./paraIdRangeNormalization";
 import {
   preservedInlineCapture,
   preserveInlineChild,
   preserveRunChild,
 } from "./preservedRunContent";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
+import {
+  parseParagraphMarkResolutionJoin,
+  parseResolutionJoins,
+  ReviewResolutionProvenanceError,
+} from "./reviewResolutionProvenance";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
-import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
+import { hasAttributeAnySpelling } from "./strictNames";
 import type { StyleMap } from "./styleParser";
-import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
+import { scanRunForTextBoxDrawings } from "./textBoxParser";
+import {
+  parsePropertyChangeInfo,
+  parseTrackedChangeInfo,
+} from "./trackedChangeInfo";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
   cloneElement,
   findChild,
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,
   findWordprocessingChild,
-  getAttributeByNamespaceUri,
   getAttribute,
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -128,16 +148,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
-import { hasAttributeAnySpelling } from "./strictNames";
-import { scanRunForTextBoxDrawings } from "./textBoxParser";
-import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
-
-import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
-import {
-  parseResolutionJoins,
-  parseParagraphMarkResolutionJoin,
-  ReviewResolutionProvenanceError,
-} from "./reviewResolutionProvenance";
 
 const FOLIO_REVIEW_HISTORY_NAMESPACES: ReadonlySet<string> = new Set([
   FOLIO_REVIEW_HISTORY_NAMESPACE,
@@ -172,7 +182,10 @@ function extractMathText(el: XmlElement): string {
  * Capture the authored paragraph properties separately from structural and
  * revision children, which have their own model fields and lifecycles.
  */
-const captureParagraphPropertySource = (pPr: XmlElement, paragraph: Paragraph): string =>
+const captureParagraphPropertySource = (
+  pPr: XmlElement,
+  paragraph: Paragraph,
+): string =>
   captureVerbatimXml(
     cloneElement(pPr, {
       elements: (pPr.elements ?? []).flatMap((child) => {
@@ -186,15 +199,22 @@ const captureParagraphPropertySource = (pPr: XmlElement, paragraph: Paragraph): 
         ) {
           return [];
         }
-        if (localName !== "rPr" || !WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "")) {
+        if (
+          localName !== "rPr" ||
+          !WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "")
+        ) {
           return [child];
         }
         const elements = (child.elements ?? []).filter((runProperty) => {
           if (runProperty.type !== "element") return true;
           const runPropertyName = getLocalName(runProperty.name);
           return (
-            !WORDPROCESSINGML_NAMESPACE_URIS.has(runProperty.namespaceUri ?? "") ||
-            !PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === runPropertyName)
+            !WORDPROCESSINGML_NAMESPACE_URIS.has(
+              runProperty.namespaceUri ?? "",
+            ) ||
+            !PARAGRAPH_MARK_CHANGE_KINDS.some(
+              (kind) => kind === runPropertyName,
+            )
           );
         });
         // Removing sibling-owned revisions must not author an empty property set.
@@ -204,7 +224,8 @@ const captureParagraphPropertySource = (pPr: XmlElement, paragraph: Paragraph): 
             (element) =>
               element.type === "text" &&
               (element.text === undefined ||
-                (typeof element.text === "string" && element.text.trim() === "")),
+                (typeof element.text === "string" &&
+                  element.text.trim() === "")),
           )
         )
           return [];
@@ -300,7 +321,10 @@ function paragraphStartsWithRenderedPageBreak(node: XmlElement): boolean {
             sawRenderedPageBreak = true;
             continue;
           }
-          if (runChildName === "br" && getAttribute(runChild, "w", "type") === "page") {
+          if (
+            runChildName === "br" &&
+            getAttribute(runChild, "w", "type") === "page"
+          ) {
             return "forced";
           }
           if (RENDERED_BREAK_VISIBLE_RUN_CONTENT.has(runChildName)) {
@@ -332,7 +356,8 @@ function paragraphStartsWithRenderedPageBreak(node: XmlElement): boolean {
 }
 
 type TrackedChangeParseContext = "default" | "deletion";
-type TrackedChangeWrapperType = "insertion" | "deletion" | "moveFrom" | "moveTo";
+type TrackedChangeWrapperType =
+  "insertion" | "deletion" | "moveFrom" | "moveTo";
 
 function replaceLocalName(name: string | undefined, localName: string): string {
   if (!name) {
@@ -361,7 +386,9 @@ function normalizeDeletionContentElement(node: XmlElement): XmlElement {
 
   return cloneElement(node, {
     ...(mappedName !== undefined ? { name: mappedName } : {}),
-    ...(node.elements ? { elements: node.elements.map(normalizeDeletionContentElement) } : {}),
+    ...(node.elements
+      ? { elements: node.elements.map(normalizeDeletionContentElement) }
+      : {}),
   });
 }
 
@@ -374,27 +401,29 @@ export function parseParagraphPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildrenByNamespaceUri(pPr, WORDPROCESSINGML_NAMESPACE_URIS, "pPrChange").map(
-    (changeElement): ParagraphPropertyChange => {
-      const previousPPr = findChildByNamespaceUri(
-        changeElement,
-        WORDPROCESSINGML_NAMESPACE_URIS,
-        "pPr",
-      );
-      const previousFormatting = parseParagraphProperties(previousPPr, theme);
-      const change: ParagraphPropertyChange = {
-        type: "paragraphPropertyChange",
-        info: parsePropertyChangeInfo(changeElement),
-      };
-      if (previousFormatting !== undefined) {
-        change.previousFormatting = previousFormatting;
-      }
-      if (currentFormatting !== undefined) {
-        change.currentFormatting = currentFormatting;
-      }
-      return change;
-    },
-  );
+  const changes = findChildrenByNamespaceUri(
+    pPr,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "pPrChange",
+  ).map((changeElement): ParagraphPropertyChange => {
+    const previousPPr = findChildByNamespaceUri(
+      changeElement,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "pPr",
+    );
+    const previousFormatting = parseParagraphProperties(previousPPr, theme);
+    const change: ParagraphPropertyChange = {
+      type: "paragraphPropertyChange",
+      info: parsePropertyChangeInfo(changeElement),
+    };
+    if (previousFormatting !== undefined) {
+      change.previousFormatting = previousFormatting;
+    }
+    if (currentFormatting !== undefined) {
+      change.currentFormatting = currentFormatting;
+    }
+    return change;
+  });
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -405,11 +434,17 @@ export function parseParagraphPropertyChanges(
  * encountered, or undefined when none is present. `ins` and `del` are
  * mutually exclusive in valid documents.
  */
-function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange | undefined {
+function parseParagraphMarkChange(
+  pPr: XmlElement | null,
+): ParagraphMarkChange | undefined {
   if (!pPr) {
     return undefined;
   }
-  const rPr = findChildByNamespaceUri(pPr, WORDPROCESSINGML_NAMESPACE_URIS, "rPr");
+  const rPr = findChildByNamespaceUri(
+    pPr,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "rPr",
+  );
   if (!rPr) {
     return undefined;
   }
@@ -417,7 +452,11 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   // the parser silently drops. `moveFrom` / `moveTo` come first: a moved
   // paragraph's mark carries one of them INSTEAD of `del` / `ins`, never both.
   for (const kind of PARAGRAPH_MARK_CHANGE_KINDS) {
-    const element = findChildByNamespaceUri(rPr, WORDPROCESSINGML_NAMESPACE_URIS, kind);
+    const element = findChildByNamespaceUri(
+      rPr,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      kind,
+    );
     if (element) {
       return {
         kind,
@@ -452,17 +491,32 @@ function pushTrackedChangeWrapper({
   const provenance = resolutionJoins === undefined ? {} : { resolutionJoins };
 
   if (type === "insertion") {
-    contents.push({ type: "insertion", info, content: [...content], ...provenance });
+    contents.push({
+      type: "insertion",
+      info,
+      content: [...content],
+      ...provenance,
+    });
     return;
   }
 
   if (type === "deletion") {
-    contents.push({ type: "deletion", info, content: [...content], ...provenance });
+    contents.push({
+      type: "deletion",
+      info,
+      content: [...content],
+      ...provenance,
+    });
     return;
   }
 
   if (type === "moveFrom") {
-    contents.push({ type: "moveFrom", info, content: [...content], ...provenance });
+    contents.push({
+      type: "moveFrom",
+      info,
+      content: [...content],
+      ...provenance,
+    });
     return;
   }
 
@@ -491,7 +545,8 @@ function pushTrackedChangeSegments({
     throw new ReviewResolutionProvenanceError({
       attribute: "resolutionJoins",
       reason: "invalid",
-      message: "Tracked-resolution provenance cannot bind a fragmented imported wrapper.",
+      message:
+        "Tracked-resolution provenance cannot bind a fragmented imported wrapper.",
     });
   }
   if (!parsedContent.some(isTrackedChangeWrapperChild)) {
@@ -515,12 +570,24 @@ function pushTrackedChangeSegments({
       continue;
     }
 
-    pushTrackedChangeWrapper({ contents, type, info, resolutionJoins, content: segment });
+    pushTrackedChangeWrapper({
+      contents,
+      type,
+      info,
+      resolutionJoins,
+      content: segment,
+    });
     segment.length = 0;
     contents.push(content);
   }
 
-  pushTrackedChangeWrapper({ contents, type, info, resolutionJoins, content: segment });
+  pushTrackedChangeWrapper({
+    contents,
+    type,
+    info,
+    resolutionJoins,
+    content: segment,
+  });
 }
 
 type PushInlineSdtSegmentsParams = {
@@ -586,7 +653,15 @@ function parseHyperlink(
   rootXmlns: Record<string, string>,
   previews: PreviewLedger,
 ): Hyperlink {
-  return parseHyperlinkFromModule(node, rels, styles, theme, media, rootXmlns, previews);
+  return parseHyperlinkFromModule(
+    node,
+    rels,
+    styles,
+    theme,
+    media,
+    rootXmlns,
+    previews,
+  );
 }
 
 /**
@@ -603,7 +678,8 @@ const HYPERLINK_REVISION_WRAPPERS: ReadonlySet<string> = new Set([
   "moveTo",
 ]);
 
-const OMML_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+const OMML_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/math";
 
 /**
  * An OMML element as an equation, or nothing when the child is not one.
@@ -619,7 +695,10 @@ const mathContentOf = (child: XmlElement): MathEquation | undefined => {
   const namespace = getNamespaceUri(child);
   // A Strict package spells the maths namespace under `purl.oclc.org`, and an
   // equation is an equation in either class.
-  if (namespace === undefined || transitionalNamespaceOf(namespace) !== OMML_NAMESPACE) {
+  if (
+    namespace === undefined ||
+    transitionalNamespaceOf(namespace) !== OMML_NAMESPACE
+  ) {
     return undefined;
   }
   const equation: MathEquation = {
@@ -637,7 +716,9 @@ const mathContentOf = (child: XmlElement): MathEquation | undefined => {
 /** The link's revision-segmenting walk: the link's own, plus where it records a revision. */
 type HyperlinkRevisionWalk = HyperlinkChildContext & {
   items: (Hyperlink["children"][number] | HoistedRevision)[];
-  linkOver: (linkChildren: readonly Hyperlink["children"][number][]) => Hyperlink;
+  linkOver: (
+    linkChildren: readonly Hyperlink["children"][number][],
+  ) => Hyperlink;
 };
 
 /** Preserve a link across nested revision owners, rather than dropping its shell. */
@@ -663,10 +744,15 @@ const linkedRevisionContent = (
       case "deletion":
       case "moveFrom":
       case "moveTo":
-        content.push({ ...item, content: linkedRevisionContent(item.content, linkOver) });
+        content.push({
+          ...item,
+          content: linkedRevisionContent(item.content, linkOver),
+        });
         break;
       case "inlineSdt":
-        return panic("An SDT under a hyperlink must retain its opaque source span");
+        return panic(
+          "An SDT under a hyperlink must retain its opaque source span",
+        );
       default:
         if (isTrackedChangeWrapperChild(item)) content.push(item);
         break;
@@ -678,7 +764,10 @@ const linkedRevisionContent = (
 
 const hoistRevision =
   (wrapper: TrackedChangeWrapperType): ChildReader<HyperlinkRevisionWalk> =>
-  (child, { styles, theme, rels, media, previews, inScopeXmlns, items, linkOver }) => {
+  (
+    child,
+    { styles, theme, rels, media, previews, inScopeXmlns, items, linkOver },
+  ) => {
     const wrapped = parseParagraphContents(
       child,
       styles,
@@ -727,13 +816,21 @@ function parseHyperlinkParagraphContents(
   previews: PreviewLedger,
 ): ParagraphContent[] {
   const children = getChildElements(node);
-  if (!children.some((child) => HYPERLINK_REVISION_WRAPPERS.has(getLocalName(child.name)))) {
-    return [parseHyperlink(node, rels, styles, theme, media, rootXmlns, previews)];
+  if (
+    !children.some((child) =>
+      HYPERLINK_REVISION_WRAPPERS.has(getLocalName(child.name)),
+    )
+  ) {
+    return [
+      parseHyperlink(node, rels, styles, theme, media, rootXmlns, previews),
+    ];
   }
 
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
   const shell = parseHyperlinkShell(node, rels);
-  const linkOver = (linkChildren: readonly Hyperlink["children"][number][]): Hyperlink => ({
+  const linkOver = (
+    linkChildren: readonly Hyperlink["children"][number][],
+  ): Hyperlink => ({
     ...shell,
     children: [...linkChildren],
   });
@@ -771,7 +868,11 @@ function parseHyperlinkParagraphContents(
     }
   };
 
-  for (const item of withPreservedChildren(items, preserved, preservedInlineCapture)) {
+  for (const item of withPreservedChildren(
+    items,
+    preserved,
+    preservedInlineCapture,
+  )) {
     if (item.type !== "hoistedRevision") {
       plain.push(item);
       continue;
@@ -871,7 +972,11 @@ function parseSimpleField(
       inScopeXmlns,
     },
   });
-  field.content = withPreservedChildren(content, preserved, preservedInlineCapture);
+  field.content = withPreservedChildren(
+    content,
+    preserved,
+    preservedInlineCapture,
+  );
 
   return field;
 }
@@ -912,7 +1017,10 @@ const fieldTrackedChange =
     );
     // Field children outside the typed revision model keep their authored XML.
     // Do not hoist their boundaries into a container that cannot carry them.
-    if (parsedContent.length === 0 || !parsedContent.every(isTrackedChangeWrapperChild)) {
+    if (
+      parsedContent.length === 0 ||
+      !parsedContent.every(isTrackedChangeWrapperChild)
+    ) {
       push(preserveInlineChild(child));
       return;
     }
@@ -926,7 +1034,8 @@ const fieldTrackedChange =
       preserveEmpty: true,
     });
     for (const content of contents) {
-      if (!isSimpleFieldContent(content)) panic("A parsed field revision must be a field child");
+      if (!isSimpleFieldContent(content))
+        panic("A parsed field revision must be a field child");
       push(content);
     }
   };
@@ -943,7 +1052,10 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
   r: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
     push(parseRun(child, styles, theme, rels, media, inScopeXmlns, previews));
   },
-  hyperlink: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
+  hyperlink: (
+    child,
+    { push, styles, theme, rels, media, previews, inScopeXmlns },
+  ) => {
     for (const content of parseHyperlinkParagraphContents(
       child,
       rels,
@@ -953,7 +1065,8 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
       inScopeXmlns,
       previews,
     )) {
-      if (!isSimpleFieldContent(content)) panic("A parsed field hyperlink must be a field child");
+      if (!isSimpleFieldContent(content))
+        panic("A parsed field hyperlink must be a field child");
       push(content);
     }
   },
@@ -1059,13 +1172,19 @@ type HasRunPayloadOptions = {
   media: Map<string, MediaFile> | null;
 };
 
-const hasRunPayload = ({ run, runElement, rels, media }: HasRunPayloadOptions): boolean => {
+const hasRunPayload = ({
+  run,
+  runElement,
+  rels,
+  media,
+}: HasRunPayloadOptions): boolean => {
   if (runHoldsPayload(run)) {
     return true;
   }
   const { textBoxDrawings, vmlTextBoxes } = scanRunForTextBoxDrawings({
     xmlRun: runElement,
-    claimedByRunParser: (pictElement) => isVmlPictParsedByRunParser(pictElement, rels, media),
+    claimedByRunParser: (pictElement) =>
+      isVmlPictParsedByRunParser(pictElement, rels, media),
   });
   return textBoxDrawings.length > 0 || vmlTextBoxes.length > 0;
 };
@@ -1089,7 +1208,10 @@ const hasRunPayload = ({ run, runElement, rels, media }: HasRunPayloadOptions): 
  * the editor does with an orphan is a separate question from what the container
  * contract asks here, and answering it with bytes would trade a model for one.
  */
-const withOrphanFieldCharsPreserved = (run: Run, runElement: XmlElement): Run => {
+const withOrphanFieldCharsPreserved = (
+  run: Run,
+  runElement: XmlElement,
+): Run => {
   const captured = getChildElements(runElement)
     .filter((child) => getLocalName(child.name) === "fldChar")
     .map(preserveRunChild);
@@ -1120,12 +1242,14 @@ type LegacyFormCheckboxDisplay = {
 };
 
 const beginFieldCharOf = (runElement: XmlElement): XmlElement | undefined =>
-  findChildrenByNamespaceUri(runElement, WORDPROCESSINGML_NAMESPACE_URIS, "fldChar").find(
-    (fieldChar) => {
-      const charType = getAttribute(fieldChar, "w", "fldCharType");
-      return charType !== "separate" && charType !== "end";
-    },
-  );
+  findChildrenByNamespaceUri(
+    runElement,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "fldChar",
+  ).find((fieldChar) => {
+    const charType = getAttribute(fieldChar, "w", "fldCharType");
+    return charType !== "separate" && charType !== "end";
+  });
 
 function getLegacyFormCheckboxDisplay(
   fieldData: XmlElement | null,
@@ -1141,7 +1265,11 @@ function getLegacyFormCheckboxDisplay(
   if (checked) {
     isChecked = parseBooleanElement(checked);
   }
-  const explicitSize = parseNumericAttribute(findChild(checkBox, "w", "size"), "w", "val");
+  const explicitSize = parseNumericAttribute(
+    findChild(checkBox, "w", "size"),
+    "w",
+    "val",
+  );
   const text = isChecked
     ? LEGACY_FORM_CHECKBOX_GLYPHS.checked
     : LEGACY_FORM_CHECKBOX_GLYPHS.unchecked;
@@ -1164,7 +1292,8 @@ function createLegacyFormCheckboxResultRun(
     content: [{ type: "text", text: display.text }],
   };
   const hasInheritedFormatting =
-    inheritedFormatting !== undefined && Object.keys(inheritedFormatting).length > 0;
+    inheritedFormatting !== undefined &&
+    Object.keys(inheritedFormatting).length > 0;
 
   if (display.fontSize !== undefined) {
     run.formatting = hasInheritedFormatting
@@ -1215,7 +1344,10 @@ const FIELD_INLINE_WRAPPER_HANDLERS = {
   // Not a child of any of the four wrappers; the declared set is shared
   // with `w:p`, where the paragraph reads it off the element.
   pPr: CAPTURE,
-} as const satisfies ChildHandlers<"run-level-content", SimpleFieldChildContext>;
+} as const satisfies ChildHandlers<
+  "run-level-content",
+  SimpleFieldChildContext
+>;
 
 /**
  * What one paragraph-content walk reads with and writes into.
@@ -1251,7 +1383,9 @@ const tabRunSources = new WeakMap<Run, XmlElement>();
  * Whether the content read so far ends in a list-number field whose markup is
  * kept, with nothing but range markers after it: the next tab is its tab.
  */
-const followsListNumberField = (contents: readonly ParagraphContent[]): boolean => {
+const followsListNumberField = (
+  contents: readonly ParagraphContent[],
+): boolean => {
   for (let index = contents.length - 1; index >= 0; index -= 1) {
     const item = contents[index];
     if (item === undefined || isListNumberGapMarker(item)) {
@@ -1384,7 +1518,9 @@ const FIELD_TRANSPARENT_CHILDREN: ReadonlySet<string> = new Set([
 
 const isWordprocessingChild = (child: XmlElement) => {
   const namespace = getNamespaceUri(child);
-  return namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
+  return (
+    namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace)
+  );
 };
 
 /**
@@ -1406,7 +1542,9 @@ const isWordprocessingChild = (child: XmlElement) => {
  * rather than one slot so a field nested inside a field nested inside a field
  * closes each level against the right opener instead of the most recent one.
  */
-const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> => {
+const assembledFieldBeginsOf = (
+  container: XmlElement,
+): ReadonlySet<XmlElement> => {
   const assembled = new Set<XmlElement>();
   const open: XmlElement[] = [];
   for (const child of getChildElements(container)) {
@@ -1421,7 +1559,10 @@ const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> 
     let hasBegin = false;
     let hasEnd = false;
     for (const runChild of getChildElements(child)) {
-      if (getLocalName(runChild.name) !== "fldChar" || !isWordprocessingChild(runChild)) {
+      if (
+        getLocalName(runChild.name) !== "fldChar" ||
+        !isWordprocessingChild(runChild)
+      ) {
         continue;
       }
       const charType = getAttribute(runChild, "w", "fldCharType");
@@ -1460,7 +1601,17 @@ const paragraphInlineWrapper =
   (element: InlineWrapperElement): ChildReader<ParagraphContentsWalk> =>
   (
     child,
-    { styles, theme, rels, media, previews, trackedContext, inScopeXmlns, inlineScope, contents },
+    {
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      trackedContext,
+      inScopeXmlns,
+      inlineScope,
+      contents,
+    },
   ) => {
     contents.push(
       inlineWrapperOf(
@@ -1488,7 +1639,17 @@ const PARAGRAPH_CONTENT_UNDECLARED = {
   // wrapper whole would keep the bytes and lose every run inside it.
   AlternateContent: (
     child,
-    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns, inlineScope },
+    {
+      contents,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      trackedContext,
+      inScopeXmlns,
+      inlineScope,
+    },
   ) => {
     const selectedBranch = selectAlternateContentBranch(child);
     if (selectedBranch) {
@@ -1528,7 +1689,19 @@ const PARAGRAPH_CONTENT_UNDECLARED_NAMESPACES = {
 /** All revision wrappers retain typed review ownership while parsing their children. */
 const trackedParagraphRevision =
   (type: TrackedChangeWrapperType): ChildReader<ParagraphContentsWalk> =>
-  (child, { contents, styles, theme, rels, media, previews, inScopeXmlns, inlineScope }) => {
+  (
+    child,
+    {
+      contents,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      inScopeXmlns,
+      inlineScope,
+    },
+  ) => {
     const resolutionJoins = parseResolutionJoins(child);
     const parsedContent = parseParagraphContents(
       child,
@@ -1554,18 +1727,41 @@ const trackedParagraphRevision =
 const PARAGRAPH_CONTENT_HANDLERS = {
   r: (
     child,
-    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns, scan },
+    {
+      contents,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      trackedContext,
+      inScopeXmlns,
+      scan,
+    },
   ) => {
     // Check for field characters in this run
     const runElement =
-      trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
-    const run = parseRun(runElement, styles, theme, rels, media, inScopeXmlns, previews);
+      trackedContext === "deletion"
+        ? normalizeDeletionContentElement(child)
+        : child;
+    const run = parseRun(
+      runElement,
+      styles,
+      theme,
+      rels,
+      media,
+      inScopeXmlns,
+      previews,
+    );
     const commentReferenceId = getCommentReferenceId(runElement);
 
     // Look for field characters
     let hasFieldBegin = false;
     let beginFieldState: FieldState = {};
-    const beginFieldData = findWordprocessingChild(beginFieldCharOf(runElement), "ffData");
+    const beginFieldData = findWordprocessingChild(
+      beginFieldCharOf(runElement),
+      "ffData",
+    );
     const beginFallbackDisplay = getLegacyFormCheckboxDisplay(beginFieldData);
     let hasFieldSeparate = false;
     let hasFieldEnd = false;
@@ -1632,7 +1828,9 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       scan.complexFieldSourceRuns = [];
       // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
       scan.complexFieldState = beginFieldState;
-      scan.complexFieldDataXml = beginFieldData ? captureVerbatimXml(beginFieldData) : undefined;
+      scan.complexFieldDataXml = beginFieldData
+        ? captureVerbatimXml(beginFieldData)
+        : undefined;
       scan.complexFieldFallbackDisplay = beginFallbackDisplay;
       // The structural run carrying `begin` often holds the field's run
       // formatting (e.g. a footer PAGE field collapsed into one run).
@@ -1646,14 +1844,17 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     // Read before `codeDepthStack` is popped below: a run carrying a nested
     // field's own `end` is still that nested field's content, one instant
     // before the depth it opened at is removed.
-    const isNestedField = scan.codeDepthStack.length > scan.complexFieldBaseDepth;
+    const isNestedField =
+      scan.codeDepthStack.length > scan.complexFieldBaseDepth;
 
     if (hasFieldEnd && scan.codeDepthStack.length > 0) {
       scan.codeDepthStack.pop();
     }
 
     if (scan.inComplexField) {
-      scan.complexFieldOpenRuns.push(withOrphanFieldCharsPreserved(run, runElement));
+      scan.complexFieldOpenRuns.push(
+        withOrphanFieldCharsPreserved(run, runElement),
+      );
       // A comment reference inside a field run is also an item beside the
       // field, so the run's markup would write it a second time.
       if (commentReferenceId !== null || trackedContext === "deletion") {
@@ -1669,8 +1870,13 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // later run). An empty formatting object counts as absent so it does
       // not block that later, genuinely-formatted run.
       const captureIsEmpty =
-        !scan.complexFieldFormatting || Object.keys(scan.complexFieldFormatting).length === 0;
-      if (captureIsEmpty && run.formatting && Object.keys(run.formatting).length > 0) {
+        !scan.complexFieldFormatting ||
+        Object.keys(scan.complexFieldFormatting).length === 0;
+      if (
+        captureIsEmpty &&
+        run.formatting &&
+        Object.keys(run.formatting).length > 0
+      ) {
         scan.complexFieldFormatting = run.formatting;
       }
 
@@ -1723,7 +1929,9 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         // content shows only when nothing currently open still hides it.
         if (!hasFieldSeparate) {
           scan.complexFieldResultRuns.push(
-            isHiddenByOpenFieldCode(scan) ? hiddenRunCaptureOf(runElement, run.formatting) : run,
+            isHiddenByOpenFieldCode(scan)
+              ? hiddenRunCaptureOf(runElement, run.formatting)
+              : run,
           );
         }
       }
@@ -1752,7 +1960,11 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         }
         // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
         // separator and stash their display on the end field character.
-        if (resultRuns.length === 0 && !scan.afterSeparator && endOriginalValue !== undefined) {
+        if (
+          resultRuns.length === 0 &&
+          !scan.afterSeparator &&
+          endOriginalValue !== undefined
+        ) {
           resultRuns = [
             {
               type: "run",
@@ -1782,7 +1994,10 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         }
 
         // Only a list-number field is ever folded, so only its markup is kept.
-        if (scan.complexFieldSourceRuns !== null && isListNumberField(complexField)) {
+        if (
+          scan.complexFieldSourceRuns !== null &&
+          isListNumberField(complexField)
+        ) {
           fieldSourceElements.set(complexField, scan.complexFieldSourceRuns);
         }
         contents.push(complexField);
@@ -1843,10 +2058,21 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
   hyperlink: (
     child,
-    { contents, styles, theme, rels, media, previews, inScopeXmlns, trackedContext },
+    {
+      contents,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      inScopeXmlns,
+      trackedContext,
+    },
   ) => {
     const linkElement =
-      trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
+      trackedContext === "deletion"
+        ? normalizeDeletionContentElement(child)
+        : child;
     contents.push(
       ...parseHyperlinkParagraphContents(
         linkElement,
@@ -1870,10 +2096,22 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
   fldSimple: (
     child,
-    { contents, styles, theme, rels, media, previews, inScopeXmlns, trackedContext, scan },
+    {
+      contents,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      inScopeXmlns,
+      trackedContext,
+      scan,
+    },
   ) => {
     const fieldElement =
-      trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
+      trackedContext === "deletion"
+        ? normalizeDeletionContentElement(child)
+        : child;
     // A `w:fldSimple` cannot become part of a `ComplexField`'s `fieldCode` or
     // `fieldResult` (both are `Run[]`), so it never joins the assembly the
     // `w:r` handler builds; it is read here regardless of that field's own
@@ -1891,7 +2129,15 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       return;
     }
     contents.push(
-      parseSimpleField(fieldElement, styles, theme, rels, media, inScopeXmlns, previews),
+      parseSimpleField(
+        fieldElement,
+        styles,
+        theme,
+        rels,
+        media,
+        inScopeXmlns,
+        previews,
+      ),
     );
   },
 
@@ -1920,7 +2166,17 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
   sdt: (
     child,
-    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns, inlineScope },
+    {
+      contents,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      trackedContext,
+      inScopeXmlns,
+      inlineScope,
+    },
   ) => {
     if (inlineScope === "hyperlink") {
       contents.push(preserveLinkedSdt(child));
@@ -1973,23 +2229,38 @@ const PARAGRAPH_CONTENT_HANDLERS = {
   smartTag: paragraphInlineWrapper("smartTag"),
 
   moveFromRangeStart: (child, { contents }) => {
-    contents.push({ type: "moveFromRangeStart", ...parseMoveBookmarkMarker(child) });
+    contents.push({
+      type: "moveFromRangeStart",
+      ...parseMoveBookmarkMarker(child),
+    });
   },
   moveFromRangeEnd: (child, { contents }) => {
-    contents.push({ type: "moveFromRangeEnd", ...parseMarkupRangeMarker(child) });
+    contents.push({
+      type: "moveFromRangeEnd",
+      ...parseMarkupRangeMarker(child),
+    });
   },
   moveToRangeStart: (child, { contents }) => {
-    contents.push({ type: "moveToRangeStart", ...parseMoveBookmarkMarker(child) });
+    contents.push({
+      type: "moveToRangeStart",
+      ...parseMoveBookmarkMarker(child),
+    });
   },
   moveToRangeEnd: (child, { contents }) => {
     contents.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
   },
 
   commentRangeStart: (child, { contents }) => {
-    contents.push({ type: "commentRangeStart", ...parseMarkupRangeMarker(child) });
+    contents.push({
+      type: "commentRangeStart",
+      ...parseMarkupRangeMarker(child),
+    });
   },
   commentRangeEnd: (child, { contents }) => {
-    contents.push({ type: "commentRangeEnd", ...parseMarkupRangeMarker(child) });
+    contents.push({
+      type: "commentRangeEnd",
+      ...parseMarkupRangeMarker(child),
+    });
   },
 
   bdo: paragraphInlineWrapper("bdo"),
@@ -2080,7 +2351,10 @@ function getCommentReferenceId(runElement: XmlElement): number | null {
     return null;
   }
 
-  const id = Number.parseInt(getAttribute(commentReference, "w", "id") ?? "", 10);
+  const id = Number.parseInt(
+    getAttribute(commentReference, "w", "id") ?? "",
+    10,
+  );
   return Number.isFinite(id) ? id : null;
 }
 
@@ -2160,14 +2434,20 @@ export function parseParagraph(
   // three names below are the ones the reads above and `serializeParagraph`
   // own; an id folio rejected as malformed is still one of them, so it is not
   // written back from the remainder either.
-  const remainder = attributeRemainder({ element: node, modelled: PARAGRAPH_ATTRIBUTES });
+  const remainder = attributeRemainder({
+    element: node,
+    modelled: PARAGRAPH_ATTRIBUTES,
+  });
   if (remainder) {
     paragraph.preservedAttributes = remainder;
   }
 
   if (
-    getAttributeByNamespaceUri(node, FOLIO_REVIEW_HISTORY_NAMESPACES, "reviewCarrier") ===
-    REVIEW_CARRIERS.TERMINAL_TABLE
+    getAttributeByNamespaceUri(
+      node,
+      FOLIO_REVIEW_HISTORY_NAMESPACES,
+      "reviewCarrier",
+    ) === REVIEW_CARRIERS.TERMINAL_TABLE
   ) {
     paragraph.reviewCarrier = REVIEW_CARRIERS.TERMINAL_TABLE;
   }
@@ -2183,7 +2463,11 @@ export function parseParagraph(
     if (formattingResult !== undefined) {
       paragraph.formatting = formattingResult;
     }
-    const propertyChangesResult = parseParagraphPropertyChanges(pPr, theme, paragraph.formatting);
+    const propertyChangesResult = parseParagraphPropertyChanges(
+      pPr,
+      theme,
+      paragraph.formatting,
+    );
     if (propertyChangesResult !== undefined) {
       paragraph.propertyChanges = propertyChangesResult;
     }
@@ -2218,7 +2502,9 @@ export function parseParagraph(
   // Text-box enrichment matches model runs to source w:r elements by position.
   // Its block parsers defer this merge until that source-dependent pass ends.
   const consolidated = (content: ParagraphContent[]): ParagraphContent[] =>
-    options?.runConsolidation === "deferred" ? content : consolidateParagraphContent(content);
+    options?.runConsolidation === "deferred"
+      ? content
+      : consolidateParagraphContent(content);
   paragraph.content = consolidated(rawContent);
 
   // Compute list rendering if this is a list item.
@@ -2242,7 +2528,8 @@ export function parseParagraph(
   // paragraph that states an id of its own, the reserved cancellation
   // included, owns the reference and keeps its own indents.
   const numPrFromStyle =
-    styleNumPr !== undefined && (directNumPr === undefined || directNumPr.kind === "levelOnly");
+    styleNumPr !== undefined &&
+    (directNumPr === undefined || directNumPr.kind === "levelOnly");
   let effectiveNumPr = directNumPr;
   if (paragraphFormatting && numPrFromStyle) {
     effectiveNumPr = mergeParagraphNumbering(styleNumPr, directNumPr);
@@ -2257,11 +2544,15 @@ export function parseParagraph(
       const { numId, ilvl } = resolvedNumbering;
       const level = numbering.getLevel(numId, ilvl);
       if (level) {
-        const levelNumFmts: NonNullable<typeof paragraph.listRendering>["levelNumFmts"] = [];
+        const levelNumFmts: NonNullable<
+          typeof paragraph.listRendering
+        >["levelNumFmts"] = [];
         const levelStarts: number[] = [];
         for (let levelIndex = 0; levelIndex <= ilvl; levelIndex += 1) {
           const listLevel = numbering.getLevel(numId, levelIndex);
-          levelNumFmts.push(level.isLgl || !listLevel ? "decimal" : counterFormatOf(listLevel));
+          levelNumFmts.push(
+            level.isLgl || !listLevel ? "decimal" : counterFormatOf(listLevel),
+          );
           levelStarts.push(listLevel?.start ?? 1);
         }
         const listRendering: NonNullable<typeof paragraph.listRendering> = {
@@ -2324,7 +2615,9 @@ export function parseParagraph(
         // A bullet's marker is its glyph alone, and a marker with no text of
         // its own has nothing to show a field after: neither hides one.
         const markerShowsFields =
-          !listRendering.isBullet && level.lvlText !== "" && !level.lvlText.includes("\t");
+          !listRendering.isBullet &&
+          level.lvlText !== "" &&
+          !level.lvlText.includes("\t");
         if (fold.cached.length > 0 && markerShowsFields) {
           // Bookmark and comment-range markers can stand between a field and
           // its trailing tab; the fold steps over them, so the tab still
@@ -2368,15 +2661,22 @@ export function parseParagraph(
         // level-over-style behavior (Word's toolbar-list case).
         const styleId =
           paragraph.formatting?.styleId ??
-          (styles ? resolveDefaultParagraphStyle(styles.values())?.styleId : undefined);
+          (styles
+            ? resolveDefaultParagraphStyle(styles.values())?.styleId
+            : undefined);
         const styleInd = styleChainInd(styleId, styles);
-        const chainInd = numPrFromStyle ? styleInd : { left: false, firstLine: false };
+        const chainInd = numPrFromStyle
+          ? styleInd
+          : { left: false, firstLine: false };
         if (level.pPr) {
           if (!paragraph.formatting) {
             paragraph.formatting = {};
           }
           const directInd = pPr ? findChild(pPr, "w", "ind") : null;
-          const hasDirectLeft = hasAttributeAnySpelling(directInd, "CT_Ind @left");
+          const hasDirectLeft = hasAttributeAnySpelling(
+            directInd,
+            "CT_Ind @left",
+          );
           // ECMA-376 §17.3.1.12: w:firstLine and w:hanging are two spellings
           // of one first-line offset, so a direct w:ind stating either one,
           // including "0", replaces the numbering level's offset.
@@ -2414,7 +2714,10 @@ export function parseParagraph(
   }
 
   if (pPr) {
-    assignParagraphPropertySource(paragraph, captureParagraphPropertySource(pPr, paragraph));
+    assignParagraphPropertySource(
+      paragraph,
+      captureParagraphPropertySource(pPr, paragraph),
+    );
   }
 
   return paragraph;
@@ -2444,7 +2747,8 @@ function styleChainInd(
     const p = style.pPr;
     if (p) {
       result.left ||= p.indentLeft !== undefined;
-      result.firstLine ||= p.indentFirstLine !== undefined || p.hangingIndent !== undefined;
+      result.firstLine ||=
+        p.indentFirstLine !== undefined || p.hangingIndent !== undefined;
     }
     if (result.left && result.firstLine) {
       break;
@@ -2594,7 +2898,8 @@ export function isEmptyParagraph(paragraph: Paragraph): boolean {
     getParagraphText(paragraph).trim() === "" &&
     !paragraph.content.some(
       (c) =>
-        c.type === "run" && c.content.some((rc) => rc.type === "drawing" || rc.type === "shape"),
+        c.type === "run" &&
+        c.content.some((rc) => rc.type === "drawing" || rc.type === "shape"),
     )
   );
 }
@@ -2608,7 +2913,10 @@ export function isEmptyParagraph(paragraph: Paragraph): boolean {
 export function isListItem(paragraph: Paragraph): boolean {
   return (
     paragraphNumberingReferenceId(
-      mergeParagraphNumbering(paragraph.formatting?.numPrFromStyle, paragraph.formatting?.numPr),
+      mergeParagraphNumbering(
+        paragraph.formatting?.numPrFromStyle,
+        paragraph.formatting?.numPr,
+      ),
     ) !== undefined
   );
 }
@@ -2621,7 +2929,10 @@ export function isListItem(paragraph: Paragraph): boolean {
  */
 export function getListLevel(paragraph: Paragraph): number | undefined {
   const resolved = resolveParagraphNumbering(
-    mergeParagraphNumbering(paragraph.formatting?.numPrFromStyle, paragraph.formatting?.numPr),
+    mergeParagraphNumbering(
+      paragraph.formatting?.numPrFromStyle,
+      paragraph.formatting?.numPr,
+    ),
   );
   return resolved.kind === "reference" ? resolved.ilvl : undefined;
 }

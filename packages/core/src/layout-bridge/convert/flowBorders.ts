@@ -3,6 +3,7 @@
  */
 
 import { statesNoBorder } from "@stll/docx-core/model";
+
 import type { BorderStyle } from "../../layout-engine/types";
 import type { BorderStyleValue, ColorValue, Theme } from "../../types/document";
 import { cssBorderStyle } from "../../utils/borderCss";

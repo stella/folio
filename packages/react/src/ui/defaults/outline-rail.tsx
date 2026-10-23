@@ -112,7 +112,8 @@ export function DefaultOutlineRail({
       }
       event.preventDefault();
       setFocus({ type: "inside", index: next });
-      const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>("button");
+      const buttons =
+        listRef.current?.querySelectorAll<HTMLButtonElement>("button");
       if (buttons) {
         [...buttons].at(next)?.focus();
       }
@@ -160,7 +161,10 @@ export function DefaultOutlineRail({
               aria-label={rail ? item.label : undefined}
               className={cn(
                 rail ? "folio-outline-tick" : "folio-outline-item",
-                isActive && (rail ? "folio-outline-tick--active" : "folio-outline-item--active"),
+                isActive &&
+                  (rail
+                    ? "folio-outline-tick--active"
+                    : "folio-outline-item--active"),
               )}
               data-depth={depth}
               onClick={() => jump(item)}
@@ -177,7 +181,10 @@ export function DefaultOutlineRail({
             >
               {rail ? (
                 <>
-                  <span aria-hidden="true" className="folio-outline-tick-mark" />
+                  <span
+                    aria-hidden="true"
+                    className="folio-outline-tick-mark"
+                  />
                   <span aria-hidden="true" className="folio-outline-tick-label">
                     {item.label}
                   </span>
@@ -193,7 +200,9 @@ export function DefaultOutlineRail({
   );
 }
 
-type OutlineFocus = { type: "outside"; fallbackIndex: number } | { type: "inside"; index: number };
+type OutlineFocus =
+  | { type: "outside"; fallbackIndex: number }
+  | { type: "inside"; index: number };
 
 /** Height of one tick's hit area; ticks never overlap by less than this. */
 const TICK_PITCH_PX = 12;
@@ -228,11 +237,15 @@ function useRailTickTops({
     const update = () => {
       const container = scrollContainerRef.current;
       const height = list.clientHeight;
-      const percentages = items.map((item) => (container ? resolvePct(item.id, container) : null));
+      const percentages = items.map((item) =>
+        container ? resolvePct(item.id, container) : null,
+      );
       setMeasurement((previous) =>
         previous.height === height &&
         previous.percentages.length === percentages.length &&
-        previous.percentages.every((value, index) => value === percentages.at(index))
+        previous.percentages.every(
+          (value, index) => value === percentages.at(index),
+        )
           ? previous
           : { height, percentages },
       );
@@ -251,14 +264,21 @@ function useRailTickTops({
   }
   const tops = items.map((_, index) => {
     const pct = percentages.at(index) ?? null;
-    const fraction = pct === null ? index / Math.max(1, items.length - 1) : pct / 100;
+    const fraction =
+      pct === null ? index / Math.max(1, items.length - 1) : pct / 100;
     return fraction * span;
   });
   for (let index = 1; index < tops.length; index++) {
-    tops[index] = Math.max(tops[index] ?? 0, (tops[index - 1] ?? 0) + TICK_PITCH_PX);
+    tops[index] = Math.max(
+      tops[index] ?? 0,
+      (tops[index - 1] ?? 0) + TICK_PITCH_PX,
+    );
   }
   for (let index = tops.length - 1; index >= 0; index--) {
-    const limit = index === tops.length - 1 ? span : (tops[index + 1] ?? span) - TICK_PITCH_PX;
+    const limit =
+      index === tops.length - 1
+        ? span
+        : (tops[index + 1] ?? span) - TICK_PITCH_PX;
     tops[index] = Math.min(tops[index] ?? 0, limit);
   }
   return tops;

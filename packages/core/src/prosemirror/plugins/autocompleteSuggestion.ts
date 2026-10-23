@@ -22,11 +22,12 @@
  * {@link clearAutocompleteSuggestion}.
  */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, PluginSpec, Transaction } from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
+
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 
 export type AutocompleteSuggestionStatus = "idle" | "streaming" | "shown";
 
@@ -54,7 +55,9 @@ type ClearMeta = { type: "clear" };
 type Meta = StartMeta | TokenMeta | FinishMeta | ConsumeMeta | ClearMeta;
 
 export const autocompleteSuggestionKey =
-  createPluginKeyOwner<AutocompleteSuggestionPluginState>("autocompleteSuggestion");
+  createPluginKeyOwner<AutocompleteSuggestionPluginState>(
+    "autocompleteSuggestion",
+  );
 
 type AutocompleteSuggestionPluginState = {
   suggestion: AutocompleteSuggestionState;
@@ -137,7 +140,10 @@ const buildDecorations = (
   ]);
 };
 
-const reduce = (prev: AutocompleteSuggestionState, meta: Meta): AutocompleteSuggestionState => {
+const reduce = (
+  prev: AutocompleteSuggestionState,
+  meta: Meta,
+): AutocompleteSuggestionState => {
   if (meta.type === "clear") {
     return IDLE;
   }
@@ -222,13 +228,21 @@ export const autocompleteSuggestionPlugin = (
       ...(resolved.keymap
         ? {
             handleKeyDown: (view, event) => {
-              const current = autocompleteSuggestionKey.getState(view.state)?.suggestion ?? IDLE;
-              if (current.status !== "shown" && current.status !== "streaming") {
+              const current =
+                autocompleteSuggestionKey.getState(view.state)?.suggestion ??
+                IDLE;
+              if (
+                current.status !== "shown" &&
+                current.status !== "streaming"
+              ) {
                 return false;
               }
               const isMod = event.metaKey || event.ctrlKey;
               if (event.key === "Tab" && !event.shiftKey && !isMod) {
-                const result = acceptAutocompleteSuggestion(view.state, view.dispatch);
+                const result = acceptAutocompleteSuggestion(
+                  view.state,
+                  view.dispatch,
+                );
                 if (result.accepted) {
                   event.preventDefault();
                   return true;
@@ -236,7 +250,10 @@ export const autocompleteSuggestionPlugin = (
                 return false;
               }
               if (event.key === "ArrowRight" && isMod && !event.shiftKey) {
-                const result = acceptAutocompleteWord(view.state, view.dispatch);
+                const result = acceptAutocompleteWord(
+                  view.state,
+                  view.dispatch,
+                );
                 if (result.accepted) {
                   event.preventDefault();
                   return true;
@@ -259,7 +276,9 @@ export const autocompleteSuggestionPlugin = (
 
 // -- Public read API ------------------------------------------------
 
-export const getAutocompleteSuggestion = (state: EditorState): AutocompleteSuggestionState =>
+export const getAutocompleteSuggestion = (
+  state: EditorState,
+): AutocompleteSuggestionState =>
   autocompleteSuggestionKey.getState(state)?.suggestion ?? IDLE;
 
 // -- Public meta helpers -------------------------------------------
@@ -286,7 +305,10 @@ export const appendAutocompleteToken = (
     delta,
   } satisfies TokenMeta);
 
-export const finishAutocompleteSuggestion = (tr: Transaction, requestId: string): Transaction =>
+export const finishAutocompleteSuggestion = (
+  tr: Transaction,
+  requestId: string,
+): Transaction =>
   tr.setMeta(autocompleteSuggestionKey, {
     type: "finish",
     requestId,
@@ -385,10 +407,7 @@ export const acceptAutocompleteWord = (
 // -- Trigger gating ------------------------------------------------
 
 export type AutocompleteTriggerSkipReason =
-  | "selection-non-empty"
-  | "midword"
-  | "deadzone"
-  | "empty-doc";
+  "selection-non-empty" | "midword" | "deadzone" | "empty-doc";
 
 export type AutocompleteTriggerCheck =
   | { ok: true }
@@ -469,7 +488,12 @@ export const shouldTriggerAutocomplete = (
   }
   const parentOffset = $cursor.parentOffset;
   if (parentOffset > 0) {
-    const before = $cursor.parent.textBetween(parentOffset - 1, parentOffset, "\n", "\n");
+    const before = $cursor.parent.textBetween(
+      parentOffset - 1,
+      parentOffset,
+      "\n",
+      "\n",
+    );
     if (before.length > 0 && WORD_CONTINUATION_CHAR.test(before)) {
       return { ok: false, reason: "midword", detail: before };
     }

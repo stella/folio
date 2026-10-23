@@ -1,12 +1,15 @@
+import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
 import { EditorState } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { paragraphFormattingWithAuthoredIndentation } from "../../docx/paragraphPropertySource";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
-import { paragraphFormattingWithAuthoredIndentation } from "../../docx/paragraphPropertySource";
 import type { Document } from "../../types/document";
 import { expectParagraphAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
@@ -20,9 +23,12 @@ import { createDocumentStylesPlugin } from "../plugins/documentStyles";
 import { acceptChange, rejectChange } from "./comments";
 import { paragraphPropertiesSnapshot } from "./propertyChangeScope";
 
-const distance = fc.option(fc.oneof(fc.constant(0), fc.integer({ min: -720, max: 720 })), {
-  nil: undefined,
-});
+const distance = fc.option(
+  fc.oneof(fc.constant(0), fc.integer({ min: -720, max: 720 })),
+  {
+    nil: undefined,
+  },
+);
 const indentation = fc
   .record({
     indentLeft: distance,
@@ -44,7 +50,12 @@ const indentation = fc
         {},
         firstLine === undefined
           ? {}
-          : { indentFirstLine: firstLine.flag === "hanging" ? -firstLine.value : firstLine.value },
+          : {
+              indentFirstLine:
+                firstLine.flag === "hanging"
+                  ? -firstLine.value
+                  : firstLine.value,
+            },
         firstLine === undefined || firstLine.flag === "absent"
           ? {}
           : { hangingIndent: firstLine.flag === "hanging" },
@@ -54,8 +65,11 @@ const indentation = fc
 
 const authoredIndentation = (document: Document) => {
   const paragraph = document.package.document.content.at(0);
-  if (paragraph?.type !== "paragraph") panic("Snapshot fixture lost its paragraph.");
-  return paragraphIndentationFromFormatting(paragraphFormattingWithAuthoredIndentation(paragraph));
+  if (paragraph?.type !== "paragraph")
+    panic("Snapshot fixture lost its paragraph.");
+  return paragraphIndentationFromFormatting(
+    paragraphFormattingWithAuthoredIndentation(paragraph),
+  );
 };
 
 // Earlier list matrices exercised effective indentation but their snapshots
@@ -77,11 +91,20 @@ test(
                     type: "paragraph",
                     paraId: "12345678",
                     formatting: { styleId: "Baseline", ...direct },
-                    content: [{ type: "run", content: [{ type: "text", text: "Body" }] }],
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Body" }],
+                      },
+                    ],
                   },
                 ],
               },
-              styles: { styles: [{ styleId: "Baseline", type: "paragraph", pPr: inherited }] },
+              styles: {
+                styles: [
+                  { styleId: "Baseline", type: "paragraph", pPr: inherited },
+                ],
+              },
             },
           } satisfies Document;
           const document = captured
@@ -90,7 +113,9 @@ test(
                 detectVariables: false,
               })
             : fixture;
-          const prose = toProseDoc(document, { styles: document.package.styles });
+          const prose = toProseDoc(document, {
+            styles: document.package.styles,
+          });
           const node = prose.firstChild;
           if (node === null) panic("Snapshot fixture has no paragraph.");
           const attrs = expectParagraphAttrs(node);
@@ -112,7 +137,10 @@ test(
             {
               ...materialized.attrs,
               indentLeft: 960,
-              _originalFormatting: { ...attrs._originalFormatting, indentLeft: 960 },
+              _originalFormatting: {
+                ...attrs._originalFormatting,
+                indentLeft: 960,
+              },
               _propertyChanges: [
                 {
                   type: "paragraphPropertyChange",

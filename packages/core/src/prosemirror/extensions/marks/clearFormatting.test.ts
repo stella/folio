@@ -28,8 +28,14 @@ const paragraphMarkNames = (state: EditorState, focus: string): Set<string> => {
 };
 
 const clearParagraph = async (shapeId: string, focus: string) => {
-  const document = await parseShapeDocument(await documentShape(shapeId).build());
-  const before = placeSelection(createHarnessState(document, "editing"), focus, "paragraph");
+  const document = await parseShapeDocument(
+    await documentShape(shapeId).build(),
+  );
+  const before = placeSelection(
+    createHarnessState(document, "editing"),
+    focus,
+    "paragraph",
+  );
   if (!before) {
     throw new Error("the shape has no focus paragraph");
   }
@@ -47,17 +53,23 @@ describe("clearFormatting", () => {
     ["fields-links-bookmarks", "See the site and the target.", ["hyperlink"]],
     ["notes", "A sentence with a footnote", ["footnoteRef"]],
     ["tracked-changes", "Kept text inserted text", ["insertion", "deletion"]],
-  ] as const)("keeps what is not character formatting (%s)", async (shapeId, focus, kept) => {
-    const { before, after } = await clearParagraph(shapeId, focus);
+  ] as const)(
+    "keeps what is not character formatting (%s)",
+    async (shapeId, focus, kept) => {
+      const { before, after } = await clearParagraph(shapeId, focus);
 
-    for (const name of kept) {
-      expect(before.has(name)).toBe(true);
-      expect(after.has(name)).toBe(true);
-    }
-  });
+      for (const name of kept) {
+        expect(before.has(name)).toBe(true);
+        expect(after.has(name)).toBe(true);
+      }
+    },
+  );
 
   test("removes character formatting", async () => {
-    const { before, after } = await clearParagraph("tracked-changes", "Bold by a tracked change.");
+    const { before, after } = await clearParagraph(
+      "tracked-changes",
+      "Bold by a tracked change.",
+    );
 
     expect(before.has("bold")).toBe(true);
     expect(after.has("bold")).toBe(false);

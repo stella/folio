@@ -18,13 +18,18 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
-
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
@@ -90,7 +95,9 @@ const wrapParagraph = (paragraph: Paragraph): Document => ({
 /** The paragraph as it comes back from the editor, with nothing edited. */
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const input = wrapParagraph(paragraph);
-  const out = fromProseDoc(toProseDoc(input), input, { stylesheetSource: { type: "package" } });
+  const out = fromProseDoc(toProseDoc(input), input, {
+    stylesheetSource: { type: "package" },
+  });
   const first = out.package.document.content.at(0);
   if (first?.type !== "paragraph") {
     throw new Error("Expected the round trip to give a paragraph back");
@@ -104,24 +111,31 @@ type Resolution = "accept" | "reject";
 const resolveAll = (paragraph: Paragraph, resolution: Resolution): Document => {
   const input = wrapParagraph(paragraph);
   let state = EditorState.create({ schema, doc: toProseDoc(input) });
-  const command = resolution === "accept" ? acceptAllChanges() : rejectAllChanges();
+  const command =
+    resolution === "accept" ? acceptAllChanges() : rejectAllChanges();
   command(state, (transaction) => {
     state = state.apply(transaction);
   });
-  return fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
+  return fromProseDoc(state.doc, input, {
+    stylesheetSource: { type: "package" },
+  });
 };
 
 describe("a run-level tracked change keeps the children folio does not model", () => {
   for (const { tag, type } of WRAPPERS) {
     test(`w:${tag} keeps a w:permStart inside itself across a save`, () => {
-      const paragraph = parseParagraphXml(paragraphXml(tag, '<w:permStart w:id="7"/>'));
+      const paragraph = parseParagraphXml(
+        paragraphXml(tag, '<w:permStart w:id="7"/>'),
+      );
 
       const wrapper = paragraph.content.at(0);
       expect(wrapper?.type).toBe(type);
       if (wrapper?.type !== type) {
         return;
       }
-      expect(wrapper.content.some((item) => item.type === "preservedInline")).toBe(true);
+      expect(
+        wrapper.content.some((item) => item.type === "preservedInline"),
+      ).toBe(true);
 
       expect(insideWrapper(serializeParagraph(paragraph), tag)).toContain(
         '<w:permStart w:id="7"/>',
@@ -135,13 +149,17 @@ describe("a run-level tracked change keeps the children folio does not model", (
         fc.constantFrom(...WRAPPERS),
         fc.constantFrom(...UNMODELLED_CHILDREN),
         ({ tag }, child) => {
-          const saved = serializeParagraph(parseParagraphXml(paragraphXml(tag, child)));
+          const saved = serializeParagraph(
+            parseParagraphXml(paragraphXml(tag, child)),
+          );
           expect(insideWrapper(saved, tag)).toContain(child);
 
           // Save, reopen, save: the second save is where a capture that only
           // replays and does not re-parse stops being a fixed point.
           const reparsed = serializeParagraph(
-            parseParagraphXml(`<w:p xmlns:w="${W}">${saved.slice(saved.indexOf(">") + 1)}`),
+            parseParagraphXml(
+              `<w:p xmlns:w="${W}">${saved.slice(saved.indexOf(">") + 1)}`,
+            ),
           );
           expect(insideWrapper(reparsed, tag)).toContain(child);
         },
@@ -156,8 +174,12 @@ describe("a run-level tracked change keeps the children folio does not model", (
         fc.constantFrom(...WRAPPERS),
         fc.constantFrom(...UNMODELLED_CHILDREN),
         ({ tag }, child) => {
-          const reopened = throughTheEditor(parseParagraphXml(paragraphXml(tag, child)));
-          expect(insideWrapper(serializeParagraph(reopened), tag)).toContain(child);
+          const reopened = throughTheEditor(
+            parseParagraphXml(paragraphXml(tag, child)),
+          );
+          expect(insideWrapper(serializeParagraph(reopened), tag)).toContain(
+            child,
+          );
         },
       ),
       propertyConfig({ numRuns: 100 }),
@@ -185,8 +207,12 @@ describe("resolving the change resolves the markup inside it", () => {
       // The wrapper is gone, the markup it held is not: resolving a revision
       // settles whether the content stays, not whether folio keeps markup it
       // was already carrying.
-      expect(paragraph.content.some((item) => item.type === tagToType(tag))).toBe(false);
-      expect(serializeParagraph(paragraph)).toContain('<w:permStart w:id="7"/>');
+      expect(
+        paragraph.content.some((item) => item.type === tagToType(tag)),
+      ).toBe(false);
+      expect(serializeParagraph(paragraph)).toContain(
+        '<w:permStart w:id="7"/>',
+      );
     });
 
     test(`${removed}ing a w:${tag} takes the preserved child with it`, () => {

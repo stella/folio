@@ -17,11 +17,14 @@ const indexesPageBreakDescendants = (node: PMNode): boolean => {
 };
 
 /** Build one identity-scoped index for a single layout conversion. */
-export const buildPageBreakRunDescendantIndex = (doc: PMNode): PageBreakRunDescendantIndex => {
+export const buildPageBreakRunDescendantIndex = (
+  doc: PMNode,
+): PageBreakRunDescendantIndex => {
   const positions = new WeakMap<PMNode, number>();
 
   const visitNode = (node: PMNode, startPos: number): number | undefined => {
-    let firstPosition = node.type.name === "pageBreakRun" ? startPos : undefined;
+    let firstPosition =
+      node.type.name === "pageBreakRun" ? startPos : undefined;
 
     // Visit every child even after finding the first break. Ancestor answers
     // stay first-in-document-order while each indexed descendant gets its own answer.

@@ -14,7 +14,14 @@ type PlaywrightSuite = { specs: PlaywrightSpec[]; suites?: PlaywrightSuite[] };
 type PlaywrightReport = { suites: PlaywrightSuite[]; errors: unknown[] };
 
 const result = Bun.spawnSync(
-  ["bunx", "playwright", "test", "--project=interactions", "--list", "--reporter=json"],
+  [
+    "bunx",
+    "playwright",
+    "test",
+    "--project=interactions",
+    "--list",
+    "--reporter=json",
+  ],
   { cwd: root, stdout: "pipe", stderr: "pipe" },
 );
 if (result.exitCode !== 0) {
@@ -27,7 +34,9 @@ if (result.exitCode !== 0) {
 // SAFETY: This JSON is produced by the pinned Playwright reporter invoked above.
 const report = JSON.parse(result.stdout.toString()) as PlaywrightReport;
 if (report.errors.length > 0) {
-  throw new Error(`Playwright test discovery reported errors: ${JSON.stringify(report.errors)}`);
+  throw new Error(
+    `Playwright test discovery reported errors: ${JSON.stringify(report.errors)}`,
+  );
 }
 
 const registered = new Map<string, string[]>();
@@ -52,7 +61,9 @@ const missing = declared.filter((kind) => !registered.has(kind));
 const unexpected = [...registered.keys()].filter(
   (kind) => !declared.some((declaredKind) => declaredKind === kind),
 );
-const duplicated = [...registered].filter(([, locations]) => locations.length !== 1);
+const duplicated = [...registered].filter(
+  ([, locations]) => locations.length !== 1,
+);
 
 if (missing.length || unexpected.length || duplicated.length) {
   throw new Error(
@@ -65,4 +76,6 @@ if (missing.length || unexpected.length || duplicated.length) {
   );
 }
 
-console.log(`Browser input coverage: ${declared.length} kinds registered in Playwright.`);
+console.log(
+  `Browser input coverage: ${declared.length} kinds registered in Playwright.`,
+);

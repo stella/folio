@@ -18,16 +18,19 @@
  * but not grow: a schema refresh, or a picklist edit, that widens it fails.
  */
 
+import * as parserEnums from "../../packages/core/src/docx/parserEnums";
 import { BORDER_STYLES } from "../../packages/docx-core/src/model/borderStyle.gen";
 import { PRESET_LINE_DASH_VALS } from "../../packages/docx-core/src/model/presetLineDash.gen";
 import { THEME_COLORS } from "../../packages/docx-core/src/model/themeColor.gen";
-import * as parserEnums from "../../packages/core/src/docx/parserEnums";
 
 /**
  * Every picklist `parserEnums.ts` exports, derived from the module rather than
  * listed: a new one does not compile until the table below decides about it.
  */
-export type NarrowedEnumSite = Extract<keyof typeof parserEnums, `${string}Schema`>;
+export type NarrowedEnumSite = Extract<
+  keyof typeof parserEnums,
+  `${string}Schema`
+>;
 
 /** Namespace prefixes a simple-type key may use. */
 export const NARROWED_ENUM_NAMESPACE_URIS = {
@@ -236,7 +239,8 @@ export const RESERVED_VALUE_SLOT_ENUMERATIONS = {
   "a:ST_PresetLineDashVal": {
     kind: "generated",
     tokens: PRESET_LINE_DASH_VALS,
-    source: "packages/docx-core/src/model/presetLineDash.gen.ts#PRESET_LINE_DASH_VALS",
+    source:
+      "packages/docx-core/src/model/presetLineDash.gen.ts#PRESET_LINE_DASH_VALS",
   },
   "w:ST_ThemeColor": {
     kind: "generated",
@@ -265,9 +269,13 @@ export const RESERVED_VALUE_SLOT_ENUMERATIONS = {
 export const expandSimpleType = (qualified: string): string => {
   const colon = qualified.indexOf(":");
   const prefix = qualified.slice(0, colon);
-  const uri = (NARROWED_ENUM_NAMESPACE_URIS as Readonly<Record<string, string>>)[prefix];
+  const uri = (
+    NARROWED_ENUM_NAMESPACE_URIS as Readonly<Record<string, string>>
+  )[prefix];
   if (uri === undefined) {
-    throw new Error(`Simple type "${qualified}" uses an undeclared namespace prefix.`);
+    throw new Error(
+      `Simple type "${qualified}" uses an undeclared namespace prefix.`,
+    );
   }
   return `{${uri}}${qualified.slice(colon + 1)}`;
 };
@@ -277,7 +285,10 @@ export const narrowedEnumSiteByType = (): ReadonlyMap<
   string,
   { site: NarrowedEnumSite; binding: NarrowedEnumBinding }
 > => {
-  const byType = new Map<string, { site: NarrowedEnumSite; binding: NarrowedEnumBinding }>();
+  const byType = new Map<
+    string,
+    { site: NarrowedEnumSite; binding: NarrowedEnumBinding }
+  >();
   for (const [site, binding] of Object.entries(NARROWED_ENUM_SCHEMA_TYPES) as [
     NarrowedEnumSite,
     NarrowedEnumBinding,
@@ -291,9 +302,12 @@ export const narrowedEnumSiteByType = (): ReadonlyMap<
 };
 
 /** The tokens one picklist accepts, read from the picklist itself. */
-export const narrowedEnumOptions = (site: NarrowedEnumSite): readonly string[] => {
+export const narrowedEnumOptions = (
+  site: NarrowedEnumSite,
+): readonly string[] => {
   const schema = (parserEnums as Readonly<Record<string, unknown>>)[site];
-  const options = (schema as { options?: readonly string[] } | undefined)?.options;
+  const options = (schema as { options?: readonly string[] } | undefined)
+    ?.options;
   if (options === undefined) {
     throw new Error(`parserEnums.${site} is not a picklist.`);
   }

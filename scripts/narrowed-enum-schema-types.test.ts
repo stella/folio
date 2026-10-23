@@ -15,13 +15,11 @@
  *      allowed to shrink but never to grow.
  */
 
+import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { describe, expect, test } from "bun:test";
-
 import * as parserEnums from "../packages/core/src/docx/parserEnums";
-
 import {
   NARROWED_ENUM_NAMESPACE_URIS,
   NARROWED_ENUM_SCHEMA_TYPES,
@@ -44,17 +42,22 @@ const enumerationOf = (qualified: string): readonly string[] => {
   const name = qualified.slice(colon + 1);
   const symbol = graph.symbols.find(
     (candidate) =>
-      candidate.kind === "simpleType" && candidate.name === name && candidate.namespace === uri,
+      candidate.kind === "simpleType" &&
+      candidate.name === name &&
+      candidate.namespace === uri,
   );
   if (symbol?.enumValues === undefined || symbol.enumValues.length === 0) {
-    throw new Error(`"${qualified}" is not an enumerating simple type in the schema graph`);
+    throw new Error(
+      `"${qualified}" is not an enumerating simple type in the schema graph`,
+    );
   }
   return symbol.enumValues;
 };
 
 const picklistOptions = (site: string): readonly string[] => {
   const schema = (parserEnums as Record<string, unknown>)[site];
-  const options = (schema as { options?: readonly string[] } | undefined)?.options;
+  const options = (schema as { options?: readonly string[] } | undefined)
+    ?.options;
   if (options === undefined) {
     throw new Error(`parserEnums.${site} is not a picklist`);
   }
@@ -115,7 +118,9 @@ const narrowEnumArguments = (source: string): string[] => {
 
 describe("narrowEnum sites are bound to their schema simple type", () => {
   test("the registry is total over the picklists parserEnums exports", () => {
-    expect(Object.keys(NARROWED_ENUM_SCHEMA_TYPES).toSorted()).toEqual(PICKLIST_EXPORTS);
+    expect(Object.keys(NARROWED_ENUM_SCHEMA_TYPES).toSorted()).toEqual(
+      PICKLIST_EXPORTS,
+    );
   });
 
   test("every narrowEnum call names a picklist the registry carries", () => {
@@ -138,40 +143,49 @@ describe("narrowEnum sites are bound to their schema simple type", () => {
     expect([...unregistered.entries()]).toEqual([]);
   });
 
-  test.each(Object.entries(NARROWED_ENUM_SCHEMA_TYPES) as [string, NarrowedEnumBinding][])(
-    "%s",
-    (site, binding) => {
-      if (binding.kind === "unschematised") {
-        expect(binding.reason.length).toBeGreaterThan(0);
-        return;
-      }
+  test.each(
+    Object.entries(NARROWED_ENUM_SCHEMA_TYPES) as [
+      string,
+      NarrowedEnumBinding,
+    ][],
+  )("%s", (site, binding) => {
+    if (binding.kind === "unschematised") {
+      expect(binding.reason.length).toBeGreaterThan(0);
+      return;
+    }
 
-      const options = picklistOptions(site);
-      const enumeration = enumerationOf(binding.simpleType);
-      const missing = enumeration.filter((value) => !options.includes(value)).toSorted();
-      const extra = options.filter((value) => !enumeration.includes(value)).toSorted();
+    const options = picklistOptions(site);
+    const enumeration = enumerationOf(binding.simpleType);
+    const missing = enumeration
+      .filter((value) => !options.includes(value))
+      .toSorted();
+    const extra = options
+      .filter((value) => !enumeration.includes(value))
+      .toSorted();
 
-      if (binding.kind === "wider-than-schema") {
-        // A deliberate widening still has to accept every member the schema
-        // declares, and to say in the registry why each extra one is there.
-        expect(missing).toEqual([]);
-        expect(extra).toEqual([...binding.extra].toSorted());
-        expect(binding.citation.length).toBeGreaterThan(0);
-        return;
-      }
+    if (binding.kind === "wider-than-schema") {
+      // A deliberate widening still has to accept every member the schema
+      // declares, and to say in the registry why each extra one is there.
+      expect(missing).toEqual([]);
+      expect(extra).toEqual([...binding.extra].toSorted());
+      expect(binding.citation.length).toBeGreaterThan(0);
+      return;
+    }
 
-      if (binding.kind === "keeps-raw") {
-        // Nothing is lost by narrowing, but an invented member would mean the
-        // union accepts a token the format does not declare.
-        expect(extra).toEqual([]);
-        return;
-      }
+    if (binding.kind === "keeps-raw") {
+      // Nothing is lost by narrowing, but an invented member would mean the
+      // union accepts a token the format does not declare.
+      expect(extra).toEqual([]);
+      return;
+    }
 
-      expect({ missing, extra }).toEqual(
-        binding.kind === "matches"
-          ? { missing: [], extra: [] }
-          : { missing: [...binding.missing].toSorted(), extra: [...binding.extra].toSorted() },
-      );
-    },
-  );
+    expect({ missing, extra }).toEqual(
+      binding.kind === "matches"
+        ? { missing: [], extra: [] }
+        : {
+            missing: [...binding.missing].toSorted(),
+            extra: [...binding.extra].toSorted(),
+          },
+    );
+  });
 });

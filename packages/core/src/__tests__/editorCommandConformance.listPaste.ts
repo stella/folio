@@ -13,8 +13,15 @@ const operations = EXTRA_OPERATIONS.filter(
   ({ id }) => id === "paste:paragraphs" || id === "paste:copied-blocks",
 );
 
-const pairs = shapes.flatMap((shape) => operations.map((operation) => ({ shape, operation })));
+const pairs = shapes.flatMap((shape) =>
+  operations.map((operation) => ({ shape, operation })),
+);
 
-export const LIST_PASTE_RESOLUTION_CASES = pairs.flatMap(({ shape, operation }) =>
-  TEXTBLOCK_SELECTION_PLACEMENTS.map((placement) => ({ shape, operation, placement })),
+export const LIST_PASTE_RESOLUTION_CASES = pairs.flatMap(
+  ({ shape, operation }) =>
+    TEXTBLOCK_SELECTION_PLACEMENTS.map((placement) => ({
+      shape,
+      operation,
+      placement,
+    })),
 );

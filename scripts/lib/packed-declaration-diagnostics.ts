@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import path from "node:path";
 import { builtinModules } from "node:module";
+import path from "node:path";
 import ts from "typescript";
 
 // Module/type resolution diagnostics, including named/default export mismatches.
@@ -20,10 +20,16 @@ const RESOLUTION_ERRORS = new Set([
   7016, // Resolved JavaScript module has no declarations.
 ]);
 
-const BUILTINS = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
+const BUILTINS = new Set(
+  builtinModules.flatMap((name) => [name, `node:${name}`]),
+);
 
 const referencesBuiltin = (diagnostic: ts.Diagnostic) => {
-  if (!diagnostic.file || diagnostic.start === undefined || diagnostic.length === undefined)
+  if (
+    !diagnostic.file ||
+    diagnostic.start === undefined ||
+    diagnostic.length === undefined
+  )
     return false;
   const specifier = diagnostic.file.text
     .slice(diagnostic.start, diagnostic.start + diagnostic.length)
@@ -43,9 +49,16 @@ export const declarationResolutionDiagnostics = ({
   projectFile,
   packageNames,
 }: DeclarationResolutionOptions) => {
-  const project = ts.parseConfigFileTextToJson(projectFile, readFileSync(projectFile, "utf8"));
+  const project = ts.parseConfigFileTextToJson(
+    projectFile,
+    readFileSync(projectFile, "utf8"),
+  );
   if (project.error) return [project.error];
-  const config = ts.parseJsonConfigFileContent(project.config, ts.sys, path.dirname(projectFile));
+  const config = ts.parseJsonConfigFileContent(
+    project.config,
+    ts.sys,
+    path.dirname(projectFile),
+  );
   if (config.errors.length > 0) return config.errors;
   const program = ts.createProgram({
     rootNames: config.fileNames,
@@ -54,11 +67,16 @@ export const declarationResolutionDiagnostics = ({
   return program.getSourceFiles().flatMap((file) => {
     if (!file.isDeclarationFile) return [];
     const filename = file.fileName.replaceAll("\\", "/");
-    if (!packageNames.some((name) => filename.includes(`/node_modules/${name}/`))) return [];
+    if (
+      !packageNames.some((name) => filename.includes(`/node_modules/${name}/`))
+    )
+      return [];
     return program
       .getSemanticDiagnostics(file)
       .filter(
-        (diagnostic) => RESOLUTION_ERRORS.has(diagnostic.code) && !referencesBuiltin(diagnostic),
+        (diagnostic) =>
+          RESOLUTION_ERRORS.has(diagnostic.code) &&
+          !referencesBuiltin(diagnostic),
       );
   });
 };
@@ -66,7 +84,10 @@ export const declarationResolutionDiagnostics = ({
 if (import.meta.main) {
   const { PUBLISHED_PACKAGES } = await import("./published-packages");
   const projectFile = process.argv.at(2);
-  if (!projectFile) throw new TypeError("usage: packed-declaration-diagnostics.ts <tsconfig.json>");
+  if (!projectFile)
+    throw new TypeError(
+      "usage: packed-declaration-diagnostics.ts <tsconfig.json>",
+    );
   const diagnostics = declarationResolutionDiagnostics({
     projectFile,
     packageNames: PUBLISHED_PACKAGES.map(({ name }) => name),

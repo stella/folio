@@ -14,7 +14,10 @@ import { standaloneTableCellToProseMirror } from "../prosemirror/conversion/toPr
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { removeRowsWithoutCells } from "../prosemirror/tableGridMutation";
 import type { TableCell, TableCellFormatting } from "../types/document";
-import { tableRectanglesEqual, type TableRectangle } from "./table-mutation-plan";
+import {
+  type TableRectangle,
+  tableRectanglesEqual,
+} from "./table-mutation-plan";
 import { tableRectangleCutsMergedCell } from "./table-targets";
 
 type TableCellRectangleMutationOptions = {
@@ -24,11 +27,12 @@ type TableCellRectangleMutationOptions = {
   rectangle: TableRectangle;
 };
 
-type TrackedTableCellRectangleMutationOptions = TableCellRectangleMutationOptions & {
-  revisionId: number;
-  author: string;
-  date: string;
-};
+type TrackedTableCellRectangleMutationOptions =
+  TableCellRectangleMutationOptions & {
+    revisionId: number;
+    author: string;
+    date: string;
+  };
 
 export const mergeTableRectangle = ({
   tr,
@@ -44,7 +48,8 @@ export const mergeTableRectangle = ({
     rectangle.bottom > map.height ||
     rectangle.left >= rectangle.right ||
     rectangle.top >= rectangle.bottom ||
-    (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1) ||
+    (rectangle.right - rectangle.left === 1 &&
+      rectangle.bottom - rectangle.top === 1) ||
     tableRectangleCutsMergedCell(map, rectangle)
   ) {
     return null;
@@ -113,7 +118,8 @@ export const mergeTableRectangle = ({
     rowspan: rectangle.bottom - rectangle.top,
     colwidth: nextColwidth,
     width: preferredWidth.type === "value" ? preferredWidth.width : null,
-    widthType: preferredWidth.type === "value" ? preferredWidth.widthType : null,
+    widthType:
+      preferredWidth.type === "value" ? preferredWidth.widthType : null,
     _authoredWidth:
       preferredWidth.type === "value"
         ? { value: preferredWidth.width, type: preferredWidth.widthType }
@@ -121,7 +127,9 @@ export const mergeTableRectangle = ({
   });
   if (appendedContent.size > 0) {
     const contentEnd = absoluteMergedPosition + 1 + merged.cell.content.size;
-    const contentStart = isEmptyTableCell(merged.cell) ? absoluteMergedPosition + 1 : contentEnd;
+    const contentStart = isEmptyTableCell(merged.cell)
+      ? absoluteMergedPosition + 1
+      : contentEnd;
     tr = tr.replaceWith(contentStart, contentEnd, appendedContent);
   }
   // Merging every cell of a row into the cell above leaves the row nothing of
@@ -130,7 +138,10 @@ export const mergeTableRectangle = ({
   return tr;
 };
 
-const mergeTopRowColwidths = (cells: PMNode[], mergedColspan: number): number[] | null => {
+const mergeTopRowColwidths = (
+  cells: PMNode[],
+  mergedColspan: number,
+): number[] | null => {
   const widths: number[] = [];
   for (const cell of cells) {
     const colspan: unknown = cell.attrs["colspan"];
@@ -180,7 +191,9 @@ const mergeTopRowPreferredWidths = (cells: PMNode[]): MergedPreferredWidth => {
     width += stated.value;
     widthType = stated.type;
   }
-  return widthType === undefined ? { type: "absent" } : { type: "value", width, widthType };
+  return widthType === undefined
+    ? { type: "absent" }
+    : { type: "value", width, widthType };
 };
 
 export const mergeTrackedVerticalTableCells = ({
@@ -245,7 +258,10 @@ export const mergeTrackedVerticalTableCells = ({
   // row of nothing but continuations reopens as a different table.
   const leavesRowWithoutCells = cells
     .slice(1)
-    .some(({ position }) => table.child(map.findCell(position).top).childCount === 1);
+    .some(
+      ({ position }) =>
+        table.child(map.findCell(position).top).childCount === 1,
+    );
   if (
     !origin ||
     leavesRowWithoutCells ||
@@ -299,7 +315,8 @@ export const splitTableRectangle = ({
     rectangle.bottom > map.height ||
     rectangle.left >= rectangle.right ||
     rectangle.top >= rectangle.bottom ||
-    (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1)
+    (rectangle.right - rectangle.left === 1 &&
+      rectangle.bottom - rectangle.top === 1)
   ) {
     return null;
   }
@@ -345,7 +362,9 @@ export const splitTableRectangle = ({
   const attrsByColumn = Array.from({ length: colspan }, (_, index) => ({
     ...baseAttrs,
     colwidth:
-      Array.isArray(colwidth) && typeof colwidth[index] === "number" && colwidth[index] > 0
+      Array.isArray(colwidth) &&
+      typeof colwidth[index] === "number" &&
+      colwidth[index] > 0
         ? [colwidth[index]]
         : null,
   }));
@@ -371,9 +390,16 @@ export const splitTableRectangle = ({
 
   const mapFrom = tr.mapping.maps.length;
   for (const insertion of insertions) {
-    tr = tr.insert(tr.mapping.slice(mapFrom).map(insertion.position, 1), insertion.cell);
+    tr = tr.insert(
+      tr.mapping.slice(mapFrom).map(insertion.position, 1),
+      insertion.cell,
+    );
   }
-  return tr.setNodeMarkup(tableStart + cellPosition, undefined, attrsByColumn[0]);
+  return tr.setNodeMarkup(
+    tableStart + cellPosition,
+    undefined,
+    attrsByColumn[0],
+  );
 };
 
 export const splitTrackedVerticalTableCell = ({
@@ -396,7 +422,8 @@ export const splitTrackedVerticalTableCell = ({
   ) {
     return null;
   }
-  const relativeCellPosition = map.map[rectangle.top * map.width + rectangle.left];
+  const relativeCellPosition =
+    map.map[rectangle.top * map.width + rectangle.left];
   if (relativeCellPosition === undefined) {
     return null;
   }
@@ -417,9 +444,12 @@ export const splitTrackedVerticalTableCell = ({
     return null;
   }
   const continuationPayload =
-    attrs._docxVMergeContinuationCells === undefined || attrs._docxVMergeContinuationCells === null
+    attrs._docxVMergeContinuationCells === undefined ||
+    attrs._docxVMergeContinuationCells === null
       ? null
-      : decodeTableCellParagraphSourcePayload(attrs._docxVMergeContinuationCells);
+      : decodeTableCellParagraphSourcePayload(
+          attrs._docxVMergeContinuationCells,
+        );
   const continuationCells = continuationPayload?.cells;
   if (
     continuationCells !== undefined &&
@@ -447,12 +477,18 @@ export const splitTrackedVerticalTableCell = ({
       return null;
     }
     const insertedCell = restoredSource
-      ? trackedSplitCellFromStoredSource({ origin: cell, source: restoredSource, marker })
+      ? trackedSplitCellFromStoredSource({
+          origin: cell,
+          source: restoredSource,
+          marker,
+        })
       : cell.type.createAndFill({
           ...cell.attrs,
           rowspan: 1,
           cellMarker: marker,
-          _originalFormatting: formattingWithoutVerticalMerge(attrs._originalFormatting),
+          _originalFormatting: formattingWithoutVerticalMerge(
+            attrs._originalFormatting,
+          ),
           _preserveVMergeRestart: null,
           _docxVMergeContinuationCells: null,
         });
@@ -472,7 +508,9 @@ export const splitTrackedVerticalTableCell = ({
   tr = tr.setNodeMarkup(tableStart + relativeCellPosition, undefined, {
     ...cell.attrs,
     rowspan: 1,
-    _originalFormatting: formattingWithoutVerticalMerge(attrs._originalFormatting),
+    _originalFormatting: formattingWithoutVerticalMerge(
+      attrs._originalFormatting,
+    ),
     _preserveVMergeRestart: null,
     _docxVMergeContinuationCells: null,
   });
@@ -514,23 +552,28 @@ const trackedSplitCellFromStoredSource = ({
   // prior (possibly attacker-supplied) parse; trusting its `gridSpan`
   // wholesale would let a crafted document restore a cell spanning many
   // columns here. Reject rather than silently widening the cell.
-  if (source.formatting?.gridSpan !== undefined && source.formatting.gridSpan > 1) {
+  if (
+    source.formatting?.gridSpan !== undefined &&
+    source.formatting.gridSpan > 1
+  ) {
     return null;
   }
   const formatting = formattingWithoutVerticalMerge(source.formatting);
   const restoredSource: TableCell = {
     type: "tableCell",
     ...(formatting ? { formatting } : {}),
-    ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
+    ...(source.propertyChanges
+      ? { propertyChanges: source.propertyChanges }
+      : {}),
     content: source.content,
   };
   const converted = standaloneTableCellToProseMirror(
     restoredSource,
     origin.type.name === "tableHeader" ? "tableHeader" : "tableCell",
   );
-  const compatible = Result.try(() => origin.type.schema.nodeFromJSON(converted.toJSON())).unwrapOr(
-    null,
-  );
+  const compatible = Result.try(() =>
+    origin.type.schema.nodeFromJSON(converted.toJSON()),
+  ).unwrapOr(null);
   if (!compatible) {
     return null;
   }

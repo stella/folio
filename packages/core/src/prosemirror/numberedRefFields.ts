@@ -1,21 +1,21 @@
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
-import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { expectFieldAttrs, expectParagraphAttrs } from "./attrs";
-import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumberingReference,
-} from "./numberingAttr";
+import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import {
   advanceVisibleListMarker,
   createListCounterState,
-  MAX_LIST_LEVEL,
-  resolveListTemplateWithComponents,
   type ListCounterState,
   type ListCounterStream,
   type ListCounterStreams,
+  MAX_LIST_LEVEL,
   type ResolvedListComponent,
+  resolveListTemplateWithComponents,
 } from "./listMarker";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
+} from "./numberingAttr";
 
 const MAX_FIELD_INSTRUCTION_CHARS = 2048;
 const MAX_BOOKMARK_NAME_CHARS = 256;
@@ -35,7 +35,8 @@ type NumberedTarget = {
   path: NumberingPath | null;
 };
 
-type NumberingScheme = { type: "abstract"; id: number } | { type: "instance"; id: number };
+type NumberingScheme =
+  { type: "abstract"; id: number } | { type: "instance"; id: number };
 
 type NumberingPath = {
   scheme: NumberingScheme;
@@ -91,16 +92,26 @@ function tokenizeInstruction(instruction: string): string[] | null {
   return tokens;
 }
 
-export function parseNumberedRefInstruction(instruction: string): NumberedRefSpec | null {
+export function parseNumberedRefInstruction(
+  instruction: string,
+): NumberedRefSpec | null {
   if (instruction.length > MAX_FIELD_INSTRUCTION_CHARS) {
     return null;
   }
   const tokens = tokenizeInstruction(instruction);
-  if (tokens === null || tokens.length < 3 || tokens.at(0)?.toUpperCase() !== "REF") {
+  if (
+    tokens === null ||
+    tokens.length < 3 ||
+    tokens.at(0)?.toUpperCase() !== "REF"
+  ) {
     return null;
   }
   const bookmark = tokens.at(1);
-  if (!bookmark || bookmark.length > MAX_BOOKMARK_NAME_CHARS || bookmark.startsWith("\\")) {
+  if (
+    !bookmark ||
+    bookmark.length > MAX_BOOKMARK_NAME_CHARS ||
+    bookmark.startsWith("\\")
+  ) {
     return null;
   }
 
@@ -156,7 +167,10 @@ function numberTargetForParagraph(
   contextStreams: NumberingContextStreams,
   streams: ListCounterStreams,
 ): NumberedTarget | null {
-  const resolution = advanceVisibleListMarker(expectParagraphAttrs(node), streams);
+  const resolution = advanceVisibleListMarker(
+    expectParagraphAttrs(node),
+    streams,
+  );
   let visibleTarget: NumberedTarget | null = null;
   for (const advanced of resolution.advances) {
     const target = numberTargetForAdvancedMarker(
@@ -197,14 +211,17 @@ function numberTargetForAdvancedMarker(
     return null;
   }
   const { numId, ilvl: level } = numbering;
-  const marker = attrs.listMarkerAllCaps ? resolvedMarker.toLocaleUpperCase() : resolvedMarker;
+  const marker = attrs.listMarkerAllCaps
+    ? resolvedMarker.toLocaleUpperCase()
+    : resolvedMarker;
 
   if (!Number.isInteger(level) || level < 0 || level > MAX_LIST_LEVEL) {
     return null;
   }
   const counters = state.counters.get(numId)?.slice(0, level + 1);
   const levelFormats =
-    attrs.listLevelNumFmts ?? (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);
+    attrs.listLevelNumFmts ??
+    (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);
   let renderedMarker: RenderedNumber = { value: marker, components: [] };
   if (attrs.listMarker?.includes("%") && counters?.length === level + 1) {
     const rendered = resolveListTemplateWithComponents({
@@ -224,7 +241,9 @@ function numberTargetForAdvancedMarker(
     attrs.listAbstractNumId === undefined
       ? undefined
       : contexts.byAbstractNumId.get(attrs.listAbstractNumId);
-  const ownContexts = contexts.byNumId.get(numId) ?? [...(abstractContexts ?? [])];
+  const ownContexts = contexts.byNumId.get(numId) ?? [
+    ...(abstractContexts ?? []),
+  ];
   const firstLevel = firstReferencedLevel(attrs.listMarker ?? "");
   let renderedFull: RenderedNumber | null;
   if (level === 0 || firstLevel === 0) {
@@ -257,7 +276,9 @@ function numberTargetForAdvancedMarker(
   }
 
   const path =
-    counters?.length === level + 1 && counters.every(Number.isFinite) && renderedFull !== null
+    counters?.length === level + 1 &&
+    counters.every(Number.isFinite) &&
+    renderedFull !== null
       ? {
           scheme:
             attrs.listAbstractNumId === undefined
@@ -275,11 +296,17 @@ function numberTargetForAdvancedMarker(
   };
 }
 
-function sameNumberingScheme(left: NumberingScheme, right: NumberingScheme): boolean {
+function sameNumberingScheme(
+  left: NumberingScheme,
+  right: NumberingScheme,
+): boolean {
   return left.type === right.type && left.id === right.id;
 }
 
-function relativeNumber(target: NumberedTarget, source: NumberedTarget | null): string | null {
+function relativeNumber(
+  target: NumberedTarget,
+  source: NumberedTarget | null,
+): string | null {
   if (source === null || source.path === null || target.path === null) {
     return target.full;
   }
@@ -288,7 +315,10 @@ function relativeNumber(target: NumberedTarget, source: NumberedTarget | null): 
   }
 
   let sharedLevels = 0;
-  const comparedLevels = Math.min(source.path.counters.length, target.path.counters.length);
+  const comparedLevels = Math.min(
+    source.path.counters.length,
+    target.path.counters.length,
+  );
   while (
     sharedLevels < comparedLevels &&
     source.path.counters[sharedLevels] === target.path.counters[sharedLevels]
@@ -386,7 +416,10 @@ function collectNumberedRefCandidates(
         }
         return false;
       }
-      if (descendant.type.name !== "field" && descendant.type.name !== "structuredField") {
+      if (
+        descendant.type.name !== "field" &&
+        descendant.type.name !== "structuredField"
+      ) {
         return true;
       }
       if (fieldNodes.has(descendant)) {
@@ -397,7 +430,10 @@ function collectNumberedRefCandidates(
     const paragraphAttrs = expectParagraphAttrs(node);
     if (targets.size < MAX_BOOKMARK_TARGETS) {
       for (const bookmark of paragraphAttrs.bookmarks ?? []) {
-        if (referencedBookmarks.has(bookmark.name) && !targets.has(bookmark.name)) {
+        if (
+          referencedBookmarks.has(bookmark.name) &&
+          !targets.has(bookmark.name)
+        ) {
           targets.set(bookmark.name, target);
         }
       }
@@ -426,17 +462,25 @@ function collectNumberedRefCandidates(
   return candidates;
 }
 
-const isCalibratedCandidate = ({ node, cached, value }: NumberedRefCandidate): boolean => {
+const isCalibratedCandidate = ({
+  node,
+  cached,
+  value,
+}: NumberedRefCandidate): boolean => {
   const normalizedCache = normalizeCachedResult(cached);
   const baseline = expectFieldAttrs(node)._numberedRefBaseline;
   return (
     normalizedCache.length === 0 ||
     normalizedCache === normalizeCachedResult(value) ||
-    (baseline !== undefined && normalizedCache === normalizeCachedResult(baseline))
+    (baseline !== undefined &&
+      normalizedCache === normalizeCachedResult(baseline))
   );
 };
 
-const mapDocument = (node: PMNode, transform: (node: PMNode) => PMNode): PMNode => {
+const mapDocument = (
+  node: PMNode,
+  transform: (node: PMNode) => PMNode,
+): PMNode => {
   let mapped = node;
   if (node.childCount > 0) {
     const children: PMNode[] = [];

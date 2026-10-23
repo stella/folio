@@ -18,12 +18,14 @@ import { TaggedError } from "better-result";
 import {
   CORPUS_TIERS,
   type CorpusLock,
+  corpusLockDigest,
   type CorpusTier,
   DEFAULT_CORPUS_TIERS,
-  corpusLockDigest,
 } from "./corpus-manifest";
 
-export class CorpusTierError extends TaggedError("CorpusTierError")<{ message: string }> {}
+export class CorpusTierError extends TaggedError("CorpusTierError")<{
+  message: string;
+}> {}
 
 const TIER_VALUES: ReadonlySet<number> = new Set(Object.values(CORPUS_TIERS));
 
@@ -43,7 +45,9 @@ export const parseTierSelection = (value: string | undefined): CorpusTier[] => {
   for (const part of requested) {
     const tier = Number(part);
     if (!TIER_VALUES.has(tier)) {
-      throw new CorpusTierError({ message: `--tiers expects 1, 2 or 3, got \`${part}\`` });
+      throw new CorpusTierError({
+        message: `--tiers expects 1, 2 or 3, got \`${part}\``,
+      });
     }
     // SAFETY: the value was just proven a member of the tier union.
     tiers.add(tier as CorpusTier);
@@ -51,15 +55,22 @@ export const parseTierSelection = (value: string | undefined): CorpusTier[] => {
   return [...tiers].sort((left, right) => left - right);
 };
 
-export const selectTiers = (lock: CorpusLock, tiers: readonly CorpusTier[]): CorpusLock => {
+export const selectTiers = (
+  lock: CorpusLock,
+  tiers: readonly CorpusTier[],
+): CorpusLock => {
   const selected = new Set<number>(tiers);
   const sources = lock.sources.filter((source) => selected.has(source.tier));
   return {
     ...lock,
     sources,
-    fileCount: sources.reduce((total, source) => total + source.files.length, 0),
+    fileCount: sources.reduce(
+      (total, source) => total + source.files.length,
+      0,
+    ),
     totalBytes: sources.reduce(
-      (total, source) => total + source.files.reduce((bytes, file) => bytes + file.bytes, 0),
+      (total, source) =>
+        total + source.files.reduce((bytes, file) => bytes + file.bytes, 0),
       0,
     ),
   };
@@ -72,7 +83,10 @@ export const selectTiers = (lock: CorpusLock, tiers: readonly CorpusTier[]): Cor
  * never compare against each other's baseline, even in the degenerate case
  * where one tier happens to contribute no files.
  */
-export const tierScopedLockDigest = (lock: CorpusLock, tiers: readonly CorpusTier[]): string =>
-  `t${tiers.join("")}-${corpusLockDigest(selectTiers(lock, tiers))}`;
+export const tierScopedLockDigest = (
+  lock: CorpusLock,
+  tiers: readonly CorpusTier[],
+): string => `t${tiers.join("")}-${corpusLockDigest(selectTiers(lock, tiers))}`;
 
-export const describeTiers = (tiers: readonly CorpusTier[]): string => `tier ${tiers.join(", ")}`;
+export const describeTiers = (tiers: readonly CorpusTier[]): string =>
+  `tier ${tiers.join(", ")}`;

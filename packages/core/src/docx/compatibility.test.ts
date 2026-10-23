@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { DOCX_CONFORMANCE_CLASSES, DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
+
+import {
+  DOCX_CONFORMANCE_CLASSES,
+  DRAWING_RAW_XML_MODES,
+} from "@stll/docx-core/model";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -13,7 +17,8 @@ import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const createAdjustedShapeDocx = async (
   preset: "rightBrace" | "roundRect",
@@ -396,7 +401,12 @@ describe("DOCX compatibility inspection", () => {
       const wrapped = inspectDocxCompatibility({
         package: {
           document: {
-            content: [{ ...paragraph, content: [{ ...wrapper, content: paragraph.content }] }],
+            content: [
+              {
+                ...paragraph,
+                content: [{ ...wrapper, content: paragraph.content }],
+              },
+            ],
           },
         },
       });
@@ -460,7 +470,10 @@ describe("DOCX compatibility inspection", () => {
 
   test("allows text edits while preserving an unmodeled drawing verbatim", async () => {
     const source = await createAdjustedShapeDocx("roundRect");
-    const parsed = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+    const parsed = await parseDocx(source, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const originalDrawing = firstRawDrawing(parsed);
 
     expect(originalDrawing?.rawXml).toContain("<mc:AlternateContent");
@@ -488,12 +501,17 @@ describe("DOCX compatibility inspection", () => {
       ),
     ).doc;
     const saved = await repackDocx(
-      fromProseDoc(editedPmDocument, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(editedPmDocument, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       {
         updateModifiedDate: false,
       },
     );
-    const reopened = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const reopened = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const reopenedDrawing = firstRawDrawing(reopened);
 
     expect(toProseDoc(reopened).textContent).toContain("Updated text");
@@ -522,7 +540,10 @@ describe("DOCX compatibility inspection", () => {
 
   test("replays an untouched header verbatim through a body-only edit", async () => {
     const source = await createHeaderPictureDocx();
-    const parsed = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+    const parsed = await parseDocx(source, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const originalHeaderXml = await (
       await JSZip.loadAsync(source)
     )
@@ -542,7 +563,11 @@ describe("DOCX compatibility inspection", () => {
 
     const state = EditorState.create({ doc: pmDocument });
     const edited = state.apply(
-      state.tr.insertText("Edited body", bodyTextPosition, bodyTextPosition + "Body text".length),
+      state.tr.insertText(
+        "Edited body",
+        bodyTextPosition,
+        bodyTextPosition + "Body text".length,
+      ),
     ).doc;
     const saved = await repackDocx(
       fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } }),
@@ -556,14 +581,18 @@ describe("DOCX compatibility inspection", () => {
 
     expect(savedHeaderXml).toBe(originalHeaderXml);
     expect(
-      toProseDoc(await parseDocx(saved, { detectVariables: false, preloadFonts: false }))
-        .textContent,
+      toProseDoc(
+        await parseDocx(saved, { detectVariables: false, preloadFonts: false }),
+      ).textContent,
     ).toContain("Edited body");
   });
 
   test("blocks on opaque content in every part the save re-serializes", () => {
-    const opaqueRun = createDocument({ rawXml: "<w:drawing/>", rId: null, staleFingerprint: true })
-      .package.document.content;
+    const opaqueRun = createDocument({
+      rawXml: "<w:drawing/>",
+      rId: null,
+      staleFingerprint: true,
+    }).package.document.content;
 
     for (const document of [
       {
@@ -575,7 +604,10 @@ describe("DOCX compatibility inspection", () => {
         package: {
           document: { content: [] },
           headers: new Map([
-            ["rId7", { type: "header", hdrFtrType: "default", content: opaqueRun }],
+            [
+              "rId7",
+              { type: "header", hdrFtrType: "default", content: opaqueRun },
+            ],
           ]),
         },
       },
@@ -583,7 +615,10 @@ describe("DOCX compatibility inspection", () => {
         package: {
           document: { content: [] },
           footers: new Map([
-            ["rId8", { type: "footer", hdrFtrType: "default", content: opaqueRun }],
+            [
+              "rId8",
+              { type: "footer", hdrFtrType: "default", content: opaqueRun },
+            ],
           ]),
         },
       },
@@ -606,7 +641,10 @@ describe("DOCX compatibility inspection", () => {
 
   test("treats a supported adjusted right brace as editable shape content", async () => {
     const source = await createAdjustedShapeDocx("rightBrace");
-    const parsed = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+    const parsed = await parseDocx(source, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const expectedAdjustments = [
       { name: "adj1", formula: "val 12500" },
       { name: "adj2", formula: "val 62500" },
@@ -622,10 +660,17 @@ describe("DOCX compatibility inspection", () => {
     const pmRoundTripped = fromProseDoc(toProseDoc(parsed), parsed, {
       stylesheetSource: { type: "package" },
     });
-    expect(firstShape(pmRoundTripped)?.shape.geometryAdjustments).toEqual(expectedAdjustments);
+    expect(firstShape(pmRoundTripped)?.shape.geometryAdjustments).toEqual(
+      expectedAdjustments,
+    );
 
-    const saved = await repackDocx(pmRoundTripped, { updateModifiedDate: false });
-    const reopened = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const saved = await repackDocx(pmRoundTripped, {
+      updateModifiedDate: false,
+    });
+    const reopened = await parseDocx(saved, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     expect(firstShape(reopened)?.shape).toMatchObject({
       shapeType: "rightBrace",
       geometryAdjustments: expectedAdjustments,
@@ -659,7 +704,10 @@ describe("DOCX compatibility inspection", () => {
       profile: "transitional",
     });
 
-    expect(compatibility.context).toEqual({ host: "browser", profile: "transitional" });
+    expect(compatibility.context).toEqual({
+      host: "browser",
+      profile: "transitional",
+    });
     expect(compatibility.issues.at(0)?.location).toEqual({
       blockId: "A1B2C3D4",
       part: { type: "header", relationshipId: "rId7" },

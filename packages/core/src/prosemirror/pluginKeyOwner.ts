@@ -16,7 +16,9 @@ export type PluginKeyOwner<State> = Readonly<{
 }>;
 
 /** An immutable plugin family descriptor; each plugin owns its actual key. */
-export const createPluginKeyOwner = <State = unknown>(name: string): PluginKeyOwner<State> => {
+export const createPluginKeyOwner = <State = unknown>(
+  name: string,
+): PluginKeyOwner<State> => {
   const pluginsByState = new WeakMap<EditorState, Plugin<State> | undefined>();
   const owns = (plugin: Plugin<State>): boolean =>
     plugin.spec.key !== undefined &&
@@ -27,7 +29,8 @@ export const createPluginKeyOwner = <State = unknown>(name: string): PluginKeyOw
     let found: Plugin<State> | undefined;
     for (const plugin of state.plugins) {
       if (!owns(plugin)) continue;
-      if (found) panic(`Multiple plugins belong to ${name} in one editor state`);
+      if (found)
+        panic(`Multiple plugins belong to ${name} in one editor state`);
       found = plugin;
     }
     pluginsByState.set(state, found);
@@ -42,6 +45,7 @@ export const createPluginKeyOwner = <State = unknown>(name: string): PluginKeyOw
     },
     owns,
     get,
-    getState: (state: EditorState): State | undefined => get(state)?.getState(state),
+    getState: (state: EditorState): State | undefined =>
+      get(state)?.getState(state),
   });
 };

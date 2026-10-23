@@ -1,6 +1,9 @@
-import { continuesNumberedSequence, continuesTabbedParagraphSequence } from "./paragraphSequence";
-import type { FlowBlock, Page, ParagraphBlock } from "./types";
 import { paintsCssBorder } from "../utils/borderCss";
+import {
+  continuesNumberedSequence,
+  continuesTabbedParagraphSequence,
+} from "./paragraphSequence";
+import type { FlowBlock, Page, ParagraphBlock } from "./types";
 
 export type RenderedBreakState =
   | { type: "noPageAdvance" }
@@ -80,8 +83,15 @@ export const reconcileBreakBeforeBlock = ({
         : INITIAL_RENDERED_BREAK_STATE,
     };
   }
-  if (block.kind !== "paragraph" || block.attrs?.renderedPageBreakBefore !== true) {
-    return { pageAdvance: PAGE_ADVANCE.NONE, suppressSpaceBefore: false, state };
+  if (
+    block.kind !== "paragraph" ||
+    block.attrs?.renderedPageBreakBefore !== true
+  ) {
+    return {
+      pageAdvance: PAGE_ADVANCE.NONE,
+      suppressSpaceBefore: false,
+      state,
+    };
   }
 
   const markerAlreadySatisfied =
@@ -102,10 +112,13 @@ export const reconcileBreakBeforeBlock = ({
       previousBlock?.kind !== "sectionBreak") ||
     previousBlock?.kind === "table";
   const forcePageBreak =
-    markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById);
+    markerNeedsSnap &&
+    !markerAlreadySatisfied &&
+    pageHasVisibleBodyContent(page, blocksById);
   const followsAuthoredPageBreak = previousBlock?.kind === "pageBreak";
   const followsSectionBreak = previousBlock?.kind === "sectionBreak";
-  const followsPageBreakingSection = followsSectionBreak && previousBlock.type !== "continuous";
+  const followsPageBreakingSection =
+    followsSectionBreak && previousBlock.type !== "continuous";
   const followsCarriedSectionBoundary =
     state.type === "pageAdvance" &&
     state.reason === "authoredBoundary" &&
@@ -123,7 +136,8 @@ export const reconcileBreakBeforeBlock = ({
     pageAdvance: forcePageBreak ? PAGE_ADVANCE.PHYSICAL : PAGE_ADVANCE.NONE,
     // The boundary consumes inherited/default leading spacing. Preserve only
     // spacing authored directly on the first paragraph of a section.
-    suppressSpaceBefore: markerAccountsForBoundary && !preserveSectionLeadingSpacing,
+    suppressSpaceBefore:
+      markerAccountsForBoundary && !preserveSectionLeadingSpacing,
     state: INITIAL_RENDERED_BREAK_STATE,
   };
 };
@@ -132,7 +146,9 @@ export const recordReflowBoundary = (
   state: RenderedBreakState,
   crossedPageBoundary: boolean,
 ): RenderedBreakState =>
-  crossedPageBoundary ? { type: "pageAdvance", reason: "reflowBoundary" } : state;
+  crossedPageBoundary
+    ? { type: "pageAdvance", reason: "reflowBoundary" }
+    : state;
 
 type ReconcileAfterBlockOptions = {
   state: RenderedBreakState;
@@ -183,7 +199,11 @@ export const reconcileAfterBlock = ({
         nextHardBreak: "coalesce",
       };
     }
-    return { type: "pageAdvance", reason: "authoredBoundary", boundary: "hardBreak" };
+    return {
+      type: "pageAdvance",
+      reason: "authoredBoundary",
+      boundary: "hardBreak",
+    };
   }
   if (block.kind === "paragraph" && isPaginationEmptyParagraph(block)) {
     return state;
@@ -224,7 +244,10 @@ const hasVisibleEmptyParagraphDecoration = (block: ParagraphBlock): boolean => {
     return true;
   }
   return Object.values(block.attrs?.borders ?? {}).some(
-    (border) => border !== undefined && paintsCssBorder(border.style) && border.width !== 0,
+    (border) =>
+      border !== undefined &&
+      paintsCssBorder(border.style) &&
+      border.width !== 0,
   );
 };
 
@@ -261,4 +284,6 @@ const pageStartsWithPreviousParagraphContinuation = (
 };
 
 const isStructuralBreak = (block: FlowBlock): boolean =>
-  block.kind === "pageBreak" || block.kind === "columnBreak" || block.kind === "sectionBreak";
+  block.kind === "pageBreak" ||
+  block.kind === "columnBreak" ||
+  block.kind === "sectionBreak";

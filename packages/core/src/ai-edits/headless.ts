@@ -1,26 +1,42 @@
-import { finalizeParagraphFormatting, setDocumentBodyComments } from "@stll/docx-core/model";
-import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
-import { normalizeListModelRendering } from "../docx/listModelNormalization";
-import { commentTextParagraph } from "../docx/commentTextParagraph";
-import { buildSections } from "../docx/documentParser";
-import { noteStoryInventory } from "./note-story-inventory";
-import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
+import { panic, TaggedError } from "better-result";
 import JSZip from "jszip";
-import { classifyResourceReference } from "./referenceClassification";
-import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
+import { Fragment } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
+import { EditorState } from "prosemirror-state";
+import type { Command, Plugin, Transaction } from "prosemirror-state";
+
 import {
-  captureSectionReferenceInventory,
-  resolvedSectionReferenceLosses,
-  withSectionReferenceResolution,
-} from "../internal/sectionReferenceResolution";
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
+  finalizeParagraphFormatting,
+  numberingLevelEntries,
+  REVIEW_CARRIERS,
+  setDocumentBodyComments,
+} from "@stll/docx-core/model";
+import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
+
+import {
+  matchInlineAtoms,
+  type MatchInlineAtomsOptions,
+} from "../compare/inline-atoms";
+import {
+  type InlineProvenanceTargetOptions,
+  matchInlineProvenance,
+} from "../compare/inline-provenance";
+import { stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties } from "../compare/section-boundary-properties";
 import {
   importReferencedStyleDefinitions,
-  styleClosureNumberingReferences,
   type ImportReferencedStyleDefinitionsResult,
+  styleClosureNumberingReferences,
 } from "../compare/style-resources";
-import { expectCharacterStyleMarkAttrs, expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
-import { visitDocxParagraphs } from "../docx/paragraphTraversal";
+import {
+  applyFolioDocumentOperations,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationResult,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
+} from "../document-operations";
+import { removeCommentMarkers } from "../docx/commentAnchorIndex";
+import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 /**
  * Headless `.docx` review path: buffer -> apply AI edits -> buffer, with
  * no `EditorView` and no DOM. A queue worker or agent can read a document,
@@ -40,41 +56,46 @@ import { visitDocxParagraphs } from "../docx/paragraphTraversal";
  *
  * Scope: main, header, footer, footnote, and endnote blocks.
  */
-
-import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
-import { sectionRejectProperties } from "../prosemirror/commands/propertyChangeScope";
-import { panic, TaggedError } from "better-result";
-import { canonicalJson } from "../utils/canonicalJson";
+import { commentTextParagraph } from "../docx/commentTextParagraph";
+import { buildSections } from "../docx/documentParser";
+import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import {
-  matchInlineProvenance,
-  type InlineProvenanceTargetOptions,
-} from "../compare/inline-provenance";
-import { matchInlineAtoms, type MatchInlineAtomsOptions } from "../compare/inline-atoms";
-import { stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties } from "../compare/section-boundary-properties";
-import { Fragment } from "prosemirror-model";
-import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
-import type { Command } from "prosemirror-state";
-import type { Plugin } from "prosemirror-state";
-import type { Transaction } from "prosemirror-state";
-
+  isSeparatorEndnote,
+  isSeparatorFootnote,
+} from "../docx/footnoteParser";
+import { normalizeListModelRendering } from "../docx/listModelNormalization";
+import { createNumberingIdAllocator } from "../docx/numberingIds";
+import { getCachedNumberingMap } from "../docx/numberingParser";
 import {
-  allocateCommentId,
-  createCommentIdAllocator,
-  seedCommentAllocator,
-} from "../prosemirror/commentIdAllocator";
-import { createReply } from "../docx/replyToComment";
-import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
-import { attemptSelectiveSave } from "../docx/selectiveSave";
-
-import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
+  recreateProseNodeWithParagraphPropertySource,
+  transferProseParagraphPropertySource,
+} from "../docx/paragraphPropertySource";
+import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 import { parseDocx } from "../docx/parser";
+import { createReply } from "../docx/replyToComment";
 import { repackDocx } from "../docx/rezip";
+import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
+import { attemptSelectiveSave } from "../docx/selectiveSave";
+import {
+  getEndnoteText,
+  getFootnoteText,
+  getHeaderFooterText,
+} from "../docx/storyPlainText";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
+import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
+import {
+  captureSectionReferenceInventory,
+  resolvedSectionReferenceLosses,
+  withSectionReferenceResolution,
+} from "../internal/sectionReferenceResolution";
+import {
+  expectCharacterStyleMarkAttrs,
+  expectFootnoteRefMarkAttrs,
+} from "../prosemirror/attrs";
 import {
   acceptAIEditRevision,
   acceptSuggestion,
@@ -85,19 +106,16 @@ import {
   resolveAllChangesInHeadlessState,
   suggestionIdOfRevision,
 } from "../prosemirror/commands/comments";
-import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { sectionRejectProperties } from "../prosemirror/commands/propertyChangeScope";
 import {
-  deleteNoteWithReference,
-  noteDeletionRevisions,
-  noteKeysReferencedIn,
-  noteReferenceStates,
-  noteReferencesRestored,
-  referenceDeletions,
-  referencedNotes,
-  type NoteKey,
-} from "../prosemirror/noteReferenceReview";
-import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
-import { storyListNumbering } from "../prosemirror/storyListNumbering";
+  allocateCommentId,
+  createCommentIdAllocator,
+  seedCommentAllocator,
+} from "../prosemirror/commentIdAllocator";
+import {
+  fromProseDoc,
+  proseDocToBlocks,
+} from "../prosemirror/conversion/fromProseDoc";
 import {
   footnoteToProseDoc,
   headerFooterToProseDoc,
@@ -110,24 +128,35 @@ import {
   hasStructuralChanges,
   hasUntrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
+import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import {
-  createDocumentStylesPlugin,
-  withDocumentStyles,
-  getDocumentStyleResolver,
-} from "../prosemirror/plugins/documentStyles";
+  deleteNoteWithReference,
+  noteDeletionRevisions,
+  type NoteKey,
+  noteKeysReferencedIn,
+  noteReferencesRestored,
+  noteReferenceStates,
+  referenceDeletions,
+  referencedNotes,
+} from "../prosemirror/noteReferenceReview";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
+import {
+  createDocumentStylesPlugin,
+  getDocumentStyleResolver,
+  withDocumentStyles,
+} from "../prosemirror/plugins/documentStyles";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
-import { numberingLevelEntries, REVIEW_CARRIERS } from "@stll/docx-core/model";
-import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
+import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import type { Comment } from "../types/content";
 import type {
-  Document,
   BlockContent,
+  Document,
   Endnote,
   Footnote,
   HeaderFooter,
@@ -137,21 +166,8 @@ import type {
   SectionProperties,
   StyleDefinitions,
 } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import { deterministicHexId } from "../utils/hexId";
-import { getCachedNumberingMap } from "../docx/numberingParser";
-import { createNumberingIdAllocator } from "../docx/numberingIds";
-import {
-  recreateProseNodeWithParagraphPropertySource,
-  transferProseParagraphPropertySource,
-} from "../docx/paragraphPropertySource";
-import {
-  applyFolioDocumentOperations,
-  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  type FolioDocumentOperationBatch,
-  type FolioDocumentOperationResult,
-  type FolioDocumentOperationUndoHandle,
-  type FolioDocumentOperationUndoResult,
-} from "../document-operations";
 import type {
   FolioReplacementBackground,
   FolioRevisionStamp,
@@ -159,42 +175,49 @@ import type {
   FolioWordDiffOptions,
 } from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
-import { noteReferenceEditsAllowed } from "./note-references";
 import {
   anchoredCommentIdsInBlocks,
   anchoredCommentIdsInProseDoc,
   coveredCommentIdsInProseDoc,
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
-import { removeCommentMarkers } from "../docx/commentAnchorIndex";
+import { noteReferenceEditsAllowed } from "./note-references";
+import { noteStoryInventory } from "./note-story-inventory";
 import {
-  FolioPendingSuggestionRegistry,
   createPendingSuggestionSourceSnapshot,
-  withoutPendingSuggestionCommentMarks,
   type FolioPendingSuggestionLoadResult,
   type FolioPendingSuggestionRecord,
+  FolioPendingSuggestionRegistry,
+  withoutPendingSuggestionCommentMarks,
 } from "./pending-suggestions";
 import {
-  getCommentAnchorsFromDoc,
-  getTrackedChangeGroupIdsFromDoc,
-  getTrackedChangeStatsFromDoc,
-  getTrackedChangesFromDoc,
-  getTrackedChangesFromSnapshot,
   type FolioReviewChange,
   type FolioReviewChangeKind,
+  getCommentAnchorsFromDoc,
+  getTrackedChangeGroupIdsFromDoc,
+  getTrackedChangesFromDoc,
+  getTrackedChangesFromSnapshot,
+  getTrackedChangeStatsFromDoc,
 } from "./read";
+import { classifyResourceReference } from "./referenceClassification";
 import {
   collectNoteReferenceLabels,
   createFolioAIEditSnapshotWithStyleResolver,
   detachFolioAIEditSnapshotExternalHyperlinks,
+  type FolioStoryTable,
   folioStoryTables,
   isFolioAIContentBlock,
   normalizeFolioAIBlockText,
   sourceDocumentOf,
-  type FolioStoryTable,
 } from "./snapshot";
-import { matchTableGeometry, type TableGeometryPairing } from "./table-geometry";
-import { tableTemplateCanCrossPackageLosslessly, type FolioTableTemplates } from "./table-template";
+import {
+  matchTableGeometry,
+  type TableGeometryPairing,
+} from "./table-geometry";
+import {
+  type FolioTableTemplates,
+  tableTemplateCanCrossPackageLosslessly,
+} from "./table-template";
 import type {
   FolioAIBlock,
   FolioAIEditAppliedOperation,
@@ -277,12 +300,18 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
       if (child.type.name === "paragraph") {
         ordinal += 1;
         const existing = child.attrs["paraId"];
-        if (typeof existing === "string" && existing.length > 0 && !seen.has(existing)) {
+        if (
+          typeof existing === "string" &&
+          existing.length > 0 &&
+          !seen.has(existing)
+        ) {
           seen.add(existing);
         } else {
           let paraId = deterministicHexId(`${child.textContent}:${ordinal}`);
           for (let salt = 1; seen.has(paraId); salt++) {
-            paraId = deterministicHexId(`${child.textContent}:${ordinal}:${salt}`);
+            paraId = deterministicHexId(
+              `${child.textContent}:${ordinal}:${salt}`,
+            );
           }
           seen.add(paraId);
           next = recreateProseNodeWithParagraphPropertySource(child, {
@@ -296,7 +325,9 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
       } else if (child.childCount > 0) {
         const content = rewrite(child);
         if (content !== child.content) {
-          next = recreateProseNodeWithParagraphPropertySource(child, { content });
+          next = recreateProseNodeWithParagraphPropertySource(child, {
+            content,
+          });
         }
       }
       if (next !== child) {
@@ -341,7 +372,10 @@ export type FolioApplyOperationsOptions = {
 };
 
 /** Options for {@link FolioDocxReviewer.applyDocumentOperations}. */
-export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptions, "mode">;
+export type FolioApplyDocumentOperationsOptions = Omit<
+  FolioApplyOperationsOptions,
+  "mode"
+>;
 
 /**
  * Why a save rewrote the whole package instead of patching the edited
@@ -351,9 +385,7 @@ export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptio
  * `selectiveDeclined` (the patch could not express the edit safely).
  */
 export type FolioReviewerRepackReason =
-  | "structuralChange"
-  | "untrackedChange"
-  | "selectiveDeclined";
+  "structuralChange" | "untrackedChange" | "selectiveDeclined";
 
 /** Options for {@link FolioDocxReviewer.save}. */
 export type FolioReviewerSaveOptions = {
@@ -367,7 +399,11 @@ export type FolioReviewerSaveOptions = {
 /** Result of {@link FolioDocxReviewer.save}. */
 export type FolioReviewerSaveResult =
   | { type: "selective"; buffer: ArrayBuffer }
-  | { type: "full-repack"; reason: FolioReviewerRepackReason; buffer: ArrayBuffer }
+  | {
+      type: "full-repack";
+      reason: FolioReviewerRepackReason;
+      buffer: ArrayBuffer;
+    }
   | { type: "repackRefused"; reason: FolioReviewerRepackReason };
 
 /** Options for {@link FolioDocxReviewer.getContentAsText}. */
@@ -380,13 +416,21 @@ export type FolioGetContentAsTextOptions = {
   annotated?: boolean;
 };
 
-export const FOLIO_REVIEWED_VIEWS = Object.freeze(["original", "current-markup", "final"] as const);
+export const FOLIO_REVIEWED_VIEWS = Object.freeze([
+  "original",
+  "current-markup",
+  "final",
+] as const);
 
 export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
-export const FOLIO_RESOLVED_REVIEWED_VIEWS = Object.freeze(["original", "final"] as const);
+export const FOLIO_RESOLVED_REVIEWED_VIEWS = Object.freeze([
+  "original",
+  "final",
+] as const);
 
-export type FolioResolvedReviewedView = (typeof FOLIO_RESOLVED_REVIEWED_VIEWS)[number];
+export type FolioResolvedReviewedView =
+  (typeof FOLIO_RESOLVED_REVIEWED_VIEWS)[number];
 
 export type FolioDocumentStoryHandle =
   | { type: "main" }
@@ -477,25 +521,26 @@ class FolioResolvedStorySerializationError extends TaggedError(
   remainingChangeCount: number | null;
 }> {}
 
-export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
-  story: FolioEditableDocumentStoryHandle;
-  batch: FolioDocumentOperationBatch;
-  /**
-   * Tables and rows an `insertTable` / `insertTableRow` in the batch places
-   * verbatim, by operation id. A caller copying a table it already holds —
-   * `compareDocx` placing the target document's table — hands it over whole
-   * instead of letting the operation rebuild it from its cell texts and lose
-   * every table, row and cell property on the way.
-   */
-  tableTemplates?: FolioTableTemplates;
-  /**
-   * What a replacement in the batch does with a highlight or `w:shd` the text
-   * it replaces carries. Clearing it is the authoring default; a caller that
-   * states the replacement's own run properties — `compareDocx` reproducing
-   * the target document — keeps them instead.
-   */
-  replacementBackground?: FolioReplacementBackground;
-};
+export type FolioApplyDocumentOperationsToStoryOptions =
+  FolioApplyDocumentOperationsOptions & {
+    story: FolioEditableDocumentStoryHandle;
+    batch: FolioDocumentOperationBatch;
+    /**
+     * Tables and rows an `insertTable` / `insertTableRow` in the batch places
+     * verbatim, by operation id. A caller copying a table it already holds —
+     * `compareDocx` placing the target document's table — hands it over whole
+     * instead of letting the operation rebuild it from its cell texts and lose
+     * every table, row and cell property on the way.
+     */
+    tableTemplates?: FolioTableTemplates;
+    /**
+     * What a replacement in the batch does with a highlight or `w:shd` the text
+     * it replaces carries. Clearing it is the authoring default; a caller that
+     * states the replacement's own run properties — `compareDocx` reproducing
+     * the target document — keeps them instead.
+     */
+    replacementBackground?: FolioReplacementBackground;
+  };
 
 export type { FolioRevisionStamp };
 
@@ -509,7 +554,10 @@ type FolioNoteStoryHandle = Extract<
   { type: "footnote" | "endnote" }
 >;
 
-type FolioSecondaryStoryHandle = Exclude<FolioEditableDocumentStoryHandle, { type: "main" }>;
+type FolioSecondaryStoryHandle = Exclude<
+  FolioEditableDocumentStoryHandle,
+  { type: "main" }
+>;
 
 type FolioSecondaryStoryState = {
   handle: FolioSecondaryStoryHandle;
@@ -518,7 +566,9 @@ type FolioSecondaryStoryState = {
 };
 
 /** Blocks whose id folio minted, because the package names no id for them. */
-const mintedBlockOrdinals = (snapshot: FolioAIEditSnapshot): ReadonlySet<number> => {
+const mintedBlockOrdinals = (
+  snapshot: FolioAIEditSnapshot,
+): ReadonlySet<number> => {
   const ordinals = new Set<number>();
   for (const [ordinal, block] of snapshot.blocks.entries()) {
     if (block.idStability === "positional") {
@@ -550,7 +600,9 @@ const resolvedStoryBlockProjection = (
 ) => {
   const persisted = { ...block };
   delete persisted.idStability;
-  return minted.has(ordinal) ? { ...persisted, id: `minted-${String(ordinal)}` } : persisted;
+  return minted.has(ordinal)
+    ? { ...persisted, id: `minted-${String(ordinal)}` }
+    : persisted;
 };
 
 type FolioResolvedStoryExpectation = {
@@ -577,7 +629,10 @@ const resolvedStoryProjection = (
     resolvedStoryBlockProjection(block, ordinal, minted),
   );
   return {
-    text: blocks.filter(isFolioAIContentBlock).map(formatBlockForLLM).join("\n"),
+    text: blocks
+      .filter(isFolioAIContentBlock)
+      .map(formatBlockForLLM)
+      .join("\n"),
     blocks,
   };
 };
@@ -624,7 +679,8 @@ type ApplyDocumentOperationsInternalOptions = {
   createUndoEntry: boolean;
 };
 
-type FolioDocxComparisonProjectionMode = "with-revision-census" | "without-revision-census";
+type FolioDocxComparisonProjectionMode =
+  "with-revision-census" | "without-revision-census";
 
 type FolioDocxComparisonStoryProjection = {
   handle: FolioDocumentStoryHandle;
@@ -654,7 +710,10 @@ type StoryInlineProvenanceResult =
   | { status: "unalignable" }
   | { status: "budget-exceeded" };
 
-type MatchStoryInlineAtomsOptions = Omit<MatchInlineAtomsOptions, "state" | "author"> & {
+type MatchStoryInlineAtomsOptions = Omit<
+  MatchInlineAtomsOptions,
+  "state" | "author"
+> & {
   story: FolioEditableDocumentStoryHandle;
 };
 
@@ -693,13 +752,20 @@ type ReferencedNumberingLevelsOptions = {
 
 const referencedNumberingLevelsByNumId = ({
   references,
-}: ReferencedNumberingLevelsOptions): ReadonlyMap<number, readonly number[]> => {
+}: ReferencedNumberingLevelsOptions): ReadonlyMap<
+  number,
+  readonly number[]
+> => {
   const levelsByNumId = new Map<number, Set<number>>();
   for (const { numId, level } of references) {
     const levels = levelsByNumId.get(numId) ?? new Set<number>();
     levelsByNumId.set(numId, levels);
     levels.add(level);
-    for (let ancestor = 0; ancestor <= Math.min(level, MAX_LIST_LEVEL); ancestor += 1) {
+    for (
+      let ancestor = 0;
+      ancestor <= Math.min(level, MAX_LIST_LEVEL);
+      ancestor += 1
+    ) {
       levels.add(ancestor);
     }
   }
@@ -758,17 +824,25 @@ type StageTargetStylesOptions = {
 
 type FolioDocxComparisonAccess = {
   stageTerminalTableReviewCarrier: (target: PMNode) => boolean;
-  stageTargetStyles: (options: StageTargetStylesOptions) => ImportReferencedStyleDefinitionsResult;
+  stageTargetStyles: (
+    options: StageTargetStylesOptions,
+  ) => ImportReferencedStyleDefinitionsResult;
   createComparisonHeaderFooter: (
     source: FolioDocxReviewer,
     story: FolioHeaderFooterStoryHandle,
   ) => Promise<FolioHeaderFooterStoryHandle | null>;
-  matchInlineAtoms: (options: MatchStoryInlineAtomsOptions) => StoryInlineAtomsResult;
+  matchInlineAtoms: (
+    options: MatchStoryInlineAtomsOptions,
+  ) => StoryInlineAtomsResult;
   matchInlineProvenance: (
     options: MatchStoryInlineProvenanceOptions,
   ) => StoryInlineProvenanceResult;
-  projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
-  snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
+  projectStories: (
+    mode: FolioDocxComparisonProjectionMode,
+  ) => FolioDocxComparisonProjection;
+  snapshotReviewedStory: (
+    options?: FolioReadReviewedStoryOptions,
+  ) => FolioAIEditSnapshot | null;
   numberingDefinitions: () => NumberingDefinitions | null | undefined;
   styleDefinitions: () => Document["package"]["styles"];
   planTargetNumberingReferences: (
@@ -797,22 +871,37 @@ type FolioDocxComparisonAccess = {
       target: SectionProperties;
     }) =>
       | { kind: "inserted"; target: SectionProperties }
-      | { kind: "retained"; previous: SectionProperties; target: SectionProperties }
+      | {
+          kind: "retained";
+          previous: SectionProperties;
+          target: SectionProperties;
+        }
       | null;
   }) =>
-    | { status: "matched"; rangeCount: number; nextRevisionId: number; documentChanged: boolean }
+    | {
+        status: "matched";
+        rangeCount: number;
+        nextRevisionId: number;
+        documentChanged: boolean;
+      }
     | { status: "unalignable"; detail: string }
     | { status: "budget-exceeded" };
 };
 
-const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
+const comparisonAccessByReviewer = new WeakMap<
+  FolioDocxReviewer,
+  FolioDocxComparisonAccess
+>();
 
 const MAIN_STORY = Object.freeze({ type: "main" } as const);
 
-const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHandle): string =>
-  `${type}:${relationshipId}`;
+const headerFooterStoryKey = ({
+  type,
+  relationshipId,
+}: FolioHeaderFooterStoryHandle): string => `${type}:${relationshipId}`;
 
-const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): NoteKey => `${type}:${noteId}`;
+const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): NoteKey =>
+  `${type}:${noteId}`;
 
 /** The note story a {@link noteStoryKey} key names. */
 const noteStoryHandleOf = (key: string): FolioNoteStoryHandle | null => {
@@ -830,7 +919,9 @@ const referencedNoteKeys = (doc: PMNode): Set<string> => {
     for (const mark of node.marks) {
       if (mark.type.name !== "footnoteRef") continue;
       const { id, noteType } = expectFootnoteRefMarkAttrs(mark);
-      keys.add(`${noteType === "endnote" ? "endnote" : "footnote"}:${String(id)}`);
+      keys.add(
+        `${noteType === "endnote" ? "endnote" : "footnote"}:${String(id)}`,
+      );
     }
     return false;
   });
@@ -869,17 +960,27 @@ const secondaryStoryKey = (story: FolioSecondaryStoryHandle): string =>
 const editableStoryKey = (story: FolioEditableDocumentStoryHandle): string =>
   story.type === "main" ? "main" : secondaryStoryKey(story);
 
-export const isFolioReviewedView = (value: unknown): value is FolioReviewedView =>
+export const isFolioReviewedView = (
+  value: unknown,
+): value is FolioReviewedView =>
   FOLIO_REVIEWED_VIEWS.some((view) => view === value);
 
-export const isFolioResolvedReviewedView = (value: unknown): value is FolioResolvedReviewedView =>
+export const isFolioResolvedReviewedView = (
+  value: unknown,
+): value is FolioResolvedReviewedView =>
   FOLIO_RESOLVED_REVIEWED_VIEWS.some((view) => view === value);
 
-const resolveReviewedState = (state: EditorState, view: FolioReviewedView): EditorState => {
+const resolveReviewedState = (
+  state: EditorState,
+  view: FolioReviewedView,
+): EditorState => {
   if (view === "current-markup") {
     return state;
   }
-  return resolveAllChangesInHeadlessState(state, view === "original" ? "reject" : "accept");
+  return resolveAllChangesInHeadlessState(
+    state,
+    view === "original" ? "reject" : "accept",
+  );
 };
 
 /**
@@ -911,7 +1012,10 @@ const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
     getDocumentNumbering(state),
   );
 
-const formatStorySnapshotForLLM = (snapshot: FolioAIEditSnapshot, annotated: boolean): string => {
+const formatStorySnapshotForLLM = (
+  snapshot: FolioAIEditSnapshot,
+  annotated: boolean,
+): string => {
   // A reading surface shows content. The snapshot also carries the document's
   // blank paragraphs, which are structure rather than something to read.
   const blocks = snapshot.blocks.filter(isFolioAIContentBlock);
@@ -1036,7 +1140,8 @@ const formatBlockLine = (block: FolioAIBlock, text: string): string => {
   return `${label} ${text}`;
 };
 
-const formatBlockForLLM = (block: FolioAIBlock): string => formatBlockLine(block, block.text);
+const formatBlockForLLM = (block: FolioAIBlock): string =>
+  formatBlockLine(block, block.text);
 
 /**
  * The level the snapshot already classified. Scraping a digit out of the style
@@ -1090,8 +1195,14 @@ export class FolioDocxReviewer {
   private finalSectionPropertiesOverride: SectionProperties | undefined;
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
-  private readonly secondaryStoryStates = new Map<string, FolioSecondaryStoryState>();
-  private readonly removedHeaderFooterStories = new Map<string, FolioHeaderFooterStoryHandle>();
+  private readonly secondaryStoryStates = new Map<
+    string,
+    FolioSecondaryStoryState
+  >();
+  private readonly removedHeaderFooterStories = new Map<
+    string,
+    FolioHeaderFooterStoryHandle
+  >();
   /** Notes whose reference a resolution removed: a note exists only through its reference. */
   private readonly removedNoteStories = new Map<string, FolioNoteStoryHandle>();
   private readonly sectionReferenceRemovals: RemovedSectionReference[] = [];
@@ -1099,11 +1210,15 @@ export class FolioDocxReviewer {
   private readonly importedMedia = new Map<string, MediaFile>();
   private readonly importedHeaders = new Map<string, HeaderFooter>();
   private readonly importedFooters = new Map<string, HeaderFooter>();
-  private readonly resolvedStoryExpectations = new Map<string, FolioResolvedStoryExpectation>();
+  private readonly resolvedStoryExpectations = new Map<
+    string,
+    FolioResolvedStoryExpectation
+  >();
   private readonly createdComments: Comment[] = [];
   /** Comments the body anchored when it was loaded, read as the editor projects it. */
   private readonly loadedMainCommentIds: ReadonlySet<number>;
-  private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
+  private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] =
+    [];
   private readonly pendingSuggestions = new FolioPendingSuggestionRegistry();
   /**
    * Resolved-state overrides recorded by {@link resolveComment}, keyed by
@@ -1125,29 +1240,43 @@ export class FolioDocxReviewer {
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
-    seedCommentAllocator(createCommentIdAllocator(), args.baseDocument.package.document.comments, {
-      state: args.state,
-    });
+    seedCommentAllocator(
+      createCommentIdAllocator(),
+      args.baseDocument.package.document.comments,
+      {
+        state: args.state,
+      },
+    );
     this.loadedMainCommentIds = anchoredCommentIdsInProseDoc(args.state.doc);
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
-        stageTerminalTableReviewCarrier: (target) => this.stageTerminalTableReviewCarrier(target),
+        stageTerminalTableReviewCarrier: (target) =>
+          this.stageTerminalTableReviewCarrier(target),
         stageTargetStyles: (options) => this.stageTargetStyles(options),
         createComparisonHeaderFooter: (source, story) =>
           this.createComparisonHeaderFooter(source, story),
         finalSectionProperties: () => this.currentFinalSectionProperties(),
         stageFinalSectionProperties: ({ target, previous, revision }) =>
           this.stageFinalSectionProperties({ target, previous, revision }),
-        stageMappedSectionBoundaries: (options) => this.stageMappedSectionBoundaries(options),
+        stageMappedSectionBoundaries: (options) =>
+          this.stageMappedSectionBoundaries(options),
         matchInlineAtoms: ({ story, ...options }) => {
           const state = this.getEditableStoryState(story);
-          if (!state) return panic("A compared story lost its editable state", { story });
-          const result = matchInlineAtoms({ ...options, state, author: this.author });
+          if (!state)
+            return panic("A compared story lost its editable state", { story });
+          const result = matchInlineAtoms({
+            ...options,
+            state,
+            author: this.author,
+          });
           switch (result.status) {
             case "matched":
               if (result.transaction.docChanged) {
-                this.setEditableStoryState(story, state.apply(result.transaction));
+                this.setEditableStoryState(
+                  story,
+                  state.apply(result.transaction),
+                );
               }
               return {
                 status: "matched",
@@ -1161,18 +1290,28 @@ export class FolioDocxReviewer {
               return result;
             default: {
               const unreachable: never = result;
-              return panic("Unhandled inline atom result", { result: unreachable });
+              return panic("Unhandled inline atom result", {
+                result: unreachable,
+              });
             }
           }
         },
         matchInlineProvenance: ({ story, ...options }) => {
           const state = this.getEditableStoryState(story);
-          if (!state) return panic("A compared story lost its editable state", { story });
-          const result = matchInlineProvenance({ ...options, state, author: this.author });
+          if (!state)
+            return panic("A compared story lost its editable state", { story });
+          const result = matchInlineProvenance({
+            ...options,
+            state,
+            author: this.author,
+          });
           switch (result.status) {
             case "matched":
               if (result.transaction.docChanged) {
-                this.setEditableStoryState(story, state.apply(result.transaction));
+                this.setEditableStoryState(
+                  story,
+                  state.apply(result.transaction),
+                );
               }
               return {
                 status: "matched",
@@ -1186,14 +1325,18 @@ export class FolioDocxReviewer {
               return result;
             default: {
               const unreachable: never = result;
-              return panic("Unhandled inline provenance result", { result: unreachable });
+              return panic("Unhandled inline provenance result", {
+                result: unreachable,
+              });
             }
           }
         },
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
-        snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
+        snapshotReviewedStory: (options) =>
+          this.snapshotReviewedStoryInternal(options),
         numberingDefinitions: () => this.baseDocument.package.numbering,
-        styleDefinitions: () => this.importedStyles ?? this.baseDocument.package.styles,
+        styleDefinitions: () =>
+          this.importedStyles ?? this.baseDocument.package.styles,
         planTargetNumberingReferences: (target, references) =>
           this.planTargetNumberingReferences(target, references),
         stageTargetNumbering: (target, references, remappedNumIds) =>
@@ -1214,12 +1357,15 @@ export class FolioDocxReviewer {
     const sourceStylesById = new Map(
       sourcePackage.styles?.styles.map((style) => [style.styleId, style]),
     );
-    const destinationStyleIds = new Set(destinationStyles?.styles.map(({ styleId }) => styleId));
+    const destinationStyleIds = new Set(
+      destinationStyles?.styles.map(({ styleId }) => styleId),
+    );
     const collect = (document: PMNode): Set<string> => {
       const references = new Set<string>();
       document.descendants((node) => {
         const styleId = node.attrs["styleId"];
-        if (typeof styleId === "string" && styleId.length > 0) references.add(styleId);
+        if (typeof styleId === "string" && styleId.length > 0)
+          references.add(styleId);
         for (const mark of node.marks) {
           if (mark.type.name === "characterStyle")
             references.add(expectCharacterStyleMarkAttrs(mark).styleId);
@@ -1242,7 +1388,9 @@ export class FolioDocxReviewer {
       canonicalJson(sourcePackage.styles?.docDefaults) ===
         canonicalJson(destinationStyles?.docDefaults) &&
       canonicalJson(sourcePackage.theme) === canonicalJson(destination.theme);
-    const resourceSnapshots = contextsMatch ? snapshots : importedHeaderFooterSnapshots;
+    const resourceSnapshots = contextsMatch
+      ? snapshots
+      : importedHeaderFooterSnapshots;
     const referencedStyleIds = new Set<string>();
     let materializeDefaultParagraphStyle = false;
     for (const snapshot of resourceSnapshots) {
@@ -1273,17 +1421,35 @@ export class FolioDocxReviewer {
       }
     }
     // Without a numbering import, style definitions retain their source references.
-    let styleNumberingReferenceMap = numberingReferenceMap ?? new Map<number, number>();
+    let styleNumberingReferenceMap =
+      numberingReferenceMap ?? new Map<number, number>();
     if (numberingReferenceMap !== undefined) {
       const references = styleClosureNumberingReferences(sourcePackage.styles, [
         ...referencedStyleIds,
       ]);
-      const remaining = references.filter(({ numId }) => !numberingReferenceMap.has(numId));
-      const planned = this.planTargetNumberingReferences(sourcePackage.numbering, remaining);
+      const remaining = references.filter(
+        ({ numId }) => !numberingReferenceMap.has(numId),
+      );
+      const planned = this.planTargetNumberingReferences(
+        sourcePackage.numbering,
+        remaining,
+      );
       if (planned === null)
-        return { status: "unalignable", detail: "a referenced style has undefined numbering" };
-      styleNumberingReferenceMap = new Map([...planned, ...numberingReferenceMap]);
-      if (this.stageTargetNumbering(sourcePackage.numbering, remaining, planned) === "conflict") {
+        return {
+          status: "unalignable",
+          detail: "a referenced style has undefined numbering",
+        };
+      styleNumberingReferenceMap = new Map([
+        ...planned,
+        ...numberingReferenceMap,
+      ]);
+      if (
+        this.stageTargetNumbering(
+          sourcePackage.numbering,
+          remaining,
+          planned,
+        ) === "conflict"
+      ) {
         return {
           status: "unalignable",
           detail: "a referenced style's numbering could not be imported",
@@ -1321,15 +1487,24 @@ export class FolioDocxReviewer {
    */
   private stageTerminalTableReviewCarrier(target: PMNode): boolean {
     const baseTerminalTable = this.state.doc.lastChild;
-    if (baseTerminalTable?.type.name !== "table" || target.lastChild?.type.name !== "paragraph") {
+    if (
+      baseTerminalTable?.type.name !== "table" ||
+      target.lastChild?.type.name !== "paragraph"
+    ) {
       return false;
     }
     const paragraphType = this.state.schema.nodes["paragraph"];
     if (!paragraphType) {
-      return panic("The schema has no paragraph node for a terminal-table review carrier");
+      return panic(
+        "The schema has no paragraph node for a terminal-table review carrier",
+      );
     }
-    const carrier = paragraphType.create({ reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE });
-    this.state = this.state.apply(this.state.tr.insert(this.state.doc.content.size, carrier));
+    const carrier = paragraphType.create({
+      reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE,
+    });
+    this.state = this.state.apply(
+      this.state.tr.insert(this.state.doc.content.size, carrier),
+    );
     return true;
   }
 
@@ -1340,17 +1515,30 @@ export class FolioDocxReviewer {
   ): StageTargetNumberingResult {
     if (references.length === 0) return "unchanged";
     if (!target) return "conflict";
-    const current = this.baseDocument.package.numbering ?? { abstractNums: [], nums: [] };
+    const current = this.baseDocument.package.numbering ?? {
+      abstractNums: [],
+      nums: [],
+    };
     const nums = new Map(current.nums.map((entry) => [entry.numId, entry]));
-    const abstracts = new Map(current.abstractNums.map((entry) => [entry.abstractNumId, entry]));
-    const targetNums = new Map(target.nums.map((entry) => [entry.numId, entry]));
+    const abstracts = new Map(
+      current.abstractNums.map((entry) => [entry.abstractNumId, entry]),
+    );
+    const targetNums = new Map(
+      target.nums.map((entry) => [entry.numId, entry]),
+    );
     const targetAbstracts = new Map(
       target.abstractNums.map((entry) => [entry.abstractNumId, entry]),
     );
     const levelsByNumId = referencedNumberingLevelsByNumId({ references });
     const importedAbstractIds = new Map<number, number>();
-    const existingAbstractIds = [...abstracts.keys(), ...targetAbstracts.keys()];
-    const abstractIds = createNumberingIdAllocator("abstract", existingAbstractIds);
+    const existingAbstractIds = [
+      ...abstracts.keys(),
+      ...targetAbstracts.keys(),
+    ];
+    const abstractIds = createNumberingIdAllocator(
+      "abstract",
+      existingAbstractIds,
+    );
     for (const numId of levelsByNumId.keys()) {
       const targetNum = targetNums.get(numId);
       if (!targetNum) return "conflict";
@@ -1376,13 +1564,20 @@ export class FolioDocxReviewer {
       if (abstractNumId === undefined) {
         abstractNumId = targetAbstract.abstractNumId;
         const collision = abstracts.get(abstractNumId);
-        if (collision && canonicalJson(collision) !== canonicalJson(targetAbstract)) {
+        if (
+          collision &&
+          canonicalJson(collision) !== canonicalJson(targetAbstract)
+        ) {
           abstractNumId = abstractIds.next();
         }
         importedAbstractIds.set(targetAbstract.abstractNumId, abstractNumId);
         abstracts.set(abstractNumId, { ...targetAbstract, abstractNumId });
       }
-      nums.set(stagedNumId, { ...targetNum, numId: stagedNumId, abstractNumId });
+      nums.set(stagedNumId, {
+        ...targetNum,
+        numId: stagedNumId,
+        abstractNumId,
+      });
     }
     if (nums.size === current.nums.length) return "unchanged";
     const numbering = {
@@ -1404,9 +1599,14 @@ export class FolioDocxReviewer {
   ): ReadonlyMap<number, number> | null {
     if (references.length === 0) return new Map();
     if (!target) return null;
-    const current = this.baseDocument.package.numbering ?? { abstractNums: [], nums: [] };
+    const current = this.baseDocument.package.numbering ?? {
+      abstractNums: [],
+      nums: [],
+    };
     const nums = new Map(current.nums.map((entry) => [entry.numId, entry]));
-    const targetNums = new Map(target.nums.map((entry) => [entry.numId, entry]));
+    const targetNums = new Map(
+      target.nums.map((entry) => [entry.numId, entry]),
+    );
     const targetAbstracts = new Map(
       target.abstractNums.map((entry) => [entry.abstractNumId, entry]),
     );
@@ -1416,11 +1616,20 @@ export class FolioDocxReviewer {
     const remapped = new Map<number, number>();
     for (const numId of levelsByNumId.keys()) {
       const targetNum = targetNums.get(numId);
-      const targetAbstract = targetNum ? targetAbstracts.get(targetNum.abstractNumId) : undefined;
+      const targetAbstract = targetNum
+        ? targetAbstracts.get(targetNum.abstractNumId)
+        : undefined;
       if (!targetNum || !targetAbstract) return null;
       const existingNum = nums.get(numId);
       if (!existingNum) continue;
-      if (!sameReferencedNumberingLevels({ current, target, numId, levelsByNumId })) {
+      if (
+        !sameReferencedNumberingLevels({
+          current,
+          target,
+          numId,
+          levelsByNumId,
+        })
+      ) {
         remapped.set(numId, numberingIds.next());
       }
     }
@@ -1482,27 +1691,36 @@ export class FolioDocxReviewer {
 
   /** Export staged AI operations for storage by the host, outside the DOCX. */
   exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
-    const active = new Set(getSuggestions(this.state).map(({ suggestionId }) => suggestionId));
+    const active = new Set(
+      getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
+    );
     for (const entry of this.secondaryStoryStates.values()) {
-      for (const { suggestionId } of getSuggestions(entry.state)) active.add(suggestionId);
+      for (const { suggestionId } of getSuggestions(entry.state))
+        active.add(suggestionId);
     }
     return this.pendingSuggestions.exportPendingSuggestions({
       activeSuggestionIds: active,
       snapshotForStory: (story, commentIds) => {
         const state = this.getEditableStoryState(story);
-        return state ? createPendingSuggestionSourceSnapshot(state, commentIds) : null;
+        return state
+          ? createPendingSuggestionSourceSnapshot(state, commentIds)
+          : null;
       },
     });
   }
 
   /** Validate saved proposals against this document before restaging them. */
-  loadPendingSuggestions(records: readonly unknown[]): FolioPendingSuggestionLoadResult[] {
+  loadPendingSuggestions(
+    records: readonly unknown[],
+  ): FolioPendingSuggestionLoadResult[] {
     return this.pendingSuggestions.loadPendingSuggestions({
       records,
       snapshotForStory: (story) => this.snapshotStory(story),
       sourceSnapshotForStory: (story, commentIds) => {
         const state = this.getEditableStoryState(story);
-        return state ? createPendingSuggestionSourceSnapshot(state, commentIds) : null;
+        return state
+          ? createPendingSuggestionSourceSnapshot(state, commentIds)
+          : null;
       },
       apply: (record, snapshot) => {
         const result = this.applyDocumentOperationsInternal({
@@ -1520,9 +1738,12 @@ export class FolioDocxReviewer {
         return { applied: result.applied, skipped: result.skipped };
       },
       activeSuggestionIds: () => {
-        const active = new Set(getSuggestions(this.state).map(({ suggestionId }) => suggestionId));
+        const active = new Set(
+          getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
+        );
         for (const entry of this.secondaryStoryStates.values()) {
-          for (const { suggestionId } of getSuggestions(entry.state)) active.add(suggestionId);
+          for (const { suggestionId } of getSuggestions(entry.state))
+            active.add(suggestionId);
         }
         return active;
       },
@@ -1543,12 +1764,19 @@ export class FolioDocxReviewer {
   readNumberingDefinitions(): FolioNumberingLevel[] {
     // Including the lists operations started, which only their paragraphs define so far.
     return numberingLevelsOf(
-      completeNumberingForDoc(this.baseDocument.package.numbering, this.state.doc),
-    ).toSorted((left, right) => left.numId - right.numId || left.level - right.level);
+      completeNumberingForDoc(
+        this.baseDocument.package.numbering,
+        this.state.doc,
+      ),
+    ).toSorted(
+      (left, right) => left.numId - right.numId || left.level - right.level,
+    );
   }
 
   /** Return parsed package metadata without exposing the mutable document model. */
-  getDocumentProperties(): Readonly<NonNullable<Document["package"]["properties"]>> | null {
+  getDocumentProperties(): Readonly<
+    NonNullable<Document["package"]["properties"]>
+  > | null {
     const properties = this.baseDocument.package.properties;
     if (!properties) {
       return null;
@@ -1565,7 +1793,9 @@ export class FolioDocxReviewer {
   }
 
   /** Snapshot one editable story into stable, operation-ready blocks. */
-  snapshotStory(story: FolioEditableDocumentStoryHandle): FolioAIEditSnapshot | null {
+  snapshotStory(
+    story: FolioEditableDocumentStoryHandle,
+  ): FolioAIEditSnapshot | null {
     const state = this.getEditableStoryState(story);
     return state ? createStateSnapshot(state) : null;
   }
@@ -1582,7 +1812,9 @@ export class FolioDocxReviewer {
       });
     }
     const sourceState = this.getEditableStoryState(story);
-    return sourceState ? createStateSnapshot(resolveReviewedState(sourceState, view)) : null;
+    return sourceState
+      ? createStateSnapshot(resolveReviewedState(sourceState, view))
+      : null;
   }
 
   private projectComparisonStoriesInternal(
@@ -1592,7 +1824,8 @@ export class FolioDocxReviewer {
     const ids = new Set<number>();
     let present = false;
     if (mode === "with-revision-census") {
-      for (const change of this.currentFinalSectionProperties()?.propertyChanges ?? []) {
+      for (const change of this.currentFinalSectionProperties()
+        ?.propertyChanges ?? []) {
         ids.add(change.info.id);
         present = true;
       }
@@ -1614,7 +1847,10 @@ export class FolioDocxReviewer {
     for (const handle of handles) {
       stories.push({
         handle,
-        snapshot: this.resolveReviewedStorySnapshotInternal({ story: handle, view: "final" }),
+        snapshot: this.resolveReviewedStorySnapshotInternal({
+          story: handle,
+          view: "final",
+        }),
       });
     }
     return { stories, revisions: { ids: [...ids], present } };
@@ -1641,7 +1877,9 @@ export class FolioDocxReviewer {
       });
     }
     const sourceState = this.getEditableStoryState(story);
-    return sourceState ? folioStoryTables(resolveReviewedState(sourceState, view).doc) : [];
+    return sourceState
+      ? folioStoryTables(resolveReviewedState(sourceState, view).doc)
+      : [];
   }
 
   /**
@@ -1684,7 +1922,9 @@ export class FolioDocxReviewer {
   }
 
   /** Read one story through an immutable reviewed-view projection. */
-  readReviewedStory(options: FolioReadReviewedStoryOptions = {}): FolioReviewedStory | null {
+  readReviewedStory(
+    options: FolioReadReviewedStoryOptions = {},
+  ): FolioReviewedStory | null {
     const story = options.story ?? MAIN_STORY;
     const view = options.view ?? "final";
     const snapshot = this.snapshotReviewedStoryInternal({ story, view });
@@ -1701,7 +1941,10 @@ export class FolioDocxReviewer {
   }
 
   /** Resolve one editable story to its original or final state. */
-  resolveReviewedStory({ story = MAIN_STORY, view }: FolioResolveReviewedStoryOptions): boolean {
+  resolveReviewedStory({
+    story = MAIN_STORY,
+    view,
+  }: FolioResolveReviewedStoryOptions): boolean {
     return this.resolveReviewedStorySnapshotInternal({ story, view }) !== null;
   }
 
@@ -1711,7 +1954,8 @@ export class FolioDocxReviewer {
   }: FolioResolveReviewedStoryOptions): FolioAIEditSnapshot | null {
     if (!isFolioResolvedReviewedView(view)) {
       throw new UnsupportedFolioReviewedViewError({
-        message: "Only original and final views can replace editable story state.",
+        message:
+          "Only original and final views can replace editable story state.",
         receivedView: view,
       });
     }
@@ -1748,7 +1992,9 @@ export class FolioDocxReviewer {
         mode: options.mode ?? "tracked-changes",
       },
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
-      ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
+      ...(options.revisionStamp !== undefined && {
+        revisionStamp: options.revisionStamp,
+      }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       undefinedReferences: options.undefinedReferences,
       createUndoEntry: false,
@@ -1770,7 +2016,9 @@ export class FolioDocxReviewer {
       story: MAIN_STORY,
       batch,
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
-      ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
+      ...(options.revisionStamp !== undefined && {
+        revisionStamp: options.revisionStamp,
+      }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       undefinedReferences: options.undefinedReferences,
       createUndoEntry: true,
@@ -1806,7 +2054,8 @@ export class FolioDocxReviewer {
     options: ApplyDocumentOperationsInternalOptions,
   ): FolioDocumentOperationResult {
     // A comparison states each note's own changes as a story of its own.
-    if (noteReferenceEditsAllowed()) return this.applyDocumentOperationsToStoryState(options);
+    if (noteReferenceEditsAllowed())
+      return this.applyDocumentOperationsToStoryState(options);
     return this.withNotesFollowingReferences(() =>
       this.applyDocumentOperationsToStoryState(options),
     );
@@ -1867,9 +2116,13 @@ export class FolioDocxReviewer {
     // A run whose result was refused allocated comments that no range in the
     // story names; only the applied operations' comments are the batch's.
     const appliedCommentIds = new Set(
-      result.applied.flatMap(({ commentId }) => (commentId === undefined ? [] : [commentId])),
+      result.applied.flatMap(({ commentId }) =>
+        commentId === undefined ? [] : [commentId],
+      ),
     );
-    const createdByBatch = this.createdComments.splice(createdCommentsLengthBefore);
+    const createdByBatch = this.createdComments.splice(
+      createdCommentsLengthBefore,
+    );
     this.createdComments.push(
       ...createdByBatch.filter((comment) => appliedCommentIds.has(comment.id)),
     );
@@ -1912,7 +2165,9 @@ export class FolioDocxReviewer {
     undoHandle: FolioDocumentOperationUndoHandle,
   ): FolioDocumentOperationUndoResult {
     const entryIndex = this.documentOperationUndoEntries.findIndex(
-      (entry) => entry.undoHandle.type === undoHandle.type && entry.undoHandle.id === undoHandle.id,
+      (entry) =>
+        entry.undoHandle.type === undoHandle.type &&
+        entry.undoHandle.id === undoHandle.id,
     );
     if (entryIndex === -1) {
       return { status: "rejected", undoHandle, reason: "unknownHandle" };
@@ -1962,7 +2217,10 @@ export class FolioDocxReviewer {
    * (clean) output flattens tracked changes and is unchanged.
    */
   getContentAsText(options: FolioGetContentAsTextOptions = {}): string {
-    return formatStorySnapshotForLLM(this.snapshot(), options.annotated === true);
+    return formatStorySnapshotForLLM(
+      this.snapshot(),
+      options.annotated === true,
+    );
   }
 
   /**
@@ -1986,8 +2244,13 @@ export class FolioDocxReviewer {
         case "header":
         case "footer": {
           const source = this.getHeaderFooterStory(handle);
-          if (!source) panic("A listed document story no longer exists", { story: handle });
-          const roles = placements.byPart.get(`${handle.type}:${handle.relationshipId}`);
+          if (!source)
+            panic("A listed document story no longer exists", {
+              story: handle,
+            });
+          const roles = placements.byPart.get(
+            `${handle.type}:${handle.relationshipId}`,
+          );
           const label = roles
             ? describePlacements(roles, placements.sectionCount)
             : source.hdrFtrType;
@@ -2036,7 +2299,9 @@ export class FolioDocxReviewer {
     }
     return handles.filter((handle) => {
       if (handle.type === "header" || handle.type === "footer") {
-        return !this.removedHeaderFooterStories.has(headerFooterStoryKey(handle));
+        return !this.removedHeaderFooterStories.has(
+          headerFooterStoryKey(handle),
+        );
       }
       return true;
     });
@@ -2060,7 +2325,8 @@ export class FolioDocxReviewer {
       return (
         stories.find(
           ({ handle: candidate }) =>
-            candidate.type === handle.type && candidate.relationshipId === handle.relationshipId,
+            candidate.type === handle.type &&
+            candidate.relationshipId === handle.relationshipId,
         ) ?? null
       );
     }
@@ -2083,14 +2349,16 @@ export class FolioDocxReviewer {
   getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[] {
     const changes = [
       ...getTrackedChangesFromDoc(this.state.doc),
-      ...(this.currentFinalSectionProperties()?.propertyChanges ?? []).map(({ info }) => ({
-        id: info.id,
-        type: "sectionPropertiesChanged" as const,
-        author: info.author,
-        date: info.date ?? null,
-        text: "",
-        blockId: null,
-      })),
+      ...(this.currentFinalSectionProperties()?.propertyChanges ?? []).map(
+        ({ info }) => ({
+          id: info.id,
+          type: "sectionPropertiesChanged" as const,
+          author: info.author,
+          date: info.date ?? null,
+          text: "",
+          blockId: null,
+        }),
+      ),
     ];
     if (!filter) return changes;
     return changes.filter(
@@ -2110,13 +2378,19 @@ export class FolioDocxReviewer {
     const anchors = this.commentAnchors();
     const covered = new Set<number>();
     for (const story of this.listStoryHandlesInternal()) {
-      const doc = story.type === "main" ? this.state.doc : this.readSecondaryStoryDoc(story);
+      const doc =
+        story.type === "main"
+          ? this.state.doc
+          : this.readSecondaryStoryDoc(story);
       if (!doc) continue;
       for (const id of coveredCommentIdsInProseDoc(doc)) covered.add(id);
     }
     const definitions = this.withResolvedOverrides(
       this.keptCommentThreads(
-        [...(this.baseDocument.package.document.comments ?? []), ...this.createdComments],
+        [
+          ...(this.baseDocument.package.document.comments ?? []),
+          ...this.createdComments,
+        ],
         this.state,
         this.secondaryStoryStates.values(),
       ).filter(
@@ -2198,11 +2472,25 @@ export class FolioDocxReviewer {
       return null;
     }
     this.createdComments.push(reply);
-    this.anchorReplyInEditor({ parentId: reply.parentId ?? parentId, replyId: reply.id });
-    return { id: reply.id, author: reply.author, date: reply.date ?? null, text: input.text };
+    this.anchorReplyInEditor({
+      parentId: reply.parentId ?? parentId,
+      replyId: reply.id,
+    });
+    return {
+      id: reply.id,
+      author: reply.author,
+      date: reply.date ?? null,
+      text: input.text,
+    };
   }
 
-  private anchorReplyInEditor({ parentId, replyId }: { parentId: number; replyId: number }): void {
+  private anchorReplyInEditor({
+    parentId,
+    replyId,
+  }: {
+    parentId: number;
+    replyId: number;
+  }): void {
     for (const story of this.listStoryHandlesInternal()) {
       const state = this.getEditableStoryState(story);
       if (!state) continue;
@@ -2214,13 +2502,17 @@ export class FolioDocxReviewer {
       let to = 0;
       let referenceAt: number | null = null;
       state.doc.descendants((node, pos) => {
-        if (node.type === referenceNode && node.attrs["commentId"] === parentId) {
+        if (
+          node.type === referenceNode &&
+          node.attrs["commentId"] === parentId
+        ) {
           referenceAt ??= pos + node.nodeSize;
         }
         if (
           node.isInline &&
           node.marks.some(
-            (mark) => mark.type === commentMark && mark.attrs["commentId"] === parentId,
+            (mark) =>
+              mark.type === commentMark && mark.attrs["commentId"] === parentId,
           )
         ) {
           from ??= pos;
@@ -2230,8 +2522,15 @@ export class FolioDocxReviewer {
       if (referenceAt === null || from === null || from >= to) continue;
 
       let transaction = state.tr;
-      transaction = transaction.addMark(from, to, commentMark.create({ commentId: replyId }));
-      transaction = transaction.insert(referenceAt, referenceNode.create({ commentId: replyId }));
+      transaction = transaction.addMark(
+        from,
+        to,
+        commentMark.create({ commentId: replyId }),
+      );
+      transaction = transaction.insert(
+        referenceAt,
+        referenceNode.create({ commentId: replyId }),
+      );
       this.setEditableStoryState(story, state.apply(transaction));
       return;
     }
@@ -2249,7 +2548,10 @@ export class FolioDocxReviewer {
    * (`w15:done`) through the same channel `replyTo`-created comments use.
    * Returns `false` when no comment with that id exists.
    */
-  resolveComment(commentId: string, options: { resolved?: boolean } = {}): boolean {
+  resolveComment(
+    commentId: string,
+    options: { resolved?: boolean } = {},
+  ): boolean {
     const resolved = options.resolved ?? true;
     const existing = [
       ...(this.baseDocument.package.document.comments ?? []),
@@ -2284,12 +2586,21 @@ export class FolioDocxReviewer {
     if (final) records.push(final);
     const byPart = new Map<string, HeaderFooterPlacement[]>();
     for (const [index, record] of records.entries()) {
-      const place = (part: "header" | "footer", type: HeaderFooterType, rId: string): void => {
+      const place = (
+        part: "header" | "footer",
+        type: HeaderFooterType,
+        rId: string,
+      ): void => {
         const key = `${part}:${rId}`;
-        byPart.set(key, [...(byPart.get(key) ?? []), { type, section: index + 1 }]);
+        byPart.set(key, [
+          ...(byPart.get(key) ?? []),
+          { type, section: index + 1 },
+        ]);
       };
-      for (const { type, rId } of record.headerReferences ?? []) place("header", type, rId);
-      for (const { type, rId } of record.footerReferences ?? []) place("footer", type, rId);
+      for (const { type, rId } of record.headerReferences ?? [])
+        place("header", type, rId);
+      for (const { type, rId } of record.footerReferences ?? [])
+        place("footer", type, rId);
     }
     return { byPart, sectionCount: records.length };
   }
@@ -2317,7 +2628,11 @@ export class FolioDocxReviewer {
       propertyChanges: [
         {
           type: "sectionPropertyChange",
-          info: { id: revision.idSeed, author: this.author, date: revision.date },
+          info: {
+            id: revision.idSeed,
+            author: this.author,
+            date: revision.date,
+          },
           previousProperties: previous,
           ...(previousReferences !== undefined && { previousReferences }),
           currentProperties: target,
@@ -2344,10 +2659,19 @@ export class FolioDocxReviewer {
       target: SectionProperties;
     }) =>
       | { kind: "inserted"; target: SectionProperties }
-      | { kind: "retained"; previous: SectionProperties; target: SectionProperties }
+      | {
+          kind: "retained";
+          previous: SectionProperties;
+          target: SectionProperties;
+        }
       | null;
   }):
-    | { status: "matched"; rangeCount: number; nextRevisionId: number; documentChanged: boolean }
+    | {
+        status: "matched";
+        rangeCount: number;
+        nextRevisionId: number;
+        documentChanged: boolean;
+      }
     | { status: "unalignable"; detail: string }
     | { status: "budget-exceeded" } {
     const result = stageMappedSectionBoundaryProperties({
@@ -2370,7 +2694,10 @@ export class FolioDocxReviewer {
     };
   }
 
-  private resolveFinalSectionProperties(mode: "accept" | "reject", id: number): number {
+  private resolveFinalSectionProperties(
+    mode: "accept" | "reject",
+    id: number,
+  ): number {
     const current = this.currentFinalSectionProperties();
     const changes = current?.propertyChanges;
     const targetIndex = changes?.findIndex(({ info }) => info.id === id);
@@ -2391,7 +2718,8 @@ export class FolioDocxReviewer {
         previousReferences: change.previousReferences,
       }),
     );
-    let resolvedProperties: SectionProperties = previousStates[0] ?? liveProperties;
+    let resolvedProperties: SectionProperties =
+      previousStates[0] ?? liveProperties;
     const remaining = [];
     for (const [index, change] of changes.entries()) {
       const nextProperties = previousStates[index + 1] ?? liveProperties;
@@ -2431,7 +2759,9 @@ export class FolioDocxReviewer {
    */
   acceptChange(target: FolioReviewChange | number): boolean {
     return this.resolveWithSectionReferenceHistory(() =>
-      this.withNotesFollowingReferences(() => this.acceptChangeInternal(target)),
+      this.withNotesFollowingReferences(() =>
+        this.acceptChangeInternal(target),
+      ),
     );
   }
 
@@ -2447,7 +2777,8 @@ export class FolioDocxReviewer {
     }
     let bodyChanged = false;
     for (const memberId of ids) {
-      bodyChanged = this.runCommand(acceptAIEditRevision(memberId)) || bodyChanged;
+      bodyChanged =
+        this.runCommand(acceptAIEditRevision(memberId)) || bodyChanged;
     }
     const sectionChanged = this.resolveFinalSectionProperties("accept", id) > 0;
     return bodyChanged || sectionChanged;
@@ -2459,7 +2790,9 @@ export class FolioDocxReviewer {
    */
   rejectChange(target: FolioReviewChange | number): boolean {
     return this.resolveWithSectionReferenceHistory(() =>
-      this.withNotesFollowingReferences(() => this.rejectChangeInternal(target)),
+      this.withNotesFollowingReferences(() =>
+        this.rejectChangeInternal(target),
+      ),
     );
   }
 
@@ -2468,29 +2801,43 @@ export class FolioDocxReviewer {
     const ids = getTrackedChangeGroupIdsFromDoc(this.state.doc, id);
     // A suggestion is rejected whole, node flags included.
     const suggestionId = suggestionIdOfRevision(this.state, id);
-    if (suggestionId !== null && this.runCommand(rejectSuggestion(suggestionId))) {
+    if (
+      suggestionId !== null &&
+      this.runCommand(rejectSuggestion(suggestionId))
+    ) {
       return true;
     }
     let bodyChanged = false;
     for (const memberId of ids) {
-      bodyChanged = this.runCommand(rejectAIEditRevision(memberId)) || bodyChanged;
+      bodyChanged =
+        this.runCommand(rejectAIEditRevision(memberId)) || bodyChanged;
     }
     const sectionChanged = this.resolveFinalSectionProperties("reject", id) > 0;
     return bodyChanged || sectionChanged;
   }
 
   /** Convert one pending suggestion into an ordinary tracked change. */
-  acceptSuggestion(suggestionId: string, options?: { author?: string }): boolean {
+  acceptSuggestion(
+    suggestionId: string,
+    options?: { author?: string },
+  ): boolean {
     return this.resolveWithSectionReferenceHistory(() => {
       let accepted = false;
       for (const handle of this.listStoryHandlesInternal()) {
         const state = this.getEditableStoryState(handle);
-        if (!state || !getSuggestions(state).some((entry) => entry.suggestionId === suggestionId)) {
+        if (
+          !state ||
+          !getSuggestions(state).some(
+            (entry) => entry.suggestionId === suggestionId,
+          )
+        ) {
           continue;
         }
         accepted =
           this.runStoryCommand(
-            acceptSuggestion(suggestionId, { author: options?.author ?? this.author }),
+            acceptSuggestion(suggestionId, {
+              author: options?.author ?? this.author,
+            }),
             handle,
           ) || accepted;
       }
@@ -2504,10 +2851,17 @@ export class FolioDocxReviewer {
       let rejected = false;
       for (const handle of this.listStoryHandlesInternal()) {
         const state = this.getEditableStoryState(handle);
-        if (!state || !getSuggestions(state).some((entry) => entry.suggestionId === suggestionId)) {
+        if (
+          !state ||
+          !getSuggestions(state).some(
+            (entry) => entry.suggestionId === suggestionId,
+          )
+        ) {
           continue;
         }
-        rejected = this.runStoryCommand(rejectSuggestion(suggestionId), handle) || rejected;
+        rejected =
+          this.runStoryCommand(rejectSuggestion(suggestionId), handle) ||
+          rejected;
       }
       return rejected;
     });
@@ -2524,14 +2878,18 @@ export class FolioDocxReviewer {
    */
   acceptAll(): number {
     return this.resolveWithSectionReferenceHistory(
-      () => this.resolveEveryStory("accept") + this.resolveEveryFinalSectionChange("accept"),
+      () =>
+        this.resolveEveryStory("accept") +
+        this.resolveEveryFinalSectionChange("accept"),
     );
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): number {
     return this.resolveWithSectionReferenceHistory(
-      () => this.resolveEveryStory("reject") + this.resolveEveryFinalSectionChange("reject"),
+      () =>
+        this.resolveEveryStory("reject") +
+        this.resolveEveryFinalSectionChange("reject"),
     );
   }
 
@@ -2543,7 +2901,10 @@ export class FolioDocxReviewer {
     const result = resolve();
     const removedEndpointReferences =
       getTrackedSectionEndpointRemoval(this.state)?.removedReferences ?? [];
-    if (before.revisionRelationships.size > 0 || removedEndpointReferences.length > 0) {
+    if (
+      before.revisionRelationships.size > 0 ||
+      removedEndpointReferences.length > 0
+    ) {
       const after = captureSectionReferenceInventory(
         this.state.doc,
         this.currentFinalSectionProperties(),
@@ -2554,12 +2915,19 @@ export class FolioDocxReviewer {
         if (
           after.references.some(
             ({ part, relationshipId }) =>
-              part === reference.part && relationshipId === reference.relationshipId,
+              part === reference.part &&
+              relationshipId === reference.relationshipId,
           )
         )
           continue;
-        const handle = { type: reference.part, relationshipId: reference.relationshipId };
-        this.removedHeaderFooterStories.set(headerFooterStoryKey(handle), handle);
+        const handle = {
+          type: reference.part,
+          relationshipId: reference.relationshipId,
+        };
+        this.removedHeaderFooterStories.set(
+          headerFooterStoryKey(handle),
+          handle,
+        );
       }
     }
     return result;
@@ -2582,7 +2950,9 @@ export class FolioDocxReviewer {
   }
 
   private resolveEveryStory(mode: "accept" | "reject"): number {
-    return this.withNotesFollowingReferences(() => this.resolveEveryStoryOnce(mode));
+    return this.withNotesFollowingReferences(() =>
+      this.resolveEveryStoryOnce(mode),
+    );
   }
 
   /**
@@ -2600,11 +2970,15 @@ export class FolioDocxReviewer {
     // A reference back in the body (a reject after an accept) brings its note back.
     for (const key of referencedAfter) this.removedNoteStories.delete(key);
     const unreferenced = new Set(
-      [...referencedNoteKeys(before)].filter((key) => !referencedAfter.has(key)),
+      [...referencedNoteKeys(before)].filter(
+        (key) => !referencedAfter.has(key),
+      ),
     );
     // A note another story still refers to stays.
     const referencedElsewhere =
-      unreferenced.size > 0 ? this.noteKeysReferencedOutsideBody(unreferenced) : new Set<string>();
+      unreferenced.size > 0
+        ? this.noteKeysReferencedOutsideBody(unreferenced)
+        : new Set<string>();
     for (const key of unreferenced) {
       if (referencedElsewhere.has(key)) continue;
       const handle = noteStoryHandleOf(key);
@@ -2616,7 +2990,8 @@ export class FolioDocxReviewer {
       const state = handle ? this.getEditableStoryState(handle) : null;
       const reference = rejectedDeletions.get(key);
       // Only what went with the reference comes back, not the note's own deletions.
-      const revisions = state && reference ? noteDeletionRevisions(state.doc, reference) : [];
+      const revisions =
+        state && reference ? noteDeletionRevisions(state.doc, reference) : [];
       if (handle && revisions.length > 0) {
         this.runStoryCommand(rejectAIEditRevision(revisions), handle);
       }
@@ -2642,7 +3017,8 @@ export class FolioDocxReviewer {
         continue;
       }
       const handle = noteStoryHandleOf(key);
-      if (!handle || this.removedNoteStories.has(noteStoryKey(handle))) continue;
+      if (!handle || this.removedNoteStories.has(noteStoryKey(handle)))
+        continue;
       this.runStoryCommand((storyState, dispatch) => {
         const transaction = deleteNoteWithReference(storyState.tr, reference);
         if (!transaction.docChanged) return false;
@@ -2656,7 +3032,9 @@ export class FolioDocxReviewer {
    * The notes a story other than the body refers to (a header, a footer, a
    * comment, another note), leaving out references inside the `skipped` notes.
    */
-  private noteKeysReferencedOutsideBody(skipped: ReadonlySet<string>): Set<string> {
+  private noteKeysReferencedOutsideBody(
+    skipped: ReadonlySet<string>,
+  ): Set<string> {
     const keys = new Set<string>(
       noteKeysReferencedIn(this.baseDocument.package.document.comments ?? []),
     );
@@ -2669,7 +3047,9 @@ export class FolioDocxReviewer {
       } else {
         source = this.getHeaderFooterStory(handle);
       }
-      const state = this.secondaryStoryStates.get(secondaryStoryKey(handle))?.state;
+      const state = this.secondaryStoryStates.get(
+        secondaryStoryKey(handle),
+      )?.state;
       const found = state
         ? referencedNoteKeys(state.doc)
         : noteKeysReferencedIn(source?.content ?? []);
@@ -2680,31 +3060,44 @@ export class FolioDocxReviewer {
 
   private resolveEveryStoryOnce(mode: "accept" | "reject"): number {
     let count = 0;
-    const resolvedStories: { handle: FolioEditableDocumentStoryHandle; state: EditorState }[] = [];
-    const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] = [];
+    const resolvedStories: {
+      handle: FolioEditableDocumentStoryHandle;
+      state: EditorState;
+    }[] = [];
+    const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] =
+      [];
     for (const handle of this.listStoryHandlesInternal()) {
       const state = this.getEditableStoryState(handle);
       if (!state) {
         continue;
       }
       const ordinaryCount = getTrackedChangesFromDoc(state.doc).filter(
-        ({ id }) => mode === "reject" || suggestionIdOfRevision(state, id) === null,
+        ({ id }) =>
+          mode === "reject" || suggestionIdOfRevision(state, id) === null,
       ).length;
       count += ordinaryCount;
       const withSuggestions =
-        mode === "accept" && ordinaryCount > 0 && getSuggestions(state).length > 0
+        mode === "accept" &&
+        ordinaryCount > 0 &&
+        getSuggestions(state).length > 0
           ? this.acceptOrdinaryChangesWithSuggestions(state, handle)
           : null;
       if (withSuggestions) refreshes.push(withSuggestions.refresh);
       let resolvedState = state;
       if (mode === "reject") {
-        resolvedState = resolveAllChangesInHeadlessState(rejectSuggestions(state), mode);
+        resolvedState = resolveAllChangesInHeadlessState(
+          rejectSuggestions(state),
+          mode,
+        );
       } else if (ordinaryCount > 0) {
-        resolvedState = withSuggestions?.state ?? resolveAllChangesInHeadlessState(state, mode);
+        resolvedState =
+          withSuggestions?.state ??
+          resolveAllChangesInHeadlessState(state, mode);
       }
       resolvedStories.push({ handle, state: resolvedState });
     }
-    for (const { handle, state } of resolvedStories) this.setEditableStoryState(handle, state);
+    for (const { handle, state } of resolvedStories)
+      this.setEditableStoryState(handle, state);
     if (refreshes.length > 0) {
       const activeSuggestionIds = new Set(
         getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
@@ -2721,21 +3114,34 @@ export class FolioDocxReviewer {
   private acceptOrdinaryChangesWithSuggestions(
     state: EditorState,
     story: FolioEditableDocumentStoryHandle,
-  ): { state: EditorState; refresh: (activeSuggestionIds: ReadonlySet<string>) => void } {
+  ): {
+    state: EditorState;
+    refresh: (activeSuggestionIds: ReadonlySet<string>) => void;
+  } {
     const originalSuggestions = getSuggestions(state);
     const records = this.exportPendingSuggestions().filter(
       (record) => editableStoryKey(record.story) === editableStoryKey(story),
     );
-    const recordedIds = new Set(records.map(({ suggestionId }) => suggestionId));
-    if (originalSuggestions.some(({ suggestionId }) => !recordedIds.has(suggestionId))) {
-      panic("A pending suggestion has no operation to restage after bulk acceptance");
+    const recordedIds = new Set(
+      records.map(({ suggestionId }) => suggestionId),
+    );
+    if (
+      originalSuggestions.some(
+        ({ suggestionId }) => !recordedIds.has(suggestionId),
+      )
+    ) {
+      panic(
+        "A pending suggestion has no operation to restage after bulk acceptance",
+      );
     }
 
     // The ordinary resolver must see the complete story in one pass: resolving
     // revision ids separately can change paragraph joins and list ownership.
     let clean = rejectSuggestions(state);
     const restagedCommentIds = new Set(
-      records.flatMap(({ commentId }) => (commentId === undefined ? [] : [commentId])),
+      records.flatMap(({ commentId }) =>
+        commentId === undefined ? [] : [commentId],
+      ),
     );
     clean = withoutPendingSuggestionCommentMarks(clean, restagedCommentIds);
     let resolved = resolveAllChangesInHeadlessState(clean, "accept");
@@ -2773,21 +3179,38 @@ export class FolioDocxReviewer {
           return record.commentId;
         },
       });
-      const applied = result.applied.find(({ id }) => id === record.operation.id);
+      const applied = result.applied.find(
+        ({ id }) => id === record.operation.id,
+      );
       if (!applied) {
         continue;
       }
-      restaged.push({ snapshot, operation: record.operation, applied, author: record.author });
+      restaged.push({
+        snapshot,
+        operation: record.operation,
+        applied,
+        author: record.author,
+      });
       resolved = view.state;
     }
-    const restagedIds = new Set(getSuggestions(resolved).map(({ suggestionId }) => suggestionId));
-    if (restaged.some(({ applied }) => !restagedIds.has(applied.suggestionId ?? applied.id))) {
+    const restagedIds = new Set(
+      getSuggestions(resolved).map(({ suggestionId }) => suggestionId),
+    );
+    if (
+      restaged.some(
+        ({ applied }) => !restagedIds.has(applied.suggestionId ?? applied.id),
+      )
+    ) {
       panic("Bulk acceptance lost a pending suggestion");
     }
     return {
       state: resolved,
       refresh: (activeSuggestionIds) =>
-        this.pendingSuggestions.replaceRestagedStory({ story, restaged, activeSuggestionIds }),
+        this.pendingSuggestions.replaceRestagedStory({
+          story,
+          restaged,
+          activeSuggestionIds,
+        }),
     };
   }
 
@@ -2806,7 +3229,9 @@ export class FolioDocxReviewer {
 
   /** The current document model with edits merged back in. */
   toDocument(): Document {
-    const document = this.documentFromStateSnapshot(this.captureReviewerState());
+    const document = this.documentFromStateSnapshot(
+      this.captureReviewerState(),
+    );
     applyReplyThreadMarkers(document);
     visitDocxParagraphs(
       {
@@ -2828,7 +3253,11 @@ export class FolioDocxReviewer {
   // canonical-gap: pm-ai-snapshots
   private captureReviewerState(): FolioReviewerStateSnapshot {
     const secondaryStoryStates: FolioSecondaryStoryState[] = [];
-    for (const { handle, initialState, state } of this.secondaryStoryStates.values()) {
+    for (const {
+      handle,
+      initialState,
+      state,
+    } of this.secondaryStoryStates.values()) {
       secondaryStoryStates.push({ handle, initialState, state });
     }
     return {
@@ -2844,13 +3273,19 @@ export class FolioDocxReviewer {
       importedFooters: new Map(this.importedFooters),
       createdComments: [...this.createdComments],
       resolvedOverrides: new Map(this.resolvedOverrides),
-      resolvedStoryExpectations: [...this.resolvedStoryExpectations.values()].filter(
-        ({ story }) => story.type === "main" || this.secondaryStorySource(story) !== undefined,
+      resolvedStoryExpectations: [
+        ...this.resolvedStoryExpectations.values(),
+      ].filter(
+        ({ story }) =>
+          story.type === "main" ||
+          this.secondaryStorySource(story) !== undefined,
       ),
     };
   }
 
-  private documentFromStateSnapshot(authored: FolioReviewerStateSnapshot): Document {
+  private documentFromStateSnapshot(
+    authored: FolioReviewerStateSnapshot,
+  ): Document {
     const pendingCommentIds = new Set(
       this.exportPendingSuggestions().flatMap(({ commentId }) =>
         commentId === undefined ? [] : [commentId],
@@ -2871,14 +3306,19 @@ export class FolioDocxReviewer {
           pendingCommentIds,
         ),
       })),
-      createdComments: authored.createdComments.filter(({ id }) => !pendingCommentIds.has(id)),
+      createdComments: authored.createdComments.filter(
+        ({ id }) => !pendingCommentIds.has(id),
+      ),
     };
     const sourceDocument =
       snapshot.importedStyles === undefined
         ? this.baseDocument
         : {
             ...this.baseDocument,
-            package: { ...this.baseDocument.package, styles: snapshot.importedStyles },
+            package: {
+              ...this.baseDocument.package,
+              styles: snapshot.importedStyles,
+            },
           };
     // canonical-gap: pm-save-projection
     const document = fromProseDoc(snapshot.mainState.doc, sourceDocument, {
@@ -2888,14 +3328,16 @@ export class FolioDocxReviewer {
           : { type: "supplied", styles: snapshot.importedStyles },
     });
     if (snapshot.finalSectionPropertiesOverride !== undefined) {
-      document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
+      document.package.document.finalSectionProperties =
+        snapshot.finalSectionPropertiesOverride;
       if (document.package.document.sections !== undefined)
         document.package.document.sections = buildSections(
           document.package.document.content,
           snapshot.finalSectionPropertiesOverride,
         );
     }
-    if (snapshot.importedStyles !== undefined) document.package.styles = snapshot.importedStyles;
+    if (snapshot.importedStyles !== undefined)
+      document.package.styles = snapshot.importedStyles;
     if (snapshot.importedMedia.size > 0)
       document.package.media = new Map([
         ...(document.package.media ?? []),
@@ -2927,9 +3369,17 @@ export class FolioDocxReviewer {
       // A note whose reference some other edit (an undo) put back, or that
       // another story still refers to, is kept.
       const candidates = new Set(snapshot.removedNoteStories.map(noteStoryKey));
-      const referenced: ReadonlySet<string> = referencedNotes(document, candidates);
-      const removed = new Set([...candidates].filter((key) => !referenced.has(key)));
-      Object.assign(document.package, noteStoryInventory(document.package, removed));
+      const referenced: ReadonlySet<string> = referencedNotes(
+        document,
+        candidates,
+      );
+      const removed = new Set(
+        [...candidates].filter((key) => !referenced.has(key)),
+      );
+      Object.assign(
+        document.package,
+        noteStoryInventory(document.package, removed),
+      );
     }
     const definitions = [
       ...(document.package.document.comments ?? []),
@@ -2942,7 +3392,10 @@ export class FolioDocxReviewer {
     );
     const keptIds = new Set(kept.map(({ id }) => id));
     const retiredCommentIds = new Set(
-      [...(this.baseDocument.package.document.comments ?? []), ...snapshot.createdComments]
+      [
+        ...(this.baseDocument.package.document.comments ?? []),
+        ...snapshot.createdComments,
+      ]
         .filter(({ id }) => !keptIds.has(id))
         .map(({ id }) => id),
     );
@@ -2961,7 +3414,10 @@ export class FolioDocxReviewer {
     if (retiredCommentIds.size > 0) {
       document.package.document = {
         ...document.package.document,
-        content: removeCommentMarkers(document.package.document.content, retiredCommentIds),
+        content: removeCommentMarkers(
+          document.package.document.content,
+          retiredCommentIds,
+        ),
       };
       if (document.package.headers) {
         const headers = new Map(document.package.headers);
@@ -2984,16 +3440,20 @@ export class FolioDocxReviewer {
         document.package.footers = footers;
       }
       if (document.package.footnotes) {
-        document.package.footnotes = document.package.footnotes.map((footnote) => ({
-          ...footnote,
-          content: removeCommentMarkers(footnote.content, retiredCommentIds),
-        }));
+        document.package.footnotes = document.package.footnotes.map(
+          (footnote) => ({
+            ...footnote,
+            content: removeCommentMarkers(footnote.content, retiredCommentIds),
+          }),
+        );
       }
       if (document.package.endnotes) {
-        document.package.endnotes = document.package.endnotes.map((endnote) => ({
-          ...endnote,
-          content: removeCommentMarkers(endnote.content, retiredCommentIds),
-        }));
+        document.package.endnotes = document.package.endnotes.map(
+          (endnote) => ({
+            ...endnote,
+            content: removeCommentMarkers(endnote.content, retiredCommentIds),
+          }),
+        );
       }
     }
     if (
@@ -3061,7 +3521,9 @@ export class FolioDocxReviewer {
       path,
       changedNoteParaIds,
       sectionReferenceRemovals: snapshot.sectionReferenceRemovals,
-      sectionEndpointRemoval: getTrackedSectionEndpointRemoval(snapshot.mainState),
+      sectionEndpointRemoval: getTrackedSectionEndpointRemoval(
+        snapshot.mainState,
+      ),
       resolvedStoryExpectations: snapshot.resolvedStoryExpectations,
     };
   }
@@ -3075,7 +3537,9 @@ export class FolioDocxReviewer {
   async toBuffer(): Promise<ArrayBuffer> {
     const result = await this.save();
     if (result.type === "repackRefused") {
-      return panic("A save that allows a full repack refused to repack", { result });
+      return panic("A save that allows a full repack refused to repack", {
+        result,
+      });
     }
     return result.buffer;
   }
@@ -3094,16 +3558,25 @@ export class FolioDocxReviewer {
         ? await this.trySelectiveSave(save.document, save.path.changedParaIds)
         : null;
     if (selective) {
-      await this.assertResolvedStoriesSerialized(selective, save.resolvedStoryExpectations);
+      await this.assertResolvedStoriesSerialized(
+        selective,
+        save.resolvedStoryExpectations,
+      );
       return { type: "selective", buffer: selective };
     }
-    const reason = save.path.type === "full-repack" ? save.path.reason : "selectiveDeclined";
+    const reason =
+      save.path.type === "full-repack" ? save.path.reason : "selectiveDeclined";
     if (repackPolicy === "refuse") {
       return { type: "repackRefused", reason };
     }
-    const repackDocument = { ...save.document, originalBuffer: this.originalBuffer };
+    const repackDocument = {
+      ...save.document,
+      originalBuffer: this.originalBuffer,
+    };
     const repack = () =>
-      repackDocx(repackDocument, { changedNoteParaIds: save.changedNoteParaIds });
+      repackDocx(repackDocument, {
+        changedNoteParaIds: save.changedNoteParaIds,
+      });
     const repackReferences = () =>
       save.sectionReferenceRemovals.length > 0
         ? withSectionReferenceResolution({
@@ -3119,7 +3592,10 @@ export class FolioDocxReviewer {
           repack: repackReferences,
         })
       : await repackReferences();
-    await this.assertResolvedStoriesSerialized(buffer, save.resolvedStoryExpectations);
+    await this.assertResolvedStoriesSerialized(
+      buffer,
+      save.resolvedStoryExpectations,
+    );
     return { type: "full-repack", reason, buffer };
   }
 
@@ -3132,29 +3608,43 @@ export class FolioDocxReviewer {
     }
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
     for (const { story, text, blocks, minted } of expectations) {
-      const serialized = reopened.readReviewedStory({ story, view: "current-markup" });
-      const persisted = serialized ? resolvedStoryProjection(serialized.snapshot, minted) : null;
+      const serialized = reopened.readReviewedStory({
+        story,
+        view: "current-markup",
+      });
+      const persisted = serialized
+        ? resolvedStoryProjection(serialized.snapshot, minted)
+        : null;
       const serializedText = persisted?.text ?? null;
       const serializedBlocks = persisted?.blocks ?? null;
       const mismatches: FolioResolvedStorySerializationMismatch[] = [];
       if (!serialized) {
-        mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing);
+        mismatches.push(
+          FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing,
+        );
       } else {
         if (serialized.changes.length > 0) {
-          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.revisionMarkupRemains);
+          mismatches.push(
+            FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.revisionMarkupRemains,
+          );
         }
         if (serializedText !== text) {
-          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.textProjection);
+          mismatches.push(
+            FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.textProjection,
+          );
         }
         if (JSON.stringify(serializedBlocks) !== JSON.stringify(blocks)) {
-          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.blockProjection);
+          mismatches.push(
+            FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.blockProjection,
+          );
         }
       }
       if (mismatches.length === 0) {
         continue;
       }
       throw new FolioResolvedStorySerializationError({
-        message: "Resolved document story did not persist to the serialized DOCX.",
+        message:
+          "Resolved document story did not persist to the serialized DOCX.",
         story,
         mismatches,
         expectedBlockCount: blocks.length,
@@ -3185,7 +3675,9 @@ export class FolioDocxReviewer {
     }
   }
 
-  private getEditableStoryState(story: FolioEditableDocumentStoryHandle): EditorState | null {
+  private getEditableStoryState(
+    story: FolioEditableDocumentStoryHandle,
+  ): EditorState | null {
     if (story.type === "main") {
       return this.state;
     }
@@ -3209,7 +3701,11 @@ export class FolioDocxReviewer {
         ),
       }),
     );
-    this.secondaryStoryStates.set(key, { handle: story, initialState: state, state });
+    this.secondaryStoryStates.set(key, {
+      handle: story,
+      initialState: state,
+      state,
+    });
     return state;
   }
 
@@ -3219,7 +3715,9 @@ export class FolioDocxReviewer {
    * performs — with the same deterministic block ids — without retaining a
    * state for a story nothing edits.
    */
-  private readSecondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
+  private readSecondaryStoryDoc(
+    story: FolioSecondaryStoryHandle,
+  ): PMNode | null {
     if (!this.secondaryStorySource(story)) return null;
     return (
       this.secondaryStoryStates.get(secondaryStoryKey(story))?.state.doc ??
@@ -3256,7 +3754,9 @@ export class FolioDocxReviewer {
     return ensureDeterministicParaIdsInDoc(storyDoc);
   }
 
-  private requireEditableStoryState(story: FolioEditableDocumentStoryHandle): EditorState {
+  private requireEditableStoryState(
+    story: FolioEditableDocumentStoryHandle,
+  ): EditorState {
     const state = this.getEditableStoryState(story);
     if (state) {
       return state;
@@ -3267,7 +3767,10 @@ export class FolioDocxReviewer {
     });
   }
 
-  private setEditableStoryState(story: FolioEditableDocumentStoryHandle, state: EditorState): void {
+  private setEditableStoryState(
+    story: FolioEditableDocumentStoryHandle,
+    state: EditorState,
+  ): void {
     this.resolvedStoryExpectations.delete(editableStoryKey(story));
     if (story.type === "main") {
       this.state = state;
@@ -3283,9 +3786,13 @@ export class FolioDocxReviewer {
     entry.state = state;
   }
 
-  private getHeaderFooterStory(story: FolioHeaderFooterStoryHandle): HeaderFooter | undefined {
-    if (this.removedHeaderFooterStories.has(headerFooterStoryKey(story))) return undefined;
-    const imported = story.type === "header" ? this.importedHeaders : this.importedFooters;
+  private getHeaderFooterStory(
+    story: FolioHeaderFooterStoryHandle,
+  ): HeaderFooter | undefined {
+    if (this.removedHeaderFooterStories.has(headerFooterStoryKey(story)))
+      return undefined;
+    const imported =
+      story.type === "header" ? this.importedHeaders : this.importedFooters;
     const importedStory = imported.get(story.relationshipId);
     if (importedStory) return importedStory;
     const stories =
@@ -3300,13 +3807,17 @@ export class FolioDocxReviewer {
     story: FolioHeaderFooterStoryHandle,
   ): Promise<FolioHeaderFooterStoryHandle | null> {
     const target = source.getHeaderFooterStory(story);
-    if (!target || !this.canImportHeaderFooterContent(source, story)) return null;
+    if (!target || !this.canImportHeaderFooterContent(source, story))
+      return null;
     let importedWatermark: Pick<
       HeaderFooter,
       "watermark" | "rawWatermarkXml" | "watermarkBlockIndex"
     > = {};
     let importedMedia: MediaFile | undefined;
-    if (target.watermark !== undefined || target.rawWatermarkXml !== undefined) {
+    if (
+      target.watermark !== undefined ||
+      target.rawWatermarkXml !== undefined
+    ) {
       const watermark = target.watermark;
       if (
         story.type !== "header" ||
@@ -3316,8 +3827,11 @@ export class FolioDocxReviewer {
         !target.rawWatermarkXml
       )
         return null;
-      const media = source.baseDocument.package.media?.get(watermark.imageTarget);
-      if (!media || !/^image\/(?:png|jpeg|gif|tiff|bmp)$/u.test(media.mimeType)) return null;
+      const media = source.baseDocument.package.media?.get(
+        watermark.imageTarget,
+      );
+      if (!media || !/^image\/(?:png|jpeg|gif|tiff|bmp)$/u.test(media.mimeType))
+        return null;
       const xml = rebindDrawingImageRelationship({
         xml: target.rawWatermarkXml,
         previousId: watermark.imageRId,
@@ -3365,7 +3879,8 @@ export class FolioDocxReviewer {
       ...importedWatermark,
       content: [{ type: "paragraph", content: [] }],
     };
-    if (importedMedia) this.importedMedia.set(importedMedia.path, importedMedia);
+    if (importedMedia)
+      this.importedMedia.set(importedMedia.path, importedMedia);
     (story.type === "header" ? this.importedHeaders : this.importedFooters).set(
       relationshipId,
       empty,
@@ -3373,7 +3888,9 @@ export class FolioDocxReviewer {
     const state = ensureBaseDirectionInState(
       EditorState.create({
         schema,
-        doc: ensureDeterministicParaIdsInDoc(headerFooterToProseDoc(empty.content)),
+        doc: ensureDeterministicParaIdsInDoc(
+          headerFooterToProseDoc(empty.content),
+        ),
         plugins: createHeadlessPlugins(
           this.baseDocument.package.styles,
           this.baseDocument.package.numbering,
@@ -3394,19 +3911,30 @@ export class FolioDocxReviewer {
   ): boolean {
     const state = source.getEditableStoryState(story);
     if (!state) return false;
-    if (!tableTemplateCanCrossPackageLosslessly(state.doc, "rebind-external")) return false;
+    if (!tableTemplateCanCrossPackageLosslessly(state.doc, "rebind-external"))
+      return false;
     const snapshot = source.snapshotStory(story);
-    return snapshot !== null && detachFolioAIEditSnapshotExternalHyperlinks(snapshot) !== null;
+    return (
+      snapshot !== null &&
+      detachFolioAIEditSnapshotExternalHyperlinks(snapshot) !== null
+    );
   }
 
-  private getNoteStory(story: FolioNoteStoryHandle): Footnote | Endnote | undefined {
-    const notes = noteStoryInventory(this.baseDocument.package, this.removedNoteStories);
+  private getNoteStory(
+    story: FolioNoteStoryHandle,
+  ): Footnote | Endnote | undefined {
+    const notes = noteStoryInventory(
+      this.baseDocument.package,
+      this.removedNoteStories,
+    );
     if (story.type === "footnote") {
       return notes.footnotes?.find(
         (note) => note.id === story.noteId && !isSeparatorFootnote(note),
       );
     }
-    return notes.endnotes?.find((note) => note.id === story.noteId && !isSeparatorEndnote(note));
+    return notes.endnotes?.find(
+      (note) => note.id === story.noteId && !isSeparatorEndnote(note),
+    );
   }
 
   /**
@@ -3420,7 +3948,10 @@ export class FolioDocxReviewer {
    * another after. This is the conversion the save path already performs on the
    * same states, so the text now describes exactly what a save would write.
    */
-  private storyBlocks(state: EditorState | undefined, source: { content: BlockContent[] }) {
+  private storyBlocks(
+    state: EditorState | undefined,
+    source: { content: BlockContent[] },
+  ) {
     return state
       ? proseDocToBlocks(
           rejectSuggestions(state).doc,
@@ -3434,13 +3965,21 @@ export class FolioDocxReviewer {
     story: FolioHeaderFooterStoryHandle,
     source: HeaderFooter,
   ): string {
-    const state = this.secondaryStoryStates.get(headerFooterStoryKey(story))?.state;
+    const state = this.secondaryStoryStates.get(
+      headerFooterStoryKey(story),
+    )?.state;
     return normalizeFolioAIBlockText(
-      getHeaderFooterText({ ...source, content: this.storyBlocks(state, source) }),
+      getHeaderFooterText({
+        ...source,
+        content: this.storyBlocks(state, source),
+      }),
     );
   }
 
-  private getNoteStoryText(story: FolioNoteStoryHandle, source: Footnote | Endnote): string {
+  private getNoteStoryText(
+    story: FolioNoteStoryHandle,
+    source: Footnote | Endnote,
+  ): string {
     const state = this.secondaryStoryStates.get(noteStoryKey(story))?.state;
     const content = this.storyBlocks(state, source);
     return normalizeFolioAIBlockText(
@@ -3495,7 +4034,11 @@ export class FolioDocxReviewer {
         }
         const edited = {
           ...source,
-          content: proseDocToBlocks(lists.doc, source.content, document.package.styles),
+          content: proseDocToBlocks(
+            lists.doc,
+            source.content,
+            document.package.styles,
+          ),
         };
         if (entry.handle.type === "header") {
           headers ??= new Map(document.package.headers);
@@ -3516,7 +4059,11 @@ export class FolioDocxReviewer {
         }
         const edited = {
           ...source,
-          content: proseDocToBlocks(lists.doc, source.content, document.package.styles),
+          content: proseDocToBlocks(
+            lists.doc,
+            source.content,
+            document.package.styles,
+          ),
         };
         footnotes ??= [...(document.package.footnotes ?? [])];
         const index = footnotes.findIndex((note) => note.id === noteId);
@@ -3534,7 +4081,11 @@ export class FolioDocxReviewer {
       }
       const edited = {
         ...source,
-        content: proseDocToBlocks(lists.doc, source.content, document.package.styles),
+        content: proseDocToBlocks(
+          lists.doc,
+          source.content,
+          document.package.styles,
+        ),
       };
       endnotes ??= [...(document.package.endnotes ?? [])];
       const index = endnotes.findIndex((note) => note.id === noteId);
@@ -3599,7 +4150,10 @@ export class FolioDocxReviewer {
     // inside pending tracked deletions, even when another projection no longer
     // lists the story as reachable.
     for (const entry of loaded.values()) {
-      addAll(anchoredBefore, anchoredCommentIdsInProseDoc(entry.initialState.doc));
+      addAll(
+        anchoredBefore,
+        anchoredCommentIdsInProseDoc(entry.initialState.doc),
+      );
       if (
         (entry.handle.type === "footnote" || entry.handle.type === "endnote") &&
         this.removedNoteStories.has(noteStoryKey(entry.handle)) &&
@@ -3607,7 +4161,10 @@ export class FolioDocxReviewer {
       ) {
         continue;
       }
-      addAll(anchoredNow, anchoredCommentIdsInProseDoc(entry.state.doc, entry.initialState.doc));
+      addAll(
+        anchoredNow,
+        anchoredCommentIdsInProseDoc(entry.state.doc, entry.initialState.doc),
+      );
     }
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") {
@@ -3633,7 +4190,10 @@ export class FolioDocxReviewer {
               ? this.baseDocument.package.footnotes
               : this.baseDocument.package.endnotes
           )?.find((note) => note.id === handle.noteId);
-          addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
+          addAll(
+            anchoredNow,
+            anchoredCommentIdsInBlocks(source?.content ?? []),
+          );
         }
         continue;
       }
@@ -3654,7 +4214,10 @@ export class FolioDocxReviewer {
       if (state !== "deleted") continue;
       const handle = noteStoryHandleOf(key);
       if (!handle || loaded.has(secondaryStoryKey(handle))) continue;
-      addAll(anchoredNow, anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []));
+      addAll(
+        anchoredNow,
+        anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []),
+      );
     }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }
@@ -3678,14 +4241,20 @@ export class FolioDocxReviewer {
       }
     };
     for (const story of this.listStoryHandlesInternal()) {
-      const doc = story.type === "main" ? this.state.doc : this.readSecondaryStoryDoc(story);
+      const doc =
+        story.type === "main"
+          ? this.state.doc
+          : this.readSecondaryStoryDoc(story);
       if (!doc) {
         continue;
       }
       add(doc, story);
     }
     for (const story of this.removedNoteStories.values()) {
-      if (noteReferenceStates(this.state.doc).get(noteStoryKey(story)) !== "deleted") {
+      if (
+        noteReferenceStates(this.state.doc).get(noteStoryKey(story)) !==
+        "deleted"
+      ) {
         continue;
       }
       const entry = this.secondaryStoryStates.get(secondaryStoryKey(story));
@@ -3710,7 +4279,10 @@ export class FolioDocxReviewer {
     return this.runStoryCommand(command, MAIN_STORY);
   }
 
-  private runStoryCommand(command: Command, story: FolioEditableDocumentStoryHandle): boolean {
+  private runStoryCommand(
+    command: Command,
+    story: FolioEditableDocumentStoryHandle,
+  ): boolean {
     const state = this.getEditableStoryState(story);
     if (!state) {
       return false;

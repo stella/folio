@@ -2,15 +2,21 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
-import { panic } from "better-result";
 import { act, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
-import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
-import { usePanelLayout } from "./usePanelLayout";
-import { useActiveHeading } from "./useActiveHeading";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
+
+import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+
+import { useActiveHeading } from "./useActiveHeading";
+import { usePanelLayout } from "./usePanelLayout";
+
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -42,7 +48,8 @@ const createResizeFixture = () => {
     notify: (target: Element) => {
       for (const observer of observers) observer.notify(target);
     },
-    isObserved: (target: Element) => observers.some((observer) => observer.targets.has(target)),
+    isObserved: (target: Element) =>
+      observers.some((observer) => observer.targets.has(target)),
   };
 };
 
@@ -95,11 +102,15 @@ test("panel measurements rebind when the scroll container is replaced", async ()
   const first = createScrollWidthFixture(0);
   const replacement = createScrollWidthFixture(20);
   try {
-    await act(async () => root.render(<PanelProbe scrollContainer={first.element} row={row} />));
+    await act(async () =>
+      root.render(<PanelProbe scrollContainer={first.element} row={row} />),
+    );
     expect(host.querySelector("output")?.dataset["outline"]).toBe("column");
     expect(resize.isObserved(first.element)).toBe(true);
     await act(async () =>
-      root.render(<PanelProbe scrollContainer={replacement.element} row={row} />),
+      root.render(
+        <PanelProbe scrollContainer={replacement.element} row={row} />,
+      ),
     );
     expect(resize.isObserved(first.element)).toBe(false);
     expect(resize.isObserved(replacement.element)).toBe(true);
@@ -112,7 +123,9 @@ test("panel measurements rebind when the scroll container is replaced", async ()
     replacement.setScrollbar(0);
     await act(async () => resize.notify(replacement.element));
     expect(host.querySelector("output")?.dataset["outline"]).toBe("column");
-    await act(async () => root.render(<PanelProbe scrollContainer={null} row={row} />));
+    await act(async () =>
+      root.render(<PanelProbe scrollContainer={null} row={row} />),
+    );
     expect(resize.isObserved(replacement.element)).toBe(false);
     expect(resize.isObserved(row)).toBe(true);
   } finally {
@@ -133,7 +146,10 @@ const createHeadingRoot = (initialSecondTop: number) => {
   const element = document.createElement("div");
   element.innerHTML =
     '<div class="layout-page"><div class="layout-page-content"><p><span data-pm-start="1" data-pm-end="6">First</span></p><p><span data-pm-start="8" data-pm-end="14">Second</span></p></div></div>';
-  Object.defineProperty(element, "clientHeight", { configurable: true, value: 200 });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    value: 200,
+  });
   element.getBoundingClientRect = () => new DOMRect(0, 0, 600, 200);
   const first = element.querySelector('[data-pm-start="1"]');
   const second = element.querySelector('[data-pm-start="8"]');
@@ -172,7 +188,11 @@ const createFrameFixture = () => {
   };
 };
 
-function HeadingProbe({ scrollContainer }: { scrollContainer: HTMLElement | null }) {
+function HeadingProbe({
+  scrollContainer,
+}: {
+  scrollContainer: HTMLElement | null;
+}) {
   const { activeId } = useActiveHeading(scrollContainer, headings);
   return <output data-active={activeId ?? "none"} />;
 }
@@ -189,12 +209,16 @@ test("active heading follows only the replacement scroll root and cancels old wo
   document.body.append(host, first.element, replacement.element);
   const root = createRoot(host);
   try {
-    await act(async () => root.render(<HeadingProbe scrollContainer={first.element} />));
+    await act(async () =>
+      root.render(<HeadingProbe scrollContainer={first.element} />),
+    );
     await act(async () => frames.flush());
     expect(host.querySelector("output")?.dataset["active"]).toBe("0");
     first.element.dispatchEvent(new Event("scroll"));
     expect(frames.pending()).toBe(1);
-    await act(async () => root.render(<HeadingProbe scrollContainer={replacement.element} />));
+    await act(async () =>
+      root.render(<HeadingProbe scrollContainer={replacement.element} />),
+    );
     expect(frames.pending()).toBe(1);
     await act(async () => frames.flush());
     expect(host.querySelector("output")?.dataset["active"]).toBe("7");

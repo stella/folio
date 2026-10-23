@@ -105,7 +105,10 @@ export const pageBreakRunParagraphProjectionDisposition = (
       firstPageBreakPos ??= pos;
       return false;
     }
-    if (descendant.type.name === "textBoxAnchor" && firstPageBreakPos !== undefined) {
+    if (
+      descendant.type.name === "textBoxAnchor" &&
+      firstPageBreakPos !== undefined
+    ) {
       textBoxAnchorAfterPageBreak = true;
       return false;
     }

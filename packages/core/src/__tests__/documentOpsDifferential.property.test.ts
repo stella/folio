@@ -4,11 +4,6 @@ import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 
-import { extractRunFormatting } from "../layout-bridge/convert/runMarkFormatting";
-import { mergeRunFormatting } from "../layout-bridge/convert/runFormattingMerge";
-import { paragraphRunDefaults } from "../layout-bridge/convert/textFormattingConversion";
-import { expectParagraphAttrs } from "../prosemirror/attrs";
-
 import {
   applyDocumentOp,
   DOCUMENT_OP_TYPES,
@@ -16,17 +11,27 @@ import {
   normalizeForOps,
   OP_STORIES,
 } from "@stll/docx-core/ops";
+
 import {
   assertPinnedProperty,
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { OOXML_NAMESPACES } from "../docx/serializer/partNamespaces";
+import { mergeRunFormatting } from "../layout-bridge/convert/runFormattingMerge";
+import { extractRunFormatting } from "../layout-bridge/convert/runMarkFormatting";
+import { paragraphRunDefaults } from "../layout-bridge/convert/textFormattingConversion";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import {
+  expectParagraphAttrs,
+  expectRunIdentityMarkAttrs,
+} from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { expectRunIdentityMarkAttrs } from "../prosemirror/attrs";
-import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "../prosemirror/runIdentity";
+import {
+  RUN_IDENTITY_MARK_NAME,
+  runIdentityAttrs,
+} from "../prosemirror/runIdentity";
 import { createHarnessState, textblocks } from "./editorHarness";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
@@ -68,25 +73,45 @@ const renderedMarks = (node: PMNode): unknown[] =>
     if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return [mark.toJSON()];
     const { preservedAttributes, preserved } = expectRunIdentityMarkAttrs(mark);
     if (!preservedAttributes?.length && !preserved?.children?.length) return [];
-    return [{ type: RUN_IDENTITY_MARK_NAME, attrs: { preservedAttributes, preserved } }];
+    return [
+      {
+        type: RUN_IDENTITY_MARK_NAME,
+        attrs: { preservedAttributes, preserved },
+      },
+    ];
   });
 
 /** Compare every character and mark independently of internal text-leaf partitioning. */
 const contentView = (node: PMNode): unknown => {
   const children: unknown[] = [];
-  const defaults = node.isTextblock ? paragraphRunDefaults(expectParagraphAttrs(node)) : {};
+  const defaults = node.isTextblock
+    ? paragraphRunDefaults(expectParagraphAttrs(node))
+    : {};
   node.forEach((child) => {
     if (!child.isText) {
       children.push(contentView(child));
       return;
     }
     const marks = renderedMarks(child);
-    const formatting = mergeRunFormatting(defaults, extractRunFormatting(child.marks));
+    const formatting = mergeRunFormatting(
+      defaults,
+      extractRunFormatting(child.marks),
+    );
     for (const character of child.text ?? "") {
-      children.push({ type: child.type.name, text: character, marks, formatting });
+      children.push({
+        type: child.type.name,
+        text: character,
+        marks,
+        formatting,
+      });
     }
   });
-  return { type: node.type.name, text: node.text, marks: renderedMarks(node), children };
+  return {
+    type: node.type.name,
+    text: node.text,
+    marks: renderedMarks(node),
+    children,
+  };
 };
 
 test("rendered differential oracle detects text, formatting and preserved metadata changes", () => {
@@ -98,20 +123,28 @@ test("rendered differential oracle detects text, formatting and preserved metada
   const before = contentView(state.doc);
   const identity = state.schema.marks[RUN_IDENTITY_MARK_NAME];
   if (!identity) throw new Error("oracle fixture has no run identity mark");
-  const captureOnly = identity.create(runIdentityAttrs(42, { emptyFormatting: true }));
-  expect(contentView(state.tr.addMark(from, to, captureOnly).doc)).toEqual(before);
+  const captureOnly = identity.create(
+    runIdentityAttrs(42, { emptyFormatting: true }),
+  );
+  expect(contentView(state.tr.addMark(from, to, captureOnly).doc)).toEqual(
+    before,
+  );
   expect(contentView(state.tr.insertText("x", from).doc)).not.toEqual(before);
   expect(contentView(state.tr.delete(from, to).doc)).not.toEqual(before);
   const fontSize = state.schema.marks["fontSize"];
   const fontFamily = state.schema.marks["fontFamily"];
-  if (!fontSize || !fontFamily) throw new Error("oracle fixture has no font marks");
-  expect(contentView(state.tr.addMark(from, to, fontSize.create({ size: 40 })).doc)).not.toEqual(
-    before,
-  );
+  if (!fontSize || !fontFamily)
+    throw new Error("oracle fixture has no font marks");
+  expect(
+    contentView(state.tr.addMark(from, to, fontSize.create({ size: 40 })).doc),
+  ).not.toEqual(before);
   expect(
     contentView(
-      state.tr.addMark(from, to, fontFamily.create({ ascii: "Courier New", hAnsi: "Courier New" }))
-        .doc,
+      state.tr.addMark(
+        from,
+        to,
+        fontFamily.create({ ascii: "Courier New", hAnsi: "Courier New" }),
+      ).doc,
     ),
   ).not.toEqual(before);
   const inheritedFonts = state.tr
@@ -121,7 +154,9 @@ test("rendered differential oracle detects text, formatting and preserved metada
   for (const kind of ["bold", "italic"] as const) {
     const mark = state.schema.marks[kind];
     if (!mark) throw new Error(`oracle fixture has no ${kind} mark`);
-    expect(contentView(state.tr.addMark(from, to, mark.create()).doc)).not.toEqual(before);
+    expect(
+      contentView(state.tr.addMark(from, to, mark.create()).doc),
+    ).not.toEqual(before);
   }
   const attributeRemainder = identity.create(
     runIdentityAttrs(42, {
@@ -130,13 +165,19 @@ test("rendered differential oracle detects text, formatting and preserved metada
       ],
     }),
   );
-  expect(contentView(state.tr.addMark(from, to, attributeRemainder).doc)).not.toEqual(before);
+  expect(
+    contentView(state.tr.addMark(from, to, attributeRemainder).doc),
+  ).not.toEqual(before);
   const xmlRemainder = identity.create(
     runIdentityAttrs(42, {
-      preserved: { children: [{ index: 0, xml: '<custom xmlns="urn:folio:test"/>' }] },
+      preserved: {
+        children: [{ index: 0, xml: '<custom xmlns="urn:folio:test"/>' }],
+      },
     }),
   );
-  expect(contentView(state.tr.addMark(from, to, xmlRemainder).doc)).not.toEqual(before);
+  expect(contentView(state.tr.addMark(from, to, xmlRemainder).doc)).not.toEqual(
+    before,
+  );
 });
 
 test("PM and Document ops agree after every generated text and formatting step", () => {
@@ -144,7 +185,9 @@ test("PM and Document ops agree after every generated text and formatting step",
     const original = fromMarkdown(source);
     let state = createHarnessState(original, "editing");
     let model = normalizeForOps(
-      fromProseDoc(state.doc, original, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(state.doc, original, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
     for (const step of steps) {
@@ -152,7 +195,8 @@ test("PM and Document ops agree after every generated text and formatting step",
       const target = blocks.at(step.block % blocks.length);
       if (!target) throw new Error("generated document has no textblock");
       const blockId: unknown = target.node.attrs["paraId"];
-      if (typeof blockId !== "string") throw new Error("generated textblock has no paraId");
+      if (typeof blockId !== "string")
+        throw new Error("generated textblock has no paraId");
       // The portable contract rejects offsets between UTF-16 surrogate halves.
       // Draw both endpoints in the same valid coordinate space for both paths.
       const boundaries = [0];
@@ -161,7 +205,10 @@ test("PM and Document ops agree after every generated text and formatting step",
       }
       const startIndex = step.start % boundaries.length;
       const offset = boundaries.at(startIndex) ?? 0;
-      const end = boundaries.at(Math.min(boundaries.length - 1, startIndex + step.width)) ?? offset;
+      const end =
+        boundaries.at(
+          Math.min(boundaries.length - 1, startIndex + step.width),
+        ) ?? offset;
       const at = { story: OP_STORIES.MAIN, blockId, offset };
       const to = { story: OP_STORIES.MAIN, blockId, offset: end };
       const fromPosition = target.pos + 1 + offset;
@@ -169,12 +216,18 @@ test("PM and Document ops agree after every generated text and formatting step",
       // PM insertText inherits stored/cursor marks, whereas Document inherits
       // at the addressed position. Move the independent simulator's cursor
       // there so a previous edit in another paragraph cannot supply its font.
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, fromPosition)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, fromPosition)),
+      );
       let transaction = state.tr;
       const operation = (() => {
         switch (step.kind) {
           case "insert":
-            transaction = transaction.insertText(step.text, fromPosition, fromPosition);
+            transaction = transaction.insertText(
+              step.text,
+              fromPosition,
+              fromPosition,
+            );
             return {
               type: DOCUMENT_OP_TYPES.INSERT_TEXT,
               at,
@@ -183,14 +236,28 @@ test("PM and Document ops agree after every generated text and formatting step",
             } as const;
           case "delete":
             transaction = transaction.delete(fromPosition, toPosition);
-            return { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at, to } as const;
+            return {
+              type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+              from: at,
+              to,
+            } as const;
           case "bold":
           case "italic": {
             const mark = state.schema.marks[step.kind];
             if (!mark) throw new Error(`missing ${step.kind} mark`);
-            transaction = transaction.addMark(fromPosition, toPosition, mark.create());
-            const patch = step.kind === "bold" ? { bold: true } : { italic: true };
-            return { type: DOCUMENT_OP_TYPES.SET_RUN_PROPS, from: at, to, patch } as const;
+            transaction = transaction.addMark(
+              fromPosition,
+              toPosition,
+              mark.create(),
+            );
+            const patch =
+              step.kind === "bold" ? { bold: true } : { italic: true };
+            return {
+              type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+              from: at,
+              to,
+              patch,
+            } as const;
           }
           default: {
             const unreachable: never = step.kind;

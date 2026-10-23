@@ -1,34 +1,45 @@
-import { encodeUtf8, decodeText } from "../utils/textEncoding";
-import { writeZipPart } from "@stll/docx-core/zip";
-import type JSZip from "jszip";
-import { OOXML_NS } from "@stll/docx-utils";
 import { panic } from "better-result";
+import type JSZip from "jszip";
 
-import type { Document } from "../types/document";
+import { writeZipPart } from "@stll/docx-core/zip";
+import { OOXML_NS } from "@stll/docx-utils";
+
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
-import { parseRelationships, resolveRelativePath } from "./relsParser";
+import type { Document } from "../types/document";
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 import { isUnsafePackagePath } from "./packageParts";
+import { parseRelationships, resolveRelativePath } from "./relsParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneElement,
   getAttribute,
   getLocalName,
   getNamespaceUri,
-  parseXmlDocument,
   OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+  parseXmlDocument,
   type XmlElement,
 } from "./xmlParser";
 
 const DOCUMENT_RELS_PATH = "word/_rels/document.xml.rels";
 
-const officeRelationshipHasType = (type: string, kind: "header" | "footer" | "image"): boolean =>
-  [...OFFICE_RELATIONSHIP_NAMESPACE_URIS].some((namespace) => type === `${namespace}/${kind}`);
+const officeRelationshipHasType = (
+  type: string,
+  kind: "header" | "footer" | "image",
+): boolean =>
+  [...OFFICE_RELATIONSHIP_NAMESPACE_URIS].some(
+    (namespace) => type === `${namespace}/${kind}`,
+  );
 
-const withoutChildren = (xml: string, remove: (child: XmlElement) => boolean): string => {
+const withoutChildren = (
+  xml: string,
+  remove: (child: XmlElement) => boolean,
+): string => {
   const root = parseXmlDocument(xml);
   if (!root) return panic("Cannot update malformed package metadata");
   return captureVerbatimXml(
-    cloneElement(root, { elements: (root.elements ?? []).filter((child) => !remove(child)) }),
+    cloneElement(root, {
+      elements: (root.elements ?? []).filter((child) => !remove(child)),
+    }),
   );
 };
 
@@ -48,7 +59,8 @@ export const removeResolvedHeaderFooterParts = async ({
 }: RemoveResolvedHeaderFooterPartsOptions): Promise<void> => {
   if (removedReferences.length === 0) return;
   const relsFile = zip.file(DOCUMENT_RELS_PATH);
-  if (!relsFile) return panic("A resolved header/footer part has no document relationships");
+  if (!relsFile)
+    return panic("A resolved header/footer part has no document relationships");
   const relsXml = await relsFile
     .async("uint8array")
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
@@ -56,7 +68,8 @@ export const removeResolvedHeaderFooterParts = async ({
   const removedIds = new Set<string>();
   const candidates = new Set<string>();
   for (const { part, relationshipId } of removedReferences) {
-    const parts = part === "header" ? document.package.headers : document.package.footers;
+    const parts =
+      part === "header" ? document.package.headers : document.package.footers;
     if (parts?.has(relationshipId)) continue;
     const relationship = relationships.get(relationshipId);
     if (!relationship) continue;
@@ -64,7 +77,9 @@ export const removeResolvedHeaderFooterParts = async ({
       !officeRelationshipHasType(relationship.type, part) ||
       relationship.targetMode === "External"
     ) {
-      return panic("Resolved header/footer relationship has an unexpected part type");
+      return panic(
+        "Resolved header/footer relationship has an unexpected part type",
+      );
     }
     const path = resolveRelativePath(DOCUMENT_RELS_PATH, relationship.target);
     if (isUnsafePackagePath(path))
@@ -74,14 +89,27 @@ export const removeResolvedHeaderFooterParts = async ({
   }
   if (removedIds.size === 0) return;
   for (const relationship of relationships.values()) {
-    if (removedIds.has(relationship.id) || relationship.targetMode === "External") continue;
-    candidates.delete(resolveRelativePath(DOCUMENT_RELS_PATH, relationship.target));
+    if (
+      removedIds.has(relationship.id) ||
+      relationship.targetMode === "External"
+    )
+      continue;
+    candidates.delete(
+      resolveRelativePath(DOCUMENT_RELS_PATH, relationship.target),
+    );
   }
   // Another package part may share the retired story part through its own relationship.
   for (const file of Object.values(zip.files)) {
-    if (file.dir || !file.name.endsWith(".rels") || file.name === DOCUMENT_RELS_PATH) continue;
+    if (
+      file.dir ||
+      !file.name.endsWith(".rels") ||
+      file.name === DOCUMENT_RELS_PATH
+    )
+      continue;
     const otherRelationships = parseRelationships(
-      await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      await file
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     );
     for (const relationship of otherRelationships.values()) {
       if (relationship.targetMode !== "External") {
@@ -96,7 +124,9 @@ export const removeResolvedHeaderFooterParts = async ({
     const partRels = zip.file(relsPath);
     if (!partRels) continue;
     for (const relationship of parseRelationships(
-      await partRels.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      await partRels
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     ).values()) {
       if (
         !officeRelationshipHasType(relationship.type, "image") ||
@@ -104,7 +134,10 @@ export const removeResolvedHeaderFooterParts = async ({
       )
         continue;
       const mediaPath = resolveRelativePath(relsPath, relationship.target);
-      if (!isUnsafePackagePath(mediaPath) && mediaPath.startsWith("word/media/"))
+      if (
+        !isUnsafePackagePath(mediaPath) &&
+        mediaPath.startsWith("word/media/")
+      )
         retiredMedia.add(mediaPath);
     }
   }
@@ -130,15 +163,21 @@ export const removeResolvedHeaderFooterParts = async ({
   for (const path of candidates) {
     zip.remove(path);
     const slash = path.lastIndexOf("/");
-    zip.remove(`${path.slice(0, slash + 1)}_rels/${path.slice(slash + 1)}.rels`);
+    zip.remove(
+      `${path.slice(0, slash + 1)}_rels/${path.slice(slash + 1)}.rels`,
+    );
   }
   for (const file of Object.values(zip.files)) {
     if (file.dir || !file.name.endsWith(".rels")) continue;
     for (const relationship of parseRelationships(
-      await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      await file
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     ).values()) {
       if (relationship.targetMode !== "External")
-        retiredMedia.delete(resolveRelativePath(file.name, relationship.target));
+        retiredMedia.delete(
+          resolveRelativePath(file.name, relationship.target),
+        );
     }
   }
   for (const path of retiredMedia) {
@@ -159,7 +198,9 @@ export const removeResolvedHeaderFooterParts = async ({
         (child) =>
           getNamespaceUri(child) === OOXML_NS.ct &&
           getLocalName(child.name) === "Override" &&
-          candidates.has((getAttribute(child, null, "PartName") ?? "").replace(/^\//u, "")),
+          candidates.has(
+            (getAttribute(child, null, "PartName") ?? "").replace(/^\//u, ""),
+          ),
       ),
     ),
     options: { compression: "DEFLATE", compressionOptions },

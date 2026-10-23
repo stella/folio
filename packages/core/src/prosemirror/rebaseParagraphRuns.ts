@@ -1,8 +1,8 @@
-import { formattingEquals } from "../docx/runConsolidator";
-import { Mark, type Fragment, type Node as PMNode } from "prosemirror-model";
-import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
+import { type Fragment, Mark, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
+import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
+import { formattingEquals } from "../docx/runConsolidator";
 import {
   applyMarksToRunFormattingRepresentation,
   selectRunFormattingCarrierRepresentations,
@@ -12,8 +12,8 @@ import {
   reconcileRunFormattingMarks,
 } from "./runFormattingReconciliation";
 import {
-  paragraphRunStyleContext,
   type ParagraphRunStyleContext,
+  paragraphRunStyleContext,
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
@@ -23,9 +23,15 @@ export const sameRunStyleContext = (
   target: ParagraphRunStyleContext,
 ): boolean =>
   source.paragraphMarkPrecedesStyle === target.paragraphMarkPrecedesStyle &&
-  formattingEquals(source.baseParagraphFormatting, target.baseParagraphFormatting) &&
+  formattingEquals(
+    source.baseParagraphFormatting,
+    target.baseParagraphFormatting,
+  ) &&
   formattingEquals(source.paragraphFormatting, target.paragraphFormatting) &&
-  formattingEquals(source.paragraphMarkFormatting, target.paragraphMarkFormatting);
+  formattingEquals(
+    source.paragraphMarkFormatting,
+    target.paragraphMarkFormatting,
+  );
 
 type RebaseParagraphRunsOptions = {
   tr: Transaction;
@@ -49,9 +55,13 @@ export const rebaseParagraphRuns = ({
 }: RebaseParagraphRunsOptions): Transaction => {
   const paragraph = tr.doc.nodeAt(position);
   if (!paragraph) return tr;
-  const storedMarks = initialStoredMarks ?? tr.storedMarks ?? tr.selection.$from.marks();
+  const storedMarks =
+    initialStoredMarks ?? tr.storedMarks ?? tr.selection.$from.marks();
   const sourceContext = paragraphRunStyleContext(previous, styleResolver);
-  const targetContext = paragraphRunStyleContext(target ?? paragraph, styleResolver);
+  const targetContext = paragraphRunStyleContext(
+    target ?? paragraph,
+    styleResolver,
+  );
   const sameCascade = sameRunStyleContext(sourceContext, targetContext);
   const representations = sameCascade
     ? []
@@ -126,7 +136,8 @@ export const rebaseParagraphRunContent = ({
 }: RebaseParagraphRunContentOptions): Fragment => {
   const sourceContext = paragraphRunStyleContext(paragraph, styleResolver);
   const targetContext = paragraphRunStyleContext(target, styleResolver);
-  if (sameRunStyleContext(sourceContext, targetContext)) return paragraph.content;
+  if (sameRunStyleContext(sourceContext, targetContext))
+    return paragraph.content;
   const replacements = new Map<PMNode, PMNode>();
   const representations = selectRunFormattingCarrierRepresentations({
     doc: paragraph,
@@ -165,7 +176,9 @@ export const rebaseParagraphRunContent = ({
       changed ||= next !== child;
     });
     return changed
-      ? recreateProseNodeWithParagraphPropertySource(replacement, { content: children })
+      ? recreateProseNodeWithParagraphPropertySource(replacement, {
+          content: children,
+        })
       : replacement;
   };
   return rebuild(paragraph).content;

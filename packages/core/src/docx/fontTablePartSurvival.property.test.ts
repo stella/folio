@@ -17,8 +17,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseFontTable } from "./fontTableParser";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
@@ -47,7 +49,10 @@ const FONT_CHILDREN: ReadonlyArray<readonly [name: string, xml: string]> = [
     '<w:sig w:usb0="E0002EFF" w:usb1="C000785B" w:usb2="00000009" w:usb3="00000000"' +
       ' w:csb0="000001FF" w:csb1="00000000"/>',
   ],
-  ["embedRegular", `<w:embedRegular r:id="rId1" w:fontKey="${FONT_KEY}" w:subsetted="true"/>`],
+  [
+    "embedRegular",
+    `<w:embedRegular r:id="rId1" w:fontKey="${FONT_KEY}" w:subsetted="true"/>`,
+  ],
   ["embedBold", `<w:embedBold r:id="rId2" w:fontKey="${FONT_KEY}"/>`],
   ["embedItalic", '<w:embedItalic r:id="rId3"/>'],
   ["embedBoldItalic", `<w:embedBoldItalic r:id="rId4" w:subsetted="false"/>`],
@@ -94,23 +99,29 @@ describe("the font table's reader covers what the schema declares", () => {
 describe("a font survives a rebuild from the model", () => {
   test("any subset of CT_Font's children comes back, in place", () => {
     fc.assert(
-      fc.property(fc.subarray([...FONT_CHILDREN], { minLength: 1 }), (children) => {
-        const source = fontWith(children.map(([, xml]) => xml).join(""));
-        const rebuilt = rebuild(source);
-        expect(childNamesOf(rebuilt)).toEqual(children.map(([name]) => name));
-      }),
+      fc.property(
+        fc.subarray([...FONT_CHILDREN], { minLength: 1 }),
+        (children) => {
+          const source = fontWith(children.map(([, xml]) => xml).join(""));
+          const rebuilt = rebuild(source);
+          expect(childNamesOf(rebuilt)).toEqual(children.map(([name]) => name));
+        },
+      ),
       propertyConfig({ numRuns: 60 }),
     );
   });
 
   test("a rebuilt part is a fixed point of the reader", () => {
     fc.assert(
-      fc.property(fc.subarray([...FONT_CHILDREN], { minLength: 1 }), (children) => {
-        const source = fontWith(children.map(([, xml]) => xml).join(""));
-        const once = parseFontTable(rebuild(source));
-        const twice = parseFontTable(rebuild(rebuild(source)));
-        expect(twice).toEqual(once);
-      }),
+      fc.property(
+        fc.subarray([...FONT_CHILDREN], { minLength: 1 }),
+        (children) => {
+          const source = fontWith(children.map(([, xml]) => xml).join(""));
+          const once = parseFontTable(rebuild(source));
+          const twice = parseFontTable(rebuild(rebuild(source)));
+          expect(twice).toEqual(once);
+        },
+      ),
       propertyConfig({ numRuns: 60 }),
     );
   });
@@ -134,14 +145,18 @@ describe("what a rebuild used to lose", () => {
   });
 
   test("w:charset keeps the character set it names as well as the one it numbers", () => {
-    const rebuilt = rebuild(fontWith('<w:charset w:val="00" w:characterSet="ANSI_CHARSET"/>'));
+    const rebuilt = rebuild(
+      fontWith('<w:charset w:val="00" w:characterSet="ANSI_CHARSET"/>'),
+    );
     expect(rebuilt).toContain('w:val="00"');
     expect(rebuilt).toContain('w:characterSet="ANSI_CHARSET"');
   });
 
   test("an embedded face keeps its relationship, its key and its subsetting", () => {
     const rebuilt = rebuild(
-      fontWith(`<w:embedRegular r:id="rId1" w:fontKey="${FONT_KEY}" w:subsetted="true"/>`),
+      fontWith(
+        `<w:embedRegular r:id="rId1" w:fontKey="${FONT_KEY}" w:subsetted="true"/>`,
+      ),
     );
     expect(rebuilt).toContain('r:id="rId1"');
     expect(rebuilt).toContain(`w:fontKey="${FONT_KEY}"`);
@@ -149,15 +164,21 @@ describe("what a rebuild used to lose", () => {
   });
 
   test("an unmodelled attribute of w:font rides the element's remainder", () => {
-    expect(rebuild(fontWith("", ' w14:unknown="7"'))).toContain('w14:unknown="7"');
+    expect(rebuild(fontWith("", ' w14:unknown="7"'))).toContain(
+      'w14:unknown="7"',
+    );
   });
 
   test("an unmodelled child of w:fonts keeps its place among the fonts", () => {
     const rebuilt = rebuild(
       partWith('<w:font w:name="A"/><w:someLaterElement/><w:font w:name="B"/>'),
     );
-    expect(rebuilt.indexOf('w:name="A"')).toBeLessThan(rebuilt.indexOf("<w:someLaterElement/>"));
-    expect(rebuilt.indexOf("<w:someLaterElement/>")).toBeLessThan(rebuilt.indexOf('w:name="B"'));
+    expect(rebuilt.indexOf('w:name="A"')).toBeLessThan(
+      rebuilt.indexOf("<w:someLaterElement/>"),
+    );
+    expect(rebuilt.indexOf("<w:someLaterElement/>")).toBeLessThan(
+      rebuilt.indexOf('w:name="B"'),
+    );
   });
 });
 
@@ -171,12 +192,16 @@ describe("what a rebuild used to lose", () => {
  */
 describe("a part root states its ignorable prefixes rather than replaying them", () => {
   test("a source mc:Ignorable does not reach the rebuilt root", () => {
-    const rebuilt = rebuild(partWith('<w:font w:name="Arial"/>', ' mc:Ignorable="w14 w15"'));
+    const rebuilt = rebuild(
+      partWith('<w:font w:name="Arial"/>', ' mc:Ignorable="w14 w15"'),
+    );
     expect(rebuilt).not.toContain('mc:Ignorable="w14 w15"');
   });
 
   test("another unmodelled root attribute does", () => {
-    const rebuilt = rebuild(partWith('<w:font w:name="Arial"/>', ' w:unknownRootFlag="1"'));
+    const rebuilt = rebuild(
+      partWith('<w:font w:name="Arial"/>', ' w:unknownRootFlag="1"'),
+    );
     expect(rebuilt).toContain('w:unknownRootFlag="1"');
   });
 });

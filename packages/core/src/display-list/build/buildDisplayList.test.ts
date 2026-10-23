@@ -20,7 +20,12 @@ import type {
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
 import { writePdf } from "../../pdf/writePdf";
-import type { DisplayGlyphRun, DisplayHitRegion, DisplayList, DisplayPrimitive } from "../types";
+import type {
+  DisplayGlyphRun,
+  DisplayHitRegion,
+  DisplayList,
+  DisplayPrimitive,
+} from "../types";
 import { buildDisplayList } from "./buildDisplayList";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
@@ -44,10 +49,14 @@ const buildLayout = (blocks: FlowBlock[]): Built => {
       blockLookup.set(String(block.id), { block, measure });
     }
   }
-  return { layout: layoutDocument(blocks, measures, LAYOUT_OPTIONS), blockLookup };
+  return {
+    layout: layoutDocument(blocks, measures, LAYOUT_OPTIONS),
+    blockLookup,
+  };
 };
 
-const buildFrom = (blocks: FlowBlock[]) => buildDisplayList(buildLayout(blocks));
+const buildFrom = (blocks: FlowBlock[]) =>
+  buildDisplayList(buildLayout(blocks));
 
 const pagePrimitives = (blocks: FlowBlock[]): readonly DisplayPrimitive[] => {
   const list = buildFrom(blocks);
@@ -57,13 +66,23 @@ const pagePrimitives = (blocks: FlowBlock[]): readonly DisplayPrimitive[] => {
   return page?.primitives.slice(1) ?? [];
 };
 
-const glyphRuns = (primitives: readonly DisplayPrimitive[]): DisplayGlyphRun[] =>
-  primitives.filter((primitive): primitive is DisplayGlyphRun => primitive.kind === "glyphRun");
+const glyphRuns = (
+  primitives: readonly DisplayPrimitive[],
+): DisplayGlyphRun[] =>
+  primitives.filter(
+    (primitive): primitive is DisplayGlyphRun => primitive.kind === "glyphRun",
+  );
 
-const flattenRegions = (regions: readonly DisplayHitRegion[]): DisplayHitRegion[] =>
+const flattenRegions = (
+  regions: readonly DisplayHitRegion[],
+): DisplayHitRegion[] =>
   regions.flatMap((region) => [region, ...flattenRegions(region.children)]);
 
-const para = (id: string, text: string, attrs?: ParagraphBlock["attrs"]): ParagraphBlock => ({
+const para = (
+  id: string,
+  text: string,
+  attrs?: ParagraphBlock["attrs"],
+): ParagraphBlock => ({
   kind: "paragraph",
   id,
   runs: [{ kind: "text", text }],
@@ -107,11 +126,21 @@ describe("buildDisplayList: paragraph geometry", () => {
       const text = "Hello";
       const widthPx = text.length * CHAR_WIDTH_PX;
 
-      const right = glyphRuns(pagePrimitives([para("r", text, { alignment: "right" })]));
-      expect(right[0]?.xPx).toBeCloseTo(MARGINS.left + CONTENT_WIDTH - widthPx, 6);
+      const right = glyphRuns(
+        pagePrimitives([para("r", text, { alignment: "right" })]),
+      );
+      expect(right[0]?.xPx).toBeCloseTo(
+        MARGINS.left + CONTENT_WIDTH - widthPx,
+        6,
+      );
 
-      const centre = glyphRuns(pagePrimitives([para("c", text, { alignment: "center" })]));
-      expect(centre[0]?.xPx).toBeCloseTo(MARGINS.left + (CONTENT_WIDTH - widthPx) / 2, 6);
+      const centre = glyphRuns(
+        pagePrimitives([para("c", text, { alignment: "center" })]),
+      );
+      expect(centre[0]?.xPx).toBeCloseTo(
+        MARGINS.left + (CONTENT_WIDTH - widthPx) / 2,
+        6,
+      );
     }, fakeMeasure);
   });
 
@@ -145,7 +174,11 @@ describe("buildDisplayList: paragraph geometry", () => {
           kind: "line",
           x1Px: MARGINS.left - 24,
           x2Px: MARGINS.left - 24,
-          stroke: { color: { r: 0, g: 0, b: 0, a: 1 }, thicknessPx: 2, pattern: "solid" },
+          stroke: {
+            color: { r: 0, g: 0, b: 0, a: 1 },
+            thicknessPx: 2,
+            pattern: "solid",
+          },
         });
       }
     }, fakeMeasure);
@@ -183,7 +216,11 @@ describe("buildDisplayList: tabs and justification", () => {
       const block: ParagraphBlock = {
         kind: "paragraph",
         id: "tab",
-        runs: [{ kind: "text", text: "A" }, { kind: "tab" }, { kind: "text", text: "B" }],
+        runs: [
+          { kind: "text", text: "A" },
+          { kind: "tab" },
+          { kind: "text", text: "B" },
+        ],
         attrs: { tabs: [{ val: "start", pos: 1440 }] },
       };
       const runs = glyphRuns(pagePrimitives([block]));
@@ -214,10 +251,13 @@ describe("buildDisplayList: tabs and justification", () => {
         pmEnd: 21,
         runs: [],
       };
-      const regions = flattenRegions(buildFrom([tabbed, blank]).pages.at(0)?.regions ?? []);
+      const regions = flattenRegions(
+        buildFrom([tabbed, blank]).pages.at(0)?.regions ?? [],
+      );
       const tab = regions.find((region) => region.kind === "tab");
       const empty = regions.find(
-        (region) => region.kind === "emptyRun" && region.model?.blockId === "blank",
+        (region) =>
+          region.kind === "emptyRun" && region.model?.blockId === "blank",
       );
 
       expect(tab?.model?.pmRange).toMatchObject({ start: 12, end: 13 });
@@ -231,17 +271,26 @@ describe("buildDisplayList: tabs and justification", () => {
       const block: ParagraphBlock = {
         kind: "paragraph",
         id: "toc",
-        runs: [{ kind: "text", text: "Chapter" }, { kind: "tab" }, { kind: "text", text: "7" }],
+        runs: [
+          { kind: "text", text: "Chapter" },
+          { kind: "tab" },
+          { kind: "text", text: "7" },
+        ],
         attrs: { tabs: [{ val: "start", pos: 1440, leader: "dot" }] },
       };
       const primitives = pagePrimitives([block]);
-      const clip = primitives.find((primitive) => primitive.kind === "clipGroup");
+      const clip = primitives.find(
+        (primitive) => primitive.kind === "clipGroup",
+      );
 
       expect(clip?.kind).toBe("clipGroup");
       if (clip?.kind === "clipGroup") {
         const tabStartPx = MARGINS.left + "Chapter".length * CHAR_WIDTH_PX;
         expect(clip.rect.xPx).toBeCloseTo(tabStartPx, 6);
-        expect(clip.rect.widthPx).toBeCloseTo(96 - "Chapter".length * CHAR_WIDTH_PX, 6);
+        expect(clip.rect.widthPx).toBeCloseTo(
+          96 - "Chapter".length * CHAR_WIDTH_PX,
+          6,
+        );
         const leader = glyphRuns(clip.children).at(0);
         expect(leader?.text.startsWith(".")).toBe(true);
         expect(new Set(leader?.text ?? "")).toEqual(new Set("."));
@@ -253,7 +302,9 @@ describe("buildDisplayList: tabs and justification", () => {
     withFakeTextMeasure(() => {
       // Eleven-character words leave slack the spaces cannot give back by
       // contracting, so the first line stretches.
-      const block = para("j", `${"elevenchars ".repeat(40).trim()}`, { alignment: "justify" });
+      const block = para("j", `${"elevenchars ".repeat(40).trim()}`, {
+        alignment: "justify",
+      });
       const { layout, blockLookup } = buildLayout([block]);
       const measure = blockLookup.get("j")?.measure;
       expect(measure?.kind).toBe("paragraph");
@@ -269,17 +320,25 @@ describe("buildDisplayList: tabs and justification", () => {
         return;
       }
 
-      const paintedWidth = first.advancesPx.reduce((sum, advance) => sum + advance, 0);
+      const paintedWidth = first.advancesPx.reduce(
+        (sum, advance) => sum + advance,
+        0,
+      );
       // The first line now fills the column exactly; every space carries an
       // equal share of the slack the measurer left.
       expect(paintedWidth).toBeCloseTo(CONTENT_WIDTH, 6);
-      expect(first.xPx + paintedWidth).toBeCloseTo(MARGINS.left + CONTENT_WIDTH, 6);
+      expect(first.xPx + paintedWidth).toBeCloseTo(
+        MARGINS.left + CONTENT_WIDTH,
+        6,
+      );
 
       // A collapsed trailing space carries no advance, which is why the sum
       // above lands on the column width rather than one space past it.
       const characters = [...first.text];
       const interiorSpaces = characters.flatMap((char, index) =>
-        char === " " && index < characters.length - 1 ? [first.advancesPx[index] ?? 0] : [],
+        char === " " && index < characters.length - 1
+          ? [first.advancesPx[index] ?? 0]
+          : [],
       );
       expect(interiorSpaces.length).toBeGreaterThan(0);
       for (const advance of interiorSpaces) {
@@ -303,8 +362,12 @@ describe("buildDisplayList: paint order", () => {
       };
       const primitives = pagePrimitives([block]);
 
-      const rectIndex = primitives.findIndex((primitive) => primitive.kind === "rect");
-      const glyphIndex = primitives.findIndex((primitive) => primitive.kind === "glyphRun");
+      const rectIndex = primitives.findIndex(
+        (primitive) => primitive.kind === "rect",
+      );
+      const glyphIndex = primitives.findIndex(
+        (primitive) => primitive.kind === "glyphRun",
+      );
       expect(rectIndex).toBeGreaterThanOrEqual(0);
       expect(glyphIndex).toBeGreaterThan(rectIndex);
 
@@ -312,7 +375,10 @@ describe("buildDisplayList: paint order", () => {
       expect(rect?.kind).toBe("rect");
       if (rect?.kind === "rect") {
         expect(rect.fill).toEqual({ r: 255, g: 255, b: 0, a: 1 });
-        expect(rect.rect.widthPx).toBeCloseTo("Marked".length * CHAR_WIDTH_PX, 6);
+        expect(rect.rect.widthPx).toBeCloseTo(
+          "Marked".length * CHAR_WIDTH_PX,
+          6,
+        );
       }
     }, fakeMeasure);
   });
@@ -382,7 +448,9 @@ describe("buildDisplayList: paint order", () => {
       };
 
       const primitives = pagePrimitives([table]);
-      const backgrounds = primitives.filter((primitive) => primitive.kind === "rect");
+      const backgrounds = primitives.filter(
+        (primitive) => primitive.kind === "rect",
+      );
 
       expect(backgrounds).toHaveLength(2);
       const [upper, lower] = backgrounds;
@@ -393,9 +461,13 @@ describe("buildDisplayList: paint order", () => {
       expect(upper.rect.xPx).toBeCloseTo(MARGINS.left + 4, 6);
       expect(upper.rect.widthPx).toBeCloseTo(192, 6);
       expect(upper.rect.yPx).toBeCloseTo(MARGINS.top + 4, 6);
-      expect(lower.rect.yPx - (upper.rect.yPx + upper.rect.heightPx)).toBeCloseTo(4, 6);
+      expect(
+        lower.rect.yPx - (upper.rect.yPx + upper.rect.heightPx),
+      ).toBeCloseTo(4, 6);
       // No shared edges: each spaced cell paints its own four.
-      expect(primitives.filter((primitive) => primitive.kind === "line")).toHaveLength(8);
+      expect(
+        primitives.filter((primitive) => primitive.kind === "line"),
+      ).toHaveLength(8);
     }, fakeMeasure);
   });
 
@@ -433,18 +505,26 @@ describe("buildDisplayList: paint order", () => {
         ],
       };
 
-      const regions = flattenRegions(buildFrom([table]).pages.at(0)?.regions ?? []);
+      const regions = flattenRegions(
+        buildFrom([table]).pages.at(0)?.regions ?? [],
+      );
       expect(
         regions
-          .filter((region) => region.kind === "image" || region.kind === "textBox")
+          .filter(
+            (region) => region.kind === "image" || region.kind === "textBox",
+          )
           .map((region) => [region.kind, region.model?.blockId]),
       ).toEqual([
         ["image", "cell-image"],
         ["textBox", "cell-box"],
       ]);
-      const box = regions.find((region) => region.model?.blockId === "cell-box");
+      const box = regions.find(
+        (region) => region.model?.blockId === "cell-box",
+      );
       expect(
-        flattenRegions(box?.children ?? []).some((region) => region.kind === "paragraph"),
+        flattenRegions(box?.children ?? []).some(
+          (region) => region.kind === "paragraph",
+        ),
       ).toBe(true);
     }, fakeMeasure);
   });
@@ -454,25 +534,32 @@ describe("buildDisplayList: paint order", () => {
     ["lgDashDot", "dashed"],
     ["dot", "dotted"],
     ["sysDot", "dotted"],
-  ] as const)("strokes a %s text-box outline as %s", (outlineStyle, pattern) => {
-    withFakeTextMeasure(() => {
-      // The outline speaks DrawingML, so a table keyed by CSS `border-style`
-      // had no entry for any of these and every one of them painted solid.
-      const textBox: TextBoxBlock = {
-        kind: "textBox",
-        id: "dashed-box",
-        width: 120,
-        height: 40,
-        outlineWidth: 2,
-        outlineColor: "#000000",
-        outlineStyle,
-        content: [para("dashed-box-paragraph", "Outlined")],
-      };
+  ] as const)(
+    "strokes a %s text-box outline as %s",
+    (outlineStyle, pattern) => {
+      withFakeTextMeasure(() => {
+        // The outline speaks DrawingML, so a table keyed by CSS `border-style`
+        // had no entry for any of these and every one of them painted solid.
+        const textBox: TextBoxBlock = {
+          kind: "textBox",
+          id: "dashed-box",
+          width: 120,
+          height: 40,
+          outlineWidth: 2,
+          outlineColor: "#000000",
+          outlineStyle,
+          content: [para("dashed-box-paragraph", "Outlined")],
+        };
 
-      const outline = pagePrimitives([textBox]).find(({ kind }) => kind === "rect");
-      expect(outline?.kind === "rect" ? outline.stroke?.pattern : undefined).toBe(pattern);
-    }, fakeMeasure);
-  });
+        const outline = pagePrimitives([textBox]).find(
+          ({ kind }) => kind === "rect",
+        );
+        expect(
+          outline?.kind === "rect" ? outline.stroke?.pattern : undefined,
+        ).toBe(pattern);
+      }, fakeMeasure);
+    },
+  );
 
   test("applies DrawingML rotation and flips about its authored text-box frame centre", () => {
     withFakeTextMeasure(() => {
@@ -495,7 +582,9 @@ describe("buildDisplayList: paint order", () => {
       expect(primitive.originYPx).toBe(MARGINS.top + 20);
       expect(primitive.scaleX).toBe(-1);
       expect(primitive.scaleY).toBe(-1);
-      expect(primitive.children.some(({ kind }) => kind === "glyphRun")).toBe(true);
+      expect(primitive.children.some(({ kind }) => kind === "glyphRun")).toBe(
+        true,
+      );
     }, fakeMeasure);
   });
 });
@@ -524,12 +613,20 @@ describe("buildDisplayList: contract obligations", () => {
         (primitive) => primitive.kind === "rect" && primitive.fill.a === 0.08,
       );
       const border = page?.primitives.find(
-        (primitive) => primitive.kind === "line" && primitive.stroke.color.a === 0.24,
+        (primitive) =>
+          primitive.kind === "line" && primitive.stroke.color.a === 0.24,
       );
 
-      expect(annotation).toMatchObject({ commentId: 7, contents: "Besøk ✓", author: "Åsa" });
+      expect(annotation).toMatchObject({
+        commentId: 7,
+        contents: "Besøk ✓",
+        author: "Åsa",
+      });
       expect(annotation?.rects).toHaveLength(1);
-      expect(highlight).toMatchObject({ kind: "rect", rect: annotation?.rects[0] });
+      expect(highlight).toMatchObject({
+        kind: "rect",
+        rect: annotation?.rects[0],
+      });
       expect(border).toMatchObject({
         kind: "line",
         stroke: {
@@ -545,7 +642,10 @@ describe("buildDisplayList: contract obligations", () => {
     withFakeTextMeasure(() => {
       const blocks = (): FlowBlock[] => [
         para("a", "Alpha", { alignment: "center" }),
-        para("b", "Beta", { listMarker: "•", indent: { left: 36, hanging: 36 } }),
+        para("b", "Beta", {
+          listMarker: "•",
+          indent: { left: 36, hanging: 36 },
+        }),
       ];
       const built = buildLayout(blocks());
       expect(buildDisplayList(built)).toEqual(buildDisplayList(built));
@@ -636,7 +736,9 @@ describe("buildDisplayList: contract obligations", () => {
       const list = buildFrom([block]);
       expect(list.fonts).toHaveLength(2);
       expect(list.fonts.map((face) => face.weight)).toEqual([400, 700]);
-      expect(glyphRuns(list.pages[0]?.primitives ?? []).map((run) => run.font)).toEqual([0, 1, 0]);
+      expect(
+        glyphRuns(list.pages[0]?.primitives ?? []).map((run) => run.font),
+      ).toEqual([0, 1, 0]);
     }, fakeMeasure);
   });
 });
@@ -693,7 +795,9 @@ describe("buildDisplayList: outline", () => {
   const OUTLINED_BLOCKS = [
     para("toc", "Table of Contents", { outlineLevel: BODY_TEXT_OUTLINE_LEVEL }),
     para("h1", "Chapter One", { outlineLevel: { kind: "heading", level: 0 } }),
-    para("h2", "Section One.a", { outlineLevel: { kind: "heading", level: 1 } }),
+    para("h2", "Section One.a", {
+      outlineLevel: { kind: "heading", level: 1 },
+    }),
   ];
 
   test("body text is not an outline entry", () => {

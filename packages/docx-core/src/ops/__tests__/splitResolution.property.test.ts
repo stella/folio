@@ -1,13 +1,20 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { projectReview } from "../../../../../test/reviewProjection";
 import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { IDENTITY_SPACES, identityKeysIn } from "../ids";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
-const control = (content: ParagraphContent[], id: number): ParagraphContent => ({
+const control = (
+  content: ParagraphContent[],
+  id: number,
+): ParagraphContent => ({
   type: "inlineSdt",
   properties: { sdtType: "richText", id, tag: "clause" },
   content,
@@ -20,7 +27,10 @@ test(
       fc.property(
         fc.record({
           depth: fc.integer({ min: 1, max: 3 }),
-          insertions: fc.array(fc.integer({ min: 1, max: 3 }), { minLength: 1, maxLength: 4 }),
+          insertions: fc.array(fc.integer({ min: 1, max: 3 }), {
+            minLength: 1,
+            maxLength: 4,
+          }),
           payload: fc.constantFrom("text", "tab"),
           emptySibling: fc.constantFrom("none", "before", "after"),
           retainedBreak: fc.nat({ max: 3 }),
@@ -29,15 +39,21 @@ test(
           let content: ParagraphContent[] = [
             {
               type: "run",
-              content: payload === "tab" ? [{ type: "tab" }] : [{ type: "text", text: "tail" }],
+              content:
+                payload === "tab"
+                  ? [{ type: "tab" }]
+                  : [{ type: "text", text: "tail" }],
             },
           ];
           for (let id = depth; id > 0; id--) content = [control(content, id)];
-          if (emptySibling === "before") content.unshift(control([], depth + 1));
+          if (emptySibling === "before")
+            content.unshift(control([], depth + 1));
           if (emptySibling === "after") content.push(control([], depth + 1));
           const source = {
             package: {
-              document: { content: [{ type: "paragraph", paraId: "00000001", content }] },
+              document: {
+                content: [{ type: "paragraph", paraId: "00000001", content }],
+              },
             },
           } satisfies Document;
           let current: Document = source;
@@ -60,7 +76,10 @@ test(
                 text: "x",
                 runProps: {},
                 revision: stamp(),
-                newIds: { revision: [100 + revisionId], control: [200 + revisionId] },
+                newIds: {
+                  revision: [100 + revisionId],
+                  control: [200 + revisionId],
+                },
               }).unwrap();
               current = inserted.document;
               revisions.push([...inserted.revisions]);
@@ -92,8 +111,10 @@ test(
             }).unwrap().document;
           const batch = reject(current, revisions.flat());
           let sequential = current;
-          for (const ids of revisions.toReversed()) sequential = reject(sequential, ids);
-          const projected = (document: Document) => projectReview({ document, projection: "π′" });
+          for (const ids of revisions.toReversed())
+            sequential = reject(sequential, ids);
+          const projected = (document: Document) =>
+            projectReview({ document, projection: "π′" });
           expect(projected(batch)).toStrictEqual(projected(sequential));
           expect(projected(batch)).toStrictEqual(projected(source));
           const controlIds = (document: Document) =>
@@ -102,16 +123,24 @@ test(
               .sort();
           expect(controlIds(batch)).toEqual(controlIds(source));
           const kept = breakRevisions.at(retainedBreak % breakRevisions.length);
-          if (kept === undefined) throw new TypeError("A generated break must exist.");
-          const selected = revisions.map((ids) => ids.filter((id) => id !== kept));
+          if (kept === undefined)
+            throw new TypeError("A generated break must exist.");
+          const selected = revisions.map((ids) =>
+            ids.filter((id) => id !== kept),
+          );
           const partial = reject(current, selected.flat());
           let partialSequential = current;
           for (const ids of selected.toReversed()) {
-            if (ids.length > 0) partialSequential = reject(partialSequential, ids);
+            if (ids.length > 0)
+              partialSequential = reject(partialSequential, ids);
           }
-          expect(projected(partial)).toStrictEqual(projected(partialSequential));
+          expect(projected(partial)).toStrictEqual(
+            projected(partialSequential),
+          );
           expect(
-            identityKeysIn(partial.package).includes(`${IDENTITY_SPACES.REVISION}:${kept}`),
+            identityKeysIn(partial.package).includes(
+              `${IDENTITY_SPACES.REVISION}:${kept}`,
+            ),
           ).toBe(true);
         },
       ),

@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
+import { parseDocx } from "../docx/parser";
+import { createEmptyDocx, repackDocx } from "../docx/rezip";
 import { mergeImageAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { parseDocx } from "../docx/parser";
-import { createEmptyDocx, repackDocx } from "../docx/rezip";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 
 const IMAGE_RELATIONSHIP =
@@ -65,7 +65,10 @@ const packageWithDocument = async ({
   const contentTypes = await zip.file(contentTypesPath)!.async("text");
   zip.file(
     contentTypesPath,
-    contentTypes.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+    contentTypes.replace(
+      "</Types>",
+      '<Default Extension="png" ContentType="image/png"/></Types>',
+    ),
   );
   const relsPath = "word/_rels/document.xml.rels";
   const rels = await zip.file(relsPath)!.async("text");
@@ -116,9 +119,15 @@ describe("prepareTargetInlineAtom image resources", () => {
       { preloadFonts: false },
     );
 
-    expect(target.package.relationships?.get("rIdTarget")?.target).toBe("media/target.png");
-    expect([...target.package.media!.keys()]).toContain("word/media/target.png");
-    expect(target.package.media?.get("word/media/target.png")?.dataUrl).toStartWith("data:");
+    expect(target.package.relationships?.get("rIdTarget")?.target).toBe(
+      "media/target.png",
+    );
+    expect([...target.package.media!.keys()]).toContain(
+      "word/media/target.png",
+    );
+    expect(
+      target.package.media?.get("word/media/target.png")?.dataUrl,
+    ).toStartWith("data:");
     const targetImage = firstImageNode(toProseDoc(target));
     expect(targetImage.attrs.src).toStartWith("data:");
     expect(targetImage.attrs._docxRawXml).toContain('r:embed="rIdTarget"');
@@ -165,14 +174,18 @@ describe("prepareTargetInlineAtom image resources", () => {
         /<Relationship Id="(?<id>rId\d+)" Type="[^"]*\/image" Target="media\/(?<file>[^"]+)"\/>/gu,
       ),
     ];
-    const imported = imageRelationships.find((relationship) => relationship.groups?.id !== "rId1");
+    const imported = imageRelationships.find(
+      (relationship) => relationship.groups?.id !== "rId1",
+    );
     expect(imported?.groups?.id).toBeDefined();
     expect(imported?.groups?.file).toBeDefined();
     const importedBytes = await zip
       .file(`word/media/${imported?.groups?.file}`)!
       .async("uint8array");
     expect(importedBytes).toEqual(TARGET_IMAGE_BYTES);
-    expect(await zip.file("word/media/image1.png")!.async("uint8array")).toEqual(BASE_IMAGE_BYTES);
+    expect(
+      await zip.file("word/media/image1.png")!.async("uint8array"),
+    ).toEqual(BASE_IMAGE_BYTES);
   });
 
   test("keeps ordinary parsed picture EMUs byte-for-byte when unchanged", async () => {
@@ -186,7 +199,9 @@ describe("prepareTargetInlineAtom image resources", () => {
       { preloadFonts: false },
     );
 
-    const paragraph = parsed.package.document.content.find((block) => block.type === "paragraph");
+    const paragraph = parsed.package.document.content.find(
+      (block) => block.type === "paragraph",
+    );
     if (!paragraph) {
       throw new Error("Expected parsed paragraph");
     }
@@ -218,7 +233,9 @@ describe("prepareTargetInlineAtom image resources", () => {
       }),
       { preloadFonts: false },
     );
-    const paragraph = parsed.package.document.content.find((block) => block.type === "paragraph");
+    const paragraph = parsed.package.document.content.find(
+      (block) => block.type === "paragraph",
+    );
     if (!paragraph) {
       throw new Error("Expected parsed paragraph");
     }
@@ -256,8 +273,12 @@ describe("prepareTargetInlineAtom image resources", () => {
       throw new Error("Expected parsed ProseMirror paragraph");
     }
     const image = firstImageNode(pm);
-    const editedImage = image.type.create(mergeImageAttrs(image, { width: 100, height: 50 }));
-    const edited = pm.copy(pm.content.replaceChild(0, paragraph.copy(Fragment.from(editedImage))));
+    const editedImage = image.type.create(
+      mergeImageAttrs(image, { width: 100, height: 50 }),
+    );
+    const edited = pm.copy(
+      pm.content.replaceChild(0, paragraph.copy(Fragment.from(editedImage))),
+    );
 
     const saved = await repackDocx(
       fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } }),

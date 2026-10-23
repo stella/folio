@@ -26,7 +26,7 @@ import {
   sequencePositions,
 } from "./containerChildren";
 import type { DeclaredChild } from "./containerChildren.gen";
-import { SdtLockSchema, narrowEnum } from "./parserEnums";
+import { narrowEnum, SdtLockSchema } from "./parserEnums";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
@@ -39,10 +39,15 @@ import {
   type XmlElement,
 } from "./xmlParser";
 
-function parseListItems(el: XmlElement): { displayText: string; value: string }[] {
+function parseListItems(
+  el: XmlElement,
+): { displayText: string; value: string }[] {
   const items: { displayText: string; value: string }[] = [];
   for (const child of el.elements ?? []) {
-    if (child.type === "element" && getLocalName(child.name ?? "") === "listItem") {
+    if (
+      child.type === "element" &&
+      getLocalName(child.name ?? "") === "listItem"
+    ) {
       // OOXML §17.5.2.10: `w:displayText` is optional, and `w:value` is
       // optional too. Fall back each to the other so a partially specified
       // listItem stays selectable + visible — without this, the dropdown
@@ -218,7 +223,11 @@ function normalizeChildrenForLocalNames(
  * inside a value (OpenDoPE payloads in `w:tag w:val="…"`, namespace URIs in
  * `xmlns:foo="…"`, etc.) are left untouched.
  */
-function rewriteOpenTagAttrPrefixes(raw: string, canonical: string, local: string): string {
+function rewriteOpenTagAttrPrefixes(
+  raw: string,
+  canonical: string,
+  local: string,
+): string {
   const opener = `<${canonical}:${local}`;
   const pieces: string[] = [];
   let cursor = 0;
@@ -386,7 +395,8 @@ export const preservedSdtChild = (
   preserved: PreservedMarkup | undefined,
   localName: string,
 ): string | undefined =>
-  preserved?.children?.find(({ xml }) => capturedRootName(xml) === localName)?.xml;
+  preserved?.children?.find(({ xml }) => capturedRootName(xml) === localName)
+    ?.xml;
 
 /** The same set without that child, or `undefined` when nothing is left. */
 export const withoutPreservedSdtChild = (
@@ -411,7 +421,8 @@ export const statesControlKind = (xml: string): boolean => {
   const root = capturedRootName(xml);
   return (
     root !== undefined &&
-    (root === CHECKBOX_CHILD || CONTROL_KIND_CHILDREN.some((name) => name === root))
+    (root === CHECKBOX_CHILD ||
+      CONTROL_KIND_CHILDREN.some((name) => name === root))
   );
 };
 
@@ -423,7 +434,9 @@ export const statesControlKind = (xml: string): boolean => {
  * captured rather than mistaken for `w:sdtPr`, `w:sdtEndPr`, or
  * `w:sdtContent`.
  */
-export const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; after: string } => {
+export const captureSdtSiblingMarkers = (
+  sdt: XmlElement,
+): { before: string; after: string } => {
   const beforeParts: string[] = [];
   const afterParts: string[] = [];
   let sawContent = false;
@@ -432,7 +445,9 @@ export const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; aft
       continue;
     }
     const local = getLocalName(child.name);
-    const isWordprocessingChild = WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "");
+    const isWordprocessingChild = WORDPROCESSINGML_NAMESPACE_URIS.has(
+      child.namespaceUri ?? "",
+    );
     if (isWordprocessingChild && (local === "sdtPr" || local === "sdtEndPr")) {
       continue;
     }
@@ -452,7 +467,9 @@ export const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; aft
 
 /** Read a projection off a control-kind element, and keep the element. */
 const kind =
-  (read: (props: SdtProperties, element: XmlElement) => void): ChildReader<SdtProperties> =>
+  (
+    read: (props: SdtProperties, element: XmlElement) => void,
+  ): ChildReader<SdtProperties> =>
   (element, props) => {
     read(props, element);
     return CAPTURE;
@@ -489,7 +506,10 @@ const SDT_PROPERTY_HANDLERS = {
     // `ST_Lock` has four values and the reader admits exactly those. A
     // fifth one used to become `unlocked`, which is a silent change of
     // meaning rather than a loss; now the element keeps its own bytes.
-    const value = narrowEnum(getAttributeAnyPrefix(element, "val"), SdtLockSchema);
+    const value = narrowEnum(
+      getAttributeAnyPrefix(element, "val"),
+      SdtLockSchema,
+    );
     if (value !== undefined) {
       props.lock = value;
     }
@@ -498,7 +518,10 @@ const SDT_PROPERTY_HANDLERS = {
   placeholder: (element, props) => {
     // OOXML §17.5.2.27: the placeholder reference is `w:val` on the
     // nested `<w:docPart>`, not a `<w:val>` child of `w:placeholder`.
-    const value = getAttributeAnyPrefix(findChild(element, "w", "docPart"), "val");
+    const value = getAttributeAnyPrefix(
+      findChild(element, "w", "docPart"),
+      "val",
+    );
     if (value !== null) {
       props.placeholder = value;
     }
@@ -530,7 +553,10 @@ const SDT_PROPERTY_HANDLERS = {
     props.sdtType = "date";
     // The display format is the child `<w:dateFormat w:val="…"/>`; the
     // bound value is the parent's `@w:fullDate`.
-    const format = getAttributeAnyPrefix(findChild(element, "w", "dateFormat"), "val");
+    const format = getAttributeAnyPrefix(
+      findChild(element, "w", "dateFormat"),
+      "val",
+    );
     if (format !== null) {
       props.dateFormat = format;
     }
@@ -574,7 +600,9 @@ const SDT_PROPERTY_UNDECLARED = {
     props.sdtType = "checkbox";
     // OnOff again: `1`/`true`/`on`, or a bare `<w14:checked/>`, is
     // checked. A `w14:checkbox` with no state at all is unchecked.
-    const state = findChild(element, "w14", "checked") ?? findChild(element, "w", "checked");
+    const state =
+      findChild(element, "w14", "checked") ??
+      findChild(element, "w", "checked");
     props.checked = state === null ? false : parseBooleanElement(state, "w14");
   }),
 } as const satisfies Record<string, ChildReader<SdtProperties>>;
@@ -611,7 +639,10 @@ export function parseSdtProperties(
   }
 
   if (sdtEndPr) {
-    props.rawEndPropertiesXml = normalizeWordPrefix(captureVerbatimXml(sdtEndPr), sdtEndPr);
+    props.rawEndPropertiesXml = normalizeWordPrefix(
+      captureVerbatimXml(sdtEndPr),
+      sdtEndPr,
+    );
     // `CT_SdtEndPr` declares `w:rPr` and nothing else, so the record is the
     // element and its one field the run properties. Both are read, because a
     // control folio rebuilds has no captured bytes left to replay and the end

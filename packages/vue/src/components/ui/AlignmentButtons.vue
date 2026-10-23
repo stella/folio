@@ -5,7 +5,11 @@
   buttons. Close behaviour via shared Popover.
 -->
 <template>
-  <Popover :open="isOpen" @update:open="(v: boolean) => (isOpen = v)" @close="isOpen = false">
+  <Popover
+    :open="isOpen"
+    @update:open="(v: boolean) => (isOpen = v)"
+    @close="isOpen = false"
+  >
     <template #trigger="{ toggle }">
       <button
         type="button"
@@ -40,10 +44,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import MaterialSymbol from "./MaterialSymbol.vue";
-import type { ParagraphAlignment } from "./AlignmentButtons.types";
+import { computed, ref } from "vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
+import type { ParagraphAlignment } from "./AlignmentButtons.types";
+import MaterialSymbol from "./MaterialSymbol.vue";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).
@@ -63,17 +68,45 @@ const emit = defineEmits<{
 
 const isOpen = ref(false);
 
-const OPTIONS: { value: ParagraphAlignment; label: string; icon: string; shortcut: string }[] = [
-  { value: "left", label: "Align left", icon: "format_align_left", shortcut: "Ctrl+L" },
-  { value: "center", label: "Center", icon: "format_align_center", shortcut: "Ctrl+E" },
-  { value: "right", label: "Align right", icon: "format_align_right", shortcut: "Ctrl+R" },
-  { value: "both", label: "Justify", icon: "format_align_justify", shortcut: "Ctrl+J" },
+const OPTIONS: {
+  value: ParagraphAlignment;
+  label: string;
+  icon: string;
+  shortcut: string;
+}[] = [
+  {
+    value: "left",
+    label: "Align left",
+    icon: "format_align_left",
+    shortcut: "Ctrl+L",
+  },
+  {
+    value: "center",
+    label: "Center",
+    icon: "format_align_center",
+    shortcut: "Ctrl+E",
+  },
+  {
+    value: "right",
+    label: "Align right",
+    icon: "format_align_right",
+    shortcut: "Ctrl+R",
+  },
+  {
+    value: "both",
+    label: "Justify",
+    icon: "format_align_justify",
+    shortcut: "Ctrl+J",
+  },
 ];
 
 const currentIcon = computed(
-  () => OPTIONS.find((o) => o.value === props.value)?.icon ?? "format_align_left",
+  () =>
+    OPTIONS.find((o) => o.value === props.value)?.icon ?? "format_align_left",
 );
-const currentLabel = computed(() => OPTIONS.find((o) => o.value === props.value)?.label ?? "Left");
+const currentLabel = computed(
+  () => OPTIONS.find((o) => o.value === props.value)?.label ?? "Left",
+);
 
 function select(v: ParagraphAlignment) {
   emit("change", v);

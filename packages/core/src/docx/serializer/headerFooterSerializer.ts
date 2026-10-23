@@ -1,4 +1,4 @@
-import type { SaveDiagnosticOptions } from "../saveDiagnostics";
+import { escapeXmlAttribute } from "@stll/docx-core";
 /**
  * Header/Footer Serializer - Serialize headers/footers to OOXML XML
  *
@@ -11,24 +11,32 @@ import type { SaveDiagnosticOptions } from "../saveDiagnostics";
  * - Content: w:p, w:tbl (same as document body)
  */
 
-import type { BlockContent, HeaderFooter, Watermark } from "../../types/document";
+import type {
+  BlockContent,
+  HeaderFooter,
+  Watermark,
+} from "../../types/document";
 import {
-  getHeaderFooterVerbatimXml,
-  canReplayHeaderFooterVerbatim,
   canReplayHeaderFooterBlocks,
+  canReplayHeaderFooterVerbatim,
   getHeaderFooterSourceBaseline,
+  getHeaderFooterVerbatimXml,
 } from "../headerFooterVerbatim";
-import { buildStoryBlockReplay } from "../storyBlockReplay";
 import { isEmptyParagraph } from "../paragraphParser";
+import type { SaveDiagnosticOptions } from "../saveDiagnostics";
+import { buildStoryBlockReplay } from "../storyBlockReplay";
 import { captureVerbatimXml } from "../verbatimCapture";
 import { getLocalName, parseXmlDocument } from "../xmlParser";
-import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
+import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
-import { serializePartElement, type OoxmlNamespacePrefix, type SourcePart } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
+import {
+  type OoxmlNamespacePrefix,
+  serializePartElement,
+  type SourcePart,
+} from "./partNamespaces";
 import { serializeTable } from "./tableSerializer";
-import { escapeXmlAttribute } from "@stll/docx-core";
 
 // Prefixes a header/footer declares whether or not the body uses them. Mirrors
 // the document serializer's baseline so any raw replay path (`rawEndPropertiesXml`,
@@ -108,7 +116,11 @@ export function serializeHeaderFooter(
   if (baseline.type === "mismatch")
     source?.onDiagnostic?.({ type: "sourceReplayMismatch", part: source.path });
   const verbatim = getHeaderFooterVerbatimXml(hf);
-  if (baseline.type === "captured" && verbatim && canReplayHeaderFooterVerbatim(hf)) {
+  if (
+    baseline.type === "captured" &&
+    verbatim &&
+    canReplayHeaderFooterVerbatim(hf)
+  ) {
     return verbatim;
   }
 
@@ -137,7 +149,8 @@ export function serializeHeaderFooter(
       isEmptyParagraph(watermarkHost);
     if (mergesIntoRetainedHost) {
       blocksXml[watermarkInsertIndex] = serializeRawWatermarkIntoHost({
-        hostXml: blocksXml[watermarkInsertIndex] ?? serializeParagraph(watermarkHost),
+        hostXml:
+          blocksXml[watermarkInsertIndex] ?? serializeParagraph(watermarkHost),
         rawWatermarkXml,
       });
     }
@@ -195,7 +208,10 @@ function serializeRawWatermarkIntoHost({
   }
 
   const watermarkContent = (rawHost.elements ?? [])
-    .filter((child) => child.type === "element" && getLocalName(child.name ?? "") !== "pPr")
+    .filter(
+      (child) =>
+        child.type === "element" && getLocalName(child.name ?? "") !== "pPr",
+    )
     .map((child) => captureVerbatimXml(child))
     .join("");
   if (!watermarkContent) {
@@ -204,11 +220,15 @@ function serializeRawWatermarkIntoHost({
 
   const namespaceAttributes = Object.entries(rawHost.attributes ?? {})
     .filter(
-      ([name, value]) => value !== undefined && (name === "xmlns" || name.startsWith("xmlns:")),
+      ([name, value]) =>
+        value !== undefined && (name === "xmlns" || name.startsWith("xmlns:")),
     )
     .map(([name, value]) => ` ${name}="${escapeXmlAttribute(String(value))}"`)
     .join("");
-  const namespacedHost = hostXml.replace(/^<w:p(?=[\s>])/u, `<w:p${namespaceAttributes}`);
+  const namespacedHost = hostXml.replace(
+    /^<w:p(?=[\s>])/u,
+    `<w:p${namespaceAttributes}`,
+  );
   return namespacedHost.replace("</w:p>", `${watermarkContent}</w:p>`);
 }
 
@@ -229,7 +249,9 @@ function synthesizeWatermarkParagraph(watermark: Watermark): string {
   return synthesizePictureWatermark(watermark);
 }
 
-function synthesizeTextWatermark(watermark: Extract<Watermark, { kind: "text" }>): string {
+function synthesizeTextWatermark(
+  watermark: Extract<Watermark, { kind: "text" }>,
+): string {
   // VML shape values mirror what Word's "Insert → Watermark" UI emits.
   // The shapetype id 136 is the WordArt template the model is anchored
   // on (gating in the parser); the size and offset numbers come from
@@ -241,7 +263,9 @@ function synthesizeTextWatermark(watermark: Extract<Watermark, { kind: "text" }>
   // producer default"; we map it to Word's silver fallback rather than
   // emitting an invalid VML `fillcolor="#auto"`.
   const fillcolor =
-    watermark.color && watermark.color !== "auto" ? `#${watermark.color}` : "#C0C0C0";
+    watermark.color && watermark.color !== "auto"
+      ? `#${watermark.color}`
+      : "#C0C0C0";
   const fontFamily = watermark.font ?? "Calibri";
   const text = escapeXmlAttribute(watermark.text);
   // VML opacity rides on a `<v:fill>` child rather than the shape's
@@ -251,7 +275,9 @@ function synthesizeTextWatermark(watermark: Extract<Watermark, { kind: "text" }>
   // explicit opacity so the saved DOCX matches what Word emits at the
   // default transparency.
   const fillChild =
-    watermark.opacity !== undefined ? `<v:fill opacity="${watermark.opacity}"/>` : "";
+    watermark.opacity !== undefined
+      ? `<v:fill opacity="${watermark.opacity}"/>`
+      : "";
   return `<w:p><w:r><w:pict><v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136" style="position:absolute;margin-left:0;margin-top:0;width:415pt;height:207pt;rotation:${rotation};z-index:-251658240;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin" fillcolor="${fillcolor}" stroked="f">${fillChild}<v:textpath style="font-family:&quot;${escapeXmlAttribute(fontFamily)}&quot;;font-size:1pt" string="${text}"/></v:shape></w:pict></w:r></w:p>`;
 }
 
@@ -265,7 +291,9 @@ const PICTURE_WATERMARK_DEFAULT_HEIGHT_PT = 207;
 const PICTURE_WATERMARK_WASHOUT_GAIN = "19661f";
 const PICTURE_WATERMARK_WASHOUT_BLACKLEVEL = "22938f";
 
-function synthesizePictureWatermark(watermark: Extract<Watermark, { kind: "picture" }>): string {
+function synthesizePictureWatermark(
+  watermark: Extract<Watermark, { kind: "picture" }>,
+): string {
   // Same VML shapetype convention as Word's UI: shape id begins with
   // `WordPictureWatermark` so a future round-trip parses cleanly via
   // the id-prefix guard.

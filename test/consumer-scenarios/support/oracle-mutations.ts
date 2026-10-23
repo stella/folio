@@ -1,4 +1,4 @@
-import { RELATIONS, type Relation } from "./relation-contract.ts";
+import { type Relation, RELATIONS } from "./relation-contract.ts";
 
 type Probe = { bug: string; assertion: string };
 
@@ -7,12 +7,18 @@ export const RELATION_MUTATIONS = {
     bug: "Tracked replacement writes a different payload than direct replacement.",
     assertion: "[directTracked]",
   },
-  rejectAll: { bug: "Rejecting tracked revisions accepts them instead.", assertion: "[rejectAll]" },
+  rejectAll: {
+    bug: "Rejecting tracked revisions accepts them instead.",
+    assertion: "[rejectAll]",
+  },
   saveIdempotent: {
     bug: "Saving a reopened package changes its document part.",
     assertion: "[saveIdempotent]",
   },
-  undo: { bug: "Undo reports success but leaves a new paragraph behind.", assertion: "[undo]" },
+  undo: {
+    bug: "Undo reports success but leaves a new paragraph behind.",
+    assertion: "[undo]",
+  },
   batchSequential: {
     bug: "A multi-operation batch adds an unrequested paragraph.",
     assertion: "[batchSequential]",

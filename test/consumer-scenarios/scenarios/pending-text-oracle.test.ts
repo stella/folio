@@ -23,7 +23,13 @@ const tableEffect = "unsupportedTable";
 // Every operation kind requires a fixture and an independent expected effect.
 const cases = {
   replaceInBlock: {
-    operation: { id: "replace", type: "replaceInBlock", blockId, find: "😀", replace: "é" },
+    operation: {
+      id: "replace",
+      type: "replaceInBlock",
+      blockId,
+      find: "😀",
+      replace: "é",
+    },
     expected: [
       [blockId, "a é b"],
       [nextId, "tail"],
@@ -48,7 +54,13 @@ const cases = {
     expected: [[nextId, "tail"]],
   },
   splitBlock: {
-    operation: { id: "split", type: "splitBlock", blockId, offset: 4, separator: " " },
+    operation: {
+      id: "split",
+      type: "splitBlock",
+      blockId,
+      offset: 4,
+      separator: " ",
+    },
     expected: [
       [blockId, "a 😀"],
       ["model:split:split", "b"],
@@ -56,12 +68,26 @@ const cases = {
     ],
   },
   mergeBlockWithNext: {
-    operation: { id: "merge", type: "mergeBlockWithNext", blockId, separator: " " },
+    operation: {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId,
+      separator: " ",
+    },
     expected: [[blockId, "a 😀 b tail"]],
   },
   insertBeforeBlock: {
-    operation: { id: "before", type: "insertBeforeBlock", blockId, text: "first\n\nsecond" },
-    expected: [["model:before:0", "first"], ["model:before:1", "second"], ...unchanged],
+    operation: {
+      id: "before",
+      type: "insertBeforeBlock",
+      blockId,
+      text: "first\n\nsecond",
+    },
+    expected: [
+      ["model:before:0", "first"],
+      ["model:before:1", "second"],
+      ...unchanged,
+    ],
   },
   insertAfterBlock: {
     operation: {
@@ -78,15 +104,30 @@ const cases = {
     ],
   },
   formatRange: {
-    operation: { id: "format", type: "formatRange", range, formatting: { bold: true } },
+    operation: {
+      id: "format",
+      type: "formatRange",
+      range,
+      formatting: { bold: true },
+    },
     expected: unchanged,
   },
   commentOnRange: {
-    operation: { id: "comment-range", type: "commentOnRange", range, comment: { text: "Note" } },
+    operation: {
+      id: "comment-range",
+      type: "commentOnRange",
+      range,
+      comment: { text: "Note" },
+    },
     expected: unchanged,
   },
   commentOnBlock: {
-    operation: { id: "comment-block", type: "commentOnBlock", blockId, comment: { text: "Note" } },
+    operation: {
+      id: "comment-block",
+      type: "commentOnBlock",
+      blockId,
+      comment: { text: "Note" },
+    },
     expected: unchanged,
   },
   setBlockParagraphProperties: {
@@ -107,11 +148,21 @@ const cases = {
     expected: tableEffect,
   },
   insertSignatureTable: {
-    operation: { id: "table", type: "insertSignatureTable", blockId, parties: [{ name: "Party" }] },
+    operation: {
+      id: "table",
+      type: "insertSignatureTable",
+      blockId,
+      parties: [{ name: "Party" }],
+    },
     expected: tableEffect,
   },
   insertTableRow: {
-    operation: { id: "table", type: "insertTableRow", blockId, cellTexts: ["cell"] },
+    operation: {
+      id: "table",
+      type: "insertTableRow",
+      blockId,
+      cellTexts: ["cell"],
+    },
     expected: tableEffect,
   },
   deleteTableRow: {
@@ -119,7 +170,12 @@ const cases = {
     expected: tableEffect,
   },
   insertTableColumn: {
-    operation: { id: "table", type: "insertTableColumn", blockId, cellTexts: ["cell"] },
+    operation: {
+      id: "table",
+      type: "insertTableColumn",
+      blockId,
+      cellTexts: ["cell"],
+    },
     expected: tableEffect,
   },
   deleteTableColumn: {
@@ -127,7 +183,12 @@ const cases = {
     expected: tableEffect,
   },
   mergeTableCells: {
-    operation: { id: "table", type: "mergeTableCells", blockId, endBlockId: nextId },
+    operation: {
+      id: "table",
+      type: "mergeTableCells",
+      blockId,
+      endBlockId: nextId,
+    },
     expected: tableEffect,
   },
   splitTableCell: {
@@ -136,7 +197,10 @@ const cases = {
   },
 } as const satisfies Record<
   Operation["type"],
-  { operation: Operation; expected: readonly (readonly [string, string])[] | "unsupportedTable" }
+  {
+    operation: Operation;
+    expected: readonly (readonly [string, string])[] | "unsupportedTable";
+  }
 >;
 
 for (const [kind, { operation, expected }] of Object.entries(cases)) {

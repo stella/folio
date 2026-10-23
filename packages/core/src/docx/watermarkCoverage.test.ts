@@ -39,7 +39,9 @@ describe("watermark header coverage on save (eigenpal #684)", () => {
     expect((await validateDocx(out)).valid).toBe(true);
 
     const zip = await JSZip.loadAsync(out);
-    const headerFiles = Object.keys(zip.files).filter((p) => /^word\/header\d+\.xml$/u.test(p));
+    const headerFiles = Object.keys(zip.files).filter((p) =>
+      /^word\/header\d+\.xml$/u.test(p),
+    );
     // Default header + the coverage-created first-page header.
     expect(headerFiles).toHaveLength(2);
     for (const path of headerFiles) {

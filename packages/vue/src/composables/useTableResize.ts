@@ -16,16 +16,17 @@
  *     should invoke the returned cleanup on unmount.
  */
 import type { EditorView } from "prosemirror-view";
+
 import {
-  readColumnWidths,
-  readRowHeight,
-  readColumnWidthAt,
   commitColumnResize,
-  commitRowResize,
   commitRightEdgeResize,
-  TWIPS_PER_PIXEL,
+  commitRowResize,
   MIN_CELL_WIDTH_TWIPS,
   MIN_ROW_HEIGHT_TWIPS,
+  readColumnWidthAt,
+  readColumnWidths,
+  readRowHeight,
+  TWIPS_PER_PIXEL,
 } from "@stll/folio-core/prosemirror/tableResize";
 
 type ColumnResizeState = {
@@ -254,7 +255,11 @@ function seedColumnWidths(view: EditorView, col: ColumnResizeState) {
   if (w) col.origWidths = w;
 }
 
-function seedRowHeight(view: EditorView, row: RowResizeState, target: HTMLElement) {
+function seedRowHeight(
+  view: EditorView,
+  row: RowResizeState,
+  target: HTMLElement,
+) {
   const stored = readRowHeight(view, row.tablePmStart, row.rowIndex);
   if (stored != null) {
     row.origHeight = stored;

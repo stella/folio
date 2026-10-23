@@ -14,8 +14,10 @@ import { extractDocxText } from "./extractDocxText";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const STRICT_W_NS = "http://purl.oclc.org/ooxml/wordprocessingml/main";
-const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const PACKAGE_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
+const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELATIONSHIPS_NS =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 
 type MakeDocxOptions = {
   body: string;
@@ -57,13 +59,18 @@ const makeDocx = async ({
   ): void => {
     const rootName = kind === "header" ? "hdr" : "ftr";
     for (const [path, content] of Object.entries(parts)) {
-      zip.file(path, `<w:${rootName} xmlns:w="${wordNamespace}">${content}</w:${rootName}>`);
+      zip.file(
+        path,
+        `<w:${rootName} xmlns:w="${wordNamespace}">${content}</w:${rootName}>`,
+      );
       const rId = `rId${nextRId++}`;
       const target = path.replace(/^word\//, "");
       relationships.push(
         `<Relationship Id="${rId}" Type="${relationshipType}" Target="${target}"/>`,
       );
-      sectionReferences.push(`<w:${kind}Reference w:type="default" r:id="${rId}"/>`);
+      sectionReferences.push(
+        `<w:${kind}Reference w:type="default" r:id="${rId}"/>`,
+      );
     }
   };
 
@@ -81,7 +88,9 @@ const makeDocx = async ({
   }
 
   const sectPr =
-    sectionReferences.length > 0 ? `<w:sectPr>${sectionReferences.join("")}</w:sectPr>` : "";
+    sectionReferences.length > 0
+      ? `<w:sectPr>${sectionReferences.join("")}</w:sectPr>`
+      : "";
   zip.file(
     "word/document.xml",
     `<w:document xmlns:w="${wordNamespace}" xmlns:r="${R_NS}"><w:body>${body}${sectPr}</w:body></w:document>`,
@@ -98,8 +107,10 @@ const makeDocx = async ({
 
 const paragraph = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
-const table = (rows: string, properties = "") => `<w:tbl>${properties}${rows}</w:tbl>`;
-const row = (cells: string, properties = "") => `<w:tr>${properties}${cells}</w:tr>`;
+const table = (rows: string, properties = "") =>
+  `<w:tbl>${properties}${rows}</w:tbl>`;
+const row = (cells: string, properties = "") =>
+  `<w:tr>${properties}${cells}</w:tr>`;
 const cell = (content: string, properties = "") =>
   `<w:tc><w:tcPr>${properties}</w:tcPr>${content}</w:tc>`;
 
@@ -113,7 +124,8 @@ const HEADER_ROW_PROPERTIES = `<w:trPr><w:tblHeader/></w:trPr>`;
  * Cells in one rendered row. Escaped pipes are HTML entities, so every
  * remaining `|` between the outer delimiters separates two columns.
  */
-const columnCount = (line: string): number => line.slice(1, -1).split("|").length;
+const columnCount = (line: string): number =>
+  line.slice(1, -1).split("|").length;
 
 describe("extractDocxText", () => {
   test("returns deterministic paragraphs across document parts", async () => {
@@ -175,7 +187,9 @@ describe("extractDocxText", () => {
 
     const result = await extractDocxText(bytes);
 
-    expect(result.paragraphs.map(({ text, source }) => ({ text, source }))).toEqual([
+    expect(
+      result.paragraphs.map(({ text, source }) => ({ text, source })),
+    ).toEqual([
       { text: "Referenced header", source: "header" },
       { text: "Before", source: "body" },
     ]);
@@ -294,10 +308,22 @@ describe("extractDocxText", () => {
     // Flattened row-major, nothing ties an EIN to the column that names it.
     const bytes = await makeDocx({
       body: table(
-        row(cell(paragraph("Delaware")) + cell(paragraph("4911")) + cell(paragraph("83-4027615"))) +
+        row(
+          cell(paragraph("Delaware")) +
+            cell(paragraph("4911")) +
+            cell(paragraph("83-4027615")),
+        ) +
           row(
-            cell(paragraph("(State or Other Jurisdiction of Incorporation or Organization)")) +
-              cell(paragraph("(Primary Standard Industrial Classification Code Number)")) +
+            cell(
+              paragraph(
+                "(State or Other Jurisdiction of Incorporation or Organization)",
+              ),
+            ) +
+              cell(
+                paragraph(
+                  "(Primary Standard Industrial Classification Code Number)",
+                ),
+              ) +
               cell(paragraph("(I.R.S. Employer Identification Number)")),
           ),
         DEFAULT_TABLE_PROPERTIES,
@@ -323,17 +349,28 @@ describe("extractDocxText", () => {
 
     const result = await extractDocxText(bytes);
 
-    expect(result.paragraphs.map(({ text, tableRow }) => [text, tableRow])).toEqual([
+    expect(
+      result.paragraphs.map(({ text, tableRow }) => [text, tableRow]),
+    ).toEqual([
       ["|  |", { table: 0, kind: "syntheticHeader" }],
       ["| --- |", { table: 0, kind: "delimiter" }],
-      ["| x |", { table: 0, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] }],
+      [
+        "| x |",
+        { table: 0, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] },
+      ],
       ["Prose", undefined],
       ["|  |", { table: 1, kind: "syntheticHeader" }],
       ["| --- |", { table: 1, kind: "delimiter" }],
-      ["| x |", { table: 1, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] }],
+      [
+        "| x |",
+        { table: 1, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] },
+      ],
       ["|  |", { table: 2, kind: "syntheticHeader" }],
       ["| --- |", { table: 2, kind: "delimiter" }],
-      ["| x |", { table: 2, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] }],
+      [
+        "| x |",
+        { table: 2, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] },
+      ],
     ]);
   });
 
@@ -343,13 +380,18 @@ describe("extractDocxText", () => {
 
     const declared = await extractDocxText(
       await makeDocx({
-        body: table(row(cells, HEADER_ROW_PROPERTIES) + data, DEFAULT_TABLE_PROPERTIES),
+        body: table(
+          row(cells, HEADER_ROW_PROPERTIES) + data,
+          DEFAULT_TABLE_PROPERTIES,
+        ),
       }),
     );
     // `w:tblLook/@w:firstRow` is conditional formatting Word writes on every
     // table, so on its own it must not turn a row of data into column names.
     const undeclared = await extractDocxText(
-      await makeDocx({ body: table(row(cells) + data, DEFAULT_TABLE_PROPERTIES) }),
+      await makeDocx({
+        body: table(row(cells) + data, DEFAULT_TABLE_PROPERTIES),
+      }),
     );
 
     expect(declared.paragraphs.map(({ text }) => text)).toEqual([
@@ -366,16 +408,29 @@ describe("extractDocxText", () => {
     expect(declared.paragraphs.at(0)?.tableRow).toEqual({
       table: 0,
       kind: "cells",
-      cells: [{ paragraphs: [{ text: "H1" }] }, { paragraphs: [{ text: "H2" }] }],
+      cells: [
+        { paragraphs: [{ text: "H1" }] },
+        { paragraphs: [{ text: "H2" }] },
+      ],
     });
-    expect(undeclared.paragraphs.at(0)?.tableRow).toEqual({ table: 0, kind: "syntheticHeader" });
+    expect(undeclared.paragraphs.at(0)?.tableRow).toEqual({
+      table: 0,
+      kind: "syntheticHeader",
+    });
   });
 
   test("flattens a horizontally merged cell across the grid columns it spans", async () => {
     const bytes = await makeDocx({
       body: table(
-        row(cell(paragraph("Spans two"), `<w:gridSpan w:val="2"/>`) + cell(paragraph("C"))) +
-          row(cell(paragraph("a1")) + cell(paragraph("a2")) + cell(paragraph("a3"))),
+        row(
+          cell(paragraph("Spans two"), `<w:gridSpan w:val="2"/>`) +
+            cell(paragraph("C")),
+        ) +
+          row(
+            cell(paragraph("a1")) +
+              cell(paragraph("a2")) +
+              cell(paragraph("a3")),
+          ),
       ),
     });
 
@@ -392,8 +447,14 @@ describe("extractDocxText", () => {
   test("preserves leading and trailing grid omissions", async () => {
     const bytes = await makeDocx({
       body: table(
-        row(cell(paragraph("H2")), `<w:trPr><w:gridBefore w:val="1"/><w:tblHeader/></w:trPr>`) +
-          row(cell(paragraph("v1")), `<w:trPr><w:gridAfter w:val="1"/></w:trPr>`),
+        row(
+          cell(paragraph("H2")),
+          `<w:trPr><w:gridBefore w:val="1"/><w:tblHeader/></w:trPr>`,
+        ) +
+          row(
+            cell(paragraph("v1")),
+            `<w:trPr><w:gridAfter w:val="1"/></w:trPr>`,
+          ),
       ),
     });
 
@@ -419,7 +480,10 @@ describe("extractDocxText", () => {
   test("renders a vertical-merge continuation as an empty column", async () => {
     const bytes = await makeDocx({
       body: table(
-        row(cell(paragraph("Merged down"), `<w:vMerge w:val="restart"/>`) + cell(paragraph("r1"))) +
+        row(
+          cell(paragraph("Merged down"), `<w:vMerge w:val="restart"/>`) +
+            cell(paragraph("r1")),
+        ) +
           // Word renders no content for a continuation cell. Content left here
           // by a producer must not surface, and the anchor must not be repeated:
           // either would invent a fact the document does not show.
@@ -465,7 +529,12 @@ describe("extractDocxText", () => {
       cells: [
         { paragraphs: [{ text: "outer" }] },
         {
-          paragraphs: [{ text: "in1" }, { text: "in2" }, { text: "in3" }, { text: "in4" }],
+          paragraphs: [
+            { text: "in1" },
+            { text: "in2" },
+            { text: "in3" },
+            { text: "in4" },
+          ],
         },
       ],
     });
@@ -483,7 +552,9 @@ describe("extractDocxText", () => {
           ) +
             cell("") +
             cell(paragraph("pipe|inside")) +
-            cell(`<w:p><w:r><w:t>break</w:t><w:br/><w:t>after</w:t></w:r></w:p>`),
+            cell(
+              `<w:p><w:r><w:t>break</w:t><w:br/><w:t>after</w:t></w:r></w:p>`,
+            ),
         ),
       ),
     });
@@ -543,20 +614,38 @@ describe("extractDocxText", () => {
     expect(
       result.paragraphs
         .slice(2)
-        .map(({ tableRow }) => (tableRow?.kind === "cells" ? tableRow.cells : undefined)),
+        .map(({ tableRow }) =>
+          tableRow?.kind === "cells" ? tableRow.cells : undefined,
+        ),
     ).toEqual([
-      [{ paragraphs: [{ text: "wide" }] }, { paragraphs: [] }, { paragraphs: [] }],
-      [{ paragraphs: [{ text: "a" }] }, { paragraphs: [{ text: "b" }] }, { paragraphs: [] }],
-      [{ paragraphs: [{ text: "only" }] }, { paragraphs: [] }, { paragraphs: [] }],
+      [
+        { paragraphs: [{ text: "wide" }] },
+        { paragraphs: [] },
+        { paragraphs: [] },
+      ],
+      [
+        { paragraphs: [{ text: "a" }] },
+        { paragraphs: [{ text: "b" }] },
+        { paragraphs: [] },
+      ],
+      [
+        { paragraphs: [{ text: "only" }] },
+        { paragraphs: [] },
+        { paragraphs: [] },
+      ],
       [{ paragraphs: [] }, { paragraphs: [] }, { paragraphs: [] }],
     ]);
   });
 
   test("rejects tables that exceed the row extraction budget", async () => {
     const wideRow = row(cell(paragraph("wide"), `<w:gridSpan w:val="256"/>`));
-    const bytes = await makeDocx({ body: table(wideRow + row("").repeat(10_000)) });
+    const bytes = await makeDocx({
+      body: table(wideRow + row("").repeat(10_000)),
+    });
 
-    await expect(extractDocxText(bytes)).rejects.toBeInstanceOf(DocxArchiveError);
+    await expect(extractDocxText(bytes)).rejects.toBeInstanceOf(
+      DocxArchiveError,
+    );
   });
 
   test("rejects tables that exceed the retained character budget", async () => {
@@ -564,17 +653,23 @@ describe("extractDocxText", () => {
       body: table(row(cell(paragraph("x".repeat(8 * 1024 * 1024 + 1))))),
     });
 
-    await expect(extractDocxText(bytes)).rejects.toBeInstanceOf(DocxArchiveError);
+    await expect(extractDocxText(bytes)).rejects.toBeInstanceOf(
+      DocxArchiveError,
+    );
   });
 
   test("emits nothing for a table that has no cell at all", async () => {
     const bytes = await makeDocx({
-      body: paragraph("Before") + table("") + table(row("")) + paragraph("After"),
+      body:
+        paragraph("Before") + table("") + table(row("")) + paragraph("After"),
     });
 
     const result = await extractDocxText(bytes);
 
-    expect(result.paragraphs.map(({ text }) => text)).toEqual(["Before", "After"]);
+    expect(result.paragraphs.map(({ text }) => text)).toEqual([
+      "Before",
+      "After",
+    ]);
   });
 
   test("counts every emitted paragraph's text, table rows included", async () => {
@@ -582,7 +677,10 @@ describe("extractDocxText", () => {
       body:
         paragraph("Prose") +
         table(
-          row(cell(paragraph("a")) + cell(paragraph("b")), HEADER_ROW_PROPERTIES),
+          row(
+            cell(paragraph("a")) + cell(paragraph("b")),
+            HEADER_ROW_PROPERTIES,
+          ),
           DEFAULT_TABLE_PROPERTIES,
         ),
       headers: { "word/header1.xml": table(row(cell(paragraph("h")))) },
@@ -634,8 +732,13 @@ describe("extractDocxText archive limits", () => {
 
   test("applies archive limits the caller passes", async () => {
     await expect(
-      extractDocxText(await manyEntryArchive(40), { archive: { maxEntries: 10 } }),
-    ).rejects.toMatchObject({ _tag: "DocxArchiveError", reason: "too-many-entries" });
+      extractDocxText(await manyEntryArchive(40), {
+        archive: { maxEntries: 10 },
+      }),
+    ).rejects.toMatchObject({
+      _tag: "DocxArchiveError",
+      reason: "too-many-entries",
+    });
   });
 
   test("stops a main document part declared at 64 bytes that would inflate to a gibibyte", async () => {

@@ -19,7 +19,13 @@ export { cssString } from "../src/fonts/fontsourceFaces";
 /** `<root>/packages/core/scripts`, resolved from this file, never from the cwd. */
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 
-const FONTSOURCE_DIR = path.join(REPO_ROOT, "packages", "react", "node_modules", "@fontsource");
+const FONTSOURCE_DIR = path.join(
+  REPO_ROOT,
+  "packages",
+  "react",
+  "node_modules",
+  "@fontsource",
+);
 
 const faces = createFontsourceFaces({
   read: (packageName, relativePath) => {
@@ -32,5 +38,6 @@ export const createBundledFontSource = (): HeadlessFontSource => faces.source;
 
 export type BundledFontFaceCssOptions = FontsourceFontFaceCssOptions;
 
-export const bundledFontFaceCss = (options: BundledFontFaceCssOptions = {}): string =>
-  faces.fontFaceCss(options);
+export const bundledFontFaceCss = (
+  options: BundledFontFaceCssOptions = {},
+): string => faces.fontFaceCss(options);

@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import assert from "node:assert/strict";
+
 import { buildDocx } from "../../packages/cli/src/__tests__/fixtures";
 import {
-  FolioDocxReviewer,
   type FolioDocumentOperationBatch,
+  FolioDocxReviewer,
 } from "../../packages/core/src/server";
 import { assertGeneratedFlowReceipt } from "./flow-receipt";
 
@@ -17,10 +18,16 @@ test.each(cases)(
   "accepts correct insert and replace receipts at $blockId for $text",
   async ({ blockId, heading, text }) => {
     const source = await buildDocx([
-      { text: "token0 original clause", paraId: "10000001", ...(heading && { style: "Heading1" }) },
+      {
+        text: "token0 original clause",
+        paraId: "10000001",
+        ...(heading && { style: "Heading1" }),
+      },
       { text: "token1 original clause", paraId: "10000002" },
     ]);
-    const reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      new Uint8Array(source).buffer,
+    );
     const operations = [
       { id: "insert", type: "insertAfterBlock", blockId, text },
       {
@@ -39,7 +46,9 @@ test.each(cases)(
         operations: [operation],
       } as const satisfies FolioDocumentOperationBatch;
       assertGeneratedFlowReceipt(
-        reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
+        reviewer.applyDocumentOperations(batch, {
+          undefinedReferences: "refuse",
+        }),
         operation,
       );
     }
@@ -51,7 +60,9 @@ test("rejects insertion receipts with the wrong discriminator or anchor", async 
     { text: "token0 original clause", paraId: "10000001", style: "Heading1" },
     { text: "token1 original clause", paraId: "10000002" },
   ]);
-  const reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    new Uint8Array(source).buffer,
+  );
   const operation = {
     id: "insert",
     type: "insertAfterBlock",
@@ -63,7 +74,9 @@ test("rejects insertion receipts with the wrong discriminator or anchor", async 
     mode: "direct",
     operations: [operation],
   } as const satisfies FolioDocumentOperationBatch;
-  const result = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
+  const result = reviewer.applyDocumentOperations(batch, {
+    undefinedReferences: "refuse",
+  });
   const wrongType = structuredClone(result);
   const wrongTypeReceipt = wrongType.receipts.at(0);
   assert.ok(wrongTypeReceipt);

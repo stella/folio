@@ -17,15 +17,21 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { parseDocx } from "../docx/parser";
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { createDocx } from "../docx/rezip";
-import { paragraph } from "../docx/server/build";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
-import type { Paragraph, ParagraphContent, Run, RunContent, Shape } from "../types/content";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import { paragraph } from "../docx/server/build";
+import type {
+  Paragraph,
+  ParagraphContent,
+  Run,
+  RunContent,
+  Shape,
+} from "../types/content";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
@@ -44,14 +50,19 @@ const textBoxShape = (floating: boolean): Shape => ({
   name: "Carried box",
   size: { width: 1_828_800, height: 914_400 },
   ...(floating
-    ? { position: FLOATING_POSITION, wrap: { type: "square", wrapText: "bothSides" } }
+    ? {
+        position: FLOATING_POSITION,
+        wrap: { type: "square", wrapText: "bothSides" },
+      }
     : {}),
   textBody: {
     content: [
       {
         type: "paragraph",
         paraId: "34000001",
-        content: [{ type: "run", content: [{ type: "text", text: "Box words." }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: "Box words." }] },
+        ],
       },
     ],
   },
@@ -93,7 +104,11 @@ const OBJECT_KINDS = {
   }),
   "chart (preserved drawing)": (): RunContent => ({
     type: "drawing",
-    image: { type: "image", size: { width: 914_400, height: 457_200 }, wrap: { type: "inline" } },
+    image: {
+      type: "image",
+      size: { width: 914_400, height: 457_200 },
+      wrap: { type: "inline" },
+    },
     rawXml: CHART_XML,
     rawXmlMode: "preserveOnly",
   }),
@@ -107,8 +122,14 @@ const OBJECT_KINDS = {
       size: { width: 914_400, height: 457_200 },
     },
   }),
-  "inline text box": (): RunContent => ({ type: "shape", shape: textBoxShape(false) }),
-  "anchored text box": (): RunContent => ({ type: "shape", shape: textBoxShape(true) }),
+  "inline text box": (): RunContent => ({
+    type: "shape",
+    shape: textBoxShape(false),
+  }),
+  "anchored text box": (): RunContent => ({
+    type: "shape",
+    shape: textBoxShape(true),
+  }),
 } as const satisfies Record<string, () => RunContent>;
 
 type ObjectKind = keyof typeof OBJECT_KINDS;
@@ -120,19 +141,33 @@ const TAIL = "Tail paragraph.";
 const INSERTED = "Inserted.";
 
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 
-const buildPackage = async (kind: ObjectKind, placement: Placement): Promise<ArrayBuffer> => {
+const buildPackage = async (
+  kind: ObjectKind,
+  placement: Placement,
+): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   // Each in a run of its own, the way a drawing is usually authored.
-  const words: Run = { type: "run", content: [{ type: "text", text: CARRIER }] };
+  const words: Run = {
+    type: "run",
+    content: [{ type: "text", text: CARRIER }],
+  };
   const object: Run = { type: "run", content: [OBJECT_KINDS[kind]()] };
   document.package.document.content = [
     paragraph(LEAD),
-    { type: "paragraph", content: placement === "leading" ? [object, words] : [words, object] },
+    {
+      type: "paragraph",
+      content: placement === "leading" ? [object, words] : [words, object],
+    },
     paragraph(TAIL),
   ];
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
   return toArrayBuffer(docx);
 };
 
@@ -155,12 +190,16 @@ const describeObject = (content: RunContent): string | null => {
     return "shape";
   }
   const words = body.content
-    .flatMap((block) => (block.type === "paragraph" ? [paragraphText(block)] : []))
+    .flatMap((block) =>
+      block.type === "paragraph" ? [paragraphText(block)] : [],
+    )
     .join("|");
   return `box(${words})`;
 };
 
-const inlineChildren = (item: ParagraphContent): readonly ParagraphContent[] => {
+const inlineChildren = (
+  item: ParagraphContent,
+): readonly ParagraphContent[] => {
   switch (item.type) {
     case "hyperlink":
       return item.children;
@@ -201,7 +240,10 @@ const paragraphText = (block: Paragraph): string => {
 };
 
 const savedBody = async (bytes: ArrayBuffer): Promise<SavedParagraph[]> => {
-  const document = await parseDocx(bytes, { detectVariables: false, preloadFonts: false });
+  const document = await parseDocx(bytes, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   return document.package.document.content.flatMap((block) => {
     if (block.type !== "paragraph") {
       return [];
@@ -236,7 +278,9 @@ const readerOrder = (reviewer: FolioDocxReviewer) =>
   }));
 
 const blockIdOf = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`no block reads "${text}"`);
   }
@@ -253,7 +297,9 @@ type Scenario = {
   name: string;
   operation: (reviewer: FolioDocxReviewer) => FolioDocumentOperation;
   /** The body the operation asks for, `"object"` marking the carrier's object. */
-  expected: (placement: Placement) => readonly (readonly [string, "object" | null])[];
+  expected: (
+    placement: Placement,
+  ) => readonly (readonly [string, "object" | null])[];
   /**
    * Where the operation is refused instead. A text box is a block of its own
    * after its paragraph, and a tracked break across it cannot be resolved:
@@ -398,7 +444,8 @@ const ORIGINAL = [
 const expectedBody = (
   rows: readonly (readonly [string, "object" | null])[],
   object: string,
-): SavedParagraph[] => rows.map(([text, carries]) => ({ text, objects: carries ? [object] : [] }));
+): SavedParagraph[] =>
+  rows.map(([text, carries]) => ({ text, objects: carries ? [object] : [] }));
 
 const objectDescription = (kind: ObjectKind): string => {
   const content = OBJECT_KINDS[kind]();
@@ -409,8 +456,12 @@ const objectDescription = (kind: ObjectKind): string => {
   return described;
 };
 
-const reopen = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Reviewer" });
+const reopen = async (
+  reviewer: FolioDocxReviewer,
+): Promise<FolioDocxReviewer> =>
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    author: "Reviewer",
+  });
 
 const PLACEMENTS: readonly Placement[] = ["trailing", "leading"];
 const MODES: readonly Mode[] = ["direct", "tracked-changes"];
@@ -435,9 +486,13 @@ describe("block operations on and next to an inline object's paragraph", () => {
         for (const mode of MODES) {
           test(`${kind}, ${placement}: ${scenario.name} (${mode})`, async () => {
             const source = await buildPackage(kind, placement);
-            expect(await savedBody(source)).toEqual(expectedBody(ORIGINAL, object));
+            expect(await savedBody(source)).toEqual(
+              expectedBody(ORIGINAL, object),
+            );
 
-            const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+            const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+              author: "Reviewer",
+            });
             const result = reviewer.applyDocumentOperations(
               {
                 version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -450,7 +505,9 @@ describe("block operations on and next to an inline object's paragraph", () => {
             expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
 
             if (scenario.refused?.(kind, placement, mode)) {
-              expect(result.skipped).toEqual([{ id: "op", reason: "unsupportedBlock" }]);
+              expect(result.skipped).toEqual([
+                { id: "op", reason: "unsupportedBlock" },
+              ]);
               expect(result.applied).toEqual([]);
               expect(await savedBody(await reviewer.toBuffer())).toEqual(
                 expectedBody(ORIGINAL, object),
@@ -480,13 +537,17 @@ describe("block operations on and next to an inline object's paragraph", () => {
 
             const acceptedOneByOne = await reopen(reopened);
             acceptEachChange(acceptedOneByOne);
-            expect(await savedBody(await acceptedOneByOne.toBuffer())).toEqual(expected);
+            expect(await savedBody(await acceptedOneByOne.toBuffer())).toEqual(
+              expected,
+            );
 
             const rejected = await reopen(reopened);
             rejected.rejectAll();
             const rejectedBytes = await rejected.toBuffer();
             expect(await hasRevisions(rejectedBytes)).toBe(false);
-            expect(await savedBody(rejectedBytes)).toEqual(expectedBody(ORIGINAL, object));
+            expect(await savedBody(rejectedBytes)).toEqual(
+              expectedBody(ORIGINAL, object),
+            );
           });
         }
       }
@@ -504,12 +565,17 @@ describe("a paragraph holding a text box, first in the body", () => {
         type: "paragraph",
         content: [
           { type: "run", content: [{ type: "text", text: CARRIER }] },
-          { type: "run", content: [{ type: "shape", shape: textBoxShape(false) }] },
+          {
+            type: "run",
+            content: [{ type: "shape", shape: textBoxShape(false) }],
+          },
         ],
       },
       paragraph(TAIL),
     ];
-    const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+    const { docx } = await ensureParaIds(
+      new Uint8Array(await createDocx(document)),
+    );
     return toArrayBuffer(docx);
   };
 
@@ -526,12 +592,20 @@ describe("a paragraph holding a text box, first in the body", () => {
     reviewer.getContent().map(({ text }) => text);
 
   test("deleting it directly deletes the box", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxCarrierFirst());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildTextBoxCarrierFirst(),
+    );
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "direct",
-        operations: [{ id: "delete", type: "deleteBlock", blockId: blockIdOf(reviewer, CARRIER) }],
+        operations: [
+          {
+            id: "delete",
+            type: "deleteBlock",
+            blockId: blockIdOf(reviewer, CARRIER),
+          },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -546,20 +620,31 @@ describe("a paragraph holding a text box, first in the body", () => {
   });
 
   test("deleting it tracked marks the box deleted with it", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxCarrierFirst(), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildTextBoxCarrierFirst(),
+      {
+        author: "Reviewer",
+      },
+    );
     reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
-        operations: [{ id: "delete", type: "deleteBlock", blockId: blockIdOf(reviewer, CARRIER) }],
+        operations: [
+          {
+            id: "delete",
+            type: "deleteBlock",
+            blockId: blockIdOf(reviewer, CARRIER),
+          },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
     const pending = await reviewer.toBuffer();
     // The drawing run is inside the paragraph's deletion.
-    expect(await bodyXml(pending)).toMatch(/<w:del [^>]*>(?:(?!<\/w:del>).)*<w:drawing/s);
+    expect(await bodyXml(pending)).toMatch(
+      /<w:del [^>]*>(?:(?!<\/w:del>).)*<w:drawing/s,
+    );
 
     const accepted = await FolioDocxReviewer.fromBuffer(pending);
     accepted.acceptAll();
@@ -579,13 +664,20 @@ describe("a paragraph holding a text box, first in the body", () => {
 
   for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
     test(`${type} keeps the reader's order across a save`, async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxCarrierFirst());
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTextBoxCarrierFirst(),
+      );
       reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "direct",
           operations: [
-            { id: "insert", type, blockId: blockIdOf(reviewer, CARRIER), text: INSERTED },
+            {
+              id: "insert",
+              type,
+              blockId: blockIdOf(reviewer, CARRIER),
+              text: INSERTED,
+            },
           ],
         },
         { undefinedReferences: "refuse" },
@@ -596,7 +688,9 @@ describe("a paragraph holding a text box, first in the body", () => {
           ? [CARRIER, BOX, INSERTED, TAIL]
           : [INSERTED, CARRIER, BOX, TAIL],
       );
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
     });
   }

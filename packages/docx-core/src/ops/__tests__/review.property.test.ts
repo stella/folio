@@ -37,13 +37,22 @@
  *   ids are gone.
  */
 
-import { assertExactModel } from "../../../../../test/exactModel";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import { assertExactModel } from "../../../../../test/exactModel";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { projectReview } from "../../../../../test/reviewProjection";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+  stampOf,
+} from "../apply";
 import { paragraphMarkOutcome } from "../blockDeletion";
 import { blockListAt, storyParagraphs, withBodyContent } from "../blocks";
 import { contractViolation } from "../contract";
@@ -55,8 +64,18 @@ import {
   paragraphIdsIn,
 } from "../ids";
 import { gapAfterInserted } from "../inline";
-import { compareGaps, defaultInsertionGap, type Gap, isCommentAnchor, leafSpans } from "../leaves";
-import { paragraphLength, paragraphLogicalText } from "../offsets";
+import {
+  compareGaps,
+  defaultInsertionGap,
+  type Gap,
+  isCommentAnchor,
+  leafSpans,
+} from "../leaves";
+import {
+  paragraphHoldsContent,
+  paragraphLength,
+  paragraphLogicalText,
+} from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
@@ -75,7 +94,6 @@ import {
   type RevisionStamp,
   SPLIT_HALVES,
 } from "../types";
-import { projectReview } from "../../../../../test/reviewProjection";
 import {
   GENERATED_TRACKED_OP_KINDS,
   independentCopy,
@@ -129,14 +147,19 @@ const expectEquivalent = (
   expected: Document,
   projection: Projection = "π",
 ): void => {
-  expect(projected(actual, projection)).toStrictEqual(projected(expected, projection));
+  expect(projected(actual, projection)).toStrictEqual(
+    projected(expected, projection),
+  );
 };
 
 // ---------------------------------------------------------------------------
 // Operations and their revisions
 // ---------------------------------------------------------------------------
 
-const resolveOp = (ids: readonly number[], decision: RevisionDecision): DocumentOp => ({
+const resolveOp = (
+  ids: readonly number[],
+  decision: RevisionDecision,
+): DocumentOp => ({
   type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
   story: OP_STORIES.MAIN,
   revisionIds: ids,
@@ -173,7 +196,10 @@ const resolvedInTurn = (
  * resolution refuses a change it does not carry out yet (a join at a section
  * break, a paragraph that would go).
  */
-const resolvedAll = (document: Document, decision: RevisionDecision): Document | undefined => {
+const resolvedAll = (
+  document: Document,
+  decision: RevisionDecision,
+): Document | undefined => {
   const ids = [...storyRevisionIds(document)];
   if (ids.length === 0) return document;
   const applied = applyDocumentOp(document, resolveOp(ids, decision));
@@ -197,9 +223,16 @@ const storyRevisionIds = (document: Document): Set<number> =>
   revisionIdsIn(document.package.document.content);
 
 /** The revision ids of the records in a document's story carrying any of the stamps. */
-const stampedIds = (document: Document, stamps: readonly RevisionStamp[]): number[] => {
-  const paragraphs = storyParagraphs(document.package.document).map(({ paragraph }) => paragraph);
-  return stamps.flatMap((stamp) => stampedRevisionIds(paragraphs, stamp, new Set()));
+const stampedIds = (
+  document: Document,
+  stamps: readonly RevisionStamp[],
+): number[] => {
+  const paragraphs = storyParagraphs(document.package.document).map(
+    ({ paragraph }) => paragraph,
+  );
+  return stamps.flatMap((stamp) =>
+    stampedRevisionIds(paragraphs, stamp, new Set()),
+  );
 };
 
 /**
@@ -220,7 +253,9 @@ const paragraphById = (document: Document, id: string): Paragraph | undefined =>
 
 const follower = (document: Document, id: string): Paragraph | undefined => {
   const paragraphs = storyParagraphs(document.package.document);
-  const at = paragraphs.find(({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id));
+  const at = paragraphs.find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id),
+  );
   if (at === undefined) return undefined;
   return paragraphs.find(
     (candidate) =>
@@ -230,14 +265,18 @@ const follower = (document: Document, id: string): Paragraph | undefined => {
 };
 
 /** The first cell paragraph that can receive a paragraph retired before a table. */
-const tableRunInReceiver = (document: Document, id: string): Paragraph | undefined => {
+const tableRunInReceiver = (
+  document: Document,
+  id: string,
+): Paragraph | undefined => {
   const body = document.package.document;
   const at = storyParagraphs(body).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id),
   );
   if (at === undefined) return undefined;
   let next = blockListAt(body.content, at.list).at(at.index + 1);
-  while (next?.type === "table") next = next.rows.at(0)?.cells.at(0)?.content.at(0);
+  while (next?.type === "table")
+    next = next.rows.at(0)?.cells.at(0)?.content.at(0);
   return next?.type === "paragraph" ? next : undefined;
 };
 
@@ -250,11 +289,17 @@ const leavesBetween = (paragraph: Paragraph, from: Gap, to: Gap) =>
   });
 
 /** The gaps an insertion's content occupies in the direct result. */
-const insertedGaps = (op: DocumentOp, original: Paragraph): { from: Gap; to: Gap } | undefined => {
+const insertedGaps = (
+  op: DocumentOp,
+  original: Paragraph,
+): { from: Gap; to: Gap } | undefined => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT: {
       return {
-        from: { offset: op.at.offset, zeroWidthBefore: Number.MAX_SAFE_INTEGER },
+        from: {
+          offset: op.at.offset,
+          zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+        },
         to: { offset: op.at.offset + op.text.length, zeroWidthBefore: 0 },
       };
     }
@@ -297,7 +342,8 @@ const alsoAccepted = (
       const before = paragraphById(document, op.at.blockId);
       const after = paragraphById(direct, op.at.blockId);
       const gaps = before === undefined ? undefined : insertedGaps(op, before);
-      if (after === undefined || gaps === undefined) return { direct: [], tracked: [] };
+      if (after === undefined || gaps === undefined)
+        return { direct: [], tracked: [] };
       const enclosing = new Set<number>();
       for (const span of leavesBetween(after, gaps.from, gaps.to)) {
         for (const ancestor of span.ancestors) {
@@ -332,16 +378,17 @@ const alsoAccepted = (
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
       // One OOXML property review folds both edits; acceptance resolves the original id too.
       const stamp = stampOf(op);
-      const folded = storyParagraphs(tracked.document.package.document).flatMap(({ paragraph }) =>
-        (paragraph.propertyChanges ?? []).flatMap(({ info }) =>
-          original.has(info.id) &&
-          stamp !== undefined &&
-          info.author === stamp.author &&
-          info.date === stamp.date &&
-          info.initials === stamp.initials
-            ? [info.id]
-            : [],
-        ),
+      const folded = storyParagraphs(tracked.document.package.document).flatMap(
+        ({ paragraph }) =>
+          (paragraph.propertyChanges ?? []).flatMap(({ info }) =>
+            original.has(info.id) &&
+            stamp !== undefined &&
+            info.author === stamp.author &&
+            info.date === stamp.date &&
+            info.initials === stamp.initials
+              ? [info.id]
+              : [],
+          ),
       );
       return { direct: folded, tracked: folded };
     }
@@ -354,10 +401,14 @@ const alsoAccepted = (
           op.from.zeroWidthBefore ??
           leafSpans(paragraph.content).filter(
             ({ before, after }) =>
-              before.offset === op.from.offset && after.offset === op.from.offset,
+              before.offset === op.from.offset &&
+              after.offset === op.from.offset,
           ).length,
       };
-      const to = { offset: op.to.offset, zeroWidthBefore: op.to.zeroWidthBefore ?? 0 };
+      const to = {
+        offset: op.to.offset,
+        zeroWidthBefore: op.to.zeroWidthBefore ?? 0,
+      };
       const removed = new Set<number>();
       for (const span of leavesBetween(paragraph, from, to)) {
         // An empty deletion is a leaf of its own; the others hold the leaf.
@@ -386,8 +437,9 @@ const keptEarlierChange = (
   op: DocumentOp,
   known: ReadonlySet<number>,
 ): boolean => {
-  const earlier = (changes: readonly { info: { id: number } }[] | undefined): boolean =>
-    (changes ?? []).some((change) => !known.has(change.info.id));
+  const earlier = (
+    changes: readonly { info: { id: number } }[] | undefined,
+  ): boolean => (changes ?? []).some((change) => !known.has(change.info.id));
   switch (op.type) {
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS: {
       const paragraph = paragraphById(document, op.from.blockId);
@@ -395,7 +447,10 @@ const keptEarlierChange = (
       const from = { offset: op.from.offset, zeroWidthBefore: 0 };
       const to = { offset: op.to.offset, zeroWidthBefore: 0 };
       return leavesBetween(paragraph, from, to).some(({ ancestors }) =>
-        ancestors.some((ancestor) => ancestor.type === "run" && earlier(ancestor.propertyChanges)),
+        ancestors.some(
+          (ancestor) =>
+            ancestor.type === "run" && earlier(ancestor.propertyChanges),
+        ),
       );
     }
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
@@ -413,7 +468,8 @@ const keptEarlierChange = (
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
       // A new second half takes the pending change, and with it the formatting it started from.
       const paragraph = paragraphById(document, op.at.blockId);
-      if (paragraph === undefined || !newSecondHalf(paragraph, op)) return false;
+      if (paragraph === undefined || !newSecondHalf(paragraph, op))
+        return false;
       const fields = op.newParagraph ?? { formatting: paragraph.formatting };
       return (
         !sameParagraphProperties(fields.formatting, paragraph.formatting) &&
@@ -429,8 +485,9 @@ const keptEarlierChange = (
 const newSecondHalf = (paragraph: Paragraph, op: DocumentOp): boolean =>
   op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK &&
   (op.newHalf ??
-    (op.at.offset === paragraphLength(paragraph) ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST)) ===
-    SPLIT_HALVES.SECOND;
+    (op.at.offset === paragraphLength(paragraph)
+      ? SPLIT_HALVES.SECOND
+      : SPLIT_HALVES.FIRST)) === SPLIT_HALVES.SECOND;
 
 /**
  * The projection L2 compares a rejected tracked operation under: π′ for a
@@ -450,15 +507,20 @@ const rejectProjection = (document: Document, op: DocumentOp): Projection => {
 /** Paragraphs carrying a mark that end their story body or table cell. */
 const containerFinalMarks = (document: Document): string[] => {
   const out: string[] = [];
-  const visit = (list: readonly BlockContent[], endsContainer: boolean): void => {
+  const visit = (
+    list: readonly BlockContent[],
+    endsContainer: boolean,
+  ): void => {
     for (const [index, block] of list.entries()) {
       const last = index === list.length - 1;
       switch (block.type) {
         case "paragraph":
-          if (last && endsContainer && block.pPrMark !== undefined) out.push(block.paraId ?? "");
+          if (last && endsContainer && block.pPrMark !== undefined)
+            out.push(block.paraId ?? "");
           break;
         case "table":
-          for (const row of block.rows) for (const cell of row.cells) visit(cell.content, true);
+          for (const row of block.rows)
+            for (const cell of row.cells) visit(cell.content, true);
           break;
         case "blockSdt":
         case "blockCustomXml":
@@ -480,7 +542,10 @@ const applyAll = (document: Document, ops: readonly DocumentOp[]): Document => {
 };
 
 /** L4: the inverse restores exactly, after a JSON round trip too, and redoes. */
-const expectRestores = (applied: AppliedDocumentOp, original: Document): void => {
+const expectRestores = (
+  applied: AppliedDocumentOp,
+  original: Document,
+): void => {
   expect(contractViolation(applied.document)).toBeUndefined();
   const restored = applyDocumentOps(applied.document, applied.inverse);
   if (restored.isErr()) throw restored.error;
@@ -488,7 +553,9 @@ const expectRestores = (applied: AppliedDocumentOp, original: Document): void =>
   // SAFETY: operations are plain data; this is the journal's round trip.
   const replayed = JSON.parse(JSON.stringify(applied.inverse)) as DocumentOp[];
   expect(applyAll(applied.document, replayed)).toStrictEqual(original);
-  expect(applyAll(restored.value.document, restored.value.inverse)).toStrictEqual(applied.document);
+  expect(
+    applyAll(restored.value.document, restored.value.inverse),
+  ).toStrictEqual(applied.document);
 };
 
 const outcome = (result: ReturnType<typeof applyDocumentOp>) =>
@@ -496,9 +563,14 @@ const outcome = (result: ReturnType<typeof applyDocumentOp>) =>
 
 /** Revision ids to resolve drawn from a document: a random subset of those its story holds. */
 const drawIds = (document: Document, picks: readonly boolean[]): number[] =>
-  [...storyRevisionIds(document)].filter((_, index) => picks[index % Math.max(1, picks.length)]);
+  [...storyRevisionIds(document)].filter(
+    (_, index) => picks[index % Math.max(1, picks.length)],
+  );
 
-const decisionArbitrary = fc.constantFrom(REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT);
+const decisionArbitrary = fc.constantFrom(
+  REVISION_DECISIONS.ACCEPT,
+  REVISION_DECISIONS.REJECT,
+);
 
 const kindOf = (op: DocumentOp): DocumentOpType => op.type;
 
@@ -519,36 +591,49 @@ describe("tracked operations and their resolution", () => {
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const tally: Tally = new Map();
     assertProperty(
-      fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
-        const op = trackedOpFor(document, seed);
-        const tracked = applyDocumentOp(document, op);
-        const direct = applyDocumentOp(document, directOf(op));
-        if (tracked.isErr() && direct.isOk()) {
-          // Tracking refuses only what no tracked change can record.
-          expect(TRACKING_REFUSALS).toContain(tracked.error.reason);
-        }
-        if (tracked.isErr() || direct.isErr()) {
-          count(tally, "refused");
-          return;
-        }
-        const extra = alsoAccepted(document, op, direct.value.document, tracked.value);
-        if (extra === undefined) {
-          count(tally, "notStated");
-          return;
-        }
-        count(tally, kindOf(op));
-        const accepted = resolved(
-          tracked.value.document,
-          [...tracked.value.revisions, ...extra.tracked],
-          REVISION_DECISIONS.ACCEPT,
-        );
-        const expected = resolved(direct.value.document, extra.direct, REVISION_DECISIONS.ACCEPT);
-        expectEquivalent(accepted, expected);
-        // Direct and accepted joins share the same conservative seam merge.
-        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
-          expect(accepted).toStrictEqual(expected);
-        }
-      }),
+      fc.property(
+        reviewDocumentArbitrary,
+        opSeedArbitrary,
+        (document, seed) => {
+          const op = trackedOpFor(document, seed);
+          const tracked = applyDocumentOp(document, op);
+          const direct = applyDocumentOp(document, directOf(op));
+          if (tracked.isErr() && direct.isOk()) {
+            // Tracking refuses only what no tracked change can record.
+            expect(TRACKING_REFUSALS).toContain(tracked.error.reason);
+          }
+          if (tracked.isErr() || direct.isErr()) {
+            count(tally, "refused");
+            return;
+          }
+          const extra = alsoAccepted(
+            document,
+            op,
+            direct.value.document,
+            tracked.value,
+          );
+          if (extra === undefined) {
+            count(tally, "notStated");
+            return;
+          }
+          count(tally, kindOf(op));
+          const accepted = resolved(
+            tracked.value.document,
+            [...tracked.value.revisions, ...extra.tracked],
+            REVISION_DECISIONS.ACCEPT,
+          );
+          const expected = resolved(
+            direct.value.document,
+            extra.direct,
+            REVISION_DECISIONS.ACCEPT,
+          );
+          expectEquivalent(accepted, expected);
+          // Direct and accepted joins share the same conservative seam merge.
+          if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
+            expect(accepted).toStrictEqual(expected);
+          }
+        },
+      ),
       {
         numRuns: NUM_RUNS,
         id: "L1: accepting a tracked operation's revisions gives the direct operation's result",
@@ -560,25 +645,29 @@ describe("tracked operations and their resolution", () => {
   test("L2: rejecting a tracked operation's revisions gives the document back", () => {
     const tally: Tally = new Map();
     assertProperty(
-      fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
-        const op = trackedOpFor(document, seed);
-        const tracked = applyDocumentOp(document, op);
-        if (tracked.isErr()) {
-          count(tally, `refused ${op.type} ${tracked.error.reason}`);
-          return;
-        }
-        if (keptEarlierChange(document, op, new Set())) {
-          count(tally, "keptEarlierChange");
-          return;
-        }
-        count(tally, kindOf(op));
-        const rejected = resolved(
-          tracked.value.document,
-          tracked.value.revisions,
-          REVISION_DECISIONS.REJECT,
-        );
-        expectEquivalent(rejected, document, rejectProjection(document, op));
-      }),
+      fc.property(
+        reviewDocumentArbitrary,
+        opSeedArbitrary,
+        (document, seed) => {
+          const op = trackedOpFor(document, seed);
+          const tracked = applyDocumentOp(document, op);
+          if (tracked.isErr()) {
+            count(tally, `refused ${op.type} ${tracked.error.reason}`);
+            return;
+          }
+          if (keptEarlierChange(document, op, new Set())) {
+            count(tally, "keptEarlierChange");
+            return;
+          }
+          count(tally, kindOf(op));
+          const rejected = resolved(
+            tracked.value.document,
+            tracked.value.revisions,
+            REVISION_DECISIONS.REJECT,
+          );
+          expectEquivalent(rejected, document, rejectProjection(document, op));
+        },
+      ),
       {
         numRuns: NUM_RUNS,
         id: "L2: rejecting a tracked operation's revisions gives the document back",
@@ -603,7 +692,11 @@ describe("tracked operations and their resolution", () => {
             if (applied.isErr()) continue;
             const stamp = stampOf(op);
             if (stamp === undefined) continue;
-            keptEarlier ||= keptEarlierChange(current, op, new Set(stampedIds(current, stamps)));
+            keptEarlier ||= keptEarlierChange(
+              current,
+              op,
+              new Set(stampedIds(current, stamps)),
+            );
             count(tally, kindOf(op));
             stamps.push(stamp);
             current = applied.value.document;
@@ -614,30 +707,56 @@ describe("tracked operations and their resolution", () => {
           const all = perOp.flat();
           if (all.length === 0) return;
           // The run's own revisions: at once, and one operation's at a time.
-          const rejectedAtOnce = resolved(current, all, REVISION_DECISIONS.REJECT);
+          const rejectedAtOnce = resolved(
+            current,
+            all,
+            REVISION_DECISIONS.REJECT,
+          );
           const rejectedInTurn = resolvedInTurn(
             current,
             perOp.toReversed(),
             REVISION_DECISIONS.REJECT,
           );
-          assertExactModel(projected(rejectedAtOnce, "π′"), projected(rejectedInTurn, "π′"));
+          assertExactModel(
+            projected(rejectedAtOnce, "π′"),
+            projected(rejectedInTurn, "π′"),
+          );
           // A split at a paragraph's end is given back under the new paragraph's id.
           if (!keptEarlier) {
-            assertExactModel(projected(rejectedAtOnce, "π′"), projected(document, "π′"));
+            assertExactModel(
+              projected(rejectedAtOnce, "π′"),
+              projected(document, "π′"),
+            );
           }
           // Every revision (A*, J*): the run's in turn first, or all at once.
-          const acceptedInTurn = resolvedInTurn(current, perOp, REVISION_DECISIONS.ACCEPT);
+          const acceptedInTurn = resolvedInTurn(
+            current,
+            perOp,
+            REVISION_DECISIONS.ACCEPT,
+          );
           const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-          const turnAccepted = resolvedAll(acceptedInTurn, REVISION_DECISIONS.ACCEPT);
+          const turnAccepted = resolvedAll(
+            acceptedInTurn,
+            REVISION_DECISIONS.ACCEPT,
+          );
           if (allAccepted !== undefined && turnAccepted !== undefined) {
             count(tally, "A*");
-            assertExactModel(projected(allAccepted, "π′"), projected(turnAccepted, "π′"));
+            assertExactModel(
+              projected(allAccepted, "π′"),
+              projected(turnAccepted, "π′"),
+            );
           }
           const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-          const originalRejected = resolvedAll(document, REVISION_DECISIONS.REJECT);
+          const originalRejected = resolvedAll(
+            document,
+            REVISION_DECISIONS.REJECT,
+          );
           if (allRejected !== undefined && originalRejected !== undefined) {
             count(tally, "J*");
-            assertExactModel(projected(allRejected, "π′"), projected(originalRejected, "π′"));
+            assertExactModel(
+              projected(allRejected, "π′"),
+              projected(originalRejected, "π′"),
+            );
           }
         },
       ),
@@ -667,7 +786,10 @@ describe("tracked operations and their resolution", () => {
             expectRestores(applied.value, original);
           }
           const ids = drawIds(document, picks);
-          const resolution = applyDocumentOp(document, resolveOp(ids, decision));
+          const resolution = applyDocumentOp(
+            document,
+            resolveOp(ids, decision),
+          );
           expect(document).toStrictEqual(original);
           if (resolution.isOk()) {
             count(tally, "resolved");
@@ -706,7 +828,9 @@ describe("tracked operations and their resolution", () => {
             inverses.push(applied.value.inverse);
             current = applied.value.document;
           }
-          expect(applyAll(current, inverses.toReversed().flat())).toStrictEqual(original);
+          expect(applyAll(current, inverses.toReversed().flat())).toStrictEqual(
+            original,
+          );
           const batch = applyDocumentOps(document, ops);
           if (batch.isErr()) throw batch.error;
           expect(batch.value.document).toStrictEqual(current);
@@ -735,11 +859,15 @@ describe("tracked operations and their resolution", () => {
           ]) {
             // SAFETY: the operation is plain data; this is the journal's round trip.
             const replayed = JSON.parse(JSON.stringify(op)) as DocumentOp;
-            const first = outcome(applyDocumentOp(structuredClone(document), op));
-            expect(outcome(applyDocumentOp(document, replayed))).toStrictEqual(first);
-            expect(outcome(applyDocumentOp(independentCopy(document), replayed))).toStrictEqual(
+            const first = outcome(
+              applyDocumentOp(structuredClone(document), op),
+            );
+            expect(outcome(applyDocumentOp(document, replayed))).toStrictEqual(
               first,
             );
+            expect(
+              outcome(applyDocumentOp(independentCopy(document), replayed)),
+            ).toStrictEqual(first);
           }
         },
       ),
@@ -767,12 +895,16 @@ describe("tracked operations and their resolution", () => {
             holding.add(idKey(paragraph.paraId ?? ""));
             for (const { node } of leafSpans(paragraph.content)) {
               if (node.type === "footnoteRef") {
-                const note = document.package.footnotes?.find(({ id }) => id === node.id);
+                const note = document.package.footnotes?.find(
+                  ({ id }) => id === node.id,
+                );
                 for (const paragraphId of paragraphIdsIn(note?.content ?? []))
                   holding.add(idKey(paragraphId));
               }
               if (node.type === "endnoteRef") {
-                const note = document.package.endnotes?.find(({ id }) => id === node.id);
+                const note = document.package.endnotes?.find(
+                  ({ id }) => id === node.id,
+                );
                 for (const paragraphId of paragraphIdsIn(note?.content ?? []))
                   holding.add(idKey(paragraphId));
               }
@@ -780,7 +912,8 @@ describe("tracked operations and their resolution", () => {
             const next = follower(document, paragraph.paraId ?? "");
             if (next !== undefined) holding.add(idKey(next.paraId ?? ""));
             const mark = paragraph.pPrMark;
-            const markWasAdded = mark?.kind === "ins" || mark?.kind === "moveTo";
+            const markWasAdded =
+              mark?.kind === "ins" || mark?.kind === "moveTo";
             const markGoes =
               mark !== undefined &&
               ids.includes(mark.info.id) &&
@@ -789,16 +922,22 @@ describe("tracked operations and their resolution", () => {
               markGoes &&
               paragraphMarkOutcome({
                 follows: "table",
-                holdsContent: paragraphLength(paragraph) > 0,
+                holdsContent: paragraphHoldsContent(paragraph),
                 markWasAdded,
                 containerStillEndsWithParagraph:
-                  blockListAt(document.package.document.content, location.list).at(-1)?.type ===
-                  "paragraph",
+                  blockListAt(
+                    document.package.document.content,
+                    location.list,
+                  ).at(-1)?.type === "paragraph",
                 followingTableCanReceiveRunIn: true,
               }).kind === "run-in"
             ) {
-              const receiver = tableRunInReceiver(document, paragraph.paraId ?? "");
-              if (receiver !== undefined) holding.add(idKey(receiver.paraId ?? ""));
+              const receiver = tableRunInReceiver(
+                document,
+                paragraph.paraId ?? "",
+              );
+              if (receiver !== undefined)
+                holding.add(idKey(receiver.paraId ?? ""));
             }
           }
           cases.push([resolveOp(ids, decision), holding]);
@@ -814,12 +953,13 @@ describe("tracked operations and their resolution", () => {
             );
             for (const id of touched) expect(named.has(id)).toBe(true);
             const after = new Map(
-              storyParagraphs(applied.value.document.package.document).map(({ paragraph }) => [
-                idKey(paragraph.paraId ?? ""),
-                paragraph,
-              ]),
+              storyParagraphs(applied.value.document.package.document).map(
+                ({ paragraph }) => [idKey(paragraph.paraId ?? ""), paragraph],
+              ),
             );
-            for (const { paragraph } of storyParagraphs(document.package.document)) {
+            for (const { paragraph } of storyParagraphs(
+              document.package.document,
+            )) {
               const key = idKey(paragraph.paraId ?? "");
               if (!touched.has(key)) expect(after.get(key)).toBe(paragraph);
             }
@@ -836,17 +976,23 @@ describe("tracked operations and their resolution", () => {
   test("L7: no tracked operation marks a paragraph that ends its container", () => {
     const tally: Tally = new Map();
     assertProperty(
-      fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
-        expect(containerFinalMarks(document)).toEqual([]);
-        const op = trackedOpFor(document, seed);
-        const applied = applyDocumentOp(document, op);
-        if (applied.isErr()) return;
-        count(tally, kindOf(op));
-        expect(containerFinalMarks(applied.value.document)).toEqual([]);
-        expect(contractViolation(applied.value.document)).toBeUndefined();
-        const existing = revisionIdsIn(document.package.document.content);
-        expect(applied.value.revisions.filter((id) => existing.has(id))).toEqual([]);
-      }),
+      fc.property(
+        reviewDocumentArbitrary,
+        opSeedArbitrary,
+        (document, seed) => {
+          expect(containerFinalMarks(document)).toEqual([]);
+          const op = trackedOpFor(document, seed);
+          const applied = applyDocumentOp(document, op);
+          if (applied.isErr()) return;
+          count(tally, kindOf(op));
+          expect(containerFinalMarks(applied.value.document)).toEqual([]);
+          expect(contractViolation(applied.value.document)).toBeUndefined();
+          const existing = revisionIdsIn(document.package.document.content);
+          expect(
+            applied.value.revisions.filter((id) => existing.has(id)),
+          ).toEqual([]);
+        },
+      ),
       {
         numRuns: NUM_RUNS,
         id: "L7: no tracked operation marks a paragraph that ends its container",
@@ -872,39 +1018,51 @@ describe("tracked operations and their resolution", () => {
           count(tally, "resolved");
           const remaining = storyRevisionIds(once.value.document);
           for (const id of ids) expect(remaining.has(id)).toBe(false);
-          const twice = applyDocumentOp(once.value.document, resolveOp(ids, decision));
+          const twice = applyDocumentOp(
+            once.value.document,
+            resolveOp(ids, decision),
+          );
           if (twice.isErr()) throw twice.error;
           expect(twice.value.document).toBe(once.value.document);
           expect(twice.value.inverse).toEqual([]);
         },
       ),
-      { numRuns: NUM_RUNS, id: "resolving the same revisions again changes nothing" },
+      {
+        numRuns: NUM_RUNS,
+        id: "resolving the same revisions again changes nothing",
+      },
     );
     expect(tally.get("resolved") ?? 0).toBeGreaterThan(NUM_RUNS / 4);
   });
 
   test("a tracked operation takes exactly the new ids revisionIdDemand counts", () => {
     assertProperty(
-      fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
-        const op = trackedOpFor(document, { ...seed, depth: 1 });
-        const demand = revisionIdDemand(document, op);
-        if (demand.isErr()) return;
-        const base = 900_000;
-        const withIds = (length: number): DocumentOp => ({
-          ...op,
-          newIds: {
-            revision: Array.from({ length }, (_, index) => base + index),
-            control: Array.from({ length: 64 }, (_, index) => base + index),
-          },
-        });
-        expect(applyDocumentOp(document, withIds(demand.value)).isOk()).toBe(true);
-        if (demand.value > 0) {
-          const short = applyDocumentOp(document, withIds(demand.value - 1));
-          expect(short.isErr() && short.error.reason).toBe(
-            DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      fc.property(
+        reviewDocumentArbitrary,
+        opSeedArbitrary,
+        (document, seed) => {
+          const op = trackedOpFor(document, { ...seed, depth: 1 });
+          const demand = revisionIdDemand(document, op);
+          if (demand.isErr()) return;
+          const base = 900_000;
+          const withIds = (length: number): DocumentOp => ({
+            ...op,
+            newIds: {
+              revision: Array.from({ length }, (_, index) => base + index),
+              control: Array.from({ length: 64 }, (_, index) => base + index),
+            },
+          });
+          expect(applyDocumentOp(document, withIds(demand.value)).isOk()).toBe(
+            true,
           );
-        }
-      }),
+          if (demand.value > 0) {
+            const short = applyDocumentOp(document, withIds(demand.value - 1));
+            expect(short.isErr() && short.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+            );
+          }
+        },
+      ),
       {
         numRuns: NUM_RUNS / 5,
         id: "a tracked operation takes exactly the new ids revisionIdDemand counts",
@@ -929,9 +1087,17 @@ describe("tracked operations and their resolution", () => {
             content[0] = {
               ...first,
               content: [
-                { type: "commentRangeStart", id: ownedId, displacedByCustomXml: "prev" },
+                {
+                  type: "commentRangeStart",
+                  id: ownedId,
+                  displacedByCustomXml: "prev",
+                },
                 ...first.content,
-                { type: "commentRangeEnd", id: ownedId, displacedByCustomXml: "next" },
+                {
+                  type: "commentRangeEnd",
+                  id: ownedId,
+                  displacedByCustomXml: "next",
+                },
                 { type: "commentReference", id: ownedId },
               ],
             };
@@ -951,9 +1117,14 @@ describe("tracked operations and their resolution", () => {
             const used = new Set(paragraphIdsIn(source.package).map(idKey));
             let candidate = 0x60000000;
             const comments = [...ids].map((id) => {
-              while (used.has(candidate.toString(16).toUpperCase().padStart(8, "0")))
+              while (
+                used.has(candidate.toString(16).toUpperCase().padStart(8, "0"))
+              )
                 candidate += 1;
-              const paraId = (candidate++).toString(16).toUpperCase().padStart(8, "0");
+              const paraId = (candidate++)
+                .toString(16)
+                .toUpperCase()
+                .padStart(8, "0");
               const comment = {
                 id,
                 author: "Loaded reviewer",
@@ -964,12 +1135,18 @@ describe("tracked operations and their resolution", () => {
                     content: [
                       {
                         type: "run" as const,
-                        content: [{ type: "text" as const, text: "reviewer text" }],
+                        content: [
+                          { type: "text" as const, text: "reviewer text" },
+                        ],
                       },
                     ],
                   },
                 ],
-                preserved: { children: [{ index: 0, xml: '<opaque xmlns="urn:fixture"/>' }] },
+                preserved: {
+                  children: [
+                    { index: 0, xml: '<opaque xmlns="urn:fixture"/>' },
+                  ],
+                },
               };
               Reflect.set(comment, "done", undefined);
               return comment;
@@ -978,17 +1155,29 @@ describe("tracked operations and their resolution", () => {
               ...source,
               package: {
                 ...source.package,
-                document: { ...withBodyContent(source.package.document, content), comments },
+                document: {
+                  ...withBodyContent(source.package.document, content),
+                  comments,
+                },
               },
             };
           }
           const op = trackedOpFor(document, { ...seed, kind: 2 });
-          if (op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE || op.revision === undefined) return;
+          if (
+            op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE ||
+            op.revision === undefined
+          )
+            return;
           const plan = planTrackedDeletion(document, {
             from: op.from,
             to: op.to,
             revision: op.revision,
-            newIds: { revision: Array.from({ length: 64 }, (_, index) => 700_000 + index) },
+            newIds: {
+              revision: Array.from(
+                { length: 64 },
+                (_, index) => 700_000 + index,
+              ),
+            },
           });
           if (plan.isErr()) {
             count(tally, "refused");
@@ -997,15 +1186,19 @@ describe("tracked operations and their resolution", () => {
           const applied = applyDocumentOps(document, plan.value);
           if (applied.isErr()) throw applied.error;
           count(tally, plan.value.length > 1 ? "several" : "one");
-          expect(applied.value.document.package.document.comments).toStrictEqual(
-            document.package.document.comments,
-          );
+          expect(
+            applied.value.document.package.document.comments,
+          ).toStrictEqual(document.package.document.comments);
           if (loadedComments) count(tally, "loaded-comments");
           const baseline = new Set(packageIdentityKeys(document.package));
           const reported = new Set(
-            applied.value.revisions.map((id) => `${IDENTITY_SPACES.REVISION}:${id}`),
+            applied.value.revisions.map(
+              (id) => `${IDENTITY_SPACES.REVISION}:${id}`,
+            ),
           );
-          const freshSplitIds = packageIdentityKeys(applied.value.document.package).filter(
+          const freshSplitIds = packageIdentityKeys(
+            applied.value.document.package,
+          ).filter(
             (key) =>
               key.startsWith(`${IDENTITY_SPACES.REVISION}:`) &&
               !baseline.has(key) &&
@@ -1021,7 +1214,8 @@ describe("tracked operations and their resolution", () => {
                   : [],
               ),
             );
-            for (const key of freshSplitIds) expect(plannedPool.has(key)).toBe(true);
+            for (const key of freshSplitIds)
+              expect(plannedPool.has(key)).toBe(true);
             count(tally, "fresh-split");
           }
           const paragraph = paragraphById(document, op.from.blockId);
@@ -1031,11 +1225,15 @@ describe("tracked operations and their resolution", () => {
             offset: op.from.offset,
             zeroWidthBefore: op.from.zeroWidthBefore ?? Number.MAX_SAFE_INTEGER,
           };
-          const to = { offset: op.to.offset, zeroWidthBefore: op.to.zeroWidthBefore ?? 0 };
+          const to = {
+            offset: op.to.offset,
+            zeroWidthBefore: op.to.zeroWidthBefore ?? 0,
+          };
           const own = new Set<number>();
           for (const span of leavesBetween(paragraph, from, to)) {
             const removed = span.ancestors.some(
-              (ancestor) => ancestor.type === "deletion" || ancestor.type === "moveFrom",
+              (ancestor) =>
+                ancestor.type === "deletion" || ancestor.type === "moveFrom",
             );
             const mine = span.ancestors.some(
               (ancestor) =>
@@ -1052,22 +1250,31 @@ describe("tracked operations and their resolution", () => {
             own.has(unit) ? "" : text.charAt(unit),
           ).join("");
           const after = paragraphById(applied.value.document, op.from.blockId);
-          expect(after === undefined ? undefined : paragraphLogicalText(after)).toBe(expected);
+          expect(
+            after === undefined ? undefined : paragraphLogicalText(after),
+          ).toBe(expected);
           const anchors = (items: Paragraph["content"]) =>
             leafSpans(items)
               .filter(({ node }) => isCommentAnchor(node))
               .map(({ node }) => node);
-          expect(anchors(after?.content ?? [])).toStrictEqual(anchors(paragraph.content));
+          expect(anchors(after?.content ?? [])).toStrictEqual(
+            anchors(paragraph.content),
+          );
           // Rejecting what the plan recorded leaves only the retraction.
           const retracted = applyAll(
             document,
             plan.value.filter(
               (planned) =>
-                planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE && planned.revision === undefined,
+                planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+                planned.revision === undefined,
             ),
           );
           expectEquivalent(
-            resolved(applied.value.document, applied.value.revisions, REVISION_DECISIONS.REJECT),
+            resolved(
+              applied.value.document,
+              applied.value.revisions,
+              REVISION_DECISIONS.REJECT,
+            ),
             retracted,
           );
         },
@@ -1091,7 +1298,9 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return new Set([
         idKey(op.at.blockId),
-        ...op.blocks.flatMap(({ paraId }) => (paraId === undefined ? [] : [idKey(paraId)])),
+        ...op.blocks.flatMap(({ paraId }) =>
+          paraId === undefined ? [] : [idKey(paraId)],
+        ),
       ]);
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -1118,17 +1327,32 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
         ),
       );
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
-      return new Set([idKey(op.at.blockId), ...paragraphIdsIn(op.table).map(idKey)]);
+      return new Set([
+        idKey(op.at.blockId),
+        ...paragraphIdsIn(op.table).map(idKey),
+      ]);
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
-      return new Set([idKey(op.blockId), ...paragraphIdsIn(op.expected ?? []).map(idKey)]);
+      return new Set([
+        idKey(op.blockId),
+        ...paragraphIdsIn(op.expected ?? []).map(idKey),
+      ]);
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
-      return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.blocks]).map(idKey)]);
+      return new Set([
+        idKey(op.blockId),
+        ...paragraphIdsIn([op.expected, op.blocks]).map(idKey),
+      ]);
     case DOCUMENT_OP_TYPES.INSERT_ROW:
       return new Set([idKey(op.blockId), ...paragraphIdsIn(op.row).map(idKey)]);
     case DOCUMENT_OP_TYPES.DELETE_ROW:
-      return new Set([idKey(op.blockId), ...paragraphIdsIn(op.expected ?? []).map(idKey)]);
+      return new Set([
+        idKey(op.blockId),
+        ...paragraphIdsIn(op.expected ?? []).map(idKey),
+      ]);
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
-      return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.rows]).map(idKey)]);
+      return new Set([
+        idKey(op.blockId),
+        ...paragraphIdsIn([op.expected, op.rows]).map(idKey),
+      ]);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return new Set();
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:

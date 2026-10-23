@@ -10,10 +10,14 @@ export const noteStoryInventory = (
   if (removed.size === 0) return source;
   return {
     ...(source.footnotes && {
-      footnotes: source.footnotes.filter((note) => !removed.has(`footnote:${note.id}`)),
+      footnotes: source.footnotes.filter(
+        (note) => !removed.has(`footnote:${note.id}`),
+      ),
     }),
     ...(source.endnotes && {
-      endnotes: source.endnotes.filter((note) => !removed.has(`endnote:${note.id}`)),
+      endnotes: source.endnotes.filter(
+        (note) => !removed.has(`endnote:${note.id}`),
+      ),
     }),
   };
 };

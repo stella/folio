@@ -3,7 +3,12 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { admit, loadCorpus, newElements, prune } from "../test/consumer-scenarios/support/corpus";
+import {
+  admit,
+  loadCorpus,
+  newElements,
+  prune,
+} from "../test/consumer-scenarios/support/corpus";
 import {
   type FlowFile,
   flowId,
@@ -16,7 +21,10 @@ import {
   OPERATIONS_CHANGING_MUTATIONS,
 } from "../test/consumer-scenarios/support/flow-mutate";
 import { createRandom } from "../test/consumer-scenarios/support/random";
-import { shrinkFlow, shrinkSequence } from "../test/consumer-scenarios/support/shrink";
+import {
+  shrinkFlow,
+  shrinkSequence,
+} from "../test/consumer-scenarios/support/shrink";
 
 const flow = (steps: FlowFile["steps"], fixture = "plain"): FlowFile => ({
   version: 1,
@@ -49,16 +57,22 @@ describe("flow files", () => {
     ]);
     expect(parseFlowFile(JSON.parse(JSON.stringify(valid)))).toEqual(valid);
     expect(() => parseFlowFile({ ...valid, steps: [] })).toThrow(TypeError);
-    expect(() => parseFlowFile({ ...valid, steps: [{ action: "explode", seed: 1 }] })).toThrow(
-      /unknown action/u,
-    );
-    expect(() => parseFlowFile({ ...valid, steps: [{ action: "accept all", seed: -1 }] })).toThrow(
-      /seed/u,
-    );
+    expect(() =>
+      parseFlowFile({ ...valid, steps: [{ action: "explode", seed: 1 }] }),
+    ).toThrow(/unknown action/u);
+    expect(() =>
+      parseFlowFile({ ...valid, steps: [{ action: "accept all", seed: -1 }] }),
+    ).toThrow(/seed/u);
     expect(() =>
       parseFlowFile({
         ...valid,
-        steps: [{ action: "accept all", seed: 1, operations: [{ type: "insertText" }] }],
+        steps: [
+          {
+            action: "accept all",
+            seed: 1,
+            operations: [{ type: "insertText" }],
+          },
+        ],
       }),
     ).toThrow(/batch step/u);
     expect(flowId(valid)).toBe(flowId({ ...valid, origin: "elsewhere" }));
@@ -78,15 +92,21 @@ describe("flow files", () => {
       { action: "save and reopen", seed: 2 },
       { action: "core batch", seed: 3 },
     ]);
-    expect(flowShape(shaped)).toBe("insertAfterBlock+replaceRange > save and reopen > core batch");
+    expect(flowShape(shaped)).toBe(
+      "insertAfterBlock+replaceRange > save and reopen > core batch",
+    );
   });
 
   test("core batch atomicity is pinned and validated independently of operations", () => {
     for (const action of ["core batch", "story batch"] as const) {
       for (const atomic of [false, true]) {
         const pinned = flow([{ action, seed: 1, atomic }]);
-        expect(parseFlowFile(JSON.parse(JSON.stringify(pinned)))).toEqual(pinned);
-        expect(flowId(pinned)).not.toBe(flowId(flow([{ action, seed: 1, atomic: !atomic }])));
+        expect(parseFlowFile(JSON.parse(JSON.stringify(pinned)))).toEqual(
+          pinned,
+        );
+        expect(flowId(pinned)).not.toBe(
+          flowId(flow([{ action, seed: 1, atomic: !atomic }])),
+        );
       }
     }
     for (const step of [
@@ -94,7 +114,9 @@ describe("flow files", () => {
       { action: "suggest_changes", seed: 1, atomic: false },
       { action: "accept all", seed: 1, atomic: true },
     ]) {
-      expect(() => parseFlowFile({ ...flow([]), steps: [step] })).toThrow(/atomic/u);
+      expect(() => parseFlowFile({ ...flow([]), steps: [step] })).toThrow(
+        /atomic/u,
+      );
     }
   });
 });
@@ -105,7 +127,8 @@ describe("shrinking", () => {
     const tracker = { attempts: 0, budget: budget() };
     const kept = await shrinkSequence(
       items,
-      (candidate) => Promise.resolve(candidate.includes(3) && candidate.includes(17)),
+      (candidate) =>
+        Promise.resolve(candidate.includes(3) && candidate.includes(17)),
       tracker,
     );
     expect(kept).toEqual([3, 17]);
@@ -113,7 +136,10 @@ describe("shrinking", () => {
   });
 
   test("a spent budget stops the shrink with what it has", async () => {
-    const tracker = { attempts: 0, budget: { maxAttempts: 3, deadline: Date.now() + 60_000 } };
+    const tracker = {
+      attempts: 0,
+      budget: { maxAttempts: 3, deadline: Date.now() + 60_000 },
+    };
     const kept = await shrinkSequence(
       [1, 2, 3, 4, 5, 6, 7, 8],
       () => Promise.resolve(true),
@@ -124,7 +150,12 @@ describe("shrinking", () => {
   });
 
   test("a flow shrinks over its steps, then over a pinned batch's operations", async () => {
-    const operations = [{ type: "a" }, { type: "b" }, { type: "c" }, { type: "d" }];
+    const operations = [
+      { type: "a" },
+      { type: "b" },
+      { type: "c" },
+      { type: "d" },
+    ];
     const original = flow(
       Array.from({ length: 8 }, (_, index) => ({
         action: index === 5 ? ("core batch" as const) : ("accept all" as const),
@@ -137,7 +168,9 @@ describe("shrinking", () => {
         candidate.steps.some(
           (step) =>
             step.seed === 5 &&
-            (step.operations ?? operations).some((operation) => operation["type"] === "c"),
+            (step.operations ?? operations).some(
+              (operation) => operation["type"] === "c",
+            ),
         ),
       );
     const materialize = (candidate: FlowFile): Promise<FlowFile> =>
@@ -147,7 +180,11 @@ describe("shrinking", () => {
           step.action === "core batch" ? { ...step, operations } : step,
         ),
       });
-    const shrunk = await shrinkFlow(original, { holds: fails, materialize, budget: budget() });
+    const shrunk = await shrinkFlow(original, {
+      holds: fails,
+      materialize,
+      budget: budget(),
+    });
     expect(shrunk.from).toBe(8);
     expect(shrunk.flow.steps).toEqual([
       { action: "core batch", seed: 5, operations: [{ type: "c" }] },
@@ -166,11 +203,17 @@ describe("shrinking", () => {
     ]);
     const shrunk = await shrinkFlow(original, {
       holds: (candidate) =>
-        Promise.resolve(candidate.steps[0]?.operations?.some(({ type }) => type === "c") ?? false),
+        Promise.resolve(
+          candidate.steps[0]?.operations?.some(({ type }) => type === "c") ??
+            false,
+        ),
       materialize: (candidate) => Promise.resolve(candidate),
       budget: budget(),
     });
-    expect(shrunk.flow.steps[0]).toMatchObject({ operations: [{ type: "c" }], expectedApplied: 1 });
+    expect(shrunk.flow.steps[0]).toMatchObject({
+      operations: [{ type: "c" }],
+      expectedApplied: 1,
+    });
   });
 });
 
@@ -187,13 +230,20 @@ describe("mutation", () => {
 
   test("mutants are valid flow files within the step limit, and replay from their seed", () => {
     for (let seed = 0; seed < 200; seed += 1) {
-      const { flow: mutant, mutations } = mutateFlow(parent, createRandom(seed), {
-        donors: [
-          parent,
-          flow([{ action: "core batch", seed: 9, operations: [{ type: "x" }] }], "table"),
-        ],
-        maxSteps: 8,
-      });
+      const { flow: mutant, mutations } = mutateFlow(
+        parent,
+        createRandom(seed),
+        {
+          donors: [
+            parent,
+            flow(
+              [{ action: "core batch", seed: 9, operations: [{ type: "x" }] }],
+              "table",
+            ),
+          ],
+          maxSteps: 8,
+        },
+      );
       expect(mutations.length).toBeGreaterThan(0);
       expect(parseFlowFile(JSON.parse(JSON.stringify(mutant)))).toMatchObject({
         fixture: parent.fixture,
@@ -202,17 +252,32 @@ describe("mutation", () => {
       expect(mutant.steps.length).toBeGreaterThan(0);
       expect(mutant.steps.length).toBeLessThanOrEqual(8);
       expect(
-        mutateFlow(parent, createRandom(seed), { donors: [parent], maxSteps: 8 }).flow,
-      ).toEqual(mutateFlow(parent, createRandom(seed), { donors: [parent], maxSteps: 8 }).flow);
+        mutateFlow(parent, createRandom(seed), {
+          donors: [parent],
+          maxSteps: 8,
+        }).flow,
+      ).toEqual(
+        mutateFlow(parent, createRandom(seed), {
+          donors: [parent],
+          maxSteps: 8,
+        }).flow,
+      );
     }
   });
 
   test("a splice from another fixture keeps the donor's steps but not its pinned ids", () => {
-    const donor = flow([{ action: "core batch", seed: 9, operations: [{ type: "x" }] }], "table");
+    const donor = flow(
+      [{ action: "core batch", seed: 9, operations: [{ type: "x" }] }],
+      "table",
+    );
     for (let seed = 0; seed < 200; seed += 1) {
-      const { flow: mutant, mutations } = mutateFlow(parent, createRandom(seed), {
-        donors: [donor],
-      });
+      const { flow: mutant, mutations } = mutateFlow(
+        parent,
+        createRandom(seed),
+        {
+          donors: [donor],
+        },
+      );
       if (mutations.length !== 1 || mutations[0] !== "splice") continue;
       const spliced = mutant.steps.find((step) => step.seed === 9);
       expect(spliced).toEqual({ action: "core batch", seed: 9 });
@@ -238,11 +303,16 @@ describe("mutation", () => {
     ]);
     const observed = new Set<string>();
     for (let seed = 0; seed < 2_000; seed += 1) {
-      const { flow: mutant, mutations } = mutateFlow(pinned, createRandom(seed), {
-        donors: [donor],
-      });
+      const { flow: mutant, mutations } = mutateFlow(
+        pinned,
+        createRandom(seed),
+        {
+          donors: [donor],
+        },
+      );
       for (const mutation of mutations) {
-        if (OPERATIONS_CHANGING_MUTATIONS.includes(mutation)) observed.add(mutation);
+        if (OPERATIONS_CHANGING_MUTATIONS.includes(mutation))
+          observed.add(mutation);
       }
       for (const step of mutant.steps) {
         if (step.expectedApplied !== undefined) {
@@ -250,7 +320,9 @@ describe("mutation", () => {
         }
       }
     }
-    expect([...observed].sort()).toEqual([...OPERATIONS_CHANGING_MUTATIONS].sort());
+    expect([...observed].sort()).toEqual(
+      [...OPERATIONS_CHANGING_MUTATIONS].sort(),
+    );
   });
 });
 
@@ -261,12 +333,19 @@ describe("corpus", () => {
       const corpus = loadCorpus(dir);
       const first = flow([{ action: "accept all", seed: 1 }]);
       const second = flow([{ action: "reject all", seed: 2 }]);
-      expect(admit(corpus, first, ["a", "b"], "2026-09-29T00:00:00Z")).toEqual(["a", "b"]);
+      expect(admit(corpus, first, ["a", "b"], "2026-09-29T00:00:00Z")).toEqual([
+        "a",
+        "b",
+      ]);
       expect(admit(corpus, second, ["a"], "2026-09-29T00:01:00Z")).toEqual([]);
       expect(newElements(corpus, ["a", "c"])).toEqual(["c"]);
-      expect(admit(corpus, second, ["a", "c"], "2026-09-29T00:02:00Z")).toEqual(["c"]);
+      expect(admit(corpus, second, ["a", "c"], "2026-09-29T00:02:00Z")).toEqual(
+        ["c"],
+      );
       expect(readdirSync(dir)).toHaveLength(2);
-      const reloaded = loadCorpus(dir, [flow([{ action: "save and reopen", seed: 3 }])]);
+      const reloaded = loadCorpus(dir, [
+        flow([{ action: "save and reopen", seed: 3 }]),
+      ]);
       expect(reloaded.entries.map((entry) => entry.id).sort()).toEqual(
         [
           flowId(first),
@@ -282,11 +361,30 @@ describe("corpus", () => {
   test("pruning drops redundant entries first, then the oldest, never a checked-in seed", () => {
     const seedFlow = flow([{ action: "save and reopen", seed: 3 }]);
     const corpus = loadCorpus(null, [seedFlow]);
-    admit(corpus, flow([{ action: "accept all", seed: 1 }]), ["a"], "2026-09-29T00:00:00Z");
-    admit(corpus, flow([{ action: "accept all", seed: 2 }]), ["a", "b"], "2026-09-29T00:01:00Z");
-    admit(corpus, flow([{ action: "accept all", seed: 3 }]), ["c"], "2026-09-29T00:02:00Z");
+    admit(
+      corpus,
+      flow([{ action: "accept all", seed: 1 }]),
+      ["a"],
+      "2026-09-29T00:00:00Z",
+    );
+    admit(
+      corpus,
+      flow([{ action: "accept all", seed: 2 }]),
+      ["a", "b"],
+      "2026-09-29T00:01:00Z",
+    );
+    admit(
+      corpus,
+      flow([{ action: "accept all", seed: 3 }]),
+      ["c"],
+      "2026-09-29T00:02:00Z",
+    );
     expect(prune(corpus, 3)).toBe(1);
-    expect(corpus.entries.map((entry) => entry.signature)).toEqual([[], ["a", "b"], ["c"]]);
+    expect(corpus.entries.map((entry) => entry.signature)).toEqual([
+      [],
+      ["a", "b"],
+      ["c"],
+    ]);
     expect(prune(corpus, 1)).toBe(2);
     expect(corpus.entries.map((entry) => entry.id)).toEqual([flowId(seedFlow)]);
   });

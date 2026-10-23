@@ -7,7 +7,9 @@ setDefaultTimeout(scanTestTimeout(30_000));
 
 describe("exported const assertion guard", () => {
   test("published package sources satisfy the ratchet", async () => {
-    const result = await Bun.$`bun scripts/check-exported-const-assertions.ts`.quiet().nothrow();
+    const result = await Bun.$`bun scripts/check-exported-const-assertions.ts`
+      .quiet()
+      .nothrow();
     expect(result.exitCode).toBe(0);
   });
 
@@ -15,7 +17,9 @@ describe("exported const assertion guard", () => {
     const findings = exportedConstAssertionsWithoutTypes(
       'export const SOURCE_CARRIER_MARK_NAMES = [RUN_IDENTITY_MARK_NAME, "hyperlink"] as const;',
     );
-    expect(findings.map(({ name }) => name)).toEqual(["SOURCE_CARRIER_MARK_NAMES"]);
+    expect(findings.map(({ name }) => name)).toEqual([
+      "SOURCE_CARRIER_MARK_NAMES",
+    ]);
   });
 
   test("accepts explicitly typed arrays and objects", () => {

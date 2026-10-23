@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  LINE_ENDPOINT_MANIFEST_SCHEMA,
-  LINE_ENDPOINT_MANIFEST_VERSION,
   compareLineEndpoints,
   createWordLineEndpointManifest,
+  LINE_ENDPOINT_MANIFEST_SCHEMA,
+  LINE_ENDPOINT_MANIFEST_VERSION,
   parseLineEndpointManifest,
 } from "../lineEndpoints";
 import { normalizeLineText } from "../textNorm";
@@ -31,7 +31,10 @@ describe("Word line-endpoint manifests", () => {
 
     expect(manifest.schema).toBe(LINE_ENDPOINT_MANIFEST_SCHEMA);
     expect(manifest.version).toBe(LINE_ENDPOINT_MANIFEST_VERSION);
-    expect(manifest.source).toEqual({ fileName: "fixture.docx", sha256: SOURCE_SHA256 });
+    expect(manifest.source).toEqual({
+      fileName: "fixture.docx",
+      sha256: SOURCE_SHA256,
+    });
     expect(manifest.pages).toEqual([
       {
         number: 1,
@@ -46,7 +49,10 @@ describe("Word line-endpoint manifests", () => {
 
   test("accepts matching endpoints while ignoring geometry", () => {
     const manifest = makeManifest([
-      makePage(1, [makeLine("First line"), makeLine("Second line", { yPt: 30 })]),
+      makePage(1, [
+        makeLine("First line"),
+        makeLine("Second line", { yPt: 30 }),
+      ]),
     ]);
     const folio = makeGeom("folio", [
       makePage(1, [
@@ -65,10 +71,16 @@ describe("Word line-endpoint manifests", () => {
 
   test("reports a changed line endpoint", () => {
     const manifest = makeManifest([
-      makePage(1, [makeLine("Alpha beta"), makeLine("gamma delta", { yPt: 30 })]),
+      makePage(1, [
+        makeLine("Alpha beta"),
+        makeLine("gamma delta", { yPt: 30 }),
+      ]),
     ]);
     const folio = makeGeom("folio", [
-      makePage(1, [makeLine("Alpha beta gamma"), makeLine("delta", { yPt: 30 })]),
+      makePage(1, [
+        makeLine("Alpha beta gamma"),
+        makeLine("delta", { yPt: 30 }),
+      ]),
     ]);
 
     const result = compareLineEndpoints(manifest, folio);
@@ -85,8 +97,14 @@ describe("Word line-endpoint manifests", () => {
   });
 
   test("reports text that moved to another page", () => {
-    const manifest = makeManifest([makePage(1, [makeLine("Page edge")]), makePage(2, [])]);
-    const folio = makeGeom("folio", [makePage(1, []), makePage(2, [makeLine("Page edge")])]);
+    const manifest = makeManifest([
+      makePage(1, [makeLine("Page edge")]),
+      makePage(2, []),
+    ]);
+    const folio = makeGeom("folio", [
+      makePage(1, []),
+      makePage(2, [makeLine("Page edge")]),
+    ]);
 
     const result = compareLineEndpoints(manifest, folio);
 
@@ -106,7 +124,10 @@ describe("Word line-endpoint manifests", () => {
       "Unsupported line-endpoint manifest version: 2",
     );
     expect(() =>
-      parseLineEndpointManifest({ ...valid, source: { ...valid.source, sha256: "not-a-hash" } }),
+      parseLineEndpointManifest({
+        ...valid,
+        source: { ...valid.source, sha256: "not-a-hash" },
+      }),
     ).toThrow("source.sha256 must be 64 lowercase hex characters");
     expect(() =>
       parseLineEndpointManifest({
@@ -133,10 +154,15 @@ const makeManifest = (pages: PageGeom[]) =>
 
 const makeGeom = (source: "word" | "folio", pages: PageGeom[]): DocGeom => ({
   source,
-  file: source === "word" ? "/private/reference/fixture.docx" : "/workspace/fixture.docx",
+  file:
+    source === "word"
+      ? "/private/reference/fixture.docx"
+      : "/workspace/fixture.docx",
   pages,
   meta:
-    source === "word" ? { wordVersion: "16.99", mutool: "mutool 1.0", sha256: SOURCE_SHA256 } : {},
+    source === "word"
+      ? { wordVersion: "16.99", mutool: "mutool 1.0", sha256: SOURCE_SHA256 }
+      : {},
 });
 
 const makePage = (number: number, lines: LineBox[]): PageGeom => ({

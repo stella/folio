@@ -37,7 +37,11 @@
     </div>
     <div class="dialog__footer">
       <button class="dialog__btn" @click="$emit('close')">Cancel</button>
-      <button class="dialog__btn dialog__btn--primary" :disabled="!canSplit" @click="split">
+      <button
+        class="dialog__btn dialog__btn--primary"
+        :disabled="!canSplit"
+        @click="split"
+      >
         Split
       </button>
     </div>
@@ -46,6 +50,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
 
 const { Dialog: FolioDialog } = useFolioUI();
@@ -79,7 +84,9 @@ const mergeBeforeSplit = ref(false);
 
 const normalizedRows = computed(() => clampInteger(rows.value));
 const normalizedColumns = computed(() => clampInteger(columns.value));
-const canSplit = computed(() => normalizedRows.value > 1 || normalizedColumns.value > 1);
+const canSplit = computed(
+  () => normalizedRows.value > 1 || normalizedColumns.value > 1,
+);
 
 watch(
   () => props.isOpen,

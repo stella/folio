@@ -62,14 +62,19 @@ export const anchoredTextBoxId = (node: PMNode): string | undefined => {
     return undefined;
   }
   const attrs = expectTextBoxAttrs(node);
-  return attrs._docxPlacement === "inlineWithPrevious" ? attrs._docxAnchorId : undefined;
+  return attrs._docxPlacement === "inlineWithPrevious"
+    ? attrs._docxAnchorId
+    : undefined;
 };
 
 /**
  * Where the paragraph at `position` ends together with the text boxes drawn
  * in it that follow it: the place for a block inserted after the paragraph.
  */
-export const endOfParagraphWithItsTextBoxes = (doc: PMNode, position: number): number => {
+export const endOfParagraphWithItsTextBoxes = (
+  doc: PMNode,
+  position: number,
+): number => {
   const paragraph = doc.nodeAt(position);
   if (!paragraph) {
     return position;
@@ -92,7 +97,10 @@ export const endOfParagraphWithItsTextBoxes = (doc: PMNode, position: number): n
 };
 
 /** Anchor ids `before` holds and `after` does not. */
-export const droppedTextBoxAnchorIds = (before: PMNode, after: PMNode): Set<string> => {
+export const droppedTextBoxAnchorIds = (
+  before: PMNode,
+  after: PMNode,
+): Set<string> => {
   const dropped = textBoxAnchorIdsIn(before);
   if (dropped.size === 0) {
     return dropped;
@@ -134,7 +142,10 @@ export const deleteTextBoxesAnchoredAt = (
  * keeping the boxes' order. For a paragraph just split: the boxes follow the
  * second half, and those anchored in the first half move up to it.
  */
-export const gatherTextBoxesAfterParagraph = (tr: Transaction, position: number): void => {
+export const gatherTextBoxesAfterParagraph = (
+  tr: Transaction,
+  position: number,
+): void => {
   const paragraph = tr.doc.nodeAt(position);
   if (!paragraph) {
     return;
@@ -167,7 +178,11 @@ export const gatherTextBoxesAfterParagraph = (tr: Transaction, position: number)
 };
 
 /** The anchor ids of the text boxes drawn between `from` and `to`. */
-export const textBoxAnchorIdsBetween = (doc: PMNode, from: number, to: number): Set<string> => {
+export const textBoxAnchorIdsBetween = (
+  doc: PMNode,
+  from: number,
+  to: number,
+): Set<string> => {
   const ids = new Set<string>();
   doc.nodesBetween(from, to, (node) => {
     collectAnchorId(node, ids);
@@ -181,7 +196,10 @@ export const textBoxAnchorIdsBetween = (doc: PMNode, from: number, to: number): 
  * boxes drawn in it, which stand between the two, past that paragraph, where
  * they follow the joined one. Returns whether any moved.
  */
-export const moveTextBoxesPastNextParagraph = (tr: Transaction, position: number): boolean => {
+export const moveTextBoxesPastNextParagraph = (
+  tr: Transaction,
+  position: number,
+): boolean => {
   const paragraph = tr.doc.nodeAt(position);
   if (!paragraph) {
     return false;

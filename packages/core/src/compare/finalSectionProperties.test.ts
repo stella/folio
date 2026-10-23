@@ -7,9 +7,14 @@ import type { Document, SectionProperties } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
 
-const OPTIONS = { author: "Section reviewer", timestamp: "2026-09-13T12:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "Section reviewer",
+  timestamp: "2026-09-13T12:00:00.000Z",
+} as const;
 
-const documentWithFinalSection = (finalSectionProperties: SectionProperties): Document => {
+const documentWithFinalSection = (
+  finalSectionProperties: SectionProperties,
+): Document => {
   const document = createEmptyDocument();
   return {
     ...document,
@@ -20,7 +25,9 @@ const documentWithFinalSection = (finalSectionProperties: SectionProperties): Do
   };
 };
 
-const finalSection = (reviewer: FolioDocxReviewer): SectionProperties | undefined =>
+const finalSection = (
+  reviewer: FolioDocxReviewer,
+): SectionProperties | undefined =>
   reviewer.toDocument().package.document.finalSectionProperties;
 
 describe("final section property comparison", () => {
@@ -46,7 +53,10 @@ describe("final section property comparison", () => {
       formProtection: true,
       pageNumbering: { start: 4, format: "decimal" },
     });
-    const [baseBuffer, targetBuffer] = await Promise.all([createDocx(base), createDocx(target)]);
+    const [baseBuffer, targetBuffer] = await Promise.all([
+      createDocx(base),
+      createDocx(target),
+    ]);
     const result = await compareDocx(baseBuffer, targetBuffer, OPTIONS);
     if (result.isErr()) throw result.error;
 
@@ -64,14 +74,18 @@ describe("final section property comparison", () => {
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(accepting.acceptAll()).toBe(1);
-    const acceptedReopened = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    const acceptedReopened = await FolioDocxReviewer.fromBuffer(
+      await accepting.toBuffer(),
+    );
     expect(finalSection(acceptedReopened)).toEqual(
       finalSection(await FolioDocxReviewer.fromBuffer(targetBuffer)),
     );
 
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(rejecting.rejectAll()).toBe(1);
-    const rejectedReopened = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    const rejectedReopened = await FolioDocxReviewer.fromBuffer(
+      await rejecting.toBuffer(),
+    );
     expect(finalSection(rejectedReopened)).toEqual(
       finalSection(await FolioDocxReviewer.fromBuffer(baseBuffer)),
     );
@@ -129,7 +143,9 @@ describe("final section property comparison", () => {
           {
             type: "insertion",
             info,
-            content: [{ type: "run", content: [{ type: "text", text: "Inserted" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Inserted" }] },
+            ],
           },
         ],
       },
@@ -137,16 +153,29 @@ describe("final section property comparison", () => {
     const archive = await JSZip.loadAsync(await createDocx(document));
     const xml = await archive.file("word/document.xml")?.async("text");
     if (xml === undefined) throw new Error("Missing synthetic document part");
-    archive.file("word/document.xml", xml.replace(/(<w:sectPrChange[^>]*w:id=")[^"]+/, "$173"));
+    archive.file(
+      "word/document.xml",
+      xml.replace(/(<w:sectPrChange[^>]*w:id=")[^"]+/, "$173"),
+    );
     const buffer = await archive.generateAsync({ type: "arraybuffer" });
     for (const mode of ["accept", "reject"] as const) {
       const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-      expect(mode === "accept" ? reviewer.acceptChange(73) : reviewer.rejectChange(73)).toBe(true);
+      expect(
+        mode === "accept"
+          ? reviewer.acceptChange(73)
+          : reviewer.rejectChange(73),
+      ).toBe(true);
       expect(reviewer.getChanges()).toEqual([]);
-      expect(finalSection(reviewer)?.pageWidth).toBe(mode === "accept" ? 12_240 : 10_000);
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      expect(finalSection(reviewer)?.pageWidth).toBe(
+        mode === "accept" ? 12_240 : 10_000,
+      );
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(reopened.getChanges()).toEqual([]);
-      expect(finalSection(reopened)?.pageWidth).toBe(mode === "accept" ? 12_240 : 10_000);
+      expect(finalSection(reopened)?.pageWidth).toBe(
+        mode === "accept" ? 12_240 : 10_000,
+      );
     }
   });
 });
@@ -166,7 +195,9 @@ test("Folio-exact header removal restores references on reject and removes retir
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Header" }] },
+            ],
           },
         ],
       },
@@ -181,14 +212,18 @@ test("Folio-exact header removal restores references on reject and removes retir
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "Footer" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Footer" }] },
+            ],
           },
         ],
       },
     ],
   ]);
   const baseBuffer = await createDocx(base);
-  const targetBuffer = await createDocx(documentWithFinalSection({ marginLeft: 1440 }));
+  const targetBuffer = await createDocx(
+    documentWithFinalSection({ marginLeft: 1440 }),
+  );
   const portable = await compareDocx(baseBuffer, targetBuffer, OPTIONS);
   expect(portable.isErr()).toBe(true);
   const result = await compareDocx(baseBuffer, targetBuffer, {
@@ -219,7 +254,9 @@ test("Folio-exact header removal restores references on reject and removes retir
   expect(accepted.listStories()).toHaveLength(1);
   const rejecting = await FolioDocxReviewer.fromBuffer(await pendingSave);
   expect(rejecting.rejectAll()).toBe(1);
-  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  const rejected = await FolioDocxReviewer.fromBuffer(
+    await rejecting.toBuffer(),
+  );
   expect(finalSection(rejected)).toEqual(
     finalSection(await FolioDocxReviewer.fromBuffer(baseBuffer)),
   );
@@ -256,22 +293,37 @@ test.each(["accept", "reject"] as const)(
           content: [
             {
               type: "paragraph" as const,
-              content: [{ type: "run" as const, content: [{ type: "text" as const, text: name }] }],
+              content: [
+                {
+                  type: "run" as const,
+                  content: [{ type: "text" as const, text: name }],
+                },
+              ],
             },
           ],
         },
       ]),
     );
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
-    expect(decision === "accept" ? reviewer.acceptChange(71) : reviewer.rejectChange(71)).toBe(
-      true,
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
     );
-    const remaining = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(
+      decision === "accept"
+        ? reviewer.acceptChange(71)
+        : reviewer.rejectChange(71),
+    ).toBe(true);
+    const remaining = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(remaining.getChanges().map(({ id }) => id)).toEqual([72]);
     expect(remaining.rejectChange(72)).toBe(true);
-    const resolved = await FolioDocxReviewer.fromBuffer(await remaining.toBuffer());
+    const resolved = await FolioDocxReviewer.fromBuffer(
+      await remaining.toBuffer(),
+    );
     const name = decision === "accept" ? "b" : "a";
-    expect(finalSection(resolved)?.headerReferences).toEqual(references(`rId_${name}`));
+    expect(finalSection(resolved)?.headerReferences).toEqual(
+      references(`rId_${name}`),
+    );
     expect(
       resolved
         .listStories()

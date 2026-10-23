@@ -52,15 +52,15 @@
     "typecheck": "bun check --no-pretty --all --project=tsconfig.json"
   },
   "dependencies": {
-    "@nuxt/kit": "^4.6.1",
-    "@nuxt/schema": "^4.6.1",
+    "@nuxt/kit": "^4.6.2",
+    "@nuxt/schema": "^4.6.2",
     "@stll/folio-vue": "workspace:^",
     "@stll/utf8-boundaries": "workspace:*"
   },
   "devDependencies": {
     "@nuxt/module-builder": "^1.0.0",
-    "@nuxt/schema": "^4.6.1",
-    "nuxt": "^4.6.1",
+    "@nuxt/schema": "^4.6.2",
+    "nuxt": "^4.6.2",
     "prosemirror-history": "^1.5.1",
     "prosemirror-model": "^1.25.9",
     "prosemirror-state": "^1.4.4",

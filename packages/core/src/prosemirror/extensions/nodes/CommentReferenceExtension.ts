@@ -3,12 +3,12 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 
-import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import { isCommentRangeInertAtom } from "../../commentRangeInlineAtoms";
+import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import {
-  planCommentReferenceRepairs,
   type CommentMarkExtent,
   type CommentReferenceOccurrence,
+  planCommentReferenceRepairs,
 } from "../../commentReferenceIntegrity";
 import { readRangeAnchorAttrs } from "../../rangeAnchorAttrs";
 import { createNodeExtension } from "../create";
@@ -63,7 +63,10 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
       const attrs = readRangeAnchorAttrs(node);
       if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
         const { id } = attrs.value.start;
-        markEnds.set(id, Math.max(markEnds.get(id) ?? 0, position + node.nodeSize));
+        markEnds.set(
+          id,
+          Math.max(markEnds.get(id) ?? 0, position + node.nodeSize),
+        );
       }
       return false;
     }
@@ -79,7 +82,10 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
       if (typeof commentId !== "number") {
         continue;
       }
-      markEnds.set(commentId, Math.max(markEnds.get(commentId) ?? 0, position + node.nodeSize));
+      markEnds.set(
+        commentId,
+        Math.max(markEnds.get(commentId) ?? 0, position + node.nodeSize),
+      );
     }
     return true;
   });
@@ -91,82 +97,92 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   };
 };
 
-export const CommentReferenceExtension = createNodeExtension<CommentReferenceOptions>({
-  name: COMMENT_REFERENCE_NODE_NAME,
-  schemaNodeName: COMMENT_REFERENCE_NODE_NAME,
-  nodeSpec: (options) => ({
-    inline: true,
-    group: "inline",
-    marks: "_",
-    atom: true,
-    selectable: false,
-    attrs: {
-      commentId: {},
-    },
-    parseDOM: [
-      {
-        tag: "span[data-docx-comment-reference]",
-        getAttrs(dom) {
-          const raw = dom.getAttribute("data-docx-comment-reference");
-          if (raw === null || !/^-?(?:0|[1-9]\d*)$/.test(raw)) {
-            return false;
-          }
-          const commentId = Number(raw);
-          return Number.isSafeInteger(commentId) ? { commentId } : false;
-        },
+export const CommentReferenceExtension =
+  createNodeExtension<CommentReferenceOptions>({
+    name: COMMENT_REFERENCE_NODE_NAME,
+    schemaNodeName: COMMENT_REFERENCE_NODE_NAME,
+    nodeSpec: (options) => ({
+      inline: true,
+      group: "inline",
+      marks: "_",
+      atom: true,
+      selectable: false,
+      attrs: {
+        commentId: {},
       },
-    ],
-    toDOM(node) {
-      const attrs = readCommentReferenceAttrs(node);
-      return [
-        "span",
+      parseDOM: [
         {
-          "data-docx-comment-reference": String(attrs.ok ? attrs.value.commentId : ""),
-          "aria-hidden": "true",
-          contenteditable: "false",
-          style: "display: none;",
-          ...(options.getInternalClipboardToken
-            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
-            : {}),
-        },
-      ];
-    },
-  }),
-  onSchemaReady: () => ({
-    plugins: [
-      new Plugin({
-        appendTransaction(transactions, _oldState, newState) {
-          if (!transactions.some(({ docChanged }) => docChanged)) {
-            return null;
-          }
-          const referenceType = newState.schema.nodes[COMMENT_REFERENCE_NODE_NAME];
-          if (!referenceType) {
-            return null;
-          }
-
-          const survey = surveyCommentReferences(newState.doc);
-          const repairs = planCommentReferenceRepairs(survey);
-          if (repairs.length === 0 && survey.unanchoredMarks.length === 0) {
-            return null;
-          }
-
-          const transaction = newState.tr;
-          for (const { position, size, mark } of survey.unanchoredMarks) {
-            transaction.removeMark(position, position + size, mark);
-          }
-          for (const repair of repairs) {
-            if (repair.type === "delete") {
-              transaction.delete(repair.position, repair.position + repair.size);
-              continue;
+          tag: "span[data-docx-comment-reference]",
+          getAttrs(dom) {
+            const raw = dom.getAttribute("data-docx-comment-reference");
+            if (raw === null || !/^-?(?:0|[1-9]\d*)$/.test(raw)) {
+              return false;
             }
-            transaction.insert(
-              transaction.mapping.map(repair.position),
-              referenceType.create({ commentId: repair.commentId }),
-            );
-          }
-          return transaction;
+            const commentId = Number(raw);
+            return Number.isSafeInteger(commentId) ? { commentId } : false;
+          },
         },
-      }),
-    ],
-  }),
-});
+      ],
+      toDOM(node) {
+        const attrs = readCommentReferenceAttrs(node);
+        return [
+          "span",
+          {
+            "data-docx-comment-reference": String(
+              attrs.ok ? attrs.value.commentId : "",
+            ),
+            "aria-hidden": "true",
+            contenteditable: "false",
+            style: "display: none;",
+            ...(options.getInternalClipboardToken
+              ? {
+                  "data-docx-internal-clipboard":
+                    options.getInternalClipboardToken(),
+                }
+              : {}),
+          },
+        ];
+      },
+    }),
+    onSchemaReady: () => ({
+      plugins: [
+        new Plugin({
+          appendTransaction(transactions, _oldState, newState) {
+            if (!transactions.some(({ docChanged }) => docChanged)) {
+              return null;
+            }
+            const referenceType =
+              newState.schema.nodes[COMMENT_REFERENCE_NODE_NAME];
+            if (!referenceType) {
+              return null;
+            }
+
+            const survey = surveyCommentReferences(newState.doc);
+            const repairs = planCommentReferenceRepairs(survey);
+            if (repairs.length === 0 && survey.unanchoredMarks.length === 0) {
+              return null;
+            }
+
+            const transaction = newState.tr;
+            for (const { position, size, mark } of survey.unanchoredMarks) {
+              transaction.removeMark(position, position + size, mark);
+            }
+            for (const repair of repairs) {
+              if (repair.type === "delete") {
+                transaction.delete(
+                  repair.position,
+                  repair.position + repair.size,
+                );
+                continue;
+              }
+              transaction.insert(
+                transaction.mapping.map(repair.position),
+                referenceType.create({ commentId: repair.commentId }),
+              );
+            }
+            return transaction;
+          },
+        }),
+      ],
+    }),
+  });

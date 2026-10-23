@@ -33,8 +33,10 @@
 
 <script setup lang="ts">
 import { computed, type CSSProperties } from "vue";
+
 import { indexCommentAnchors } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment } from "@stll/folio-core/types/content";
+
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
 const props = defineProps<{

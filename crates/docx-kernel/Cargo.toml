@@ -20,7 +20,9 @@ wasm = ["dep:js-sys", "dep:wasm-bindgen"]
 
 [dependencies]
 js-sys = { version = "0.3.103", optional = true }
-miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
+miniz_oxide = { version = "0.9.1", default-features = false, features = [
+  "with-alloc",
+] }
 quick-xml = { version = "0.42", default-features = false }
 rawzip = { version = "0.5.1", default-features = false, features = ["alloc"] }
 thiserror = "2"
@@ -29,7 +31,9 @@ wasm-bindgen = { version = "0.2.126", optional = true }
 
 [dev-dependencies]
 proptest = "1"
-zip = { version = "8.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.0.1", default-features = false, features = [
+  "deflate-flate2-zlib-rs",
+] }
 
 [lints]
 workspace = true

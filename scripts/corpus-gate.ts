@@ -22,15 +22,14 @@
  * against them.
  */
 
+import { TaggedError } from "better-result";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
-
 import {
-  type CorpusBaseline,
   baselineFromCensus,
   compareToBaseline,
+  type CorpusBaseline,
   describeDegradedRun,
   isDegradedRun,
   isFailingViolation,
@@ -45,42 +44,45 @@ import {
   renderCensus,
 } from "./lib/corpus-census";
 import {
-  type ExpectedDispositions,
   compareToExpectedDispositions,
+  type ExpectedDispositions,
   partitionExpectedDispositions,
   refreshedExpectedDispositions,
   renderExpectedDispositions,
   withoutDispositions,
 } from "./lib/corpus-dispositions";
 import {
-  FAMILY_BASELINE_FAMILIES,
   compareFamilyToBaseline,
   compareZeroFamilies,
+  FAMILY_BASELINE_FAMILIES,
   loadFamilyBaseline,
   writeFamilyBaselines,
 } from "./lib/corpus-family-baseline";
 import {
-  FamilyCensusBuilder,
-  type FamilyCensus,
-  type FileCost,
   censusWithLateFailures,
   countedFailures,
+  type FamilyCensus,
+  FamilyCensusBuilder,
+  type FileCost,
   mergeFamilyCensuses,
   renderFamilyCensus,
 } from "./lib/corpus-family-census";
-import { type CorpusFileSignatures, fileSignatureRows } from "./lib/corpus-file-signatures";
 import {
-  performanceFailures,
+  type CorpusFileSignatures,
+  fileSignatureRows,
+} from "./lib/corpus-file-signatures";
+import {
   fitCorpusCost,
   normalizeForLoad,
+  performanceFailures,
 } from "./lib/corpus-invariants/performance";
 import {
   BASELINE_PATH,
-  EXPECTED_DISPOSITIONS_PATH,
-  EXPECTED_REFUSALS_PATH,
+  corpusCacheRoot,
   type CorpusLock,
   type CorpusTier,
-  corpusCacheRoot,
+  EXPECTED_DISPOSITIONS_PATH,
+  EXPECTED_REFUSALS_PATH,
   loadCorpusLock,
   writeJsonFile,
 } from "./lib/corpus-manifest";
@@ -91,19 +93,23 @@ import {
   runCorpusPool,
 } from "./lib/corpus-pool";
 import {
+  compareToExpectedRefusals,
+  type ExpectedRefusals,
+  partitionExpectedRefusals,
+  refreshedExpectedRefusals,
+  renderExpectedRefusals,
+} from "./lib/corpus-refusals";
+import {
   assertReportOnlyFilesAreLive,
   loadReportOnlyFiles,
   reportOnlyFileIds,
   reportOnlyFilesDigest,
 } from "./lib/corpus-report-only";
-import { corpusFileId, parseOnlySelection, selectOnly } from "./lib/corpus-selection";
 import {
-  type ExpectedRefusals,
-  compareToExpectedRefusals,
-  partitionExpectedRefusals,
-  refreshedExpectedRefusals,
-  renderExpectedRefusals,
-} from "./lib/corpus-refusals";
+  corpusFileId,
+  parseOnlySelection,
+  selectOnly,
+} from "./lib/corpus-selection";
 import {
   describeTiers,
   parseTierSelection,
@@ -111,7 +117,9 @@ import {
   tierScopedLockDigest,
 } from "./lib/corpus-tiers";
 
-class CorpusGateError extends TaggedError("CorpusGateError")<{ message: string }> {}
+class CorpusGateError extends TaggedError("CorpusGateError")<{
+  message: string;
+}> {}
 
 const DEFAULT_CONCURRENCY = 4;
 /**
@@ -196,7 +204,9 @@ const parsePositiveInteger = (
   }
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new CorpusGateError({ message: `${flag} expects a positive integer, got \`${value}\`` });
+    throw new CorpusGateError({
+      message: `${flag} expects a positive integer, got \`${value}\``,
+    });
   }
   return parsed;
 };
@@ -231,14 +241,22 @@ type CorpusFileEntry = CorpusTask & { duplicateOf: string | null };
  */
 const buildFileList = async (
   tiers: readonly CorpusTier[],
-): Promise<{ entries: CorpusFileEntry[]; lockDigest: string; lock: CorpusLock }> => {
+): Promise<{
+  entries: CorpusFileEntry[];
+  lockDigest: string;
+  lock: CorpusLock;
+}> => {
   const full = await loadCorpusLock();
   const lock = selectTiers(full, tiers);
   const cacheRoot = corpusCacheRoot();
   const entries: CorpusFileEntry[] = [];
   const firstPathBySha = new Map<string, string>();
-  for (const source of [...lock.sources].sort((left, right) => (left.id < right.id ? -1 : 1))) {
-    for (const file of [...source.files].sort((left, right) => (left.path < right.path ? -1 : 1))) {
+  for (const source of [...lock.sources].sort((left, right) =>
+    left.id < right.id ? -1 : 1,
+  )) {
+    for (const file of [...source.files].sort((left, right) =>
+      left.path < right.path ? -1 : 1,
+    )) {
       const seen = firstPathBySha.get(file.sha256);
       const identifier = `${source.id}/${file.path}`;
       if (seen === undefined) {
@@ -263,7 +281,9 @@ const buildFileList = async (
  * for a sharded run and wrong for `--only`: naming one file that happens to
  * share its bytes with another source's copy would otherwise run nothing.
  */
-const withinSelectionDuplicates = (entries: readonly CorpusFileEntry[]): CorpusFileEntry[] => {
+const withinSelectionDuplicates = (
+  entries: readonly CorpusFileEntry[],
+): CorpusFileEntry[] => {
   const firstIdBySha = new Map<string, string>();
   return entries.map((entry) => {
     const seen = firstIdBySha.get(entry.sha256);
@@ -313,7 +333,11 @@ const resultOfOutcome = (outcome: CorpusTaskOutcome): CorpusFileResult => {
     }
     // The worker died on this file: a fact about the file, which gates.
     case "aborted": {
-      return { kind: "complete", failures: outcome.failures, declaredRefusals: [] };
+      return {
+        kind: "complete",
+        failures: outcome.failures,
+        declaredRefusals: [],
+      };
     }
     // The deadline expired, so this file's evidence is as load-dependent as a
     // budget truncation's, and it is treated as one.
@@ -355,7 +379,10 @@ const resultOfOutcome = (outcome: CorpusTaskOutcome): CorpusFileResult => {
  * listed file is report-only whether it finished or stopped at a budget, and
  * an unlisted file that stopped is truncated, which degrades the run.
  */
-const corpusFileResult = (outcome: CorpusTaskOutcome, listed: boolean): CorpusFileResult => {
+const corpusFileResult = (
+  outcome: CorpusTaskOutcome,
+  listed: boolean,
+): CorpusFileResult => {
   const result = resultOfOutcome(outcome);
   if (!listed || result.kind === "not-a-docx") {
     return result;
@@ -387,7 +414,9 @@ const runGate = async ({
   const mine =
     only === undefined
       ? entries.filter((_, index) => index % shard.total === shard.index - 1)
-      : withinSelectionDuplicates(selectOnly({ entries, patterns: only, idOf: corpusFileId }));
+      : withinSelectionDuplicates(
+          selectOnly({ entries, patterns: only, idOf: corpusFileId }),
+        );
   if (mine.length === 0) {
     throw new CorpusGateError({
       message: "The corpus cache is empty. Run `bun run corpus:fetch` first.",
@@ -418,12 +447,22 @@ const runGate = async ({
       if (done % PROGRESS_INTERVAL === 0) {
         process.stderr.write(`  ${done}/${tasks.length} files\n`);
       }
-      const file = { sourceId: task.sourceId, path: task.relativePath, sha256: task.sha256 };
-      const result = corpusFileResult(outcome, reportOnlyIds.has(corpusFileId(task)));
+      const file = {
+        sourceId: task.sourceId,
+        path: task.relativePath,
+        sha256: task.sha256,
+      };
+      const result = corpusFileResult(
+        outcome,
+        reportOnlyIds.has(corpusFileId(task)),
+      );
       census.add(file, result);
       if (perFile && result.kind !== "not-a-docx") {
         fileSignatures.push(
-          ...fileSignatureRows(file, countedFailures(result.failures, evidenceOf(result))),
+          ...fileSignatureRows(
+            file,
+            countedFailures(result.failures, evidenceOf(result)),
+          ),
         );
       }
       if (outcome.kind === "checked") {
@@ -463,7 +502,8 @@ const loadBaseline = async (): Promise<CorpusBaseline> => {
   const file = Bun.file(BASELINE_PATH);
   if (!(await file.exists())) {
     throw new CorpusGateError({
-      message: "corpus/baseline.json is missing. Generate it with `corpus-gate.ts write-baseline`.",
+      message:
+        "corpus/baseline.json is missing. Generate it with `corpus-gate.ts write-baseline`.",
     });
   }
   return (await file.json()) as CorpusBaseline;
@@ -495,12 +535,16 @@ const loadExpectedDispositions = async (): Promise<ExpectedDispositions> => {
   return (await file.json()) as ExpectedDispositions;
 };
 
-const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensusFile> => {
+const loadCensuses = async (
+  paths: readonly string[],
+): Promise<CorpusCensusFile> => {
   if (paths.length === 0) {
     throw new CorpusGateError({ message: "Pass at least one census file" });
   }
   const censuses = await Promise.all(
-    paths.map(async (file) => (await Bun.file(file).json()) as CorpusCensusFile),
+    paths.map(
+      async (file) => (await Bun.file(file).json()) as CorpusCensusFile,
+    ),
   );
   // Shards write disjoint files, so the per-file rows concatenate. They are
   // present only when every shard was asked for them: a partial mapping would
@@ -523,7 +567,10 @@ const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensusFile>
  * say so rather than carry it.
  */
 const assertReportOnlyListIsLive = async (): Promise<void> => {
-  assertReportOnlyFilesAreLive(await loadReportOnlyFiles(), await loadCorpusLock());
+  assertReportOnlyFilesAreLive(
+    await loadReportOnlyFiles(),
+    await loadCorpusLock(),
+  );
 };
 
 /**
@@ -544,42 +591,51 @@ const familyWithoutDispositions = (
   signatures: withoutDispositions(census.signatures, dispositions),
 });
 
-const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => {
+const checkAgainstBaseline = async (
+  census: CorpusCensusFile,
+): Promise<void> => {
   await assertReportOnlyListIsLive();
   const refusals = await loadExpectedRefusals();
   const dispositions = await loadExpectedDispositions();
-  const { defects: undecided, refusals: observedRefusals } = partitionExpectedRefusals(
-    census,
-    refusals,
-  );
-  const { defects, dispositions: observedDispositions } = partitionExpectedDispositions(
-    undecided,
-    dispositions,
-  );
+  const { defects: undecided, refusals: observedRefusals } =
+    partitionExpectedRefusals(census, refusals);
+  const { defects, dispositions: observedDispositions } =
+    partitionExpectedDispositions(undecided, dispositions);
   const baseline = await loadBaseline();
   const violations = [
     ...compareZeroFamilies(census.family),
     ...compareToBaseline(
-      { ...baseline, entries: withoutDispositions(baseline.entries, dispositions) },
+      {
+        ...baseline,
+        entries: withoutDispositions(baseline.entries, dispositions),
+      },
       defects,
     ),
     ...compareToExpectedRefusals(refusals, observedRefusals),
     ...compareToExpectedDispositions(dispositions, observedDispositions),
   ];
-  const family = familyWithoutDispositions(withPerformance(census.family), dispositions);
+  const family = familyWithoutDispositions(
+    withPerformance(census.family),
+    dispositions,
+  );
   for (const name of FAMILY_BASELINE_FAMILIES) {
     // oxlint-disable-next-line no-await-in-loop -- one small file per family, read in a fixed order
     const loaded = await loadFamilyBaseline(name);
     violations.push(
       ...compareFamilyToBaseline(
-        { ...loaded, entries: withoutDispositions(loaded.entries, dispositions) },
+        {
+          ...loaded,
+          entries: withoutDispositions(loaded.entries, dispositions),
+        },
         family,
       ),
     );
   }
   const rendered = `${renderExpectedDispositions(dispositions, observedDispositions)}\n${renderExpectedRefusals(refusals, observedRefusals)}`;
   const failing = violations.filter(isFailingViolation);
-  const informational = violations.filter((violation) => !isFailingViolation(violation));
+  const informational = violations.filter(
+    (violation) => !isFailingViolation(violation),
+  );
   const truncated = renderTruncated(census);
   if (informational.length > 0) {
     process.stdout.write(
@@ -615,7 +671,8 @@ const main = async (args: string[]): Promise<void> => {
     // would report every unselected defect as resolved.
     if (only !== undefined && (rest.includes("--check") || shard.total !== 1)) {
       throw new CorpusGateError({
-        message: "--only runs a subset, so it cannot be combined with --check or --shard",
+        message:
+          "--only runs a subset, so it cannot be combined with --check or --shard",
       });
     }
     const outPath =
@@ -623,7 +680,9 @@ const main = async (args: string[]): Promise<void> => {
       path.join(
         corpusCacheRoot(),
         "reports",
-        only === undefined ? `census-${shard.index}-of-${shard.total}.json` : "census-subset.json",
+        only === undefined
+          ? `census-${shard.index}-of-${shard.total}.json`
+          : "census-subset.json",
       );
     const census = await runGate({
       shard,
@@ -685,15 +744,14 @@ const main = async (args: string[]): Promise<void> => {
     }
     const refusals = await loadExpectedRefusals();
     const dispositions = await loadExpectedDispositions();
-    const { defects: undecided, refusals: observedRefusals } = partitionExpectedRefusals(
-      census,
-      refusals,
-    );
-    const { defects, dispositions: observedDispositions } = partitionExpectedDispositions(
-      undecided,
+    const { defects: undecided, refusals: observedRefusals } =
+      partitionExpectedRefusals(census, refusals);
+    const { defects, dispositions: observedDispositions } =
+      partitionExpectedDispositions(undecided, dispositions);
+    const family = familyWithoutDispositions(
+      withPerformance(census.family),
       dispositions,
     );
-    const family = familyWithoutDispositions(withPerformance(census.family), dispositions);
     await writeJsonFile(BASELINE_PATH, baselineFromCensus(defects));
     await writeFamilyBaselines(family);
     // Counts only: which signatures are expected refusals or known
@@ -727,13 +785,16 @@ const main = async (args: string[]): Promise<void> => {
   }
 
   throw new CorpusGateError({
-    message: "Usage: bun scripts/corpus-gate.ts [run|check|write-baseline|report]",
+    message:
+      "Usage: bun scripts/corpus-gate.ts [run|check|write-baseline|report]",
   });
 };
 
 if (import.meta.main) {
   main(process.argv.slice(2)).catch((cause: unknown) => {
-    process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+    process.stderr.write(
+      `${cause instanceof Error ? cause.message : String(cause)}\n`,
+    );
     process.exitCode = 1;
   });
 }

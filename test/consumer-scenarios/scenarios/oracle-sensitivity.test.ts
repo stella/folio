@@ -15,14 +15,17 @@ import {
   styleNumberedDocument,
   toArrayBuffer,
 } from "../support/documents.ts";
-import { GENERATORS } from "../support/operations.ts";
-import { createRandom } from "../support/random.ts";
 import { assertReadersAgree, saveAndReopen } from "../support/invariants.ts";
-import { ENABLED_RELATIONS, relationCheckCount, startRelations } from "../support/metamorphic.ts";
+import {
+  ENABLED_RELATIONS,
+  relationCheckCount,
+  startRelations,
+} from "../support/metamorphic.ts";
+import { GENERATORS } from "../support/operations.ts";
 import {
   ORACLE_MUTATIONS,
-  relationForOracle,
   type OracleMutation,
+  relationForOracle,
 } from "../support/oracle-mutations.ts";
 import {
   assertRequestedOutcome,
@@ -33,12 +36,17 @@ import {
   numberingFactsOf,
   rowsOf,
 } from "../support/oracle.ts";
+import { createRandom } from "../support/random.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 const prototype = FolioDocxReviewer.prototype;
 
 const injected = process.env["FOLIO_ORACLE_MUTATION"];
-if (injected !== undefined && injected !== "" && !Object.hasOwn(ORACLE_MUTATIONS, injected)) {
+if (
+  injected !== undefined &&
+  injected !== "" &&
+  !Object.hasOwn(ORACLE_MUTATIONS, injected)
+) {
   throw new TypeError(`Unknown oracle mutation ${injected}`);
 }
 
@@ -77,14 +85,17 @@ const injectReviewerDefect = (oracle: OracleMutation): (() => void) => {
         ...args: Parameters<Reviewer["applyDocumentOperations"]>
       ) {
         const [batch, options] = args;
-        if (batch.mode !== "tracked-changes") return apply.call(this, batch, options);
+        if (batch.mode !== "tracked-changes")
+          return apply.call(this, batch, options);
         return apply.call(
           this,
           {
             ...batch,
             operations: batch.operations.map((operation) =>
               operation.type === "replaceInBlock"
-                ? Object.assign({}, operation, { replace: "Corrupted tracked text" })
+                ? Object.assign({}, operation, {
+                    replace: "Corrupted tracked text",
+                  })
                 : operation,
             ),
           },
@@ -120,11 +131,11 @@ const injectReviewerDefect = (oracle: OracleMutation): (() => void) => {
         this: Reviewer,
         ...args: Parameters<Reviewer["getContent"]>
       ) {
-        return getContent
-          .call(this, ...args)
-          .map((block) =>
-            Object.assign({}, block, { text: `${block.text} Corrupted reader text.` }),
-          );
+        return getContent.call(this, ...args).map((block) =>
+          Object.assign({}, block, {
+            text: `${block.text} Corrupted reader text.`,
+          }),
+        );
       };
       break;
     case "saveIdempotent":
@@ -145,8 +156,8 @@ const injectReviewerDefect = (oracle: OracleMutation): (() => void) => {
   };
 };
 
-const oracles = Object.keys(ORACLE_MUTATIONS).filter((key): key is OracleMutation =>
-  Object.hasOwn(ORACLE_MUTATIONS, key),
+const oracles = Object.keys(ORACLE_MUTATIONS).filter(
+  (key): key is OracleMutation => Object.hasOwn(ORACLE_MUTATIONS, key),
 );
 for (const oracle of oracles) {
   const relation = relationForOracle(oracle);
@@ -154,7 +165,9 @@ for (const oracle of oracles) {
     `oracle sensitivity: ${oracle}`,
     { skip: relation !== null && !ENABLED_RELATIONS.has(relation) },
     async () => {
-      const fixture = await packDocument(fromMarkdown("First paragraph.\n\nSecond paragraph."));
+      const fixture = await packDocument(
+        fromMarkdown("First paragraph.\n\nSecond paragraph."),
+      );
       const reviewer = await openReviewer(fixture);
       const first = reviewer.getContent().at(0);
       const second = reviewer.getContent().at(1);
@@ -196,7 +209,11 @@ for (const oracle of oracles) {
               : batch,
             { undefinedReferences: "refuse" },
           );
-          assert.equal(result.applied.length, 2, "both requested operations must apply");
+          assert.equal(
+            result.applied.length,
+            2,
+            "both requested operations must apply",
+          );
           await assertRequestedOutcome(
             reviewer,
             pre,
@@ -211,32 +228,55 @@ for (const oracle of oracles) {
         }
         if (oracle === "saveRoundtrip") {
           if (mutated) {
-            const wrong = await packDocument(fromMarkdown("Corrupted saved document."));
+            const wrong = await packDocument(
+              fromMarkdown("Corrupted saved document."),
+            );
             reviewer.toBuffer = () => Promise.resolve(toArrayBuffer(wrong));
           }
           await saveAndReopen(reviewer, "oracle sensitivity");
           return;
         }
-        const checksBefore = relation === null ? 0 : relationCheckCount(relation);
-        const relations = await startRelations({ fixture, reviewer, mode: "direct", seed: 7 });
-        const receipt = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
-        assert.equal(receipt.applied.length, 2, "both relation operations must apply");
+        const checksBefore =
+          relation === null ? 0 : relationCheckCount(relation);
+        const relations = await startRelations({
+          fixture,
+          reviewer,
+          mode: "direct",
+          seed: 7,
+        });
+        const receipt = reviewer.applyDocumentOperations(batch, {
+          undefinedReferences: "refuse",
+        });
+        assert.equal(
+          receipt.applied.length,
+          2,
+          "both relation operations must apply",
+        );
         // The relation itself compares the fault; roundtrip checks must not catch it first.
-        const saved = await saveAndReopen(reviewer, "oracle sensitivity", { compare: false });
+        const saved = await saveAndReopen(reviewer, "oracle sensitivity", {
+          compare: false,
+        });
         if (mutated && oracle === "saveIdempotent") {
-          const wrong = await packDocument(fromMarkdown("Corrupted second save."));
+          const wrong = await packDocument(
+            fromMarkdown("Corrupted second save."),
+          );
           saved.reopened.toBuffer = () => Promise.resolve(toArrayBuffer(wrong));
         }
         if (mutated && oracle === "readerStability") {
           const read = saved.reopened.getContent.bind(saved.reopened);
           saved.reopened.getContent = (...args) =>
             read(...args).map((block) =>
-              Object.assign({}, block, { text: `${block.text} Corrupted reopened text.` }),
+              Object.assign({}, block, {
+                text: `${block.text} Corrupted reopened text.`,
+              }),
             );
         }
         await relations.afterStep(reviewer, saved, "oracle sensitivity");
         await relations.finish();
-        if (relation !== null && process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] === "full") {
+        if (
+          relation !== null &&
+          process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] === "full"
+        ) {
           assert.ok(
             relationCheckCount(relation) > checksBefore,
             "this probe's selected relation must compare, not skip",
@@ -264,34 +304,59 @@ test("oracle sensitivity: style clear across numbering states", async () => {
     const originalDraws = createRandom(seed);
     // Target, new-list format, existing reference, base property selection.
     for (let draw = 0; draw < 4; draw++) originalDraws.next();
-    assert.equal(random.state(), originalDraws.state(), "new dimensions preserve sequence draws");
+    assert.equal(
+      random.state(),
+      originalDraws.state(),
+      "new dimensions preserve sequence draws",
+    );
     const properties = operation?.["properties"];
-    if (typeof properties !== "object" || properties === null || !("styleId" in properties))
+    if (
+      typeof properties !== "object" ||
+      properties === null ||
+      !("styleId" in properties)
+    )
       continue;
     if (properties.styleId !== null || !("numbering" in properties)) continue;
     const numbering = properties.numbering;
-    if (typeof numbering !== "object" || numbering === null || !("kind" in numbering)) continue;
+    if (
+      typeof numbering !== "object" ||
+      numbering === null ||
+      !("kind" in numbering)
+    )
+      continue;
     assert.equal(typeof numbering.kind, "string");
-    if (typeof numbering.kind === "string") generatedClearStates.add(numbering.kind);
-    if (numbering.kind === "reference") assert.equal("ilvl" in numbering, false);
+    if (typeof numbering.kind === "string")
+      generatedClearStates.add(numbering.kind);
+    if (numbering.kind === "reference")
+      assert.equal("ilvl" in numbering, false);
   }
-  assert.deepEqual(generatedClearStates, new Set(["inherit", "levelOnly", "reference"]));
+  assert.deepEqual(
+    generatedClearStates,
+    new Set(["inherit", "levelOnly", "reference"]),
+  );
   for (const numberingKind of ["inherit", "levelOnly", "reference"] as const) {
     const reviewer = await openReviewer(fixture);
     const before = rowsOf(reviewer);
     const anchor = before.find((row) => row.styleId === "Heading3");
-    assert.ok(anchor?.listReference, "fixture has inherited level-one numbering");
+    assert.ok(
+      anchor?.listReference,
+      "fixture has inherited level-one numbering",
+    );
     const numberingByKind = {
       inherit: { kind: "inherit" },
       levelOnly: { kind: "levelOnly", ilvl: 1 },
-      reference: paragraphNumberingReference({ numId: anchor.listReference.numId }),
+      reference: paragraphNumberingReference({
+        numId: anchor.listReference.numId,
+      }),
     } as const;
     const operation = {
       id: "clear-style-numbering",
       type: "setBlockParagraphProperties",
       blockId: anchor.id,
       properties: { styleId: null, numbering: numberingByKind[numberingKind] },
-    } as const satisfies Parameters<Reviewer["applyDocumentOperations"]>[0]["operations"][number];
+    } as const satisfies Parameters<
+      Reviewer["applyDocumentOperations"]
+    >[0]["operations"][number];
     const pre = await capture(reviewer, "direct");
     const receipt = reviewer.applyDocumentOperations(
       {
@@ -302,14 +367,21 @@ test("oracle sensitivity: style clear across numbering states", async () => {
       { undefinedReferences: "refuse" },
     );
     assert.equal(receipt.applied.length, 1, "style clear must apply");
-    await assertRequestedOutcome(reviewer, pre, { applied: [operation] }, numberingKind);
+    await assertRequestedOutcome(
+      reviewer,
+      pre,
+      { applied: [operation] },
+      numberingKind,
+    );
     const after = rowsOf(reviewer);
     const changed = after.find((row) => row.id === anchor.id);
     assert.ok(changed);
     assert.equal(changed.styleId, undefined);
     assert.deepEqual(
       changed.listReference,
-      numberingKind === "reference" ? { numId: anchor.listReference.numId, level: 0 } : undefined,
+      numberingKind === "reference"
+        ? { numId: anchor.listReference.numId, level: 0 }
+        : undefined,
     );
     const model = modelOf(before);
     model.numberingFacts = await numberingFactsOf(fixture);
@@ -323,6 +395,9 @@ test("oracle sensitivity: style clear across numbering states", async () => {
           })
         : row,
     );
-    assert.match(compareWithModel(model, staleStyle).join("\n"), /number|listLevel/u);
+    assert.match(
+      compareWithModel(model, staleStyle).join("\n"),
+      /number|listLevel/u,
+    );
   }
 });

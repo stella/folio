@@ -1,17 +1,23 @@
 /** Shared addressing for row and whole-table operations. */
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
+
 import type { Document, Table, TableRow } from "../model/document";
-import { blockListAt, storyBody, storyParagraphs, type ParagraphLocation } from "./blocks";
+import {
+  blockListAt,
+  type ParagraphLocation,
+  storyBody,
+  storyParagraphs,
+} from "./blocks";
 import { idKey } from "./ids";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type {
   DeleteRowOp,
   DeleteTableOp,
   InsertRowOp,
+  SetTableOp,
   SetTableRowsOp,
   TableEditOp,
   TableIntentOperation,
-  SetTableOp,
 } from "./types";
 
 type TableTarget = Pick<
@@ -51,7 +57,9 @@ export const locateTableRow = (
       }),
     );
   }
-  const stepIndex = location.list.findLastIndex((step) => step.kind === "tableCell");
+  const stepIndex = location.list.findLastIndex(
+    (step) => step.kind === "tableCell",
+  );
   const step = location.list[stepIndex];
   if (step?.kind !== "tableCell") {
     return Result.err(
@@ -64,8 +72,15 @@ export const locateTableRow = (
   }
   const list = location.list.slice(0, stepIndex);
   const table = blockListAt(body.content, list)[step.block];
-  if (table?.type !== "table") return panic("A table-cell path must name a table.");
-  return Result.ok({ list, index: step.block, rowIndex: step.row, cellIndex: step.cell, table });
+  if (table?.type !== "table")
+    return panic("A table-cell path must name a table.");
+  return Result.ok({
+    list,
+    index: step.block,
+    rowIndex: step.row,
+    cellIndex: step.cell,
+    table,
+  });
 };
 
 /** Row operations address this table, never a nested table appearing first. */

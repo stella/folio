@@ -10,19 +10,47 @@ export const CONSUMER_SCENARIO_REPLAY_INPUTS = [
   { flag: "--seed", env: "FOLIO_SCENARIO_SEED", kind: "value" },
   { flag: "--steps", env: "FOLIO_SCENARIO_FUZZ_STEPS", kind: "value" },
   { flag: "--runs", env: "FOLIO_SCENARIO_FUZZ_RUNS", kind: "value" },
-  { flag: "--collision-runs", env: "FOLIO_SCENARIO_COLLISION_RUNS", kind: "value" },
+  {
+    flag: "--collision-runs",
+    env: "FOLIO_SCENARIO_COLLISION_RUNS",
+    kind: "value",
+  },
   { flag: "--swarm", env: "FOLIO_SCENARIO_SWARM", kind: "value" },
   { flag: "--flow", env: "FOLIO_SCENARIO_FLOW", kind: "value" },
-  { flag: "--public-corpus-dir", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR", kind: "path" },
+  {
+    flag: "--public-corpus-dir",
+    env: "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
+    kind: "path",
+  },
   { flag: "--relations", env: "FOLIO_SCENARIO_RELATIONS", kind: "value" },
-  { flag: "--relations-depth", env: "FOLIO_SCENARIO_RELATIONS_DEPTH", kind: "value" },
-  { flag: "--feature-weights", env: "FOLIO_SCENARIO_FEATURE_WEIGHTS", kind: "path" },
+  {
+    flag: "--relations-depth",
+    env: "FOLIO_SCENARIO_RELATIONS_DEPTH",
+    kind: "value",
+  },
+  {
+    flag: "--feature-weights",
+    env: "FOLIO_SCENARIO_FEATURE_WEIGHTS",
+    kind: "path",
+  },
   { flag: "--long-fuzz", env: "FOLIO_SCENARIO_LONG_FUZZ", kind: "value" },
   { flag: "--long-steps", env: "FOLIO_SCENARIO_LONG_STEPS", kind: "value" },
   { flag: "--long-output", env: "FOLIO_SCENARIO_LONG_OUTPUT", kind: "path" },
-  { flag: "--public-corpus-fuzz", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ", kind: "value" },
-  { flag: "--public-corpus-steps", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS", kind: "value" },
-  { flag: "--public-corpus-output", env: "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT", kind: "path" },
+  {
+    flag: "--public-corpus-fuzz",
+    env: "FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ",
+    kind: "value",
+  },
+  {
+    flag: "--public-corpus-steps",
+    env: "FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS",
+    kind: "value",
+  },
+  {
+    flag: "--public-corpus-output",
+    env: "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT",
+    kind: "path",
+  },
   {
     flag: "--public-corpus-fixture",
     env: "FOLIO_SCENARIO_PUBLIC_CORPUS_FIXTURE",
@@ -35,7 +63,9 @@ export const CONSUMER_SCENARIO_REPLAY_INPUTS = [
 }[];
 
 const optionForFlag = (flag: `--${string}`): string =>
-  flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+  flag
+    .slice(2)
+    .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
 
 /** Read the replay inputs present in an environment into one mergeable value set. */
 export const consumerScenarioReplayInputs = (
@@ -60,7 +90,9 @@ export const consumerScenarioReplay = ({
       const value = inputs[optionForFlag(flag)];
       if (value == null) return [];
       const quotedValue = value.replaceAll("'", `'\\''`);
-      return value.startsWith("-") ? [`'${flag}=${quotedValue}'`] : [`${flag} '${quotedValue}'`];
+      return value.startsWith("-")
+        ? [`'${flag}=${quotedValue}'`]
+        : [`${flag} '${quotedValue}'`];
     }),
     ...flags.filter((flag) => flag !== ""),
     ...(files.length === 0 ? [] : ["--", ...files]),

@@ -12,8 +12,14 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { __resetWorkerCtxForTests, handleMeasureRequest } from "./font-metrics.worker";
-import type { MeasureRequestEntry, MeasureWorkerRequest } from "./measureWorkerProtocol";
+import {
+  __resetWorkerCtxForTests,
+  handleMeasureRequest,
+} from "./font-metrics.worker";
+import type {
+  MeasureRequestEntry,
+  MeasureWorkerRequest,
+} from "./measureWorkerProtocol";
 
 type CanvasStub = {
   font: string;
@@ -30,7 +36,9 @@ class FakeOffscreenCanvas {
       font: "",
       fontKerning: "none",
       measureText(this: CanvasStub, text: string) {
-        return { width: text.length * 6 - (this.fontKerning === "normal" ? 1 : 0) };
+        return {
+          width: text.length * 6 - (this.fontKerning === "normal" ? 1 : 0),
+        };
       },
     };
   }
@@ -38,7 +46,8 @@ class FakeOffscreenCanvas {
 
 beforeEach(() => {
   __resetWorkerCtxForTests();
-  (globalThis as { OffscreenCanvas?: unknown }).OffscreenCanvas = FakeOffscreenCanvas;
+  (globalThis as { OffscreenCanvas?: unknown }).OffscreenCanvas =
+    FakeOffscreenCanvas;
 });
 
 afterEach(() => {
@@ -46,7 +55,10 @@ afterEach(() => {
   __resetWorkerCtxForTests();
 });
 
-function req(entries: MeasureWorkerRequest["entries"], id = 0): MeasureWorkerRequest {
+function req(
+  entries: MeasureWorkerRequest["entries"],
+  id = 0,
+): MeasureWorkerRequest {
   return { type: "measure", id, entries };
 }
 
@@ -58,7 +70,8 @@ function entry(overrides: Partial<MeasureRequestEntry>): MeasureRequestEntry {
     font,
     fontCacheKey: overrides.fontCacheKey ?? `${font}|scale:${horizontalScale}`,
     fontFingerprintText: overrides.fontFingerprintText ?? overrides.text ?? "x",
-    fontFingerprintWidth: overrides.fontFingerprintWidth ?? (overrides.text ?? "x").length * 6,
+    fontFingerprintWidth:
+      overrides.fontFingerprintWidth ?? (overrides.text ?? "x").length * 6,
     letterSpacing: overrides.letterSpacing ?? 0,
     horizontalScale,
     fontKerning: overrides.fontKerning ?? "none",
@@ -168,23 +181,28 @@ describe("handleMeasureRequest", () => {
     }
   });
 
-  test.each(["Žluť", "Ελληνικά", "Кириллица", "العربية", "हिन्दी", "漢字", "עברית"])(
-    "rejects a mismatched font subset in %s",
-    (text) => {
-      const reply = handleMeasureRequest(
-        req([
-          entry({
-            text,
-            fontFingerprintText: text,
-            // A main-thread font with a different subset width must not be
-            // replaced by this worker's Latin-only fallback measurement.
-            fontFingerprintWidth: text.length * 6 + 2,
-          }),
-        ]),
-      );
-      expect(reply.ok && reply.entries).toEqual([]);
-    },
-  );
+  test.each([
+    "Žluť",
+    "Ελληνικά",
+    "Кириллица",
+    "العربية",
+    "हिन्दी",
+    "漢字",
+    "עברית",
+  ])("rejects a mismatched font subset in %s", (text) => {
+    const reply = handleMeasureRequest(
+      req([
+        entry({
+          text,
+          fontFingerprintText: text,
+          // A main-thread font with a different subset width must not be
+          // replaced by this worker's Latin-only fallback measurement.
+          fontFingerprintWidth: text.length * 6 + 2,
+        }),
+      ]),
+    );
+    expect(reply.ok && reply.entries).toEqual([]);
+  });
 
   test("rejects a small subset mismatch inside a long run", () => {
     const text = `${"a".repeat(2_000)}ش`;

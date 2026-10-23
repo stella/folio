@@ -12,8 +12,18 @@
  * rows or cells are themselves pending.
  */
 
-import { Fragment, Slice, type MarkType, type Node as PMNode } from "prosemirror-model";
-import { ReplaceAroundStep, StepMap, type Transform } from "prosemirror-transform";
+import {
+  Fragment,
+  type MarkType,
+  type Node as PMNode,
+  Slice,
+} from "prosemirror-model";
+import {
+  ReplaceAroundStep,
+  StepMap,
+  type Transform,
+} from "prosemirror-transform";
+
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import {
@@ -23,7 +33,10 @@ import {
 } from "../docx/paragraphPropertySource";
 import { expectParagraphAttrs } from "./attrs";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
-import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
+import {
+  paragraphRunStyleContext,
+  type RunStyleResolver,
+} from "./runStyleFormatting";
 import { holdsNoContent } from "./zeroWidthAnchors";
 
 /**
@@ -47,12 +60,16 @@ export const runInCellPending = (table: PMNode): boolean => {
 };
 
 /** The first paragraph of a table's first cell, descending into nested tables. */
-const runInTarget = (doc: PMNode, tablePos: number): { pos: number; node: PMNode } | null => {
+const runInTarget = (
+  doc: PMNode,
+  tablePos: number,
+): { pos: number; node: PMNode } | null => {
   let node = doc.nodeAt(tablePos);
   let pos = tablePos;
   const table = node;
   const firstRow = table?.firstChild;
-  if (!table || table.type.spec["tableRole"] !== "table" || !firstRow) return null;
+  if (!table || table.type.spec["tableRole"] !== "table" || !firstRow)
+    return null;
   // A pending row or cell may not keep the cell the words would run into:
   // the paragraph keeps its own place instead.
   if (runInCellPending(table)) return null;
@@ -91,10 +108,15 @@ export const runParagraphIntoTable = ({
 } | null => {
   const paragraph = tr.doc.nodeAt(paragraphPos);
   if (paragraph?.type.name !== "paragraph") return null;
-  if (expectParagraphAttrs(paragraph)._sectionProperties !== undefined) return null;
+  if (expectParagraphAttrs(paragraph)._sectionProperties !== undefined)
+    return null;
   const left = removedMark
     ? paragraph.copy(
-        Fragment.fromArray(paragraph.children.filter((child) => !removedMark.isInSet(child.marks))),
+        Fragment.fromArray(
+          paragraph.children.filter(
+            (child) => !removedMark.isInSet(child.marks),
+          ),
+        ),
       )
     : paragraph;
   if (holdsNoContent(left)) return null;
@@ -139,7 +161,14 @@ export const runParagraphIntoTable = ({
   // paragraph's, the table, row and cell openings are new in front of it, and
   // the paragraph's close and the table's openings after its words are gone.
   const closing = paragraphPos + paragraph.nodeSize - 1;
-  const map = new StepMap([paragraphPos, 0, levels - 1, closing, target.pos + 1 - closing, 0]);
+  const map = new StepMap([
+    paragraphPos,
+    0,
+    levels - 1,
+    closing,
+    target.pos + 1 - closing,
+    0,
+  ]);
   return {
     position,
     map,
@@ -183,7 +212,8 @@ export const runsIntoFollowingTable = (
         expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo",
       containerStillEndsWithParagraph: false,
       followingTableCanReceiveRunIn:
-        expectParagraphAttrs(paragraph)._sectionProperties === undefined && !runInCellPending(next),
+        expectParagraphAttrs(paragraph)._sectionProperties === undefined &&
+        !runInCellPending(next),
     }).kind === "run-in"
   );
 };
@@ -203,7 +233,8 @@ export const runParagraphsIntoTables = (
   maps: StepMap[];
   transfers: ParagraphPropertySourceTransfer[];
 } => {
-  const removedMark = tr.doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
+  const removedMark =
+    tr.doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
   const tried = new Set<number>();
   const targets: { position: number; step: number }[] = [];
   const transfers: ParagraphPropertySourceTransfer[] = [];

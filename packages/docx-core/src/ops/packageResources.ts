@@ -1,10 +1,10 @@
-import { cloneModel } from "./modelClone";
 import { Result } from "better-result";
 
-import { MAX_REVISION_ID, type Document } from "../model/document";
+import { type Document, MAX_REVISION_ID } from "../model/document";
 import type { MediaFile, Relationship } from "../model/styles";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
+import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -18,7 +18,10 @@ import {
   type SetPackageResourcesOp,
 } from "./types";
 
-const partOf = <Value>(present: boolean, value: Value | undefined): PackageResourcePart<Value> => {
+const partOf = <Value>(
+  present: boolean,
+  value: Value | undefined,
+): PackageResourcePart<Value> => {
   if (!present) return { type: "omitted" };
   return value === undefined
     ? { type: "undefined" }
@@ -26,12 +29,16 @@ const partOf = <Value>(present: boolean, value: Value | undefined): PackageResou
 };
 
 /** Capture style and numbering definitions as ordinary JSON data, preserving field presence. */
-export const packageResourcesOf = ({ package: pkg }: Document): PackageResources => ({
+export const packageResourcesOf = ({
+  package: pkg,
+}: Document): PackageResources => ({
   styles: partOf(Object.hasOwn(pkg, "styles"), pkg.styles),
   numbering: partOf(Object.hasOwn(pkg, "numbering"), pkg.numbering),
 });
 
-const valueOf = <Value>(part: PackageResourcePart<Value>): Value | undefined => {
+const valueOf = <Value>(
+  part: PackageResourcePart<Value>,
+): Value | undefined => {
   switch (part.type) {
     case "omitted":
     case "undefined":
@@ -57,7 +64,10 @@ type PackageMap<Stored> = {
   entries: ReadonlyMap<string, Stored>;
 };
 
-const presenceOf = (present: boolean, map: unknown): PackageResourcePresence => {
+const presenceOf = (
+  present: boolean,
+  map: unknown,
+): PackageResourcePresence => {
   if (!present) return "omitted";
   return map === undefined ? "undefined" : "present";
 };
@@ -65,7 +75,10 @@ const presenceOf = (present: boolean, map: unknown): PackageResourcePresence => 
 const packageMapOf = <Stored>(
   present: boolean,
   map: ReadonlyMap<string, Stored> | undefined,
-): PackageMap<Stored> => ({ presence: presenceOf(present, map), entries: map ?? new Map() });
+): PackageMap<Stored> => ({
+  presence: presenceOf(present, map),
+  entries: map ?? new Map(),
+});
 
 const relationshipsOf = ({ package: pkg }: Document) =>
   packageMapOf(Object.hasOwn(pkg, "relationships"), pkg.relationships);
@@ -77,7 +90,9 @@ const entryOf = <Stored, Value>(
   stored: Stored | undefined,
   record: (stored: Stored) => Value,
 ): PackageResourceEntry<Value> =>
-  stored === undefined ? { type: "absent" } : { type: "present", value: record(stored) };
+  stored === undefined
+    ? { type: "absent" }
+    : { type: "present", value: record(stored) };
 
 type MapChangeOptions<Stored, Value> = {
   before: PackageMap<Stored>;
@@ -91,12 +106,19 @@ const mapChangeOf = <Stored, Value>({
   record,
 }: MapChangeOptions<Stored, Value>): PackageResourceMapChange<Value> => {
   const entries: PackageResourceEntryChange<Value>[] = [];
-  for (const key of new Set([...before.entries.keys(), ...after.entries.keys()])) {
+  for (const key of new Set([
+    ...before.entries.keys(),
+    ...after.entries.keys(),
+  ])) {
     const previous = before.entries.get(key);
     const next = after.entries.get(key);
     // Untouched entries keep their record, so an import never copies media it leaves alone.
     if (previous === next) continue;
-    const change = { key, expected: entryOf(previous, record), next: entryOf(next, record) };
+    const change = {
+      key,
+      expected: entryOf(previous, record),
+      next: entryOf(next, record),
+    };
     if (!structurallyEqual(change.expected, change.next)) entries.push(change);
   }
   return { expected: before.presence, next: after.presence, entries };
@@ -117,7 +139,11 @@ export const packageResourcesOpOf = ({
     after: relationshipsOf(after),
     record: (relationship: Relationship) => cloneModel(relationship),
   }),
-  media: mapChangeOf({ before: mediaOf(before), after: mediaOf(after), record: mediaRecordOf }),
+  media: mapChangeOf({
+    before: mediaOf(before),
+    after: mediaOf(after),
+    record: mediaRecordOf,
+  }),
 });
 
 type MapApplication<Stored> =
@@ -186,7 +212,8 @@ const presentEntries = <Value>(change: PackageResourceMapChange<Value>) =>
     next.type === "present" ? [[key, next.value] as const] : [],
   );
 
-const duplicates = (ids: readonly (string | number)[]): boolean => new Set(ids).size !== ids.length;
+const duplicates = (ids: readonly (string | number)[]): boolean =>
+  new Set(ids).size !== ids.length;
 
 type ResourceViolationOptions = {
   op: SetPackageResourcesOp;
@@ -203,25 +230,40 @@ const resourceViolation = ({
   media,
 }: ResourceViolationOptions): string | undefined => {
   const styles = valueOf(resources.styles);
-  if (styles !== undefined && duplicates(styles.styles.map(({ styleId }) => styleId)))
+  if (
+    styles !== undefined &&
+    duplicates(styles.styles.map(({ styleId }) => styleId))
+  )
     return "Imported styles contain duplicate ids.";
   const numbering = valueOf(resources.numbering);
   if (numbering !== undefined) {
-    const abstracts = numbering.abstractNums.map(({ abstractNumId }) => abstractNumId);
+    const abstracts = numbering.abstractNums.map(
+      ({ abstractNumId }) => abstractNumId,
+    );
     const nums = numbering.nums.map(({ numId }) => numId);
     if (
       duplicates(abstracts) ||
       duplicates(nums) ||
-      abstracts.some((id) => !Number.isSafeInteger(id) || id < 0 || id > MAX_REVISION_ID) ||
-      nums.some((id) => !Number.isSafeInteger(id) || id <= 0 || id > MAX_REVISION_ID)
+      abstracts.some(
+        (id) => !Number.isSafeInteger(id) || id < 0 || id > MAX_REVISION_ID,
+      ) ||
+      nums.some(
+        (id) => !Number.isSafeInteger(id) || id <= 0 || id > MAX_REVISION_ID,
+      )
     )
       return "Imported numbering contains invalid or duplicate ids.";
-    if (numbering.nums.some(({ abstractNumId }) => !abstracts.includes(abstractNumId)))
+    if (
+      numbering.nums.some(
+        ({ abstractNumId }) => !abstracts.includes(abstractNumId),
+      )
+    )
       return "An imported numbering instance has no abstract definition.";
   }
   const changedRelationships = presentEntries(relationshipChange);
   if (
-    changedRelationships.some(([key, relationship]) => key.length === 0 || key !== relationship.id)
+    changedRelationships.some(
+      ([key, relationship]) => key.length === 0 || key !== relationship.id,
+    )
   )
     return "Imported relationships contain invalid ids.";
   if (
@@ -230,20 +272,31 @@ const resourceViolation = ({
         key !== file.path ||
         !key.startsWith("word/media/") ||
         key.split("/").includes("..") ||
-        file.data.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 255),
+        file.data.some(
+          (byte) => !Number.isInteger(byte) || byte < 0 || byte > 255,
+        ),
     )
   )
     return "Imported media contains invalid paths or bytes.";
   for (const [, relationship] of changedRelationships) {
-    if (!relationship.type.endsWith("/image") || relationship.targetMode === "External") continue;
+    if (
+      !relationship.type.endsWith("/image") ||
+      relationship.targetMode === "External"
+    )
+      continue;
     const target = relationship.target.startsWith("/")
       ? relationship.target.slice(1)
       : `word/${relationship.target}`;
-    if (!media.has(target)) return "An imported image relationship has no media part.";
+    if (!media.has(target))
+      return "An imported image relationship has no media part.";
   }
   const available = {
-    style: new Set<string | number>(styles?.styles.map(({ styleId }) => styleId) ?? []),
-    numbering: new Set<string | number>(numbering?.nums.map(({ numId }) => numId) ?? []),
+    style: new Set<string | number>(
+      styles?.styles.map(({ styleId }) => styleId) ?? [],
+    ),
+    numbering: new Set<string | number>(
+      numbering?.nums.map(({ numId }) => numId) ?? [],
+    ),
     relationship: new Set<string | number>(relationships.keys()),
   } satisfies Record<ResourceReferenceKind, ReadonlySet<string | number>>;
   const unavailable = (kind: ResourceReferenceKind, id: string | number) =>
@@ -253,23 +306,47 @@ const resourceViolation = ({
   );
   for (const style of styles?.styles ?? []) {
     if (structurallyEqual(style, previousStyles.get(style.styleId))) continue;
-    if (resourceReferencesMatch({ value: style, matches: unavailable, relationshipScope: "main" }))
+    if (
+      resourceReferencesMatch({
+        value: style,
+        matches: unavailable,
+        relationshipScope: "main",
+      })
+    )
       return "An imported style references an unavailable package resource.";
   }
   const previousAbstracts = new Map(
-    valueOf(expected.numbering)?.abstractNums.map((abstract) => [abstract.abstractNumId, abstract]),
+    valueOf(expected.numbering)?.abstractNums.map((abstract) => [
+      abstract.abstractNumId,
+      abstract,
+    ]),
   );
   for (const abstract of numbering?.abstractNums ?? []) {
-    if (structurallyEqual(abstract, previousAbstracts.get(abstract.abstractNumId))) continue;
     if (
-      resourceReferencesMatch({ value: abstract, matches: unavailable, relationshipScope: "main" })
+      structurallyEqual(abstract, previousAbstracts.get(abstract.abstractNumId))
+    )
+      continue;
+    if (
+      resourceReferencesMatch({
+        value: abstract,
+        matches: unavailable,
+        relationshipScope: "main",
+      })
     )
       return "An imported numbering definition references an unavailable style.";
   }
-  const previousNums = new Map(valueOf(expected.numbering)?.nums.map((num) => [num.numId, num]));
+  const previousNums = new Map(
+    valueOf(expected.numbering)?.nums.map((num) => [num.numId, num]),
+  );
   for (const num of numbering?.nums ?? []) {
     if (structurallyEqual(num, previousNums.get(num.numId))) continue;
-    if (resourceReferencesMatch({ value: num, matches: unavailable, relationshipScope: "main" }))
+    if (
+      resourceReferencesMatch({
+        value: num,
+        matches: unavailable,
+        relationshipScope: "main",
+      })
+    )
       return "An imported numbering instance references an unavailable style.";
   }
   return undefined;
@@ -328,12 +405,20 @@ const resourceReferencesMatch = ({
     )
       return true;
     // Header/footer rIds belong to their own relationship parts; styles and numbering remain global.
-    const scope = key === "headers" || key === "footers" ? "part" : relationshipScope;
-    return resourceReferencesMatch({ value: item, matches, relationshipScope: scope });
+    const scope =
+      key === "headers" || key === "footers" ? "part" : relationshipScope;
+    return resourceReferencesMatch({
+      value: item,
+      matches,
+      relationshipScope: scope,
+    });
   });
 };
 
-const missingIds = (before: readonly (string | number)[], after: readonly (string | number)[]) => {
+const missingIds = (
+  before: readonly (string | number)[],
+  after: readonly (string | number)[],
+) => {
   const kept = new Set(after);
   return new Set(before.filter((id) => !kept.has(id)));
 };
@@ -346,7 +431,10 @@ export const applyPackageResourcesOp = (
   const failed = (reason: "stale" | "structureMismatch", message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
   if (!structurallyEqual(expected, op.expected))
-    return failed(DOCUMENT_OP_REFUSAL_REASONS.STALE, "The package resources changed.");
+    return failed(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      "The package resources changed.",
+    );
   // The journal and resulting document must not share mutable resource records.
   const owned = cloneModel(op);
   const relationships = applyMapChange({
@@ -355,7 +443,8 @@ export const applyPackageResourcesOp = (
     record: (relationship: Relationship) => cloneModel(relationship),
     stored: (relationship: Relationship) => cloneModel(relationship),
   });
-  if (relationships.type === "refused") return failed(relationships.reason, relationships.message);
+  if (relationships.type === "refused")
+    return failed(relationships.reason, relationships.message);
   const media = applyMapChange({
     current: mediaOf(document),
     change: owned.media,
@@ -377,13 +466,18 @@ export const applyPackageResourcesOp = (
   delete pkg.numbering;
   delete pkg.relationships;
   delete pkg.media;
-  if (resources.styles.type !== "omitted") pkg.styles = valueOf(resources.styles);
-  if (resources.numbering.type !== "omitted") pkg.numbering = valueOf(resources.numbering);
+  if (resources.styles.type !== "omitted")
+    pkg.styles = valueOf(resources.styles);
+  if (resources.numbering.type !== "omitted")
+    pkg.numbering = valueOf(resources.numbering);
   if (relationships.map.presence !== "omitted")
     pkg.relationships =
-      relationships.map.presence === "present" ? new Map(relationships.map.entries) : undefined;
+      relationships.map.presence === "present"
+        ? new Map(relationships.map.entries)
+        : undefined;
   if (media.map.presence !== "omitted")
-    pkg.media = media.map.presence === "present" ? new Map(media.map.entries) : undefined;
+    pkg.media =
+      media.map.presence === "present" ? new Map(media.map.entries) : undefined;
   const removed = {
     style: missingIds(
       document.package.styles?.styles.map(({ styleId }) => styleId) ?? [],

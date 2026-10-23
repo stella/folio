@@ -30,7 +30,9 @@ export const priorValues = <Formatting extends object>(
     Reflect.set(
       restore,
       key,
-      base !== undefined && Object.hasOwn(base, key) ? Reflect.get(base, key) : null,
+      base !== undefined && Object.hasOwn(base, key)
+        ? Reflect.get(base, key)
+        : null,
     );
   }
   return restore;

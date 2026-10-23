@@ -1,20 +1,25 @@
+import { Result, TaggedError } from "better-result";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { execFileSync, spawnSync } from "node:child_process";
 import { join, relative, resolve, sep } from "node:path";
-import { Result, TaggedError } from "better-result";
 
 const CACHE_FILE = ".playground-build-cache.json";
 const CACHE_VERSION = 1;
-const VITE_ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"] as const;
+const VITE_ENV_FILES = [
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.production.local",
+] as const;
 
 type FileMetadata = { path: string; size: number; mtimeMs: number };
 type CacheRecord = {
@@ -53,7 +58,9 @@ const buildEnvironmentFingerprint = (
   ...Object.fromEntries(
     Object.entries(environment)
       .filter(
-        ([name, value]) => value !== undefined && (name === "NODE_ENV" || name.startsWith("VITE_")),
+        ([name, value]) =>
+          value !== undefined &&
+          (name === "NODE_ENV" || name.startsWith("VITE_")),
       )
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([name, value]) => [name, value ?? ""]),
@@ -63,13 +70,23 @@ const buildEnvironmentFingerprint = (
 const fingerprint = (
   metadata: readonly FileMetadata[],
   environment: Record<string, string> = {},
-): string => createHash("sha256").update(JSON.stringify({ metadata, environment })).digest("hex");
+): string =>
+  createHash("sha256")
+    .update(JSON.stringify({ metadata, environment }))
+    .digest("hex");
 
-const packageInputs = (repoRoot: string, packageDir: string): FileMetadata[] => {
-  const listed = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "-z"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  })
+const packageInputs = (
+  repoRoot: string,
+  packageDir: string,
+): FileMetadata[] => {
+  const listed = execFileSync(
+    "git",
+    ["ls-files", "-co", "--exclude-standard", "-z"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  )
     .split("\0")
     .filter(Boolean);
   const paths = new Set(listed);
@@ -80,12 +97,18 @@ const packageInputs = (repoRoot: string, packageDir: string): FileMetadata[] => 
 
   return [...paths].sort().flatMap((path) => {
     const packageRelativePath = relative(packageDir, join(repoRoot, path));
-    if (packageRelativePath === "dist" || packageRelativePath.startsWith(`dist${sep}`)) return [];
+    if (
+      packageRelativePath === "dist" ||
+      packageRelativePath.startsWith(`dist${sep}`)
+    )
+      return [];
     const absolutePath = join(repoRoot, path);
     if (!existsSync(absolutePath)) return [];
     const stat = statSync(absolutePath);
     if (!stat.isFile()) return [];
-    return [{ path: normalizedPath(path), size: stat.size, mtimeMs: stat.mtimeMs }];
+    return [
+      { path: normalizedPath(path), size: stat.size, mtimeMs: stat.mtimeMs },
+    ];
   });
 };
 
@@ -133,13 +156,17 @@ const readCache = (cachePath: string): CacheRecord | null => {
 };
 
 const runBuild = (repoRoot: string, packageDir: string): void => {
-  const manifest: unknown = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+  const manifest: unknown = JSON.parse(
+    readFileSync(join(packageDir, "package.json"), "utf8"),
+  );
   const name =
     typeof manifest === "object" && manifest !== null && "name" in manifest
       ? manifest.name
       : undefined;
   if (typeof name !== "string" || name.length === 0) {
-    throw new TypeError(`Package manifest at ${packageDir} has no package name`);
+    throw new TypeError(
+      `Package manifest at ${packageDir} has no package name`,
+    );
   }
   const result = spawnSync("bun", ["--filter", name, "build"], {
     cwd: repoRoot,
@@ -152,7 +179,9 @@ const runBuild = (repoRoot: string, packageDir: string): void => {
     });
   }
   if (result.status !== 0) {
-    throw new PlaygroundBuildError({ message: `Playground build failed for ${name}` });
+    throw new PlaygroundBuildError({
+      message: `Playground build failed for ${name}`,
+    });
   }
 };
 
@@ -190,9 +219,12 @@ export const ensurePlaygroundBuild = async ({
   await (build ?? (() => runBuild(root, packagePath)))();
   const inputsAfterBuild = packageInputs(root, packagePath);
   const environmentAfterBuild = buildEnvironmentFingerprint(buildEnvironment);
-  if (fingerprint(inputsAfterBuild, environmentAfterBuild) !== inputFingerprint) {
+  if (
+    fingerprint(inputsAfterBuild, environmentAfterBuild) !== inputFingerprint
+  ) {
     throw new PlaygroundBuildError({
-      message: "Playground inputs or build environment changed during the build",
+      message:
+        "Playground inputs or build environment changed during the build",
     });
   }
 
@@ -217,7 +249,9 @@ export const ensurePlaygroundBuild = async ({
 const main = async (): Promise<void> => {
   const packageArgument = Bun.argv[2];
   if (packageArgument === undefined) {
-    throw new TypeError("Usage: bun scripts/playground-build.ts <playground package directory>");
+    throw new TypeError(
+      "Usage: bun scripts/playground-build.ts <playground package directory>",
+    );
   }
   const repoRoot = resolve(import.meta.dir, "..");
   await ensurePlaygroundBuild({ repoRoot, packageDir: packageArgument });

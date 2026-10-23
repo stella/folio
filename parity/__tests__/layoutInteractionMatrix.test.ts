@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildLayoutInteractionMatrix,
-  layoutInteractionCasePairs,
   LAYOUT_INTERACTION_AXES,
   LAYOUT_INTERACTION_AXIS_NAMES,
+  layoutInteractionCasePairs,
   validLayoutInteractionPairs,
 } from "../fixtures/layout-interaction-matrix";
 
@@ -26,10 +26,13 @@ describe("synthetic layout interaction matrix", () => {
   test("covers every pair that belongs to a valid complete scenario", () => {
     const covered = new Set<string>();
     for (const scenario of buildLayoutInteractionMatrix()) {
-      for (const pair of layoutInteractionCasePairs(scenario)) covered.add(pair);
+      for (const pair of layoutInteractionCasePairs(scenario))
+        covered.add(pair);
     }
 
-    expect([...covered].toSorted()).toEqual([...validLayoutInteractionPairs()].toSorted());
+    expect([...covered].toSorted()).toEqual(
+      [...validLayoutInteractionPairs()].toSorted(),
+    );
   });
 
   test("uses every declared axis value", () => {

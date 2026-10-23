@@ -13,10 +13,15 @@ import {
 } from "./xmlParser";
 
 const bookmarkIdentity = (element: XmlElement) => {
-  if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")) return null;
+  if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? ""))
+    return null;
   const name = getLocalName(element.name);
   if (name !== "bookmarkStart" && name !== "bookmarkEnd") return null;
-  const attribute = findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id");
+  const attribute = findAttributeByNamespaceUri(
+    element,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "id",
+  );
   if (!attribute) return null;
   const id = Number(attribute.value);
   if (!Number.isSafeInteger(id) || id < 0) return null;
@@ -32,12 +37,18 @@ const bookmarkIdentity = (element: XmlElement) => {
 export const normalizeBookmarkIdsInXmlParts = (
   parts: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, string> => {
-  const candidates = [...parts].filter(([, xml]) => /bookmark(?:Start|End)/u.test(xml));
+  const candidates = [...parts].filter(([, xml]) =>
+    /bookmark(?:Start|End)/u.test(xml),
+  );
   const reserved = new Set<number>();
   const repeated = new Set<string>();
   const markersByPart = new Map<
     string,
-    { marker: NonNullable<ReturnType<typeof bookmarkIdentity>>; start: number; end: number }[]
+    {
+      marker: NonNullable<ReturnType<typeof bookmarkIdentity>>;
+      start: number;
+      end: number;
+    }[]
   >();
   for (const [path, xml] of candidates) {
     const starts = new Set<number>();
@@ -46,18 +57,21 @@ export const normalizeBookmarkIdsInXmlParts = (
       start: number;
       end: number;
     }[] = [];
-    const scanned = scanSelectedStreamingXmlElements(xml, ({ element, attributeValueSpans }) => {
-      const marker = bookmarkIdentity(element);
-      if (!marker) return;
-      const span = attributeValueSpans.get(marker.attribute);
-      if (!span) panic("Missing bookmark identity source span");
-      markers.push({ marker, ...span });
-      reserved.add(marker.id);
-      if (marker.name === "bookmarkStart") {
-        if (starts.has(marker.id)) repeated.add(path);
-        starts.add(marker.id);
-      }
-    });
+    const scanned = scanSelectedStreamingXmlElements(
+      xml,
+      ({ element, attributeValueSpans }) => {
+        const marker = bookmarkIdentity(element);
+        if (!marker) return;
+        const span = attributeValueSpans.get(marker.attribute);
+        if (!span) panic("Missing bookmark identity source span");
+        markers.push({ marker, ...span });
+        reserved.add(marker.id);
+        if (marker.name === "bookmarkStart") {
+          if (starts.has(marker.id)) repeated.add(path);
+          starts.add(marker.id);
+        }
+      },
+    );
     // Unsupported syntax belongs to the regular XML parser's boundary.
     if (scanned.status === "unsupported") {
       repeated.delete(path);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import JSZip from "jszip";
+
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "../compare/compare";
@@ -9,13 +10,18 @@ import { CAPTURE } from "./containerChildren";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { docxToMarkdown } from "./server/docxToMarkdown";
-import { CELL_CONTENT_HANDLERS, ROW_CONTENT_HANDLERS, TABLE_CONTENT_HANDLERS } from "./tableParser";
+import {
+  CELL_CONTENT_HANDLERS,
+  ROW_CONTENT_HANDLERS,
+  TABLE_CONTENT_HANDLERS,
+} from "./tableParser";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const SENTINEL = "Opaque carrier sentinel";
 
-const paragraph = (text: string): string => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const paragraph = (text: string): string =>
+  `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 const cell = (content: string): string => `<w:tc><w:tcPr/>${content}</w:tc>`;
 const row = (content: string): string => `<w:tr>${content}</w:tr>`;
 const table = (content: string): string =>
@@ -24,8 +30,10 @@ const sdt = (content: string): string =>
   `<w:sdt><w:sdtPr/><w:sdtContent>${content}</w:sdtContent></w:sdt>`;
 const customXml = (content: string): string =>
   `<w:customXml w:element="clause">${content}</w:customXml>`;
-const revision = (kind: "ins" | "del" | "moveFrom" | "moveTo", content: string): string =>
-  `<w:${kind} w:id="1" w:author="Author">${content}</w:${kind}>`;
+const revision = (
+  kind: "ins" | "del" | "moveFrom" | "moveTo",
+  content: string,
+): string => `<w:${kind} w:id="1" w:author="Author">${content}</w:${kind}>`;
 
 const CASES = {
   "block/sdt": sdt(paragraph(SENTINEL)),
@@ -42,16 +50,29 @@ const CASES = {
   "table/moveFrom": table(revision("moveFrom", row(cell(paragraph(SENTINEL))))),
   "table/moveTo": table(revision("moveTo", row(cell(paragraph(SENTINEL))))),
   "row/sdt": table(row(sdt(cell(paragraph(SENTINEL))))),
-  "row/customXml": table(row(cell(paragraph("anchor")) + customXml(cell(paragraph(SENTINEL))))),
-  "row/ins": table(row(cell(paragraph("anchor")) + revision("ins", cell(paragraph(SENTINEL))))),
-  "row/del": table(row(cell(paragraph("anchor")) + revision("del", cell(paragraph(SENTINEL))))),
+  "row/customXml": table(
+    row(cell(paragraph("anchor")) + customXml(cell(paragraph(SENTINEL)))),
+  ),
+  "row/ins": table(
+    row(cell(paragraph("anchor")) + revision("ins", cell(paragraph(SENTINEL)))),
+  ),
+  "row/del": table(
+    row(cell(paragraph("anchor")) + revision("del", cell(paragraph(SENTINEL)))),
+  ),
   "row/moveFrom": table(
-    row(cell(paragraph("anchor")) + revision("moveFrom", cell(paragraph(SENTINEL)))),
+    row(
+      cell(paragraph("anchor")) +
+        revision("moveFrom", cell(paragraph(SENTINEL))),
+    ),
   ),
   "row/moveTo": table(
-    row(cell(paragraph("anchor")) + revision("moveTo", cell(paragraph(SENTINEL)))),
+    row(
+      cell(paragraph("anchor")) + revision("moveTo", cell(paragraph(SENTINEL))),
+    ),
   ),
-  "row/tr": table(row(cell(paragraph("anchor")) + row(cell(paragraph(SENTINEL))))),
+  "row/tr": table(
+    row(cell(paragraph("anchor")) + row(cell(paragraph(SENTINEL)))),
+  ),
   "cell/sdt": table(row(cell(sdt(paragraph(SENTINEL))))),
   "cell/customXml": table(row(cell(customXml(paragraph(SENTINEL))))),
   "cell/ins": table(row(cell(revision("ins", paragraph(SENTINEL))))),
@@ -75,7 +96,10 @@ const parserContentKinds = (): { all: string[]; captured: string[] } => {
   const captured: string[] = [];
   for (const [container, handlers] of Object.entries(maps)) {
     for (const [kind, disposition] of Object.entries(handlers)) {
-      if (NON_CONTENT_KIND.test(kind) || (container === "table" && kind === "tr")) {
+      if (
+        NON_CONTENT_KIND.test(kind) ||
+        (container === "table" && kind === "tr")
+      ) {
         continue;
       }
       all.push(`${container}/${kind}`);
@@ -87,7 +111,10 @@ const parserContentKinds = (): { all: string[]; captured: string[] } => {
   return { all: all.toSorted(), captured: captured.toSorted() };
 };
 
-const makeDocx = async (body: string, chunkText = SENTINEL): Promise<ArrayBuffer> => {
+const makeDocx = async (
+  body: string,
+  chunkText = SENTINEL,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file(
     "word/document.xml",
@@ -98,7 +125,9 @@ const makeDocx = async (body: string, chunkText = SENTINEL): Promise<ArrayBuffer
     const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
     const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
     if (!rels || !contentTypes) {
-      throw new Error("The empty DOCX must carry relationship and content type parts");
+      throw new Error(
+        "The empty DOCX must carry relationship and content type parts",
+      );
     }
     zip.file(
       "word/_rels/document.xml.rels",
@@ -122,7 +151,8 @@ const makeDocx = async (body: string, chunkText = SENTINEL): Promise<ArrayBuffer
 const occurrences = (text: string): number => text.split(SENTINEL).length - 1;
 
 const warningCodeFor = (kind: string): string => {
-  if (kind.endsWith("/altChunk")) return PARSE_WARNING_CODES.altChunkUnsupported;
+  if (kind.endsWith("/altChunk"))
+    return PARSE_WARNING_CODES.altChunkUnsupported;
   if (kind === "row/tr") return PARSE_WARNING_CODES.nestedRowOpaque;
   return PARSE_WARNING_CODES.revisionCarrierOpaque;
 };
@@ -132,12 +162,19 @@ const opaqueFragment = (kind: string, xml: string): string | undefined => {
     return '<w:altChunk r:id="rIdChunk"/>';
   }
   const wrapper = kind.split("/").at(1);
-  if (wrapper !== "ins" && wrapper !== "del" && wrapper !== "moveFrom" && wrapper !== "moveTo") {
+  if (
+    wrapper !== "ins" &&
+    wrapper !== "del" &&
+    wrapper !== "moveFrom" &&
+    wrapper !== "moveTo"
+  ) {
     return undefined;
   }
   const start = xml.indexOf(`<w:${wrapper} `);
   const end = xml.indexOf(`</w:${wrapper}>`, start);
-  return start === -1 || end === -1 ? undefined : xml.slice(start, end + wrapper.length + 5);
+  return start === -1 || end === -1
+    ? undefined
+    : xml.slice(start, end + wrapper.length + 5);
 };
 
 describe("content carrier sentinels", () => {
@@ -174,7 +211,9 @@ describe("content carrier sentinels", () => {
           throw new Error(`${reader} silently omitted ${kind}`);
         }
         if (hasDiagnostic) {
-          expect(warnings.some(({ code }) => code === warningCodeFor(kind))).toBe(true);
+          expect(
+            warnings.some(({ code }) => code === warningCodeFor(kind)),
+          ).toBe(true);
         }
       }
 
@@ -212,7 +251,10 @@ describe("content carrier sentinels", () => {
       if (compared.isErr()) {
         return;
       }
-      expect(compared.value.changes.length > 0 || compared.value.unsupported.length > 0).toBe(true);
+      expect(
+        compared.value.changes.length > 0 ||
+          compared.value.unsupported.length > 0,
+      ).toBe(true);
 
       const fragment = opaqueFragment(kind, xml);
       if (fragment !== undefined) {

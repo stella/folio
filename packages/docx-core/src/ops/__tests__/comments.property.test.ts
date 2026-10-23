@@ -1,35 +1,43 @@
-import {
-  generatedCaseFor,
-  GENERATED_PACKAGE_STORIES,
-  packageDocumentArbitrary,
-} from "../../../../../test/generators/packageOperationArbitraries";
-import { opSeedArbitrary } from "./documentArbitraries";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
 import {
-  PARAGRAPH_MARK_CHANGE_KINDS,
+  GENERATED_PACKAGE_STORIES,
+  generatedCaseFor,
+  packageDocumentArbitrary,
+} from "../../../../../test/generators/packageOperationArbitraries";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { setDocumentBodyComments } from "../../model/canonical";
+import {
   type Comment,
   type Document,
   type Paragraph,
+  PARAGRAPH_MARK_CHANGE_KINDS,
 } from "../../model/document";
-import { setDocumentBodyComments } from "../../model/canonical";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
-import { commentDocumentIssue, freshCommentId, orphanRootCommentIds } from "../comments";
-import { paragraphLength } from "../offsets";
-import { contractViolation } from "../contract";
-import { documentStories, storyBody } from "../stories";
 import { storyParagraphs } from "../blocks";
-import { isCommentAnchor, leafSpans } from "../leaves";
 import {
-  DOCUMENT_OP_TYPES,
-  OP_STORIES,
-  toOpEnvelope,
+  commentDocumentIssue,
+  freshCommentId,
+  orphanRootCommentIds,
+} from "../comments";
+import { contractViolation } from "../contract";
+import { isCommentAnchor, leafSpans } from "../leaves";
+import { paragraphLength } from "../offsets";
+import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
+import { documentStories, storyBody } from "../stories";
+import {
   type CommentOp,
+  DOCUMENT_OP_TYPES,
   type DocumentOp,
+  OP_STORIES,
   type OpStory,
+  toOpEnvelope,
 } from "../types";
+import { opSeedArbitrary } from "./documentArbitraries";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 const paragraph = (paraId: string, text: string): Paragraph => ({
@@ -40,15 +48,27 @@ const paragraph = (paraId: string, text: string): Paragraph => ({
 const seed = (presence: "absent" | "undefined" | "present"): Document => {
   const document: Document = {
     package: {
-      document: { content: [paragraph("00000001", "alpha"), paragraph("00000002", "omega")] },
+      document: {
+        content: [
+          paragraph("00000001", "alpha"),
+          paragraph("00000002", "omega"),
+        ],
+      },
       headers: new Map([
-        ["rIdHeader", { type: "header", content: [paragraph("00000003", "header")] }],
+        [
+          "rIdHeader",
+          { type: "header", content: [paragraph("00000003", "header")] },
+        ],
       ]),
-      footnotes: [{ type: "footnote", id: 1, content: [paragraph("00000004", "note")] }],
+      footnotes: [
+        { type: "footnote", id: 1, content: [paragraph("00000004", "note")] },
+      ],
     },
   };
-  if (presence === "present") setDocumentBodyComments(document.package.document, []);
-  if (presence === "undefined") Reflect.set(document.package.document, "comments", undefined);
+  if (presence === "present")
+    setDocumentBodyComments(document.package.document, []);
+  if (presence === "undefined")
+    Reflect.set(document.package.document, "comments", undefined);
   return document;
 };
 const comment = (id: number, paraId: string, text: string): Comment => {
@@ -56,7 +76,9 @@ const comment = (id: number, paraId: string, text: string): Comment => {
     id,
     author: "Author",
     content: [paragraph(paraId, text)],
-    preserved: { children: [{ index: 0, xml: '<opaque xmlns="urn:fixture"/>' }] },
+    preserved: {
+      children: [{ index: 0, xml: '<opaque xmlns="urn:fixture"/>' }],
+    },
   };
   Reflect.set(value, "done", undefined);
   Reflect.set(value, "initials", undefined);
@@ -64,10 +86,11 @@ const comment = (id: number, paraId: string, text: string): Comment => {
 };
 const anchorSequence = (document: Document) =>
   documentStories(document).flatMap((story) =>
-    storyParagraphs(storyBody(document, story)).flatMap(({ paragraph: block }) =>
-      leafSpans(block.content)
-        .filter(({ node }) => isCommentAnchor(node))
-        .map(({ node }) => node),
+    storyParagraphs(storyBody(document, story)).flatMap(
+      ({ paragraph: block }) =>
+        leafSpans(block.content)
+          .filter(({ node }) => isCommentAnchor(node))
+          .map(({ node }) => node),
     ),
   );
 const exact = (document: Document, op: DocumentOp) => {
@@ -82,9 +105,9 @@ const exact = (document: Document, op: DocumentOp) => {
     JSON.parse(JSON.stringify(undone.inverse)),
   ).unwrap();
   expect(redone.document).toStrictEqual(applied.document);
-  expect(applied.document.package.document.comments?.map(({ id }) => id)).toEqual(
-    redone.document.package.document.comments?.map(({ id }) => id),
-  );
+  expect(
+    applied.document.package.document.comments?.map(({ id }) => id),
+  ).toEqual(redone.document.package.document.comments?.map(({ id }) => id));
   return applied.document;
 };
 const COMMANDS = {
@@ -99,16 +122,29 @@ test("generated comment histories preserve exact state, declaration order, opaqu
   const seen = new Set<string>();
   assertProperty(
     fc.property(
-      fc.constantFrom("absent" as const, "undefined" as const, "present" as const),
+      fc.constantFrom(
+        "absent" as const,
+        "undefined" as const,
+        "present" as const,
+      ),
       fc.constantFrom("main" as const, "header" as const, "note" as const),
-      fc.array(fc.constantFrom("resolve", "open", "edit"), { minLength: 1, maxLength: 8 }),
+      fc.array(fc.constantFrom("resolve", "open", "edit"), {
+        minLength: 1,
+        maxLength: 8,
+      }),
       (presence, storyKind, commands) => {
         const original = seed(presence);
         const targets = {
           main: { story: OP_STORIES.MAIN, blockId: "00000001" },
-          header: { story: { kind: "header", rId: "rIdHeader" }, blockId: "00000003" },
+          header: {
+            story: { kind: "header", rId: "rIdHeader" },
+            blockId: "00000003",
+          },
           note: { story: { kind: "footnote", id: 1 }, blockId: "00000004" },
-        } as const satisfies Record<typeof storyKind, { story: OpStory; blockId: string }>;
+        } as const satisfies Record<
+          typeof storyKind,
+          { story: OpStory; blockId: string }
+        >;
         const { story, blockId } = targets[storyKind];
         let document = exact(original, {
           type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
@@ -162,7 +198,9 @@ test("generated comment histories preserve exact state, declaration order, opaqu
           id: 100,
           scope: "thread",
         });
-        expect(document.package.document.comments?.map(({ id }) => id)).toEqual([102]);
+        expect(document.package.document.comments?.map(({ id }) => id)).toEqual(
+          [102],
+        );
         expect(anchorSequence(document)).toEqual(pointAnchors);
         expect(document.package.document.comments?.at(0)?.preserved).toEqual(
           comment(102, "00000012", "point").preserved,
@@ -183,7 +221,11 @@ test("revision association derives the legacy parent relation and anchors withou
   const first = document.package.document.content.at(0);
   if (first?.type !== "paragraph") throw new Error("Missing paragraph");
   first.content = [
-    { type: "insertion", info: { id: 7, author: "Reviewer" }, content: first.content },
+    {
+      type: "insertion",
+      info: { id: 7, author: "Reviewer" },
+      content: first.content,
+    },
   ];
   const changed = exact(document, {
     type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
@@ -199,7 +241,9 @@ test("revision association derives the legacy parent relation and anchors withou
     )
       .filter(({ node }) => isCommentAnchor(node))
       .every(({ ancestors }) =>
-        ancestors.every(({ type }) => type !== "insertion" && type !== "deletion"),
+        ancestors.every(
+          ({ type }) => type !== "insertion" && type !== "deletion",
+        ),
       ),
   ).toBe(true);
   expect(freshCommentId(changed).unwrap()).toBe(101);
@@ -217,7 +261,9 @@ test("revision-associated comments on empty paragraph marks preserve undo and re
     anchor: { kind: "revision", story: OP_STORIES.MAIN, revisionId: 7 },
   });
   expect(changed.package.document.comments?.at(0)?.parentId).toBe(7);
-  expect(anchorSequence(changed)).toEqual([{ type: "commentReference", id: 100 }]);
+  expect(anchorSequence(changed)).toEqual([
+    { type: "commentReference", id: 100 },
+  ]);
 });
 
 test.each([...PARAGRAPH_MARK_CHANGE_KINDS, "properties" as const])(
@@ -235,9 +281,12 @@ test.each([...PARAGRAPH_MARK_CHANGE_KINDS, "properties" as const])(
             note: { kind: "footnote", id: 1 },
           } as const satisfies Record<typeof storyKind, OpStory>;
           const story = stories[storyKind];
-          const first = storyParagraphs(storyBody(document, story)).at(0)?.paragraph;
+          const first = storyParagraphs(storyBody(document, story)).at(
+            0,
+          )?.paragraph;
           if (!first) throw new Error("Missing paragraph");
-          first.content = text === "" ? [] : paragraph("00000001", text).content;
+          first.content =
+            text === "" ? [] : paragraph("00000001", text).content;
           const info = { id: 7, author: "Reviewer" };
           if (revisionKind === "properties") {
             first.propertyChanges = [{ type: "paragraphPropertyChange", info }];
@@ -275,7 +324,10 @@ test("comment inverses refuse changed owned text and preserve unrelated package 
   const op = {
     type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
     comment: comment(100, "00000010", "root"),
-    anchor: { kind: "point", at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 } },
+    anchor: {
+      kind: "point",
+      at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+    },
   } as const;
   const applied = applyDocumentOp(document, op).unwrap();
   expect(applied.document.package.headers).toBe(document.package.headers);
@@ -286,23 +338,34 @@ test("comment inverses refuse changed owned text and preserve unrelated package 
     at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 2 },
     text: "x",
   }).unwrap();
-  expect(applyDocumentOps(changed.document, applied.inverse).isErr()).toBe(true);
+  expect(applyDocumentOps(changed.document, applied.inverse).isErr()).toBe(
+    true,
+  );
   expect(toOpEnvelope(op).schema).toBe(10);
 });
 
 test("every comment package-operation generator exercises its exact inverse in every story", () => {
   const observed = new Set<string>();
   assertProperty(
-    fc.property(packageDocumentArbitrary, opSeedArbitrary, (document, inputSeed) => {
-      for (const kind of Object.values(DOCUMENT_OP_TYPES)) {
-        if (!Object.hasOwn(COMMANDS, kind)) continue;
-        for (const story of GENERATED_PACKAGE_STORIES) {
-          const generated = generatedCaseFor({ document, seed: inputSeed, story, kind });
-          exact(generated.document, generated.op);
-          observed.add(generated.op.type);
+    fc.property(
+      packageDocumentArbitrary,
+      opSeedArbitrary,
+      (document, inputSeed) => {
+        for (const kind of Object.values(DOCUMENT_OP_TYPES)) {
+          if (!Object.hasOwn(COMMANDS, kind)) continue;
+          for (const story of GENERATED_PACKAGE_STORIES) {
+            const generated = generatedCaseFor({
+              document,
+              seed: inputSeed,
+              story,
+              kind,
+            });
+            exact(generated.document, generated.op);
+            observed.add(generated.op.type);
+          }
         }
-      }
-    }),
+      },
+    ),
     {
       seed: 20261005,
       numRuns: 8,
@@ -316,7 +379,15 @@ test("generated text and revision histories retain live comment ownership and ex
   assertProperty(
     fc.property(
       fc.array(
-        fc.constantFrom("direct", "tracked", "delete", "accept", "reject", "split", "join"),
+        fc.constantFrom(
+          "direct",
+          "tracked",
+          "delete",
+          "accept",
+          "reject",
+          "split",
+          "join",
+        ),
         { minLength: 2, maxLength: 10 },
       ),
       (commands) => {
@@ -342,7 +413,9 @@ test("generated text and revision histories retain live comment ownership and ex
           const available = storyParagraphs(document.package.document);
           const first =
             command === "delete" || command === "split"
-              ? available.find(({ paragraph: block }) => paragraphLength(block) > 0)?.paragraph
+              ? available.find(
+                  ({ paragraph: block }) => paragraphLength(block) > 0,
+                )?.paragraph
               : available.at(0)?.paragraph;
           if (!first?.paraId) throw new Error("Missing first paragraph");
           const start = {
@@ -351,16 +424,28 @@ test("generated text and revision histories retain live comment ownership and ex
             offset: 0,
             zeroWidthBefore: 0,
           };
-          const stamp = { id: revisionId++, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+          const stamp = {
+            id: revisionId++,
+            author: "Reviewer",
+            date: "2026-01-01T00:00:00Z",
+          };
           const firstFreshRevision = revisionId;
           const newIds = {
-            revision: Array.from({ length: 16 }, (_, index) => firstFreshRevision + index),
+            revision: Array.from(
+              { length: 16 },
+              (_, index) => firstFreshRevision + index,
+            ),
           };
           revisionId += 16;
           let op: DocumentOp;
           switch (command) {
             case "direct":
-              op = { type: DOCUMENT_OP_TYPES.INSERT_TEXT, at: start, text: "x", newIds };
+              op = {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: start,
+                text: "x",
+                newIds,
+              };
               break;
             case "tracked":
               op = {
@@ -385,7 +470,10 @@ test("generated text and revision histories retain live comment ownership and ex
               op = {
                 type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
                 story: OP_STORIES.MAIN,
-                revisionIds: Array.from({ length: revisionId }, (_, index) => index),
+                revisionIds: Array.from(
+                  { length: revisionId },
+                  (_, index) => index,
+                ),
                 decision: command,
               };
               break;
@@ -399,7 +487,9 @@ test("generated text and revision histories retain live comment ownership and ex
               };
               break;
             case "join": {
-              const next = storyParagraphs(document.package.document).at(1)?.paragraph;
+              const next = storyParagraphs(document.package.document).at(
+                1,
+              )?.paragraph;
               if (!next?.paraId) continue;
               op = {
                 type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
@@ -425,7 +515,9 @@ test("generated text and revision histories retain live comment ownership and ex
             }).unwrap();
             const beforeAnchors = anchorSequence(document);
             const applied = applyDocumentOps(document, planned).unwrap();
-            expect(anchorSequence(applied.document)).toStrictEqual(beforeAnchors);
+            expect(anchorSequence(applied.document)).toStrictEqual(
+              beforeAnchors,
+            );
             expect(
               applyDocumentOps(
                 applied.document,
@@ -462,16 +554,24 @@ test("generated interior source-shaped comment histories undo and redo the compl
         original.package.relationships = new Map([
           [
             "rId8",
-            { id: "rId8", type: "urn:opaque", target: "opaque.bin", targetMode: "Internal" },
+            {
+              id: "rId8",
+              type: "urn:opaque",
+              target: "opaque.bin",
+              targetMode: "Internal",
+            },
           ],
         ]);
         const first = original.package.document.content.at(0);
-        if (first?.type !== "paragraph") throw new Error("Missing source paragraph");
+        if (first?.type !== "paragraph")
+          throw new Error("Missing source paragraph");
         first.content = [
           {
             type: "run",
             formatting: { bold: true, language: { val: "cs-CZ" } },
-            preservedAttributes: [{ namespace: "urn:source", name: "stamp", value: "authored" }],
+            preservedAttributes: [
+              { namespace: "urn:source", name: "stamp", value: "authored" },
+            ],
             content: [{ type: "text", text: "A😀éB" }],
           },
         ];
@@ -480,7 +580,10 @@ test("generated interior source-shaped comment histories undo and redo the compl
         const root: CommentOp = {
           type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
           comment: comment(100, "00000010", "root"),
-          anchor: kind === "point" ? { kind, at } : { kind, from: at, to: { ...at, offset: 6 } },
+          anchor:
+            kind === "point"
+              ? { kind, at }
+              : { kind, from: at, to: { ...at, offset: 6 } },
         };
         const ops: CommentOp[] = [
           root,
@@ -494,7 +597,11 @@ test("generated interior source-shaped comment histories undo and redo the compl
             comment: comment(102, "00000012", "nested"),
             anchor: { kind: "reply", parentId: 101 },
           },
-          { type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION, id: 100, status: "resolved" },
+          {
+            type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+            id: 100,
+            status: "resolved",
+          },
           { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 100, scope: "thread" },
         ];
         let current = original;
@@ -508,13 +615,19 @@ test("generated interior source-shaped comment histories undo and redo the compl
         const final = current;
         const redo: DocumentOp[][] = [];
         for (const step of inverse) {
-          const next = applyDocumentOps(current, JSON.parse(JSON.stringify(step))).unwrap();
+          const next = applyDocumentOps(
+            current,
+            JSON.parse(JSON.stringify(step)),
+          ).unwrap();
           redo.unshift(next.inverse);
           current = next.document;
         }
         expect(current).toStrictEqual(original);
         for (const step of redo)
-          current = applyDocumentOps(current, JSON.parse(JSON.stringify(step))).unwrap().document;
+          current = applyDocumentOps(
+            current,
+            JSON.parse(JSON.stringify(step)),
+          ).unwrap().document;
         expect(current).toStrictEqual(final);
       },
     ),
@@ -534,7 +647,10 @@ test("generated comment inverses refuse changes to unowned run fields", () => {
       const created = applyDocumentOp(document, {
         type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
         comment: comment(100, "00000010", "root"),
-        anchor: { kind: "point", at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 } },
+        anchor: {
+          kind: "point",
+          at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+        },
       }).unwrap();
       const inverse = created.inverse.at(0);
       if (inverse?.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
@@ -553,7 +669,11 @@ test("generated comment inverses refuse changes to unowned run fields", () => {
                 const changed = structuredClone(node);
                 changed.formatting = { bold };
                 changed.preservedAttributes = [
-                  { namespace: "urn:example:ext", name: "stamp", value: attribute },
+                  {
+                    namespace: "urn:example:ext",
+                    name: "stamp",
+                    value: attribute,
+                  },
                 ];
                 return changed;
               }),
@@ -580,7 +700,10 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
     fc.property(
       fc.integer({ min: 1, max: 4 }),
       fc.constantFrom("point" as const, "range" as const),
-      fc.oneof(fc.integer({ min: 200, max: 300 }), fc.integer({ min: 500, max: 800 })),
+      fc.oneof(
+        fc.integer({ min: 200, max: 300 }),
+        fc.integer({ min: 500, max: 800 }),
+      ),
       fc.integer({ min: 1, max: 3 }),
       fc.integer({ min: 0, max: 8 }),
       (depth, kind, revisionBase, offset, commentIdGap) => {
@@ -591,7 +714,11 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
           first.content = [
             {
               type: "insertion",
-              info: { id: revisionBase + index, author: "A", date: "2026-01-02T00:00:00Z" },
+              info: {
+                id: revisionBase + index,
+                author: "A",
+                date: "2026-01-02T00:00:00Z",
+              },
               content: first.content,
             },
           ];
@@ -608,12 +735,17 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
           type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
           comment: comment(rootId, "00000010", "root"),
           anchor:
-            kind === "point" ? { kind, at } : { kind, from: at, to: { ...at, offset: offset + 1 } },
+            kind === "point"
+              ? { kind, at }
+              : { kind, from: at, to: { ...at, offset: offset + 1 } },
         };
         const newIds = allocateCommentAnchorIds(document, create).unwrap();
-        expect(allocateCommentAnchorIds(document, create).unwrap()).toStrictEqual(newIds);
+        expect(
+          allocateCommentAnchorIds(document, create).unwrap(),
+        ).toStrictEqual(newIds);
         expect(newIds.revision?.length).toBeGreaterThan(0);
-        for (const id of newIds.revision ?? []) expect(id).toBeGreaterThan(rootId);
+        for (const id of newIds.revision ?? [])
+          expect(id).toBeGreaterThan(rootId);
         let current = exact(document, { ...create, newIds });
         const replyId = freshCommentId(current).unwrap();
         const reply = {
@@ -622,7 +754,8 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
           anchor: { kind: "reply", parentId: rootId },
         } as const;
         const replyIds = allocateCommentAnchorIds(current, reply).unwrap();
-        for (const id of replyIds.revision ?? []) expect(id).toBeGreaterThan(replyId);
+        for (const id of replyIds.revision ?? [])
+          expect(id).toBeGreaterThan(replyId);
         current = exact(current, {
           ...reply,
           newIds: replyIds,
@@ -632,8 +765,16 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
           throw new Error("Tracked anchor must allocate a cut revision");
         const revisionComment = {
           type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
-          comment: comment(freshCommentId(current).unwrap(), "00000012", "revision"),
-          anchor: { kind: "revision", story: OP_STORIES.MAIN, revisionId: cutRevisionId },
+          comment: comment(
+            freshCommentId(current).unwrap(),
+            "00000012",
+            "revision",
+          ),
+          anchor: {
+            kind: "revision",
+            story: OP_STORIES.MAIN,
+            revisionId: cutRevisionId,
+          },
         } as const;
         current = exact(current, {
           ...revisionComment,
@@ -666,13 +807,22 @@ test.each([
     const document = exact(seed("present"), {
       type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
       comment: comment(100, "00000010", "root"),
-      anchor: kind === "point" ? { kind, at } : { kind, from: at, to: { ...at, offset: 4 } },
+      anchor:
+        kind === "point"
+          ? { kind, at }
+          : { kind, from: at, to: { ...at, offset: 4 } },
     });
     // Loaded replies own no body markers; the package accepts them under an anchored root.
     let parentId = 100;
     for (let level = 1; level <= depth; level += 1) {
-      const loaded: Comment = { ...comment(100 + level, `0000001${level}`, "loaded"), parentId };
-      document.package.document.comments = [...(document.package.document.comments ?? []), loaded];
+      const loaded: Comment = {
+        ...comment(100 + level, `0000001${level}`, "loaded"),
+        parentId,
+      };
+      document.package.document.comments = [
+        ...(document.package.document.comments ?? []),
+        loaded,
+      ];
       parentId = loaded.id;
     }
     expect(commentDocumentIssue(document)).toBeUndefined();
@@ -685,7 +835,9 @@ test.each([
       comment: comment(replyId, "00000019", "child"),
       anchor: { kind: "reply", parentId },
     });
-    const created = replied.package.document.comments?.find(({ id }) => id === replyId);
+    const created = replied.package.document.comments?.find(
+      ({ id }) => id === replyId,
+    );
     expect(created?.parentId).toBe(parentId);
     expect(ownsAnchor(replied, replyId)).toBe(true);
   },
@@ -698,7 +850,11 @@ test("a loaded root comment without source anchors is accepted, preserved and re
   expect(commentDocumentIssue(document)).toBeDefined();
   expect(commentDocumentIssue(document, "all")).toBeUndefined();
   for (const op of [
-    { type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION, id: 200, status: "resolved" },
+    {
+      type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+      id: 200,
+      status: "resolved",
+    },
     { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 200, scope: "thread" },
     {
       type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
@@ -708,7 +864,8 @@ test("a loaded root comment without source anchors is accepted, preserved and re
   ] satisfies CommentOp[]) {
     const result = applyDocumentOp(document, op);
     expect(result.isErr()).toBe(true);
-    if (result.isErr()) expect(result.error.message).toContain("preserved read-only");
+    if (result.isErr())
+      expect(result.error.message).toContain("preserved read-only");
   }
   const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 };
   const created = applyDocumentOp(document, {
@@ -716,8 +873,12 @@ test("a loaded root comment without source anchors is accepted, preserved and re
     comment: comment(202, "00000022", "anchored"),
     anchor: { kind: "range", from: at, to: { ...at, offset: 3 } },
   }).unwrap();
-  expect(created.document.package.document.comments?.map(({ id }) => id)).toEqual([200, 202]);
-  expect(commentDocumentIssue(created.document, orphanRootCommentIds(document))).toBeUndefined();
+  expect(
+    created.document.package.document.comments?.map(({ id }) => id),
+  ).toEqual([200, 202]);
+  expect(
+    commentDocumentIssue(created.document, orphanRootCommentIds(document)),
+  ).toBeUndefined();
   const undone = applyDocumentOps(created.document, created.inverse).unwrap();
   expect(undone.document).toStrictEqual(document);
 });

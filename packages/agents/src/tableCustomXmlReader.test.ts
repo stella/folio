@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { FolioDocxReviewer } from "@stll/folio-core/server";
 import JSZip from "jszip";
+
+import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { createReviewerBridge } from "./bridges/reviewer";
 import { executeFolioToolCall } from "./execute";
@@ -29,17 +30,24 @@ describe("read_document inside table custom XML", () => {
     const read = executeFolioToolCall("read_document", {}, bridge);
     if (!read.ok) throw new Error(read.error);
 
-    const expected = ["Table custom XML sentinel.", "Table SDT sentinel.", "Row SDT sentinel."];
+    const expected = [
+      "Table custom XML sentinel.",
+      "Table SDT sentinel.",
+      "Row SDT sentinel.",
+    ];
     expect(
       reviewer
         .snapshot()
         .blocks.map(({ text }) => text)
         .filter(Boolean),
     ).toEqual(expected);
-    expect(read.result.map(({ text }) => text).filter(Boolean)).toEqual(expected);
+    expect(read.result.map(({ text }) => text).filter(Boolean)).toEqual(
+      expected,
+    );
 
     const editableBlock = read.result.find(({ text }) => text === expected[0]);
-    if (!editableBlock) throw new Error("Expected the custom XML row to be editable");
+    if (!editableBlock)
+      throw new Error("Expected the custom XML row to be editable");
     const edit = executeFolioToolCall(
       "suggest_changes",
       {
@@ -58,16 +66,26 @@ describe("read_document inside table custom XML", () => {
 
     const saved = await reviewer.toBuffer();
     const xml =
-      (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+      (await (
+        await JSZip.loadAsync(saved)
+      )
+        .file("word/document.xml")
+        ?.async("text")) ?? "";
     expect(xml).toContain('<w:customXml w:element="row">');
     expect(xml).toContain('<w:customXml w:element="cell">');
-    const rowXml = xml.split('<w:customXml w:element="row">')[1]?.split("</w:customXml>")[0];
+    const rowXml = xml
+      .split('<w:customXml w:element="row">')[1]
+      ?.split("</w:customXml>")[0];
     expect(rowXml).toContain("<w:customXmlPr>");
     expect(rowXml).toContain('w:name="row-wrapper-start"');
-    const cellXml = xml.split('<w:customXml w:element="cell">')[1]?.split("</w:customXml>")[0];
+    const cellXml = xml
+      .split('<w:customXml w:element="cell">')[1]
+      ?.split("</w:customXml>")[0];
     expect(cellXml).toContain("<w:customXmlPr>");
     expect(cellXml).toContain('w:name="cell-wrapper-start"');
-    expect((xml.match(/<w:customXml w:element="duplicate">/gu) ?? []).length).toBe(2);
+    expect(
+      (xml.match(/<w:customXml w:element="duplicate">/gu) ?? []).length,
+    ).toBe(2);
     expect(xml).toContain("Edited");
   });
 });

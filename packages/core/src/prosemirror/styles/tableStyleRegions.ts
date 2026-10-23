@@ -86,7 +86,9 @@ export const tableCellStyleRegions = ({
   if (!look.noVBand) {
     const bandColumn = column - (look.firstColumn ? 1 : 0);
     const eligible =
-      bandColumn >= 0 && !(look.lastColumn && isLastCol) && !(look.firstColumn && isFirstCol);
+      bandColumn >= 0 &&
+      !(look.lastColumn && isLastCol) &&
+      !(look.firstColumn && isFirstCol);
     if (eligible) {
       verticalBand = bandColumn % 2 === 0 ? "band1Vert" : "band2Vert";
     }
@@ -109,11 +111,18 @@ export const tableCellStyleRegions = ({
     horizontalBand = "band2Horz";
   }
 
-  const firstRowOn = look.firstRow || rowCnf?.firstRow === true || cellCnf?.firstRow === true;
-  const lastRowOn = look.lastRow || rowCnf?.lastRow === true || cellCnf?.lastRow === true;
+  const firstRowOn =
+    look.firstRow || rowCnf?.firstRow === true || cellCnf?.firstRow === true;
+  const lastRowOn =
+    look.lastRow || rowCnf?.lastRow === true || cellCnf?.lastRow === true;
   const firstColOn =
-    look.firstColumn || rowCnf?.firstColumn === true || cellCnf?.firstColumn === true;
-  const lastColOn = look.lastColumn || rowCnf?.lastColumn === true || cellCnf?.lastColumn === true;
+    look.firstColumn ||
+    rowCnf?.firstColumn === true ||
+    cellCnf?.firstColumn === true;
+  const lastColOn =
+    look.lastColumn ||
+    rowCnf?.lastColumn === true ||
+    cellCnf?.lastColumn === true;
 
   const regions: TableStyleRegion[] = ["wholeTable"];
   if (horizontalBand) {

@@ -16,26 +16,39 @@ import { generateRedlineDocx } from "@stll/folio-agents/compare";
 import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
 import type { FolioAgentToolOptions } from "@stll/folio-agents/suggest-changes-options";
 import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
-import type { FolioAIEditApplyMode, FolioDocxReviewer } from "@stll/folio-core/server";
+import type {
+  FolioAIEditApplyMode,
+  FolioDocxReviewer,
+} from "@stll/folio-core/server";
 
 import { expandBatchOperations, type ExpandedBatch } from "./batch-operations";
 import {
   checkExpectedVersion,
   errnoCode,
+  type FileIdentity,
   fileVersionOf,
+  type LoadedFile,
   openReviewer,
   readDocumentFile,
   sameFile,
-  type FileIdentity,
-  type LoadedFile,
 } from "./document";
+import { acquireLeaseForWrite, type FlushOutcome } from "./editor-lease";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { blockIdSources, type FileToolCall } from "./execute-read";
-import { acquireLeaseForWrite, type FlushOutcome } from "./editor-lease";
-import { findCommit, journalPathFor, latestCommitFor, recoverStages } from "./journal";
+import {
+  findCommit,
+  journalPathFor,
+  latestCommitFor,
+  recoverStages,
+} from "./journal";
 import { diffPackages, nextRevisionIdSeed } from "./package-parts";
 import type { FolioFileToolSpec, ResolveChangeAction } from "./registry";
-import { inspectPath, readSidecarFile, SIDECAR_DIRECTORY, unsafePath } from "./sidecar";
+import {
+  inspectPath,
+  readSidecarFile,
+  SIDECAR_DIRECTORY,
+  unsafePath,
+} from "./sidecar";
 import { commitTransaction, type WriteDestination } from "./transaction";
 
 export type { WriteDestination } from "./transaction";
@@ -103,15 +116,24 @@ const STALE_ISSUE_CODES: ReadonlySet<string> = new Set([
 const refusalFor = (summary: unknown): FolioCliError | null => {
   if (!isRecord(summary) || !Array.isArray(summary["skipped"])) return null;
   if (summary["skipped"].length === 0) return null;
-  const issues: unknown[] = Array.isArray(summary["issues"]) ? summary["issues"] : [];
+  const issues: unknown[] = Array.isArray(summary["issues"])
+    ? summary["issues"]
+    : [];
   const codes = issues
     .map((issue) => (isRecord(issue) ? issue["code"] : undefined))
-    .filter((code) => typeof code === "string" && code !== "atomicBatchRejected");
+    .filter(
+      (code) => typeof code === "string" && code !== "atomicBatchRejected",
+    );
   const details = { skipped: summary["skipped"], issues };
-  if (codes.some((code) => typeof code === "string" && STALE_ISSUE_CODES.has(code))) {
+  if (
+    codes.some(
+      (code) => typeof code === "string" && STALE_ISSUE_CODES.has(code),
+    )
+  ) {
     return cliError({
       code: FOLIO_CLI_ERROR_CODES.staleTarget,
-      message: "An operation's target changed or no longer exists; nothing was written.",
+      message:
+        "An operation's target changed or no longer exists; nothing was written.",
       hint: "Re-read the document (read, find) and retry with fresh ids, ranges, and fileVersion.",
       details,
     });
@@ -119,7 +141,8 @@ const refusalFor = (summary: unknown): FolioCliError | null => {
   if (codes.includes("ambiguousFind")) {
     return cliError({
       code: FOLIO_CLI_ERROR_CODES.ambiguousTarget,
-      message: "An operation's find text matches more than once in its block; nothing was written.",
+      message:
+        "An operation's find text matches more than once in its block; nothing was written.",
       hint: "Make the find text unique within the block, or target a range returned by find.",
       details,
     });
@@ -153,7 +176,12 @@ type MutateOptions = {
 const saveReviewer = async (
   reviewer: FolioDocxReviewer,
   repack: WriteOptions["repack"],
-): Promise<Result<Pick<Mutation, "bytes" | "saveStrategy" | "repackReason">, FolioCliError>> => {
+): Promise<
+  Result<
+    Pick<Mutation, "bytes" | "saveStrategy" | "repackReason">,
+    FolioCliError
+  >
+> => {
   const saved = await Result.tryPromise({
     try: () => reviewer.save({ repack }),
     catch: (error) =>
@@ -165,7 +193,10 @@ const saveReviewer = async (
   if (saved.isErr()) return Result.err(saved.error);
   switch (saved.value.type) {
     case "selective":
-      return Result.ok({ bytes: new Uint8Array(saved.value.buffer), saveStrategy: "selective" });
+      return Result.ok({
+        bytes: new Uint8Array(saved.value.buffer),
+        saveStrategy: "selective",
+      });
     case "full-repack":
       return Result.ok({
         bytes: new Uint8Array(saved.value.buffer),
@@ -188,7 +219,10 @@ const saveReviewer = async (
   }
 };
 
-const commentExists = (reviewer: FolioDocxReviewer, commentId: unknown): boolean =>
+const commentExists = (
+  reviewer: FolioDocxReviewer,
+  commentId: unknown,
+): boolean =>
   reviewer
     .getComments()
     .some(
@@ -203,7 +237,8 @@ const mutateWithAgentTool = async ({
   args,
   options,
 }: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
-  if (tool.type !== "agentWrite") return panic("mutateWithAgentTool needs an agentWrite tool");
+  if (tool.type !== "agentWrite")
+    return panic("mutateWithAgentTool needs an agentWrite tool");
   const opened = await openReviewer(source, options.author);
   if (opened.isErr()) return Result.err(opened.error);
   const { reviewer } = opened.value;
@@ -224,7 +259,8 @@ const mutateWithAgentTool = async ({
   }
 
   const bridge = createReviewerBridge(reviewer, {
-    mode: tool.editMode === "tracked-or-direct" ? options.mode : "tracked-changes",
+    mode:
+      tool.editMode === "tracked-or-direct" ? options.mode : "tracked-changes",
     revisionStamp: { date: options.date, idSeed: idSeed.value },
   });
   let callArgs: Readonly<Record<string, unknown>> = args;
@@ -237,7 +273,12 @@ const mutateWithAgentTool = async ({
     callOptions = batch.value.options;
     replaced = batch.value.replaced;
   }
-  const executed = executeFolioToolCallUntyped(tool.agentTool, callArgs, bridge, callOptions);
+  const executed = executeFolioToolCallUntyped(
+    tool.agentTool,
+    callArgs,
+    bridge,
+    callOptions,
+  );
   if (!executed.ok) return Result.err(invalidInput(executed.error));
   const refusal = refusalFor(executed.result);
   if (refusal !== null) return Result.err(refusal);
@@ -265,9 +306,14 @@ const resolveChanges = async ({
 }: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
   const { action, ids, all } = args;
   if (!isResolveAction(action)) {
-    return Result.err(invalidInput('resolve_changes needs action "accept" or "reject".'));
+    return Result.err(
+      invalidInput('resolve_changes needs action "accept" or "reject".'),
+    );
   }
-  const idList = Array.isArray(ids) && ids.every((id) => typeof id === "string") ? ids : undefined;
+  const idList =
+    Array.isArray(ids) && ids.every((id) => typeof id === "string")
+      ? ids
+      : undefined;
   if ((idList !== undefined && idList.length > 0) === (all === true)) {
     return Result.err(
       invalidInput(
@@ -282,12 +328,14 @@ const resolveChanges = async ({
 
   let resolved: number | readonly string[];
   if (all === true) {
-    const count = action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+    const count =
+      action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
     if (count === 0) {
       return Result.err(
         cliError({
           code: FOLIO_CLI_ERROR_CODES.operationRejected,
-          message: "The document has no pending tracked changes; nothing was written.",
+          message:
+            "The document has no pending tracked changes; nothing was written.",
         }),
       );
     }
@@ -308,7 +356,9 @@ const resolveChanges = async ({
     }
     for (const id of selected) {
       const changed =
-        action === "accept" ? reviewer.acceptChange(Number(id)) : reviewer.rejectChange(Number(id));
+        action === "accept"
+          ? reviewer.acceptChange(Number(id))
+          : reviewer.rejectChange(Number(id));
       if (!changed) {
         return Result.err(
           cliError({
@@ -349,9 +399,13 @@ const writeRedline = async ({
 
   const redline = await Result.tryPromise({
     try: () =>
-      generateRedlineDocx(source.bytes.slice().buffer, revised.value.bytes.slice().buffer, {
-        author: options.author,
-      }),
+      generateRedlineDocx(
+        source.bytes.slice().buffer,
+        revised.value.bytes.slice().buffer,
+        {
+          author: options.author,
+        },
+      ),
     catch: (error) =>
       cliError({
         code: FOLIO_CLI_ERROR_CODES.invalidDocument,
@@ -359,17 +413,30 @@ const writeRedline = async ({
       }),
   });
   if (redline.isErr()) return Result.err(redline.error);
-  const { buffer, applied, skipped, unprocessedStories, referenceWarnings } = redline.value;
+  const { buffer, applied, skipped, unprocessedStories, referenceWarnings } =
+    redline.value;
   return Result.ok({
     bytes: new Uint8Array(buffer),
     saveStrategy: "redline",
-    result: { applied: applied.length, skipped, unprocessedStories, referenceWarnings },
+    result: {
+      applied: applied.length,
+      skipped,
+      unprocessedStories,
+      referenceWarnings,
+    },
     receipts: [],
-    inputs: { revised: { path: revised.value.path, fileVersion: revised.value.fileVersion } },
+    inputs: {
+      revised: {
+        path: revised.value.path,
+        fileVersion: revised.value.fileVersion,
+      },
+    },
   });
 };
 
-const mutate = (options: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
+const mutate = (
+  options: MutateOptions,
+): Promise<Result<Mutation, FolioCliError>> => {
   switch (options.tool.type) {
     case "agentWrite":
       return mutateWithAgentTool(options);
@@ -378,7 +445,9 @@ const mutate = (options: MutateOptions): Promise<Result<Mutation, FolioCliError>
     case "compare":
       return writeRedline(options);
     case "agentRead":
-      return panic("A read tool reached the write executor", { tool: options.tool.name });
+      return panic("A read tool reached the write executor", {
+        tool: options.tool.name,
+      });
     default: {
       const unreachable: never = options.tool;
       return panic("Unhandled tool type", { unreachable });
@@ -411,7 +480,10 @@ type Rebased = { fromVersion: string; toVersion: string; flushedBy: string };
 const BLOCK_ID_KEY = /blockId$/iu;
 
 /** Every block id an operation targets: any `...blockId` string, at any depth. */
-const targetedBlockIds = (value: unknown, found: Set<string> = new Set()): Set<string> => {
+const targetedBlockIds = (
+  value: unknown,
+  found: Set<string> = new Set(),
+): Set<string> => {
   if (Array.isArray(value)) {
     for (const item of value) targetedBlockIds(item, found);
   } else if (isRecord(value)) {
@@ -424,7 +496,9 @@ const targetedBlockIds = (value: unknown, found: Set<string> = new Set()): Set<s
 };
 
 /** The ids of the blocks whose id is the package's own `w14:paraId`. */
-const durableBlockIds = async (file: LoadedFile): Promise<ReadonlySet<string> | null> => {
+const durableBlockIds = async (
+  file: LoadedFile,
+): Promise<ReadonlySet<string> | null> => {
   const reviewer = await openReviewer(file);
   if (reviewer.isErr()) return null;
   const durable = new Set<string>();
@@ -482,7 +556,8 @@ const rebasedOntoFlush = async ({
   args,
   expected,
 }: RebaseCheck): Promise<Rebased | null> => {
-  if (flush.type !== "flushed" || tool.type !== "agentWrite" || !inPlace) return null;
+  if (flush.type !== "flushed" || tool.type !== "agentWrite" || !inPlace)
+    return null;
   if (expected === undefined || expected !== flush.versionBefore) return null;
   const latest = await latestCommitFor(source.path);
   if (
@@ -499,9 +574,14 @@ const rebasedOntoFlush = async ({
   if (read === null) return null;
   for (const file of [read, source]) {
     const durable = await durableBlockIds(file);
-    if (durable === null || [...targets].some((id) => !durable.has(id))) return null;
+    if (durable === null || [...targets].some((id) => !durable.has(id)))
+      return null;
   }
-  return { fromVersion: expected, toVersion: source.fileVersion, flushedBy: flush.holder.owner };
+  return {
+    fromVersion: expected,
+    toVersion: source.fileVersion,
+    flushedBy: flush.holder.owner,
+  };
 };
 
 const DOCX_NAME = /\.docx$/iu;
@@ -514,7 +594,9 @@ const invalidDestination = (message: string, hint?: string): FolioCliError =>
  * that is not inside a `.folio` directory, so no tool call can replace a
  * dotfile, a sidecar, or another kind of file.
  */
-const checkDestinationName = (candidate: string): Result<void, FolioCliError> => {
+const checkDestinationName = (
+  candidate: string,
+): Result<void, FolioCliError> => {
   const name = path.basename(candidate);
   if (!DOCX_NAME.test(name) || name.startsWith(".")) {
     return Result.err(
@@ -525,7 +607,9 @@ const checkDestinationName = (candidate: string): Result<void, FolioCliError> =>
   }
   if (candidate.split(path.sep).includes(SIDECAR_DIRECTORY)) {
     return Result.err(
-      invalidDestination(`${candidate} is inside a ${SIDECAR_DIRECTORY} directory.`),
+      invalidDestination(
+        `${candidate} is inside a ${SIDECAR_DIRECTORY} directory.`,
+      ),
     );
   }
   return Result.ok();
@@ -553,30 +637,47 @@ const resolveWritePath = async (
   if (real.isOk()) {
     const info = await Result.tryPromise(() => stat(real.value));
     if (info.isErr() || !info.value.isFile()) {
-      return Result.err(invalidDestination(`${absolute} is not a regular file.`));
+      return Result.err(
+        invalidDestination(`${absolute} is not a regular file.`),
+      );
     }
-    resolved = { path: real.value, identity: { dev: info.value.dev, ino: info.value.ino } };
+    resolved = {
+      path: real.value,
+      identity: { dev: info.value.dev, ino: info.value.ino },
+    };
   } else if (errnoCode(real.error.cause) === "ENOENT") {
-    const parent = await Result.tryPromise(() => realpath(path.dirname(absolute)));
-    if (parent.isErr()) return Result.err(notFound(`No directory ${path.dirname(absolute)}.`));
-    resolved = { path: path.join(parent.value, path.basename(absolute)), identity: null };
+    const parent = await Result.tryPromise(() =>
+      realpath(path.dirname(absolute)),
+    );
+    if (parent.isErr())
+      return Result.err(notFound(`No directory ${path.dirname(absolute)}.`));
+    resolved = {
+      path: path.join(parent.value, path.basename(absolute)),
+      identity: null,
+    };
   } else {
     return Result.err(invalidDestination(`Cannot resolve ${absolute}.`));
   }
   const resolvedName = checkDestinationName(resolved.path);
-  return resolvedName.isErr() ? Result.err(resolvedName.error) : Result.ok(resolved);
+  return resolvedName.isErr()
+    ? Result.err(resolvedName.error)
+    : Result.ok(resolved);
 };
 
 const identityOfInput = async (
   inputPath: string,
 ): Promise<Result<{ path: string; identity: FileIdentity }, FolioCliError>> => {
   const real = await Result.tryPromise(() => realpath(path.resolve(inputPath)));
-  if (real.isErr()) return Result.err(notFound(`No file at ${path.resolve(inputPath)}.`));
+  if (real.isErr())
+    return Result.err(notFound(`No file at ${path.resolve(inputPath)}.`));
   const info = await Result.tryPromise(() => stat(real.value));
   if (info.isErr() || !info.value.isFile()) {
     return Result.err(invalidInput(`${real.value} is not a file.`));
   }
-  return Result.ok({ path: real.value, identity: { dev: info.value.dev, ino: info.value.ino } });
+  return Result.ok({
+    path: real.value,
+    identity: { dev: info.value.dev, ino: info.value.ino },
+  });
 };
 
 type ResolveTargetOptions = {
@@ -627,7 +728,8 @@ export const resolveTarget = async ({
   const clash = inputs.find(
     ({ path: inputPath, identity }) =>
       inputPath === target.value.path ||
-      (target.value.identity !== null && sameFile(identity, target.value.identity)),
+      (target.value.identity !== null &&
+        sameFile(identity, target.value.identity)),
   );
   if (clash !== undefined) {
     return Result.err(
@@ -653,9 +755,14 @@ export const executeWriteTool = async (
   options: WriteOptions,
 ): Promise<Result<Readonly<Record<string, unknown>>, FolioCliError>> => {
   if (options.txId !== undefined && !TX_ID_PATTERN.test(options.txId)) {
-    return Result.err(invalidInput("txId must be 1 to 128 letters, digits, '.', '_' or '-'."));
+    return Result.err(
+      invalidInput("txId must be 1 to 128 letters, digits, '.', '_' or '-'."),
+    );
   }
-  if (options.sourcePrecondition === "required" && call.fileVersion === undefined) {
+  if (
+    options.sourcePrecondition === "required" &&
+    call.fileVersion === undefined
+  ) {
     return Result.err(
       invalidInput(
         "A change needs the fileVersion of the file it was read from.",
@@ -667,7 +774,9 @@ export const executeWriteTool = async (
   const target = await resolveTarget({
     sourcePath: call.path,
     destination: options.destination,
-    ...(tool.type === "compare" && { redline: { revisedPath: call.args["revisedPath"] } }),
+    ...(tool.type === "compare" && {
+      redline: { revisedPath: call.args["revisedPath"] },
+    }),
   });
   if (target.isErr()) return Result.err(target.error);
   const { sourcePath, sourceIdentity, destinationPath } = target.value;
@@ -678,7 +787,9 @@ export const executeWriteTool = async (
     documentPath: destinationPath,
     txId,
     force: options.force,
-    ...(options.flushWaitMs !== undefined && { flushWaitMs: options.flushWaitMs }),
+    ...(options.flushWaitMs !== undefined && {
+      flushWaitMs: options.flushWaitMs,
+    }),
   });
   if (acquired.isErr()) return Result.err(acquired.error);
   const { lease, flush } = acquired.value;
@@ -729,9 +840,13 @@ export const executeWriteTool = async (
       inPlace &&
       (flush.type !== "notAsked" ||
         recovered.value.some(({ action }) => action === "rolledForward"));
-    const expectedIdentity = replacedInPlace ? source.value.identity : sourceIdentity;
+    const expectedIdentity = replacedInPlace
+      ? source.value.identity
+      : sourceIdentity;
     if (!sameFile(source.value.identity, expectedIdentity)) {
-      return Result.err(unsafePath(`${sourcePath} was replaced while the write started.`));
+      return Result.err(
+        unsafePath(`${sourcePath} was replaced while the write started.`),
+      );
     }
     if (inPlace && source.value.links > 1) {
       return Result.err(
@@ -761,16 +876,24 @@ export const executeWriteTool = async (
               message: version.error.message,
               hint: version.error.hint,
               details: {
-                ...(isRecord(version.error.details) ? version.error.details : {}),
+                ...(isRecord(version.error.details)
+                  ? version.error.details
+                  : {}),
                 recovered: recovered.value,
               },
             }),
       );
     }
 
-    const mutation = await mutate({ tool, source: source.value, args: call.args, options });
+    const mutation = await mutate({
+      tool,
+      source: source.value,
+      args: call.args,
+      options,
+    });
     if (mutation.isErr()) return Result.err(mutation.error);
-    const { bytes, saveStrategy, repackReason, result, receipts, inputs } = mutation.value;
+    const { bytes, saveStrategy, repackReason, result, receipts, inputs } =
+      mutation.value;
     const changedParts = await diffPackages(source.value.bytes, bytes);
     if (changedParts.isErr()) return Result.err(changedParts.error);
 
@@ -816,7 +939,9 @@ export const executeWriteTool = async (
       },
       receipt,
     });
-    return committed.isErr() ? Result.err(committed.error) : Result.ok(committed.value.receipt);
+    return committed.isErr()
+      ? Result.err(committed.error)
+      : Result.ok(committed.value.receipt);
   } finally {
     await lease.release();
   }

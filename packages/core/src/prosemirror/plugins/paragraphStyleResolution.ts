@@ -16,8 +16,8 @@
  * out of the paragraph's own `w:pPr`.
  */
 
-import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import { isHistoryTransaction } from "prosemirror-history";
+import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
@@ -41,16 +41,18 @@ import {
   paragraphStyleCascadeAttrs,
   tableCellParagraphOverlay,
 } from "../styles/paragraphStyleCascade";
+import { listAttrsFromResolvedStyle } from "../styles/resolvedStyleAttrs";
+import type { TableCellParagraphSpacingOverlay } from "../styles/styleResolver";
 import {
-  type TableStyleRegion,
   tableCellStyleRegions,
   tableRowBand,
+  type TableStyleRegion,
 } from "../styles/tableStyleRegions";
-import type { TableCellParagraphSpacingOverlay } from "../styles/styleResolver";
-import { listAttrsFromResolvedStyle } from "../styles/resolvedStyleAttrs";
 
 /** The ranges of `doc` the given transactions changed, in its own positions. */
-const changedRanges = (transactions: readonly Transaction[]): Array<[number, number]> => {
+const changedRanges = (
+  transactions: readonly Transaction[],
+): Array<[number, number]> => {
   const ranges: Array<[number, number]> = [];
   const maps = transactions.flatMap((transaction) => transaction.mapping.maps);
   let offset = 0;
@@ -78,7 +80,9 @@ const changedRanges = (transactions: readonly Transaction[]): Array<[number, num
  */
 const statedFormatting = (attrs: ParagraphAttrs): ParagraphFormatting => {
   const formatting: ParagraphFormatting = {};
-  const copy = <Key extends keyof ParagraphFormatting & keyof ParagraphAttrs>(key: Key): void => {
+  const copy = <Key extends keyof ParagraphFormatting & keyof ParagraphAttrs>(
+    key: Key,
+  ): void => {
     const value = attrs[key];
     if (value !== null && value !== undefined) {
       Reflect.set(formatting, key, value);
@@ -117,9 +121,11 @@ const statedFormatting = (attrs: ParagraphAttrs): ParagraphFormatting => {
   return formatting;
 };
 
-type ParagraphStyleResolver = ParagraphCascadeResolver & Pick<StyleEngine, "getDefaultTableStyle">;
+type ParagraphStyleResolver = ParagraphCascadeResolver &
+  Pick<StyleEngine, "getDefaultTableStyle">;
 
-const isUnset = (value: unknown): boolean => value === null || value === undefined;
+const isUnset = (value: unknown): boolean =>
+  value === null || value === undefined;
 
 /**
  * The attrs the cascade supplies that `paragraph` leaves unset, or null when
@@ -161,13 +167,24 @@ const cascadePatch = (
   if (filledSides.after) {
     fill("spaceAfter");
   }
-  if (lineProvenance !== "value" && lineProvenance !== "both" && lineProvenance !== true) {
+  if (
+    lineProvenance !== "value" &&
+    lineProvenance !== "both" &&
+    lineProvenance !== true
+  ) {
     fill("lineSpacing");
   }
-  if (lineProvenance !== "rule" && lineProvenance !== "both" && lineProvenance !== true) {
+  if (
+    lineProvenance !== "rule" &&
+    lineProvenance !== "both" &&
+    lineProvenance !== true
+  ) {
     fill("lineSpacingRule");
   }
-  for (const key of ["spacingFromDocDefaults", "spacingFromImplicitDefaultStyle"] as const) {
+  for (const key of [
+    "spacingFromDocDefaults",
+    "spacingFromImplicitDefaultStyle",
+  ] as const) {
     const inherited = cascade[key];
     const side = {
       ...(inherited?.before && filledSides.before ? { before: true } : {}),
@@ -210,7 +227,10 @@ const cascadePatch = (
   }
   if (styleId !== undefined && isUnset(attrs._tableOfContentsLevel)) {
     const styleName = resolver.getStyle(styleId)?.name;
-    const level = tableOfContentsStyleLevel({ styleId, ...(styleName ? { styleName } : {}) });
+    const level = tableOfContentsStyleLevel({
+      styleId,
+      ...(styleName ? { styleName } : {}),
+    });
     if (level !== undefined) {
       patch._tableOfContentsLevel = level;
     }
@@ -220,7 +240,10 @@ const cascadePatch = (
     isUnset(attrs.numPr) &&
     isUnset(attrs.numPrFromStyle)
   ) {
-    const listAttrs = listAttrsFromResolvedStyle({ paragraphFormatting: stylePpr }, numbering());
+    const listAttrs = listAttrsFromResolvedStyle(
+      { paragraphFormatting: stylePpr },
+      numbering(),
+    );
     // The numbering level's indents apply only where the paragraph and its
     // style state none; the rest of the list attr group is the style's own.
     const takesLevelIndent: Record<string, boolean> = {
@@ -230,7 +253,8 @@ const cascadePatch = (
         attrs.hangingIndent !== true &&
         patch.indentFirstLine === undefined,
     };
-    takesLevelIndent["hangingIndent"] = takesLevelIndent["indentFirstLine"] === true;
+    takesLevelIndent["hangingIndent"] =
+      takesLevelIndent["indentFirstLine"] === true;
     for (const [key, value] of Object.entries(listAttrs ?? {})) {
       if (takesLevelIndent[key] === false) {
         continue;
@@ -252,7 +276,10 @@ const cascadePatch = (
 };
 
 /** The table-style regions for the cell at `depth` of `$pos`, as the load path picks them. */
-const cellStyleRegions = ($pos: ResolvedPos, depth: number): TableStyleRegion[] => {
+const cellStyleRegions = (
+  $pos: ResolvedPos,
+  depth: number,
+): TableStyleRegion[] => {
   const table = $pos.node(depth - 2);
   const row = $pos.node(depth - 1);
   const map = TableMap.get(table);
@@ -267,9 +294,10 @@ const cellStyleRegions = ($pos: ResolvedPos, depth: number): TableStyleRegion[] 
     colspan: rect.right - rect.left,
     totalColumns: map.width,
     rowBand: tableRowBand(look, rect.top, map.height),
-    rowConditionalFormat: expectTableRowAttrs(row)._originalFormatting?.conditionalFormat,
-    cellConditionalFormat: expectTableCellAttrs($pos.node(depth))._originalFormatting
-      ?.conditionalFormat,
+    rowConditionalFormat:
+      expectTableRowAttrs(row)._originalFormatting?.conditionalFormat,
+    cellConditionalFormat: expectTableCellAttrs($pos.node(depth))
+      ._originalFormatting?.conditionalFormat,
   });
 };
 

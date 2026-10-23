@@ -16,15 +16,18 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { parseFooter, parseHeader } from "../headerFooterParser";
 import { clearHeaderFooterVerbatimXml } from "../headerFooterVerbatim";
 import { serializeHeaderFooter } from "./headerFooterSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /** The paragraph shapes an author's header actually holds. */
 const PARAGRAPH_FORMS = {
@@ -39,7 +42,10 @@ const PARAGRAPH_FORMS = {
 
 type ParagraphForm = keyof typeof PARAGRAPH_FORMS;
 
-const partXml = (root: "hdr" | "ftr", forms: readonly ParagraphForm[]): string =>
+const partXml = (
+  root: "hdr" | "ftr",
+  forms: readonly ParagraphForm[],
+): string =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
   `<w:${root} xmlns:w="${W_NAMESPACE}">` +
   `${forms.map((form) => PARAGRAPH_FORMS[form]).join("")}</w:${root}>`;
@@ -52,18 +58,22 @@ const body = fc.array(
 describe("a header or footer keeps the blocks it was read with", () => {
   test("the block count survives a rebuild, zero included", async () => {
     await fc.assert(
-      fc.property(fc.constantFrom<"hdr" | "ftr">("hdr", "ftr"), body, (root, forms) => {
-        const parse = root === "hdr" ? parseHeader : parseFooter;
-        const parsed = parse(partXml(root, forms));
-        expect(parsed.content).toHaveLength(forms.length);
+      fc.property(
+        fc.constantFrom<"hdr" | "ftr">("hdr", "ftr"),
+        body,
+        (root, forms) => {
+          const parse = root === "hdr" ? parseHeader : parseFooter;
+          const parsed = parse(partXml(root, forms));
+          expect(parsed.content).toHaveLength(forms.length);
 
-        // Drop the capture so the serializers run, which is what every
-        // edited document does.
-        clearHeaderFooterVerbatimXml(parsed);
-        const rebuilt = parse(serializeHeaderFooter(parsed));
+          // Drop the capture so the serializers run, which is what every
+          // edited document does.
+          clearHeaderFooterVerbatimXml(parsed);
+          const rebuilt = parse(serializeHeaderFooter(parsed));
 
-        expect(rebuilt.content).toHaveLength(forms.length);
-      }),
+          expect(rebuilt.content).toHaveLength(forms.length);
+        },
+      ),
       propertyConfig({ numRuns: 60 }),
     );
   });

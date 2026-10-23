@@ -18,17 +18,17 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { createDisplayListPagePainter } from "./displayListPagePainter";
-import { renderPage } from "../../layout-painter/renderPage";
-import { fakeDocument } from "../../layout-painter/__tests__/fakeDom";
-import type { RenderContext } from "../../layout-painter/renderUtils";
 import { layoutDocxHeadless } from "../../headless-layout";
+import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import {
   getMeasureProvider,
   setMeasureProvider,
 } from "../../layout-engine/measure/measureProvider";
-import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import type { Page } from "../../layout-engine/types";
+import { fakeDocument } from "../../layout-painter/__tests__/fakeDom";
+import { renderPage } from "../../layout-painter/renderPage";
+import type { RenderContext } from "../../layout-painter/renderUtils";
+import { createDisplayListPagePainter } from "./displayListPagePainter";
 
 /**
  * Real documents, and the synthetic pages for the constructs a real document
@@ -49,7 +49,10 @@ const FIXTURES = [
 const fixtureUrl = ({ name, from }: (typeof FIXTURES)[number]) =>
   from === "visual"
     ? new URL(`../../../../../tests/visual/fixtures/${name}`, import.meta.url)
-    : new URL(`../../docx/__tests__/__fixtures__/corpus/${name}`, import.meta.url);
+    : new URL(
+        `../../docx/__tests__/__fixtures__/corpus/${name}`,
+        import.meta.url,
+      );
 
 const FIXED_ADVANCE_RATIO = 0.5;
 
@@ -88,7 +91,9 @@ const installFixedWidthProvider = (): void => {
     },
     measureRun: (text, style) => {
       const per = ptToPx(style.fontSize ?? 11) * FIXED_ADVANCE_RATIO;
-      const charWidths = [...text].flatMap((char) => (char.length === 2 ? [per, 0] : [per]));
+      const charWidths = [...text].flatMap((char) =>
+        char.length === 2 ? [per, 0] : [per],
+      );
       return {
         width: charWidths.reduce((total, width) => total + width, 0),
         charWidths,
@@ -99,7 +104,8 @@ const installFixedWidthProvider = (): void => {
 };
 
 /** Whitespace and case are rendering concerns; a missing word is not. */
-const comparable = (text: string): string => text.replace(/\s+/gu, "").toLocaleUpperCase();
+const comparable = (text: string): string =>
+  text.replace(/\s+/gu, "").toLocaleUpperCase();
 
 const textOf = (element: Element): string => element.textContent ?? "";
 
@@ -182,7 +188,10 @@ describe("the two page renderers paint the same pages", () => {
         expect({
           page: index + 1,
           uncoveredAt,
-          missingFrom: uncoveredAt === -1 ? "" : expected.slice(uncoveredAt, uncoveredAt + 40),
+          missingFrom:
+            uncoveredAt === -1
+              ? ""
+              : expected.slice(uncoveredAt, uncoveredAt + 40),
         }).toEqual({ page: index + 1, uncoveredAt: -1, missingFrom: "" });
       }
 

@@ -18,9 +18,18 @@
 
 import { $ } from "bun";
 import { build, type Plugin } from "esbuild";
-import { cp, copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import {
+  copyFile,
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
+
 import { copyFuzzyWasm, fuzzyFromDisk } from "./portable-fuzzy";
 
 const extensionRoot = path.resolve(import.meta.dir, "..");
@@ -32,7 +41,8 @@ const dist = path.join(extensionRoot, "dist");
 const cliDist = path.join(dist, "cli");
 
 const SHAPER_WASM = "text_shaper_bg.wasm";
-const SHAPER_DEFAULT_SOURCE = "module_or_path = new URL('./text_shaper_bg.wasm', import.meta.url);";
+const SHAPER_DEFAULT_SOURCE =
+  "module_or_path = new URL('./text_shaper_bg.wasm', import.meta.url);";
 
 /**
  * The generated shaper glue fetches its `.wasm` by URL, and Node.js cannot
@@ -41,33 +51,44 @@ const SHAPER_DEFAULT_SOURCE = "module_or_path = new URL('./text_shaper_bg.wasm',
 const shaperFromDisk: Plugin = {
   name: "folio-shaper-from-disk",
   setup: (builder) => {
-    builder.onLoad({ filter: /[\\/]generated[\\/]text_shaper\.js$/ }, async (args) => {
-      const source = await readFile(args.path, "utf8");
-      if (!source.includes(SHAPER_DEFAULT_SOURCE)) {
-        throw new Error(`${args.path} no longer loads its wasm as this build expects.`);
-      }
-      return {
-        contents: source.replace(
-          SHAPER_DEFAULT_SOURCE,
-          `module_or_path = await import("node:fs/promises").then((fs) => fs.readFile(new URL("./${SHAPER_WASM}", import.meta.url)));`,
-        ),
-        loader: "js",
-      };
-    });
+    builder.onLoad(
+      { filter: /[\\/]generated[\\/]text_shaper\.js$/ },
+      async (args) => {
+        const source = await readFile(args.path, "utf8");
+        if (!source.includes(SHAPER_DEFAULT_SOURCE)) {
+          throw new Error(
+            `${args.path} no longer loads its wasm as this build expects.`,
+          );
+        }
+        return {
+          contents: source.replace(
+            SHAPER_DEFAULT_SOURCE,
+            `module_or_path = await import("node:fs/promises").then((fs) => fs.readFile(new URL("./${SHAPER_WASM}", import.meta.url)));`,
+          ),
+          loader: "js",
+        };
+      },
+    );
   },
 };
 
 /** The `@fontsource` packages the CLI depends on, and so reads faces from. */
 const fontsourcePackages = async (): Promise<string[]> => {
-  const manifest: unknown = JSON.parse(await readFile(path.join(cliRoot, "package.json"), "utf8"));
+  const manifest: unknown = JSON.parse(
+    await readFile(path.join(cliRoot, "package.json"), "utf8"),
+  );
   const dependencies =
-    typeof manifest === "object" && manifest !== null && "dependencies" in manifest
+    typeof manifest === "object" &&
+    manifest !== null &&
+    "dependencies" in manifest
       ? manifest.dependencies
       : undefined;
   if (typeof dependencies !== "object" || dependencies === null) {
     throw new Error("packages/cli/package.json has no dependencies.");
   }
-  return Object.keys(dependencies).filter((name) => name.startsWith("@fontsource/"));
+  return Object.keys(dependencies).filter((name) =>
+    name.startsWith("@fontsource/"),
+  );
 };
 
 /** Faces folio paints: regular and bold, upright and italic, as `.woff`. */
@@ -92,7 +113,10 @@ const copyFonts = async (): Promise<void> => {
     );
     if (faces.length === 0) throw new Error(`${name} has no faces to copy.`);
     for (const face of faces) {
-      await copyFile(path.join(source, "files", face), path.join(target, "files", face));
+      await copyFile(
+        path.join(source, "files", face),
+        path.join(target, "files", face),
+      );
     }
   }
 };
@@ -157,6 +181,9 @@ await copyFile(
 await copyFuzzyWasm(cliDist);
 await copyFonts();
 await copyEditor();
-await copyFile(path.join(repoRoot, "LICENSE"), path.join(extensionRoot, "LICENSE"));
+await copyFile(
+  path.join(repoRoot, "LICENSE"),
+  path.join(extensionRoot, "LICENSE"),
+);
 
 console.log(`Built ${path.relative(repoRoot, dist)}`);

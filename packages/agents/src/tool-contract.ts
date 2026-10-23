@@ -88,17 +88,22 @@ export type FolioAgentToolOutputByName = {
   [FOLIO_AGENT_TOOL_NAMES.suggestChanges]: FolioAgentApplyOperationsSummary;
   [FOLIO_AGENT_TOOL_NAMES.replyComment]: { replied: true };
   [FOLIO_AGENT_TOOL_NAMES.resolveComment]: { resolved: boolean };
-  [FOLIO_AGENT_TOOL_NAMES.readPage]: { page: number; totalPages?: number; text: string };
+  [FOLIO_AGENT_TOOL_NAMES.readPage]: {
+    page: number;
+    totalPages?: number;
+    text: string;
+  };
   [FOLIO_AGENT_TOOL_NAMES.readSelection]: { text: string };
   [FOLIO_AGENT_TOOL_NAMES.scrollToBlock]: { scrolled: boolean };
   [FOLIO_AGENT_TOOL_NAMES.showInDocument]: { shown: boolean };
 };
 
-export type FolioToolCallResultFor<TName extends FolioAgentToolName> = FolioToolCallResult<
-  FolioAgentToolOutputByName[TName]
->;
+export type FolioToolCallResultFor<TName extends FolioAgentToolName> =
+  FolioToolCallResult<FolioAgentToolOutputByName[TName]>;
 
-export const defineFolioAgentToolDefinition = <TName extends FolioAgentToolName>(
+export const defineFolioAgentToolDefinition = <
+  TName extends FolioAgentToolName,
+>(
   definition: FolioAgentTypedToolDefinition<
     TName,
     FolioAgentToolInputByName[TName],

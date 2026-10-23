@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 
-import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 import {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
   resolveFolioAITextRange,
   resolvePassageRange,
 } from "./blockRange";
+import {
+  createFolioAIEditSnapshot,
+  createFolioAITextRangeHandle,
+} from "./snapshot";
 
 const schema = new Schema({
   nodes: {
@@ -27,7 +30,9 @@ const makeDoc = (blocks: { paraId: string | null; text: string }[]) =>
     "doc",
     null,
     blocks.map((block) =>
-      schema.node("paragraph", { paraId: block.paraId }, [schema.text(block.text)]),
+      schema.node("paragraph", { paraId: block.paraId }, [
+        schema.text(block.text),
+      ]),
     ),
   );
 
@@ -157,7 +162,9 @@ describe("resolveFolioAIBlockRange", () => {
   test("returns null for a seq id past the end of the document", () => {
     const liveDoc = makeDoc([{ paraId: "0A0A0A0A", text: "Only" }]);
 
-    expect(resolveFolioAIBlockRange({ blockId: "seq-0009", doc: liveDoc })).toBeNull();
+    expect(
+      resolveFolioAIBlockRange({ blockId: "seq-0009", doc: liveDoc }),
+    ).toBeNull();
   });
 
   test("returns null instead of resolving Object.prototype for a __proto__ block id", () => {
@@ -167,7 +174,9 @@ describe("resolveFolioAIBlockRange", () => {
     // from an agent tool call) must fail cleanly instead.
     const liveDoc = makeDoc([{ paraId: "0A0A0A0A", text: "Only" }]);
 
-    expect(resolveFolioAIBlockRange({ blockId: "__proto__", doc: liveDoc })).toBeNull();
+    expect(
+      resolveFolioAIBlockRange({ blockId: "__proto__", doc: liveDoc }),
+    ).toBeNull();
   });
 });
 
@@ -221,8 +230,14 @@ describe("resolveFolioAITextRange", () => {
       throw new Error("Expected text range handles");
     }
 
-    expect(resolveFolioAITextRange({ range: left, doc, snapshot })).toEqual({ from: 1, to: 2 });
-    expect(resolveFolioAITextRange({ range: right, doc, snapshot })).toEqual({ from: 3, to: 4 });
+    expect(resolveFolioAITextRange({ range: left, doc, snapshot })).toEqual({
+      from: 1,
+      to: 2,
+    });
+    expect(resolveFolioAITextRange({ range: right, doc, snapshot })).toEqual({
+      from: 3,
+      to: 4,
+    });
   });
 
   test("refuses a generic text range that crosses an inline page-break carrier", () => {
@@ -278,7 +293,10 @@ const makeRichDoc = (blocks: { paraId: string | null; runs: Run[] }[]) =>
         "paragraph",
         { paraId: block.paraId },
         block.runs.map((run) =>
-          richSchema.text(run.text, run.strong === true ? [richSchema.mark("strong")] : null),
+          richSchema.text(
+            run.text,
+            run.strong === true ? [richSchema.mark("strong")] : null,
+          ),
         ),
       ),
     ),
@@ -290,7 +308,11 @@ describe("resolvePassageRange", () => {
       { paraId: "AAAA0001", runs: [{ text: "Payment is due on receipt" }] },
     ]);
 
-    const range = resolvePassageRange({ blockId: "AAAA0001", text: "is due", doc });
+    const range = resolvePassageRange({
+      blockId: "AAAA0001",
+      text: "is due",
+      doc,
+    });
 
     if (range === null) {
       throw new Error("Expected an exact match to resolve");
@@ -307,15 +329,21 @@ describe("resolvePassageRange", () => {
       ]),
     ]);
 
-    expect(resolvePassageRange({ blockId: "AAAA0001", text: "left", doc })).toEqual({
+    expect(
+      resolvePassageRange({ blockId: "AAAA0001", text: "left", doc }),
+    ).toEqual({
       from: 1,
       to: 5,
     });
-    expect(resolvePassageRange({ blockId: "AAAA0001", text: "right", doc })).toEqual({
+    expect(
+      resolvePassageRange({ blockId: "AAAA0001", text: "right", doc }),
+    ).toEqual({
       from: 6,
       to: 11,
     });
-    expect(resolvePassageRange({ blockId: "AAAA0001", text: "leftright", doc })).toBeNull();
+    expect(
+      resolvePassageRange({ blockId: "AAAA0001", text: "leftright", doc }),
+    ).toBeNull();
   });
 
   test("matches across collapsed / extra whitespace between needle and document", () => {
@@ -332,7 +360,9 @@ describe("resolvePassageRange", () => {
     if (range === null) {
       throw new Error("Expected a whitespace-normalized match to resolve");
     }
-    expect(doc.textBetween(range.from, range.to)).toBe("Payment  is   due\ton receipt");
+    expect(doc.textBetween(range.from, range.to)).toBe(
+      "Payment  is   due\ton receipt",
+    );
   });
 
   test("ignores leading and trailing whitespace on the needle", () => {
@@ -340,7 +370,11 @@ describe("resolvePassageRange", () => {
       { paraId: "AAAA0001", runs: [{ text: "Payment is due on receipt" }] },
     ]);
 
-    const range = resolvePassageRange({ blockId: "AAAA0001", text: "  is due\n", doc });
+    const range = resolvePassageRange({
+      blockId: "AAAA0001",
+      text: "  is due\n",
+      doc,
+    });
 
     if (range === null) {
       throw new Error("Expected a trimmed needle to resolve");
@@ -349,9 +383,15 @@ describe("resolvePassageRange", () => {
   });
 
   test("falls back to a case-insensitive match when the exact case is absent", () => {
-    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Payment is due" }] },
+    ]);
 
-    const range = resolvePassageRange({ blockId: "AAAA0001", text: "PAYMENT IS DUE", doc });
+    const range = resolvePassageRange({
+      blockId: "AAAA0001",
+      text: "PAYMENT IS DUE",
+      doc,
+    });
 
     if (range === null) {
       throw new Error("Expected a case-insensitive fallback to resolve");
@@ -360,15 +400,23 @@ describe("resolvePassageRange", () => {
   });
 
   test("prefers a case-sensitive match over an earlier case-insensitive one", () => {
-    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "note NOTE note" }] }]);
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "note NOTE note" }] },
+    ]);
 
-    const range = resolvePassageRange({ blockId: "AAAA0001", text: "NOTE", doc });
+    const range = resolvePassageRange({
+      blockId: "AAAA0001",
+      text: "NOTE",
+      doc,
+    });
 
     if (range === null) {
       throw new Error("Expected a case-sensitive match to resolve");
     }
     // The exact-case pass finds the middle occurrence, not the first (lowercase) one.
-    expect(range.from).toBe(doc.textBetween(0, doc.content.size).indexOf("NOTE") + 1);
+    expect(range.from).toBe(
+      doc.textBetween(0, doc.content.size).indexOf("NOTE") + 1,
+    );
     expect(doc.textBetween(range.from, range.to)).toBe("NOTE");
   });
 
@@ -380,7 +428,11 @@ describe("resolvePassageRange", () => {
       },
     ]);
 
-    const range = resolvePassageRange({ blockId: "AAAA0001", text: "Payment is due", doc });
+    const range = resolvePassageRange({
+      blockId: "AAAA0001",
+      text: "Payment is due",
+      doc,
+    });
 
     if (range === null) {
       throw new Error("Expected a match spanning styled runs to resolve");
@@ -389,9 +441,15 @@ describe("resolvePassageRange", () => {
   });
 
   test("treats regex metacharacters in the needle as literal text", () => {
-    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Total: $1,000 (net) due" }] }]);
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Total: $1,000 (net) due" }] },
+    ]);
 
-    const range = resolvePassageRange({ blockId: "AAAA0001", text: "$1,000 (net)", doc });
+    const range = resolvePassageRange({
+      blockId: "AAAA0001",
+      text: "$1,000 (net)",
+      doc,
+    });
 
     if (range === null) {
       throw new Error("Expected a literal match for regex-special text");
@@ -400,20 +458,32 @@ describe("resolvePassageRange", () => {
   });
 
   test("returns null when the text does not occur in the block", () => {
-    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Payment is due" }] },
+    ]);
 
-    expect(resolvePassageRange({ blockId: "AAAA0001", text: "termination", doc })).toBeNull();
+    expect(
+      resolvePassageRange({ blockId: "AAAA0001", text: "termination", doc }),
+    ).toBeNull();
   });
 
   test("returns null for an unknown block id", () => {
-    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Payment is due" }] },
+    ]);
 
-    expect(resolvePassageRange({ blockId: "ZZZZ9999", text: "Payment", doc })).toBeNull();
+    expect(
+      resolvePassageRange({ blockId: "ZZZZ9999", text: "Payment", doc }),
+    ).toBeNull();
   });
 
   test("returns null for whitespace-only needle text", () => {
-    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Payment is due" }] },
+    ]);
 
-    expect(resolvePassageRange({ blockId: "AAAA0001", text: "   ", doc })).toBeNull();
+    expect(
+      resolvePassageRange({ blockId: "AAAA0001", text: "   ", doc }),
+    ).toBeNull();
   });
 });

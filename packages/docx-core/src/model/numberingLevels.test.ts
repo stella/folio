@@ -1,15 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import type { ListLevel, NumberingDefinitions } from "./lists";
-import { levelShowsMarker, numberingLevelEntries, resolveNumberingLevel } from "./numberingLevels";
 
-const level = (ilvl: number, overrides: Partial<ListLevel> = {}): ListLevel => ({
+import type { ListLevel, NumberingDefinitions } from "./lists";
+import {
+  levelShowsMarker,
+  numberingLevelEntries,
+  resolveNumberingLevel,
+} from "./numberingLevels";
+
+const level = (
+  ilvl: number,
+  overrides: Partial<ListLevel> = {},
+): ListLevel => ({
   ilvl,
   numFmt: "decimal",
   lvlText: `%${ilvl + 1}.`,
   ...overrides,
 });
 
-const definitions = (overrides: Partial<NumberingDefinitions> = {}): NumberingDefinitions => ({
+const definitions = (
+  overrides: Partial<NumberingDefinitions> = {},
+): NumberingDefinitions => ({
   abstractNums: [{ abstractNumId: 1, levels: [level(0)] }],
   nums: [{ numId: 1, abstractNumId: 1 }],
   ...overrides,
@@ -29,7 +39,11 @@ describe("resolveNumberingLevel", () => {
       reason: "noInstance",
     });
     expect(
-      resolveNumberingLevel(definitions({ nums: [{ numId: 1, abstractNumId: 9 }] }), 1, 0),
+      resolveNumberingLevel(
+        definitions({ nums: [{ numId: 1, abstractNumId: 9 }] }),
+        1,
+        0,
+      ),
     ).toEqual({ kind: "undefined", reason: "noAbstract" });
   });
 
@@ -38,7 +52,13 @@ describe("resolveNumberingLevel", () => {
     expect(
       resolveNumberingLevel(
         definitions({
-          nums: [{ numId: 1, abstractNumId: 9, levelOverrides: [{ ilvl: 0, lvl: override }] }],
+          nums: [
+            {
+              numId: 1,
+              abstractNumId: 9,
+              levelOverrides: [{ ilvl: 0, lvl: override }],
+            },
+          ],
         }),
         1,
         0,
@@ -46,7 +66,11 @@ describe("resolveNumberingLevel", () => {
     ).toEqual({ kind: "level", level: override, source: "override" });
     // Without an override, the same dangling instance still has no level.
     expect(
-      resolveNumberingLevel(definitions({ nums: [{ numId: 1, abstractNumId: 9 }] }), 1, 0),
+      resolveNumberingLevel(
+        definitions({ nums: [{ numId: 1, abstractNumId: 9 }] }),
+        1,
+        0,
+      ),
     ).toEqual({ kind: "undefined", reason: "noAbstract" });
   });
 
@@ -55,7 +79,13 @@ describe("resolveNumberingLevel", () => {
     expect(
       resolveNumberingLevel(
         definitions({
-          nums: [{ numId: 1, abstractNumId: 1, levelOverrides: [{ ilvl: 2, lvl: override }] }],
+          nums: [
+            {
+              numId: 1,
+              abstractNumId: 1,
+              levelOverrides: [{ ilvl: 2, lvl: override }],
+            },
+          ],
         }),
         1,
         2,
@@ -66,12 +96,20 @@ describe("resolveNumberingLevel", () => {
   test("start-only overrides patch an existing level", () => {
     const resolution = resolveNumberingLevel(
       definitions({
-        nums: [{ numId: 1, abstractNumId: 1, levelOverrides: [{ ilvl: 0, startOverride: 7 }] }],
+        nums: [
+          {
+            numId: 1,
+            abstractNumId: 1,
+            levelOverrides: [{ ilvl: 0, startOverride: 7 }],
+          },
+        ],
       }),
       1,
       0,
     );
-    expect(resolution.kind === "level" ? resolution.level.start : undefined).toBe(7);
+    expect(
+      resolution.kind === "level" ? resolution.level.start : undefined,
+    ).toBe(7);
   });
 
   test("start overrides patch the start on a full level override", () => {
@@ -81,7 +119,9 @@ describe("resolveNumberingLevel", () => {
           {
             numId: 1,
             abstractNumId: 1,
-            levelOverrides: [{ ilvl: 0, lvl: level(0, { start: 1 }), startOverride: 7 }],
+            levelOverrides: [
+              { ilvl: 0, lvl: level(0, { start: 1 }), startOverride: 7 },
+            ],
           },
         ],
       }),
@@ -137,7 +177,13 @@ describe("resolveNumberingLevel", () => {
     expect(
       numberingLevelEntries(
         definitions({
-          nums: [{ numId: 1, abstractNumId: 1, levelOverrides: [{ ilvl: 3, lvl: override }] }],
+          nums: [
+            {
+              numId: 1,
+              abstractNumId: 1,
+              levelOverrides: [{ ilvl: 3, lvl: override }],
+            },
+          ],
         }),
       ),
     ).toContainEqual({ numId: 1, ilvl: 3, level: override });
@@ -150,13 +196,19 @@ describe("levelShowsMarker", () => {
     ["hidden", level(0, { rPr: { hidden: true } }), false],
     ["none", level(0, { numFmt: "none" }), true],
     ["none placeholder", level(0, { numFmt: "none", lvlText: "%1" }), false],
-    ["none legal", level(0, { numFmt: "none", isLgl: true, lvlText: "%1" }), true],
+    [
+      "none legal",
+      level(0, { numFmt: "none", isLgl: true, lvlText: "%1" }),
+      true,
+    ],
     ["empty decimal", level(0, { lvlText: "" }), true],
     ["empty none", level(0, { numFmt: "none", lvlText: "" }), false],
   ] as const)("handles %s", (_name, candidate, expected) => {
     expect(
       levelShowsMarker(
-        definitions({ abstractNums: [{ abstractNumId: 1, levels: [candidate] }] }),
+        definitions({
+          abstractNums: [{ abstractNumId: 1, levels: [candidate] }],
+        }),
         1,
         0,
       ),

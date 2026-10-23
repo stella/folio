@@ -4,12 +4,12 @@ import { createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { createHeadingCollectorOoxmlFixture } from "./fixtures/headingCollectorOoxml";
 import {
   HEADING_COLLECTOR_DOCUMENT,
   HEADING_COLLECTOR_RUN_IN_DOCUMENT,
   HEADING_COLLECTOR_STYLES,
 } from "./fixtures/headingCollector.synthetic";
+import { createHeadingCollectorOoxmlFixture } from "./fixtures/headingCollectorOoxml";
 import { collectHeadings } from "./headingCollector";
 
 describe("document outline collection", () => {
@@ -32,7 +32,9 @@ describe("document outline collection", () => {
     const headings = collectHeadings(HEADING_COLLECTOR_DOCUMENT, styles);
 
     expect(headings).toHaveLength(66);
-    expect(headings.slice(0, 64).map(({ text, level }) => [text, level])).toEqual(
+    expect(
+      headings.slice(0, 64).map(({ text, level }) => [text, level]),
+    ).toEqual(
       Array.from({ length: 64 }, (_, index) => [
         `Section ${index + 1}: General provisions governing synthetic agreements and related obligations`,
         index % 2 === 0 ? 0 : 1,
@@ -54,7 +56,9 @@ describe("document outline collection", () => {
       "The parties agree that this ordinary clause remains body text.",
     );
     expect(headingTexts).not.toContain("Body override");
-    expect(headingTexts).not.toContain("Inherited heading overridden to body text");
+    expect(headingTexts).not.toContain(
+      "Inherited heading overridden to body text",
+    );
   });
 });
 
@@ -76,7 +80,8 @@ test("a numbering-level outline is preserved without promoting its paragraph", a
         item.type === "run" &&
         item.content.some(
           (part) =>
-            part.type === "text" && part.text === "Numbered body with numbering-only outline level",
+            part.type === "text" &&
+            part.text === "Numbered body with numbering-only outline level",
         ),
     ),
   );
@@ -91,7 +96,9 @@ test("a numbering-level outline is preserved without promoting its paragraph", a
     ["Direct paragraph outline", 3],
   ]);
 
-  const reopened = await parseDocx(await createDocx(document), { preloadFonts: false });
+  const reopened = await parseDocx(await createDocx(document), {
+    preloadFonts: false,
+  });
   const reopenedOutline = reopened.package.numbering?.abstractNums
     .flatMap(({ levels }) => levels)
     .find(({ ilvl }) => ilvl === 0)?.pPr?.outlineLevel;

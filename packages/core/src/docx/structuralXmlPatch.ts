@@ -2,7 +2,11 @@
 import { canonicalJson } from "../utils/canonicalJson";
 import { parseDocumentBody } from "./documentParser";
 import { paraIdAttribute } from "./paraIdAttribute";
-import { spliceSupportsRootNamespaces, spliceXml, type XmlSplice } from "./selectiveXmlPatch";
+import {
+  spliceSupportsRootNamespaces,
+  spliceXml,
+  type XmlSplice,
+} from "./selectiveXmlPatch";
 import { materializeReplayFragment } from "./storyBlockReplay";
 import {
   getChildElements,
@@ -30,7 +34,9 @@ const readBody = (xml: string) => {
   // Strict conversion belongs to full repack; a Transitional fragment cannot
   // inherit a Strict namespace, even when the producer spells its prefix `w`.
   if (getNamespaceUri(root) !== NAMESPACES.w) return null;
-  const body = getChildElements(root).find((child) => isWordElement(child, "body"));
+  const body = getChildElements(root).find((child) =>
+    isWordElement(child, "body"),
+  );
   if (!body) return null;
   const children = getChildElements(body);
   const blocks: BodyBlock[] = [];
@@ -55,7 +61,8 @@ const readBody = (xml: string) => {
         blocks.push({ element, start, end: token.index + tag.length });
         start = -1;
       }
-      if (name === body.name && stack.length === bodyDepth - 1) bodyEnd = token.index;
+      if (name === body.name && stack.length === bodyDepth - 1)
+        bodyEnd = token.index;
       continue;
     }
     if (name === body.name && stack.length === 1) bodyDepth = 2;
@@ -71,7 +78,8 @@ const readBody = (xml: string) => {
     }
     if (!tag.endsWith("/>")) stack.push(name);
   }
-  if (stack.length > 0 || blocks.length !== children.length || bodyEnd < 0) return null;
+  if (stack.length > 0 || blocks.length !== children.length || bodyEnd < 0)
+    return null;
   return { root, blocks, bodyEnd };
 };
 
@@ -106,7 +114,8 @@ const DEPENDENT_ELEMENTS = new Set([
 
 const paragraphIsSafe = (element: XmlElement, touched: boolean): boolean => {
   for (const child of descendants(element)) {
-    if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")) continue;
+    if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? ""))
+      continue;
     const name = getLocalName(child.name);
     if (touched && DEPENDENT_ELEMENTS.has(name)) return false;
   }
@@ -118,7 +127,12 @@ const paragraphIds = (root: XmlElement): Set<string> | null => {
   for (const element of descendants(root)) {
     if (!isWordElement(element, "p")) continue;
     const id = paraIdAttribute(element);
-    if (!id || !/^[0-9a-f]{8}$/iu.test(id) || /^0+$/u.test(id) || ids.has(id.toUpperCase())) {
+    if (
+      !id ||
+      !/^[0-9a-f]{8}$/iu.test(id) ||
+      /^0+$/u.test(id) ||
+      ids.has(id.toUpperCase())
+    ) {
       return null;
     }
     ids.add(id.toUpperCase());
@@ -164,9 +178,13 @@ export const buildStructuralDocumentPatch = ({
     if (isWordElement(element, "p")) {
       const id = paraIdAttribute(element)?.toUpperCase();
       if (!id) return null;
-      const touched = changed.has(id) || !allSourceIds.has(id) || !allCurrentIds.has(id);
+      const touched =
+        changed.has(id) || !allSourceIds.has(id) || !allCurrentIds.has(id);
       if (!paragraphIsSafe(element, touched)) return null;
-    } else if (!isWordElement(element, "tbl") && !isWordElement(element, "sectPr")) {
+    } else if (
+      !isWordElement(element, "tbl") &&
+      !isWordElement(element, "sectPr")
+    ) {
       return null;
     }
   }
@@ -180,7 +198,10 @@ export const buildStructuralDocumentPatch = ({
     finalSectionProperties: body.finalSectionProperties,
     background: body.background,
   });
-  if (canonicalJson(barriers(sourceBody)) !== canonicalJson(barriers(currentBody))) return null;
+  if (
+    canonicalJson(barriers(sourceBody)) !== canonicalJson(barriers(currentBody))
+  )
+    return null;
 
   const indexBlocks = (blocks: readonly BodyBlock[]) => {
     let barrier = 0;
@@ -197,7 +218,8 @@ export const buildStructuralDocumentPatch = ({
   const after = indexBlocks(current.blocks);
   const survivingBefore = [...before.keys()].filter((key) => after.has(key));
   const survivingAfter = [...after.keys()].filter((key) => before.has(key));
-  if (canonicalJson(survivingBefore) !== canonicalJson(survivingAfter)) return null;
+  if (canonicalJson(survivingBefore) !== canonicalJson(survivingAfter))
+    return null;
 
   const fragmentFor = (block: BodyBlock) =>
     materializeReplayFragment({
@@ -208,7 +230,8 @@ export const buildStructuralDocumentPatch = ({
     });
   const splices: XmlSplice[] = [];
   for (const [key, block] of before) {
-    if (!after.has(key)) splices.push({ start: block.start, end: block.end, newXml: "" });
+    if (!after.has(key))
+      splices.push({ start: block.start, end: block.end, newXml: "" });
   }
   let pending: string[] = [];
   for (const [key, block] of after) {
@@ -227,7 +250,10 @@ export const buildStructuralDocumentPatch = ({
         ? fragmentFor(block)
         : originalXml.slice(original.start, original.end);
     if (replacement === null) return null;
-    if (pending.length > 0 || replacement !== originalXml.slice(original.start, original.end)) {
+    if (
+      pending.length > 0 ||
+      replacement !== originalXml.slice(original.start, original.end)
+    ) {
       splices.push({
         start: original.start,
         end: original.end,
@@ -237,7 +263,11 @@ export const buildStructuralDocumentPatch = ({
     pending = [];
   }
   if (pending.length > 0)
-    splices.push({ start: source.bodyEnd, end: source.bodyEnd, newXml: pending.join("") });
+    splices.push({
+      start: source.bodyEnd,
+      end: source.bodyEnd,
+      newXml: pending.join(""),
+    });
   if (
     !spliceSupportsRootNamespaces({
       originalXml,

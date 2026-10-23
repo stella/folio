@@ -17,9 +17,15 @@ import { toFlowBlocks } from "./toFlowBlocks";
 describe("toFlowBlocks — chained run-in heading paragraphs", () => {
   test("two consecutive run-in headings merge with the body paragraph", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { runInWithNext: true }, [schema.text("Heading A")]),
-      schema.node("paragraph", { runInWithNext: true }, [schema.text(" Heading B")]),
-      schema.node("paragraph", null, [schema.text(". Body text continues here.")]),
+      schema.node("paragraph", { runInWithNext: true }, [
+        schema.text("Heading A"),
+      ]),
+      schema.node("paragraph", { runInWithNext: true }, [
+        schema.text(" Heading B"),
+      ]),
+      schema.node("paragraph", null, [
+        schema.text(". Body text continues here."),
+      ]),
     ]);
 
     const blocks = toFlowBlocks(doc);
@@ -42,7 +48,9 @@ describe("toFlowBlocks — chained run-in heading paragraphs", () => {
 
   test("single run-in heading still merges with the next paragraph", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { runInWithNext: true }, [schema.text("Severability")]),
+      schema.node("paragraph", { runInWithNext: true }, [
+        schema.text("Severability"),
+      ]),
       schema.node("paragraph", null, [schema.text(". The invalidity ...")]),
     ]);
 
@@ -55,7 +63,9 @@ describe("toFlowBlocks — chained run-in heading paragraphs", () => {
     // Defensive: a doc that ends with a specVanish paragraph (no
     // body to merge with) must still emit one paragraph block.
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { runInWithNext: true }, [schema.text("Trailing heading")]),
+      schema.node("paragraph", { runInWithNext: true }, [
+        schema.text("Trailing heading"),
+      ]),
     ]);
 
     const blocks = toFlowBlocks(doc);

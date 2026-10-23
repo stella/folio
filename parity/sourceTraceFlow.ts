@@ -5,8 +5,8 @@ import type {
   TableBlock,
   TableCell,
 } from "../packages/core/src/layout-engine/types";
-import { normalizeLineText } from "./textNorm";
 import { createLiteralSearchScope } from "./literalSearch";
+import { normalizeLineText } from "./textNorm";
 
 type TracePathSegment = number | "blocks" | "cells" | "content" | "rows";
 
@@ -89,7 +89,12 @@ const summarizeRun = (run: Run): unknown => {
     };
   }
   if (run.kind === "image") {
-    return { ...base, width: run.width, height: run.height, wrapType: run.wrapType };
+    return {
+      ...base,
+      width: run.width,
+      height: run.height,
+      wrapType: run.wrapType,
+    };
   }
   if (run.kind === "math") {
     return { ...base, plainText: run.plainText };
@@ -133,7 +138,10 @@ const createBlockTextReader = (): BlockTextReader => {
   return blockText;
 };
 
-const summarizeBlock = (block: FlowBlock, blockText: BlockTextReader): FlowBlockSummary => {
+const summarizeBlock = (
+  block: FlowBlock,
+  blockText: BlockTextReader,
+): FlowBlockSummary => {
   if (block.kind === "paragraph") {
     return {
       type: "paragraph",
@@ -155,7 +163,11 @@ type SummarizeCellOptions = {
   blockText: BlockTextReader;
 };
 
-const summarizeCell = ({ cell, cellIndex, blockText }: SummarizeCellOptions): TableCellSummary => ({
+const summarizeCell = ({
+  cell,
+  cellIndex,
+  blockText,
+}: SummarizeCellOptions): TableCellSummary => ({
   cellIndex,
   cellId: cell.id,
   text: truncate(cell.blocks.map(blockText).join(" ")),
@@ -222,7 +234,9 @@ const visitTable = ({ table, path, context }: VisitTableOptions): void => {
       return;
     }
 
-    const text = row.cells.map((cell) => cell.blocks.map(context.blockText).join(" ")).join(" ");
+    const text = row.cells
+      .map((cell) => cell.blocks.map(context.blockText).join(" "))
+      .join(" ");
     if (context.matchesText(normalizedSearchText(text))) {
       context.matches.push({
         type: "tableRow",
@@ -253,13 +267,19 @@ type TraceFlowBlocksOptions = {
   limit: number;
 };
 
-export const traceFlowBlocks = ({ blocks, query, limit }: TraceFlowBlocksOptions): FlowMatch[] => {
+export const traceFlowBlocks = ({
+  blocks,
+  query,
+  limit,
+}: TraceFlowBlocksOptions): FlowMatch[] => {
   const matches: FlowMatch[] = [];
   visitBlocks({
     blocks,
     path: ["blocks"],
     context: {
-      matchesText: createLiteralSearchScope().createLiteralSearch(normalizedSearchText(query)),
+      matchesText: createLiteralSearchScope().createLiteralSearch(
+        normalizedSearchText(query),
+      ),
       limit,
       matches,
       blockText: createBlockTextReader(),

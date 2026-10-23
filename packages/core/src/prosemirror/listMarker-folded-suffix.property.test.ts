@@ -2,11 +2,16 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 import fc from "fast-check";
+
 import { paragraphNumberingReference } from "@stll/docx-core/model";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
-import { listRenderingAttrPatch } from "./listRenderingAttrs";
 import { CLEARED_LIST_RENDERING_ATTRS } from "./listMarker";
+import { listRenderingAttrPatch } from "./listRenderingAttrs";
 import { schema } from "./schema";
 
 test("folded LISTNUM display text stays literal while numbered and symbol-font bullet markers resolve", () => {
@@ -25,8 +30,10 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
       ({ suffix, start, kind, templateKind }) => {
         const bullet = kind === "bullet";
         const decimalTemplate = templateKind === "literal" ? "Article" : "%1.";
-        const decimalMarker = templateKind === "literal" ? "Article" : `${start}.`;
-        const nextDecimalMarker = templateKind === "literal" ? "Article" : `${start + 1}.`;
+        const decimalMarker =
+          templateKind === "literal" ? "Article" : `${start}.`;
+        const nextDecimalMarker =
+          templateKind === "literal" ? "Article" : `${start + 1}.`;
         const markerTemplate = bullet ? "\uF0B7" : decimalTemplate;
         const baseMarker = bullet ? "•" : decimalMarker;
         const rendering = {
@@ -37,7 +44,11 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
           markerTemplate,
           levelStarts: [start],
           ...(bullet
-            ? { markerFormatting: { fontFamily: { ascii: "Symbol", hAnsi: "Symbol" } } }
+            ? {
+                markerFormatting: {
+                  fontFamily: { ascii: "Symbol", hAnsi: "Symbol" },
+                },
+              }
             : {}),
         };
         const numPr = paragraphNumberingReference({ numId: 1, ilvl: 0 });
@@ -49,10 +60,14 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
               ...listRenderingAttrPatch({
                 ...rendering,
                 marker:
-                  templateKind === "cleared" ? `${baseMarker}\t${suffix}` : `outdated\t${suffix}`,
+                  templateKind === "cleared"
+                    ? `${baseMarker}\t${suffix}`
+                    : `outdated\t${suffix}`,
                 foldedMarkerSuffix: suffix,
               }),
-              ...(templateKind === "cleared" ? { listMarkerTemplate: null } : {}),
+              ...(templateKind === "cleared"
+                ? { listMarkerTemplate: null }
+                : {}),
             },
             schema.text("first"),
           ),
@@ -72,7 +87,10 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
         const markers = toFlowBlocks(doc)
           .filter((block) => block.kind === "paragraph")
           .map((block) => block.attrs?.listMarker);
-        expect(markers).toEqual([`${baseMarker}\t${suffix}`, bullet ? "•" : nextDecimalMarker]);
+        expect(markers).toEqual([
+          `${baseMarker}\t${suffix}`,
+          bullet ? "•" : nextDecimalMarker,
+        ]);
       },
     ),
     {

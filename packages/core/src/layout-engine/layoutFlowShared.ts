@@ -12,5 +12,7 @@ export function projectedFootnoteReserveGrowth(
   additionalDemandHeight: number,
 ): number {
   const projectedDemand = state.footnoteDemandHeight + additionalDemandHeight;
-  return Math.max(state.footnoteHeightFloor, projectedDemand) - state.footnoteHeight;
+  return (
+    Math.max(state.footnoteHeightFloor, projectedDemand) - state.footnoteHeight
+  );
 }

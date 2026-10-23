@@ -32,7 +32,9 @@ describe("ShapeExtension.buildRightBracePaths", () => {
       { name: "adj1", formula: "val 90000" },
       { name: "adj2", formula: "val 62500" },
     ];
-    expect(buildRightBracePaths(100, 80, oversized).outline).toContain("L 50 35");
+    expect(buildRightBracePaths(100, 80, oversized).outline).toContain(
+      "L 50 35",
+    );
   });
 });
 
@@ -52,7 +54,9 @@ describe("ShapeExtension.sanitizeColor", () => {
   });
 
   test("accepts the documented var(--token, #hex) form", () => {
-    expect(sanitizeColor("var(--doc-shape-outline)")).toBe("var(--doc-shape-outline)");
+    expect(sanitizeColor("var(--doc-shape-outline)")).toBe(
+      "var(--doc-shape-outline)",
+    );
     expect(sanitizeColor("var(--doc-shape-outline, #000000)")).toBe(
       "var(--doc-shape-outline, #000000)",
     );
@@ -172,7 +176,9 @@ describe("ShapeExtension.parseGradientStops", () => {
       { position: 50_000, color: `#000"/><script>` },
       { position: 100_000, color: ["java", "script:alert(1)"].join("") },
     ]);
-    expect(parseGradientStops(raw)).toEqual([{ position: 0, color: "#00ff00" }]);
+    expect(parseGradientStops(raw)).toEqual([
+      { position: 0, color: "#00ff00" },
+    ]);
   });
 
   test("returns an empty array on malformed JSON or wrong shape", () => {
@@ -180,18 +186,24 @@ describe("ShapeExtension.parseGradientStops", () => {
     expect(parseGradientStops("")).toEqual([]);
     expect(parseGradientStops("not json")).toEqual([]);
     expect(parseGradientStops('{"position":0,"color":"#000000"}')).toEqual([]);
-    expect(parseGradientStops(JSON.stringify([{ position: "0", color: "#000" }]))).toEqual([]);
+    expect(
+      parseGradientStops(JSON.stringify([{ position: "0", color: "#000" }])),
+    ).toEqual([]);
     expect(parseGradientStops(JSON.stringify([{ position: 0 }]))).toEqual([]);
   });
 });
 
 describe("ShapeExtension.buildShapePolygonPoints", () => {
   test("triangle uses isosceles points", () => {
-    expect(buildShapePolygonPoints("triangle", 100, 80)).toBe("50,0 100,80 0,80");
+    expect(buildShapePolygonPoints("triangle", 100, 80)).toBe(
+      "50,0 100,80 0,80",
+    );
   });
 
   test("diamond uses 4-point rhombus", () => {
-    expect(buildShapePolygonPoints("diamond", 100, 80)).toBe("50,0 100,40 50,80 0,40");
+    expect(buildShapePolygonPoints("diamond", 100, 80)).toBe(
+      "50,0 100,40 50,80 0,40",
+    );
   });
 
   test("rightArrow has 7 points with head on the right edge", () => {

@@ -1,6 +1,12 @@
-import type { SaveDiagnosticOptions } from "../saveDiagnostics";
-import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
-import { buildDocumentBlockReplay, canReplayDocumentSource } from "../storyBlockReplay";
+import { escapeXmlAttribute } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
+
+import type {
+  BlockContent,
+  Document,
+  DocumentBackground,
+  DocumentBody,
+} from "../../types/document";
 /**
  * Document Serializer - Serialize complete document.xml
  *
@@ -13,20 +19,20 @@ import { buildDocumentBlockReplay, canReplayDocumentSource } from "../storyBlock
  * - Document body: w:body
  * - Section properties: w:sectPr
  */
-
-import type {
-  Document,
-  DocumentBackground,
-  DocumentBody,
-  BlockContent,
-} from "../../types/document";
-import { escapeXmlAttribute } from "@stll/docx-core";
-import { themeColorToken } from "@stll/docx-core/model";
-import { serializeBlockSdt } from "./blockSdtSerializer";
+import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
+import type { SaveDiagnosticOptions } from "../saveDiagnostics";
+import {
+  buildDocumentBlockReplay,
+  canReplayDocumentSource,
+} from "../storyBlockReplay";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
+import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
-import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
+import {
+  type OoxmlNamespacePrefix,
+  serializePartElement,
+} from "./partNamespaces";
 import { resetAutoIdCounter } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -100,7 +106,9 @@ function serializeBodyContent(content: BlockContent[]): string {
 }
 
 /** Serialize the optional page background that precedes `w:body`. */
-function serializeDocumentBackground(background: DocumentBackground | undefined): string {
+function serializeDocumentBackground(
+  background: DocumentBackground | undefined,
+): string {
   if (background === undefined) {
     return "";
   }
@@ -112,16 +120,23 @@ function serializeDocumentBackground(background: DocumentBackground | undefined)
     attributes.push(`w:color="${escapeXmlAttribute(background.color.rgb)}"`);
   }
   if (background.themeColor !== undefined) {
-    attributes.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(background.themeColor))}"`);
+    attributes.push(
+      `w:themeColor="${escapeXmlAttribute(themeColorToken(background.themeColor))}"`,
+    );
   }
   if (background.themeTint !== undefined) {
-    attributes.push(`w:themeTint="${escapeXmlAttribute(background.themeTint)}"`);
+    attributes.push(
+      `w:themeTint="${escapeXmlAttribute(background.themeTint)}"`,
+    );
   }
   if (background.themeShade !== undefined) {
-    attributes.push(`w:themeShade="${escapeXmlAttribute(background.themeShade)}"`);
+    attributes.push(
+      `w:themeShade="${escapeXmlAttribute(background.themeShade)}"`,
+    );
   }
 
-  const attributeText = attributes.length === 0 ? "" : ` ${attributes.join(" ")}`;
+  const attributeText =
+    attributes.length === 0 ? "" : ` ${attributes.join(" ")}`;
   const drawing = background.drawing?.rawXml;
   return drawing === undefined
     ? `<w:background${attributeText}/>`
@@ -172,7 +187,8 @@ export type DocumentBodyAuthorityOptions = {
 export function serializeDocument(
   doc: Document,
   sourceBindings?: ReadonlyMap<string, string>,
-  source?: SaveDiagnosticOptions & DocumentBodyAuthorityOptions & { xml?: string | undefined },
+  source?: SaveDiagnosticOptions &
+    DocumentBodyAuthorityOptions & { xml?: string | undefined },
 ): string {
   // Reset for every pass, including complete source replay.
   resetAutoIdCounter();
@@ -181,7 +197,8 @@ export function serializeDocument(
       ? getDocumentSourceBaseline(doc)
       : ({ type: "missing" } as const);
   const sourceMatches =
-    baseline.type === "captured" && (source?.xml === undefined || source.xml === baseline.xml);
+    baseline.type === "captured" &&
+    (source?.xml === undefined || source.xml === baseline.xml);
   // Exact snapshots can replay the trusted part without generating or scanning XML.
   // A different property order only misses this optimization; block replay still applies.
   if (
@@ -189,7 +206,8 @@ export function serializeDocument(
     sourceMatches &&
     JSON.stringify(doc.package.document) === baseline.fingerprint
   ) {
-    if (replayableDocumentSources.get(baseline.body) === baseline.xml) return baseline.xml;
+    if (replayableDocumentSources.get(baseline.body) === baseline.xml)
+      return baseline.xml;
     if (canReplayDocumentSource(baseline.xml, baseline.body)) {
       replayableDocumentSources.set(baseline.body, baseline.xml);
       return baseline.xml;
@@ -219,7 +237,10 @@ export function serializeDocument(
     });
     if (replay !== null) return replay;
   }
-  source?.onDiagnostic?.({ type: "sourceReplayMismatch", part: "word/document.xml" });
+  source?.onDiagnostic?.({
+    type: "sourceReplayMismatch",
+    part: "word/document.xml",
+  });
   return serializedXml;
 }
 
@@ -269,7 +290,8 @@ export function getDocumentContentCount(doc: Document): number {
  * Get paragraph count in document
  */
 export function getDocumentParagraphCount(doc: Document): number {
-  return doc.package.document.content.filter((b) => b.type === "paragraph").length;
+  return doc.package.document.content.filter((b) => b.type === "paragraph")
+    .length;
 }
 
 /**
@@ -295,7 +317,9 @@ export function createEmptyDocument(): Document {
 /**
  * Create a simple document with text content
  */
-export function createSimpleDocument(paragraphs: { text: string; styleId?: string }[]): Document {
+export function createSimpleDocument(
+  paragraphs: { text: string; styleId?: string }[],
+): Document {
   return {
     package: {
       document: {

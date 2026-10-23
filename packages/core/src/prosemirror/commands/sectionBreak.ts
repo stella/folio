@@ -12,11 +12,14 @@ import type { SectionProperties } from "../../types/document";
 import { markSectionBreakRemoval } from "../extensions/features/ParagraphChangeTrackerExtension";
 import {
   mintSectionProperties,
-  sectionPropertiesOf,
   type SectionBreakType,
+  sectionPropertiesOf,
 } from "../sectionCarrier";
 
-type InsertableSectionBreak = Extract<SectionBreakType, "nextPage" | "continuous">;
+type InsertableSectionBreak = Extract<
+  SectionBreakType,
+  "nextPage" | "continuous"
+>;
 
 /** The position of a paragraph's mark: the end of the content it closes. */
 type SectionEndingMark = {
@@ -84,7 +87,10 @@ const reconcileSectionEndingMarks = (
     }
   }
 
-  const corrections: { position: number; properties: SectionProperties | null }[] = [];
+  const corrections: {
+    position: number;
+    properties: SectionProperties | null;
+  }[] = [];
   transaction.doc.descendants((node, position) => {
     if (node.type.name !== "paragraph") {
       return true;
@@ -151,9 +157,13 @@ export const keepSectionBreaksOnSurvivingMarks =
  * What the section record of a paragraph in the selection becomes. Called once
  * per record the selection holds, and once per paragraph that holds none.
  */
-type SectionRecordRewrite = (current: SectionProperties | null) => SectionProperties | null;
+type SectionRecordRewrite = (
+  current: SectionProperties | null,
+) => SectionProperties | null;
 
-const selectedParagraphs = (state: EditorState): { position: number; node: PMNode }[] => {
+const selectedParagraphs = (
+  state: EditorState,
+): { position: number; node: PMNode }[] => {
   const paragraphs: { position: number; node: PMNode }[] = [];
   const { $from, $to } = state.selection;
   state.doc.nodesBetween($from.pos, $to.pos, (node, position) => {
@@ -167,15 +177,21 @@ const selectedParagraphs = (state: EditorState): { position: number; node: PMNod
 };
 
 /** Section endpoints are valid only on paragraphs directly owned by the document body. */
-export const sectionBreakSelectionIsTopLevel = (state: EditorState): boolean => {
+export const sectionBreakSelectionIsTopLevel = (
+  state: EditorState,
+): boolean => {
   let found = false;
   let topLevel = true;
-  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, position) => {
-    if (node.type.name !== "paragraph") return true;
-    found = true;
-    if (state.doc.resolve(position).depth !== 0) topLevel = false;
-    return false;
-  });
+  state.doc.nodesBetween(
+    state.selection.from,
+    state.selection.to,
+    (node, position) => {
+      if (node.type.name !== "paragraph") return true;
+      found = true;
+      if (state.doc.resolve(position).depth !== 0) topLevel = false;
+      return false;
+    },
+  );
   return found && topLevel;
 };
 
@@ -209,7 +225,10 @@ const rewriteSelectedSectionRecords =
     }
     const selectedPositions = new Set(selected.map(({ position }) => position));
 
-    const corrections: { position: number; properties: SectionProperties | null }[] = [];
+    const corrections: {
+      position: number;
+      properties: SectionProperties | null;
+    }[] = [];
     state.doc.descendants((node, position) => {
       if (node.type.name !== "paragraph") {
         return true;
@@ -249,7 +268,9 @@ const rewriteSelectedSectionRecords =
         }
       }
       // Removing a break is the command's purpose: the save is told so.
-      dispatch(markSectionBreakRemoval(transaction, state.doc).scrollIntoView());
+      dispatch(
+        markSectionBreakRemoval(transaction, state.doc).scrollIntoView(),
+      );
     }
     return true;
   };
@@ -265,7 +286,9 @@ const rewriteSelectedSectionRecords =
  */
 export const setSectionBreakType = (breakType: SectionBreakType): Command =>
   rewriteSelectedSectionRecords((current) =>
-    current === null ? mintSectionProperties(breakType) : { ...current, sectionStart: breakType },
+    current === null
+      ? mintSectionProperties(breakType)
+      : { ...current, sectionStart: breakType },
   );
 
 /**
@@ -278,7 +301,8 @@ export const setSectionBreakType = (breakType: SectionBreakType): Command =>
  * to be merged into the following record, because the following record already
  * states the whole of the section it heads.
  */
-export const removeSectionBreakAtSelection: Command = rewriteSelectedSectionRecords(() => null);
+export const removeSectionBreakAtSelection: Command =
+  rewriteSelectedSectionRecords(() => null);
 
 /**
  * Insert a section break at the current cursor position.
@@ -290,7 +314,9 @@ export const removeSectionBreakAtSelection: Command = rewriteSelectedSectionReco
  * section). Content after the cursor therefore flows into the new section —
  * onto a new page for `nextPage`, or in place for `continuous`.
  */
-function insertSectionBreakAtCursor(breakType: InsertableSectionBreak): Command {
+function insertSectionBreakAtCursor(
+  breakType: InsertableSectionBreak,
+): Command {
   return (state, dispatch) => {
     const { schema } = state;
     const paragraphType = schema.nodes["paragraph"];
@@ -334,7 +360,10 @@ function insertSectionBreakAtCursor(breakType: InsertableSectionBreak): Command 
         // `$from.pos` would land on a block boundary, which is not a valid
         // `TextSelection` position and would throw.
         const pos = $from.pos;
-        tr.insert(pos, paragraphType.create({ _sectionProperties: sectionProperties }));
+        tr.insert(
+          pos,
+          paragraphType.create({ _sectionProperties: sectionProperties }),
+        );
         cursorPos = pos + 1;
       }
 
@@ -350,10 +379,12 @@ function insertSectionBreakAtCursor(breakType: InsertableSectionBreak): Command 
  * Insert a "next page" section break at the cursor — starts a new section on a
  * new page.
  */
-export const insertSectionBreakNextPage: Command = insertSectionBreakAtCursor("nextPage");
+export const insertSectionBreakNextPage: Command =
+  insertSectionBreakAtCursor("nextPage");
 
 /**
  * Insert a "continuous" section break at the cursor — starts a new section on
  * the same page.
  */
-export const insertSectionBreakContinuous: Command = insertSectionBreakAtCursor("continuous");
+export const insertSectionBreakContinuous: Command =
+  insertSectionBreakAtCursor("continuous");

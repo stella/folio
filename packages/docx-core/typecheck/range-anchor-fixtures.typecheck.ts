@@ -1,6 +1,9 @@
 import type { ParagraphContent } from "../src/model/document";
 
-type RangeStart = Extract<ParagraphContent["type"], "bookmarkStart" | `${string}RangeStart`>;
+type RangeStart = Extract<
+  ParagraphContent["type"],
+  "bookmarkStart" | `${string}RangeStart`
+>;
 type RangeEnd<Start extends RangeStart> = Start extends "bookmarkStart"
   ? "bookmarkEnd"
   : Start extends `${infer Prefix}RangeStart`
@@ -16,7 +19,12 @@ type RangeFixtureFactories = {
 /** Every source range class supplies its matching endpoints and authored metadata. */
 export const RANGE_ANCHOR_FIXTURE_FACTORIES = {
   bookmarkStart: () => [
-    { type: "bookmarkStart", id: 11, name: "target", displacedByCustomXml: "next" },
+    {
+      type: "bookmarkStart",
+      id: 11,
+      name: "target",
+      displacedByCustomXml: "next",
+    },
     { type: "bookmarkEnd", id: 11, displacedByCustomXml: "prev" },
   ],
   commentRangeStart: () => [

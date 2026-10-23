@@ -35,8 +35,8 @@ const changeDeclarations = (): ChangeDeclaration[] => {
     declarations.push({
       name,
       body,
-      discriminators: [...body.matchAll(/^\s*type: "(\w+)"/gm)].flatMap(([, kind]) =>
-        kind === undefined ? [] : [kind],
+      discriminators: [...body.matchAll(/^\s*type: "(\w+)"/gm)].flatMap(
+        ([, kind]) => (kind === undefined ? [] : [kind]),
       ),
       carriesPropertyChangeInfo: /^\s*info: PropertyChangeInfo;/m.test(body),
     });
@@ -50,13 +50,18 @@ const changeDeclarations = (): ChangeDeclaration[] => {
  * union over them, or an entry here, never an omission.
  */
 const STRUCTURAL_CHANGE_DECLARATIONS: Record<string, string> = {
-  TrackedRunChange: "a union of run wrappers that add or remove content, not a property snapshot",
-  ParagraphMarkChange: "a paragraph break that was added or removed, keyed by `kind`",
+  TrackedRunChange:
+    "a union of run wrappers that add or remove content, not a property snapshot",
+  ParagraphMarkChange:
+    "a paragraph break that was added or removed, keyed by `kind`",
 };
 
 const UNION_DECLARATION = "PropertyChange";
 
-type TableOnlyProperty = Extract<keyof TablePropertyExceptionFormatting, "styleId" | "gridChange">;
+type TableOnlyProperty = Extract<
+  keyof TablePropertyExceptionFormatting,
+  "styleId" | "gridChange"
+>;
 const TABLE_PROPERTY_EXCEPTIONS_EXCLUDE_TABLE_ONLY_FIELDS: TableOnlyProperty extends never
   ? true
   : false = true;
@@ -66,10 +71,12 @@ describe("property revision census", () => {
     const declared = changeDeclarations();
     expect(declared.length).toBeGreaterThan(0);
 
-    const revisions = declared.filter(({ carriesPropertyChangeInfo }) => carriesPropertyChangeInfo);
-    expect(new Set(revisions.flatMap(({ discriminators }) => discriminators))).toEqual(
-      new Set(Object.keys(PROPERTY_REVISION_KINDS)),
+    const revisions = declared.filter(
+      ({ carriesPropertyChangeInfo }) => carriesPropertyChangeInfo,
     );
+    expect(
+      new Set(revisions.flatMap(({ discriminators }) => discriminators)),
+    ).toEqual(new Set(Object.keys(PROPERTY_REVISION_KINDS)));
   });
 
   test("the `PropertyChange` union names every property revision", () => {
@@ -78,7 +85,9 @@ describe("property revision census", () => {
     if (!union) {
       throw new Error(`the model no longer declares \`${UNION_DECLARATION}\``);
     }
-    const members = new Set([...union.body.matchAll(/\|\s*(\w+);?/g)].map(([, member]) => member));
+    const members = new Set(
+      [...union.body.matchAll(/\|\s*(\w+);?/g)].map(([, member]) => member),
+    );
     expect(members).toEqual(
       new Set(
         declared

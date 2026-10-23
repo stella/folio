@@ -48,7 +48,11 @@ type EmptyParagraphOptions = {
   lineHeight?: number;
 };
 
-function emptyParagraph({ id, attrs = {}, lineHeight = 20 }: EmptyParagraphOptions): {
+function emptyParagraph({
+  id,
+  attrs = {},
+  lineHeight = 20,
+}: EmptyParagraphOptions): {
   block: ParagraphBlock;
   measure: ParagraphMeasure;
 } {
@@ -134,10 +138,14 @@ describe("continuous section break geometry", () => {
     expect(result.pages).toHaveLength(1);
     const page = result.pages[0];
     const firstColumn = page?.fragments.filter(
-      (fragment) => fragment.kind === "paragraph" && ["first", "second"].includes(fragment.blockId),
+      (fragment) =>
+        fragment.kind === "paragraph" &&
+        ["first", "second"].includes(fragment.blockId),
     );
     const secondColumn = page?.fragments.filter(
-      (fragment) => fragment.kind === "paragraph" && ["third", "fourth"].includes(fragment.blockId),
+      (fragment) =>
+        fragment.kind === "paragraph" &&
+        ["third", "fourth"].includes(fragment.blockId),
     );
     expect(firstColumn?.map(({ x }) => x)).toEqual([50, 50]);
     expect(secondColumn?.map(({ x }) => x)).toEqual([410, 410]);
@@ -217,11 +225,12 @@ describe("continuous section break geometry", () => {
     });
 
     expect(result.pages).toHaveLength(2);
-    expect(result.pages[0]?.fragments.map((fragment) => fragment.blockId)).toEqual([
-      "first",
-      "second",
-    ]);
-    expect(result.pages[1]?.fragments.map((fragment) => fragment.blockId)).toEqual(["third"]);
+    expect(
+      result.pages[0]?.fragments.map((fragment) => fragment.blockId),
+    ).toEqual(["first", "second"]);
+    expect(
+      result.pages[1]?.fragments.map((fragment) => fragment.blockId),
+    ).toEqual(["third"]);
   });
 
   test("a hard break reuses the blank page opened by a preceding section boundary", () => {
@@ -308,7 +317,10 @@ describe("continuous section break geometry", () => {
     );
 
     expect(result.pages).toHaveLength(2);
-    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["carrier", "body"]);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "carrier",
+      "body",
+    ]);
   });
 
   test("an ordinary empty paragraph preserves a blank page before a section boundary", () => {
@@ -337,8 +349,12 @@ describe("continuous section break geometry", () => {
     );
 
     expect(result.pages).toHaveLength(3);
-    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["visible-empty"]);
-    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "visible-empty",
+    ]);
+    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "body",
+    ]);
   });
 
   test("pageBreakBefore advances ordinals on a page opened by a section boundary", () => {
@@ -367,7 +383,9 @@ describe("continuous section break geometry", () => {
       sectionPageNumber: 2,
       headerFooterRefs: { titlePg: true, footerDefault: "body-footer" },
     });
-    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "body",
+    ]);
   });
 
   test("a hard-break page is not coalesced through a continuous section", () => {
@@ -395,7 +413,9 @@ describe("continuous section break geometry", () => {
     );
 
     expect(result.pages).toHaveLength(3);
-    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
+    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "body",
+    ]);
   });
 
   test("a column break consumes section-break coalescence before a hard break", () => {
@@ -425,14 +445,17 @@ describe("continuous section break geometry", () => {
 
     expect(result.pages).toHaveLength(3);
     expect(result.pages[1]?.fragments).toHaveLength(0);
-    expect(result.pages[2]?.fragments.map(({ blockId, x }) => ({ blockId, x }))).toEqual([
-      { blockId: "body", x: 50 },
-    ]);
+    expect(
+      result.pages[2]?.fragments.map(({ blockId, x }) => ({ blockId, x })),
+    ).toEqual([{ blockId: "body", x: 50 }]);
   });
 
   test("visible empty-paragraph decoration consumes section-break coalescence", () => {
     const cover = paragraph("cover", 100);
-    const decorated = emptyParagraph({ id: "decorated", attrs: { shading: "#FFFF00" } });
+    const decorated = emptyParagraph({
+      id: "decorated",
+      attrs: { shading: "#FFFF00" },
+    });
     const body = paragraph("body", 100);
     const result = layoutDocument(
       [
@@ -456,8 +479,12 @@ describe("continuous section break geometry", () => {
     );
 
     expect(result.pages).toHaveLength(3);
-    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["decorated"]);
-    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "decorated",
+    ]);
+    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "body",
+    ]);
   });
 
   test("does not apply final section config to a preceding omitted transition", () => {
@@ -473,8 +500,12 @@ describe("continuous section break geometry", () => {
     );
 
     expect(result.pages).toHaveLength(2);
-    expect(result.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual(["first"]);
-    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["second"]);
+    expect(result.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "first",
+    ]);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "second",
+    ]);
   });
 
   test("content after a continuous column section resumes below its tallest column", () => {
@@ -488,7 +519,10 @@ describe("continuous section break geometry", () => {
     };
     const first = paragraph("first", 100);
     const second = paragraph("second", 100);
-    const columnBreak: ColumnBreakBlock = { kind: "columnBreak", id: "column-break" };
+    const columnBreak: ColumnBreakBlock = {
+      kind: "columnBreak",
+      id: "column-break",
+    };
     const third = paragraph("third", 50);
     const secondBreak: SectionBreakBlock = {
       kind: "sectionBreak",
@@ -528,7 +562,8 @@ describe("continuous section break geometry", () => {
     });
 
     const outroFragment = result.pages[0]?.fragments.find(
-      (fragment) => fragment.kind === "paragraph" && fragment.blockId === "outro",
+      (fragment) =>
+        fragment.kind === "paragraph" && fragment.blockId === "outro",
     );
     expect(outroFragment?.y).toBe(350);
   });
@@ -545,7 +580,12 @@ describe("continuous section break geometry", () => {
     const second = paragraph("b", 200);
     const third = paragraph("c", 800);
 
-    const blocks: FlowBlock[] = [first.block, sectionBreak, second.block, third.block];
+    const blocks: FlowBlock[] = [
+      first.block,
+      sectionBreak,
+      second.block,
+      third.block,
+    ];
     const measures = [
       first.measure,
       { kind: "sectionBreak" },
@@ -584,7 +624,11 @@ describe("continuous section break geometry", () => {
     const second = paragraph("b", 200);
 
     const blocks: FlowBlock[] = [first.block, sectionBreak, second.block];
-    const measures = [first.measure, { kind: "sectionBreak" }, second.measure] as never;
+    const measures = [
+      first.measure,
+      { kind: "sectionBreak" },
+      second.measure,
+    ] as never;
 
     const result = layoutDocument(blocks, measures, {
       pageSize: { w: 800, h: 1000 },
@@ -638,7 +682,9 @@ describe("continuous section break geometry", () => {
     expect(result.pages[0]?.size).toEqual({ w: 1000, h: 800 });
     expect(result.pages[0]?.sectionIndex).toBe(1);
     expect(
-      result.pages[0]?.fragments.some((f) => f.kind === "paragraph" && f.blockId === "b"),
+      result.pages[0]?.fragments.some(
+        (f) => f.kind === "paragraph" && f.blockId === "b",
+      ),
     ).toBe(true);
   });
 
@@ -675,12 +721,16 @@ describe("continuous section break geometry", () => {
 
     expect(result.pages).toHaveLength(2);
     expect(
-      result.pages[0]?.fragments.some((f) => f.kind === "paragraph" && f.blockId === "a"),
+      result.pages[0]?.fragments.some(
+        (f) => f.kind === "paragraph" && f.blockId === "a",
+      ),
     ).toBe(true);
     expect(result.pages[1]?.size).toEqual({ w: 1000, h: 800 });
     expect(result.pages[1]?.sectionIndex).toBe(1);
     expect(
-      result.pages[1]?.fragments.some((f) => f.kind === "paragraph" && f.blockId === "b"),
+      result.pages[1]?.fragments.some(
+        (f) => f.kind === "paragraph" && f.blockId === "b",
+      ),
     ).toBe(true);
   });
 
@@ -696,7 +746,12 @@ describe("continuous section break geometry", () => {
     const second = paragraph("b", 150);
     const third = paragraph("c", 700);
 
-    const blocks: FlowBlock[] = [first.block, sectionBreak, second.block, third.block];
+    const blocks: FlowBlock[] = [
+      first.block,
+      sectionBreak,
+      second.block,
+      third.block,
+    ];
     const measures = [
       first.measure,
       { kind: "sectionBreak" },
@@ -716,7 +771,9 @@ describe("continuous section break geometry", () => {
     expect(result.pages[1]?.sectionIndex).toBe(1);
     expect(result.pages[1]?.sectionPageNumber).toBe(2);
     expect(
-      result.pages[1]?.fragments.some((f) => f.kind === "paragraph" && f.blockId === "c"),
+      result.pages[1]?.fragments.some(
+        (f) => f.kind === "paragraph" && f.blockId === "c",
+      ),
     ).toBe(true);
   });
 
@@ -734,7 +791,12 @@ describe("continuous section break geometry", () => {
 
     const result = layoutDocument(
       [first.block, sectionBreak, shared.block, next.block],
-      [first.measure, { kind: "sectionBreak" }, shared.measure, next.measure] as never,
+      [
+        first.measure,
+        { kind: "sectionBreak" },
+        shared.measure,
+        next.measure,
+      ] as never,
       {
         pageSize: { w: 800, h: 1000 },
         margins: { top: 50, right: 50, bottom: 50, left: 50 },
@@ -744,12 +806,22 @@ describe("continuous section break geometry", () => {
       },
     );
 
-    expect(result.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([1, 3]);
-    expect(result.pages[0]).toMatchObject({ sectionIndex: 0, sectionPageNumber: 1 });
-    expect(result.pages[1]).toMatchObject({ sectionIndex: 1, sectionPageNumber: 2 });
+    expect(result.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([
+      1, 3,
+    ]);
+    expect(result.pages[0]).toMatchObject({
+      sectionIndex: 0,
+      sectionPageNumber: 1,
+    });
+    expect(result.pages[1]).toMatchObject({
+      sectionIndex: 1,
+      sectionPageNumber: 2,
+    });
     expect(
       result.pages[0]?.fragments.some(
-        (fragment) => fragment.kind === "paragraph" && fragment.blockId === "shared-incoming",
+        (fragment) =>
+          fragment.kind === "paragraph" &&
+          fragment.blockId === "shared-incoming",
       ),
     ).toBe(true);
   });
@@ -781,7 +853,11 @@ describe("continuous section break geometry", () => {
         finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
         sectionHeaderFooterRefs: [
           { footerDefault: "outgoing-footer" },
-          { titlePg: true, footerFirst: "first-footer", footerDefault: "default-footer" },
+          {
+            titlePg: true,
+            footerFirst: "first-footer",
+            footerDefault: "default-footer",
+          },
         ],
       },
     );

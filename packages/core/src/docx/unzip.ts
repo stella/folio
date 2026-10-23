@@ -1,4 +1,5 @@
-import { encodeUtf8 } from "../utils/textEncoding";
+import JSZip from "jszip";
+
 import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * DOCX Unzipper
@@ -26,9 +27,8 @@ import { writeZipPart } from "@stll/docx-core/zip";
  * - docProps/app.xml - Application properties
  */
 
-import JSZip from "jszip";
-
 import { bytesToDataUrl } from "../utils/base64";
+import { encodeUtf8 } from "../utils/textEncoding";
 import {
   compressionRatioLimitFor,
   countCentralDirectoryRecords,
@@ -36,14 +36,17 @@ import {
   DOCX_MAX_COMPRESSION_RATIO,
   exceedsCompressionRatio,
   getZipEntrySizes,
-  inflateEntryWithinLimits,
-  isStoredZipEntry,
   type InflateEntryResult,
+  inflateEntryWithinLimits,
   type InflationBudget,
   type InflationLimit,
+  isStoredZipEntry,
 } from "./archiveInflation";
+import {
+  detectDocxContainerType,
+  DOCX_CONTAINER_TYPES,
+} from "./encryption/containerFormat";
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
-import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
 import { detectRasterMimeType, RASTER_MIME_TYPES } from "./rasterMime";
 import { decodeXmlBytes } from "./xmlEncoding";
 import {
@@ -168,7 +171,9 @@ const PARSED_XML_PARTS = new Set([
 const shouldExtractXmlPart = (path: string): boolean =>
   PARSED_XML_PARTS.has(path) || path.startsWith("word/");
 
-export type DocxUnzipOptions = Partial<Omit<DocxUnzipLimits, "allowedMediaMimeTypes">> & {
+export type DocxUnzipOptions = Partial<
+  Omit<DocxUnzipLimits, "allowedMediaMimeTypes">
+> & {
   allowedMediaMimeTypes?: Iterable<string>;
   /** Extract every XML part into allXml instead of only parts used by the parser. */
   extractAllXml?: boolean;
@@ -327,7 +332,10 @@ export async function unzipDocx(
   // file; its job is to refuse an archive whose records would have to be
   // materialized before the exact count could be taken.
   const maxRecords = limits.maxFiles * 2;
-  if (countCentralDirectoryRecords(new Uint8Array(zipBuffer), maxRecords) > maxRecords) {
+  if (
+    countCentralDirectoryRecords(new Uint8Array(zipBuffer), maxRecords) >
+    maxRecords
+  ) {
     throw new DocxSecurityError("DOCX file contains too many entries");
   }
   const loaded = await loadDocxZip(zipBuffer, limits.maxFiles);
@@ -373,7 +381,9 @@ export async function unzipDocx(
   };
 
   let totalUncompressedBytes = 0;
-  const inflationBudget = createInflationBudget(limits.maxTotalUncompressedBytes);
+  const inflationBudget = createInflationBudget(
+    limits.maxTotalUncompressedBytes,
+  );
   const extractionTasks: (() => Promise<ExtractedEntry | null>)[] = [];
 
   // A part this parser never reads is still inflated by a later save or a
@@ -386,7 +396,12 @@ export async function unzipDocx(
       return;
     }
     extractionTasks.push(async () => {
-      await verifyEntryWithinLimits({ file, path, limits, budget: inflationBudget });
+      await verifyEntryWithinLimits({
+        file,
+        path,
+        limits,
+        budget: inflationBudget,
+      });
       return null;
     });
   };
@@ -397,7 +412,10 @@ export async function unzipDocx(
     await inflateEntryWithinLimits({
       entry: file,
       maxEntryBytes,
-      maxCompressionRatio: compressionRatioLimitFor(file.name, limits.maxCompressionRatio),
+      maxCompressionRatio: compressionRatioLimitFor(
+        file.name,
+        limits.maxCompressionRatio,
+      ),
       budget: inflationBudget,
     });
 
@@ -414,11 +432,14 @@ export async function unzipDocx(
     // not model still passes through the host's memory on the way out, and a
     // package that inflates past the ceiling has to be refused whether or not
     // anything here looks inside it.
-    const { compressedBytes, uncompressedBytes: declaredSize } = getZipEntrySizes(file);
+    const { compressedBytes, uncompressedBytes: declaredSize } =
+      getZipEntrySizes(file);
     if (declaredSize !== null) {
       totalUncompressedBytes += declaredSize;
       if (totalUncompressedBytes > limits.maxTotalUncompressedBytes) {
-        throw new DocxSecurityError("DOCX file expands beyond the maximum allowed size");
+        throw new DocxSecurityError(
+          "DOCX file expands beyond the maximum allowed size",
+        );
       }
       if (
         exceedsCompressionRatio({
@@ -427,7 +448,9 @@ export async function unzipDocx(
           maxRatio: compressionRatioLimitFor(path, limits.maxCompressionRatio),
         })
       ) {
-        throw new DocxSecurityError(`DOCX entry exceeds the maximum compression ratio: ${path}`);
+        throw new DocxSecurityError(
+          `DOCX entry exceeds the maximum compression ratio: ${path}`,
+        );
       }
     }
 
@@ -450,7 +473,12 @@ export async function unzipDocx(
         if (!result.ok) {
           throw inflationLimitError(result.limit, path);
         }
-        return { type: "xml", path, lowerPath, content: decodeXmlBytes(result.bytes) };
+        return {
+          type: "xml",
+          path,
+          lowerPath,
+          content: decodeXmlBytes(result.bytes),
+        };
       });
     } else if (lowerPath.startsWith("word/media/")) {
       // Media files (images, etc.)
@@ -488,7 +516,12 @@ export async function unzipDocx(
         ) {
           return null;
         }
-        return { type: "media", path, mimeType: effectiveMimeType, content: binaryContent };
+        return {
+          type: "media",
+          path,
+          mimeType: effectiveMimeType,
+          content: binaryContent,
+        };
       });
     } else if (lowerPath.startsWith("word/fonts/")) {
       // Embedded fonts are optional for editing and original ZIP preservation.
@@ -519,11 +552,16 @@ export async function unzipDocx(
       maxRatio: limits.maxCompressionRatio,
     })
   ) {
-    throw new DocxSecurityError("DOCX file exceeds the maximum compression ratio");
+    throw new DocxSecurityError(
+      "DOCX file exceeds the maximum compression ratio",
+    );
   }
 
   const xmlBudget = createXmlPackageBudget();
-  for (const extracted of await runExtractionTasks(extractionTasks, inflationBudget)) {
+  for (const extracted of await runExtractionTasks(
+    extractionTasks,
+    inflationBudget,
+  )) {
     if (!extracted) {
       continue;
     }
@@ -555,7 +593,11 @@ export const replaceRawDocxXmlParts = async (
       lowerPath: path.toLowerCase(),
       content: xmlContent,
     });
-    writeZipPart({ zip: content.originalZip, path, data: encodeUtf8(xmlContent) });
+    writeZipPart({
+      zip: content.originalZip,
+      path,
+      data: encodeUtf8(xmlContent),
+    });
     identitiesChanged = true;
   }
   if (identitiesChanged) {
@@ -581,7 +623,11 @@ export const replaceRawDocxXmlParts = async (
  */
 function assignXmlContent(
   content: RawDocxContent,
-  { path, lowerPath, content: xmlContent }: Extract<ExtractedEntry, { type: "xml" }>,
+  {
+    path,
+    lowerPath,
+    content: xmlContent,
+  }: Extract<ExtractedEntry, { type: "xml" }>,
   limits: DocxUnzipLimits,
   budget: XmlPackageBudget,
 ): void {
@@ -592,12 +638,21 @@ function assignXmlContent(
     budget,
   });
 
-  indexXmlContent(content, { type: "xml", path, lowerPath, content: xmlContent });
+  indexXmlContent(content, {
+    type: "xml",
+    path,
+    lowerPath,
+    content: xmlContent,
+  });
 }
 
 const indexXmlContent = (
   content: RawDocxContent,
-  { path, lowerPath, content: xmlContent }: Extract<ExtractedEntry, { type: "xml" }>,
+  {
+    path,
+    lowerPath,
+    content: xmlContent,
+  }: Extract<ExtractedEntry, { type: "xml" }>,
 ): void => {
   content.allXml.set(path, xmlContent);
 
@@ -646,18 +701,29 @@ const indexXmlContent = (
   }
 };
 
-function inflationLimitError(limit: InflationLimit, path: string): DocxSecurityError {
+function inflationLimitError(
+  limit: InflationLimit,
+  path: string,
+): DocxSecurityError {
   switch (limit) {
     case "declared-size":
-      return new DocxSecurityError(`DOCX entry inflates past its declared size: ${path}`);
+      return new DocxSecurityError(
+        `DOCX entry inflates past its declared size: ${path}`,
+      );
     case "compression-ratio":
-      return new DocxSecurityError(`DOCX entry exceeds the maximum compression ratio: ${path}`);
+      return new DocxSecurityError(
+        `DOCX entry exceeds the maximum compression ratio: ${path}`,
+      );
     case "entry":
       return new DocxSecurityError(`DOCX entry exceeds maximum size: ${path}`);
     case "total":
-      return new DocxSecurityError("DOCX file expands beyond the maximum allowed size");
+      return new DocxSecurityError(
+        "DOCX file expands beyond the maximum allowed size",
+      );
     case "aborted":
-      return new DocxSecurityError(`DOCX entry was not read after another entry failed: ${path}`);
+      return new DocxSecurityError(
+        `DOCX entry was not read after another entry failed: ${path}`,
+      );
   }
 }
 
@@ -671,7 +737,10 @@ async function runExtractionTasks(
   tasks: readonly (() => Promise<ExtractedEntry | null>)[],
   budget: InflationBudget,
 ): Promise<(ExtractedEntry | null)[]> {
-  const results: (ExtractedEntry | null)[] = Array.from({ length: tasks.length }, () => null);
+  const results: (ExtractedEntry | null)[] = Array.from(
+    { length: tasks.length },
+    () => null,
+  );
   let next = 0;
   const worker = async (): Promise<void> => {
     while (next < tasks.length && !budget.aborted) {
@@ -723,7 +792,10 @@ async function verifyEntryWithinLimits({
     result = await inflateEntryWithinLimits({
       entry: file,
       maxEntryBytes: Number.POSITIVE_INFINITY,
-      maxCompressionRatio: compressionRatioLimitFor(path, limits.maxCompressionRatio),
+      maxCompressionRatio: compressionRatioLimitFor(
+        path,
+        limits.maxCompressionRatio,
+      ),
       budget,
       retain: false,
     });
@@ -735,11 +807,17 @@ async function verifyEntryWithinLimits({
   }
 }
 
-async function loadDocxZip(buffer: ArrayBuffer, maxFiles: number): Promise<LoadedZip> {
+async function loadDocxZip(
+  buffer: ArrayBuffer,
+  maxFiles: number,
+): Promise<LoadedZip> {
   try {
     return { zip: await JSZip.loadAsync(buffer), buffer };
   } catch (error) {
-    const repairedBuffer = repairTruncatedEndOfCentralDirectory(buffer, maxFiles);
+    const repairedBuffer = repairTruncatedEndOfCentralDirectory(
+      buffer,
+      maxFiles,
+    );
     if (!repairedBuffer) {
       throw error;
     }
@@ -792,16 +870,26 @@ function repairTruncatedEndOfCentralDirectory(
     return null;
   }
 
-  const centralDirectory = findCentralDirectory(view, eocdOffset, totalEntryCount);
+  const centralDirectory = findCentralDirectory(
+    view,
+    eocdOffset,
+    totalEntryCount,
+  );
   if (!centralDirectory) {
     return null;
   }
 
-  const repaired = new Uint8Array(eocdOffset + ZIP_END_OF_CENTRAL_DIRECTORY_SIZE);
+  const repaired = new Uint8Array(
+    eocdOffset + ZIP_END_OF_CENTRAL_DIRECTORY_SIZE,
+  );
   repaired.set(bytes.subarray(0, eocdOffset));
   const repairedView = new DataView(repaired.buffer);
 
-  repairedView.setUint32(eocdOffset, ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE, true);
+  repairedView.setUint32(
+    eocdOffset,
+    ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE,
+    true,
+  );
   repairedView.setUint16(eocdOffset + 4, 0, true);
   repairedView.setUint16(eocdOffset + 6, 0, true);
   repairedView.setUint16(eocdOffset + 8, totalEntryCount, true);
@@ -818,12 +906,24 @@ function findCentralDirectory(
   eocdOffset: number,
   entryCount: number,
 ): CentralDirectoryInfo | null {
-  for (let offset = 0; offset <= eocdOffset - ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIZE; offset += 1) {
-    if (view.getUint32(offset, true) !== ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE) {
+  for (
+    let offset = 0;
+    offset <= eocdOffset - ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIZE;
+    offset += 1
+  ) {
+    if (
+      view.getUint32(offset, true) !==
+      ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE
+    ) {
       continue;
     }
 
-    const parsed = parseCentralDirectoryAt(view, offset, eocdOffset, entryCount);
+    const parsed = parseCentralDirectoryAt(
+      view,
+      offset,
+      eocdOffset,
+      entryCount,
+    );
     if (parsed) {
       return parsed;
     }
@@ -843,7 +943,8 @@ function parseCentralDirectoryAt(
   for (let index = 0; index < entryCount; index += 1) {
     if (
       offset + ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIZE > eocdOffset ||
-      view.getUint32(offset, true) !== ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE
+      view.getUint32(offset, true) !==
+        ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE
     ) {
       return null;
     }
@@ -851,7 +952,11 @@ function parseCentralDirectoryAt(
     const filenameLength = view.getUint16(offset + 28, true);
     const extraLength = view.getUint16(offset + 30, true);
     const commentLength = view.getUint16(offset + 32, true);
-    offset += ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIZE + filenameLength + extraLength + commentLength;
+    offset +=
+      ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIZE +
+      filenameLength +
+      extraLength +
+      commentLength;
   }
 
   if (offset !== eocdOffset) {
@@ -864,7 +969,11 @@ function parseCentralDirectoryAt(
   };
 }
 
-function findLastSignature(view: DataView, byteLength: number, signature: number): number {
+function findLastSignature(
+  view: DataView,
+  byteLength: number,
+  signature: number,
+): number {
   for (
     let offset = byteLength - ZIP_END_OF_CENTRAL_DIRECTORY_WITH_COUNTS_SIZE;
     offset >= 0;
@@ -884,12 +993,15 @@ function createUnzipLimits(options: PartialDocxUnzipLimits): DocxUnzipLimits {
     maxCompressionRatio !== undefined &&
     (!Number.isSafeInteger(maxCompressionRatio) || maxCompressionRatio < 0)
   ) {
-    throw new RangeError("DOCX compression ratio limit must be a non-negative safe integer");
+    throw new RangeError(
+      "DOCX compression ratio limit must be a non-negative safe integer",
+    );
   }
   return {
     ...DEFAULT_UNZIP_LIMITS,
     ...options,
-    maxCompressionRatio: maxCompressionRatio ?? DEFAULT_UNZIP_LIMITS.maxCompressionRatio,
+    maxCompressionRatio:
+      maxCompressionRatio ?? DEFAULT_UNZIP_LIMITS.maxCompressionRatio,
     allowedMediaMimeTypes: options.allowedMediaMimeTypes
       ? new Set(options.allowedMediaMimeTypes)
       : DEFAULT_UNZIP_LIMITS.allowedMediaMimeTypes,
@@ -909,10 +1021,14 @@ function isSafeDocxPath(path: string): boolean {
  * model, not even into the raw XML map. The save path carries them anyway,
  * straight from the source archive, which is what keeps a `.docm` a `.docm`.
  */
-const UNINTERPRETED_PART_NAMES = new Set(["word/vbaproject.bin", "word/vbadata.xml"]);
+const UNINTERPRETED_PART_NAMES = new Set([
+  "word/vbaproject.bin",
+  "word/vbadata.xml",
+]);
 
 const isUninterpretedPart = (lowerPath: string): boolean =>
-  UNINTERPRETED_PART_NAMES.has(lowerPath) || lowerPath.startsWith("word/activex/");
+  UNINTERPRETED_PART_NAMES.has(lowerPath) ||
+  lowerPath.startsWith("word/activex/");
 
 /**
  * Whether this entry is one the PARSER reads into the document model. It says
@@ -961,17 +1077,26 @@ function isParsedDocxEntry(path: string): boolean {
   );
 }
 
-export function getEntryUncompressedSize(file: JSZip.JSZipObject): number | null {
+export function getEntryUncompressedSize(
+  file: JSZip.JSZipObject,
+): number | null {
   return getZipEntrySizes(file).uncompressedBytes;
 }
 
-function assertEntrySize(path: string, declaredSize: number | null, maxBytes: number): void {
+function assertEntrySize(
+  path: string,
+  declaredSize: number | null,
+  maxBytes: number,
+): void {
   if (isEntryTooLarge(declaredSize, maxBytes)) {
     throw new DocxSecurityError(`DOCX entry exceeds maximum size: ${path}`);
   }
 }
 
-function isEntryTooLarge(declaredSize: number | null, maxBytes: number): boolean {
+function isEntryTooLarge(
+  declaredSize: number | null,
+  maxBytes: number,
+): boolean {
   return declaredSize !== null && declaredSize > maxBytes;
 }
 
@@ -995,7 +1120,10 @@ function isMediaContentAllowed(data: ArrayBuffer, mimeType: string): boolean {
     case "image/wmf":
       return (
         bytes.length >= 4 &&
-        ((bytes[0] === 0xd7 && bytes[1] === 0xcd && bytes[2] === 0xc6 && bytes[3] === 0x9a) ||
+        ((bytes[0] === 0xd7 &&
+          bytes[1] === 0xcd &&
+          bytes[2] === 0xc6 &&
+          bytes[3] === 0x9a) ||
           ((bytes[0] === 0x01 || bytes[0] === 0x02) &&
             bytes[1] === 0x00 &&
             bytes[2] === 0x09 &&

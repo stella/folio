@@ -5,7 +5,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MeasuredLine, ParagraphBlock, TextRun } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TextRun,
+} from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 class FakeElement {
@@ -89,14 +93,16 @@ const paintRuns = (runs: TextRun[]): FakeElement[] => {
     leftIndentPx: 0,
     lineRightEdgePx: 600,
   }) as unknown as FakeElement;
-  return lineEl.children.filter((child) => child.className.includes("layout-run-text"));
+  return lineEl.children.filter((child) =>
+    child.className.includes("layout-run-text"),
+  );
 };
 
 describe("renderParagraph comment anchors", () => {
   test("a run inside overlapping ranges advertises every comment it is in", () => {
-    const [runEl] = paintRuns([{ kind: "text", text: "both", commentIds: [7, 9] }]) as [
-      FakeElement,
-    ];
+    const [runEl] = paintRuns([
+      { kind: "text", text: "both", commentIds: [7, 9] },
+    ]) as [FakeElement];
 
     expect(runEl.dataset["commentIds"]).toBe("7 9");
     // The first id stays where every existing reader already looks for it.
@@ -104,7 +110,9 @@ describe("renderParagraph comment anchors", () => {
   });
 
   test("a run inside one range paints exactly what it painted before", () => {
-    const [runEl] = paintRuns([{ kind: "text", text: "one", commentIds: [7] }]) as [FakeElement];
+    const [runEl] = paintRuns([
+      { kind: "text", text: "one", commentIds: [7] },
+    ]) as [FakeElement];
 
     expect(runEl.dataset).toEqual({ commentId: "7" });
   });

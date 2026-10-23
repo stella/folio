@@ -8,7 +8,24 @@
 
 import type { FloatingTableProperties, TableLook } from "../../types";
 import type {
+  BorderSpec,
+  CounterFormat,
+  DisplacedByCustomXml,
+  DrawingAnchor,
+  DrawingGroupChild,
+  DrawingRawXmlMode,
+  EffectExtentSlots,
+  FieldType,
   FoldedListNumber,
+  Hyperlink,
+  ImageDocPrLink,
+  ImageFrameLocks,
+  ImagePosition,
+  ImageWrap,
+  ImageWrapPolygon,
+  LineSpacingRule,
+  ListMarkerFormatting,
+  NonVisualDrawingNames,
   OutlineLevel,
   ParagraphAlignment,
   ParagraphFormatting,
@@ -18,51 +35,34 @@ import type {
   PositionedBookmarkMarker,
   PreservedAttribute,
   PreservedMarkup,
-  DisplacedByCustomXml,
-  DrawingAnchor,
-  DrawingRawXmlMode,
-  ImageDocPrLink,
-  NonVisualDrawingNames,
-  FieldType,
-  Hyperlink,
-  Run,
-  LineSpacingRule,
-  ImageFrameLocks,
-  ImagePosition,
   PreviewDescriptor,
-  ImageWrap,
-  ImageWrapPolygon,
-  DrawingGroupChild,
-  EffectExtentSlots,
-  WrapDistanceSlots,
-  BorderSpec,
-  ShadingProperties,
-  TabStop,
-  TextFormatting,
-  CounterFormat,
-  ListMarkerFormatting,
-  TableBorders,
-  TableCell,
-  TableCellBorders,
-  TableFormatting,
-  TablePropertyExceptionFormatting,
-  TablePropertyChange,
-  TablePropertyExceptionChange,
-  TablePreservedMarkup,
-  TableRowFormatting,
-  TableRowPropertyChange,
-  TableCellFormatting,
-  TableCellPropertyChange,
-  TableWidthType,
+  Run,
+  SdtEndProperties,
+  SdtProperties,
+  SdtType,
   SectionProperties,
+  ShadingProperties,
   ShapeFill,
   ShapeOutline,
   ShapeTextBody,
-  SdtEndProperties,
-  SdtProperties,
+  TableBorders,
+  TableCell,
+  TableCellBorders,
+  TableCellFormatting,
+  TableCellPropertyChange,
   TableContentCarrier,
-  SdtType,
+  TableFormatting,
+  TablePreservedMarkup,
+  TablePropertyChange,
+  TablePropertyExceptionChange,
+  TablePropertyExceptionFormatting,
+  TableRowFormatting,
+  TableRowPropertyChange,
+  TableWidthType,
+  TabStop,
+  TextFormatting,
   TrackedChangeInfo,
+  WrapDistanceSlots,
 } from "../../types/document";
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
@@ -111,7 +111,8 @@ export type SymbolAttrs = {
  */
 export const PRESERVED_XML_LEVELS = { run: "run", inline: "inline" } as const;
 
-export type PreservedXmlLevel = (typeof PRESERVED_XML_LEVELS)[keyof typeof PRESERVED_XML_LEVELS];
+export type PreservedXmlLevel =
+  (typeof PRESERVED_XML_LEVELS)[keyof typeof PRESERVED_XML_LEVELS];
 
 /** The automatic number mark authored inside a note story, with no reader text. */
 export type NoteMarkerAttrs = { kind: "footnote" | "endnote" };
@@ -210,7 +211,12 @@ export type ParagraphAttrs = {
    */
   numPr?: ParagraphNumberingAttr;
   /** Clipboard-only hint, replaced with a numbered paragraph before insertion. */
-  _pastedHtmlList?: { group: number; level: number; kind: "bullet" | "numbered"; start?: number };
+  _pastedHtmlList?: {
+    group: number;
+    level: number;
+    kind: "bullet" | "numbered";
+    start?: number;
+  };
   /**
    * The style-sourced numPr value when `numPr` came from the paragraph
    * style rather than direct formatting. While `numPr` still equals this,
@@ -527,7 +533,8 @@ export type AuthoredEmuAttrs<Key extends string> = {
 type WrapDistanceAttr = "distTop" | "distBottom" | "distLeft" | "distRight";
 
 /** The pixel attributes a text box's internal margins are projected into. */
-type TextBoxMarginAttr = "marginTop" | "marginBottom" | "marginLeft" | "marginRight";
+type TextBoxMarginAttr =
+  "marginTop" | "marginBottom" | "marginLeft" | "marginRight";
 
 /**
  * Image node attributes
@@ -643,7 +650,9 @@ export type ImageAttrs = {
   /** Border width in pixels */
   borderWidth?: number;
   /** The EMUs behind `width`, `height`, `borderWidth` and the wrap insets. */
-  _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "borderWidth" | WrapDistanceAttr>;
+  _docxAuthoredEmu?: AuthoredEmuAttrs<
+    "width" | "height" | "borderWidth" | WrapDistanceAttr
+  >;
   /** Border color as CSS color string */
   borderColor?: string;
   /** Border style (CSS border-style value) */
@@ -960,7 +969,9 @@ export type ShapeAttrs = {
    */
   _docxRunFormatting?: TextFormatting;
   /** The EMUs behind `width`, `height`, `outlineWidth` and the wrap insets. */
-  _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "outlineWidth" | WrapDistanceAttr>;
+  _docxAuthoredEmu?: AuthoredEmuAttrs<
+    "width" | "height" | "outlineWidth" | WrapDistanceAttr
+  >;
 };
 
 /**
@@ -1112,7 +1123,10 @@ export type TextBoxAttrs = {
    * speak for. The host's identity (`paraId`, source token, attribute
    * remainder) is not carried here: a copied node must not duplicate it.
    */
-  _docxHostParagraph?: Omit<ParagraphAttrs, "paraId" | "textId" | "_preservedAttributes">;
+  _docxHostParagraph?: Omit<
+    ParagraphAttrs,
+    "paraId" | "textId" | "_preservedAttributes"
+  >;
 };
 
 /** Internal inline position marker for an extracted text box block. */
@@ -1372,7 +1386,12 @@ export type TableCellAttrs = {
   /** Cell margins/padding in twips per side */
   margins?: { top?: number; bottom?: number; left?: number; right?: number };
   /** Effective margins after the cascade. PM-only; never serialized. */
-  _resolvedMargins?: { top?: number; bottom?: number; left?: number; right?: number };
+  _resolvedMargins?: {
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+  };
   /** Original cell formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableCellFormatting;
   /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */

@@ -1,23 +1,33 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../../model/document";
-import { documentArbitrary, independentCopy } from "../../__tests__/documentArbitraries";
+import {
+  documentArbitrary,
+  independentCopy,
+} from "../../__tests__/documentArbitraries";
 import { applyDocumentOps } from "../../apply";
 import { storyParagraphs } from "../../blocks";
 import { equalForStaleness } from "../../equality";
-import { paragraphLength, paragraphLogicalText } from "../../offsets";
 import { zeroWidthLeavesAt } from "../../leaves";
+import { paragraphLength, paragraphLogicalText } from "../../offsets";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
+  type DocumentOp,
   INHERIT_RUN_PROPS,
   OP_STORIES,
-  type DocumentOp,
 } from "../../types";
 import { createClient } from "../client";
-import { BatchRejection, type DocumentBatch, type SequencedBatch } from "../envelope";
-import { createSequencer, type BatchSubmission } from "../sequencer";
+import {
+  BatchRejection,
+  type DocumentBatch,
+  type SequencedBatch,
+} from "../envelope";
+import { type BatchSubmission, createSequencer } from "../sequencer";
 import { transformBatch } from "../transform";
 
 const FIRST = "70000001";
@@ -32,7 +42,10 @@ const generatedDocument = documentArbitrary.map((source): Document => {
       type: "paragraph",
       paraId: FIRST,
       content: [
-        { type: "run", content: [{ type: "text", text: "ab😀cd" }, { type: "tab" }] },
+        {
+          type: "run",
+          content: [{ type: "text", text: "ab😀cd" }, { type: "tab" }],
+        },
         { type: "bookmarkStart", id: 1_000_000, name: "position" },
         { type: "bookmarkEnd", id: 1_000_000 },
         {
@@ -54,8 +67,14 @@ const generatedDocument = documentArbitrary.map((source): Document => {
       content: [
         {
           type: "insertion",
-          info: { id: REVIEW_ID, author: "review", date: "2026-01-01T00:00:00Z" },
-          content: [{ type: "run", content: [{ type: "text", text: "reviewed" }] }],
+          info: {
+            id: REVIEW_ID,
+            author: "review",
+            date: "2026-01-01T00:00:00Z",
+          },
+          content: [
+            { type: "run", content: [{ type: "text", text: "reviewed" }] },
+          ],
         },
       ],
     },
@@ -63,7 +82,9 @@ const generatedDocument = documentArbitrary.map((source): Document => {
   const { sections: _sections, ...body } = source.package.document;
   return Object.assign({}, source, {
     package: Object.assign({}, source.package, {
-      document: Object.assign({}, body, { content: [...paragraphs, ...body.content] }),
+      document: Object.assign({}, body, {
+        content: [...paragraphs, ...body.content],
+      }),
     }),
   });
 });
@@ -103,7 +124,8 @@ const operation = ({
   coordinate,
 }: OperationOptions): DocumentOp => {
   const blockId =
-    (group === "differentBlocks" && role % 2 === 1) || (group === "textJoin" && role % 2 === 1)
+    (group === "differentBlocks" && role % 2 === 1) ||
+    (group === "textJoin" && role % 2 === 1)
       ? SECOND
       : FIRST;
   const paragraph = storyParagraphs(document.package.document).find(
@@ -119,7 +141,10 @@ const operation = ({
   }
   const length = paragraphLength(paragraph);
   const text = paragraphLogicalText(paragraph);
-  const boundaries = Array.from({ length: length + 1 }, (_, offset) => offset).filter(
+  const boundaries = Array.from(
+    { length: length + 1 },
+    (_, offset) => offset,
+  ).filter(
     (offset) =>
       !(
         /[\uD800-\uDBFF]/u.test(text.charAt(offset - 1)) &&
@@ -127,13 +152,18 @@ const operation = ({
       ),
   );
   const positions =
-    group === "textJoin" && role % 2 === 1 ? boundaries.filter((offset) => offset > 0) : boundaries;
+    group === "textJoin" && role % 2 === 1
+      ? boundaries.filter((offset) => offset > 0)
+      : boundaries;
   const offset = positions.at(seed % positions.length) ?? 0;
   const available = zeroWidthLeavesAt(paragraph.content, offset).length;
   const base = { story: OP_STORIES.MAIN, blockId, offset };
   const at =
     seed % 3 === 0
-      ? { ...base, zeroWidthBefore: coordinate === "all" ? seed % (available + 1) : 0 }
+      ? {
+          ...base,
+          zeroWidthBefore: coordinate === "all" ? seed % (available + 1) : 0,
+        }
       : base;
   const from = {
     story: OP_STORIES.MAIN,
@@ -162,7 +192,11 @@ const operation = ({
             type: "deleteRange",
             from,
             to: { ...to, offset: Math.min(1, length) },
-            revision: { id: 2_000_000 + id, author: "tracked", date: "2026-01-01T00:00:00Z" },
+            revision: {
+              id: 2_000_000 + id,
+              author: "tracked",
+              date: "2026-01-01T00:00:00Z",
+            },
           }
         : { ...insert, at: { ...at, offset: length } };
     case "trackedDeleteDirect":
@@ -171,14 +205,22 @@ const operation = ({
             type: "deleteRange",
             from,
             to: { ...to, offset: 1 },
-            revision: { id: 2_000_000 + id, author: "tracked", date: "2026-01-01T00:00:00Z" },
+            revision: {
+              id: 2_000_000 + id,
+              author: "tracked",
+              date: "2026-01-01T00:00:00Z",
+            },
           }
         : { type: "deleteRange", from, to: { ...to, offset: 1 } };
     case "runText":
-      return role % 2 === 0 ? { type: "setRunProps", from, to, patch: { bold: true } } : insert;
+      return role % 2 === 0
+        ? { type: "setRunProps", from, to, patch: { bold: true } }
+        : insert;
     case "runRun":
-      if (role % 2 === 0) return { type: "setRunProps", from, to, patch: { bold: true } };
-      if (seed % 2 === 0) return { type: "setRunProps", from, to, patch: { bold: false } };
+      if (role % 2 === 0)
+        return { type: "setRunProps", from, to, patch: { bold: true } };
+      if (seed % 2 === 0)
+        return { type: "setRunProps", from, to, patch: { bold: false } };
       return { type: "setRunProps", from, to, patch: { italic: true } };
     case "paragraphParagraph":
       return {
@@ -222,7 +264,9 @@ const operation = ({
           {
             type: "paragraph",
             paraId: (0x71000000 + id).toString(16).toUpperCase(),
-            content: [{ type: "run", content: [{ type: "text", text: "inserted" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "inserted" }] },
+            ],
           },
         ],
       };
@@ -316,7 +360,9 @@ const simulate = ({
     const result = sequencer.submit(batch);
     submitted.add(batch.opId);
     expect(sequencer.submit(batch)).toEqual(result);
-    expect(sequencer.broadcasts.length).toBe(before + (result.type === "ack" ? 1 : 0));
+    expect(sequencer.broadcasts.length).toBe(
+      before + (result.type === "ack" ? 1 : 0),
+    );
     delivery.push({ client: index, type: "result", result });
     if (result.type === "ack") {
       accepted += 1;
@@ -324,7 +370,11 @@ const simulate = ({
       expect(broadcast?.revision).toBe(result.rev);
       if (broadcast !== undefined)
         for (let target = 0; target < clientsCount; target += 1)
-          delivery.push({ client: target, type: "broadcast", batch: broadcast });
+          delivery.push({
+            client: target,
+            type: "broadcast",
+            batch: broadcast,
+          });
     } else expect(result.headRev).toBe(sequencer.headRev);
     if (result.type === "reject") rejected.set(batch.opId, { client: index });
   };
@@ -378,7 +428,10 @@ const simulate = ({
   return { accepted, submitted: submitted.size };
 };
 
-const scheduleArbitrary = fc.array(fc.nat({ max: 100_000 }), { minLength: 10, maxLength: 100 });
+const scheduleArbitrary = fc.array(fc.nat({ max: 100_000 }), {
+  minLength: 10,
+  maxLength: 100,
+});
 
 describe("reference sequencing convergence", () => {
   for (const group of GROUPS) {
@@ -432,7 +485,10 @@ describe("reference sequencing convergence", () => {
             expect(result.accepted).toBeGreaterThan(0);
           },
         ),
-        { numRuns: NUM_RUNS, id: "mixed operations with causal pending queues" },
+        {
+          numRuns: NUM_RUNS,
+          id: "mixed operations with causal pending queues",
+        },
       );
     },
     propertyTestTimeout(30_000),
@@ -445,7 +501,13 @@ describe("reference sequencing convergence", () => {
       let dropped = 0;
       assertProperty(
         fc.property(generatedDocument, fc.nat(), (document, seed) => {
-          const forward = operation({ document, group: "insertInsert", role: 0, seed, id: 1 });
+          const forward = operation({
+            document,
+            group: "insertInsert",
+            role: 0,
+            seed,
+            id: 1,
+          });
           const applied = applyDocumentOps(document, [forward]);
           expect(applied.isOk()).toBe(true);
           if (applied.isErr()) return;
@@ -481,7 +543,10 @@ describe("reference sequencing convergence", () => {
             baseRev: 1,
             ops: applied.value.inverse,
           };
-          const transformed = transformBatch(inverse, sequencer.broadcasts.slice(1));
+          const transformed = transformBatch(
+            inverse,
+            sequencer.broadcasts.slice(1),
+          );
           const result = sequencer.submit(inverse);
           if (result.type === "reject") {
             dropped += 1;
@@ -490,7 +555,9 @@ describe("reference sequencing convergence", () => {
             accepted += 1;
             expect(transformed.isOk()).toBe(true);
             if (transformed.isOk())
-              expect(applyDocumentOps(before, transformed.value.ops).isOk()).toBe(true);
+              expect(
+                applyDocumentOps(before, transformed.value.ops).isOk(),
+              ).toBe(true);
           }
         }),
         {
@@ -518,15 +585,16 @@ describe("reference sequencing convergence", () => {
           (document, firstText, secondText) => {
             const client = createClient(document);
             const sequencer = createSequencer(document);
-            const firstParagraph = storyParagraphs(document.package.document).find(
-              ({ paragraph }) => paragraph.paraId === FIRST,
-            )?.paragraph;
-            const secondParagraph = storyParagraphs(document.package.document).find(
-              ({ paragraph }) => paragraph.paraId === SECOND,
-            )?.paragraph;
+            const firstParagraph = storyParagraphs(
+              document.package.document,
+            ).find(({ paragraph }) => paragraph.paraId === FIRST)?.paragraph;
+            const secondParagraph = storyParagraphs(
+              document.package.document,
+            ).find(({ paragraph }) => paragraph.paraId === SECOND)?.paragraph;
             expect(firstParagraph).toBeDefined();
             expect(secondParagraph).toBeDefined();
-            if (firstParagraph === undefined || secondParagraph === undefined) return;
+            if (firstParagraph === undefined || secondParagraph === undefined)
+              return;
             const firstBefore = paragraphLogicalText(firstParagraph);
             const secondBefore = paragraphLogicalText(secondParagraph);
             const first: DocumentBatch = {
@@ -576,9 +644,9 @@ describe("reference sequencing convergence", () => {
             expect(broadcast).toBeDefined();
             if (broadcast === undefined) return;
             expect(client.receiveBroadcast(broadcast).isOk()).toBe(true);
-            const after = storyParagraphs(client.document.package.document).find(
-              ({ paragraph }) => paragraph.paraId === SECOND,
-            )?.paragraph;
+            const after = storyParagraphs(
+              client.document.package.document,
+            ).find(({ paragraph }) => paragraph.paraId === SECOND)?.paragraph;
             expect(after).toBeDefined();
             if (after === undefined) return;
             expect(paragraphLogicalText(after)).toBe(
@@ -605,7 +673,9 @@ test("rejection preserves refused text and removes optimistic state", () => {
           {
             type: "paragraph",
             paraId: FIRST,
-            content: [{ type: "run", content: [{ type: "text", text: "before" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "before" }] },
+            ],
           },
         ],
       },
@@ -632,7 +702,10 @@ test("rejection preserves refused text and removes optimistic state", () => {
     type: "reject",
     opId: batch.opId,
     headRev: 0,
-    reason: new BatchRejection({ reason: "conflict", message: "Refused edit." }),
+    reason: new BatchRejection({
+      reason: "conflict",
+      message: "Refused edit.",
+    }),
   });
   expect(equalForStaleness(client.document, document)).toBe(true);
   expect(client.notices.at(0)?.ops).toEqual(batch.ops);
@@ -646,7 +719,9 @@ test("an insertion inside a tracked deletion is refused without altering the jou
           {
             type: "paragraph",
             paraId: FIRST,
-            content: [{ type: "run", content: [{ type: "text", text: "abcd" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "abcd" }] },
+            ],
           },
         ],
       },
@@ -664,7 +739,11 @@ test("an insertion inside a tracked deletion is refused without altering the jou
         type: "deleteRange",
         from: at,
         to: { ...at, offset: 2 },
-        revision: { id: REVIEW_ID, author: "first", date: "2026-01-01T00:00:00Z" },
+        revision: {
+          id: REVIEW_ID,
+          author: "first",
+          date: "2026-01-01T00:00:00Z",
+        },
       },
     ],
   };
@@ -735,7 +814,9 @@ test("acknowledgment before broadcast preserves the optimistic projection and dr
   if (broadcast === undefined) return;
   expect(client.receiveBroadcast(broadcast).isOk()).toBe(true);
   expect(equalForStaleness(client.document, sequencer.document)).toBe(true);
-  expect(client.receiveBroadcast({ ...broadcast, opId: "conflicting-revision" }).isErr()).toBe(
-    true,
-  );
+  expect(
+    client
+      .receiveBroadcast({ ...broadcast, opId: "conflicting-revision" })
+      .isErr(),
+  ).toBe(true);
 });

@@ -6,7 +6,13 @@
  */
 
 import { embeddedFontFingerprint } from "../../fonts/embeddedFontFingerprint";
-import type { ImageRun, ParagraphAttrs, ParagraphBlock, ParagraphMeasure, Run } from "../types";
+import type {
+  ImageRun,
+  ParagraphAttrs,
+  ParagraphBlock,
+  ParagraphMeasure,
+  Run,
+} from "../types";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
 
@@ -48,7 +54,11 @@ let textWidthCacheGeneration = 0;
 /**
  * Create a cache key for text width lookup
  */
-function makeTextKey(text: string, font: string, letterSpacing: number): string {
+function makeTextKey(
+  text: string,
+  font: string,
+  letterSpacing: number,
+): string {
   return `${text}|${font}|${letterSpacing || 0}`;
 }
 
@@ -330,7 +340,8 @@ type ImageIgnoredCacheField =
   | "pmStart"
   | "pmEnd";
 
-type ClassifiedImageCacheField = ImageMeasureCacheField | ImageIgnoredCacheField;
+type ClassifiedImageCacheField =
+  ImageMeasureCacheField | ImageIgnoredCacheField;
 type ExhaustivelyClassifiedImageRun = [
   Exclude<keyof ImageRun, ClassifiedImageCacheField>,
   Exclude<ClassifiedImageCacheField, keyof ImageRun>,
@@ -352,7 +363,9 @@ const imageMeasureCacheInput = (run: ExhaustivelyClassifiedImageRun) => ({
   positioned: run.position !== undefined,
 });
 
-type FontContextRef = (families: ReadonlyMap<string, string> | undefined) => number | undefined;
+type FontContextRef = (
+  families: ReadonlyMap<string, string> | undefined,
+) => number | undefined;
 
 const runMeasureCacheInput = (run: Run, fontContextRef: FontContextRef) => {
   switch (run.kind) {
@@ -412,7 +425,9 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     return index;
   };
   const attrs = paragraphAttrsMeasureCacheInput(block.attrs, fontContextRef);
-  const runs = block.runs.map((run) => runMeasureCacheInput(run, fontContextRef));
+  const runs = block.runs.map((run) =>
+    runMeasureCacheInput(run, fontContextRef),
+  );
   return JSON.stringify({
     lineBreakProviderGeneration: getLineBreakProviderGeneration(),
     attrs,

@@ -16,8 +16,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { fromMarkdown } from "../markdown";
 import { createDocx, docxToMarkdown, ensureParaIds } from "../server";
 import type { Endnote, Footnote, Paragraph } from "../types/document";
@@ -62,10 +62,19 @@ const buildDocx = async (): Promise<ArrayBuffer> => {
     content: [noteBody(`Footnote ${index + 1}.`)],
   }));
   model.package.endnotes = [
-    { type: "endnote", id: 7, noteType: "normal", content: [noteBody("Endnote one.")] } as Endnote,
+    {
+      type: "endnote",
+      id: 7,
+      noteType: "normal",
+      content: [noteBody("Endnote one.")],
+    } as Endnote,
   ];
-  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(model)))).docx;
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(model))))
+    .docx;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 const TEXT = "Term A[^1] and Term B[^2] see[^e1].";
@@ -82,10 +91,16 @@ const markdownOf = async (docx: ArrayBuffer): Promise<string> => {
 
 const MARKDOWN = `${TEXT}\n\nSecond paragraph.\n\n[^1]: Footnote 1.\n[^2]: Footnote 2.\n[^e1]: Endnote one.`;
 
-const MODES: readonly FolioAIEditApplyMode[] = ["direct", "tracked-changes", "suggested"];
+const MODES: readonly FolioAIEditApplyMode[] = [
+  "direct",
+  "tracked-changes",
+  "suggested",
+];
 
 const open = async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(), { author: "Reviewer" });
+  const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(), {
+    author: "Reviewer",
+  });
   const block = reviewer.getContent()[0];
   if (!block) {
     throw new Error("fixture block is missing");
@@ -95,7 +110,9 @@ const open = async () => {
 
 /** Save, reopen with every revision accepted, and read it as Markdown. */
 const savedMarkdown = async (reviewer: FolioDocxReviewer): Promise<string> => {
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   reopened.acceptAll();
   return markdownOf(await reopened.toBuffer());
 };
@@ -141,99 +158,153 @@ describe("a text operation cannot reach a note reference", () => {
   test.each(MODES)("%s: the package id is not text to find", async (mode) => {
     const { reviewer, block } = await open();
     const result = reviewer.applyOperations(
-      [{ id: "id", type: "replaceInBlock", blockId: block.id, find: "30", replace: "X" }],
+      [
+        {
+          id: "id",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "30",
+          replace: "X",
+        },
+      ],
       { undefinedReferences: "refuse", mode },
     );
     expect(result.skipped).toEqual([{ id: "id", reason: "missingFind" }]);
   });
 
-  test.each(MODES)("%s: rewriting, dropping or cutting into a marker is refused", async (mode) => {
-    const { reviewer, block } = await open();
-    const range = createFolioAITextRangeHandle({
-      blockId: block.id,
-      text: block.text,
-      startOffset: 7,
-      endOffset: 14,
-    });
-    const second = reviewer.getContent()[1];
-    if (range === null || second === undefined) {
-      throw new Error("fixture is invalid");
-    }
-    const operations: FolioAIEditOperation[] = [
-      { id: "marker", type: "replaceInBlock", blockId: block.id, find: "[^1]", replace: "X" },
-      { id: "cut", type: "replaceInBlock", blockId: block.id, find: "^2] see", replace: " see" },
-      { id: "drop", type: "replaceInBlock", blockId: block.id, find: "A[^1] and", replace: "and" },
-      {
-        id: "reorder",
-        type: "replaceInBlock",
+  test.each(MODES)(
+    "%s: rewriting, dropping or cutting into a marker is refused",
+    async (mode) => {
+      const { reviewer, block } = await open();
+      const range = createFolioAITextRangeHandle({
         blockId: block.id,
-        find: "[^1] and Term B[^2]",
-        replace: "[^2] and Term B[^1]",
-      },
-      { id: "range", type: "replaceRange", range, replace: "and" },
-      {
-        id: "forged",
-        type: "replaceInBlock",
-        blockId: second.id,
-        find: "Second",
-        replace: "Second[^3]",
-      },
-      { id: "block", type: "replaceBlock", blockId: block.id, text: "Term A and Term B." },
-      {
-        id: "emphasis",
-        type: "replaceBlock",
-        blockId: block.id,
-        text: "**Term** A[^1] and Term B[^2] see[^e1].",
-      },
-      {
-        id: "unformatted",
-        type: "replaceBlock",
-        blockId: block.id,
-        text: "Term C[^1] and Term B[^2] see[^e1].",
-        preserveFormatting: false,
-      },
-    ];
-    for (const operation of operations) {
-      const result = reviewer.applyOperations([operation], { undefinedReferences: "refuse", mode });
-      expect({ id: operation.id, skipped: result.skipped }).toEqual({
-        id: operation.id,
-        skipped: refused(operation.id),
+        text: block.text,
+        startOffset: 7,
+        endOffset: 14,
       });
-    }
-    expect(reviewer.getContent()[0]?.text).toBe(TEXT);
-    expect(await savedMarkdown(reviewer)).toBe(MARKDOWN);
-  });
+      const second = reviewer.getContent()[1];
+      if (range === null || second === undefined) {
+        throw new Error("fixture is invalid");
+      }
+      const operations: FolioAIEditOperation[] = [
+        {
+          id: "marker",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "[^1]",
+          replace: "X",
+        },
+        {
+          id: "cut",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "^2] see",
+          replace: " see",
+        },
+        {
+          id: "drop",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "A[^1] and",
+          replace: "and",
+        },
+        {
+          id: "reorder",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "[^1] and Term B[^2]",
+          replace: "[^2] and Term B[^1]",
+        },
+        { id: "range", type: "replaceRange", range, replace: "and" },
+        {
+          id: "forged",
+          type: "replaceInBlock",
+          blockId: second.id,
+          find: "Second",
+          replace: "Second[^3]",
+        },
+        {
+          id: "block",
+          type: "replaceBlock",
+          blockId: block.id,
+          text: "Term A and Term B.",
+        },
+        {
+          id: "emphasis",
+          type: "replaceBlock",
+          blockId: block.id,
+          text: "**Term** A[^1] and Term B[^2] see[^e1].",
+        },
+        {
+          id: "unformatted",
+          type: "replaceBlock",
+          blockId: block.id,
+          text: "Term C[^1] and Term B[^2] see[^e1].",
+          preserveFormatting: false,
+        },
+      ];
+      for (const operation of operations) {
+        const result = reviewer.applyOperations([operation], {
+          undefinedReferences: "refuse",
+          mode,
+        });
+        expect({ id: operation.id, skipped: result.skipped }).toEqual({
+          id: operation.id,
+          skipped: refused(operation.id),
+        });
+      }
+      expect(reviewer.getContent()[0]?.text).toBe(TEXT);
+      expect(await savedMarkdown(reviewer)).toBe(MARKDOWN);
+    },
+  );
 });
 
 describe("prose beside a note reference stays editable", () => {
-  test.each(MODES)("%s: the edit applies and every reference survives a save", async (mode) => {
-    const { reviewer, block } = await open();
-    const result = reviewer.applyOperations(
-      [
-        {
-          id: "prose",
-          type: "replaceInBlock",
-          blockId: block.id,
-          find: "Term A[^1] and",
-          replace: "Term C[^1], and",
-        },
-      ],
-      { undefinedReferences: "refuse", mode },
-    );
-    expect(result.skipped).toEqual([]);
-    await expectEdited(reviewer, mode, "Term C[^1], and Term B[^2] see[^e1].");
-  });
+  test.each(MODES)(
+    "%s: the edit applies and every reference survives a save",
+    async (mode) => {
+      const { reviewer, block } = await open();
+      const result = reviewer.applyOperations(
+        [
+          {
+            id: "prose",
+            type: "replaceInBlock",
+            blockId: block.id,
+            find: "Term A[^1] and",
+            replace: "Term C[^1], and",
+          },
+        ],
+        { undefinedReferences: "refuse", mode },
+      );
+      expect(result.skipped).toEqual([]);
+      await expectEdited(
+        reviewer,
+        mode,
+        "Term C[^1], and Term B[^2] see[^e1].",
+      );
+    },
+  );
 
-  test.each(MODES)("%s: a whole-block rewrite keeps the markers it repeats", async (mode) => {
-    const { reviewer, block } = await open();
-    const rewritten = "Terms A[^1] and B[^2] (see[^e1]).";
-    const result = reviewer.applyOperations(
-      [{ id: "block", type: "replaceBlock", blockId: block.id, text: rewritten }],
-      { undefinedReferences: "refuse", mode },
-    );
-    expect(result.skipped).toEqual([]);
-    await expectEdited(reviewer, mode, rewritten);
-  });
+  test.each(MODES)(
+    "%s: a whole-block rewrite keeps the markers it repeats",
+    async (mode) => {
+      const { reviewer, block } = await open();
+      const rewritten = "Terms A[^1] and B[^2] (see[^e1]).";
+      const result = reviewer.applyOperations(
+        [
+          {
+            id: "block",
+            type: "replaceBlock",
+            blockId: block.id,
+            text: rewritten,
+          },
+        ],
+        { undefinedReferences: "refuse", mode },
+      );
+      expect(result.skipped).toEqual([]);
+      await expectEdited(reviewer, mode, rewritten);
+    },
+  );
 
   test.each(["direct", "tracked-changes"] as const)(
     "%s: a comment may cover a reference",
@@ -252,7 +323,9 @@ describe("prose beside a note reference stays editable", () => {
         { undefinedReferences: "refuse", mode },
       );
       expect(result.skipped).toEqual([]);
-      expect(reviewer.getComments().map((comment) => comment.anchoredText)).toEqual(["Term B[^2]"]);
+      expect(
+        reviewer.getComments().map((comment) => comment.anchoredText),
+      ).toEqual(["Term B[^2]"]);
       expect(await savedMarkdown(reviewer)).toBe(MARKDOWN);
     },
   );

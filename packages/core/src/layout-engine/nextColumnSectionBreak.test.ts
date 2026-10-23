@@ -8,16 +8,21 @@
  * reaching the paginator as an unmodelled value.
  */
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import type { SectionStart } from "@stll/docx-core/model";
 
 import { layoutDocument } from "./index";
 import { calculateColumnLefts, calculateColumnWidths } from "./paginator";
 import { normalizeSectionBreakType } from "./section-breaks";
-import type { FlowBlock, Measure, Page, ParagraphBlock, ParagraphMeasure } from "./types";
+import type {
+  FlowBlock,
+  Measure,
+  Page,
+  ParagraphBlock,
+  ParagraphMeasure,
+} from "./types";
 
 const ST_SECTION_MARK_VALUES: readonly string[] = (() => {
   const graph = JSON.parse(
@@ -30,7 +35,8 @@ const ST_SECTION_MARK_VALUES: readonly string[] = (() => {
     ),
   ) as { symbols: { kind?: string; name?: string; enumValues?: string[] }[] };
   const sectionMark = graph.symbols.find(
-    (symbol) => symbol.kind === "simpleType" && symbol.name === "ST_SectionMark",
+    (symbol) =>
+      symbol.kind === "simpleType" && symbol.name === "ST_SectionMark",
   );
   if (!sectionMark?.enumValues) {
     throw new Error("ST_SectionMark is missing from the schema graph");
@@ -43,7 +49,9 @@ const MARGINS = { top: 50, right: 50, bottom: 50, left: 50 };
 const TWO_COLUMNS = { count: 2, gap: 20 };
 const PARAGRAPH_HEIGHT = 100;
 
-const paragraph = (id: string): { block: ParagraphBlock; measure: ParagraphMeasure } => ({
+const paragraph = (
+  id: string,
+): { block: ParagraphBlock; measure: ParagraphMeasure } => ({
   block: {
     kind: "paragraph",
     id,
@@ -77,7 +85,8 @@ const paragraph = (id: string): { block: ParagraphBlock; measure: ParagraphMeasu
  */
 const columnIndexOf = (page: Page, blockId: string): number => {
   const fragment = page.fragments.find(
-    (candidate) => candidate.kind === "paragraph" && candidate.blockId === blockId,
+    (candidate) =>
+      candidate.kind === "paragraph" && candidate.blockId === blockId,
   );
   if (!fragment) {
     throw new Error(`no fragment for ${blockId}`);
@@ -85,12 +94,21 @@ const columnIndexOf = (page: Page, blockId: string): number => {
   const columns = page.columns ?? { count: 1, gap: 0 };
   const lefts = calculateColumnLefts(
     page.margins.left,
-    calculateColumnWidths(page.size.w, page.margins.left, page.margins.right, columns),
+    calculateColumnWidths(
+      page.size.w,
+      page.margins.left,
+      page.margins.right,
+      columns,
+    ),
     columns,
   );
-  const index = lefts.findIndex((left) => Math.round(left) === Math.round(fragment.x));
+  const index = lefts.findIndex(
+    (left) => Math.round(left) === Math.round(fragment.x),
+  );
   if (index === -1) {
-    throw new Error(`${blockId} at x=${fragment.x} matches no column of ${JSON.stringify(lefts)}`);
+    throw new Error(
+      `${blockId} at x=${fragment.x} matches no column of ${JSON.stringify(lefts)}`,
+    );
   }
   return index;
 };
@@ -136,7 +154,8 @@ const startOfIncomingSection = (
 
   const pageIndex = layout.pages.findIndex((page) =>
     page.fragments.some(
-      (fragment) => fragment.kind === "paragraph" && fragment.blockId === "incoming",
+      (fragment) =>
+        fragment.kind === "paragraph" && fragment.blockId === "incoming",
     ),
   );
   const page = layout.pages[pageIndex];
@@ -189,7 +208,9 @@ describe("ST_SectionMark coverage", () => {
 
   test("a value outside the enumeration is a bug, not a default", () => {
     // SAFETY: the point of the assertion is a value the type forbids.
-    expect(() => normalizeSectionBreakType("nextFrame" as SectionStart)).toThrow();
+    expect(() =>
+      normalizeSectionBreakType("nextFrame" as SectionStart),
+    ).toThrow();
   });
 });
 
@@ -197,7 +218,10 @@ describe("nextColumn", () => {
   test("a break in the last column starts the incoming section on a new page", () => {
     // 900px of body per column holds nine paragraphs, so the tenth already
     // sits in the last column and the break has no further column to use.
-    const outgoing = Array.from({ length: 10 }, (_, index) => `outgoing-${index}`);
+    const outgoing = Array.from(
+      { length: 10 },
+      (_, index) => `outgoing-${index}`,
+    );
 
     // The sheet it opens belongs to the incoming section: the boundary starts
     // one, so the section's page numbering and furniture take effect there.
@@ -216,15 +240,21 @@ describe("nextColumn", () => {
       { kind: "sectionBreak", id: "boundary", type: "nextColumn" },
       incoming.block,
     ];
-    const measures: Measure[] = [outgoing.measure, { kind: "sectionBreak" }, incoming.measure];
+    const measures: Measure[] = [
+      outgoing.measure,
+      { kind: "sectionBreak" },
+      incoming.measure,
+    ];
 
-    const layout = layoutDocument(blocks, measures, { pageSize: PAGE_SIZE, margins: MARGINS });
+    const layout = layoutDocument(blocks, measures, {
+      pageSize: PAGE_SIZE,
+      margins: MARGINS,
+    });
 
     expect(layout.pages).toHaveLength(1);
-    expect(layout.pages[0]?.fragments.map((fragment) => fragment.blockId)).toEqual([
-      "outgoing",
-      "incoming",
-    ]);
+    expect(
+      layout.pages[0]?.fragments.map((fragment) => fragment.blockId),
+    ).toEqual(["outgoing", "incoming"]);
     expect(layout.pages[0]?.fragments.map((fragment) => fragment.y)).toEqual([
       MARGINS.top,
       MARGINS.top + PARAGRAPH_HEIGHT,
@@ -246,7 +276,11 @@ describe("nextColumn", () => {
       },
       incoming.block,
     ];
-    const measures: Measure[] = [outgoing.measure, { kind: "sectionBreak" }, incoming.measure];
+    const measures: Measure[] = [
+      outgoing.measure,
+      { kind: "sectionBreak" },
+      incoming.measure,
+    ];
     const incomingMargins = { ...MARGINS, left: 100, right: 100 };
 
     const layout = layoutDocument(blocks, measures, {
@@ -262,9 +296,9 @@ describe("nextColumn", () => {
     expect(layout.pages).toHaveLength(1);
     expect(page?.margins).toEqual(MARGINS);
     expect(page ? columnIndexOf(page, "incoming") : undefined).toBe(0);
-    expect(page?.fragments.find((fragment) => fragment.blockId === "incoming")?.y).toBe(
-      MARGINS.top + PARAGRAPH_HEIGHT,
-    );
+    expect(
+      page?.fragments.find((fragment) => fragment.blockId === "incoming")?.y,
+    ).toBe(MARGINS.top + PARAGRAPH_HEIGHT);
   });
 
   test("a changed page size starts nextColumn on a new sheet", () => {
@@ -282,7 +316,11 @@ describe("nextColumn", () => {
       },
       incoming.block,
     ];
-    const measures: Measure[] = [outgoing.measure, { kind: "sectionBreak" }, incoming.measure];
+    const measures: Measure[] = [
+      outgoing.measure,
+      { kind: "sectionBreak" },
+      incoming.measure,
+    ];
     const incomingPageSize = { w: 1000, h: 800 };
 
     const layout = layoutDocument(blocks, measures, {
@@ -296,6 +334,8 @@ describe("nextColumn", () => {
 
     expect(layout.pages).toHaveLength(2);
     expect(layout.pages.at(1)?.size).toEqual(incomingPageSize);
-    expect(layout.pages.at(1)?.fragments.map((fragment) => fragment.blockId)).toEqual(["incoming"]);
+    expect(
+      layout.pages.at(1)?.fragments.map((fragment) => fragment.blockId),
+    ).toEqual(["incoming"]);
   });
 });

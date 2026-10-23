@@ -4,19 +4,31 @@
  * Tracks selected table cell and provides table operations.
  */
 
-import { ref, onScopeDispose, type Ref } from "vue";
+import { onScopeDispose, type Ref, ref } from "vue";
+
 import {
-  TableSelectionManager,
   findTableFromClick,
+  TableSelectionManager,
 } from "@stll/folio-core/managers/TableSelectionManager";
 import type { CellCoordinates } from "@stll/folio-core/managers/types";
 
 export type UseTableSelectionReturn = {
   selectedCell: Ref<CellCoordinates | null>;
-  handleCellClick: (tableIndex: number, rowIndex: number, columnIndex: number) => void;
-  handleClickTarget: (target: EventTarget | null, container?: HTMLElement | null) => void;
+  handleCellClick: (
+    tableIndex: number,
+    rowIndex: number,
+    columnIndex: number,
+  ) => void;
+  handleClickTarget: (
+    target: EventTarget | null,
+    container?: HTMLElement | null,
+  ) => void;
   clearSelection: () => void;
-  isCellSelected: (tableIndex: number, rowIndex: number, columnIndex: number) => boolean;
+  isCellSelected: (
+    tableIndex: number,
+    rowIndex: number,
+    columnIndex: number,
+  ) => boolean;
 };
 
 export function useTableSelection(): UseTableSelectionReturn {
@@ -28,7 +40,9 @@ export function useTableSelection(): UseTableSelectionReturn {
   const sync = () => {
     const snap = manager.getSnapshot();
     selectedCell.value =
-      snap.tableIndex !== null && snap.rowIndex !== null && snap.columnIndex !== null
+      snap.tableIndex !== null &&
+      snap.rowIndex !== null &&
+      snap.columnIndex !== null
         ? {
             tableIndex: snap.tableIndex,
             rowIndex: snap.rowIndex,
@@ -41,11 +55,18 @@ export function useTableSelection(): UseTableSelectionReturn {
 
   onScopeDispose(unsubscribe);
 
-  function handleCellClick(tableIndex: number, rowIndex: number, columnIndex: number) {
+  function handleCellClick(
+    tableIndex: number,
+    rowIndex: number,
+    columnIndex: number,
+  ) {
     manager.selectCellCoordinates({ tableIndex, rowIndex, columnIndex });
   }
 
-  function handleClickTarget(target: EventTarget | null, container?: HTMLElement | null) {
+  function handleClickTarget(
+    target: EventTarget | null,
+    container?: HTMLElement | null,
+  ) {
     const coords = findTableFromClick(target, container);
     if (!coords) {
       manager.clearSelection();
@@ -58,7 +79,11 @@ export function useTableSelection(): UseTableSelectionReturn {
     manager.clearSelection();
   }
 
-  function isCellSelected(tableIndex: number, rowIndex: number, columnIndex: number): boolean {
+  function isCellSelected(
+    tableIndex: number,
+    rowIndex: number,
+    columnIndex: number,
+  ): boolean {
     return manager.isCellSelected(tableIndex, rowIndex, columnIndex);
   }
 

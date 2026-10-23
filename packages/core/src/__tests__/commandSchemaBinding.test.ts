@@ -13,12 +13,16 @@
  * runtime built with another, and the two must end alike.
  */
 
-import { normalizeNoteOccurrenceIds } from "../../../../test/note-occurrence-oracle";
 import { describe, expect, test } from "bun:test";
 import type { EditorState } from "prosemirror-state";
 
+import { normalizeNoteOccurrenceIds } from "../../../../test/note-occurrence-oracle";
+import type { Document } from "../types/document";
 import { DOCUMENT_SHAPES } from "./documentShapes";
-import { CONFORMANCE_OPERATIONS, type ConformanceOperation } from "./editorCommandConformance";
+import {
+  CONFORMANCE_OPERATIONS,
+  type ConformanceOperation,
+} from "./editorCommandConformance";
 import {
   createHarnessState,
   EDITOR_MODES,
@@ -30,7 +34,6 @@ import {
   SELECTION_PLACEMENTS,
   type SelectionPlacement,
 } from "./editorHarness";
-import type { Document } from "../types/document";
 
 /** Attributes minted per run (revision ids and dates, fresh paragraph ids). */
 const VOLATILE_KEYS = new Set([
@@ -55,7 +58,9 @@ const stable = (value: unknown): unknown => {
     );
   }
   // A table of contents names its heading bookmarks at random.
-  return typeof value === "string" ? value.replaceAll(/_Toc\d+/gu, "_Toc") : value;
+  return typeof value === "string"
+    ? value.replaceAll(/_Toc\d+/gu, "_Toc")
+    : value;
 };
 
 const firstDifference = (left: string, right: string): string => {
@@ -110,7 +115,9 @@ const outcome = (
   }
   return {
     status,
-    doc: JSON.stringify(stable(normalizeNoteOccurrenceIds(view.state.doc.toJSON()))),
+    doc: JSON.stringify(
+      stable(normalizeNoteOccurrenceIds(view.state.doc.toJSON())),
+    ),
   };
 };
 
@@ -123,8 +130,22 @@ describe("operations build from the document's schema", () => {
       for (const operation of CONFORMANCE_OPERATIONS) {
         for (const placement of SELECTION_PLACEMENTS) {
           for (const mode of EDITOR_MODES) {
-            const home = outcome(base, shape.focus, operation, placement, mode, "document");
-            const foreign = outcome(base, shape.focus, operation, placement, mode, "harness");
+            const home = outcome(
+              base,
+              shape.focus,
+              operation,
+              placement,
+              mode,
+              "document",
+            );
+            const foreign = outcome(
+              base,
+              shape.focus,
+              operation,
+              placement,
+              mode,
+              "harness",
+            );
             if (!home || !foreign) {
               continue;
             }

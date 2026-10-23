@@ -2,10 +2,16 @@
 type AstNode = Record<string, unknown> & { type: string };
 type RuleContext = {
   filename: string;
-  report: (descriptor: { node: unknown; messageId: "rawCommand" | "foreignOwner" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "rawCommand" | "foreignOwner";
+  }) => void;
 };
 const isNode = (value: unknown): value is AstNode =>
-  typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  typeof value.type === "string";
 const named = (node: unknown, name: string) =>
   isNode(node) && node.type === "Identifier" && node.name === name;
 const member = (node: unknown, name: string) =>
@@ -18,7 +24,9 @@ const containsDispatch = (node: unknown): boolean => {
   if (member(node, "dispatch")) return true;
   return Object.entries(node).some(([key, value]) => {
     if (["parent", "loc", "range"].includes(key)) return false;
-    return Array.isArray(value) ? value.some(containsDispatch) : containsDispatch(value);
+    return Array.isArray(value)
+      ? value.some(containsDispatch)
+      : containsDispatch(value);
   });
 };
 const OWNER = "packages/core/src/controller/hiddenEditorManager.ts";
@@ -52,7 +60,9 @@ export default {
             if (
               !isNode(source) ||
               typeof source.value !== "string" ||
-              !source.value.replace(/\.(?:ts|js)$/u, "").endsWith("executeEditorCommand")
+              !source.value
+                .replace(/\.(?:ts|js)$/u, "")
+                .endsWith("executeEditorCommand")
             )
               return;
             if (!Array.isArray(node.specifiers)) return;
@@ -66,13 +76,19 @@ export default {
             }
           },
           VariableDeclarator: (node: unknown) => {
-            if (react && isNode(node) && named(node.id, "handleFormat")) handlerDepth++;
+            if (react && isNode(node) && named(node.id, "handleFormat"))
+              handlerDepth++;
           },
           "VariableDeclarator:exit": (node: unknown) => {
-            if (react && isNode(node) && named(node.id, "handleFormat")) handlerDepth--;
+            if (react && isNode(node) && named(node.id, "handleFormat"))
+              handlerDepth--;
           },
           CallExpression: (node: unknown) => {
-            if ((!vue && handlerDepth === 0) || !isNode(node) || !Array.isArray(node.arguments))
+            if (
+              (!vue && handlerDepth === 0) ||
+              !isNode(node) ||
+              !Array.isArray(node.arguments)
+            )
               return;
             const [state, dispatch] = node.arguments;
             if (

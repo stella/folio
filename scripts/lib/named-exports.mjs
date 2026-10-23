@@ -17,7 +17,7 @@
  * Adapted from the upstream docx-editor parity infra for the folio fork.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 
@@ -28,7 +28,12 @@ export function collectNamedExports(entryPath, visited = new Set()) {
   if (!existsSync(entryPath)) return new Set();
 
   const source = readFileSync(entryPath, "utf8");
-  const sf = ts.createSourceFile(entryPath, source, ts.ScriptTarget.Latest, true);
+  const sf = ts.createSourceFile(
+    entryPath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const exports = new Set();
   const dir = dirname(entryPath);
 
@@ -49,7 +54,8 @@ export function collectNamedExports(entryPath, visited = new Set()) {
       // `export default function Foo()` / `export default class Bar` binds as
       // `default`, not the declaration identifier.
       const isDefault =
-        node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
+        node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ??
+        false;
       exports.add(isDefault ? "default" : node.name.text);
     } else if (ts.isExportAssignment(node)) {
       exports.add("default");
@@ -68,7 +74,8 @@ export function collectNamedExports(entryPath, visited = new Set()) {
         if (spec.startsWith(".")) {
           const target = resolveRelative(dir, spec);
           if (target) {
-            for (const name of collectNamedExports(target, visited)) exports.add(name);
+            for (const name of collectNamedExports(target, visited))
+              exports.add(name);
           } else {
             exports.add(`<*from:${spec}>`);
           }
@@ -83,12 +90,19 @@ export function collectNamedExports(entryPath, visited = new Set()) {
 }
 
 function hasExport(node) {
-  return node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+  return (
+    node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false
+  );
 }
 
 function resolveRelative(fromDir, spec) {
   const base = resolve(fromDir, spec);
-  for (const cand of [`${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`]) {
+  for (const cand of [
+    `${base}.ts`,
+    `${base}.tsx`,
+    `${base}/index.ts`,
+    `${base}/index.tsx`,
+  ]) {
     if (existsSync(cand)) return cand;
   }
   return null;

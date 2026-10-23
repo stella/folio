@@ -24,20 +24,27 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
+import { getParagraphText } from "../packages/core/src/docx/paragraphParser";
 import { parseDocx } from "../packages/core/src/docx/parser";
 import { createEmptyDocx, repackDocx } from "../packages/core/src/docx/rezip";
-import { getParagraphText } from "../packages/core/src/docx/paragraphParser";
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
-import { loadContainerSpace, qualify, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
+import {
+  loadContainerSpace,
+  qualify,
+  WML_NAMESPACE,
+} from "./lib/container-survival/schemaSpace";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const space = await loadContainerSpace();
 
-const RUN_CONTAINER_KEY = `${qualify({ namespace: WML_NAMESPACE, name: "r" })}|${qualify({
-  namespace: WML_NAMESPACE,
-  name: "CT_R",
-})}`;
+const RUN_CONTAINER_KEY = `${qualify({ namespace: WML_NAMESPACE, name: "r" })}|${qualify(
+  {
+    namespace: WML_NAMESPACE,
+    name: "CT_R",
+  },
+)}`;
 
 /**
  * `w:rPr` is the one child excluded: `parseRunProperties` reads the same
@@ -50,7 +57,9 @@ const runChildNames = (): readonly string[] => {
     throw new Error(`the schema graph has no ${RUN_CONTAINER_KEY}`);
   }
   return container.children
-    .filter(({ child }) => child.namespace === WML_NAMESPACE && child.name !== "rPr")
+    .filter(
+      ({ child }) => child.namespace === WML_NAMESPACE && child.name !== "rPr",
+    )
     .map(({ child }) => child.name);
 };
 
@@ -119,14 +128,19 @@ const childMarkup = (name: string, word: string): string => {
 };
 
 /** The text every paragraph in the body puts on the page, joined. */
-const bodyText = ({ package: { document } }: Awaited<ReturnType<typeof parseDocx>>): string =>
+const bodyText = ({
+  package: { document },
+}: Awaited<ReturnType<typeof parseDocx>>): string =>
   document.content
     .filter((block) => block.type === "paragraph")
     .map((paragraph) => getParagraphText(paragraph))
     .join("\n");
 
 /** A notes part holding Word's two required separators plus note 1. */
-const notesPart = (root: "footnotes" | "endnotes", note: "footnote" | "endnote"): string =>
+const notesPart = (
+  root: "footnotes" | "endnotes",
+  note: "footnote" | "endnote",
+): string =>
   `${XML_DECLARATION}<w:${root} xmlns:w="${WML_NAMESPACE}">` +
   `<w:${note} w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:${note}>` +
   `<w:${note} w:type="continuationSeparator" w:id="0"><w:p><w:r>` +
@@ -134,7 +148,8 @@ const notesPart = (root: "footnotes" | "endnotes", note: "footnote" | "endnote")
   `<w:${note} w:id="1"><w:p><w:r><w:t>note</w:t></w:r></w:p></w:${note}>` +
   `</w:${root}>`;
 
-const NOTE_CONTENT_TYPE_PREFIX = "application/vnd.openxmlformats-officedocument.wordprocessingml.";
+const NOTE_CONTENT_TYPE_PREFIX =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.";
 const NOTE_RELATIONSHIP_PREFIX =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
 
@@ -178,7 +193,11 @@ const buildDocx = async (markup: string): Promise<ArrayBuffer> => {
 };
 
 const documentPart = async (buffer: ArrayBuffer): Promise<string> => {
-  const part = await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text");
+  const part = await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/document.xml")
+    ?.async("text");
   if (part === undefined) {
     throw new Error("the saved package has no word/document.xml");
   }
@@ -192,7 +211,9 @@ const runPayload = (part: string): string => {
   if (start === -1 || end === -1) {
     return "";
   }
-  return part.slice(start + "<w:r>".length, end).replace(/<w:rPr>.*?<\/w:rPr>|<w:rPr\/>/su, "");
+  return part
+    .slice(start + "<w:r>".length, end)
+    .replace(/<w:rPr>.*?<\/w:rPr>|<w:rPr\/>/su, "");
 };
 
 describe("every CT_R child survives a forced save", () => {
@@ -205,16 +226,23 @@ describe("every CT_R child survives a forced save", () => {
           fc.stringMatching(/^[A-Za-z]{1,8}$/u),
           async (name, word) => {
             const markup = childMarkup(name, word);
-            const parsed = await parseDocx(await buildDocx(markup), { preloadFonts: false });
+            const parsed = await parseDocx(await buildDocx(markup), {
+              preloadFonts: false,
+            });
 
-            const first = await repackDocx(parsed, { updateModifiedDate: false });
+            const first = await repackDocx(parsed, {
+              updateModifiedDate: false,
+            });
             const firstPart = await documentPart(first);
 
             // The markup is still there. A modelled child comes back re-spelled
             // by its own serializer; an unmodelled one comes back byte-equal,
             // which is the whole claim the sink makes.
             if (!NOT_A_DOCUMENT.has(name)) {
-              expect({ name, payload: runPayload(firstPart) }).not.toEqual({ name, payload: "" });
+              expect({ name, payload: runPayload(firstPart) }).not.toEqual({
+                name,
+                payload: "",
+              });
             }
 
             const reparsed = await parseDocx(first, { preloadFonts: false });
@@ -238,8 +266,11 @@ describe("every CT_R child survives a forced save", () => {
   );
 
   test("an unmodelled child comes back byte-equal, at its position", async () => {
-    const markup = "<w:t>before</w:t><w:ruby><w:rubyPr/></w:ruby><w:t>after</w:t>";
-    const parsed = await parseDocx(await buildDocx(markup), { preloadFonts: false });
+    const markup =
+      "<w:t>before</w:t><w:ruby><w:rubyPr/></w:ruby><w:t>after</w:t>";
+    const parsed = await parseDocx(await buildDocx(markup), {
+      preloadFonts: false,
+    });
     const payload = runPayload(await documentPart(await repackDocx(parsed)));
     expect(payload).toContain("<w:ruby>");
     expect(payload.indexOf("before")).toBeLessThan(payload.indexOf("<w:ruby>"));

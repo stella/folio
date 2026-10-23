@@ -12,11 +12,11 @@ import { measuredLineRangeHeight } from "./lineFlow";
 import type { PageTopContinuation, Paginator } from "./paginator";
 import { getParagraphSpacingAfter } from "./paragraphSpacing";
 import {
-  NOTE_SEPARATOR_RULE_THICKNESS,
-  NOTE_SEPARATOR_WIDTH_FRACTION,
   type FlowBlock,
   type Layout,
   type Measure,
+  NOTE_SEPARATOR_RULE_THICKNESS,
+  NOTE_SEPARATOR_WIDTH_FRACTION,
   type NoteAreaLayout,
   type NoteSeparatorKind,
   type NoteSeparatorRule,
@@ -38,7 +38,11 @@ export function createNoteAreaContinuation(
     return undefined;
   }
   const { block, measure } = continuation;
-  const height = measuredLineRangeHeight(measure.lines, 0, measure.lines.length);
+  const height = measuredLineRangeHeight(
+    measure.lines,
+    0,
+    measure.lines.length,
+  );
   return (state, x, width) => {
     const fragment: ParagraphFragment = {
       kind: "paragraph",
@@ -81,7 +85,10 @@ export function annotateNoteAreas(
   const measureById = new Map<string, ParagraphMeasure>();
   for (const [index, block] of blocks.entries()) {
     const measure = measures[index];
-    if (noteAreas.separatorBlockIds.has(String(block.id)) && measure?.kind === "paragraph") {
+    if (
+      noteAreas.separatorBlockIds.has(String(block.id)) &&
+      measure?.kind === "paragraph"
+    ) {
       measureById.set(String(block.id), measure);
     }
   }
@@ -109,7 +116,9 @@ export function annotateNoteAreas(
       }
       rules.push({
         x: fragment.x,
-        y: fragment.y + (firstLine.lineHeight - NOTE_SEPARATOR_RULE_THICKNESS) / 2,
+        y:
+          fragment.y +
+          (firstLine.lineHeight - NOTE_SEPARATOR_RULE_THICKNESS) / 2,
         width: fragment.width * separatorWidthFraction(kind),
       });
     }

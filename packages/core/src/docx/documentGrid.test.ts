@@ -12,12 +12,18 @@ describe("resolveDocumentGridLinePitch", () => {
 
   test("keeps omitted and default grid types inactive", () => {
     expect(resolveDocumentGridLinePitch({ linePitch: 360 })).toBeUndefined();
-    expect(resolveDocumentGridLinePitch({ type: "default", linePitch: 360 })).toBeUndefined();
+    expect(
+      resolveDocumentGridLinePitch({ type: "default", linePitch: 360 }),
+    ).toBeUndefined();
   });
 
   test("rejects absent and non-positive pitches", () => {
     expect(resolveDocumentGridLinePitch({ type: "lines" })).toBeUndefined();
-    expect(resolveDocumentGridLinePitch({ type: "lines", linePitch: 0 })).toBeUndefined();
-    expect(resolveDocumentGridLinePitch({ type: "lines", linePitch: -1 })).toBeUndefined();
+    expect(
+      resolveDocumentGridLinePitch({ type: "lines", linePitch: 0 }),
+    ).toBeUndefined();
+    expect(
+      resolveDocumentGridLinePitch({ type: "lines", linePitch: -1 }),
+    ).toBeUndefined();
   });
 });

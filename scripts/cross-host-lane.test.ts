@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+
 import { validateDocxPackage } from "../packages/docx-core/src/validate/docx";
 import config from "../playwright.config";
 
@@ -19,7 +20,8 @@ test("cross-host validator resolves from its owning source without a root packag
   const validatorImport = source
     .match(/import\s*\{\s*validateDocxPackage\s*\}\s*from\s*["']([^"']+)["']/)
     ?.at(1);
-  if (!validatorImport) throw new Error("Cross-host validator import unavailable");
+  if (!validatorImport)
+    throw new Error("Cross-host validator import unavailable");
   expect(validatorImport.startsWith(".")).toBe(true);
   expect(Bun.resolveSync(validatorImport, dirname(specPath))).toBe(
     resolve("packages/docx-core/src/validate/docx.ts"),
@@ -39,14 +41,17 @@ test("random cross-host flow is isolated from deterministic parity and Vue proje
   expect(random.testMatch.test(file)).toBe(true);
   for (const name of ["parity", "vue"]) {
     const project = projects.find((candidate) => candidate.name === name);
-    if (!(project?.testIgnore instanceof RegExp)) throw new Error(`${name} exclusion missing`);
+    if (!(project?.testIgnore instanceof RegExp))
+      throw new Error(`${name} exclusion missing`);
     expect(project.testIgnore.test(file)).toBe(true);
   }
 });
 
 test("cross-host random lane uses a bounded scheduled workflow with issue filing", () => {
   const workflow = requireRecord(
-    Bun.YAML.parse(readFileSync(".github/workflows/nightly-parity-e2e.yml", "utf8")),
+    Bun.YAML.parse(
+      readFileSync(".github/workflows/nightly-parity-e2e.yml", "utf8"),
+    ),
   );
   expect(Object.keys(requireRecord(workflow["on"])).sort()).toEqual([
     "schedule",
@@ -62,15 +67,20 @@ test("cross-host random lane uses a bounded scheduled workflow with issue filing
   expect(random["timeout-minutes"]).toBeLessThanOrEqual(12);
   expect(random["run"]).toContain("--project=parity-fuzzer");
   expect(random["run"]).toContain("--output=fuzz-playwright/cross-host");
-  expect(random["run"]).toContain("tee fuzz-artifacts/cross-host/cross-host.log");
+  expect(random["run"]).toContain(
+    "tee fuzz-artifacts/cross-host/cross-host.log",
+  );
   expect(steps.some((step) => step["name"] === "Parity e2e specs")).toBe(false);
   const manual = requireRecord(
     Bun.YAML.parse(readFileSync(".github/workflows/parity-e2e.yml", "utf8")),
   );
-  expect(Object.keys(requireRecord(manual["on"]))).toEqual(["workflow_dispatch"]);
+  expect(Object.keys(requireRecord(manual["on"]))).toEqual([
+    "workflow_dispatch",
+  ]);
   const manualJob = requireRecord(requireRecord(manual["jobs"])["parity-e2e"]);
   const manualSteps = manualJob["steps"];
-  if (!Array.isArray(manualSteps)) throw new Error("Manual parity steps unavailable");
+  if (!Array.isArray(manualSteps))
+    throw new Error("Manual parity steps unavailable");
   const deterministic = manualSteps
     .map(requireRecord)
     .find((step) => step["name"] === "Parity e2e specs");
@@ -79,18 +89,28 @@ test("cross-host random lane uses a bounded scheduled workflow with issue filing
     .map(requireRecord)
     .find(
       (step) =>
-        typeof step["uses"] === "string" && step["uses"].startsWith("actions/upload-artifact@"),
+        typeof step["uses"] === "string" &&
+        step["uses"].startsWith("actions/upload-artifact@"),
     );
-  if (!parityUpload) throw new Error("Parity proof artifact upload unavailable");
+  if (!parityUpload)
+    throw new Error("Parity proof artifact upload unavailable");
   expect(parityUpload["if"]).toBe("always()");
-  expect(requireRecord(parityUpload["with"])["path"]).toBe("fuzz-playwright/parity");
+  expect(requireRecord(parityUpload["with"])["path"]).toBe(
+    "fuzz-playwright/parity",
+  );
   const spec = readFileSync(resolve("tests/parity", file), "utf8");
   const recordsPath = spec.match(/writeFailureRecord\(\s*"([^"]+)"/)?.at(1);
   expect(recordsPath).toBe("fuzz-artifacts/cross-host/findings");
-  const upload = steps.find((step) => step["name"] === "Upload differential repro artifacts");
+  const upload = steps.find(
+    (step) => step["name"] === "Upload differential repro artifacts",
+  );
   if (!upload) throw new Error("Repro artifact upload unavailable");
-  expect(requireRecord(upload["with"])["path"]).toBe("fuzz-artifacts/\nfuzz-playwright/\n");
-  const reporter = requireRecord(requireRecord(workflow["jobs"])["cross-host-report"]);
+  expect(requireRecord(upload["with"])["path"]).toBe(
+    "fuzz-artifacts/\nfuzz-playwright/\n",
+  );
+  const reporter = requireRecord(
+    requireRecord(workflow["jobs"])["cross-host-report"],
+  );
   expect(requireRecord(job["outputs"])["cross_host_outcome"]).toBe(
     "${{ steps.cross-host.outcome }}",
   );

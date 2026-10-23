@@ -1,18 +1,20 @@
 /** Zero-width bookmark boundary that preserves its position through ProseMirror edits. */
 
 import type { Node as PMNode } from "prosemirror-model";
-
-import type { PositionedBookmarkMarker } from "../../../types/document";
 import { Plugin } from "prosemirror-state";
 
-import { readParagraphAttrs, readTableAttrs, readTableRowAttrs } from "../../attrs";
+import type { PositionedBookmarkMarker } from "../../../types/document";
+import {
+  readParagraphAttrs,
+  readTableAttrs,
+  readTableRowAttrs,
+} from "../../attrs";
 import { readBookmarkBoundaryAttrs } from "../../bookmarkBoundaryAttrs";
 import {
-  findInvalidBookmarkBoundaryIds,
   type BookmarkBoundaryOccurrence,
+  findInvalidBookmarkBoundaryIds,
 } from "../../bookmarkBoundaryIntegrity";
 import { createNodeExtension } from "../create";
-
 import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./BlockBookmarkBoundaryExtension";
 import {
   bookmarkBoundaryAttrSpec,
@@ -47,8 +49,11 @@ type PositionedNode = {
 type PositionedBoundary = BookmarkBoundaryOccurrence & PositionedNode;
 
 /** The markers a `table` or `tableRow` node carries, or none. */
-const positionedBookmarksOf = (node: PMNode): readonly PositionedBookmarkMarker[] => {
-  const attrs = node.type.name === "table" ? readTableAttrs(node) : readTableRowAttrs(node);
+const positionedBookmarksOf = (
+  node: PMNode,
+): readonly PositionedBookmarkMarker[] => {
+  const attrs =
+    node.type.name === "table" ? readTableAttrs(node) : readTableRowAttrs(node);
   return attrs.ok ? (attrs.value._bookmarks ?? []) : [];
 };
 
@@ -95,60 +100,71 @@ const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
     return false;
   });
 
-  const invalidIds = findInvalidBookmarkBoundaryIds(boundaries, paragraphBookmarkIds);
+  const invalidIds = findInvalidBookmarkBoundaryIds(
+    boundaries,
+    paragraphBookmarkIds,
+  );
   // Only a boundary *node* can be deleted. A marker on a table or a row is an
   // attribute of a record the user is still editing, so an unpaired one is
   // reported by the pair's other half going, not by the container being cut.
   return [
     ...boundaries.filter(
-      ({ id, node }) => invalidIds.has(id) && BOUNDARY_NODE_NAMES.has(node.type.name),
+      ({ id, node }) =>
+        invalidIds.has(id) && BOUNDARY_NODE_NAMES.has(node.type.name),
     ),
     ...malformedBoundaries,
   ];
 };
 
-export const BookmarkBoundaryExtension = createNodeExtension<BookmarkBoundaryOptions>({
-  name: BOOKMARK_BOUNDARY_NODE_NAME,
-  schemaNodeName: BOOKMARK_BOUNDARY_NODE_NAME,
-  nodeSpec: (options) => ({
-    inline: true,
-    group: "inline",
-    marks: "_",
-    atom: true,
-    selectable: false,
-    attrs: bookmarkBoundaryAttrSpec,
-    parseDOM: [
-      {
-        tag: "span[data-docx-bookmark-boundary]",
-        getAttrs: parseBookmarkBoundaryDom,
-      },
-    ],
-    toDOM(node) {
-      return ["span", bookmarkBoundaryDomAttributes(node, options.getInternalClipboardToken?.())];
-    },
-  }),
-  onSchemaReady: () => ({
-    plugins: [
-      new Plugin({
-        appendTransaction(transactions, _oldState, newState) {
-          if (!transactions.some(({ docChanged }) => docChanged)) {
-            return null;
-          }
-
-          const invalidBoundaries = collectInvalidBoundaries(newState.doc);
-          if (invalidBoundaries.length === 0) {
-            return null;
-          }
-
-          const transaction = newState.tr;
-          for (const { node, position } of invalidBoundaries.toSorted(
-            (first, second) => second.position - first.position,
-          )) {
-            transaction.delete(position, position + node.nodeSize);
-          }
-          return transaction;
+export const BookmarkBoundaryExtension =
+  createNodeExtension<BookmarkBoundaryOptions>({
+    name: BOOKMARK_BOUNDARY_NODE_NAME,
+    schemaNodeName: BOOKMARK_BOUNDARY_NODE_NAME,
+    nodeSpec: (options) => ({
+      inline: true,
+      group: "inline",
+      marks: "_",
+      atom: true,
+      selectable: false,
+      attrs: bookmarkBoundaryAttrSpec,
+      parseDOM: [
+        {
+          tag: "span[data-docx-bookmark-boundary]",
+          getAttrs: parseBookmarkBoundaryDom,
         },
-      }),
-    ],
-  }),
-});
+      ],
+      toDOM(node) {
+        return [
+          "span",
+          bookmarkBoundaryDomAttributes(
+            node,
+            options.getInternalClipboardToken?.(),
+          ),
+        ];
+      },
+    }),
+    onSchemaReady: () => ({
+      plugins: [
+        new Plugin({
+          appendTransaction(transactions, _oldState, newState) {
+            if (!transactions.some(({ docChanged }) => docChanged)) {
+              return null;
+            }
+
+            const invalidBoundaries = collectInvalidBoundaries(newState.doc);
+            if (invalidBoundaries.length === 0) {
+              return null;
+            }
+
+            const transaction = newState.tr;
+            for (const { node, position } of invalidBoundaries.toSorted(
+              (first, second) => second.position - first.position,
+            )) {
+              transaction.delete(position, position + node.nodeSize);
+            }
+            return transaction;
+          },
+        }),
+      ],
+    }),
+  });

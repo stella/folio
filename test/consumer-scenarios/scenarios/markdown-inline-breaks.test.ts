@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { docxToMarkdown } from "@stll/folio-core/server";
 
@@ -9,13 +10,29 @@ import { MARKDOWN_READ_OPTIONS, markdownViews } from "../support/readers.ts";
 test("inline breaks preserve Markdown block identity across paragraph kinds", async () => {
   const starts = {
     paragraph: { markdown: "First", view: { kind: "paragraph" } },
-    heading: { markdown: "## First", view: { kind: "heading", headingLevel: 2 } },
-    listItem: { markdown: "- First", view: { kind: "listItem", number: "(bullet)" } },
+    heading: {
+      markdown: "## First",
+      view: { kind: "heading", headingLevel: 2 },
+    },
+    listItem: {
+      markdown: "- First",
+      view: { kind: "listItem", number: "(bullet)" },
+    },
     tableCell: { markdown: "| First |\n| --- |", view: { kind: "paragraph" } },
   } as const;
-  const separators = { textWrapping: "\n", column: "\n", tab: "    ", softHyphen: "" } as const;
+  const separators = {
+    textWrapping: "\n",
+    column: "\n",
+    tab: "    ",
+    softHyphen: "",
+  } as const;
   for (const [kind, start] of Object.entries(starts)) {
-    for (const inline of ["textWrapping", "column", "tab", "softHyphen"] as const) {
+    for (const inline of [
+      "textWrapping",
+      "column",
+      "tab",
+      "softHyphen",
+    ] as const) {
       for (const formatting of [
         {},
         { bold: true, italic: true },
@@ -25,7 +42,9 @@ test("inline breaks preserve Markdown block identity across paragraph kinds", as
         const first = document.package.document.content.at(0);
         assert.ok(first);
         const paragraph =
-          first.type === "table" ? first.rows.at(0)?.cells.at(0)?.content.at(0) : first;
+          first.type === "table"
+            ? first.rows.at(0)?.cells.at(0)?.content.at(0)
+            : first;
         assert.ok(paragraph?.type === "paragraph");
         paragraph.content = [
           {

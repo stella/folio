@@ -1,4 +1,5 @@
 import { TaggedError } from "better-result";
+
 import { preserveInlineChild } from "./preservedRunContent";
 import {
   getChildElements,
@@ -17,7 +18,9 @@ export const preserveLinkedSdt = (root: XmlElement) => {
   while (pending.length > 0) {
     const node = pending.pop();
     if (!node) continue;
-    const wordprocessing = WORDPROCESSINGML_NAMESPACE_URIS.has(node.namespaceUri ?? "");
+    const wordprocessing = WORDPROCESSINGML_NAMESPACE_URIS.has(
+      node.namespaceUri ?? "",
+    );
     const name = getLocalName(node.name);
     if (
       wordprocessing &&

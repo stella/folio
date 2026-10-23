@@ -1,10 +1,14 @@
 import fc from "fast-check";
+
 import { commonActionArbitraries } from "./browserInputTrace";
 
-export const canonicalBrowserTraceArbitrary = fc.array(fc.oneof(...commonActionArbitraries), {
-  minLength: 1,
-  maxLength: 12,
-});
+export const canonicalBrowserTraceArbitrary = fc.array(
+  fc.oneof(...commonActionArbitraries),
+  {
+    minLength: 1,
+    maxLength: 12,
+  },
+);
 
 export const CANONICAL_BROWSER_HISTORY_REPLAYS = [
   {
@@ -89,7 +93,11 @@ export const CANONICAL_EVALUATION_HISTORY_REPLAY = {
 } as const;
 
 export const CANONICAL_BROWSER_SAVE_REPLAYS = [
-  { seed: 11, path: "17", kinds: ["pasteWordHtml", "pasteListHtml", "backspace"] },
+  {
+    seed: 11,
+    path: "17",
+    kinds: ["pasteWordHtml", "pasteListHtml", "backspace"],
+  },
   {
     seed: 29,
     path: "2",

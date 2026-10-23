@@ -30,19 +30,27 @@ const bidiOf = (doc: Document, index: number): boolean | undefined => {
 
 describe("normalizeBaseDirection", () => {
   test("sets bidi=true on an undecided Arabic-led paragraph", () => {
-    expect(bidiOf(normalizeBaseDirection(docOf(para("هذا عقد"))), 0)).toBe(true);
+    expect(bidiOf(normalizeBaseDirection(docOf(para("هذا عقد"))), 0)).toBe(
+      true,
+    );
   });
 
   test("leaves a Latin-led paragraph undecided", () => {
-    expect(bidiOf(normalizeBaseDirection(docOf(para("Agreement"))), 0)).toBeUndefined();
+    expect(
+      bidiOf(normalizeBaseDirection(docOf(para("Agreement"))), 0),
+    ).toBeUndefined();
   });
 
   test("does not override an explicit LTR (false)", () => {
-    expect(bidiOf(normalizeBaseDirection(docOf(para("عربي", false))), 0)).toBe(false);
+    expect(bidiOf(normalizeBaseDirection(docOf(para("عربي", false))), 0)).toBe(
+      false,
+    );
   });
 
   test("leaves an explicit RTL (true) untouched", () => {
-    expect(bidiOf(normalizeBaseDirection(docOf(para("عربي", true))), 0)).toBe(true);
+    expect(bidiOf(normalizeBaseDirection(docOf(para("عربي", true))), 0)).toBe(
+      true,
+    );
   });
 
   test("detects RTL inside an insertion (tracked-change) wrapper", () => {
@@ -95,7 +103,9 @@ describe("normalizeBaseDirection", () => {
         {
           type: "hyperlink",
           href: "https://example.test",
-          children: [{ type: "run", content: [{ type: "text", text: "عربي" }] }],
+          children: [
+            { type: "run", content: [{ type: "text", text: "عربي" }] },
+          ],
         },
       ],
     });
@@ -163,7 +173,9 @@ describe("normalizeBaseDirection", () => {
             {
               type: "paragraph",
               formatting: { styleId: "LtrForced" },
-              content: [{ type: "run", content: [{ type: "text", text: "عربي" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "عربي" }] },
+              ],
             },
           ],
         },
@@ -191,7 +203,9 @@ describe("normalizeBaseDirection", () => {
             {
               type: "paragraph",
               formatting: { styleId: "Normal" },
-              content: [{ type: "run", content: [{ type: "text", text: "عربي" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "عربي" }] },
+              ],
             },
           ],
         },

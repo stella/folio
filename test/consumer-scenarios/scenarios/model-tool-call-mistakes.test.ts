@@ -3,14 +3,22 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
+import {
+  createReviewerBridge,
+  executeFolioToolCallUntyped,
+} from "@stll/folio-agents";
 import { getFolioDocumentOperationIssues } from "@stll/folio-core/server";
 
 import { openReviewer, plainDocument } from "../support/documents.ts";
 import { assertHealthy, visibleState } from "../support/invariants.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
-type Row = { blockId: string; kind: string; text: string; blockTextHash: string };
+type Row = {
+  blockId: string;
+  kind: string;
+  text: string;
+  blockTextHash: string;
+};
 type Summary = {
   applied: { id: string }[];
   skipped: { id: string; reason: string }[];
@@ -19,7 +27,12 @@ type Summary = {
 };
 
 const call = (reviewer: Reviewer, name: string, args: unknown) =>
-  executeFolioToolCallUntyped(name, args, createReviewerBridge(reviewer, { mode: "direct" }), {});
+  executeFolioToolCallUntyped(
+    name,
+    args,
+    createReviewerBridge(reviewer, { mode: "direct" }),
+    {},
+  );
 
 const rowsOf = (reviewer: Reviewer): Row[] => {
   const result = call(reviewer, "read_document", {});
@@ -38,7 +51,9 @@ describe("observed model tool-call mistakes", () => {
     test(`${type}: text plus hardPageBreak is refused before a later valid edit`, async () => {
       const reviewer = await openReviewer(await plainDocument());
       const before = visibleState(reviewer);
-      const target = rowsOf(reviewer).find((row) => row.text.includes("Supplier delivers"));
+      const target = rowsOf(reviewer).find((row) =>
+        row.text.includes("Supplier delivers"),
+      );
       assert.ok(target);
       const result = call(reviewer, "suggest_changes", {
         operations: [
@@ -59,19 +74,29 @@ describe("observed model tool-call mistakes", () => {
           },
         ],
       });
-      assert.equal(result.ok, false, "a malformed first operation must refuse the whole call");
+      assert.equal(
+        result.ok,
+        false,
+        "a malformed first operation must refuse the whole call",
+      );
       if (result.ok) return;
       assert.match(result.error, /operations\[0\]\.text/u);
       assert.match(result.error, /omit hardPageBreak to insert text/u);
       assert.match(result.error, /set text to "" to insert a hard page break/u);
-      assert.deepEqual(visibleState(reviewer), before, "the later valid operation must not land");
+      assert.deepEqual(
+        visibleState(reviewer),
+        before,
+        "the later valid operation must not land",
+      );
       await assertHealthy(reviewer, `${type} with text and hardPageBreak`);
     });
   }
 
   test("a stale block hash is refused, then a fresh read makes the retry apply", async () => {
     const reviewer = await openReviewer(await plainDocument());
-    const original = rowsOf(reviewer).find((row) => row.text.includes("Supplier delivers"));
+    const original = rowsOf(reviewer).find((row) =>
+      row.text.includes("Supplier delivers"),
+    );
     assert.ok(original);
     const first = summaryOf(reviewer, [
       {
@@ -98,11 +123,16 @@ describe("observed model tool-call mistakes", () => {
       stale.issues.map(({ code }) => code),
       ["preconditionFailed"],
     );
-    assert.match(stale.skipped[0]?.reason ?? "", /re-read the document and retry/u);
+    assert.match(
+      stale.skipped[0]?.reason ?? "",
+      /re-read the document and retry/u,
+    );
     assert.deepEqual(visibleState(reviewer), beforeRetry);
     await assertHealthy(reviewer, "stale precondition refusal");
 
-    const fresh = rowsOf(reviewer).find((row) => row.blockId === original.blockId);
+    const fresh = rowsOf(reviewer).find(
+      (row) => row.blockId === original.blockId,
+    );
     assert.ok(fresh);
     const repaired = summaryOf(reviewer, [
       {
@@ -115,13 +145,17 @@ describe("observed model tool-call mistakes", () => {
     ]);
     assert.equal(repaired.applied.length, 1);
     assert.equal(repaired.skipped.length, 0);
-    assert.ok(rowsOf(reviewer).some((row) => row.text.includes("Vendor delivers")));
+    assert.ok(
+      rowsOf(reviewer).some((row) => row.text.includes("Vendor delivers")),
+    );
     await assertHealthy(reviewer, "fresh precondition retry");
   });
 
   test("fields for another operation kind are reported while the intended edit applies", async () => {
     const reviewer = await openReviewer(await plainDocument());
-    const target = rowsOf(reviewer).find((row) => row.text.includes("Supplier delivers"));
+    const target = rowsOf(reviewer).find((row) =>
+      row.text.includes("Supplier delivers"),
+    );
     assert.ok(target);
     const outcome = summaryOf(reviewer, [
       {
@@ -138,22 +172,32 @@ describe("observed model tool-call mistakes", () => {
     assert.equal(outcome.skipped.length, 0);
     assert.deepEqual(
       outcome.normalizations.map(({ path }) => path),
-      ["operations[0].text", "operations[0].hardPageBreak", "operations[0].cellTexts"],
+      [
+        "operations[0].text",
+        "operations[0].hardPageBreak",
+        "operations[0].cellTexts",
+      ],
     );
-    assert.ok(rowsOf(reviewer).some((row) => row.text.includes("Provider delivers")));
+    assert.ok(
+      rowsOf(reviewer).some((row) => row.text.includes("Provider delivers")),
+    );
     await assertHealthy(reviewer, "irrelevant projected fields");
   });
 
   test("an unsupported block refusal gives repair and stop guidance", async () => {
     const reviewer = await openReviewer(await plainDocument());
-    const target = rowsOf(reviewer).find((row) => row.text.includes("Supplier delivers"));
+    const target = rowsOf(reviewer).find((row) =>
+      row.text.includes("Supplier delivers"),
+    );
     assert.ok(target);
     const before = visibleState(reviewer);
     const bridge = createReviewerBridge(reviewer, { mode: "direct" });
     // A host may know a target has structure the current operation cannot change.
     const refusingBridge = {
       ...bridge,
-      applyDocumentOperations: (batch: Parameters<typeof bridge.applyDocumentOperations>[0]) => {
+      applyDocumentOperations: (
+        batch: Parameters<typeof bridge.applyDocumentOperations>[0],
+      ) => {
         const skipped = batch.operations.map(({ id }) => ({
           id,
           reason: "unsupportedBlock" as const,
@@ -191,7 +235,10 @@ describe("observed model tool-call mistakes", () => {
       ["unsupportedBlock"],
     );
     assert.match(result.skipped[0]?.reason ?? "", /read_document to inspect/u);
-    assert.match(result.skipped[0]?.reason ?? "", /tell the user this edit cannot be applied/u);
+    assert.match(
+      result.skipped[0]?.reason ?? "",
+      /tell the user this edit cannot be applied/u,
+    );
     assert.deepEqual(visibleState(reviewer), before);
     await assertHealthy(reviewer, "unsupported block refusal");
   });

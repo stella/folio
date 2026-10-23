@@ -18,15 +18,17 @@
  *   bun scripts/generate-border-styles.ts check
  */
 
+import { TaggedError } from "better-result";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 
 import { loadSchemaGraph, WML_NAMESPACE } from "./lib/ooxml-schema-graph";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/docx-core/src/model/borderStyle.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/docx-core/src/model/borderStyle.gen.ts",
+);
 
 const BORDER_SIMPLE_TYPE = `simpleType:{${WML_NAMESPACE}}ST_Border`;
 
@@ -37,9 +39,18 @@ const BORDER_SIMPLE_TYPE = `simpleType:{${WML_NAMESPACE}}ST_Border`;
  * and `apples` is the first art border: a graph that lost the art half of the
  * enumeration would still satisfy a `length > 0` check.
  */
-const REQUIRED_MEMBERS = ["nil", "none", "single", "apples", "zigZagStitch", "custom"] as const;
+const REQUIRED_MEMBERS = [
+  "nil",
+  "none",
+  "single",
+  "apples",
+  "zigZagStitch",
+  "custom",
+] as const;
 
-class GenerateBorderStylesError extends TaggedError("GenerateBorderStylesError")<{
+class GenerateBorderStylesError extends TaggedError(
+  "GenerateBorderStylesError",
+)<{
   message: string;
 }> {}
 
@@ -77,7 +88,9 @@ const main = async (): Promise<void> => {
   }
 
   const graph = await loadSchemaGraph();
-  const members = graph.symbols.find((symbol) => symbol.id === BORDER_SIMPLE_TYPE)?.enumValues;
+  const members = graph.symbols.find(
+    (symbol) => symbol.id === BORDER_SIMPLE_TYPE,
+  )?.enumValues;
   if (members === undefined || members.length === 0) {
     throw new GenerateBorderStylesError({
       message: `${BORDER_SIMPLE_TYPE} enumerates nothing in the committed schema graph.`,
@@ -90,7 +103,9 @@ const main = async (): Promise<void> => {
       });
     }
   }
-  const duplicate = members.find((member, index) => members.indexOf(member) !== index);
+  const duplicate = members.find(
+    (member, index) => members.indexOf(member) !== index,
+  );
   if (duplicate !== undefined) {
     throw new GenerateBorderStylesError({
       message: `ST_Border enumerates \`${duplicate}\` twice; the union would carry a duplicate member.`,
@@ -100,14 +115,17 @@ const main = async (): Promise<void> => {
   const rendered = renderModule(members);
   if (mode === "write") {
     await writeFile(OUTPUT_PATH, rendered, "utf8");
-    process.stdout.write(`borderStyle.gen.ts written (${String(members.length)} members)\n`);
+    process.stdout.write(
+      `borderStyle.gen.ts written (${String(members.length)} members)\n`,
+    );
     return;
   }
 
   const existing = await readFile(OUTPUT_PATH, "utf8").catch(() => null);
   if (existing !== rendered) {
     throw new GenerateBorderStylesError({
-      message: "borderStyle.gen.ts is stale. Run `bun run generate:border-styles`.",
+      message:
+        "borderStyle.gen.ts is stale. Run `bun run generate:border-styles`.",
     });
   }
   process.stdout.write("borderStyle.gen.ts is up to date\n");

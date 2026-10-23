@@ -46,7 +46,9 @@ const createContainer = (): ParentNode =>
       }
     },
     querySelector(selector: string) {
-      if (selector === '.layout-page-header[data-rid="rIdH1"] [data-pm-start="3"]') {
+      if (
+        selector === '.layout-page-header[data-rid="rIdH1"] [data-pm-start="3"]'
+      ) {
         return headerSpan;
       }
       return null;
@@ -79,7 +81,9 @@ describe("HF slot-scoped PM DOM lookups", () => {
   });
 
   test("findHfPmAnchor rejects non-finite positions", () => {
-    expect(findHfPmAnchor(createContainer(), "header", "rIdH1", Number.NaN)).toBeNull();
+    expect(
+      findHfPmAnchor(createContainer(), "header", "rIdH1", Number.NaN),
+    ).toBeNull();
   });
 
   test("includes spans moved to the page layer with HF slot metadata", () => {
@@ -103,7 +107,10 @@ describe("HF slot-scoped PM DOM lookups", () => {
   test("includes moved HF roots as PM anchors", () => {
     const container = {
       querySelectorAll(selector: string) {
-        if (selector === '[data-hf-slot-kind="header"][data-hf-rid="rIdH1"][data-pm-start]') {
+        if (
+          selector ===
+          '[data-hf-slot-kind="header"][data-hf-rid="rIdH1"][data-pm-start]'
+        ) {
           return [associatedImage];
         }
         return [];
@@ -118,7 +125,10 @@ describe("HF slot-scoped PM DOM lookups", () => {
   test("findHfPmAnchor resolves a moved HF root by pm-start", () => {
     const container = {
       querySelector(selector: string) {
-        if (selector === '[data-hf-slot-kind="header"][data-hf-rid="rIdH1"][data-pm-start="31"]') {
+        if (
+          selector ===
+          '[data-hf-slot-kind="header"][data-hf-rid="rIdH1"][data-pm-start="31"]'
+        ) {
           return associatedImage;
         }
         return null;
@@ -149,13 +159,19 @@ describe("findHfCaretSpan", () => {
   const caretContainer = (): ParentNode =>
     ({
       querySelector(selector: string) {
-        if (selector === '.layout-page-header[data-rid="rIdH1"] [data-pm-start="3"]') {
+        if (
+          selector ===
+          '.layout-page-header[data-rid="rIdH1"] [data-pm-start="3"]'
+        ) {
           return startSpan;
         }
         return null;
       },
       querySelectorAll(selector: string) {
-        if (selector === '.layout-page-header[data-rid="rIdH1"] span[data-pm-start][data-pm-end]') {
+        if (
+          selector ===
+          '.layout-page-header[data-rid="rIdH1"] span[data-pm-start][data-pm-end]'
+        ) {
           return [startSpan, endSpan];
         }
         return [];
@@ -188,7 +204,8 @@ describe("findHfCaretSpan", () => {
         },
         querySelectorAll(selector: string) {
           if (
-            selector === '.layout-page-header[data-rid="rIdH1"] span[data-pm-start][data-pm-end]'
+            selector ===
+            '.layout-page-header[data-rid="rIdH1"] span[data-pm-start][data-pm-end]'
           ) {
             return [startSpan, endSpan];
           }
@@ -206,7 +223,9 @@ describe("findHfCaretSpan", () => {
   });
 
   test("rejects non-finite positions", () => {
-    expect(findHfCaretSpan(caretContainer(), "header", "rIdH1", Number.NaN)).toBeNull();
+    expect(
+      findHfCaretSpan(caretContainer(), "header", "rIdH1", Number.NaN),
+    ).toBeNull();
   });
 });
 

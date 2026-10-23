@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import type { Comment } from "@stll/folio-core/types/content";
+
 import MaterialSymbol from "../ui/MaterialSymbol.vue";
 
 defineProps<{

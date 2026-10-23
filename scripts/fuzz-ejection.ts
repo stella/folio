@@ -20,8 +20,8 @@
  *     --group-sha <sha> --base-sha <sha> [--pr <n>] [--run-url <url>] [--dry-run]
  */
 
-import { $ } from "bun";
 import { TaggedError } from "better-result";
+import { $ } from "bun";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
@@ -38,11 +38,11 @@ import { hash32 } from "../test/commit-seed";
 import { extractFailureMarkers } from "./failure-fingerprints";
 import {
   type Context,
-  type Finding,
-  type SignatureIssueStore,
   fileFindings,
-  RUN_TRIGGER,
+  type Finding,
   readFindings,
+  RUN_TRIGGER,
+  type SignatureIssueStore,
 } from "./fuzz-failure-issues";
 
 export const LABEL = {
@@ -90,7 +90,9 @@ export const propertyReplays = (log: string): PropertyReplay[] =>
     if (start === -1) return [];
     let value: Record<string, unknown>;
     try {
-      value = JSON.parse(line.slice(start + "PROPERTY_FAILURE ".length)) as Record<string, unknown>;
+      value = JSON.parse(
+        line.slice(start + "PROPERTY_FAILURE ".length),
+      ) as Record<string, unknown>;
     } catch {
       return [];
     }
@@ -104,7 +106,8 @@ export const propertyReplays = (log: string): PropertyReplay[] =>
       typeof seed !== "number" ||
       !Number.isSafeInteger(seed) ||
       (counterexample !== null &&
-        (typeof counterexample !== "string" || !/^[\d:]*$/u.test(counterexample)))
+        (typeof counterexample !== "string" ||
+          !/^[\d:]*$/u.test(counterexample)))
     ) {
       return [];
     }
@@ -114,7 +117,10 @@ export const propertyReplays = (log: string): PropertyReplay[] =>
         title: test,
         seed,
         path: counterexample === "" ? null : counterexample,
-        factor: typeof numRunsFactor === "number" && numRunsFactor >= 1 ? numRunsFactor : 1,
+        factor:
+          typeof numRunsFactor === "number" && numRunsFactor >= 1
+            ? numRunsFactor
+            : 1,
       },
     ];
   });
@@ -131,7 +137,9 @@ export const packageOf = (file: string): { dir: string; file: string } => {
 // replay
 // ---------------------------------------------------------------------------
 
-export class ReplayVerificationError extends TaggedError("ReplayVerificationError")<{
+export class ReplayVerificationError extends TaggedError(
+  "ReplayVerificationError",
+)<{
   message: string;
 }> {}
 
@@ -165,12 +173,22 @@ export const replayOutcome = ({
     /^\s*(?:ℹ\s*)?(?:pass|fail)\s+[1-9]\d*\b/mu.test(text) ||
     /^\s*[1-9]\d*\s+(?:pass|fail)\b/mu.test(text);
   if (error || exitCode === null || !ranTests) {
-    return { status: "unavailable", message: error ?? "Replay did not execute tests" };
+    return {
+      status: "unavailable",
+      message: error ?? "Replay did not execute tests",
+    };
   }
-  const fingerprints = extractFailureMarkers(text).map((marker) => marker.fingerprint);
-  if (exitCode === 0 && fingerprints.length === 0) return { status: "passed", fingerprints };
-  if (exitCode !== 0 && fingerprints.length > 0) return { status: "failed", fingerprints };
-  return { status: "unavailable", message: "Replay exit status and failure evidence disagree" };
+  const fingerprints = extractFailureMarkers(text).map(
+    (marker) => marker.fingerprint,
+  );
+  if (exitCode === 0 && fingerprints.length === 0)
+    return { status: "passed", fingerprints };
+  if (exitCode !== 0 && fingerprints.length > 0)
+    return { status: "failed", fingerprints };
+  return {
+    status: "unavailable",
+    message: "Replay exit status and failure evidence disagree",
+  };
 };
 
 const run = (
@@ -203,13 +221,19 @@ const run = (
 
 const replay = (options: Options): void => {
   if (!SHA.test(options.groupSha) || !SHA.test(options.baseSha)) {
-    throw new ReplayVerificationError({ message: "Replay requires group and main commit shas" });
+    throw new ReplayVerificationError({
+      message: "Replay requires group and main commit shas",
+    });
   }
   mkdirSync(options.out, { recursive: true });
-  const logs = logsIn(options.queueLogs).map((file) => readFileSync(file, "utf8"));
+  const logs = logsIn(options.queueLogs).map((file) =>
+    readFileSync(file, "utf8"),
+  );
   const markers = logs.flatMap((log) => extractFailureMarkers(log));
   const attempts: ReplayAttempt[] = [];
-  const consumers = markers.filter((marker) => marker.repro.includes("consumer-scenarios.ts"));
+  const consumers = markers.filter((marker) =>
+    marker.repro.includes("consumer-scenarios.ts"),
+  );
   if (consumers.length > 0) {
     const settings = consumerReplaySettings(options.groupSha);
     // Match the merge-group lane: generated fuzz and collision flows are off,
@@ -219,7 +243,10 @@ const replay = (options: Options): void => {
       env: settings.env,
       log: path.join(options.out, "base-consumer-scenarios.log"),
     });
-    attempts.push({ requested: consumers.map((marker) => marker.fingerprint), outcome });
+    attempts.push({
+      requested: consumers.map((marker) => marker.fingerprint),
+      outcome,
+    });
   }
   const seen = new Set<string>();
   logs.flatMap(propertyReplays).forEach((property, index) => {
@@ -227,21 +254,28 @@ const replay = (options: Options): void => {
     if (seen.has(key)) return;
     seen.add(key);
     const { dir, file } = packageOf(property.file);
-    const outcome = run("bun", ["test", file, "-t", titlePattern(property.title)], {
-      cwd: path.join(options.base, dir),
-      env: {
-        CI: "true",
-        PROPERTY_TEST_SEED: String(property.seed),
-        PROPERTY_TEST_NUM_RUNS_FACTOR: String(property.factor),
-        ...(property.path === null ? {} : { PROPERTY_TEST_PATH: property.path }),
+    const outcome = run(
+      "bun",
+      ["test", file, "-t", titlePattern(property.title)],
+      {
+        cwd: path.join(options.base, dir),
+        env: {
+          CI: "true",
+          PROPERTY_TEST_SEED: String(property.seed),
+          PROPERTY_TEST_NUM_RUNS_FACTOR: String(property.factor),
+          ...(property.path === null
+            ? {}
+            : { PROPERTY_TEST_PATH: property.path }),
+        },
+        log: path.join(options.out, `base-property-${String(index)}.log`),
       },
-      log: path.join(options.out, `base-property-${String(index)}.log`),
-    });
+    );
     attempts.push({
       requested: markers
         .filter(
           (marker) =>
-            marker.test === `${property.file}::${property.title}` && marker.seed === property.seed,
+            marker.test === `${property.file}::${property.title}` &&
+            marker.seed === property.seed,
         )
         .map((marker) => marker.fingerprint),
       outcome,
@@ -290,7 +324,9 @@ export const judge = (
     reproducedOnBase: base.has(fingerprint),
     issue: null as string | null,
   }));
-  const reproduced = fingerprints.filter((entry) => entry.reproducedOnBase).length;
+  const reproduced = fingerprints.filter(
+    (entry) => entry.reproducedOnBase,
+  ).length;
   let verdict: Verdict = "mixed";
   if (fingerprints.length === 0) verdict = "none";
   else if (reproduced === fingerprints.length) verdict = "pre-existing";
@@ -321,16 +357,23 @@ export const verifyReplayAttempts = (
   }
 };
 
-const reproducedFingerprints = (attempts: readonly ReplayAttempt[]): Set<string> =>
+const reproducedFingerprints = (
+  attempts: readonly ReplayAttempt[],
+): Set<string> =>
   new Set(
     attempts.flatMap(({ requested, outcome }) => {
       if (outcome.status !== "failed") return [];
       const requestedFingerprints = new Set(requested);
-      return outcome.fingerprints.filter((fingerprint) => requestedFingerprints.has(fingerprint));
+      return outcome.fingerprints.filter((fingerprint) =>
+        requestedFingerprints.has(fingerprint),
+      );
     }),
   );
 
-const judgeMainFindings = (findings: readonly Finding[], attempts: readonly ReplayAttempt[]) => {
+const judgeMainFindings = (
+  findings: readonly Finding[],
+  attempts: readonly ReplayAttempt[],
+) => {
   verifyReplayAttempts(findings, attempts);
   const reproduced = reproducedFingerprints(attempts);
   return judge(
@@ -353,7 +396,9 @@ export const fileMainFindings = async ({
 }: FileMainFindingsOptions) => {
   const judged = judgeMainFindings(findings, attempts);
   const reproduced = reproducedFingerprints(attempts);
-  const confirmed = findings.filter(({ record }) => reproduced.has(record.marker.fingerprint));
+  const confirmed = findings.filter(({ record }) =>
+    reproduced.has(record.marker.fingerprint),
+  );
   if (confirmed.length > 0) {
     const { filed } = await fileFindings({
       findings: confirmed,
@@ -362,7 +407,8 @@ export const fileMainFindings = async ({
     });
     for (const entry of judged.fingerprints) {
       entry.issue =
-        filed.find(({ fingerprint }) => fingerprint === entry.fingerprint)?.issue ?? null;
+        filed.find(({ fingerprint }) => fingerprint === entry.fingerprint)
+          ?.issue ?? null;
     }
   }
   return judged;
@@ -372,7 +418,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const fingerprintsOf = (value: unknown): value is string[] =>
   Array.isArray(value) &&
-  value.every((item) => typeof item === "string" && /^[0-9a-f]{16}$/u.test(item));
+  value.every(
+    (item) => typeof item === "string" && /^[0-9a-f]{16}$/u.test(item),
+  );
 
 export const readReplayAttempts = (options: {
   baseLogs: string;
@@ -381,7 +429,9 @@ export const readReplayAttempts = (options: {
 }): ReplayAttempt[] => {
   const file = path.join(options.baseLogs, "replay-complete.json");
   if (!existsSync(file))
-    throw new ReplayVerificationError({ message: "Main replay did not complete" });
+    throw new ReplayVerificationError({
+      message: "Main replay did not complete",
+    });
   const value: unknown = JSON.parse(readFileSync(file, "utf8"));
   if (
     !isRecord(value) ||
@@ -389,7 +439,9 @@ export const readReplayAttempts = (options: {
     value["main"] !== options.baseSha ||
     !Array.isArray(value["attempts"])
   ) {
-    throw new ReplayVerificationError({ message: "Main replay evidence does not match this run" });
+    throw new ReplayVerificationError({
+      message: "Main replay evidence does not match this run",
+    });
   }
   return value["attempts"].map((attempt: unknown) => {
     if (
@@ -397,15 +449,22 @@ export const readReplayAttempts = (options: {
       !fingerprintsOf(attempt["requested"]) ||
       !isRecord(attempt["outcome"])
     ) {
-      throw new ReplayVerificationError({ message: "Malformed main replay evidence" });
+      throw new ReplayVerificationError({
+        message: "Malformed main replay evidence",
+      });
     }
     const { status, fingerprints, message } = attempt["outcome"];
     const requested = attempt["requested"];
     if (status === "unavailable" && typeof message === "string")
       return { requested, outcome: { status, message } };
-    if ((status === "passed" || status === "failed") && fingerprintsOf(fingerprints))
+    if (
+      (status === "passed" || status === "failed") &&
+      fingerprintsOf(fingerprints)
+    )
       return { requested, outcome: { status, fingerprints } };
-    throw new ReplayVerificationError({ message: "Malformed main replay outcome" });
+    throw new ReplayVerificationError({
+      message: "Malformed main replay outcome",
+    });
   });
 };
 
@@ -442,7 +501,9 @@ const report = async (options: Options): Promise<void> => {
     await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`
       .quiet()
       .nothrow();
-    await $`gh pr edit ${String(options.pr)} --add-label ${LABEL.name}`.quiet().nothrow();
+    await $`gh pr edit ${String(options.pr)} --add-label ${LABEL.name}`
+      .quiet()
+      .nothrow();
   }
   console.log(`FOLIO_QUEUE_EJECTION ${JSON.stringify(ejection)}`);
   const summary = process.env["GITHUB_STEP_SUMMARY"];

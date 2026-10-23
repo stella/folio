@@ -4,6 +4,7 @@
 import { panic } from "better-result";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+
 import focusedTests from "./ci-focused-tests.json";
 import timings from "./ci-test-timings.json";
 
@@ -19,7 +20,9 @@ const median = (values: number[]) => {
   const middle = Math.floor(ordered.length / 2);
   if (ordered.length === 0) return 100;
   if (ordered.length % 2 === 1) return ordered.at(middle) ?? 100;
-  return Math.round(((ordered.at(middle - 1) ?? 0) + (ordered.at(middle) ?? 0)) / 2);
+  return Math.round(
+    ((ordered.at(middle - 1) ?? 0) + (ordered.at(middle) ?? 0)) / 2,
+  );
 };
 
 export const discoverTestSuites = (repoRoot = REPO_ROOT): TestSuite[] => {
@@ -38,7 +41,9 @@ export const discoverTestSuites = (repoRoot = REPO_ROOT): TestSuite[] => {
 
   const suites: TestSuite[] = [];
   // The root command runs every packages/* workspace with a test script.
-  for (const manifest of new Bun.Glob("packages/*/package.json").scanSync({ cwd: repoRoot })) {
+  for (const manifest of new Bun.Glob("packages/*/package.json").scanSync({
+    cwd: repoRoot,
+  })) {
     const pkg = JSON.parse(readFileSync(path.join(repoRoot, manifest), "utf8"));
     const command = pkg.scripts?.test;
     if (command === undefined) continue;
@@ -71,12 +76,18 @@ export const discoverTestSuites = (repoRoot = REPO_ROOT): TestSuite[] => {
 };
 
 // Missing measurements get a small scheduling estimate, never exclusion.
-export const assignTestShards = (files: string[], measurements: TestTimings = timings) => {
+export const assignTestShards = (
+  files: string[],
+  measurements: TestTimings = timings,
+) => {
   const measured = new Map(Object.entries(measurements));
   const fallback = median([...measured.values()]);
   const weight = (file: string) => measured.get(file) ?? fallback;
   const loads = Array.from({ length: TEST_SHARD_COUNT }, () => 0);
-  const shards = Array.from({ length: TEST_SHARD_COUNT }, () => new Set<string>());
+  const shards = Array.from(
+    { length: TEST_SHARD_COUNT },
+    () => new Set<string>(),
+  );
   const ordered = [...new Set(files)].toSorted(
     (a, b) => weight(b) - weight(a) || a.localeCompare(b),
   );
@@ -91,10 +102,16 @@ export const assignTestShards = (files: string[], measurements: TestTimings = ti
   return shards;
 };
 
-export const shardLoads = (shards: Set<string>[], measurements: TestTimings = timings) => {
+export const shardLoads = (
+  shards: Set<string>[],
+  measurements: TestTimings = timings,
+) => {
   const fallback = median(Object.values(measurements));
   return shards.map((shard) =>
-    [...shard].reduce((total, file) => total + (measurements[file] ?? fallback), 0),
+    [...shard].reduce(
+      (total, file) => total + (measurements[file] ?? fallback),
+      0,
+    ),
   );
 };
 
@@ -137,18 +154,32 @@ export const selectFullTestSuites = ({
   focusedFiles = focusedTests,
 }: FullTestSuitesOptions): TestSuite[] => {
   const discovered = new Set(suites.flatMap(({ files }) => files));
-  const extra = [...new Set(focusedFiles)].filter((file) => !discovered.has(file));
+  const extra = [...new Set(focusedFiles)].filter(
+    (file) => !discovered.has(file),
+  );
   if (extra.length === 0) return suites;
   return [...suites, { cwd: ".", preloads: [], files: extra }];
 };
 
 /** Deleted paths never expand a fast suite; git returns rename destinations. */
-export const changedTestPaths = (base: string, repoRoot = REPO_ROOT): string[] => {
+export const changedTestPaths = (
+  base: string,
+  repoRoot = REPO_ROOT,
+): string[] => {
   const result = Bun.spawnSync(
-    ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", `${base}...HEAD`, "--"],
+    [
+      "git",
+      "diff",
+      "--name-only",
+      "--diff-filter=ACMRT",
+      "-z",
+      `${base}...HEAD`,
+      "--",
+    ],
     { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
   );
-  if (result.exitCode !== 0) panic(`Cannot select changed tests: ${result.stderr.toString()}`);
+  if (result.exitCode !== 0)
+    panic(`Cannot select changed tests: ${result.stderr.toString()}`);
   return result.stdout
     .toString()
     .split("\0")
@@ -175,11 +206,15 @@ export const selectFastTestSuites = ({
   );
   const discovered = new Set(suites.flatMap(({ files }) => files));
   const focused = new Set(
-    focusedFiles.filter((file) => discovered.has(file) || existsSync(path.join(REPO_ROOT, file))),
+    focusedFiles.filter(
+      (file) => discovered.has(file) || existsSync(path.join(REPO_ROOT, file)),
+    ),
   );
   const selected = suites.map((suite) => {
     const siblings = new Set(
-      suite.files.filter((file) => siblingDirectories.has(path.posix.dirname(file))),
+      suite.files.filter((file) =>
+        siblingDirectories.has(path.posix.dirname(file)),
+      ),
     );
     const files =
       suite.cwd.startsWith("packages/") && siblings.size > FAST_SIBLING_TEST_CAP
@@ -202,7 +237,9 @@ if (import.meta.main) {
     shard > TEST_SHARD_COUNT ||
     (depth !== "fast" && depth !== "full")
   ) {
-    panic("Usage: bun scripts/ci-test-shards.ts --shard <1..4> --depth <fast|full>");
+    panic(
+      "Usage: bun scripts/ci-test-shards.ts --shard <1..4> --depth <fast|full>",
+    );
   }
   const suites = discoverTestSuites();
   const allFiles = [...suites.flatMap(({ files }) => files), ...focusedTests];
@@ -225,23 +262,36 @@ if (import.meta.main) {
   const recorded: TestTimings = {};
   const resultsDirectory = path.join(REPO_ROOT, "test-results");
   if (depth === "full") mkdirSync(resultsDirectory, { recursive: true });
-  for (const [suiteIndex, { cwd, preloads, files }] of selectedSuites.entries()) {
+  for (const [
+    suiteIndex,
+    { cwd, preloads, files },
+  ] of selectedSuites.entries()) {
     const selected = files.filter((file) => assigned.has(file));
     if (selected.length === 0) continue;
-    console.log(`Shard ${shard}/${TEST_SHARD_COUNT}: ${cwd} (${selected.length} files)`);
-    const junitFile = path.join(resultsDirectory, `junit-${shard}-${suiteIndex}.xml`);
+    console.log(
+      `Shard ${shard}/${TEST_SHARD_COUNT}: ${cwd} (${selected.length} files)`,
+    );
+    const junitFile = path.join(
+      resultsDirectory,
+      `junit-${shard}-${suiteIndex}.xml`,
+    );
     const result = Bun.spawnSync(
       [
         "bun",
         "test",
-        ...(depth === "full" ? ["--reporter=junit", `--reporter-outfile=${junitFile}`] : []),
+        ...(depth === "full"
+          ? ["--reporter=junit", `--reporter-outfile=${junitFile}`]
+          : []),
         ...preloads.flatMap((preload) => ["--preload", preload]),
         ...selected.map((file) => `./${path.posix.relative(cwd, file)}`),
       ],
       { cwd: path.join(REPO_ROOT, cwd), stdout: "inherit", stderr: "inherit" },
     );
     if (depth === "full" && existsSync(junitFile)) {
-      Object.assign(recorded, junitFileTimings(readFileSync(junitFile, "utf8"), cwd));
+      Object.assign(
+        recorded,
+        junitFileTimings(readFileSync(junitFile, "utf8"), cwd),
+      );
     }
     if (result.exitCode !== 0) exitCode = 1;
   }

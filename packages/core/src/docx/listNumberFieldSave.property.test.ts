@@ -19,12 +19,21 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { createHash } from "node:crypto";
 import { Window } from "happy-dom";
-import { DOMParser, DOMSerializer, type Node as PMNode } from "prosemirror-model";
+import { createHash } from "node:crypto";
+import {
+  DOMParser,
+  DOMSerializer,
+  type Node as PMNode,
+} from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
@@ -61,10 +70,9 @@ import {
   typedInto,
   typeInto,
 } from "./__tests__/listNumberFieldFixture";
+import { visitDocxParagraphs } from "./paragraphTraversal";
 import { repackDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
-import { visitDocxParagraphs } from "./paragraphTraversal";
-import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -147,16 +155,24 @@ const LEADING_FIELD_TOKENS = [
   "tab",
 ];
 
-const ALL_CODES = ["code: LISTNUM  LegalDefault \\l 3 ", "code: LISTNUM ", "code:LISTNUM \\l 4"];
+const ALL_CODES = [
+  "code: LISTNUM  LegalDefault \\l 3 ",
+  "code: LISTNUM ",
+  "code:LISTNUM \\l 4",
+];
 
 const codes = (tokens: readonly string[]): string[] =>
   tokens.filter((token) => token.startsWith("code:"));
 
 const foldedKinds = (model: Document): string[][] =>
-  contentShapes(model).map((shape) => shape.filter((kind) => kind.startsWith("folded:")));
+  contentShapes(model).map((shape) =>
+    shape.filter((kind) => kind.startsWith("folded:")),
+  );
 
 const paragraphTokens = (model: Document): string[][] =>
-  bodyParagraphs(model).map((paragraph) => inlineTokens(serializeParagraph(paragraph)));
+  bodyParagraphs(model).map((paragraph) =>
+    inlineTokens(serializeParagraph(paragraph)),
+  );
 
 /**
  * Every paragraph is in the form the fold allows and shows the field results
@@ -181,11 +197,15 @@ const expectHonest = async (
   parsed: Document,
   expectedCodes: readonly string[],
 ): Promise<Document> => {
-  const rebuilt = fromProseDoc(doc, parsed, { stylesheetSource: { type: "package" } });
+  const rebuilt = fromProseDoc(doc, parsed, {
+    stylesheetSource: { type: "package" },
+  });
   expectShownIsWritten(bodyParagraphs(rebuilt));
   expect(paragraphTokens(rebuilt).flatMap(codes)).toEqual([...expectedCodes]);
 
-  const reopened = await openDocx(await repackDocx(rebuilt, { updateModifiedDate: false }));
+  const reopened = await openDocx(
+    await repackDocx(rebuilt, { updateModifiedDate: false }),
+  );
   expectShownIsWritten(bodyParagraphs(reopened));
   expect(paragraphTokens(reopened).flatMap(codes)).toEqual([...expectedCodes]);
   expect(bodyParagraphs(reopened).map(fieldResultsShown)).toEqual(
@@ -201,7 +221,10 @@ const expectSavedFields = async (
 ): Promise<void> => {
   const xml = await documentXmlOf(saved.bytes);
   for (const spec of SPECS) {
-    const expected = expectedTokens({ ...spec, body: bodies[spec.paraId] ?? spec.body });
+    const expected = expectedTokens({
+      ...spec,
+      body: bodies[spec.paraId] ?? spec.body,
+    });
     expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(expected);
   }
   // The cached result keeps the run properties it was authored with.
@@ -254,9 +277,9 @@ describe("the reader's fold of LISTNUM fields", () => {
 
     expect(leading.listRendering?.marker.endsWith("\t(a)")).toBe(true);
     expect(inline.listRendering?.marker.endsWith("\t(b)")).toBe(true);
-    expect(expectedTokens(LEADING).slice(0, LEADING_FIELD_TOKENS.length)).toEqual(
-      LEADING_FIELD_TOKENS,
-    );
+    expect(
+      expectedTokens(LEADING).slice(0, LEADING_FIELD_TOKENS.length),
+    ).toEqual(LEADING_FIELD_TOKENS);
 
     const [leadingShape, inlineShape] = contentShapes(parsed);
     expect(leadingShape).toEqual([
@@ -311,7 +334,9 @@ describe("the reader's fold of LISTNUM fields", () => {
 
     const captures = foldedCaptureNodes(bare.doc);
 
-    expect(captures.map(({ node }) => Object.keys(node.attrs).toSorted())).toEqual([
+    expect(
+      captures.map(({ node }) => Object.keys(node.attrs).toSorted()),
+    ).toEqual([
       ["foldedListNumber", "level", "text", "xml"],
       ["foldedListNumber", "level", "text", "xml"],
     ]);
@@ -329,7 +354,11 @@ describe("a capture and the clipboard", () => {
 
     // The paragraph's content, as the neighbouring DOM round trips serialize it.
     const host = document.createElement("div");
-    host.append(DOMSerializer.fromSchema(schema).serializeFragment(node.content, { document }));
+    host.append(
+      DOMSerializer.fromSchema(schema).serializeFragment(node.content, {
+        document,
+      }),
+    );
 
     expect(host.innerHTML).not.toContain("LISTNUM");
     expect(host.innerHTML).not.toContain("data-docx-preserved-xml");
@@ -352,7 +381,9 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
     const edited = typeInto(state, PLAIN_PARAGRAPH_ID, "Plain.", "!");
 
     const saved = await saveDocx(
-      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(edited.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       buffer,
       [PLAIN_PARAGRAPH_ID],
     );
@@ -371,7 +402,9 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
     );
 
     const saved = await saveDocx(
-      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(edited.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       buffer,
       [LEADING.paraId, INLINE.paraId],
     );
@@ -386,7 +419,9 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
     const { parsed, state } = await fixture();
 
     const saved = await rewritten(
-      fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(state.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     );
 
     await expectSavedFields(saved, parsed);
@@ -401,7 +436,9 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
     const reopened = await openDocx(once);
 
     const twice = await repackDocx(
-      fromProseDoc(toProseDoc(reopened), reopened, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(toProseDoc(reopened), reopened, {
+        stylesheetSource: { type: "package" },
+      }),
       {
         updateModifiedDate: false,
       },
@@ -421,16 +458,28 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
       },
     });
     const parsed = await openDocx(buffer);
-    expect(bodyParagraphs(parsed).at(0)?.listRendering?.marker.endsWith("\t(a)")).toBe(true);
-    const edited = typeInto(editorState(parsed), LEADING.paraId, "Body text", "!");
+    expect(
+      bodyParagraphs(parsed).at(0)?.listRendering?.marker.endsWith("\t(a)"),
+    ).toBe(true);
+    const edited = typeInto(
+      editorState(parsed),
+      LEADING.paraId,
+      "Body text",
+      "!",
+    );
 
     const saved = await saveDocx(
-      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(edited.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       buffer,
       [LEADING.paraId],
     );
 
-    const markup = paragraphMarkupOf(await documentXmlOf(saved.bytes), LEADING.paraId);
+    const markup = paragraphMarkupOf(
+      await documentXmlOf(saved.bytes),
+      LEADING.paraId,
+    );
     expect(markup).toMatch(/<w:numberingChange\b[^>]*w:original="\(a\)"/u);
     // The display stays on the end character: no separator, no result run.
     expect(inlineTokens(markup)).toEqual([
@@ -440,7 +489,9 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
       "tab",
       "text:B!ody text",
     ]);
-    expect(modelMarkers(await openDocx(saved.bytes))).toEqual(modelMarkers(parsed));
+    expect(modelMarkers(await openDocx(saved.bytes))).toEqual(
+      modelMarkers(parsed),
+    );
   });
 
   test("an untouched paragraph keeps its captures byte for byte, and the range markers around them in order", async () => {
@@ -459,11 +510,19 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
       ...SIMPLE,
       fields: [{ ...SIMPLE.fields[0], gap: ["comment"] } as FieldSpec],
     };
-    const buffer = await listNumberFieldDocx([around], { authored: { [around.paraId]: authored } });
+    const buffer = await listNumberFieldDocx([around], {
+      authored: { [around.paraId]: authored },
+    });
     const parsed = await openDocx(buffer);
-    const source = paragraphMarkupOf(await documentXmlOf(buffer), around.paraId);
-    const captures = (bodyParagraphs(parsed).at(0)?.content ?? []).flatMap((item) =>
-      item.type === "preservedInline" && item.foldedListNumber ? [item.xml] : [],
+    const source = paragraphMarkupOf(
+      await documentXmlOf(buffer),
+      around.paraId,
+    );
+    const captures = (bodyParagraphs(parsed).at(0)?.content ?? []).flatMap(
+      (item) =>
+        item.type === "preservedInline" && item.foldedListNumber
+          ? [item.xml]
+          : [],
     );
     expect(captures).toHaveLength(2);
     expect(inlineTokens(source)).toEqual([
@@ -476,13 +535,22 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
       "commentRangeEnd",
       "commentReference",
     ]);
-    const edited = typeInto(editorState(parsed), PLAIN_PARAGRAPH_ID, "Plain.", "!");
-    const document = fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } });
+    const edited = typeInto(
+      editorState(parsed),
+      PLAIN_PARAGRAPH_ID,
+      "Plain.",
+      "!",
+    );
+    const document = fromProseDoc(edited.doc, parsed, {
+      stylesheetSource: { type: "package" },
+    });
 
     // Another paragraph edited: where the save patches, this one is its source bytes.
     const patched = await saveDocx(document, buffer, [PLAIN_PARAGRAPH_ID]);
     if (!patched.rewritten(around.paraId)) {
-      expect(paragraphMarkupOf(await documentXmlOf(patched.bytes), around.paraId)).toBe(source);
+      expect(
+        paragraphMarkupOf(await documentXmlOf(patched.bytes), around.paraId),
+      ).toBe(source);
     }
 
     // The whole part written anew: the captures are still what was read, and
@@ -506,11 +574,16 @@ describe("the save's rule for a field an edit moved", () => {
     const typed = state.apply(state.tr.insertText("X", position + 1));
 
     const saved = await saveDocx(
-      fromProseDoc(typed.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(typed.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       buffer,
       [SIMPLE.paraId],
     );
-    const markup = paragraphMarkupOf(await documentXmlOf(saved.bytes), SIMPLE.paraId);
+    const markup = paragraphMarkupOf(
+      await documentXmlOf(saved.bytes),
+      SIMPLE.paraId,
+    );
     expect(inlineTokens(markup)).toEqual([...SIMPLE_FIELD_TOKENS, "text:Xcd"]);
     const reopened = await openDocx(saved.bytes);
     expect(modelMarkers(reopened)).toEqual(modelMarkers(parsed));
@@ -521,7 +594,9 @@ describe("the save's rule for a field an edit moved", () => {
     const { parsed, state } = await fixture([SIMPLE]);
     const [field, tab] = foldedCaptureNodes(state.doc);
     if (!field || !tab) {
-      throw new Error("The paragraph opens with a field capture and a tab capture");
+      throw new Error(
+        "The paragraph opens with a field capture and a tab capture",
+      );
     }
 
     const typed = state.apply(state.tr.insertText("X", tab.position));
@@ -543,12 +618,17 @@ describe("the save's rule for a field an edit moved", () => {
     const edited = typed.apply(typed.tr.delete(from, from + 1));
 
     const saved = await saveDocx(
-      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(edited.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       buffer,
       [SIMPLE.paraId],
     );
 
-    const markup = paragraphMarkupOf(await documentXmlOf(saved.bytes), SIMPLE.paraId);
+    const markup = paragraphMarkupOf(
+      await documentXmlOf(saved.bytes),
+      SIMPLE.paraId,
+    );
     expect(inlineTokens(markup)).toEqual([...SIMPLE_FIELD_TOKENS, "text:c!"]);
   });
 
@@ -597,7 +677,9 @@ describe("the save's rule for a field an edit moved", () => {
       "text:Body text",
       "fldChar:begin",
     ]);
-    expect(bodyParagraphs(rebuilt).slice(0, 1).map(fieldResultsShown)).toEqual(["(a) (b) (i)"]);
+    expect(bodyParagraphs(rebuilt).slice(0, 1).map(fieldResultsShown)).toEqual([
+      "(a) (b) (i)",
+    ]);
   });
 
   test("a paragraph taken out of its list has its field written on the line", async () => {
@@ -613,9 +695,14 @@ describe("the save's rule for a field an edit moved", () => {
     );
 
     const rebuilt = await expectHonest(unnumbered.doc, parsed, ALL_CODES);
-    expect(paragraphTokens(rebuilt).at(0)).toEqual([...LEADING_FIELD_TOKENS, "text:Body text"]);
+    expect(paragraphTokens(rebuilt).at(0)).toEqual([
+      ...LEADING_FIELD_TOKENS,
+      "text:Body text",
+    ]);
     expect(foldedKinds(rebuilt).at(0)).toEqual([]);
-    expect(bodyParagraphs(rebuilt).slice(0, 1).map(fieldResultsShown)).toEqual(["(a)"]);
+    expect(bodyParagraphs(rebuilt).slice(0, 1).map(fieldResultsShown)).toEqual([
+      "(a)",
+    ]);
   });
 
   test("a paragraph moved to another level, whose marker is drawn anew, has its field written on the line", async () => {
@@ -625,14 +712,19 @@ describe("the save's rule for a field an edit moved", () => {
     const moved = state.apply(
       state.tr.setNodeMarkup(position, undefined, {
         ...node.attrs,
-        numPr: paragraphNumberingAttr(paragraphNumberingReference({ numId: 1, ilvl: 2 })),
+        numPr: paragraphNumberingAttr(
+          paragraphNumberingReference({ numId: 1, ilvl: 2 }),
+        ),
         listMarker: "(%3)",
         listMarkerTemplate: "(%3)",
       }),
     );
 
     const rebuilt = await expectHonest(moved.doc, parsed, ALL_CODES);
-    expect(paragraphTokens(rebuilt).at(0)).toEqual([...LEADING_FIELD_TOKENS, "text:Body text"]);
+    expect(paragraphTokens(rebuilt).at(0)).toEqual([
+      ...LEADING_FIELD_TOKENS,
+      "text:Body text",
+    ]);
     expect(foldedKinds(rebuilt).at(0)).toEqual([]);
   });
 
@@ -643,7 +735,9 @@ describe("the save's rule for a field an edit moved", () => {
     const joined = state.apply(state.tr.join(position + node.nodeSize));
 
     const rebuilt = await expectHonest(joined.doc, parsed, ["code: LISTNUM "]);
-    expect(paragraphTokens(rebuilt)).toEqual([["text:Plain.", ...SIMPLE_FIELD_TOKENS, "text:cd"]]);
+    expect(paragraphTokens(rebuilt)).toEqual([
+      ["text:Plain.", ...SIMPLE_FIELD_TOKENS, "text:cd"],
+    ]);
     expect(bodyParagraphs(rebuilt).map(fieldResultsShown)).toEqual(["(a)"]);
   });
 
@@ -656,13 +750,19 @@ describe("the save's rule for a field an edit moved", () => {
       date: "2026-01-01T00:00:00Z",
     });
     if (!field || !deletion) {
-      throw new Error("The paragraph opens with a field capture, and the schema tracks deletions");
+      throw new Error(
+        "The paragraph opens with a field capture, and the schema tracks deletions",
+      );
     }
 
-    const marked = state.apply(state.tr.addMark(field.position, field.position + 1, deletion));
+    const marked = state.apply(
+      state.tr.addMark(field.position, field.position + 1, deletion),
+    );
 
     const [paragraph] = bodyParagraphs(
-      fromProseDoc(marked.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(marked.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     if (!paragraph) {
       throw new Error("The document keeps its first paragraph");
@@ -678,7 +778,9 @@ describe("the save's rule for a field an edit moved", () => {
     const { parsed, state } = await fixture();
     const { node, position } = paragraphNode(state.doc, LEADING.paraId);
 
-    const emptied = state.apply(state.tr.delete(position + 1, position + node.nodeSize - 1));
+    const emptied = state.apply(
+      state.tr.delete(position + 1, position + node.nodeSize - 1),
+    );
 
     const rebuilt = await expectHonest(emptied.doc, parsed, ALL_CODES.slice(1));
     expect(paragraphTokens(rebuilt).at(0)).toEqual([]);
@@ -726,13 +828,18 @@ const paragraphsArbitrary: fc.Arbitrary<ParagraphSpec[]> = fc
   .array(
     fc.record({
       marker: fc.constantFrom(...MARKER_KINDS),
-      fields: fc.array(fieldArbitrary, { minLength: 1, maxLength: 3 }).map(foldable),
+      fields: fc
+        .array(fieldArbitrary, { minLength: 1, maxLength: 3 })
+        .map(foldable),
       body: fc.constantFrom("Body", "Tail text", "100% of it"),
     }),
     { minLength: 1, maxLength: 2 },
   )
   .map((paragraphs) =>
-    paragraphs.map((paragraph, index) => ({ ...paragraph, paraId: `2000000${index + 1}` })),
+    paragraphs.map((paragraph, index) => ({
+      ...paragraph,
+      paraId: `2000000${index + 1}`,
+    })),
   );
 
 const TYPED = "!";
@@ -744,7 +851,9 @@ const expectSaved = async (
 ): Promise<void> => {
   const xml = await documentXmlOf(saved.bytes);
   for (const spec of specs) {
-    expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(expectedTokens(spec));
+    expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(
+      expectedTokens(spec),
+    );
   }
 
   const reopened = await openDocx(saved.bytes);
@@ -755,7 +864,10 @@ const expectSaved = async (
 };
 
 /** What the reader owes each paragraph before any save is looked at. */
-const expectFolded = (parsed: Document, specs: readonly ParagraphSpec[]): void => {
+const expectFolded = (
+  parsed: Document,
+  specs: readonly ParagraphSpec[],
+): void => {
   const paragraphs = bodyParagraphs(parsed);
   for (const [index, spec] of specs.entries()) {
     const paragraph = paragraphs.at(index);
@@ -765,7 +877,9 @@ const expectFolded = (parsed: Document, specs: readonly ParagraphSpec[]): void =
     // Only the fields that open the paragraph are behind the marker.
     const folded = foldedFieldsOf(spec);
     expect(foldedKinds(parsed).at(index)).toEqual(
-      folded.flatMap(({ tab }) => (tab ? ["folded:field", "folded:tab"] : ["folded:field"])),
+      folded.flatMap(({ tab }) =>
+        tab ? ["folded:field", "folded:tab"] : ["folded:field"],
+      ),
     );
     const marker = paragraph.listRendering?.marker ?? "";
     if (folded.length > 0) {
@@ -791,7 +905,9 @@ test(
         const beside = typeInto(opened, PLAIN_PARAGRAPH_ID, "Plain.", TYPED);
         await expectSaved(
           await saveDocx(
-            fromProseDoc(beside.doc, parsed, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(beside.doc, parsed, {
+              stylesheetSource: { type: "package" },
+            }),
             buffer,
             [PLAIN_PARAGRAPH_ID],
           ),
@@ -806,7 +922,9 @@ test(
         }
         await expectSaved(
           await saveDocx(
-            fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(edited.doc, parsed, {
+              stylesheetSource: { type: "package" },
+            }),
             buffer,
             specs.map(({ paraId }) => paraId),
           ),
@@ -817,7 +935,9 @@ test(
         // The whole part rewritten.
         await expectSaved(
           await rewritten(
-            fromProseDoc(opened.doc, parsed, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(opened.doc, parsed, {
+              stylesheetSource: { type: "package" },
+            }),
           ),
           parsed,
           specs,
@@ -1004,7 +1124,11 @@ const positionOf = (doc: PMNode, place: Place): number => {
   if (!paragraph) {
     throw new Error("The document holds no paragraph");
   }
-  return paragraph.position + 1 + Math.round(place.offset * paragraph.node.content.size);
+  return (
+    paragraph.position +
+    1 +
+    Math.round(place.offset * paragraph.node.content.size)
+  );
 };
 
 const applyStep = (state: EditorState, step: Step): EditorState => {
@@ -1013,7 +1137,8 @@ const applyStep = (state: EditorState, step: Step): EditorState => {
       return state.apply(state.tr.split(positionOf(state.doc, step.at)));
     case "join": {
       const paragraphs = topParagraphs(state.doc);
-      const first = paragraphs[Math.floor(step.at.paragraph * (paragraphs.length - 1))];
+      const first =
+        paragraphs[Math.floor(step.at.paragraph * (paragraphs.length - 1))];
       // One paragraph has nothing to join.
       if (!first || paragraphs.length < 2) {
         return state;
@@ -1021,7 +1146,9 @@ const applyStep = (state: EditorState, step: Step): EditorState => {
       return state.apply(state.tr.join(first.position + first.node.nodeSize));
     }
     case "type":
-      return state.apply(state.tr.insertText("x", positionOf(state.doc, step.at)));
+      return state.apply(
+        state.tr.insertText("x", positionOf(state.doc, step.at)),
+      );
     case "copy": {
       const a = positionOf(state.doc, step.from);
       const b = positionOf(state.doc, step.to);
@@ -1047,24 +1174,29 @@ describe("saving after splits, joins, typing and copies in the editor", () => {
       expect(foldedCaptureNodes(opened.doc)).toHaveLength(4);
 
       assertProperty(
-        fc.property(fc.array(stepArbitrary, { minLength: 1, maxLength: 12 }), (steps) => {
-          let state = opened;
-          for (const step of steps) {
-            state = applyStep(state, step);
-          }
+        fc.property(
+          fc.array(stepArbitrary, { minLength: 1, maxLength: 12 }),
+          (steps) => {
+            let state = opened;
+            for (const step of steps) {
+              state = applyStep(state, step);
+            }
 
-          const paragraphs = bodyParagraphs(
-            fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } }),
-          );
-          expectShownIsWritten(paragraphs);
-          const written = paragraphs.flatMap((paragraph) =>
-            inlineTokens(serializeParagraph(paragraph)),
-          );
-          // Nothing here deletes, so every field is still written at least once.
-          for (const result of RESULTS) {
-            expect(written).toContain(result);
-          }
-        }),
+            const paragraphs = bodyParagraphs(
+              fromProseDoc(state.doc, parsed, {
+                stylesheetSource: { type: "package" },
+              }),
+            );
+            expectShownIsWritten(paragraphs);
+            const written = paragraphs.flatMap((paragraph) =>
+              inlineTokens(serializeParagraph(paragraph)),
+            );
+            // Nothing here deletes, so every field is still written at least once.
+            for (const result of RESULTS) {
+              expect(written).toContain(result);
+            }
+          },
+        ),
         {
           numRuns: 150,
           examples: [
@@ -1113,7 +1245,8 @@ const FIXTURES: readonly Pinned[] = [
   {
     path: "tests/visual/fixtures/sample.docx",
     projection: {
-      digest: "1d3ff50604fe13a5b52d62b221abbaeb7bab1098f410843af4527226cc7acd47",
+      digest:
+        "1d3ff50604fe13a5b52d62b221abbaeb7bab1098f410843af4527226cc7acd47",
       length: 90_815,
     },
     saved: { file: "sample.document.xml" },
@@ -1121,7 +1254,8 @@ const FIXTURES: readonly Pinned[] = [
   {
     path: "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx",
     projection: {
-      digest: "a68195ab6c8e32a6df0e09ed04cc6131467dd2f5035fda94da7580149e7726aa",
+      digest:
+        "a68195ab6c8e32a6df0e09ed04cc6131467dd2f5035fda94da7580149e7726aa",
       length: 8803,
     },
     saved: { file: "step3-header-footer-fields.document.xml" },
@@ -1129,7 +1263,8 @@ const FIXTURES: readonly Pinned[] = [
   {
     path: "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx",
     projection: {
-      digest: "db9ec37655bc5ed3c05a45c698f76a09f36fa5786d43bd843746ddcadc844c22",
+      digest:
+        "db9ec37655bc5ed3c05a45c698f76a09f36fa5786d43bd843746ddcadc844c22",
       length: 4271,
     },
     saved: { file: "step3-footnotes.document.xml" },
@@ -1138,13 +1273,15 @@ const FIXTURES: readonly Pinned[] = [
     path: "tests/visual/fixtures/docx-editor-demo.docx",
     projection: { length: 445_877 },
     saved: {
-      digest: "6bac5af14f8a58ea6627768ea747a8fc8ec69ce3e3edae1c41d720de84f81dee",
+      digest:
+        "6bac5af14f8a58ea6627768ea747a8fc8ec69ce3e3edae1c41d720de84f81dee",
       length: 59_324,
     },
   },
 ];
 
-const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+const sha256 = (text: string): string =>
+  createHash("sha256").update(text).digest("hex");
 
 const uneditedParagraphMarkup = ({ package: pkg }: Document): string[] => {
   const paragraphs: string[] = [];
@@ -1153,7 +1290,9 @@ const uneditedParagraphMarkup = ({ package: pkg }: Document): string[] => {
       // Sections partition the body; they are not additional serialized stories.
       documentBody: {
         content: pkg.document.content,
-        ...(pkg.document.comments === undefined ? {} : { comments: pkg.document.comments }),
+        ...(pkg.document.comments === undefined
+          ? {}
+          : { comments: pkg.document.comments }),
       },
       headers: pkg.headers,
       footers: pkg.footers,
@@ -1168,7 +1307,9 @@ const uneditedParagraphMarkup = ({ package: pkg }: Document): string[] => {
 describe("a document with no LISTNUM field", () => {
   for (const { path, projection, saved } of FIXTURES) {
     test(`${path} preserves its editor projection`, async () => {
-      const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
+      const buffer = await Bun.file(
+        new URL(`../../../../${path}`, import.meta.url),
+      ).arrayBuffer();
       expect(/LISTNUM/iu.test(await documentXmlOf(buffer))).toBe(false);
 
       const parsed = await openDocx(buffer);
@@ -1188,19 +1329,30 @@ describe("a document with no LISTNUM field", () => {
     });
 
     test(`${path} preserves saved XML bytes independently of editor metadata`, async () => {
-      const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
+      const buffer = await Bun.file(
+        new URL(`../../../../${path}`, import.meta.url),
+      ).arrayBuffer();
       const parsed = await openDocx(buffer);
       const rebuilt = fromProseDoc(toProseDoc(parsed), parsed, {
         stylesheetSource: { type: "package" },
       });
-      const written = await documentXmlOf(await repackDocx(rebuilt, { updateModifiedDate: false }));
+      const written = await documentXmlOf(
+        await repackDocx(rebuilt, { updateModifiedDate: false }),
+      );
       if ("file" in saved) {
         const reference = await Bun.file(
-          new URL(`./__tests__/__fixtures__/list-number-invisible/${saved.file}`, import.meta.url),
+          new URL(
+            `./__tests__/__fixtures__/list-number-invisible/${saved.file}`,
+            import.meta.url,
+          ),
         ).text();
         expect(written).toBe(reference);
       } else {
-        expect({ fixture: path, length: written.length, digest: sha256(written) }).toEqual({
+        expect({
+          fixture: path,
+          length: written.length,
+          digest: sha256(written),
+        }).toEqual({
           fixture: path,
           ...saved,
         });
@@ -1208,7 +1360,9 @@ describe("a document with no LISTNUM field", () => {
     });
 
     test(`${path} preserves every unedited paragraph across all stories`, async () => {
-      const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
+      const buffer = await Bun.file(
+        new URL(`../../../../${path}`, import.meta.url),
+      ).arrayBuffer();
       const parsed = await openDocx(buffer);
       const before = uneditedParagraphMarkup(parsed);
       expect(before.length).toBeGreaterThan(0);

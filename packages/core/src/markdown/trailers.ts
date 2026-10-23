@@ -26,7 +26,11 @@ import type { RenderContext } from "./types";
  * `comments: "sidecar"`). Each section is emitted only when its corresponding
  * refs accumulator has entries.
  */
-export function appendTrailers(ctx: RenderContext, doc: Document, body: string): string {
+export function appendTrailers(
+  ctx: RenderContext,
+  doc: Document,
+  body: string,
+): string {
   const sections: string[] = body.trim() ? [body] : [];
 
   if (ctx.footnoteRefs.length > 0) {
@@ -51,7 +55,9 @@ export function appendTrailers(ctx: RenderContext, doc: Document, body: string):
   if (ctx.opts.comments === "sidecar" && ctx.commentRefs.length > 0) {
     const lines: string[] = ["## Comments"];
     for (const { commentId, markerNumber } of ctx.commentRefs) {
-      const c = doc.package.document.comments?.find((cm) => cm.id === commentId);
+      const c = doc.package.document.comments?.find(
+        (cm) => cm.id === commentId,
+      );
       const author = c?.author ? `${c.author}: ` : "";
       const text = c ? commentText(c) : "";
       lines.push(`[^c${markerNumber}]: ${author}${text}`);
@@ -62,8 +68,14 @@ export function appendTrailers(ctx: RenderContext, doc: Document, body: string):
   return sections.join("\n\n");
 }
 
-function noteText(ctx: RenderContext, doc: Document, note: Footnote | Endnote): string {
-  return renderBlocks(ctx, doc.package, note.content).replace(/\n+/gu, " ").trim();
+function noteText(
+  ctx: RenderContext,
+  doc: Document,
+  note: Footnote | Endnote,
+): string {
+  return renderBlocks(ctx, doc.package, note.content)
+    .replace(/\n+/gu, " ")
+    .trim();
 }
 
 function commentText(comment: Comment): string {
@@ -127,7 +139,9 @@ function inlineText(content: readonly ParagraphContent[]): string {
         break;
       default: {
         const unsupported: never = item;
-        panic(`Unsupported paragraph content in trailer text: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported paragraph content in trailer text: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   }

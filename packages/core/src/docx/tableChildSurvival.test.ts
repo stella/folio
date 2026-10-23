@@ -15,11 +15,13 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { parseTable } from "./tableParser";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
+import { parseTable } from "./tableParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -109,8 +111,11 @@ describe("a table keeps the children folio does not model", () => {
           const savedAgain = roundTrip(savedChildren(saved));
           for (const output of [saved, savedAgain]) {
             expect(output).toContain(expected);
-            expect(output.split('<w:customXml w:element="empty"').length - 1).toBe(1);
-            const rowsBefore = output.slice(0, output.indexOf(expected)).match(/<w:tr>/gu) ?? [];
+            expect(
+              output.split('<w:customXml w:element="empty"').length - 1,
+            ).toBe(1);
+            const rowsBefore =
+              output.slice(0, output.indexOf(expected)).match(/<w:tr>/gu) ?? [];
             expect(rowsBefore).toHaveLength(index);
           }
         },
@@ -127,7 +132,9 @@ describe("a table keeps the children folio does not model", () => {
       expect(output).toContain(`${wrapper}<w:tr>`);
       expect(output.match(/<w:tr>/gu)).toHaveLength(3);
       expect(output.indexOf(wrapper)).toBeGreaterThan(output.indexOf("<w:tr>"));
-      expect(output.indexOf(wrapper)).toBeLessThan(output.lastIndexOf("<w:tr>"));
+      expect(output.indexOf(wrapper)).toBeLessThan(
+        output.lastIndexOf("<w:tr>"),
+      );
     }
   });
 
@@ -146,7 +153,9 @@ describe("a table keeps the children folio does not model", () => {
 
     // `w:tblPr` and `w:tblGrid` are written from the model, ahead of the sink;
     // an index that counted them would push the capture past the row.
-    expect(saved.indexOf("<w:tblGrid>")).toBeLessThan(saved.indexOf("<w:proofErr"));
+    expect(saved.indexOf("<w:tblGrid>")).toBeLessThan(
+      saved.indexOf("<w:proofErr"),
+    );
     expect(saved.indexOf("<w:proofErr")).toBeLessThan(saved.indexOf("<w:tr>"));
   });
 

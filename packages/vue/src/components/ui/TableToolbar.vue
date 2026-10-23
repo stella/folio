@@ -39,13 +39,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from "vue";
-import type { EditorView } from "prosemirror-view";
 import type { Command, Transaction } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
+import { computed, watch } from "vue";
+
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import type { Theme } from "@stll/folio-core/types/document";
-import TableBorderPicker from "./TableBorderPicker.vue";
+
 import TableBorderColorPicker from "./TableBorderColorPicker.vue";
+import TableBorderPicker from "./TableBorderPicker.vue";
 import TableBorderWidthPicker from "./TableBorderWidthPicker.vue";
 import TableCellFillPicker from "./TableCellFillPicker.vue";
 import TableMoreDropdown from "./TableMoreDropdown.vue";
@@ -133,7 +135,9 @@ const currentBorderColorHex = computed<string | undefined>(() => {
 // Omit `value` entirely (not `undefined`) under exactOptionalPropertyTypes so
 // an absent border color drops the key rather than passing an explicit undefined.
 const borderColorValueBind = computed<{ value?: string }>(() =>
-  currentBorderColorHex.value !== undefined ? { value: currentBorderColorHex.value } : {},
+  currentBorderColorHex.value !== undefined
+    ? { value: currentBorderColorHex.value }
+    : {},
 );
 
 const canMerge = computed(() => !!tableCtx.value?.hasMultiCellSelection);
@@ -251,7 +255,12 @@ function onMoreAction(action: TableAction) {
   else exec(action);
 }
 
-function onCellMargins(margins: { top?: number; bottom?: number; left?: number; right?: number }) {
+function onCellMargins(margins: {
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+}) {
   exec("setCellMargins", margins);
 }
 
@@ -259,7 +268,10 @@ function onCellTextDirection(direction: string | null) {
   exec("setCellTextDirection", direction);
 }
 
-function onRowHeight(value: { height: number | null; rule?: "auto" | "atLeast" | "exact" }) {
+function onRowHeight(value: {
+  height: number | null;
+  rule?: "auto" | "atLeast" | "exact";
+}) {
   exec("setRowHeight", value.height, value.rule);
 }
 

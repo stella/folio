@@ -1,4 +1,7 @@
-import { getFolioDocxComparisonAccess, type FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  type FolioDocxReviewer,
+  getFolioDocxComparisonAccess,
+} from "../ai-edits/headless";
 import {
   remapFolioAIEditSnapshotNumberingReferences,
   remapFolioAIEditSnapshotStyleReferences,
@@ -31,7 +34,11 @@ export const importStyleClosureWithNumbering = ({
   const numberingStage: ReturnType<typeof access.stageTargetNumbering> =
     numberingReferenceMap === null
       ? "conflict"
-      : access.stageTargetNumbering(numbering, numberingReferences, numberingReferenceMap);
+      : access.stageTargetNumbering(
+          numbering,
+          numberingReferences,
+          numberingReferenceMap,
+        );
   const styleImport = access.stageTargetStyles({
     source,
     snapshots,
@@ -51,7 +58,10 @@ export const importStyleClosureWithNumbering = ({
           });
     return numberingReferenceMap === null
       ? styleRebound
-      : remapFolioAIEditSnapshotNumberingReferences(styleRebound, numberingReferenceMap);
+      : remapFolioAIEditSnapshotNumberingReferences(
+          styleRebound,
+          numberingReferenceMap,
+        );
   });
   return { styleImport, numberingStage, snapshots: reboundSnapshots };
 };

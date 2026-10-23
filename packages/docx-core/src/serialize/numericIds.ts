@@ -16,14 +16,25 @@ const DRAWING_NAMESPACES = new Set([
   "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
   "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
 ]);
-const NUMBERING_ATTRIBUTES = new Set(["numId", "abstractNumId", "numPicBulletId"]);
-const ID_VALUE_ELEMENTS = new Set(["id", "numId", "abstractNumId", "lvlPicBulletId"]);
+const NUMBERING_ATTRIBUTES = new Set([
+  "numId",
+  "abstractNumId",
+  "numPicBulletId",
+]);
+const ID_VALUE_ELEMENTS = new Set([
+  "id",
+  "numId",
+  "abstractNumId",
+  "lvlPicBulletId",
+]);
 const STRING_ID_ELEMENTS = new Set(["permStart", "permEnd"]);
 const MAX_UNSIGNED_ID = 0xffff_ffff;
 const MIN_SIGNED_ID = -0x8000_0000;
 
 /** A writer would emit an identifier outside its OOXML schema's numeric domain. */
-export class InvalidOoxmlNumericIdError extends TaggedError("InvalidOoxmlNumericIdError")<{
+export class InvalidOoxmlNumericIdError extends TaggedError(
+  "InvalidOoxmlNumericIdError",
+)<{
   message: string;
   partPath: string;
   elementName: string;
@@ -48,7 +59,10 @@ export const isValidOoxmlNumericId = (
   const min = domain === "unsigned32" ? 0 : MIN_SIGNED_ID;
   const max = domain === "unsigned32" ? MAX_UNSIGNED_ID : MAX_REVISION_ID;
   return (
-    /^[+-]?\d+$/u.test(spelling) && Number.isInteger(numeric) && numeric >= min && numeric <= max
+    /^[+-]?\d+$/u.test(spelling) &&
+    Number.isInteger(numeric) &&
+    numeric >= min &&
+    numeric <= max
   );
 };
 
@@ -90,7 +104,10 @@ export const ooxmlNumericIdDomain = ({
   if (
     WORD_NAMESPACES.has(attributeNamespace ?? "") &&
     ((attributeLocalName === "id" &&
-      !(WORD_NAMESPACES.has(elementNamespace ?? "") && STRING_ID_ELEMENTS.has(elementLocalName))) ||
+      !(
+        WORD_NAMESPACES.has(elementNamespace ?? "") &&
+        STRING_ID_ELEMENTS.has(elementLocalName)
+      )) ||
       NUMBERING_ATTRIBUTES.has(attributeLocalName) ||
       (attributeLocalName === "val" &&
         WORD_NAMESPACES.has(elementNamespace ?? "") &&
@@ -110,7 +127,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const localName = (name: string): string => name.slice(name.indexOf(":") + 1);
-const namespaceUri = (name: string, bindings: ReadonlyMap<string, string>): string | undefined => {
+const namespaceUri = (
+  name: string,
+  bindings: ReadonlyMap<string, string>,
+): string | undefined => {
   const colon = name.indexOf(":");
   return bindings.get(colon === -1 ? "" : name.slice(0, colon));
 };
@@ -125,7 +145,11 @@ const decodeAttributeReferences = (value: string): string =>
         const codePoint = digits.toLowerCase().startsWith("x")
           ? Number.parseInt(digits.slice(1), 16)
           : Number(digits);
-        if (codePoint <= 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff))
+        if (
+          codePoint <= 0 ||
+          codePoint > 0x10ffff ||
+          (codePoint >= 0xd800 && codePoint <= 0xdfff)
+        )
           return reference;
         return String.fromCodePoint(codePoint);
       }
@@ -148,7 +172,10 @@ const decodeAttributeReferences = (value: string): string =>
 
 const ID_ATTRIBUTE_NAMES = ["id", ...NUMBERING_ATTRIBUTES].join("|");
 const ID_ELEMENT_NAMES = [...ID_VALUE_ELEMENTS].join("|");
-type OoxmlNumericIdAttributeOptions = { elementName: string; attributeName: string };
+type OoxmlNumericIdAttributeOptions = {
+  elementName: string;
+  attributeName: string;
+};
 
 /** Attributes an identity scan must retain, derived from the domain classifier. */
 export const isOoxmlNumericIdAttributeName = ({
@@ -167,7 +194,8 @@ const ID_CANDIDATE = new RegExp(
   "u",
 );
 /** Conservative presence check; safe IDs must still be reserved during import repair. */
-export const mayContainOoxmlNumericIds = (xml: string): boolean => ID_CANDIDATE.test(xml);
+export const mayContainOoxmlNumericIds = (xml: string): boolean =>
+  ID_CANDIDATE.test(xml);
 const PREFIX = "[^\\s<>/:=\"']+";
 const ID_ATTRIBUTE = new RegExp(
   `(?:^|\\s)((?:${PREFIX}:)?(?:${ID_ATTRIBUTE_NAMES}))\\s*=\\s*(["'])([\\s\\S]*?)\\2`,
@@ -234,7 +262,11 @@ export const mayContainInvalidOoxmlNumericIds = (
   for (const match of xml.matchAll(ID_ATTRIBUTE)) {
     const name = match[1] ?? "";
     if (name.includes(":")) {
-      if (wordPrefixes.has(prefixOf(name)) && needsScan(match[3] ?? "", "signed32")) return true;
+      if (
+        wordPrefixes.has(prefixOf(name)) &&
+        needsScan(match[3] ?? "", "signed32")
+      )
+        return true;
       continue;
     }
     if (name === "id" && needsScan(match[3] ?? "")) return true;
@@ -259,7 +291,10 @@ export const mayContainInvalidOoxmlNumericIds = (
  * This runs at ZIP exits too, so unchanged parts cannot bypass the writer guard.
  * Permission-range ids are strings in OOXML and intentionally remain unrestricted.
  */
-export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void => {
+export const assertValidOoxmlNumericIds = (
+  xml: string,
+  partPath: string,
+): void => {
   if (!mayContainInvalidOoxmlNumericIds(xml)) return;
   const parser = new XMLParser({
     preserveOrder: true,
@@ -272,7 +307,10 @@ export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void 
     htmlEntities: false,
     ignoreDeclaration: true,
   });
-  const visit = (nodes: unknown, inherited: ReadonlyMap<string, string>): void => {
+  const visit = (
+    nodes: unknown,
+    inherited: ReadonlyMap<string, string>,
+  ): void => {
     if (!Array.isArray(nodes)) return;
     for (const node of nodes) {
       if (!isRecord(node)) continue;
@@ -289,12 +327,17 @@ export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void 
       }
       const bindings = localBindings ?? inherited;
       for (const [elementName, children] of Object.entries(node)) {
-        if (elementName === ":@" || elementName.startsWith("#") || elementName.startsWith("?"))
+        if (
+          elementName === ":@" ||
+          elementName.startsWith("#") ||
+          elementName.startsWith("?")
+        )
           continue;
         const elementNamespace = namespaceUri(elementName, bindings);
         if (isRecord(attributes)) {
           for (const [attributeName, value] of Object.entries(attributes)) {
-            if (typeof value !== "string" && typeof value !== "number") continue;
+            if (typeof value !== "string" && typeof value !== "number")
+              continue;
             const attributeNamespace = attributeName.includes(":")
               ? namespaceUri(attributeName, bindings)
               : undefined;
@@ -305,7 +348,13 @@ export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void 
               attributeNamespace,
             });
             if (domain !== undefined) {
-              assertValidOoxmlNumericId({ value, partPath, elementName, attributeName, domain });
+              assertValidOoxmlNumericId({
+                value,
+                partPath,
+                elementName,
+                attributeName,
+                domain,
+              });
             }
           }
         }

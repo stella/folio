@@ -4,7 +4,11 @@
   of a point. Close behaviour via shared Popover.
 -->
 <template>
-  <Popover :open="isOpen" @update:open="(v: boolean) => (isOpen = v)" @close="isOpen = false">
+  <Popover
+    :open="isOpen"
+    @update:open="(v: boolean) => (isOpen = v)"
+    @close="isOpen = false"
+  >
     <template #trigger="{ toggle }">
       <button
         type="button"
@@ -25,7 +29,10 @@
           class="docx-tbwidth__option"
           @click.prevent="pick(w.eighths)"
         >
-          <span class="docx-tbwidth__preview" :style="{ borderTopWidth: w.previewPx + 'px' }" />
+          <span
+            class="docx-tbwidth__preview"
+            :style="{ borderTopWidth: w.previewPx + 'px' }"
+          />
           <span class="docx-tbwidth__label">{{ w.label }}</span>
         </button>
       </div>
@@ -35,8 +42,9 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import MaterialSymbol from "./MaterialSymbol.vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
+import MaterialSymbol from "./MaterialSymbol.vue";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).

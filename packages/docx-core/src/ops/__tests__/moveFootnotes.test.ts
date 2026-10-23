@@ -5,8 +5,8 @@ import { applyDocumentOps } from "../apply";
 import {
   allocateEditorIntentIds,
   compileEditorIntent,
-  paragraphVisibleText,
   type EditorIntent,
+  paragraphVisibleText,
 } from "../editorIntent";
 import { OP_STORIES } from "../types";
 
@@ -20,7 +20,10 @@ const reference = (id: number): Run => ({
   content: [{ type: "footnoteRef", id }],
 });
 
-const paragraph = (paraId: string, content: Paragraph["content"]): Paragraph => ({
+const paragraph = (
+  paraId: string,
+  content: Paragraph["content"],
+): Paragraph => ({
   type: "paragraph",
   paraId,
   content,
@@ -39,8 +42,16 @@ test("one move preserves two footnotes referenced from separate paragraphs and u
         ],
       },
       footnotes: [
-        { type: "footnote", id: 1, content: [paragraph("00000011", [run("first note")])] },
-        { type: "footnote", id: 2, content: [paragraph("00000012", [run("second note")])] },
+        {
+          type: "footnote",
+          id: 1,
+          content: [paragraph("00000011", [run("first note")])],
+        },
+        {
+          type: "footnote",
+          id: 2,
+          content: [paragraph("00000012", [run("second note")])],
+        },
       ],
     },
   } satisfies Document;
@@ -63,7 +74,9 @@ test("one move preserves two footnotes referenced from separate paragraphs and u
   }).unwrap();
 
   const moved = applyDocumentOps(document, compiled.ops).unwrap();
-  expect(moved.document.package.footnotes).toStrictEqual(document.package.footnotes);
+  expect(moved.document.package.footnotes).toStrictEqual(
+    document.package.footnotes,
+  );
   expect(
     moved.document.package.document.content.map((block) =>
       block.type === "paragraph" ? paragraphVisibleText(block) : "",
@@ -73,5 +86,7 @@ test("one move preserves two footnotes referenced from separate paragraphs and u
     .slice(1)
     .flatMap((block) => (block.type === "paragraph" ? block.content : []));
   expect(targetContent).toEqual([run("T"), firstReference, secondReference]);
-  expect(applyDocumentOps(moved.document, moved.inverse).unwrap().document).toStrictEqual(document);
+  expect(
+    applyDocumentOps(moved.document, moved.inverse).unwrap().document,
+  ).toStrictEqual(document);
 });

@@ -1,18 +1,21 @@
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { schema } from "../prosemirror/schema";
 import type { Document } from "../types/document";
 import {
-  CanonicalSessionError,
-  createCanonicalSession,
-  publishCanonicalProjection,
   type CanonicalCommit,
   type CanonicalInputSemantic,
   type CanonicalSession,
+  CanonicalSessionError,
+  createCanonicalSession,
+  publishCanonicalProjection,
 } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
@@ -43,8 +46,11 @@ const seed = (runLength = 50): Document => ({
   },
 });
 
-const accept = (session: CanonicalSession, state: EditorState, commit: CanonicalCommit) =>
-  publishCanonicalProjection({ session, state, commit }).unwrap().state;
+const accept = (
+  session: CanonicalSession,
+  state: EditorState,
+  commit: CanonicalCommit,
+) => publishCanonicalProjection({ session, state, commit }).unwrap().state;
 
 const semanticCases = {
   typing: "typing",
@@ -74,7 +80,10 @@ describe("canonical semantic undo partition", () => {
           // Exercise the same trace from empty, short and multi-run paragraphs.
           for (const runLength of [0, 1, 50]) {
             const session = createCanonicalSession(seed(runLength)).unwrap();
-            let state = EditorState.create({ schema, doc: session.projection.doc });
+            let state = EditorState.create({
+              schema,
+              doc: session.projection.doc,
+            });
             const initial = session.document;
             const groups: {
               before: Document;
@@ -83,7 +92,12 @@ describe("canonical semantic undo partition", () => {
               postSelection: ReturnType<typeof state.selection.toJSON>;
             }[] = [];
             let previous:
-              | { semantic: CanonicalInputSemantic; eligible: boolean; time: number; caret: number }
+              | {
+                  semantic: CanonicalInputSemantic;
+                  eligible: boolean;
+                  time: number;
+                  caret: number;
+                }
               | undefined;
             let time = 1_000;
             // Every declared intent is exercised in each trace, followed by arbitrary transitions.
@@ -117,7 +131,8 @@ describe("canonical semantic undo partition", () => {
               exercised.add(action.semantic);
               time += action.delay;
               const paragraph =
-                session.projection.paragraph("12345678") ?? panic("Missing test paragraph");
+                session.projection.paragraph("12345678") ??
+                panic("Missing test paragraph");
               const gaps = [paragraph.start];
               let position = paragraph.start;
               for (const unit of paragraph.text) {
@@ -129,23 +144,32 @@ describe("canonical semantic undo partition", () => {
                 (action.selection !== "roundtrip" || gaps.length > 1);
               let caret = state.selection.head;
               if (action.selection === "move" || action.selection === "range") {
-                caret = gaps.at(action.offset % gaps.length) ?? panic("Missing generated caret");
+                caret =
+                  gaps.at(action.offset % gaps.length) ??
+                  panic("Missing generated caret");
                 const head =
                   action.selection === "range"
                     ? (gaps.at((action.offset + 1) % gaps.length) ??
                       panic("Missing generated head"))
                     : caret;
                 state = state.apply(
-                  state.tr.setSelection(TextSelection.create(state.doc, caret, head)),
+                  state.tr.setSelection(
+                    TextSelection.create(state.doc, caret, head),
+                  ),
                 );
               }
               if (action.selection === "roundtrip" && gaps.length > 1) {
                 const previousCaret = state.selection.head;
                 const away =
-                  gaps.find((gap) => gap !== previousCaret) ?? panic("Missing roundtrip gap");
-                state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, away)));
+                  gaps.find((gap) => gap !== previousCaret) ??
+                  panic("Missing roundtrip gap");
                 state = state.apply(
-                  state.tr.setSelection(TextSelection.create(state.doc, previousCaret)),
+                  state.tr.setSelection(TextSelection.create(state.doc, away)),
+                );
+                state = state.apply(
+                  state.tr.setSelection(
+                    TextSelection.create(state.doc, previousCaret),
+                  ),
                 );
               }
               if (selected) session.breakUndoGroup();
@@ -154,7 +178,8 @@ describe("canonical semantic undo partition", () => {
               let from = state.selection.from;
               let to = state.selection.to;
               const text =
-                action.semantic === "deleteBackward" || action.semantic === "deleteForward"
+                action.semantic === "deleteBackward" ||
+                action.semantic === "deleteForward"
                   ? ""
                   : action.text;
               if (text.length === 0 && gaps.length === 1) {
@@ -169,8 +194,11 @@ describe("canonical semantic undo partition", () => {
                   semantic: action.semantic,
                   time,
                 });
-                if (refused.isOk()) panic("Empty deletion unexpectedly staged a commit.");
-                expect(refused.error.message).toBe("The input makes no text change.");
+                if (refused.isOk())
+                  panic("Empty deletion unexpectedly staged a commit.");
+                expect(refused.error.message).toBe(
+                  "The input makes no text change.",
+                );
                 expect(session.document).toStrictEqual(before);
                 expect(session.projection).toBe(projection);
                 expect(session.version).toBe(version);
@@ -186,21 +214,28 @@ describe("canonical semantic undo partition", () => {
                   if (index === 0) {
                     caret = gaps.at(1) ?? panic("Missing backward caret");
                     state = state.apply(
-                      state.tr.setSelection(TextSelection.create(state.doc, caret)),
+                      state.tr.setSelection(
+                        TextSelection.create(state.doc, caret),
+                      ),
                     );
                   }
                   to = caret;
                   from =
-                    gaps.at(Math.max(0, gaps.indexOf(caret) - 1)) ?? panic("Missing backward gap");
+                    gaps.at(Math.max(0, gaps.indexOf(caret) - 1)) ??
+                    panic("Missing backward gap");
                 } else {
                   if (index === gaps.length - 1) {
                     caret = gaps.at(-2) ?? panic("Missing forward caret");
                     state = state.apply(
-                      state.tr.setSelection(TextSelection.create(state.doc, caret)),
+                      state.tr.setSelection(
+                        TextSelection.create(state.doc, caret),
+                      ),
                     );
                   }
                   from = caret;
-                  to = gaps.at(gaps.indexOf(caret) + 1) ?? panic("Missing forward gap");
+                  to =
+                    gaps.at(gaps.indexOf(caret) + 1) ??
+                    panic("Missing forward gap");
                 }
               }
               const actualPreSelection = state.selection.toJSON();
@@ -222,7 +257,13 @@ describe("canonical semantic undo partition", () => {
                 session,
                 state,
                 session
-                  .prepareReplace(state, { from, to, text, semantic: action.semantic, time })
+                  .prepareReplace(state, {
+                    from,
+                    to,
+                    text,
+                    semantic: action.semantic,
+                    time,
+                  })
                   .unwrap(),
               );
               const after = session.document;
@@ -232,22 +273,41 @@ describe("canonical semantic undo partition", () => {
                 group.after = after;
                 group.postSelection = postSelection;
               } else {
-                groups.push({ before, after, preSelection: actualPreSelection, postSelection });
+                groups.push({
+                  before,
+                  after,
+                  preSelection: actualPreSelection,
+                  postSelection,
+                });
               }
-              previous = { semantic: action.semantic, eligible, time, caret: state.selection.head };
+              previous = {
+                semantic: action.semantic,
+                eligible,
+                time,
+                caret: state.selection.head,
+              };
               // Range direction is part of the selection oracle, not a min/max-only address.
-              if (action.selection === "range") expect(actualPreSelection).toEqual(preSelection);
+              if (action.selection === "range")
+                expect(actualPreSelection).toEqual(preSelection);
             }
             expect([...exercised].sort()).toEqual([...semantics].sort());
             for (const group of groups.toReversed()) {
-              state = accept(session, state, session.prepareUndo(state).unwrap());
+              state = accept(
+                session,
+                state,
+                session.prepareUndo(state).unwrap(),
+              );
               expect(session.document).toStrictEqual(group.before);
               expect(state.selection.toJSON()).toEqual(group.preSelection);
             }
             expect(session.canUndo).toBe(false);
             expect(session.document).toStrictEqual(initial);
             for (const group of groups) {
-              state = accept(session, state, session.prepareRedo(state).unwrap());
+              state = accept(
+                session,
+                state,
+                session.prepareRedo(state).unwrap(),
+              );
               expect(session.document).toStrictEqual(group.after);
               expect(state.selection.toJSON()).toEqual(group.postSelection);
             }
@@ -283,8 +343,12 @@ describe("canonical semantic undo partition", () => {
     type("X", 0);
     const first = session.document;
     const previousCaret = state.selection.head;
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, previousCaret + 1)));
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, previousCaret)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, previousCaret + 1)),
+    );
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, previousCaret)),
+    );
     session.breakUndoGroup();
     type("Y", 1);
     state = accept(session, state, session.prepareUndo(state).unwrap());
@@ -312,7 +376,9 @@ describe("canonical semantic undo partition", () => {
         })
         .unwrap(),
     );
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 54, 48)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 54, 48)),
+    );
     const baseline = session.document;
     const selected = state.selection.toJSON();
     expect(session.beginComposition().isOk()).toBe(true);
@@ -360,11 +426,15 @@ describe("canonical semantic undo partition", () => {
     const session = createCanonicalSession(seed()).unwrap();
     let state = EditorState.create({ schema, doc: session.projection.doc });
     const baseline = session.document;
-    const prepared = session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap();
+    const prepared = session
+      .prepareReplace(state, { from: 1, to: 1, text: "X" })
+      .unwrap();
     expect(session.beginComposition().isOk()).toBe(true);
     expect(session.beginComposition().isErr()).toBe(true);
     expect(() => session.document).toThrow(CanonicalSessionError);
-    expect(session.prepareReplace(state, { from: 1, to: 1, text: "X" }).isErr()).toBe(true);
+    expect(
+      session.prepareReplace(state, { from: 1, to: 1, text: "X" }).isErr(),
+    ).toBe(true);
     expect(session.prepareUndo(state).isErr()).toBe(true);
     expect(session.prepareRedo(state).isErr()).toBe(true);
     expect(prepared.publish().isErr()).toBe(true);
@@ -375,7 +445,12 @@ describe("canonical semantic undo partition", () => {
       session,
       state,
       session
-        .prepareReplace(state, { from: 1, to: 1, text: "中", semantic: "composition" })
+        .prepareReplace(state, {
+          from: 1,
+          to: 1,
+          text: "中",
+          semantic: "composition",
+        })
         .unwrap(),
     );
     state = accept(session, state, session.prepareUndo(state).unwrap());

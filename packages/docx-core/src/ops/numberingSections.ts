@@ -1,31 +1,34 @@
 import { Result } from "better-result";
-import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../model/paragraphNumbering";
 
 import {
-  MAX_REVISION_ID,
   type Document,
   type DocumentBody,
+  MAX_REVISION_ID,
   type Paragraph,
 } from "../model/document";
+import {
+  isNumberingReference,
+  NO_NUMBERING_NUM_ID,
+} from "../model/paragraphNumbering";
 import {
   captureSectionViewState,
   rebuildSections,
   restoreSectionViewState,
   sectionsInStep,
 } from "./blocks";
+import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { idKey } from "./ids";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
-  DOCUMENT_OP_TYPES,
   type CreateNumberingInstanceOp,
   type DeleteNumberingInstanceOp,
+  DOCUMENT_OP_TYPES,
   type DocumentOp,
   type NumberingPartState,
-  type SetSectionEndpointOp,
   type SectionPropertiesState,
+  type SetSectionEndpointOp,
 } from "./types";
-import type { DocumentEdit } from "./edits";
 
 const failed = (
   op: DocumentOp,
@@ -33,8 +36,14 @@ const failed = (
   message: string,
 ) => Result.err(new DocumentOpRefusal({ message, reason, opType: op.type }));
 
-const unchanged = (document: Document): Result<DocumentEdit, DocumentOpRefusal> =>
-  Result.ok({ document, inverse: [], touched: { modified: [], inserted: [], removed: [] } });
+const unchanged = (
+  document: Document,
+): Result<DocumentEdit, DocumentOpRefusal> =>
+  Result.ok({
+    document,
+    inverse: [],
+    touched: { modified: [], inserted: [], removed: [] },
+  });
 
 const emptyEdit = (document: Document, inverse: DocumentOp): DocumentEdit => ({
   document,
@@ -50,16 +59,25 @@ const numberingStateOf = (document: Document): NumberingPartState => {
     : { type: "definitions", value: numbering };
 };
 
-const withNumberingState = (document: Document, state: NumberingPartState): Document => {
+const withNumberingState = (
+  document: Document,
+  state: NumberingPartState,
+): Document => {
   const packageWithoutNumbering = { ...document.package };
   delete packageWithoutNumbering.numbering;
   switch (state.type) {
     case "omitted":
       return { ...document, package: packageWithoutNumbering };
     case "undefined":
-      return { ...document, package: { ...packageWithoutNumbering, numbering: undefined } };
+      return {
+        ...document,
+        package: { ...packageWithoutNumbering, numbering: undefined },
+      };
     case "definitions":
-      return { ...document, package: { ...packageWithoutNumbering, numbering: state.value } };
+      return {
+        ...document,
+        package: { ...packageWithoutNumbering, numbering: state.value },
+      };
     default: {
       const unreachable: never = state;
       return unreachable;
@@ -69,17 +87,31 @@ const withNumberingState = (document: Document, state: NumberingPartState): Docu
 
 const packageReferencesNumbering = (value: unknown, numId: number): boolean => {
   if (typeof value !== "object" || value === null) return false;
-  if (Array.isArray(value)) return value.some((item) => packageReferencesNumbering(item, numId));
+  if (Array.isArray(value))
+    return value.some((item) => packageReferencesNumbering(item, numId));
   if (value instanceof Map)
-    return [...value.values()].some((item) => packageReferencesNumbering(item, numId));
-  if (Reflect.get(value, "kind") === "reference" && Reflect.get(value, "numId") === numId)
+    return [...value.values()].some((item) =>
+      packageReferencesNumbering(item, numId),
+    );
+  if (
+    Reflect.get(value, "kind") === "reference" &&
+    Reflect.get(value, "numId") === numId
+  )
     return true;
-  return Object.values(value).some((item) => packageReferencesNumbering(item, numId));
+  return Object.values(value).some((item) =>
+    packageReferencesNumbering(item, numId),
+  );
 };
 
-const applyCreateNumberingInstance = (document: Document, op: CreateNumberingInstanceOp) => {
+const applyCreateNumberingInstance = (
+  document: Document,
+  op: CreateNumberingInstanceOp,
+) => {
   const priorState = numberingStateOf(document);
-  if (op.expected !== undefined && !structurallyEqual(priorState, op.expected)) {
+  if (
+    op.expected !== undefined &&
+    !structurallyEqual(priorState, op.expected)
+  ) {
     return failed(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
@@ -138,7 +170,9 @@ const applyCreateNumberingInstance = (document: Document, op: CreateNumberingIns
       );
     }
   } else if (
-    !numbering.abstractNums.some(({ abstractNumId }) => abstractNumId === op.num.abstractNumId)
+    !numbering.abstractNums.some(
+      ({ abstractNumId }) => abstractNumId === op.num.abstractNumId,
+    )
   ) {
     return failed(
       op,
@@ -154,7 +188,10 @@ const applyCreateNumberingInstance = (document: Document, op: CreateNumberingIns
         : [...numbering.abstractNums, op.abstractNum],
     nums: [...numbering.nums, op.num],
   };
-  const next = { ...document, package: { ...document.package, numbering: nextNumbering } };
+  const next = {
+    ...document,
+    package: { ...document.package, numbering: nextNumbering },
+  };
   const nextState = numberingStateOf(next);
   if (op.restore !== undefined && !structurallyEqual(nextState, op.restore)) {
     return failed(
@@ -174,9 +211,15 @@ const applyCreateNumberingInstance = (document: Document, op: CreateNumberingIns
   );
 };
 
-const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingInstanceOp) => {
+const applyDeleteNumberingInstance = (
+  document: Document,
+  op: DeleteNumberingInstanceOp,
+) => {
   const priorState = numberingStateOf(document);
-  if (op.expected !== undefined && !structurallyEqual(priorState, op.expected)) {
+  if (
+    op.expected !== undefined &&
+    !structurallyEqual(priorState, op.expected)
+  ) {
     return failed(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
@@ -185,7 +228,11 @@ const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingIns
   }
   const prior = document.package.numbering;
   const instance = prior?.nums.find(({ numId }) => numId === op.num.numId);
-  if (prior === undefined || instance === undefined || !structurallyEqual(instance, op.num)) {
+  if (
+    prior === undefined ||
+    instance === undefined ||
+    !structurallyEqual(instance, op.num)
+  ) {
     return failed(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
@@ -203,7 +250,8 @@ const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingIns
     op.abstractNum === undefined
       ? undefined
       : prior.abstractNums.find(
-          ({ abstractNumId }) => abstractNumId === op.abstractNum?.abstractNumId,
+          ({ abstractNumId }) =>
+            abstractNumId === op.abstractNum?.abstractNumId,
         );
   if (
     op.abstractNum !== undefined &&
@@ -219,7 +267,8 @@ const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingIns
     op.abstractNum !== undefined &&
     prior.nums.some(
       ({ numId, abstractNumId }) =>
-        numId !== op.num.numId && abstractNumId === op.abstractNum?.abstractNumId,
+        numId !== op.num.numId &&
+        abstractNumId === op.abstractNum?.abstractNumId,
     )
   ) {
     return failed(
@@ -235,12 +284,19 @@ const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingIns
       op.abstractNum === undefined
         ? prior.abstractNums
         : prior.abstractNums.filter(
-            ({ abstractNumId }) => abstractNumId !== op.abstractNum?.abstractNumId,
+            ({ abstractNumId }) =>
+              abstractNumId !== op.abstractNum?.abstractNumId,
           ),
   };
-  const intermediate = { ...document, package: { ...document.package, numbering } };
+  const intermediate = {
+    ...document,
+    package: { ...document.package, numbering },
+  };
   const removedState = numberingStateOf(intermediate);
-  if (op.restore?.type === "definitions" && !structurallyEqual(removedState, op.restore)) {
+  if (
+    op.restore?.type === "definitions" &&
+    !structurallyEqual(removedState, op.restore)
+  ) {
     return failed(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
@@ -261,7 +317,9 @@ const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingIns
     );
   }
   const next =
-    op.restore === undefined ? intermediate : withNumberingState(intermediate, op.restore);
+    op.restore === undefined
+      ? intermediate
+      : withNumberingState(intermediate, op.restore);
   return Result.ok(
     emptyEdit(next, {
       type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
@@ -287,7 +345,9 @@ const captureSectionProperties = ({
 }: CaptureSectionPropertiesOptions): SectionPropertiesState => {
   const value = record[key];
   if (value !== undefined) return { type: "present", value };
-  return Object.hasOwn(record, key) ? { type: "undefined" } : { type: "omitted" };
+  return Object.hasOwn(record, key)
+    ? { type: "undefined" }
+    : { type: "omitted" };
 };
 
 type RestoreSectionPropertiesOptions = CaptureSectionPropertiesOptions & {
@@ -357,7 +417,8 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       "The section endpoint paragraph does not exist.",
     );
-  const key = endpoint.type === "final" ? "finalSectionProperties" : "sectionProperties";
+  const key =
+    endpoint.type === "final" ? "finalSectionProperties" : "sectionProperties";
   const previous = captureSectionProperties({ record, key });
   if (op.expected !== undefined && !structurallyEqual(previous, op.expected))
     return failed(
@@ -392,7 +453,8 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
     });
   if (op.sectionMetadata !== undefined) {
     const restored = restoreSectionViewState(nextBody, op.sectionMetadata);
-    if (restored.isErr()) return failed(op, restored.error.reason, restored.error.message);
+    if (restored.isErr())
+      return failed(op, restored.error.reason, restored.error.message);
     nextBody = restored.value;
   } else if (body.sections !== undefined) {
     const source = {
@@ -405,8 +467,13 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
         },
       },
     };
-    const rebuilt = rebuildSections({ document: source, content, previous: body.sections });
-    if (rebuilt.isErr()) return failed(op, rebuilt.error.reason, rebuilt.error.message);
+    const rebuilt = rebuildSections({
+      document: source,
+      content,
+      previous: body.sections,
+    });
+    if (rebuilt.isErr())
+      return failed(op, rebuilt.error.reason, rebuilt.error.message);
     nextBody.sections = rebuilt.value;
   }
   if (!sectionsInStep(nextBody))
@@ -416,9 +483,15 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
       "The section metadata conflicts with its canonical boundaries.",
     );
   const nextView = captureSectionViewState(nextBody);
-  if (structurallyEqual(previous, op.properties) && structurallyEqual(oldView, nextView))
+  if (
+    structurallyEqual(previous, op.properties) &&
+    structurallyEqual(oldView, nextView)
+  )
     return unchanged(document);
-  const next = { ...document, package: { ...document.package, document: nextBody } };
+  const next = {
+    ...document,
+    package: { ...document.package, document: nextBody },
+  };
   const inverse: SetSectionEndpointOp = {
     type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
     endpoint,
@@ -440,7 +513,10 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
 
 export const applyNumberingSectionOp = (
   document: Document,
-  op: CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp,
+  op:
+    | CreateNumberingInstanceOp
+    | DeleteNumberingInstanceOp
+    | SetSectionEndpointOp,
 ) => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:

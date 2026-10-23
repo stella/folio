@@ -8,13 +8,22 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Hyperlink, NoteReferenceContent, Paragraph } from "../types/document";
+import type {
+  Document,
+  Hyperlink,
+  NoteReferenceContent,
+  Paragraph,
+} from "../types/document";
 
-const optionalString = fc.option(fc.string({ minLength: 1, maxLength: 32 }), { nil: undefined });
+const optionalString = fc.option(fc.string({ minLength: 1, maxLength: 32 }), {
+  nil: undefined,
+});
 const optionalBoolean = fc.option(fc.boolean(), { nil: undefined });
 
 const documentHolding = (content: Paragraph["content"]): Document => ({
@@ -41,7 +50,9 @@ const projectedHyperlink = (source: Hyperlink): Hyperlink => {
   return projected;
 };
 
-const projectedNoteReference = (source: NoteReferenceContent): NoteReferenceContent => {
+const projectedNoteReference = (
+  source: NoteReferenceContent,
+): NoteReferenceContent => {
   const projected = projectedParagraph(
     documentHolding([{ type: "run", content: [source] }]),
   ).content.at(0);
@@ -73,7 +84,9 @@ describe("inline reference metadata", () => {
               ...(target === undefined ? {} : { target }),
               ...(history === undefined ? {} : { history }),
               ...(docLocation === undefined ? {} : { docLocation }),
-              children: [{ type: "run", content: [{ type: "text", text: "source" }] }],
+              children: [
+                { type: "run", content: [{ type: "text", text: "source" }] },
+              ],
             };
 
             const projected = projectedHyperlink(source);

@@ -22,7 +22,11 @@ import {
  * usable = margin - 6 - 2.5 - 2 = margin - 10.5;  budget = floor(usable / 5).
  */
 
-const blockRange = (from: number, kind: DirectiveRange["kind"], expr = ""): DirectiveRange => ({
+const blockRange = (
+  from: number,
+  kind: DirectiveRange["kind"],
+  expr = "",
+): DirectiveRange => ({
   from,
   to: from + 1,
   kind,
@@ -63,7 +67,9 @@ describe("railXForDepth", () => {
   });
 
   test("depths beyond the budget reuse the deepest offset (no march into text)", () => {
-    expect(railXForDepth(99, CONTENT_LEFT, MARGIN)).toBe(railXForDepth(7, CONTENT_LEFT, MARGIN));
+    expect(railXForDepth(99, CONTENT_LEFT, MARGIN)).toBe(
+      railXForDepth(7, CONTENT_LEFT, MARGIN),
+    );
   });
 
   test("deeper depth sits closer to the text than a shallower one", () => {
@@ -81,7 +87,9 @@ describe("segmentBandByPages", () => {
   ];
 
   test("a single-page band is clipped to that page", () => {
-    expect(segmentBandByPages({ top: 10, bottom: 60 }, pages)).toEqual([{ top: 10, bottom: 60 }]);
+    expect(segmentBandByPages({ top: 10, bottom: 60 }, pages)).toEqual([
+      { top: 10, bottom: 60 },
+    ]);
   });
 
   test("a cross-page band splits and never paints over the inter-page gap", () => {
@@ -100,7 +108,9 @@ describe("segmentBandByPages", () => {
   });
 
   test("with no page geometry the whole span is one segment (fallback)", () => {
-    expect(segmentBandByPages({ top: 10, bottom: 60 }, [])).toEqual([{ top: 10, bottom: 60 }]);
+    expect(segmentBandByPages({ top: 10, bottom: 60 }, [])).toEqual([
+      { top: 10, bottom: 60 },
+    ]);
   });
 });
 
@@ -119,9 +129,18 @@ describe("pairBlockRanges", () => {
     expect(pairings).toHaveLength(2);
     const inner = pairings.find((p) => p.kind === "if");
     const outer = pairings.find((p) => p.kind === "for");
-    expect(inner).toMatchObject({ blockId: 10, openerFrom: 10, closerFrom: 20, closerTo: 21 });
+    expect(inner).toMatchObject({
+      blockId: 10,
+      openerFrom: 10,
+      closerFrom: 20,
+      closerTo: 21,
+    });
     expect(inner?.openerExpr).toBe("hasVerdicts");
-    expect(outer).toMatchObject({ blockId: 0, closerFrom: 30, openerExpr: "contracts.risks" });
+    expect(outer).toMatchObject({
+      blockId: 0,
+      closerFrom: 30,
+      openerExpr: "contracts.risks",
+    });
   });
 
   test("drops inline (block:false) markers and unbalanced closers", () => {
@@ -179,7 +198,10 @@ describe("pairBlockRanges", () => {
     // {% for %} {% endif %}: mismatched families must not pair (would be a
     // for-kind band closed by an endif). Blind popping paired them; kind-aware
     // drops both.
-    const pairings = pairBlockRanges([blockRange(0, "for", "B"), blockRange(10, "endif")]);
+    const pairings = pairBlockRanges([
+      blockRange(0, "for", "B"),
+      blockRange(10, "endif"),
+    ]);
 
     expect(pairings).toHaveLength(0);
   });
@@ -188,7 +210,9 @@ describe("pairBlockRanges", () => {
 describe("closerHintLabel", () => {
   test("names what the closer closes", () => {
     expect(closerHintLabel("if", "hasVerdicts")).toBe("endif · hasVerdicts");
-    expect(closerHintLabel("for", "contracts.risks")).toBe("endfor · contracts.risks");
+    expect(closerHintLabel("for", "contracts.risks")).toBe(
+      "endfor · contracts.risks",
+    );
   });
 
   test("falls back to the bare keyword when there is no expression", () => {

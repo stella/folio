@@ -83,14 +83,20 @@ const mapPreviewThroughDiff = (
   hidden: preview.hidden.map((range) => mapRangeThroughDiff(range, diff)),
 });
 
-const unionRanges = (first: DirtyRange | null, second: DirtyRange | null): DirtyRange | null => {
+const unionRanges = (
+  first: DirtyRange | null,
+  second: DirtyRange | null,
+): DirtyRange | null => {
   if (!first) {
     return second;
   }
   if (!second) {
     return first;
   }
-  return { from: Math.min(first.from, second.from), to: Math.max(first.to, second.to) };
+  return {
+    from: Math.min(first.from, second.from),
+    to: Math.max(first.to, second.to),
+  };
 };
 
 /**
@@ -121,7 +127,10 @@ export const diffAgainstCommittedLayout = (
     const previousPreview = docDiff
       ? mapPreviewThroughDiff(committed.preview, docDiff)
       : committed.preview;
-    range = unionRanges(range, templatePreviewDirtyRange(previousPreview, next.preview));
+    range = unionRanges(
+      range,
+      templatePreviewDirtyRange(previousPreview, next.preview),
+    );
   }
   return range ? { type: "range", range } : FULL;
 };

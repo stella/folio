@@ -5,7 +5,11 @@ type ViewportPositionOptions = {
 };
 
 /** The pages viewport is unscaled; only its painted pages carry the zoom transform. */
-export const viewportPosition = ({ clientX, clientY, viewport }: ViewportPositionOptions) => ({
+export const viewportPosition = ({
+  clientX,
+  clientY,
+  viewport,
+}: ViewportPositionOptions) => ({
   left: clientX - viewport.left,
   top: clientY - viewport.top,
 });

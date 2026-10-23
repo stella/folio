@@ -4,7 +4,7 @@
  * selection must be projected onto the paginated DOM.
  */
 
-import { NodeSelection, type EditorState } from "prosemirror-state";
+import { type EditorState, NodeSelection } from "prosemirror-state";
 
 import { applyCellSelectionHighlight } from "../layout-bridge/cellSelectionHighlight";
 import {
@@ -14,15 +14,17 @@ import {
 import { findBodyPmAnchor } from "../layout-bridge/dom/findBodyPmSpans";
 import { findImageElement } from "../layout-painter/imageLayout";
 import type { DisplayMode } from "../managers/EditorModeManager";
-import { projectMarkupView, visibleCaretPosition } from "../prosemirror/markupViewProjection";
+import {
+  projectMarkupView,
+  visibleCaretPosition,
+} from "../prosemirror/markupViewProjection";
 
 const CARET_CLASS = "folio-body-selection-caret";
 const RANGE_CLASS = "folio-body-selection-rect";
 const OWNED_OVERLAY_SELECTOR = `.${CARET_CLASS}, .${RANGE_CLASS}`;
 
 export type BodySelectionOverlayResult =
-  | { type: "text" }
-  | { type: "image"; element: HTMLElement; pmPos: number };
+  { type: "text" } | { type: "image"; element: HTMLElement; pmPos: number };
 
 export type SyncBodySelectionOverlayOptions = {
   pagesContainer: HTMLElement;
@@ -50,7 +52,9 @@ const setOverlayBox = (
 
 export class BodySelectionOverlay {
   clear(pagesContainer: HTMLElement): void {
-    for (const element of pagesContainer.querySelectorAll(OWNED_OVERLAY_SELECTOR)) {
+    for (const element of pagesContainer.querySelectorAll(
+      OWNED_OVERLAY_SELECTOR,
+    )) {
       element.remove();
     }
   }
@@ -68,7 +72,10 @@ export class BodySelectionOverlay {
     applyCellSelectionHighlight(pagesContainer, state);
 
     const { selection } = state;
-    if (selection instanceof NodeSelection && selection.node.type.name === "image") {
+    if (
+      selection instanceof NodeSelection &&
+      selection.node.type.name === "image"
+    ) {
       const anchor = findBodyPmAnchor(pagesContainer, selection.from);
       const element = anchor ? findImageElement(anchor) : null;
       if (element) {
@@ -79,7 +86,10 @@ export class BodySelectionOverlay {
     if (selection.empty) {
       const caret = getCaretPositionFromDom(
         pagesContainer,
-        visibleCaretPosition(projectMarkupView(state, markupView), selection.from),
+        visibleCaretPosition(
+          projectMarkupView(state, markupView),
+          selection.from,
+        ),
         pagesContainer.getBoundingClientRect(),
       );
       if (!caret) {
@@ -92,10 +102,16 @@ export class BodySelectionOverlay {
       element.style.background = caretColor;
       element.style.pointerEvents = "none";
       element.style.zIndex = String(zIndex);
-      element.style.animation = "folio-caret-blink 1060ms steps(1, end) infinite";
+      element.style.animation =
+        "folio-caret-blink 1060ms steps(1, end) infinite";
       setOverlayBox(
         element,
-        { x: caret.x, y: caret.y, width: 2 * (zoom > 0 ? zoom : 1), height: caret.height },
+        {
+          x: caret.x,
+          y: caret.y,
+          width: 2 * (zoom > 0 ? zoom : 1),
+          height: caret.height,
+        },
         pagesContainer,
         zoom,
       );

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 
-import { schema } from "../../schema";
 import { readMoveRangeBoundaryAttrs } from "../../moveRangeBoundaryAttrs";
+import { schema } from "../../schema";
 import {
   cleanPastedHtml,
   removeUnpairedBookmarkBoundaries,
@@ -47,10 +47,12 @@ describe("cleanPastedHtml — Office cruft removal", () => {
   test("keeps producer class tokens so the style inliner can match them", () => {
     // The inliner resolves `.MsoNormal { ... }` rules against these classes; the
     // schema parser ignores class names, so they are harmless after parsing.
-    expect(cleanPastedHtml('<p class="MsoNormal">a</p>')).toBe('<p class="MsoNormal">a</p>');
-    expect(cleanPastedHtml('<p class="MsoListParagraph highlighted">a</p>')).toBe(
-      '<p class="MsoListParagraph highlighted">a</p>',
+    expect(cleanPastedHtml('<p class="MsoNormal">a</p>')).toBe(
+      '<p class="MsoNormal">a</p>',
     );
+    expect(
+      cleanPastedHtml('<p class="MsoListParagraph highlighted">a</p>'),
+    ).toBe('<p class="MsoListParagraph highlighted">a</p>');
   });
 
   test("preserves both the <style> rule and its class so the inliner can apply it", () => {
@@ -82,7 +84,9 @@ describe("cleanPastedHtml — Office cruft removal", () => {
   });
 
   test("keeps a stylesheet hidden inside comment delimiters inside <style>", () => {
-    const out = cleanPastedHtml('<style><!-- .keep{color:red} --></style><p class="keep">x</p>');
+    const out = cleanPastedHtml(
+      '<style><!-- .keep{color:red} --></style><p class="keep">x</p>',
+    );
     // The style block (and its class rule) must survive the comment strip so the
     // downstream inliner can still resolve `.keep`.
     expect(out).toContain("<style>");
@@ -101,7 +105,8 @@ describe("cleanPastedHtml — Office cruft removal", () => {
   });
 
   test("removes conditional comments including the Office xml island", () => {
-    const html = "<!--[if gte mso 9]><xml><o:OfficeDocumentSettings/></xml><![endif]--><p>Body</p>";
+    const html =
+      "<!--[if gte mso 9]><xml><o:OfficeDocumentSettings/></xml><![endif]--><p>Body</p>";
     const out = cleanPastedHtml(html);
     expect(out).not.toContain("mso");
     expect(out).not.toContain("<xml");
@@ -124,7 +129,9 @@ describe("cleanPastedHtml — Office cruft removal", () => {
     expect(cleanPastedHtml("<p><span></span><span>keep</span></p>")).toBe(
       "<p><span>keep</span></p>",
     );
-    expect(cleanPastedHtml("<p><span><span></span></span>x</p>")).toBe("<p>x</p>");
+    expect(cleanPastedHtml("<p><span><span></span></span>x</p>")).toBe(
+      "<p>x</p>",
+    );
   });
 
   test("keeps whitespace-only spans so adjacent words never merge", () => {
@@ -166,9 +173,9 @@ describe("cleanPastedHtml — safety and robustness", () => {
     const html =
       '<span class="docx-field" data-field-code="source" data-docx-internal-clipboard="token">Result</span>';
     expect(cleanPastedHtml(html)).not.toContain("data-field-code");
-    expect(cleanPastedHtml(html, { internalClipboardToken: "token" })).toContain(
-      'data-field-code="source"',
-    );
+    expect(
+      cleanPastedHtml(html, { internalClipboardToken: "token" }),
+    ).toContain('data-field-code="source"');
   });
   test("leaves non-Office HTML essentially untouched", () => {
     const html = "<p>Plain <strong>bold</strong> text</p>";
@@ -207,7 +214,11 @@ describe("cleanPastedHtml — safety and robustness", () => {
   test("fails closed when an unexpected sanitizer input throws", () => {
     const malformedInput = {} as unknown as string;
 
-    expect(cleanPastedHtml(malformedInput, { internalClipboardToken: "test-capability" })).toBe("");
+    expect(
+      cleanPastedHtml(malformedInput, {
+        internalClipboardToken: "test-capability",
+      }),
+    ).toBe("");
   });
 });
 
@@ -229,7 +240,9 @@ describe("cleanPastedHtml — text-box anchor hijack via paste", () => {
     // the outer element. That must not be treated as external DOM.
     const html =
       '<div data-pm-slice="0 0 []"><p><span data-docx-textbox-anchor="0:0" data-docx-internal-clipboard="test-capability">​</span>Real box</p></div>';
-    const out = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const out = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
     expect(out).toContain("data-docx-textbox-anchor");
     expect(out).not.toContain("data-docx-internal-clipboard");
     expect(out).toContain("Real box");
@@ -239,7 +252,9 @@ describe("cleanPastedHtml — text-box anchor hijack via paste", () => {
     const html =
       '<div data-pm-slice="0 0 []"><span data-docx-textbox-anchor="0:0" data-docx-internal-clipboard="test-capability"></span></div>';
 
-    const internal = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const internal = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
     const external = cleanPastedHtml(html);
 
     expect(internal).toContain('data-docx-textbox-anchor="0:0"');
@@ -251,18 +266,18 @@ describe("cleanPastedHtml — text-box anchor hijack via paste", () => {
     const html =
       '<div data-pm-slice="0 0 []"><span data-docx-textbox-anchor="0:0">forged</span></div>';
 
-    expect(cleanPastedHtml(html, { internalClipboardToken: "test-capability" })).not.toContain(
-      "data-docx-textbox-anchor",
-    );
+    expect(
+      cleanPastedHtml(html, { internalClipboardToken: "test-capability" }),
+    ).not.toContain("data-docx-textbox-anchor");
   });
 
   test("strips a single- or double-quoted anchor attribute value", () => {
-    expect(cleanPastedHtml("<span data-docx-textbox-anchor='0:0'>x</span>")).not.toContain(
-      "data-docx-textbox-anchor",
-    );
-    expect(cleanPastedHtml('<span data-docx-textbox-anchor="0:0">x</span>')).not.toContain(
-      "data-docx-textbox-anchor",
-    );
+    expect(
+      cleanPastedHtml("<span data-docx-textbox-anchor='0:0'>x</span>"),
+    ).not.toContain("data-docx-textbox-anchor");
+    expect(
+      cleanPastedHtml('<span data-docx-textbox-anchor="0:0">x</span>'),
+    ).not.toContain("data-docx-textbox-anchor");
   });
 });
 
@@ -271,7 +286,9 @@ describe("cleanPastedHtml — bookmark boundaries", () => {
     const html =
       '<span class="docx-field" data-field-kind="simple" data-field-structured="true" data-docx-internal-clipboard="test-capability"><a href="https://example.test">Clause</a></span>';
 
-    const internal = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const internal = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
     const external = cleanPastedHtml(html);
 
     expect(internal).toContain('data-field-structured="true"');
@@ -284,7 +301,9 @@ describe("cleanPastedHtml — bookmark boundaries", () => {
     const html =
       '<span class="docx-field" data-field-type="REF" data-field-kind="simple" data-field-structured="true"><a href="https://example.test"><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause" data-docx-internal-clipboard="test-capability"></span>Clause<span data-docx-bookmark-boundary="end" data-docx-bookmark-id="12" data-docx-internal-clipboard="test-capability"></span></a></span>';
 
-    const internal = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const internal = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
     const external = cleanPastedHtml(html);
 
     expect(internal.match(/data-docx-bookmark-boundary=/g)).toHaveLength(2);
@@ -299,7 +318,9 @@ describe("cleanPastedHtml — bookmark boundaries", () => {
     const html =
       '<div data-pm-slice="0 0 []"><p><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause" data-docx-bookmark-col-first="2" data-docx-bookmark-col-last="4" data-docx-internal-clipboard="test-capability"></span>Clause</p></div>';
 
-    const out = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const out = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
 
     expect(out).toContain('data-docx-bookmark-boundary="start"');
     expect(out).toContain('data-docx-bookmark-id="12"');
@@ -333,7 +354,9 @@ describe("cleanPastedHtml — bookmark boundaries", () => {
     const html =
       '<div data-pm-slice="0 0 []"><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause">marker</span></div>';
 
-    const out = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const out = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
 
     expect(out).not.toContain("data-docx-bookmark-");
     expect(out).toContain("marker");
@@ -361,7 +384,9 @@ describe("cleanPastedHtml — range carriers", () => {
   test.each(attrs)("preserves an internal %s atom", (attribute, value) => {
     const html = `<span ${attribute}='${value}' data-docx-internal-clipboard="test-capability"></span>`;
 
-    const cleaned = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const cleaned = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
 
     expect(cleaned).toContain(attribute);
     expect(cleaned).not.toContain("data-docx-internal-clipboard");
@@ -380,31 +405,45 @@ describe("removeUnpairedBookmarkBoundaries", () => {
     return types;
   };
 
-  test.each(["start", "end"] as const)("drops a slice with only a bookmark %s", (type) => {
-    const attrs = type === "start" ? { type, id: 1, name: "one" } : { type, id: 1 };
-    const slice = new Slice(
-      Fragment.from(
-        schema.node("paragraph", null, [
-          schema.node("bookmarkBoundary", attrs),
-          schema.text("kept"),
-        ]),
-      ),
-      0,
-      0,
-    );
+  test.each(["start", "end"] as const)(
+    "drops a slice with only a bookmark %s",
+    (type) => {
+      const attrs =
+        type === "start" ? { type, id: 1, name: "one" } : { type, id: 1 };
+      const slice = new Slice(
+        Fragment.from(
+          schema.node("paragraph", null, [
+            schema.node("bookmarkBoundary", attrs),
+            schema.text("kept"),
+          ]),
+        ),
+        0,
+        0,
+      );
 
-    const filtered = removeUnpairedBookmarkBoundaries(slice);
+      const filtered = removeUnpairedBookmarkBoundaries(slice);
 
-    expect(boundaryTypes(filtered)).toEqual([]);
-    expect(filtered.content.textBetween(0, filtered.content.size)).toBe("kept");
-  });
+      expect(boundaryTypes(filtered)).toEqual([]);
+      expect(filtered.content.textBetween(0, filtered.content.size)).toBe(
+        "kept",
+      );
+    },
+  );
 
   test("keeps complete crossing bookmark pairs in source order", () => {
     const slice = new Slice(
       Fragment.from(
         schema.node("paragraph", null, [
-          schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
-          schema.node("bookmarkBoundary", { type: "start", id: 2, name: "two" }),
+          schema.node("bookmarkBoundary", {
+            type: "start",
+            id: 1,
+            name: "one",
+          }),
+          schema.node("bookmarkBoundary", {
+            type: "start",
+            id: 2,
+            name: "two",
+          }),
           schema.text("kept"),
           schema.node("bookmarkBoundary", { type: "end", id: 1 }),
           schema.node("bookmarkBoundary", { type: "end", id: 2 }),
@@ -428,7 +467,11 @@ describe("removeUnpairedBookmarkBoundaries", () => {
         schema.node("paragraph", null, [
           schema.node("bookmarkBoundary", { type: "end", id: 1 }),
           schema.text("kept"),
-          schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
+          schema.node("bookmarkBoundary", {
+            type: "start",
+            id: 1,
+            name: "one",
+          }),
         ]),
       ),
       0,
@@ -441,7 +484,11 @@ describe("removeUnpairedBookmarkBoundaries", () => {
 
 describe("removeUnpairedMoveRangeBoundaries", () => {
   const boundary = (
-    type: "moveFromRangeStart" | "moveFromRangeEnd" | "moveToRangeStart" | "moveToRangeEnd",
+    type:
+      | "moveFromRangeStart"
+      | "moveFromRangeEnd"
+      | "moveToRangeStart"
+      | "moveToRangeEnd",
     id: number,
   ) =>
     schema.node("moveRangeBoundary", {
@@ -468,7 +515,12 @@ describe("removeUnpairedMoveRangeBoundaries", () => {
     "drops a copied slice with only %s",
     (type) => {
       const slice = new Slice(
-        Fragment.from(schema.node("paragraph", null, [boundary(type, 7), schema.text("kept")])),
+        Fragment.from(
+          schema.node("paragraph", null, [
+            boundary(type, 7),
+            schema.text("kept"),
+          ]),
+        ),
         0,
         0,
       );
@@ -476,7 +528,9 @@ describe("removeUnpairedMoveRangeBoundaries", () => {
       const filtered = removeUnpairedMoveRangeBoundaries(slice);
 
       expect(boundaryTypes(filtered)).toEqual([]);
-      expect(filtered.content.textBetween(0, filtered.content.size)).toBe("kept");
+      expect(filtered.content.textBetween(0, filtered.content.size)).toBe(
+        "kept",
+      );
     },
   );
 

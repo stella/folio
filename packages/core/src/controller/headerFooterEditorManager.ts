@@ -1,9 +1,5 @@
-import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
-import {
-  CANONICAL_GAP,
-  usesCanonicalSession,
-  type CanonicalGap,
-} from "../types/canonicalCapabilities";
+import type { Node as PMNode } from "prosemirror-model";
+import { EditorState, TextSelection } from "prosemirror-state";
 /**
  * Framework-neutral lifecycle owner for persistent header/footer EditorViews.
  *
@@ -12,17 +8,14 @@ import {
  * editor state, and adapters only decide when to synchronize or destroy the
  * manager.
  */
+import type { EditorState as EditorStateT } from "prosemirror-state";
+import { type DirectEditorProps, EditorView } from "prosemirror-view";
 
 import { OP_STORIES } from "@stll/docx-core/ops";
-import type { Node as PMNode } from "prosemirror-model";
-import { EditorState, TextSelection } from "prosemirror-state";
-import type { EditorState as EditorStateT } from "prosemirror-state";
-import { EditorView, type DirectEditorProps } from "prosemirror-view";
 
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
-import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import {
   headerFooterToProseDoc,
   type ToProseDocOptions,
@@ -31,12 +24,19 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
-import {
-  createDocumentStylesPlugin,
-  createDocumentStyleContextPlugin,
-} from "../prosemirror/plugins/documentStyles";
+import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
+import {
+  createDocumentStyleContextPlugin,
+  createDocumentStylesPlugin,
+} from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
+import { storyListNumbering } from "../prosemirror/storyListNumbering";
+import {
+  CANONICAL_GAP,
+  type CanonicalGap,
+  usesCanonicalSession,
+} from "../types/canonicalCapabilities";
 import type {
   BlockContent,
   Document,
@@ -45,7 +45,6 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../types/document";
-
 import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -66,20 +65,26 @@ export type HeaderFooterEditorTransaction = {
 };
 
 export type HeaderFooterEditorManagerDeps = {
-  createView?: ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView) | undefined;
+  createView?:
+    | ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView)
+    | undefined;
   getDocument: () => Document | null;
   getReadOnly?: (() => boolean) | undefined;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
-  onSessionRefusal?: ((reason: string, gap: CanonicalGap, error?: Error) => void) | undefined;
+  onSessionRefusal?:
+    ((reason: string, gap: CanonicalGap, error?: Error) => void) | undefined;
   getHost: () => HTMLElement | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getTheme: () => Theme | null | undefined;
-  onTransaction?: ((transaction: HeaderFooterEditorTransaction) => void) | undefined;
+  onTransaction?:
+    ((transaction: HeaderFooterEditorTransaction) => void) | undefined;
 };
 
-const createEditorView = (mountNode: HTMLElement, props: DirectEditorProps): EditorView =>
-  new EditorView(mountNode, props);
+const createEditorView = (
+  mountNode: HTMLElement,
+  props: DirectEditorProps,
+): EditorView => new EditorView(mountNode, props);
 
 export type HeaderFooterEditorManager = {
   destroy: () => void;
@@ -109,14 +114,19 @@ const headerFooterToProseDocWithDetachedWatermarkHost = (
   headerFooter: HeaderFooter,
   options: ToProseDocOptions,
 ): PMNode => {
-  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
-    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
-      return block;
-    }
-    const marked = cloneParagraphWithPropertySource(block, {});
-    Reflect.set(marked, DETACHED_WATERMARK_HOST, true);
-    return marked;
-  });
+  const markedContent: BlockContent[] = headerFooter.content.map(
+    (block, blockIndex) => {
+      if (
+        blockIndex !== headerFooter.watermarkBlockIndex ||
+        block.type !== "paragraph"
+      ) {
+        return block;
+      }
+      const marked = cloneParagraphWithPropertySource(block, {});
+      Reflect.set(marked, DETACHED_WATERMARK_HOST, true);
+      return marked;
+    },
+  );
   return headerFooterToProseDoc(markedContent, options);
 };
 
@@ -140,7 +150,10 @@ const buildInitialState = (
   const document =
     headerFooter.watermarkBlockIndex === undefined
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
-      : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
+      : headerFooterToProseDocWithDetachedWatermarkHost(
+          headerFooter,
+          proseDocOptions,
+        );
   return ensureBaseDirectionInState(
     ensureParaIdsInState(
       EditorState.create({
@@ -195,7 +208,8 @@ const resolveHeaderFooter = (
   document: Document | null,
   { kind, rId }: HeaderFooterPartKey,
 ): HeaderFooter | null => {
-  const parts = kind === "header" ? document?.package.headers : document?.package.footers;
+  const parts =
+    kind === "header" ? document?.package.headers : document?.package.footers;
   return parts?.get(rId) ?? null;
 };
 
@@ -218,7 +232,10 @@ export const createHeaderFooterEditorManager = (
   };
 
   const getOwnedDocument = (): Document | null =>
-    usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)
+    usesCanonicalSession(
+      deps.getExperimentalSession?.(),
+      CANONICAL_GAP.authorityRouting,
+    )
       ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? null)
       : deps.getDocument();
 
@@ -244,7 +261,10 @@ export const createHeaderFooterEditorManager = (
 
     // Pending IME input owns its view until the shared session commits.
     if (
-      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting) &&
+      usesCanonicalSession(
+        deps.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      ) &&
       !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
     )
       return;
@@ -254,7 +274,9 @@ export const createHeaderFooterEditorManager = (
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
     const wanted = new Map(
-      enumerateDocumentHeaderFooterParts(document).map((part) => [part.rId, part] as const),
+      enumerateDocumentHeaderFooterParts(document).map(
+        (part) => [part.rId, part] as const,
+      ),
     );
 
     for (const [rId, part] of mounted) {
@@ -276,7 +298,12 @@ export const createHeaderFooterEditorManager = (
         if (existing.mountNode.parentElement !== host) {
           host.append(existing.mountNode);
         }
-        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+        if (
+          usesCanonicalSession(
+            deps.getExperimentalSession?.(),
+            CANONICAL_GAP.authorityRouting,
+          )
+        ) {
           const projected = deps
             .getCanonicalApi?.()
             ?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId });
@@ -289,10 +316,17 @@ export const createHeaderFooterEditorManager = (
             const restored = deps
               .getCanonicalApi?.()
               ?.getCanonicalStorySelection({ kind: part.kind, rId: part.rId });
-            const anchor = Math.min(existing.view.state.selection.anchor, projected.content.size);
+            const anchor = Math.min(
+              existing.view.state.selection.anchor,
+              projected.content.size,
+            );
             transaction.setSelection(
               restored
-                ? TextSelection.create(transaction.doc, restored.anchor, restored.head)
+                ? TextSelection.create(
+                    transaction.doc,
+                    restored.anchor,
+                    restored.head,
+                  )
                 : TextSelection.near(transaction.doc.resolve(anchor)),
             );
             transaction.setMeta("addToHistory", false);
@@ -318,7 +352,13 @@ export const createHeaderFooterEditorManager = (
         }
 
         existing.view.updateState(
-          buildInitialState(headerFooter, styles, theme, numbering, existing.manager),
+          buildInitialState(
+            headerFooter,
+            styles,
+            theme,
+            numbering,
+            existing.manager,
+          ),
         );
         existing.appliedHeaderFooter = headerFooter;
         existing.appliedContent = headerFooter.content;
@@ -343,7 +383,10 @@ export const createHeaderFooterEditorManager = (
         getView: () => view,
         getApi: () => deps.getCanonicalApi?.() ?? null,
         enabled: () =>
-          usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting),
+          usesCanonicalSession(
+            deps.getExperimentalSession?.(),
+            CANONICAL_GAP.authorityRouting,
+          ),
         onRefusal: deps.onSessionRefusal,
         onSelectionChange: () =>
           deps.onTransaction?.({
@@ -358,10 +401,15 @@ export const createHeaderFooterEditorManager = (
         deps.getExperimentalSession?.(),
         CANONICAL_GAP.authorityRouting,
       )
-        ? deps.getCanonicalApi?.()?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId })
+        ? deps
+            .getCanonicalApi?.()
+            ?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId })
         : null;
       if (
-        usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting) &&
+        usesCanonicalSession(
+          deps.getExperimentalSession?.(),
+          CANONICAL_GAP.authorityRouting,
+        ) &&
         !canonicalProjection
       ) {
         manager.destroy();
@@ -387,7 +435,11 @@ export const createHeaderFooterEditorManager = (
           const docChanged = !nextState.doc.eq(view.state.doc);
           const noteIssue = noteReferenceTransactionIssue(transaction);
           if (noteIssue)
-            deps.onSessionRefusal?.(noteIssue.message, CANONICAL_GAP.dispatch, noteIssue);
+            deps.onSessionRefusal?.(
+              noteIssue.message,
+              CANONICAL_GAP.dispatch,
+              noteIssue,
+            );
           view.updateState(nextState);
           const mountedPart = mounted.get(part.rId);
           if (mountedPart && docChanged) {
@@ -428,7 +480,12 @@ export const createHeaderFooterEditorManager = (
         rId,
       })),
     snapshotDocument: (document) => {
-      if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+      if (
+        usesCanonicalSession(
+          deps.getExperimentalSession?.(),
+          CANONICAL_GAP.authorityRouting,
+        )
+      ) {
         const canonical = deps.getCanonicalApi?.()?.getCanonicalDocument();
         if (canonical) return canonical;
         throw new CanonicalSessionError({
@@ -457,7 +514,11 @@ export const createHeaderFooterEditorManager = (
         numbering = story.numbering;
         const updated: HeaderFooter = {
           ...existing,
-          content: proseDocToBlocks(story.doc, existing.content, document.package.styles),
+          content: proseDocToBlocks(
+            story.doc,
+            existing.content,
+            document.package.styles,
+          ),
         };
         clearHeaderFooterVerbatimXml(updated);
         if (kind === "header") {

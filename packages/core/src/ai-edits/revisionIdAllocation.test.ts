@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+
 import { createDocx } from "../docx/rezip";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
@@ -12,7 +15,6 @@ import {
   rejectAIEditRevision,
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
-import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, ParagraphFormatting } from "../types/document";
@@ -20,8 +22,10 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
 import { getTrackedChangesFromDoc } from "./read";
-import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
-import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+import {
+  createFolioAIEditSnapshot,
+  createFolioAITextRangeHandle,
+} from "./snapshot";
 
 const INSERTION_RESERVATION_CASES = [
   {
@@ -49,7 +53,10 @@ const INSERTION_RESERVATION_CASES = [
   propertyChangeCount: number;
 }[];
 
-const insertionView = (formatting: ParagraphFormatting, text = "Anchor paragraph.") => {
+const insertionView = (
+  formatting: ParagraphFormatting,
+  text = "Anchor paragraph.",
+) => {
   const document = createEmptyDocument();
   const referencedNumId = paragraphNumberingReferenceId(formatting.numPr);
   if (referencedNumId !== undefined) {
@@ -72,7 +79,10 @@ const insertionView = (formatting: ParagraphFormatting, text = "Anchor paragraph
       paraId: "12345678",
       textId: "12345678",
       formatting,
-      content: text.length > 0 ? [{ type: "run", content: [{ type: "text", text }] }] : [],
+      content:
+        text.length > 0
+          ? [{ type: "run", content: [{ type: "text", text }] }]
+          : [],
     },
   ];
   const view = {
@@ -101,13 +111,17 @@ const formattingReservationView = () => {
       ].map((formatting, index) => ({
         type: "run" as const,
         formatting: { ...formatting, highlight: "yellow" as const },
-        content: [{ type: "text" as const, text: String.fromCharCode(65 + index) }],
+        content: [
+          { type: "text" as const, text: String.fromCharCode(65 + index) },
+        ],
       })),
     },
     {
       type: "paragraph",
       paraId: "23456789",
-      content: [{ type: "run", content: [{ type: "text", text: "following" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "following" }] },
+      ],
     },
   ];
   return viewFromDoc(toProseDoc(document));
@@ -125,7 +139,11 @@ const viewFromDoc = (doc: PMNode) => {
 
 const reopenedView = async (doc: PMNode, sourceDocument: Document) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
-    await createDocx(fromProseDoc(doc, sourceDocument, { stylesheetSource: { type: "package" } })),
+    await createDocx(
+      fromProseDoc(doc, sourceDocument, {
+        stylesheetSource: { type: "package" },
+      }),
+    ),
   );
   return viewFromDoc(toProseDoc(reviewer.toDocument()));
 };
@@ -224,8 +242,14 @@ const paragraphState = (doc: PMNode) =>
     const node = doc.child(index);
     const attrs = expectParagraphAttrs(node);
     const mark: unknown = node.attrs["pPrMark"];
-    const info = typeof mark === "object" && mark !== null && "info" in mark ? mark.info : null;
-    const markId = typeof info === "object" && info !== null && "id" in info ? info.id : null;
+    const info =
+      typeof mark === "object" && mark !== null && "info" in mark
+        ? mark.info
+        : null;
+    const markId =
+      typeof info === "object" && info !== null && "id" in info
+        ? info.id
+        : null;
     const propertyChanges = attrs._propertyChanges;
     return {
       text: node.textContent,
@@ -242,8 +266,16 @@ const paragraphState = (doc: PMNode) =>
 
 describe("unstamped revision id allocation", () => {
   test.each([
-    { label: "without a background revision", highlight: undefined, expectedIds: [10, 11, 12, 13] },
-    { label: "with a background revision", highlight: "yellow", expectedIds: [10, 11, 12, 13, 14] },
+    {
+      label: "without a background revision",
+      highlight: undefined,
+      expectedIds: [10, 11, 12, 13],
+    },
+    {
+      label: "with a background revision",
+      highlight: "yellow",
+      expectedIds: [10, 11, 12, 13, 14],
+    },
   ] as const)(
     "a block replacement owns exactly its serialized revisions $label",
     ({ highlight, expectedIds }) => {
@@ -295,9 +327,9 @@ describe("unstamped revision id allocation", () => {
       expect(serializedIds).toEqual(expectedIds);
       expect(outcome.nextRevisionId).toBe((expectedIds.at(-1) ?? 9) + 1);
       // The changed paragraph style also preserves formatting on its deleted run.
-      expect(serializedChanges.filter(({ type }) => type === "formatting")).toHaveLength(
-        highlight === undefined ? 1 : 2,
-      );
+      expect(
+        serializedChanges.filter(({ type }) => type === "formatting"),
+      ).toHaveLength(highlight === undefined ? 1 : 2);
     },
   );
 
@@ -374,10 +406,14 @@ describe("unstamped revision id allocation", () => {
         mode: "tracked-changes",
       });
       const followingIds = operationRevisionIds(following, "following-batch");
-      expect(Math.min(...followingIds)).toBeGreaterThanOrEqual(first.nextRevisionId);
+      expect(Math.min(...followingIds)).toBeGreaterThanOrEqual(
+        first.nextRevisionId,
+      );
       expect(followingIds.some((id) => firstIds.includes(id))).toBe(false);
 
-      const allIds = getTrackedChangesFromDoc(view.state.doc).map(({ id }) => id);
+      const allIds = getTrackedChangesFromDoc(view.state.doc).map(
+        ({ id }) => id,
+      );
       expect(new Set(allIds).size).toBe(allIds.length);
     },
   );
@@ -400,7 +436,9 @@ describe("unstamped revision id allocation", () => {
     }
 
     const reentrantView = formattingReservationView();
-    const reentrantSnapshot = createFolioAIEditSnapshot(reentrantView.state.doc);
+    const reentrantSnapshot = createFolioAIEditSnapshot(
+      reentrantView.state.doc,
+    );
     const reentrantBlock = reentrantSnapshot.blocks.at(1);
     if (!reentrantBlock) {
       panic("expected the re-entrant formatting block");
@@ -415,7 +453,8 @@ describe("unstamped revision id allocation", () => {
       panic("expected the re-entrant formatting range");
     }
 
-    let reentrantOutcome: ReturnType<typeof applyFolioAIEditOperations> | undefined;
+    let reentrantOutcome:
+      ReturnType<typeof applyFolioAIEditOperations> | undefined;
     const commitPrimary = primaryView.dispatch;
     primaryView.dispatch = (transaction) => {
       commitPrimary(transaction);
@@ -453,10 +492,18 @@ describe("unstamped revision id allocation", () => {
       panic("expected dispatch to apply the re-entrant batch");
     }
 
-    const primaryIds = operationRevisionIds(primaryOutcome, "primary-many-carriers");
-    const reentrantIds = operationRevisionIds(reentrantOutcome, "re-entrant-batch");
+    const primaryIds = operationRevisionIds(
+      primaryOutcome,
+      "primary-many-carriers",
+    );
+    const reentrantIds = operationRevisionIds(
+      reentrantOutcome,
+      "re-entrant-batch",
+    );
     expect(primaryIds.length).toBeGreaterThan(4);
-    expect(Math.min(...reentrantIds)).toBeGreaterThanOrEqual(primaryOutcome.nextRevisionId);
+    expect(Math.min(...reentrantIds)).toBeGreaterThanOrEqual(
+      primaryOutcome.nextRevisionId,
+    );
     expect(reentrantIds.some((id) => primaryIds.includes(id))).toBe(false);
   });
 
@@ -497,7 +544,9 @@ describe("unstamped revision id allocation", () => {
 
       const firstChanges = getTrackedChangesFromDoc(view.state.doc);
       const receiptIds = new Set(firstReceipt.revisionIds);
-      const syntheticChanges = firstChanges.filter(({ id }) => !receiptIds.has(id));
+      const syntheticChanges = firstChanges.filter(
+        ({ id }) => !receiptIds.has(id),
+      );
       expect(syntheticChanges).toEqual([]);
       expect(firstChanges).toContainEqual(
         expect.objectContaining({
@@ -505,9 +554,11 @@ describe("unstamped revision id allocation", () => {
           type: "paragraphPropertiesChanged",
         }),
       );
-      expect(firstChanges.filter(({ type }) => type === "paragraphPropertiesChanged")).toHaveLength(
-        propertyChangeCount,
-      );
+      expect(
+        firstChanges.filter(
+          ({ type }) => type === "paragraphPropertiesChanged",
+        ),
+      ).toHaveLength(propertyChangeCount);
       const firstIds = new Set(firstChanges.map(({ id }) => id));
       expect(firstIds.size).toBe(lines.length * 2 + propertyChangeCount);
 
@@ -536,7 +587,9 @@ describe("unstamped revision id allocation", () => {
       }
       expect(secondRevisionIds.every((id) => !firstIds.has(id))).toBe(true);
 
-      const allIds = getTrackedChangesFromDoc(view.state.doc).map(({ id }) => id);
+      const allIds = getTrackedChangesFromDoc(view.state.doc).map(
+        ({ id }) => id,
+      );
       expect(new Set(allIds).size).toBe(allIds.length);
     },
   );
@@ -580,7 +633,8 @@ describe("unstamped revision id allocation", () => {
       if (!receiptIds) {
         panic("expected the inserted paragraph receipt ids");
       }
-      const command = resolution === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
+      const command =
+        resolution === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
       expect(command(receiptIds)(view.state, view.dispatch)).toBe(true);
       expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
       expect(view.state.doc.childCount).toBe(resolution === "accept" ? 2 : 1);
@@ -595,14 +649,18 @@ describe("unstamped revision id allocation", () => {
         paraId: "12345678",
         textId: "12345678",
         formatting: { alignment: "center" },
-        content: [{ type: "run", content: [{ type: "text", text: "First anchor." }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: "First anchor." }] },
+        ],
       },
       {
         type: "paragraph",
         paraId: "23456789",
         textId: "23456789",
         formatting: { alignment: "right" },
-        content: [{ type: "run", content: [{ type: "text", text: "Final anchor." }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: "Final anchor." }] },
+        ],
       },
     ];
     const view = {
@@ -640,7 +698,9 @@ describe("unstamped revision id allocation", () => {
       mode: "tracked-changes",
       revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 20 },
     });
-    const middleReceipt = outcome.applied.find(({ id }) => id === "middle-insert");
+    const middleReceipt = outcome.applied.find(
+      ({ id }) => id === "middle-insert",
+    );
     const tailReceipt = outcome.applied.find(({ id }) => id === "tail-insert");
     expect(middleReceipt).toEqual({
       id: "middle-insert",
@@ -662,15 +722,24 @@ describe("unstamped revision id allocation", () => {
     if (!middleReceipt?.revisionIds || !tailReceipt?.revisionIds) {
       panic("expected both insertion receipts to own revision ids");
     }
-    expect(acceptAIEditRevision(middleReceipt.revisionIds)(view.state, view.dispatch)).toBe(true);
+    expect(
+      acceptAIEditRevision(middleReceipt.revisionIds)(
+        view.state,
+        view.dispatch,
+      ),
+    ).toBe(true);
     expect(
       getTrackedChangesFromDoc(view.state.doc)
         .map(({ id }) => id)
         .toSorted((left, right) => left - right),
     ).toEqual([20, 21, 24]);
-    expect(rejectAIEditRevision(tailReceipt.revisionIds)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectAIEditRevision(tailReceipt.revisionIds)(view.state, view.dispatch),
+    ).toBe(true);
     expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
-    expect(view.state.doc.textContent).toBe("First anchor.Accepted middle paragraph.Final anchor.");
+    expect(view.state.doc.textContent).toBe(
+      "First anchor.Accepted middle paragraph.Final anchor.",
+    );
   });
 
   test("rotates a same-anchor run one boundary left without changing operation ownership", async () => {
@@ -679,7 +748,9 @@ describe("unstamped revision id allocation", () => {
     const secondIds = operationRevisionIds(outcome, "second");
     const thirdIds = operationRevisionIds(outcome, "third");
 
-    expect([firstIds.length, secondIds.length, thirdIds.length]).toEqual([3, 3, 3]);
+    expect([firstIds.length, secondIds.length, thirdIds.length]).toEqual([
+      3, 3, 3,
+    ]);
     expect(firstIds.at(-1)).not.toBe(firstIds.at(1));
     expect(secondIds.at(-1)).not.toBe(secondIds.at(1));
     expect(thirdIds.at(-1)).not.toBe(thirdIds.at(1));
@@ -726,10 +797,15 @@ describe("unstamped revision id allocation", () => {
       },
     ]);
     expect(outcome.nextRevisionId).toBe(39);
-    expect(new Set(outcome.applied.flatMap(({ revisionIds }) => revisionIds ?? [])).size).toBe(9);
+    expect(
+      new Set(outcome.applied.flatMap(({ revisionIds }) => revisionIds ?? []))
+        .size,
+    ).toBe(9);
 
     const reopened = await reopenedView(view.state.doc, view.sourceDocument);
-    expect(paragraphState(reopened.state.doc)).toEqual(paragraphState(view.state.doc));
+    expect(paragraphState(reopened.state.doc)).toEqual(
+      paragraphState(view.state.doc),
+    );
     expect(
       getTrackedChangesFromDoc(reopened.state.doc)
         .map(({ id }) => id)
@@ -741,15 +817,26 @@ describe("unstamped revision id allocation", () => {
     );
   });
 
-  test.each(SAME_ANCHOR_RESOLUTION_ORDERS.map((order) => ({ label: order.join(" then "), order })))(
+  test.each(
+    SAME_ANCHOR_RESOLUTION_ORDERS.map((order) => ({
+      label: order.join(" then "),
+      order,
+    })),
+  )(
     "targeted same-anchor resolutions are independent in $label order",
     async ({ order }) => {
       const { outcome, view } = sameAnchorTrackedInsertions();
       for (const operationId of order) {
-        const command = operationId === "second" ? rejectAIEditRevision : acceptAIEditRevision;
-        expect(command(operationRevisionIds(outcome, operationId))(view.state, view.dispatch)).toBe(
-          true,
-        );
+        const command =
+          operationId === "second"
+            ? rejectAIEditRevision
+            : acceptAIEditRevision;
+        expect(
+          command(operationRevisionIds(outcome, operationId))(
+            view.state,
+            view.dispatch,
+          ),
+        ).toBe(true);
       }
 
       expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
@@ -757,7 +844,10 @@ describe("unstamped revision id allocation", () => {
       // first's words: they end in the second's paragraph, whose property
       // change restores the anchor's alignment. The same in every order.
       expect(
-        paragraphState(view.state.doc).map(({ text, alignment }) => ({ text, alignment })),
+        paragraphState(view.state.doc).map(({ text, alignment }) => ({
+          text,
+          alignment,
+        })),
       ).toEqual([
         { text: "Anchor paragraph.", alignment: "left" },
         { text: "First inserted.", alignment: "left" },
@@ -766,19 +856,23 @@ describe("unstamped revision id allocation", () => {
       const reopened = await reopenedView(view.state.doc, view.sourceDocument);
       expect(getTrackedChangesFromDoc(reopened.state.doc)).toEqual([]);
       expect(
-        paragraphState(reopened.state.doc).map(({ text, alignment, markId, changes }) => ({
-          text,
-          alignment,
-          markId,
-          changes,
-        })),
+        paragraphState(reopened.state.doc).map(
+          ({ text, alignment, markId, changes }) => ({
+            text,
+            alignment,
+            markId,
+            changes,
+          }),
+        ),
       ).toEqual(
-        paragraphState(view.state.doc).map(({ text, alignment, markId, changes }) => ({
-          text,
-          alignment,
-          markId,
-          changes,
-        })),
+        paragraphState(view.state.doc).map(
+          ({ text, alignment, markId, changes }) => ({
+            text,
+            alignment,
+            markId,
+            changes,
+          }),
+        ),
       );
     },
   );
@@ -798,7 +892,9 @@ describe("unstamped revision id allocation", () => {
           expect(initial[index + 1]?.changes).toEqual([
             expect.objectContaining({
               revisionId: revisionIds.at(-1),
-              previousFormatting: expect.objectContaining(EMPTY_CARRIER_FORMATTING),
+              previousFormatting: expect.objectContaining(
+                EMPTY_CARRIER_FORMATTING,
+              ),
             }),
           ]);
         }
@@ -809,7 +905,10 @@ describe("unstamped revision id allocation", () => {
               ? acceptAIEditRevision
               : rejectAIEditRevision;
           expect(
-            command(operationRevisionIds(outcome, operationId))(view.state, view.dispatch),
+            command(operationRevisionIds(outcome, operationId))(
+              view.state,
+              view.dispatch,
+            ),
           ).toBe(true);
         }
 
@@ -818,21 +917,26 @@ describe("unstamped revision id allocation", () => {
         // before that break end in its paragraph, whose property change
         // restores the carrier's: an accepted insertion followed by a
         // rejected one reads with the carrier's properties.
-        const expectedInsertions = SAME_ANCHOR_INSERTIONS.flatMap((insertion, index) =>
-          decisions[index] === "accept"
-            ? [
-                {
-                  text: insertion.text,
-                  alignment:
-                    index + 1 < SAME_ANCHOR_INSERTIONS.length && decisions[index + 1] === "reject"
-                      ? EMPTY_CARRIER_FORMATTING.alignment
-                      : insertion.alignment,
-                },
-              ]
-            : [],
+        const expectedInsertions = SAME_ANCHOR_INSERTIONS.flatMap(
+          (insertion, index) =>
+            decisions[index] === "accept"
+              ? [
+                  {
+                    text: insertion.text,
+                    alignment:
+                      index + 1 < SAME_ANCHOR_INSERTIONS.length &&
+                      decisions[index + 1] === "reject"
+                        ? EMPTY_CARRIER_FORMATTING.alignment
+                        : insertion.alignment,
+                  },
+                ]
+              : [],
         );
         expect(
-          paragraphState(view.state.doc).map(({ text, alignment }) => ({ text, alignment })),
+          paragraphState(view.state.doc).map(({ text, alignment }) => ({
+            text,
+            alignment,
+          })),
         ).toEqual([
           { text: "", alignment: EMPTY_CARRIER_FORMATTING.alignment },
           ...expectedInsertions,
@@ -855,7 +959,8 @@ describe("unstamped revision id allocation", () => {
     "%s all resolves and reopens a same-anchor terminal chain",
     async (resolution) => {
       const { view } = sameAnchorTrackedInsertions();
-      const command = resolution === "accept" ? acceptAllChanges : rejectAllChanges;
+      const command =
+        resolution === "accept" ? acceptAllChanges : rejectAllChanges;
       expect(command()(view.state, view.dispatch)).toBe(true);
       expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
       expect(view.state.doc.textContent).toBe(
@@ -877,11 +982,14 @@ describe("unstamped revision id allocation", () => {
         anchorFormatting: EMPTY_CARRIER_FORMATTING,
         anchorText: "",
       });
-      const command = resolution === "accept" ? acceptAllChanges : rejectAllChanges;
+      const command =
+        resolution === "accept" ? acceptAllChanges : rejectAllChanges;
       expect(command()(view.state, view.dispatch)).toBe(true);
       expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
       expect(view.state.doc.textContent).toBe(
-        resolution === "accept" ? "First inserted.Second inserted.Third inserted." : "",
+        resolution === "accept"
+          ? "First inserted.Second inserted.Third inserted."
+          : "",
       );
       expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
         ...EMPTY_CARRIER_FORMATTING,
@@ -958,7 +1066,9 @@ const highlightedRunsView = () => {
     {
       type: "paragraph",
       paraId: "34567890",
-      content: [{ type: "run", content: [{ type: "text", text: "plain words" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "plain words" }] },
+      ],
     },
     {
       type: "paragraph",
@@ -973,14 +1083,22 @@ const highlightedRunsView = () => {
       ].map((formatting, index) => ({
         type: "run" as const,
         formatting: { ...formatting, highlight: "yellow" as const },
-        content: [{ type: "text" as const, text: `${String.fromCharCode(65 + index)} ` }],
+        content: [
+          {
+            type: "text" as const,
+            text: `${String.fromCharCode(65 + index)} `,
+          },
+        ],
       })),
     },
   ];
   return viewFromDoc(toProseDoc(document));
 };
 
-const highlightedBatch = (view: ReturnType<typeof viewFromDoc>, comment?: string) => {
+const highlightedBatch = (
+  view: ReturnType<typeof viewFromDoc>,
+  comment?: string,
+) => {
   const snapshot = createFolioAIEditSnapshot(view.state.doc);
   const [plain, highlighted] = snapshot.blocks;
   if (!plain || !highlighted) {
@@ -1010,8 +1128,12 @@ const highlightedBatch = (view: ReturnType<typeof viewFromDoc>, comment?: string
   };
 };
 
-const batchRevisionIds = (outcome: ReturnType<typeof applyFolioAIEditOperations>): number[] =>
-  outcome.applied.flatMap(({ revisionIds }) => revisionIds ?? []).toSorted((a, b) => a - b);
+const batchRevisionIds = (
+  outcome: ReturnType<typeof applyFolioAIEditOperations>,
+): number[] =>
+  outcome.applied
+    .flatMap(({ revisionIds }) => revisionIds ?? [])
+    .toSorted((a, b) => a - b);
 
 const contiguousFrom = (start: number, length: number): number[] =>
   Array.from({ length }, (_, index) => start + index);
@@ -1063,39 +1185,53 @@ describe("revision ids sized to what an operation writes", () => {
       view,
       ...followingReplacement(view),
       mode: "tracked-changes",
-      revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: outcome.nextRevisionId },
+      revisionStamp: {
+        date: "2026-09-08T00:00:00.000Z",
+        idSeed: outcome.nextRevisionId,
+      },
     });
-    expect(batchRevisionIds(following)).toEqual(contiguousFrom(outcome.nextRevisionId, 2));
+    expect(batchRevisionIds(following)).toEqual(
+      contiguousFrom(outcome.nextRevisionId, 2),
+    );
     const allIds = getTrackedChangesFromDoc(view.state.doc).map(({ id }) => id);
     expect(new Set(allIds).size).toBe(allIds.length);
   });
 
   test.each([
-    { label: "more ids than four per operation", operationIds: ["plain", "highlighted"] },
+    {
+      label: "more ids than four per operation",
+      operationIds: ["plain", "highlighted"],
+    },
     { label: "fewer ids than four per operation", operationIds: ["plain"] },
-  ])("unstamped batches writing $label follow one another without a gap", ({ operationIds }) => {
-    const view = highlightedRunsView();
-    const { snapshot, operations } = highlightedBatch(view);
-    const first = applyFolioAIEditOperations({
-      undefinedReferences: "refuse",
-      view,
-      snapshot,
-      operations: operations.filter(({ id }) => operationIds.includes(id)),
-      mode: "tracked-changes",
-    });
-    const firstIds = batchRevisionIds(first);
-    const firstStart = firstIds.at(0) ?? panic("expected the first batch's ids");
-    expect(firstIds).toEqual(contiguousFrom(firstStart, firstIds.length));
-    expect(first.nextRevisionId).toBe(firstStart + firstIds.length);
+  ])(
+    "unstamped batches writing $label follow one another without a gap",
+    ({ operationIds }) => {
+      const view = highlightedRunsView();
+      const { snapshot, operations } = highlightedBatch(view);
+      const first = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
+        view,
+        snapshot,
+        operations: operations.filter(({ id }) => operationIds.includes(id)),
+        mode: "tracked-changes",
+      });
+      const firstIds = batchRevisionIds(first);
+      const firstStart =
+        firstIds.at(0) ?? panic("expected the first batch's ids");
+      expect(firstIds).toEqual(contiguousFrom(firstStart, firstIds.length));
+      expect(first.nextRevisionId).toBe(firstStart + firstIds.length);
 
-    const following = applyFolioAIEditOperations({
-      undefinedReferences: "refuse",
-      view,
-      ...followingReplacement(view),
-      mode: "tracked-changes",
-    });
-    expect(batchRevisionIds(following)).toEqual(contiguousFrom(first.nextRevisionId, 2));
-  });
+      const following = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
+        view,
+        ...followingReplacement(view),
+        mode: "tracked-changes",
+      });
+      expect(batchRevisionIds(following)).toEqual(
+        contiguousFrom(first.nextRevisionId, 2),
+      );
+    },
+  );
 
   test("a batch re-entered from a comment callback claims no id the outer batch writes", () => {
     const view = highlightedRunsView();
@@ -1121,6 +1257,8 @@ describe("revision ids sized to what an operation writes", () => {
     }
     const outerIds = batchRevisionIds(outer);
     expect(outerIds.length).toBeGreaterThan(8);
-    expect(batchRevisionIds(reentrant).filter((id) => outerIds.includes(id))).toEqual([]);
+    expect(
+      batchRevisionIds(reentrant).filter((id) => outerIds.includes(id)),
+    ).toEqual([]);
   });
 });

@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 
 import type { ParagraphBlock } from "../types";
-import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
 import {
   clearAllCaches,
   clearTextWidthCache,
@@ -64,7 +67,9 @@ test("text width cache retains frequently reused entries when it evicts", () => 
 });
 
 test("paragraph cache keys include complex-script list marker formatting", () => {
-  const paragraphWithMarkerSize = (complexScriptFontSize: number): ParagraphBlock => ({
+  const paragraphWithMarkerSize = (
+    complexScriptFontSize: number,
+  ): ParagraphBlock => ({
     kind: "paragraph",
     id: "list-item",
     runs: [{ kind: "text", text: "بند" }],
@@ -86,7 +91,9 @@ test("paragraph cache keys include list paragraph mark font size", () => {
   const paragraph = {
     kind: "paragraph",
     id: "list-paragraph-mark",
-    runs: [{ kind: "text", text: "aaaa aaaa", fontFamily: "Aptos", fontSize: 10.5 }],
+    runs: [
+      { kind: "text", text: "aaaa aaaa", fontFamily: "Aptos", fontSize: 10.5 },
+    ],
     attrs: {
       defaultFontSize: 10.5,
       defaultFontFamily: "Aptos",
@@ -108,7 +115,11 @@ test("paragraph cache keys include every tab layout input", () => {
   const paragraph = {
     kind: "paragraph",
     id: "tab-layout",
-    runs: [{ kind: "text", text: "A" }, { kind: "tab" }, { kind: "text", text: "B" }],
+    runs: [
+      { kind: "text", text: "A" },
+      { kind: "tab" },
+      { kind: "text", text: "B" },
+    ],
     attrs: {
       bidi: true,
       defaultTabStopTwips: 720,
@@ -210,12 +221,21 @@ test("paragraph cache is order-independent across distinct tab stops", () => {
 test("paragraph cache is order-independent across list paragraph mark sizes", () => {
   withFakeTextMeasure(
     () => {
-      const measureLastLineHeight = (listParagraphMarkFontSize: number): number => {
+      const measureLastLineHeight = (
+        listParagraphMarkFontSize: number,
+      ): number => {
         const measure = measureBlock(
           {
             kind: "paragraph",
             id: `list-paragraph-mark-${listParagraphMarkFontSize}`,
-            runs: [{ kind: "text", text: "aaaa aaaa", fontFamily: "Aptos", fontSize: 10.5 }],
+            runs: [
+              {
+                kind: "text",
+                text: "aaaa aaaa",
+                fontFamily: "Aptos",
+                fontSize: 10.5,
+              },
+            ],
             attrs: {
               defaultFontSize: 10.5,
               defaultFontFamily: "Aptos",
@@ -232,10 +252,16 @@ test("paragraph cache is order-independent across list paragraph mark sizes", ()
         return measure.lines.at(-1)?.lineHeight ?? 0;
       };
 
-      const smallThenLarge = [measureLastLineHeight(11), measureLastLineHeight(18)];
+      const smallThenLarge = [
+        measureLastLineHeight(11),
+        measureLastLineHeight(18),
+      ];
       expect(smallThenLarge[1]).toBeGreaterThan(smallThenLarge[0] ?? 0);
       clearAllCaches();
-      const largeThenSmall = [measureLastLineHeight(18), measureLastLineHeight(11)];
+      const largeThenSmall = [
+        measureLastLineHeight(18),
+        measureLastLineHeight(11),
+      ];
       expect(largeThenSmall).toEqual(smallThenLarge.toReversed());
     },
     { charWidth: fixedCharWidth(10) },
@@ -267,7 +293,9 @@ test("paragraph cache preserves field, math, and rendered-break runs", () => {
     const field = {
       kind: "paragraph",
       id: "field",
-      runs: [{ kind: "field", fieldType: "OTHER", fallback: "1", fontSize: 11 }],
+      runs: [
+        { kind: "field", fieldType: "OTHER", fallback: "1", fontSize: 11 },
+      ],
     } as const satisfies ParagraphBlock;
     expectCachedMeasurementsMatchFreshInBothOrders(
       field,
@@ -307,7 +335,11 @@ test("paragraph cache preserves field, math, and rendered-break runs", () => {
       ...plain,
       runs: [textRuns[0], { kind: "renderedPageBreak" }, textRuns[1]],
     } as const satisfies ParagraphBlock;
-    expectCachedMeasurementsMatchFreshInBothOrders(plain, withRenderedBreak, 200);
+    expectCachedMeasurementsMatchFreshInBothOrders(
+      plain,
+      withRenderedBreak,
+      200,
+    );
   });
 });
 
@@ -344,7 +376,11 @@ test("paragraph cache preserves image measurement geometry without source payloa
       ...inlineImage,
       runs: [{ ...inlineImage.runs[0], transform: "rotate(90deg)" }],
     } as const satisfies ParagraphBlock;
-    expectCachedMeasurementsMatchFreshInBothOrders(inlineImage, rotatedImage, 200);
+    expectCachedMeasurementsMatchFreshInBothOrders(
+      inlineImage,
+      rotatedImage,
+      200,
+    );
 
     const compactBlockImage = {
       ...inlineImage,
@@ -361,12 +397,21 @@ test("paragraph cache preserves image measurement geometry without source payloa
       ...compactBlockImage,
       runs: [{ ...compactBlockImage.runs[0], distTop: 20, distBottom: 20 }],
     } as const satisfies ParagraphBlock;
-    expectCachedMeasurementsMatchFreshInBothOrders(compactBlockImage, spacedBlockImage, 200);
+    expectCachedMeasurementsMatchFreshInBothOrders(
+      compactBlockImage,
+      spacedBlockImage,
+      200,
+    );
 
     expect(hashParagraphBlock(inlineImage)).toBe(
       hashParagraphBlock({
         ...inlineImage,
-        runs: [{ ...inlineImage.runs[0], src: "data:image/png;base64,large-payload-b" }],
+        runs: [
+          {
+            ...inlineImage.runs[0],
+            src: "data:image/png;base64,large-payload-b",
+          },
+        ],
       }),
     );
   });
@@ -382,7 +427,9 @@ test("embedded font cache identity is content-based and stores each map once per
     ["Calibri", "folio-embedded-two-Calibri"],
     ["Cambria", "folio-embedded-two-Cambria"],
   ]);
-  const paragraph = (families: ReadonlyMap<string, string>): ParagraphBlock => ({
+  const paragraph = (
+    families: ReadonlyMap<string, string>,
+  ): ParagraphBlock => ({
     kind: "paragraph",
     id: "p",
     attrs: { embeddedFontFamilyMap: families },

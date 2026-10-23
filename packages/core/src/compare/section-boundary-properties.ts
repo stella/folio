@@ -1,9 +1,9 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
-import type { SectionProperties } from "../types/document";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
+import type { SectionProperties } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 
 export type SectionBoundaryPropertyChange = {
@@ -26,7 +26,9 @@ type BoundaryChild =
   | { type: "paragraph"; paragraph: BoundaryParagraph }
   | { type: "other"; nodeType: string };
 
-const withoutChangeHistory = (properties: SectionProperties): SectionProperties => {
+const withoutChangeHistory = (
+  properties: SectionProperties,
+): SectionProperties => {
   const { propertyChanges: _propertyChanges, ...result } = properties;
   return result;
 };
@@ -39,7 +41,11 @@ const boundaryChildrenOf = (document: PMNode): BoundaryChild[] | null => {
       // Neither an opaque block nor a block bookmark has a paragraph mark, so
       // neither can carry a section endpoint. Their preservation is verified
       // independently; they do not belong in this topology.
-      if (node.type.name === "preservedBlock" || node.type.name === "blockBookmarkBoundary") return;
+      if (
+        node.type.name === "preservedBlock" ||
+        node.type.name === "blockBookmarkBoundary"
+      )
+        return;
       children.push({ type: "other", nodeType: node.type.name });
       return;
     }
@@ -69,42 +75,65 @@ export const compareSectionBoundaryProperties = ({
 }: {
   current: PMNode;
   target: PMNode;
-  mapTargetProperties?: (properties: SectionProperties) => SectionProperties | null;
+  mapTargetProperties?: (
+    properties: SectionProperties,
+  ) => SectionProperties | null;
 }): SectionBoundaryPropertiesComparison => {
   const currentChildren = boundaryChildrenOf(current);
   const targetChildren = boundaryChildrenOf(target);
   if (!currentChildren || !targetChildren) {
-    return { status: "unalignable", detail: "section boundary revision history is unsupported" };
+    return {
+      status: "unalignable",
+      detail: "section boundary revision history is unsupported",
+    };
   }
   if (currentChildren.length !== targetChildren.length) {
-    return { status: "unalignable", detail: "section boundary topology differs" };
+    return {
+      status: "unalignable",
+      detail: "section boundary topology differs",
+    };
   }
 
   const changes: SectionBoundaryPropertyChange[] = [];
   for (const [index, currentChild] of currentChildren.entries()) {
     const targetChild = targetChildren[index];
     if (!targetChild || currentChild.type !== targetChild.type) {
-      return { status: "unalignable", detail: "section boundary topology differs" };
+      return {
+        status: "unalignable",
+        detail: "section boundary topology differs",
+      };
     }
     if (currentChild.type === "other" && targetChild.type === "other") {
       if (currentChild.nodeType !== targetChild.nodeType) {
-        return { status: "unalignable", detail: "section boundary topology differs" };
+        return {
+          status: "unalignable",
+          detail: "section boundary topology differs",
+        };
       }
       continue;
     }
     if (currentChild.type !== "paragraph" || targetChild.type !== "paragraph") {
-      return { status: "unalignable", detail: "section boundary topology differs" };
+      return {
+        status: "unalignable",
+        detail: "section boundary topology differs",
+      };
     }
     const currentParagraph = currentChild.paragraph;
     const targetParagraph = targetChild.paragraph;
     if (currentParagraph.text !== targetParagraph.text) {
-      return { status: "unalignable", detail: "retained paragraph text differs" };
+      return {
+        status: "unalignable",
+        detail: "retained paragraph text differs",
+      };
     }
     const currentProperties = currentParagraph.sectionProperties;
     const targetProperties = targetParagraph.sectionProperties;
     if (currentProperties === undefined || targetProperties === undefined) {
       if (currentProperties !== targetProperties) {
-        return { status: "unalignable", detail: "section endpoint presence differs" };
+        return {
+          status: "unalignable",
+          detail: "section endpoint presence differs",
+        };
       }
       continue;
     }
@@ -113,9 +142,16 @@ export const compareSectionBoundaryProperties = ({
       ? mapTargetProperties(targetProperties)
       : targetProperties;
     if (mappedTarget === null)
-      return { status: "unalignable", detail: "section references cannot be mapped" };
+      return {
+        status: "unalignable",
+        detail: "section references cannot be mapped",
+      };
     const targetWithoutHistory = withoutChangeHistory(mappedTarget);
-    if (canonicalJson(currentWithoutHistory) === canonicalJson(targetWithoutHistory)) continue;
+    if (
+      canonicalJson(currentWithoutHistory) ===
+      canonicalJson(targetWithoutHistory)
+    )
+      continue;
     changes.push({
       position: currentParagraph.position,
       current: currentWithoutHistory,
@@ -125,10 +161,14 @@ export const compareSectionBoundaryProperties = ({
   return { status: "matched", changes };
 };
 
-const boundaryParagraphEntriesOf = (document: PMNode): BoundaryParagraph[] | null => {
+const boundaryParagraphEntriesOf = (
+  document: PMNode,
+): BoundaryParagraph[] | null => {
   const children = boundaryChildrenOf(document);
   if (!children) return null;
-  return children.flatMap((child) => (child.type === "paragraph" ? [child.paragraph] : []));
+  return children.flatMap((child) =>
+    child.type === "paragraph" ? [child.paragraph] : [],
+  );
 };
 
 const hasSectionEndpoint = (document: PMNode): boolean => {
@@ -146,7 +186,11 @@ const hasSectionEndpoint = (document: PMNode): boolean => {
 
 type MappedSectionBoundaryProperties =
   | { kind: "inserted"; target: SectionProperties }
-  | { kind: "retained"; previous: SectionProperties; target: SectionProperties };
+  | {
+      kind: "retained";
+      previous: SectionProperties;
+      target: SectionProperties;
+    };
 
 export type StageSectionBoundaryPropertiesResult =
   | {
@@ -180,7 +224,8 @@ export const stageSectionBoundaryProperties = ({
     target: SectionProperties;
   }) => MappedSectionBoundaryProperties | null;
 }): StageSectionBoundaryPropertiesResult => {
-  if (!Number.isSafeInteger(maxRanges) || maxRanges < 0) return { status: "budget-exceeded" };
+  if (!Number.isSafeInteger(maxRanges) || maxRanges < 0)
+    return { status: "budget-exceeded" };
   // A target no paragraph of which ends a section has no endpoint to stage,
   // whatever the accepted projection says, so it is not worth building: that
   // is an accept-all over the whole redlined story. Whether the rest of the
@@ -193,42 +238,71 @@ export const stageSectionBoundaryProperties = ({
       rangeCount: 0,
     };
   }
-  const reviewedState = resolveAllChangesInHeadlessStateWithMapping(state, "accept");
+  const reviewedState = resolveAllChangesInHeadlessStateWithMapping(
+    state,
+    "accept",
+  );
   const reviewed = boundaryParagraphEntriesOf(reviewedState.state.doc);
   const targets = boundaryParagraphEntriesOf(target);
   if (!reviewed || !targets) {
-    return { status: "unalignable", detail: "section boundary revision history is unsupported" };
+    return {
+      status: "unalignable",
+      detail: "section boundary revision history is unsupported",
+    };
   }
   if (reviewed.length !== targets.length) {
-    return { status: "unalignable", detail: "retained paragraph count differs" };
+    return {
+      status: "unalignable",
+      detail: "retained paragraph count differs",
+    };
   }
-  type Update = { position: number; target: SectionProperties; previous?: SectionProperties };
+  type Update = {
+    position: number;
+    target: SectionProperties;
+    previous?: SectionProperties;
+  };
   const updates: Update[] = [];
   const inverse = reviewedState.mapping.invert();
   for (const [index, reviewedParagraph] of reviewed.entries()) {
     const targetParagraph = targets[index];
     if (!targetParagraph || reviewedParagraph.text !== targetParagraph.text) {
-      return { status: "unalignable", detail: `retained paragraph text differs at ${index}` };
+      return {
+        status: "unalignable",
+        detail: `retained paragraph text differs at ${index}`,
+      };
     }
     if (targetParagraph.sectionProperties === undefined) {
       if (reviewedParagraph.sectionProperties !== undefined) {
-        return { status: "unalignable", detail: "section endpoint presence differs" };
+        return {
+          status: "unalignable",
+          detail: "section endpoint presence differs",
+        };
       }
       continue;
     }
-    const targetProperties = withoutChangeHistory(targetParagraph.sectionProperties);
+    const targetProperties = withoutChangeHistory(
+      targetParagraph.sectionProperties,
+    );
     if (
       reviewedParagraph.sectionProperties !== undefined &&
-      canonicalJson(withoutChangeHistory(reviewedParagraph.sectionProperties)) ===
-        canonicalJson(targetProperties)
+      canonicalJson(
+        withoutChangeHistory(reviewedParagraph.sectionProperties),
+      ) === canonicalJson(targetProperties)
     ) {
       continue;
     }
     const mapped = inverse.mapResult(reviewedParagraph.position, 1);
-    if (mapped.deleted) return { status: "unalignable", detail: "boundary has no source position" };
+    if (mapped.deleted)
+      return {
+        status: "unalignable",
+        detail: "boundary has no source position",
+      };
     const current = state.doc.nodeAt(mapped.pos);
     if (!current || current.type.name !== "paragraph") {
-      return { status: "unalignable", detail: "mapped boundary is not a paragraph" };
+      return {
+        status: "unalignable",
+        detail: "mapped boundary is not a paragraph",
+      };
     }
     const attrs = expectParagraphAttrs(current);
     const currentProperties = attrs._sectionProperties;
@@ -246,13 +320,22 @@ export const stageSectionBoundaryProperties = ({
         target: targetProperties,
       });
       if (!staged || staged.kind !== "inserted") {
-        return { status: "unalignable", detail: "inserted section references cannot be mapped" };
+        return {
+          status: "unalignable",
+          detail: "inserted section references cannot be mapped",
+        };
       }
       updates.push({ position: mapped.pos, target: staged.target });
       continue;
     }
-    if (currentProperties === undefined || currentProperties.propertyChanges !== undefined) {
-      return { status: "unalignable", detail: "retained endpoint cannot carry a section change" };
+    if (
+      currentProperties === undefined ||
+      currentProperties.propertyChanges !== undefined
+    ) {
+      return {
+        status: "unalignable",
+        detail: "retained endpoint cannot carry a section change",
+      };
     }
     const staged = mapTargetProperties({
       kind: "retained",
@@ -260,14 +343,23 @@ export const stageSectionBoundaryProperties = ({
       target: targetProperties,
     });
     if (!staged || staged.kind !== "retained") {
-      return { status: "unalignable", detail: "retained section references cannot be mapped" };
+      return {
+        status: "unalignable",
+        detail: "retained section references cannot be mapped",
+      };
     }
-    updates.push({ position: mapped.pos, previous: staged.previous, target: staged.target });
+    updates.push({
+      position: mapped.pos,
+      previous: staged.previous,
+      target: staged.target,
+    });
   }
   if (updates.length > maxRanges) return { status: "budget-exceeded" };
   let nextRevisionId = revisionStamp.idSeed;
   let transaction = state.tr;
-  for (const update of updates.toSorted((left, right) => right.position - left.position)) {
+  for (const update of updates.toSorted(
+    (left, right) => right.position - left.position,
+  )) {
     const position = transaction.mapping.map(update.position, 1);
     const node = transaction.doc.nodeAt(position);
     if (!node || node.type.name !== "paragraph") {
@@ -275,27 +367,34 @@ export const stageSectionBoundaryProperties = ({
     }
     const previousReferences =
       update.previous === undefined
-        ? undefined
-        : sectionReferenceHistory({ previous: update.previous, target: update.target });
-    const propertyChanges =
-      update.previous === undefined
-        ? undefined
-        : [
-            {
-              type: "sectionPropertyChange" as const,
-              info: { id: nextRevisionId++, author, date: revisionStamp.date },
-              previousProperties: update.previous,
-              ...(previousReferences !== undefined && { previousReferences }),
-              currentProperties: update.target,
-            },
-          ];
+        ? {}
+        : sectionReferenceHistory({
+            previous: update.previous,
+            target: update.target,
+          });
+    const propertyChanges = [
+      {
+        type: "sectionPropertyChange" as const,
+        info: { id: nextRevisionId++, author, date: revisionStamp.date },
+        ...(update.previous === undefined
+          ? {}
+          : { previousProperties: update.previous }),
+        ...(previousReferences !== undefined && { previousReferences }),
+        currentProperties: update.target,
+      },
+    ];
     transaction = transaction.setNodeMarkup(position, undefined, {
       ...node.attrs,
       _sectionProperties: {
         ...update.target,
-        ...(propertyChanges === undefined ? {} : { propertyChanges }),
+        propertyChanges,
       },
     });
   }
-  return { status: "matched", transaction, nextRevisionId, rangeCount: updates.length };
+  return {
+    status: "matched",
+    transaction,
+    nextRevisionId,
+    rangeCount: updates.length,
+  };
 };

@@ -1,6 +1,9 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-import { expectTableCellAttrs, expectTableRowAttrs } from "../../prosemirror/attrs";
+import {
+  expectTableCellAttrs,
+  expectTableRowAttrs,
+} from "../../prosemirror/attrs";
 
 /** Resolve absolute cell preferences for an unbounded fixed-layout grid (§17.4.53). */
 export const fixedTableColumnWidths = (
@@ -35,7 +38,10 @@ export const fixedTableColumnWidths = (
         return grid;
       }
       if (column < grid.length) {
-        preferred.set(column, Math.max(preferred.get(column) ?? 0, width.value));
+        preferred.set(
+          column,
+          Math.max(preferred.get(column) ?? 0, width.value),
+        );
       }
       column++;
     }

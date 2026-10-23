@@ -9,7 +9,8 @@
  * the guard that induced blur would re-read the stale DOM value and revert the
  * step (or re-commit a half-typed value over a clicked preset).
  */
-import { ref, type Ref, type ComputedRef } from "vue";
+import { type ComputedRef, type Ref, ref } from "vue";
+
 import { fontSizePresets } from "../components/Toolbar/presets";
 
 export type UseToolbarFontSizeReturn = {
@@ -30,7 +31,8 @@ export function useToolbarFontSize(opts: {
   const sizeTyped = ref(false);
 
   // Commands expect half-points.
-  const setFontSize = (sizePt: number) => opts.execCommand("setFontSize", sizePt * 2);
+  const setFontSize = (sizePt: number) =>
+    opts.execCommand("setFontSize", sizePt * 2);
 
   // Open + position the preset list on focus (every toolbar dropdown is
   // position:fixed because the scrolling pill clips absolute children).
@@ -46,7 +48,8 @@ export function useToolbarFontSize(opts: {
   function commitFontSize(e: Event) {
     if (sizeTyped.value && e.target instanceof HTMLInputElement) {
       const v = parseFloat(e.target.value);
-      if (!isNaN(v)) setFontSize(Math.round(Math.min(Math.max(v, 1), 1638) * 2) / 2);
+      if (!isNaN(v))
+        setFontSize(Math.round(Math.min(Math.max(v, 1), 1638) * 2) / 2);
     }
     sizeTyped.value = false;
     opts.openDropdown.value = null;
@@ -66,7 +69,9 @@ export function useToolbarFontSize(opts: {
   }
   function decreaseFontSize() {
     const c = opts.currentFontSize.value;
-    setFontSize([...fontSizePresets].reverse().find((s) => s < c) || Math.max(1, c - 1));
+    setFontSize(
+      [...fontSizePresets].reverse().find((s) => s < c) || Math.max(1, c - 1),
+    );
   }
 
   return {

@@ -41,7 +41,10 @@ export {
   WatermarkDialog,
 } from "./components/dialogs";
 export { default as ZoomControl } from "./components/ui/ZoomControl.vue";
-export type { ZoomControlProps, ZoomLevel } from "./components/ui/ZoomControl.types";
+export type {
+  ZoomControlProps,
+  ZoomLevel,
+} from "./components/ui/ZoomControl.types";
 export {
   renderAsync,
   type DocxEditorHandle,
@@ -75,11 +78,21 @@ export type { FontDefinition } from "./components/DocxEditor/types";
 // component (defined in the `.ts` module so Nuxt's `tsc` typecheck resolves the
 // named export). See the parity report for the primitives without a Vue default.
 export { FolioUIProvider } from "./ui/folio-ui";
-export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } from "./ui/folio-ui";
+export type {
+  ColorPreset,
+  FolioButtonProps,
+  FolioUIComponents,
+  OutlineItem,
+} from "./ui/folio-ui";
 
 // i18n runtime (Vue-specific — React consumes `use-intl` directly). Locale-string
 // types live in the shared catalog; import them from `@stll/folio-core` if needed.
-export { defaultLocale, i18nPlugin, provideLocale, useTranslation } from "./i18n";
+export {
+  defaultLocale,
+  i18nPlugin,
+  provideLocale,
+  useTranslation,
+} from "./i18n";
 export {
   colorModePlugin,
   defaultColorMode,
@@ -160,7 +173,10 @@ export {
   type AIBarStatus,
   type AIGenerateInput,
 } from "@stll/folio-core/ai-suggestions/types";
-export { applySuggestions, type ApplyResult } from "@stll/folio-core/ai-suggestions/apply";
+export {
+  applySuggestions,
+  type ApplyResult,
+} from "@stll/folio-core/ai-suggestions/apply";
 export {
   applyFolioAIEditOperations,
   createFolioAIEditSnapshot,

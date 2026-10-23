@@ -1,5 +1,5 @@
-import binaryen from "binaryen";
 import { panic } from "better-result";
+import binaryen from "binaryen";
 import { readFileSync, writeFileSync } from "node:fs";
 import { brotliCompressSync, constants } from "node:zlib";
 
@@ -10,7 +10,9 @@ const analyze = (filename: string) => {
   binaryen.setShrinkLevel(2);
   binaryen.setDebugInfo(false);
   module.setFeatures(
-    module.getFeatures() | binaryen.Features.BulkMemory | binaryen.Features.BulkMemoryOpt,
+    module.getFeatures() |
+      binaryen.Features.BulkMemory |
+      binaryen.Features.BulkMemoryOpt,
   );
   module.optimize();
   module.optimize();
@@ -27,7 +29,8 @@ const analyze = (filename: string) => {
     let multiplier = 1;
     for (let count = 0; count < 5; count++) {
       const byte = bytes.at(position++);
-      if (byte === undefined) return panic("Truncated diagnostic WebAssembly integer");
+      if (byte === undefined)
+        return panic("Truncated diagnostic WebAssembly integer");
       value += (byte & 127) * multiplier;
       if (byte < 128) return value;
       multiplier *= 128;
@@ -40,13 +43,15 @@ const analyze = (filename: string) => {
     const section = bytes.at(position++);
     const payloadSize = unsigned();
     const payloadEnd = position + payloadSize;
-    if (payloadEnd > bytes.length) return panic("Truncated diagnostic WebAssembly section");
+    if (payloadEnd > bytes.length)
+      return panic("Truncated diagnostic WebAssembly section");
     if (section !== 10) {
       position = payloadEnd;
       continue;
     }
     const count = unsigned();
-    if (count !== names.length) return panic("Function inventory must match emitted code bodies");
+    if (count !== names.length)
+      return panic("Function inventory must match emitted code bodies");
     for (const name of names) {
       const size = unsigned();
       // Sum monomorphizations under the same Rust symbol, excluding its hash.
@@ -55,7 +60,8 @@ const analyze = (filename: string) => {
       codeBytes += size;
       position += size;
     }
-    if (position !== payloadEnd) return panic("Diagnostic code section must be consumed exactly");
+    if (position !== payloadEnd)
+      return panic("Diagnostic code section must be consumed exactly");
   }
   const brotliBytes = brotliCompressSync(bytes, {
     params: { [constants.BROTLI_PARAM_QUALITY]: 9 },
@@ -63,9 +69,12 @@ const analyze = (filename: string) => {
   return { wasmBytes: bytes.length, brotliBytes, codeBytes, functions };
 };
 
-const basePath = process.argv.at(2) ?? panic("Expected base diagnostic WebAssembly path");
-const headPath = process.argv.at(3) ?? panic("Expected head diagnostic WebAssembly path");
-const outputPath = process.argv.at(4) ?? panic("Expected footprint report path");
+const basePath =
+  process.argv.at(2) ?? panic("Expected base diagnostic WebAssembly path");
+const headPath =
+  process.argv.at(3) ?? panic("Expected head diagnostic WebAssembly path");
+const outputPath =
+  process.argv.at(4) ?? panic("Expected footprint report path");
 const base = analyze(basePath);
 const head = analyze(headPath);
 const names = new Set([...base.functions.keys(), ...head.functions.keys()]);
@@ -79,8 +88,16 @@ const functions = [...names]
 const report = {
   sources: { base: process.env.BASE_SHA, head: process.env.HEAD_SHA },
   note: "Named diagnostic builds; compare total sizes with the independently gated canonical build before assigning an allowance. Function body bytes exclude section headers, data and metadata.",
-  base: { wasmBytes: base.wasmBytes, brotliBytes: base.brotliBytes, codeBytes: base.codeBytes },
-  head: { wasmBytes: head.wasmBytes, brotliBytes: head.brotliBytes, codeBytes: head.codeBytes },
+  base: {
+    wasmBytes: base.wasmBytes,
+    brotliBytes: base.brotliBytes,
+    codeBytes: base.codeBytes,
+  },
+  head: {
+    wasmBytes: head.wasmBytes,
+    brotliBytes: head.brotliBytes,
+    codeBytes: head.codeBytes,
+  },
   delta: {
     wasmBytes: head.wasmBytes - base.wasmBytes,
     brotliBytes: head.brotliBytes - base.brotliBytes,
@@ -88,4 +105,6 @@ const report = {
   functions,
 };
 writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ ...report, functions: functions.slice(0, 30) }, null, 2));
+console.log(
+  JSON.stringify({ ...report, functions: functions.slice(0, 30) }, null, 2),
+);

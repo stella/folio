@@ -5,9 +5,13 @@
 
 import { emuToPixels } from "../utils/units";
 import { createPaginator } from "./paginator";
-import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
+import {
+  bandFragmentX,
+  bandTopContentY,
+  isPageFrameRelativeAnchor,
+} from "./textBoxFlow";
 import { floatingTextBoxReservesBand } from "./types";
-import type { TextBoxBlock, TextBoxMeasure, TextBoxFragment } from "./types";
+import type { TextBoxBlock, TextBoxFragment, TextBoxMeasure } from "./types";
 
 type LayoutTextBoxOptions = {
   paginator: ReturnType<typeof createPaginator>;
@@ -27,7 +31,12 @@ const readTextBoxAnchorBlockId = (block: TextBoxBlock): unknown =>
 export function layoutTextBox(
   block: TextBoxBlock,
   measure: TextBoxMeasure,
-  { paginator, sectionMarginTop, sectionPageHeight, sectionMarginBottom }: LayoutTextBoxOptions,
+  {
+    paginator,
+    sectionMarginTop,
+    sectionPageHeight,
+    sectionMarginBottom,
+  }: LayoutTextBoxOptions,
 ): void {
   // A page/margin-pinned topAndBottom band (e.g. a title banner) floats to the
   // top of its page; the reserved band in the measure pass pushes body text
@@ -97,7 +106,9 @@ export function layoutTextBox(
     const anchorParagraph =
       vertical?.relativeTo === "paragraph" && typeof anchorBlockId === "string"
         ? state.page.fragments.find(
-            (fragment) => fragment.kind === "paragraph" && fragment.blockId === anchorBlockId,
+            (fragment) =>
+              fragment.kind === "paragraph" &&
+              fragment.blockId === anchorBlockId,
           )
         : undefined;
     const bandGeometry = {
@@ -119,7 +130,9 @@ export function layoutTextBox(
           boxHeight: measure.height,
         });
     } else {
-      y = (anchorParagraph?.y ?? state.cursorY) + emuToPixels(vertical?.posOffset ?? 0);
+      y =
+        (anchorParagraph?.y ?? state.cursorY) +
+        emuToPixels(vertical?.posOffset ?? 0);
     }
     const fragment: TextBoxFragment = {
       kind: "textBox",
@@ -138,8 +151,10 @@ export function layoutTextBox(
 
   // An inline box occupies its effect extent beyond its own on every side.
   const effect = block.effectExtent;
-  const occupiedHeight = measure.height + (effect?.top ?? 0) + (effect?.bottom ?? 0);
-  const occupiedWidth = measure.width + (effect?.left ?? 0) + (effect?.right ?? 0);
+  const occupiedHeight =
+    measure.height + (effect?.top ?? 0) + (effect?.bottom ?? 0);
+  const occupiedWidth =
+    measure.width + (effect?.left ?? 0) + (effect?.right ?? 0);
   const host = block.hostParagraph;
 
   const fragment: TextBoxFragment = {
@@ -182,7 +197,8 @@ function hostParagraphLineOffset(
     return 0;
   }
   const indent = host.indent;
-  const start = (indent?.left ?? 0) + (indent?.firstLine ?? 0) - (indent?.hanging ?? 0);
+  const start =
+    (indent?.left ?? 0) + (indent?.firstLine ?? 0) - (indent?.hanging ?? 0);
   const slack = Math.max(0, columnWidth - start - (indent?.right ?? 0) - width);
   switch (host.alignment) {
     case "center":

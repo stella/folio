@@ -10,6 +10,7 @@
 import { Fragment, Slice } from "prosemirror-model";
 import type { Schema } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
+
 import { dispatchClipboardIntent } from "../clipboardIntent";
 
 const PARAGRAPH_BREAK = /(?:\r\n?|\n)+/;
@@ -36,12 +37,16 @@ export function buildPlainTextSlice(text: string, schema: Schema): Slice {
   const paragraphType = schema.nodes["paragraph"];
   if (!paragraphType) {
     // No paragraph node (e.g. an inline-only schema): fall back to flat text.
-    return text ? new Slice(Fragment.from(schema.text(text)), 0, 0) : Slice.empty;
+    return text
+      ? new Slice(Fragment.from(schema.text(text)), 0, 0)
+      : Slice.empty;
   }
 
   const paragraphs = text
     .split(PARAGRAPH_BREAK)
-    .map((block) => paragraphType.create(null, block ? schema.text(block) : null));
+    .map((block) =>
+      paragraphType.create(null, block ? schema.text(block) : null),
+    );
 
   return Slice.maxOpen(Fragment.fromArray(paragraphs));
 }
@@ -93,7 +98,10 @@ export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
       // constructor so importing this module stays safe in non-DOM contexts.
       if (typeof CustomEvent === "function" && !view.isDestroyed) {
         view.dom.dispatchEvent(
-          new CustomEvent(CLIPBOARD_READ_ERROR_EVENT, { detail: { error }, bubbles: true }),
+          new CustomEvent(CLIPBOARD_READ_ERROR_EVENT, {
+            detail: { error },
+            bubbles: true,
+          }),
         );
       }
       return undefined;

@@ -15,8 +15,10 @@ import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const DANGLING_COMMENT_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingCommentReference;
-export const UNBALANCED_COMMENT_RANGE_WARNING = PARSE_WARNING_CODES.unbalancedCommentRange;
+export const DANGLING_COMMENT_REFERENCE_WARNING =
+  PARSE_WARNING_CODES.danglingCommentReference;
+export const UNBALANCED_COMMENT_RANGE_WARNING =
+  PARSE_WARNING_CODES.unbalancedCommentRange;
 
 type NormalizeCommentReferencesInput = {
   documentBody: DocumentBody;
@@ -116,7 +118,8 @@ export const normalizeCommentReferences = ({
     }
   }
 
-  const reanchoredUnbalancedRanges = reanchorUnbalancedCommentRanges(rangeMarkers);
+  const reanchoredUnbalancedRanges =
+    reanchorUnbalancedCommentRanges(rangeMarkers);
   dangling.apply();
 
   return { removedDanglingReferences, reanchoredUnbalancedRanges };
@@ -176,7 +179,9 @@ const isCommentMarker = (
   content: ParagraphContent,
 ): content is Extract<
   ParagraphContent,
-  { type: "commentRangeStart" } | { type: "commentRangeEnd" } | { type: "commentReference" }
+  | { type: "commentRangeStart" }
+  | { type: "commentRangeEnd" }
+  | { type: "commentReference" }
 > =>
   content.type === "commentRangeStart" ||
   content.type === "commentRangeEnd" ||

@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
-import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { createNumberingMap } from "../../docx/numberingParser";
+import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { createListLabelCounter } from "../../prosemirror/listLabels";
-import { paragraphNumberingAttr } from "../../prosemirror/numberingAttr";
-import type { ParagraphAttrs } from "../../prosemirror/schema/nodes";
 import {
   advanceListMarker,
   advanceVisibleListMarker,
   cloneListCounterState,
   createListCounterState,
 } from "../../prosemirror/listMarker";
+import { paragraphNumberingAttr } from "../../prosemirror/numberingAttr";
+import type { ParagraphAttrs } from "../../prosemirror/schema/nodes";
 import type { Document, Paragraph } from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
 
@@ -35,8 +35,12 @@ function listParagraph(options: {
       isBullet: false,
       numFmt: "decimal",
       levelNumFmts: ["decimal"],
-      ...(options.abstractNumId !== undefined ? { abstractNumId: options.abstractNumId } : {}),
-      ...(options.startOverride !== undefined ? { startOverride: options.startOverride } : {}),
+      ...(options.abstractNumId !== undefined
+        ? { abstractNumId: options.abstractNumId }
+        : {}),
+      ...(options.startOverride !== undefined
+        ? { startOverride: options.startOverride }
+        : {}),
     },
     ...(options.pPrMark ? { pPrMark: options.pPrMark } : {}),
   };
@@ -67,8 +71,15 @@ function markersOf(blocks: ReturnType<typeof toFlowBlocks>): string[] {
 
 describe("toFlowBlocks counter sharing by abstractNumId", () => {
   test("empty historical formatting never borrows current list membership", () => {
-    for (const previousFormatting of [undefined, {}, { numPrFromStyle: null }]) {
-      const streams = { final: createListCounterState(), original: createListCounterState() };
+    for (const previousFormatting of [
+      undefined,
+      {},
+      { numPrFromStyle: null },
+    ]) {
+      const streams = {
+        final: createListCounterState(),
+        original: createListCounterState(),
+      };
       const changed = {
         numPr: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 0 }),
         listMarkerTemplate: "%1.",
@@ -82,7 +93,10 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
         ],
       } satisfies ParagraphAttrs;
       const projected = advanceVisibleListMarker(changed, streams);
-      expect(projected.advances.map(({ marker }) => marker)).toEqual(["1.", null]);
+      expect(projected.advances.map(({ marker }) => marker)).toEqual([
+        "1.",
+        null,
+      ]);
       const deleted = advanceVisibleListMarker(
         { ...changed, _propertyChanges: null, pPrMark: DEL_MARK },
         streams,
@@ -116,7 +130,11 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
       listParagraph({ numId: 1, abstractNumId: 4, text: "c" }),
     ]);
 
-    expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual(["(1)", "(1)", "(2)"]);
+    expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual([
+      "(1)",
+      "(1)",
+      "(2)",
+    ]);
   });
 
   test("numId zero templates reuse the most recently advanced interleaved list", () => {
@@ -124,19 +142,28 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
 
     expect(
       advanceListMarker(
-        { numPr: { kind: "reference", numId: 1, ilvl: 0 }, listNumFmt: "decimal" },
+        {
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
+          listNumFmt: "decimal",
+        },
         state,
       ),
     ).toBe("1.");
     expect(
       advanceListMarker(
-        { numPr: { kind: "reference", numId: 2, ilvl: 0 }, listNumFmt: "decimal" },
+        {
+          numPr: { kind: "reference", numId: 2, ilvl: 0 },
+          listNumFmt: "decimal",
+        },
         state,
       ),
     ).toBe("1.");
     expect(
       advanceListMarker(
-        { numPr: { kind: "reference", numId: 1, ilvl: 0 }, listNumFmt: "decimal" },
+        {
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
+          listNumFmt: "decimal",
+        },
         state,
       ),
     ).toBe("2.");
@@ -209,7 +236,11 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
       listParagraph({ numId: 6, text: "c" }),
     ]);
 
-    expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual(["(1)", "(2)", "(2)"]);
+    expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual([
+      "(1)",
+      "(2)",
+      "(2)",
+    ]);
   });
 
   test("numIds without an abstractNumId stay independent", () => {
@@ -218,12 +249,19 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
       listParagraph({ numId: 2, text: "b" }),
     ]);
 
-    expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual(["(1)", "(1)"]);
+    expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual([
+      "(1)",
+      "(1)",
+    ]);
   });
 
   test("style-only numbering supplies counter membership, level, and id", () => {
     const attrs = {
-      numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 1 }),
+      numPrFromStyle: paragraphNumberingAttr({
+        kind: "reference",
+        numId: 7,
+        ilvl: 1,
+      }),
       listMarkerTemplate: "(%1.%2)",
       listNumFmt: "decimal",
       listAbstractNumId: 4,
@@ -234,23 +272,36 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     expect(advanceListMarker(attrs, state)).toBe("(1.1)");
     expect(state.counters.has(7)).toBe(true);
 
-    const streams = { final: createListCounterState(), original: createListCounterState() };
+    const streams = {
+      final: createListCounterState(),
+      original: createListCounterState(),
+    };
     const visible = advanceVisibleListMarker(attrs, streams);
     expect(visible.marker).toBe("(1.1)");
-    expect(visible.advances.map(({ stream }) => stream)).toEqual(["final", "original"]);
+    expect(visible.advances.map(({ stream }) => stream)).toEqual([
+      "final",
+      "original",
+    ]);
   });
 
   test("reader labels count paragraphs whose numbering comes from their style", () => {
     const nextLabel = createListLabelCounter(
       createNumberingMap({
         abstractNums: [
-          { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "(%1)" }] },
+          {
+            abstractNumId: 1,
+            levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "(%1)" }],
+          },
         ],
         nums: [{ numId: 7, abstractNumId: 1 }],
       }),
     );
     const attrs = {
-      numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 0 }),
+      numPrFromStyle: paragraphNumberingAttr({
+        kind: "reference",
+        numId: 7,
+        ilvl: 0,
+      }),
       listMarkerTemplate: "(%1)",
       listNumFmt: "decimal",
     } satisfies ParagraphAttrs;
@@ -260,12 +311,21 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
   });
 
   test("a tracked style change uses the current style while retaining the previous stream", () => {
-    const streams = { final: createListCounterState(), original: createListCounterState() };
+    const streams = {
+      final: createListCounterState(),
+      original: createListCounterState(),
+    };
     const nextLabel = createListLabelCounter(
       createNumberingMap({
         abstractNums: [
-          { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
-          { abstractNumId: 2, levels: [{ ilvl: 0, numFmt: "bullet", lvlText: "•" }] },
+          {
+            abstractNumId: 1,
+            levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+          },
+          {
+            abstractNumId: 2,
+            levels: [{ ilvl: 0, numFmt: "bullet", lvlText: "•" }],
+          },
         ],
         nums: [
           { numId: 1, abstractNumId: 1 },
@@ -276,14 +336,22 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     );
     const attrs = {
       numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 0 }),
-      numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 2, ilvl: 0 }),
+      numPrFromStyle: paragraphNumberingAttr({
+        kind: "reference",
+        numId: 2,
+        ilvl: 0,
+      }),
       _propertyChanges: [
         {
           type: "paragraphPropertyChange",
           info: INS_MARK.info,
           previousFormatting: {
             numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 0 }),
-            numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
+            numPrFromStyle: paragraphNumberingAttr({
+              kind: "reference",
+              numId: 1,
+              ilvl: 0,
+            }),
           },
         },
       ],
@@ -306,7 +374,12 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
           {
             abstractNumId: 1,
             levels: [
-              { ilvl: 0, numFmt: "decimal", lvlText: "%1", rPr: { hidden: true } },
+              {
+                ilvl: 0,
+                numFmt: "decimal",
+                lvlText: "%1",
+                rPr: { hidden: true },
+              },
               { ilvl: 1, numFmt: "decimal", lvlText: "(%1.%2)" },
             ],
           },
@@ -315,9 +388,15 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
       }),
     );
 
-    expect(nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 0 } }).label).toBeUndefined();
-    expect(nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 0 } }).label).toBeUndefined();
-    expect(nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 1 } }).label).toBe("(2.1)");
+    expect(
+      nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 0 } }).label,
+    ).toBeUndefined();
+    expect(
+      nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 0 } }).label,
+    ).toBeUndefined();
+    expect(
+      nextLabel({ numPr: { kind: "reference", numId: 7, ilvl: 1 } }).label,
+    ).toBe("(2.1)");
   });
 
   test("style-sourced instances continue the shared abstract level", () => {
@@ -349,7 +428,11 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     expect(
       advanceListMarker(
         {
-          numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 2, ilvl: 1 }),
+          numPrFromStyle: paragraphNumberingAttr({
+            kind: "reference",
+            numId: 2,
+            ilvl: 1,
+          }),
           listMarker: "(%1.%2)",
           listAbstractNumId: 4,
           listLevelNumFmts: ["decimal", "decimal"],

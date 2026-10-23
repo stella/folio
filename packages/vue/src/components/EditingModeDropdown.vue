@@ -24,7 +24,9 @@
         @click.prevent="toggle"
       >
         <MaterialSymbol :name="current.icon" :size="18" />
-        <span v-if="!compact" class="editing-mode__label">{{ t(current.labelKey) }}</span>
+        <span v-if="!compact" class="editing-mode__label">{{
+          t(current.labelKey)
+        }}</span>
         <MaterialSymbol name="arrow_drop_down" :size="16" />
       </button>
     </template>
@@ -55,11 +57,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
-import MaterialSymbol from "./ui/MaterialSymbol.vue";
-import type { EditorMode } from "./DocxEditor/types";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+
 import { useTranslation } from "../i18n";
 import { useFolioUI } from "../ui/folio-ui";
+import type { EditorMode } from "./DocxEditor/types";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
 // folio's `useTranslation().t` accepts a namespaced key path as a plain string
 // (upstream typed these against `@eigenpal/docx-editor-i18n`'s `TranslationKey`).
@@ -114,7 +117,9 @@ const modes: ModeOption[] = [
 const isOpen = ref(false);
 const compact = ref(false);
 
-const current = computed(() => modes.find((m) => m.value === props.modelValue) ?? editingMode);
+const current = computed(
+  () => modes.find((m) => m.value === props.modelValue) ?? editingMode,
+);
 
 function select(mode: EditorMode) {
   emit("update:modelValue", mode);

@@ -21,13 +21,13 @@ import type {
 } from "../model/document";
 import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "./refusal";
+import { replaceStoryBody, storyBody } from "./stories";
 import {
   type OpStory,
-  type SectionViewEntry,
   type SectionMapState,
+  type SectionViewEntry,
   type SectionViewState,
 } from "./types";
-import { storyBody, replaceStoryBody } from "./stories";
 
 export { storyBody } from "./stories";
 
@@ -66,10 +66,18 @@ const collectParagraphs = (
         }
         break;
       case "blockSdt":
-        collectParagraphs(block.content, [...list, { kind: "blockSdt", block: index }], out);
+        collectParagraphs(
+          block.content,
+          [...list, { kind: "blockSdt", block: index }],
+          out,
+        );
         break;
       case "blockCustomXml":
-        collectParagraphs(block.content, [...list, { kind: "blockCustomXml", block: index }], out);
+        collectParagraphs(
+          block.content,
+          [...list, { kind: "blockCustomXml", block: index }],
+          out,
+        );
         break;
       case "preservedBlock":
       case "bookmarkStart":
@@ -131,22 +139,31 @@ export const blockListAt = (
     const block = current[step.block];
     switch (step.kind) {
       case "tableCell": {
-        const cell = block?.type === "table" ? block.rows[step.row]?.cells[step.cell] : undefined;
+        const cell =
+          block?.type === "table"
+            ? block.rows[step.row]?.cells[step.cell]
+            : undefined;
         if (cell === undefined) {
-          return panic(`Block list step does not name a table cell at block ${step.block}.`);
+          return panic(
+            `Block list step does not name a table cell at block ${step.block}.`,
+          );
         }
         current = cell.content;
         break;
       }
       case "blockSdt":
         if (block?.type !== "blockSdt") {
-          return panic(`Block list step does not name a block content control at ${step.block}.`);
+          return panic(
+            `Block list step does not name a block content control at ${step.block}.`,
+          );
         }
         current = block.content;
         break;
       case "blockCustomXml":
         if (block?.type !== "blockCustomXml") {
-          return panic(`Block list step does not name a custom XML wrapper at ${step.block}.`);
+          return panic(
+            `Block list step does not name a custom XML wrapper at ${step.block}.`,
+          );
         }
         current = block.content;
         break;
@@ -200,10 +217,15 @@ export const updateBlockList = (
       const row = block?.type === "table" ? block.rows[step.row] : undefined;
       const cell = row?.cells[step.cell];
       if (block?.type !== "table" || row === undefined || cell === undefined) {
-        return panic(`Block list step does not name a table cell at block ${step.block}.`);
+        return panic(
+          `Block list step does not name a table cell at block ${step.block}.`,
+        );
       }
       const cells = [...row.cells];
-      cells[step.cell] = { ...cell, content: updateBlockList(cell.content, rest, update) };
+      cells[step.cell] = {
+        ...cell,
+        content: updateBlockList(cell.content, rest, update),
+      };
       const rows = [...block.rows];
       rows[step.row] = { ...row, cells };
       out[step.block] = { ...block, rows };
@@ -211,16 +233,26 @@ export const updateBlockList = (
     }
     case "blockSdt": {
       if (block?.type !== "blockSdt") {
-        return panic(`Block list step does not name a block content control at ${step.block}.`);
+        return panic(
+          `Block list step does not name a block content control at ${step.block}.`,
+        );
       }
-      out[step.block] = { ...block, content: updateBlockList(block.content, rest, update) };
+      out[step.block] = {
+        ...block,
+        content: updateBlockList(block.content, rest, update),
+      };
       return out;
     }
     case "blockCustomXml": {
       if (block?.type !== "blockCustomXml") {
-        return panic(`Block list step does not name a custom XML wrapper at ${step.block}.`);
+        return panic(
+          `Block list step does not name a custom XML wrapper at ${step.block}.`,
+        );
       }
-      out[step.block] = { ...block, content: updateBlockList(block.content, rest, update) };
+      out[step.block] = {
+        ...block,
+        content: updateBlockList(block.content, rest, update),
+      };
       return out;
     }
     default: {
@@ -262,10 +294,15 @@ const sectionGroups = (content: readonly BlockContent[]): BlockContent[][] => {
  * a section whose group is unchanged is the same object. This path owns
  * replacements that preserve the section count.
  */
-const deriveSections = (content: readonly BlockContent[], previous: Section[]): Section[] => {
+const deriveSections = (
+  content: readonly BlockContent[],
+  previous: Section[],
+): Section[] => {
   const groups = sectionGroups(content);
   if (groups.length !== previous.length) {
-    return panic(`An edit changed the section count from ${previous.length} to ${groups.length}.`);
+    return panic(
+      `An edit changed the section count from ${previous.length} to ${groups.length}.`,
+    );
   }
   let changed = false;
   const out: Section[] = [];
@@ -296,21 +333,30 @@ const sectionFailure = (message: string) =>
     }),
   );
 
-const sectionMapState = (section: Section, key: "headers" | "footers"): SectionMapState => {
+const sectionMapState = (
+  section: Section,
+  key: "headers" | "footers",
+): SectionMapState => {
   if (!Object.hasOwn(section, key)) return { type: "omitted" };
   const value = section[key];
-  return value === undefined ? { type: "undefined" } : { type: "entries", value: [...value] };
+  return value === undefined
+    ? { type: "undefined" }
+    : { type: "entries", value: [...value] };
 };
 
 /** Capture only section metadata, with explicit JSON-safe map presence. */
-export const captureSectionView = (sections: readonly Section[]): SectionViewEntry[] =>
+export const captureSectionView = (
+  sections: readonly Section[],
+): SectionViewEntry[] =>
   sections.map((section) => ({
     properties: section.properties,
     headers: sectionMapState(section, "headers"),
     footers: sectionMapState(section, "footers"),
   }));
 
-export const captureSectionViewState = (body: DocumentBody): SectionViewState => {
+export const captureSectionViewState = (
+  body: DocumentBody,
+): SectionViewState => {
   if (!Object.hasOwn(body, "sections")) return { type: "omitted" };
   return body.sections === undefined
     ? { type: "undefined" }
@@ -347,14 +393,19 @@ export const restoreSectionView = (
     return Result.err(
       new SectionViewError({
         reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
-        message: "The section snapshot does not match the restored section boundaries.",
+        message:
+          "The section snapshot does not match the restored section boundaries.",
       }),
     );
   const sections: Section[] = [];
   for (const [index, snapshot] of snapshots.entries()) {
     const group = groups.at(index);
-    if (group === undefined) return sectionFailure("The restored section lost its block group.");
-    const section: Section = { properties: snapshot.properties, content: group };
+    if (group === undefined)
+      return sectionFailure("The restored section lost its block group.");
+    const section: Section = {
+      properties: snapshot.properties,
+      content: group,
+    };
     restoreSectionMap(section, "headers", snapshot.headers);
     restoreSectionMap(section, "footers", snapshot.footers);
     sections.push(section);
@@ -392,12 +443,15 @@ type SectionPartsOptions = {
 };
 
 const sectionParts = ({ references, parts }: SectionPartsOptions) => {
-  if (references === undefined || references.length === 0) return Result.ok(undefined);
+  if (references === undefined || references.length === 0)
+    return Result.ok(undefined);
   const resolved = new Map<HeaderFooterType, HeaderFooter>();
   for (const { type, rId } of references) {
     const part = parts?.get(rId);
     if (part === undefined)
-      return sectionFailure(`A section reference names unavailable part ${rId}.`);
+      return sectionFailure(
+        `A section reference names unavailable part ${rId}.`,
+      );
     resolved.set(type, part);
   }
   return Result.ok(resolved);
@@ -421,9 +475,13 @@ export const rebuildSections = ({
   let finalSection: Section | undefined;
   for (const [index, group] of previousGroups.entries()) {
     const section = previous.at(index);
-    if (section === undefined) return sectionFailure("The previous section lost its block group.");
+    if (section === undefined)
+      return sectionFailure("The previous section lost its block group.");
     const boundary = group.at(-1);
-    if (boundary?.type === "paragraph" && boundary.sectionProperties !== undefined) {
+    if (
+      boundary?.type === "paragraph" &&
+      boundary.sectionProperties !== undefined
+    ) {
       if (boundary.paraId === undefined)
         return sectionFailure("A section boundary has no paragraph id.");
       sectionsByBoundary.set(boundary.paraId, section);
@@ -435,29 +493,40 @@ export const rebuildSections = ({
   const nextGroups = sectionGroups(content);
   for (const [index, group] of nextGroups.entries()) {
     const boundary = group.at(-1);
-    const stated = boundary?.type === "paragraph" ? boundary.sectionProperties : undefined;
+    const stated =
+      boundary?.type === "paragraph" ? boundary.sectionProperties : undefined;
     let matching = finalSection;
     if (stated !== undefined && boundary?.type === "paragraph") {
       matching = undefined;
-      if (boundary.paraId !== undefined) matching = sectionsByBoundary.get(boundary.paraId);
+      if (boundary.paraId !== undefined)
+        matching = sectionsByBoundary.get(boundary.paraId);
     }
-    const properties = stated ?? body.finalSectionProperties ?? finalSection?.properties;
+    const properties =
+      stated ?? body.finalSectionProperties ?? finalSection?.properties;
     // A split can move an existing endpoint to a fresh paragraph without changing its section.
     if (matching === undefined && nextGroups.length === previousGroups.length)
       matching = previous.at(index);
     if (properties === undefined)
       return sectionFailure("A rebuilt section has no canonical properties.");
-    if (matching !== undefined && structurallyEqual(matching.properties, properties)) {
+    if (
+      matching !== undefined &&
+      structurallyEqual(matching.properties, properties)
+    ) {
       const same =
         group.length === matching.content.length &&
         group.every((block, position) => block === matching.content[position]);
-      sections.push(same ? matching : { ...matching, properties, content: group });
+      sections.push(
+        same ? matching : { ...matching, properties, content: group },
+      );
       continue;
     }
     const section: Section = { ...matching, properties, content: group };
     if (
       matching === undefined ||
-      !structurallyEqual(matching.properties.headerReferences, properties.headerReferences)
+      !structurallyEqual(
+        matching.properties.headerReferences,
+        properties.headerReferences,
+      )
     ) {
       const headers = sectionParts({
         references: properties.headerReferences,
@@ -469,7 +538,10 @@ export const rebuildSections = ({
     }
     if (
       matching === undefined ||
-      !structurallyEqual(matching.properties.footerReferences, properties.footerReferences)
+      !structurallyEqual(
+        matching.properties.footerReferences,
+        properties.footerReferences,
+      )
     ) {
       const footers = sectionParts({
         references: properties.footerReferences,
@@ -489,9 +561,15 @@ export const rebuildSections = ({
  * that does not line up with the blocks (a different section count) is left
  * for {@link sectionsInStep} to report.
  */
-export const withBodyContent = (body: DocumentBody, content: BlockContent[]): DocumentBody => {
+export const withBodyContent = (
+  body: DocumentBody,
+  content: BlockContent[],
+): DocumentBody => {
   const next: DocumentBody = { ...body, content };
-  if (body.sections !== undefined && sectionGroups(content).length === body.sections.length) {
+  if (
+    body.sections !== undefined &&
+    sectionGroups(content).length === body.sections.length
+  ) {
     next.sections = deriveSections(content, body.sections);
   }
   return next;
@@ -530,7 +608,9 @@ export const sectionsInStep = (body: DocumentBody): boolean => {
       last?.type === "paragraph" && last.sectionProperties !== undefined
         ? last.sectionProperties
         : body.finalSectionProperties;
-    return stated === undefined || structurallyEqual(stated, section.properties);
+    return (
+      stated === undefined || structurallyEqual(stated, section.properties)
+    );
   });
 };
 
@@ -566,11 +646,17 @@ export const replaceParagraphs = ({
     if (restored.isErr()) return restored;
     nextBody.sections = restored.value;
   } else if (body.sections !== undefined) {
-    const rebuilt = rebuildSections({ document, content, previous: body.sections });
+    const rebuilt = rebuildSections({
+      document,
+      content,
+      previous: body.sections,
+    });
     if (rebuilt.isErr()) return rebuilt;
     nextBody.sections = rebuilt.value;
   }
   if (!sectionsInStep(nextBody))
-    return sectionFailure("The restored section metadata conflicts with its canonical boundaries.");
+    return sectionFailure(
+      "The restored section metadata conflicts with its canonical boundaries.",
+    );
   return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
 };

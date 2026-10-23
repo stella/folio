@@ -15,12 +15,15 @@
 
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { parseDocx } from "../parser";
 import { serializeDocument } from "../serializer/documentSerializer";
-import { toTransitionalNamespaceUri, transitionalSlotEncoding } from "../transitionalSpelling";
+import {
+  toTransitionalNamespaceUri,
+  transitionalSlotEncoding,
+} from "../transitionalSpelling";
 import { getLocalName, parseXmlDocument, type XmlElement } from "../xmlParser";
 
 const CORPUS_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
@@ -35,7 +38,10 @@ const PERCENTAGE = /^-?[0-9]+(?:\.[0-9]+)?%$/u;
 
 const readFixture = (file: string): ArrayBuffer => {
   const bytes = readFileSync(file);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 /** Strict spellings in one part, as stable descriptions so two parts can be diffed. */
@@ -48,7 +54,8 @@ const strictSpellings = (xml: string): Set<string> => {
 
   const visit = (element: XmlElement): void => {
     const uri = element.namespaceUri;
-    const transitional = uri === undefined ? "" : toTransitionalNamespaceUri(uri);
+    const transitional =
+      uri === undefined ? "" : toTransitionalNamespaceUri(uri);
     const slotPrefix = `${transitional} ${getLocalName(element.name)}`;
 
     for (const [name, value] of Object.entries(element.attributes ?? {})) {
@@ -91,8 +98,10 @@ const STRICT_NS = {
   w: "http://purl.oclc.org/ooxml/wordprocessingml/main",
   wp: "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
 };
-const WP14_NS = "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing";
-const WPS_NS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const WP14_NS =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing";
+const WPS_NS =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 
 /**
  * A Strict package whose body only folio's verbatim replay paths can carry
@@ -127,11 +136,15 @@ describe("Strict content replayed into a Transitional part", () => {
       const original = readFixture(file);
       const source = await JSZip.loadAsync(original)
         .then((zip) => zip.file("word/document.xml")?.async("text"))
-        .then((xml) => (xml === undefined ? new Set<string>() : strictSpellings(xml)));
+        .then((xml) =>
+          xml === undefined ? new Set<string>() : strictSpellings(xml),
+        );
 
       const saved = serializeDocument(await parseDocx(original));
 
-      const introduced = [...strictSpellings(saved)].filter((defect) => !source.has(defect));
+      const introduced = [...strictSpellings(saved)].filter(
+        (defect) => !source.has(defect),
+      );
       expect(introduced).toEqual([]);
     },
     30_000,

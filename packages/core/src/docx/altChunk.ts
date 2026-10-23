@@ -1,7 +1,7 @@
 import {
-  getLocalName,
-  getChildElements,
   getAttribute,
+  getChildElements,
+  getLocalName,
   OOXML_NAMESPACE_SCOPE,
   parseXml,
   WORDPROCESSINGML_NAMESPACE_URIS,
@@ -31,5 +31,7 @@ export const getAltChunkRelationshipId = (xml: string): string | undefined => {
   ) {
     return undefined;
   }
-  return getAttribute(element, OFFICE_RELATIONSHIPS_NAMESPACE_URI, "id") ?? undefined;
+  return (
+    getAttribute(element, OFFICE_RELATIONSHIPS_NAMESPACE_URI, "id") ?? undefined
+  );
 };

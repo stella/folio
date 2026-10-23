@@ -24,12 +24,20 @@ export const resolveComplexScriptFormatting = (
   ...(source.complexScriptAlternateFontFamily !== undefined
     ? { alternateFontFamily: source.complexScriptAlternateFontFamily }
     : {}),
-  ...(source.complexScriptFontSize !== undefined ? { fontSize: source.complexScriptFontSize } : {}),
-  ...(source.complexScriptBold !== undefined ? { bold: source.complexScriptBold } : {}),
-  ...(source.complexScriptItalic !== undefined ? { italic: source.complexScriptItalic } : {}),
+  ...(source.complexScriptFontSize !== undefined
+    ? { fontSize: source.complexScriptFontSize }
+    : {}),
+  ...(source.complexScriptBold !== undefined
+    ? { bold: source.complexScriptBold }
+    : {}),
+  ...(source.complexScriptItalic !== undefined
+    ? { italic: source.complexScriptItalic }
+    : {}),
 });
 
-export const applyComplexScriptFormatting = <T extends { alternateFontFamily?: string }>(
+export const applyComplexScriptFormatting = <
+  T extends { alternateFontFamily?: string },
+>(
   base: T,
   source: ComplexScriptFormattingSource,
 ) => {
@@ -43,7 +51,9 @@ export const applyComplexScriptFormatting = <T extends { alternateFontFamily?: s
   return result;
 };
 
-export const hasComplexScriptFormatting = (source: ComplexScriptFormattingSource): boolean =>
+export const hasComplexScriptFormatting = (
+  source: ComplexScriptFormattingSource,
+): boolean =>
   source.complexScriptFontFamily !== undefined ||
   source.complexScriptAlternateFontFamily !== undefined ||
   source.complexScriptFontSize !== undefined ||

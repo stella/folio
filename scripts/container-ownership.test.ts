@@ -30,7 +30,12 @@ setDefaultTimeout(60_000);
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 
 const contract = async (): Promise<ContainerContract> =>
-  Bun.file(path.join(REPOSITORY_ROOT, "specifications/container-contract/contract.json")).json();
+  Bun.file(
+    path.join(
+      REPOSITORY_ROOT,
+      "specifications/container-contract/contract.json",
+    ),
+  ).json();
 
 describe("container child ownership", () => {
   test("every reader a handler map claims is an exported function", async () => {
@@ -44,7 +49,10 @@ describe("container child ownership", () => {
   test("every claim covers at least one pair the contract decides", async () => {
     const { entries } = await contract();
     const empty = (await loadOwnerClaims())
-      .filter((claim) => !claimedPairs(claim).some((key) => entries[key] !== undefined))
+      .filter(
+        (claim) =>
+          !claimedPairs(claim).some((key) => entries[key] !== undefined),
+      )
       .map((claim) => `${claim.container}/${claim.child}`);
     expect(empty).toEqual([]);
   });

@@ -1,11 +1,16 @@
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import fc from "fast-check";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { Schema } from "prosemirror-model";
 import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+
 import type { OpStory } from "@stll/docx-core/ops";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 
 const schema = new Schema({
@@ -63,7 +68,8 @@ for (const story of stories) {
                 selection: TextSelection.create(doc, modelOffset + 1),
               }),
               ...canonical.props,
-              dispatchTransaction: (transaction) => canonical.dispatch(transaction),
+              dispatchTransaction: (transaction) =>
+                canonical.dispatch(transaction),
             });
             views.push(view);
             const caret = view.domAtPos(nativeOffset + 1);
@@ -80,7 +86,9 @@ for (const story of stories) {
                 data: "x",
                 cancelable: true,
               });
-              Object.defineProperty(event, "getTargetRanges", { value: () => [range] });
+              Object.defineProperty(event, "getTargetRanges", {
+                value: () => [range],
+              });
               return canonical.props.handleDOMEvents.beforeinput(view, event);
             };
             expect(typeText()).toBe(true);

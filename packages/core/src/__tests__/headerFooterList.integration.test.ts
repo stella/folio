@@ -10,21 +10,24 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { clearTextWidthCache } from "../layout-engine/measure/cache";
-import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
-import { measureBlocks as realMeasureBlocks } from "../layout-engine/measure/measureBlocks";
-import type { FlowBlock, Measure, Page } from "../layout-engine/types";
 import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
 } from "../layout-bridge/convert/headerFooterLayout";
 import type { HeaderFooterMetrics } from "../layout-bridge/convert/headerFooterLayout";
-import { toggleBulletList, toggleNumberedList } from "../prosemirror/commands/paragraph";
-import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { clearTextWidthCache } from "../layout-engine/measure/cache";
+import { measureBlocks as realMeasureBlocks } from "../layout-engine/measure/measureBlocks";
+import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
+import type { FlowBlock, Measure, Page } from "../layout-engine/types";
+import { renderPage } from "../layout-painter/renderPage";
+import {
+  toggleBulletList,
+  toggleNumberedList,
+} from "../prosemirror/commands/paragraph";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { HeaderFooter } from "../types/document";
-import { renderPage } from "../layout-painter/renderPage";
 
 function createFakeStyle(): Record<string, string> {
   const store: Record<string, string> = {};
@@ -83,7 +86,10 @@ class FakeElement {
   querySelectorAll(): FakeElement[] {
     return [];
   }
-  getContext(): { font: string; measureText: (text: string) => { width: number } } | null {
+  getContext(): {
+    font: string;
+    measureText: (text: string) => { width: number };
+  } | null {
     if (this.tagName !== "canvas") {
       return null;
     }
@@ -98,13 +104,27 @@ const fakeDocument = {
 const metrics: HeaderFooterMetrics = {
   section: "header",
   pageSize: { w: 600, h: 800 },
-  margins: { top: 100, right: 72, bottom: 100, left: 72, header: 48, footer: 48 },
+  margins: {
+    top: 100,
+    right: 72,
+    bottom: 100,
+    left: 72,
+    header: 48,
+    footer: 48,
+  },
 };
 
 const page = {
   number: 1,
   size: { w: 600, h: 800 },
-  margins: { top: 100, right: 72, bottom: 100, left: 72, header: 48, footer: 48 },
+  margins: {
+    top: 100,
+    right: 72,
+    bottom: 100,
+    left: 72,
+    header: 48,
+    footer: 48,
+  },
   fragments: [],
 } as unknown as Page;
 
@@ -129,20 +149,31 @@ function collectMarkers(root: FakeElement): FakeElement[] {
 // (headerFooterToProseDoc + the singleton starter-kit schema/plugins), place a
 // caret in the first paragraph, and run the toggle command the toolbar
 // dispatches. Returns the mutated doc.
-function toggleListInHeader(command: typeof toggleBulletList, headerText: string) {
+function toggleListInHeader(
+  command: typeof toggleBulletList,
+  headerText: string,
+) {
   const hf: HeaderFooter = {
     type: "header",
     hdrFtrType: "default",
     content: [
       {
         type: "paragraph",
-        content: headerText ? [{ type: "run", content: [{ type: "text", text: headerText }] }] : [],
+        content: headerText
+          ? [{ type: "run", content: [{ type: "text", text: headerText }] }]
+          : [],
       },
     ],
   };
   const pmDoc = headerFooterToProseDoc(hf.content);
-  let state = EditorState.create({ doc: pmDoc, schema, plugins: singletonManager.getPlugins() });
-  state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+  let state = EditorState.create({
+    doc: pmDoc,
+    schema,
+    plugins: singletonManager.getPlugins(),
+  });
+  state = state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, 1)),
+  );
   let next: EditorState | null = null;
   const handled = command(state, (tr) => {
     next = state.apply(tr);
@@ -156,7 +187,10 @@ function toggleListInHeader(command: typeof toggleBulletList, headerText: string
 function withFakeDocument<T>(run: () => T): T {
   const original = globalThis.document;
   const hadDocument = "document" in globalThis;
-  Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
+  Object.defineProperty(globalThis, "document", {
+    value: fakeDocument,
+    configurable: true,
+  });
   clearTextWidthCache();
   resetCanvasContext();
   try {
@@ -168,7 +202,10 @@ function withFakeDocument<T>(run: () => T): T {
     // to begin with (Bun/Node), so `"document" in globalThis` stays false and
     // we don't pollute other tests sharing the process.
     if (hadDocument) {
-      Object.defineProperty(globalThis, "document", { value: original, configurable: true });
+      Object.defineProperty(globalThis, "document", {
+        value: original,
+        configurable: true,
+      });
     } else {
       Reflect.deleteProperty(globalThis, "document");
     }
@@ -180,7 +217,11 @@ describe("header/footer list toggling", () => {
     const doc = toggleListInHeader(toggleBulletList, "Header line");
     const para = doc.child(0);
     expect(para.type.name).toBe("paragraph");
-    expect(para.attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
+    expect(para.attrs["numPr"]).toEqual({
+      kind: "reference",
+      numId: 1,
+      ilvl: 0,
+    });
     expect(para.attrs["listIsBullet"]).toBe(true);
   });
 
@@ -188,11 +229,18 @@ describe("header/footer list toggling", () => {
     for (const headerText of ["Header line", ""]) {
       withFakeDocument(() => {
         const doc = toggleListInHeader(toggleBulletList, headerText);
-        const headerContent = convertHeaderFooterPmDocToContent(doc, 456, metrics, {
-          measureBlocks: hfMeasureBlocks,
-        });
+        const headerContent = convertHeaderFooterPmDocToContent(
+          doc,
+          456,
+          metrics,
+          {
+            measureBlocks: hfMeasureBlocks,
+          },
+        );
         const block = headerContent?.blocks[0];
-        expect(block?.kind === "paragraph" ? block.attrs?.listMarker : null).toBe("•");
+        expect(
+          block?.kind === "paragraph" ? block.attrs?.listMarker : null,
+        ).toBe("•");
 
         const pageEl = renderPage(
           page,
@@ -209,12 +257,21 @@ describe("header/footer list toggling", () => {
   test("numbered toggle paints a decimal marker on the header", () => {
     withFakeDocument(() => {
       const doc = toggleListInHeader(toggleNumberedList, "Header line");
-      const headerContent = convertHeaderFooterPmDocToContent(doc, 456, metrics, {
-        measureBlocks: hfMeasureBlocks,
-      });
+      const headerContent = convertHeaderFooterPmDocToContent(
+        doc,
+        456,
+        metrics,
+        {
+          measureBlocks: hfMeasureBlocks,
+        },
+      );
       const block = headerContent?.blocks[0];
-      expect(block?.kind === "paragraph" ? block.attrs?.listMarker : null).toBe("1.");
-      expect(block?.kind === "paragraph" ? block.attrs?.listIsBullet : null).toBeFalsy();
+      expect(block?.kind === "paragraph" ? block.attrs?.listMarker : null).toBe(
+        "1.",
+      );
+      expect(
+        block?.kind === "paragraph" ? block.attrs?.listIsBullet : null,
+      ).toBeFalsy();
 
       const pageEl = renderPage(
         page,
@@ -234,17 +291,27 @@ describe("header/footer list toggling", () => {
       const savedBlocks = proseDocToBlocks(doc);
       const savedParagraph = savedBlocks.find((b) => b.type === "paragraph");
       expect(
-        savedParagraph?.type === "paragraph" ? savedParagraph.formatting?.numPr : null,
+        savedParagraph?.type === "paragraph"
+          ? savedParagraph.formatting?.numPr
+          : null,
       ).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
 
       // Reload paints from HeaderFooter.content; the bullet marker is recomputed.
-      const savedHf: HeaderFooter = { type: "header", hdrFtrType: "default", content: savedBlocks };
+      const savedHf: HeaderFooter = {
+        type: "header",
+        hdrFtrType: "default",
+        content: savedBlocks,
+      };
       const reloaded = convertHeaderFooterToContent(savedHf, 456, metrics, {
         measureBlocks: hfMeasureBlocks,
       });
-      const reloadedParagraph = reloaded?.blocks.find((b) => b.kind === "paragraph");
+      const reloadedParagraph = reloaded?.blocks.find(
+        (b) => b.kind === "paragraph",
+      );
       expect(
-        reloadedParagraph?.kind === "paragraph" ? reloadedParagraph.attrs?.listMarker : null,
+        reloadedParagraph?.kind === "paragraph"
+          ? reloadedParagraph.attrs?.listMarker
+          : null,
       ).toBe("•");
     });
   });

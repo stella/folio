@@ -1,30 +1,53 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { astralText, boundaryTextCases, assertTextRoundTrip } from "@stll/utf8-boundaries/testing";
 import { Window } from "happy-dom";
 import * as Y from "yjs";
-import { serializeDocumentToDocx } from "@stll/docx-core";
-import { paragraphLogicalText } from "@stll/docx-core/ops";
-import { compileMarkdownToContent } from "@stll/docx-core";
-import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES } from "@stll/docx-core/ops";
-import { parseDocumentBatch } from "@stll/docx-core/ops";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createDocx } from "../docx/rezip";
-import { parseDocx } from "../docx/parser";
-import { extractDocxText } from "../docx/server/extractDocxText";
-import { schema } from "../prosemirror/schema";
+
+import {
+  compileMarkdownToContent,
+  serializeDocumentToDocx,
+} from "@stll/docx-core";
+import {
+  DOCUMENT_OP_SCHEMA_VERSION,
+  OP_STORIES,
+  paragraphLogicalText,
+  parseDocumentBatch,
+} from "@stll/docx-core/ops";
+import {
+  assertTextRoundTrip,
+  astralText,
+  boundaryTextCases,
+} from "@stll/utf8-boundaries/testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import { extractDocxText } from "../docx/server/extractDocxText";
+import {
+  decodeAutoSaveEnvelope,
+  encodeAutoSaveEnvelope,
+} from "../managers/autoSaveCodec";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toMarkdown } from "../markdown/index";
-import { decodeAutoSaveEnvelope, encodeAutoSaveEnvelope } from "../managers/autoSaveCodec";
+import { writePdf } from "../pdf/writePdf";
+import { schema } from "../prosemirror/schema";
+import type { Document, Paragraph } from "../types/document";
 import {
   paragraphsToClipboardContent,
   parseClipboardHtml,
   runsToClipboardContent,
 } from "./clipboard";
-import { writePdf } from "../pdf/writePdf";
-import type { Document, Paragraph } from "../types/document";
-import { bytesToHex, createTextReader, decodeText, encodeUtf8, readBlobText } from "./textEncoding";
+import {
+  bytesToHex,
+  createTextReader,
+  decodeText,
+  encodeUtf8,
+  readBlobText,
+} from "./textEncoding";
 
 setDefaultTimeout(propertyTestTimeout(180_000));
 
@@ -38,14 +61,23 @@ const parseClipboardText = (html: string, plainText: string): string => {
     HTMLElement: clipboardWindow.HTMLElement,
   };
   const previous = new Map(
-    Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+    Object.keys(globals).map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
   );
   for (const [key, value] of Object.entries(globals))
-    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      writable: true,
+      value,
+    });
   try {
     return parseClipboardHtml(html, plainText)
       .runs.flatMap((run) =>
-        run.content.flatMap((node) => (node.type === "text" ? [node.text] : [])),
+        run.content.flatMap((node) =>
+          node.type === "text" ? [node.text] : [],
+        ),
       )
       .join("");
   } finally {
@@ -61,7 +93,9 @@ const documentText = ({
   },
 }: Document): string =>
   content
-    .flatMap((block) => (block.type === "paragraph" ? [paragraphLogicalText(block)] : []))
+    .flatMap((block) =>
+      block.type === "paragraph" ? [paragraphLogicalText(block)] : [],
+    )
     .join("\n");
 
 const roundTripText = (text: string, chunkSize: number): string => {
@@ -102,7 +136,9 @@ const serializers = {
     const restored = await parseDocx(bytes, { preloadFonts: false });
     expect(encodeUtf8(documentText(restored))).toEqual(encodeUtf8(text));
     const savedAgain = await createDocx(restored);
-    expect(documentText(await parseDocx(savedAgain, { preloadFonts: false }))).toBe(text);
+    expect(
+      documentText(await parseDocx(savedAgain, { preloadFonts: false })),
+    ).toBe(text);
   },
   snapshot: async (text) => {
     const node = schema.node("doc", null, [
@@ -117,21 +153,34 @@ const serializers = {
     const { content } = compileMarkdownToContent(markdown);
     expect(
       content
-        .flatMap((block) => (block.type === "paragraph" ? [paragraphLogicalText(block)] : []))
+        .flatMap((block) =>
+          block.type === "paragraph" ? [paragraphLogicalText(block)] : [],
+        )
         .join("\n"),
     ).toBe(text);
   },
   clipboard: async (text, _document, paragraph, chunkSize) => {
-    const runs = paragraph.content.flatMap((node) => (node.type === "run" ? [node] : []));
+    const runs = paragraph.content.flatMap((node) =>
+      node.type === "run" ? [node] : [],
+    );
     for (const { content, expected } of [
       { content: runsToClipboardContent(runs), expected: runs },
-      { content: paragraphsToClipboardContent([paragraph]), expected: [paragraph] },
+      {
+        content: paragraphsToClipboardContent([paragraph]),
+        expected: [paragraph],
+      },
     ]) {
       expect(roundTripText(content.plainText, chunkSize)).toBe(text);
       expect(roundTripText(content.html, chunkSize)).toBe(content.html);
-      expect(parseClipboardText(roundTripText(content.html, chunkSize), "")).toBe(text);
-      expect(await readBlobText(new Blob([encodeUtf8(content.plainText)]))).toBe(text);
-      expect(await readBlobText(new Blob([encodeUtf8(content.html)]))).toBe(content.html);
+      expect(
+        parseClipboardText(roundTripText(content.html, chunkSize), ""),
+      ).toBe(text);
+      expect(
+        await readBlobText(new Blob([encodeUtf8(content.plainText)])),
+      ).toBe(text);
+      expect(await readBlobText(new Blob([encodeUtf8(content.html)]))).toBe(
+        content.html,
+      );
       const internal = roundTripText(content.internal ?? "", chunkSize);
       expect(JSON.parse(internal)).toEqual(expected);
       // The internal JSON must contain the original text, not a replacement character.
@@ -139,10 +188,14 @@ const serializers = {
     }
   },
   autosave: async (text, document, _paragraph, chunkSize) => {
-    const wire = roundTripText(encodeAutoSaveEnvelope(document, timestamp), chunkSize);
+    const wire = roundTripText(
+      encodeAutoSaveEnvelope(document, timestamp),
+      chunkSize,
+    );
     const restored = decodeAutoSaveEnvelope(wire);
     expect(restored).not.toBeNull();
-    if (!restored) throw new TypeError("Autosave rejected its own serialized model");
+    if (!restored)
+      throw new TypeError("Autosave rejected its own serialized model");
     expect(documentText(restored.document)).toBe(text);
   },
   batch: async (text, _document, _paragraph, chunkSize) => {
@@ -176,7 +229,9 @@ const serializers = {
       transported.set(update.subarray(offset, offset + chunkSize), offset);
     expect(transported).toEqual(update);
     Y.applyUpdate(target, transported);
-    expect(encodeUtf8(target.getText("body").toString())).toEqual(encodeUtf8(text));
+    expect(encodeUtf8(target.getText("body").toString())).toEqual(
+      encodeUtf8(text),
+    );
     source.destroy();
     target.destroy();
   },
@@ -210,10 +265,13 @@ const serializers = {
     for (let offset = 0; offset < bytes.length; offset += chunkSize)
       transported.set(bytes.subarray(offset, offset + chunkSize), offset);
     expect(transported).toEqual(bytes);
-    const title = decodeText(bytes).match(/\/Title <FEFF(?<hex>[0-9A-F]*)>/u)?.groups?.["hex"];
+    const title = decodeText(bytes).match(/\/Title <FEFF(?<hex>[0-9A-F]*)>/u)
+      ?.groups?.["hex"];
     expect(title).toBeDefined();
     const titleBytes = Uint8Array.from(Buffer.from(title ?? "", "hex"));
-    expect(decodeText(titleBytes, { encoding: "utf-16be", fatal: true })).toBe(text);
+    expect(decodeText(titleBytes, { encoding: "utf-16be", fatal: true })).toBe(
+      text,
+    );
     expect(bytesToHex(titleBytes)).toBe((title ?? "").toLowerCase());
   },
 } satisfies Record<string, SerializerCase>;
@@ -221,9 +279,10 @@ const serializers = {
 // Bound each test's work without reducing the census, generated runs, or pinned replays.
 const MAX_BOUNDARY_CASES_PER_TEST = 5;
 const boundaryCaseCount = boundaryTextCases("", "").length;
-const caseStarts = Array.from({ length: boundaryCaseCount }, (_, index) => index).filter(
-  (index) => index % MAX_BOUNDARY_CASES_PER_TEST === 0,
-);
+const caseStarts = Array.from(
+  { length: boundaryCaseCount },
+  (_, index) => index,
+).filter((index) => index % MAX_BOUNDARY_CASES_PER_TEST === 0);
 
 // Keep the shared property ID: every producer and case group replays the pinned inputs.
 for (const [name, serializer] of Object.entries(serializers)) {
@@ -245,7 +304,9 @@ for (const [name, serializer] of Object.entries(serializers)) {
                 paraId: "00000001",
                 content: [{ type: "run", content: [{ type: "text", text }] }],
               };
-              const document: Document = { package: { document: { content: [paragraph] } } };
+              const document: Document = {
+                package: { document: { content: [paragraph] } },
+              };
               await assertTextRoundTrip({
                 text,
                 roundTrip: (value) => roundTripText(value, boundary),
@@ -254,7 +315,10 @@ for (const [name, serializer] of Object.entries(serializers)) {
             }
           },
         ),
-        { numRuns: 3, id: "document serializers retain Unicode across byte boundaries" },
+        {
+          numRuns: 3,
+          id: "document serializers retain Unicode across byte boundaries",
+        },
       );
     });
   }

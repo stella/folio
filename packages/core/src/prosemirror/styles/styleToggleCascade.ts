@@ -1,5 +1,8 @@
 import type { TextFormatting } from "../../types/document";
-import { mergeTextFormatting, STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
+import {
+  mergeTextFormatting,
+  STYLE_TOGGLE_KEYS,
+} from "../../utils/textFormattingMerge";
 
 export type StyleToggleKey = (typeof STYLE_TOGGLE_KEYS)[number];
 
@@ -76,7 +79,9 @@ export function cascadeStyleTextFormatting(
   levels: readonly StyleToggleLevel[],
   options?: StyleToggleCascadeOptions,
 ): StyleTextFormattingCascade {
-  let formatting = options ? mergeTextFormatting(undefined, options.ordinaryFormatting) : undefined;
+  let formatting = options
+    ? mergeTextFormatting(undefined, options.ordinaryFormatting)
+    : undefined;
   const mergeOrdinaryFormatting = options === undefined;
   const toggleStates = new Map<StyleToggleKey, ToggleState>();
 
@@ -112,7 +117,10 @@ export function cascadeStyleTextFormatting(
         toggleStates.set(key, { value: true, defaultsActive: true });
       } else {
         toggleStates.set(key, {
-          value: inherited?.defaultsActive === true ? true : !(inherited?.value ?? false),
+          value:
+            inherited?.defaultsActive === true
+              ? true
+              : !(inherited?.value ?? false),
           defaultsActive: inherited?.defaultsActive === true,
         });
       }

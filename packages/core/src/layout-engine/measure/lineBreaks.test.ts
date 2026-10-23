@@ -11,8 +11,8 @@ import {
   findHyphenationBreaks,
   findWordBreaks,
   isBreakBetween,
-  isHangingPunctuation,
   isBreakChar,
+  isHangingPunctuation,
 } from "./lineBreaks";
 
 describe("findWordBreaks", () => {
@@ -28,9 +28,11 @@ describe("findWordBreaks", () => {
   });
 
   test("finds breaks in precomposed international Latin text", () => {
-    expect(findWordBreaks("Příliš žluťoučký kůň úpěl ďábelské ódy.", { locale: "cs-CZ" })).toEqual([
-      7, 17, 21, 26, 35,
-    ]);
+    expect(
+      findWordBreaks("Příliš žluťoučký kůň úpěl ďábelské ódy.", {
+        locale: "cs-CZ",
+      }),
+    ).toEqual([7, 17, 21, 26, 35]);
   });
 
   test("adds a break after every CJK code point", () => {
@@ -45,11 +47,15 @@ describe("findWordBreaks", () => {
   });
 
   test("uses dictionary boundaries for scripts without spaces", () => {
-    expect(findWordBreaks("ภาษาไทยภาษาไทย", { locale: "th" })).toEqual([4, 7, 11]);
+    expect(findWordBreaks("ภาษาไทยภาษาไทย", { locale: "th" })).toEqual([
+      4, 7, 11,
+    ]);
   });
 
   test("falls back safely for malformed DOCX language tags", () => {
-    expect(() => findWordBreaks("hello world", { locale: "not_a_locale" })).not.toThrow();
+    expect(() =>
+      findWordBreaks("hello world", { locale: "not_a_locale" }),
+    ).not.toThrow();
   });
 
   test("keeps ordinary spaces breakable regardless of locale", () => {
@@ -64,7 +70,9 @@ describe("findWordBreaks", () => {
 
   test("does not apply East-Asian line-edge punctuation defaults to Arabic text", () => {
     expect(findWordBreaks("بنك ………………..", { locale: "ar-SA" })).toEqual([4]);
-    expect(findWordBreaks("بنك ………………..", { locale: "ar-SA", kinsoku: true })).toEqual([]);
+    expect(
+      findWordBreaks("بنك ………………..", { locale: "ar-SA", kinsoku: true }),
+    ).toEqual([]);
   });
 
   test("allows a spaced percentage to wrap in non-East-Asian text", () => {
@@ -79,7 +87,9 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("10 %", { locale: "cmn-CN" })).toEqual([]);
     expect(findWordBreaks("10 %", { locale: "en-x-hans" })).toEqual([3]);
     expect(findWordBreaks("税率 10 %")).not.toContain(6);
-    expect(findWordBreaks("10 %", { locale: "cs-CZ", kinsoku: true })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "cs-CZ", kinsoku: true })).toEqual(
+      [],
+    );
     expect(
       findWordBreaks("10 %", {
         locale: "cs-CZ",
@@ -101,7 +111,9 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("10  %", { locale: "ja-JP" })).toEqual([]);
     expect(findWordBreaks("10   %", { kinsoku: true })).toEqual([]);
     expect(findWordBreaks("10 ％", { locale: "ja-JP" })).toEqual([]);
-    expect(findWordBreaks(`${" ".repeat(20_000)}%`, { locale: "ja-JP" })).toEqual([]);
+    expect(
+      findWordBreaks(`${" ".repeat(20_000)}%`, { locale: "ja-JP" }),
+    ).toEqual([]);
   });
 
   test("does not break at glue-class spaces", () => {
@@ -118,7 +130,9 @@ describe("findWordBreaks", () => {
 
   test("does not break before glue characters between ideographs", () => {
     for (const glue of ["\u00A0", "\u2007", "\u202F", "\u2060", "\uFEFF"]) {
-      expect(findWordBreaks(`中文${glue}测试`, { locale: "zh-CN" })).toEqual([1, 4, 5]);
+      expect(findWordBreaks(`中文${glue}测试`, { locale: "zh-CN" })).toEqual([
+        1, 4, 5,
+      ]);
     }
   });
 
@@ -128,11 +142,15 @@ describe("findWordBreaks", () => {
   });
 
   test("keeps prohibited CJK punctuation off the next line", () => {
-    expect(findWordBreaks("中文。测试", { locale: "zh-CN" })).toEqual([1, 3, 4, 5]);
+    expect(findWordBreaks("中文。测试", { locale: "zh-CN" })).toEqual([
+      1, 3, 4, 5,
+    ]);
   });
 
   test("applies document-specific kinsoku overrides", () => {
-    expect(findWordBreaks("中文測", { noLineBreaksBefore: new Set(["測"]) })).toEqual([1, 3]);
+    expect(
+      findWordBreaks("中文測", { noLineBreaksBefore: new Set(["測"]) }),
+    ).toEqual([1, 3]);
   });
 
   test("ignores custom kinsoku lists when kinsoku is disabled", () => {
@@ -164,7 +182,9 @@ describe("findWordBreaks", () => {
   test("applies legacy Ethiopic and Amharic break opportunities", () => {
     const text = "ሀ፡ለ";
     expect(findWordBreaks(text)).toEqual([]);
-    expect(findWordBreaks(text, { useLegacyEthiopicAmharicRules: true })).toEqual([2]);
+    expect(
+      findWordBreaks(text, { useLegacyEthiopicAmharicRules: true }),
+    ).toEqual([2]);
   });
 });
 
@@ -181,20 +201,28 @@ describe("findGraphemeBreaks", () => {
 
 describe("findHyphenationBreaks", () => {
   beforeAll(async () => {
-    expect((await preloadHyphenationDictionaries(["en-US", "cs-CZ"])).isOk()).toBe(true);
+    expect(
+      (await preloadHyphenationDictionaries(["en-US", "cs-CZ"])).isOk(),
+    ).toBe(true);
   });
 
   test("uses the dictionary selected by the exact Word language", () => {
-    expect(findHyphenationBreaks("hyphenation", { locale: "en-US" })).toEqual([2, 6]);
-    expect(findHyphenationBreaks("nejneobhospodářovávatelnější", { locale: "cs-CZ" })).toEqual([
-      3, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26,
+    expect(findHyphenationBreaks("hyphenation", { locale: "en-US" })).toEqual([
+      2, 6,
     ]);
+    expect(
+      findHyphenationBreaks("nejneobhospodářovávatelnější", {
+        locale: "cs-CZ",
+      }),
+    ).toEqual([3, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26]);
   });
 
   test("fails closed for unsupported or missing locales", () => {
     expect(findHyphenationBreaks("hyphenation")).toEqual([]);
     expect(findHyphenationBreaks("hyphenation", { locale: "en" })).toEqual([]);
-    expect(findHyphenationBreaks("hyphenation", { locale: "fr-FR" })).toEqual([]);
+    expect(findHyphenationBreaks("hyphenation", { locale: "fr-FR" })).toEqual(
+      [],
+    );
     expect(() =>
       findHyphenationBreaks("HYPHENATION", {
         locale: "en-US-%%%",
@@ -204,11 +232,15 @@ describe("findHyphenationBreaks", () => {
   });
 
   test("bounds dictionary work for hostile oversized words", () => {
-    expect(findHyphenationBreaks("a".repeat(257), { locale: "en-US" })).toEqual([]);
+    expect(findHyphenationBreaks("a".repeat(257), { locale: "en-US" })).toEqual(
+      [],
+    );
   });
 
   test("honors the document all-caps setting", () => {
-    expect(findHyphenationBreaks("HYPHENATION", { locale: "en-US" })).not.toEqual([]);
+    expect(
+      findHyphenationBreaks("HYPHENATION", { locale: "en-US" }),
+    ).not.toEqual([]);
     expect(
       findHyphenationBreaks("HYPHENATION", {
         locale: "en-US",
@@ -237,9 +269,12 @@ describe("isHangingPunctuation", () => {
   });
 
   test("includes document-specific prohibited line-start characters", () => {
-    expect(isHangingPunctuation("※", { locale: "ja-JP", noLineBreaksBefore: new Set(["※"]) })).toBe(
-      true,
-    );
+    expect(
+      isHangingPunctuation("※", {
+        locale: "ja-JP",
+        noLineBreaksBefore: new Set(["※"]),
+      }),
+    ).toBe(true);
     expect(
       isHangingPunctuation("※", {
         locale: "ja-JP",
@@ -284,7 +319,14 @@ describe("isBreakChar", () => {
   });
 
   test("never treats glue characters as break chars", () => {
-    for (const glue of ["\u00A0", "\u2007", "\u2011", "\u202F", "\u2060", "\uFEFF"]) {
+    for (const glue of [
+      "\u00A0",
+      "\u2007",
+      "\u2011",
+      "\u202F",
+      "\u2060",
+      "\uFEFF",
+    ]) {
       expect(isBreakChar(glue)).toBe(false);
     }
   });

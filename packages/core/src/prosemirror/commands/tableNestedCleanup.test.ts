@@ -8,12 +8,16 @@ import { schema } from "../schema";
 import { rejectAIEditRevision } from "./comments";
 import {
   createRestoredTableCell,
-  tableCellContinuationPayload,
   tableCellContinuationFromNode,
+  tableCellContinuationPayload,
 } from "./tableCellMergeResolution";
 
-const paragraph = (text: string) => schema.node("paragraph", null, [schema.text(text)]);
-const insertion = { kind: "ins", info: { revisionId: 99, author: "Reviewer", date: null } };
+const paragraph = (text: string) =>
+  schema.node("paragraph", null, [schema.text(text)]);
+const insertion = {
+  kind: "ins",
+  info: { revisionId: 99, author: "Reviewer", date: null },
+};
 
 // The existing structural fixtures lacked a nested deletion followed by payload capture.
 // Exercise every removed-column position and both live/payload cleanup boundaries.
@@ -27,7 +31,9 @@ for (const capture of [false, true]) {
       topCells.splice(
         column,
         0,
-        schema.node("tableCell", { cellMarker: insertion }, [paragraph("Remove top")]),
+        schema.node("tableCell", { cellMarker: insertion }, [
+          paragraph("Remove top"),
+        ]),
       );
       const inner = schema.node("table", null, [
         schema.node("tableRow", null, topCells),
@@ -36,7 +42,9 @@ for (const capture of [false, true]) {
             paragraph("Remove span"),
           ]),
         ]),
-        schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph("Bottom")])]),
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [paragraph("Bottom")]),
+        ]),
       ]);
       expect(TableMap.get(inner).problems).toBeNull();
       const unaffected = schema.node("table", null, [
@@ -48,7 +56,9 @@ for (const capture of [false, true]) {
       expect(TableMap.get(unaffected).problems).toBeNull();
       const doc = schema.node("doc", null, [
         schema.node("table", null, [
-          schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph("Above")])]),
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [paragraph("Above")]),
+          ]),
           schema.node("tableRow", null, [
             schema.node(
               "tableCell",
@@ -81,7 +91,9 @@ for (const capture of [false, true]) {
       const payload = tableCellContinuationPayload(merged);
       const continuation = payload?.cells.at(0);
       const restored =
-        capture && continuation ? createRestoredTableCell(merged, continuation) : donor;
+        capture && continuation
+          ? createRestoredTableCell(merged, continuation)
+          : donor;
       let expectedUnaffected = unaffected;
       if (capture) {
         const originalDonor = doc.firstChild?.child(1).firstChild;
@@ -109,7 +121,8 @@ for (const capture of [false, true]) {
         if (tables === 2) expect(node.eq(expectedUnaffected)).toBe(true);
         expect(node.childCount).toBe(2);
         expect(TableMap.get(node).problems).toBeNull();
-        if (tables === 1) node.forEach((row) => expect(row.childCount).toBeGreaterThan(0));
+        if (tables === 1)
+          node.forEach((row) => expect(row.childCount).toBeGreaterThan(0));
         node.forEach((row) => expect(row.attrs["_batchRowCleanup"]).toBeNull());
         return true;
       });
@@ -130,9 +143,11 @@ for (const mode of ["revision", "batch"] as const) {
       expect(TableMap.get(untouched).problems).toBeNull();
       const changed = schema.node("table", null, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", { rowspan: existingRow === "same" ? 3 : 2 }, [
-            paragraph("Left"),
-          ]),
+          schema.node(
+            "tableCell",
+            { rowspan: existingRow === "same" ? 3 : 2 },
+            [paragraph("Left")],
+          ),
           schema.node(
             "tableCell",
             { rowspan: existingRow === "same" ? 2 : 1, cellMarker: insertion },
@@ -141,9 +156,13 @@ for (const mode of ["revision", "batch"] as const) {
         ]),
         ...(existingRow === "same" ? [schema.node("tableRow")] : []),
         schema.node("tableRow", null, [
-          schema.node("tableCell", { rowspan: 2, cellMarker: insertion }, [paragraph("Span")]),
+          schema.node("tableCell", { rowspan: 2, cellMarker: insertion }, [
+            paragraph("Span"),
+          ]),
         ]),
-        schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph("Bottom left")])]),
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [paragraph("Bottom left")]),
+        ]),
       ]);
       expect(TableMap.get(changed).problems).toBeNull();
       const doc = schema.node("doc", null, [untouched, changed]);
@@ -164,13 +183,18 @@ for (const mode of ["revision", "batch"] as const) {
           view,
           snapshot,
           mode: "direct",
-          operations: [{ id: "delete", type: "deleteTableColumn", blockId: block.id }],
+          operations: [
+            { id: "delete", type: "deleteTableColumn", blockId: block.id },
+          ],
         });
         expect(result.applied).toHaveLength(1);
       }
       expect(view.state.doc.firstChild?.eq(untouched)).toBe(true);
-      expect(view.state.doc.lastChild?.childCount).toBe(existingRow === "same" ? 3 : 2);
-      if (existingRow === "same") expect(view.state.doc.lastChild?.child(1).childCount).toBe(0);
+      expect(view.state.doc.lastChild?.childCount).toBe(
+        existingRow === "same" ? 3 : 2,
+      );
+      if (existingRow === "same")
+        expect(view.state.doc.lastChild?.child(1).childCount).toBe(0);
       view.state.doc.descendants((node) => {
         if (node.type.spec["tableRole"] === "row")
           expect(node.attrs["_batchRowCleanup"]).toBeNull();

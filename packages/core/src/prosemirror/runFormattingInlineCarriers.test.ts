@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { schema } from "./schema";
 import {
   expandRunFormattingCarrier,
   RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS,
   selectRunFormattingCarrierRepresentations,
 } from "./runFormattingInlineCarriers";
+import { schema } from "./schema";
 
 describe("run-formatting inline carrier contract", () => {
   test("classifies every inline atom exposed by the editor schema", () => {
@@ -14,7 +14,9 @@ describe("run-formatting inline carrier contract", () => {
       .map(({ name }) => name)
       .toSorted();
 
-    expect(Object.keys(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).toSorted()).toEqual(schemaAtoms);
+    expect(
+      Object.keys(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).toSorted(),
+    ).toEqual(schemaAtoms);
     expect(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).toEqual({
       bookmarkBoundary: "not-a-run",
       commentReference: "not-a-run",
@@ -43,7 +45,10 @@ describe("run-formatting inline carrier contract", () => {
     ["break-run", () => schema.node("hardBreak")],
     ["page-break-carrier", () => schema.node("pageBreakRun")],
     ["note-marker-run", () => schema.node("noteMarker", { kind: "footnote" })],
-    ["symbol-run", () => schema.node("symbol", { font: "Wingdings", char: "F06F" })],
+    [
+      "symbol-run",
+      () => schema.node("symbol", { font: "Wingdings", char: "F06F" }),
+    ],
     [
       "field-run",
       () =>
@@ -56,18 +61,23 @@ describe("run-formatting inline carrier contract", () => {
           dirty: false,
         }),
     ],
-  ] as const)("expands a %s into exactly one owning representation", (disposition, makeNode) => {
-    const node = makeNode();
-    expect(expandRunFormattingCarrier(node, 7)).toEqual({
-      disposition,
-      node,
-      position: 7,
-      representations: [{ node, position: 7, role: "owner" }],
-    });
-  });
+  ] as const)(
+    "expands a %s into exactly one owning representation",
+    (disposition, makeNode) => {
+      const node = makeNode();
+      expect(expandRunFormattingCarrier(node, 7)).toEqual({
+        disposition,
+        node,
+        position: 7,
+        representations: [{ node, position: 7, role: "owner" }],
+      });
+    },
+  );
 
   test("does not expand an inline atom whose serialization has no run properties", () => {
-    expect(expandRunFormattingCarrier(schema.node("renderedPageBreak"), 7)).toBeNull();
+    expect(
+      expandRunFormattingCarrier(schema.node("renderedPageBreak"), 7),
+    ).toBeNull();
   });
 
   // The two preserved captures share a node type and not a serialization: the
@@ -85,18 +95,24 @@ describe("run-formatting inline carrier contract", () => {
         text: "",
         level,
       });
-      const doc = schema.node("doc", null, [schema.node("paragraph", null, [node])]);
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [node]),
+      ]);
 
-      expect(expandRunFormattingCarrier(node, 1)?.disposition ?? null).toBe(disposition);
-      expect(selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 2 })).toHaveLength(
-        selected,
+      expect(expandRunFormattingCarrier(node, 1)?.disposition ?? null).toBe(
+        disposition,
       );
+      expect(
+        selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 2 }),
+      ).toHaveLength(selected);
     },
   );
 
   test("keeps a page-break carrier structural during generic formatting selection", () => {
     const pageBreak = schema.node("pageBreakRun");
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [pageBreak])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [pageBreak]),
+    ]);
 
     expect(expandRunFormattingCarrier(pageBreak, 1)).toEqual({
       disposition: "page-break-carrier",
@@ -104,7 +120,9 @@ describe("run-formatting inline carrier contract", () => {
       position: 1,
       representations: [{ node: pageBreak, position: 1, role: "owner" }],
     });
-    expect(selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 2 })).toEqual([]);
+    expect(
+      selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 2 }),
+    ).toEqual([]);
   });
 
   test("expands a structured field once into only its serialized run representations", () => {
@@ -118,7 +136,12 @@ describe("run-formatting inline carrier contract", () => {
         fldLock: false,
         dirty: false,
       },
-      [schema.text("A"), schema.node("tab"), schema.node("renderedPageBreak"), schema.text("B")],
+      [
+        schema.text("A"),
+        schema.node("tab"),
+        schema.node("renderedPageBreak"),
+        schema.text("B"),
+      ],
     );
     const carrier = expandRunFormattingCarrier(field, 7);
 
@@ -148,9 +171,16 @@ describe("run-formatting inline carrier contract", () => {
         fldLock: false,
         dirty: false,
       },
-      [schema.text("A"), schema.node("tab"), schema.node("renderedPageBreak"), schema.text("B")],
+      [
+        schema.text("A"),
+        schema.node("tab"),
+        schema.node("renderedPageBreak"),
+        schema.text("B"),
+      ],
     );
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [field]),
+    ]);
 
     expect(
       selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 7 }).map(
@@ -183,7 +213,9 @@ describe("run-formatting inline carrier contract", () => {
       },
       [schema.text("AB")],
     );
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [field]),
+    ]);
 
     expect(
       selectRunFormattingCarrierRepresentations({ doc, from: 2, to: 3 }).map(
@@ -195,7 +227,9 @@ describe("run-formatting inline carrier contract", () => {
           to,
         }),
       ),
-    ).toEqual([{ name: "text", position: 2, role: "serialized-result", from: 2, to: 3 }]);
+    ).toEqual([
+      { name: "text", position: 2, role: "serialized-result", from: 2, to: 3 },
+    ]);
   });
 
   test("does not select a page-break result representation as generic field text", () => {
@@ -211,7 +245,9 @@ describe("run-formatting inline carrier contract", () => {
       },
       [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
     );
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [field]),
+    ]);
 
     const selected = selectRunFormattingCarrierRepresentations({
       doc,
@@ -219,6 +255,10 @@ describe("run-formatting inline carrier contract", () => {
       to: 6,
     });
 
-    expect(selected.map(({ node }) => node.type.name)).toEqual(["structuredField", "text", "text"]);
+    expect(selected.map(({ node }) => node.type.name)).toEqual([
+      "structuredField",
+      "text",
+      "text",
+    ]);
   });
 });

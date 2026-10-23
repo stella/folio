@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { buildNumberedListDocx } from "./__fixtures__/numbered-list";
 import { applyEditScript } from "./scenario";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const blocksOf = async (buffer: ArrayBuffer) =>
-  (await FolioDocxReviewer.fromBuffer(buffer)).getContent().map(expectParagraphBlock);
+  (await FolioDocxReviewer.fromBuffer(buffer))
+    .getContent()
+    .map(expectParagraphBlock);
 
 type MovedBlocksOptions = {
   base: ArrayBuffer;
@@ -15,7 +17,11 @@ type MovedBlocksOptions = {
   beforeBlockIndex: number;
 };
 
-const movedBlocks = async ({ base, blockIndex, beforeBlockIndex }: MovedBlocksOptions) => {
+const movedBlocks = async ({
+  base,
+  blockIndex,
+  beforeBlockIndex,
+}: MovedBlocksOptions) => {
   const result = await applyEditScript(base, [
     { type: "moveParagraph", blockIndex, beforeBlockIndex },
   ]);
@@ -61,9 +67,15 @@ describe("move paragraph scenarios", () => {
         { kind: "paragraph", text: "Destination", styleId: destinationStyleId },
       ]);
 
-      const blocks = await movedBlocks({ base, blockIndex: 0, beforeBlockIndex: 2 });
+      const blocks = await movedBlocks({
+        base,
+        blockIndex: 0,
+        beforeBlockIndex: 2,
+      });
 
-      expect(blocks.map(({ text, styleId }) => ({ text, styleId: styleId ?? null }))).toEqual([
+      expect(
+        blocks.map(({ text, styleId }) => ({ text, styleId: styleId ?? null })),
+      ).toEqual([
         { text: "Middle", styleId: null },
         { text: "Source", styleId: sourceStyleId ?? null },
         { text: "Destination", styleId: destinationStyleId ?? null },
@@ -72,8 +84,18 @@ describe("move paragraph scenarios", () => {
   );
 
   test.each([
-    { source: "level 1", sourceLevel: 1, destination: "level 0", destinationLevel: 0 },
-    { source: "unnumbered", sourceLevel: null, destination: "level 1", destinationLevel: 1 },
+    {
+      source: "level 1",
+      sourceLevel: 1,
+      destination: "level 0",
+      destinationLevel: 0,
+    },
+    {
+      source: "unnumbered",
+      sourceLevel: null,
+      destination: "level 1",
+      destinationLevel: 1,
+    },
   ] as const)(
     "preserve source list state $source when moving before destination $destination",
     async ({ sourceLevel, destinationLevel }) => {
@@ -84,7 +106,11 @@ describe("move paragraph scenarios", () => {
       ];
       const base = await buildNumberedListDocx(items);
 
-      const blocks = await movedBlocks({ base, blockIndex: 0, beforeBlockIndex: 2 });
+      const blocks = await movedBlocks({
+        base,
+        blockIndex: 0,
+        beforeBlockIndex: 2,
+      });
 
       expect(
         blocks.map(({ text, listReference }) => ({

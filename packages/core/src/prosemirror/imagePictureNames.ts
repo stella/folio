@@ -7,7 +7,9 @@ export const PICTURE_NAME_DOM_ATTRIBUTES = {
 } as const satisfies Record<keyof NonVisualDrawingNames, string>;
 
 /** Keep picture metadata separate from the containing drawing's accessibility strings. */
-export const pictureNamesFromDom = (element: HTMLElement): NonVisualDrawingNames =>
+export const pictureNamesFromDom = (
+  element: HTMLElement,
+): NonVisualDrawingNames =>
   Object.fromEntries(
     Object.entries(PICTURE_NAME_DOM_ATTRIBUTES).flatMap(([key, attribute]) => {
       const value = element.getAttribute(attribute);

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { createFolioEditorEmitter, type FolioSelectionEvent } from "./folioEditorEvents";
+import {
+  createFolioEditorEmitter,
+  type FolioSelectionEvent,
+} from "./folioEditorEvents";
 
 describe("createFolioEditorEmitter", () => {
   test("delivers an emitted payload to a subscriber", () => {

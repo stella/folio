@@ -1,9 +1,9 @@
 /** Seeded, shrinkable input traces shared by browser interaction specs. */
 
 import fc from "fast-check";
-import type { BrowserDragTarget } from "./browserDragTarget";
 
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
+import type { BrowserDragTarget } from "./browserDragTarget";
 
 export const BROWSER_TRACE_FIXED_SEEDS = {
   pullRequest: [11, 29],
@@ -12,7 +12,12 @@ export const BROWSER_TRACE_FIXED_SEEDS = {
 
 export type BrowserPasteKind = Extract<
   (typeof SUGGESTION_INPUT_KINDS)[number],
-  "pastePlain" | "pasteHtml" | "pasteWordHtml" | "pasteListHtml" | "pasteTable" | "pasteMultiBlock"
+  | "pastePlain"
+  | "pasteHtml"
+  | "pasteWordHtml"
+  | "pasteListHtml"
+  | "pasteTable"
+  | "pasteMultiBlock"
 >;
 
 export type BrowserInputAction =
@@ -21,7 +26,11 @@ export type BrowserInputAction =
   | { kind: "backspace" }
   | { kind: "delete" }
   | { kind: BrowserPasteKind; plain: string; html: string }
-  | { kind: "imeReplacement"; updates: string[]; completion: "commit" | "cancel" }
+  | {
+      kind: "imeReplacement";
+      updates: string[];
+      completion: "commit" | "cancel";
+    }
   | { kind: "cut" }
   | { kind: "dragCellDelete" }
   | { kind: "undo" }
@@ -47,7 +56,10 @@ export const BROWSER_INPUT_ACTION_DISPOSITIONS = {
   redo: "history",
   historyBurst: "history",
   selectionDrag: "selection",
-} as const satisfies Record<BrowserInputAction["kind"], "edit" | "history" | "selection">;
+} as const satisfies Record<
+  BrowserInputAction["kind"],
+  "edit" | "history" | "selection"
+>;
 
 export type BrowserInputTrace = {
   shape: keyof typeof BROWSER_SHAPE_TARGETS;
@@ -108,7 +120,9 @@ const suggestionActionArbitraries = {
   enter: fc.constant({ kind: "enter" } as const),
   backspace: fc.constant({ kind: "backspace" } as const),
   delete: fc.constant({ kind: "delete" } as const),
-  pastePlain: plainTextArbitrary.map((plain) => ({ kind: "pastePlain", plain, html: "" }) as const),
+  pastePlain: plainTextArbitrary.map(
+    (plain) => ({ kind: "pastePlain", plain, html: "" }) as const,
+  ),
   pasteHtml: fc.constantFrom(
     { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml } as const,
     { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteWebAppHtml } as const,
@@ -121,7 +135,10 @@ const suggestionActionArbitraries = {
     kind: "pasteListHtml",
     ...BROWSER_PASTE_PAYLOADS.pasteListHtml,
   } as const),
-  pasteTable: fc.constant({ kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable } as const),
+  pasteTable: fc.constant({
+    kind: "pasteTable",
+    ...BROWSER_PASTE_PAYLOADS.pasteTable,
+  } as const),
   pasteMultiBlock: fc.constant({
     kind: "pasteMultiBlock",
     ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock,
@@ -129,21 +146,30 @@ const suggestionActionArbitraries = {
   imeReplacement: browserImeActionArbitrary,
   cut: fc.constant({ kind: "cut" } as const),
   dragCellDelete: fc.constant({ kind: "dragCellDelete" } as const),
-} satisfies Record<(typeof SUGGESTION_INPUT_KINDS)[number], fc.Arbitrary<BrowserInputAction>>;
+} satisfies Record<
+  (typeof SUGGESTION_INPUT_KINDS)[number],
+  fc.Arbitrary<BrowserInputAction>
+>;
 
-export const browserSuggestionActionKinds = Object.keys(suggestionActionArbitraries);
+export const browserSuggestionActionKinds = Object.keys(
+  suggestionActionArbitraries,
+);
 
-export const commonActionArbitraries: readonly fc.Arbitrary<BrowserInputAction>[] = [
-  ...SUGGESTION_INPUT_KINDS.filter((kind) => kind !== "dragCellDelete").map(
-    (kind) => suggestionActionArbitraries[kind],
-  ),
-  fc.constant({ kind: "undo" } as const),
-  fc.constant({ kind: "redo" } as const),
-  fc.record({
-    kind: fc.constant("historyBurst"),
-    keys: fc.array(fc.constantFrom("undo", "redo"), { minLength: 2, maxLength: 6 }),
-  }),
-];
+export const commonActionArbitraries: readonly fc.Arbitrary<BrowserInputAction>[] =
+  [
+    ...SUGGESTION_INPUT_KINDS.filter((kind) => kind !== "dragCellDelete").map(
+      (kind) => suggestionActionArbitraries[kind],
+    ),
+    fc.constant({ kind: "undo" } as const),
+    fc.constant({ kind: "redo" } as const),
+    fc.record({
+      kind: fc.constant("historyBurst"),
+      keys: fc.array(fc.constantFrom("undo", "redo"), {
+        minLength: 2,
+        maxLength: 6,
+      }),
+    }),
+  ];
 
 /** A shape declares only targets it actually contains; text-only fixtures omit drags. */
 export const BROWSER_SHAPE_TARGETS = {
@@ -161,26 +187,38 @@ export const BROWSER_SHAPE_TARGETS = {
   "header-footer": null,
 } as const satisfies Record<string, BrowserDragTarget | null>;
 
-const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
+const isBrowserShape = (
+  shape: string,
+): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
   Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);
 const shapeArbitrary = fc.constantFrom(
   ...Object.keys(BROWSER_SHAPE_TARGETS).filter(isBrowserShape),
 );
 
 /** fast-check shrinks action sequences and their payloads to minimal failing traces. */
-export const browserInputTraceArbitrary = (maxActions = 6): fc.Arbitrary<BrowserInputTrace> =>
+export const browserInputTraceArbitrary = (
+  maxActions = 6,
+): fc.Arbitrary<BrowserInputTrace> =>
   shapeArbitrary.chain((shape) => {
     const actions = [...commonActionArbitraries];
     const target = BROWSER_SHAPE_TARGETS[shape];
-    if (target !== null) actions.push(fc.constant({ kind: "selectionDrag", target } as const));
-    if (target === "table") actions.push(suggestionActionArbitraries.dragCellDelete);
+    if (target !== null)
+      actions.push(fc.constant({ kind: "selectionDrag", target } as const));
+    if (target === "table")
+      actions.push(suggestionActionArbitraries.dragCellDelete);
     return fc.record({
       shape: fc.constant(shape),
-      actions: fc.array(fc.oneof(...actions), { minLength: 1, maxLength: maxActions }),
+      actions: fc.array(fc.oneof(...actions), {
+        minLength: 1,
+        maxLength: maxActions,
+      }),
     });
   });
 
-export type BrowserInputTraceConfig = { seeds: readonly number[]; runs: number };
+export type BrowserInputTraceConfig = {
+  seeds: readonly number[];
+  runs: number;
+};
 
 /** Read explicit PR/nightly overrides; defaults keep both lanes reproducible. */
 export const parseBrowserInputTraceConfig = (
@@ -190,7 +228,9 @@ export const parseBrowserInputTraceConfig = (
   const seedsText = env["FOLIO_FUZZ_SEEDS"];
   const runsText = env["FOLIO_FUZZ_RUNS"];
   const seeds =
-    seedsText === undefined ? BROWSER_TRACE_FIXED_SEEDS[lane] : seedsText.split(",").map(Number);
+    seedsText === undefined
+      ? BROWSER_TRACE_FIXED_SEEDS[lane]
+      : seedsText.split(",").map(Number);
   const defaultRuns = lane === "nightly" ? 20 : 2;
   const runs = runsText === undefined ? defaultRuns : Number(runsText);
   if (

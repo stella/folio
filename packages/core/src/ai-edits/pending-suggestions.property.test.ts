@@ -8,24 +8,32 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-import { createDocx } from "../docx/rezip";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { parseDocx } from "../docx/parser";
-import { repackDocx } from "../docx/rezip";
+import { createDocx, repackDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
 import { schema } from "../prosemirror/schema";
 import type { HeaderFooter } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
-import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 import { FolioDocxReviewer } from "./headless";
 import { FolioPendingSuggestionRegistry } from "./pending-suggestions";
+import {
+  createFolioAIEditSnapshot,
+  createFolioAITextRangeHandle,
+} from "./snapshot";
 
 const FIRST_ID = "10000001";
 const SECOND_ID = "10000002";
 const FIRST_TEXT = "First clause remains.";
 
-const documentBytes = async (secondText: string, includeSecond = true): Promise<ArrayBuffer> => {
+const documentBytes = async (
+  secondText: string,
+  includeSecond = true,
+): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = [
     { ...paragraph(FIRST_TEXT), paraId: FIRST_ID },
@@ -38,7 +46,9 @@ const projection = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map(({ id, kind, text }) => ({ id, kind, text }));
 
 const stage = async (text: string, replacement: string) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes(text));
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await documentBytes(text),
+  );
   const result = reviewer.applyOperations(
     [
       {
@@ -52,7 +62,9 @@ const stage = async (text: string, replacement: string) => {
     { undefinedReferences: "refuse", mode: "suggested" },
   );
   expect(result.applied).toHaveLength(1);
-  const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
+  const records = JSON.parse(
+    JSON.stringify(reviewer.exportPendingSuggestions()),
+  );
   expect(records).toHaveLength(1);
   return { reviewer, records };
 };
@@ -68,9 +80,14 @@ describe("host-persisted pending suggestions", () => {
           async (original, replacement) => {
             fc.pre(original !== replacement);
             const text = `Clause ${original}.`;
-            const { reviewer, records } = await stage(text, `Clause ${replacement}.`);
+            const { reviewer, records } = await stage(
+              text,
+              `Clause ${replacement}.`,
+            );
             const before = projection(reviewer);
-            const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+            const reopened = await FolioDocxReviewer.fromBuffer(
+              await reviewer.toBuffer(),
+            );
             expect(projection(reopened)).not.toEqual(before);
             expect(reopened.loadPendingSuggestions(records)).toEqual([
               { status: "restaged", suggestionId: "proposal-1" },
@@ -93,7 +110,9 @@ describe("host-persisted pending suggestions", () => {
 
   test("changed text and deleted anchors stay inert", async () => {
     const { records } = await stage("Second clause.", "Revised clause.");
-    const changed = await FolioDocxReviewer.fromBuffer(await documentBytes("Changed clause."));
+    const changed = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Changed clause."),
+    );
     const changedBefore = projection(changed);
     expect(changed.loadPendingSuggestions(records)).toEqual([
       { status: "stale", suggestionId: "proposal-1", reason: "textChanged" },
@@ -101,7 +120,9 @@ describe("host-persisted pending suggestions", () => {
     expect(projection(changed)).toEqual(changedBefore);
     expect(changed.exportPendingSuggestions()).toEqual([]);
 
-    const deleted = await FolioDocxReviewer.fromBuffer(await documentBytes("", false));
+    const deleted = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("", false),
+    );
     const deletedBefore = projection(deleted);
     expect(deleted.loadPendingSuggestions(records)).toEqual([
       { status: "stale", suggestionId: "proposal-1", reason: "missingAnchor" },
@@ -111,7 +132,9 @@ describe("host-persisted pending suggestions", () => {
 
   test("range records retain offsets and the selected-text hash", async () => {
     const text = "Second clause.";
-    const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes(text));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentBytes(text),
+    );
     const range = createFolioAITextRangeHandle({
       blockId: SECOND_ID,
       text,
@@ -119,7 +142,14 @@ describe("host-persisted pending suggestions", () => {
       endOffset: 6,
     });
     const result = reviewer.applyOperations(
-      [{ id: "range-proposal", type: "replaceRange", range, replace: "Revised" }],
+      [
+        {
+          id: "range-proposal",
+          type: "replaceRange",
+          range,
+          replace: "Revised",
+        },
+      ],
       { undefinedReferences: "refuse", mode: "suggested" },
     );
     expect(result.applied).toHaveLength(1);
@@ -132,9 +162,12 @@ describe("host-persisted pending suggestions", () => {
   });
 
   test("loading retains the original proposal author", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."), {
-      author: "Origin Author",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Second clause."),
+      {
+        author: "Origin Author",
+      },
+    );
     const result = reviewer.applyOperations(
       [
         {
@@ -148,10 +181,15 @@ describe("host-persisted pending suggestions", () => {
       { undefinedReferences: "refuse", mode: "suggested" },
     );
     expect(result.applied).toHaveLength(1);
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-      author: "Review Author",
-    });
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        author: "Review Author",
+      },
+    );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "authored" },
     ]);
@@ -161,7 +199,9 @@ describe("host-persisted pending suggestions", () => {
   });
 
   test("sequential proposals in one paragraph replay in order", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Second clause."),
+    );
     for (const [id, find, replace] of [
       ["first-proposal", "Second", "Revised"],
       ["second-proposal", "clause", "section"],
@@ -172,19 +212,25 @@ describe("host-persisted pending suggestions", () => {
       );
       expect(result.applied).toHaveLength(1);
     }
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
     expect(records).toHaveLength(2);
     const before = projection(reviewer);
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "first-proposal" },
       { status: "restaged", suggestionId: "second-proposal" },
     ]);
     expect(projection(reopened)).toEqual(before);
-    const loadedInBatches = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
-    expect(loadedInBatches.loadPendingSuggestions(records.slice(0, 1))).toEqual([
-      { status: "restaged", suggestionId: "first-proposal" },
-    ]);
+    const loadedInBatches = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
+    expect(loadedInBatches.loadPendingSuggestions(records.slice(0, 1))).toEqual(
+      [{ status: "restaged", suggestionId: "first-proposal" }],
+    );
     expect(loadedInBatches.loadPendingSuggestions(records.slice(1))).toEqual([
       { status: "restaged", suggestionId: "second-proposal" },
     ]);
@@ -192,7 +238,9 @@ describe("host-persisted pending suggestions", () => {
   });
 
   test("replay records the comment id allocated by the host", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Second clause."),
+    );
     expect(
       reviewer.applyOperations(
         [
@@ -210,7 +258,9 @@ describe("host-persisted pending suggestions", () => {
     ).toHaveLength(1);
     const records = reviewer.exportPendingSuggestions();
     expect(records.at(0)?.commentId).toBeDefined();
-    const source = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const source = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     const snapshot = source.snapshot();
     const registry = new FolioPendingSuggestionRegistry();
     let active = false;
@@ -223,12 +273,17 @@ describe("host-persisted pending suggestions", () => {
           active = true;
           return {
             applied: [
-              { id: record.operation.id, suggestionId: record.suggestionId, commentId: 999 },
+              {
+                id: record.operation.id,
+                suggestionId: record.suggestionId,
+                commentId: 999,
+              },
             ],
             skipped: [],
           };
         },
-        activeSuggestionIds: () => new Set(active ? ["commented-proposal"] : []),
+        activeSuggestionIds: () =>
+          new Set(active ? ["commented-proposal"] : []),
       }),
     ).toEqual([{ status: "restaged", suggestionId: "commented-proposal" }]);
     const replayed = registry.exportPendingSuggestions({
@@ -240,7 +295,9 @@ describe("host-persisted pending suggestions", () => {
 
   test("a formatting-only document change invalidates a saved proposal", async () => {
     const { records } = await stage("Second clause.", "Revised clause.");
-    const changed = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."));
+    const changed = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Second clause."),
+    );
     const range = createFolioAITextRangeHandle({
       blockId: SECOND_ID,
       text: "Second clause.",
@@ -249,17 +306,30 @@ describe("host-persisted pending suggestions", () => {
     });
     expect(
       changed.applyOperations(
-        [{ id: "direct-format", type: "formatRange", range, formatting: { bold: true } }],
+        [
+          {
+            id: "direct-format",
+            type: "formatRange",
+            range,
+            formatting: { bold: true },
+          },
+        ],
         { undefinedReferences: "refuse", mode: "direct" },
       ).applied,
     ).toHaveLength(1);
     expect(changed.loadPendingSuggestions(records)).toEqual([
-      { status: "stale", suggestionId: "proposal-1", reason: "documentChanged" },
+      {
+        status: "stale",
+        suggestionId: "proposal-1",
+        reason: "documentChanged",
+      },
     ]);
   });
 
   test("a formatted baseline keeps the same fingerprint across a save", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Second clause."),
+    );
     const range = createFolioAITextRangeHandle({
       blockId: SECOND_ID,
       text: "Second clause.",
@@ -268,7 +338,14 @@ describe("host-persisted pending suggestions", () => {
     });
     expect(
       reviewer.applyOperations(
-        [{ id: "baseline-format", type: "formatRange", range, formatting: { bold: true } }],
+        [
+          {
+            id: "baseline-format",
+            type: "formatRange",
+            range,
+            formatting: { bold: true },
+          },
+        ],
         { undefinedReferences: "refuse", mode: "direct" },
       ).applied,
     ).toHaveLength(1);
@@ -286,8 +363,12 @@ describe("host-persisted pending suggestions", () => {
         { undefinedReferences: "refuse", mode: "suggested" },
       ).applied,
     ).toHaveLength(1);
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "formatted-proposal" },
     ]);
@@ -309,8 +390,12 @@ describe("host-persisted pending suggestions", () => {
         { undefinedReferences: "refuse", mode: "direct" },
       ).applied,
     ).toHaveLength(1);
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "proposal-1" },
     ]);
@@ -355,21 +440,31 @@ describe("host-persisted pending suggestions", () => {
       },
     });
     expect(result.applied).toHaveLength(1);
-    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
     expect(records.at(0)?.story).toEqual(story);
     const live = reviewer.snapshotStory(story)?.blocks.map(({ text }) => text);
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "header-proposal" },
     ]);
-    expect(reopened.snapshotStory(story)?.blocks.map(({ text }) => text)).toEqual(live);
+    expect(
+      reopened.snapshotStory(story)?.blocks.map(({ text }) => text),
+    ).toEqual(live);
   });
 
   test("a duplicated paragraph id cannot redirect a saved proposal", async () => {
     const { records } = await stage("Second clause.", "Revised clause.");
     const duplicateDoc = schema.node("doc", null, [
-      schema.node("paragraph", { paraId: SECOND_ID }, [schema.text("Second clause.")]),
-      schema.node("paragraph", { paraId: SECOND_ID }, [schema.text("Second clause.")]),
+      schema.node("paragraph", { paraId: SECOND_ID }, [
+        schema.text("Second clause."),
+      ]),
+      schema.node("paragraph", { paraId: SECOND_ID }, [
+        schema.text("Second clause."),
+      ]),
     ]);
     const snapshot = createFolioAIEditSnapshot(duplicateDoc);
     const registry = new FolioPendingSuggestionRegistry();
@@ -385,23 +480,37 @@ describe("host-persisted pending suggestions", () => {
         },
         activeSuggestionIds: () => new Set(),
       }),
-    ).toEqual([{ status: "stale", suggestionId: "proposal-1", reason: "ambiguousAnchor" }]);
+    ).toEqual([
+      {
+        status: "stale",
+        suggestionId: "proposal-1",
+        reason: "ambiguousAnchor",
+      },
+    ]);
     expect(applied).toBe(false);
   });
 
   test("unsupported record versions stay inert", async () => {
     const { records } = await stage("Second clause.", "Revised clause.");
-    const target = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."));
+    const target = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Second clause."),
+    );
     const record = records.at(0);
     expect(target.loadPendingSuggestions([{ ...record, version: 2 }])).toEqual([
-      { status: "stale", suggestionId: "proposal-1", reason: "unsupportedVersion" },
+      {
+        status: "stale",
+        suggestionId: "proposal-1",
+        reason: "unsupportedVersion",
+      },
     ]);
     expect(target.exportPendingSuggestions()).toEqual([]);
   });
 
   test("a loaded suggestion id cannot mask a different operation", async () => {
     const { records } = await stage("Second clause.", "Revised clause.");
-    const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentBytes("Second clause."),
+    );
     expect(reviewer.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "proposal-1" },
     ]);

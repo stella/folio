@@ -16,9 +16,16 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
-import type { Document, InlineWrapper, Paragraph, ParagraphContent } from "../../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  Document,
+  InlineWrapper,
+  Paragraph,
+  ParagraphContent,
+} from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import type { InlineWrapperLayer } from "../schema/marks";
 import { toProseDoc } from "./toProseDoc";
@@ -53,10 +60,13 @@ const leafOf = (content: Paragraph["content"]): PMNode => {
   return leaf;
 };
 
-const markNamesOf = (leaf: PMNode): string[] => leaf.marks.map((mark) => mark.type.name);
+const markNamesOf = (leaf: PMNode): string[] =>
+  leaf.marks.map((mark) => mark.type.name);
 
 const stackOf = (leaf: PMNode): unknown =>
-  leaf.marks.find((mark) => mark.type.name === "inlineWrapper")?.attrs["stack"] ?? [];
+  leaf.marks.find((mark) => mark.type.name === "inlineWrapper")?.attrs[
+    "stack"
+  ] ?? [];
 
 /** An authored wrapper and the layer it must reach the editor as. */
 type AuthoredWrapper = {
@@ -82,7 +92,10 @@ const wrapperArbitrary: fc.Arbitrary<AuthoredWrapper> = fc
   );
 
 /** `inner` wrapped by `authored`, outermost first. */
-const nest = (authored: readonly AuthoredWrapper[], inner: ParagraphContent): ParagraphContent => {
+const nest = (
+  authored: readonly AuthoredWrapper[],
+  inner: ParagraphContent,
+): ParagraphContent => {
   let nested = inner;
   for (const { wrapper } of [...authored].reverse()) {
     nested = { ...wrapper, content: [nested] };
@@ -95,11 +108,14 @@ describe("the inline wrapper mark a projected leaf carries", () => {
     "is the authored nesting, outermost first",
     () => {
       fc.assert(
-        fc.property(fc.array(wrapperArbitrary, { minLength: 1, maxLength: 3 }), (authored) => {
-          expect(stackOf(leafOf([nest(authored, RUN)]))).toEqual(
-            authored.map(({ layer }) => layer),
-          );
-        }),
+        fc.property(
+          fc.array(wrapperArbitrary, { minLength: 1, maxLength: 3 }),
+          (authored) => {
+            expect(stackOf(leafOf([nest(authored, RUN)]))).toEqual(
+              authored.map(({ layer }) => layer),
+            );
+          },
+        ),
         propertyConfig({ numRuns: 200 }),
       );
     },
@@ -126,8 +142,12 @@ describe("the inline wrapper mark a projected leaf carries", () => {
         ],
       },
     ]);
-    expect(markNamesOf(leaf)).toEqual(expect.arrayContaining(["insertion", "inlineWrapper"]));
-    expect(stackOf(leaf)).toEqual([{ kind: "bidi", control: "override", direction: "rtl" }]);
+    expect(markNamesOf(leaf)).toEqual(
+      expect.arrayContaining(["insertion", "inlineWrapper"]),
+    );
+    expect(stackOf(leaf)).toEqual([
+      { kind: "bidi", control: "override", direction: "rtl" },
+    ]);
   });
 
   test("survives inside a content control", () => {

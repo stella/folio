@@ -19,6 +19,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorState, PluginSpec } from "prosemirror-state";
+
 import type { PluginKeyOwner } from "../pluginKeyOwner";
 
 const SET_META = "set";
@@ -47,7 +48,9 @@ export const createDocScanPlugin = <TConfig, TRange>({
   initialConfig,
   scan,
   onRangesChange,
-}: DocScanPluginOptions<TConfig, TRange>): Plugin<DocScanState<TConfig, TRange>> => {
+}: DocScanPluginOptions<TConfig, TRange>): Plugin<
+  DocScanState<TConfig, TRange>
+> => {
   const spec: PluginSpec<DocScanState<TConfig, TRange>> = {
     key: key.createKey(),
     state: {
@@ -58,7 +61,8 @@ export const createDocScanPlugin = <TConfig, TRange>({
         };
       },
       apply(tr, prev, _oldState, newState): DocScanState<TConfig, TRange> {
-        const setMeta = tr.getMeta(key) as { type: typeof SET_META; config: TConfig } | undefined;
+        const setMeta = tr.getMeta(key) as
+          { type: typeof SET_META; config: TConfig } | undefined;
 
         if (setMeta?.type === SET_META) {
           return {

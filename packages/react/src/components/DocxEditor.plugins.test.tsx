@@ -2,12 +2,13 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
-import { panic } from "better-result";
-import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
+import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
@@ -26,7 +27,10 @@ import type { PagedEditorRef } from "../paged-editor/PagedEditor";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -38,7 +42,9 @@ const createHostPluginFixture = () => {
   const plugin = new Plugin({
     key,
     appendTransaction(transactions, _oldState, state) {
-      return transactions.some((transaction) => transaction.getMeta(key) === true)
+      return transactions.some(
+        (transaction) => transaction.getMeta(key) === true,
+      )
         ? state.tr.insertText("!", state.doc.content.size - 1)
         : null;
     },
@@ -54,7 +60,8 @@ const createHostPluginFixture = () => {
 };
 
 test("host plugins process transactions after replacing the body document", async () => {
-  const { key, plugin, plugins, views, onEditorViewReady } = createHostPluginFixture();
+  const { key, plugin, plugins, views, onEditorViewReady } =
+    createHostPluginFixture();
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -63,7 +70,11 @@ test("host plugins process transactions after replacing the body document", asyn
     const document = createEmptyDocument({ initialText: text });
     await act(async () => {
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <DocxEditor
             ref={editor}
             document={document}
@@ -81,7 +92,8 @@ test("host plugins process transactions after replacing the body document", asyn
       await act(async () => {
         editor.current?.ensureEditorView({ focus: false });
       });
-      const view = views.at(-1) ?? panic("The editor did not report its body view");
+      const view =
+        views.at(-1) ?? panic("The editor did not report its body view");
       expect(view.state.doc.textContent).toBe(text);
       expect(view.state.plugins).toContain(plugin);
       await act(async () => {
@@ -102,8 +114,15 @@ test("replacing the document resets the scroll position", async () => {
   const renderDocument = async (text: string) => {
     await act(async () => {
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
-          <DocxEditor document={createEmptyDocument({ initialText: text })} showToolbar={false} />
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
+          <DocxEditor
+            document={createEmptyDocument({ initialText: text })}
+            showToolbar={false}
+          />
         </IntlProvider>,
       );
     });
@@ -161,11 +180,17 @@ test("host view-ready navigation wins over a pending initial scroll offset", asy
   globalThis.cancelAnimationFrame = (id) => {
     frames.delete(id);
   };
-  const initialDocument = createEmptyDocument({ initialText: "Initial scroll precedence" });
+  const initialDocument = createEmptyDocument({
+    initialText: "Initial scroll precedence",
+  });
   const renderOffset = async (initialScrollTop: number) => {
     await act(async () => {
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <DocxEditor
             ref={editor}
             document={initialDocument}
@@ -182,7 +207,8 @@ test("host view-ready navigation wins over a pending initial scroll offset", asy
     await act(async () => {
       editor.current?.ensureEditorView({ focus: false });
     });
-    const scrollRoot = editor.current?.getScrollRoot() ?? panic("The editor has no scroll root");
+    const scrollRoot =
+      editor.current?.getScrollRoot() ?? panic("The editor has no scroll root");
     expect(scrollRoot.scrollTop).toBe(321);
     const scheduled = [...frames.values()];
     frames.clear();
@@ -211,7 +237,8 @@ test("host view-ready navigation wins over a pending initial scroll offset", asy
 for (const existingMarker of [undefined, "host-owned"]) {
   test(`external paged-editor scroll roots preserve marker ownership (${existingMarker ?? "unmarked"})`, async () => {
     const scrollRoot = document.createElement("div");
-    if (existingMarker !== undefined) scrollRoot.setAttribute("data-folio-scroll", existingMarker);
+    if (existingMarker !== undefined)
+      scrollRoot.setAttribute("data-folio-scroll", existingMarker);
     const container = document.createElement("div");
     scrollRoot.append(container);
     document.body.append(scrollRoot);
@@ -222,7 +249,11 @@ for (const existingMarker of [undefined, "host-owned"]) {
     try {
       await act(async () => {
         root.render(
-          <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+          <IntlProvider
+            locale="en"
+            timeZone="UTC"
+            messages={getFolioMessages("en")}
+          >
             <PagedEditor
               ref={editor}
               document={null}
@@ -235,9 +266,13 @@ for (const existingMarker of [undefined, "host-owned"]) {
         );
       });
       expect(editor.current?.getScrollRoot()).toBe(scrollRoot);
-      expect(scrollRoot.getAttribute("data-folio-scroll")).toBe(existingMarker ?? "");
+      expect(scrollRoot.getAttribute("data-folio-scroll")).toBe(
+        existingMarker ?? "",
+      );
       await act(async () => root.unmount());
-      expect(scrollRoot.getAttribute("data-folio-scroll")).toBe(existingMarker ?? null);
+      expect(scrollRoot.getAttribute("data-folio-scroll")).toBe(
+        existingMarker ?? null,
+      );
     } finally {
       scrollRoot.remove();
     }
@@ -271,13 +306,19 @@ test("stable editor plugins publish only the latest committed host callbacks", a
     for (const callback of callbacks) {
       await act(async () => {
         root.render(
-          <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+          <IntlProvider
+            locale="en"
+            timeZone="UTC"
+            messages={getFolioMessages("en")}
+          >
             <DocxEditor
               ref={editor}
               document={initialDocument}
               showToolbar={false}
               showTemplateDirectives
-              onAnonymizationMatchesChange={callback.onAnonymizationMatchesChange}
+              onAnonymizationMatchesChange={
+                callback.onAnonymizationMatchesChange
+              }
               onSlashMenuChange={callback.onSlashMenuChange}
               onSlashMenuKeyAction={callback.onSlashMenuKeyAction}
             />
@@ -288,27 +329,39 @@ test("stable editor plugins publish only the latest committed host callbacks", a
         editor.current?.ensureEditorView({ focus: false });
       });
       const view =
-        editor.current?.getEditor()?.getView() ?? panic("The editor did not expose its body view");
+        editor.current?.getEditor()?.getView() ??
+        panic("The editor did not expose its body view");
       const plugins = view.state.plugins;
       const anonymization =
-        anonymizationDecorationsKey.get(view.state) ?? panic("Missing anonymization plugin");
-      const slash = templateSlashMenuKey.get(view.state) ?? panic("Missing slash plugin");
+        anonymizationDecorationsKey.get(view.state) ??
+        panic("Missing anonymization plugin");
+      const slash =
+        templateSlashMenuKey.get(view.state) ?? panic("Missing slash plugin");
       if (initialPlugins) {
         expect(plugins).toEqual(initialPlugins);
       } else {
         initialPlugins = plugins;
       }
       const before = new Map(
-        callbacks.map((hostCallback) => [hostCallback, { ...hostCallback.calls }]),
+        callbacks.map((hostCallback) => [
+          hostCallback,
+          { ...hostCallback.calls },
+        ]),
       );
       await act(async () => {
         const { key, payload } = setAnonymizationTermsMeta([
           { canonical: "Alice", label: "person" },
         ]);
         view.dispatch(
-          view.state.tr.setMeta(key, payload).setSelection(TextSelection.create(view.state.doc, 1)),
+          view.state.tr
+            .setMeta(key, payload)
+            .setSelection(TextSelection.create(view.state.doc, 1)),
         );
-        slash.props.handleKeyDown?.call(slash, view, new KeyboardEvent("keydown", { key: "/" }));
+        slash.props.handleKeyDown?.call(
+          slash,
+          view,
+          new KeyboardEvent("keydown", { key: "/" }),
+        );
         slash.props.handleKeyDown?.call(
           slash,
           view,
@@ -316,7 +369,8 @@ test("stable editor plugins publish only the latest committed host callbacks", a
         );
       });
       expect(view.state.plugins).toContain(anonymization);
-      const baseline = before.get(callback) ?? panic("Missing callback baseline");
+      const baseline =
+        before.get(callback) ?? panic("Missing callback baseline");
       expect(callback.calls.matches).toBeGreaterThan(baseline.matches);
       expect(callback.calls.slash).toBeGreaterThan(baseline.slash);
       expect(callback.calls.keys).toBeGreaterThan(baseline.keys);
@@ -328,7 +382,9 @@ test("stable editor plugins publish only the latest committed host callbacks", a
       await act(async () => {
         view.dispatch(clearTemplateSlashMenu(view.state.tr));
         view.dispatch(
-          view.state.tr.delete(1, view.state.doc.content.size - 1).insertText("Alice", 1),
+          view.state.tr
+            .delete(1, view.state.doc.content.size - 1)
+            .insertText("Alice", 1),
         );
       });
     }

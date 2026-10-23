@@ -10,12 +10,12 @@ import { normalizeFailureMessage } from "./lib/corpus-signature";
  */
 describe("normalizeFailureMessage over paths", () => {
   test("erases an absolute path", () => {
-    expect(normalizeFailureMessage("cannot read /Users/someone/cache/a.docx")).toBe(
+    expect(normalizeFailureMessage("cannot read /srv/cache/a.docx")).toBe(
       "cannot read <path>",
     );
-    expect(normalizeFailureMessage("cannot read C:\\Users\\someone\\a.docx")).toBe(
-      "cannot read <path>",
-    );
+    expect(
+      normalizeFailureMessage("cannot read C:\\Users\\someone\\a.docx"),
+    ).toBe("cannot read <path>");
   });
 
   test("keeps a package part name whole, however deep", () => {

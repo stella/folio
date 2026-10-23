@@ -1,8 +1,8 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -10,7 +10,11 @@ setDefaultTimeout(scanTestTimeout(30_000));
 // Source imports must be resolved by the bundler, never by a dev server URL.
 const DEV_ONLY_URL =
   /\/@(?:fs|id|vite|react-refresh)(?:\/|\b)|\/node_modules\/\.vite\/|["'`]\/(?:src|packages|tests)\/|["'`]\/[^"'`\s]+\.(?:ts|tsx|vue)(?:[?"'`])/u;
-const roots = ["tests/visual", "packages/playground", "packages/playground-vue"];
+const roots = [
+  "tests/visual",
+  "packages/playground",
+  "packages/playground-vue",
+];
 const repo = resolve(import.meta.dir, "..");
 
 test("browser harness and playground sources contain no dev-only transport URLs", () => {
@@ -20,7 +24,8 @@ test("browser harness and playground sources contain no dev-only transport URLs"
       cwd: resolve(repo, root),
       onlyFiles: true,
     })) {
-      if (file.startsWith("node_modules/") || file.startsWith("dist/")) continue;
+      if (file.startsWith("node_modules/") || file.startsWith("dist/"))
+        continue;
       const source = readFileSync(resolve(repo, root, file), "utf8");
       if (DEV_ONLY_URL.test(source)) violations.push(`${root}/${file}`);
     }
@@ -31,9 +36,13 @@ test("browser harness and playground sources contain no dev-only transport URLs"
 test("guard covers filesystem, transformed imports, Vite client and optimized dependencies", () => {
   for (const prefix of ["fs", "id", "vite"]) {
     expect(DEV_ONLY_URL.test(`import("/@${prefix}/helper.ts")`)).toBe(true);
-    expect(DEV_ONLY_URL.test(`const url = \`/@${prefix}\${absolutePath}\``)).toBe(true);
+    expect(
+      DEV_ONLY_URL.test(`const url = \`/@${prefix}\${absolutePath}\``),
+    ).toBe(true);
   }
-  expect(DEV_ONLY_URL.test('import("/node_modules/.vite/deps/helper.js")')).toBe(true);
+  expect(
+    DEV_ONLY_URL.test('import("/node_modules/.vite/deps/helper.js")'),
+  ).toBe(true);
   for (const url of [
     "/src/helper.js",
     "/packages/core/helper.js",

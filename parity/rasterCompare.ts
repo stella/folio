@@ -4,10 +4,9 @@
  * fills, images, shapes, and glyph rendering.
  */
 
+import { TaggedError } from "better-result";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
@@ -28,7 +27,9 @@ const PIXELMATCH_THRESHOLD = 0.1;
 const PAGE_EDGE_ROUNDING_TOLERANCE_PX = 1;
 
 /** Signals invalid or resource-exceeding raster comparison input. */
-export class RasterComparisonError extends TaggedError("RasterComparisonError")<{
+export class RasterComparisonError extends TaggedError(
+  "RasterComparisonError",
+)<{
   message: string;
 }> {}
 
@@ -53,8 +54,13 @@ type DecodedPng = {
 type PngDimensions = { width: number; height: number };
 
 const readPngDimensions = (bytes: Buffer, filePath: string): PngDimensions => {
-  if (bytes.length < 24 || !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
-    throw rasterError(`Invalid PNG generated for parity comparison: ${filePath}`);
+  if (
+    bytes.length < 24 ||
+    !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+  ) {
+    throw rasterError(
+      `Invalid PNG generated for parity comparison: ${filePath}`,
+    );
   }
 
   const width = bytes.readUInt32BE(16);
@@ -94,8 +100,13 @@ const writeDiffPng = async (
   remainingBytes: number,
 ): Promise<number> => {
   const bytes = PNG.sync.write(diff);
-  if (bytes.byteLength > MAX_DIFF_PNG_BYTES || bytes.byteLength > remainingBytes) {
-    throw rasterError(`Raster diff output exceeds its byte budget: ${filePath}`);
+  if (
+    bytes.byteLength > MAX_DIFF_PNG_BYTES ||
+    bytes.byteLength > remainingBytes
+  ) {
+    throw rasterError(
+      `Raster diff output exceeds its byte budget: ${filePath}`,
+    );
   }
   await Bun.write(filePath, bytes);
   return bytes.byteLength;
@@ -106,7 +117,11 @@ const whiteCanvas = (width: number, height: number): Buffer => {
   return data;
 };
 
-const fitToCanvas = (source: DecodedPng, width: number, height: number): Buffer => {
+const fitToCanvas = (
+  source: DecodedPng,
+  width: number,
+  height: number,
+): Buffer => {
   if (source.width === width && source.height === height) {
     return source.data;
   }
@@ -117,7 +132,12 @@ const fitToCanvas = (source: DecodedPng, width: number, height: number): Buffer 
   const copiedBytesPerRow = Math.min(source.width, width) * 4;
   for (let row = 0; row < Math.min(source.height, height); row += 1) {
     const sourceStart = row * sourceStride;
-    source.data.copy(padded, row * targetStride, sourceStart, sourceStart + copiedBytesPerRow);
+    source.data.copy(
+      padded,
+      row * targetStride,
+      sourceStart,
+      sourceStart + copiedBytesPerRow,
+    );
   }
   return padded;
 };
@@ -148,7 +168,9 @@ const normalizeRevisionColorPixels = (data: Buffer): Buffer => {
     const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
     if (chroma < 32) continue;
     const nearestDistance = Math.min(
-      ...REVISION_COLOR_SWATCHES.map(([r, g, b]) => Math.hypot(red - r, green - g, blue - b)),
+      ...REVISION_COLOR_SWATCHES.map(([r, g, b]) =>
+        Math.hypot(red - r, green - g, blue - b),
+      ),
     );
     if (nearestDistance > 72) continue;
     normalized[offset] = REVISION_INK[0];
@@ -158,7 +180,11 @@ const normalizeRevisionColorPixels = (data: Buffer): Buffer => {
   return normalized;
 };
 
-const markOutsideOverlap = (diff: PNG, overlapWidth: number, overlapHeight: number): void => {
+const markOutsideOverlap = (
+  diff: PNG,
+  overlapWidth: number,
+  overlapHeight: number,
+): void => {
   for (let y = 0; y < diff.height; y += 1) {
     for (let x = 0; x < diff.width; x += 1) {
       if (x < overlapWidth && y < overlapHeight) continue;
@@ -204,11 +230,14 @@ const comparePresentPage = async ({
   remainingOutputBytes,
   normalizeRevisionColors,
 }: ComparePresentPageOptions): Promise<ComparedPage> => {
-  const hasDimensionMismatch = reference.width !== folio.width || reference.height !== folio.height;
+  const hasDimensionMismatch =
+    reference.width !== folio.width || reference.height !== folio.height;
   const hasOnlyPageEdgeRounding =
     hasDimensionMismatch &&
-    Math.abs(reference.width - folio.width) <= PAGE_EDGE_ROUNDING_TOLERANCE_PX &&
-    Math.abs(reference.height - folio.height) <= PAGE_EDGE_ROUNDING_TOLERANCE_PX;
+    Math.abs(reference.width - folio.width) <=
+      PAGE_EDGE_ROUNDING_TOLERANCE_PX &&
+    Math.abs(reference.height - folio.height) <=
+      PAGE_EDGE_ROUNDING_TOLERANCE_PX;
   const width = hasOnlyPageEdgeRounding
     ? Math.min(reference.width, folio.width)
     : Math.max(reference.width, folio.width);
@@ -260,8 +289,12 @@ const comparePresentPage = async ({
     const diffPixels = overlapDiffPixels + totalPixels - overlapPixels;
     const revisionColorAdjustedDiffPixels = normalizeRevisionColors
       ? pixelmatch(
-          normalizeRevisionColorPixels(fitToCanvas(reference, overlapWidth, overlapHeight)),
-          normalizeRevisionColorPixels(fitToCanvas(folio, overlapWidth, overlapHeight)),
+          normalizeRevisionColorPixels(
+            fitToCanvas(reference, overlapWidth, overlapHeight),
+          ),
+          normalizeRevisionColorPixels(
+            fitToCanvas(folio, overlapWidth, overlapHeight),
+          ),
           undefined,
           overlapWidth,
           overlapHeight,
@@ -271,7 +304,11 @@ const comparePresentPage = async ({
         overlapPixels
       : undefined;
     markOutsideOverlap(diff, overlapWidth, overlapHeight);
-    const outputBytes = await writeDiffPng(diff, diffPath, remainingOutputBytes);
+    const outputBytes = await writeDiffPng(
+      diff,
+      diffPath,
+      remainingOutputBytes,
+    );
     return {
       comparison: {
         status: "dimension-mismatch",
@@ -285,7 +322,8 @@ const comparePresentPage = async ({
         similarity: 1 - diffPixels / totalPixels,
         ...(revisionColorAdjustedDiffPixels !== undefined
           ? {
-              revisionColorAdjustedSimilarity: 1 - revisionColorAdjustedDiffPixels / totalPixels,
+              revisionColorAdjustedSimilarity:
+                1 - revisionColorAdjustedDiffPixels / totalPixels,
             }
           : {}),
       },
@@ -325,7 +363,9 @@ const comparePresentPage = async ({
       diffPixels,
       totalPixels,
       similarity,
-      ...(revisionColorAdjustedSimilarity !== undefined ? { revisionColorAdjustedSimilarity } : {}),
+      ...(revisionColorAdjustedSimilarity !== undefined
+        ? { revisionColorAdjustedSimilarity }
+        : {}),
     },
     outputBytes,
   };
@@ -411,9 +451,15 @@ export const comparePageRasters = async ({
       ]);
       totalInputBytes += reference.sourceBytes + folio.sourceBytes;
       totalRasterPixels +=
-        Math.max(reference.width, folio.width) * Math.max(reference.height, folio.height);
-      if (totalInputBytes > MAX_TOTAL_PNG_BYTES || totalRasterPixels > MAX_TOTAL_RASTER_PIXELS) {
-        throw rasterError("Raster comparison exceeds its aggregate input budget");
+        Math.max(reference.width, folio.width) *
+        Math.max(reference.height, folio.height);
+      if (
+        totalInputBytes > MAX_TOTAL_PNG_BYTES ||
+        totalRasterPixels > MAX_TOTAL_RASTER_PIXELS
+      ) {
+        throw rasterError(
+          "Raster comparison exceeds its aggregate input budget",
+        );
       }
       // oxlint-disable-next-line no-await-in-loop -- diff artifacts are emitted in deterministic page order
       result = await comparePresentPage({
@@ -433,8 +479,13 @@ export const comparePageRasters = async ({
       const present = await decodePng(presentPath);
       totalInputBytes += present.sourceBytes;
       totalRasterPixels += present.width * present.height;
-      if (totalInputBytes > MAX_TOTAL_PNG_BYTES || totalRasterPixels > MAX_TOTAL_RASTER_PIXELS) {
-        throw rasterError("Raster comparison exceeds its aggregate input budget");
+      if (
+        totalInputBytes > MAX_TOTAL_PNG_BYTES ||
+        totalRasterPixels > MAX_TOTAL_RASTER_PIXELS
+      ) {
+        throw rasterError(
+          "Raster comparison exceeds its aggregate input budget",
+        );
       }
       // oxlint-disable-next-line no-await-in-loop -- diff artifacts are emitted in deterministic page order
       result = await compareMissingPage({
@@ -456,7 +507,9 @@ export const comparePageRasters = async ({
   const revisionColorAdjustedDiffPixels = normalizeRevisionColors
     ? pages.reduce(
         (sum, page) =>
-          sum + page.totalPixels * (1 - (page.revisionColorAdjustedSimilarity ?? page.similarity)),
+          sum +
+          page.totalPixels *
+            (1 - (page.revisionColorAdjustedSimilarity ?? page.similarity)),
         0,
       )
     : undefined;
@@ -466,7 +519,8 @@ export const comparePageRasters = async ({
       score: 1 - diffPixels / totalPixels,
       ...(revisionColorAdjustedDiffPixels !== undefined
         ? {
-            revisionColorAdjustedScore: 1 - revisionColorAdjustedDiffPixels / totalPixels,
+            revisionColorAdjustedScore:
+              1 - revisionColorAdjustedDiffPixels / totalPixels,
           }
         : {}),
       diffPixels,

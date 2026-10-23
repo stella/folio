@@ -3,8 +3,12 @@ import { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+
 import { schema } from "../schema";
-import { createDocumentNumberingPlugin, getDocumentNumbering } from "./documentNumbering";
+import {
+  createDocumentNumberingPlugin,
+  getDocumentNumbering,
+} from "./documentNumbering";
 
 const paragraph = (text: string, attrs: Record<string, unknown> = {}) =>
   schema.node("paragraph", attrs, [schema.text(text)]);
@@ -14,7 +18,9 @@ describe("document numbering invalidation", () => {
     const doc = schema.node(
       "doc",
       null,
-      Array.from({ length: 200 }, (_, index) => paragraph(`Paragraph ${index}`)),
+      Array.from({ length: 200 }, (_, index) =>
+        paragraph(`Paragraph ${index}`),
+      ),
     );
     const state = EditorState.create({
       doc,
@@ -22,15 +28,14 @@ describe("document numbering invalidation", () => {
     });
     const original = PMNode.prototype.descendants;
     let paragraphVisits = 0;
-    const traversal = spyOn(PMNode.prototype, "descendants").mockImplementation(function (
-      this: PMNode,
-      callback,
-    ) {
-      return original.call(this, (node, pos, parent, index) => {
-        if (node.type.name === "paragraph") paragraphVisits += 1;
-        return callback(node, pos, parent, index);
-      });
-    });
+    const traversal = spyOn(PMNode.prototype, "descendants").mockImplementation(
+      function (this: PMNode, callback) {
+        return original.call(this, (node, pos, parent, index) => {
+          if (node.type.name === "paragraph") paragraphVisits += 1;
+          return callback(node, pos, parent, index);
+        });
+      },
+    );
 
     try {
       const inserted = state.apply(state.tr.insertText("x", 2));
@@ -44,7 +49,10 @@ describe("document numbering invalidation", () => {
   });
 
   test("adding paragraph numbering recomputes document numbering", () => {
-    const doc = schema.node("doc", null, [paragraph("Item"), paragraph("Remaining")]);
+    const doc = schema.node("doc", null, [
+      paragraph("Item"),
+      paragraph("Remaining"),
+    ]);
     const state = EditorState.create({
       doc,
       plugins: [createDocumentNumberingPlugin(null)],
@@ -67,6 +75,8 @@ describe("document numbering invalidation", () => {
     const withoutNumberedParagraph = numbered.apply(
       numbered.tr.delete(0, numbered.doc.child(0).nodeSize),
     );
-    expect(getDocumentNumbering(withoutNumberedParagraph)?.hasNumbering(42) ?? false).toBe(false);
+    expect(
+      getDocumentNumbering(withoutNumberedParagraph)?.hasNumbering(42) ?? false,
+    ).toBe(false);
   });
 });

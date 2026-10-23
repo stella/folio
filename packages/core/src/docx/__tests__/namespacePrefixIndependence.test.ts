@@ -21,12 +21,12 @@ import path from "node:path";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../../document-operations";
+import { fromMarkdown } from "../../markdown/fromMarkdown";
 import type { Document, Paragraph } from "../../types/document";
 import { unbalancedCommentRangeIds } from "../commentRangeIntegrity";
 import { ensureParaIds, EnsureParaIdsError } from "../ensureParaIds";
 import { parseNumbering } from "../numberingParser";
 import { parseDocx } from "../parser";
-import { fromMarkdown } from "../../markdown/fromMarkdown";
 import { createDocx, repackDocx } from "../rezip";
 import {
   buildPatchedDocumentXml,
@@ -39,8 +39,8 @@ import { buildStructuralDocumentPatch } from "../structuralXmlPatch";
 import {
   canonicalPartTree,
   PREFIX_VARIANTS,
-  rewritePackagePrefixes,
   type PrefixVariant,
+  rewritePackagePrefixes,
 } from "./namespacePrefixVariants";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
@@ -49,7 +49,8 @@ const FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
  * fixture carries a numbering part.
  */
 const GENERATED: Record<string, string> = {
-  "generated:lists": "Intro.\n\n- First bullet\n- Second bullet\n\n1. One\n2. Two\n\nOutro.",
+  "generated:lists":
+    "Intro.\n\n- First bullet\n- Second bullet\n\n1. One\n2. Two\n\nOutro.",
 };
 
 const FIXTURES = [
@@ -66,14 +67,20 @@ const loadFixture = async (fixture: string): Promise<Uint8Array> => {
     : new Uint8Array(await createDocx(fromMarkdown(markdown)));
 };
 
-const TARGET_PART = /^word\/(?:document|header\d*|footer\d*|footnotes|endnotes)\.xml$/iu;
+const TARGET_PART =
+  /^word\/(?:document|header\d*|footer\d*|footnotes|endnotes)\.xml$/iu;
 
 const toArrayBuffer = (bytes: Uint8Array | ArrayBuffer): ArrayBuffer =>
   bytes instanceof ArrayBuffer
     ? bytes
-    : (bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    : (bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ) as ArrayBuffer);
 
-const readParts = async (docx: Uint8Array | ArrayBuffer): Promise<Map<string, string>> => {
+const readParts = async (
+  docx: Uint8Array | ArrayBuffer,
+): Promise<Map<string, string>> => {
   const zip = await JSZip.loadAsync(docx);
   const parts = new Map<string, string>();
   for (const [name, file] of Object.entries(zip.files)) {
@@ -106,7 +113,10 @@ const withoutParagraphIds = async (docx: Uint8Array): Promise<Uint8Array> => {
 /** The two sides of one comparison: the fixture as written, and respelled. */
 type Pair = { canonical: Uint8Array; variant: Uint8Array };
 
-const respell = async (canonical: Uint8Array, variant: PrefixVariant): Promise<Pair | null> => {
+const respell = async (
+  canonical: Uint8Array,
+  variant: PrefixVariant,
+): Promise<Pair | null> => {
   const respelled = await rewritePackagePrefixes(canonical, variant);
   return respelled === null ? null : { canonical, variant: respelled.docx };
 };
@@ -120,7 +130,9 @@ const expectSameParts = async (
     readParts(canonical),
     readParts(variant),
   ]);
-  expect([...variantParts.keys()].sort()).toEqual([...canonicalParts.keys()].sort());
+  expect([...variantParts.keys()].sort()).toEqual(
+    [...canonicalParts.keys()].sort(),
+  );
   for (const [name, xml] of canonicalParts) {
     const other = variantParts.get(name);
     if (other === undefined) continue;
@@ -144,7 +156,9 @@ const firstTextParagraph = (doc: Document): Paragraph | undefined =>
       block.type === "paragraph" &&
       block.paraId !== undefined &&
       block.content.some(
-        (item) => item.type === "run" && item.content.some((run) => run.type === "text"),
+        (item) =>
+          item.type === "run" &&
+          item.content.some((run) => run.type === "text"),
       ),
   );
 
@@ -221,7 +235,10 @@ describe("string-level XML patchers are prefix independent", () => {
     const original = await loadFixture(fixture);
 
     // ensureParaIds: same counts and the same stamped parts, or a named refusal.
-    const stripped = await respell(await withoutParagraphIds(original), variant);
+    const stripped = await respell(
+      await withoutParagraphIds(original),
+      variant,
+    );
     if (stripped === null) {
       return;
     }
@@ -260,9 +277,9 @@ describe("string-level XML patchers are prefix independent", () => {
 
     // The comment-range guard every splice goes through sees the same ranges.
     for (const [name, xml] of canonicalParts) {
-      expect([...unbalancedCommentRangeIds(variantParts.get(name) ?? "")].sort()).toEqual(
-        [...unbalancedCommentRangeIds(xml)].sort(),
-      );
+      expect(
+        [...unbalancedCommentRangeIds(variantParts.get(name) ?? "")].sort(),
+      ).toEqual([...unbalancedCommentRangeIds(xml)].sort());
     }
 
     const doc = await parseDocx(toArrayBuffer(pair.canonical));
@@ -312,7 +329,12 @@ describe("string-level XML patchers are prefix independent", () => {
             baselineXml: serializeNumberingXml(parseNumbering(xml).definitions),
             currentXml,
           });
-        sameOrRefused("numbering", variant, patch(canonicalNumbering), patch(variantNumbering));
+        sameOrRefused(
+          "numbering",
+          variant,
+          patch(canonicalNumbering),
+          patch(variantNumbering),
+        );
       }
     }
 
@@ -332,14 +354,18 @@ describe("string-level XML patchers are prefix independent", () => {
       repacked(pair.canonical),
       repacked(pair.variant),
     ]);
-    expect(await blockRows(variantRepack)).toEqual(await blockRows(canonicalRepack));
+    expect(await blockRows(variantRepack)).toEqual(
+      await blockRows(canonicalRepack),
+    );
     await expectSameParts(canonicalRepack, variantRepack);
     count("repack", variant);
 
     // The reviewer's save, which tries the selective splice first.
     const reviewed = async (docx: Uint8Array) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(docx));
-      const block = reviewer.getContent().find((candidate) => candidate.text.trim().length > 0);
+      const block = reviewer
+        .getContent()
+        .find((candidate) => candidate.text.trim().length > 0);
       const issues = block
         ? reviewer.applyDocumentOperations(
             {
@@ -365,7 +391,9 @@ describe("string-level XML patchers are prefix independent", () => {
       reviewed(pair.variant),
     ]);
     expect(variantReview.issues).toEqual(canonicalReview.issues);
-    expect(await blockRows(variantReview.saved)).toEqual(await blockRows(canonicalReview.saved));
+    expect(await blockRows(variantReview.saved)).toEqual(
+      await blockRows(canonicalReview.saved),
+    );
     count("review", variant);
   });
 
@@ -382,7 +410,11 @@ describe("string-level XML patchers are prefix independent", () => {
         const styles = doc.package.styles?.styles ?? [];
         const base = styles.find((style) => style.type === "paragraph");
         if (!base) throw new Error("no paragraph style to clone");
-        styles.push({ ...structuredClone(base), styleId: "AddedByModel", default: false });
+        styles.push({
+          ...structuredClone(base),
+          styleId: "AddedByModel",
+          default: false,
+        });
         return repackDocx(doc);
       };
       const [canonicalOut, variantOut] = await Promise.all([

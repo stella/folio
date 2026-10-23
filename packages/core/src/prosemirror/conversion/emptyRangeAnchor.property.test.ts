@@ -41,9 +41,16 @@ import { planEmptyRanges } from "../emptyRangeAnchor";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
-const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const run = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
-const MOVE_MARKER = { name: "mv", author: "Reviewer", date: "2026-01-01T00:00:00Z" } as const;
+const MOVE_MARKER = {
+  name: "mv",
+  author: "Reviewer",
+  date: "2026-01-01T00:00:00Z",
+} as const;
 
 /** The three kinds of range a point can carry, as the pair of markers. */
 const EMPTY_RANGES = {
@@ -59,7 +66,10 @@ const EMPTY_RANGES = {
     { type: "moveToRangeStart", id: 3, ...MOVE_MARKER },
     { type: "moveToRangeEnd", id: 3 },
   ],
-} as const satisfies Record<string, readonly [ParagraphContent, ParagraphContent]>;
+} as const satisfies Record<
+  string,
+  readonly [ParagraphContent, ParagraphContent]
+>;
 
 type RangeKind = keyof typeof EMPTY_RANGES;
 
@@ -69,10 +79,19 @@ type RangeKind = keyof typeof EMPTY_RANGES;
  */
 const CONTAINERS = {
   "w:p": null,
-  "w:bdo": { type: "inlineWrapper", kind: "bidi", control: "override", direction: "rtl" },
+  "w:bdo": {
+    type: "inlineWrapper",
+    kind: "bidi",
+    control: "override",
+    direction: "rtl",
+  },
   "w:dir": { type: "inlineWrapper", kind: "bidi", control: "embedding" },
   "w:smartTag": { type: "inlineWrapper", kind: "smartTag", element: "place" },
-  "w:customXml": { type: "inlineWrapper", kind: "customXml", element: "tagged" },
+  "w:customXml": {
+    type: "inlineWrapper",
+    kind: "customXml",
+    element: "tagged",
+  },
 } as const satisfies Record<string, Omit<InlineWrapper, "content"> | null>;
 
 type ContainerName = keyof typeof CONTAINERS;
@@ -84,7 +103,10 @@ type ContainerName = keyof typeof CONTAINERS;
  * how every point comment in the public corpus is spelled: the only thing
  * between the end marker and the reference is the run that holds it.
  */
-const paragraphContentFor = (container: ContainerName, kind: RangeKind): ParagraphContent[] => {
+const paragraphContentFor = (
+  container: ContainerName,
+  kind: RangeKind,
+): ParagraphContent[] => {
   const [start, end] = EMPTY_RANGES[kind];
   const wrapper = CONTAINERS[container];
   const middle: ParagraphContent[] =
@@ -103,7 +125,14 @@ const documentWith = (content: Paragraph["content"]): Document => {
       document: {
         ...template.package.document,
         content: [{ type: "paragraph", paraId: "C0000001", content }],
-        comments: [{ id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z", content: [] }],
+        comments: [
+          {
+            id: 1,
+            author: "Reviewer",
+            date: "2026-01-01T00:00:00Z",
+            content: [],
+          },
+        ],
       },
     },
   };
@@ -118,7 +147,9 @@ const paragraphContentOf = (document: Document): ParagraphContent[] => {
 };
 
 const roundTrip = (source: Document): Document =>
-  fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } });
+  fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  });
 
 const containerNames = Object.keys(CONTAINERS) as ContainerName[];
 const rangeKinds = Object.keys(EMPTY_RANGES) as RangeKind[];
@@ -128,13 +159,17 @@ describe("a range that spans no content", () => {
     for (const kind of rangeKinds) {
       test(`${kind} in ${container}: comes back where it was authored`, () => {
         const source = documentWith(paragraphContentFor(container, kind));
-        expect(paragraphContentOf(roundTrip(source))).toEqual(paragraphContentFor(container, kind));
+        expect(paragraphContentOf(roundTrip(source))).toEqual(
+          paragraphContentFor(container, kind),
+        );
       });
 
       test(`${kind} in ${container}: a second round trip is a fixed point`, () => {
         const source = documentWith(paragraphContentFor(container, kind));
         const once = roundTrip(source);
-        expect(paragraphContentOf(roundTrip(once))).toEqual(paragraphContentOf(once));
+        expect(paragraphContentOf(roundTrip(once))).toEqual(
+          paragraphContentOf(once),
+        );
       });
 
       test(`${kind} in ${container}: an edit elsewhere leaves the anchor alone`, () => {
@@ -145,7 +180,9 @@ describe("a range that spans no content", () => {
             ? run("after, edited")
             : item,
         );
-        expect(paragraphContentOf(roundTrip(documentWith(edited)))).toEqual(edited);
+        expect(paragraphContentOf(roundTrip(documentWith(edited)))).toEqual(
+          edited,
+        );
       });
     }
   }
@@ -158,7 +195,9 @@ describe("a range that spans no content", () => {
       end,
       { type: "commentReference", id: start.id },
     ];
-    expect(paragraphContentOf(roundTrip(documentWith(content)))).toEqual(content);
+    expect(paragraphContentOf(roundTrip(documentWith(content)))).toEqual(
+      content,
+    );
     let anchors = 0;
     toProseDoc(documentWith(content)).descendants((node) => {
       if (node.type.name === "rangeAnchor") {
@@ -199,6 +238,9 @@ describe("a range that spans no content", () => {
       start: content[unmatchedStartCount - 1],
       end: content[unmatchedStartCount],
     });
-    expect([...plan.closedAt]).toEqual([unmatchedStartCount - 1, unmatchedStartCount]);
+    expect([...plan.closedAt]).toEqual([
+      unmatchedStartCount - 1,
+      unmatchedStartCount,
+    ]);
   });
 });

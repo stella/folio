@@ -7,15 +7,17 @@
  * (via the injected `createComment`).
  */
 
-import { ref, type Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
-import type { Comment } from "@stll/folio-core/types/content";
+import { type Ref, ref } from "vue";
+
 import { PENDING_COMMENT_ID } from "@stll/folio-core/prosemirror/commentIdAllocator";
+import type { Comment } from "@stll/folio-core/types/content";
+
 import {
   applyCommentMarkRange,
+  type CommentMarkRange,
   removePendingCommentMarkRange,
   resolveCommentCreationRange,
-  type CommentMarkRange,
 } from "./commentMarks";
 
 /** Right edge fallback offset when no page element is measurable. */
@@ -43,7 +45,10 @@ export type UseCommentLifecycleOptions = {
   /** The session kind controls whether draft highlights belong in ProseMirror. */
   sessionKind: () => "canonical" | "prosemirror";
   /** Null selects the legacy comment-mark route; false means canonical refusal. */
-  createCanonicalComment: (text: string, range: CommentMarkRange) => number | false | null;
+  createCanonicalComment: (
+    text: string,
+    range: CommentMarkRange,
+  ) => number | false | null;
   reLayout: () => void;
   showSidebar: Ref<boolean>;
   /** Highlight the freshly-added comment card in the sidebar. */
@@ -128,7 +133,9 @@ export function useCommentLifecycle(
     const selection = view.state.selection;
     const safeRange = resolveCommentCreationRange({
       docSize: view.state.doc.content.size,
-      capturedRange: button ? { from: button.from, to: button.to } : { from: 0, to: 0 },
+      capturedRange: button
+        ? { from: button.from, to: button.to }
+        : { from: 0, to: 0 },
       currentRange: { from: selection.from, to: selection.to },
       savedRange: lastSelectionRange.value,
     });
@@ -138,14 +145,17 @@ export function useCommentLifecycle(
     }
     if (
       options.sessionKind() === "prosemirror" &&
-      !applyCommentMarkRange(view, safeRange, PENDING_COMMENT_ID, { selectEnd: true })
+      !applyCommentMarkRange(view, safeRange, PENDING_COMMENT_ID, {
+        selectEnd: true,
+      })
     ) {
       floatingCommentButton.value = null;
       commentSelectionRange.value = null;
       return;
     }
     commentSelectionRange.value = safeRange;
-    addCommentYPosition.value = anchorYInPages(safeRange.from) ?? button?.top ?? null;
+    addCommentYPosition.value =
+      anchorYInPages(safeRange.from) ?? button?.top ?? null;
     options.showSidebar.value = true;
     isAddingComment.value = true;
     floatingCommentButton.value = null;
@@ -172,7 +182,10 @@ export function useCommentLifecycle(
     }
 
     const comment = options.createComment(text);
-    if (!applyCommentMarkRange(view, range, comment.id, { replacePending: true })) return false;
+    if (
+      !applyCommentMarkRange(view, range, comment.id, { replacePending: true })
+    )
+      return false;
 
     options.pushComment(comment);
     options.reLayout();
@@ -183,7 +196,11 @@ export function useCommentLifecycle(
 
   function handleCancelAddComment(): void {
     const view = options.editorView.value;
-    if (view && commentSelectionRange.value && options.sessionKind() === "prosemirror") {
+    if (
+      view &&
+      commentSelectionRange.value &&
+      options.sessionKind() === "prosemirror"
+    ) {
       removePendingCommentMarkRange(view, commentSelectionRange.value);
     }
     resetAddCommentState();

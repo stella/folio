@@ -34,7 +34,10 @@ const SIDES = ["top", "right", "bottom", "left"] as const;
 type Side = (typeof SIDES)[number];
 
 /** `pageBorderShouldRender`: `w:display` is about the physical page number. */
-const shouldRender = (pageNumber: number, display: PageBorders["display"]): boolean => {
+const shouldRender = (
+  pageNumber: number,
+  display: PageBorders["display"],
+): boolean => {
   const rule = display ?? "allPages";
   switch (rule) {
     case "firstPage":
@@ -118,7 +121,10 @@ export const paintPageBorders = ({
       return spacePx(border);
     }
     const marginPx = page.margins[side];
-    return Math.max(0, marginPx - spacePx(border) - (strokes[side]?.thicknessPx ?? 0));
+    return Math.max(
+      0,
+      marginPx - spacePx(border) - (strokes[side]?.thicknessPx ?? 0),
+    );
   };
 
   const leftPx = insetPx("left");

@@ -8,9 +8,9 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  type HeaderFooterLayoutInfo,
   resolveHeaderFooterFloatLeft,
   resolveHeaderFooterIntrinsicFrameHorizontalPosition,
-  type HeaderFooterLayoutInfo,
 } from "./renderPage";
 
 const layout: HeaderFooterLayoutInfo = {
@@ -29,30 +29,49 @@ describe("resolveHeaderFooterFloatLeft", () => {
 
   test("center relative to page → centered on the page, in container coords", () => {
     // (pageWidth 612 - width 200) / 2 - flowLeft 100 = 106
-    expect(resolveHeaderFooterFloatLeft(200, { relativeTo: "page", align: "center" }, layout)).toBe(
-      "106px",
-    );
+    expect(
+      resolveHeaderFooterFloatLeft(
+        200,
+        { relativeTo: "page", align: "center" },
+        layout,
+      ),
+    ).toBe("106px");
   });
 
   test("right relative to page", () => {
     // 612 - 200 - 100 = 312
-    expect(resolveHeaderFooterFloatLeft(200, { relativeTo: "page", align: "right" }, layout)).toBe(
-      "312px",
-    );
+    expect(
+      resolveHeaderFooterFloatLeft(
+        200,
+        { relativeTo: "page", align: "right" },
+        layout,
+      ),
+    ).toBe("312px");
   });
 
   test("center without page anchor → centered in the content/margin box", () => {
     // (contentWidth 400 - 200) / 2 = 100
-    expect(resolveHeaderFooterFloatLeft(200, { align: "center" }, layout)).toBe("100px");
+    expect(resolveHeaderFooterFloatLeft(200, { align: "center" }, layout)).toBe(
+      "100px",
+    );
   });
 
   test.each([
     ["left", "0"],
     ["center", "175px"],
     ["right", "350px"],
-  ] as const)("%s relative to the margin box uses the intrinsic frame width", (align, left) => {
-    expect(resolveHeaderFooterFloatLeft(50, { relativeTo: "margin", align }, layout)).toBe(left);
-  });
+  ] as const)(
+    "%s relative to the margin box uses the intrinsic frame width",
+    (align, left) => {
+      expect(
+        resolveHeaderFooterFloatLeft(
+          50,
+          { relativeTo: "margin", align },
+          layout,
+        ),
+      ).toBe(left);
+    },
+  );
 
   test.each([
     ["margin", "left", { left: "0" }],
@@ -65,21 +84,34 @@ describe("resolveHeaderFooterFloatLeft", () => {
     "%s-relative intrinsic frame at %s anchors its dynamic content edge",
     (relativeTo, align, expected) => {
       expect(
-        resolveHeaderFooterIntrinsicFrameHorizontalPosition({ relativeTo, align }, layout),
+        resolveHeaderFooterIntrinsicFrameHorizontalPosition(
+          { relativeTo, align },
+          layout,
+        ),
       ).toEqual(expected);
     },
   );
 
   test("inside aliases left, outside aliases right (single-sided rendering)", () => {
     // inside → left relative to page: -flowLeft = -100
-    expect(resolveHeaderFooterFloatLeft(200, { relativeTo: "page", align: "inside" }, layout)).toBe(
-      "-100px",
-    );
+    expect(
+      resolveHeaderFooterFloatLeft(
+        200,
+        { relativeTo: "page", align: "inside" },
+        layout,
+      ),
+    ).toBe("-100px");
     // outside → right relative to page: 612 - 200 - 100 = 312
     expect(
-      resolveHeaderFooterFloatLeft(200, { relativeTo: "page", align: "outside" }, layout),
+      resolveHeaderFooterFloatLeft(
+        200,
+        { relativeTo: "page", align: "outside" },
+        layout,
+      ),
     ).toBe("312px");
     // outside in the content box: contentWidth 400 - 200 = 200
-    expect(resolveHeaderFooterFloatLeft(200, { align: "outside" }, layout)).toBe("200px");
+    expect(
+      resolveHeaderFooterFloatLeft(200, { align: "outside" }, layout),
+    ).toBe("200px");
   });
 });

@@ -8,6 +8,7 @@
 import * as React from "react";
 
 import type { Style, StyleType, Theme } from "@stll/folio-core/types/document";
+
 import { useFolioUI } from "../../ui/folio-ui";
 
 // ============================================================================
@@ -102,14 +103,15 @@ const DEFAULT_STYLES: StyleOption[] = [
 // HELPERS
 // ============================================================================
 
-const PREVIEW_SIZES: Record<string, { fontSize: number; fontWeight: number }> = {
-  Normal: { fontSize: 14, fontWeight: 400 },
-  Heading1: { fontSize: 18, fontWeight: 700 },
-  Heading2: { fontSize: 16, fontWeight: 700 },
-  Heading3: { fontSize: 15, fontWeight: 600 },
-  Title: { fontSize: 20, fontWeight: 700 },
-  Subtitle: { fontSize: 15, fontWeight: 400 },
-};
+const PREVIEW_SIZES: Record<string, { fontSize: number; fontWeight: number }> =
+  {
+    Normal: { fontSize: 14, fontWeight: 400 },
+    Heading1: { fontSize: 18, fontWeight: 700 },
+    Heading2: { fontSize: 16, fontWeight: 700 },
+    Heading3: { fontSize: 15, fontWeight: 600 },
+    Title: { fontSize: 20, fontWeight: 700 },
+    Subtitle: { fontSize: 15, fontWeight: 400 },
+  };
 
 function getItemStyle(style: StyleOption): React.CSSProperties {
   const preset = PREVIEW_SIZES[style.styleId];
@@ -201,7 +203,11 @@ export function StylePicker({
   );
 
   return (
-    <Select value={value || "Normal"} onValueChange={handleValueChange} disabled={disabled}>
+    <Select
+      value={value || "Normal"}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         size="sm"
         className={`folio-style-picker h-8 min-h-0 min-w-0 border-transparent bg-transparent text-sm text-[var(--doc-text-muted)] shadow-none hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)] data-[pressed]:bg-[var(--doc-primary-light)] ${className ?? ""}`}

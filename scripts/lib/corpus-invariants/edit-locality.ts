@@ -35,22 +35,33 @@
  * excluded from the comparison.
  */
 
+import { Result } from "better-result";
+
 import { FolioDocxReviewer } from "@stll/folio-core/ai-edits/headless";
-import type { FolioAIBlock, FolioAIEditOperation } from "@stll/folio-core/ai-edits/types";
+import type {
+  FolioAIBlock,
+  FolioAIEditOperation,
+} from "@stll/folio-core/ai-edits/types";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
 import type { Document } from "@stll/folio-core/types/document";
-import { Result } from "better-result";
 
-import { type CorpusFailure, failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
+  type CorpusFailure,
+  failureFromAssertion,
+  failureFromError,
+} from "../corpus-signature";
+import {
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   type StageTimings,
   timeStage,
 } from "./contract";
-import { describePackageDifferences, differenceFailures } from "./model-equality";
+import {
+  describePackageDifferences,
+  differenceFailures,
+} from "./model-equality";
 import { generalizePartPath } from "./save-idempotence";
 
 const INVARIANT = EXTENDED_CORPUS_INVARIANTS.editLocality;
@@ -64,7 +75,8 @@ const INVARIANT = EXTENDED_CORPUS_INVARIANTS.editLocality;
 export const INSERTED_CHARACTER = "‸";
 
 const MESSAGES = {
-  missingInsertion: "the inserted character is absent from the edited paragraph",
+  missingInsertion:
+    "the inserted character is absent from the edited paragraph",
   changedBlock: "an unedited block changed",
   changedPart: "an unrelated part changed",
 } as const;
@@ -78,7 +90,9 @@ const MESSAGES = {
  * that holds it; the first top-level paragraph asks the same question without
  * that walk.
  */
-export const firstEditableBlock = (blocks: readonly FolioAIBlock[]): FolioAIBlock | undefined =>
+export const firstEditableBlock = (
+  blocks: readonly FolioAIBlock[],
+): FolioAIBlock | undefined =>
   blocks.find(
     (block) =>
       block.text.length > 0 &&
@@ -92,7 +106,9 @@ export const firstEditableBlock = (blocks: readonly FolioAIBlock[]): FolioAIBloc
  * `find` is the entire text so the applier can never call it ambiguous: a
  * string contains itself exactly once.
  */
-export const insertOneCharacterOperation = (block: FolioAIBlock): FolioAIEditOperation =>
+export const insertOneCharacterOperation = (
+  block: FolioAIBlock,
+): FolioAIEditOperation =>
   ({
     id: "edit-locality-insert",
     type: "replaceInBlock",
@@ -105,7 +121,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Whether the character appears anywhere under a block, text or captured markup alike. */
-const carriesInsertedCharacter = (value: unknown, seen: WeakSet<object>): boolean => {
+const carriesInsertedCharacter = (
+  value: unknown,
+  seen: WeakSet<object>,
+): boolean => {
   if (typeof value === "string") {
     return value.includes(INSERTED_CHARACTER);
   }
@@ -113,13 +132,17 @@ const carriesInsertedCharacter = (value: unknown, seen: WeakSet<object>): boolea
     return value.some((item) => carriesInsertedCharacter(item, seen));
   }
   if (value instanceof Map) {
-    return [...value.values()].some((entry) => carriesInsertedCharacter(entry, seen));
+    return [...value.values()].some((entry) =>
+      carriesInsertedCharacter(entry, seen),
+    );
   }
   if (!isRecord(value) || seen.has(value)) {
     return false;
   }
   seen.add(value);
-  return Object.values(value).some((entry) => carriesInsertedCharacter(entry, seen));
+  return Object.values(value).some((entry) =>
+    carriesInsertedCharacter(entry, seen),
+  );
 };
 
 const markedBlockIndices = (document: Document): Set<number> => {
@@ -148,7 +171,9 @@ const NO_EDITED_BLOCK = -1;
 const uneditedBlocks = (document: Document, editedIndex: number): Document => ({
   package: {
     document: {
-      content: document.package.document.content.filter((_, index) => index !== editedIndex),
+      content: document.package.document.content.filter(
+        (_, index) => index !== editedIndex,
+      ),
     },
   },
 });
@@ -161,7 +186,12 @@ const UNRELATED_PART_PATHS: ReadonlySet<string> = new Set([
   "word/settings.xml",
 ]);
 
-const UNRELATED_PART_PREFIXES = ["word/theme/", "word/header", "word/footer", "word/media/"];
+const UNRELATED_PART_PREFIXES = [
+  "word/theme/",
+  "word/header",
+  "word/footer",
+  "word/media/",
+];
 
 const isUnrelatedPart = (path: string): boolean => {
   const lower = path.toLowerCase();
@@ -181,28 +211,39 @@ type PackagePart =
   | { kind: typeof PART_KINDS.binary; bytes: Uint8Array };
 
 /** The unrelated parts of one saved package, keyed by path. */
-const readUnrelatedParts = async (buffer: ArrayBuffer): Promise<Map<string, PackagePart>> => {
+const readUnrelatedParts = async (
+  buffer: ArrayBuffer,
+): Promise<Map<string, PackagePart>> => {
   const raw = await unzipDocx(buffer, { extractAllXml: true });
   const entries = Object.entries(raw.originalZip.files).filter(
     ([path, file]) => !file.dir && isUnrelatedPart(path),
   );
   return new Map(
     await Promise.all(
-      entries.map(async ([path, file]): Promise<readonly [string, PackagePart]> => {
-        const xml = raw.allXml.get(path);
-        if (xml !== undefined) {
-          return [path, { kind: PART_KINDS.xml, text: xml }];
-        }
-        return [path, { kind: PART_KINDS.binary, bytes: await file.async("uint8array") }];
-      }),
+      entries.map(
+        async ([path, file]): Promise<readonly [string, PackagePart]> => {
+          const xml = raw.allXml.get(path);
+          if (xml !== undefined) {
+            return [path, { kind: PART_KINDS.xml, text: xml }];
+          }
+          return [
+            path,
+            { kind: PART_KINDS.binary, bytes: await file.async("uint8array") },
+          ];
+        },
+      ),
     ),
   );
 };
 
 const sameBytes = (first: Uint8Array, second: Uint8Array): boolean =>
-  first.length === second.length && first.every((byte, index) => byte === second[index]);
+  first.length === second.length &&
+  first.every((byte, index) => byte === second[index]);
 
-const partsDiffer = (first: PackagePart, second: PackagePart | undefined): boolean => {
+const partsDiffer = (
+  first: PackagePart,
+  second: PackagePart | undefined,
+): boolean => {
   if (second === undefined) {
     return true;
   }
@@ -210,7 +251,10 @@ const partsDiffer = (first: PackagePart, second: PackagePart | undefined): boole
     case PART_KINDS.xml:
       return second.kind !== PART_KINDS.xml || first.text !== second.text;
     case PART_KINDS.binary:
-      return second.kind !== PART_KINDS.binary || !sameBytes(first.bytes, second.bytes);
+      return (
+        second.kind !== PART_KINDS.binary ||
+        !sameBytes(first.bytes, second.bytes)
+      );
     default: {
       const unreachable: never = first;
       return unreachable;
@@ -260,7 +304,11 @@ export const runEditLocalityInvariant = async ({
     }),
   );
   if (opened.isErr()) {
-    return { status: "evaluated", failures: [failureFromError(INVARIANT, opened.error)], timings };
+    return {
+      status: "evaluated",
+      failures: [failureFromError(INVARIANT, opened.error)],
+      timings,
+    };
   }
   const reviewer = opened.value;
 
@@ -304,7 +352,10 @@ export const runEditLocalityInvariant = async ({
   }
 
   const editedSave = await timeStage(timings, "save", () =>
-    Result.tryPromise({ try: () => reviewer.toBuffer(), catch: (cause: unknown) => cause }),
+    Result.tryPromise({
+      try: () => reviewer.toBuffer(),
+      catch: (cause: unknown) => cause,
+    }),
   );
   if (editedSave.isErr()) {
     return {
@@ -341,7 +392,11 @@ export const runEditLocalityInvariant = async ({
     }),
   );
   if (read.isErr()) {
-    return { status: "evaluated", failures: [failureFromError(INVARIANT, read.error)], timings };
+    return {
+      status: "evaluated",
+      failures: [failureFromError(INVARIANT, read.error)],
+      timings,
+    };
   }
   const [edited, control, editedParts, controlParts] = read.value;
 
@@ -349,7 +404,9 @@ export const runEditLocalityInvariant = async ({
     const failures: CorpusFailure[] = [];
 
     const marked = markedBlockIndices(control);
-    const gained = [...markedBlockIndices(edited)].filter((index) => !marked.has(index));
+    const gained = [...markedBlockIndices(edited)].filter(
+      (index) => !marked.has(index),
+    );
     const editedIndex = gained.at(0) ?? NO_EDITED_BLOCK;
     if (editedIndex === NO_EDITED_BLOCK) {
       failures.push(failureFromAssertion(INVARIANT, MESSAGES.missingInsertion));
@@ -367,7 +424,9 @@ export const runEditLocalityInvariant = async ({
     );
 
     for (const path of changedPartPaths(controlParts, editedParts)) {
-      failures.push(failureFromAssertion(INVARIANT, `${MESSAGES.changedPart}: ${path}`));
+      failures.push(
+        failureFromAssertion(INVARIANT, `${MESSAGES.changedPart}: ${path}`),
+      );
     }
 
     return failures;

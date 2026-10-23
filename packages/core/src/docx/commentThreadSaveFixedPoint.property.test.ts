@@ -17,17 +17,21 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { parseDocx } from "./parser";
-import { createEmptyDocx, repackDocx } from "./rezip";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { Comment, Document } from "../types/document";
+import { parseDocx } from "./parser";
+import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml";
 const W15_NAMESPACE = "http://schemas.microsoft.com/office/word/2012/wordml";
 
@@ -56,7 +60,8 @@ const commentForest = fc
   )
   .map((rows): GeneratedComment[] =>
     rows.map(({ parentOffset, done, text, keepsParaId }, index) => ({
-      parent: parentOffset === null || index === 0 ? null : parentOffset % index,
+      parent:
+        parentOffset === null || index === 0 ? null : parentOffset % index,
       done,
       text,
       keepsParaId,
@@ -69,15 +74,21 @@ const paraId = (index: number): string =>
 
 const buildDocx = async (
   forest: readonly GeneratedComment[],
-  options: { anchorLayout: "separate" | "shared"; replyRanges: "anchored" | "missing" },
+  options: {
+    anchorLayout: "separate" | "shared";
+    replyRanges: "anchored" | "missing";
+  },
 ): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   const anchored = forest.flatMap(({ parent }, index) =>
-    options.replyRanges === "missing" && parent !== null && forest[parent]?.parent === null
+    options.replyRanges === "missing" &&
+    parent !== null &&
+    forest[parent]?.parent === null
       ? []
       : [index],
   );
-  const start = (index: number): string => `<w:commentRangeStart w:id="${commentId(index)}"/>`;
+  const start = (index: number): string =>
+    `<w:commentRangeStart w:id="${commentId(index)}"/>`;
   const end = (index: number): string =>
     `<w:commentRangeEnd w:id="${commentId(index)}"/>` +
     `<w:r><w:commentReference w:id="${commentId(index)}"/></w:r>`;
@@ -85,7 +96,10 @@ const buildDocx = async (
     options.anchorLayout === "shared"
       ? `<w:p>${anchored.map(start).join("")}<w:r><w:t>anchor</w:t></w:r>${anchored.map(end).join("")}</w:p>`
       : anchored
-          .map((index) => `<w:p>${start(index)}<w:r><w:t>anchor</w:t></w:r>${end(index)}</w:p>`)
+          .map(
+            (index) =>
+              `<w:p>${start(index)}<w:r><w:t>anchor</w:t></w:r>${end(index)}</w:p>`,
+          )
           .join("");
   zip.file(
     "word/document.xml",
@@ -108,8 +122,10 @@ const buildDocx = async (
     `${XML_DECLARATION}<w15:commentsEx xmlns:w="${W_NAMESPACE}" xmlns:w15="${W15_NAMESPACE}">` +
       forest
         .map(({ parent, done }, index) => {
-          const parentAttribute = parent === null ? "" : ` w15:paraIdParent="${paraId(parent)}"`;
-          const doneAttribute = done === undefined ? "" : ` w15:done="${done ? 1 : 0}"`;
+          const parentAttribute =
+            parent === null ? "" : ` w15:paraIdParent="${paraId(parent)}"`;
+          const doneAttribute =
+            done === undefined ? "" : ` w15:done="${done ? 1 : 0}"`;
           return `<w15:commentEx w15:paraId="${paraId(index)}"${parentAttribute}${doneAttribute}/>`;
         })
         .join("") +
@@ -146,7 +162,10 @@ const buildDocx = async (
  * app: a comment with a parent and no id to thread by, which the save has to
  * mint. Minting is what has to land in the save's own output.
  */
-const stripParaIds = (comments: readonly Comment[], forest: readonly GeneratedComment[]): void => {
+const stripParaIds = (
+  comments: readonly Comment[],
+  forest: readonly GeneratedComment[],
+): void => {
   for (const [index, comment] of comments.entries()) {
     if (forest[index]?.keepsParaId !== false) {
       continue;
@@ -158,7 +177,9 @@ const stripParaIds = (comments: readonly Comment[], forest: readonly GeneratedCo
 };
 
 /** Every part of a package, by path, as text or bytes. */
-const packageParts = async (buffer: ArrayBuffer): Promise<Map<string, string>> => {
+const packageParts = async (
+  buffer: ArrayBuffer,
+): Promise<Map<string, string>> => {
   const zip = await JSZip.loadAsync(buffer);
   const entries = Object.entries(zip.files).filter(([, file]) => !file.dir);
   return new Map(
@@ -172,9 +193,14 @@ const packageParts = async (buffer: ArrayBuffer): Promise<Map<string, string>> =
 };
 
 /** Which comment each comment replies to, keyed by comment id. */
-const threading = ({ package: { document } }: Document): Record<number, number | null> =>
+const threading = ({
+  package: { document },
+}: Document): Record<number, number | null> =>
   Object.fromEntries(
-    (document.comments ?? []).map((comment) => [comment.id, comment.parentId ?? null]),
+    (document.comments ?? []).map((comment) => [
+      comment.id,
+      comment.parentId ?? null,
+    ]),
   );
 
 describe("saving threaded comments is a fixed point after the first save", () => {
@@ -192,7 +218,10 @@ describe("saving threaded comments is a fixed point after the first save", () =>
           })),
         ];
         const parsed = await parseDocx(
-          await buildDocx(forest, { anchorLayout: "shared", replyRanges: "missing" }),
+          await buildDocx(forest, {
+            anchorLayout: "shared",
+            replyRanges: "missing",
+          }),
           {
             preloadFonts: false,
           },
@@ -200,12 +229,22 @@ describe("saving threaded comments is a fixed point after the first save", () =>
         stripParaIds(parsed.package.document.comments ?? [], forest);
         const first = await repackDocx(parsed, { updateModifiedDate: false });
         const reviewer = await FolioDocxReviewer.fromBuffer(first);
-        const second = await repackDocx(reviewer.toDocument(), { updateModifiedDate: false });
-        const documentXml = async (buffer: ArrayBuffer): Promise<string | undefined> =>
-          (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text");
+        const second = await repackDocx(reviewer.toDocument(), {
+          updateModifiedDate: false,
+        });
+        const documentXml = async (
+          buffer: ArrayBuffer,
+        ): Promise<string | undefined> =>
+          (await JSZip.loadAsync(buffer))
+            .file("word/document.xml")
+            ?.async("text");
         const markers = (xml: string | undefined): string[] =>
-          xml?.match(/<w:comment(?:RangeStart|RangeEnd|Reference)\b[^>]*\/>/gu) ?? [];
-        expect(markers(await documentXml(second))).toEqual(markers(await documentXml(first)));
+          xml?.match(
+            /<w:comment(?:RangeStart|RangeEnd|Reference)\b[^>]*\/>/gu,
+          ) ?? [];
+        expect(markers(await documentXml(second))).toEqual(
+          markers(await documentXml(first)),
+        );
       }),
       propertyConfig({ numRuns: 12 }),
     );
@@ -218,24 +257,37 @@ describe("saving threaded comments is a fixed point after the first save", () =>
         fc.constantFrom("separate", "shared"),
         fc.constantFrom("anchored", "missing"),
         async (forest, anchorLayout, replyRanges) => {
-          const parsed = await parseDocx(await buildDocx(forest, { anchorLayout, replyRanges }), {
-            preloadFonts: false,
-          });
+          const parsed = await parseDocx(
+            await buildDocx(forest, { anchorLayout, replyRanges }),
+            {
+              preloadFonts: false,
+            },
+          );
           stripParaIds(parsed.package.document.comments ?? [], forest);
           const expectedThreading = threading(parsed);
           const expectedResolution = Object.fromEntries(
-            (parsed.package.document.comments ?? []).map(({ id, done }) => [id, done]),
+            (parsed.package.document.comments ?? []).map(({ id, done }) => [
+              id,
+              done,
+            ]),
           );
 
           const first = await repackDocx(parsed, { updateModifiedDate: false });
           const reparsed = await parseDocx(first, { preloadFonts: false });
-          const second = await repackDocx(reparsed, { updateModifiedDate: false });
+          const second = await repackDocx(reparsed, {
+            updateModifiedDate: false,
+          });
 
           const firstParts = await packageParts(first);
           const secondParts = await packageParts(second);
-          expect([...secondParts.keys()].sort()).toEqual([...firstParts.keys()].sort());
+          expect([...secondParts.keys()].sort()).toEqual(
+            [...firstParts.keys()].sort(),
+          );
           for (const [path, content] of firstParts) {
-            expect({ path, content }).toEqual({ path, content: secondParts.get(path) });
+            expect({ path, content }).toEqual({
+              path,
+              content: secondParts.get(path),
+            });
           }
 
           // A stable byte sequence that lost the threading would be a fixed point
@@ -243,7 +295,10 @@ describe("saving threaded comments is a fixed point after the first save", () =>
           expect(threading(reparsed)).toEqual(expectedThreading);
           expect(
             Object.fromEntries(
-              (reparsed.package.document.comments ?? []).map(({ id, done }) => [id, done]),
+              (reparsed.package.document.comments ?? []).map(({ id, done }) => [
+                id,
+                done,
+              ]),
             ),
           ).toEqual(expectedResolution);
         },

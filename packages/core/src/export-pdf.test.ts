@@ -12,10 +12,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { exportDocxToPdf } from "./export-pdf";
 import type { HeadlessFontSource } from "./fonts/headlessMeasure";
 import { canvasMeasureProvider } from "./layout-engine/measure/measureContainer";
-import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/measureProvider";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "./layout-engine/measure/measureProvider";
 import type { MeasureProvider } from "./layout-engine/measure/measureProvider";
 
-const FIXTURE = new URL("../../../tests/visual/fixtures/sample.docx", import.meta.url);
+const FIXTURE = new URL(
+  "../../../tests/visual/fixtures/sample.docx",
+  import.meta.url,
+);
 const COMMENTS_FIXTURE = new URL(
   "../../../tests/visual/fixtures/docx-editor-demo.docx",
   import.meta.url,
@@ -63,10 +69,13 @@ const markerProvider = (): MeasureProvider => ({
 
 describe("exportDocxToPdf and the ambient measurement provider", () => {
   test("preserves editable DOCX comments as native PDF text annotations", async () => {
-    const result = await exportDocxToPdf(await Bun.file(COMMENTS_FIXTURE).arrayBuffer(), {
-      fonts: NO_FONTS,
-      timestamp: "2026-01-01T00:00:00.000Z",
-    });
+    const result = await exportDocxToPdf(
+      await Bun.file(COMMENTS_FIXTURE).arrayBuffer(),
+      {
+        fonts: NO_FONTS,
+        timestamp: "2026-01-01T00:00:00.000Z",
+      },
+    );
 
     expect(result.isErr()).toBe(false);
     if (!result.isErr()) {
@@ -110,8 +119,14 @@ describe("exportDocxToPdf and the ambient measurement provider", () => {
     // export replaces the first's provider mid-flight, and the first restores
     // while the second is still measuring.
     const [first, second] = await Promise.all([
-      exportDocxToPdf(bytes, { fonts: NO_FONTS, timestamp: "2026-01-01T00:00:00.000Z" }),
-      exportDocxToPdf(bytes, { fonts: NO_FONTS, timestamp: "2026-01-01T00:00:00.000Z" }),
+      exportDocxToPdf(bytes, {
+        fonts: NO_FONTS,
+        timestamp: "2026-01-01T00:00:00.000Z",
+      }),
+      exportDocxToPdf(bytes, {
+        fonts: NO_FONTS,
+        timestamp: "2026-01-01T00:00:00.000Z",
+      }),
     ]);
 
     expect(first.isErr()).toBe(false);
@@ -119,7 +134,9 @@ describe("exportDocxToPdf and the ambient measurement provider", () => {
     // Both ran against the same empty source, so identical input must give
     // identical bytes; a provider swapped mid-flight would not.
     if (!first.isErr() && !second.isErr()) {
-      expect(Buffer.from(second.value.bytes).equals(Buffer.from(first.value.bytes))).toBe(true);
+      expect(
+        Buffer.from(second.value.bytes).equals(Buffer.from(first.value.bytes)),
+      ).toBe(true);
     }
     expect(getMeasureProvider()).toBe(caller);
   });

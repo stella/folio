@@ -2,7 +2,11 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 
 import { ContextMenuManager } from "@stll/folio-core/managers/ContextMenuManager";
-import type { ContextMenuAnchor, ContextMenuSnapshot } from "@stll/folio-core/managers/types";
+import type {
+  ContextMenuAnchor,
+  ContextMenuSnapshot,
+} from "@stll/folio-core/managers/types";
+
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
 import { detectActiveTrackedChange } from "../selectionDetection";
 
@@ -28,15 +32,26 @@ export type UseContextMenuReturn = {
   closeMenu: () => void;
 };
 
-export function useContextMenu({ pagedEditorRef }: UseContextMenuArgs): UseContextMenuReturn {
+export function useContextMenu({
+  pagedEditorRef,
+}: UseContextMenuArgs): UseContextMenuReturn {
   const manager = useMemo(() => new ContextMenuManager(), []);
-  const contextMenu = useSyncExternalStore(manager.subscribe, manager.getSnapshot);
+  const contextMenu = useSyncExternalStore(
+    manager.subscribe,
+    manager.getSnapshot,
+  );
 
   const openMenu = useCallback(
     (anchor: ContextMenuAnchor, hasSelectionOverride?: boolean) => {
       const state = pagedEditorRef.current?.getView()?.state ?? null;
-      const cursorInTrackedChange = state ? detectActiveTrackedChange(state) !== null : false;
-      manager.openMenu(anchor, { state, hasSelectionOverride, cursorInTrackedChange });
+      const cursorInTrackedChange = state
+        ? detectActiveTrackedChange(state) !== null
+        : false;
+      manager.openMenu(anchor, {
+        state,
+        hasSelectionOverride,
+        cursorInTrackedChange,
+      });
     },
     [pagedEditorRef, manager],
   );

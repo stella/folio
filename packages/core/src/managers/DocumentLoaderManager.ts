@@ -1,4 +1,4 @@
-import { CANONICAL_GAP, usesCanonicalSession } from "../types/canonicalCapabilities";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 /**
  * DocumentLoaderManager
  *
@@ -10,12 +10,14 @@ import { CANONICAL_GAP, usesCanonicalSession } from "../types/canonicalCapabilit
  * The adapter keeps only React concerns: the prop-change effects, the original
  * buffer ref, and the host callbacks (which it re-binds via `setCallbacks`).
  */
-
 import { inspectDocxCompatibility } from "../docx/compatibility";
 import type { DocxCompatibility } from "../docx/compatibility";
 import { parseDocx } from "../docx/parser";
-import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { recordDocumentLoadPhase } from "../layout-engine/layoutInstrumentation";
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+} from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import { resetAuthorColors } from "../utils/authorColors";
 import type { DocxInput } from "../utils/docxInput";
@@ -51,7 +53,8 @@ export type DocumentLoaderCallbacks = {
   /** Called when an unrecoverable parse error occurs. */
   onError: ((error: Error) => void) | undefined;
   /** Called after parsing to report whether editing can preserve fidelity. */
-  onCompatibilityChange: ((compatibility: DocxCompatibility) => void) | undefined;
+  onCompatibilityChange:
+    ((compatibility: DocxCompatibility) => void) | undefined;
   /** Clears UI state coupled to the previous document at the start of a load. */
   onReset: () => void;
   /** Sets the document loading slice of editor state. */
@@ -87,8 +90,12 @@ export class DocumentLoaderManager {
   }
 
   private commitParsedDocument(doc: Document, generation: number): void {
-    const { history, onCompatibilityChange, setDocumentLoadState, setLoadedDocumentIdentity } =
-      this.callbacks;
+    const {
+      history,
+      onCompatibilityChange,
+      setDocumentLoadState,
+      setLoadedDocumentIdentity,
+    } = this.callbacks;
     this.resetForNewDocument();
     history.reset(doc);
     setLoadedDocumentIdentity(String(generation));
@@ -139,7 +146,10 @@ export class DocumentLoaderManager {
           password: options.password,
         });
       } finally {
-        recordDocumentLoadPhase("docx-parse", performance.now() - parseStartedAt);
+        recordDocumentLoadPhase(
+          "docx-parse",
+          performance.now() - parseStartedAt,
+        );
       }
       if (this.loadGeneration !== generation) {
         return;
@@ -149,7 +159,8 @@ export class DocumentLoaderManager {
       if (this.loadGeneration !== generation) {
         return;
       }
-      const message = error instanceof Error ? error.message : "Failed to parse document";
+      const message =
+        error instanceof Error ? error.message : "Failed to parse document";
       setDocumentLoadState({ status: "error", message });
       onError?.(error instanceof Error ? error : new Error(message));
     }

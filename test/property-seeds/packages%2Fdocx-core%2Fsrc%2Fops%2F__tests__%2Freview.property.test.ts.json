@@ -373,6 +373,12 @@
       "seed": 1089438355,
       "note": "Paragraph run-in before a table is local to the retired paragraph and the receiving first-cell paragraph.",
       "date": "2026-10-19"
+    },
+    {
+      "seed": 977097769,
+      "path": "377:2:1:1:1:4:4:5:4:4:4:7:6:6:6:6:6:7:6:6:6:6:6:6:6:6:11:9:9:10:9:9:9:9:10:10:10:10:10:11:10:10:11:10:14:15:14:14:14:16:17:16:16:17:17:18:17:17:17:17:18:17:17:18:17:17:17:17:20:20:21:20:20:20:20:20:20:20:20:20:20:20:20:20:18:1:17:14:16:20:14:16:14:17:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:3:3:5:5:5:5:5",
+      "note": "Rejecting an inserted empty paragraph before an unchanged section-ending follower must preserve the follower while removing a nested inserted footnote reference.",
+      "date": "2026-10-22"
     }
   ],
   "L7: no tracked operation marks a paragraph that ends its container": [

@@ -1,8 +1,10 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { tableFragmentBottomBorders } from "./tableFragmentBorderGeometry";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
@@ -38,7 +40,11 @@ test("a split row projects every visible bottom border onto its fragment edge", 
           kind: "table",
           rows: [
             {
-              cells: columnWidths.map((width) => ({ blocks: [], width, height: 100 })),
+              cells: columnWidths.map((width) => ({
+                blocks: [],
+                width,
+                height: 100,
+              })),
               height: 100,
             },
           ],
@@ -59,7 +65,11 @@ test("a split row projects every visible bottom border onto its fragment edge", 
           continuesOnNext: true,
         } as const;
 
-        const borders = tableFragmentBottomBorders({ fragment, block, measure });
+        const borders = tableFragmentBottomBorders({
+          fragment,
+          block,
+          measure,
+        });
         let left = 0;
         const expected = columns.flatMap(({ width, style }) => {
           const segment = style === "none" ? [] : [{ left, width, style }];

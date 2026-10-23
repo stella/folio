@@ -1,20 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { createEmptyDocument } from "../utils/createDocument";
+import { paragraphNumberingLevel } from "@stll/docx-core/model";
+
 import { parseDocx } from "../docx/parser";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { createDocx } from "../docx/rezip";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import { createEmptyDocument } from "../utils/createDocument";
 import {
   extractDocumentStyleSet,
   extractDocumentStyleSetFromDocx,
   inspectDocumentStylesFromDocx,
 } from "./extract";
 import { createStellaStyleDocumentPreset } from "./stellaStyle";
-import { paragraphNumberingLevel } from "@stll/docx-core/model";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** A valid package with no `word/styles.xml`: Word opens it on its built-ins. */
 const packageWithoutStylesPart = async (): Promise<ArrayBuffer> => {
@@ -47,20 +49,28 @@ const packageWithoutStylesPart = async (): Promise<ArrayBuffer> => {
 
 describe("document style sets", () => {
   test("a document preset controls page shape and initial paragraph style", () => {
-    const document = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const document = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
     const firstParagraph = document.package.document.content.at(0);
 
     expect(firstParagraph?.type).toBe("paragraph");
     expect(firstParagraph?.formatting?.styleId).toBe("BodyText");
-    expect(document.package.document.finalSectionProperties?.pageWidth).toBe(11_906);
-    expect(document.package.document.finalSectionProperties?.pageHeight).toBe(16_838);
-    expect(document.package.styles?.styles.map((style) => style.styleId)).toContain(
-      "ClauseHeading1",
+    expect(document.package.document.finalSectionProperties?.pageWidth).toBe(
+      11_906,
     );
+    expect(document.package.document.finalSectionProperties?.pageHeight).toBe(
+      16_838,
+    );
+    expect(
+      document.package.styles?.styles.map((style) => style.styleId),
+    ).toContain("ClauseHeading1");
   });
 
   test("selected styles include their style and numbering dependencies", () => {
-    const document = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const document = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
     const extracted = extractDocumentStyleSet(document, {
       name: "Clause styles",
       styleIds: ["ClauseParagraph1"],
@@ -73,13 +83,17 @@ describe("document style sets", () => {
       "ClauseParagraph1",
     ]);
     expect(extracted.numbering?.nums).toEqual([{ numId: 1, abstractNumId: 1 }]);
-    expect(extracted.numbering?.abstractNums.map((numbering) => numbering.abstractNumId)).toEqual([
-      1,
-    ]);
+    expect(
+      extracted.numbering?.abstractNums.map(
+        (numbering) => numbering.abstractNumId,
+      ),
+    ).toEqual([1]);
   });
 
   test("rejects an initial paragraph style outside the selected style closure", () => {
-    const document = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const document = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
 
     expect(() =>
       extractDocumentStyleSet(document, {
@@ -87,7 +101,9 @@ describe("document style sets", () => {
         styleIds: ["ClauseParagraph1"],
         initialParagraphStyleId: "ClauseHeading1",
       }),
-    ).toThrow('Initial paragraph style "ClauseHeading1" is not present in the extracted set');
+    ).toThrow(
+      'Initial paragraph style "ClauseHeading1" is not present in the extracted set',
+    );
   });
 
   test("Stella Style uses the reference C-level clause hierarchy", () => {
@@ -167,8 +183,13 @@ describe("document style sets", () => {
   });
 
   test("extraction strips document data and embedded-font relationships", () => {
-    const document = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
-    document.package.properties = { title: "Confidential source title", creator: "Source user" };
+    const document = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
+    document.package.properties = {
+      title: "Confidential source title",
+      creator: "Source user",
+    };
     document.package.relationships = new Map([
       [
         "rId99",
@@ -196,7 +217,9 @@ describe("document style sets", () => {
   });
 
   test("a generated DOCX can be used as a style-set source", async () => {
-    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const source = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
     const buffer = await createDocx(source);
     const extracted = await extractDocumentStyleSetFromDocx(buffer, {
       name: "Imported legal",
@@ -210,7 +233,10 @@ describe("document style sets", () => {
       "FootnoteText",
       "FootnoteTextChar",
     ]);
-    expect(extracted.fontTable?.fonts.map((font) => font.name)).toEqual(["Arial", "Georgia"]);
+    expect(extracted.fontTable?.fonts.map((font) => font.name)).toEqual([
+      "Arial",
+      "Georgia",
+    ]);
     expect(extracted.numbering).toBeUndefined();
   });
 
@@ -221,10 +247,15 @@ describe("document style sets", () => {
     phase("building fixture");
     const buffer = await packageWithoutStylesPart();
     // Style extraction does not require browser font readiness.
-    const document = await parseDocx(buffer, { preloadFonts: false, onProgress: phase });
+    const document = await parseDocx(buffer, {
+      preloadFonts: false,
+      onProgress: phase,
+    });
 
     phase("extracting styles");
-    const extracted = extractDocumentStyleSet(document, { name: "From a style-less package" });
+    const extracted = extractDocumentStyleSet(document, {
+      name: "From a style-less package",
+    });
 
     // One style, carrying the identity and the formatting of Word's built-in
     // default. The source resolved to that built-in because it declared no
@@ -241,22 +272,34 @@ describe("document style sets", () => {
       },
     ]);
     expect(extracted.initialParagraphStyleId).toBe("Normal");
-    expect(createStyleResolver(extracted.styles).resolveParagraphStyle(undefined)).toEqual(
-      createStyleResolver(document.package.styles).resolveParagraphStyle(undefined),
+    expect(
+      createStyleResolver(extracted.styles).resolveParagraphStyle(undefined),
+    ).toEqual(
+      createStyleResolver(document.package.styles).resolveParagraphStyle(
+        undefined,
+      ),
     );
     phase("serializing extracted style set");
-    const saved = await createDocx(createEmptyDocument({ styleSet: extracted }));
+    const saved = await createDocx(
+      createEmptyDocument({ styleSet: extracted }),
+    );
     phase("serialized extracted style set");
     expect(saved).toBeInstanceOf(ArrayBuffer);
     phase("complete");
   });
 
   test("inspection exposes selectable style metadata without document content", async () => {
-    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
-    const catalog = await inspectDocumentStylesFromDocx(await createDocx(source));
+    const source = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
+    const catalog = await inspectDocumentStylesFromDocx(
+      await createDocx(source),
+    );
 
     expect(catalog.defaultParagraphStyleId).toBe("Normal");
-    expect(catalog.styles.find((style) => style.styleId === "ClauseHeading1")).toEqual({
+    expect(
+      catalog.styles.find((style) => style.styleId === "ClauseHeading1"),
+    ).toEqual({
       styleId: "ClauseHeading1",
       name: "Clause Heading",
       type: "paragraph",

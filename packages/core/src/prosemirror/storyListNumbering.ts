@@ -13,12 +13,15 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
 
-import { paragraphNumberingReference } from "../docx/numberingReference";
-import { getCachedNumberingMap, isBulletLevel } from "../docx/numberingParser";
 import { createNumberingIdAllocator } from "../docx/numberingIds";
+import { getCachedNumberingMap, isBulletLevel } from "../docx/numberingParser";
+import { paragraphNumberingReference } from "../docx/numberingReference";
 import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
-import { completeNumberingForDoc, paragraphListReferences } from "./listInstanceReferences";
+import {
+  completeNumberingForDoc,
+  paragraphListReferences,
+} from "./listInstanceReferences";
 import { paragraphNumberingAttr } from "./numberingAttr";
 import { getPackageNumberingDefinitions } from "./plugins/documentNumbering";
 import type { ParagraphAttrs } from "./schema/nodes";
@@ -42,7 +45,9 @@ const remappedNumPr = (
   }
   return paragraphNumberingAttr(
     paragraphNumberingReference(
-      numPr.ilvl === undefined ? { numId: next } : { numId: next, ilvl: numPr.ilvl },
+      numPr.ilvl === undefined
+        ? { numId: next }
+        : { numId: next, ilvl: numPr.ilvl },
     ),
   );
 };
@@ -82,14 +87,20 @@ export const storyListNumbering = (
   numbering: NumberingDefinitions | undefined,
 ): StoryListNumbering => {
   const packageDefinitions = getPackageNumberingDefinitions(state);
-  const storyBase = new Set((packageDefinitions?.nums ?? []).map(({ numId }) => numId));
+  const storyBase = new Set(
+    (packageDefinitions?.nums ?? []).map(({ numId }) => numId),
+  );
   const defined = new Set((numbering?.nums ?? []).map(({ numId }) => numId));
   const definedMap = numbering ? getCachedNumberingMap(numbering) : null;
   const referenced = new Set<number>();
   const colliding = new Set<number>();
   const existingAbstractNumIds = new Set([
-    ...(numbering?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
-    ...(packageDefinitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+    ...(numbering?.abstractNums ?? []).map(
+      ({ abstractNumId }) => abstractNumId,
+    ),
+    ...(packageDefinitions?.abstractNums ?? []).map(
+      ({ abstractNumId }) => abstractNumId,
+    ),
   ]);
   state.doc.descendants((node) => {
     if (node.type.name !== "paragraph") {
@@ -105,7 +116,8 @@ export const storyListNumbering = (
       existingAbstractNumIds.add(attrs.listAbstractNumId);
     for (const change of attrs._propertyChanges ?? []) {
       const abstractId = change.previousFormatting?.listAbstractNumId;
-      if (typeof abstractId === "number") existingAbstractNumIds.add(abstractId);
+      if (typeof abstractId === "number")
+        existingAbstractNumIds.add(abstractId);
     }
     // Collision remapping owns paragraph-stated refs; style refs remain with
     // their package-level style and numbering definitions.
@@ -115,7 +127,10 @@ export const storyListNumbering = (
       !storyBase.has(statedNumbering.numId) &&
       definedMap?.hasNumbering(statedNumbering.numId)
     ) {
-      const level = definedMap.getLevel(statedNumbering.numId, statedNumbering.ilvl ?? 0);
+      const level = definedMap.getLevel(
+        statedNumbering.numId,
+        statedNumbering.ilvl ?? 0,
+      );
       const sameList =
         level !== null &&
         isBulletLevel(level) === (attrs.listIsBullet === true) &&
@@ -128,7 +143,10 @@ export const storyListNumbering = (
     return false;
   });
   if (colliding.size === 0) {
-    return { doc: state.doc, numbering: completeNumberingForDoc(numbering, state.doc) };
+    return {
+      doc: state.doc,
+      numbering: completeNumberingForDoc(numbering, state.doc),
+    };
   }
 
   const existingNumIds = [...defined, ...referenced];
@@ -136,7 +154,9 @@ export const storyListNumbering = (
   const remap: Remap = {
     numIds: new Map([...colliding].map((numId) => [numId, numIds.next()])),
     baseAbstractNumIds: new Set(
-      (packageDefinitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+      (packageDefinitions?.abstractNums ?? []).map(
+        ({ abstractNumId }) => abstractNumId,
+      ),
     ),
     abstractNumIds: new Map(),
     abstractIds: createNumberingIdAllocator("abstract", existingAbstractNumIds),
@@ -147,13 +167,20 @@ export const storyListNumbering = (
       return true;
     }
     const attrs = expectParagraphAttrs(node);
-    const numId = attrs.numPr?.kind === "reference" ? attrs.numPr.numId : undefined;
+    const numId =
+      attrs.numPr?.kind === "reference" ? attrs.numPr.numId : undefined;
     const moves = numId !== undefined && remap.numIds.has(numId);
     const changes = attrs._propertyChanges?.map((change) => {
       const previous = change.previousFormatting;
       const previousNumId =
-        previous?.numPr?.kind === "reference" ? previous.numPr.numId : undefined;
-      if (!previous || previousNumId === undefined || !remap.numIds.has(previousNumId)) {
+        previous?.numPr?.kind === "reference"
+          ? previous.numPr.numId
+          : undefined;
+      if (
+        !previous ||
+        previousNumId === undefined ||
+        !remap.numIds.has(previousNumId)
+      ) {
         return change;
       }
       return {
@@ -161,7 +188,9 @@ export const storyListNumbering = (
         previousFormatting: {
           ...previous,
           numPr: remappedNumPr(previous.numPr, remap.numIds),
-          listAbstractNumId: remappedAbstractNumId(previous.listAbstractNumId, remap) ?? undefined,
+          listAbstractNumId:
+            remappedAbstractNumId(previous.listAbstractNumId, remap) ??
+            undefined,
         },
       };
     });
@@ -174,7 +203,8 @@ export const storyListNumbering = (
         ...(moves
           ? {
               numPr: remappedNumPr(attrs.numPr, remap.numIds),
-              listAbstractNumId: remappedAbstractNumId(attrs.listAbstractNumId, remap) ?? null,
+              listAbstractNumId:
+                remappedAbstractNumId(attrs.listAbstractNumId, remap) ?? null,
             }
           : {}),
         ...(changesMoved ? { _propertyChanges: changes } : {}),

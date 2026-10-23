@@ -6,7 +6,12 @@ import type { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
 type Resolution = ReturnType<typeof resolveWholeStory>;
 type Range = { from: number; to: number };
-type ParagraphMapping = { source: number; sourceEnd: number; final: number; finalEnd: number };
+type ParagraphMapping = {
+  source: number;
+  sourceEnd: number;
+  final: number;
+  finalEnd: number;
+};
 type TableTracking = Resolution["tableRanges"][number] & {
   finalPosition: number | null;
   parent: TableTracking | null;
@@ -45,20 +50,27 @@ export const finalRevisionParagraphRanges = (result: Resolution): Range[] => {
       const finalPosition = finalTablePositions.get(table.node) ?? null;
       const sourceSizes = paragraphSizes(table.inputNode);
       const finalSizes =
-        finalPosition === null ? new Map<number, number>() : paragraphSizes(table.node);
-      const paragraphs: ParagraphMapping[] = table.paragraphOffsets.map(({ source, final }) => {
-        const sourceSize = sourceSizes.get(source);
-        const finalSize = finalSizes.get(final);
-        if (sourceSize === undefined || (finalPosition !== null && finalSize === undefined)) {
-          return panic("Resolved table paragraph offsets are inconsistent");
-        }
-        return {
-          source,
-          sourceEnd: source + sourceSize,
-          final,
-          finalEnd: final + (finalSize ?? 0),
-        };
-      });
+        finalPosition === null
+          ? new Map<number, number>()
+          : paragraphSizes(table.node);
+      const paragraphs: ParagraphMapping[] = table.paragraphOffsets.map(
+        ({ source, final }) => {
+          const sourceSize = sourceSizes.get(source);
+          const finalSize = finalSizes.get(final);
+          if (
+            sourceSize === undefined ||
+            (finalPosition !== null && finalSize === undefined)
+          ) {
+            return panic("Resolved table paragraph offsets are inconsistent");
+          }
+          return {
+            source,
+            sourceEnd: source + sourceSize,
+            final,
+            finalEnd: final + (finalSize ?? 0),
+          };
+        },
+      );
       paragraphs.sort((left, right) => left.source - right.source);
       return {
         ...table,
@@ -69,13 +81,18 @@ export const finalRevisionParagraphRanges = (result: Resolution): Range[] => {
       };
     })
     .sort(
-      (left, right) => left.position - right.position || right.sourceNodeSize - left.sourceNodeSize,
+      (left, right) =>
+        left.position - right.position ||
+        right.sourceNodeSize - left.sourceNodeSize,
     );
   const tableStack: TableTracking[] = [];
   for (const table of tables) {
     for (;;) {
       const enclosing = tableStack.at(-1);
-      if (!enclosing || table.position < enclosing.position + enclosing.sourceNodeSize) {
+      if (
+        !enclosing ||
+        table.position < enclosing.position + enclosing.sourceNodeSize
+      ) {
         break;
       }
       tableStack.pop();

@@ -73,8 +73,10 @@ const facetValue = (facets: Facets, kind: string): string | undefined =>
  * declare, where a clamp does.
  */
 const integerValues = (facets: Facets, builtin: string): string[] => {
-  const declaredMin = facetValue(facets, "minInclusive") ?? facetValue(facets, "minExclusive");
-  const declaredMax = facetValue(facets, "maxInclusive") ?? facetValue(facets, "maxExclusive");
+  const declaredMin =
+    facetValue(facets, "minInclusive") ?? facetValue(facets, "minExclusive");
+  const declaredMax =
+    facetValue(facets, "maxInclusive") ?? facetValue(facets, "maxExclusive");
   const signed =
     !builtin.startsWith("unsigned") &&
     !builtin.startsWith("nonNegative") &&
@@ -97,7 +99,12 @@ const integerValues = (facets: Facets, builtin: string): string[] => {
 const hexValues = (facets: Facets): string[] => {
   const bytes = Number.parseInt(facetValue(facets, "length") ?? "3", 10);
   const width = (Number.isFinite(bytes) ? bytes : 3) * 2;
-  return [...new Set(["FF0000".padEnd(width, "0").slice(0, width), "0".repeat(width)])];
+  return [
+    ...new Set([
+      "FF0000".padEnd(width, "0").slice(0, width),
+      "0".repeat(width),
+    ]),
+  ];
 };
 
 /** A token that survives every normaliser: no whitespace, no escaping, no locale. */
@@ -109,7 +116,14 @@ type ValueSet = {
   /** Deterministic, ordered, deduplicated. The first member is the representative. */
   values: readonly string[];
   /** Why the set looks the way it does; the census reports it for an unrepresentable slot. */
-  kind: "enumeration" | "on-off" | "hex" | "measure" | "integer" | "string" | "unknown";
+  kind:
+    | "enumeration"
+    | "on-off"
+    | "hex"
+    | "measure"
+    | "integer"
+    | "string"
+    | "unknown";
 };
 
 const NO_VALUES: ValueSet = { values: [], kind: "unknown" };
@@ -123,9 +137,13 @@ const allReservedEntries = (): ReturnType<typeof reservedValueEntries> => {
 
 const isReservedValuePrefix = (
   prefix: string,
-): prefix is keyof typeof RESERVED_VALUE_NAMESPACE_URIS => prefix in RESERVED_VALUE_NAMESPACE_URIS;
+): prefix is keyof typeof RESERVED_VALUE_NAMESPACE_URIS =>
+  prefix in RESERVED_VALUE_NAMESPACE_URIS;
 
-const matchesReservedSlot = (slot: AttributeSlot, registered: string): boolean => {
+const matchesReservedSlot = (
+  slot: AttributeSlot,
+  registered: string,
+): boolean => {
   const colon = registered.indexOf(":");
   const at = registered.indexOf("@");
   if (colon < 1 || at < colon + 2) {
@@ -152,7 +170,9 @@ export const unrepresentableReservedValue = (
       disposition === "no-reserved-value" ||
       disposition.disposition !== "unrepresentable" ||
       !disposition.sentinel.split("|").includes(value) ||
-      !disposition.slot.split("|").some((registered) => matchesReservedSlot(slot, registered))
+      !disposition.slot
+        .split("|")
+        .some((registered) => matchesReservedSlot(slot, registered))
     ) {
       continue;
     }
@@ -161,8 +181,10 @@ export const unrepresentableReservedValue = (
   return undefined;
 };
 
-const resolveSymbol = (index: SchemaIndex, qualifiedName: string): SchemaSymbol | undefined =>
-  index.byId.get(`simpleType:${qualifiedName}`);
+const resolveSymbol = (
+  index: SchemaIndex,
+  qualifiedName: string,
+): SchemaSymbol | undefined => index.byId.get(`simpleType:${qualifiedName}`);
 
 /**
  * The values a simple type accepts, following unions and restriction bases.
@@ -208,20 +230,31 @@ export const valuesForType = (
   }
 
   if (symbol.memberTypes && symbol.memberTypes.length > 0) {
-    const members = symbol.memberTypes.map((member) => valuesForType(index, member, seen));
+    const members = symbol.memberTypes.map((member) =>
+      valuesForType(index, member, seen),
+    );
     const merged = [...new Set(members.flatMap(({ values }) => values))];
     const isOnOff = ON_OFF_VALUES.every((value) => merged.includes(value));
     if (isOnOff) {
       return { values: [...ON_OFF_VALUES], kind: "on-off" };
     }
-    const memberKinds = new Set(members.map(({ kind: memberKind }) => memberKind));
-    const dominant = (["hex", "measure"] as const).find((candidate) => memberKinds.has(candidate));
-    const kind = dominant ?? members.find(({ values }) => values.length > 0)?.kind ?? "unknown";
+    const memberKinds = new Set(
+      members.map(({ kind: memberKind }) => memberKind),
+    );
+    const dominant = (["hex", "measure"] as const).find((candidate) =>
+      memberKinds.has(candidate),
+    );
+    const kind =
+      dominant ??
+      members.find(({ values }) => values.length > 0)?.kind ??
+      "unknown";
     return merged.length === 0 ? NO_VALUES : { values: merged, kind };
   }
 
   const facets = symbol.facets ?? [];
-  const patterns = facets.filter((facet) => facet.kind === "pattern").map(({ value }) => value);
+  const patterns = facets
+    .filter((facet) => facet.kind === "pattern")
+    .map(({ value }) => value);
   if (patterns.some((pattern) => MEASURE_PATTERN.test(pattern))) {
     // Both spellings of the same length: Strict writes the suffixed form and
     // Transitional the bare twip count, and folio has to read either.
@@ -236,7 +269,10 @@ export const valuesForType = (
   }
   const inherited = valuesForType(index, base, seen);
   if (inherited.kind === "integer") {
-    return { values: integerValues(facets, builtinLocalName(base) ?? "integer"), kind: "integer" };
+    return {
+      values: integerValues(facets, builtinLocalName(base) ?? "integer"),
+      kind: "integer",
+    };
   }
   if (inherited.kind === "hex") {
     return { values: hexValues(facets), kind: "hex" };
@@ -272,7 +308,9 @@ const reservedTokenGroups = (): string[][] => {
       continue;
     }
     seen.add(disposition.sentinel);
-    const tokens = disposition.sentinel.split("|").filter((token) => RESERVED_TOKEN.test(token));
+    const tokens = disposition.sentinel
+      .split("|")
+      .filter((token) => RESERVED_TOKEN.test(token));
     if (tokens.length > 0) {
       groups.push(tokens);
     }

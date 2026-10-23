@@ -6,7 +6,8 @@ import { parseTableCellProperties } from "../tableParser";
 import type { XmlElement } from "../xmlParser";
 import { parseXmlDocument } from "../xmlParser";
 
-const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 describe("diagonal table cell borders", () => {
   test("parses and serializes both cell diagonal directions", () => {
@@ -28,8 +29,12 @@ describe("diagonal table cell borders", () => {
     });
 
     const serialized = serializeTableCellFormatting(formatting);
-    expect(serialized).toContain('<w:tl2br w:val="dashed" w:sz="12" w:color="123456"/>');
-    expect(serialized).toContain('<w:tr2bl w:val="double" w:sz="18" w:color="654321"/>');
+    expect(serialized).toContain(
+      '<w:tl2br w:val="dashed" w:sz="12" w:color="123456"/>',
+    );
+    expect(serialized).toContain(
+      '<w:tr2bl w:val="double" w:sz="18" w:color="654321"/>',
+    );
   });
 
   test("preserves diagonals declared by a table style cell property", () => {
@@ -45,7 +50,9 @@ describe("diagonal table cell borders", () => {
       null,
     );
 
-    expect(styles.get("DiagonalCells")?.tcPr?.borders?.topLeftToBottomRight).toMatchObject({
+    expect(
+      styles.get("DiagonalCells")?.tcPr?.borders?.topLeftToBottomRight,
+    ).toMatchObject({
       size: 8,
       style: "single",
     });

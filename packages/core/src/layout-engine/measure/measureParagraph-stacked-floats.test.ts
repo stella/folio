@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
 import { measureParagraph } from "./measureParagraph";
 
 const fakeMeasure = { charWidth: fixedCharWidth(5) };

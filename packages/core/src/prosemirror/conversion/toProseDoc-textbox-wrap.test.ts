@@ -14,7 +14,14 @@ import { toProseDoc } from "./toProseDoc";
 type TextBoxAttrs = Record<string, unknown>;
 
 function textBoxAttrsFromImport(args: {
-  wrapType: "inline" | "square" | "tight" | "through" | "topAndBottom" | "behind" | "inFront";
+  wrapType:
+    | "inline"
+    | "square"
+    | "tight"
+    | "through"
+    | "topAndBottom"
+    | "behind"
+    | "inFront";
   wrapText?: "bothSides" | "left" | "right" | "largest";
   hAlign?: "left" | "right" | "center";
   hRelativeTo?: "column" | "margin" | "page";
@@ -62,14 +69,26 @@ function textBoxAttrsFromImport(args: {
                       wrap: {
                         type: args.wrapType,
                         ...(args.wrapText ? { wrapText: args.wrapText } : {}),
-                        ...(args.distTEmu !== undefined ? { distT: args.distTEmu } : {}),
-                        ...(args.distBEmu !== undefined ? { distB: args.distBEmu } : {}),
-                        ...(args.distLEmu !== undefined ? { distL: args.distLEmu } : {}),
-                        ...(args.distREmu !== undefined ? { distR: args.distREmu } : {}),
+                        ...(args.distTEmu !== undefined
+                          ? { distT: args.distTEmu }
+                          : {}),
+                        ...(args.distBEmu !== undefined
+                          ? { distB: args.distBEmu }
+                          : {}),
+                        ...(args.distLEmu !== undefined
+                          ? { distL: args.distLEmu }
+                          : {}),
+                        ...(args.distREmu !== undefined
+                          ? { distR: args.distREmu }
+                          : {}),
                       },
                       textBody: {
-                        ...(args.autoFit !== undefined ? { autoFit: args.autoFit } : {}),
-                        ...(args.textWrap !== undefined ? { textWrap: args.textWrap } : {}),
+                        ...(args.autoFit !== undefined
+                          ? { autoFit: args.autoFit }
+                          : {}),
+                        ...(args.textWrap !== undefined
+                          ? { textWrap: args.textWrap }
+                          : {}),
                         content: [
                           {
                             type: "paragraph",
@@ -98,7 +117,9 @@ function textBoxAttrsFromImport(args: {
   // is dropped because it contained only the shape).
   const textBoxNode = pmDoc.firstChild;
   if (!textBoxNode || textBoxNode.type.name !== "textBox") {
-    throw new Error(`Expected first child to be textBox, got ${textBoxNode?.type.name}`);
+    throw new Error(
+      `Expected first child to be textBox, got ${textBoxNode?.type.name}`,
+    );
   }
   return textBoxNode.attrs as TextBoxAttrs;
 }

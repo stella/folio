@@ -15,7 +15,7 @@
  * Sizes are block counts, not byte counts: the engine's cost tracks blocks.
  */
 
-import { escapeXml, type DocxPackage, type PackagePart } from "./package-xml";
+import { type DocxPackage, escapeXml, type PackagePart } from "./package-xml";
 
 export const DOCUMENT_CLASSES = Object.freeze([
   "prose",
@@ -46,7 +46,8 @@ const BLOCKS_BY_SIZE = {
   l: 2200,
 } as const satisfies Record<DocumentSize, number>;
 
-export const blockCountFor = (size: DocumentSize): number => BLOCKS_BY_SIZE[size];
+export const blockCountFor = (size: DocumentSize): number =>
+  BLOCKS_BY_SIZE[size];
 
 /**
  * A 32-bit linear congruential generator. Deterministic and seeded per
@@ -123,12 +124,18 @@ const SENTENCE_SHAPES = {
 
 type ScriptName = keyof typeof SENTENCE_SHAPES;
 
-const sentence = (random: () => number, script: ScriptName, wordCount: number): string => {
+const sentence = (
+  random: () => number,
+  script: ScriptName,
+  wordCount: number,
+): string => {
   const { words, terminator } = SENTENCE_SHAPES[script];
   const picked: string[] = [];
   for (let index = 0; index < wordCount; index++) {
     // SAFETY: the modulus keeps the index inside the frozen word list.
-    picked.push(words[Math.floor(random() * words.length) % words.length] ?? "");
+    picked.push(
+      words[Math.floor(random() * words.length) % words.length] ?? "",
+    );
   }
   const joiner = script === "cjk" ? "" : " ";
   return `${picked.join(joiner)}${terminator}`;
@@ -137,7 +144,8 @@ const sentence = (random: () => number, script: ScriptName, wordCount: number): 
 const run = (text: string, properties = ""): string =>
   `<w:r>${properties}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 
-const paragraph = (inner: string, properties = ""): string => `<w:p>${properties}${inner}</w:p>`;
+const paragraph = (inner: string, properties = ""): string =>
+  `<w:p>${properties}${inner}</w:p>`;
 
 const DOCUMENT_OPEN =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -161,7 +169,11 @@ const STYLES_XML =
   '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/></w:style>' +
   "</w:styles>";
 
-const LIST_NUMBER_FORMATS = Object.freeze(["decimal", "lowerLetter", "lowerRoman"] as const);
+const LIST_NUMBER_FORMATS = Object.freeze([
+  "decimal",
+  "lowerLetter",
+  "lowerRoman",
+] as const);
 
 const numberingXml = (): string => {
   const levels = Array.from({ length: 3 }, (_unused, level) => {
@@ -183,11 +195,12 @@ const numberingXml = (): string => {
 
 /** A 1x1 opaque PNG, spelled out so the corpus needs no binary fixture. */
 const ONE_PIXEL_PNG = Uint8Array.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-  0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
-  0x00, 0x03, 0x01, 0x01, 0x00, 0x18, 0xdd, 0x8d, 0xb0, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
-  0x44, 0xae, 0x42, 0x60, 0x82,
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
+  0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02,
+  0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44,
+  0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x03, 0x01, 0x01,
+  0x00, 0x18, 0xdd, 0x8d, 0xb0, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
+  0xae, 0x42, 0x60, 0x82,
 ]);
 
 const DRAWING =
@@ -208,7 +221,8 @@ const EQUATION =
   "<m:oMath><m:sSup><m:e><m:r><m:t>a</m:t></m:r></m:e>" +
   "<m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup></m:oMath>";
 
-const SIMPLE_FIELD = '<w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>';
+const SIMPLE_FIELD =
+  '<w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>';
 
 const complexField = (instruction: string, result: string): string =>
   `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
@@ -249,7 +263,9 @@ const buildProse = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
       );
       continue;
     }
-    body.push(paragraph(run(sentence(random, "latin", 12 + Math.floor(random() * 10)))));
+    body.push(
+      paragraph(run(sentence(random, "latin", 12 + Math.floor(random() * 10)))),
+    );
   }
   return { body: body.join("") };
 };
@@ -269,7 +285,9 @@ const buildLists = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
     const properties =
       '<w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr>' +
       `<w:ilvl w:val="${String(level)}"/><w:numId w:val="1"/></w:numPr></w:pPr>`;
-    body.push(paragraph(run(sentence(random, "latin", 8 + level * 3)), properties));
+    body.push(
+      paragraph(run(sentence(random, "latin", 8 + level * 3)), properties),
+    );
   }
   return {
     body: body.join(""),
@@ -283,13 +301,21 @@ const buildLists = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
   };
 };
 
-type CellOptions = { inner: string; gridSpan?: number; vMerge?: "restart" | "continue" };
+type CellOptions = {
+  inner: string;
+  gridSpan?: number;
+  vMerge?: "restart" | "continue";
+};
 
 const tableCell = ({ inner, gridSpan, vMerge }: CellOptions): string => {
   const properties =
     '<w:tcPr><w:tcW w:w="3000" w:type="dxa"/>' +
-    (gridSpan === undefined ? "" : `<w:gridSpan w:val="${String(gridSpan)}"/>`) +
-    (vMerge === undefined ? "" : `<w:vMerge${vMerge === "restart" ? ' w:val="restart"' : ""}/>`) +
+    (gridSpan === undefined
+      ? ""
+      : `<w:gridSpan w:val="${String(gridSpan)}"/>`) +
+    (vMerge === undefined
+      ? ""
+      : `<w:vMerge${vMerge === "restart" ? ' w:val="restart"' : ""}/>`) +
     "</w:tcPr>";
   return `<w:tc>${properties}${inner}</w:tc>`;
 };
@@ -308,13 +334,20 @@ const buildTables = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
 
     const rowCount = Math.min(Math.max(3, Math.floor(blocks / 12)), 60);
     const rows: string[] = [];
-    for (let rowIndex = 0; rowIndex < rowCount && emitted < blocks; rowIndex++) {
+    for (
+      let rowIndex = 0;
+      rowIndex < rowCount && emitted < blocks;
+      rowIndex++
+    ) {
       const cells: string[] = [];
       // Row 0 of every table spans two columns; rows 1 and 2 vertically merge
       // the first column, so the class carries both merge shapes.
       if (rowIndex === 0) {
         cells.push(
-          tableCell({ inner: paragraph(run(`Heading ${String(tableIndex)}`)), gridSpan: 2 }),
+          tableCell({
+            inner: paragraph(run(`Heading ${String(tableIndex)}`)),
+            gridSpan: 2,
+          }),
           tableCell({ inner: paragraph(run(sentence(random, "latin", 4))) }),
         );
         emitted += 2;
@@ -373,7 +406,9 @@ const buildNotes = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
       );
       noteId += 1;
     }
-    body.push(paragraph(`${run(sentence(random, "latin", 12))}${references.join("")}`));
+    body.push(
+      paragraph(`${run(sentence(random, "latin", 12))}${references.join("")}`),
+    );
   }
   const header =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -385,7 +420,10 @@ const buildNotes = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
     body: body.join(""),
     parts: new Map([
       ["word/footnotes.xml", `${header}${footnotes.join("")}</w:footnotes>`],
-      ["word/endnotes.xml", `${endnoteHeader}${endnotes.join("")}</w:endnotes>`],
+      [
+        "word/endnotes.xml",
+        `${endnoteHeader}${endnotes.join("")}</w:endnotes>`,
+      ],
     ]),
     relationships: [
       '<Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>',
@@ -408,14 +446,20 @@ const INDIVISIBLE_ATOMS = Object.freeze([
 const buildGraphics = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
   const body: string[] = [];
   for (let index = 0; index < blocks; index++) {
-    const atom = (INDIVISIBLE_ATOMS[index % INDIVISIBLE_ATOMS.length] ?? drawing)(index + 1);
+    const atom = (
+      INDIVISIBLE_ATOMS[index % INDIVISIBLE_ATOMS.length] ?? drawing
+    )(index + 1);
     body.push(
-      paragraph(`${run(sentence(random, "latin", 8))}${atom}${run(sentence(random, "latin", 6))}`),
+      paragraph(
+        `${run(sentence(random, "latin", 8))}${atom}${run(sentence(random, "latin", 6))}`,
+      ),
     );
   }
   return {
     body: body.join(""),
-    parts: new Map<string, PackagePart>([["word/media/pixel.png", ONE_PIXEL_PNG]]),
+    parts: new Map<string, PackagePart>([
+      ["word/media/pixel.png", ONE_PIXEL_PNG],
+    ]),
     relationships: [
       '<Relationship Id="rIdImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/pixel.png"/>',
     ],
@@ -433,10 +477,14 @@ const INLINE_REFERENCES = Object.freeze([
 const buildFields = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
   const body: string[] = [];
   for (let index = 0; index < blocks; index++) {
-    const inline = INLINE_REFERENCES[index % INLINE_REFERENCES.length]?.(index) ?? SIMPLE_FIELD;
+    const inline =
+      INLINE_REFERENCES[index % INLINE_REFERENCES.length]?.(index) ??
+      SIMPLE_FIELD;
     body.push(
       `<w:bookmarkStart w:id="${String(index)}" w:name="_Ref${String(index)}"/>` +
-        paragraph(`${run(sentence(random, "latin", 9))}${inline}${run(" applies.")}`) +
+        paragraph(
+          `${run(sentence(random, "latin", 9))}${inline}${run(" applies.")}`,
+        ) +
         `<w:bookmarkEnd w:id="${String(index)}"/>`,
     );
   }
@@ -492,15 +540,22 @@ const buildSections = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
   };
 };
 
-const buildMultiscript = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
+const buildMultiscript = ({
+  blocks,
+  random,
+}: ClassBuilderOptions): ClassBuild => {
   const body: string[] = [];
   const scripts = ["arabic", "hebrew", "cjk", "latin"] as const;
   for (let index = 0; index < blocks; index++) {
     const script = scripts[index % scripts.length] ?? "latin";
     const rightToLeft = script === "arabic" || script === "hebrew";
-    const properties = rightToLeft ? '<w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr>' : "";
+    const properties = rightToLeft
+      ? '<w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr>'
+      : "";
     const runProperties = rightToLeft ? "<w:rPr><w:rtl/></w:rPr>" : "";
-    body.push(paragraph(run(sentence(random, script, 9), runProperties), properties));
+    body.push(
+      paragraph(run(sentence(random, script, 9), runProperties), properties),
+    );
   }
   return { body: body.join("") };
 };
@@ -554,12 +609,16 @@ const buildOutline = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
       body.push(
         paragraph(
           run(`Section ${String(section + 1)}`),
-          OUTLINE_HEADING_PROPERTIES[section % OUTLINE_HEADING_PROPERTIES.length],
+          OUTLINE_HEADING_PROPERTIES[
+            section % OUTLINE_HEADING_PROPERTIES.length
+          ],
         ),
       );
       continue;
     }
-    body.push(paragraph(run(sentence(random, "latin", 10 + Math.floor(random() * 8)))));
+    body.push(
+      paragraph(run(sentence(random, "latin", 10 + Math.floor(random() * 8)))),
+    );
   }
   return { body: body.join("") };
 };
@@ -575,7 +634,10 @@ const BUILDERS = {
   multiscript: buildMultiscript,
   revised: buildRevised,
   outline: buildOutline,
-} as const satisfies Record<DocumentClass, (options: ClassBuilderOptions) => ClassBuild>;
+} as const satisfies Record<
+  DocumentClass,
+  (options: ClassBuilderOptions) => ClassBuild
+>;
 
 /** Distinct per class and size, so no two documents share a word stream. */
 const seedFor = (documentClass: DocumentClass, size: DocumentSize): number => {
@@ -635,7 +697,10 @@ export const buildDocumentPackage = ({
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
         defaults
-          .map(([extension, type]) => `<Default Extension="${extension}" ContentType="${type}"/>`)
+          .map(
+            ([extension, type]) =>
+              `<Default Extension="${extension}" ContentType="${type}"/>`,
+          )
           .join("") +
         overrides.join("") +
         "</Types>",

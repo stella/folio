@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { compileLegalSourceToDocx, compileLegalSourceToDocument, parseLegalSource } from "./index";
+import {
+  compileLegalSourceToDocument,
+  compileLegalSourceToDocx,
+  parseLegalSource,
+} from "./index";
 
 const SAMPLE_SOURCE = `@doc kind=agreement locale=en-GB numbering=legal page=A4
 @title Mutual Non-Disclosure Agreement
@@ -33,10 +37,16 @@ describe("Stella Legal Source", () => {
   test("parses compact legal directives and applies deterministic autofixes", () => {
     const result = parseLegalSource(SAMPLE_SOURCE);
 
-    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+      [],
+    );
     expect(result.draft.meta.title).toBe("Mutual Non-Disclosure Agreement");
-    expect(result.fixes.map((fix) => fix.code)).toContain("manual-numbering-stripped");
-    expect(result.fixes.map((fix) => fix.code)).toContain("table-row-width-normalized");
+    expect(result.fixes.map((fix) => fix.code)).toContain(
+      "manual-numbering-stripped",
+    );
+    expect(result.fixes.map((fix) => fix.code)).toContain(
+      "table-row-width-normalized",
+    );
 
     const definitions = result.draft.blocks.find(
       (block) => block.type === "clause" && block.heading === "Definitions",
@@ -112,7 +122,9 @@ describe("Stella Legal Source", () => {
       ].join("\n"),
     );
 
-    const signatures = result.draft.blocks.find((block) => block.type === "signatures");
+    const signatures = result.draft.blocks.find(
+      (block) => block.type === "signatures",
+    );
 
     expect(signatures).toEqual({
       type: "signatures",
@@ -157,13 +169,21 @@ describe("Stella Legal Source", () => {
 
   test("keeps distinct non-Latin clauses when removing duplicate titles", () => {
     const result = parseLegalSource(
-      ['@doc title="服务协议"', "@clause 保密义务", "双方应保护机密信息。"].join("\n"),
+      [
+        '@doc title="服务协议"',
+        "@clause 保密义务",
+        "双方应保护机密信息。",
+      ].join("\n"),
     );
 
-    const clauses = result.draft.blocks.filter((block) => block.type === "clause");
+    const clauses = result.draft.blocks.filter(
+      (block) => block.type === "clause",
+    );
 
     expect(clauses.map((clause) => clause.heading)).toEqual(["保密义务"]);
-    expect(result.fixes.map((fix) => fix.code)).not.toContain("duplicate-title-clause-removed");
+    expect(result.fixes.map((fix) => fix.code)).not.toContain(
+      "duplicate-title-clause-removed",
+    );
   });
 
   test("removes only a leading duplicate-title clause", () => {
@@ -179,14 +199,18 @@ describe("Stella Legal Source", () => {
       ].join("\n"),
     );
 
-    const clauses = result.draft.blocks.filter((block) => block.type === "clause");
+    const clauses = result.draft.blocks.filter(
+      (block) => block.type === "clause",
+    );
 
     expect(clauses.map((clause) => clause.heading)).toEqual([
       "Background",
       "Master Services Agreement",
     ]);
     expect(
-      result.fixes.filter((fix) => fix.code === "duplicate-title-clause-removed"),
+      result.fixes.filter(
+        (fix) => fix.code === "duplicate-title-clause-removed",
+      ),
     ).toHaveLength(1);
   });
 
@@ -201,7 +225,9 @@ describe("Stella Legal Source", () => {
       ].join("\n"),
     );
 
-    const clauses = result.draft.blocks.filter((block) => block.type === "clause");
+    const clauses = result.draft.blocks.filter(
+      (block) => block.type === "clause",
+    );
 
     expect(clauses.map((clause) => clause.heading)).toEqual([
       "A Party's Obligations",
@@ -220,10 +246,14 @@ describe("Stella Legal Source", () => {
     const paragraphs = result.document.package.document.content.filter(
       (block) => block.type === "paragraph",
     );
-    const numbered = paragraphs.filter((paragraph) => paragraph.formatting?.numPr !== undefined);
+    const numbered = paragraphs.filter(
+      (paragraph) => paragraph.formatting?.numPr !== undefined,
+    );
 
     expect(numbered.length).toBeGreaterThanOrEqual(2);
-    expect(result.document.package.numbering?.abstractNums.at(0)?.levels).toHaveLength(5);
+    expect(
+      result.document.package.numbering?.abstractNums.at(0)?.levels,
+    ).toHaveLength(5);
   });
 
   test("compiles numbering=none without numbering definitions or paragraph numPr", async () => {
@@ -246,7 +276,11 @@ describe("Stella Legal Source", () => {
     const paragraphs = result.document.package.document.content.filter(
       (block) => block.type === "paragraph",
     );
-    expect(paragraphs.every((paragraph) => paragraph.formatting?.numPr === undefined)).toBe(true);
+    expect(
+      paragraphs.every(
+        (paragraph) => paragraph.formatting?.numPr === undefined,
+      ),
+    ).toBe(true);
 
     const docxResult = await compileLegalSourceToDocx(source);
     expect(docxResult.status).toBe("ok");
@@ -256,8 +290,12 @@ describe("Stella Legal Source", () => {
 
     const zip = await JSZip.loadAsync(docxResult.buffer);
     expect(zip.file("word/numbering.xml")).toBeNull();
-    const contentTypesXml = await zip.file("[Content_Types].xml")?.async("string");
-    const documentRelsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
+    const contentTypesXml = await zip
+      .file("[Content_Types].xml")
+      ?.async("string");
+    const documentRelsXml = await zip
+      .file("word/_rels/document.xml.rels")
+      ?.async("string");
     const documentXml = await zip.file("word/document.xml")?.async("string");
     expect(contentTypesXml).not.toContain("numbering.xml");
     expect(documentRelsXml).not.toContain("numbering.xml");
@@ -335,10 +373,14 @@ describe("Stella Legal Source", () => {
   });
 });
 
-const bodyParagraphs = (result: ReturnType<typeof compileLegalSourceToDocument>) =>
+const bodyParagraphs = (
+  result: ReturnType<typeof compileLegalSourceToDocument>,
+) =>
   result.status === "ok"
     ? result.document.package.document.content.flatMap((block) =>
-        block.type === "paragraph" && block.formatting?.styleId === "BodyText" ? [block] : [],
+        block.type === "paragraph" && block.formatting?.styleId === "BodyText"
+          ? [block]
+          : [],
       )
     : [];
 
@@ -347,7 +389,11 @@ const runsOf = (paragraph: { content: { type: string }[] }) =>
     if (node.type === "run" && "formatting" in node && "content" in node) {
       return [node];
     }
-    if (node.type === "hyperlink" && "children" in node && Array.isArray(node.children)) {
+    if (
+      node.type === "hyperlink" &&
+      "children" in node &&
+      Array.isArray(node.children)
+    ) {
       return node.children;
     }
     return [];
@@ -375,7 +421,11 @@ describe("Stella Legal Source — markdown bodies", () => {
 
   test("keeps [[placeholders]] highlighted inside emphasised text", () => {
     const result = compileLegalSourceToDocument(
-      ['@doc title="Placeholders"', "@paragraph", "**[[Party]]** shall pay [[Amount]]."].join("\n"),
+      [
+        '@doc title="Placeholders"',
+        "@paragraph",
+        "**[[Party]]** shall pay [[Amount]].",
+      ].join("\n"),
     );
     const [body] = bodyParagraphs(result);
     const highlighted = (body ? runsOf(body) : []).filter(
@@ -397,26 +447,47 @@ describe("Stella Legal Source — markdown bodies", () => {
       ].join("\n"),
     );
     expect(result.draft.blocks).toEqual([
-      { type: "clause", level: 1, heading: "Duties", paragraphs: ["The Supplier shall:"] },
-      { type: "list", ordered: false, items: ["deliver on time", "report monthly"] },
+      {
+        type: "clause",
+        level: 1,
+        heading: "Duties",
+        paragraphs: ["The Supplier shall:"],
+      },
+      {
+        type: "list",
+        ordered: false,
+        items: ["deliver on time", "report monthly"],
+      },
       { type: "paragraph", paragraphs: ["Both duties are ongoing."] },
     ]);
   });
 
   test("a GFM pipe table outside @table is a table block", () => {
     const result = parseLegalSource(
-      ['@doc title="Tables"', "| Item | Owner |", "| --- | --- |", "| Approval | Alpha |"].join(
-        "\n",
-      ),
+      [
+        '@doc title="Tables"',
+        "| Item | Owner |",
+        "| --- | --- |",
+        "| Approval | Alpha |",
+      ].join("\n"),
     );
     expect(result.draft.blocks).toEqual([
-      { type: "table", table: { headers: ["Item", "Owner"], rows: [["Approval", "Alpha"]] } },
+      {
+        type: "table",
+        table: { headers: ["Item", "Owner"], rows: [["Approval", "Alpha"]] },
+      },
     ]);
   });
 
   test("a directive line never merges into the paragraph above it", () => {
     const result = parseLegalSource(
-      ['@doc title="T"', "@clause First", "Body line", "@clause Next", "More"].join("\n"),
+      [
+        '@doc title="T"',
+        "@clause First",
+        "Body line",
+        "@clause Next",
+        "More",
+      ].join("\n"),
     );
     expect(result.draft.blocks).toEqual([
       { type: "clause", level: 1, heading: "First", paragraphs: ["Body line"] },
@@ -436,12 +507,17 @@ describe("Stella Legal Source — markdown bodies", () => {
       ].join("\n"),
     );
     expect(result.draft.blocks).toEqual([
-      { type: "paragraph", paragraphs: ["This sentence continues here.", "Second one."] },
+      {
+        type: "paragraph",
+        paragraphs: ["This sentence continues here.", "Second one."],
+      },
     ]);
   });
 
   test("reports an unknown directive as the author spelled it", () => {
-    const result = parseLegalSource(['@doc title="T"', "@Whereas the parties agree"].join("\n"));
+    const result = parseLegalSource(
+      ['@doc title="T"', "@Whereas the parties agree"].join("\n"),
+    );
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({
         code: "unknown-directive",
@@ -478,9 +554,13 @@ describe("Stella Legal Source — markdown bodies", () => {
 
   test("fenced code stays literal through the inline renderer", () => {
     const result = compileLegalSourceToDocument(
-      ['@doc title="Code"', "@paragraph", "```", "**not bold** [[not a placeholder]]", "```"].join(
-        "\n",
-      ),
+      [
+        '@doc title="Code"',
+        "@paragraph",
+        "```",
+        "**not bold** [[not a placeholder]]",
+        "```",
+      ].join("\n"),
     );
     const [body] = bodyParagraphs(result);
     expect(body).toBeDefined();
@@ -491,7 +571,9 @@ describe("Stella Legal Source — markdown bodies", () => {
       runs
         .map((run) =>
           "content" in run
-            ? run.content.map((item) => (item.type === "text" ? item.text : "")).join("")
+            ? run.content
+                .map((item) => (item.type === "text" ? item.text : ""))
+                .join("")
             : "",
         )
         .join(""),
@@ -516,14 +598,25 @@ describe("Stella Legal Source — markdown bodies", () => {
     expect(result.draft.blocks).toEqual([
       { type: "clause", level: 1, heading: "Duties", paragraphs: [] },
       { type: "list", ordered: false, items: ["deliver", "report"] },
-      { type: "clause", level: 1, heading: "Fees", paragraphs: ["quoted intro"] },
+      {
+        type: "clause",
+        level: 1,
+        heading: "Fees",
+        paragraphs: ["quoted intro"],
+      },
       { type: "clause", level: 2, heading: "Rates", paragraphs: ["Hourly."] },
     ]);
   });
 
   test("diagnostics keep the author's line numbers after boundary insertion", () => {
     const result = parseLegalSource(
-      ['@doc title="Lines"', "@list", "- one", "@bogus directive", "@clause A"].join("\n"),
+      [
+        '@doc title="Lines"',
+        "@list",
+        "- one",
+        "@bogus directive",
+        "@clause A",
+      ].join("\n"),
     );
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ code: "unknown-directive", line: 4 }),
@@ -544,7 +637,9 @@ describe("Stella Legal Source — markdown bodies", () => {
       ].join("\n"),
     );
     expect(result.diagnostics).toEqual([]);
-    expect(result.fixes.filter((fix) => fix.code === "closing-directive-ignored")).toHaveLength(2);
+    expect(
+      result.fixes.filter((fix) => fix.code === "closing-directive-ignored"),
+    ).toHaveLength(2);
     expect(result.draft.blocks).toEqual([
       { type: "list", ordered: false, items: ["one", "two"] },
       { type: "clause", level: 1, heading: "A", paragraphs: ["body"] },
@@ -553,13 +648,19 @@ describe("Stella Legal Source — markdown bodies", () => {
 
   test("warns about a body paragraph that is bold end to end instead of rewriting it", () => {
     const result = compileLegalSourceToDocument(
-      ['@doc title="Bold"', "@paragraph", "**Whole sentence carried over from chat.**"].join("\n"),
+      [
+        '@doc title="Bold"',
+        "@paragraph",
+        "**Whole sentence carried over from chat.**",
+      ].join("\n"),
     );
     expect(result.status).toBe("ok");
     if (result.status !== "ok") {
       return;
     }
-    expect(result.warnings.map((warning) => warning.code)).toEqual(["whole-paragraph-emphasis"]);
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      "whole-paragraph-emphasis",
+    ]);
     expect(JSON.stringify(bodyParagraphs(result))).toContain('"bold":true');
   });
 
@@ -582,8 +683,11 @@ describe("Stella Legal Source — markdown bodies", () => {
     expect(serialized).toContain("A_B_C Ltd");
     expect(serialized).toContain("*Jane*");
     expect(serialized).not.toContain("[[");
-    expect(serialized).toContain(JSON.stringify({ text: "Seller legal name" }).slice(1, -1));
-    const highlighted = (serialized.match(/"highlight":"yellow"/gu) ?? []).length;
+    expect(serialized).toContain(
+      JSON.stringify({ text: "Seller legal name" }).slice(1, -1),
+    );
+    const highlighted = (serialized.match(/"highlight":"yellow"/gu) ?? [])
+      .length;
     expect(highlighted).toBe(2);
   });
 });

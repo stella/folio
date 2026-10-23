@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ImageRun } from "../layout-engine/types";
-import { isFloatingImageRun, isTextWrappingFloatingImageRun } from "./renderUtils";
+import {
+  isFloatingImageRun,
+  isTextWrappingFloatingImageRun,
+} from "./renderUtils";
 
 // Issue #418 (eigenpal): wrapNone images (behind/inFront) are anchored floats
 // but must NOT shrink line widths — text paints over or under them. Folio's
 // previous classifier excluded behind/inFront from "floating" entirely, so
 // they fell back to inline rendering and pushed paragraph flow.
 
-const baseImage = (wrapType: string | undefined, extras: Partial<ImageRun> = {}): ImageRun => {
+const baseImage = (
+  wrapType: string | undefined,
+  extras: Partial<ImageRun> = {},
+): ImageRun => {
   const base: ImageRun = {
     kind: "image",
     src: "img.png",
@@ -56,7 +62,9 @@ describe("isFloatingImageRun (issue #418)", () => {
 
   test("explicit displayMode='float' overrides missing wrapType", () => {
     expect(
-      isFloatingImageRun(baseImage(undefined, { displayMode: "float", cssFloat: "left" })),
+      isFloatingImageRun(
+        baseImage(undefined, { displayMode: "float", cssFloat: "left" }),
+      ),
     ).toBe(true);
   });
 });
@@ -71,7 +79,9 @@ describe("isTextWrappingFloatingImageRun (issue #418)", () => {
   });
 
   test("topAndBottom does not wrap text (block, not side-wrapped)", () => {
-    expect(isTextWrappingFloatingImageRun(baseImage("topAndBottom"))).toBe(false);
+    expect(isTextWrappingFloatingImageRun(baseImage("topAndBottom"))).toBe(
+      false,
+    );
   });
 
   test("square/tight/through wrap text", () => {

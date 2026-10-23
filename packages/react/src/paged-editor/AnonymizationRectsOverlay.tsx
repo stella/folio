@@ -24,7 +24,7 @@
  * canonical in the sidebar re-trigger the scroll).
  */
 
-import React, { useEffect, useRef, useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
@@ -145,7 +145,9 @@ export const AnonymizationRectsOverlay = ({
       if (!root) {
         return;
       }
-      const spans = root.querySelectorAll<HTMLElement>("[data-folio-anonymization-canonical]");
+      const spans = root.querySelectorAll<HTMLElement>(
+        "[data-folio-anonymization-canonical]",
+      );
       // Iterate in reverse paint order so the topmost rect wins
       // when several overlap at the same point.
       for (let i = spans.length - 1; i >= 0; i--) {
@@ -178,7 +180,11 @@ export const AnonymizationRectsOverlay = ({
   }
 
   return (
-    <div ref={overlayRef} style={overlayStyles} data-folio-anonymization-overlay="">
+    <div
+      ref={overlayRef}
+      style={overlayStyles}
+      data-folio-anonymization-overlay=""
+    >
       {groups.flatMap((group) => {
         const isSelected = selectedCanonical === group.canonical;
         return group.rects.map((rect, idx) => (
@@ -186,7 +192,8 @@ export const AnonymizationRectsOverlay = ({
             key={`${group.label}:${group.canonical}:${idx}:${rect.pageIndex}:${rect.x}:${rect.y}`}
             ref={(node) => {
               if (node) {
-                const list = spansByCanonical.current.get(group.canonical) ?? [];
+                const list =
+                  spansByCanonical.current.get(group.canonical) ?? [];
                 list.push(node);
                 spansByCanonical.current.set(group.canonical, list);
                 return () => {

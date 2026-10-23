@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useRef } from "react";
+
 import {
   getEditorScrollRoot,
   scrollEditorBy,
@@ -103,7 +104,10 @@ export function useDragAutoScroll({
           return;
         }
         const rect = container.getBoundingClientRect();
-        if (clientY < rect.top + EDGE_ZONE || clientY > rect.bottom - EDGE_ZONE) {
+        if (
+          clientY < rect.top + EDGE_ZONE ||
+          clientY > rect.bottom - EDGE_ZONE
+        ) {
           startAutoScroll();
         }
       }

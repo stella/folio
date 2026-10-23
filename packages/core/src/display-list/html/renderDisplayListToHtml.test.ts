@@ -3,13 +3,21 @@ import { describe, expect, test } from "bun:test";
 import { buildDocxDisplayList, exportDocxToPdf } from "../../export-pdf";
 import type { HeadlessFontSource } from "../../fonts/headlessMeasure";
 import { selectDisplayPages } from "../selectDisplayPages";
-import { renderDisplayListPagesToHtml, renderDisplayListToHtml } from "./renderDisplayListToHtml";
+import {
+  renderDisplayListPagesToHtml,
+  renderDisplayListToHtml,
+} from "./renderDisplayListToHtml";
 
-const DEMO = new URL("../../../../../tests/visual/fixtures/docx-editor-demo.docx", import.meta.url);
+const DEMO = new URL(
+  "../../../../../tests/visual/fixtures/docx-editor-demo.docx",
+  import.meta.url,
+);
 const NO_FONTS: HeadlessFontSource = { load: () => [] };
 
 const demoList = async () => {
-  const built = await buildDocxDisplayList(await Bun.file(DEMO).arrayBuffer(), { fonts: NO_FONTS });
+  const built = await buildDocxDisplayList(await Bun.file(DEMO).arrayBuffer(), {
+    fonts: NO_FONTS,
+  });
   if (built.isErr()) throw built.error;
   return built.value.list;
 };
@@ -19,11 +27,18 @@ describe("renderDisplayListToHtml", () => {
     const list = await demoList();
 
     const pages = renderDisplayListPagesToHtml(list);
-    const html = renderDisplayListToHtml(list, { title: "a <title>", pageGapPx: 16 });
+    const html = renderDisplayListToHtml(list, {
+      title: "a <title>",
+      pageGapPx: 16,
+    });
 
     expect(pages.length).toBe(list.pages.length);
-    expect(pages.every((page) => page.includes('class="layout-page"'))).toBe(true);
-    expect(html.match(/class="layout-page-slot"/gu)?.length).toBe(list.pages.length);
+    expect(pages.every((page) => page.includes('class="layout-page"'))).toBe(
+      true,
+    );
+    expect(html.match(/class="layout-page-slot"/gu)?.length).toBe(
+      list.pages.length,
+    );
     expect(html).toContain("<title>a &lt;title&gt;</title>");
     expect(html).not.toContain("blob:");
   });

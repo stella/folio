@@ -20,8 +20,12 @@ describe("toFlowBlocks — run-in merge respects SDT boundaries", () => {
     // text after the boundary would render as if it were part of the SDT
     // — chrome and widget click targets would line up against the wrong
     // range.
-    const inner = schema.node("paragraph", { runInWithNext: true }, [schema.text("Heading")]);
-    const sdt = schema.node("blockSdt", { sdtType: "richText", tag: "wrap" }, [inner]);
+    const inner = schema.node("paragraph", { runInWithNext: true }, [
+      schema.text("Heading"),
+    ]);
+    const sdt = schema.node("blockSdt", { sdtType: "richText", tag: "wrap" }, [
+      inner,
+    ]);
     const tail = schema.node("paragraph", {}, [schema.text("body text")]);
     const blocks = toFlowBlocks(schema.node("doc", null, [sdt, tail]));
     const paragraphs = blocks.filter((b) => b.kind === "paragraph");
@@ -35,9 +39,14 @@ describe("toFlowBlocks — run-in merge respects SDT boundaries", () => {
     // Sanity: the same-membership case must keep working — a specVanish
     // heading immediately above its body paragraph inside one SDT should
     // collapse exactly like it does outside an SDT.
-    const heading = schema.node("paragraph", { runInWithNext: true }, [schema.text("Heading")]);
+    const heading = schema.node("paragraph", { runInWithNext: true }, [
+      schema.text("Heading"),
+    ]);
     const body = schema.node("paragraph", {}, [schema.text(" body text")]);
-    const sdt = schema.node("blockSdt", { sdtType: "richText", tag: "wrap" }, [heading, body]);
+    const sdt = schema.node("blockSdt", { sdtType: "richText", tag: "wrap" }, [
+      heading,
+      body,
+    ]);
     const blocks = toFlowBlocks(schema.node("doc", null, [sdt]));
     const paragraphs = blocks.filter((b) => b.kind === "paragraph");
     expect(paragraphs).toHaveLength(1);
@@ -182,13 +191,21 @@ describe("toFlowBlocks — blockSdt grouping", () => {
 
 describe("toFlowBlocks — block SDT inside a table cell", () => {
   test("lays out the content control's paragraphs as the cell's blocks", () => {
-    const sdt = schema.node("blockSdt", { sdtType: "plainText", showingPlaceholder: true }, [
-      schema.node("paragraph", {}, [schema.text("placeholder prompt")]),
-      schema.node("paragraph", {}, [schema.text("second")]),
-    ]);
+    const sdt = schema.node(
+      "blockSdt",
+      { sdtType: "plainText", showingPlaceholder: true },
+      [
+        schema.node("paragraph", {}, [schema.text("placeholder prompt")]),
+        schema.node("paragraph", {}, [schema.text("second")]),
+      ],
+    );
     const cell = schema.node("tableCell", null, [sdt]);
-    const table = schema.node("table", null, [schema.node("tableRow", null, [cell])]);
-    const blocks = toFlowBlocks(schema.node("doc", null, [table, schema.node("paragraph")]));
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [cell]),
+    ]);
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [table, schema.node("paragraph")]),
+    );
 
     const tableBlock = blocks.find((block) => block.kind === "table");
     if (tableBlock?.kind !== "table") {
@@ -197,12 +214,16 @@ describe("toFlowBlocks — block SDT inside a table cell", () => {
     const cellBlocks = tableBlock.rows.at(0)?.cells.at(0)?.blocks ?? [];
     const texts = cellBlocks.map((block) =>
       block.kind === "paragraph"
-        ? block.runs.map((run) => (run.kind === "text" ? run.text : "")).join("")
+        ? block.runs
+            .map((run) => (run.kind === "text" ? run.text : ""))
+            .join("")
         : block.kind,
     );
     expect(texts).toEqual(["placeholder prompt", "second"]);
     // table(0) > row(1) > cell(2) > blockSdt(3) > paragraph(4): text opens at 5.
     const first = cellBlocks.at(0);
-    expect(first?.kind === "paragraph" ? first.runs.at(0)?.pmStart : undefined).toBe(5);
+    expect(
+      first?.kind === "paragraph" ? first.runs.at(0)?.pmStart : undefined,
+    ).toBe(5);
   });
 });

@@ -7,7 +7,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MeasuredLine, ParagraphBlock, TextRun } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TextRun,
+} from "../layout-engine/types";
 import { renderLine, sliceRunsForLine } from "./renderParagraph";
 
 class FakeElement {
@@ -115,17 +119,25 @@ describe("renderParagraph template fill preview", () => {
 
     expect(plainEl.className).not.toContain("folio-template-preview-run");
     expect(valueEl.className).toContain("folio-template-preview-run");
-    expect(valueEl.className).toContain("folio-template-preview-run--highlighted");
+    expect(valueEl.className).toContain(
+      "folio-template-preview-run--highlighted",
+    );
     expect(valueEl.textContent).toBe("Maciej Kur");
   });
 
   test("plain substitution gets the marker class without the accent chip", () => {
-    const { block, line } = buildLine([{ kind: "text", text: "1234", templatePreview: "plain" }]);
+    const { block, line } = buildLine([
+      { kind: "text", text: "1234", templatePreview: "plain" },
+    ]);
 
-    const [valueEl] = findTextRunEls(renderFakeLine(block, line)) as [FakeElement];
+    const [valueEl] = findTextRunEls(renderFakeLine(block, line)) as [
+      FakeElement,
+    ];
 
     expect(valueEl.className).toContain("folio-template-preview-run");
-    expect(valueEl.className).not.toContain("folio-template-preview-run--highlighted");
+    expect(valueEl.className).not.toContain(
+      "folio-template-preview-run--highlighted",
+    );
   });
 
   test("sliceRunsForLine clamps sliced pm spans to the value run's marker range", () => {

@@ -1,9 +1,4 @@
-import {
-  effectiveParagraphNumbering,
-  effectiveParagraphNumberingReference,
-  paragraphNumberingSourcesFromBoundary,
-  paragraphNumberingAttr,
-} from "./numberingAttr";
+import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 /**
  * Which numbering instance a list command puts a paragraph in, and the
  * *Restart Numbering*, *Continue Numbering* and *Set Numbering Value* commands.
@@ -20,35 +15,45 @@ import {
  * previous state is the paragraph's original, so rejecting it restores what the
  * paragraph was before any of the tracked changes.
  */
-
-import { withCanonicalCommand } from "./canonicalCommands";
-
-import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import {
-  mintListInstance,
-  restartListInstance,
   type ListKind,
   type ListLevelFormat,
+  mintListInstance,
+  restartListInstance,
 } from "../docx/listNumberingInstances";
-import { createNumberingMap, isBulletLevel, type NumberingMap } from "../docx/numberingParser";
+import {
+  createNumberingMap,
+  isBulletLevel,
+  type NumberingMap,
+} from "../docx/numberingParser";
 import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { ListLevel } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
+import { withCanonicalCommand } from "./canonicalCommands";
 import { paragraphPropertiesSnapshot } from "./commands/propertyChangeScope";
 import { LIST_RENDERING_ATTR_KEYS } from "./listMarker";
-import { getDocumentStyleResolver } from "./plugins/documentStyleState";
-import type { RunStyleResolver } from "./runStyleFormatting";
-import { getDocumentNumbering } from "./plugins/documentNumbering";
-import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
-import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
+import { listRenderingFor, recordsListRendering } from "./listRendering";
+import {
+  effectiveParagraphNumbering,
+  effectiveParagraphNumberingReference,
+  paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
+} from "./numberingAttr";
 import { directParagraphIndentation } from "./paragraphIndentation";
+import { getDocumentNumbering } from "./plugins/documentNumbering";
+import { getDocumentStyleResolver } from "./plugins/documentStyleState";
+import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
+import type { RunStyleResolver } from "./runStyleFormatting";
+import type {
+  ParagraphAttrs,
+  ParagraphPropertyChangeAttrs,
+} from "./schema/nodes";
 import {
   listAttrsFromNumbering,
   listIndentationProvenancePatch,
 } from "./styles/resolvedStyleAttrs";
-import { listRenderingFor, recordsListRendering } from "./listRendering";
 
 const PARAGRAPH_NODE = "paragraph";
 
@@ -70,7 +75,9 @@ type RevisionInfo = { id: number; author: string; date: string };
 // TRACKED PARAGRAPH-PROPERTY CHANGES
 // ============================================================================
 
-type PreviousFormatting = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
+type PreviousFormatting = NonNullable<
+  ParagraphPropertyChangeAttrs["previousFormatting"]
+>;
 
 /**
  * The paragraph's properties as a `w:pPrChange` records them before a list
@@ -83,9 +90,10 @@ const listChangeSnapshot = (
   node: PMNode,
   attrs: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const previousFormatting: Record<string, unknown> = paragraphPropertiesSnapshot(
-    node.type.create(attrs, node.content, node.marks),
-  );
+  const previousFormatting: Record<string, unknown> =
+    paragraphPropertiesSnapshot(
+      node.type.create(attrs, node.content, node.marks),
+    );
   previousFormatting["numPr"] ??= null;
   previousFormatting["numPrFromStyle"] = attrs["numPrFromStyle"] ?? null;
   for (const key of LIST_RENDERING_ATTR_KEYS) {
@@ -115,14 +123,19 @@ const originalListFormatting = ({
 }: OriginalListFormattingOptions): Record<string, unknown> => {
   const original: Record<string, unknown> = { ...record };
   const inherited = styleResolver
-    ? styleResolver.resolveParagraphStyle(record.styleId ?? undefined).paragraphFormatting?.numPr
+    ? styleResolver.resolveParagraphStyle(record.styleId ?? undefined)
+        .paragraphFormatting?.numPr
     : (record.numPrFromStyle ?? undefined);
-  original["numPrFromStyle"] = inherited === undefined ? null : paragraphNumberingAttr(inherited);
+  original["numPrFromStyle"] =
+    inherited === undefined ? null : paragraphNumberingAttr(inherited);
   if (recordsListRendering(record)) return original;
   Object.assign(
     original,
     listRenderingFor(
-      effectiveParagraphNumbering({ numPr: record.numPr ?? undefined, numPrFromStyle: inherited }),
+      effectiveParagraphNumbering({
+        numPr: record.numPr ?? undefined,
+        numPrFromStyle: inherited,
+      }),
       numbering,
     ),
   );
@@ -175,13 +188,19 @@ const trackListChange = ({
   const pending = existing.find(({ info }) => info.provenance !== "suggested");
   const retained = existing.filter((change) => change !== pending);
   const previousFormatting = pending?.previousFormatting
-    ? originalListFormatting({ record: pending.previousFormatting, numbering, styleResolver })
+    ? originalListFormatting({
+        record: pending.previousFormatting,
+        numbering,
+        styleResolver,
+      })
     : listChangeSnapshot(current, currentAttrs);
-  const ownPending = pending !== undefined && pending.info.author === rev.author;
+  const ownPending =
+    pending !== undefined && pending.info.author === rev.author;
 
   if (
     ownPending &&
-    canonicalJson(previousFormatting) === canonicalJson(listChangeSnapshot(current, next))
+    canonicalJson(previousFormatting) ===
+      canonicalJson(listChangeSnapshot(current, next))
   ) {
     return { ...next, _propertyChanges: retained.length > 0 ? retained : null };
   }
@@ -200,10 +219,12 @@ const trackListChange = ({
 // WHICH LIST A PARAGRAPH JOINS
 // ============================================================================
 
-const levelKind = (level: ListLevel): ListKind => (isBulletLevel(level) ? "bullet" : "numbered");
+const levelKind = (level: ListLevel): ListKind =>
+  isBulletLevel(level) ? "bullet" : "numbered";
 
 /** A level's text with its placeholders blanked: `%1.` and `%3.` read alike. */
-const levelTextShape = (lvlText: string): string => lvlText.replaceAll(/%\d/gu, "%");
+const levelTextShape = (lvlText: string): string =>
+  lvlText.replaceAll(/%\d/gu, "%");
 
 const levelMatches = (level: ListLevel, request: ListRequest): boolean => {
   if (levelKind(level) !== request.kind) {
@@ -252,13 +273,18 @@ const directListMembership = (
 };
 
 /** The block directly before or after the paragraph `$pos` sits in. */
-const siblingOf = ($pos: ResolvedPos, direction: "before" | "after"): PMNode | null => {
+const siblingOf = (
+  $pos: ResolvedPos,
+  direction: "before" | "after",
+): PMNode | null => {
   const depth = $pos.depth;
   if (depth === 0) {
     return null;
   }
   const index = $pos.index(depth - 1);
-  return $pos.node(depth - 1).maybeChild(direction === "before" ? index - 1 : index + 1);
+  return $pos
+    .node(depth - 1)
+    .maybeChild(direction === "before" ? index - 1 : index + 1);
 };
 
 /** Where the paragraphs a command numbers go. */
@@ -347,7 +373,10 @@ export const resolveListTarget = ({
   if (!first) {
     return null;
   }
-  for (const neighbour of [siblingOf($from, "before"), siblingOf($to, "after")]) {
+  for (const neighbour of [
+    siblingOf($from, "before"),
+    siblingOf($to, "after"),
+  ]) {
     const membership = directListMembership(neighbour, numbering);
     if (
       numbering &&
@@ -357,12 +386,18 @@ export const resolveListTarget = ({
       return { numId: membership.numId, ilvl: membership.ilvl, numbering };
     }
   }
-  const unused = numbering ? unusedInstanceFor(numbering, $from.doc, first) : undefined;
+  const unused = numbering
+    ? unusedInstanceFor(numbering, $from.doc, first)
+    : undefined;
   if (numbering && unused !== undefined) {
     return { numId: unused, ilvl: 0, numbering };
   }
   const minted = mintListInstance(numbering?.definitions, first);
-  return { numId: minted.numId, ilvl: 0, numbering: createNumberingMap(minted.definitions) };
+  return {
+    numId: minted.numId,
+    ilvl: 0,
+    numbering: createNumberingMap(minted.definitions),
+  };
 };
 
 /** A paragraph's attrs as an item of `numId` at `ilvl`, resolved in `numbering`. */
@@ -381,9 +416,11 @@ export const listItemAttrs = (
     numbering,
   }),
   // Counted from the paragraph's own inline fields; the list does not change them.
-  listImplicitChildLevelAdvances: attrs["listImplicitChildLevelAdvances"] ?? null,
+  listImplicitChildLevelAdvances:
+    attrs["listImplicitChildLevelAdvances"] ?? null,
   listFoldedMarkerSuffix: attrs["listFoldedMarkerSuffix"] ?? undefined,
-  listMarkerSecondSlotOffsetTwips: attrs["listMarkerSecondSlotOffsetTwips"] ?? null,
+  listMarkerSecondSlotOffsetTwips:
+    attrs["listMarkerSecondSlotOffsetTwips"] ?? null,
 });
 
 type ParagraphUpdate = {
@@ -439,12 +476,21 @@ const selectedListParagraph = (state: EditorState): ListParagraph | null => {
   if ($from.parent.type.name !== PARAGRAPH_NODE || $from.depth === 0) {
     return null;
   }
-  const membership = directListMembership($from.parent, getDocumentNumbering(state));
-  return membership ? { pos: $from.before(), node: $from.parent, membership } : null;
+  const membership = directListMembership(
+    $from.parent,
+    getDocumentNumbering(state),
+  );
+  return membership
+    ? { pos: $from.before(), node: $from.parent, membership }
+    : null;
 };
 
 /** Every direct item of `numId` from `fromPos` to the end of the document. */
-const itemsFrom = (state: EditorState, numId: number, fromPos: number): ListParagraph[] => {
+const itemsFrom = (
+  state: EditorState,
+  numId: number,
+  fromPos: number,
+): ListParagraph[] => {
   const numbering = getDocumentNumbering(state);
   const items: ListParagraph[] = [];
   state.doc.descendants((node, pos) => {
@@ -469,7 +515,12 @@ type MoveItemsOptions = {
   numbering: NumberingMap;
 };
 
-const moveItems = ({ state, items, numId, numbering }: MoveItemsOptions): Transaction => {
+const moveItems = ({
+  state,
+  items,
+  numId,
+  numbering,
+}: MoveItemsOptions): Transaction => {
   const tr = state.tr;
   applyParagraphUpdates({
     tr,
@@ -477,7 +528,11 @@ const moveItems = ({ state, items, numId, numbering }: MoveItemsOptions): Transa
     updates: items.map(({ pos, node, membership }) => ({
       pos,
       node,
-      next: listItemAttrs(expectParagraphAttrs(node), { numId, ilvl: membership.ilvl }, numbering),
+      next: listItemAttrs(
+        expectParagraphAttrs(node),
+        { numId, ilvl: membership.ilvl },
+        numbering,
+      ),
     })),
   });
   return tr.scrollIntoView();
@@ -500,7 +555,12 @@ export const setNumberingValue = (value: number): Command =>
       const abstractNumId = selected
         ? numbering?.getAbstractNumId(selected.membership.numId)
         : null;
-      if (!selected || !numbering || abstractNumId === null || abstractNumId === undefined) {
+      if (
+        !selected ||
+        !numbering ||
+        abstractNumId === null ||
+        abstractNumId === undefined
+      ) {
         return false;
       }
       if (!dispatch) {
@@ -547,7 +607,11 @@ const previousListOfKind = (
       return true;
     }
     const candidate = directListMembership(node, numbering);
-    if (candidate && candidate.numId !== membership.numId && levelKind(candidate.level) === kind) {
+    if (
+      candidate &&
+      candidate.numId !== membership.numId &&
+      levelKind(candidate.level) === kind
+    ) {
       found = candidate.numId;
     }
     return false;
@@ -567,7 +631,11 @@ export const continueNumbering = withCanonicalCommand(
     if (!selected || !numbering) {
       return false;
     }
-    const previous = previousListOfKind(state, selected.pos, selected.membership);
+    const previous = previousListOfKind(
+      state,
+      selected.pos,
+      selected.membership,
+    );
     if (previous === null) {
       return false;
     }
@@ -592,14 +660,18 @@ export type ListNumberingMenuState =
   | { readonly type: "none" }
   | { readonly type: "listItem"; readonly canContinue: boolean };
 
-export const NO_LIST_NUMBERING_MENU = { type: "none" } as const satisfies ListNumberingMenuState;
+export const NO_LIST_NUMBERING_MENU = {
+  type: "none",
+} as const satisfies ListNumberingMenuState;
 
 /**
  * Whether the selection is in a list item whose numbering can be restarted
  * or set, and whether an earlier list lets it continue: the enabled state of
  * those menu entries.
  */
-export const listNumberingMenuState = (state: EditorState): ListNumberingMenuState =>
+export const listNumberingMenuState = (
+  state: EditorState,
+): ListNumberingMenuState =>
   restartNumbering(state)
     ? { type: "listItem", canContinue: continueNumbering(state) }
     : NO_LIST_NUMBERING_MENU;

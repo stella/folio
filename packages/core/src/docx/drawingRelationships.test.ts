@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 
 import { rebindDrawingImageRelationship } from "./drawingRelationships";
-import { findAttributeByNamespaceUri, getChildElements, parseXml } from "./xmlParser";
+import {
+  findAttributeByNamespaceUri,
+  getChildElements,
+  parseXml,
+} from "./xmlParser";
 
 const RELATIONSHIP_NAMESPACES = [
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
@@ -18,10 +22,16 @@ test("rebinds the embedded picture by namespace while preserving unrelated attri
     expect(result).not.toBeNull();
     const root = getChildElements(parseXml(result ?? "")).at(0);
     expect(
-      findAttributeByNamespaceUri(root, new Set(RELATIONSHIP_NAMESPACES), "embed")?.value,
+      findAttributeByNamespaceUri(
+        root,
+        new Set(RELATIONSHIP_NAMESPACES),
+        "embed",
+      )?.value,
     ).toBe("destination");
     expect(root?.attributes?.["cstate"]).toBe("print");
-    expect(root?.attributes?.["xmlns:resource"]).toBe(RELATIONSHIP_NAMESPACES.at(0));
+    expect(root?.attributes?.["xmlns:resource"]).toBe(
+      RELATIONSHIP_NAMESPACES.at(0),
+    );
   }
 });
 
@@ -44,7 +54,11 @@ test("refuses drawings with additional package dependencies", () => {
 test("rebinds VML image references without allowing arbitrary relationship IDs", () => {
   const xml =
     '<v:imagedata xmlns:v="urn:schemas-microsoft-com:vml" xmlns:res="http://schemas.openxmlformats.org/officeDocument/2006/relationships" res:id="source"/>';
-  const result = rebindDrawingImageRelationship({ xml, previousId: "source", nextId: "target" });
+  const result = rebindDrawingImageRelationship({
+    xml,
+    previousId: "source",
+    nextId: "target",
+  });
   expect(result).toContain('res:id="target"');
   expect(
     rebindDrawingImageRelationship({

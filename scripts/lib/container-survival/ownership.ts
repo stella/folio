@@ -34,15 +34,14 @@
  * list of them beside this file.
  */
 
-import path from "node:path";
-
+import { TaggedError } from "better-result";
 import { Glob } from "bun";
+import path from "node:path";
 
 import {
   type ChildOwnerClaim,
   ownedElsewhereClaims,
 } from "@stll/folio-core/docx/containerChildren";
-import { TaggedError } from "better-result";
 
 import {
   type ContainerContract,
@@ -79,7 +78,8 @@ const CONTRADICTS_AN_OWNER = {
   parserThrows: false,
 } as const satisfies Record<DropReason, boolean>;
 
-const wml = (name: string): string => qualify({ namespace: WML_NAMESPACE, name });
+const wml = (name: string): string =>
+  qualify({ namespace: WML_NAMESPACE, name });
 
 /**
  * Pairs an owner claims that the contract records as lost anyway, and why.
@@ -123,7 +123,9 @@ const claimedContainers = (claim: ChildOwnerClaim): string[] => {
  * misses it.
  */
 export const claimedPairs = (claim: ChildOwnerClaim): string[] =>
-  claimedContainers(claim).map((container) => `${container}/${wml(claim.child)}`);
+  claimedContainers(claim).map(
+    (container) => `${container}/${wml(claim.child)}`,
+  );
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -151,14 +153,17 @@ const claimingModules = async (): Promise<string[]> => {
  * Reading the registry without this returns whatever happened to be imported,
  * and a check that silently sees no claims passes for the wrong reason.
  */
-export const loadOwnerClaims = async (): Promise<readonly ChildOwnerClaim[]> => {
+export const loadOwnerClaims = async (): Promise<
+  readonly ChildOwnerClaim[]
+> => {
   for (const file of await claimingModules()) {
     await import(file);
   }
   const claims = ownedElsewhereClaims();
   if (claims.length === 0) {
     throw new ContainerOwnershipError({
-      message: "no owner claims were registered; the scan found no module that makes one",
+      message:
+        "no owner claims were registered; the scan found no module that makes one",
     });
   }
   return claims;
@@ -167,7 +172,12 @@ export const loadOwnerClaims = async (): Promise<readonly ChildOwnerClaim[]> => 
 /** Resolve `<module>#<export>` against `packages/core/src/docx`. */
 const unresolved = async (reader: string): Promise<string | undefined> => {
   const [module, exported] = reader.split("#");
-  if (module === undefined || exported === undefined || module === "" || exported === "") {
+  if (
+    module === undefined ||
+    exported === undefined ||
+    module === "" ||
+    exported === ""
+  ) {
     return `${reader} is not a <module>#<export> reference`;
   }
   const file = path.join(CORE_DOCX, `${module}.ts`);
@@ -187,7 +197,9 @@ const unresolved = async (reader: string): Promise<string | undefined> => {
  * The module is imported rather than read, so a reference that survives a
  * rename only because a comment was not updated fails here.
  */
-export const unresolvedOwners = async (claims: readonly ChildOwnerClaim[]): Promise<string[]> => {
+export const unresolvedOwners = async (
+  claims: readonly ChildOwnerClaim[],
+): Promise<string[]> => {
   const failures: string[] = [];
   for (const claim of claims) {
     const failure = await unresolved(claim.reader);
@@ -207,7 +219,9 @@ export const unresolvedOwners = async (claims: readonly ChildOwnerClaim[]): Prom
  * recorded dispositions are both data, so the check costs nothing and runs
  * under a scoped census too.
  */
-export const ownershipViolations = async (contract: ContainerContract): Promise<string[]> => {
+export const ownershipViolations = async (
+  contract: ContainerContract,
+): Promise<string[]> => {
   const claims = await loadOwnerClaims();
   const problems = await unresolvedOwners(claims);
   const violating = new Set<string>();

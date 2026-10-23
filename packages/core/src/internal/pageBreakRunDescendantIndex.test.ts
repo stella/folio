@@ -18,14 +18,22 @@ const nestedPageBreakDocument = (depth: number): NestedPageBreakDocument => {
   let nestedBlock = deepestParagraph;
 
   for (let index = 0; index < depth; index += 1) {
-    const cell = schema.node(index % 2 === 0 ? "tableCell" : "tableHeader", null, [nestedBlock]);
+    const cell = schema.node(
+      index % 2 === 0 ? "tableCell" : "tableHeader",
+      null,
+      [nestedBlock],
+    );
     owners.push(cell);
-    nestedBlock = schema.node("table", null, [schema.node("tableRow", null, [cell])]);
+    nestedBlock = schema.node("table", null, [
+      schema.node("tableRow", null, [cell]),
+    ]);
   }
 
   const textBox = schema.node("textBox", { width: 100 }, [nestedBlock]);
   owners.push(textBox);
-  const unrelatedParagraph = schema.node("paragraph", null, [schema.text("sibling")]);
+  const unrelatedParagraph = schema.node("paragraph", null, [
+    schema.text("sibling"),
+  ]);
   return {
     doc: schema.node("doc", null, [textBox, unrelatedParagraph]),
     owners,
@@ -48,7 +56,8 @@ const absolutePositionOf = (doc: PMNode, target: PMNode): number => {
 };
 
 const measureIndexBuild = (depth: number): number => {
-  const { doc, owners, pageBreak, unrelatedParagraph } = nestedPageBreakDocument(depth);
+  const { doc, owners, pageBreak, unrelatedParagraph } =
+    nestedPageBreakDocument(depth);
   const { index, visitCount } = (() => {
     const forEach = spyOn(PMNode.prototype, "forEach");
     try {
@@ -69,7 +78,9 @@ const measureIndexBuild = (depth: number): number => {
 
   const pageBreakPosition = absolutePositionOf(doc, pageBreak);
   expect(
-    owners.every((owner) => index.firstPageBreakRunPosition(owner) === pageBreakPosition),
+    owners.every(
+      (owner) => index.firstPageBreakRunPosition(owner) === pageBreakPosition,
+    ),
   ).toBe(true);
   expect(index.firstPageBreakRunPosition(unrelatedParagraph)).toBeUndefined();
   return visitCount;
@@ -90,14 +101,23 @@ describe("page-break descendant index", () => {
     const laterBreak = schema.node("pageBreakRun");
     const laterParagraph = schema.node("paragraph", null, [laterBreak]);
     const laterCell = schema.node("tableCell", null, [laterParagraph]);
-    const laterTable = schema.node("table", null, [schema.node("tableRow", null, [laterCell])]);
-    const textBox = schema.node("textBox", { width: 100 }, [firstParagraph, laterTable]);
+    const laterTable = schema.node("table", null, [
+      schema.node("tableRow", null, [laterCell]),
+    ]);
+    const textBox = schema.node("textBox", { width: 100 }, [
+      firstParagraph,
+      laterTable,
+    ]);
     const doc = schema.node("doc", null, [textBox]);
 
     const index = buildPageBreakRunDescendantIndex(doc);
 
-    expect(index.firstPageBreakRunPosition(textBox)).toBe(absolutePositionOf(doc, firstBreak));
-    expect(index.firstPageBreakRunPosition(laterCell)).toBe(absolutePositionOf(doc, laterBreak));
+    expect(index.firstPageBreakRunPosition(textBox)).toBe(
+      absolutePositionOf(doc, firstBreak),
+    );
+    expect(index.firstPageBreakRunPosition(laterCell)).toBe(
+      absolutePositionOf(doc, laterBreak),
+    );
     expect(index.firstPageBreakRunPosition(laterParagraph)).toBe(
       absolutePositionOf(doc, laterBreak),
     );

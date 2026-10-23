@@ -41,14 +41,19 @@ const COMMENT_ANCHOR_TYPES = {
   commentRangeStart: true,
   commentRangeEnd: true,
   commentReference: true,
-} as const satisfies Record<Extract<ParagraphContent, { type: `comment${string}` }>["type"], true>;
+} as const satisfies Record<
+  Extract<ParagraphContent, { type: `comment${string}` }>["type"],
+  true
+>;
 
 const COMMENT_ANCHORS = new Set(Object.keys(COMMENT_ANCHOR_TYPES));
 
 /** Whether a leaf carries an anchor rather than content covered by its range. */
-export const isCommentAnchorCarrierType = (type: string): boolean => COMMENT_ANCHORS.has(type);
+export const isCommentAnchorCarrierType = (type: string): boolean =>
+  COMMENT_ANCHORS.has(type);
 
-export const isCommentAnchor = (node: InlineNode): boolean => isCommentAnchorCarrierType(node.type);
+export const isCommentAnchor = (node: InlineNode): boolean =>
+  isCommentAnchorCarrierType(node.type);
 
 const RUN_CONTENT_TYPES = {
   text: true,
@@ -71,11 +76,14 @@ const RUN_CONTENT_TYPES = {
 const isRunContent = (node: InlineNode): node is RunContent =>
   Object.hasOwn(RUN_CONTENT_TYPES, node.type);
 
-export const isParagraphContent = (node: InlineNode): node is ParagraphContent =>
-  !isRunContent(node);
+export const isParagraphContent = (
+  node: InlineNode,
+): node is ParagraphContent => !isRunContent(node);
 
 /** The children of a run or container; `undefined` for anything that has none. */
-export const childNodes = (node: InlineNode): readonly InlineNode[] | undefined => {
+export const childNodes = (
+  node: InlineNode,
+): readonly InlineNode[] | undefined => {
   if (node.type === "run") {
     return node.content;
   }
@@ -135,7 +143,8 @@ const zeroWidthRegion = (gaps: readonly Gap[], cursor: Cursor): number => {
   for (const gap of gaps) {
     if (
       gap.offset < cursor.position ||
-      (gap.offset === cursor.position && gap.zeroWidthBefore <= cursor.zeroWidthSeen)
+      (gap.offset === cursor.position &&
+        gap.zeroWidthBefore <= cursor.zeroWidthSeen)
     ) {
       region += 1;
     }
@@ -159,11 +168,15 @@ const narrowNodes = <Node extends InlineNode>(
 };
 
 /** Paragraph children, narrowed from nodes. */
-export const asParagraphContent = (nodes: readonly InlineNode[]): ParagraphContent[] =>
-  narrowNodes(nodes, isParagraphContent);
+export const asParagraphContent = (
+  nodes: readonly InlineNode[],
+): ParagraphContent[] => narrowNodes(nodes, isParagraphContent);
 
 /** The same run or container holding other children. */
-export const rebuildNode = (node: InlineNode, children: readonly InlineNode[]): InlineNode => {
+export const rebuildNode = (
+  node: InlineNode,
+  children: readonly InlineNode[],
+): InlineNode => {
   if (node.type === "run") {
     return { ...node, content: narrowNodes(children, isRunContent) };
   }
@@ -174,7 +187,11 @@ export const rebuildNode = (node: InlineNode, children: readonly InlineNode[]): 
 };
 
 /** A record cut at gaps: its pieces by region, and the first and last region it has leaves in. */
-export type NodePieces = { pieces: [number, InlineNode][]; min: number; max: number };
+export type NodePieces = {
+  pieces: [number, InlineNode][];
+  min: number;
+  max: number;
+};
 
 /** A record's pieces between gaps, the cursor moved past it. */
 export const partitionNode = (
@@ -190,7 +207,10 @@ export const partitionNode = (
     for (let index = 1; index < node.text.length; index += 1) {
       const next = unitRegion(gaps, start + index);
       if (next !== region) {
-        pieces.push([region, { ...node, text: node.text.slice(pieceStart, index) }]);
+        pieces.push([
+          region,
+          { ...node, text: node.text.slice(pieceStart, index) },
+        ]);
         pieceStart = index;
         region = next;
       }
@@ -374,13 +394,22 @@ const mergeNode = (
   const rightChildren = childNodes(right);
   const alike =
     rule.fields === "source"
-      ? sameOwnFields(withoutResolutionJoins(left), withoutResolutionJoins(right))
+      ? sameOwnFields(
+          withoutResolutionJoins(left),
+          withoutResolutionJoins(right),
+        )
       : sameOwnFields(left, right);
   if (leftChildren === undefined || rightChildren === undefined || !alike) {
     return undefined;
   }
   rule.onMerge?.(left, right, level);
-  const children = mergeLists(leftChildren, rightChildren, depth - 1, rule, level + 1);
+  const children = mergeLists(
+    leftChildren,
+    rightChildren,
+    depth - 1,
+    rule,
+    level + 1,
+  );
   if (children === undefined) {
     return undefined;
   }
@@ -424,7 +453,10 @@ export const mergeLists = (
 };
 
 /** The zero-width leaves at an offset, in document order. */
-export const zeroWidthLeavesAt = (items: readonly InlineNode[], offset: number): InlineNode[] => {
+export const zeroWidthLeavesAt = (
+  items: readonly InlineNode[],
+  offset: number,
+): InlineNode[] => {
   const out: InlineNode[] = [];
   const cursor = startCursor();
   const walk = (list: readonly InlineNode[]): void => {
@@ -462,9 +494,14 @@ export const zeroWidthLeavesAt = (items: readonly InlineNode[], offset: number):
  * offset that opens a range, so a marker opening there stays with what
  * follows it and every other one with what precedes it.
  */
-export const defaultInsertionGap = (items: readonly InlineNode[], offset: number): Gap => {
+export const defaultInsertionGap = (
+  items: readonly InlineNode[],
+  offset: number,
+): Gap => {
   const leaves = zeroWidthLeavesAt(items, offset);
-  const opening = leaves.findIndex((leaf) => isParagraphContent(leaf) && isOpeningMarker(leaf));
+  const opening = leaves.findIndex(
+    (leaf) => isParagraphContent(leaf) && isOpeningMarker(leaf),
+  );
   return { offset, zeroWidthBefore: opening === -1 ? leaves.length : opening };
 };
 
@@ -490,7 +527,11 @@ export const textsIn = (items: readonly InlineNode[]): string[] => {
  * included: what an insertion put in, as opposed to records holding content
  * that was there before.
  */
-export const recordsBetween = (items: readonly InlineNode[], from: Gap, to: Gap): Set<object> => {
+export const recordsBetween = (
+  items: readonly InlineNode[],
+  from: Gap,
+  to: Gap,
+): Set<object> => {
   const out = new Set<object>();
   const gaps = [from, to];
   const cursor = startCursor();
@@ -502,7 +543,11 @@ export const recordsBetween = (items: readonly InlineNode[], from: Gap, to: Gap)
         out.add(node);
       }
       const children = childNodes(node);
-      if (children !== undefined && kindOf(node) === "branch" && !(min === 1 && max === 1)) {
+      if (
+        children !== undefined &&
+        kindOf(node) === "branch" &&
+        !(min === 1 && max === 1)
+      ) {
         const end = { ...cursor };
         cursor.position = start.position;
         cursor.zeroWidthSeen = start.zeroWidthSeen;
@@ -562,12 +607,18 @@ export const runGaps = (items: readonly InlineNode[]): NodeGaps[] => {
   const walk = (list: readonly InlineNode[]): void => {
     for (const node of list) {
       if (node.type === "run") {
-        const before = { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen };
+        const before = {
+          offset: cursor.position,
+          zeroWidthBefore: cursor.zeroWidthSeen,
+        };
         advance(node, cursor);
         out.push({
           node,
           before,
-          after: { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen },
+          after: {
+            offset: cursor.position,
+            zeroWidthBefore: cursor.zeroWidthSeen,
+          },
         });
         continue;
       }
@@ -588,7 +639,10 @@ export const runGaps = (items: readonly InlineNode[]): NodeGaps[] => {
  * their content and ids, down the chain of last and first children. `0` when
  * the two are not alike at all.
  */
-export const alikeDepth = (left: InlineNode | undefined, right: InlineNode | undefined): number => {
+export const alikeDepth = (
+  left: InlineNode | undefined,
+  right: InlineNode | undefined,
+): number => {
   if (left === undefined || right === undefined) {
     return 0;
   }
@@ -601,7 +655,11 @@ export const alikeDepth = (left: InlineNode | undefined, right: InlineNode | und
   }
   const leftChildren = childNodes(left);
   const rightChildren = childNodes(right);
-  if (leftChildren === undefined || rightChildren === undefined || !sameOwnFields(left, right)) {
+  if (
+    leftChildren === undefined ||
+    rightChildren === undefined ||
+    !sameOwnFields(left, right)
+  ) {
     return 0;
   }
   return 1 + alikeDepth(leftChildren.at(-1), rightChildren.at(0));
@@ -627,19 +685,28 @@ export type LeafSpan = {
 export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
   const out: LeafSpan[] = [];
   const cursor = startCursor();
-  const walk = (list: readonly InlineNode[], ancestors: readonly InlineNode[]): void => {
+  const walk = (
+    list: readonly InlineNode[],
+    ancestors: readonly InlineNode[],
+  ): void => {
     for (const node of list) {
       if (kindOf(node) === "branch") {
         walk(childNodes(node) ?? [], [...ancestors, node]);
         continue;
       }
-      const before = { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen };
+      const before = {
+        offset: cursor.position,
+        zeroWidthBefore: cursor.zeroWidthSeen,
+      };
       advance(node, cursor);
       out.push({
         node,
         ancestors,
         before,
-        after: { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen },
+        after: {
+          offset: cursor.position,
+          zeroWidthBefore: cursor.zeroWidthSeen,
+        },
       });
     }
   };

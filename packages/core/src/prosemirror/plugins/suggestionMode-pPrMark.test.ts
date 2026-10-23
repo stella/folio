@@ -4,7 +4,10 @@ import type { Plugin } from "prosemirror-state";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { createSuggestionModePlugin, paragraphBoundaryTarget } from "./suggestionMode";
+import {
+  createSuggestionModePlugin,
+  paragraphBoundaryTarget,
+} from "./suggestionMode";
 
 const schema = new Schema({
   nodes: {
@@ -49,7 +52,9 @@ function plug(): Plugin {
 }
 
 function setCaret(state: EditorState, pos: number): EditorState {
-  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+  return state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, pos)),
+  );
 }
 
 function makeDoc(paragraphs: { text: string; pPrMark?: unknown }[]) {
@@ -57,7 +62,11 @@ function makeDoc(paragraphs: { text: string; pPrMark?: unknown }[]) {
     "doc",
     null,
     paragraphs.map((p) =>
-      schema.node("paragraph", { pPrMark: p.pPrMark ?? null }, p.text ? [schema.text(p.text)] : []),
+      schema.node(
+        "paragraph",
+        { pPrMark: p.pPrMark ?? null },
+        p.text ? [schema.text(p.text)] : [],
+      ),
     ),
   );
 }

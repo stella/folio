@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -11,9 +11,12 @@ import {
   fixedCharWidth,
   withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
+import {
+  buildFontString,
+  buildRunFontStyle,
+} from "../../layout-engine/measure/measureHelpers";
 import type { FlowBlock, ParagraphBlock, Run } from "../../layout-engine/types";
 import type { Footnote } from "../../types/document";
-import { buildFontString, buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
 import {
   applyFootnotePresentation,
   convertFootnoteToContent,
@@ -231,17 +234,27 @@ describe("footnote layout", () => {
       {
         styles,
         measureBlocks: (blocks) =>
-          blocks.map(() => ({ kind: "paragraph" as const, lines: [], totalHeight: 12 })),
+          blocks.map(() => ({
+            kind: "paragraph" as const,
+            lines: [],
+            totalHeight: 12,
+          })),
       },
     );
 
-    expect(findStyleToggleRun(content.blocks)).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    expect(findStyleToggleRun(content.blocks)).toMatchObject(
+      EXPECTED_CANCELLED_STYLE_TOGGLES,
+    );
   });
 
   test("applies document line-breaking policy to footnote paragraphs", () => {
     const content = convertFootnoteToContent(footnoteWithTable, 3, 400, {
       measureBlocks: (blocks) =>
-        blocks.map(() => ({ kind: "paragraph" as const, lines: [], totalHeight: 12 })),
+        blocks.map(() => ({
+          kind: "paragraph" as const,
+          lines: [],
+          totalHeight: 12,
+        })),
       automaticHyphenation: { enabled: true, doNotHyphenateCaps: true },
       lineBreakRules: {
         noLineBreaksBefore: { language: "ja-JP", characters: "※" },
@@ -276,7 +289,10 @@ describe("footnote layout", () => {
       },
     });
 
-    expect(content.blocks.map((block) => block.kind)).toEqual(["paragraph", "table"]);
+    expect(content.blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "table",
+    ]);
     expect(content.height).toBe(36);
   });
 
@@ -284,7 +300,10 @@ describe("footnote layout", () => {
     const content = convertFootnoteToContent(
       {
         ...footnoteWithTable,
-        content: [...footnoteWithTable.content, { type: "paragraph", content: [] }],
+        content: [
+          ...footnoteWithTable.content,
+          { type: "paragraph", content: [] },
+        ],
       },
       3,
       400,
@@ -315,7 +334,9 @@ describe("footnote layout", () => {
     if (trailingParagraph?.kind !== "paragraph") {
       throw new Error("Expected a trailing paragraph");
     }
-    expect(trailingParagraph.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+    expect(
+      trailingParagraph.attrs?.suppressEmptyParagraphHeight,
+    ).toBeUndefined();
     expect(content.height).toBe(48);
   });
 
@@ -351,7 +372,10 @@ describe("footnote layout", () => {
     withFakeTextMeasure(() => {
       const content = convertFootnoteToContent(emptyFootnoteWithTable, 3, 400);
 
-      expect(content.blocks.map((block) => block.kind)).toEqual(["paragraph", "table"]);
+      expect(content.blocks.map((block) => block.kind)).toEqual([
+        "paragraph",
+        "table",
+      ]);
       expect(Number.isNaN(content.height)).toBe(false);
       expect(content.height).toBeGreaterThan(0);
 
@@ -377,7 +401,11 @@ describe("footnote layout", () => {
 
   test("skips row-spanned columns while measuring footnote table rows", () => {
     withFakeTextMeasure(() => {
-      const content = convertFootnoteToContent(footnoteWithRowSpanTable, 4, 400);
+      const content = convertFootnoteToContent(
+        footnoteWithRowSpanTable,
+        4,
+        400,
+      );
       const tableMeasure = content.measures.at(1);
 
       expect(tableMeasure?.kind).toBe("table");
@@ -468,7 +496,9 @@ describe("footnote layout", () => {
       fontSize: 10,
       superscript: true,
     });
-    expect(visibleRunSequence(paragraph.runs)).toBe("8 Insert the name of the legal entity.");
+    expect(visibleRunSequence(paragraph.runs)).toBe(
+      "8 Insert the name of the legal entity.",
+    );
   });
 
   test("adds one separator space when footnote text has no leading space", () => {
@@ -548,11 +578,14 @@ describe("footnote layout", () => {
     "“Quoted authority”",
     "— explanatory text",
     "_connector",
-  ])("keeps a separator before opening or non-attaching punctuation: %s", (text) => {
-    const paragraph = presentedFootnoteParagraph([{ kind: "text", text }]);
+  ])(
+    "keeps a separator before opening or non-attaching punctuation: %s",
+    (text) => {
+      const paragraph = presentedFootnoteParagraph([{ kind: "text", text }]);
 
-    expect(visibleRunSequence(paragraph.runs)).toBe(`8 ${text}`);
-  });
+      expect(visibleRunSequence(paragraph.runs)).toBe(`8 ${text}`);
+    },
+  );
 
   test.each([
     {
@@ -622,7 +655,9 @@ describe("footnote layout", () => {
       {
         kind: "paragraph",
         id: "footnote-text",
-        runs: [{ kind: "text", text: "Footnote text", fontFamily: "Direct Face" }],
+        runs: [
+          { kind: "text", text: "Footnote text", fontFamily: "Direct Face" },
+        ],
         attrs: {
           defaultFontFamily: "Default Face",
           defaultAlternateFontFamily: "Default Alternate",
@@ -661,19 +696,25 @@ test("note story conversion and synthesized references keep their owned embedded
       },
     ],
   } as const satisfies Footnote;
-  for (const family of ["folio-embedded-first-Calibri", "folio-embedded-second-Calibri"]) {
+  for (const family of [
+    "folio-embedded-first-Calibri",
+    "folio-embedded-second-Calibri",
+  ]) {
     const embeddedFontFamilyMap = new Map([["Calibri", family]]);
     const converted = convertNoteStoryToFlowBlocks(note.content, {
       embeddedFontFamilyMap,
     }).flowBlocks;
     const paragraph = applyFootnotePresentation(converted, 7).at(0);
-    if (paragraph?.kind !== "paragraph") return panic("Expected note paragraph");
+    if (paragraph?.kind !== "paragraph")
+      return panic("Expected note paragraph");
     expect(paragraph.attrs?.embeddedFontFamilyMap).toBe(embeddedFontFamilyMap);
     const textRuns = paragraph.runs.filter((run) => run.kind === "text");
     expect(textRuns).toHaveLength(2);
     for (const run of textRuns) {
       expect(run.embeddedFontFamilyMap).toBe(embeddedFontFamilyMap);
-      expect(buildFontString(buildRunFontStyle(run, "Calibri", 11))).toContain(family);
+      expect(buildFontString(buildRunFontStyle(run, "Calibri", 11))).toContain(
+        family,
+      );
     }
   }
 });

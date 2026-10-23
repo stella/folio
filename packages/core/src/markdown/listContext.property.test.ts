@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { BlockContent, ListRendering, Paragraph } from "../types/document";
 import { toMarkdown } from "./index";
 
@@ -44,7 +47,12 @@ test(
                           {
                             type: "tableCell",
                             content: [
-                              paragraph("Child", { marker: "-", level, numId: 2, isBullet: true }),
+                              paragraph("Child", {
+                                marker: "-",
+                                level,
+                                numId: 2,
+                                isBullet: true,
+                              }),
                             ],
                           },
                         ],
@@ -71,7 +79,12 @@ test(
               const blocks: BlockContent[] = [];
               if (boundary !== "start") {
                 blocks.push(
-                  paragraph("Parent", { marker: `${start}.`, level: 0, numId: 1, isBullet: false }),
+                  paragraph("Parent", {
+                    marker: `${start}.`,
+                    level: 0,
+                    numId: 1,
+                    isBullet: false,
+                  }),
                 );
               }
               switch (boundary) {
@@ -87,11 +100,18 @@ test(
                   });
                   break;
                 case "hidden":
-                  blocks.push(paragraph("Boundary", { ...list, markerHidden: true }));
+                  blocks.push(
+                    paragraph("Boundary", { ...list, markerHidden: true }),
+                  );
                   break;
                 case "custom":
                   blocks.push(
-                    paragraph("Boundary", { marker: "a)", level: 0, numId: 3, isBullet: false }),
+                    paragraph("Boundary", {
+                      marker: "a)",
+                      level: 0,
+                      numId: 3,
+                      isBullet: false,
+                    }),
                   );
                   break;
                 case "table":
@@ -122,7 +142,12 @@ test(
                     type: "blockSdt",
                     properties: {},
                     content: [
-                      paragraph("Boundary", { marker: "-", level: 0, numId: 3, isBullet: true }),
+                      paragraph("Boundary", {
+                        marker: "-",
+                        level: 0,
+                        numId: 3,
+                        isBullet: true,
+                      }),
                     ],
                   });
                   break;
@@ -139,7 +164,9 @@ test(
                 }
               }
               blocks.push(paragraph("Target", list));
-              const markdown = toMarkdown({ package: { document: { content: blocks } } });
+              const markdown = toMarkdown({
+                package: { document: { content: blocks } },
+              });
               expect(markdown.split("\n").at(-1)).toBe(`${marker} Target`);
               cases++;
             }
@@ -163,9 +190,23 @@ test(
     await assertProperty(
       fc.property(fc.integer({ min: 1, max: 999 }), (start) => {
         for (let parentLevel = 0; parentLevel < 8; parentLevel++) {
-          for (let childLevel = parentLevel + 1; childLevel <= 8; childLevel++) {
-            const parent = { marker: `${start}.`, level: parentLevel, numId: 1, isBullet: false };
-            const child = { marker: "-", level: childLevel, numId: 2, isBullet: true };
+          for (
+            let childLevel = parentLevel + 1;
+            childLevel <= 8;
+            childLevel++
+          ) {
+            const parent = {
+              marker: `${start}.`,
+              level: parentLevel,
+              numId: 1,
+              isBullet: false,
+            };
+            const child = {
+              marker: "-",
+              level: childLevel,
+              numId: 2,
+              isBullet: true,
+            };
             const markdown = toMarkdown({
               package: {
                 document: {
@@ -184,7 +225,10 @@ test(
           }
         }
       }),
-      { numRuns: 10, id: "skipped logical levels nest only under emitted native list ancestors" },
+      {
+        numRuns: 10,
+        id: "skipped logical levels nest only under emitted native list ancestors",
+      },
     );
     expect(cases).toBeGreaterThan(0);
   },

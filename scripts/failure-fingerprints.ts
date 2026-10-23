@@ -40,7 +40,9 @@ export const parseKnownFailures = (value: unknown): KnownFailure[] => {
   });
 };
 
-class MalformedFailureMarkerError extends TaggedError("MalformedFailureMarkerError")<{
+class MalformedFailureMarkerError extends TaggedError(
+  "MalformedFailureMarkerError",
+)<{
   message: string;
 }> {}
 
@@ -49,9 +51,13 @@ export const extractFailureMarkers = (log: string): FailureMarker[] =>
     const start = line.indexOf("FOLIO_FAILURE");
     if (start === -1) return [];
     const malformed = () =>
-      new MalformedFailureMarkerError({ message: `Malformed FOLIO_FAILURE line ${index + 1}` });
+      new MalformedFailureMarkerError({
+        message: `Malformed FOLIO_FAILURE line ${index + 1}`,
+      });
     if (!line.slice(start).startsWith(MARKER)) throw malformed();
-    const parsed = Result.try((): unknown => JSON.parse(line.slice(start + MARKER.length).trim()));
+    const parsed = Result.try((): unknown =>
+      JSON.parse(line.slice(start + MARKER.length).trim()),
+    );
     if (parsed.isErr()) throw malformed();
     const value = parsed.value;
     if (
@@ -76,7 +82,8 @@ export const extractFailureMarkers = (log: string): FailureMarker[] =>
         path: value["path"],
         assertion: value["assertion"],
         ...(typeof value["diff"] === "string" ? { diff: value["diff"] } : {}),
-        ...(typeof value["flow"] === "string" && typeof value["primary"] === "string"
+        ...(typeof value["flow"] === "string" &&
+        typeof value["primary"] === "string"
           ? { flow: value["flow"], primary: value["primary"] }
           : {}),
       },
@@ -87,13 +94,19 @@ export const classifyFailureMarkers = (
   markers: readonly FailureMarker[],
   known: readonly KnownFailure[],
 ) => {
-  const knownByFingerprint = new Map(known.map((entry) => [entry.fingerprint, entry]));
+  const knownByFingerprint = new Map(
+    known.map((entry) => [entry.fingerprint, entry]),
+  );
   if (knownByFingerprint.size !== known.length) {
     throw new Error("Duplicate known failure fingerprint");
   }
   const grouped = new Map<
     string,
-    { marker: FailureMarker; seeds: Set<number>; known: KnownFailure | undefined }
+    {
+      marker: FailureMarker;
+      seeds: Set<number>;
+      known: KnownFailure | undefined;
+    }
   >();
   for (const marker of markers) {
     const entry = grouped.get(marker.fingerprint);
@@ -116,13 +129,17 @@ export const classifyFailureMarkers = (
       repro: marker.repro,
     };
     if (entry !== undefined) {
-      Object.assign(result, { issueOrPr: entry.issueOrPr, firstSeen: entry.firstSeen });
+      Object.assign(result, {
+        issueOrPr: entry.issueOrPr,
+        firstSeen: entry.firstSeen,
+      });
     }
     return result;
   });
 };
 
-const usage = "Usage: bun scripts/failure-fingerprints.ts <run-id|job-log-file>";
+const usage =
+  "Usage: bun scripts/failure-fingerprints.ts <run-id|job-log-file>";
 
 if (import.meta.main) {
   const source = process.argv[2];
@@ -138,7 +155,10 @@ if (import.meta.main) {
         })
       : readFileSync(path.resolve(source), "utf8");
     const registry: unknown = JSON.parse(
-      readFileSync(new URL("../test/known-failure-fingerprints.json", import.meta.url), "utf8"),
+      readFileSync(
+        new URL("../test/known-failure-fingerprints.json", import.meta.url),
+        "utf8",
+      ),
     );
     for (const entry of classifyFailureMarkers(
       extractFailureMarkers(log),

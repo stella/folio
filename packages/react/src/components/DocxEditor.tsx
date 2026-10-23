@@ -1,33 +1,15 @@
-import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 import {
-  CANONICAL_GAP,
-  usesCanonicalSession,
-  type CanonicalGap,
-  canonicalRefusalMessage,
-} from "@stll/folio-core/types/canonicalCapabilities";
-/**
- * DocxEditor Component
- *
- * Main component integrating all editor features:
- * - Toolbar for formatting
- * - ProseMirror-based editor for content editing
- * - Zoom control
- * - Error boundary
- * - Loading states
- */
-
-import {
-  Suspense,
-  useEffectEvent,
+  forwardRef,
   lazy,
-  useRef,
+  Suspense,
   useCallback,
-  useState,
   useEffect,
+  useEffectEvent,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
-  useImperativeHandle,
-  forwardRef,
+  useRef,
+  useState,
 } from "react";
 import type { CSSProperties, RefObject } from "react";
 
@@ -41,9 +23,19 @@ import {
   StickyNoteIcon,
   XIcon,
 } from "lucide-react";
+import { closeHistory, undo as historyUndo } from "prosemirror-history";
+/**
+ * DocxEditor Component
+ *
+ * Main component integrating all editor features:
+ * - Toolbar for formatting
+ * - ProseMirror-based editor for content editing
+ * - Zoom control
+ * - Error boundary
+ * - Loading states
+ */
 // Paginated editor
 import type { EditorView } from "prosemirror-view";
-import { closeHistory, undo as historyUndo } from "prosemirror-history";
 import { useTranslations } from "use-intl";
 
 import {
@@ -52,25 +44,35 @@ import {
   createFolioAIEditSnapshot,
   createPendingSuggestionSourceSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationStatus,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
   FolioPendingSuggestionRegistry,
   getCommentAnchorsFromDoc,
   getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
-  type FolioDocumentOperationStatus,
-  type FolioDocumentOperationUndoHandle,
-  type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
-import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
-import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
+import {
+  clampRangeToDocSize,
+  resolveFolioAIBlockRange,
+  resolveFolioAITextRange,
+  resolvePassageRange,
+} from "@stll/folio-core/ai-edits/blockRange";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
+import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
-import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { setDocumentBodyComments } from "@stll/folio-core/docx/canonicalModel";
+import {
+  CanonicalSaveDiagnosticError,
+  serializeCanonicalSave,
+} from "@stll/folio-core/docx/canonicalSave";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import {
@@ -78,80 +80,82 @@ import {
   historyShortcutOwner,
 } from "@stll/folio-core/managers/editorShortcuts";
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
-import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
+import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
+import { getPageSize } from "@stll/folio-core/paged-layout/sectionGeometry";
 // ProseMirror editor
 import {
-  TextSelection,
-  extractSelectionState,
-  toggleBold,
-  toggleItalic,
-  toggleUnderline,
-  toggleStrike,
-  toggleSuperscript,
-  toggleSubscript,
-  setTextColor,
-  clearTextColor,
-  setHighlight,
-  setFontSize,
-  setFontFamily,
-  setAlignment,
-  setLineSpacing,
-  toggleBulletList,
-  toggleNumberedList,
-  increaseIndent,
-  decreaseIndent,
-  setIndentLeft,
-  setIndentRight,
-  setIndentFirstLine,
-  removeTabStop,
-  increaseListLevel,
-  decreaseListLevel,
-  restartNumbering,
-  continueNumbering,
-  setNumberingValue,
-  clearFormatting,
-  captureFormatMarks,
-  applyFormatMarks,
-  applyStyle,
-  createStyleResolver,
-  toggleBidi,
-  setRtl,
-  setLtr,
-  getTableContext,
-  addRowAbove,
-  addRowBelow,
-  deleteRow as pmDeleteRow,
   addColumnLeft,
   addColumnRight,
+  addRowAbove,
+  addRowBelow,
+  applyFormatMarks,
+  applyStyle,
+  applyTableStyle,
+  autoFitContents,
+  captureFormatMarks,
+  clearFormatting,
+  clearTextColor,
+  continueNumbering,
+  createStyleResolver,
+  decreaseIndent,
+  decreaseListLevel,
   deleteColumn as pmDeleteColumn,
+  deleteRow as pmDeleteRow,
   deleteTable as pmDeleteTable,
-  selectTable as pmSelectTable,
-  selectRow as pmSelectRow,
-  selectColumn as pmSelectColumn,
+  distributeColumns,
+  extractSelectionState,
+  getDocumentBuiltInStyles,
+  getSelectedText,
+  getTableContext,
+  increaseIndent,
+  increaseListLevel,
   mergeCells as pmMergeCells,
-  splitCell as pmSplitCell,
+  removeTableBorders,
+  removeTabStop,
+  restartNumbering,
+  selectColumn as pmSelectColumn,
+  selectRow as pmSelectRow,
+  selectTable as pmSelectTable,
+  setAlignment,
+  setAllTableBorders,
   setCellBorder,
-  setTableBorderPreset,
-  setCellVerticalAlign,
+  setCellFillColor,
   setCellMargins,
   setCellTextDirection,
-  toggleNoWrap,
-  setRowHeight,
-  toggleHeaderRow,
-  distributeColumns,
-  autoFitContents,
-  setTableProperties,
-  applyTableStyle,
-  removeTableBorders,
-  setAllTableBorders,
-  setOutsideTableBorders,
+  setCellVerticalAlign,
+  setFontFamily,
+  setFontSize,
+  setHighlight,
+  setIndentFirstLine,
+  setIndentLeft,
+  setIndentRight,
   setInsideTableBorders,
-  setCellFillColor,
+  setLineSpacing,
+  setLtr,
+  setNumberingValue,
+  setOutsideTableBorders,
+  setRowHeight,
+  setRtl,
   setTableBorderColor,
+  setTableBorderPreset,
   setTableBorderWidth,
-  getSelectedText,
-  getDocumentBuiltInStyles,
+  setTableProperties,
+  setTextColor,
+  splitCell as pmSplitCell,
+  TextSelection,
+  toggleBidi,
+  toggleBold,
+  toggleBulletList,
+  toggleHeaderRow,
+  toggleItalic,
+  toggleNoWrap,
+  toggleNumberedList,
+  toggleStrike,
+  toggleSubscript,
+  toggleSuperscript,
+  toggleUnderline,
 } from "@stll/folio-core/prosemirror";
 import type {
   CapturedTextFormatting,
@@ -160,18 +164,19 @@ import type {
   TableCellBorderCommandSpec,
   TableContextInfo,
 } from "@stll/folio-core/prosemirror";
+import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import {
-  acceptChange,
-  rejectChange,
   acceptAIEditRevision,
-  rejectAIEditRevision,
+  acceptChange,
+  acceptSuggestion,
   findAIEditRevisionRange,
   findChangeAtPosition,
   findNextChange,
   findPreviousChange,
-  getSuggestions,
   findSuggestionRange,
-  acceptSuggestion,
+  getSuggestions,
+  rejectAIEditRevision,
+  rejectChange,
   rejectSuggestion,
 } from "@stll/folio-core/prosemirror/commands/comments";
 import {
@@ -183,30 +188,31 @@ import {
   setContentControlValueTr,
 } from "@stll/folio-core/prosemirror/commands/contentControls";
 import { setContentControlContentBlocksTr } from "@stll/folio-core/prosemirror/commands/contentControlsBlockFill";
+import { insertPageBreak } from "@stll/folio-core/prosemirror/commands/pageBreak";
 import {
   buildPlainTextSlice,
   CLIPBOARD_READ_ERROR_EVENT,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
-import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   executeEditorCommand,
   executeFirstEditorCommand,
 } from "@stll/folio-core/prosemirror/executeEditorCommand";
-import { insertPageBreak } from "@stll/folio-core/prosemirror/commands/pageBreak";
+import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
+  clearTrackedChanges,
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
-  clearTrackedChanges,
   repackWithEditorSectionRemovals,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 // Extension system
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
+import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
+import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
 import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
@@ -216,57 +222,57 @@ import {
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
-import type { Comment } from "@stll/folio-core/types/content";
+import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
+import {
+  CANONICAL_GAP,
+  type CanonicalGap,
+  canonicalRefusalMessage,
+  usesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "@stll/folio-core/types/canonicalComments";
+import type { Comment } from "@stll/folio-core/types/content";
 import type {
   Document,
+  EndnoteProperties,
+  FootnoteProperties,
   HeaderFooter,
   SectionProperties,
-  FootnoteProperties,
-  EndnoteProperties,
 } from "@stll/folio-core/types/document";
+import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 import { resolveColor } from "@stll/folio-core/utils/colorResolver";
 import { queryHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
-import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
-import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
-import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
-import { useDocumentHistory } from "../hooks/useHistory";
 import {
-  CanonicalSaveDiagnosticError,
-  serializeCanonicalSave,
-} from "@stll/folio-core/docx/canonicalSave";
+  DEFAULT_OUTLINE_DEPTH,
+  filterHeadingsByDepth,
+} from "@stll/folio-core/utils/outlineDepth";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
+import type { TableAction } from "@stll/folio-core/utils/tableOperations";
+import { readBlobText } from "@stll/folio-core/utils/textEncoding";
+import {
+  pointsToHalfPoints,
+  twipsToPixels,
+} from "@stll/folio-core/utils/units";
+
+import { useDocumentHistory } from "../hooks/useHistory";
 import { useTableSelection } from "../hooks/useTableSelection";
-import { getPageSize } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { useWheelZoom } from "../hooks/useWheelZoom";
 import { PagedEditor, VIEWPORT_PADDING_TOP } from "../paged-editor/PagedEditor";
 import type { PagedEditorRef } from "../paged-editor/PagedEditor";
-import { HorizontalRuler } from "./ui/HorizontalRuler";
-import { VerticalRuler } from "./ui/VerticalRuler";
-import { FolioUIProvider, DEFAULT_COMPONENTS } from "../ui/folio-ui";
+import { DEFAULT_COMPONENTS, FolioUIProvider } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
-import {
-  clampRangeToDocSize,
-  resolveFolioAIBlockRange,
-  resolveFolioAITextRange,
-  resolvePassageRange,
-} from "@stll/folio-core/ai-edits/blockRange";
-import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import { resolveCommentCreationRange } from "./commentAnchors";
-import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
-import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
-import { toast } from "./toast";
-import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import {
-  EMPTY_ANCHOR_POSITIONS,
-  PENDING_COMMENT_ID,
   applyCommentMarkRange,
   collectCommentIdsFromSources,
   countOpenCommentThreads,
+  EMPTY_ANCHOR_POSITIONS,
   findSelectionYPosition,
   getCommentAuthorKey,
   getFallbackCommentYPosition,
+  PENDING_COMMENT_ID,
   pruneOrphanedComments,
   removePendingCommentMarkRange,
 } from "./commentsHelpers";
@@ -279,11 +285,20 @@ import { createDefaultFindOptions } from "./dialogs/findReplaceUtils";
 import type { ImagePropertiesData } from "./dialogs/ImagePropertiesDialog";
 import { useFindReplace as useFindReplaceState } from "./dialogs/useFindReplace";
 import { DocumentOutline } from "./DocumentOutline";
-import type { DocxEditorProps, DocxEditorRef, EditorState } from "./DocxEditor.props";
+import type {
+  DocxEditorProps,
+  DocxEditorRef,
+  EditorState,
+} from "./DocxEditor.props";
 import { DocxEditorDialogs } from "./DocxEditorDialogs";
-import { DefaultLoadingIndicator, DefaultPlaceholder, ParseError } from "./DocxEditorHelpers";
+import {
+  DefaultLoadingIndicator,
+  DefaultPlaceholder,
+  ParseError,
+} from "./DocxEditorHelpers";
 import { ErrorBoundary, ErrorProvider } from "./ErrorBoundary";
 import { FormattingBar } from "./FormattingBar";
+import { useActiveHeading } from "./hooks/useActiveHeading";
 import { useContextMenu } from "./hooks/useContextMenu";
 import type { DocumentLoadState } from "./hooks/useDocumentLoader";
 import { useDocumentLoader } from "./hooks/useDocumentLoader";
@@ -294,26 +309,31 @@ import { useHeaderFooterEditor } from "./hooks/useHeaderFooterEditor";
 import { useHyperlinkHandlers } from "./hooks/useHyperlinkHandlers";
 import { useImageHandlers } from "./hooks/useImageHandlers";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
-import { useActiveHeading } from "./hooks/useActiveHeading";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { useZoomAndPageInfo } from "./hooks/useZoomAndPageInfo";
-import { useWheelZoom } from "../hooks/useWheelZoom";
 import { InlineHeaderFooterEditor } from "./InlineHeaderFooterEditor";
 import type { InlineHeaderFooterEditorRef } from "./InlineHeaderFooterEditor";
 import { PanelScrim } from "./panelDrawer";
-import { PanelToggles, type OutlineToggleState } from "./PanelToggles";
-import { detectActiveTrackedChange, detectImageContext } from "./selectionDetection";
+import { type OutlineToggleState, PanelToggles } from "./PanelToggles";
+import {
+  detectActiveTrackedChange,
+  detectImageContext,
+} from "./selectionDetection";
 import { buildSelectionFormatting } from "./selectionFormattingBuilder";
 import type { TextContextAction, TextContextMenuItem } from "./TextContextMenu";
+import { toast } from "./toast";
 import { ToolbarButton, ToolbarSeparator } from "./Toolbar";
 import type { FormattingAction } from "./Toolbar";
-import { areSelectionFormattingEqual, mapHexToHighlightName } from "./toolbarUtils";
+import {
+  areSelectionFormattingEqual,
+  mapHexToHighlightName,
+} from "./toolbarUtils";
+import { HorizontalRuler } from "./ui/HorizontalRuler";
 import { HyperlinkPopup } from "./ui/HyperlinkPopup";
 import { getBuiltinTableStyle } from "./ui/table-styles";
 import type { TableStylePreset } from "./ui/table-styles";
-import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { Tooltip } from "./ui/Tooltip";
-import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
+import { VerticalRuler } from "./ui/VerticalRuler";
 import { useFolioComments } from "./useFolioComments";
 
 /** No headings to track while the outline is not shown. */
@@ -332,7 +352,8 @@ const TextContextMenu = lazy(() =>
 );
 
 const loadAttemptSelectiveSave = async () => {
-  const { attemptSelectiveSave } = await import("@stll/folio-core/docx/selectiveSave");
+  const { attemptSelectiveSave } =
+    await import("@stll/folio-core/docx/selectiveSave");
   return attemptSelectiveSave;
 };
 
@@ -358,7 +379,8 @@ const DISPLAY_MODE_LABEL_KEYS = {
   original: "markupView.original",
 } as const satisfies Record<DisplayMode, string>;
 
-const preventMouseDownDefault = (event: React.MouseEvent) => event.preventDefault();
+const preventMouseDownDefault = (event: React.MouseEvent) =>
+  event.preventDefault();
 
 type LiveDocumentOperationUndoEntry = {
   undoHandle: FolioDocumentOperationUndoHandle;
@@ -383,7 +405,9 @@ const appliedOperationComments = (
 };
 
 function isDisplayMode(value: unknown): value is DisplayMode {
-  return typeof value === "string" && DISPLAY_MODES.some((mode) => mode === value);
+  return (
+    typeof value === "string" && DISPLAY_MODES.some((mode) => mode === value)
+  );
 }
 
 // ============================================================================
@@ -545,1443 +569,1741 @@ type InitialScrollState =
  * DocxEditor - Complete DOCX editor component
  */
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools without reindenting this large component. */
-export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function DocxEditor(
-  {
-    documentBuffer,
-    password,
-    document: initialDocument,
-    onSave,
-    author = "User",
-    onChange,
-    onFindResultChange,
-    onSelectionChange,
-    onSelectionTextChange,
-    onError,
-    onFontsLoaded: onFontsLoadedCallback,
-    fontFamilies,
-    fonts,
-    theme,
-    showToolbar = true,
-    showZoomControl = true,
-    showReviewControls = true,
-    showHeaderFooterEditing = true,
-    pageRenderer,
-    showMarginGuides = false,
-    marginGuideColor,
-    showRuler: showRulerProp = false,
-    rulerUnit = "inch",
-    initialZoom = 1,
-    enableWheelZoom = true,
-    keyboardShortcuts = DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
-    hostShortcuts: hostShortcutsProp,
-    readOnly: readOnlyProp = false,
-    reviewDisplayMode,
-    showCommentHighlights = true,
-    autoOpenReviewSidebar = true,
-    components,
-    toolbarExtra,
-    className = "",
-    style,
-    placeholder,
-    loadingIndicator,
-    preserveDocumentWhileLoading = false,
-    initialScrollTop,
-    onScrollTopChange,
-    showOutline: showOutlineProp = true,
-    outlineDepth: outlineDepthProp,
-    onOutlineDepthChange,
-    onPrint,
-    onInsertImage,
-    onInsertTable,
-    showTableInsert = true,
-    onInsertPageBreak,
-    onInsertTOC,
-    onCopy,
-    onCut,
-    onPaste,
-    mode: modeProp,
-    onModeChange,
-    onReadonlyEditAttempt,
-    onCompatibilityChange,
-    onEditorViewReady,
-    onAnonymizationMatchesChange,
-    onAnonymizationTermClick,
-    selectedAnonymizationCanonical = null,
-    anonymizationSelectionSeq,
-    showTemplateDirectives = false,
-    onSlashMenuChange,
-    onSlashMenuKeyAction,
-    customContextMenuItems,
-    onCustomContextAction,
-    comments: commentsProp,
-    onCommentsChange,
-    collaboration,
-    plugins,
-    featureFlags,
-    experimentalSession,
-    onSelectiveSaveTripwire,
-  }: DocxEditorProps,
-  ref,
-) {
-  const pagedEditorRef = useRef<PagedEditorRef>(null);
-  const [pagedEditorBinding] = useState(createPagedEditorBinding);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const initialScrollRef = useRef<InitialScrollState>({ status: "waiting" });
-  const t = useTranslations("folio");
-  const [outlineDepthState, setOutlineDepthState] = useState<OutlineDepth>(DEFAULT_OUTLINE_DEPTH);
-  const outlineDepth = outlineDepthProp ?? outlineDepthState;
-  const handleOutlineDepthChange = useCallback(
-    (depth: OutlineDepth) => {
-      if (outlineDepthProp === undefined) setOutlineDepthState(depth);
-      onOutlineDepthChange?.(depth);
-    },
-    [onOutlineDepthChange, outlineDepthProp],
-  );
+export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(
+  function DocxEditor(
+    {
+      documentBuffer,
+      password,
+      document: initialDocument,
+      onSave,
+      author = "User",
+      onChange,
+      onFindResultChange,
+      onSelectionChange,
+      onSelectionTextChange,
+      onError,
+      onFontsLoaded: onFontsLoadedCallback,
+      fontFamilies,
+      fonts,
+      theme,
+      showToolbar = true,
+      showZoomControl = true,
+      showReviewControls = true,
+      showHeaderFooterEditing = true,
+      pageRenderer,
+      showMarginGuides = false,
+      marginGuideColor,
+      showRuler: showRulerProp = false,
+      rulerUnit = "inch",
+      initialZoom = 1,
+      enableWheelZoom = true,
+      keyboardShortcuts = DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
+      hostShortcuts: hostShortcutsProp,
+      readOnly: readOnlyProp = false,
+      reviewDisplayMode,
+      showCommentHighlights = true,
+      autoOpenReviewSidebar = true,
+      components,
+      toolbarExtra,
+      className = "",
+      style,
+      placeholder,
+      loadingIndicator,
+      preserveDocumentWhileLoading = false,
+      initialScrollTop,
+      onScrollTopChange,
+      showOutline: showOutlineProp = true,
+      outlineDepth: outlineDepthProp,
+      onOutlineDepthChange,
+      onPrint,
+      onInsertImage,
+      onInsertTable,
+      showTableInsert = true,
+      onInsertPageBreak,
+      onInsertTOC,
+      onCopy,
+      onCut,
+      onPaste,
+      mode: modeProp,
+      onModeChange,
+      onReadonlyEditAttempt,
+      onCompatibilityChange,
+      onEditorViewReady,
+      onAnonymizationMatchesChange,
+      onAnonymizationTermClick,
+      selectedAnonymizationCanonical = null,
+      anonymizationSelectionSeq,
+      showTemplateDirectives = false,
+      onSlashMenuChange,
+      onSlashMenuKeyAction,
+      customContextMenuItems,
+      onCustomContextAction,
+      comments: commentsProp,
+      onCommentsChange,
+      collaboration,
+      plugins,
+      featureFlags,
+      experimentalSession,
+      onSelectiveSaveTripwire,
+    }: DocxEditorProps,
+    ref,
+  ) {
+    const pagedEditorRef = useRef<PagedEditorRef>(null);
+    const [pagedEditorBinding] = useState(createPagedEditorBinding);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const initialScrollRef = useRef<InitialScrollState>({ status: "waiting" });
+    const t = useTranslations("folio");
+    const [outlineDepthState, setOutlineDepthState] = useState<OutlineDepth>(
+      DEFAULT_OUTLINE_DEPTH,
+    );
+    const outlineDepth = outlineDepthProp ?? outlineDepthState;
+    const handleOutlineDepthChange = useCallback(
+      (depth: OutlineDepth) => {
+        if (outlineDepthProp === undefined) setOutlineDepthState(depth);
+        onOutlineDepthChange?.(depth);
+      },
+      [onOutlineDepthChange, outlineDepthProp],
+    );
 
-  // Surface a failed clipboard read behind the "paste without formatting"
-  // keystroke: the core command owns no UI and emits a bubbling event instead.
-  useEffect(() => {
-    const onClipboardReadError = (): void => {
-      toast(t("clipboardReadFailed"));
-    };
-    document.addEventListener(CLIPBOARD_READ_ERROR_EVENT, onClipboardReadError);
-    return () => {
-      document.removeEventListener(CLIPBOARD_READ_ERROR_EVENT, onClipboardReadError);
-    };
-  }, [t]);
-
-  // DocxEditor renders FolioUIProvider itself, so it can't consume its own
-  // provider via useFolioUI() (that resolves to the default context). Resolve
-  // from the `components` prop directly, with the built-in default as fallback.
-  const Button = components?.Button ?? DEFAULT_COMPONENTS.Button;
-  const {
-    Root: Menu,
-    Trigger: MenuTrigger,
-    Popup: MenuPopup,
-    Item: MenuItem,
-    CheckboxItem: MenuCheckboxItem,
-    Group: MenuGroup,
-    GroupLabel: MenuGroupLabel,
-    Separator: MenuSeparator,
-  } = components?.Menu ?? DEFAULT_COMPONENTS.Menu;
-  const {
-    Root: StSelect,
-    Trigger: StSelectTrigger,
-    Value: StSelectValue,
-    Popup: StSelectPopup,
-    Item: StSelectItem,
-  } = components?.Select ?? DEFAULT_COMPONENTS.Select;
-
-  // State
-  const [state, setState] = useState<EditorState>({
-    documentLoad: documentBuffer ? { status: "loading" } : { status: "ready" },
-    selectionFormatting: {},
-    paragraphIndentLeft: 0,
-    paragraphIndentRight: 0,
-    paragraphFirstLineIndent: 0,
-    paragraphHangingIndent: false,
-    paragraphTabs: null,
-    pmTableContext: null,
-    pmImageContext: null,
-    activeTrackedChange: null,
-  });
-
-  // Table properties dialog state
-  const [tablePropsOpen, setTablePropsOpen] = useState(false);
-  // Footnote properties dialog state
-  const [footnotePropsOpen, setFootnotePropsOpen] = useState(false);
-  // Insert-symbol dialog state
-  const [showInsertSymbol, setShowInsertSymbol] = useState(false);
-  // Set-numbering-value dialog state
-  const [numberingValueDialogOpen, setNumberingValueDialogOpen] = useState(false);
-  // Ruler visibility — seeded from the prop, then user-driven via the toolbar toggle.
-  const [rulerVisible, setRulerVisible] = useState(showRulerProp);
-  const toggleRuler = useCallback(() => setRulerVisible((visible) => !visible), []);
-  // Document outline sidebar state
-  const [showOutline, setShowOutline] = useState(showOutlineProp);
-  const showOutlineRef = useRef(false);
-  useLayoutEffect(() => {
-    showOutlineRef.current = showOutline;
-  });
-  const [outlineHeadings, setHeadingInfos] = useState<HeadingInfo[]>([]);
-
-  const [, setTrackedChangeEntries] = useState<TrackedChangeEntry[]>([]);
-  // Mirrors the tracked-change entries so the sidebar accept/reject handlers
-  // can resolve a specific `revisionId` from a (from, to) range without
-  // subscribing to the state value (avoids extra re-renders / dep churn).
-  const trackedChangesRef = useRef<TrackedChangeEntry[]>([]);
-  const setTrackedChanges = useCallback((entries: TrackedChangeEntry[]) => {
-    trackedChangesRef.current = entries;
-    setTrackedChangeEntries(entries);
-  }, []);
-  const [anchorPositions, setAnchorPositions] =
-    useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
-
-  const {
-    editingMode,
-    readOnly,
-    readOnlyReason,
-    trackChangesOn,
-    toggleTrackChanges,
-    displayMode,
-    setDisplayMode,
-  } = useEditorMode({
-    modeProp,
-    onModeChange,
-    readOnlyProp,
-    ...(reviewDisplayMode === undefined ? {} : { reviewDisplayMode }),
-  });
-
-  useEffect(() => {
-    pagedEditorRef.current
-      ?.getEditor()
-      .setCanonicalMode(
-        editingMode === "suggesting" ? { type: "suggesting", author } : { type: "editing" },
+    // Surface a failed clipboard read behind the "paste without formatting"
+    // keystroke: the core command owns no UI and emits a bubbling event instead.
+    useEffect(() => {
+      const onClipboardReadError = (): void => {
+        toast(t("clipboardReadFailed"));
+      };
+      document.addEventListener(
+        CLIPBOARD_READ_ERROR_EVENT,
+        onClipboardReadError,
       );
-  }, [editingMode, author]);
+      return () => {
+        document.removeEventListener(
+          CLIPBOARD_READ_ERROR_EVENT,
+          onClipboardReadError,
+        );
+      };
+    }, [t]);
 
-  // Debounce timer for extractTrackedChanges (avoid full doc walk on every keystroke)
-  const extractTrackedChangesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // DocxEditor renders FolioUIProvider itself, so it can't consume its own
+    // provider via useFolioUI() (that resolves to the default context). Resolve
+    // from the `components` prop directly, with the built-in default as fallback.
+    const Button = components?.Button ?? DEFAULT_COMPONENTS.Button;
+    const {
+      Root: Menu,
+      Trigger: MenuTrigger,
+      Popup: MenuPopup,
+      Item: MenuItem,
+      CheckboxItem: MenuCheckboxItem,
+      Group: MenuGroup,
+      GroupLabel: MenuGroupLabel,
+      Separator: MenuSeparator,
+    } = components?.Menu ?? DEFAULT_COMPONENTS.Menu;
+    const {
+      Root: StSelect,
+      Trigger: StSelectTrigger,
+      Value: StSelectValue,
+      Popup: StSelectPopup,
+      Item: StSelectItem,
+    } = components?.Select ?? DEFAULT_COMPONENTS.Select;
 
-  // Debounce timer for collectHeadings — same reasoning as tracked changes:
-  // a doc-wide descend on every keystroke stalls typing on large documents.
-  const collectHeadingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Extract tracked changes from ProseMirror state
-  const extractTrackedChanges = useCallback(() => {
-    const view = pagedEditorRef.current?.getView();
-    if (!view) {
-      return;
-    }
-    const { doc, schema } = view.state;
-    const insertionType = schema.marks["insertion"];
-    const deletionType = schema.marks["deletion"];
-    if (!insertionType && !deletionType) {
-      return;
-    }
-
-    const raw: TrackedChangeEntry[] = [];
-    doc.descendants((node, pos) => {
-      if (!node.isText) {
-        return;
-      }
-      for (const mark of node.marks) {
-        if (mark.type === insertionType || mark.type === deletionType) {
-          const entry: TrackedChangeEntry = {
-            type: mark.type === insertionType ? "insertion" : "deletion",
-            text: node.text || "",
-            author: (mark.attrs["author"] as string) || "",
-            from: pos,
-            to: pos + node.nodeSize,
-            revisionId: mark.attrs["revisionId"] as number,
-          };
-          if (mark.attrs["date"]) {
-            entry.date = mark.attrs["date"] as string;
-          }
-          raw.push(entry);
-        }
-      }
+    // State
+    const [state, setState] = useState<EditorState>({
+      documentLoad: documentBuffer
+        ? { status: "loading" }
+        : { status: "ready" },
+      selectionFormatting: {},
+      paragraphIndentLeft: 0,
+      paragraphIndentRight: 0,
+      paragraphFirstLineIndent: 0,
+      paragraphHangingIndent: false,
+      paragraphTabs: null,
+      pmTableContext: null,
+      pmImageContext: null,
+      activeTrackedChange: null,
     });
 
-    // Merge adjacent entries with the same revisionId and type into one
-    const merged: TrackedChangeEntry[] = [];
-    for (const entry of raw) {
-      const last = merged.at(-1);
-      if (
-        last &&
-        last.revisionId === entry.revisionId &&
-        last.type === entry.type &&
-        last.to === entry.from
-      ) {
-        last.text += entry.text;
-        last.to = entry.to;
-      } else {
-        merged.push({ ...entry });
+    // Table properties dialog state
+    const [tablePropsOpen, setTablePropsOpen] = useState(false);
+    // Footnote properties dialog state
+    const [footnotePropsOpen, setFootnotePropsOpen] = useState(false);
+    // Insert-symbol dialog state
+    const [showInsertSymbol, setShowInsertSymbol] = useState(false);
+    // Set-numbering-value dialog state
+    const [numberingValueDialogOpen, setNumberingValueDialogOpen] =
+      useState(false);
+    // Ruler visibility — seeded from the prop, then user-driven via the toolbar toggle.
+    const [rulerVisible, setRulerVisible] = useState(showRulerProp);
+    const toggleRuler = useCallback(
+      () => setRulerVisible((visible) => !visible),
+      [],
+    );
+    // Document outline sidebar state
+    const [showOutline, setShowOutline] = useState(showOutlineProp);
+    const showOutlineRef = useRef(false);
+    useLayoutEffect(() => {
+      showOutlineRef.current = showOutline;
+    });
+    const [outlineHeadings, setHeadingInfos] = useState<HeadingInfo[]>([]);
+
+    const [, setTrackedChangeEntries] = useState<TrackedChangeEntry[]>([]);
+    // Mirrors the tracked-change entries so the sidebar accept/reject handlers
+    // can resolve a specific `revisionId` from a (from, to) range without
+    // subscribing to the state value (avoids extra re-renders / dep churn).
+    const trackedChangesRef = useRef<TrackedChangeEntry[]>([]);
+    const setTrackedChanges = useCallback((entries: TrackedChangeEntry[]) => {
+      trackedChangesRef.current = entries;
+      setTrackedChangeEntries(entries);
+    }, []);
+    const [anchorPositions, setAnchorPositions] = useState<Map<string, number>>(
+      EMPTY_ANCHOR_POSITIONS,
+    );
+
+    const {
+      editingMode,
+      readOnly,
+      readOnlyReason,
+      trackChangesOn,
+      toggleTrackChanges,
+      displayMode,
+      setDisplayMode,
+    } = useEditorMode({
+      modeProp,
+      onModeChange,
+      readOnlyProp,
+      ...(reviewDisplayMode === undefined ? {} : { reviewDisplayMode }),
+    });
+
+    useEffect(() => {
+      pagedEditorRef.current
+        ?.getEditor()
+        .setCanonicalMode(
+          editingMode === "suggesting"
+            ? { type: "suggesting", author }
+            : { type: "editing" },
+        );
+    }, [editingMode, author]);
+
+    // Debounce timer for extractTrackedChanges (avoid full doc walk on every keystroke)
+    const extractTrackedChangesTimerRef = useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+    // Debounce timer for collectHeadings — same reasoning as tracked changes:
+    // a doc-wide descend on every keystroke stalls typing on large documents.
+    const collectHeadingsTimerRef = useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+    // Extract tracked changes from ProseMirror state
+    const extractTrackedChanges = useCallback(() => {
+      const view = pagedEditorRef.current?.getView();
+      if (!view) {
+        return;
       }
-    }
-    setTrackedChanges(merged);
-  }, [setTrackedChanges]);
-
-  // Clean up debounce timers on unmount
-  useEffect(
-    () => () => {
-      if (extractTrackedChangesTimerRef.current) {
-        clearTimeout(extractTrackedChangesTimerRef.current);
+      const { doc, schema } = view.state;
+      const insertionType = schema.marks["insertion"];
+      const deletionType = schema.marks["deletion"];
+      if (!insertionType && !deletionType) {
+        return;
       }
-      if (collectHeadingsTimerRef.current) {
-        clearTimeout(collectHeadingsTimerRef.current);
-      }
-    },
-    [],
-  );
 
-  const [previousShowOutlineProp, setPreviousShowOutlineProp] = useState(showOutlineProp);
-  if (previousShowOutlineProp !== showOutlineProp) {
-    setPreviousShowOutlineProp(showOutlineProp);
-    setShowOutline(showOutlineProp);
-  }
-
-  // Read once: the extension manager below binds the undo keys when it is built.
-  const [hostShortcuts] = useState(() => hostShortcutsProp ?? []);
-  const historyShortcuts = historyShortcutOwner(hostShortcuts);
-
-  // History hook for undo/redo - start with null document
-  const history = useDocumentHistory<Document | null>(initialDocument || null, {
-    maxEntries: 100,
-    groupingInterval: 500,
-    enableKeyboardShortcuts:
-      historyShortcuts === "editor" &&
-      !usesCanonicalSession(experimentalSession, CANONICAL_GAP.history),
-  });
-
-  const refuseCanonicalModelEdit = useCallback(
-    (gap: CanonicalGap, message: string) => {
-      if (!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) return false;
-      const error = new CanonicalSessionRefusalError({
-        gap,
-        message: canonicalRefusalMessage(gap, message),
+      const raw: TrackedChangeEntry[] = [];
+      doc.descendants((node, pos) => {
+        if (!node.isText) {
+          return;
+        }
+        for (const mark of node.marks) {
+          if (mark.type === insertionType || mark.type === deletionType) {
+            const entry: TrackedChangeEntry = {
+              type: mark.type === insertionType ? "insertion" : "deletion",
+              text: node.text || "",
+              author: (mark.attrs["author"] as string) || "",
+              from: pos,
+              to: pos + node.nodeSize,
+              revisionId: mark.attrs["revisionId"] as number,
+            };
+            if (mark.attrs["date"]) {
+              entry.date = mark.attrs["date"] as string;
+            }
+            raw.push(entry);
+          }
+        }
       });
-      toast(error.message);
-      onError?.(error);
-      return true;
-    },
-    [experimentalSession, onError],
-  );
 
-  // Extension manager — built once, provides schema + plugins + commands
-  const extensionManager = useMemo(() => {
-    const mgr = new ExtensionManager(createStarterKit({ historyShortcuts }));
-    mgr.buildSchema();
-    mgr.initializeRuntime();
-    return mgr;
-  }, [historyShortcuts]);
+      // Merge adjacent entries with the same revisionId and type into one
+      const merged: TrackedChangeEntry[] = [];
+      for (const entry of raw) {
+        const last = merged.at(-1);
+        if (
+          last &&
+          last.revisionId === entry.revisionId &&
+          last.type === entry.type &&
+          last.to === entry.from
+        ) {
+          last.text += entry.text;
+          last.to = entry.to;
+        } else {
+          merged.push({ ...entry });
+        }
+      }
+      setTrackedChanges(merged);
+    }, [setTrackedChanges]);
 
-  const [initialSuggestionMode] = useState(() => ({
-    active: editingMode === "suggesting",
-    author,
-  }));
+    // Clean up debounce timers on unmount
+    useEffect(
+      () => () => {
+        if (extractTrackedChangesTimerRef.current) {
+          clearTimeout(extractTrackedChangesTimerRef.current);
+        }
+        if (collectHeadingsTimerRef.current) {
+          clearTimeout(collectHeadingsTimerRef.current);
+        }
+      },
+      [],
+    );
 
-  // Suggestion mode plugin
-  const suggestionPlugin = useMemo(
-    () => createSuggestionModePlugin(initialSuggestionMode.active, initialSuggestionMode.author),
-    [initialSuggestionMode],
-  );
-  // AI suggestion decorations — non-mutating overlay for the review
-  // queue. Always present; the plugin renders nothing until
-  // suggestions are pushed in.
-  const aiSuggestionPlugin = useMemo(() => createAISuggestionDecorationsPlugin(), []);
-  // AI citation decorations — pointers from chat answers / extraction
-  // justifications back to source ranges. Distinct visual from
-  // suggestions; renders nothing until citations are pushed in.
-  const aiCitationPlugin = useMemo(() => createAICitationDecorationsPlugin(), []);
-  // Workspace anonymization-term highlights. Always installed;
-  // renders nothing until the host pushes a term list via
-  // `setAnonymizationTermsMeta`.
-  // Keep plugin identity stable while publishing host callbacks after commit.
-  const [anonymizationCallback] = useState(() => createCallbackSlot(onAnonymizationMatchesChange));
-  useLayoutEffect(() => {
-    anonymizationCallback.commit(onAnonymizationMatchesChange);
-  });
-  const [anonymizationDecorationsPlugin] = useState(() =>
-    createAnonymizationDecorationsPlugin({ onMatchesChange: anonymizationCallback.invoke }),
-  );
-  // Inline autocomplete. Always installed and idle by default;
-  // becomes active only when the host pushes a `start` meta via
-  // {@link startAutocompleteSuggestion}. The keymap option lets
-  // the plugin intercept Tab/⌘→/Esc; it sits early in the plugin
-  // array so it runs before list-indent Tab handlers in the
-  // extension chain.
-  const autocompletePlugin = useMemo(() => autocompleteSuggestionPlugin({ keymap: true }), []);
-  // Template-directive widgets. Installed only for the template
-  // editor (`showTemplateDirectives`); scans the doc for {{...}}
-  // markers and exposes their ranges for the paged overlay.
-  const templateDirectivesPlugin = useMemo(() => createTemplateDirectivesPlugin(), []);
-  // Slash-command trigger for the template editor. Owns only the
-  // `/`-trigger state and the open-menu keyboard contract; the host
-  // (template-studio) renders the menu and performs the insertion.
-  const [slashChangeCallback] = useState(() => createCallbackSlot(onSlashMenuChange));
-  const [slashKeyCallback] = useState(() => createCallbackSlot(onSlashMenuKeyAction));
-  useLayoutEffect(() => {
-    slashChangeCallback.commit(onSlashMenuChange);
-    slashKeyCallback.commit(onSlashMenuKeyAction);
-  });
-  const [templateSlashMenu] = useState(() =>
-    templateSlashMenuPlugin({
-      onChange: slashChangeCallback.invoke,
-      onKeyAction: (action) => slashKeyCallback.invoke(action) ?? false,
-    }),
-  );
-  // Inert until a host pushes preview values (template fill preview).
-  const templatePreviewPlugin = useMemo(() => createTemplatePreviewValuesPlugin(), []);
-  const [hostPlugins] = useState(() => plugins ?? []);
-  const editorPlugins = useMemo(
-    () => [
-      autocompletePlugin,
-      ...hostPlugins,
-      ...(collaboration?.plugins ?? []),
-      suggestionPlugin,
-      aiSuggestionPlugin,
-      aiCitationPlugin,
-      anonymizationDecorationsPlugin,
-      ...(showTemplateDirectives ? [templateDirectivesPlugin, templateSlashMenu] : []),
-      templatePreviewPlugin,
-    ],
-    [
-      autocompletePlugin,
-      hostPlugins,
-      collaboration?.plugins,
-      suggestionPlugin,
-      aiSuggestionPlugin,
-      aiCitationPlugin,
-      anonymizationDecorationsPlugin,
-      showTemplateDirectives,
-      templateDirectivesPlugin,
-      templateSlashMenu,
-      templatePreviewPlugin,
-    ],
-  );
+    const [previousShowOutlineProp, setPreviousShowOutlineProp] =
+      useState(showOutlineProp);
+    if (previousShowOutlineProp !== showOutlineProp) {
+      setPreviousShowOutlineProp(showOutlineProp);
+      setShowOutline(showOutlineProp);
+    }
 
-  // Surface the live PM view to the host for AI overlay wiring.
-  // PagedEditor reports the exact create/destroy lifecycle; the
-  // history-state pass catches document replacements that swap the
-  // view under the same host component.
+    // Read once: the extension manager below binds the undo keys when it is built.
+    const [hostShortcuts] = useState(() => hostShortcutsProp ?? []);
+    const historyShortcuts = historyShortcutOwner(hostShortcuts);
 
-  const lastReportedViewRef = useRef<EditorView | null>(null);
-  const reportEditorViewReady = useCallback(
-    (view: EditorView | null) => {
+    // History hook for undo/redo - start with null document
+    const history = useDocumentHistory<Document | null>(
+      initialDocument || null,
+      {
+        maxEntries: 100,
+        groupingInterval: 500,
+        enableKeyboardShortcuts:
+          historyShortcuts === "editor" &&
+          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.history),
+      },
+    );
+
+    const refuseCanonicalModelEdit = useCallback(
+      (gap: CanonicalGap, message: string) => {
+        if (
+          !usesCanonicalSession(
+            experimentalSession,
+            CANONICAL_GAP.authorityRouting,
+          )
+        )
+          return false;
+        const error = new CanonicalSessionRefusalError({
+          gap,
+          message: canonicalRefusalMessage(gap, message),
+        });
+        toast(error.message);
+        onError?.(error);
+        return true;
+      },
+      [experimentalSession, onError],
+    );
+
+    // Extension manager — built once, provides schema + plugins + commands
+    const extensionManager = useMemo(() => {
+      const mgr = new ExtensionManager(createStarterKit({ historyShortcuts }));
+      mgr.buildSchema();
+      mgr.initializeRuntime();
+      return mgr;
+    }, [historyShortcuts]);
+
+    const [initialSuggestionMode] = useState(() => ({
+      active: editingMode === "suggesting",
+      author,
+    }));
+
+    // Suggestion mode plugin
+    const suggestionPlugin = useMemo(
+      () =>
+        createSuggestionModePlugin(
+          initialSuggestionMode.active,
+          initialSuggestionMode.author,
+        ),
+      [initialSuggestionMode],
+    );
+    // AI suggestion decorations — non-mutating overlay for the review
+    // queue. Always present; the plugin renders nothing until
+    // suggestions are pushed in.
+    const aiSuggestionPlugin = useMemo(
+      () => createAISuggestionDecorationsPlugin(),
+      [],
+    );
+    // AI citation decorations — pointers from chat answers / extraction
+    // justifications back to source ranges. Distinct visual from
+    // suggestions; renders nothing until citations are pushed in.
+    const aiCitationPlugin = useMemo(
+      () => createAICitationDecorationsPlugin(),
+      [],
+    );
+    // Workspace anonymization-term highlights. Always installed;
+    // renders nothing until the host pushes a term list via
+    // `setAnonymizationTermsMeta`.
+    // Keep plugin identity stable while publishing host callbacks after commit.
+    const [anonymizationCallback] = useState(() =>
+      createCallbackSlot(onAnonymizationMatchesChange),
+    );
+    useLayoutEffect(() => {
+      anonymizationCallback.commit(onAnonymizationMatchesChange);
+    });
+    const [anonymizationDecorationsPlugin] = useState(() =>
+      createAnonymizationDecorationsPlugin({
+        onMatchesChange: anonymizationCallback.invoke,
+      }),
+    );
+    // Inline autocomplete. Always installed and idle by default;
+    // becomes active only when the host pushes a `start` meta via
+    // {@link startAutocompleteSuggestion}. The keymap option lets
+    // the plugin intercept Tab/⌘→/Esc; it sits early in the plugin
+    // array so it runs before list-indent Tab handlers in the
+    // extension chain.
+    const autocompletePlugin = useMemo(
+      () => autocompleteSuggestionPlugin({ keymap: true }),
+      [],
+    );
+    // Template-directive widgets. Installed only for the template
+    // editor (`showTemplateDirectives`); scans the doc for {{...}}
+    // markers and exposes their ranges for the paged overlay.
+    const templateDirectivesPlugin = useMemo(
+      () => createTemplateDirectivesPlugin(),
+      [],
+    );
+    // Slash-command trigger for the template editor. Owns only the
+    // `/`-trigger state and the open-menu keyboard contract; the host
+    // (template-studio) renders the menu and performs the insertion.
+    const [slashChangeCallback] = useState(() =>
+      createCallbackSlot(onSlashMenuChange),
+    );
+    const [slashKeyCallback] = useState(() =>
+      createCallbackSlot(onSlashMenuKeyAction),
+    );
+    useLayoutEffect(() => {
+      slashChangeCallback.commit(onSlashMenuChange);
+      slashKeyCallback.commit(onSlashMenuKeyAction);
+    });
+    const [templateSlashMenu] = useState(() =>
+      templateSlashMenuPlugin({
+        onChange: slashChangeCallback.invoke,
+        onKeyAction: (action) => slashKeyCallback.invoke(action) ?? false,
+      }),
+    );
+    // Inert until a host pushes preview values (template fill preview).
+    const templatePreviewPlugin = useMemo(
+      () => createTemplatePreviewValuesPlugin(),
+      [],
+    );
+    const [hostPlugins] = useState(() => plugins ?? []);
+    const editorPlugins = useMemo(
+      () => [
+        autocompletePlugin,
+        ...hostPlugins,
+        ...(collaboration?.plugins ?? []),
+        suggestionPlugin,
+        aiSuggestionPlugin,
+        aiCitationPlugin,
+        anonymizationDecorationsPlugin,
+        ...(showTemplateDirectives
+          ? [templateDirectivesPlugin, templateSlashMenu]
+          : []),
+        templatePreviewPlugin,
+      ],
+      [
+        autocompletePlugin,
+        hostPlugins,
+        collaboration?.plugins,
+        suggestionPlugin,
+        aiSuggestionPlugin,
+        aiCitationPlugin,
+        anonymizationDecorationsPlugin,
+        showTemplateDirectives,
+        templateDirectivesPlugin,
+        templateSlashMenu,
+        templatePreviewPlugin,
+      ],
+    );
+
+    // Surface the live PM view to the host for AI overlay wiring.
+    // PagedEditor reports the exact create/destroy lifecycle; the
+    // history-state pass catches document replacements that swap the
+    // view under the same host component.
+
+    const lastReportedViewRef = useRef<EditorView | null>(null);
+    const reportEditorViewReady = useCallback(
+      (view: EditorView | null) => {
+        if (!onEditorViewReady) {
+          return;
+        }
+        if (lastReportedViewRef.current === view) {
+          return;
+        }
+        lastReportedViewRef.current = view;
+        if (view && initialScrollTop !== undefined) {
+          const initialScroll = initialScrollRef.current;
+          switch (initialScroll.status) {
+            case "scheduled":
+              initialScroll.cancel();
+              scrollEditorTo(scrollContainerRef.current, {
+                top: initialScrollTop,
+                behavior: "instant",
+              });
+              assignRef(initialScrollRef, { status: "applied" });
+              break;
+            case "waiting":
+              scrollEditorTo(scrollContainerRef.current, {
+                top: initialScrollTop,
+                behavior: "instant",
+              });
+              assignRef(initialScrollRef, { status: "applied" });
+              break;
+            case "applied":
+              break;
+            default: {
+              const exhaustive: never = initialScroll;
+              return exhaustive;
+            }
+          }
+        }
+        onEditorViewReady(view);
+      },
+      [onEditorViewReady, initialScrollTop],
+    );
+    useLayoutEffect(() => {
       if (!onEditorViewReady) {
         return;
       }
-      if (lastReportedViewRef.current === view) {
-        return;
-      }
-      lastReportedViewRef.current = view;
-      if (view && initialScrollTop !== undefined) {
-        const initialScroll = initialScrollRef.current;
-        switch (initialScroll.status) {
-          case "scheduled":
-            initialScroll.cancel();
-            scrollEditorTo(scrollContainerRef.current, {
-              top: initialScrollTop,
-              behavior: "instant",
-            });
-            assignRef(initialScrollRef, { status: "applied" });
-            break;
-          case "waiting":
-            scrollEditorTo(scrollContainerRef.current, {
-              top: initialScrollTop,
-              behavior: "instant",
-            });
-            assignRef(initialScrollRef, { status: "applied" });
-            break;
-          case "applied":
-            break;
-          default: {
-            const exhaustive: never = initialScroll;
-            return exhaustive;
-          }
-        }
-      }
-      onEditorViewReady(view);
-    },
-    [onEditorViewReady, initialScrollTop],
-  );
-  useLayoutEffect(() => {
-    if (!onEditorViewReady) {
-      return;
-    }
-    const view = history.state ? (pagedEditorRef.current?.getView() ?? null) : null;
-    reportEditorViewReady(view);
-  }, [onEditorViewReady, reportEditorViewReady, history.state]);
-  useEffect(() => {
-    if (!onEditorViewReady) {
-      return;
-    }
-    return () => {
-      reportEditorViewReady(null);
-    };
-  }, [onEditorViewReady, reportEditorViewReady]);
-  // The body view is created lazily (first click or `ensureEditorView`), after
-  // the document loads; readers of its state, such as the outline's heading
-  // collection, re-run when it appears.
-  const [bodyViewEpoch, setBodyViewEpoch] = useState(0);
-  const handleBodyViewReady = useCallback(
-    (view: EditorView | null) => {
+      const view = history.state
+        ? (pagedEditorRef.current?.getView() ?? null)
+        : null;
       reportEditorViewReady(view);
-      setBodyViewEpoch((epoch) => epoch + 1);
-    },
-    [reportEditorViewReady],
-  );
-
-  // Refresh outline headings when the document loads or the outline is enabled.
-  // handleDocumentChange keeps it in sync after subsequent edits. Page-number
-  // resolution depends on the paged layout having run at least once, so we
-  // retry briefly until every heading has a page or we give up.
-  useEffect(() => {
-    if (!showOutline || !history.state || bodyViewEpoch === 0) {
-      return;
-    }
-    const view = pagedEditorRef.current?.getView();
-    if (!view) {
-      return;
-    }
-    const headings = collectHeadings(view.state.doc, getDocumentBuiltInStyles(view.state));
-    setHeadingInfos(headings);
-
-    let attempts = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const fill = () => {
-      attempts++;
-      const pagedRef = pagedEditorRef.current;
-      if (!pagedRef) {
+    }, [onEditorViewReady, reportEditorViewReady, history.state]);
+    useEffect(() => {
+      if (!onEditorViewReady) {
         return;
       }
-      let unresolved = false;
-      for (const heading of headings) {
-        if (heading.pageNumber == null) {
-          const page = pagedRef.getPageNumberForPmPos(heading.pmPos);
-          if (page !== null) {
-            heading.pageNumber = page;
-          } else {
-            unresolved = true;
+      return () => {
+        reportEditorViewReady(null);
+      };
+    }, [onEditorViewReady, reportEditorViewReady]);
+    // The body view is created lazily (first click or `ensureEditorView`), after
+    // the document loads; readers of its state, such as the outline's heading
+    // collection, re-run when it appears.
+    const [bodyViewEpoch, setBodyViewEpoch] = useState(0);
+    const handleBodyViewReady = useCallback(
+      (view: EditorView | null) => {
+        reportEditorViewReady(view);
+        setBodyViewEpoch((epoch) => epoch + 1);
+      },
+      [reportEditorViewReady],
+    );
+
+    // Refresh outline headings when the document loads or the outline is enabled.
+    // handleDocumentChange keeps it in sync after subsequent edits. Page-number
+    // resolution depends on the paged layout having run at least once, so we
+    // retry briefly until every heading has a page or we give up.
+    useEffect(() => {
+      if (!showOutline || !history.state || bodyViewEpoch === 0) {
+        return;
+      }
+      const view = pagedEditorRef.current?.getView();
+      if (!view) {
+        return;
+      }
+      const headings = collectHeadings(
+        view.state.doc,
+        getDocumentBuiltInStyles(view.state),
+      );
+      setHeadingInfos(headings);
+
+      let attempts = 0;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const fill = () => {
+        attempts++;
+        const pagedRef = pagedEditorRef.current;
+        if (!pagedRef) {
+          return;
+        }
+        let unresolved = false;
+        for (const heading of headings) {
+          if (heading.pageNumber == null) {
+            const page = pagedRef.getPageNumberForPmPos(heading.pmPos);
+            if (page !== null) {
+              heading.pageNumber = page;
+            } else {
+              unresolved = true;
+            }
           }
         }
-      }
-      // Push a fresh array so React picks up the mutated entries.
-      setHeadingInfos([...headings]);
-      if (unresolved && attempts < 10) {
-        timer = setTimeout(fill, 300);
-      }
-    };
-    timer = setTimeout(fill, 100);
-    return () => {
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, [showOutline, history.state, bodyViewEpoch]);
+        // Push a fresh array so React picks up the mutated entries.
+        setHeadingInfos([...headings]);
+        if (unresolved && attempts < 10) {
+          timer = setTimeout(fill, 300);
+        }
+      };
+      timer = setTimeout(fill, 100);
+      return () => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      };
+    }, [showOutline, history.state, bodyViewEpoch]);
 
-  // Refs
+    // Refs
 
-  const [editorController, setEditorController] = useState<ReturnType<
-    PagedEditorRef["getEditor"]
-  > | null>(null);
-  const attachPagedEditor = useCallback(
-    (editor: PagedEditorRef | null) => {
-      assignRef(pagedEditorRef, editor);
-      pagedEditorBinding.attach(editor);
-      // The handle is rebuilt as layout/selection change; publish only its stable controller.
-      if (editor) {
-        setEditorController(editor.getEditor());
-        return;
-      }
-      // Handle replacement detaches and reattaches in one commit. Clear only a
-      // real detach so selection updates never publish a transient null controller.
-      queueMicrotask(() => {
-        if (pagedEditorRef.current === null) setEditorController(null);
-      });
-    },
-    [pagedEditorBinding],
-  );
-  const hfEditorRef = useRef<InlineHeaderFooterEditorRef>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  // Roots that scope page-level shortcuts to this editor. Everything the editor
-  // renders, dialogs included, lives under the container element.
-  const shortcutRoots = useMemo(() => [containerRef], []);
-  // Save the last known selection for restoring after toolbar interactions
-  const lastSelectionRef = useRef<{ from: number; to: number } | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const editorContentRef = useRef<HTMLDivElement>(null);
-  const [editorContentElement, setEditorContentElement] = useState<HTMLDivElement | null>(null);
-  const attachEditorContent = useCallback((element: HTMLDivElement | null) => {
-    assignRef(editorContentRef, element);
-    setEditorContentElement(element);
-  }, []);
+    const [editorController, setEditorController] = useState<ReturnType<
+      PagedEditorRef["getEditor"]
+    > | null>(null);
+    const attachPagedEditor = useCallback(
+      (editor: PagedEditorRef | null) => {
+        assignRef(pagedEditorRef, editor);
+        pagedEditorBinding.attach(editor);
+        // The handle is rebuilt as layout/selection change; publish only its stable controller.
+        if (editor) {
+          setEditorController(editor.getEditor());
+          return;
+        }
+        // Handle replacement detaches and reattaches in one commit. Clear only a
+        // real detach so selection updates never publish a transient null controller.
+        queueMicrotask(() => {
+          if (pagedEditorRef.current === null) setEditorController(null);
+        });
+      },
+      [pagedEditorBinding],
+    );
+    const hfEditorRef = useRef<InlineHeaderFooterEditorRef>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    // Roots that scope page-level shortcuts to this editor. Everything the editor
+    // renders, dialogs included, lives under the container element.
+    const shortcutRoots = useMemo(() => [containerRef], []);
+    // Save the last known selection for restoring after toolbar interactions
+    const lastSelectionRef = useRef<{ from: number; to: number } | null>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const editorContentRef = useRef<HTMLDivElement>(null);
+    const [editorContentElement, setEditorContentElement] =
+      useState<HTMLDivElement | null>(null);
+    const attachEditorContent = useCallback(
+      (element: HTMLDivElement | null) => {
+        assignRef(editorContentRef, element);
+        setEditorContentElement(element);
+      },
+      [],
+    );
 
-  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
-  const attachScrollContainer = useCallback((element: HTMLDivElement | null) => {
-    assignRef(scrollContainerRef, element);
-    setScrollContainer(element);
-  }, []);
-  const [widestLaidOutPageWidth, setWidestLaidOutPageWidth] = useState<number | null>(null);
-  const hasDocument = history.state !== null;
-  useEffect(() => {
-    const pagedEditor = pagedEditorRef.current;
-    if (
-      !pagedEditor ||
-      !hasDocument ||
-      (state.documentLoad.status !== "ready" && !preserveDocumentWhileLoading)
-    ) {
-      setWidestLaidOutPageWidth(null);
-      return;
-    }
-    const updatePageWidth = () => {
-      const pages = pagedEditor.getLayout()?.pages;
-      if (!pages) {
+    const [scrollContainer, setScrollContainer] =
+      useState<HTMLDivElement | null>(null);
+    const attachScrollContainer = useCallback(
+      (element: HTMLDivElement | null) => {
+        assignRef(scrollContainerRef, element);
+        setScrollContainer(element);
+      },
+      [],
+    );
+    const [widestLaidOutPageWidth, setWidestLaidOutPageWidth] = useState<
+      number | null
+    >(null);
+    const hasDocument = history.state !== null;
+    useEffect(() => {
+      const pagedEditor = pagedEditorRef.current;
+      if (
+        !pagedEditor ||
+        !hasDocument ||
+        (state.documentLoad.status !== "ready" && !preserveDocumentWhileLoading)
+      ) {
         setWidestLaidOutPageWidth(null);
         return;
       }
-      let width = 0;
-      for (const page of pages) {
-        width = Math.max(width, page.size.w);
-      }
-      setWidestLaidOutPageWidth(width);
-    };
-    updatePageWidth();
-    // Painter notifications precede publication of the new layout. Read only
-    // after the controller commits it, including later document replacements.
-    return pagedEditor.getEditor().on("layoutComplete", updatePageWidth);
-  }, [state.documentLoad.status, hasDocument, preserveDocumentWhileLoading]);
+      const updatePageWidth = () => {
+        const pages = pagedEditor.getLayout()?.pages;
+        if (!pages) {
+          setWidestLaidOutPageWidth(null);
+          return;
+        }
+        let width = 0;
+        for (const page of pages) {
+          width = Math.max(width, page.size.w);
+        }
+        setWidestLaidOutPageWidth(width);
+      };
+      updatePageWidth();
+      // Painter notifications precede publication of the new layout. Read only
+      // after the controller commits it, including later document replacements.
+      return pagedEditor.getEditor().on("layoutComplete", updatePageWidth);
+    }, [state.documentLoad.status, hasDocument, preserveDocumentWhileLoading]);
 
-  // Format painter: "armed" paints the next selection once then disarms;
-  // "sticky" keeps painting until Esc or the button is toggled off. The ref
-  // mirrors the mode for the imperative mouseup/keydown listeners (which fire
-  // outside React render); the captured marks live in a ref so they survive
-  // between the copy and the paint.
-  const [formatPainterMode, setFormatPainterModeState] = useState<"off" | "armed" | "sticky">(
-    "off",
-  );
-  const formatPainterModeRef = useRef<"off" | "armed" | "sticky">("off");
-  const capturedFormatMarksRef = useRef<CapturedTextFormatting | null>(null);
-  const setFormatPainterMode = useCallback((next: "off" | "armed" | "sticky") => {
-    formatPainterModeRef.current = next;
-    setFormatPainterModeState(next);
-  }, []);
+    // Format painter: "armed" paints the next selection once then disarms;
+    // "sticky" keeps painting until Esc or the button is toggled off. The ref
+    // mirrors the mode for the imperative mouseup/keydown listeners (which fire
+    // outside React render); the captured marks live in a ref so they survive
+    // between the copy and the paint.
+    const [formatPainterMode, setFormatPainterModeState] = useState<
+      "off" | "armed" | "sticky"
+    >("off");
+    const formatPainterModeRef = useRef<"off" | "armed" | "sticky">("off");
+    const capturedFormatMarksRef = useRef<CapturedTextFormatting | null>(null);
+    const setFormatPainterMode = useCallback(
+      (next: "off" | "armed" | "sticky") => {
+        formatPainterModeRef.current = next;
+        setFormatPainterModeState(next);
+      },
+      [],
+    );
 
-  const {
-    contextMenu,
-    openMenu: openContextMenu,
-    closeMenu: closeContextMenu,
-  } = useContextMenu({ pagedEditorRef });
-  // Keep history.state accessible in stable callbacks without stale closures
-  const resetFindResultRef = useRef<(() => void) | null>(null);
-  const historyStateRef = useRef(history.state);
-  useLayoutEffect(() => {
-    historyStateRef.current = history.state;
-  });
-  // Track current border color/width for border presets
-  const borderSpecRef = useRef<TableBorderCommandSpec>({
-    style: "single",
-    size: 4,
-    color: { rgb: "000000" },
-  });
-  const canonicalCommentApi = history.state ? editorController : null;
-  const canonicalCommentsVersion = canonicalCommentApi?.getCanonicalCommittedVersion() ?? null;
-  const canonicalComments = useMemo(
-    () =>
-      canonicalCommentsVersion === null
-        ? null
-        : (canonicalCommentApi?.getCanonicalComments() ?? null),
-    [canonicalCommentApi, canonicalCommentsVersion],
-  );
-  const canonicalCommentsSerialized = useMemo(
-    () => (canonicalComments === null ? null : JSON.stringify(canonicalComments)),
-    [canonicalComments],
-  );
-  const canonicalCommentsSnapshotRef = useRef<string | null>(canonicalCommentsSerialized);
-  const lastControlledCommentsRef = useRef<string | undefined>(undefined);
+    const {
+      contextMenu,
+      openMenu: openContextMenu,
+      closeMenu: closeContextMenu,
+    } = useContextMenu({ pagedEditorRef });
+    // Keep history.state accessible in stable callbacks without stale closures
+    const resetFindResultRef = useRef<(() => void) | null>(null);
+    const historyStateRef = useRef(history.state);
+    useLayoutEffect(() => {
+      historyStateRef.current = history.state;
+    });
+    // Track current border color/width for border presets
+    const borderSpecRef = useRef<TableBorderCommandSpec>({
+      style: "single",
+      size: 4,
+      color: { rgb: "000000" },
+    });
+    const canonicalCommentApi = history.state ? editorController : null;
+    const canonicalCommentsVersion =
+      canonicalCommentApi?.getCanonicalCommittedVersion() ?? null;
+    const canonicalComments = useMemo(
+      () =>
+        canonicalCommentsVersion === null
+          ? null
+          : (canonicalCommentApi?.getCanonicalComments() ?? null),
+      [canonicalCommentApi, canonicalCommentsVersion],
+    );
+    const canonicalCommentsSerialized = useMemo(
+      () =>
+        canonicalComments === null ? null : JSON.stringify(canonicalComments),
+      [canonicalComments],
+    );
+    const canonicalCommentsSnapshotRef = useRef<string | null>(
+      canonicalCommentsSerialized,
+    );
+    const lastControlledCommentsRef = useRef<string | undefined>(undefined);
 
-  const {
-    comments: legacyComments,
-    createComment,
-    setComments,
-    commentsRef,
-    getCommentsDirty,
-    setCommentsDirty,
-    resetLoadedComments,
-    showCommentsSidebar,
-    setShowCommentsSidebar,
-    setVisibleCommentAuthors,
-    activeCommentId,
-    setActiveCommentId,
-    isAddingComment,
-    setIsAddingComment,
-    commentSelectionRange,
-    setCommentSelectionRange,
-    addCommentYPosition,
-    setAddCommentYPosition,
-    floatingCommentBtn,
-    setFloatingCommentBtn,
-    commentAuthors,
-    visibleCommentAuthorSet,
-    visibleComments,
-    syncCommentHighlightStyles,
-  } = useFolioComments({
-    doc: canonicalComments === null ? history.state : null,
-    autoOpenReviewSidebar,
-    anchorPositions,
-    editorContentRef,
-    commentsProp,
-    onCommentsChange,
-    committedComments: canonicalComments,
-  });
-  const comments = canonicalComments ?? legacyComments;
-  const commentDraftMode = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
-    ? "canonical"
-    : "prosemirror";
-  const documentOperationUndoEntriesRef = useRef<LiveDocumentOperationUndoEntry[]>([]);
-  const pendingSuggestionRegistryRef = useRef(new FolioPendingSuggestionRegistry());
-  // Cache style resolver to avoid recreating on every selection change
-  const styleResolverCacheRef = useRef<{
-    styles: unknown;
-    resolver: ReturnType<typeof createStyleResolver>;
-  } | null>(null);
-  const getCachedStyleResolver = useCallback(
-    (styles: Parameters<typeof createStyleResolver>[0]) => {
-      const cached = styleResolverCacheRef.current;
-      if (cached && cached.styles === styles) {
-        return cached.resolver;
-      }
-      const resolver = createStyleResolver(styles);
-      styleResolverCacheRef.current = { styles, resolver };
-      return resolver;
-    },
-    [],
-  );
+    const {
+      comments: legacyComments,
+      createComment,
+      setComments,
+      commentsRef,
+      getCommentsDirty,
+      setCommentsDirty,
+      resetLoadedComments,
+      showCommentsSidebar,
+      setShowCommentsSidebar,
+      setVisibleCommentAuthors,
+      activeCommentId,
+      setActiveCommentId,
+      isAddingComment,
+      setIsAddingComment,
+      commentSelectionRange,
+      setCommentSelectionRange,
+      addCommentYPosition,
+      setAddCommentYPosition,
+      floatingCommentBtn,
+      setFloatingCommentBtn,
+      commentAuthors,
+      visibleCommentAuthorSet,
+      visibleComments,
+      syncCommentHighlightStyles,
+    } = useFolioComments({
+      doc: canonicalComments === null ? history.state : null,
+      autoOpenReviewSidebar,
+      anchorPositions,
+      editorContentRef,
+      commentsProp,
+      onCommentsChange,
+      committedComments: canonicalComments,
+    });
+    const comments = canonicalComments ?? legacyComments;
+    const commentDraftMode = usesCanonicalSession(
+      experimentalSession,
+      CANONICAL_GAP.authorityRouting,
+    )
+      ? "canonical"
+      : "prosemirror";
+    const documentOperationUndoEntriesRef = useRef<
+      LiveDocumentOperationUndoEntry[]
+    >([]);
+    const pendingSuggestionRegistryRef = useRef(
+      new FolioPendingSuggestionRegistry(),
+    );
+    // Cache style resolver to avoid recreating on every selection change
+    const styleResolverCacheRef = useRef<{
+      styles: unknown;
+      resolver: ReturnType<typeof createStyleResolver>;
+    } | null>(null);
+    const getCachedStyleResolver = useCallback(
+      (styles: Parameters<typeof createStyleResolver>[0]) => {
+        const cached = styleResolverCacheRef.current;
+        if (cached && cached.styles === styles) {
+          return cached.resolver;
+        }
+        const resolver = createStyleResolver(styles);
+        styleResolverCacheRef.current = { styles, resolver };
+        return resolver;
+      },
+      [],
+    );
 
-  const { zoom, zoomRef, setZoomWithViewportAnchor, scrollPageInfo, setScrollPageInfo } =
-    useZoomAndPageInfo({
+    const {
+      zoom,
+      zoomRef,
+      setZoomWithViewportAnchor,
+      scrollPageInfo,
+      setScrollPageInfo,
+    } = useZoomAndPageInfo({
       scrollContainerRef,
       scrollContainer,
       pagedEditorRef,
       initialZoom,
     });
 
-  // Ctrl/Cmd+wheel and trackpad-pinch zoom. Controlled by DocxEditor's
-  // viewport-anchored zoom (a single source of truth): the hook reads the live
-  // value and emits the next one through setZoomWithViewportAnchor, so it never
-  // diverges from the toolbar control or the imperative setZoom. The zoom keys
-  // stay unbound here whatever `keyboardShortcuts` says, so Cmd/Ctrl+0/+/- keeps
-  // reaching the browser instead of clashing with the editor's own Ctrl chords.
-  useWheelZoom({
-    containerRef: scrollContainerRef,
-    enabled: enableWheelZoom,
-    getCurrentZoom: () => zoomRef.current,
-    onZoomChange: setZoomWithViewportAnchor,
-    keyboardShortcuts: "none",
-  });
-  const [bodyHistoryAvailability, setBodyHistoryAvailability] = useState({
-    canRedo: false,
-    canUndo: false,
-  });
-  const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(null);
-  const canEditHeaderFooter = showHeaderFooterEditing;
-  const getCanonicalApi = pagedEditorBinding.getCanonicalApi;
-
-  const pushDocument = useCallback(
-    (document: Document) => {
-      history.push(document);
-      return document;
-    },
-    [history],
-  );
-
-  const refreshBodyHistoryAvailability = useCallback(() => {
-    const canUndo = pagedEditorRef.current?.canUndo() ?? false;
-    const canRedo = pagedEditorRef.current?.canRedo() ?? false;
-    setBodyHistoryAvailability((prev) =>
-      prev.canUndo === canUndo && prev.canRedo === canRedo ? prev : { canUndo, canRedo },
-    );
-  }, []);
-
-  // Header/footer editing state + content resolution + mutation callbacks
-  const {
-    hfEditPosition,
-    setHfEditPosition,
-    hfEditIsFirstPage,
-    headerContent,
-    footerContent,
-    firstPageHeaderContent,
-    firstPageFooterContent,
-    activeHeaderRId,
-    activeFooterRId,
-    activeFirstHeaderRId,
-    activeFirstFooterRId,
-    effectiveSectionProperties,
-    handleHeaderFooterDoubleClick,
-    handleBodyClick,
-    handleRemoveHeaderFooter,
-  } = useHeaderFooterEditor({
-    history,
-    pushDocument,
-    getCanonicalApi,
-    ...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
-      ? {}
-      : { experimentalSession }),
-    // Hook reads live HF PM state at close time (the in-place sync
-    // that previously kept package.headers/footers current per
-    // keystroke was removed to fix the undo-corruption bug; the
-    // close path now flushes via this callback). PagedEditor's ref
-    // exposes per-rId view lookup; the hook supplies the rId it
-    // already resolved internally for save / remove.
-    getHfView: pagedEditorBinding.getHfView,
-  });
-  useLayoutEffect(() => {
-    if (readOnly && hfEditPosition) handleBodyClick();
-  }, [readOnly, hfEditPosition, handleBodyClick]);
-  let activeHfRId = hfEditIsFirstPage ? activeFirstFooterRId : activeFooterRId;
-  if (hfEditPosition === "header") {
-    activeHfRId = hfEditIsFirstPage ? activeFirstHeaderRId : activeHeaderRId;
-  }
-
-  const visibleOutlineHeadings = useMemo(
-    () => filterHeadingsByDepth(outlineHeadings, outlineDepth),
-    [outlineDepth, outlineHeadings],
-  );
-
-  // Side panels: the page is centred between the outline track and the
-  // comments; the width the row has decides how each is shown.
-  const {
-    rowRef: attachPanelsRow,
-    layout: panelLayout,
-    overlay: panelOverlay,
-    setOverlay: setPanelOverlay,
-    layoutWithCommentsOpen,
-  } = usePanelLayout({
-    pageWidth: (widestLaidOutPageWidth ?? getPageSize(effectiveSectionProperties).w) * zoom,
-    outline: showOutline && outlineHeadings.length > 1 ? "available" : "absent",
-    comments: showCommentsSidebar ? "open" : "closed",
-    scrollContainer,
-  });
-  const commentsSurface = ((): "column" | "drawer" | null => {
-    if (panelLayout.comments === "column") return "column";
-    if (panelLayout.comments === "drawer" && panelOverlay === "comments") return "drawer";
-    return null;
-  })();
-  const { activeId: activeHeadingId, markJumped: markHeadingJumped } = useActiveHeading(
-    scrollContainer,
-    panelLayout.outline === "none" ? NO_HEADINGS : visibleOutlineHeadings,
-  );
-  const closePanelOverlay = useCallback(() => setPanelOverlay("none"), [setPanelOverlay]);
-  const toggleOutlineOverlay = useCallback(
-    () => setPanelOverlay(panelOverlay === "outline" ? "none" : "outline"),
-    [panelOverlay, setPanelOverlay],
-  );
-
-  const readActiveEditorStory = useCallback(() => {
-    const bodyView = pagedEditorRef.current?.getView() ?? null;
-    return resolveActiveEditorStory({
-      bodyView,
-      headerFooterView:
-        hfEditPosition && hfEditorRef.current ? hfEditorRef.current.getView() : null,
-      noteView: activeNoteStory ? (pagedEditorRef.current?.getActiveView() ?? null) : null,
+    // Ctrl/Cmd+wheel and trackpad-pinch zoom. Controlled by DocxEditor's
+    // viewport-anchored zoom (a single source of truth): the hook reads the live
+    // value and emits the next one through setZoomWithViewportAnchor, so it never
+    // diverges from the toolbar control or the imperative setZoom. The zoom keys
+    // stay unbound here whatever `keyboardShortcuts` says, so Cmd/Ctrl+0/+/- keeps
+    // reaching the browser instead of clashing with the editor's own Ctrl chords.
+    useWheelZoom({
+      containerRef: scrollContainerRef,
+      enabled: enableWheelZoom,
+      getCurrentZoom: () => zoomRef.current,
+      onZoomChange: setZoomWithViewportAnchor,
+      keyboardShortcuts: "none",
     });
-  }, [activeNoteStory, hfEditPosition]);
+    const [bodyHistoryAvailability, setBodyHistoryAvailability] = useState({
+      canRedo: false,
+      canUndo: false,
+    });
+    const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(
+      null,
+    );
+    const canEditHeaderFooter = showHeaderFooterEditing;
+    const getCanonicalApi = pagedEditorBinding.getCanonicalApi;
 
-  const [activeStoryCallback] = useState(() =>
-    createRequiredCallbackSlot(() =>
-      resolveActiveEditorStory({ bodyView: null, headerFooterView: null, noteView: null }),
-    ),
-  );
-  useLayoutEffect(() => {
-    activeStoryCallback.commit(readActiveEditorStory);
-  });
-  const getActiveEditorStory = activeStoryCallback.invoke;
+    const pushDocument = useCallback(
+      (document: Document) => {
+        history.push(document);
+        return document;
+      },
+      [history],
+    );
 
-  const getActiveEditorView = useCallback(
-    () => getActiveEditorStory().view,
-    [getActiveEditorStory],
-  );
+    const refreshBodyHistoryAvailability = useCallback(() => {
+      const canUndo = pagedEditorRef.current?.canUndo() ?? false;
+      const canRedo = pagedEditorRef.current?.canRedo() ?? false;
+      setBodyHistoryAvailability((prev) =>
+        prev.canUndo === canUndo && prev.canRedo === canRedo
+          ? prev
+          : { canUndo, canRedo },
+      );
+    }, []);
 
-  // Helper to focus the active editor
-  const focusCurrentEditor = useCallback(() => {
-    if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
-      hfEditorRef.current.focus();
-    } else {
-      pagedEditorRef.current?.focus();
+    // Header/footer editing state + content resolution + mutation callbacks
+    const {
+      hfEditPosition,
+      setHfEditPosition,
+      hfEditIsFirstPage,
+      headerContent,
+      footerContent,
+      firstPageHeaderContent,
+      firstPageFooterContent,
+      activeHeaderRId,
+      activeFooterRId,
+      activeFirstHeaderRId,
+      activeFirstFooterRId,
+      effectiveSectionProperties,
+      handleHeaderFooterDoubleClick,
+      handleBodyClick,
+      handleRemoveHeaderFooter,
+    } = useHeaderFooterEditor({
+      history,
+      pushDocument,
+      getCanonicalApi,
+      ...(!usesCanonicalSession(
+        experimentalSession,
+        CANONICAL_GAP.authorityRouting,
+      )
+        ? {}
+        : { experimentalSession }),
+      // Hook reads live HF PM state at close time (the in-place sync
+      // that previously kept package.headers/footers current per
+      // keystroke was removed to fix the undo-corruption bug; the
+      // close path now flushes via this callback). PagedEditor's ref
+      // exposes per-rId view lookup; the hook supplies the rId it
+      // already resolved internally for save / remove.
+      getHfView: pagedEditorBinding.getHfView,
+    });
+    useLayoutEffect(() => {
+      if (readOnly && hfEditPosition) handleBodyClick();
+    }, [readOnly, hfEditPosition, handleBodyClick]);
+    let activeHfRId = hfEditIsFirstPage
+      ? activeFirstFooterRId
+      : activeFooterRId;
+    if (hfEditPosition === "header") {
+      activeHfRId = hfEditIsFirstPage ? activeFirstHeaderRId : activeHeaderRId;
     }
-  }, [getActiveEditorStory]);
 
-  const [focusCallback] = useState(() => createRequiredCallbackSlot(() => {}));
-  useLayoutEffect(() => {
-    focusCallback.commit(focusCurrentEditor);
-  });
-  const focusActiveEditor = focusCallback.invoke;
+    const visibleOutlineHeadings = useMemo(
+      () => filterHeadingsByDepth(outlineHeadings, outlineDepth),
+      [outlineDepth, outlineHeadings],
+    );
 
-  // Helper to undo in the active editor
-  const undoActiveEditor = useCallback(() => {
-    if (
-      !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
-      getActiveEditorStory().type === "headerFooter" &&
-      hfEditorRef.current
-    ) {
-      hfEditorRef.current.undo();
-    } else {
-      pagedEditorRef.current?.undo();
-      requestAnimationFrame(refreshBodyHistoryAvailability);
-    }
-  }, [getActiveEditorStory, refreshBodyHistoryAvailability, experimentalSession]);
+    // Side panels: the page is centred between the outline track and the
+    // comments; the width the row has decides how each is shown.
+    const {
+      rowRef: attachPanelsRow,
+      layout: panelLayout,
+      overlay: panelOverlay,
+      setOverlay: setPanelOverlay,
+      layoutWithCommentsOpen,
+    } = usePanelLayout({
+      pageWidth:
+        (widestLaidOutPageWidth ?? getPageSize(effectiveSectionProperties).w) *
+        zoom,
+      outline:
+        showOutline && outlineHeadings.length > 1 ? "available" : "absent",
+      comments: showCommentsSidebar ? "open" : "closed",
+      scrollContainer,
+    });
+    const commentsSurface = ((): "column" | "drawer" | null => {
+      if (panelLayout.comments === "column") return "column";
+      if (panelLayout.comments === "drawer" && panelOverlay === "comments")
+        return "drawer";
+      return null;
+    })();
+    const { activeId: activeHeadingId, markJumped: markHeadingJumped } =
+      useActiveHeading(
+        scrollContainer,
+        panelLayout.outline === "none" ? NO_HEADINGS : visibleOutlineHeadings,
+      );
+    const closePanelOverlay = useCallback(
+      () => setPanelOverlay("none"),
+      [setPanelOverlay],
+    );
+    const toggleOutlineOverlay = useCallback(
+      () => setPanelOverlay(panelOverlay === "outline" ? "none" : "outline"),
+      [panelOverlay, setPanelOverlay],
+    );
 
-  // Helper to redo in the active editor
-  const redoActiveEditor = useCallback(() => {
-    if (
-      !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
-      getActiveEditorStory().type === "headerFooter" &&
-      hfEditorRef.current
-    ) {
-      hfEditorRef.current.redo();
-    } else {
-      pagedEditorRef.current?.redo();
-      requestAnimationFrame(refreshBodyHistoryAvailability);
-    }
-  }, [getActiveEditorStory, refreshBodyHistoryAvailability, experimentalSession]);
+    const readActiveEditorStory = useCallback(() => {
+      const bodyView = pagedEditorRef.current?.getView() ?? null;
+      return resolveActiveEditorStory({
+        bodyView,
+        headerFooterView:
+          hfEditPosition && hfEditorRef.current
+            ? hfEditorRef.current.getView()
+            : null,
+        noteView: activeNoteStory
+          ? (pagedEditorRef.current?.getActiveView() ?? null)
+          : null,
+      });
+    }, [activeNoteStory, hfEditPosition]);
 
-  const handleActiveNoteStoryChange = useCallback(
-    (story: NoteStoryKey | null) => {
-      setActiveNoteStory(story);
-      requestAnimationFrame(refreshBodyHistoryAvailability);
-      if (story && hfEditPosition) {
-        handleBodyClick();
+    const [activeStoryCallback] = useState(() =>
+      createRequiredCallbackSlot(() =>
+        resolveActiveEditorStory({
+          bodyView: null,
+          headerFooterView: null,
+          noteView: null,
+        }),
+      ),
+    );
+    useLayoutEffect(() => {
+      activeStoryCallback.commit(readActiveEditorStory);
+    });
+    const getActiveEditorStory = activeStoryCallback.invoke;
+
+    const getActiveEditorView = useCallback(
+      () => getActiveEditorStory().view,
+      [getActiveEditorStory],
+    );
+
+    // Helper to focus the active editor
+    const focusCurrentEditor = useCallback(() => {
+      if (
+        getActiveEditorStory().type === "headerFooter" &&
+        hfEditorRef.current
+      ) {
+        hfEditorRef.current.focus();
+      } else {
+        pagedEditorRef.current?.focus();
       }
-    },
-    [handleBodyClick, hfEditPosition, refreshBodyHistoryAvailability],
-  );
+    }, [getActiveEditorStory]);
 
-  const handleHeaderFooterStoryOpen = useCallback(
-    (position: "header" | "footer", pageNumber?: number) => {
-      pagedEditorRef.current?.closeNoteStory();
-      handleHeaderFooterDoubleClick(position, pageNumber);
-    },
-    [handleHeaderFooterDoubleClick],
-  );
+    const [focusCallback] = useState(() =>
+      createRequiredCallbackSlot(() => {}),
+    );
+    useLayoutEffect(() => {
+      focusCallback.commit(focusCurrentEditor);
+    });
+    const focusActiveEditor = focusCallback.invoke;
 
-  // Find/Replace hook
-  const findReplace = useFindReplaceState();
-  const { openFind, openReplace } = findReplace;
-
-  // Page setup dialog state
-  const [showPageSetup, setShowPageSetup] = useState(false);
-
-  // Hyperlink handlers (popup state, navigation, etc.)
-  const {
-    hyperlinkPopupData,
-    handleHyperlinkClick,
-    handleHyperlinkPopupNavigate,
-    handleHyperlinkPopupCopy,
-    handleHyperlinkPopupEdit,
-    handleHyperlinkPopupRemove,
-    handleHyperlinkPopupClose,
-  } = useHyperlinkHandlers({
-    getActiveEditorView,
-    focusActiveEditor,
-  });
-
-  const {
-    imagePositionOpen,
-    setImagePositionOpen,
-    imagePropsOpen,
-    setImagePropsOpen,
-    handleImageFileChange,
-    handleImageWrapType,
-    handleImageTransform,
-    handleApplyImagePosition,
-    handleOpenImageProperties,
-    handleApplyImageProperties,
-  } = useImageHandlers({
-    getActiveEditorView,
-    focusActiveEditor,
-    pmImageContext: state.pmImageContext,
-  });
-
-  // Document loading (parse buffer, reset UI, keep original buffer for save)
-  const documentLoader = useDocumentLoader({
-    documentBuffer: documentBuffer ?? null,
-    initialDocument: initialDocument ?? null,
-    password,
-    ...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
-      ? {}
-      : { experimentalSession }),
-    history,
-    onError,
-    onCompatibilityChange,
-    onReset: useCallback(() => {
-      const initialScroll = initialScrollRef.current;
-      if (initialScroll.status === "scheduled") initialScroll.cancel();
-      assignRef(initialScrollRef, { status: "waiting" });
-      if (scrollContainerRef.current) {
-        scrollEditorTo(scrollContainerRef.current, { top: 0, left: 0, behavior: "instant" });
-      }
-      setCommentsDirty(false);
-      resetLoadedComments();
-      setComments([]);
-      setTrackedChanges([]);
-      setVisibleCommentAuthors(null);
-      setActiveCommentId(null);
-      setHeadingInfos([]);
-      setShowCommentsSidebar(false);
-      setIsAddingComment(false);
-      setCommentSelectionRange(null);
-      setAddCommentYPosition(null);
-      setFloatingCommentBtn(null);
-      setHfEditPosition(null);
-      setAnchorPositions(EMPTY_ANCHOR_POSITIONS);
-      resetFindResultRef.current?.();
-      if (extractTrackedChangesTimerRef.current) {
-        clearTimeout(extractTrackedChangesTimerRef.current);
-        extractTrackedChangesTimerRef.current = null;
-      }
-      if (collectHeadingsTimerRef.current) {
-        clearTimeout(collectHeadingsTimerRef.current);
-        collectHeadingsTimerRef.current = null;
+    // Helper to undo in the active editor
+    const undoActiveEditor = useCallback(() => {
+      if (
+        !usesCanonicalSession(
+          experimentalSession,
+          CANONICAL_GAP.authorityRouting,
+        ) &&
+        getActiveEditorStory().type === "headerFooter" &&
+        hfEditorRef.current
+      ) {
+        hfEditorRef.current.undo();
+      } else {
+        pagedEditorRef.current?.undo();
+        requestAnimationFrame(refreshBodyHistoryAvailability);
       }
     }, [
-      setCommentsDirty,
-      resetLoadedComments,
-      setActiveCommentId,
-      setAddCommentYPosition,
-      setCommentSelectionRange,
-      setComments,
-      setTrackedChanges,
-      setFloatingCommentBtn,
-      setHfEditPosition,
-      setIsAddingComment,
-      setShowCommentsSidebar,
-      setVisibleCommentAuthors,
-    ]),
-    setDocumentLoadState: useCallback((documentLoad: DocumentLoadState) => {
-      setState((prev) => ({ ...prev, documentLoad }));
-    }, []),
-  });
-  const { loadBuffer, loadParsedDocument, originalBufferRef, loadedDocumentIdentity } =
-    documentLoader;
+      getActiveEditorStory,
+      refreshBodyHistoryAvailability,
+      experimentalSession,
+    ]);
 
-  // Extract tracked changes once PM view is ready (after loading completes).
-  // They do not open the review sidebar: it lists comments only (tracked
-  // changes are painted inline), so opening it for them showed an empty panel.
-  useEffect(() => {
-    if (state.documentLoad.status === "ready" && history.state) {
-      const timer = setTimeout(extractTrackedChanges, 200);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [state.documentLoad.status, history.state, extractTrackedChanges]);
+    // Helper to redo in the active editor
+    const redoActiveEditor = useCallback(() => {
+      if (
+        !usesCanonicalSession(
+          experimentalSession,
+          CANONICAL_GAP.authorityRouting,
+        ) &&
+        getActiveEditorStory().type === "headerFooter" &&
+        hfEditorRef.current
+      ) {
+        hfEditorRef.current.redo();
+      } else {
+        pagedEditorRef.current?.redo();
+        requestAnimationFrame(refreshBodyHistoryAvailability);
+      }
+    }, [
+      getActiveEditorStory,
+      refreshBodyHistoryAvailability,
+      experimentalSession,
+    ]);
 
-  useEffect(() => {
-    if (
-      initialScrollTop === undefined ||
-      loadedDocumentIdentity === "0" ||
-      state.documentLoad.status !== "ready" ||
-      initialScrollRef.current.status !== "waiting"
-    ) {
-      return undefined;
-    }
+    const handleActiveNoteStoryChange = useCallback(
+      (story: NoteStoryKey | null) => {
+        setActiveNoteStory(story);
+        requestAnimationFrame(refreshBodyHistoryAvailability);
+        if (story && hfEditPosition) {
+          handleBodyClick();
+        }
+      },
+      [handleBodyClick, hfEditPosition, refreshBodyHistoryAvailability],
+    );
 
-    let pendingFrame: number | null = requestAnimationFrame(() => {
-      pendingFrame = null;
-      assignRef(initialScrollRef, { status: "applied" });
-      scrollEditorTo(scrollContainerRef.current, { top: initialScrollTop, behavior: "instant" });
+    const handleHeaderFooterStoryOpen = useCallback(
+      (position: "header" | "footer", pageNumber?: number) => {
+        pagedEditorRef.current?.closeNoteStory();
+        handleHeaderFooterDoubleClick(position, pageNumber);
+      },
+      [handleHeaderFooterDoubleClick],
+    );
+
+    // Find/Replace hook
+    const findReplace = useFindReplaceState();
+    const { openFind, openReplace } = findReplace;
+
+    // Page setup dialog state
+    const [showPageSetup, setShowPageSetup] = useState(false);
+
+    // Hyperlink handlers (popup state, navigation, etc.)
+    const {
+      hyperlinkPopupData,
+      handleHyperlinkClick,
+      handleHyperlinkPopupNavigate,
+      handleHyperlinkPopupCopy,
+      handleHyperlinkPopupEdit,
+      handleHyperlinkPopupRemove,
+      handleHyperlinkPopupClose,
+    } = useHyperlinkHandlers({
+      getActiveEditorView,
+      focusActiveEditor,
     });
-    const cancelPendingFrame = () => {
-      if (pendingFrame === null) return;
-      cancelAnimationFrame(pendingFrame);
-      pendingFrame = null;
-    };
-    assignRef(initialScrollRef, { status: "scheduled", cancel: cancelPendingFrame });
 
-    return () => {
-      if (pendingFrame === null) return;
-      cancelPendingFrame();
-      assignRef(initialScrollRef, { status: "waiting" });
-    };
-  }, [initialScrollTop, loadedDocumentIdentity, state.documentLoad.status]);
-
-  // Listen for font loading
-  useEffect(() => {
-    const cleanup = onFontsLoaded(() => {
-      onFontsLoadedCallback?.();
+    const {
+      imagePositionOpen,
+      setImagePositionOpen,
+      imagePropsOpen,
+      setImagePropsOpen,
+      handleImageFileChange,
+      handleImageWrapType,
+      handleImageTransform,
+      handleApplyImagePosition,
+      handleOpenImageProperties,
+      handleApplyImageProperties,
+    } = useImageHandlers({
+      getActiveEditorView,
+      focusActiveEditor,
+      pmImageContext: state.pmImageContext,
     });
-    return cleanup;
-  }, [onFontsLoadedCallback]);
 
-  // Sync editing mode to ProseMirror suggestion mode plugin
-  useEffect(() => {
-    const view = pagedEditorRef.current?.getView();
-    if (view) {
-      setSuggestionMode(editingMode === "suggesting", view.state, view.dispatch, author);
-    }
-  }, [editingMode, author]);
-
-  // Handle document change
-  const handleDocumentChange = useCallback(
-    (newDocument: Document) => {
-      const canonical = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting);
-      const currentComments = commentsRef.current;
-      const documentWithComments = canonical
-        ? newDocument
-        : {
-            ...newDocument,
-            package: {
-              ...newDocument.package,
-              document: {
-                ...newDocument.package.document,
-                comments: currentComments,
-              },
-            },
-          };
-      pushDocument(documentWithComments);
-      onChange?.(
-        canonical
-          ? cloneDocumentWithParagraphPropertySources(documentWithComments)
-          : documentWithComments,
-      );
-      // Update outline headings if sidebar is open (debounced — collectHeadings
-      // descends the whole doc, expensive on large files).
-      if (showOutlineRef.current) {
+    // Document loading (parse buffer, reset UI, keep original buffer for save)
+    const documentLoader = useDocumentLoader({
+      documentBuffer: documentBuffer ?? null,
+      initialDocument: initialDocument ?? null,
+      password,
+      ...(!usesCanonicalSession(
+        experimentalSession,
+        CANONICAL_GAP.authorityRouting,
+      )
+        ? {}
+        : { experimentalSession }),
+      history,
+      onError,
+      onCompatibilityChange,
+      onReset: useCallback(() => {
+        const initialScroll = initialScrollRef.current;
+        if (initialScroll.status === "scheduled") initialScroll.cancel();
+        assignRef(initialScrollRef, { status: "waiting" });
+        if (scrollContainerRef.current) {
+          scrollEditorTo(scrollContainerRef.current, {
+            top: 0,
+            left: 0,
+            behavior: "instant",
+          });
+        }
+        setCommentsDirty(false);
+        resetLoadedComments();
+        setComments([]);
+        setTrackedChanges([]);
+        setVisibleCommentAuthors(null);
+        setActiveCommentId(null);
+        setHeadingInfos([]);
+        setShowCommentsSidebar(false);
+        setIsAddingComment(false);
+        setCommentSelectionRange(null);
+        setAddCommentYPosition(null);
+        setFloatingCommentBtn(null);
+        setHfEditPosition(null);
+        setAnchorPositions(EMPTY_ANCHOR_POSITIONS);
+        resetFindResultRef.current?.();
+        if (extractTrackedChangesTimerRef.current) {
+          clearTimeout(extractTrackedChangesTimerRef.current);
+          extractTrackedChangesTimerRef.current = null;
+        }
         if (collectHeadingsTimerRef.current) {
           clearTimeout(collectHeadingsTimerRef.current);
+          collectHeadingsTimerRef.current = null;
         }
-        collectHeadingsTimerRef.current = setTimeout(() => {
-          const view = pagedEditorRef.current?.getView();
-          if (view) {
-            const headings = collectHeadings(view.state.doc, getDocumentBuiltInStyles(view.state));
-            const pagedRef = pagedEditorRef.current;
-            for (const heading of headings) {
-              heading.pageNumber = pagedRef?.getPageNumberForPmPos(heading.pmPos) ?? null;
-            }
-            setHeadingInfos(headings);
+      }, [
+        setCommentsDirty,
+        resetLoadedComments,
+        setActiveCommentId,
+        setAddCommentYPosition,
+        setCommentSelectionRange,
+        setComments,
+        setTrackedChanges,
+        setFloatingCommentBtn,
+        setHfEditPosition,
+        setIsAddingComment,
+        setShowCommentsSidebar,
+        setVisibleCommentAuthors,
+      ]),
+      setDocumentLoadState: useCallback((documentLoad: DocumentLoadState) => {
+        setState((prev) => ({ ...prev, documentLoad }));
+      }, []),
+    });
+    const {
+      loadBuffer,
+      loadParsedDocument,
+      originalBufferRef,
+      loadedDocumentIdentity,
+    } = documentLoader;
+
+    // Extract tracked changes once PM view is ready (after loading completes).
+    // They do not open the review sidebar: it lists comments only (tracked
+    // changes are painted inline), so opening it for them showed an empty panel.
+    useEffect(() => {
+      if (state.documentLoad.status === "ready" && history.state) {
+        const timer = setTimeout(extractTrackedChanges, 200);
+        return () => clearTimeout(timer);
+      }
+      return undefined;
+    }, [state.documentLoad.status, history.state, extractTrackedChanges]);
+
+    useEffect(() => {
+      if (
+        initialScrollTop === undefined ||
+        loadedDocumentIdentity === "0" ||
+        state.documentLoad.status !== "ready" ||
+        initialScrollRef.current.status !== "waiting"
+      ) {
+        return undefined;
+      }
+
+      let pendingFrame: number | null = requestAnimationFrame(() => {
+        pendingFrame = null;
+        assignRef(initialScrollRef, { status: "applied" });
+        scrollEditorTo(scrollContainerRef.current, {
+          top: initialScrollTop,
+          behavior: "instant",
+        });
+      });
+      const cancelPendingFrame = () => {
+        if (pendingFrame === null) return;
+        cancelAnimationFrame(pendingFrame);
+        pendingFrame = null;
+      };
+      assignRef(initialScrollRef, {
+        status: "scheduled",
+        cancel: cancelPendingFrame,
+      });
+
+      return () => {
+        if (pendingFrame === null) return;
+        cancelPendingFrame();
+        assignRef(initialScrollRef, { status: "waiting" });
+      };
+    }, [initialScrollTop, loadedDocumentIdentity, state.documentLoad.status]);
+
+    // Listen for font loading
+    useEffect(() => {
+      const cleanup = onFontsLoaded(() => {
+        onFontsLoadedCallback?.();
+      });
+      return cleanup;
+    }, [onFontsLoadedCallback]);
+
+    // Sync editing mode to ProseMirror suggestion mode plugin
+    useEffect(() => {
+      const view = pagedEditorRef.current?.getView();
+      if (view) {
+        setSuggestionMode(
+          editingMode === "suggesting",
+          view.state,
+          view.dispatch,
+          author,
+        );
+      }
+    }, [editingMode, author]);
+
+    // Handle document change
+    const handleDocumentChange = useCallback(
+      (newDocument: Document) => {
+        const canonical = usesCanonicalSession(
+          experimentalSession,
+          CANONICAL_GAP.authorityRouting,
+        );
+        const currentComments = commentsRef.current;
+        const documentWithComments = canonical
+          ? newDocument
+          : {
+              ...newDocument,
+              package: {
+                ...newDocument.package,
+                document: {
+                  ...newDocument.package.document,
+                  comments: currentComments,
+                },
+              },
+            };
+        pushDocument(documentWithComments);
+        onChange?.(
+          canonical
+            ? cloneDocumentWithParagraphPropertySources(documentWithComments)
+            : documentWithComments,
+        );
+        // Update outline headings if sidebar is open (debounced — collectHeadings
+        // descends the whole doc, expensive on large files).
+        if (showOutlineRef.current) {
+          if (collectHeadingsTimerRef.current) {
+            clearTimeout(collectHeadingsTimerRef.current);
           }
-        }, 400);
+          collectHeadingsTimerRef.current = setTimeout(() => {
+            const view = pagedEditorRef.current?.getView();
+            if (view) {
+              const headings = collectHeadings(
+                view.state.doc,
+                getDocumentBuiltInStyles(view.state),
+              );
+              const pagedRef = pagedEditorRef.current;
+              for (const heading of headings) {
+                heading.pageNumber =
+                  pagedRef?.getPageNumberForPmPos(heading.pmPos) ?? null;
+              }
+              setHeadingInfos(headings);
+            }
+          }, 400);
+        }
+        // Re-extract tracked changes after document change (debounced to avoid
+        // full-document walk on every keystroke in suggestion mode)
+        if (extractTrackedChangesTimerRef.current) {
+          clearTimeout(extractTrackedChangesTimerRef.current);
+        }
+        extractTrackedChangesTimerRef.current = setTimeout(
+          extractTrackedChanges,
+          300,
+        );
+        requestAnimationFrame(refreshBodyHistoryAvailability);
+      },
+      [
+        onChange,
+        pushDocument,
+        extractTrackedChanges,
+        refreshBodyHistoryAvailability,
+        commentsRef,
+        experimentalSession,
+      ],
+    );
+
+    const buildCurrentDocument = useCallback(() => {
+      if (!history.state) {
+        return null;
       }
-      // Re-extract tracked changes after document change (debounced to avoid
-      // full-document walk on every keystroke in suggestion mode)
-      if (extractTrackedChangesTimerRef.current) {
-        clearTimeout(extractTrackedChangesTimerRef.current);
-      }
-      extractTrackedChangesTimerRef.current = setTimeout(extractTrackedChanges, 300);
-      requestAnimationFrame(refreshBodyHistoryAvailability);
-    },
-    [
-      onChange,
-      pushDocument,
-      extractTrackedChanges,
-      refreshBodyHistoryAvailability,
-      commentsRef,
-      experimentalSession,
-    ],
-  );
 
-  const buildCurrentDocument = useCallback(() => {
-    if (!history.state) {
-      return null;
-    }
+      const canonical = pagedEditorRef.current
+        ?.getEditor()
+        .getCanonicalDocument();
+      if (canonical) return canonical;
+      if (
+        usesCanonicalSession(
+          experimentalSession,
+          CANONICAL_GAP.authorityRouting,
+        )
+      )
+        return null;
 
-    const canonical = pagedEditorRef.current?.getEditor().getCanonicalDocument();
-    if (canonical) return canonical;
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) return null;
-
-    let doc = cloneDocumentWithParagraphPropertySources(history.state);
-    const pmDoc = pagedEditorRef.current?.getDocument();
-    if (pmDoc) {
-      doc.package.document.content = pmDoc.package.document.content;
-      if (pmDoc.package.numbering) {
-        doc.package.numbering = pmDoc.package.numbering;
+      let doc = cloneDocumentWithParagraphPropertySources(history.state);
+      const pmDoc = pagedEditorRef.current?.getDocument();
+      if (pmDoc) {
+        doc.package.document.content = pmDoc.package.document.content;
+        if (pmDoc.package.numbering) {
+          doc.package.numbering = pmDoc.package.numbering;
+        } else {
+          delete doc.package.numbering;
+        }
+        if (pmDoc.package.footnotes !== undefined) {
+          doc.package.footnotes = pmDoc.package.footnotes;
+        }
+        if (pmDoc.package.endnotes !== undefined) {
+          doc.package.endnotes = pmDoc.package.endnotes;
+        }
       } else {
-        delete doc.package.numbering;
+        // The editor view was never instantiated, so getDocument() returned null
+        // and the PM-layer auto-bidi normalization never reached this clone.
+        // Apply the equivalent model-layer pass so an unflagged RTL-led document
+        // saved without focusing the editor still exports correct `w:bidi`.
+        doc = normalizeBaseDirection(doc);
       }
-      if (pmDoc.package.footnotes !== undefined) {
-        doc.package.footnotes = pmDoc.package.footnotes;
+      // Flush in-flight HF PM edits into the cloned package — the persistent
+      // hidden HF EditorViews don't mutate history.state per keystroke
+      // (Codex #487 P1: 20:18 review), so a "Save As .docx" called while the
+      // chrome is still open would otherwise ship the pre-edit content for
+      // every rId the user touched (Codex #487 P1 follow-up: 20:52 review).
+      // We walk the ownership-aware cloned headers / footers, look up the
+      // matching persistent view, and overwrite
+      // each rId's `.content` from the live view while retaining the cloned
+      // story as the paragraph-property source. The
+      // original history.state remains untouched because every mutation
+      // lands on the cloned Map / HF objects.
+      const editor = pagedEditorRef.current;
+      if (editor) {
+        const flushBag = (bag: Map<string, HeaderFooter> | undefined) => {
+          if (!bag) {
+            return;
+          }
+          for (const [rId, hf] of bag) {
+            const view = editor.getHfView(rId);
+            if (view) {
+              hf.content = proseDocToBlocks(view.state.doc, hf.content);
+            }
+          }
+        };
+        flushBag(doc.package.headers);
+        flushBag(doc.package.footers);
       }
-      if (pmDoc.package.endnotes !== undefined) {
-        doc.package.endnotes = pmDoc.package.endnotes;
-      }
-    } else {
-      // The editor view was never instantiated, so getDocument() returned null
-      // and the PM-layer auto-bidi normalization never reached this clone.
-      // Apply the equivalent model-layer pass so an unflagged RTL-led document
-      // saved without focusing the editor still exports correct `w:bidi`.
-      doc = normalizeBaseDirection(doc);
-    }
-    // Flush in-flight HF PM edits into the cloned package — the persistent
-    // hidden HF EditorViews don't mutate history.state per keystroke
-    // (Codex #487 P1: 20:18 review), so a "Save As .docx" called while the
-    // chrome is still open would otherwise ship the pre-edit content for
-    // every rId the user touched (Codex #487 P1 follow-up: 20:52 review).
-    // We walk the ownership-aware cloned headers / footers, look up the
-    // matching persistent view, and overwrite
-    // each rId's `.content` from the live view while retaining the cloned
-    // story as the paragraph-property source. The
-    // original history.state remains untouched because every mutation
-    // lands on the cloned Map / HF objects.
-    const editor = pagedEditorRef.current;
-    if (editor) {
-      const flushBag = (bag: Map<string, HeaderFooter> | undefined) => {
-        if (!bag) {
+      // Drop comment threads whose anchor text has been edited away. The
+      // in-memory `comments` array can outlive its in-body anchors (PM
+      // removes the mark when its text is deleted, but the array entry
+      // stays put), and serializing the unfiltered array writes
+      // unanchored threads into `comments.xml` that no reader can
+      // resolve.
+      // Collect anchors from every part of the doc that can carry a
+      // comment marker — body, headers, footers, footnotes, endnotes.
+      // A body-only walk would prune legitimate header/footer/note
+      // comments because their anchors live outside `document.content`.
+      const referencedCommentIds = collectCommentIdsFromSources(
+        doc.package.document.content,
+        doc.package.headers,
+        doc.package.footers,
+        doc.package.footnotes,
+        doc.package.endnotes,
+      );
+      setDocumentBodyComments(
+        doc.package.document,
+        pruneOrphanedComments(commentsRef.current, referencedCommentIds),
+      );
+      return doc;
+    }, [history.state, commentsRef, experimentalSession]);
+
+    const applyCanonicalComment = useCallback(
+      (request: CanonicalCommentRequest) => {
+        return getCanonicalApi()?.applyCanonicalComment(request) ?? null;
+      },
+      [getCanonicalApi],
+    );
+
+    const replaceComments = useCallback(
+      (nextComments: Comment[]) => {
+        if (
+          applyCanonicalComment({ type: "replace", comments: nextComments }) !==
+          null
+        )
+          return;
+
+        setCommentsDirty(true);
+        setComments(nextComments);
+
+        const currentDocument = buildCurrentDocument();
+        if (!currentDocument) {
           return;
         }
-        for (const [rId, hf] of bag) {
-          const view = editor.getHfView(rId);
-          if (view) {
-            hf.content = proseDocToBlocks(view.state.doc, hf.content);
-          }
+
+        onChange?.(currentDocument);
+      },
+      [
+        buildCurrentDocument,
+        setCommentsDirty,
+        applyCanonicalComment,
+        onChange,
+        setComments,
+      ],
+    );
+
+    const updateComments = useCallback(
+      (updater: (comments: Comment[]) => Comment[]) => {
+        replaceComments(updater(commentsRef.current));
+      },
+      [commentsRef, replaceComments],
+    );
+
+    const [controlledCommentsRetry, setControlledCommentsRetry] = useState(0);
+    const synchronizeControlledComments = useEffectEvent(
+      (inputs: {
+        commentsProp: typeof commentsProp;
+        canonicalComments: typeof canonicalComments;
+        legacyComments: typeof legacyComments;
+        canonicalCommentsSerialized: typeof canonicalCommentsSerialized;
+        retry: number;
+      }) => {
+        const {
+          commentsProp: controlledComments,
+          canonicalComments: currentCanonicalComments,
+          legacyComments: requestedComments,
+          canonicalCommentsSerialized: currentCanonicalSerialized,
+        } = inputs;
+        if (
+          controlledComments === undefined ||
+          currentCanonicalComments === null
+        ) {
+          lastControlledCommentsRef.current = undefined;
+          return;
         }
-      };
-      flushBag(doc.package.headers);
-      flushBag(doc.package.footers);
-    }
-    // Drop comment threads whose anchor text has been edited away. The
-    // in-memory `comments` array can outlive its in-body anchors (PM
-    // removes the mark when its text is deleted, but the array entry
-    // stays put), and serializing the unfiltered array writes
-    // unanchored threads into `comments.xml` that no reader can
-    // resolve.
-    // Collect anchors from every part of the doc that can carry a
-    // comment marker — body, headers, footers, footnotes, endnotes.
-    // A body-only walk would prune legitimate header/footer/note
-    // comments because their anchors live outside `document.content`.
-    const referencedCommentIds = collectCommentIdsFromSources(
-      doc.package.document.content,
-      doc.package.headers,
-      doc.package.footers,
-      doc.package.footnotes,
-      doc.package.endnotes,
+        const requested = JSON.stringify(requestedComments);
+        // Internal journal changes cannot reapply an unchanged host value.
+        if (lastControlledCommentsRef.current === requested) return;
+        if (currentCanonicalSerialized === requested) {
+          lastControlledCommentsRef.current = requested;
+          return;
+        }
+        const result = applyCanonicalComment({
+          type: "replace",
+          comments: requestedComments,
+        });
+        // Only an applied value is handled; a value deferred by composition retries.
+        if (result?.status === "applied") {
+          lastControlledCommentsRef.current = requested;
+          return;
+        }
+        if (result?.status !== "refused" || result.retry !== "afterComposition")
+          return;
+        const view = getCanonicalApi()?.getView();
+        if (!view) return;
+        return afterCanonicalCompositionSettles(view, () =>
+          setControlledCommentsRetry((attempt) => attempt + 1),
+        );
+      },
     );
-    setDocumentBodyComments(
-      doc.package.document,
-      pruneOrphanedComments(commentsRef.current, referencedCommentIds),
-    );
-    return doc;
-  }, [history.state, commentsRef, experimentalSession]);
-
-  const applyCanonicalComment = useCallback(
-    (request: CanonicalCommentRequest) => {
-      return getCanonicalApi()?.applyCanonicalComment(request) ?? null;
-    },
-    [getCanonicalApi],
-  );
-
-  const replaceComments = useCallback(
-    (nextComments: Comment[]) => {
-      if (applyCanonicalComment({ type: "replace", comments: nextComments }) !== null) return;
-
-      setCommentsDirty(true);
-      setComments(nextComments);
-
-      const currentDocument = buildCurrentDocument();
-      if (!currentDocument) {
-        return;
-      }
-
-      onChange?.(currentDocument);
-    },
-    [buildCurrentDocument, setCommentsDirty, applyCanonicalComment, onChange, setComments],
-  );
-
-  const updateComments = useCallback(
-    (updater: (comments: Comment[]) => Comment[]) => {
-      replaceComments(updater(commentsRef.current));
-    },
-    [commentsRef, replaceComments],
-  );
-
-  const [controlledCommentsRetry, setControlledCommentsRetry] = useState(0);
-  const synchronizeControlledComments = useEffectEvent(
-    (inputs: {
-      commentsProp: typeof commentsProp;
-      canonicalComments: typeof canonicalComments;
-      legacyComments: typeof legacyComments;
-      canonicalCommentsSerialized: typeof canonicalCommentsSerialized;
-      retry: number;
-    }) => {
-      const {
-        commentsProp: controlledComments,
-        canonicalComments: currentCanonicalComments,
-        legacyComments: requestedComments,
-        canonicalCommentsSerialized: currentCanonicalSerialized,
-      } = inputs;
-      if (controlledComments === undefined || currentCanonicalComments === null) {
-        lastControlledCommentsRef.current = undefined;
-        return;
-      }
-      const requested = JSON.stringify(requestedComments);
-      // Internal journal changes cannot reapply an unchanged host value.
-      if (lastControlledCommentsRef.current === requested) return;
-      if (currentCanonicalSerialized === requested) {
-        lastControlledCommentsRef.current = requested;
-        return;
-      }
-      const result = applyCanonicalComment({ type: "replace", comments: requestedComments });
-      // Only an applied value is handled; a value deferred by composition retries.
-      if (result?.status === "applied") {
-        lastControlledCommentsRef.current = requested;
-        return;
-      }
-      if (result?.status !== "refused" || result.retry !== "afterComposition") return;
-      const view = getCanonicalApi()?.getView();
-      if (!view) return;
-      return afterCanonicalCompositionSettles(view, () =>
-        setControlledCommentsRetry((attempt) => attempt + 1),
-      );
-    },
-  );
-  useEffect(
-    () =>
-      synchronizeControlledComments({
+    useEffect(
+      () =>
+        synchronizeControlledComments({
+          commentsProp,
+          canonicalComments,
+          legacyComments,
+          canonicalCommentsSerialized,
+          retry: controlledCommentsRetry,
+        }),
+      [
         commentsProp,
-        canonicalComments,
+        controlledCommentsRetry,
         legacyComments,
         canonicalCommentsSerialized,
-        retry: controlledCommentsRetry,
-      }),
-    [
-      commentsProp,
-      controlledCommentsRetry,
-      legacyComments,
-      canonicalCommentsSerialized,
-      canonicalComments,
-    ],
-  );
+        canonicalComments,
+      ],
+    );
 
-  useEffect(() => {
-    if (canonicalComments === null) return;
-    const nextComments = canonicalComments;
-    const serialized = canonicalCommentsSerialized;
-    if (canonicalCommentsSnapshotRef.current === null) {
+    useEffect(() => {
+      if (canonicalComments === null) return;
+      const nextComments = canonicalComments;
+      const serialized = canonicalCommentsSerialized;
+      if (canonicalCommentsSnapshotRef.current === null) {
+        canonicalCommentsSnapshotRef.current = serialized;
+        return;
+      }
+      if (canonicalCommentsSnapshotRef.current === serialized) return;
       canonicalCommentsSnapshotRef.current = serialized;
-      return;
-    }
-    if (canonicalCommentsSnapshotRef.current === serialized) return;
-    canonicalCommentsSnapshotRef.current = serialized;
-    onCommentsChange?.(structuredClone(nextComments));
-  }, [canonicalComments, canonicalCommentsSerialized, onCommentsChange]);
+      onCommentsChange?.(structuredClone(nextComments));
+    }, [canonicalComments, canonicalCommentsSerialized, onCommentsChange]);
 
-  const selectFindMatch = useCallback(
-    (match: FindMatch): boolean => {
-      if (match.commentId !== undefined) {
-        setVisibleCommentAuthors(null);
-        setShowCommentsSidebar(true);
-        setActiveCommentId(
-          commentsRef.current.find(({ id }) => id === match.commentId)?.parentId ?? match.commentId,
-        );
-        return true;
-      }
-      return false;
-    },
-    [setActiveCommentId, setVisibleCommentAuthors, setShowCommentsSidebar, commentsRef],
-  );
-  const getFindEditorState = useCallback(() => {
-    pagedEditorRef.current?.ensureView({ focus: false });
-    return pagedEditorRef.current?.getView()?.state ?? null;
-  }, []);
-  const getFindBodyDoc = useCallback(() => getFindEditorState()?.doc, [getFindEditorState]);
-  const getFindLayout = useCallback(() => pagedEditorRef.current?.getLayout() ?? null, []);
-
-  const notifyReadonlyEditAttempt = useCallback(() => {
-    if (readOnlyReason) onReadonlyEditAttempt?.(readOnlyReason);
-  }, [readOnlyReason, onReadonlyEditAttempt]);
-
-  // Find/Replace handlers (depends on handleDocumentChange)
-  const {
-    currentSearch: currentFindSearch,
-    resetFindResult,
-    handleFind,
-    handleQueryChange,
-    handleFindNext,
-    handleFindPrevious,
-    handleReplace,
-    handleReplaceAll,
-    getFindResult,
-    refreshFind,
-  } = useFindReplace({
-    documentState: history.state,
-    getDocumentState: buildCurrentDocument,
-    getEditorState: getFindEditorState,
-    containerRef,
-    handleDocumentChange,
-    findReplace,
-    selectMatch: selectFindMatch,
-    getBodyDoc: getFindBodyDoc,
-    getLayout: getFindLayout,
-    displayMode,
-    onFindResultChange,
-    readOnlyReason,
-    onReadonlyEditAttempt,
-  });
-  const refreshFindRef = useRef(refreshFind);
-  useLayoutEffect(() => {
-    refreshFindRef.current = refreshFind;
-  }, [refreshFind]);
-  useEffect(() => {
-    if (bodyViewEpoch === 0) return;
-    const editor = pagedEditorRef.current?.getEditor();
-    if (!editor) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const schedule = () => {
-      if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(() => refreshFindRef.current(), 200);
-    };
-    const unsubscribe = editor.on("docChange", schedule);
-    const unsubscribeLayout = editor.on("layoutComplete", schedule);
-    return () => {
-      unsubscribe();
-      unsubscribeLayout();
-      if (timer !== null) clearTimeout(timer);
-    };
-  }, [bodyViewEpoch]);
-  useEffect(() => {
-    const snapshot = comments;
-    const timer = setTimeout(() => {
-      if (commentsRef.current === snapshot) refreshFindRef.current();
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [comments, commentsRef]);
-
-  useLayoutEffect(() => {
-    resetFindResultRef.current = resetFindResult;
-  }, [resetFindResult]);
-
-  // Handle selection changes from ProseMirror
-  const handleSelectionChange = useCallback(
-    (selectionState: SelectionState | null) => {
-      // Save selection for restoring after toolbar interactions
-      const view = getActiveEditorView();
-      if (view) {
-        const { from, to } = view.state.selection;
-        lastSelectionRef.current = { from, to };
-      }
-
-      // Also check table context from ProseMirror
-      let pmTableCtx: TableContextInfo | null = null;
-      if (view) {
-        pmTableCtx = getTableContext(view.state);
-        if (!pmTableCtx.isInTable) {
-          pmTableCtx = null;
+    const selectFindMatch = useCallback(
+      (match: FindMatch): boolean => {
+        if (match.commentId !== undefined) {
+          setVisibleCommentAuthors(null);
+          setShowCommentsSidebar(true);
+          setActiveCommentId(
+            commentsRef.current.find(({ id }) => id === match.commentId)
+              ?.parentId ?? match.commentId,
+          );
+          return true;
         }
-      }
+        return false;
+      },
+      [
+        setActiveCommentId,
+        setVisibleCommentAuthors,
+        setShowCommentsSidebar,
+        commentsRef,
+      ],
+    );
+    const getFindEditorState = useCallback(() => {
+      pagedEditorRef.current?.ensureView({ focus: false });
+      return pagedEditorRef.current?.getView()?.state ?? null;
+    }, []);
+    const getFindBodyDoc = useCallback(
+      () => getFindEditorState()?.doc,
+      [getFindEditorState],
+    );
+    const getFindLayout = useCallback(
+      () => pagedEditorRef.current?.getLayout() ?? null,
+      [],
+    );
 
-      // Sync borderSpecRef with the current cell's actual border color
-      if (pmTableCtx?.cellBorderColor) {
-        const colorVal = pmTableCtx.cellBorderColor;
-        // Resolve theme/auto colors to hex
-        let rgb = colorVal.rgb;
-        if (!rgb || rgb === "auto") {
-          const resolved = resolveColor(colorVal, theme);
-          rgb = resolved.replace(/^#/u, "");
+    const notifyReadonlyEditAttempt = useCallback(() => {
+      if (readOnlyReason) onReadonlyEditAttempt?.(readOnlyReason);
+    }, [readOnlyReason, onReadonlyEditAttempt]);
+
+    // Find/Replace handlers (depends on handleDocumentChange)
+    const {
+      currentSearch: currentFindSearch,
+      resetFindResult,
+      handleFind,
+      handleQueryChange,
+      handleFindNext,
+      handleFindPrevious,
+      handleReplace,
+      handleReplaceAll,
+      getFindResult,
+      refreshFind,
+    } = useFindReplace({
+      documentState: history.state,
+      getDocumentState: buildCurrentDocument,
+      getEditorState: getFindEditorState,
+      containerRef,
+      handleDocumentChange,
+      findReplace,
+      selectMatch: selectFindMatch,
+      getBodyDoc: getFindBodyDoc,
+      getLayout: getFindLayout,
+      displayMode,
+      onFindResultChange,
+      readOnlyReason,
+      onReadonlyEditAttempt,
+    });
+    const refreshFindRef = useRef(refreshFind);
+    useLayoutEffect(() => {
+      refreshFindRef.current = refreshFind;
+    }, [refreshFind]);
+    useEffect(() => {
+      if (bodyViewEpoch === 0) return;
+      const editor = pagedEditorRef.current?.getEditor();
+      if (!editor) return;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const schedule = () => {
+        if (timer !== null) clearTimeout(timer);
+        timer = setTimeout(() => refreshFindRef.current(), 200);
+      };
+      const unsubscribe = editor.on("docChange", schedule);
+      const unsubscribeLayout = editor.on("layoutComplete", schedule);
+      return () => {
+        unsubscribe();
+        unsubscribeLayout();
+        if (timer !== null) clearTimeout(timer);
+      };
+    }, [bodyViewEpoch]);
+    useEffect(() => {
+      const snapshot = comments;
+      const timer = setTimeout(() => {
+        if (commentsRef.current === snapshot) refreshFindRef.current();
+      }, 200);
+      return () => clearTimeout(timer);
+    }, [comments, commentsRef]);
+
+    useLayoutEffect(() => {
+      resetFindResultRef.current = resetFindResult;
+    }, [resetFindResult]);
+
+    // Handle selection changes from ProseMirror
+    const handleSelectionChange = useCallback(
+      (selectionState: SelectionState | null) => {
+        // Save selection for restoring after toolbar interactions
+        const view = getActiveEditorView();
+        if (view) {
+          const { from, to } = view.state.selection;
+          lastSelectionRef.current = { from, to };
         }
-        borderSpecRef.current = {
-          ...borderSpecRef.current,
-          color: { rgb },
-        };
-      }
 
-      // Image context (when the selection is a NodeSelection of an image)
-      // and active tracked-change at the cursor live in pure helpers so the
-      // logic is unit-tested without spinning up a real component.
-      const pmImageCtx = view ? detectImageContext(view.state) : null;
-      const trackedChange = view ? detectActiveTrackedChange(view.state) : null;
+        // Also check table context from ProseMirror
+        let pmTableCtx: TableContextInfo | null = null;
+        if (view) {
+          pmTableCtx = getTableContext(view.state);
+          if (!pmTableCtx.isInTable) {
+            pmTableCtx = null;
+          }
+        }
 
-      if (!selectionState) {
-        setFloatingCommentBtn(null);
+        // Sync borderSpecRef with the current cell's actual border color
+        if (pmTableCtx?.cellBorderColor) {
+          const colorVal = pmTableCtx.cellBorderColor;
+          // Resolve theme/auto colors to hex
+          let rgb = colorVal.rgb;
+          if (!rgb || rgb === "auto") {
+            const resolved = resolveColor(colorVal, theme);
+            rgb = resolved.replace(/^#/u, "");
+          }
+          borderSpecRef.current = {
+            ...borderSpecRef.current,
+            color: { rgb },
+          };
+        }
+
+        // Image context (when the selection is a NodeSelection of an image)
+        // and active tracked-change at the cursor live in pure helpers so the
+        // logic is unit-tested without spinning up a real component.
+        const pmImageCtx = view ? detectImageContext(view.state) : null;
+        const trackedChange = view
+          ? detectActiveTrackedChange(view.state)
+          : null;
+
+        if (!selectionState) {
+          setFloatingCommentBtn(null);
+          setState((prev) => {
+            const selectionFormatting = areSelectionFormattingEqual(
+              prev.selectionFormatting,
+              EMPTY_SELECTION_FORMATTING,
+            )
+              ? prev.selectionFormatting
+              : EMPTY_SELECTION_FORMATTING;
+            const pmTableContext = areTableContextsEqual(
+              prev.pmTableContext,
+              pmTableCtx,
+            )
+              ? prev.pmTableContext
+              : pmTableCtx;
+            const pmImageContext = areImageContextsEqual(
+              prev.pmImageContext,
+              pmImageCtx,
+            )
+              ? prev.pmImageContext
+              : pmImageCtx;
+            const activeTrackedChange = areActiveTrackedChangesEqual(
+              prev.activeTrackedChange,
+              trackedChange,
+            )
+              ? prev.activeTrackedChange
+              : trackedChange;
+            if (
+              selectionFormatting === prev.selectionFormatting &&
+              pmTableContext === prev.pmTableContext &&
+              pmImageContext === prev.pmImageContext &&
+              activeTrackedChange === prev.activeTrackedChange
+            ) {
+              return prev;
+            }
+            return {
+              ...prev,
+              selectionFormatting,
+              pmTableContext,
+              pmImageContext,
+              activeTrackedChange,
+            };
+          });
+          return;
+        }
+
+        // Update toolbar formatting from ProseMirror selection
+        const { textFormatting, paragraphFormatting } = selectionState;
+
+        // Extract font family (prefer ascii, fall back to hAnsi)
+        let fontFamily =
+          textFormatting.fontFamily?.ascii || textFormatting.fontFamily?.hAnsi;
+        let fontSize = textFormatting.fontSize;
+
+        // If no explicit font/size marks, resolve from paragraph style or document defaults
+        if (!fontFamily || !fontSize) {
+          const currentDoc = historyStateRef.current;
+          const paraStyleId = selectionState.styleId;
+          if (currentDoc?.package.styles && paraStyleId) {
+            const resolver = getCachedStyleResolver(currentDoc.package.styles);
+            const resolved = resolver.resolveParagraphStyle(paraStyleId);
+            if (!fontFamily && resolved.runFormatting?.fontFamily) {
+              fontFamily =
+                resolved.runFormatting.fontFamily.ascii ||
+                resolved.runFormatting.fontFamily.hAnsi;
+            }
+            if (!fontSize && resolved.runFormatting?.fontSize) {
+              fontSize = resolved.runFormatting.fontSize;
+            }
+          }
+        }
+
+        // Extract text color as hex string
+        const textColor = textFormatting.color?.rgb
+          ? `#${textFormatting.color.rgb}`
+          : undefined;
+
+        const formatting = buildSelectionFormatting({
+          selectionState,
+          fontFamily,
+          fontSize,
+          textColor,
+          listState: selectionState.listState,
+        });
         setState((prev) => {
           const selectionFormatting = areSelectionFormattingEqual(
             prev.selectionFormatting,
-            EMPTY_SELECTION_FORMATTING,
+            formatting,
           )
             ? prev.selectionFormatting
-            : EMPTY_SELECTION_FORMATTING;
-          const pmTableContext = areTableContextsEqual(prev.pmTableContext, pmTableCtx)
+            : formatting;
+          const pmTableContext = areTableContextsEqual(
+            prev.pmTableContext,
+            pmTableCtx,
+          )
             ? prev.pmTableContext
             : pmTableCtx;
-          const pmImageContext = areImageContextsEqual(prev.pmImageContext, pmImageCtx)
+          const pmImageContext = areImageContextsEqual(
+            prev.pmImageContext,
+            pmImageCtx,
+          )
             ? prev.pmImageContext
             : pmImageCtx;
           const activeTrackedChange = areActiveTrackedChangesEqual(
@@ -1990,205 +2312,144 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           )
             ? prev.activeTrackedChange
             : trackedChange;
+          const paragraphIndentLeft = paragraphFormatting.indentLeft ?? 0;
+          const paragraphIndentRight = paragraphFormatting.indentRight ?? 0;
+          const paragraphFirstLineIndent =
+            paragraphFormatting.indentFirstLine ?? 0;
+          const paragraphHangingIndent =
+            paragraphFormatting.hangingIndent ?? false;
+          const paragraphTabs = paragraphFormatting.tabs ?? null;
           if (
             selectionFormatting === prev.selectionFormatting &&
             pmTableContext === prev.pmTableContext &&
             pmImageContext === prev.pmImageContext &&
-            activeTrackedChange === prev.activeTrackedChange
+            activeTrackedChange === prev.activeTrackedChange &&
+            paragraphIndentLeft === prev.paragraphIndentLeft &&
+            paragraphIndentRight === prev.paragraphIndentRight &&
+            paragraphFirstLineIndent === prev.paragraphFirstLineIndent &&
+            paragraphHangingIndent === prev.paragraphHangingIndent &&
+            paragraphTabs === prev.paragraphTabs
           ) {
             return prev;
           }
           return {
             ...prev,
             selectionFormatting,
+            paragraphIndentLeft,
+            paragraphIndentRight,
+            paragraphFirstLineIndent,
+            paragraphHangingIndent,
+            paragraphTabs,
             pmTableContext,
             pmImageContext,
             activeTrackedChange,
           };
         });
+
+        // Update floating comment button position
+        if (
+          view &&
+          selectionState.hasSelection &&
+          !isAddingComment &&
+          !readOnly
+        ) {
+          const container = scrollContainerRef.current;
+          const parentEl = editorContentRef.current;
+          const { from: selFrom } = view.state.selection;
+          const top = findSelectionYPosition(container, parentEl, selFrom);
+          if (top !== null && container && parentEl) {
+            const pagesEl = container.querySelector(".paged-editor__pages");
+            const pageEl =
+              pagesEl instanceof Element
+                ? queryHtmlElement(pagesEl, ".layout-page")
+                : null;
+            const parentRect = parentEl.getBoundingClientRect();
+            const rawLeft = pageEl
+              ? pageEl.getBoundingClientRect().right - parentRect.left + 12
+              : parentRect.width / 2 + 408;
+            const left = Math.max(16, Math.min(rawLeft, parentRect.width - 16));
+            const { from, to } = view.state.selection;
+            if (from !== to) {
+              setFloatingCommentBtn({ top, left, from, to });
+            } else {
+              setFloatingCommentBtn(null);
+            }
+          }
+        } else {
+          setFloatingCommentBtn(null);
+        }
+
+        // Notify parent
+        onSelectionChange?.(selectionState);
+      },
+      [
+        getActiveEditorView,
+        getCachedStyleResolver,
+        isAddingComment,
+        onSelectionChange,
+        readOnly,
+        setFloatingCommentBtn,
+        theme,
+      ],
+    );
+
+    // Table selection hook
+    const tableSelection = useTableSelection({
+      document: history.state,
+      onChange: handleDocumentChange,
+      onSelectionChange: (_context) => {
+        // Could notify parent of table selection changes
+      },
+    });
+
+    const handleDirectPrint = useCallback(() => {
+      if (onPrint) {
+        onPrint();
         return;
       }
 
-      // Update toolbar formatting from ProseMirror selection
-      const { textFormatting, paragraphFormatting } = selectionState;
-
-      // Extract font family (prefer ascii, fall back to hAnsi)
-      let fontFamily = textFormatting.fontFamily?.ascii || textFormatting.fontFamily?.hAnsi;
-      let fontSize = textFormatting.fontSize;
-
-      // If no explicit font/size marks, resolve from paragraph style or document defaults
-      if (!fontFamily || !fontSize) {
-        const currentDoc = historyStateRef.current;
-        const paraStyleId = selectionState.styleId;
-        if (currentDoc?.package.styles && paraStyleId) {
-          const resolver = getCachedStyleResolver(currentDoc.package.styles);
-          const resolved = resolver.resolveParagraphStyle(paraStyleId);
-          if (!fontFamily && resolved.runFormatting?.fontFamily) {
-            fontFamily =
-              resolved.runFormatting.fontFamily.ascii || resolved.runFormatting.fontFamily.hAnsi;
-          }
-          if (!fontSize && resolved.runFormatting?.fontSize) {
-            fontSize = resolved.runFormatting.fontSize;
-          }
-        }
+      const pages = containerRef.current?.querySelector(".paged-editor__pages");
+      if (!pages) {
+        toast(t("printRedirect"));
+        return;
       }
 
-      // Extract text color as hex string
-      const textColor = textFormatting.color?.rgb ? `#${textFormatting.color.rgb}` : undefined;
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.style.opacity = "0";
+      iframe.style.pointerEvents = "none";
+      document.body.append(iframe);
 
-      const formatting = buildSelectionFormatting({
-        selectionState,
-        fontFamily,
-        fontSize,
-        textColor,
-        listState: selectionState.listState,
-      });
-      setState((prev) => {
-        const selectionFormatting = areSelectionFormattingEqual(
-          prev.selectionFormatting,
-          formatting,
-        )
-          ? prev.selectionFormatting
-          : formatting;
-        const pmTableContext = areTableContextsEqual(prev.pmTableContext, pmTableCtx)
-          ? prev.pmTableContext
-          : pmTableCtx;
-        const pmImageContext = areImageContextsEqual(prev.pmImageContext, pmImageCtx)
-          ? prev.pmImageContext
-          : pmImageCtx;
-        const activeTrackedChange = areActiveTrackedChangesEqual(
-          prev.activeTrackedChange,
-          trackedChange,
-        )
-          ? prev.activeTrackedChange
-          : trackedChange;
-        const paragraphIndentLeft = paragraphFormatting.indentLeft ?? 0;
-        const paragraphIndentRight = paragraphFormatting.indentRight ?? 0;
-        const paragraphFirstLineIndent = paragraphFormatting.indentFirstLine ?? 0;
-        const paragraphHangingIndent = paragraphFormatting.hangingIndent ?? false;
-        const paragraphTabs = paragraphFormatting.tabs ?? null;
-        if (
-          selectionFormatting === prev.selectionFormatting &&
-          pmTableContext === prev.pmTableContext &&
-          pmImageContext === prev.pmImageContext &&
-          activeTrackedChange === prev.activeTrackedChange &&
-          paragraphIndentLeft === prev.paragraphIndentLeft &&
-          paragraphIndentRight === prev.paragraphIndentRight &&
-          paragraphFirstLineIndent === prev.paragraphFirstLineIndent &&
-          paragraphHangingIndent === prev.paragraphHangingIndent &&
-          paragraphTabs === prev.paragraphTabs
-        ) {
-          return prev;
-        }
-        return {
-          ...prev,
-          selectionFormatting,
-          paragraphIndentLeft,
-          paragraphIndentRight,
-          paragraphFirstLineIndent,
-          paragraphHangingIndent,
-          paragraphTabs,
-          pmTableContext,
-          pmImageContext,
-          activeTrackedChange,
-        };
-      });
-
-      // Update floating comment button position
-      if (view && selectionState.hasSelection && !isAddingComment && !readOnly) {
-        const container = scrollContainerRef.current;
-        const parentEl = editorContentRef.current;
-        const { from: selFrom } = view.state.selection;
-        const top = findSelectionYPosition(container, parentEl, selFrom);
-        if (top !== null && container && parentEl) {
-          const pagesEl = container.querySelector(".paged-editor__pages");
-          const pageEl =
-            pagesEl instanceof Element ? queryHtmlElement(pagesEl, ".layout-page") : null;
-          const parentRect = parentEl.getBoundingClientRect();
-          const rawLeft = pageEl
-            ? pageEl.getBoundingClientRect().right - parentRect.left + 12
-            : parentRect.width / 2 + 408;
-          const left = Math.max(16, Math.min(rawLeft, parentRect.width - 16));
-          const { from, to } = view.state.selection;
-          if (from !== to) {
-            setFloatingCommentBtn({ top, left, from, to });
-          } else {
-            setFloatingCommentBtn(null);
-          }
-        }
-      } else {
-        setFloatingCommentBtn(null);
+      const printDocument = iframe.contentDocument;
+      const printWindow = iframe.contentWindow;
+      if (!printDocument || !printWindow) {
+        iframe.remove();
+        toast(t("printRedirect"));
+        return;
       }
 
-      // Notify parent
-      onSelectionChange?.(selectionState);
-    },
-    [
-      getActiveEditorView,
-      getCachedStyleResolver,
-      isAddingComment,
-      onSelectionChange,
-      readOnly,
-      setFloatingCommentBtn,
-      theme,
-    ],
-  );
+      const styles = [
+        ...document.querySelectorAll('style, link[rel="stylesheet"]'),
+      ]
+        .map((node) => node.outerHTML)
+        .join("\n");
+      const pagesCloneRaw = pages.cloneNode(true);
+      if (!(pagesCloneRaw instanceof HTMLElement)) {
+        return;
+      }
+      const pagesClone = pagesCloneRaw;
+      const overlays = pagesClone.querySelectorAll(
+        ".selection-overlay, .layout-selection-overlay, .image-selection-overlay",
+      );
+      for (const node of overlays) {
+        node.remove();
+      }
 
-  // Table selection hook
-  const tableSelection = useTableSelection({
-    document: history.state,
-    onChange: handleDocumentChange,
-    onSelectionChange: (_context) => {
-      // Could notify parent of table selection changes
-    },
-  });
-
-  const handleDirectPrint = useCallback(() => {
-    if (onPrint) {
-      onPrint();
-      return;
-    }
-
-    const pages = containerRef.current?.querySelector(".paged-editor__pages");
-    if (!pages) {
-      toast(t("printRedirect"));
-      return;
-    }
-
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.style.opacity = "0";
-    iframe.style.pointerEvents = "none";
-    document.body.append(iframe);
-
-    const printDocument = iframe.contentDocument;
-    const printWindow = iframe.contentWindow;
-    if (!printDocument || !printWindow) {
-      iframe.remove();
-      toast(t("printRedirect"));
-      return;
-    }
-
-    const styles = [...document.querySelectorAll('style, link[rel="stylesheet"]')]
-      .map((node) => node.outerHTML)
-      .join("\n");
-    const pagesCloneRaw = pages.cloneNode(true);
-    if (!(pagesCloneRaw instanceof HTMLElement)) {
-      return;
-    }
-    const pagesClone = pagesCloneRaw;
-    const overlays = pagesClone.querySelectorAll(
-      ".selection-overlay, .layout-selection-overlay, .image-selection-overlay",
-    );
-    for (const node of overlays) {
-      node.remove();
-    }
-
-    printDocument.open();
-    printDocument.write(`<!doctype html>
+      printDocument.open();
+      printDocument.write(`<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -2224,3480 +2485,3933 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   </head>
   <body>${pagesClone.outerHTML}</body>
 </html>`);
-    printDocument.close();
+      printDocument.close();
 
-    const cleanupState = { isCleanedUp: false };
-    const cleanup = () => {
-      if (cleanupState.isCleanedUp) {
-        return;
-      }
-      cleanupState.isCleanedUp = true;
-      iframe.remove();
-    };
-    printWindow.addEventListener("afterprint", cleanup, { once: true });
-    setTimeout(cleanup, 5 * 60 * 1000);
-
-    const waitForFrameLoad = async () =>
-      await new Promise<void>((resolve) => {
-        if (printDocument.readyState === "complete") {
-          resolve();
+      const cleanupState = { isCleanedUp: false };
+      const cleanup = () => {
+        if (cleanupState.isCleanedUp) {
           return;
         }
+        cleanupState.isCleanedUp = true;
+        iframe.remove();
+      };
+      printWindow.addEventListener("afterprint", cleanup, { once: true });
+      setTimeout(cleanup, 5 * 60 * 1000);
 
-        iframe.addEventListener("load", () => resolve(), { once: true });
-        setTimeout(resolve, 1000);
-      });
+      const waitForFrameLoad = async () =>
+        await new Promise<void>((resolve) => {
+          if (printDocument.readyState === "complete") {
+            resolve();
+            return;
+          }
 
-    const waitForFonts = async () =>
-      await Promise.race([
-        printDocument.fonts.ready.catch(() => undefined),
-        new Promise((resolve) => {
+          iframe.addEventListener("load", () => resolve(), { once: true });
           setTimeout(resolve, 1000);
-        }),
-      ]);
+        });
 
-    void (async () => {
-      await waitForFrameLoad();
-      await waitForFonts();
-      if (cleanupState.isCleanedUp) {
-        return;
-      }
-      printWindow.focus();
-      printWindow.print();
-    })();
-  }, [onPrint, t]);
+      const waitForFonts = async () =>
+        await Promise.race([
+          printDocument.fonts.ready.catch(() => undefined),
+          new Promise((resolve) => {
+            setTimeout(resolve, 1000);
+          }),
+        ]);
 
-  useKeyboardShortcuts({
-    pagedEditorRef,
-    findReplace,
-    tableSelection,
-    onDirectPrint: handleDirectPrint,
-    scope: keyboardShortcuts,
-    hostShortcuts,
-    // The find/replace dialog renders inside the editor root, so the root alone
-    // scopes a press with the caret in the dialog to this editor.
-    roots: shortcutRoots,
-  });
+      void (async () => {
+        await waitForFrameLoad();
+        await waitForFonts();
+        if (cleanupState.isCleanedUp) {
+          return;
+        }
+        printWindow.focus();
+        printWindow.print();
+      })();
+    }, [onPrint, t]);
 
-  // Handle footnote/endnote properties update
-  const handleApplyFootnoteProperties = useCallback(
-    (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
-      const api = getCanonicalApi();
-      if (!api) {
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.sectionProperties,
-          "The editor is not ready for section changes.",
-        );
-        return;
-      }
-      const result = api.applyCanonicalSectionProperties({ footnotePr, endnotePr });
-      if (result !== null) return;
-      if (!history.state?.package) {
-        return;
-      }
-      const newDoc = {
-        ...history.state.package.document,
-        finalSectionProperties: {
-          ...history.state.package.document.finalSectionProperties,
+    useKeyboardShortcuts({
+      pagedEditorRef,
+      findReplace,
+      tableSelection,
+      onDirectPrint: handleDirectPrint,
+      scope: keyboardShortcuts,
+      hostShortcuts,
+      // The find/replace dialog renders inside the editor root, so the root alone
+      // scopes a press with the caret in the dialog to this editor.
+      roots: shortcutRoots,
+    });
+
+    // Handle footnote/endnote properties update
+    const handleApplyFootnoteProperties = useCallback(
+      (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
+        const api = getCanonicalApi();
+        if (!api) {
+          refuseCanonicalModelEdit(
+            CANONICAL_GAP.sectionProperties,
+            "The editor is not ready for section changes.",
+          );
+          return;
+        }
+        const result = api.applyCanonicalSectionProperties({
           footnotePr,
           endnotePr,
-        },
-      };
-      pushDocument({
-        ...history.state,
-        package: {
-          ...history.state.package,
-          document: newDoc,
-        },
-      });
-    },
-    [history, pushDocument, getCanonicalApi, refuseCanonicalModelEdit],
-  );
-
-  // Handle table action from Toolbar - use ProseMirror commands
-  const handleTableAction = useCallback(
-    (action: TableAction) => {
-      const view = getActiveEditorView();
-      if (!view) {
-        return;
-      }
-
-      switch (action) {
-        case "addRowAbove":
-          addRowAbove(view.state, view.dispatch);
-          break;
-        case "addRowBelow":
-          addRowBelow(view.state, view.dispatch);
-          break;
-        case "addColumnLeft":
-          addColumnLeft(view.state, view.dispatch);
-          break;
-        case "addColumnRight":
-          addColumnRight(view.state, view.dispatch);
-          break;
-        case "deleteRow":
-          pmDeleteRow(view.state, view.dispatch);
-          break;
-        case "deleteColumn":
-          pmDeleteColumn(view.state, view.dispatch);
-          break;
-        case "deleteTable":
-          pmDeleteTable(view.state, view.dispatch);
-          break;
-        case "selectTable":
-          pmSelectTable(view.state, view.dispatch);
-          break;
-        case "selectRow":
-          pmSelectRow(view.state, view.dispatch);
-          break;
-        case "selectColumn":
-          pmSelectColumn(view.state, view.dispatch);
-          break;
-        case "mergeCells":
-          pmMergeCells(view.state, view.dispatch);
-          break;
-        case "splitCell":
-          pmSplitCell(view.state, view.dispatch);
-          break;
-        // Border actions — use current border spec from toolbar
-        case "borderAll":
-          setAllTableBorders(view.state, view.dispatch, borderSpecRef.current);
-          break;
-        case "borderOutside":
-          setOutsideTableBorders(view.state, view.dispatch, borderSpecRef.current);
-          break;
-        case "borderInside":
-          setInsideTableBorders(view.state, view.dispatch, borderSpecRef.current);
-          break;
-        case "borderNone":
-          removeTableBorders(view.state, view.dispatch);
-          break;
-        // Per-side border actions (use current border spec)
-        case "borderTop":
-          setCellBorder("top", borderSpecRef.current, true)(view.state, view.dispatch);
-          break;
-        case "borderBottom":
-          setCellBorder("bottom", borderSpecRef.current, true)(view.state, view.dispatch);
-          break;
-        case "borderLeft":
-          setCellBorder("left", borderSpecRef.current, true)(view.state, view.dispatch);
-          break;
-        case "borderRight":
-          setCellBorder("right", borderSpecRef.current, true)(view.state, view.dispatch);
-          break;
-        default:
-          // Handle complex actions (with parameters)
-          if (typeof action === "object") {
-            if (action.type === "cellFillColor") {
-              setCellFillColor(action.color)(view.state, view.dispatch);
-            } else if (action.type === "borderColor") {
-              const rgb = action.color.replace(/^#/u, "");
-              borderSpecRef.current = {
-                ...borderSpecRef.current,
-                color: { rgb },
-              };
-              setTableBorderColor(action.color)(view.state, view.dispatch);
-            } else if (action.type === "borderWidth") {
-              borderSpecRef.current = {
-                ...borderSpecRef.current,
-                size: action.size,
-              };
-              setTableBorderWidth(action.size)(view.state, view.dispatch);
-            } else if (action.type === "cellBorder") {
-              setCellBorder(action.side, {
-                style: action.style,
-                size: action.size,
-                color: { rgb: action.color.replace(/^#/u, "") },
-              })(view.state, view.dispatch);
-            } else if (action.type === "cellVerticalAlign") {
-              setCellVerticalAlign(action.align)(view.state, view.dispatch);
-            } else if (action.type === "cellMargins") {
-              setCellMargins(action.margins)(view.state, view.dispatch);
-            } else if (action.type === "cellTextDirection") {
-              setCellTextDirection(action.direction)(view.state, view.dispatch);
-            } else if (action.type === "toggleNoWrap") {
-              toggleNoWrap()(view.state, view.dispatch);
-            } else if (action.type === "rowHeight") {
-              setRowHeight(action.height, action.rule)(view.state, view.dispatch);
-            } else if (action.type === "toggleHeaderRow") {
-              toggleHeaderRow()(view.state, view.dispatch);
-            } else if (action.type === "distributeColumns") {
-              distributeColumns()(view.state, view.dispatch);
-            } else if (action.type === "autoFitContents") {
-              autoFitContents()(view.state, view.dispatch);
-            } else if (action.type === "openTableProperties") {
-              setTablePropsOpen(true);
-            } else if (action.type === "tableProperties") {
-              setTableProperties(action.props)(view.state, view.dispatch);
-            } else {
-              // Resolve style data from built-in presets or document styles
-              let preset: TableStylePreset | undefined = getBuiltinTableStyle(action.styleId);
-              const currentDocForTable = historyStateRef.current;
-              if (!preset && currentDocForTable?.package.styles) {
-                const styleResolver = getCachedStyleResolver(currentDocForTable.package.styles);
-                const docStyle = styleResolver.getStyle(action.styleId);
-                if (docStyle) {
-                  // Convert to preset inline (same as documentStyleToPreset)
-                  preset = {
-                    id: docStyle.styleId,
-                    name: docStyle.name ?? docStyle.styleId,
-                  };
-                  if (docStyle.tblPr?.borders) {
-                    const b = docStyle.tblPr.borders;
-                    preset.tableBorders = {};
-                    for (const side of [
-                      "top",
-                      "bottom",
-                      "left",
-                      "right",
-                      "insideH",
-                      "insideV",
-                    ] as const) {
-                      const bs = b[side];
-                      if (bs) {
-                        const borderEntry: TableCellBorderCommandSpec = {
-                          style: bs.style,
-                        };
-                        if (bs.size !== undefined) {
-                          borderEntry.size = bs.size;
-                        }
-                        if (bs.color?.rgb) {
-                          borderEntry.color = { rgb: bs.color.rgb };
-                        }
-                        preset.tableBorders[side] = borderEntry;
-                      }
-                    }
-                  }
-                  if (docStyle.tblStylePr) {
-                    preset.conditionals = {};
-                    for (const cond of docStyle.tblStylePr) {
-                      const entry: Record<string, unknown> = {};
-                      if (cond.tcPr?.shading?.fill?.rgb) {
-                        entry["backgroundColor"] = `#${cond.tcPr.shading.fill.rgb}`;
-                      }
-                      if (cond.tcPr?.borders) {
-                        const borders: Record<string, unknown> = {};
-                        for (const s of ["top", "bottom", "left", "right"] as const) {
-                          const bs2 = cond.tcPr.borders[s];
-                          if (bs2) {
-                            borders[s] = {
-                              style: bs2.style,
-                              size: bs2.size,
-                              color: bs2.color?.rgb ? { rgb: bs2.color.rgb } : undefined,
-                            };
-                          }
-                        }
-                        entry["borders"] = borders;
-                      }
-                      if (cond.rPr?.bold) {
-                        entry["bold"] = true;
-                      }
-                      if (cond.rPr?.color?.rgb) {
-                        entry["color"] = `#${cond.rPr.color.rgb}`;
-                      }
-                      // SAFETY: preset.conditionals is Record<string, ...>; entry satisfies its value type
-                      preset.conditionals[cond.type] = entry as NonNullable<
-                        TableStylePreset["conditionals"]
-                      >[string];
-                    }
-                  }
-                  preset.look = {
-                    firstRow: true,
-                    lastRow: false,
-                    noHBand: false,
-                    noVBand: true,
-                  };
-                }
-              }
-              if (preset) {
-                const styleArg: Parameters<typeof applyTableStyle>[0] = {
-                  styleId: preset.id,
-                };
-                if (preset.tableBorders) {
-                  styleArg.tableBorders = preset.tableBorders;
-                }
-                if (preset.conditionals) {
-                  styleArg.conditionals = preset.conditionals;
-                }
-                if (preset.look) {
-                  styleArg.look = preset.look;
-                }
-                applyTableStyle(styleArg)(view.state, view.dispatch);
-              }
-            }
-          } else {
-            // Fallback to legacy table selection handler for other actions
-            tableSelection.handleAction(action);
-          }
-      }
-
-      focusActiveEditor();
-    },
-    [tableSelection, getActiveEditorView, focusActiveEditor, getCachedStyleResolver],
-  );
-
-  // Context menu handler
-  const handleEditorContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openContextMenu({ x: e.clientX, y: e.clientY });
-    },
-    [openContextMenu],
-  );
-
-  // Handle formatting action from toolbar
-  const handleFormat = useCallback(
-    (action: FormattingAction) => {
-      const view = getActiveEditorView();
-      if (!view) {
-        return;
-      }
-
-      // Focus editor first to ensure we can dispatch commands
-      view.focus();
-
-      // Restore selection if it was lost during toolbar interaction
-      // This happens when user clicks on dropdown menus (font picker, style picker, etc.)
-      // Only restore for the body editor — HF editor manages its own selection
-      const isBodyEditor = view === pagedEditorRef.current?.getView();
-      const { from, to } = view.state.selection;
-      const savedSelection = lastSelectionRef.current;
-
-      if (
-        isBodyEditor &&
-        savedSelection &&
-        (from !== savedSelection.from || to !== savedSelection.to)
-      ) {
-        // Selection was lost (focus moved to dropdown portal) - restore it
-        try {
-          const tr = view.state.tr.setSelection(
-            TextSelection.create(view.state.doc, savedSelection.from, savedSelection.to),
-          );
-          view.dispatch(tr);
-        } catch {
-          // If restoration fails (e.g., positions are invalid after doc change), continue with current selection
-        }
-      }
-
-      // Handle simple toggle actions
-      if (action === "bold") {
-        executeEditorCommand(view, toggleBold);
-        return;
-      }
-      if (action === "italic") {
-        executeEditorCommand(view, toggleItalic);
-        return;
-      }
-      if (action === "underline") {
-        executeEditorCommand(view, toggleUnderline);
-        return;
-      }
-      if (action === "strikethrough") {
-        executeEditorCommand(view, toggleStrike);
-        return;
-      }
-      if (action === "superscript") {
-        executeEditorCommand(view, toggleSuperscript);
-        return;
-      }
-      if (action === "subscript") {
-        executeEditorCommand(view, toggleSubscript);
-        return;
-      }
-      if (action === "bulletList") {
-        executeEditorCommand(view, toggleBulletList);
-        return;
-      }
-      if (action === "numberedList") {
-        executeEditorCommand(view, toggleNumberedList);
-        return;
-      }
-      if (action === "indent") {
-        // Try list indent first, then paragraph indent
-        executeFirstEditorCommand(view, [increaseListLevel, increaseIndent()]);
-        return;
-      }
-      if (action === "outdent") {
-        // Try list outdent first, then paragraph outdent
-        executeFirstEditorCommand(view, [decreaseListLevel, decreaseIndent()]);
-        return;
-      }
-      if (action === "clearFormatting") {
-        executeEditorCommand(view, clearFormatting);
-        return;
-      }
-      if (action === "setRtl") {
-        executeEditorCommand(view, setRtl);
-        return;
-      }
-      if (action === "setLtr") {
-        executeEditorCommand(view, setLtr);
-        return;
-      }
-      if (action === "insertPageBreak") {
-        executeEditorCommand(view, insertPageBreak);
-        return;
-      }
-
-      // Handle object-based actions
-      if (typeof action === "object") {
-        switch (action.type) {
-          case "alignment":
-            executeEditorCommand(view, setAlignment(action.value));
-            break;
-          case "toggleDirection":
-            executeEditorCommand(view, toggleBidi);
-            break;
-          case "textColor": {
-            // action.value can be a ColorValue object or a string like "#FF0000"
-            const colorVal = action.value;
-            if (typeof colorVal === "string") {
-              executeEditorCommand(view, setTextColor({ rgb: colorVal.replace("#", "") }));
-            } else if (colorVal.auto) {
-              // "Automatic" — remove text color
-              executeEditorCommand(view, clearTextColor);
-            } else {
-              // The mark attr carries a schema token only; a picker cannot
-              // produce one outside `ST_ThemeColor`.
-              const themeColor =
-                typeof colorVal.themeColor === "string" ? colorVal.themeColor : undefined;
-              executeEditorCommand(
-                view,
-                setTextColor({
-                  ...(colorVal.rgb === undefined ? {} : { rgb: colorVal.rgb }),
-                  ...(themeColor ? { themeColor } : {}),
-                  ...(colorVal.themeTint === undefined ? {} : { themeTint: colorVal.themeTint }),
-                  ...(colorVal.themeShade === undefined ? {} : { themeShade: colorVal.themeShade }),
-                }),
-              );
-            }
-            break;
-          }
-          case "highlightColor": {
-            // Convert hex to OOXML named highlight value (e.g., 'FFFF00' → 'yellow')
-            const highlightName = action.value ? mapHexToHighlightName(action.value) : "";
-            executeEditorCommand(view, setHighlight(highlightName || action.value));
-            break;
-          }
-          case "fontSize":
-            // Convert points to half-points (OOXML uses half-points for font sizes)
-            executeEditorCommand(view, setFontSize(pointsToHalfPoints(action.value)));
-            break;
-          case "fontFamily":
-            executeEditorCommand(view, setFontFamily(action.value));
-            break;
-          case "lineSpacing":
-            executeEditorCommand(view, setLineSpacing(action.value));
-            break;
-          case "applyStyle": {
-            // Resolve style to get its formatting properties
-            // Use ref to avoid stale closure (handleFormat does not depend on
-            // the live document)
-            const currentDoc = historyStateRef.current;
-            const styleResolver = currentDoc?.package.styles
-              ? getCachedStyleResolver(currentDoc.package.styles)
-              : null;
-
-            if (styleResolver) {
-              const resolved = styleResolver.resolveParagraphStyle(action.value);
-              const styleAttrs: Parameters<typeof applyStyle>[1] = {};
-              if (resolved.paragraphFormatting) {
-                styleAttrs.paragraphFormatting = resolved.paragraphFormatting;
-              }
-              if (resolved.runFormatting) {
-                styleAttrs.runFormatting = resolved.runFormatting;
-              }
-              const styleName = styleResolver.getStyle(action.value)?.name;
-              if (styleName) {
-                styleAttrs.styleName = styleName;
-              }
-              styleAttrs.numbering = currentDoc?.package.numbering
-                ? getCachedNumberingMap(currentDoc.package.numbering)
-                : null;
-              executeEditorCommand(view, applyStyle(action.value, styleAttrs));
-            } else {
-              // No styles available, just set the styleId
-              executeEditorCommand(view, applyStyle(action.value));
-            }
-            break;
-          }
-          default:
-            break;
-        }
-      }
-    },
-    [getActiveEditorView, getCachedStyleResolver],
-  );
-
-  // Capture the current selection's character formatting into the buffer used
-  // by the paint step (toolbar mouseup / Ctrl+Shift+V).
-  const captureFormatPainter = useCallback(() => {
-    const view = getActiveEditorView();
-    capturedFormatMarksRef.current = view ? captureFormatMarks(view.state) : null;
-  }, [getActiveEditorView]);
-
-  // Paint the captured formatting onto the current selection. Returns whether a
-  // paint actually happened (nothing captured / collapsed selection ⇒ false).
-  const paintFormatToSelection = useCallback((): boolean => {
-    const view = getActiveEditorView();
-    if (!view) {
-      return false;
-    }
-    const applied = applyFormatMarks(capturedFormatMarksRef.current)(view.state, view.dispatch);
-    if (applied) {
-      requestAnimationFrame(() => view.focus());
-    }
-    return applied;
-  }, [getActiveEditorView]);
-
-  // Toolbar button: single click (sticky=false) arms a one-shot paint,
-  // double-click (sticky=true) keeps it on. Clicking while armed toggles off.
-  const handleFormatPainter = useCallback(
-    (sticky: boolean) => {
-      if (formatPainterModeRef.current !== "off") {
-        capturedFormatMarksRef.current = null;
-        setFormatPainterMode("off");
-        return;
-      }
-      captureFormatPainter();
-      setFormatPainterMode(sticky ? "sticky" : "armed");
-    },
-    [captureFormatPainter, setFormatPainterMode],
-  );
-
-  // Paint on the mouseup that completes a new selection. A one-shot arm disarms
-  // after a successful paint; sticky stays armed.
-  useEffect(() => {
-    const handleMouseUp = (event: MouseEvent) => {
-      if (formatPainterModeRef.current === "off") {
-        return;
-      }
-      // Paint on any release except one on the toolbar: a drag often ends on the
-      // scrollbar, ruler, or page margin rather than strictly inside the editor
-      // content. The toolbar guard keeps the arming click from self-painting.
-      const target = event.target;
-      if (target instanceof Element && target.closest("[data-folio-toolbar]")) {
-        return;
-      }
-      // Defer so ProseMirror's own mouseup selection sync settles first.
-      requestAnimationFrame(() => {
-        const painted = paintFormatToSelection();
-        if (painted && formatPainterModeRef.current === "armed") {
-          setFormatPainterMode("off");
-        }
-      });
-    };
-
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => document.removeEventListener("mouseup", handleMouseUp);
-  }, [paintFormatToSelection, setFormatPainterMode]);
-
-  // Keyboard: Ctrl/Cmd+Shift+C copies formatting, Ctrl/Cmd+Shift+V paints it,
-  // Esc disarms. Both chords belong to the format painter (the word-processor
-  // convention); painting with nothing copied is simply a no-op.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        const armed = formatPainterModeRef.current !== "off";
-        const hasCopiedFormat = capturedFormatMarksRef.current !== null;
-        // Nothing to cancel — let Esc bubble so it can close a parent modal etc.
-        if (!armed && !hasCopiedFormat) {
+        });
+        if (result !== null) return;
+        if (!history.state?.package) {
           return;
         }
-        // Esc disarms and clears the copied format; claim it so the same
-        // keystroke does not also bubble up to close a parent modal or sidebar.
-        event.preventDefault();
-        event.stopPropagation();
-        capturedFormatMarksRef.current = null;
-        if (armed) {
-          setFormatPainterMode("off");
+        const newDoc = {
+          ...history.state.package.document,
+          finalSectionProperties: {
+            ...history.state.package.document.finalSectionProperties,
+            footnotePr,
+            endnotePr,
+          },
+        };
+        pushDocument({
+          ...history.state,
+          package: {
+            ...history.state.package,
+            document: newDoc,
+          },
+        });
+      },
+      [history, pushDocument, getCanonicalApi, refuseCanonicalModelEdit],
+    );
+
+    // Handle table action from Toolbar - use ProseMirror commands
+    const handleTableAction = useCallback(
+      (action: TableAction) => {
+        const view = getActiveEditorView();
+        if (!view) {
+          return;
         }
-        return;
-      }
 
-      const isCtrl = event.ctrlKey || event.metaKey;
-      if (!isCtrl || !event.shiftKey || event.altKey) {
-        return;
-      }
+        switch (action) {
+          case "addRowAbove":
+            addRowAbove(view.state, view.dispatch);
+            break;
+          case "addRowBelow":
+            addRowBelow(view.state, view.dispatch);
+            break;
+          case "addColumnLeft":
+            addColumnLeft(view.state, view.dispatch);
+            break;
+          case "addColumnRight":
+            addColumnRight(view.state, view.dispatch);
+            break;
+          case "deleteRow":
+            pmDeleteRow(view.state, view.dispatch);
+            break;
+          case "deleteColumn":
+            pmDeleteColumn(view.state, view.dispatch);
+            break;
+          case "deleteTable":
+            pmDeleteTable(view.state, view.dispatch);
+            break;
+          case "selectTable":
+            pmSelectTable(view.state, view.dispatch);
+            break;
+          case "selectRow":
+            pmSelectRow(view.state, view.dispatch);
+            break;
+          case "selectColumn":
+            pmSelectColumn(view.state, view.dispatch);
+            break;
+          case "mergeCells":
+            pmMergeCells(view.state, view.dispatch);
+            break;
+          case "splitCell":
+            pmSplitCell(view.state, view.dispatch);
+            break;
+          // Border actions — use current border spec from toolbar
+          case "borderAll":
+            setAllTableBorders(
+              view.state,
+              view.dispatch,
+              borderSpecRef.current,
+            );
+            break;
+          case "borderOutside":
+            setOutsideTableBorders(
+              view.state,
+              view.dispatch,
+              borderSpecRef.current,
+            );
+            break;
+          case "borderInside":
+            setInsideTableBorders(
+              view.state,
+              view.dispatch,
+              borderSpecRef.current,
+            );
+            break;
+          case "borderNone":
+            removeTableBorders(view.state, view.dispatch);
+            break;
+          // Per-side border actions (use current border spec)
+          case "borderTop":
+            setCellBorder(
+              "top",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
+            break;
+          case "borderBottom":
+            setCellBorder(
+              "bottom",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
+            break;
+          case "borderLeft":
+            setCellBorder(
+              "left",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
+            break;
+          case "borderRight":
+            setCellBorder(
+              "right",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
+            break;
+          default:
+            // Handle complex actions (with parameters)
+            if (typeof action === "object") {
+              if (action.type === "cellFillColor") {
+                setCellFillColor(action.color)(view.state, view.dispatch);
+              } else if (action.type === "borderColor") {
+                const rgb = action.color.replace(/^#/u, "");
+                borderSpecRef.current = {
+                  ...borderSpecRef.current,
+                  color: { rgb },
+                };
+                setTableBorderColor(action.color)(view.state, view.dispatch);
+              } else if (action.type === "borderWidth") {
+                borderSpecRef.current = {
+                  ...borderSpecRef.current,
+                  size: action.size,
+                };
+                setTableBorderWidth(action.size)(view.state, view.dispatch);
+              } else if (action.type === "cellBorder") {
+                setCellBorder(action.side, {
+                  style: action.style,
+                  size: action.size,
+                  color: { rgb: action.color.replace(/^#/u, "") },
+                })(view.state, view.dispatch);
+              } else if (action.type === "cellVerticalAlign") {
+                setCellVerticalAlign(action.align)(view.state, view.dispatch);
+              } else if (action.type === "cellMargins") {
+                setCellMargins(action.margins)(view.state, view.dispatch);
+              } else if (action.type === "cellTextDirection") {
+                setCellTextDirection(action.direction)(
+                  view.state,
+                  view.dispatch,
+                );
+              } else if (action.type === "toggleNoWrap") {
+                toggleNoWrap()(view.state, view.dispatch);
+              } else if (action.type === "rowHeight") {
+                setRowHeight(action.height, action.rule)(
+                  view.state,
+                  view.dispatch,
+                );
+              } else if (action.type === "toggleHeaderRow") {
+                toggleHeaderRow()(view.state, view.dispatch);
+              } else if (action.type === "distributeColumns") {
+                distributeColumns()(view.state, view.dispatch);
+              } else if (action.type === "autoFitContents") {
+                autoFitContents()(view.state, view.dispatch);
+              } else if (action.type === "openTableProperties") {
+                setTablePropsOpen(true);
+              } else if (action.type === "tableProperties") {
+                setTableProperties(action.props)(view.state, view.dispatch);
+              } else {
+                // Resolve style data from built-in presets or document styles
+                let preset: TableStylePreset | undefined = getBuiltinTableStyle(
+                  action.styleId,
+                );
+                const currentDocForTable = historyStateRef.current;
+                if (!preset && currentDocForTable?.package.styles) {
+                  const styleResolver = getCachedStyleResolver(
+                    currentDocForTable.package.styles,
+                  );
+                  const docStyle = styleResolver.getStyle(action.styleId);
+                  if (docStyle) {
+                    // Convert to preset inline (same as documentStyleToPreset)
+                    preset = {
+                      id: docStyle.styleId,
+                      name: docStyle.name ?? docStyle.styleId,
+                    };
+                    if (docStyle.tblPr?.borders) {
+                      const b = docStyle.tblPr.borders;
+                      preset.tableBorders = {};
+                      for (const side of [
+                        "top",
+                        "bottom",
+                        "left",
+                        "right",
+                        "insideH",
+                        "insideV",
+                      ] as const) {
+                        const bs = b[side];
+                        if (bs) {
+                          const borderEntry: TableCellBorderCommandSpec = {
+                            style: bs.style,
+                          };
+                          if (bs.size !== undefined) {
+                            borderEntry.size = bs.size;
+                          }
+                          if (bs.color?.rgb) {
+                            borderEntry.color = { rgb: bs.color.rgb };
+                          }
+                          preset.tableBorders[side] = borderEntry;
+                        }
+                      }
+                    }
+                    if (docStyle.tblStylePr) {
+                      preset.conditionals = {};
+                      for (const cond of docStyle.tblStylePr) {
+                        const entry: Record<string, unknown> = {};
+                        if (cond.tcPr?.shading?.fill?.rgb) {
+                          entry["backgroundColor"] =
+                            `#${cond.tcPr.shading.fill.rgb}`;
+                        }
+                        if (cond.tcPr?.borders) {
+                          const borders: Record<string, unknown> = {};
+                          for (const s of [
+                            "top",
+                            "bottom",
+                            "left",
+                            "right",
+                          ] as const) {
+                            const bs2 = cond.tcPr.borders[s];
+                            if (bs2) {
+                              borders[s] = {
+                                style: bs2.style,
+                                size: bs2.size,
+                                color: bs2.color?.rgb
+                                  ? { rgb: bs2.color.rgb }
+                                  : undefined,
+                              };
+                            }
+                          }
+                          entry["borders"] = borders;
+                        }
+                        if (cond.rPr?.bold) {
+                          entry["bold"] = true;
+                        }
+                        if (cond.rPr?.color?.rgb) {
+                          entry["color"] = `#${cond.rPr.color.rgb}`;
+                        }
+                        // SAFETY: preset.conditionals is Record<string, ...>; entry satisfies its value type
+                        preset.conditionals[cond.type] = entry as NonNullable<
+                          TableStylePreset["conditionals"]
+                        >[string];
+                      }
+                    }
+                    preset.look = {
+                      firstRow: true,
+                      lastRow: false,
+                      noHBand: false,
+                      noVBand: true,
+                    };
+                  }
+                }
+                if (preset) {
+                  const styleArg: Parameters<typeof applyTableStyle>[0] = {
+                    styleId: preset.id,
+                  };
+                  if (preset.tableBorders) {
+                    styleArg.tableBorders = preset.tableBorders;
+                  }
+                  if (preset.conditionals) {
+                    styleArg.conditionals = preset.conditionals;
+                  }
+                  if (preset.look) {
+                    styleArg.look = preset.look;
+                  }
+                  applyTableStyle(styleArg)(view.state, view.dispatch);
+                }
+              }
+            } else {
+              // Fallback to legacy table selection handler for other actions
+              tableSelection.handleAction(action);
+            }
+        }
 
-      const target = event.target;
-      const withinEditor =
-        target instanceof Node && editorContentRef.current?.contains(target) === true;
-      if (!withinEditor) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      if (key === "c") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        captureFormatPainter();
-        return;
-      }
-      if (key === "v") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        paintFormatToSelection();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [captureFormatPainter, paintFormatToSelection, setFormatPainterMode]);
-
-  const handleContextMenu = useCallback(
-    (data: { x: number; y: number; hasSelection: boolean }) => {
-      openContextMenu({ x: data.x, y: data.y }, data.hasSelection);
-    },
-    [openContextMenu],
-  );
-
-  const handleContextMenuClose = closeContextMenu;
-
-  const contextMenuItems = useMemo((): TextContextMenuItem[] => {
-    const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
-    const mod = isMac ? "⌘" : "Ctrl";
-    if (readOnly) {
-      return [
-        { action: "copy", label: t("copy"), shortcut: `${mod}+C` },
-        {
-          action: "selectAll",
-          label: t("selectAll"),
-          shortcut: `${mod}+A`,
-        },
-      ];
-    }
-    const items: TextContextMenuItem[] = [];
-    // Host-provided entries lead the menu — they're the surface-specific
-    // primary actions (e.g. the Template Studio's "Make field").
-    const custom = (customContextMenuItems ?? []).filter(
-      (item) => !item.requiresSelection || contextMenu.hasSelection,
-    );
-    for (const [index, item] of custom.entries()) {
-      items.push({
-        action: `custom:${item.id}`,
-        label: item.label,
-        emphasis: true,
-        ...(item.icon === undefined ? {} : { icon: item.icon }),
-        dividerAfter: index === custom.length - 1,
-      });
-    }
-    items.push(
-      { action: "cut", label: t("cut"), shortcut: `${mod}+X` },
-      { action: "copy", label: t("copy"), shortcut: `${mod}+C` },
-      { action: "paste", label: t("paste"), shortcut: `${mod}+V` },
-      {
-        action: "pasteAsPlainText",
-        label: t("pasteUnformatted"),
-        shortcut: `${mod}+Alt+V`,
-        dividerAfter: true,
+        focusActiveEditor();
       },
-      {
-        action: "delete",
-        label: t("delete"),
-        shortcut: "Del",
-        dividerAfter: !contextMenu.hasSelection && !contextMenu.cursorInTable,
-      },
+      [
+        tableSelection,
+        getActiveEditorView,
+        focusActiveEditor,
+        getCachedStyleResolver,
+      ],
     );
-    if (contextMenu.hasSelection) {
-      items.push({
-        action: "addComment",
-        label: t("comment"),
-        dividerAfter: !contextMenu.cursorInTable,
-      });
-    }
-    if (contextMenu.cursorInTable) {
-      items.push(
-        { action: "addRowAbove", label: t("insertRowAbove") },
-        { action: "addRowBelow", label: t("insertRowBelow") },
-        { action: "deleteRow", label: t("deleteRow"), dividerAfter: true },
-        { action: "addColumnLeft", label: t("insertColumnLeft") },
-        { action: "addColumnRight", label: t("insertColumnRight") },
-        {
-          action: "deleteColumn",
-          label: t("deleteColumn"),
-          dividerAfter: true,
-        },
-        { action: "tableBordersAll", label: t("tableBordersAll") },
-        {
-          action: "tableBordersNone",
-          label: t("tableBordersNone"),
-          dividerAfter: true,
-        },
-      );
-    }
-    if (contextMenu.cursorInTrackedChange) {
-      items.push(
-        { action: "acceptChange", label: t("acceptChange") },
-        {
-          action: "rejectChange",
-          label: t("rejectChange"),
-          dividerAfter: true,
-        },
-      );
-    }
-    if (contextMenu.listNumbering.type === "listItem") {
-      items.push(
-        { action: "restartNumbering", label: t("contextMenu.restartNumbering") },
-        {
-          action: "continueNumbering",
-          label: t("contextMenu.continueNumbering"),
-          disabled: !contextMenu.listNumbering.canContinue,
-        },
-        {
-          action: "setNumberingValue",
-          label: t("contextMenu.setNumberingValue"),
-          dividerAfter: true,
-        },
-      );
-    }
-    items.push({
-      action: "selectAll",
-      label: t("selectAll"),
-      shortcut: `${mod}+A`,
-    });
-    return items;
-  }, [
-    contextMenu.hasSelection,
-    contextMenu.cursorInTable,
-    contextMenu.cursorInTrackedChange,
-    contextMenu.listNumbering,
-    customContextMenuItems,
-    readOnly,
-    t,
-  ]);
 
-  const { from: contextSelectionFrom, to: contextSelectionTo } = contextMenu.selectionRange;
-  const handleContextMenuAction = useCallback(
-    async (action: TextContextAction) => {
+    // Context menu handler
+    const handleEditorContextMenu = useCallback(
+      (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openContextMenu({ x: e.clientX, y: e.clientY });
+      },
+      [openContextMenu],
+    );
+
+    // Handle formatting action from toolbar
+    const handleFormat = useCallback(
+      (action: FormattingAction) => {
+        const view = getActiveEditorView();
+        if (!view) {
+          return;
+        }
+
+        // Focus editor first to ensure we can dispatch commands
+        view.focus();
+
+        // Restore selection if it was lost during toolbar interaction
+        // This happens when user clicks on dropdown menus (font picker, style picker, etc.)
+        // Only restore for the body editor — HF editor manages its own selection
+        const isBodyEditor = view === pagedEditorRef.current?.getView();
+        const { from, to } = view.state.selection;
+        const savedSelection = lastSelectionRef.current;
+
+        if (
+          isBodyEditor &&
+          savedSelection &&
+          (from !== savedSelection.from || to !== savedSelection.to)
+        ) {
+          // Selection was lost (focus moved to dropdown portal) - restore it
+          try {
+            const tr = view.state.tr.setSelection(
+              TextSelection.create(
+                view.state.doc,
+                savedSelection.from,
+                savedSelection.to,
+              ),
+            );
+            view.dispatch(tr);
+          } catch {
+            // If restoration fails (e.g., positions are invalid after doc change), continue with current selection
+          }
+        }
+
+        // Handle simple toggle actions
+        if (action === "bold") {
+          executeEditorCommand(view, toggleBold);
+          return;
+        }
+        if (action === "italic") {
+          executeEditorCommand(view, toggleItalic);
+          return;
+        }
+        if (action === "underline") {
+          executeEditorCommand(view, toggleUnderline);
+          return;
+        }
+        if (action === "strikethrough") {
+          executeEditorCommand(view, toggleStrike);
+          return;
+        }
+        if (action === "superscript") {
+          executeEditorCommand(view, toggleSuperscript);
+          return;
+        }
+        if (action === "subscript") {
+          executeEditorCommand(view, toggleSubscript);
+          return;
+        }
+        if (action === "bulletList") {
+          executeEditorCommand(view, toggleBulletList);
+          return;
+        }
+        if (action === "numberedList") {
+          executeEditorCommand(view, toggleNumberedList);
+          return;
+        }
+        if (action === "indent") {
+          // Try list indent first, then paragraph indent
+          executeFirstEditorCommand(view, [
+            increaseListLevel,
+            increaseIndent(),
+          ]);
+          return;
+        }
+        if (action === "outdent") {
+          // Try list outdent first, then paragraph outdent
+          executeFirstEditorCommand(view, [
+            decreaseListLevel,
+            decreaseIndent(),
+          ]);
+          return;
+        }
+        if (action === "clearFormatting") {
+          executeEditorCommand(view, clearFormatting);
+          return;
+        }
+        if (action === "setRtl") {
+          executeEditorCommand(view, setRtl);
+          return;
+        }
+        if (action === "setLtr") {
+          executeEditorCommand(view, setLtr);
+          return;
+        }
+        if (action === "insertPageBreak") {
+          executeEditorCommand(view, insertPageBreak);
+          return;
+        }
+
+        // Handle object-based actions
+        if (typeof action === "object") {
+          switch (action.type) {
+            case "alignment":
+              executeEditorCommand(view, setAlignment(action.value));
+              break;
+            case "toggleDirection":
+              executeEditorCommand(view, toggleBidi);
+              break;
+            case "textColor": {
+              // action.value can be a ColorValue object or a string like "#FF0000"
+              const colorVal = action.value;
+              if (typeof colorVal === "string") {
+                executeEditorCommand(
+                  view,
+                  setTextColor({ rgb: colorVal.replace("#", "") }),
+                );
+              } else if (colorVal.auto) {
+                // "Automatic" — remove text color
+                executeEditorCommand(view, clearTextColor);
+              } else {
+                // The mark attr carries a schema token only; a picker cannot
+                // produce one outside `ST_ThemeColor`.
+                const themeColor =
+                  typeof colorVal.themeColor === "string"
+                    ? colorVal.themeColor
+                    : undefined;
+                executeEditorCommand(
+                  view,
+                  setTextColor({
+                    ...(colorVal.rgb === undefined
+                      ? {}
+                      : { rgb: colorVal.rgb }),
+                    ...(themeColor ? { themeColor } : {}),
+                    ...(colorVal.themeTint === undefined
+                      ? {}
+                      : { themeTint: colorVal.themeTint }),
+                    ...(colorVal.themeShade === undefined
+                      ? {}
+                      : { themeShade: colorVal.themeShade }),
+                  }),
+                );
+              }
+              break;
+            }
+            case "highlightColor": {
+              // Convert hex to OOXML named highlight value (e.g., 'FFFF00' → 'yellow')
+              const highlightName = action.value
+                ? mapHexToHighlightName(action.value)
+                : "";
+              executeEditorCommand(
+                view,
+                setHighlight(highlightName || action.value),
+              );
+              break;
+            }
+            case "fontSize":
+              // Convert points to half-points (OOXML uses half-points for font sizes)
+              executeEditorCommand(
+                view,
+                setFontSize(pointsToHalfPoints(action.value)),
+              );
+              break;
+            case "fontFamily":
+              executeEditorCommand(view, setFontFamily(action.value));
+              break;
+            case "lineSpacing":
+              executeEditorCommand(view, setLineSpacing(action.value));
+              break;
+            case "applyStyle": {
+              // Resolve style to get its formatting properties
+              // Use ref to avoid stale closure (handleFormat does not depend on
+              // the live document)
+              const currentDoc = historyStateRef.current;
+              const styleResolver = currentDoc?.package.styles
+                ? getCachedStyleResolver(currentDoc.package.styles)
+                : null;
+
+              if (styleResolver) {
+                const resolved = styleResolver.resolveParagraphStyle(
+                  action.value,
+                );
+                const styleAttrs: Parameters<typeof applyStyle>[1] = {};
+                if (resolved.paragraphFormatting) {
+                  styleAttrs.paragraphFormatting = resolved.paragraphFormatting;
+                }
+                if (resolved.runFormatting) {
+                  styleAttrs.runFormatting = resolved.runFormatting;
+                }
+                const styleName = styleResolver.getStyle(action.value)?.name;
+                if (styleName) {
+                  styleAttrs.styleName = styleName;
+                }
+                styleAttrs.numbering = currentDoc?.package.numbering
+                  ? getCachedNumberingMap(currentDoc.package.numbering)
+                  : null;
+                executeEditorCommand(
+                  view,
+                  applyStyle(action.value, styleAttrs),
+                );
+              } else {
+                // No styles available, just set the styleId
+                executeEditorCommand(view, applyStyle(action.value));
+              }
+              break;
+            }
+            default:
+              break;
+          }
+        }
+      },
+      [getActiveEditorView, getCachedStyleResolver],
+    );
+
+    // Capture the current selection's character formatting into the buffer used
+    // by the paint step (toolbar mouseup / Ctrl+Shift+V).
+    const captureFormatPainter = useCallback(() => {
+      const view = getActiveEditorView();
+      capturedFormatMarksRef.current = view
+        ? captureFormatMarks(view.state)
+        : null;
+    }, [getActiveEditorView]);
+
+    // Paint the captured formatting onto the current selection. Returns whether a
+    // paint actually happened (nothing captured / collapsed selection ⇒ false).
+    const paintFormatToSelection = useCallback((): boolean => {
       const view = getActiveEditorView();
       if (!view) {
-        return;
+        return false;
       }
-
-      // Focus the hidden PM so clipboard operations target the right element
-      focusActiveEditor();
-
-      if (readOnly && action !== "copy" && action !== "selectAll") {
-        return;
+      const applied = applyFormatMarks(capturedFormatMarksRef.current)(
+        view.state,
+        view.dispatch,
+      );
+      if (applied) {
+        requestAnimationFrame(() => view.focus());
       }
+      return applied;
+    }, [getActiveEditorView]);
 
-      if (action.startsWith("custom:")) {
-        const { from, to } =
-          contextSelectionFrom !== contextSelectionTo
-            ? { from: contextSelectionFrom, to: contextSelectionTo }
-            : view.state.selection;
-        onCustomContextAction?.(action.slice("custom:".length), { from, to });
-        return;
-      }
+    // Toolbar button: single click (sticky=false) arms a one-shot paint,
+    // double-click (sticky=true) keeps it on. Clicking while armed toggles off.
+    const handleFormatPainter = useCallback(
+      (sticky: boolean) => {
+        if (formatPainterModeRef.current !== "off") {
+          capturedFormatMarksRef.current = null;
+          setFormatPainterMode("off");
+          return;
+        }
+        captureFormatPainter();
+        setFormatPainterMode(sticky ? "sticky" : "armed");
+      },
+      [captureFormatPainter, setFormatPainterMode],
+    );
 
-      switch (action) {
-        case "cut": {
-          if (readOnly) {
+    // Paint on the mouseup that completes a new selection. A one-shot arm disarms
+    // after a successful paint; sticky stays armed.
+    useEffect(() => {
+      const handleMouseUp = (event: MouseEvent) => {
+        if (formatPainterModeRef.current === "off") {
+          return;
+        }
+        // Paint on any release except one on the toolbar: a drag often ends on the
+        // scrollbar, ruler, or page margin rather than strictly inside the editor
+        // content. The toolbar guard keeps the arming click from self-painting.
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest("[data-folio-toolbar]")
+        ) {
+          return;
+        }
+        // Defer so ProseMirror's own mouseup selection sync settles first.
+        requestAnimationFrame(() => {
+          const painted = paintFormatToSelection();
+          if (painted && formatPainterModeRef.current === "armed") {
+            setFormatPainterMode("off");
+          }
+        });
+      };
+
+      document.addEventListener("mouseup", handleMouseUp);
+      return () => document.removeEventListener("mouseup", handleMouseUp);
+    }, [paintFormatToSelection, setFormatPainterMode]);
+
+    // Keyboard: Ctrl/Cmd+Shift+C copies formatting, Ctrl/Cmd+Shift+V paints it,
+    // Esc disarms. Both chords belong to the format painter (the word-processor
+    // convention); painting with nothing copied is simply a no-op.
+    useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          const armed = formatPainterModeRef.current !== "off";
+          const hasCopiedFormat = capturedFormatMarksRef.current !== null;
+          // Nothing to cancel — let Esc bubble so it can close a parent modal etc.
+          if (!armed && !hasCopiedFormat) {
             return;
           }
-          // Copy selected text to clipboard, then delete selection
-          const { from, to } = view.state.selection;
-          const text = view.state.doc.textBetween(from, to, "\n");
-          void navigator.clipboard.writeText(text).catch(() => undefined);
-          if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
-            view.dispatch(view.state.tr.deleteSelection());
+          // Esc disarms and clears the copied format; claim it so the same
+          // keystroke does not also bubble up to close a parent modal or sidebar.
+          event.preventDefault();
+          event.stopPropagation();
+          capturedFormatMarksRef.current = null;
+          if (armed) {
+            setFormatPainterMode("off");
           }
-          onCut?.();
-          break;
+          return;
         }
-        case "copy": {
-          const { from: cf, to: ct } = view.state.selection;
-          const copied = view.state.doc.textBetween(cf, ct, "\n");
-          void navigator.clipboard.writeText(copied).catch(() => undefined);
-          onCopy?.();
-          break;
+
+        const isCtrl = event.ctrlKey || event.metaKey;
+        if (!isCtrl || !event.shiftKey || event.altKey) {
+          return;
         }
-        case "paste": {
-          if (readOnly) {
-            return;
-          }
-          // Use Clipboard API — document.execCommand('paste') is blocked in modern browsers
-          try {
-            const items = await navigator.clipboard.read();
-            let html = "";
-            let text = "";
-            for (const item of items) {
-              if (item.types.includes("text/html")) {
-                // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; html accumulates into one outer variable
-                html = await readBlobText(await item.getType("text/html"));
-              }
-              if (item.types.includes("text/plain")) {
-                // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; text accumulates into one outer variable
-                text = await readBlobText(await item.getType("text/plain"));
-              }
-            }
-            const dt = new DataTransfer();
-            if (html) {
-              dt.items.add(html, "text/html");
-            }
-            if (text) {
-              dt.items.add(text, "text/plain");
-            }
-            const pasteEvent = new ClipboardEvent("paste", {
-              clipboardData: dt,
-              bubbles: true,
-              cancelable: true,
-            });
-            view.dom.dispatchEvent(pasteEvent);
-          } catch {
-            try {
-              const text = await navigator.clipboard.readText();
-              if (text) {
-                view.dispatch(view.state.tr.insertText(text));
-                onPaste?.();
-              }
-            } catch {
-              // Clipboard access denied
-            }
-          }
-          break;
+
+        const target = event.target;
+        const withinEditor =
+          target instanceof Node &&
+          editorContentRef.current?.contains(target) === true;
+        if (!withinEditor) {
+          return;
         }
-        case "pasteAsPlainText":
-          try {
-            const text = await navigator.clipboard.readText();
-            // The clipboard read is async: bail if the editor unmounted while it
-            // was in flight rather than dispatching against a destroyed view.
-            if (text && !view.isDestroyed) {
-              // replaceSelection with a paragraph slice preserves line breaks;
-              // insertText would flatten them into one paragraph.
-              const slice = buildPlainTextSlice(text, view.state.schema);
-              view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
-              onPaste?.();
-            }
-          } catch {
-            // Surface the failure instead of leaving a dead menu action.
-            toast(t("clipboardReadFailed"));
-          }
-          break;
-        case "delete": {
-          const { from, to } = view.state.selection;
-          if (from !== to) {
-            view.dispatch(view.state.tr.deleteRange(from, to));
-          }
-          break;
+
+        const key = event.key.toLowerCase();
+        if (key === "c") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          captureFormatPainter();
+          return;
         }
-        case "selectAll":
-          view.dispatch(
-            view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, 0, view.state.doc.content.size),
-            ),
-          );
-          break;
-        // Table operations
-        case "addRowAbove":
-          addRowAbove(view.state, view.dispatch);
-          break;
-        case "addRowBelow":
-          addRowBelow(view.state, view.dispatch);
-          break;
-        case "deleteRow":
-          pmDeleteRow(view.state, view.dispatch);
-          break;
-        case "addColumnLeft":
-          addColumnLeft(view.state, view.dispatch);
-          break;
-        case "addColumnRight":
-          addColumnRight(view.state, view.dispatch);
-          break;
-        case "deleteColumn":
-          pmDeleteColumn(view.state, view.dispatch);
-          break;
-        case "tableBordersAll":
-          setTableBorderPreset("all")(view.state, view.dispatch);
-          break;
-        case "tableBordersNone":
-          setTableBorderPreset("none")(view.state, view.dispatch);
-          break;
-        // Comment — same flow as floating comment button
-        case "addComment": {
-          // Use the stored selection range from when the context menu opened,
-          // because right-click may collapse the PM selection to a cursor
+        if (key === "v") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          paintFormatToSelection();
+        }
+      };
+
+      document.addEventListener("keydown", handleKeyDown, true);
+      return () => document.removeEventListener("keydown", handleKeyDown, true);
+    }, [captureFormatPainter, paintFormatToSelection, setFormatPainterMode]);
+
+    const handleContextMenu = useCallback(
+      (data: { x: number; y: number; hasSelection: boolean }) => {
+        openContextMenu({ x: data.x, y: data.y }, data.hasSelection);
+      },
+      [openContextMenu],
+    );
+
+    const handleContextMenuClose = closeContextMenu;
+
+    const contextMenuItems = useMemo((): TextContextMenuItem[] => {
+      const isMac =
+        typeof navigator !== "undefined" && navigator.platform.includes("Mac");
+      const mod = isMac ? "⌘" : "Ctrl";
+      if (readOnly) {
+        return [
+          { action: "copy", label: t("copy"), shortcut: `${mod}+C` },
+          {
+            action: "selectAll",
+            label: t("selectAll"),
+            shortcut: `${mod}+A`,
+          },
+        ];
+      }
+      const items: TextContextMenuItem[] = [];
+      // Host-provided entries lead the menu — they're the surface-specific
+      // primary actions (e.g. the Template Studio's "Make field").
+      const custom = (customContextMenuItems ?? []).filter(
+        (item) => !item.requiresSelection || contextMenu.hasSelection,
+      );
+      for (const [index, item] of custom.entries()) {
+        items.push({
+          action: `custom:${item.id}`,
+          label: item.label,
+          emphasis: true,
+          ...(item.icon === undefined ? {} : { icon: item.icon }),
+          dividerAfter: index === custom.length - 1,
+        });
+      }
+      items.push(
+        { action: "cut", label: t("cut"), shortcut: `${mod}+X` },
+        { action: "copy", label: t("copy"), shortcut: `${mod}+C` },
+        { action: "paste", label: t("paste"), shortcut: `${mod}+V` },
+        {
+          action: "pasteAsPlainText",
+          label: t("pasteUnformatted"),
+          shortcut: `${mod}+Alt+V`,
+          dividerAfter: true,
+        },
+        {
+          action: "delete",
+          label: t("delete"),
+          shortcut: "Del",
+          dividerAfter: !contextMenu.hasSelection && !contextMenu.cursorInTable,
+        },
+      );
+      if (contextMenu.hasSelection) {
+        items.push({
+          action: "addComment",
+          label: t("comment"),
+          dividerAfter: !contextMenu.cursorInTable,
+        });
+      }
+      if (contextMenu.cursorInTable) {
+        items.push(
+          { action: "addRowAbove", label: t("insertRowAbove") },
+          { action: "addRowBelow", label: t("insertRowBelow") },
+          { action: "deleteRow", label: t("deleteRow"), dividerAfter: true },
+          { action: "addColumnLeft", label: t("insertColumnLeft") },
+          { action: "addColumnRight", label: t("insertColumnRight") },
+          {
+            action: "deleteColumn",
+            label: t("deleteColumn"),
+            dividerAfter: true,
+          },
+          { action: "tableBordersAll", label: t("tableBordersAll") },
+          {
+            action: "tableBordersNone",
+            label: t("tableBordersNone"),
+            dividerAfter: true,
+          },
+        );
+      }
+      if (contextMenu.cursorInTrackedChange) {
+        items.push(
+          { action: "acceptChange", label: t("acceptChange") },
+          {
+            action: "rejectChange",
+            label: t("rejectChange"),
+            dividerAfter: true,
+          },
+        );
+      }
+      if (contextMenu.listNumbering.type === "listItem") {
+        items.push(
+          {
+            action: "restartNumbering",
+            label: t("contextMenu.restartNumbering"),
+          },
+          {
+            action: "continueNumbering",
+            label: t("contextMenu.continueNumbering"),
+            disabled: !contextMenu.listNumbering.canContinue,
+          },
+          {
+            action: "setNumberingValue",
+            label: t("contextMenu.setNumberingValue"),
+            dividerAfter: true,
+          },
+        );
+      }
+      items.push({
+        action: "selectAll",
+        label: t("selectAll"),
+        shortcut: `${mod}+A`,
+      });
+      return items;
+    }, [
+      contextMenu.hasSelection,
+      contextMenu.cursorInTable,
+      contextMenu.cursorInTrackedChange,
+      contextMenu.listNumbering,
+      customContextMenuItems,
+      readOnly,
+      t,
+    ]);
+
+    const { from: contextSelectionFrom, to: contextSelectionTo } =
+      contextMenu.selectionRange;
+    const handleContextMenuAction = useCallback(
+      async (action: TextContextAction) => {
+        const view = getActiveEditorView();
+        if (!view) {
+          return;
+        }
+
+        // Focus the hidden PM so clipboard operations target the right element
+        focusActiveEditor();
+
+        if (readOnly && action !== "copy" && action !== "selectAll") {
+          return;
+        }
+
+        if (action.startsWith("custom:")) {
           const { from, to } =
             contextSelectionFrom !== contextSelectionTo
               ? { from: contextSelectionFrom, to: contextSelectionTo }
               : view.state.selection;
-          if (from === to) {
+          onCustomContextAction?.(action.slice("custom:".length), { from, to });
+          return;
+        }
+
+        switch (action) {
+          case "cut": {
+            if (readOnly) {
+              return;
+            }
+            // Copy selected text to clipboard, then delete selection
+            const { from, to } = view.state.selection;
+            const text = view.state.doc.textBetween(from, to, "\n");
+            void navigator.clipboard.writeText(text).catch(() => undefined);
+            if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
+              view.dispatch(view.state.tr.deleteSelection());
+            }
+            onCut?.();
             break;
           }
-          // Compute Y position BEFORE dispatching — dispatch triggers re-layout
-          // which rebuilds page DOM and invalidates the old span elements
-          const yPos = findSelectionYPosition(
-            scrollContainerRef.current,
-            editorContentRef.current,
-            from,
-          );
-          const commentY = yPos ?? getFallbackCommentYPosition(scrollContainerRef.current);
-          setCommentSelectionRange({ from, to });
-          if (commentDraftMode === "prosemirror") {
-            const marked = applyCommentMarkRange(view, { from, to }, PENDING_COMMENT_ID, {
-              selectEnd: true,
-            });
-            if (!marked) break;
+          case "copy": {
+            const { from: cf, to: ct } = view.state.selection;
+            const copied = view.state.doc.textBetween(cf, ct, "\n");
+            void navigator.clipboard.writeText(copied).catch(() => undefined);
+            onCopy?.();
+            break;
           }
-          setAddCommentYPosition(commentY);
-          setShowCommentsSidebar(true);
-          setIsAddingComment(true);
-          setFloatingCommentBtn(null);
-          break;
-        }
-        case "acceptChange": {
-          const { from, to } = view.state.selection;
-          const range = findChangeAtPosition(view.state, from, to);
-          if (
-            resolveCanonicalReviewRange({
-              editor: pagedEditorRef.current?.getEditor(),
-              ...range,
-              resolution: "accept",
-            }) === null
-          ) {
-            acceptChange(range.from, range.to)(view.state, view.dispatch);
+          case "paste": {
+            if (readOnly) {
+              return;
+            }
+            // Use Clipboard API — document.execCommand('paste') is blocked in modern browsers
+            try {
+              const items = await navigator.clipboard.read();
+              let html = "";
+              let text = "";
+              for (const item of items) {
+                if (item.types.includes("text/html")) {
+                  // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; html accumulates into one outer variable
+                  html = await readBlobText(await item.getType("text/html"));
+                }
+                if (item.types.includes("text/plain")) {
+                  // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; text accumulates into one outer variable
+                  text = await readBlobText(await item.getType("text/plain"));
+                }
+              }
+              const dt = new DataTransfer();
+              if (html) {
+                dt.items.add(html, "text/html");
+              }
+              if (text) {
+                dt.items.add(text, "text/plain");
+              }
+              const pasteEvent = new ClipboardEvent("paste", {
+                clipboardData: dt,
+                bubbles: true,
+                cancelable: true,
+              });
+              view.dom.dispatchEvent(pasteEvent);
+            } catch {
+              try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                  view.dispatch(view.state.tr.insertText(text));
+                  onPaste?.();
+                }
+              } catch {
+                // Clipboard access denied
+              }
+            }
+            break;
           }
-          break;
-        }
-        case "rejectChange": {
-          const { from, to } = view.state.selection;
-          const range = findChangeAtPosition(view.state, from, to);
-          if (
-            resolveCanonicalReviewRange({
-              editor: pagedEditorRef.current?.getEditor(),
-              ...range,
-              resolution: "reject",
-            }) === null
-          ) {
-            rejectChange(range.from, range.to)(view.state, view.dispatch);
+          case "pasteAsPlainText":
+            try {
+              const text = await navigator.clipboard.readText();
+              // The clipboard read is async: bail if the editor unmounted while it
+              // was in flight rather than dispatching against a destroyed view.
+              if (text && !view.isDestroyed) {
+                // replaceSelection with a paragraph slice preserves line breaks;
+                // insertText would flatten them into one paragraph.
+                const slice = buildPlainTextSlice(text, view.state.schema);
+                view.dispatch(
+                  view.state.tr.replaceSelection(slice).scrollIntoView(),
+                );
+                onPaste?.();
+              }
+            } catch {
+              // Surface the failure instead of leaving a dead menu action.
+              toast(t("clipboardReadFailed"));
+            }
+            break;
+          case "delete": {
+            const { from, to } = view.state.selection;
+            if (from !== to) {
+              view.dispatch(view.state.tr.deleteRange(from, to));
+            }
+            break;
           }
-          break;
+          case "selectAll":
+            view.dispatch(
+              view.state.tr.setSelection(
+                TextSelection.create(
+                  view.state.doc,
+                  0,
+                  view.state.doc.content.size,
+                ),
+              ),
+            );
+            break;
+          // Table operations
+          case "addRowAbove":
+            addRowAbove(view.state, view.dispatch);
+            break;
+          case "addRowBelow":
+            addRowBelow(view.state, view.dispatch);
+            break;
+          case "deleteRow":
+            pmDeleteRow(view.state, view.dispatch);
+            break;
+          case "addColumnLeft":
+            addColumnLeft(view.state, view.dispatch);
+            break;
+          case "addColumnRight":
+            addColumnRight(view.state, view.dispatch);
+            break;
+          case "deleteColumn":
+            pmDeleteColumn(view.state, view.dispatch);
+            break;
+          case "tableBordersAll":
+            setTableBorderPreset("all")(view.state, view.dispatch);
+            break;
+          case "tableBordersNone":
+            setTableBorderPreset("none")(view.state, view.dispatch);
+            break;
+          // Comment — same flow as floating comment button
+          case "addComment": {
+            // Use the stored selection range from when the context menu opened,
+            // because right-click may collapse the PM selection to a cursor
+            const { from, to } =
+              contextSelectionFrom !== contextSelectionTo
+                ? { from: contextSelectionFrom, to: contextSelectionTo }
+                : view.state.selection;
+            if (from === to) {
+              break;
+            }
+            // Compute Y position BEFORE dispatching — dispatch triggers re-layout
+            // which rebuilds page DOM and invalidates the old span elements
+            const yPos = findSelectionYPosition(
+              scrollContainerRef.current,
+              editorContentRef.current,
+              from,
+            );
+            const commentY =
+              yPos ?? getFallbackCommentYPosition(scrollContainerRef.current);
+            setCommentSelectionRange({ from, to });
+            if (commentDraftMode === "prosemirror") {
+              const marked = applyCommentMarkRange(
+                view,
+                { from, to },
+                PENDING_COMMENT_ID,
+                {
+                  selectEnd: true,
+                },
+              );
+              if (!marked) break;
+            }
+            setAddCommentYPosition(commentY);
+            setShowCommentsSidebar(true);
+            setIsAddingComment(true);
+            setFloatingCommentBtn(null);
+            break;
+          }
+          case "acceptChange": {
+            const { from, to } = view.state.selection;
+            const range = findChangeAtPosition(view.state, from, to);
+            if (
+              resolveCanonicalReviewRange({
+                editor: pagedEditorRef.current?.getEditor(),
+                ...range,
+                resolution: "accept",
+              }) === null
+            ) {
+              acceptChange(range.from, range.to)(view.state, view.dispatch);
+            }
+            break;
+          }
+          case "rejectChange": {
+            const { from, to } = view.state.selection;
+            const range = findChangeAtPosition(view.state, from, to);
+            if (
+              resolveCanonicalReviewRange({
+                editor: pagedEditorRef.current?.getEditor(),
+                ...range,
+                resolution: "reject",
+              }) === null
+            ) {
+              rejectChange(range.from, range.to)(view.state, view.dispatch);
+            }
+            break;
+          }
+          case "restartNumbering":
+            restartNumbering(view.state, view.dispatch);
+            break;
+          case "continueNumbering":
+            continueNumbering(view.state, view.dispatch);
+            break;
+          case "setNumberingValue":
+            setNumberingValueDialogOpen(true);
+            break;
+          case "separator":
+            // Separators are visual dividers in the menu, never
+            // emitted as an actual user action.
+            break;
         }
-        case "restartNumbering":
-          restartNumbering(view.state, view.dispatch);
-          break;
-        case "continueNumbering":
-          continueNumbering(view.state, view.dispatch);
-          break;
-        case "setNumberingValue":
-          setNumberingValueDialogOpen(true);
-          break;
-        case "separator":
-          // Separators are visual dividers in the menu, never
-          // emitted as an actual user action.
-          break;
-      }
-      // TextContextMenu calls onClose after onAction, so no need to close here
-    },
-    [
-      getActiveEditorView,
-      focusActiveEditor,
-      onCustomContextAction,
-      onCopy,
-      onCut,
-      onPaste,
-      readOnly,
-      contextSelectionFrom,
-      contextSelectionTo,
-      commentDraftMode,
-      setAddCommentYPosition,
-      setCommentSelectionRange,
-      setFloatingCommentBtn,
-      setIsAddingComment,
-      setShowCommentsSidebar,
-      t,
-    ],
-  );
+        // TextContextMenu calls onClose after onAction, so no need to close here
+      },
+      [
+        getActiveEditorView,
+        focusActiveEditor,
+        onCustomContextAction,
+        onCopy,
+        onCut,
+        onPaste,
+        readOnly,
+        contextSelectionFrom,
+        contextSelectionTo,
+        commentDraftMode,
+        setAddCommentYPosition,
+        setCommentSelectionRange,
+        setFloatingCommentBtn,
+        setIsAddingComment,
+        setShowCommentsSidebar,
+        t,
+      ],
+    );
 
-  // Page setup apply handler
-  const handlePageSetupApply = useCallback(
-    (props: Partial<SectionProperties>) => {
-      if (readOnly) return;
-      const api = getCanonicalApi();
-      if (!api) {
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.sectionProperties,
-          "The editor is not ready for section changes.",
-        );
-        return;
-      }
-      const result = api.applyCanonicalSectionProperties(props);
-      if (result !== null) return;
-      if (!history.state || readOnly) {
-        return;
-      }
-      const newDoc = {
-        ...history.state,
-        package: {
-          ...history.state.package,
-          document: {
-            ...history.state.package.document,
-            finalSectionProperties: {
-              ...history.state.package.document.finalSectionProperties,
-              ...props,
+    // Page setup apply handler
+    const handlePageSetupApply = useCallback(
+      (props: Partial<SectionProperties>) => {
+        if (readOnly) return;
+        const api = getCanonicalApi();
+        if (!api) {
+          refuseCanonicalModelEdit(
+            CANONICAL_GAP.sectionProperties,
+            "The editor is not ready for section changes.",
+          );
+          return;
+        }
+        const result = api.applyCanonicalSectionProperties(props);
+        if (result !== null) return;
+        if (!history.state || readOnly) {
+          return;
+        }
+        const newDoc = {
+          ...history.state,
+          package: {
+            ...history.state.package,
+            document: {
+              ...history.state.package.document,
+              finalSectionProperties: {
+                ...history.state.package.document.finalSectionProperties,
+                ...props,
+              },
             },
           },
-        },
-      };
-      handleDocumentChange(newDoc);
-    },
-    [history.state, readOnly, handleDocumentChange, getCanonicalApi, refuseCanonicalModelEdit],
-  );
+        };
+        handleDocumentChange(newDoc);
+      },
+      [
+        history.state,
+        readOnly,
+        handleDocumentChange,
+        getCanonicalApi,
+        refuseCanonicalModelEdit,
+      ],
+    );
 
-  // Ruler drag handlers. Page-margin drags go through the section-properties
-  // updater so they land in undo/redo; paragraph indent and tab-stop changes
-  // dispatch through the active editor view (ported from docx-editor's
-  // usePageSetupControls).
-  const handleLeftMarginChange = useCallback(
-    (twips: number) => handlePageSetupApply({ marginLeft: twips }),
-    [handlePageSetupApply],
-  );
-  const handleRightMarginChange = useCallback(
-    (twips: number) => handlePageSetupApply({ marginRight: twips }),
-    [handlePageSetupApply],
-  );
-  const handleTopMarginChange = useCallback(
-    (twips: number) => handlePageSetupApply({ marginTop: twips }),
-    [handlePageSetupApply],
-  );
-  const handleBottomMarginChange = useCallback(
-    (twips: number) => handlePageSetupApply({ marginBottom: twips }),
-    [handlePageSetupApply],
-  );
-  const handleIndentLeftChange = useCallback(
-    (twips: number) => {
-      const view = getActiveEditorView();
-      if (!view) return;
-      setIndentLeft(twips)(view.state, view.dispatch);
-    },
-    [getActiveEditorView],
-  );
-  const handleIndentRightChange = useCallback(
-    (twips: number) => {
-      const view = getActiveEditorView();
-      if (!view) return;
-      setIndentRight(twips)(view.state, view.dispatch);
-    },
-    [getActiveEditorView],
-  );
-  const handleFirstLineIndentChange = useCallback(
-    (twips: number) => {
-      const view = getActiveEditorView();
-      if (!view) return;
-      // Negative twips encode a hanging indent.
-      if (twips < 0) {
-        setIndentFirstLine(-twips, true)(view.state, view.dispatch);
-      } else {
-        setIndentFirstLine(twips, false)(view.state, view.dispatch);
-      }
-    },
-    [getActiveEditorView],
-  );
-  const handleTabStopRemove = useCallback(
-    (positionTwips: number) => {
-      const view = getActiveEditorView();
-      if (!view) return;
-      removeTabStop(positionTwips)(view.state, view.dispatch);
-    },
-    [getActiveEditorView],
-  );
-
-  const serializeCurrentDocx = useCallback(
-    async (options?: FolioGetDocxOptions): Promise<ArrayBuffer | null> => {
-      let tripwireResult: Parameters<NonNullable<typeof onSelectiveSaveTripwire>>[0] | null = null;
-      let savedBuffer: ArrayBuffer | null = null;
-
-      try {
-        const editor = pagedEditorRef.current?.getEditor();
-        const snapshot = editor?.captureCanonicalSave();
-        if (snapshot && editor) {
-          const view = editor.getView();
-          const editorState = view?.state;
-          const result = await serializeCanonicalSave({ snapshot, options, featureFlags });
-          for (const diagnostic of result.diagnostics) {
-            if (!options?.onDiagnostic)
-              onError?.(
-                new CanonicalSaveDiagnosticError({
-                  gap: CANONICAL_GAP.save,
-                  diagnostic,
-                  message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-                }),
-              );
-          }
-          tripwireResult = result.tripwireResult;
-          // Keep the parsed baseline: canonical touched ids are cumulative against it.
-          if (
-            view &&
-            pagedEditorRef.current?.getEditor() === editor &&
-            editor.getView() === view &&
-            view.state.doc === editorState?.doc &&
-            editor.isCanonicalSaveCurrent(snapshot.version)
-          ) {
-            view.dispatch(clearTrackedChanges(view.state));
-          }
-          savedBuffer = result.buffer;
+    // Ruler drag handlers. Page-margin drags go through the section-properties
+    // updater so they land in undo/redo; paragraph indent and tab-stop changes
+    // dispatch through the active editor view (ported from docx-editor's
+    // usePageSetupControls).
+    const handleLeftMarginChange = useCallback(
+      (twips: number) => handlePageSetupApply({ marginLeft: twips }),
+      [handlePageSetupApply],
+    );
+    const handleRightMarginChange = useCallback(
+      (twips: number) => handlePageSetupApply({ marginRight: twips }),
+      [handlePageSetupApply],
+    );
+    const handleTopMarginChange = useCallback(
+      (twips: number) => handlePageSetupApply({ marginTop: twips }),
+      [handlePageSetupApply],
+    );
+    const handleBottomMarginChange = useCallback(
+      (twips: number) => handlePageSetupApply({ marginBottom: twips }),
+      [handlePageSetupApply],
+    );
+    const handleIndentLeftChange = useCallback(
+      (twips: number) => {
+        const view = getActiveEditorView();
+        if (!view) return;
+        setIndentLeft(twips)(view.state, view.dispatch);
+      },
+      [getActiveEditorView],
+    );
+    const handleIndentRightChange = useCallback(
+      (twips: number) => {
+        const view = getActiveEditorView();
+        if (!view) return;
+        setIndentRight(twips)(view.state, view.dispatch);
+      },
+      [getActiveEditorView],
+    );
+    const handleFirstLineIndentChange = useCallback(
+      (twips: number) => {
+        const view = getActiveEditorView();
+        if (!view) return;
+        // Negative twips encode a hanging indent.
+        if (twips < 0) {
+          setIndentFirstLine(-twips, true)(view.state, view.dispatch);
         } else {
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) return null;
+          setIndentFirstLine(twips, false)(view.state, view.dispatch);
+        }
+      },
+      [getActiveEditorView],
+    );
+    const handleTabStopRemove = useCallback(
+      (positionTwips: number) => {
+        const view = getActiveEditorView();
+        if (!view) return;
+        removeTabStop(positionTwips)(view.state, view.dispatch);
+      },
+      [getActiveEditorView],
+    );
+
+    const serializeCurrentDocx = useCallback(
+      async (options?: FolioGetDocxOptions): Promise<ArrayBuffer | null> => {
+        let tripwireResult:
+          Parameters<NonNullable<typeof onSelectiveSaveTripwire>>[0] | null =
+          null;
+        let savedBuffer: ArrayBuffer | null = null;
+
+        try {
+          const editor = pagedEditorRef.current?.getEditor();
+          const snapshot = editor?.captureCanonicalSave();
+          if (snapshot && editor) {
+            const view = editor.getView();
+            const editorState = view?.state;
+            const result = await serializeCanonicalSave({
+              snapshot,
+              options,
+              featureFlags,
+            });
+            for (const diagnostic of result.diagnostics) {
+              if (!options?.onDiagnostic)
+                onError?.(
+                  new CanonicalSaveDiagnosticError({
+                    gap: CANONICAL_GAP.save,
+                    diagnostic,
+                    message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
+                  }),
+                );
+            }
+            tripwireResult = result.tripwireResult;
+            // Keep the parsed baseline: canonical touched ids are cumulative against it.
+            if (
+              view &&
+              pagedEditorRef.current?.getEditor() === editor &&
+              editor.getView() === view &&
+              view.state.doc === editorState?.doc &&
+              editor.isCanonicalSaveCurrent(snapshot.version)
+            ) {
+              view.dispatch(clearTrackedChanges(view.state));
+            }
+            savedBuffer = result.buffer;
+          } else {
+            if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save))
+              return null;
+            const view = pagedEditorRef.current?.getView();
+            const editorState = view?.state;
+            const baselineBuffer = originalBufferRef.current;
+            // Build the current document from the selected session. A note goes with its
+            // reference: one nothing refers to any more is not saved.
+            const current = buildCurrentDocument();
+            const doc = current ? withoutUnreferencedNotes(current) : null;
+            if (!doc) {
+              return null;
+            }
+
+            const { resolveSelectiveSaveFlags } =
+              await import("@stll/folio-core/docx/selectiveSaveFlags");
+            const flags = resolveSelectiveSaveFlags(featureFlags);
+
+            // The tripwire observes the selective path independently from the
+            // user-visible save mode. Only `useSelectiveForSave` is allowed to
+            // choose the returned bytes.
+            const useSelectiveForSave =
+              flags.selectiveSave &&
+              options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
+            const shouldAttemptSelective =
+              useSelectiveForSave || flags.selectiveSaveTripwire;
+            let selectiveBuffer: ArrayBuffer | null = null;
+
+            if (shouldAttemptSelective && editorState && baselineBuffer) {
+              const attemptSelectiveSave = await loadAttemptSelectiveSave();
+              selectiveBuffer = await attemptSelectiveSave(
+                doc,
+                baselineBuffer,
+                {
+                  changedParaIds: getChangedParagraphIds(editorState),
+                  structuralChange: hasStructuralChanges(editorState),
+                  hasUntrackedChanges: hasUntrackedChanges(editorState),
+                  maxBytes: flags.selectiveSaveMaxBytes,
+                },
+              );
+            }
+
+            let buffer: ArrayBuffer | null = useSelectiveForSave
+              ? selectiveBuffer
+              : null;
+            let fullBuffer: ArrayBuffer | null = null;
+            const repackSourceDoc = baselineBuffer
+              ? { ...doc, originalBuffer: baselineBuffer }
+              : doc;
+            // A section the editor removed on purpose (its ending paragraph
+            // deleted, or that deletion accepted) is one the repack must be told
+            // about, or it refuses the smaller package.
+            const repackFull = async (): Promise<ArrayBuffer> => {
+              const repackDocx = await loadRepackDocx();
+              const repack = () => repackDocx(repackSourceDoc);
+              return editorState
+                ? repackWithEditorSectionRemovals({
+                    state: editorState,
+                    document: repackSourceDoc,
+                    repack,
+                  })
+                : repack();
+            };
+
+            if (!buffer) {
+              fullBuffer = await repackFull();
+              buffer = fullBuffer;
+            } else if (flags.selectiveSaveTripwire) {
+              try {
+                fullBuffer = await repackFull();
+              } catch {
+                // Tripwire-only full repack failures must never poison a
+                // successful selective save.
+              }
+            }
+
+            if (
+              flags.selectiveSaveTripwire &&
+              fullBuffer &&
+              onSelectiveSaveTripwire
+            ) {
+              // The comparison itself never blocks the save path. The host
+              // callback runs after the save try/catch so test harnesses may fail
+              // on mismatches by throwing.
+              try {
+                const { compareSelectiveVsFull } =
+                  await import("@stll/folio-core/docx/selectiveSaveTripwire");
+                tripwireResult = await compareSelectiveVsFull(
+                  selectiveBuffer,
+                  fullBuffer,
+                );
+              } catch {
+                // Comparison failures must never poison the save path.
+              }
+            }
+
+            // Clear change tracker after successful save
+            if (
+              view &&
+              pagedEditorRef.current?.getView() === view &&
+              view.state.doc === editorState?.doc
+            ) {
+              originalBufferRef.current = buffer;
+              view.dispatch(clearTrackedChanges(view.state));
+            }
+            savedBuffer = buffer;
+          }
+        } catch (error) {
+          onError?.(
+            error instanceof Error
+              ? error
+              : new Error("Failed to save document"),
+          );
+          return null;
+        }
+
+        if (tripwireResult && onSelectiveSaveTripwire) {
+          onSelectiveSaveTripwire(tripwireResult);
+        }
+        return savedBuffer;
+      },
+      [
+        buildCurrentDocument,
+        onError,
+        originalBufferRef,
+        featureFlags,
+        onSelectiveSaveTripwire,
+        experimentalSession,
+      ],
+    );
+
+    // Host-facing save keeps callback and dirty-state policy outside the
+    // framework-neutral controller's side-effect-free serialization method.
+    const handleSave = useCallback(
+      async (options?: {
+        selective?: boolean;
+      }): Promise<ArrayBuffer | null> => {
+        const editor = pagedEditorRef.current?.getEditor();
+        const serializationOptions = {
+          mode:
+            options?.selective === false
+              ? FOLIO_DOCX_SERIALIZATION_MODE.full
+              : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
+        } as const satisfies FolioGetDocxOptions;
+        const buffer = editor
+          ? await editor.getDocx(serializationOptions)
+          : await serializeCurrentDocx(serializationOptions);
+        if (!buffer) {
+          return null;
+        }
+        setCommentsDirty(false);
+        onSave?.(buffer);
+        return buffer;
+      },
+      [setCommentsDirty, onSave, serializeCurrentDocx],
+    );
+
+    const documentIO = useMemo(
+      () => ({
+        getDocx: serializeCurrentDocx,
+        loadDocument: loadParsedDocument,
+        loadDocx: loadBuffer,
+      }),
+      [loadBuffer, loadParsedDocument, serializeCurrentDocx],
+    );
+
+    // Handle error from editor
+    const handleEditorError = useCallback(
+      (error: Error) => {
+        if (CanonicalSessionRefusalError.is(error)) toast(error.message);
+        onError?.(error);
+      },
+      [onError],
+    );
+
+    // Expose ref methods
+    useImperativeHandle(
+      ref,
+      () => ({
+        getReadOnlyReason: () => readOnlyReason,
+        getDocument: () => buildCurrentDocument(),
+        find: (searchText, options) =>
+          handleFind(searchText, { ...createDefaultFindOptions(), ...options }),
+        findNext: handleFindNext,
+        findPrevious: handleFindPrevious,
+        getFindResult,
+        clearFind: resetFindResult,
+        hasPendingChanges: () => {
           const view = pagedEditorRef.current?.getView();
-          const editorState = view?.state;
-          const baselineBuffer = originalBufferRef.current;
-          // Build the current document from the selected session. A note goes with its
-          // reference: one nothing refers to any more is not saved.
-          const current = buildCurrentDocument();
-          const doc = current ? withoutUnreferencedNotes(current) : null;
-          if (!doc) {
+          if (!view) {
+            return false;
+          }
+          return (
+            getCommentsDirty() ||
+            getChangedParagraphIds(view.state).size > 0 ||
+            hasStructuralChanges(view.state) ||
+            hasUntrackedChanges(view.state)
+          );
+        },
+        getEditorRef: () => pagedEditorRef.current,
+        getEditor: () => pagedEditorRef.current?.getEditor() ?? null,
+        save: handleSave,
+        setZoom: setZoomWithViewportAnchor,
+        getZoom: () => zoomRef.current,
+        focus: () => {
+          pagedEditorRef.current?.focus();
+        },
+        getCurrentPage: () => scrollPageInfo.currentPage,
+        getTotalPages: () => scrollPageInfo.totalPages,
+        scrollToPage: (pageNumber: number) => {
+          pagedEditorRef.current?.scrollToPage(pageNumber);
+        },
+        scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) =>
+          pagedEditorRef.current?.scrollToParaId(paraId, options) ?? false,
+        openPrintPreview: handleDirectPrint,
+        print: handleDirectPrint,
+        openFind: () => {
+          openFind(readFindSelectionSeed());
+        },
+        openReplace: () => {
+          if (readOnlyReason) {
+            notifyReadonlyEditAttempt();
+            return;
+          }
+          openReplace(readFindSelectionSeed());
+        },
+        loadDocument: (document) => {
+          pendingSuggestionRegistryRef.current.clear();
+          const editor = pagedEditorRef.current?.getEditor();
+          if (editor) {
+            editor.loadDocument(document);
+            return;
+          }
+          loadParsedDocument(document);
+        },
+        loadDocumentBuffer: (buffer) => {
+          pendingSuggestionRegistryRef.current.clear();
+          return (
+            pagedEditorRef.current?.getEditor().loadDocx(buffer) ??
+            loadBuffer(buffer)
+          );
+        },
+        ensureEditorView: (options?: { focus?: boolean }) => {
+          pagedEditorRef.current?.ensureView(options);
+        },
+        createAIEditSnapshot: () => {
+          const view = pagedEditorRef.current?.getView();
+          return view ? createFolioAIEditSnapshot(view.state.doc) : null;
+        },
+        applyDocumentOperations: ({
+          undefinedReferences,
+          snapshot,
+          batch,
+          author: operationAuthor = author,
+        }) => {
+          assertSupportedFolioDocumentOperationVersion(batch.version);
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            let status: FolioDocumentOperationStatus = "committed";
+            if (batch.dryRun === true) {
+              status = "previewed";
+            } else if (batch.atomic === true) {
+              status = "rejected";
+            }
+            const skipped = batch.operations.map((operation) => ({
+              id: operation.id,
+              reason: "unsupportedBlock" as const,
+            }));
+            return {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              status,
+              applied: [],
+              skipped,
+              issues: getFolioDocumentOperationIssues(
+                batch.operations,
+                skipped,
+              ),
+              receipts: [],
+              undoHandle: null,
+            };
+          }
+
+          const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
+            {
+              undefinedReferences,
+              snapshot,
+              batch,
+              author: operationAuthor,
+            },
+          );
+          if (canonical) return canonical;
+          const existingUndoEntry =
+            documentOperationUndoEntriesRef.current.at(-1);
+          if (
+            existingUndoEntry &&
+            (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
+              canonicalJson(commentsRef.current) !==
+                existingUndoEntry.commentsAfterJson)
+          ) {
+            documentOperationUndoEntriesRef.current.length = 0;
+          }
+          const commentsBefore = commentsRef.current;
+          const createdComments: Comment[] = [];
+          const operationView = {
+            state: view.state,
+            dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
+              view.dispatch(closeHistory(transaction));
+              operationView.state = view.state;
+            },
+          };
+          const activeSuggestionIds = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
+          const result = applyFolioDocumentOperations({
+            undefinedReferences,
+            view: operationView,
+            snapshot,
+            batch,
+            author: operationAuthor,
+            createCommentId: (text) => {
+              const comment = createComment(text, operationAuthor);
+              createdComments.push(comment);
+              return comment.id;
+            },
+            createUndoHandle: () => ({
+              type: "documentOperationUndo",
+              id: `react-${String(documentOperationUndoHandleCursor++)}`,
+            }),
+          });
+
+          if (batch.mode === "suggested" && result.status === "committed") {
+            pendingSuggestionRegistryRef.current.recordApplied({
+              snapshot,
+              story: { type: "main" },
+              operations: batch.operations,
+              applied: result.applied,
+              author: operationAuthor,
+              activeSuggestionIds,
+            });
+          }
+
+          const batchComments = appliedOperationComments(
+            createdComments,
+            result.applied,
+          );
+          const commentsAfter =
+            batchComments.length > 0
+              ? [...commentsRef.current, ...batchComments]
+              : commentsRef.current;
+          if (batchComments.length > 0) replaceComments(commentsAfter);
+
+          if (result.undoHandle !== null) {
+            documentOperationUndoEntriesRef.current.push({
+              undoHandle: result.undoHandle,
+              afterState: view.state,
+              commentsBefore,
+              commentsAfterJson: canonicalJson(commentsAfter),
+            });
+          }
+
+          return result;
+        },
+        undoDocumentOperations: (
+          undoHandle,
+        ): FolioDocumentOperationUndoResult => {
+          const canonical =
+            getCanonicalApi()?.undoCanonicalDocumentOperations(undoHandle);
+          if (canonical) return canonical;
+          const entries = documentOperationUndoEntriesRef.current;
+          const entryIndex = entries.findIndex(
+            (entry) =>
+              entry.undoHandle.type === undoHandle.type &&
+              entry.undoHandle.id === undoHandle.id,
+          );
+          if (entryIndex === -1) {
+            return { status: "rejected", undoHandle, reason: "unknownHandle" };
+          }
+          if (entryIndex !== entries.length - 1) {
+            return { status: "rejected", undoHandle, reason: "notLatest" };
+          }
+
+          const entry = entries.at(-1);
+          const view = pagedEditorRef.current?.getView();
+          if (!entry || !view) {
+            return { status: "rejected", undoHandle, reason: "unknownHandle" };
+          }
+          if (
+            !view.state.doc.eq(entry.afterState.doc) ||
+            canonicalJson(commentsRef.current) !== entry.commentsAfterJson
+          ) {
+            return {
+              status: "rejected",
+              undoHandle,
+              reason: "documentChanged",
+            };
+          }
+          // Undo directly against the body view we just validated, rather than
+          // `pagedEditorRef.current.undo()`, which routes to whatever story
+          // (header/footer/note) currently has editor focus. Dispatching on
+          // `view` here is equivalent to what the routed undo would do when the
+          // body is active, but it can never accidentally undo an edit in a
+          // different story while reporting this AI operation as undone.
+          if (!historyUndo(view.state, view.dispatch)) {
+            return {
+              status: "rejected",
+              undoHandle,
+              reason: "documentChanged",
+            };
+          }
+
+          replaceComments(entry.commentsBefore);
+          entries.pop();
+          requestAnimationFrame(refreshBodyHistoryAvailability);
+          return { status: "undone", undoHandle };
+        },
+        applyAIEditOperations: ({
+          undefinedReferences,
+          snapshot,
+          operations,
+          mode = "tracked-changes",
+          author: operationAuthor = author,
+        }) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return {
+              applied: [],
+              skipped: operations.map((operation) => ({
+                id: operation.id,
+                reason: "unsupportedBlock",
+              })),
+            };
+          }
+
+          const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
+            {
+              undefinedReferences,
+              snapshot,
+              batch: {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                operations,
+                mode,
+              },
+              author: operationAuthor,
+            },
+          );
+          if (canonical) return canonical;
+
+          const createdComments: Comment[] = [];
+          const activeSuggestionIds = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
+          const { applied, skipped } = applyFolioDocumentOperations({
+            undefinedReferences,
+            view,
+            snapshot,
+            batch: {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations,
+              mode,
+            },
+            author: operationAuthor,
+            createCommentId: (text) => {
+              const comment = createComment(text, operationAuthor);
+              createdComments.push(comment);
+              return comment.id;
+            },
+          });
+
+          const batchComments = appliedOperationComments(
+            createdComments,
+            applied,
+          );
+          if (batchComments.length > 0) {
+            updateComments((currentComments) => [
+              ...currentComments,
+              ...batchComments,
+            ]);
+          }
+
+          if (mode === "suggested") {
+            pendingSuggestionRegistryRef.current.recordApplied({
+              snapshot,
+              story: { type: "main" },
+              operations,
+              applied,
+              author: operationAuthor,
+              activeSuggestionIds,
+            });
+          }
+
+          return { applied, skipped };
+        },
+        acceptAIEditOperation: (revisionId) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const editor = pagedEditorRef.current?.getEditor();
+          if (editor?.getCanonicalDocument()) {
+            return editor.resolveCanonicalRevisions(
+              typeof revisionId === "number" ? [revisionId] : revisionId,
+              "accept",
+            );
+          }
+          return acceptAIEditRevision(revisionId)(view.state, view.dispatch);
+        },
+        rejectAIEditOperation: (revisionId) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const editor = pagedEditorRef.current?.getEditor();
+          if (editor?.getCanonicalDocument()) {
+            return editor.resolveCanonicalRevisions(
+              typeof revisionId === "number" ? [revisionId] : revisionId,
+              "reject",
+            );
+          }
+          return rejectAIEditRevision(revisionId)(view.state, view.dispatch);
+        },
+        // In-place undo/redo of the last history-recorded edit (e.g. an
+        // accept/reject resolution), routed to the active surface — the inline
+        // header/footer editor when one is being edited, otherwise the body.
+        // Mirrors `undoActiveEditor`/`redoActiveEditor` but returns the
+        // prosemirror-history result so a host can tell whether anything was
+        // reversed. Notes take precedence during the brief transition that
+        // saves and closes an active header/footer. Ports upstream docx-editor
+        // ff971a7b.
+        undo: () => {
+          if (
+            !usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            ) &&
+            getActiveEditorStory().type === "headerFooter" &&
+            hfEditorRef.current
+          ) {
+            return hfEditorRef.current.undo();
+          }
+          const undone = pagedEditorRef.current?.undo() ?? false;
+          requestAnimationFrame(refreshBodyHistoryAvailability);
+          return undone;
+        },
+        redo: () => {
+          if (
+            !usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            ) &&
+            getActiveEditorStory().type === "headerFooter" &&
+            hfEditorRef.current
+          ) {
+            return hfEditorRef.current.redo();
+          }
+          const redone = pagedEditorRef.current?.redo() ?? false;
+          requestAnimationFrame(refreshBodyHistoryAvailability);
+          return redone;
+        },
+        scrollToAIEditOperation: (revisionId) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const range = findAIEditRevisionRange(view.state, revisionId);
+          if (!range) {
+            return false;
+          }
+          // `TextSelection.between` clamps to the nearest valid inline
+          // position; `create` throws "endpoint not pointing into a node
+          // with inline content" when from/to land on a block boundary,
+          // which is exactly what happens for marks that wrap an entire
+          // paragraph. `clampRangeToDocSize` is a defensive guard against
+          // a revision range whose endpoints fell past the doc end after
+          // concurrent edits.
+          const { from, to } = clampRangeToDocSize(
+            view.state.doc.content.size,
+            range,
+          );
+          const $from = view.state.doc.resolve(from);
+          const $to = view.state.doc.resolve(to);
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.between($from, $to)),
+          );
+          requestAnimationFrame(() => {
+            pagedEditorRef.current?.scrollToPosition(from);
+          });
+          return true;
+        },
+        scrollToBlock: (blockId, snapshot) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          // ParaId-backed ids resolve against the live document so
+          // queued suggestions still navigate correctly after earlier
+          // accepts insert or delete paragraphs above them. `seq-*`
+          // fallback ids keep using the snapshot the AI saw.
+          const range = resolveFolioAIBlockRange({
+            blockId,
+            doc: view.state.doc,
+            snapshot,
+          });
+          if (range === null) {
+            return false;
+          }
+          const { from, to } = range;
+          const $from = view.state.doc.resolve(from);
+          const $to = view.state.doc.resolve(to);
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.between($from, $to)),
+          );
+          requestAnimationFrame(() => {
+            pagedEditorRef.current?.scrollToPosition(from);
+          });
+          return true;
+        },
+        highlightPassage: ({ blockId, text, snapshot }) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return "none";
+          }
+          const passageRange = resolvePassageRange({
+            blockId,
+            text,
+            doc: view.state.doc,
+            snapshot,
+          });
+          if (passageRange !== null) {
+            // Passage matched: paint the range and scroll to it, but do NOT move
+            // the PM selection (unlike scrollToBlock) so the persistent highlight
+            // is not confused with a live selection.
+            pagedEditorRef.current?.setPassageHighlight(passageRange);
+            requestAnimationFrame(() => {
+              pagedEditorRef.current?.scrollToPosition(passageRange.from);
+            });
+            return "passage";
+          }
+          // Text did not match. Drop any prior passage highlight and fall back to
+          // the scroll-to-block behavior (scroll + whole-paragraph flash where a
+          // paraId exists), matching `scrollToBlock`.
+          pagedEditorRef.current?.setPassageHighlight(null);
+          const blockRange = resolveFolioAIBlockRange({
+            blockId,
+            doc: view.state.doc,
+            snapshot,
+          });
+          if (blockRange === null) {
+            return "none";
+          }
+          const paraId = getFolioParaIdFromBlockId(blockId);
+          if (
+            paraId !== null &&
+            pagedEditorRef.current?.scrollToParaId(paraId, { highlight: {} })
+          ) {
+            return "block";
+          }
+          // A `seq-*` id (or a paraId no longer in the live doc) has no paragraph
+          // to flash; scroll to the resolved block without a flash.
+          const { from, to } = blockRange;
+          const $from = view.state.doc.resolve(from);
+          const $to = view.state.doc.resolve(to);
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.between($from, $to)),
+          );
+          requestAnimationFrame(() => {
+            pagedEditorRef.current?.scrollToPosition(from);
+          });
+          return "block";
+        },
+        clearPassageHighlight: () => {
+          pagedEditorRef.current?.setPassageHighlight(null);
+        },
+        showInDocument: (target, snapshot) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const range =
+            target.type === "textRange"
+              ? resolveFolioAITextRange({
+                  range: target,
+                  doc: view.state.doc,
+                  snapshot,
+                })
+              : resolveFolioAIBlockRange({
+                  blockId: target.blockId,
+                  doc: view.state.doc,
+                  snapshot,
+                });
+          if (range === null) {
+            return false;
+          }
+          const { from, to } = range;
+          const $from = view.state.doc.resolve(from);
+          const $to = view.state.doc.resolve(to);
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.between($from, $to)),
+          );
+          requestAnimationFrame(() => {
+            pagedEditorRef.current?.scrollToPosition(from);
+          });
+          return true;
+        },
+        getSuggestions: () => {
+          const view = pagedEditorRef.current?.getView();
+          return view ? getSuggestions(view.state) : [];
+        },
+        exportPendingSuggestions: () => {
+          const view = pagedEditorRef.current?.getView();
+          const activeIds = new Set(
+            view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
+          );
+          return pendingSuggestionRegistryRef.current.exportPendingSuggestions({
+            activeSuggestionIds: activeIds,
+            snapshotForStory: (story, commentIds) =>
+              story.type === "main" && view
+                ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+                : null,
+          });
+        },
+        loadPendingSuggestions: (records) =>
+          pendingSuggestionRegistryRef.current.loadPendingSuggestions({
+            records,
+            snapshotForStory: (story) => {
+              const view = pagedEditorRef.current?.getView();
+              return story.type === "main" && view
+                ? createFolioAIEditSnapshot(view.state.doc)
+                : null;
+            },
+            sourceSnapshotForStory: (story, commentIds) => {
+              const view = pagedEditorRef.current?.getView();
+              return story.type === "main" && view
+                ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+                : null;
+            },
+            apply: (record, snapshot) => {
+              const view = pagedEditorRef.current?.getView();
+              if (!view) return { applied: [], skipped: [] };
+              const canonical =
+                getCanonicalApi()?.applyCanonicalDocumentOperations({
+                  undefinedReferences: "refuse",
+                  snapshot,
+                  batch: {
+                    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                    operations: [record.operation],
+                    mode: "suggested",
+                  },
+                  author: record.author,
+                });
+              if (canonical) return canonical;
+              const createdComments: Comment[] = [];
+              const result = applyFolioDocumentOperations({
+                undefinedReferences: "refuse",
+                view,
+                snapshot,
+                batch: {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  operations: [record.operation],
+                  mode: "suggested",
+                },
+                author: record.author,
+                createCommentId: (commentText) => {
+                  const comment = createComment(commentText, record.author);
+                  createdComments.push(comment);
+                  return comment.id;
+                },
+              });
+              const appliedComments = appliedOperationComments(
+                createdComments,
+                result.applied,
+              );
+              if (appliedComments.length > 0) {
+                updateComments((currentComments) => [
+                  ...currentComments,
+                  ...appliedComments,
+                ]);
+              }
+              return { applied: result.applied, skipped: result.skipped };
+            },
+            activeSuggestionIds: () => {
+              const view = pagedEditorRef.current?.getView();
+              return new Set(
+                view
+                  ? getSuggestions(view.state).map((s) => s.suggestionId)
+                  : [],
+              );
+            },
+          }),
+        acceptSuggestion: (suggestionId, options) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return { accepted: false, appliedAs: null };
+          }
+          // Read how the suggestion applies (tracked vs direct) before it is
+          // resolved away, so the host can message the outcome.
+          const appliedAs =
+            getSuggestions(view.state).find(
+              (s) => s.suggestionId === suggestionId,
+            )?.appliedAs ?? null;
+          const accepted = acceptSuggestion(suggestionId, {
+            author: options?.author ?? author,
+          })(view.state, view.dispatch);
+          return { accepted, appliedAs: accepted ? appliedAs : null };
+        },
+        rejectSuggestion: (suggestionId) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          return rejectSuggestion(suggestionId)(view.state, view.dispatch);
+        },
+        scrollToSuggestion: (suggestionId) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const range = findSuggestionRange(view.state, suggestionId);
+          if (!range) {
+            return false;
+          }
+          // Reuse the revision scroll plumbing: clamp defensively, select the
+          // range, then scroll on the next frame (see scrollToAIEditOperation).
+          const { from, to } = clampRangeToDocSize(
+            view.state.doc.content.size,
+            range,
+          );
+          const $from = view.state.doc.resolve(from);
+          const $to = view.state.doc.resolve(to);
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.between($from, $to)),
+          );
+          requestAnimationFrame(() => {
+            pagedEditorRef.current?.scrollToPosition(from);
+          });
+          return true;
+        },
+        getTrackedChanges: () => {
+          const view = pagedEditorRef.current?.getView();
+          return view ? getTrackedChangesFromDoc(view.state.doc) : [];
+        },
+        getCommentAnchors: () => {
+          const view = pagedEditorRef.current?.getView();
+          return view ? getCommentAnchorsFromDoc(view.state.doc) : [];
+        },
+        getSelectionText: () => {
+          const view = pagedEditorRef.current?.getView();
+          return view ? getSelectedText(view.state) : "";
+        },
+        getPageText: (page: number) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
             return null;
           }
-
-          const { resolveSelectiveSaveFlags } =
-            await import("@stll/folio-core/docx/selectiveSaveFlags");
-          const flags = resolveSelectiveSaveFlags(featureFlags);
-
-          // The tripwire observes the selective path independently from the
-          // user-visible save mode. Only `useSelectiveForSave` is allowed to
-          // choose the returned bytes.
-          const useSelectiveForSave =
-            flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
-          const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
-          let selectiveBuffer: ArrayBuffer | null = null;
-
-          if (shouldAttemptSelective && editorState && baselineBuffer) {
-            const attemptSelectiveSave = await loadAttemptSelectiveSave();
-            selectiveBuffer = await attemptSelectiveSave(doc, baselineBuffer, {
-              changedParaIds: getChangedParagraphIds(editorState),
-              structuralChange: hasStructuralChanges(editorState),
-              hasUntrackedChanges: hasUntrackedChanges(editorState),
-              maxBytes: flags.selectiveSaveMaxBytes,
-            });
+          const layout =
+            pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
+          return getPageTextFromLayout({
+            layout,
+            doc: view.state.doc,
+            page,
+            projection: projectMarkupView(view.state, displayMode),
+          });
+        },
+        getTargetPage: (target, snapshot) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return null;
           }
-
-          let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
-          let fullBuffer: ArrayBuffer | null = null;
-          const repackSourceDoc = baselineBuffer ? { ...doc, originalBuffer: baselineBuffer } : doc;
-          // A section the editor removed on purpose (its ending paragraph
-          // deleted, or that deletion accepted) is one the repack must be told
-          // about, or it refuses the smaller package.
-          const repackFull = async (): Promise<ArrayBuffer> => {
-            const repackDocx = await loadRepackDocx();
-            const repack = () => repackDocx(repackSourceDoc);
-            return editorState
-              ? repackWithEditorSectionRemovals({
-                  state: editorState,
-                  document: repackSourceDoc,
-                  repack,
+          const range =
+            target.type === "textRange"
+              ? resolveFolioAITextRange({
+                  range: target,
+                  doc: view.state.doc,
+                  snapshot,
                 })
-              : repack();
-          };
-
-          if (!buffer) {
-            fullBuffer = await repackFull();
-            buffer = fullBuffer;
-          } else if (flags.selectiveSaveTripwire) {
-            try {
-              fullBuffer = await repackFull();
-            } catch {
-              // Tripwire-only full repack failures must never poison a
-              // successful selective save.
-            }
+              : resolveFolioAIBlockRange({
+                  blockId: target.blockId,
+                  doc: view.state.doc,
+                  snapshot,
+                });
+          if (range === null) {
+            return null;
           }
-
-          if (flags.selectiveSaveTripwire && fullBuffer && onSelectiveSaveTripwire) {
-            // The comparison itself never blocks the save path. The host
-            // callback runs after the save try/catch so test harnesses may fail
-            // on mismatches by throwing.
-            try {
-              const { compareSelectiveVsFull } =
-                await import("@stll/folio-core/docx/selectiveSaveTripwire");
-              tripwireResult = await compareSelectiveVsFull(selectiveBuffer, fullBuffer);
-            } catch {
-              // Comparison failures must never poison the save path.
-            }
+          return (
+            pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null
+          );
+        },
+        getBlockRect: (blockId) =>
+          pagedEditorRef.current?.getBlockRect(blockId) ?? null,
+        getBlockRects: (blockIds) =>
+          pagedEditorRef.current?.getBlockRects(blockIds) ?? new Map(),
+        getScrollRoot: () => pagedEditorRef.current?.getScrollRoot() ?? null,
+        onLayoutChange: (listener) =>
+          pagedEditorRef.current?.onLayoutChange(listener) ?? (() => {}),
+        getContentControls: (filter = {}) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return [];
           }
-
-          // Clear change tracker after successful save
-          if (
-            view &&
-            pagedEditorRef.current?.getView() === view &&
-            view.state.doc === editorState?.doc
-          ) {
-            originalBufferRef.current = buffer;
-            view.dispatch(clearTrackedChanges(view.state));
-          }
-          savedBuffer = buffer;
-        }
-      } catch (error) {
-        onError?.(error instanceof Error ? error : new Error("Failed to save document"));
-        return null;
-      }
-
-      if (tripwireResult && onSelectiveSaveTripwire) {
-        onSelectiveSaveTripwire(tripwireResult);
-      }
-      return savedBuffer;
-    },
-    [
-      buildCurrentDocument,
-      onError,
-      originalBufferRef,
-      featureFlags,
-      onSelectiveSaveTripwire,
-      experimentalSession,
-    ],
-  );
-
-  // Host-facing save keeps callback and dirty-state policy outside the
-  // framework-neutral controller's side-effect-free serialization method.
-  const handleSave = useCallback(
-    async (options?: { selective?: boolean }): Promise<ArrayBuffer | null> => {
-      const editor = pagedEditorRef.current?.getEditor();
-      const serializationOptions = {
-        mode:
-          options?.selective === false
-            ? FOLIO_DOCX_SERIALIZATION_MODE.full
-            : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
-      } as const satisfies FolioGetDocxOptions;
-      const buffer = editor
-        ? await editor.getDocx(serializationOptions)
-        : await serializeCurrentDocx(serializationOptions);
-      if (!buffer) {
-        return null;
-      }
-      setCommentsDirty(false);
-      onSave?.(buffer);
-      return buffer;
-    },
-    [setCommentsDirty, onSave, serializeCurrentDocx],
-  );
-
-  const documentIO = useMemo(
-    () => ({
-      getDocx: serializeCurrentDocx,
-      loadDocument: loadParsedDocument,
-      loadDocx: loadBuffer,
-    }),
-    [loadBuffer, loadParsedDocument, serializeCurrentDocx],
-  );
-
-  // Handle error from editor
-  const handleEditorError = useCallback(
-    (error: Error) => {
-      if (CanonicalSessionRefusalError.is(error)) toast(error.message);
-      onError?.(error);
-    },
-    [onError],
-  );
-
-  // Expose ref methods
-  useImperativeHandle(
-    ref,
-    () => ({
-      getReadOnlyReason: () => readOnlyReason,
-      getDocument: () => buildCurrentDocument(),
-      find: (searchText, options) =>
-        handleFind(searchText, { ...createDefaultFindOptions(), ...options }),
-      findNext: handleFindNext,
-      findPrevious: handleFindPrevious,
-      getFindResult,
-      clearFind: resetFindResult,
-      hasPendingChanges: () => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        return (
-          getCommentsDirty() ||
-          getChangedParagraphIds(view.state).size > 0 ||
-          hasStructuralChanges(view.state) ||
-          hasUntrackedChanges(view.state)
-        );
-      },
-      getEditorRef: () => pagedEditorRef.current,
-      getEditor: () => pagedEditorRef.current?.getEditor() ?? null,
-      save: handleSave,
-      setZoom: setZoomWithViewportAnchor,
-      getZoom: () => zoomRef.current,
-      focus: () => {
-        pagedEditorRef.current?.focus();
-      },
-      getCurrentPage: () => scrollPageInfo.currentPage,
-      getTotalPages: () => scrollPageInfo.totalPages,
-      scrollToPage: (pageNumber: number) => {
-        pagedEditorRef.current?.scrollToPage(pageNumber);
-      },
-      scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) =>
-        pagedEditorRef.current?.scrollToParaId(paraId, options) ?? false,
-      openPrintPreview: handleDirectPrint,
-      print: handleDirectPrint,
-      openFind: () => {
-        openFind(readFindSelectionSeed());
-      },
-      openReplace: () => {
-        if (readOnlyReason) {
-          notifyReadonlyEditAttempt();
-          return;
-        }
-        openReplace(readFindSelectionSeed());
-      },
-      loadDocument: (document) => {
-        pendingSuggestionRegistryRef.current.clear();
-        const editor = pagedEditorRef.current?.getEditor();
-        if (editor) {
-          editor.loadDocument(document);
-          return;
-        }
-        loadParsedDocument(document);
-      },
-      loadDocumentBuffer: (buffer) => {
-        pendingSuggestionRegistryRef.current.clear();
-        return pagedEditorRef.current?.getEditor().loadDocx(buffer) ?? loadBuffer(buffer);
-      },
-      ensureEditorView: (options?: { focus?: boolean }) => {
-        pagedEditorRef.current?.ensureView(options);
-      },
-      createAIEditSnapshot: () => {
-        const view = pagedEditorRef.current?.getView();
-        return view ? createFolioAIEditSnapshot(view.state.doc) : null;
-      },
-      applyDocumentOperations: ({
-        undefinedReferences,
-        snapshot,
-        batch,
-        author: operationAuthor = author,
-      }) => {
-        assertSupportedFolioDocumentOperationVersion(batch.version);
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          let status: FolioDocumentOperationStatus = "committed";
-          if (batch.dryRun === true) {
-            status = "previewed";
-          } else if (batch.atomic === true) {
-            status = "rejected";
-          }
-          const skipped = batch.operations.map((operation) => ({
-            id: operation.id,
-            reason: "unsupportedBlock" as const,
+          return findBlockSdtMatches(view.state.doc, filter).map((match) => ({
+            properties: blockSdtAttrsToSdtProperties(match.node),
+            path: match.path,
+            pmPos: match.pos,
           }));
-          return {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            status,
-            applied: [],
-            skipped,
-            issues: getFolioDocumentOperationIssues(batch.operations, skipped),
-            receipts: [],
-            undoHandle: null,
-          };
-        }
-
-        const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
-          undefinedReferences,
-          snapshot,
-          batch,
-          author: operationAuthor,
-        });
-        if (canonical) return canonical;
-        const existingUndoEntry = documentOperationUndoEntriesRef.current.at(-1);
-        if (
-          existingUndoEntry &&
-          (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
-            canonicalJson(commentsRef.current) !== existingUndoEntry.commentsAfterJson)
-        ) {
-          documentOperationUndoEntriesRef.current.length = 0;
-        }
-        const commentsBefore = commentsRef.current;
-        const createdComments: Comment[] = [];
-        const operationView = {
-          state: view.state,
-          dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
-            view.dispatch(closeHistory(transaction));
-            operationView.state = view.state;
-          },
-        };
-        const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
-        const result = applyFolioDocumentOperations({
-          undefinedReferences,
-          view: operationView,
-          snapshot,
-          batch,
-          author: operationAuthor,
-          createCommentId: (text) => {
-            const comment = createComment(text, operationAuthor);
-            createdComments.push(comment);
-            return comment.id;
-          },
-          createUndoHandle: () => ({
-            type: "documentOperationUndo",
-            id: `react-${String(documentOperationUndoHandleCursor++)}`,
-          }),
-        });
-
-        if (batch.mode === "suggested" && result.status === "committed") {
-          pendingSuggestionRegistryRef.current.recordApplied({
-            snapshot,
-            story: { type: "main" },
-            operations: batch.operations,
-            applied: result.applied,
-            author: operationAuthor,
-            activeSuggestionIds,
-          });
-        }
-
-        const batchComments = appliedOperationComments(createdComments, result.applied);
-        const commentsAfter =
-          batchComments.length > 0
-            ? [...commentsRef.current, ...batchComments]
-            : commentsRef.current;
-        if (batchComments.length > 0) replaceComments(commentsAfter);
-
-        if (result.undoHandle !== null) {
-          documentOperationUndoEntriesRef.current.push({
-            undoHandle: result.undoHandle,
-            afterState: view.state,
-            commentsBefore,
-            commentsAfterJson: canonicalJson(commentsAfter),
-          });
-        }
-
-        return result;
-      },
-      undoDocumentOperations: (undoHandle): FolioDocumentOperationUndoResult => {
-        const canonical = getCanonicalApi()?.undoCanonicalDocumentOperations(undoHandle);
-        if (canonical) return canonical;
-        const entries = documentOperationUndoEntriesRef.current;
-        const entryIndex = entries.findIndex(
-          (entry) =>
-            entry.undoHandle.type === undoHandle.type && entry.undoHandle.id === undoHandle.id,
-        );
-        if (entryIndex === -1) {
-          return { status: "rejected", undoHandle, reason: "unknownHandle" };
-        }
-        if (entryIndex !== entries.length - 1) {
-          return { status: "rejected", undoHandle, reason: "notLatest" };
-        }
-
-        const entry = entries.at(-1);
-        const view = pagedEditorRef.current?.getView();
-        if (!entry || !view) {
-          return { status: "rejected", undoHandle, reason: "unknownHandle" };
-        }
-        if (
-          !view.state.doc.eq(entry.afterState.doc) ||
-          canonicalJson(commentsRef.current) !== entry.commentsAfterJson
-        ) {
-          return { status: "rejected", undoHandle, reason: "documentChanged" };
-        }
-        // Undo directly against the body view we just validated, rather than
-        // `pagedEditorRef.current.undo()`, which routes to whatever story
-        // (header/footer/note) currently has editor focus. Dispatching on
-        // `view` here is equivalent to what the routed undo would do when the
-        // body is active, but it can never accidentally undo an edit in a
-        // different story while reporting this AI operation as undone.
-        if (!historyUndo(view.state, view.dispatch)) {
-          return { status: "rejected", undoHandle, reason: "documentChanged" };
-        }
-
-        replaceComments(entry.commentsBefore);
-        entries.pop();
-        requestAnimationFrame(refreshBodyHistoryAvailability);
-        return { status: "undone", undoHandle };
-      },
-      applyAIEditOperations: ({
-        undefinedReferences,
-        snapshot,
-        operations,
-        mode = "tracked-changes",
-        author: operationAuthor = author,
-      }) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return {
-            applied: [],
-            skipped: operations.map((operation) => ({
-              id: operation.id,
-              reason: "unsupportedBlock",
-            })),
-          };
-        }
-
-        const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
-          undefinedReferences,
-          snapshot,
-          batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
-          author: operationAuthor,
-        });
-        if (canonical) return canonical;
-
-        const createdComments: Comment[] = [];
-        const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
-        const { applied, skipped } = applyFolioDocumentOperations({
-          undefinedReferences,
-          view,
-          snapshot,
-          batch: {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            operations,
-            mode,
-          },
-          author: operationAuthor,
-          createCommentId: (text) => {
-            const comment = createComment(text, operationAuthor);
-            createdComments.push(comment);
-            return comment.id;
-          },
-        });
-
-        const batchComments = appliedOperationComments(createdComments, applied);
-        if (batchComments.length > 0) {
-          updateComments((currentComments) => [...currentComments, ...batchComments]);
-        }
-
-        if (mode === "suggested") {
-          pendingSuggestionRegistryRef.current.recordApplied({
-            snapshot,
-            story: { type: "main" },
-            operations,
-            applied,
-            author: operationAuthor,
-            activeSuggestionIds,
-          });
-        }
-
-        return { applied, skipped };
-      },
-      acceptAIEditOperation: (revisionId) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const editor = pagedEditorRef.current?.getEditor();
-        if (editor?.getCanonicalDocument()) {
-          return editor.resolveCanonicalRevisions(
-            typeof revisionId === "number" ? [revisionId] : revisionId,
-            "accept",
-          );
-        }
-        return acceptAIEditRevision(revisionId)(view.state, view.dispatch);
-      },
-      rejectAIEditOperation: (revisionId) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const editor = pagedEditorRef.current?.getEditor();
-        if (editor?.getCanonicalDocument()) {
-          return editor.resolveCanonicalRevisions(
-            typeof revisionId === "number" ? [revisionId] : revisionId,
-            "reject",
-          );
-        }
-        return rejectAIEditRevision(revisionId)(view.state, view.dispatch);
-      },
-      // In-place undo/redo of the last history-recorded edit (e.g. an
-      // accept/reject resolution), routed to the active surface — the inline
-      // header/footer editor when one is being edited, otherwise the body.
-      // Mirrors `undoActiveEditor`/`redoActiveEditor` but returns the
-      // prosemirror-history result so a host can tell whether anything was
-      // reversed. Notes take precedence during the brief transition that
-      // saves and closes an active header/footer. Ports upstream docx-editor
-      // ff971a7b.
-      undo: () => {
-        if (
-          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
-          getActiveEditorStory().type === "headerFooter" &&
-          hfEditorRef.current
-        ) {
-          return hfEditorRef.current.undo();
-        }
-        const undone = pagedEditorRef.current?.undo() ?? false;
-        requestAnimationFrame(refreshBodyHistoryAvailability);
-        return undone;
-      },
-      redo: () => {
-        if (
-          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
-          getActiveEditorStory().type === "headerFooter" &&
-          hfEditorRef.current
-        ) {
-          return hfEditorRef.current.redo();
-        }
-        const redone = pagedEditorRef.current?.redo() ?? false;
-        requestAnimationFrame(refreshBodyHistoryAvailability);
-        return redone;
-      },
-      scrollToAIEditOperation: (revisionId) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const range = findAIEditRevisionRange(view.state, revisionId);
-        if (!range) {
-          return false;
-        }
-        // `TextSelection.between` clamps to the nearest valid inline
-        // position; `create` throws "endpoint not pointing into a node
-        // with inline content" when from/to land on a block boundary,
-        // which is exactly what happens for marks that wrap an entire
-        // paragraph. `clampRangeToDocSize` is a defensive guard against
-        // a revision range whose endpoints fell past the doc end after
-        // concurrent edits.
-        const { from, to } = clampRangeToDocSize(view.state.doc.content.size, range);
-        const $from = view.state.doc.resolve(from);
-        const $to = view.state.doc.resolve(to);
-        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
-        requestAnimationFrame(() => {
-          pagedEditorRef.current?.scrollToPosition(from);
-        });
-        return true;
-      },
-      scrollToBlock: (blockId, snapshot) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        // ParaId-backed ids resolve against the live document so
-        // queued suggestions still navigate correctly after earlier
-        // accepts insert or delete paragraphs above them. `seq-*`
-        // fallback ids keep using the snapshot the AI saw.
-        const range = resolveFolioAIBlockRange({
-          blockId,
-          doc: view.state.doc,
-          snapshot,
-        });
-        if (range === null) {
-          return false;
-        }
-        const { from, to } = range;
-        const $from = view.state.doc.resolve(from);
-        const $to = view.state.doc.resolve(to);
-        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
-        requestAnimationFrame(() => {
-          pagedEditorRef.current?.scrollToPosition(from);
-        });
-        return true;
-      },
-      highlightPassage: ({ blockId, text, snapshot }) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return "none";
-        }
-        const passageRange = resolvePassageRange({
-          blockId,
-          text,
-          doc: view.state.doc,
-          snapshot,
-        });
-        if (passageRange !== null) {
-          // Passage matched: paint the range and scroll to it, but do NOT move
-          // the PM selection (unlike scrollToBlock) so the persistent highlight
-          // is not confused with a live selection.
-          pagedEditorRef.current?.setPassageHighlight(passageRange);
+        },
+        scrollToContentControl: (filter) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const match = findBlockSdtMatch(view.state.doc, filter);
+          if (!match) {
+            return false;
+          }
+          // Place selection just inside the SDT (after its opening token).
+          const inside = match.pos + 1;
+          const $pos = view.state.doc.resolve(inside);
+          view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)));
           requestAnimationFrame(() => {
-            pagedEditorRef.current?.scrollToPosition(passageRange.from);
+            pagedEditorRef.current?.scrollToPosition(inside);
           });
-          return "passage";
-        }
-        // Text did not match. Drop any prior passage highlight and fall back to
-        // the scroll-to-block behavior (scroll + whole-paragraph flash where a
-        // paraId exists), matching `scrollToBlock`.
-        pagedEditorRef.current?.setPassageHighlight(null);
-        const blockRange = resolveFolioAIBlockRange({
-          blockId,
-          doc: view.state.doc,
-          snapshot,
-        });
-        if (blockRange === null) {
-          return "none";
-        }
-        const paraId = getFolioParaIdFromBlockId(blockId);
-        if (paraId !== null && pagedEditorRef.current?.scrollToParaId(paraId, { highlight: {} })) {
-          return "block";
-        }
-        // A `seq-*` id (or a paraId no longer in the live doc) has no paragraph
-        // to flash; scroll to the resolved block without a flash.
-        const { from, to } = blockRange;
-        const $from = view.state.doc.resolve(from);
-        const $to = view.state.doc.resolve(to);
-        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
-        requestAnimationFrame(() => {
-          pagedEditorRef.current?.scrollToPosition(from);
-        });
-        return "block";
-      },
-      clearPassageHighlight: () => {
-        pagedEditorRef.current?.setPassageHighlight(null);
-      },
-      showInDocument: (target, snapshot) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const range =
-          target.type === "textRange"
-            ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
-            : resolveFolioAIBlockRange({
-                blockId: target.blockId,
-                doc: view.state.doc,
-                snapshot,
-              });
-        if (range === null) {
-          return false;
-        }
-        const { from, to } = range;
-        const $from = view.state.doc.resolve(from);
-        const $to = view.state.doc.resolve(to);
-        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
-        requestAnimationFrame(() => {
-          pagedEditorRef.current?.scrollToPosition(from);
-        });
-        return true;
-      },
-      getSuggestions: () => {
-        const view = pagedEditorRef.current?.getView();
-        return view ? getSuggestions(view.state) : [];
-      },
-      exportPendingSuggestions: () => {
-        const view = pagedEditorRef.current?.getView();
-        const activeIds = new Set(
-          view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
-        );
-        return pendingSuggestionRegistryRef.current.exportPendingSuggestions({
-          activeSuggestionIds: activeIds,
-          snapshotForStory: (story, commentIds) =>
-            story.type === "main" && view
-              ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
-              : null,
-        });
-      },
-      loadPendingSuggestions: (records) =>
-        pendingSuggestionRegistryRef.current.loadPendingSuggestions({
-          records,
-          snapshotForStory: (story) => {
-            const view = pagedEditorRef.current?.getView();
-            return story.type === "main" && view ? createFolioAIEditSnapshot(view.state.doc) : null;
-          },
-          sourceSnapshotForStory: (story, commentIds) => {
-            const view = pagedEditorRef.current?.getView();
-            return story.type === "main" && view
-              ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
-              : null;
-          },
-          apply: (record, snapshot) => {
-            const view = pagedEditorRef.current?.getView();
-            if (!view) return { applied: [], skipped: [] };
-            const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
-              undefinedReferences: "refuse",
-              snapshot,
-              batch: {
-                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-                operations: [record.operation],
-                mode: "suggested",
-              },
-              author: record.author,
-            });
-            if (canonical) return canonical;
-            const createdComments: Comment[] = [];
-            const result = applyFolioDocumentOperations({
-              undefinedReferences: "refuse",
-              view,
-              snapshot,
-              batch: {
-                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-                operations: [record.operation],
-                mode: "suggested",
-              },
-              author: record.author,
-              createCommentId: (commentText) => {
-                const comment = createComment(commentText, record.author);
-                createdComments.push(comment);
-                return comment.id;
-              },
-            });
-            const appliedComments = appliedOperationComments(createdComments, result.applied);
-            if (appliedComments.length > 0) {
-              updateComments((currentComments) => [...currentComments, ...appliedComments]);
-            }
-            return { applied: result.applied, skipped: result.skipped };
-          },
-          activeSuggestionIds: () => {
-            const view = pagedEditorRef.current?.getView();
-            return new Set(view ? getSuggestions(view.state).map((s) => s.suggestionId) : []);
-          },
-        }),
-      acceptSuggestion: (suggestionId, options) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return { accepted: false, appliedAs: null };
-        }
-        // Read how the suggestion applies (tracked vs direct) before it is
-        // resolved away, so the host can message the outcome.
-        const appliedAs =
-          getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)?.appliedAs ??
-          null;
-        const accepted = acceptSuggestion(suggestionId, { author: options?.author ?? author })(
-          view.state,
-          view.dispatch,
-        );
-        return { accepted, appliedAs: accepted ? appliedAs : null };
-      },
-      rejectSuggestion: (suggestionId) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        return rejectSuggestion(suggestionId)(view.state, view.dispatch);
-      },
-      scrollToSuggestion: (suggestionId) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const range = findSuggestionRange(view.state, suggestionId);
-        if (!range) {
-          return false;
-        }
-        // Reuse the revision scroll plumbing: clamp defensively, select the
-        // range, then scroll on the next frame (see scrollToAIEditOperation).
-        const { from, to } = clampRangeToDocSize(view.state.doc.content.size, range);
-        const $from = view.state.doc.resolve(from);
-        const $to = view.state.doc.resolve(to);
-        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
-        requestAnimationFrame(() => {
-          pagedEditorRef.current?.scrollToPosition(from);
-        });
-        return true;
-      },
-      getTrackedChanges: () => {
-        const view = pagedEditorRef.current?.getView();
-        return view ? getTrackedChangesFromDoc(view.state.doc) : [];
-      },
-      getCommentAnchors: () => {
-        const view = pagedEditorRef.current?.getView();
-        return view ? getCommentAnchorsFromDoc(view.state.doc) : [];
-      },
-      getSelectionText: () => {
-        const view = pagedEditorRef.current?.getView();
-        return view ? getSelectedText(view.state) : "";
-      },
-      getPageText: (page: number) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return null;
-        }
-        const layout = pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
-        return getPageTextFromLayout({
-          layout,
-          doc: view.state.doc,
-          page,
-          projection: projectMarkupView(view.state, displayMode),
-        });
-      },
-      getTargetPage: (target, snapshot) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return null;
-        }
-        const range =
-          target.type === "textRange"
-            ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
-            : resolveFolioAIBlockRange({
-                blockId: target.blockId,
-                doc: view.state.doc,
-                snapshot,
-              });
-        if (range === null) {
-          return null;
-        }
-        return pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null;
-      },
-      getBlockRect: (blockId) => pagedEditorRef.current?.getBlockRect(blockId) ?? null,
-      getBlockRects: (blockIds) => pagedEditorRef.current?.getBlockRects(blockIds) ?? new Map(),
-      getScrollRoot: () => pagedEditorRef.current?.getScrollRoot() ?? null,
-      onLayoutChange: (listener) => pagedEditorRef.current?.onLayoutChange(listener) ?? (() => {}),
-      getContentControls: (filter = {}) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return [];
-        }
-        return findBlockSdtMatches(view.state.doc, filter).map((match) => ({
-          properties: blockSdtAttrsToSdtProperties(match.node),
-          path: match.path,
-          pmPos: match.pos,
-        }));
-      },
-      scrollToContentControl: (filter) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const match = findBlockSdtMatch(view.state.doc, filter);
-        if (!match) {
-          return false;
-        }
-        // Place selection just inside the SDT (after its opening token).
-        const inside = match.pos + 1;
-        const $pos = view.state.doc.resolve(inside);
-        view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)));
-        requestAnimationFrame(() => {
-          pagedEditorRef.current?.scrollToPosition(inside);
-        });
-        return true;
-      },
-      setContentControlContent: (filter, input, options = {}) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const tr =
-          typeof input === "string"
-            ? setContentControlContentTr(view.state, filter, input, options)
-            : setContentControlContentBlocksTr(view.state, filter, input, options);
-        if (!tr) {
-          return false;
-        }
-        view.dispatch(tr);
-        return true;
-      },
-      setContentControlValue: (filter, input, options = {}) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const tr = setContentControlValueTr(view.state, filter, input, options);
-        if (!tr) {
-          return false;
-        }
-        view.dispatch(tr);
-        return true;
-      },
-      removeContentControl: (filter, options = {}) => {
-        const view = pagedEditorRef.current?.getView();
-        if (!view) {
-          return false;
-        }
-        const tr = removeContentControlTr(view.state, filter, options);
-        if (!tr) {
-          return false;
-        }
-        view.dispatch(tr);
-        return true;
-      },
-    }),
-    [
-      author,
-      buildCurrentDocument,
-      displayMode,
-      readOnlyReason,
-      notifyReadonlyEditAttempt,
-      scrollPageInfo,
-      handleFind,
-      handleFindNext,
-      handleFindPrevious,
-      getFindResult,
-      resetFindResult,
-      handleSave,
-      setZoomWithViewportAnchor,
-      zoomRef,
-      handleDirectPrint,
-      openFind,
-      openReplace,
-      getCanonicalApi,
-      loadParsedDocument,
-      loadBuffer,
-      updateComments,
-      replaceComments,
-      createComment,
-      commentsRef,
-      getCommentsDirty,
-      getActiveEditorStory,
-      refreshBodyHistoryAvailability,
-      experimentalSession,
-    ],
-  );
+          return true;
+        },
+        setContentControlContent: (filter, input, options = {}) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const tr =
+            typeof input === "string"
+              ? setContentControlContentTr(view.state, filter, input, options)
+              : setContentControlContentBlocksTr(
+                  view.state,
+                  filter,
+                  input,
+                  options,
+                );
+          if (!tr) {
+            return false;
+          }
+          view.dispatch(tr);
+          return true;
+        },
+        setContentControlValue: (filter, input, options = {}) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const tr = setContentControlValueTr(
+            view.state,
+            filter,
+            input,
+            options,
+          );
+          if (!tr) {
+            return false;
+          }
+          view.dispatch(tr);
+          return true;
+        },
+        removeContentControl: (filter, options = {}) => {
+          const view = pagedEditorRef.current?.getView();
+          if (!view) {
+            return false;
+          }
+          const tr = removeContentControlTr(view.state, filter, options);
+          if (!tr) {
+            return false;
+          }
+          view.dispatch(tr);
+          return true;
+        },
+      }),
+      [
+        author,
+        buildCurrentDocument,
+        displayMode,
+        readOnlyReason,
+        notifyReadonlyEditAttempt,
+        scrollPageInfo,
+        handleFind,
+        handleFindNext,
+        handleFindPrevious,
+        getFindResult,
+        resetFindResult,
+        handleSave,
+        setZoomWithViewportAnchor,
+        zoomRef,
+        handleDirectPrint,
+        openFind,
+        openReplace,
+        getCanonicalApi,
+        loadParsedDocument,
+        loadBuffer,
+        updateComments,
+        replaceComments,
+        createComment,
+        commentsRef,
+        getCommentsDirty,
+        getActiveEditorStory,
+        refreshBodyHistoryAvailability,
+        experimentalSession,
+      ],
+    );
 
-  // The display-mode Select derives its trigger label from `items` (Base UI),
-  // so feed it the same translated labels the popup renders. Memoized per
-  // locale (`t` is stable until the locale changes): the toolbar re-renders on
-  // every editor state change, and a fresh inline array would churn the Select
-  // subtree's props identity each time.
-  const displayModeItems = useMemo(
-    () => DISPLAY_MODES.map((mode) => ({ value: mode, label: t(DISPLAY_MODE_LABEL_KEYS[mode]) })),
-    [t],
-  );
-  const activeHistoryAvailability = (() => {
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-      return {
-        canRedo: bodyHistoryAvailability.canRedo,
-        canUndo: bodyHistoryAvailability.canUndo,
-      };
-    }
-    if (activeNoteStory) {
-      return {
-        canRedo: bodyHistoryAvailability.canRedo,
-        canUndo: bodyHistoryAvailability.canUndo,
-      };
-    }
-    if (hfEditPosition) {
-      return { canRedo: history.canRedo, canUndo: history.canUndo };
-    }
-    return bodyHistoryAvailability;
-  })();
-
-  const toolbarChildren = toolbarExtra ?? null;
-  const visibleCommentAuthorCount = commentAuthors.filter((commentAuthor) =>
-    visibleCommentAuthorSet.has(commentAuthor),
-  ).length;
-  const allCommentAuthorsVisible =
-    commentAuthors.length > 0 &&
-    showCommentsSidebar &&
-    visibleCommentAuthorCount === commentAuthors.length;
-  const commentVisibilityLabel =
-    visibleCommentAuthorCount === commentAuthors.length
-      ? t("comments.showAll")
-      : `${visibleCommentAuthorCount}/${commentAuthors.length}`;
-
-  const showAllCommentAuthors = useCallback(() => {
-    setVisibleCommentAuthors(null);
-    setShowCommentsSidebar(true);
-  }, [setShowCommentsSidebar, setVisibleCommentAuthors]);
-  const hideAllCommentAuthors = useCallback(() => {
-    setVisibleCommentAuthors(new Set());
-    setShowCommentsSidebar(false);
-    setActiveCommentId(null);
-  }, [setActiveCommentId, setShowCommentsSidebar, setVisibleCommentAuthors]);
-  const setCommentAuthorVisible = useCallback(
-    (commentAuthor: string, visible: boolean) => {
-      const next = new Set(visibleCommentAuthorSet);
-      if (visible) {
-        next.add(commentAuthor);
-      } else {
-        next.delete(commentAuthor);
+    // The display-mode Select derives its trigger label from `items` (Base UI),
+    // so feed it the same translated labels the popup renders. Memoized per
+    // locale (`t` is stable until the locale changes): the toolbar re-renders on
+    // every editor state change, and a fresh inline array would churn the Select
+    // subtree's props identity each time.
+    const displayModeItems = useMemo(
+      () =>
+        DISPLAY_MODES.map((mode) => ({
+          value: mode,
+          label: t(DISPLAY_MODE_LABEL_KEYS[mode]),
+        })),
+      [t],
+    );
+    const activeHistoryAvailability = (() => {
+      if (
+        usesCanonicalSession(
+          experimentalSession,
+          CANONICAL_GAP.authorityRouting,
+        )
+      ) {
+        return {
+          canRedo: bodyHistoryAvailability.canRedo,
+          canUndo: bodyHistoryAvailability.canUndo,
+        };
       }
-      setVisibleCommentAuthors(next);
-      setShowCommentsSidebar(next.size > 0);
-      if (next.size === 0) {
-        setActiveCommentId(null);
+      if (activeNoteStory) {
+        return {
+          canRedo: bodyHistoryAvailability.canRedo,
+          canUndo: bodyHistoryAvailability.canUndo,
+        };
       }
-    },
-    [setActiveCommentId, setShowCommentsSidebar, setVisibleCommentAuthors, visibleCommentAuthorSet],
-  );
-  const handleAllCommentAuthorsCheckedChange = useCallback(
-    (checked: boolean) => {
-      if (checked) {
-        showAllCommentAuthors();
+      if (hfEditPosition) {
+        return { canRedo: history.canRedo, canUndo: history.canUndo };
+      }
+      return bodyHistoryAvailability;
+    })();
+
+    const toolbarChildren = toolbarExtra ?? null;
+    const visibleCommentAuthorCount = commentAuthors.filter((commentAuthor) =>
+      visibleCommentAuthorSet.has(commentAuthor),
+    ).length;
+    const allCommentAuthorsVisible =
+      commentAuthors.length > 0 &&
+      showCommentsSidebar &&
+      visibleCommentAuthorCount === commentAuthors.length;
+    const commentVisibilityLabel =
+      visibleCommentAuthorCount === commentAuthors.length
+        ? t("comments.showAll")
+        : `${visibleCommentAuthorCount}/${commentAuthors.length}`;
+
+    const showAllCommentAuthors = useCallback(() => {
+      setVisibleCommentAuthors(null);
+      setShowCommentsSidebar(true);
+    }, [setShowCommentsSidebar, setVisibleCommentAuthors]);
+    const hideAllCommentAuthors = useCallback(() => {
+      setVisibleCommentAuthors(new Set());
+      setShowCommentsSidebar(false);
+      setActiveCommentId(null);
+    }, [setActiveCommentId, setShowCommentsSidebar, setVisibleCommentAuthors]);
+    const setCommentAuthorVisible = useCallback(
+      (commentAuthor: string, visible: boolean) => {
+        const next = new Set(visibleCommentAuthorSet);
+        if (visible) {
+          next.add(commentAuthor);
+        } else {
+          next.delete(commentAuthor);
+        }
+        setVisibleCommentAuthors(next);
+        setShowCommentsSidebar(next.size > 0);
+        if (next.size === 0) {
+          setActiveCommentId(null);
+        }
+      },
+      [
+        setActiveCommentId,
+        setShowCommentsSidebar,
+        setVisibleCommentAuthors,
+        visibleCommentAuthorSet,
+      ],
+    );
+    const handleAllCommentAuthorsCheckedChange = useCallback(
+      (checked: boolean) => {
+        if (checked) {
+          showAllCommentAuthors();
+          return;
+        }
+        hideAllCommentAuthors();
+      },
+      [hideAllCommentAuthors, showAllCommentAuthors],
+    );
+    const handleDisplayModeChange = useCallback(
+      (value: unknown) => {
+        if (isDisplayMode(value)) {
+          setDisplayMode(value);
+        }
+      },
+      [setDisplayMode],
+    );
+    const handleAcceptActiveChange = useCallback(() => {
+      const view = pagedEditorRef.current?.getView();
+      if (!view) {
         return;
       }
-      hideAllCommentAuthors();
-    },
-    [hideAllCommentAuthors, showAllCommentAuthors],
-  );
-  const handleDisplayModeChange = useCallback(
-    (value: unknown) => {
-      if (isDisplayMode(value)) {
-        setDisplayMode(value);
+      const { from, to } = view.state.selection;
+      const range = findChangeAtPosition(view.state, from, to);
+      if (
+        resolveCanonicalReviewRange({
+          editor: pagedEditorRef.current?.getEditor(),
+          ...range,
+          resolution: "accept",
+        }) === null
+      ) {
+        acceptChange(range.from, range.to)(view.state, view.dispatch);
       }
-    },
-    [setDisplayMode],
-  );
-  const handleAcceptActiveChange = useCallback(() => {
-    const view = pagedEditorRef.current?.getView();
-    if (!view) {
-      return;
-    }
-    const { from, to } = view.state.selection;
-    const range = findChangeAtPosition(view.state, from, to);
-    if (
-      resolveCanonicalReviewRange({
-        editor: pagedEditorRef.current?.getEditor(),
-        ...range,
-        resolution: "accept",
-      }) === null
-    ) {
-      acceptChange(range.from, range.to)(view.state, view.dispatch);
-    }
-  }, []);
-  const handleRejectActiveChange = useCallback(() => {
-    const view = pagedEditorRef.current?.getView();
-    if (!view) {
-      return;
-    }
-    const { from, to } = view.state.selection;
-    const range = findChangeAtPosition(view.state, from, to);
-    if (
-      resolveCanonicalReviewRange({
-        editor: pagedEditorRef.current?.getEditor(),
-        ...range,
-        resolution: "reject",
-      }) === null
-    ) {
-      rejectChange(range.from, range.to)(view.state, view.dispatch);
-    }
-  }, []);
-  const handlePreviousChange = useCallback(() => {
-    const view = pagedEditorRef.current?.getView();
-    if (!view) {
-      return;
-    }
-    const { from } = view.state.selection;
-    const change = findPreviousChange(view.state, from);
-    if (!change) {
-      return;
-    }
-    view.dispatch(
-      view.state.tr.setSelection(TextSelection.create(view.state.doc, change.from, change.to)),
+    }, []);
+    const handleRejectActiveChange = useCallback(() => {
+      const view = pagedEditorRef.current?.getView();
+      if (!view) {
+        return;
+      }
+      const { from, to } = view.state.selection;
+      const range = findChangeAtPosition(view.state, from, to);
+      if (
+        resolveCanonicalReviewRange({
+          editor: pagedEditorRef.current?.getEditor(),
+          ...range,
+          resolution: "reject",
+        }) === null
+      ) {
+        rejectChange(range.from, range.to)(view.state, view.dispatch);
+      }
+    }, []);
+    const handlePreviousChange = useCallback(() => {
+      const view = pagedEditorRef.current?.getView();
+      if (!view) {
+        return;
+      }
+      const { from } = view.state.selection;
+      const change = findPreviousChange(view.state, from);
+      if (!change) {
+        return;
+      }
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, change.from, change.to),
+        ),
+      );
+      view.focus();
+      requestAnimationFrame(() => {
+        pagedEditorRef.current?.scrollToPosition(change.from);
+      });
+    }, []);
+    const handleNextChange = useCallback(() => {
+      const view = pagedEditorRef.current?.getView();
+      if (!view) {
+        return;
+      }
+      const { to } = view.state.selection;
+      const change = findNextChange(view.state, to);
+      if (!change) {
+        return;
+      }
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, change.from, change.to),
+        ),
+      );
+      view.focus();
+      requestAnimationFrame(() => {
+        pagedEditorRef.current?.scrollToPosition(change.from);
+      });
+    }, []);
+    const handleOpenInsertSymbol = useCallback(
+      () => setShowInsertSymbol(true),
+      [],
     );
-    view.focus();
-    requestAnimationFrame(() => {
-      pagedEditorRef.current?.scrollToPosition(change.from);
-    });
-  }, []);
-  const handleNextChange = useCallback(() => {
-    const view = pagedEditorRef.current?.getView();
-    if (!view) {
-      return;
-    }
-    const { to } = view.state.selection;
-    const change = findNextChange(view.state, to);
-    if (!change) {
-      return;
-    }
-    view.dispatch(
-      view.state.tr.setSelection(TextSelection.create(view.state.doc, change.from, change.to)),
-    );
-    view.focus();
-    requestAnimationFrame(() => {
-      pagedEditorRef.current?.scrollToPosition(change.from);
-    });
-  }, []);
-  const handleOpenInsertSymbol = useCallback(() => setShowInsertSymbol(true), []);
 
-  const toolbarPriorityExtra = useMemo(() => {
-    if (!showReviewControls) {
-      return null;
-    }
-    return (
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          onClick={toggleTrackChanges}
-          onMouseDown={preventMouseDownDefault}
-          disabled={readOnly}
-          aria-pressed={trackChangesOn}
-          aria-label={t("toggleTrackChanges")}
-          className={`h-8 min-w-[140px] justify-start gap-1.5 rounded-md px-2 text-xs text-[var(--doc-text-muted)] shadow-none disabled:text-[var(--doc-text-subtle)] disabled:opacity-[0.35] ${
-            trackChangesOn
-              ? "border-[var(--doc-primary)] bg-[var(--doc-primary-light)] text-[var(--doc-text)] shadow-[0_0_0_1px_var(--doc-primary)]"
-              : "border-transparent text-[var(--doc-text-muted)] hover:border-[var(--doc-border)] hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]"
-          }`}
-          size="xs"
-          title={t("toggleTrackChanges")}
-          variant="ghost"
-        >
-          <PenLineIcon className="size-3.5" />
-          <span className="truncate whitespace-nowrap">
-            {trackChangesOn ? t("trackingOn") : t("trackingOff")}
-          </span>
-        </Button>
-        <StSelect
-          value={displayMode}
-          onValueChange={handleDisplayModeChange}
-          items={displayModeItems}
-        >
-          <StSelectTrigger
-            size="sm"
-            className="h-8 min-h-0 w-[132px] min-w-0 shrink-0 border-transparent bg-transparent text-xs text-[var(--doc-text-muted)] shadow-none hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)] data-[pressed]:bg-[var(--doc-primary-light)]"
-          >
-            <EyeIcon size={14} className="shrink-0" />
-            <StSelectValue />
-          </StSelectTrigger>
-          <StSelectPopup>
-            {displayModeItems.map((item) => (
-              <StSelectItem key={item.value} value={item.value}>
-                {item.label}
-              </StSelectItem>
-            ))}
-          </StSelectPopup>
-        </StSelect>
-      </div>
-    );
-  }, [
-    Button,
-    StSelect,
-    StSelectItem,
-    StSelectPopup,
-    StSelectTrigger,
-    StSelectValue,
-    displayMode,
-    displayModeItems,
-    handleDisplayModeChange,
-    readOnly,
-    showReviewControls,
-    t,
-    toggleTrackChanges,
-    trackChangesOn,
-  ]);
-
-  const toolbarInlineExtra = useMemo(
-    () => (
-      <>
-        <Menu>
-          <MenuTrigger
-            type="button"
-            disabled={comments.length === 0}
-            aria-label={t("comments.visibility")}
+    const toolbarPriorityExtra = useMemo(() => {
+      if (!showReviewControls) {
+        return null;
+      }
+      return (
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            onClick={toggleTrackChanges}
             onMouseDown={preventMouseDownDefault}
-            className={`flex h-8 min-w-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors duration-100 disabled:cursor-not-allowed disabled:border-transparent disabled:text-[var(--doc-text-subtle)] disabled:opacity-[0.16] disabled:hover:bg-transparent disabled:hover:text-[var(--doc-text-subtle)] ${
-              showCommentsSidebar && visibleCommentAuthorCount > 0
-                ? "border-[var(--doc-primary)] bg-[var(--doc-primary-light)] text-[var(--doc-text)]"
+            disabled={readOnly}
+            aria-pressed={trackChangesOn}
+            aria-label={t("toggleTrackChanges")}
+            className={`h-8 min-w-[140px] justify-start gap-1.5 rounded-md px-2 text-xs text-[var(--doc-text-muted)] shadow-none disabled:text-[var(--doc-text-subtle)] disabled:opacity-[0.35] ${
+              trackChangesOn
+                ? "border-[var(--doc-primary)] bg-[var(--doc-primary-light)] text-[var(--doc-text)] shadow-[0_0_0_1px_var(--doc-primary)]"
                 : "border-transparent text-[var(--doc-text-muted)] hover:border-[var(--doc-border)] hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]"
             }`}
+            size="xs"
+            title={t("toggleTrackChanges")}
+            variant="ghost"
           >
-            <StickyNoteIcon size={14} className="shrink-0" />
-            <span className="max-w-24 truncate">{commentVisibilityLabel}</span>
-          </MenuTrigger>
-          <MenuPopup align="start" className="min-w-52">
-            <MenuGroup>
-              <MenuGroupLabel>{t("comments.visibility")}</MenuGroupLabel>
-              <MenuCheckboxItem
-                checked={allCommentAuthorsVisible}
-                onCheckedChange={handleAllCommentAuthorsCheckedChange}
-              >
-                {t("comments.showAll")}
-              </MenuCheckboxItem>
-              <MenuItem onClick={hideAllCommentAuthors}>{t("comments.hideAll")}</MenuItem>
-            </MenuGroup>
-            {commentAuthors.length > 0 && (
-              <>
-                <MenuSeparator />
-                <MenuGroup>
-                  {commentAuthors.map((commentAuthor) => (
-                    <CommentAuthorVisibilityItem
-                      key={commentAuthor}
-                      author={commentAuthor}
-                      checked={showCommentsSidebar && visibleCommentAuthorSet.has(commentAuthor)}
-                      label={
-                        commentAuthor === "Unknown" ? t("comments.unknownAuthor") : commentAuthor
-                      }
-                      MenuCheckboxItem={MenuCheckboxItem}
-                      onVisibilityChange={setCommentAuthorVisible}
-                    />
-                  ))}
-                </MenuGroup>
-              </>
-            )}
-          </MenuPopup>
-        </Menu>
-        <ToolbarSeparator />
-        {state.activeTrackedChange && (
-          <span
-            className="flex items-center gap-1 px-2 text-xs text-[var(--doc-text-muted)]"
-            style={{ maxWidth: 260 }}
+            <PenLineIcon className="size-3.5" />
+            <span className="truncate whitespace-nowrap">
+              {trackChangesOn ? t("trackingOn") : t("trackingOff")}
+            </span>
+          </Button>
+          <StSelect
+            value={displayMode}
+            onValueChange={handleDisplayModeChange}
+            items={displayModeItems}
           >
-            <span className="truncate">
-              <span className="font-medium text-[var(--doc-text)]">
-                {state.activeTrackedChange.author}
+            <StSelectTrigger
+              size="sm"
+              className="h-8 min-h-0 w-[132px] min-w-0 shrink-0 border-transparent bg-transparent text-xs text-[var(--doc-text-muted)] shadow-none hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)] data-[pressed]:bg-[var(--doc-primary-light)]"
+            >
+              <EyeIcon size={14} className="shrink-0" />
+              <StSelectValue />
+            </StSelectTrigger>
+            <StSelectPopup>
+              {displayModeItems.map((item) => (
+                <StSelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </StSelectItem>
+              ))}
+            </StSelectPopup>
+          </StSelect>
+        </div>
+      );
+    }, [
+      Button,
+      StSelect,
+      StSelectItem,
+      StSelectPopup,
+      StSelectTrigger,
+      StSelectValue,
+      displayMode,
+      displayModeItems,
+      handleDisplayModeChange,
+      readOnly,
+      showReviewControls,
+      t,
+      toggleTrackChanges,
+      trackChangesOn,
+    ]);
+
+    const toolbarInlineExtra = useMemo(
+      () => (
+        <>
+          <Menu>
+            <MenuTrigger
+              type="button"
+              disabled={comments.length === 0}
+              aria-label={t("comments.visibility")}
+              onMouseDown={preventMouseDownDefault}
+              className={`flex h-8 min-w-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors duration-100 disabled:cursor-not-allowed disabled:border-transparent disabled:text-[var(--doc-text-subtle)] disabled:opacity-[0.16] disabled:hover:bg-transparent disabled:hover:text-[var(--doc-text-subtle)] ${
+                showCommentsSidebar && visibleCommentAuthorCount > 0
+                  ? "border-[var(--doc-primary)] bg-[var(--doc-primary-light)] text-[var(--doc-text)]"
+                  : "border-transparent text-[var(--doc-text-muted)] hover:border-[var(--doc-border)] hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]"
+              }`}
+            >
+              <StickyNoteIcon size={14} className="shrink-0" />
+              <span className="max-w-24 truncate">
+                {commentVisibilityLabel}
               </span>
-              {state.activeTrackedChange.date && (
+            </MenuTrigger>
+            <MenuPopup align="start" className="min-w-52">
+              <MenuGroup>
+                <MenuGroupLabel>{t("comments.visibility")}</MenuGroupLabel>
+                <MenuCheckboxItem
+                  checked={allCommentAuthorsVisible}
+                  onCheckedChange={handleAllCommentAuthorsCheckedChange}
+                >
+                  {t("comments.showAll")}
+                </MenuCheckboxItem>
+                <MenuItem onClick={hideAllCommentAuthors}>
+                  {t("comments.hideAll")}
+                </MenuItem>
+              </MenuGroup>
+              {commentAuthors.length > 0 && (
                 <>
-                  {" · "}
-                  {new Date(state.activeTrackedChange.date).toLocaleDateString()}
+                  <MenuSeparator />
+                  <MenuGroup>
+                    {commentAuthors.map((commentAuthor) => (
+                      <CommentAuthorVisibilityItem
+                        key={commentAuthor}
+                        author={commentAuthor}
+                        checked={
+                          showCommentsSidebar &&
+                          visibleCommentAuthorSet.has(commentAuthor)
+                        }
+                        label={
+                          commentAuthor === "Unknown"
+                            ? t("comments.unknownAuthor")
+                            : commentAuthor
+                        }
+                        MenuCheckboxItem={MenuCheckboxItem}
+                        onVisibilityChange={setCommentAuthorVisible}
+                      />
+                    ))}
+                  </MenuGroup>
                 </>
               )}
-              {" · "}
-              {state.activeTrackedChange.type === "insertion" ? t("inserted") : t("deleted")}
+            </MenuPopup>
+          </Menu>
+          <ToolbarSeparator />
+          {state.activeTrackedChange && (
+            <span
+              className="flex items-center gap-1 px-2 text-xs text-[var(--doc-text-muted)]"
+              style={{ maxWidth: 260 }}
+            >
+              <span className="truncate">
+                <span className="font-medium text-[var(--doc-text)]">
+                  {state.activeTrackedChange.author}
+                </span>
+                {state.activeTrackedChange.date && (
+                  <>
+                    {" · "}
+                    {new Date(
+                      state.activeTrackedChange.date,
+                    ).toLocaleDateString()}
+                  </>
+                )}
+                {" · "}
+                {state.activeTrackedChange.type === "insertion"
+                  ? t("inserted")
+                  : t("deleted")}
+              </span>
             </span>
-          </span>
-        )}
-        <ToolbarButton
-          onClick={handleAcceptActiveChange}
-          disabled={readOnly || !state.activeTrackedChange}
-          title={t("acceptChange")}
-          ariaLabel={t("acceptChange")}
-        >
-          <CheckIcon size={16} />
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={handleRejectActiveChange}
-          disabled={readOnly || !state.activeTrackedChange}
-          title={t("rejectChange")}
-          ariaLabel={t("rejectChange")}
-        >
-          <XIcon size={16} />
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={handlePreviousChange}
-          disabled={readOnly}
-          title={t("previousChange")}
-          ariaLabel={t("previousChange")}
-        >
-          <ChevronLeftIcon size={16} />
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={handleNextChange}
-          disabled={readOnly}
-          title={t("nextChange")}
-          ariaLabel={t("nextChange")}
-        >
-          <ChevronRightIcon size={16} />
-        </ToolbarButton>
-      </>
-    ),
-    [
-      Menu,
-      MenuCheckboxItem,
-      MenuGroup,
-      MenuGroupLabel,
-      MenuItem,
-      MenuPopup,
-      MenuSeparator,
-      MenuTrigger,
-      allCommentAuthorsVisible,
-      commentAuthors,
-      commentVisibilityLabel,
-      comments.length,
-      handleAcceptActiveChange,
-      handleAllCommentAuthorsCheckedChange,
-      handleNextChange,
-      handlePreviousChange,
-      handleRejectActiveChange,
-      hideAllCommentAuthors,
-      readOnly,
-      setCommentAuthorVisible,
-      showCommentsSidebar,
-      state.activeTrackedChange,
-      t,
-      visibleCommentAuthorCount,
-      visibleCommentAuthorSet,
-    ],
-  );
+          )}
+          <ToolbarButton
+            onClick={handleAcceptActiveChange}
+            disabled={readOnly || !state.activeTrackedChange}
+            title={t("acceptChange")}
+            ariaLabel={t("acceptChange")}
+          >
+            <CheckIcon size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={handleRejectActiveChange}
+            disabled={readOnly || !state.activeTrackedChange}
+            title={t("rejectChange")}
+            ariaLabel={t("rejectChange")}
+          >
+            <XIcon size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={handlePreviousChange}
+            disabled={readOnly}
+            title={t("previousChange")}
+            ariaLabel={t("previousChange")}
+          >
+            <ChevronLeftIcon size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={handleNextChange}
+            disabled={readOnly}
+            title={t("nextChange")}
+            ariaLabel={t("nextChange")}
+          >
+            <ChevronRightIcon size={16} />
+          </ToolbarButton>
+        </>
+      ),
+      [
+        Menu,
+        MenuCheckboxItem,
+        MenuGroup,
+        MenuGroupLabel,
+        MenuItem,
+        MenuPopup,
+        MenuSeparator,
+        MenuTrigger,
+        allCommentAuthorsVisible,
+        commentAuthors,
+        commentVisibilityLabel,
+        comments.length,
+        handleAcceptActiveChange,
+        handleAllCommentAuthorsCheckedChange,
+        handleNextChange,
+        handlePreviousChange,
+        handleRejectActiveChange,
+        hideAllCommentAuthors,
+        readOnly,
+        setCommentAuthorVisible,
+        showCommentsSidebar,
+        state.activeTrackedChange,
+        t,
+        visibleCommentAuthorCount,
+        visibleCommentAuthorSet,
+      ],
+    );
 
-  const handleEditorScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
-      onScrollTopChange?.(event.currentTarget.scrollTop);
-      requestAnimationFrame(syncCommentHighlightStyles);
-    },
-    [onScrollTopChange, syncCommentHighlightStyles],
-  );
-  const handlePagedSelectionChange = useCallback(
-    (_from: number, _to: number) => {
-      // Extract full selection state from whichever PM is active. When the
-      // user is editing HF the persistent hidden HF view owns the selection;
-      // reading body PM here would leave the toolbar showing stale body state.
-      const view = getActiveEditorView() ?? pagedEditorRef.current?.getView() ?? null;
-      handleSelectionChange(view ? extractSelectionState(view.state) : null);
-    },
-    [getActiveEditorView, handleSelectionChange],
-  );
-  const handleTotalPagesChange = useCallback(
-    (totalPages: number) => {
-      setScrollPageInfo((previous) => updateScrollPageTotal(previous, totalPages));
-    },
-    [setScrollPageInfo],
-  );
-  const handleCommentClick = useCallback(
-    (id: number | null) => setActiveCommentId(id),
-    [setActiveCommentId],
-  );
-  const handleCommentResolve = useCallback(
-    (id: number) => {
-      if (applyCanonicalComment({ type: "resolve", id, status: "resolved" }) !== null) return;
-      updateComments((previous) =>
-        previous.map((comment) => (comment.id === id ? { ...comment, done: true } : comment)),
-      );
-    },
-    [applyCanonicalComment, updateComments],
-  );
-  const handleCommentDelete = useCallback(
-    (id: number) => {
-      const result = applyCanonicalComment({ type: "delete", id });
-      if (result !== null) {
-        if (result.status === "applied" && activeCommentId === id) setActiveCommentId(null);
-        return;
-      }
-      updateComments((previous) =>
-        previous.filter((comment) => comment.id !== id && comment.parentId !== id),
-      );
-      if (activeCommentId === id) {
-        setActiveCommentId(null);
-      }
-    },
-    [activeCommentId, applyCanonicalComment, setActiveCommentId, updateComments],
-  );
-  const handleCommentReply = useCallback(
-    (id: number, text: string) => {
-      if (
-        applyCanonicalComment({
+    const handleEditorScroll = useCallback(
+      (event: React.UIEvent<HTMLDivElement>) => {
+        onScrollTopChange?.(event.currentTarget.scrollTop);
+        requestAnimationFrame(syncCommentHighlightStyles);
+      },
+      [onScrollTopChange, syncCommentHighlightStyles],
+    );
+    const handlePagedSelectionChange = useCallback(
+      (_from: number, _to: number) => {
+        // Extract full selection state from whichever PM is active. When the
+        // user is editing HF the persistent hidden HF view owns the selection;
+        // reading body PM here would leave the toolbar showing stale body state.
+        const view =
+          getActiveEditorView() ?? pagedEditorRef.current?.getView() ?? null;
+        handleSelectionChange(view ? extractSelectionState(view.state) : null);
+      },
+      [getActiveEditorView, handleSelectionChange],
+    );
+    const handleTotalPagesChange = useCallback(
+      (totalPages: number) => {
+        setScrollPageInfo((previous) =>
+          updateScrollPageTotal(previous, totalPages),
+        );
+      },
+      [setScrollPageInfo],
+    );
+    const handleCommentClick = useCallback(
+      (id: number | null) => setActiveCommentId(id),
+      [setActiveCommentId],
+    );
+    const handleCommentResolve = useCallback(
+      (id: number) => {
+        if (
+          applyCanonicalComment({ type: "resolve", id, status: "resolved" }) !==
+          null
+        )
+          return;
+        updateComments((previous) =>
+          previous.map((comment) =>
+            comment.id === id ? { ...comment, done: true } : comment,
+          ),
+        );
+      },
+      [applyCanonicalComment, updateComments],
+    );
+    const handleCommentDelete = useCallback(
+      (id: number) => {
+        const result = applyCanonicalComment({ type: "delete", id });
+        if (result !== null) {
+          if (result.status === "applied" && activeCommentId === id)
+            setActiveCommentId(null);
+          return;
+        }
+        updateComments((previous) =>
+          previous.filter(
+            (comment) => comment.id !== id && comment.parentId !== id,
+          ),
+        );
+        if (activeCommentId === id) {
+          setActiveCommentId(null);
+        }
+      },
+      [
+        activeCommentId,
+        applyCanonicalComment,
+        setActiveCommentId,
+        updateComments,
+      ],
+    );
+    const handleCommentReply = useCallback(
+      (id: number, text: string) => {
+        if (
+          applyCanonicalComment({
+            type: "create",
+            text,
+            author,
+            anchor: { kind: "reply", parentId: id },
+          }) !== null
+        )
+          return;
+        updateComments((previous) => [
+          ...previous,
+          createComment(text, author, id),
+        ]);
+      },
+      [applyCanonicalComment, author, createComment, updateComments],
+    );
+    const handleAddComment = useCallback(
+      (addText: string) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view || !commentSelectionRange) {
+          return false;
+        }
+        const result = applyCanonicalComment({
           type: "create",
-          text,
+          text: addText,
           author,
-          anchor: { kind: "reply", parentId: id },
-        }) !== null
-      )
-        return;
-      updateComments((previous) => [...previous, createComment(text, author, id)]);
-    },
-    [applyCanonicalComment, author, createComment, updateComments],
-  );
-  const handleAddComment = useCallback(
-    (addText: string) => {
-      const view = pagedEditorRef.current?.getView();
-      if (!view || !commentSelectionRange) {
-        return false;
-      }
-      const result = applyCanonicalComment({
-        type: "create",
-        text: addText,
-        author,
-        anchor: { kind: "selection", ...commentSelectionRange, story: "main" },
-      });
-      if (result !== null) {
-        if (result?.status !== "applied") return false;
+          anchor: {
+            kind: "selection",
+            ...commentSelectionRange,
+            story: "main",
+          },
+        });
+        if (result !== null) {
+          if (result?.status !== "applied") return false;
+          setVisibleCommentAuthors((current) => {
+            if (current === null) return null;
+            const next = new Set(current);
+            const created = result.comments.find(
+              ({ id }) => id === result.commentId,
+            );
+            if (created) next.add(getCommentAuthorKey(created.author));
+            return next;
+          });
+          if (result.commentId !== undefined)
+            setActiveCommentId(result.commentId);
+          setIsAddingComment(false);
+          setCommentSelectionRange(null);
+          setAddCommentYPosition(null);
+          return true;
+        }
+        const comment = createComment(addText, author);
+        const marked = applyCommentMarkRange(
+          view,
+          commentSelectionRange,
+          comment.id,
+          {
+            replacePending: true,
+          },
+        );
+        if (!marked) {
+          return false;
+        }
+        const commentAuthor = getCommentAuthorKey(comment.author);
         setVisibleCommentAuthors((current) => {
-          if (current === null) return null;
+          if (current === null) {
+            return null;
+          }
           const next = new Set(current);
-          const created = result.comments.find(({ id }) => id === result.commentId);
-          if (created) next.add(getCommentAuthorKey(created.author));
+          next.add(commentAuthor);
           return next;
         });
-        if (result.commentId !== undefined) setActiveCommentId(result.commentId);
+        setActiveCommentId(comment.id);
+        updateComments((previous) => [...previous, comment]);
+        pagedEditorRef.current?.relayout();
+        requestAnimationFrame(() => {
+          syncCommentHighlightStyles();
+          requestAnimationFrame(syncCommentHighlightStyles);
+        });
         setIsAddingComment(false);
         setCommentSelectionRange(null);
         setAddCommentYPosition(null);
         return true;
+      },
+      [
+        author,
+        applyCanonicalComment,
+        commentSelectionRange,
+        createComment,
+        setActiveCommentId,
+        setAddCommentYPosition,
+        setCommentSelectionRange,
+        setIsAddingComment,
+        setVisibleCommentAuthors,
+        syncCommentHighlightStyles,
+        updateComments,
+      ],
+    );
+    const handleTrackedChangeReply = useCallback(
+      (revisionId: number, text: string) => {
+        if (
+          applyCanonicalComment({
+            type: "create",
+            text,
+            author,
+            anchor: { kind: "revision", story: "main", revisionId },
+          }) !== null
+        )
+          return;
+        updateComments((previous) => [
+          ...previous,
+          createComment(text, author, revisionId),
+        ]);
+      },
+      [applyCanonicalComment, author, createComment, updateComments],
+    );
+    const handleCancelAddComment = useCallback(() => {
+      const view = pagedEditorRef.current?.getView();
+      if (view && commentSelectionRange && commentDraftMode === "prosemirror") {
+        removePendingCommentMarkRange(view, commentSelectionRange);
       }
-      const comment = createComment(addText, author);
-      const marked = applyCommentMarkRange(view, commentSelectionRange, comment.id, {
-        replacePending: true,
-      });
-      if (!marked) {
-        return false;
-      }
-      const commentAuthor = getCommentAuthorKey(comment.author);
-      setVisibleCommentAuthors((current) => {
-        if (current === null) {
-          return null;
-        }
-        const next = new Set(current);
-        next.add(commentAuthor);
-        return next;
-      });
-      setActiveCommentId(comment.id);
-      updateComments((previous) => [...previous, comment]);
-      pagedEditorRef.current?.relayout();
-      requestAnimationFrame(() => {
-        syncCommentHighlightStyles();
-        requestAnimationFrame(syncCommentHighlightStyles);
-      });
       setIsAddingComment(false);
       setCommentSelectionRange(null);
       setAddCommentYPosition(null);
-      return true;
-    },
-    [
-      author,
-      applyCanonicalComment,
+    }, [
       commentSelectionRange,
-      createComment,
-      setActiveCommentId,
+      commentDraftMode,
       setAddCommentYPosition,
       setCommentSelectionRange,
       setIsAddingComment,
-      setVisibleCommentAuthors,
-      syncCommentHighlightStyles,
-      updateComments,
-    ],
-  );
-  const handleTrackedChangeReply = useCallback(
-    (revisionId: number, text: string) => {
-      if (
-        applyCanonicalComment({
-          type: "create",
-          text,
-          author,
-          anchor: { kind: "revision", story: "main", revisionId },
-        }) !== null
-      )
-        return;
-      updateComments((previous) => [...previous, createComment(text, author, revisionId)]);
-    },
-    [applyCanonicalComment, author, createComment, updateComments],
-  );
-  const handleCancelAddComment = useCallback(() => {
-    const view = pagedEditorRef.current?.getView();
-    if (view && commentSelectionRange && commentDraftMode === "prosemirror") {
-      removePendingCommentMarkRange(view, commentSelectionRange);
-    }
-    setIsAddingComment(false);
-    setCommentSelectionRange(null);
-    setAddCommentYPosition(null);
-  }, [
-    commentSelectionRange,
-    commentDraftMode,
-    setAddCommentYPosition,
-    setCommentSelectionRange,
-    setIsAddingComment,
-  ]);
-  // Resolve the specific tracked-change `revisionId` for a (from, to) range
-  // reported by the sidebar. The 2-arg acceptChange/rejectChange commands
-  // treat a missing revisionId as "match every mark in range", which would
-  // also resolve an unrelated collaborator's tracked change sharing the same
-  // paragraph/row span — so callers below always resolve a revisionId first
-  // and go through the revision-scoped command instead.
-  const resolveSidebarChangeRevisionId = useCallback((from: number, to: number) => {
-    const entry = trackedChangesRef.current.find((candidate) => {
-      return candidate.from === from && candidate.to === to;
-    });
-    return entry?.revisionId ?? null;
-  }, []);
-  const handleSidebarAcceptChange = useCallback(
-    (from: number, to: number) => {
-      const view = pagedEditorRef.current?.getView();
-      if (!view) {
-        return;
+    ]);
+    // Resolve the specific tracked-change `revisionId` for a (from, to) range
+    // reported by the sidebar. The 2-arg acceptChange/rejectChange commands
+    // treat a missing revisionId as "match every mark in range", which would
+    // also resolve an unrelated collaborator's tracked change sharing the same
+    // paragraph/row span — so callers below always resolve a revisionId first
+    // and go through the revision-scoped command instead.
+    const resolveSidebarChangeRevisionId = useCallback(
+      (from: number, to: number) => {
+        const entry = trackedChangesRef.current.find((candidate) => {
+          return candidate.from === from && candidate.to === to;
+        });
+        return entry?.revisionId ?? null;
+      },
+      [],
+    );
+    const handleSidebarAcceptChange = useCallback(
+      (from: number, to: number) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return;
+        }
+        const revisionId = resolveSidebarChangeRevisionId(from, to);
+        if (revisionId === null) {
+          return;
+        }
+        const editor = pagedEditorRef.current?.getEditor();
+        if (editor?.getCanonicalDocument()) {
+          editor.resolveCanonicalRevisions([revisionId], "accept");
+        } else {
+          acceptAIEditRevision(revisionId)(view.state, view.dispatch);
+        }
+        extractTrackedChanges();
+      },
+      [extractTrackedChanges, resolveSidebarChangeRevisionId],
+    );
+    const handleSidebarRejectChange = useCallback(
+      (from: number, to: number) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return;
+        }
+        const revisionId = resolveSidebarChangeRevisionId(from, to);
+        if (revisionId === null) {
+          return;
+        }
+        const editor = pagedEditorRef.current?.getEditor();
+        if (editor?.getCanonicalDocument()) {
+          editor.resolveCanonicalRevisions([revisionId], "reject");
+        } else {
+          rejectAIEditRevision(revisionId)(view.state, view.dispatch);
+        }
+        extractTrackedChanges();
+      },
+      [extractTrackedChanges, resolveSidebarChangeRevisionId],
+    );
+    const commentsPageWidth =
+      history.state?.package.document.finalSectionProperties?.pageWidth;
+    // A comments drawer closed while a new comment is pending drops the pending
+    // comment, as Escape in its input does.
+    const dismissCommentsDrawer = useCallback(() => {
+      if (isAddingComment) {
+        handleCancelAddComment();
       }
-      const revisionId = resolveSidebarChangeRevisionId(from, to);
-      if (revisionId === null) {
-        return;
-      }
-      const editor = pagedEditorRef.current?.getEditor();
-      if (editor?.getCanonicalDocument()) {
-        editor.resolveCanonicalRevisions([revisionId], "accept");
-      } else {
-        acceptAIEditRevision(revisionId)(view.state, view.dispatch);
-      }
-      extractTrackedChanges();
-    },
-    [extractTrackedChanges, resolveSidebarChangeRevisionId],
-  );
-  const handleSidebarRejectChange = useCallback(
-    (from: number, to: number) => {
-      const view = pagedEditorRef.current?.getView();
-      if (!view) {
-        return;
-      }
-      const revisionId = resolveSidebarChangeRevisionId(from, to);
-      if (revisionId === null) {
-        return;
-      }
-      const editor = pagedEditorRef.current?.getEditor();
-      if (editor?.getCanonicalDocument()) {
-        editor.resolveCanonicalRevisions([revisionId], "reject");
-      } else {
-        rejectAIEditRevision(revisionId)(view.state, view.dispatch);
-      }
-      extractTrackedChanges();
-    },
-    [extractTrackedChanges, resolveSidebarChangeRevisionId],
-  );
-  const commentsPageWidth = history.state?.package.document.finalSectionProperties?.pageWidth;
-  // A comments drawer closed while a new comment is pending drops the pending
-  // comment, as Escape in its input does.
-  const dismissCommentsDrawer = useCallback(() => {
-    if (isAddingComment) {
-      handleCancelAddComment();
-    }
-    setPanelOverlay("none");
-    setShowCommentsSidebar(false);
-    setActiveCommentId(null);
-  }, [
-    handleCancelAddComment,
-    isAddingComment,
-    setActiveCommentId,
-    setPanelOverlay,
-    setShowCommentsSidebar,
-  ]);
-  // Starting a comment where the comments are a drawer opens the drawer.
-  useEffect(() => {
-    if (isAddingComment && panelLayout.comments === "drawer") {
-      setPanelOverlay("comments");
-    }
-  }, [isAddingComment, panelLayout.comments, setPanelOverlay]);
-  const toggleComments = useCallback(() => {
-    if (commentsSurface === "drawer") {
-      dismissCommentsDrawer();
-      return;
-    }
-    if (commentsSurface === "column") {
+      setPanelOverlay("none");
       setShowCommentsSidebar(false);
       setActiveCommentId(null);
-      return;
-    }
-    if (visibleCommentAuthorSet.size === 0) {
-      setVisibleCommentAuthors(null);
-    }
-    setShowCommentsSidebar(true);
-    if (layoutWithCommentsOpen().comments === "drawer") {
-      setPanelOverlay("comments");
-    }
-  }, [
-    commentsSurface,
-    dismissCommentsDrawer,
-    layoutWithCommentsOpen,
-    setActiveCommentId,
-    setPanelOverlay,
-    setShowCommentsSidebar,
-    setVisibleCommentAuthors,
-    visibleCommentAuthorSet.size,
-  ]);
-  const openCommentThreadCount = useMemo(() => countOpenCommentThreads(comments), [comments]);
-  const outlineToggle = ((): OutlineToggleState => {
-    if (panelLayout.outline !== "drawer" && panelLayout.outline !== "expanded") {
-      return "absent";
-    }
-    return panelOverlay === "outline" ? "open" : "closed";
-  })();
-  const panelToggles = useMemo(
-    () => (
-      <PanelToggles
-        outline={outlineToggle}
-        onToggleOutline={toggleOutlineOverlay}
-        commentsShown={commentsSurface !== null}
-        commentCount={openCommentThreadCount}
-        onToggleComments={toggleComments}
-      />
-    ),
-    [commentsSurface, openCommentThreadCount, outlineToggle, toggleComments, toggleOutlineOverlay],
-  );
-
-  const commentsSidebarOverlay = useMemo(() => {
-    if (commentsSurface === null) {
-      return undefined;
-    }
-    return (
-      <Suspense fallback={null}>
-        <CommentsSidebar
-          surface={commentsSurface}
-          onDismiss={dismissCommentsDrawer}
-          activeCommentId={activeCommentId}
-          comments={visibleComments}
-          anchorPositions={anchorPositions}
-          pageWidth={commentsPageWidth ? Math.round(commentsPageWidth / 15) : 816}
-          editorContainerRef={scrollContainerRef}
-          onCommentClick={handleCommentClick}
-          onCommentResolve={handleCommentResolve}
-          onCommentDelete={handleCommentDelete}
-          onCommentReply={handleCommentReply}
-          onAddComment={handleAddComment}
-          onTrackedChangeReply={handleTrackedChangeReply}
-          onCancelAddComment={handleCancelAddComment}
-          onAcceptChange={handleSidebarAcceptChange}
-          onRejectChange={handleSidebarRejectChange}
-          isAddingComment={isAddingComment}
-          addCommentYPosition={addCommentYPosition}
-          topOffset={0}
+    }, [
+      handleCancelAddComment,
+      isAddingComment,
+      setActiveCommentId,
+      setPanelOverlay,
+      setShowCommentsSidebar,
+    ]);
+    // Starting a comment where the comments are a drawer opens the drawer.
+    useEffect(() => {
+      if (isAddingComment && panelLayout.comments === "drawer") {
+        setPanelOverlay("comments");
+      }
+    }, [isAddingComment, panelLayout.comments, setPanelOverlay]);
+    const toggleComments = useCallback(() => {
+      if (commentsSurface === "drawer") {
+        dismissCommentsDrawer();
+        return;
+      }
+      if (commentsSurface === "column") {
+        setShowCommentsSidebar(false);
+        setActiveCommentId(null);
+        return;
+      }
+      if (visibleCommentAuthorSet.size === 0) {
+        setVisibleCommentAuthors(null);
+      }
+      setShowCommentsSidebar(true);
+      if (layoutWithCommentsOpen().comments === "drawer") {
+        setPanelOverlay("comments");
+      }
+    }, [
+      commentsSurface,
+      dismissCommentsDrawer,
+      layoutWithCommentsOpen,
+      setActiveCommentId,
+      setPanelOverlay,
+      setShowCommentsSidebar,
+      setVisibleCommentAuthors,
+      visibleCommentAuthorSet.size,
+    ]);
+    const openCommentThreadCount = useMemo(
+      () => countOpenCommentThreads(comments),
+      [comments],
+    );
+    const outlineToggle = ((): OutlineToggleState => {
+      if (
+        panelLayout.outline !== "drawer" &&
+        panelLayout.outline !== "expanded"
+      ) {
+        return "absent";
+      }
+      return panelOverlay === "outline" ? "open" : "closed";
+    })();
+    const panelToggles = useMemo(
+      () => (
+        <PanelToggles
+          outline={outlineToggle}
+          onToggleOutline={toggleOutlineOverlay}
+          commentsShown={commentsSurface !== null}
+          commentCount={openCommentThreadCount}
+          onToggleComments={toggleComments}
         />
-      </Suspense>
+      ),
+      [
+        commentsSurface,
+        openCommentThreadCount,
+        outlineToggle,
+        toggleComments,
+        toggleOutlineOverlay,
+      ],
     );
-  }, [
-    activeCommentId,
-    addCommentYPosition,
-    anchorPositions,
-    commentsPageWidth,
-    handleAddComment,
-    handleCancelAddComment,
-    handleCommentClick,
-    handleCommentDelete,
-    handleCommentReply,
-    handleCommentResolve,
-    handleSidebarAcceptChange,
-    handleSidebarRejectChange,
-    handleTrackedChangeReply,
-    isAddingComment,
-    commentsSurface,
-    dismissCommentsDrawer,
-    visibleComments,
-  ]);
-  const getActiveHfView = useCallback(
-    () => (activeHfRId ? (pagedEditorRef.current?.getHfView(activeHfRId) ?? null) : null),
-    [activeHfRId],
-  );
-  const handleCanvasMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    containedHandler((e: React.MouseEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget) return;
-      e.preventDefault();
-      pagedEditorRef.current?.focus();
-    })(event);
-  }, []);
-  const handleOutlineHeadingClick = useCallback((pmPos: number) => {
-    pagedEditorRef.current?.scrollToPosition(pmPos);
-    let attempts = 0;
-    const flash = () => {
-      attempts++;
-      const container = scrollContainerRef.current;
-      if (!container) {
-        return;
+
+    const commentsSidebarOverlay = useMemo(() => {
+      if (commentsSurface === null) {
+        return undefined;
       }
-      const element = container.querySelector<HTMLElement>(
-        `.layout-page-content [data-pm-start="${String(pmPos)}"]`,
+      return (
+        <Suspense fallback={null}>
+          <CommentsSidebar
+            surface={commentsSurface}
+            onDismiss={dismissCommentsDrawer}
+            activeCommentId={activeCommentId}
+            comments={visibleComments}
+            anchorPositions={anchorPositions}
+            pageWidth={
+              commentsPageWidth ? Math.round(commentsPageWidth / 15) : 816
+            }
+            editorContainerRef={scrollContainerRef}
+            onCommentClick={handleCommentClick}
+            onCommentResolve={handleCommentResolve}
+            onCommentDelete={handleCommentDelete}
+            onCommentReply={handleCommentReply}
+            onAddComment={handleAddComment}
+            onTrackedChangeReply={handleTrackedChangeReply}
+            onCancelAddComment={handleCancelAddComment}
+            onAcceptChange={handleSidebarAcceptChange}
+            onRejectChange={handleSidebarRejectChange}
+            isAddingComment={isAddingComment}
+            addCommentYPosition={addCommentYPosition}
+            topOffset={0}
+          />
+        </Suspense>
       );
-      if (element) {
-        delete element.dataset["folioOutlineFlash"];
-        void element.offsetWidth;
-        element.dataset["folioOutlineFlash"] = "";
-        return;
-      }
-      if (attempts < 30) {
-        requestAnimationFrame(flash);
-      }
-    };
-    requestAnimationFrame(flash);
-  }, []);
-  const handleOutlineJump = useCallback(
-    (id: string) => {
-      markHeadingJumped(id);
-      handleOutlineHeadingClick(Number(id));
-    },
-    [handleOutlineHeadingClick, markHeadingJumped],
-  );
-  const handleTextContextAction = useCallback(
-    (action: TextContextAction) => {
-      void handleContextMenuAction(action);
-    },
-    [handleContextMenuAction],
-  );
-  const getBodyEditorView = useCallback(() => pagedEditorRef.current?.getView() ?? null, []);
-  const getContentControlEventRoot = useCallback(() => {
-    if (readOnly) {
-      return null;
-    }
-    const root = containerRef.current?.querySelector(".paged-editor__pages");
-    return root instanceof HTMLElement ? root : null;
-  }, [readOnly]);
-
-  const closeTableProperties = useCallback(() => setTablePropsOpen(false), []);
-  const applyTableProperties = useCallback(
-    (props: Parameters<typeof setTableProperties>[0]) => {
-      const view = getActiveEditorView();
-      if (view) {
-        setTableProperties(props)(view.state, view.dispatch);
-      }
-    },
-    [getActiveEditorView],
-  );
-  const closeImagePosition = useCallback(() => setImagePositionOpen(false), [setImagePositionOpen]);
-  const closeImageProperties = useCallback(() => setImagePropsOpen(false), [setImagePropsOpen]);
-  const closePageSetup = useCallback(() => setShowPageSetup(false), []);
-  const closeFootnoteProperties = useCallback(() => setFootnotePropsOpen(false), []);
-  const closeInsertSymbol = useCallback(() => setShowInsertSymbol(false), []);
-  const insertSymbol = useCallback(
-    (symbol: string) => {
-      const view = getActiveEditorView();
-      if (view) {
-        view.dispatch(view.state.tr.insertText(symbol).scrollIntoView());
-      }
-    },
-    [getActiveEditorView],
-  );
-  const imagePropertiesCurrentData = useMemo(
-    () => buildImagePropertiesData(state.pmImageContext),
-    [state.pmImageContext],
-  );
-  const { close: closeFindDialog } = findReplace;
-  const findReplaceDialog = useMemo(
-    () => ({
-      state: findReplace.state,
-      onClose: () => {
-        closeFindDialog();
-        resetFindResult();
+    }, [
+      activeCommentId,
+      addCommentYPosition,
+      anchorPositions,
+      commentsPageWidth,
+      handleAddComment,
+      handleCancelAddComment,
+      handleCommentClick,
+      handleCommentDelete,
+      handleCommentReply,
+      handleCommentResolve,
+      handleSidebarAcceptChange,
+      handleSidebarRejectChange,
+      handleTrackedChangeReply,
+      isAddingComment,
+      commentsSurface,
+      dismissCommentsDrawer,
+      visibleComments,
+    ]);
+    const getActiveHfView = useCallback(
+      () =>
+        activeHfRId
+          ? (pagedEditorRef.current?.getHfView(activeHfRId) ?? null)
+          : null,
+      [activeHfRId],
+    );
+    const handleCanvasMouseDown = useCallback(
+      (event: React.MouseEvent<HTMLDivElement>) => {
+        containedHandler((e: React.MouseEvent<HTMLDivElement>) => {
+          if (e.target !== e.currentTarget) return;
+          e.preventDefault();
+          pagedEditorRef.current?.focus();
+        })(event);
       },
-      onFind: handleFind,
-      onQueryChange: handleQueryChange,
-      onFindNext: handleFindNext,
-      onFindPrevious: handleFindPrevious,
-      onReplace: handleReplace,
-      onReplaceAll: handleReplaceAll,
-      currentSearch: currentFindSearch,
-      readOnly,
-    }),
-    [
-      currentFindSearch,
-      readOnly,
-      closeFindDialog,
-      findReplace.state,
-      handleFind,
-      handleQueryChange,
-      handleFindNext,
-      handleFindPrevious,
-      handleReplace,
-      handleReplaceAll,
-      resetFindResult,
-    ],
-  );
-  const tablePropertiesDialog = useMemo(() => {
-    const table = state.pmTableContext?.table;
-    return {
-      isOpen: tablePropsOpen,
-      onClose: closeTableProperties,
-      onApply: applyTableProperties,
-      currentProps: table ? expectTableAttrs(table) : undefined,
-    };
-  }, [applyTableProperties, closeTableProperties, state.pmTableContext, tablePropsOpen]);
-  const imagePositionDialog = useMemo(
-    () => ({
-      isOpen: imagePositionOpen,
-      onClose: closeImagePosition,
-      onApply: handleApplyImagePosition,
-    }),
-    [closeImagePosition, handleApplyImagePosition, imagePositionOpen],
-  );
-  const imagePropertiesDialog = useMemo(
-    () => ({
-      isOpen: imagePropsOpen,
-      onClose: closeImageProperties,
-      onApply: handleApplyImageProperties,
-      currentData: imagePropertiesCurrentData,
-    }),
-    [closeImageProperties, handleApplyImageProperties, imagePropertiesCurrentData, imagePropsOpen],
-  );
-  const finalSectionProperties = history.state?.package.document.finalSectionProperties;
-  const pageSetupDialog = useMemo(
-    () => ({
-      isOpen: showPageSetup,
-      onClose: closePageSetup,
-      onApply: handlePageSetupApply,
-      currentProps: finalSectionProperties,
-    }),
-    [closePageSetup, finalSectionProperties, handlePageSetupApply, showPageSetup],
-  );
-  const footnotePropertiesDialog = useMemo(
-    () => ({
-      isOpen: footnotePropsOpen,
-      onClose: closeFootnoteProperties,
-      onApply: handleApplyFootnoteProperties,
-      footnotePr: finalSectionProperties?.footnotePr,
-      endnotePr: finalSectionProperties?.endnotePr,
-    }),
-    [
-      closeFootnoteProperties,
-      finalSectionProperties,
-      footnotePropsOpen,
-      handleApplyFootnoteProperties,
-    ],
-  );
-  const closeNumberingValueDialog = useCallback(() => setNumberingValueDialogOpen(false), []);
-  const applyNumberingValue = useCallback(
-    (value: number) => {
-      const view = getActiveEditorView();
-      if (view) {
-        setNumberingValue(value)(view.state, view.dispatch);
+      [],
+    );
+    const handleOutlineHeadingClick = useCallback((pmPos: number) => {
+      pagedEditorRef.current?.scrollToPosition(pmPos);
+      let attempts = 0;
+      const flash = () => {
+        attempts++;
+        const container = scrollContainerRef.current;
+        if (!container) {
+          return;
+        }
+        const element = container.querySelector<HTMLElement>(
+          `.layout-page-content [data-pm-start="${String(pmPos)}"]`,
+        );
+        if (element) {
+          delete element.dataset["folioOutlineFlash"];
+          void element.offsetWidth;
+          element.dataset["folioOutlineFlash"] = "";
+          return;
+        }
+        if (attempts < 30) {
+          requestAnimationFrame(flash);
+        }
+      };
+      requestAnimationFrame(flash);
+    }, []);
+    const handleOutlineJump = useCallback(
+      (id: string) => {
+        markHeadingJumped(id);
+        handleOutlineHeadingClick(Number(id));
+      },
+      [handleOutlineHeadingClick, markHeadingJumped],
+    );
+    const handleTextContextAction = useCallback(
+      (action: TextContextAction) => {
+        void handleContextMenuAction(action);
+      },
+      [handleContextMenuAction],
+    );
+    const getBodyEditorView = useCallback(
+      () => pagedEditorRef.current?.getView() ?? null,
+      [],
+    );
+    const getContentControlEventRoot = useCallback(() => {
+      if (readOnly) {
+        return null;
       }
-    },
-    [getActiveEditorView],
-  );
-  const numberingValueDialog = useMemo(
-    () => ({
-      isOpen: numberingValueDialogOpen,
-      onClose: closeNumberingValueDialog,
-      onApply: applyNumberingValue,
-    }),
-    [applyNumberingValue, closeNumberingValueDialog, numberingValueDialogOpen],
-  );
-  const insertSymbolDialog = useMemo(
-    () => ({
-      isOpen: showInsertSymbol,
-      onClose: closeInsertSymbol,
-      onInsert: insertSymbol,
-    }),
-    [closeInsertSymbol, insertSymbol, showInsertSymbol],
-  );
+      const root = containerRef.current?.querySelector(".paged-editor__pages");
+      return root instanceof HTMLElement ? root : null;
+    }, [readOnly]);
 
-  // Container styles - using overflow: auto so sticky toolbar works
-  const containerStyle: CSSProperties = {
-    position: "relative",
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-    width: "100%",
-    backgroundColor: "var(--muted)",
-    ...style,
-  };
-
-  const mainContentStyle: CSSProperties = {
-    display: "flex",
-    flex: 1,
-    minHeight: 0, // Allow flex item to shrink below content size
-    minWidth: 0, // Allow flex item to shrink below content width on narrow viewports
-    flexDirection: "row",
-  };
-
-  // Positioned so the drawers and their scrim cover exactly this row.
-  const panelsRowStyle: CSSProperties = {
-    position: "relative",
-    display: "flex",
-    flex: 1,
-    minHeight: 0,
-    minWidth: 0,
-  };
-
-  const editorContainerStyle: CSSProperties = {
-    flex: 1,
-    minHeight: 0,
-    minWidth: 0, // Allow flex item to shrink below content width on narrow viewports
-    overflow: "auto", // Sole scroll container — PagedEditor sizes to content
-    position: "relative",
-  };
-
-  // Render loading state
-  if (
-    state.documentLoad.status === "loading" &&
-    (!preserveDocumentWhileLoading || !history.state)
-  ) {
-    return (
-      <FolioUIProvider components={components}>
-        <div
-          className={`folio-root folio-editor folio-editor-loading ${className}`}
-          style={containerStyle}
-          data-testid="folio-editor"
-        >
-          {loadingIndicator || <DefaultLoadingIndicator />}
-        </div>
-      </FolioUIProvider>
+    const closeTableProperties = useCallback(
+      () => setTablePropsOpen(false),
+      [],
     );
-  }
-
-  // Render error state
-  if (state.documentLoad.status === "error") {
-    return (
-      <FolioUIProvider components={components}>
-        <div
-          className={`folio-root folio-editor folio-editor-error ${className}`}
-          style={containerStyle}
-          data-testid="folio-editor"
-        >
-          <ParseError message={state.documentLoad.message} />
-        </div>
-      </FolioUIProvider>
+    const applyTableProperties = useCallback(
+      (props: Parameters<typeof setTableProperties>[0]) => {
+        const view = getActiveEditorView();
+        if (view) {
+          setTableProperties(props)(view.state, view.dispatch);
+        }
+      },
+      [getActiveEditorView],
     );
-  }
-
-  // Render placeholder when no document
-  if (!history.state) {
-    return (
-      <FolioUIProvider components={components}>
-        <div
-          className={`folio-root folio-editor folio-editor-empty ${className}`}
-          style={containerStyle}
-          data-testid="folio-editor"
-        >
-          {placeholder || <DefaultPlaceholder />}
-        </div>
-      </FolioUIProvider>
+    const closeImagePosition = useCallback(
+      () => setImagePositionOpen(false),
+      [setImagePositionOpen],
     );
-  }
+    const closeImageProperties = useCallback(
+      () => setImagePropsOpen(false),
+      [setImagePropsOpen],
+    );
+    const closePageSetup = useCallback(() => setShowPageSetup(false), []);
+    const closeFootnoteProperties = useCallback(
+      () => setFootnotePropsOpen(false),
+      [],
+    );
+    const closeInsertSymbol = useCallback(() => setShowInsertSymbol(false), []);
+    const insertSymbol = useCallback(
+      (symbol: string) => {
+        const view = getActiveEditorView();
+        if (view) {
+          view.dispatch(view.state.tr.insertText(symbol).scrollIntoView());
+        }
+      },
+      [getActiveEditorView],
+    );
+    const imagePropertiesCurrentData = useMemo(
+      () => buildImagePropertiesData(state.pmImageContext),
+      [state.pmImageContext],
+    );
+    const { close: closeFindDialog } = findReplace;
+    const findReplaceDialog = useMemo(
+      () => ({
+        state: findReplace.state,
+        onClose: () => {
+          closeFindDialog();
+          resetFindResult();
+        },
+        onFind: handleFind,
+        onQueryChange: handleQueryChange,
+        onFindNext: handleFindNext,
+        onFindPrevious: handleFindPrevious,
+        onReplace: handleReplace,
+        onReplaceAll: handleReplaceAll,
+        currentSearch: currentFindSearch,
+        readOnly,
+      }),
+      [
+        currentFindSearch,
+        readOnly,
+        closeFindDialog,
+        findReplace.state,
+        handleFind,
+        handleQueryChange,
+        handleFindNext,
+        handleFindPrevious,
+        handleReplace,
+        handleReplaceAll,
+        resetFindResult,
+      ],
+    );
+    const tablePropertiesDialog = useMemo(() => {
+      const table = state.pmTableContext?.table;
+      return {
+        isOpen: tablePropsOpen,
+        onClose: closeTableProperties,
+        onApply: applyTableProperties,
+        currentProps: table ? expectTableAttrs(table) : undefined,
+      };
+    }, [
+      applyTableProperties,
+      closeTableProperties,
+      state.pmTableContext,
+      tablePropsOpen,
+    ]);
+    const imagePositionDialog = useMemo(
+      () => ({
+        isOpen: imagePositionOpen,
+        onClose: closeImagePosition,
+        onApply: handleApplyImagePosition,
+      }),
+      [closeImagePosition, handleApplyImagePosition, imagePositionOpen],
+    );
+    const imagePropertiesDialog = useMemo(
+      () => ({
+        isOpen: imagePropsOpen,
+        onClose: closeImageProperties,
+        onApply: handleApplyImageProperties,
+        currentData: imagePropertiesCurrentData,
+      }),
+      [
+        closeImageProperties,
+        handleApplyImageProperties,
+        imagePropertiesCurrentData,
+        imagePropsOpen,
+      ],
+    );
+    const finalSectionProperties =
+      history.state?.package.document.finalSectionProperties;
+    const pageSetupDialog = useMemo(
+      () => ({
+        isOpen: showPageSetup,
+        onClose: closePageSetup,
+        onApply: handlePageSetupApply,
+        currentProps: finalSectionProperties,
+      }),
+      [
+        closePageSetup,
+        finalSectionProperties,
+        handlePageSetupApply,
+        showPageSetup,
+      ],
+    );
+    const footnotePropertiesDialog = useMemo(
+      () => ({
+        isOpen: footnotePropsOpen,
+        onClose: closeFootnoteProperties,
+        onApply: handleApplyFootnoteProperties,
+        footnotePr: finalSectionProperties?.footnotePr,
+        endnotePr: finalSectionProperties?.endnotePr,
+      }),
+      [
+        closeFootnoteProperties,
+        finalSectionProperties,
+        footnotePropsOpen,
+        handleApplyFootnoteProperties,
+      ],
+    );
+    const closeNumberingValueDialog = useCallback(
+      () => setNumberingValueDialogOpen(false),
+      [],
+    );
+    const applyNumberingValue = useCallback(
+      (value: number) => {
+        const view = getActiveEditorView();
+        if (view) {
+          setNumberingValue(value)(view.state, view.dispatch);
+        }
+      },
+      [getActiveEditorView],
+    );
+    const numberingValueDialog = useMemo(
+      () => ({
+        isOpen: numberingValueDialogOpen,
+        onClose: closeNumberingValueDialog,
+        onApply: applyNumberingValue,
+      }),
+      [
+        applyNumberingValue,
+        closeNumberingValueDialog,
+        numberingValueDialogOpen,
+      ],
+    );
+    const insertSymbolDialog = useMemo(
+      () => ({
+        isOpen: showInsertSymbol,
+        onClose: closeInsertSymbol,
+        onInsert: insertSymbol,
+      }),
+      [closeInsertSymbol, insertSymbol, showInsertSymbol],
+    );
 
-  return (
-    <FolioUIProvider components={components}>
-      <ErrorProvider>
-        <ErrorBoundary onError={handleEditorError}>
+    // Container styles - using overflow: auto so sticky toolbar works
+    const containerStyle: CSSProperties = {
+      position: "relative",
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      width: "100%",
+      backgroundColor: "var(--muted)",
+      ...style,
+    };
+
+    const mainContentStyle: CSSProperties = {
+      display: "flex",
+      flex: 1,
+      minHeight: 0, // Allow flex item to shrink below content size
+      minWidth: 0, // Allow flex item to shrink below content width on narrow viewports
+      flexDirection: "row",
+    };
+
+    // Positioned so the drawers and their scrim cover exactly this row.
+    const panelsRowStyle: CSSProperties = {
+      position: "relative",
+      display: "flex",
+      flex: 1,
+      minHeight: 0,
+      minWidth: 0,
+    };
+
+    const editorContainerStyle: CSSProperties = {
+      flex: 1,
+      minHeight: 0,
+      minWidth: 0, // Allow flex item to shrink below content width on narrow viewports
+      overflow: "auto", // Sole scroll container — PagedEditor sizes to content
+      position: "relative",
+    };
+
+    // Render loading state
+    if (
+      state.documentLoad.status === "loading" &&
+      (!preserveDocumentWhileLoading || !history.state)
+    ) {
+      return (
+        <FolioUIProvider components={components}>
           <div
-            ref={containerRef}
-            className={`folio-root folio-editor${displayMode !== "all-markup" ? ` folio-root--${displayMode}` : ""}${canEditHeaderFooter ? "" : " folio-no-hf-edit"} ${className}`}
+            className={`folio-root folio-editor folio-editor-loading ${className}`}
             style={containerStyle}
             data-testid="folio-editor"
-            data-folio-format-painter={formatPainterMode !== "off" ? "armed" : undefined}
           >
-            {/* Main content area */}
-            <div style={mainContentStyle}>
-              {/* Wrapper for toolbar + scroll container + outline overlay */}
-              <div
-                style={{
-                  position: "relative",
-                  flex: 1,
-                  minHeight: 0,
-                  minWidth: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                {/* Toolbar - above the scroll container so scrollbar doesn't extend behind it */}
-                {/* Hide toolbar only when readOnly prop is explicitly set (not from viewing mode) */}
-                {showToolbar && !readOnlyProp && (
-                  <div className="z-50 flex flex-shrink-0 flex-col gap-0 bg-[var(--doc-page)]">
-                    <FormattingBar
-                      currentFormatting={state.selectionFormatting}
-                      onFormat={handleFormat}
-                      onUndo={undoActiveEditor}
-                      onRedo={redoActiveEditor}
-                      canUndo={activeHistoryAvailability.canUndo}
-                      canRedo={activeHistoryAvailability.canRedo}
-                      disabled={readOnly}
-                      theme={history.state.package.theme || theme || null}
-                      fontFamilies={fontFamilies}
-                      showZoomControl={showZoomControl}
-                      zoom={zoom}
-                      onZoomChange={setZoomWithViewportAnchor}
-                      rulerVisible={rulerVisible}
-                      onToggleRuler={toggleRuler}
-                      editorRef={editorContentRef}
-                      onRefocusEditor={focusActiveEditor}
-                      formatPainterActive={formatPainterMode !== "off"}
-                      onFormatPainter={handleFormatPainter}
-                      onImageWrapType={handleImageWrapType}
-                      onImageTransform={handleImageTransform}
-                      onOpenImageProperties={handleOpenImageProperties}
-                      onTableAction={handleTableAction}
-                      onInsertImage={onInsertImage}
-                      onInsertTable={onInsertTable}
-                      showTableInsert={showTableInsert}
-                      onInsertPageBreak={onInsertPageBreak}
-                      onInsertTOC={onInsertTOC}
-                      onInsertSymbol={handleOpenInsertSymbol}
-                      priorityExtra={toolbarPriorityExtra}
-                      inlineExtra={toolbarInlineExtra}
-                      panelToggles={panelToggles}
-                      {...(history.state.package.styles?.styles
-                        ? {
-                            documentStyles: history.state.package.styles.styles,
-                          }
-                        : {})}
-                      {...(state.pmImageContext ? { imageContext: state.pmImageContext } : {})}
-                      {...(state.pmTableContext ? { tableContext: state.pmTableContext } : {})}
-                    >
-                      {toolbarChildren}
-                    </FormattingBar>
-                  </div>
-                )}
+            {loadingIndicator || <DefaultLoadingIndicator />}
+          </div>
+        </FolioUIProvider>
+      );
+    }
 
-                {/* Panels row: the outline track, then the scroll container
-                    (page + comments gutter). Drawers open over it. */}
+    // Render error state
+    if (state.documentLoad.status === "error") {
+      return (
+        <FolioUIProvider components={components}>
+          <div
+            className={`folio-root folio-editor folio-editor-error ${className}`}
+            style={containerStyle}
+            data-testid="folio-editor"
+          >
+            <ParseError message={state.documentLoad.message} />
+          </div>
+        </FolioUIProvider>
+      );
+    }
+
+    // Render placeholder when no document
+    if (!history.state) {
+      return (
+        <FolioUIProvider components={components}>
+          <div
+            className={`folio-root folio-editor folio-editor-empty ${className}`}
+            style={containerStyle}
+            data-testid="folio-editor"
+          >
+            {placeholder || <DefaultPlaceholder />}
+          </div>
+        </FolioUIProvider>
+      );
+    }
+
+    return (
+      <FolioUIProvider components={components}>
+        <ErrorProvider>
+          <ErrorBoundary onError={handleEditorError}>
+            <div
+              ref={containerRef}
+              className={`folio-root folio-editor${displayMode !== "all-markup" ? ` folio-root--${displayMode}` : ""}${canEditHeaderFooter ? "" : " folio-no-hf-edit"} ${className}`}
+              style={containerStyle}
+              data-testid="folio-editor"
+              data-folio-format-painter={
+                formatPainterMode !== "off" ? "armed" : undefined
+              }
+            >
+              {/* Main content area */}
+              <div style={mainContentStyle}>
+                {/* Wrapper for toolbar + scroll container + outline overlay */}
                 <div
-                  ref={attachPanelsRow}
-                  className="folio-panels-row"
-                  style={panelsRowStyle}
-                  data-folio-panel-tier={panelLayout.tier}
-                  data-folio-outline={panelLayout.outline}
-                  data-folio-comments={panelLayout.comments}
+                  style={{
+                    position: "relative",
+                    flex: 1,
+                    minHeight: 0,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
                 >
-                  {panelLayout.outline !== "none" && panelLayout.outline !== "drawer" && (
-                    <DocumentOutline
-                      headings={visibleOutlineHeadings}
-                      available={outlineHeadings.length > 1}
-                      outlineDepth={outlineDepth}
-                      onOutlineDepthChange={handleOutlineDepthChange}
-                      scrollContainerRef={scrollContainerRef}
-                      docSize={editorController?.getView()?.state.doc.content.size ?? 0}
-                      activeId={activeHeadingId}
-                      onJump={handleOutlineJump}
-                      surface={panelLayout.outline}
-                      width={panelLayout.outlineTrackWidth}
-                      expanded={panelOverlay === "outline"}
-                      onExpand={toggleOutlineOverlay}
-                      {...(panelLayout.outline === "expanded"
-                        ? { onClose: closePanelOverlay }
-                        : {})}
-                    />
+                  {/* Toolbar - above the scroll container so scrollbar doesn't extend behind it */}
+                  {/* Hide toolbar only when readOnly prop is explicitly set (not from viewing mode) */}
+                  {showToolbar && !readOnlyProp && (
+                    <div className="z-50 flex flex-shrink-0 flex-col gap-0 bg-[var(--doc-page)]">
+                      <FormattingBar
+                        currentFormatting={state.selectionFormatting}
+                        onFormat={handleFormat}
+                        onUndo={undoActiveEditor}
+                        onRedo={redoActiveEditor}
+                        canUndo={activeHistoryAvailability.canUndo}
+                        canRedo={activeHistoryAvailability.canRedo}
+                        disabled={readOnly}
+                        theme={history.state.package.theme || theme || null}
+                        fontFamilies={fontFamilies}
+                        showZoomControl={showZoomControl}
+                        zoom={zoom}
+                        onZoomChange={setZoomWithViewportAnchor}
+                        rulerVisible={rulerVisible}
+                        onToggleRuler={toggleRuler}
+                        editorRef={editorContentRef}
+                        onRefocusEditor={focusActiveEditor}
+                        formatPainterActive={formatPainterMode !== "off"}
+                        onFormatPainter={handleFormatPainter}
+                        onImageWrapType={handleImageWrapType}
+                        onImageTransform={handleImageTransform}
+                        onOpenImageProperties={handleOpenImageProperties}
+                        onTableAction={handleTableAction}
+                        onInsertImage={onInsertImage}
+                        onInsertTable={onInsertTable}
+                        showTableInsert={showTableInsert}
+                        onInsertPageBreak={onInsertPageBreak}
+                        onInsertTOC={onInsertTOC}
+                        onInsertSymbol={handleOpenInsertSymbol}
+                        priorityExtra={toolbarPriorityExtra}
+                        inlineExtra={toolbarInlineExtra}
+                        panelToggles={panelToggles}
+                        {...(history.state.package.styles?.styles
+                          ? {
+                              documentStyles:
+                                history.state.package.styles.styles,
+                            }
+                          : {})}
+                        {...(state.pmImageContext
+                          ? { imageContext: state.pmImageContext }
+                          : {})}
+                        {...(state.pmTableContext
+                          ? { tableContext: state.pmTableContext }
+                          : {})}
+                      >
+                        {toolbarChildren}
+                      </FormattingBar>
+                    </div>
                   )}
-                  {/* Editor container - this is the scroll container (toolbar is above, not inside) */}
+
+                  {/* Panels row: the outline track, then the scroll container
+                    (page + comments gutter). Drawers open over it. */}
                   <div
-                    ref={attachScrollContainer}
-                    style={editorContainerStyle}
-                    data-folio-scroll=""
-                    onScroll={handleEditorScroll}
+                    ref={attachPanelsRow}
+                    className="folio-panels-row"
+                    style={panelsRowStyle}
+                    data-folio-panel-tier={panelLayout.tier}
+                    data-folio-outline={panelLayout.outline}
+                    data-folio-comments={panelLayout.comments}
                   >
-                    {/* Horizontal ruler — sticky-top, centered over the page so it
+                    {panelLayout.outline !== "none" &&
+                      panelLayout.outline !== "drawer" && (
+                        <DocumentOutline
+                          headings={visibleOutlineHeadings}
+                          available={outlineHeadings.length > 1}
+                          outlineDepth={outlineDepth}
+                          onOutlineDepthChange={handleOutlineDepthChange}
+                          scrollContainerRef={scrollContainerRef}
+                          docSize={
+                            editorController?.getView()?.state.doc.content
+                              .size ?? 0
+                          }
+                          activeId={activeHeadingId}
+                          onJump={handleOutlineJump}
+                          surface={panelLayout.outline}
+                          width={panelLayout.outlineTrackWidth}
+                          expanded={panelOverlay === "outline"}
+                          onExpand={toggleOutlineOverlay}
+                          {...(panelLayout.outline === "expanded"
+                            ? { onClose: closePanelOverlay }
+                            : {})}
+                        />
+                      )}
+                    {/* Editor container - this is the scroll container (toolbar is above, not inside) */}
+                    <div
+                      ref={attachScrollContainer}
+                      style={editorContainerStyle}
+                      data-folio-scroll=""
+                      onScroll={handleEditorScroll}
+                    >
+                      {/* Horizontal ruler — sticky-top, centered over the page so it
                       scrolls horizontally with the document. paddingRight biases
                       the centered ruler left by the comments gutter the panel
                       layout reserved, so it tracks the page it shifts. */}
-                    {rulerVisible && !readOnly && (
+                      {rulerVisible && !readOnly && (
+                        <div
+                          data-testid="folio-horizontal-ruler"
+                          style={{
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 20,
+                            display: "flex",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            paddingBlock: 4,
+                            paddingLeft: 20,
+                            paddingRight: 20 + panelLayout.commentsGutter,
+                            minWidth:
+                              twipsToPixels(
+                                effectiveSectionProperties?.pageWidth ?? 12240,
+                              ) *
+                                zoom +
+                              40 +
+                              panelLayout.commentsGutter,
+                            background: "var(--doc-canvas-surface)",
+                            transition: "padding 0.2s ease",
+                          }}
+                        >
+                          <HorizontalRuler
+                            sectionProps={effectiveSectionProperties ?? null}
+                            zoom={zoom}
+                            unit={rulerUnit}
+                            editable={!readOnly}
+                            onLeftMarginChange={handleLeftMarginChange}
+                            onRightMarginChange={handleRightMarginChange}
+                            indentLeft={state.paragraphIndentLeft}
+                            indentRight={state.paragraphIndentRight}
+                            onIndentLeftChange={handleIndentLeftChange}
+                            onIndentRightChange={handleIndentRightChange}
+                            firstLineIndent={state.paragraphFirstLineIndent}
+                            hangingIndent={state.paragraphHangingIndent}
+                            onFirstLineIndentChange={
+                              handleFirstLineIndentChange
+                            }
+                            tabStops={state.paragraphTabs}
+                            onTabStopRemove={handleTabStopRemove}
+                          />
+                        </div>
+                      )}
+                      {/* Editor content wrapper */}
                       <div
-                        data-testid="folio-horizontal-ruler"
                         style={{
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 20,
                           display: "flex",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                          paddingBlock: 4,
-                          paddingLeft: 20,
-                          paddingRight: 20 + panelLayout.commentsGutter,
-                          minWidth:
-                            twipsToPixels(effectiveSectionProperties?.pageWidth ?? 12240) * zoom +
-                            40 +
-                            panelLayout.commentsGutter,
-                          background: "var(--doc-canvas-surface)",
-                          transition: "padding 0.2s ease",
+                          flex: 1,
+                          minHeight: 0,
+                          position: "relative",
                         }}
                       >
-                        <HorizontalRuler
-                          sectionProps={effectiveSectionProperties ?? null}
-                          zoom={zoom}
-                          unit={rulerUnit}
-                          editable={!readOnly}
-                          onLeftMarginChange={handleLeftMarginChange}
-                          onRightMarginChange={handleRightMarginChange}
-                          indentLeft={state.paragraphIndentLeft}
-                          indentRight={state.paragraphIndentRight}
-                          onIndentLeftChange={handleIndentLeftChange}
-                          onIndentRightChange={handleIndentRightChange}
-                          firstLineIndent={state.paragraphFirstLineIndent}
-                          hangingIndent={state.paragraphHangingIndent}
-                          onFirstLineIndentChange={handleFirstLineIndentChange}
-                          tabStops={state.paragraphTabs}
-                          onTabStopRemove={handleTabStopRemove}
-                        />
-                      </div>
-                    )}
-                    {/* Editor content wrapper */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flex: 1,
-                        minHeight: 0,
-                        position: "relative",
-                      }}
-                    >
-                      {/* Editor content area */}
-                      {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- editor canvas; mouse handlers delegate focus to the child contenteditable, not an interactive control */}
-                      <div
-                        ref={attachEditorContent}
-                        style={{ position: "relative", flex: 1, minWidth: 0 }}
-                        onMouseDown={handleCanvasMouseDown}
-                        onContextMenu={handleEditorContextMenu}
-                      >
-                        {/* Vertical ruler — sits at the editor content's left edge
+                        {/* Editor content area */}
+                        {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- editor canvas; mouse handlers delegate focus to the child contenteditable, not an interactive control */}
+                        <div
+                          ref={attachEditorContent}
+                          style={{ position: "relative", flex: 1, minWidth: 0 }}
+                          onMouseDown={handleCanvasMouseDown}
+                          onContextMenu={handleEditorContextMenu}
+                        >
+                          {/* Vertical ruler — sits at the editor content's left edge
                           (left:0), in the far-left gutter clear of the centered
                           page; it deliberately does not track page-centering, per
                           the word-processor gutter convention. paddingTop keeps the
                           ruler's zero aligned with the first page's top edge across
                           zoom levels. */}
-                        {rulerVisible && !readOnly && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: 0,
-                              top: 0,
-                              zIndex: 20,
-                              paddingTop: VIEWPORT_PADDING_TOP * zoom,
-                            }}
-                          >
-                            <VerticalRuler
-                              sectionProps={effectiveSectionProperties ?? null}
-                              zoom={zoom}
-                              unit={rulerUnit}
-                              editable={!readOnly}
-                              onTopMarginChange={handleTopMarginChange}
-                              onBottomMarginChange={handleBottomMarginChange}
-                            />
-                          </div>
-                        )}
-                        <PagedEditor
-                          ref={attachPagedEditor}
-                          document={history.state}
-                          documentIO={documentIO}
-                          documentIdentity={loadedDocumentIdentity}
-                          markupView={displayMode}
-                          showCommentHighlights={showCommentHighlights}
-                          {...(fonts !== undefined ? { fonts } : {})}
-                          theme={history.state.package.theme || theme || null}
-                          sectionProperties={effectiveSectionProperties ?? null}
-                          headerContent={headerContent}
-                          footerContent={footerContent}
-                          firstPageHeaderContent={firstPageHeaderContent}
-                          firstPageFooterContent={firstPageFooterContent}
-                          headerContentRId={activeHeaderRId}
-                          footerContentRId={activeFooterRId}
-                          firstPageHeaderContentRId={activeFirstHeaderRId}
-                          firstPageFooterContentRId={activeFirstFooterRId}
-                          {...(history.state.package.styles
-                            ? { styles: history.state.package.styles }
-                            : {})}
-                          onHeaderFooterDoubleClick={handleHeaderFooterStoryOpen}
-                          hfEditMode={canEditHeaderFooter ? hfEditPosition : null}
-                          activeHeaderFooterRId={canEditHeaderFooter ? activeHfRId : null}
-                          onBodyClick={handleBodyClick}
-                          onActiveNoteStoryChange={handleActiveNoteStoryChange}
-                          zoom={zoom}
-                          {...(pageRenderer === undefined ? {} : { pageRenderer })}
-                          showMarginGuides={showMarginGuides}
-                          {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}
-                          readOnly={readOnly}
-                          {...(!usesCanonicalSession(
-                            experimentalSession,
-                            CANONICAL_GAP.authorityRouting,
-                          )
-                            ? {}
-                            : { experimentalSession })}
-                          onDocumentChange={handleDocumentChange}
-                          extensionManager={extensionManager}
-                          suggestionModeActive={editingMode === "suggesting"}
-                          suggestionAuthor={author}
-                          {...(onCopy !== undefined ? { onCopy } : {})}
-                          {...(onCut !== undefined ? { onCut } : {})}
-                          {...(onPaste !== undefined ? { onPaste } : {})}
-                          {...(onReadonlyEditAttempt !== undefined
-                            ? { onReadOnlyEditAttempt: notifyReadonlyEditAttempt }
-                            : {})}
-                          onSelectionChange={handlePagedSelectionChange}
-                          {...(onSelectionTextChange !== undefined
-                            ? { onSelectionTextChange }
-                            : {})}
-                          onEditorViewReady={handleBodyViewReady}
-                          externalPlugins={editorPlugins}
-                          showTemplateDirectives={showTemplateDirectives}
-                          {...(collaboration !== undefined ? { collaboration } : {})}
-                          onHyperlinkClick={handleHyperlinkClick}
-                          onContextMenu={handleContextMenu}
-                          pageEndGutter={panelLayout.commentsGutter}
-                          anchorPositionMode="comments"
-                          onAnonymizationTermClick={onAnonymizationTermClick}
-                          selectedAnonymizationCanonical={selectedAnonymizationCanonical}
-                          anonymizationSelectionSeq={anonymizationSelectionSeq}
-                          {...(showCommentsSidebar
-                            ? { onAnchorPositionsChange: setAnchorPositions }
-                            : {})}
-                          onTotalPagesChange={handleTotalPagesChange}
-                          onError={handleEditorError}
-                          scrollContainerRef={scrollContainerRef}
-                          sidebarOverlay={commentsSidebarOverlay}
-                        />
-
-                        {/* Floating "add comment" button — appears on right edge of page at selection */}
-                        {floatingCommentBtn !== null && !isAddingComment && !readOnly && (
-                          <Tooltip content="Add comment" side="bottom" delayMs={300}>
-                            <button
-                              type="button"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const view = pagedEditorRef.current?.getView();
-                                if (!view) {
-                                  setFloatingCommentBtn(null);
-                                  return;
-                                }
-                                const capturedRange = {
-                                  from: floatingCommentBtn.from,
-                                  to: floatingCommentBtn.to,
-                                };
-                                const currentSelection = view.state.selection;
-                                const safeRange = resolveCommentCreationRange({
-                                  docSize: view.state.doc.content.size,
-                                  capturedRange,
-                                  currentRange: {
-                                    from: currentSelection.from,
-                                    to: currentSelection.to,
-                                  },
-                                  savedRange: lastSelectionRef.current,
-                                });
-                                if (!safeRange) {
-                                  setCommentSelectionRange(null);
-                                  setFloatingCommentBtn(null);
-                                  return;
-                                }
-                                setCommentSelectionRange(safeRange);
-                                if (commentDraftMode === "prosemirror") {
-                                  const marked = applyCommentMarkRange(
-                                    view,
-                                    safeRange,
-                                    PENDING_COMMENT_ID,
-                                    { selectEnd: true },
-                                  );
-                                  if (!marked) {
-                                    setCommentSelectionRange(null);
-                                    setFloatingCommentBtn(null);
-                                    return;
-                                  }
-                                }
-                                const yPos = findSelectionYPosition(
-                                  scrollContainerRef.current,
-                                  editorContentRef.current,
-                                  safeRange.from,
-                                );
-                                setAddCommentYPosition(yPos ?? floatingCommentBtn.top);
-                                setShowCommentsSidebar(true);
-                                setIsAddingComment(true);
-                                setFloatingCommentBtn(null);
-                              }}
+                          {rulerVisible && !readOnly && (
+                            <div
                               style={{
                                 position: "absolute",
-                                top: floatingCommentBtn.top,
-                                left: floatingCommentBtn.left,
-                                transform: "translate(-50%, -50%)",
-                                zIndex: 50,
-                                width: 28,
-                                height: 28,
-                                borderRadius: 6,
-                                border: "1px solid var(--doc-border)",
-                                backgroundColor: "var(--doc-page)",
-                                color: "var(--doc-text-muted)",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                boxShadow: "0 2px 8px var(--doc-border)",
-                                transition: "background-color 0.15s, box-shadow 0.15s",
-                              }}
-                              onMouseOver={(e) => {
-                                (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                                  "rgba(26, 115, 232, 0.08)";
-                                (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                                  "0 1px 4px rgba(26, 115, 232, 0.3)";
-                              }}
-                              onFocus={(e) => {
-                                (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                                  "rgba(26, 115, 232, 0.08)";
-                              }}
-                              onMouseOut={(e) => {
-                                (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                                  "var(--doc-canvas, #fff)";
-                                (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                                  "0 1px 3px rgba(60,64,67,0.2)";
-                              }}
-                              onBlur={(e) => {
-                                (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                                  "var(--doc-canvas, #fff)";
+                                left: 0,
+                                top: 0,
+                                zIndex: 20,
+                                paddingTop: VIEWPORT_PADDING_TOP * zoom,
                               }}
                             >
-                              <SquarePenIcon size={16} />
-                            </button>
-                          </Tooltip>
-                        )}
-
-                        {/* Inline Header/Footer Editor — positioned over the target area */}
-                        {canEditHeaderFooter &&
-                          hfEditPosition &&
-                          (() => {
-                            const activeHf = (() => {
-                              if (hfEditIsFirstPage) {
-                                return (() => {
-                                  if (hfEditPosition === "header") {
-                                    return firstPageHeaderContent;
-                                  }
-                                  return firstPageFooterContent;
-                                })();
-                              }
-                              if (hfEditPosition === "header") {
-                                return headerContent;
-                              }
-                              return footerContent;
-                            })();
-                            if (!activeHf) {
-                              return null;
-                            }
-                            const targetEl = editorContentElement?.querySelector<HTMLElement>(
-                              hfEditPosition === "header"
-                                ? ".layout-page-header"
-                                : ".layout-page-footer",
-                            );
-                            const parentEl = editorContentElement;
-                            if (!targetEl || !parentEl) {
-                              return null;
-                            }
-                            return (
-                              <InlineHeaderFooterEditor
-                                ref={hfEditorRef}
-                                position={hfEditPosition}
-                                targetElement={targetEl}
-                                parentElement={parentEl}
-                                getActiveView={getActiveHfView}
-                                onClose={handleBodyClick}
-                                onRemove={handleRemoveHeaderFooter}
+                              <VerticalRuler
+                                sectionProps={
+                                  effectiveSectionProperties ?? null
+                                }
+                                zoom={zoom}
+                                unit={rulerUnit}
+                                editable={!readOnly}
+                                onTopMarginChange={handleTopMarginChange}
+                                onBottomMarginChange={handleBottomMarginChange}
                               />
-                            );
-                          })()}
+                            </div>
+                          )}
+                          <PagedEditor
+                            ref={attachPagedEditor}
+                            document={history.state}
+                            documentIO={documentIO}
+                            documentIdentity={loadedDocumentIdentity}
+                            markupView={displayMode}
+                            showCommentHighlights={showCommentHighlights}
+                            {...(fonts !== undefined ? { fonts } : {})}
+                            theme={history.state.package.theme || theme || null}
+                            sectionProperties={
+                              effectiveSectionProperties ?? null
+                            }
+                            headerContent={headerContent}
+                            footerContent={footerContent}
+                            firstPageHeaderContent={firstPageHeaderContent}
+                            firstPageFooterContent={firstPageFooterContent}
+                            headerContentRId={activeHeaderRId}
+                            footerContentRId={activeFooterRId}
+                            firstPageHeaderContentRId={activeFirstHeaderRId}
+                            firstPageFooterContentRId={activeFirstFooterRId}
+                            {...(history.state.package.styles
+                              ? { styles: history.state.package.styles }
+                              : {})}
+                            onHeaderFooterDoubleClick={
+                              handleHeaderFooterStoryOpen
+                            }
+                            hfEditMode={
+                              canEditHeaderFooter ? hfEditPosition : null
+                            }
+                            activeHeaderFooterRId={
+                              canEditHeaderFooter ? activeHfRId : null
+                            }
+                            onBodyClick={handleBodyClick}
+                            onActiveNoteStoryChange={
+                              handleActiveNoteStoryChange
+                            }
+                            zoom={zoom}
+                            {...(pageRenderer === undefined
+                              ? {}
+                              : { pageRenderer })}
+                            showMarginGuides={showMarginGuides}
+                            {...(marginGuideColor !== undefined
+                              ? { marginGuideColor }
+                              : {})}
+                            readOnly={readOnly}
+                            {...(!usesCanonicalSession(
+                              experimentalSession,
+                              CANONICAL_GAP.authorityRouting,
+                            )
+                              ? {}
+                              : { experimentalSession })}
+                            onDocumentChange={handleDocumentChange}
+                            extensionManager={extensionManager}
+                            suggestionModeActive={editingMode === "suggesting"}
+                            suggestionAuthor={author}
+                            {...(onCopy !== undefined ? { onCopy } : {})}
+                            {...(onCut !== undefined ? { onCut } : {})}
+                            {...(onPaste !== undefined ? { onPaste } : {})}
+                            {...(onReadonlyEditAttempt !== undefined
+                              ? {
+                                  onReadOnlyEditAttempt:
+                                    notifyReadonlyEditAttempt,
+                                }
+                              : {})}
+                            onSelectionChange={handlePagedSelectionChange}
+                            {...(onSelectionTextChange !== undefined
+                              ? { onSelectionTextChange }
+                              : {})}
+                            onEditorViewReady={handleBodyViewReady}
+                            externalPlugins={editorPlugins}
+                            showTemplateDirectives={showTemplateDirectives}
+                            {...(collaboration !== undefined
+                              ? { collaboration }
+                              : {})}
+                            onHyperlinkClick={handleHyperlinkClick}
+                            onContextMenu={handleContextMenu}
+                            pageEndGutter={panelLayout.commentsGutter}
+                            anchorPositionMode="comments"
+                            onAnonymizationTermClick={onAnonymizationTermClick}
+                            selectedAnonymizationCanonical={
+                              selectedAnonymizationCanonical
+                            }
+                            anonymizationSelectionSeq={
+                              anonymizationSelectionSeq
+                            }
+                            {...(showCommentsSidebar
+                              ? { onAnchorPositionsChange: setAnchorPositions }
+                              : {})}
+                            onTotalPagesChange={handleTotalPagesChange}
+                            onError={handleEditorError}
+                            scrollContainerRef={scrollContainerRef}
+                            sidebarOverlay={commentsSidebarOverlay}
+                          />
+
+                          {/* Floating "add comment" button — appears on right edge of page at selection */}
+                          {floatingCommentBtn !== null &&
+                            !isAddingComment &&
+                            !readOnly && (
+                              <Tooltip
+                                content="Add comment"
+                                side="bottom"
+                                delayMs={300}
+                              >
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const view =
+                                      pagedEditorRef.current?.getView();
+                                    if (!view) {
+                                      setFloatingCommentBtn(null);
+                                      return;
+                                    }
+                                    const capturedRange = {
+                                      from: floatingCommentBtn.from,
+                                      to: floatingCommentBtn.to,
+                                    };
+                                    const currentSelection =
+                                      view.state.selection;
+                                    const safeRange =
+                                      resolveCommentCreationRange({
+                                        docSize: view.state.doc.content.size,
+                                        capturedRange,
+                                        currentRange: {
+                                          from: currentSelection.from,
+                                          to: currentSelection.to,
+                                        },
+                                        savedRange: lastSelectionRef.current,
+                                      });
+                                    if (!safeRange) {
+                                      setCommentSelectionRange(null);
+                                      setFloatingCommentBtn(null);
+                                      return;
+                                    }
+                                    setCommentSelectionRange(safeRange);
+                                    if (commentDraftMode === "prosemirror") {
+                                      const marked = applyCommentMarkRange(
+                                        view,
+                                        safeRange,
+                                        PENDING_COMMENT_ID,
+                                        { selectEnd: true },
+                                      );
+                                      if (!marked) {
+                                        setCommentSelectionRange(null);
+                                        setFloatingCommentBtn(null);
+                                        return;
+                                      }
+                                    }
+                                    const yPos = findSelectionYPosition(
+                                      scrollContainerRef.current,
+                                      editorContentRef.current,
+                                      safeRange.from,
+                                    );
+                                    setAddCommentYPosition(
+                                      yPos ?? floatingCommentBtn.top,
+                                    );
+                                    setShowCommentsSidebar(true);
+                                    setIsAddingComment(true);
+                                    setFloatingCommentBtn(null);
+                                  }}
+                                  style={{
+                                    position: "absolute",
+                                    top: floatingCommentBtn.top,
+                                    left: floatingCommentBtn.left,
+                                    transform: "translate(-50%, -50%)",
+                                    zIndex: 50,
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 6,
+                                    border: "1px solid var(--doc-border)",
+                                    backgroundColor: "var(--doc-page)",
+                                    color: "var(--doc-text-muted)",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    boxShadow: "0 2px 8px var(--doc-border)",
+                                    transition:
+                                      "background-color 0.15s, box-shadow 0.15s",
+                                  }}
+                                  onMouseOver={(e) => {
+                                    (
+                                      e.currentTarget as HTMLButtonElement
+                                    ).style.backgroundColor =
+                                      "rgba(26, 115, 232, 0.08)";
+                                    (
+                                      e.currentTarget as HTMLButtonElement
+                                    ).style.boxShadow =
+                                      "0 1px 4px rgba(26, 115, 232, 0.3)";
+                                  }}
+                                  onFocus={(e) => {
+                                    (
+                                      e.currentTarget as HTMLButtonElement
+                                    ).style.backgroundColor =
+                                      "rgba(26, 115, 232, 0.08)";
+                                  }}
+                                  onMouseOut={(e) => {
+                                    (
+                                      e.currentTarget as HTMLButtonElement
+                                    ).style.backgroundColor =
+                                      "var(--doc-canvas, #fff)";
+                                    (
+                                      e.currentTarget as HTMLButtonElement
+                                    ).style.boxShadow =
+                                      "0 1px 3px rgba(60,64,67,0.2)";
+                                  }}
+                                  onBlur={(e) => {
+                                    (
+                                      e.currentTarget as HTMLButtonElement
+                                    ).style.backgroundColor =
+                                      "var(--doc-canvas, #fff)";
+                                  }}
+                                >
+                                  <SquarePenIcon size={16} />
+                                </button>
+                              </Tooltip>
+                            )}
+
+                          {/* Inline Header/Footer Editor — positioned over the target area */}
+                          {canEditHeaderFooter &&
+                            hfEditPosition &&
+                            (() => {
+                              const activeHf = (() => {
+                                if (hfEditIsFirstPage) {
+                                  return (() => {
+                                    if (hfEditPosition === "header") {
+                                      return firstPageHeaderContent;
+                                    }
+                                    return firstPageFooterContent;
+                                  })();
+                                }
+                                if (hfEditPosition === "header") {
+                                  return headerContent;
+                                }
+                                return footerContent;
+                              })();
+                              if (!activeHf) {
+                                return null;
+                              }
+                              const targetEl =
+                                editorContentElement?.querySelector<HTMLElement>(
+                                  hfEditPosition === "header"
+                                    ? ".layout-page-header"
+                                    : ".layout-page-footer",
+                                );
+                              const parentEl = editorContentElement;
+                              if (!targetEl || !parentEl) {
+                                return null;
+                              }
+                              return (
+                                <InlineHeaderFooterEditor
+                                  ref={hfEditorRef}
+                                  position={hfEditPosition}
+                                  targetElement={targetEl}
+                                  parentElement={parentEl}
+                                  getActiveView={getActiveHfView}
+                                  onClose={handleBodyClick}
+                                  onRemove={handleRemoveHeaderFooter}
+                                />
+                              );
+                            })()}
+                        </div>
                       </div>
+                      {/* end editor flex wrapper */}
                     </div>
-                    {/* end editor flex wrapper */}
-                  </div>
-                  {/* end scroll container */}
+                    {/* end scroll container */}
 
-                  {commentsSurface === "drawer" && <PanelScrim onDismiss={dismissCommentsDrawer} />}
+                    {commentsSurface === "drawer" && (
+                      <PanelScrim onDismiss={dismissCommentsDrawer} />
+                    )}
+                  </div>
+                  {/* end panels row */}
+
+                  {/* Page indicator — next to scrollbar while scrolling */}
+                  {scrollPageInfo.totalPages > 1 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 24,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        backgroundColor: "var(--doc-text)",
+                        color: "var(--doc-page)",
+                        padding: "6px 12px",
+                        borderRadius: "4px",
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        whiteSpace: "nowrap",
+                        pointerEvents: "none",
+                        zIndex: 1000,
+                        opacity: scrollPageInfo.visible ? 1 : 0,
+                        transition: "opacity 0.3s ease",
+                        userSelect: "none",
+                      }}
+                      aria-live="polite"
+                      role="status"
+                    >
+                      {t("viewer.pageOfTotal", {
+                        current: String(scrollPageInfo.currentPage),
+                        total: String(scrollPageInfo.totalPages),
+                      })}
+                    </div>
+                  )}
                 </div>
-                {/* end panels row */}
-
-                {/* Page indicator — next to scrollbar while scrolling */}
-                {scrollPageInfo.totalPages > 1 && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      right: 24,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      backgroundColor: "var(--doc-text)",
-                      color: "var(--doc-page)",
-                      padding: "6px 12px",
-                      borderRadius: "4px",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      whiteSpace: "nowrap",
-                      pointerEvents: "none",
-                      zIndex: 1000,
-                      opacity: scrollPageInfo.visible ? 1 : 0,
-                      transition: "opacity 0.3s ease",
-                      userSelect: "none",
-                    }}
-                    aria-live="polite"
-                    role="status"
-                  >
-                    {t("viewer.pageOfTotal", {
-                      current: String(scrollPageInfo.currentPage),
-                      total: String(scrollPageInfo.totalPages),
-                    })}
-                  </div>
-                )}
+                {/* end wrapper for scroll container + outline */}
               </div>
-              {/* end wrapper for scroll container + outline */}
+
+              {/* Hyperlink popup */}
+              <HyperlinkPopup
+                data={hyperlinkPopupData}
+                onNavigate={handleHyperlinkPopupNavigate}
+                onCopy={handleHyperlinkPopupCopy}
+                onEdit={handleHyperlinkPopupEdit}
+                onRemove={handleHyperlinkPopupRemove}
+                onClose={handleHyperlinkPopupClose}
+                readOnly={readOnly}
+              />
+
+              {/* Right-click context menu */}
+              {contextMenu.isOpen && (
+                <Suspense fallback={null}>
+                  <TextContextMenu
+                    isOpen={contextMenu.isOpen}
+                    position={contextMenu.position}
+                    hasSelection={contextMenu.hasSelection}
+                    isEditable={!readOnly}
+                    items={contextMenuItems}
+                    onAction={handleTextContextAction}
+                    onClose={handleContextMenuClose}
+                  />
+                </Suspense>
+              )}
+
+              {/* Dropdown / date pickers for content controls */}
+              <ContentControlWidgetsOverlay
+                getEventRoot={getContentControlEventRoot}
+                getEditorView={getBodyEditorView}
+              />
+
+              {/* Toast notifications */}
+              {/* Toast notifications provided by host app */}
+
+              <DocxEditorDialogs
+                findReplace={findReplaceDialog}
+                tableProperties={tablePropertiesDialog}
+                imagePosition={imagePositionDialog}
+                imageProperties={imagePropertiesDialog}
+                pageSetup={pageSetupDialog}
+                footnoteProperties={footnotePropertiesDialog}
+                insertSymbol={insertSymbolDialog}
+                setNumberingValue={numberingValueDialog}
+              />
+              {/* InlineHeaderFooterEditor is rendered inside the editor content area (position:relative div) */}
+              {/* Hidden file input for image insertion */}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleImageFileChange}
+              />
             </div>
-
-            {/* Hyperlink popup */}
-            <HyperlinkPopup
-              data={hyperlinkPopupData}
-              onNavigate={handleHyperlinkPopupNavigate}
-              onCopy={handleHyperlinkPopupCopy}
-              onEdit={handleHyperlinkPopupEdit}
-              onRemove={handleHyperlinkPopupRemove}
-              onClose={handleHyperlinkPopupClose}
-              readOnly={readOnly}
-            />
-
-            {/* Right-click context menu */}
-            {contextMenu.isOpen && (
-              <Suspense fallback={null}>
-                <TextContextMenu
-                  isOpen={contextMenu.isOpen}
-                  position={contextMenu.position}
-                  hasSelection={contextMenu.hasSelection}
-                  isEditable={!readOnly}
-                  items={contextMenuItems}
-                  onAction={handleTextContextAction}
-                  onClose={handleContextMenuClose}
-                />
-              </Suspense>
-            )}
-
-            {/* Dropdown / date pickers for content controls */}
-            <ContentControlWidgetsOverlay
-              getEventRoot={getContentControlEventRoot}
-              getEditorView={getBodyEditorView}
-            />
-
-            {/* Toast notifications */}
-            {/* Toast notifications provided by host app */}
-
-            <DocxEditorDialogs
-              findReplace={findReplaceDialog}
-              tableProperties={tablePropertiesDialog}
-              imagePosition={imagePositionDialog}
-              imageProperties={imagePropertiesDialog}
-              pageSetup={pageSetupDialog}
-              footnoteProperties={footnotePropertiesDialog}
-              insertSymbol={insertSymbolDialog}
-              setNumberingValue={numberingValueDialog}
-            />
-            {/* InlineHeaderFooterEditor is rendered inside the editor content area (position:relative div) */}
-            {/* Hidden file input for image insertion */}
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={handleImageFileChange}
-            />
-          </div>
-        </ErrorBoundary>
-      </ErrorProvider>
-    </FolioUIProvider>
-  );
-});
+          </ErrorBoundary>
+        </ErrorProvider>
+      </FolioUIProvider>
+    );
+  },
+);
 /* eslint-enable prefer-arrow-callback */
 
 type MenuCheckboxItemComponent = typeof DEFAULT_COMPONENTS.Menu.CheckboxItem;

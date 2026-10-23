@@ -4,9 +4,9 @@
  */
 
 import {
+  type FloatingImageZone,
   getFloatingAvailableWidth,
   getFloatingMargins,
-  type FloatingImageZone,
 } from "./floatingZones";
 
 /**
@@ -46,7 +46,10 @@ export function findClearLineY(
   // happy path O(zones).
   for (let i = 0; i < zones.length + 2; i++) {
     const margins = getFloatingMargins(y, lineHeight, zones, 0);
-    const available = Math.max(0, getFloatingAvailableWidth(margins, contentWidth));
+    const available = Math.max(
+      0,
+      getFloatingAvailableWidth(margins, contentWidth),
+    );
     if (available >= minWidth) {
       return y;
     }

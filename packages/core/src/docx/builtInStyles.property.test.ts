@@ -15,22 +15,29 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
 import {
   BODY_TEXT_OUTLINE_LEVEL,
   headingOutlineLevel,
   type OutlineLevel,
 } from "@stll/docx-core/model";
 
-import { createBuiltInStyleIndex, resolveHeadingLevel } from "./builtInStyles";
-import { createBilingualDocument } from "./server/createBilingualDocument";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createFolioAIEditSnapshotWithStyleResolver } from "../ai-edits/snapshot";
 import { toMarkdown } from "../markdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createStyleEngine } from "../style-engine/styleEngine";
-import type { Document, Paragraph, Style, StyleDefinitions } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  Style,
+  StyleDefinitions,
+} from "../types/document";
 import { collectHeadings } from "../utils/headingCollector";
+import { createBuiltInStyleIndex, resolveHeadingLevel } from "./builtInStyles";
+import { createBilingualDocument } from "./server/createBilingualDocument";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -101,13 +108,15 @@ const STYLE_IDS = [
 
 /** Every state a stated `w:outlineLvl` can be in: nine headings and body text. */
 const OUTLINE_LEVELS: readonly OutlineLevel[] = [
-  ...Array.from({ length: 9 }, (_unused, level) => headingOutlineLevel(level)).flatMap((level) =>
-    level === undefined ? [] : [level],
-  ),
+  ...Array.from({ length: 9 }, (_unused, level) =>
+    headingOutlineLevel(level),
+  ).flatMap((level) => (level === undefined ? [] : [level])),
   BODY_TEXT_OUTLINE_LEVEL,
 ];
 
-const outlineLevelArbitrary = fc.option(fc.constantFrom(...OUTLINE_LEVELS), { nil: undefined });
+const outlineLevelArbitrary = fc.option(fc.constantFrom(...OUTLINE_LEVELS), {
+  nil: undefined,
+});
 
 const styleArbitrary = fc.record({
   styleId: fc.constantFrom(...STYLE_IDS),
@@ -123,7 +132,12 @@ type GeneratedStyle = {
   basedOn: string | undefined;
 };
 
-const toStyle = ({ styleId, name, outlineLevel, basedOn }: GeneratedStyle): Style => ({
+const toStyle = ({
+  styleId,
+  name,
+  outlineLevel,
+  basedOn,
+}: GeneratedStyle): Style => ({
   styleId,
   type: "paragraph",
   ...(name === undefined ? {} : { name }),
@@ -133,7 +147,11 @@ const toStyle = ({ styleId, name, outlineLevel, basedOn }: GeneratedStyle): Styl
 
 /** Distinct ids only: a package with two styles sharing an id is malformed. */
 const stylesArbitrary = fc
-  .uniqueArray(styleArbitrary, { minLength: 1, maxLength: 8, selector: (s) => s.styleId })
+  .uniqueArray(styleArbitrary, {
+    minLength: 1,
+    maxLength: 8,
+    selector: (s) => s.styleId,
+  })
   .map((styles) => styles.map(toStyle));
 
 const paragraphArbitrary = fc.record({
@@ -142,10 +160,19 @@ const paragraphArbitrary = fc.record({
 });
 
 const documentArbitrary = fc
-  .tuple(stylesArbitrary, fc.array(paragraphArbitrary, { minLength: 1, maxLength: 6 }))
-  .map(([styles, paragraphs]) => ({ styles: { styles } as StyleDefinitions, paragraphs }));
+  .tuple(
+    stylesArbitrary,
+    fc.array(paragraphArbitrary, { minLength: 1, maxLength: 6 }),
+  )
+  .map(([styles, paragraphs]) => ({
+    styles: { styles } as StyleDefinitions,
+    paragraphs,
+  }));
 
-type GeneratedParagraph = { styleId: string | undefined; outlineLevel: OutlineLevel | undefined };
+type GeneratedParagraph = {
+  styleId: string | undefined;
+  outlineLevel: OutlineLevel | undefined;
+};
 
 /**
  * Text that survives every exporter unchanged: no markdown block syntax to
@@ -153,16 +180,28 @@ type GeneratedParagraph = { styleId: string | undefined; outlineLevel: OutlineLe
  */
 const paragraphText = (index: number): string => `para${index}`;
 
-const buildDocument = (styles: StyleDefinitions, paragraphs: GeneratedParagraph[]): Document => ({
+const buildDocument = (
+  styles: StyleDefinitions,
+  paragraphs: GeneratedParagraph[],
+): Document => ({
   package: {
     document: {
       content: paragraphs.map((paragraph, index): Paragraph => ({
         type: "paragraph",
         paraId: (index + 1).toString(16).padStart(8, "0").toUpperCase(),
-        content: [{ type: "run", content: [{ type: "text", text: paragraphText(index) }] }],
+        content: [
+          {
+            type: "run",
+            content: [{ type: "text", text: paragraphText(index) }],
+          },
+        ],
         formatting: {
-          ...(paragraph.styleId === undefined ? {} : { styleId: paragraph.styleId }),
-          ...(paragraph.outlineLevel === undefined ? {} : { outlineLevel: paragraph.outlineLevel }),
+          ...(paragraph.styleId === undefined
+            ? {}
+            : { styleId: paragraph.styleId }),
+          ...(paragraph.outlineLevel === undefined
+            ? {}
+            : { outlineLevel: paragraph.outlineLevel }),
         },
       })),
     },
@@ -187,8 +226,12 @@ const collectorVerdicts = (document: Document): Verdict[] => {
     pmDoc,
     createBuiltInStyleIndex(document.package.styles?.styles ?? []),
   );
-  const byText = new Map(headings.map((heading) => [heading.text, heading.level]));
-  return document.package.document.content.map((_block, index) => byText.get(paragraphText(index)));
+  const byText = new Map(
+    headings.map((heading) => [heading.text, heading.level]),
+  );
+  return document.package.document.content.map((_block, index) =>
+    byText.get(paragraphText(index)),
+  );
 };
 
 const snapshotVerdicts = (document: Document): Verdict[] => {
@@ -204,7 +247,9 @@ const snapshotVerdicts = (document: Document): Verdict[] => {
         : undefined,
     ]),
   );
-  return document.package.document.content.map((_block, index) => byText.get(paragraphText(index)));
+  return document.package.document.content.map((_block, index) =>
+    byText.get(paragraphText(index)),
+  );
 };
 
 const markdownVerdicts = (document: Document): Verdict[] => {
@@ -213,13 +258,18 @@ const markdownVerdicts = (document: Document): Verdict[] => {
   for (const block of blocks) {
     const heading = /^(?<hashes>#{1,6}) (?<text>.*)$/u.exec(block);
     if (heading?.groups) {
-      byText.set(heading.groups["text"] ?? "", (heading.groups["hashes"] ?? "").length - 1);
+      byText.set(
+        heading.groups["text"] ?? "",
+        (heading.groups["hashes"] ?? "").length - 1,
+      );
       continue;
     }
     // A quote block keeps its `> ` prefix; strip it so the text still matches.
     byText.set(block.replace(/^> /u, ""), undefined);
   }
-  return document.package.document.content.map((_block, index) => byText.get(paragraphText(index)));
+  return document.package.document.content.map((_block, index) =>
+    byText.get(paragraphText(index)),
+  );
 };
 
 /**
@@ -229,7 +279,9 @@ const markdownVerdicts = (document: Document): Verdict[] => {
 const bilingualIsHeading = (document: Document): boolean[] => {
   const paraIds = new Set(
     document.package.document.content.flatMap((block) =>
-      block.type === "paragraph" && block.paraId !== undefined ? [block.paraId] : [],
+      block.type === "paragraph" && block.paraId !== undefined
+        ? [block.paraId]
+        : [],
     ),
   );
   const { rows } = createBilingualDocument(document, {
@@ -237,7 +289,9 @@ const bilingualIsHeading = (document: Document): boolean[] => {
     editableParagraphIds: paraIds,
   });
   const byText = new Map(
-    rows.flatMap((row) => (row.kind === "table" ? [] : [[row.sourceText, row.kind === "heading"]])),
+    rows.flatMap((row) =>
+      row.kind === "table" ? [] : [[row.sourceText, row.kind === "heading"]],
+    ),
   );
   return document.package.document.content.map(
     (_block, index) => byText.get(paragraphText(index)) ?? false,
@@ -250,7 +304,9 @@ const bilingualIsHeading = (document: Document): boolean[] => {
  * than weakening the comparison for all of them.
  */
 const clampToMarkdown = (verdict: Verdict): Verdict =>
-  verdict === undefined ? undefined : Math.min(verdict, MAX_MARKDOWN_HEADING_LEVEL - 1);
+  verdict === undefined
+    ? undefined
+    : Math.min(verdict, MAX_MARKDOWN_HEADING_LEVEL - 1);
 
 describe("every heading consumer agrees with the classifier", () => {
   test("the collector, the AI snapshot, markdown and the bilingual builder give one answer", () => {
@@ -261,7 +317,9 @@ describe("every heading consumer agrees with the classifier", () => {
 
         expect(collectorVerdicts(document)).toEqual(expected);
         expect(snapshotVerdicts(document)).toEqual(expected);
-        expect(markdownVerdicts(document)).toEqual(expected.map(clampToMarkdown));
+        expect(markdownVerdicts(document)).toEqual(
+          expected.map(clampToMarkdown),
+        );
         expect(bilingualIsHeading(document)).toEqual(
           expected.map((verdict) => verdict !== undefined),
         );
@@ -291,12 +349,16 @@ const renameStyleIds = (
       styles: styles.styles.map((style) => ({
         ...style,
         styleId: rename(style.styleId),
-        ...(style.basedOn === undefined ? {} : { basedOn: rename(style.basedOn) }),
+        ...(style.basedOn === undefined
+          ? {}
+          : { basedOn: rename(style.basedOn) }),
       })),
     },
     paragraphs: paragraphs.map((paragraph) => ({
       ...paragraph,
-      ...(paragraph.styleId === undefined ? {} : { styleId: rename(paragraph.styleId) }),
+      ...(paragraph.styleId === undefined
+        ? {}
+        : { styleId: rename(paragraph.styleId) }),
     })),
   };
 };

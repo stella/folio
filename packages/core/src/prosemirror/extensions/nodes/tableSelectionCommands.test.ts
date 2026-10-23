@@ -14,8 +14,14 @@ import {
 // block, a plain column and a vertical merge in column D; rows 3–4 a vertical
 // merge in column A and a nested table.
 const caretInTable = async () => {
-  const document = await parseShapeDocument(await documentShape("tables").build());
-  const state = placeSelection(createHarnessState(document, "editing"), "Cell C2", "caret-middle");
+  const document = await parseShapeDocument(
+    await documentShape("tables").build(),
+  );
+  const state = placeSelection(
+    createHarnessState(document, "editing"),
+    "Cell C2",
+    "caret-middle",
+  );
   if (!state) {
     throw new Error("the shape has no focus paragraph");
   }
@@ -26,7 +32,12 @@ describe("table selection commands", () => {
   test("selectTable selects every cell of the table holding the caret", async () => {
     const view = await caretInTable();
 
-    expect(harnessManager().requireCommand("selectTable")()(view.state, view.dispatch)).toBe(true);
+    expect(
+      harnessManager().requireCommand("selectTable")()(
+        view.state,
+        view.dispatch,
+      ),
+    ).toBe(true);
 
     const { selection } = view.state;
     expect(selection).toBeInstanceOf(CellSelection);
@@ -52,7 +63,9 @@ describe("table selection commands", () => {
   test("selectRow selects the caret's row, with the rows its merged cells span", async () => {
     const view = await caretInTable();
 
-    expect(harnessManager().requireCommand("selectRow")()(view.state, view.dispatch)).toBe(true);
+    expect(
+      harnessManager().requireCommand("selectRow")()(view.state, view.dispatch),
+    ).toBe(true);
 
     const selection = view.state.selection as CellSelection;
     expect(selection).toBeInstanceOf(CellSelection);

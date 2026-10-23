@@ -21,8 +21,10 @@
  * Operations that change text or break a paragraph are refused there as well.
  */
 
-const isHighSurrogate = (code: number): boolean => code >= 0xd8_00 && code <= 0xdb_ff;
-const isLowSurrogate = (code: number): boolean => code >= 0xdc_00 && code <= 0xdf_ff;
+const isHighSurrogate = (code: number): boolean =>
+  code >= 0xd8_00 && code <= 0xdb_ff;
+const isLowSurrogate = (code: number): boolean =>
+  code >= 0xdc_00 && code <= 0xdf_ff;
 
 /** Whether `offset` falls between the two halves of one surrogate pair of `text`. */
 export const splitsSurrogatePair = (text: string, offset: number): boolean =>
@@ -50,7 +52,10 @@ const graphemeStartsByText = new Map<string, ReadonlySet<number>>();
  * The offsets at which a grapheme cluster of `text` starts. A batch asks about
  * the same block for each of its operations, so the last few answers are kept.
  */
-const graphemeStarts = (text: string, segmenter: Intl.Segmenter): ReadonlySet<number> => {
+const graphemeStarts = (
+  text: string,
+  segmenter: Intl.Segmenter,
+): ReadonlySet<number> => {
   const cached = graphemeStartsByText.get(text);
   if (cached !== undefined) {
     return cached;
@@ -74,7 +79,10 @@ const graphemeStarts = (text: string, segmenter: Intl.Segmenter): ReadonlySet<nu
  * the halves of a surrogate pair. Without `Intl.Segmenter` only the surrogate
  * pair is recognised.
  */
-export const splitsGraphemeCluster = (text: string, offset: number): boolean => {
+export const splitsGraphemeCluster = (
+  text: string,
+  offset: number,
+): boolean => {
   if (offset <= 0 || offset >= text.length) {
     return false;
   }
@@ -105,7 +113,10 @@ const splitsCharacter = (
  * whole grapheme cluster, or — without `Intl.Segmenter`, which leaves only a
  * surrogate pair recognisable — the pair.
  */
-const enclosingCharacter = (text: string, offset: number): { start: number; end: number } => {
+const enclosingCharacter = (
+  text: string,
+  offset: number,
+): { start: number; end: number } => {
   const segmenter = getGraphemeSegmenter();
   if (segmenter === null) {
     return { start: offset - 1, end: offset + 1 };
@@ -131,7 +142,9 @@ export const describeCharacterSplit = (
   offsets: readonly number[],
   strictness: CharacterBoundaryStrictness,
 ): string | null => {
-  const offset = offsets.find((candidate) => splitsCharacter(text, candidate, strictness));
+  const offset = offsets.find((candidate) =>
+    splitsCharacter(text, candidate, strictness),
+  );
   if (offset === undefined) {
     return null;
   }

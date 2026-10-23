@@ -3,7 +3,9 @@
     v-if="items.length >= 2"
     ref="listRef"
     :aria-label="ariaLabel"
-    :class="presentation === 'rail' ? 'folio-outline-ticks' : 'folio-outline-list'"
+    :class="
+      presentation === 'rail' ? 'folio-outline-ticks' : 'folio-outline-list'
+    "
     @keydown="onKeyDown"
     @focusin="focusWithin = true"
     @focusout="onFocusOut"
@@ -12,7 +14,11 @@
       v-for="(item, index) in items"
       :key="item.id"
       :class="presentation === 'rail' ? 'folio-outline-tick-slot' : undefined"
-      :style="presentation === 'rail' ? { top: (tickTops[index] ?? 0) + 'px' } : undefined"
+      :style="
+        presentation === 'rail'
+          ? { top: (tickTops[index] ?? 0) + 'px' }
+          : undefined
+      "
     >
       <button
         type="button"
@@ -27,7 +33,9 @@
       >
         <template v-if="presentation === 'rail'">
           <span aria-hidden="true" class="folio-outline-tick-mark" />
-          <span aria-hidden="true" class="folio-outline-tick-label">{{ item.label }}</span>
+          <span aria-hidden="true" class="folio-outline-tick-label">{{
+            item.label
+          }}</span>
         </template>
         <span v-else class="folio-outline-item-label">{{ item.label }}</span>
       </button>
@@ -37,6 +45,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+
 import type { OutlineItem } from "../../ui/folio-ui";
 
 const TICK_PITCH_PX = 12;
@@ -60,7 +69,9 @@ const listRef = ref<HTMLOListElement | null>(null);
 const height = ref(0);
 const focusIndex = ref(0);
 const focusWithin = ref(false);
-const activeIndex = computed(() => props.items.findIndex((item) => item.id === props.activeId));
+const activeIndex = computed(() =>
+  props.items.findIndex((item) => item.id === props.activeId),
+);
 const minLevel = computed(() => {
   let minimum = Infinity;
   for (const item of props.items) minimum = Math.min(minimum, item.level);
@@ -112,7 +123,12 @@ watch(
     observer?.disconnect();
     observer = null;
     height.value = 0;
-    if (presentation !== "rail" || !list || typeof ResizeObserver === "undefined") return;
+    if (
+      presentation !== "rail" ||
+      !list ||
+      typeof ResizeObserver === "undefined"
+    )
+      return;
     height.value = list.clientHeight;
     observer = new ResizeObserver(() => {
       height.value = list.clientHeight;
@@ -133,14 +149,22 @@ const tickTops = computed(() => {
   }
   const container = props.getScrollContainer();
   const tops = props.items.map((item, index) => {
-    const pct = container ? (props.resolvePct?.(item.id, container) ?? null) : null;
+    const pct = container
+      ? (props.resolvePct?.(item.id, container) ?? null)
+      : null;
     return (pct === null ? index / Math.max(1, count - 1) : pct / 100) * span;
   });
   for (let index = 1; index < tops.length; index++) {
-    tops[index] = Math.max(tops[index] ?? 0, (tops[index - 1] ?? 0) + TICK_PITCH_PX);
+    tops[index] = Math.max(
+      tops[index] ?? 0,
+      (tops[index - 1] ?? 0) + TICK_PITCH_PX,
+    );
   }
   for (let index = tops.length - 1; index >= 0; index--) {
-    const limit = index === tops.length - 1 ? span : (tops[index + 1] ?? span) - TICK_PITCH_PX;
+    const limit =
+      index === tops.length - 1
+        ? span
+        : (tops[index + 1] ?? span) - TICK_PITCH_PX;
     tops[index] = Math.min(tops[index] ?? 0, limit);
   }
   return tops;
@@ -172,11 +196,17 @@ const onKeyDown = (event: KeyboardEvent) => {
   }
   event.preventDefault();
   focusIndex.value = next;
-  listRef.value?.querySelectorAll<HTMLButtonElement>("button").item(next)?.focus();
+  listRef.value
+    ?.querySelectorAll<HTMLButtonElement>("button")
+    .item(next)
+    ?.focus();
 };
 
 const onFocusOut = (event: FocusEvent) => {
-  if (!(event.relatedTarget instanceof Node && listRef.value?.contains(event.relatedTarget))) {
+  if (!(
+    event.relatedTarget instanceof Node &&
+    listRef.value?.contains(event.relatedTarget)
+  )) {
     focusWithin.value = false;
   }
 };

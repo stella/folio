@@ -10,7 +10,11 @@
  * way `CT_Border/@w:val` already keeps a style outside `ST_Border`.
  */
 
-import { PARSE_WARNING_CODES, readThemeColor, type ThemeColorValue } from "@stll/docx-core/model";
+import {
+  PARSE_WARNING_CODES,
+  readThemeColor,
+  type ThemeColorValue,
+} from "@stll/docx-core/model";
 
 import type { ParseContext } from "./parseContext";
 

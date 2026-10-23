@@ -22,10 +22,12 @@ function hasFootnoteColumnOverlap(layout: Layout): boolean {
     if ((page.columns?.count ?? 1) < 2 || !page.footnoteReservedHeight) {
       continue;
     }
-    const bodyBottom = page.size.h - page.margins.bottom - page.footnoteReservedHeight;
+    const bodyBottom =
+      page.size.h - page.margins.bottom - page.footnoteReservedHeight;
     if (
       page.fragments.some(
-        (fragment) => isFlowFragment(fragment) && fragment.y + fragment.height > bodyBottom,
+        (fragment) =>
+          isFlowFragment(fragment) && fragment.y + fragment.height > bodyBottom,
       )
     ) {
       return true;
@@ -61,14 +63,19 @@ function growFootnoteReserveFloors(
 
 function reserveFloorFingerprint(floors: ReadonlyMap<number, number>): string {
   return JSON.stringify(
-    [...floors.entries()].sort(([leftPage], [rightPage]) => leftPage - rightPage),
+    [...floors.entries()].sort(
+      ([leftPage], [rightPage]) => leftPage - rightPage,
+    ),
   );
 }
 
 function clearOrphanedFootnoteReservations(layout: Layout): Layout {
   let pagesChanged = false;
   const pages = layout.pages.map((page) => {
-    if ((page.footnoteIds?.length ?? 0) > 0 || page.footnoteReservedHeight === undefined) {
+    if (
+      (page.footnoteIds?.length ?? 0) > 0 ||
+      page.footnoteReservedHeight === undefined
+    ) {
       return page;
     }
     pagesChanged = true;
@@ -84,8 +91,13 @@ function clearOrphanedFootnoteReservations(layout: Layout): Layout {
 }
 
 function getPassBudget(layout: Layout): number {
-  const fragmentCount = layout.pages.reduce((count, page) => count + page.fragments.length, 0);
-  const footnoteCount = new Set(layout.pages.flatMap((page) => page.footnoteIds ?? [])).size;
+  const fragmentCount = layout.pages.reduce(
+    (count, page) => count + page.fragments.length,
+    0,
+  );
+  const footnoteCount = new Set(
+    layout.pages.flatMap((page) => page.footnoteIds ?? []),
+  ).size;
 
   // Every retry must change a finite page/fragment assignment or terminate.
   // The budget scales with the document state rather than imposing a small
@@ -117,7 +129,10 @@ export function reflowFootnoteColumns({
   const seenReserveStates = new Set<string>();
   const passBudget = getPassBudget(layout);
   for (let pass = 0; pass < passBudget; pass += 1) {
-    const reserveFloors = growFootnoteReserveFloors(layout, initialReserveFloors);
+    const reserveFloors = growFootnoteReserveFloors(
+      layout,
+      initialReserveFloors,
+    );
     const reserveState = reserveFloorFingerprint(reserveFloors);
     if (seenReserveStates.has(reserveState)) {
       // A deterministic cycle has no new geometry to discover. Preserve the

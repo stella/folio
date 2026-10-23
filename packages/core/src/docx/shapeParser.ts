@@ -26,7 +26,13 @@
  *                     └── wps:bodyPr           (text body properties)
  */
 
-import type { ColorValue, ImageSize, ImageTransform, Shape, ShapeFill } from "../types/document";
+import type {
+  ColorValue,
+  ImageSize,
+  ImageTransform,
+  Shape,
+  ShapeFill,
+} from "../types/document";
 import { parseDrawingAnchor } from "./drawingAnchor";
 import {
   parseAnchorPosition,
@@ -162,7 +168,9 @@ function hasUnsupportedGeometry(spPr: XmlElement | null): boolean {
   );
 }
 
-function parseGeometryAdjustments(spPr: XmlElement | null): Shape["geometryAdjustments"] {
+function parseGeometryAdjustments(
+  spPr: XmlElement | null,
+): Shape["geometryAdjustments"] {
   const prstGeom = spPr ? findChildByLocalName(spPr, "prstGeom") : null;
   const avLst = prstGeom ? findChildByLocalName(prstGeom, "avLst") : null;
   if (!avLst) {
@@ -201,7 +209,12 @@ function hasUnmodeledFill(spPr: XmlElement | null): boolean {
  * outline and transform only, so a shadow, glow, reflection or 3-D scene would
  * be dropped on save.
  */
-const UNMODELED_EFFECT_ELEMENTS = ["effectLst", "effectDag", "scene3d", "sp3d"] as const;
+const UNMODELED_EFFECT_ELEMENTS = [
+  "effectLst",
+  "effectDag",
+  "scene3d",
+  "sp3d",
+] as const;
 
 /**
  * An empty `<a:effectLst/>` is Word's explicit "no effects" marker and models
@@ -213,7 +226,10 @@ function hasUnmodeledEffects(spPr: XmlElement | null): boolean {
     if (!element) {
       return false;
     }
-    return getChildElements(element).length > 0 || Object.keys(element.attributes ?? {}).length > 0;
+    return (
+      getChildElements(element).length > 0 ||
+      Object.keys(element.attributes ?? {}).length > 0
+    );
   });
 }
 
@@ -229,7 +245,11 @@ function fillNeedsRawPreservation(fill: ShapeFill | undefined): boolean {
     return false;
   }
   if (fill.type === "gradient") {
-    return fill.gradient?.stops.some((stop) => colorNeedsRawPreservation(stop.color)) ?? false;
+    return (
+      fill.gradient?.stops.some((stop) =>
+        colorNeedsRawPreservation(stop.color),
+      ) ?? false
+    );
   }
   return false;
 }
@@ -407,7 +427,9 @@ export function shouldPreserveRawShapeDrawing(drawingEl: XmlElement): boolean {
     return false;
   }
   const graphic = findChildByLocalName(container, "graphic");
-  const graphicData = graphic ? findChildByLocalName(graphic, "graphicData") : null;
+  const graphicData = graphic
+    ? findChildByLocalName(graphic, "graphicData")
+    : null;
   const wsp = graphicData ? findChildByLocalName(graphicData, "wsp") : null;
   if (!wsp || findChildByLocalName(wsp, "txbx") !== null) {
     return false;

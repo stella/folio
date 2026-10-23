@@ -7,7 +7,6 @@ import { decodeText } from "../../utils/textEncoding";
  *
  * @see https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-cfb/
  */
-
 import { joinBytes } from "./cryptoBytes";
 
 const HEADER_BYTES = 512;
@@ -53,8 +52,10 @@ type DirectoryRecord = {
 const viewOf = (bytes: Uint8Array): DataView =>
   new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-const u16 = (view: DataView, offset: number): number => view.getUint16(offset, true);
-const u32 = (view: DataView, offset: number): number => view.getUint32(offset, true);
+const u16 = (view: DataView, offset: number): number =>
+  view.getUint16(offset, true);
+const u32 = (view: DataView, offset: number): number =>
+  view.getUint32(offset, true);
 const u64 = (view: DataView, offset: number): bigint => {
   const low = BigInt(view.getUint32(offset, true));
   const high = BigInt(view.getUint32(offset + 4, true));
@@ -92,10 +93,17 @@ const readHeader = (file: Uint8Array): CompoundHeader => {
   const miniSectorBytes = 1 << miniShift;
 
   if (endian !== LITTLE_ENDIAN_MARK) {
-    throw new Error(`Unsupported compound file endianness: 0x${endian.toString(16)}`);
+    throw new Error(
+      `Unsupported compound file endianness: 0x${endian.toString(16)}`,
+    );
   }
-  if (!((major === 3 && sectorBytes === 512) || (major === 4 && sectorBytes === 4096))) {
-    throw new Error(`Unsupported compound file version ${major} (sector size ${sectorBytes})`);
+  if (!(
+    (major === 3 && sectorBytes === 512) ||
+    (major === 4 && sectorBytes === 4096)
+  )) {
+    throw new Error(
+      `Unsupported compound file version ${major} (sector size ${sectorBytes})`,
+    );
   }
 
   const headerDifat: number[] = [];
@@ -120,7 +128,11 @@ const readHeader = (file: Uint8Array): CompoundHeader => {
   };
 };
 
-const loadSector = (file: Uint8Array, header: CompoundHeader, sectorId: number): Uint8Array => {
+const loadSector = (
+  file: Uint8Array,
+  header: CompoundHeader,
+  sectorId: number,
+): Uint8Array => {
   if (sectorId >= SECTOR_DIFAT) {
     throw new Error(`Invalid sector id 0x${sectorId.toString(16)}`);
   }
@@ -131,7 +143,10 @@ const loadSector = (file: Uint8Array, header: CompoundHeader, sectorId: number):
   return file.subarray(offset, offset + header.sectorBytes);
 };
 
-const loadFatSectorIds = (file: Uint8Array, header: CompoundHeader): number[] => {
+const loadFatSectorIds = (
+  file: Uint8Array,
+  header: CompoundHeader,
+): number[] => {
   const ids = [...header.headerDifat];
   // A hostile `difatSectorCount` (up to 2^32-1) would otherwise force this
   // loop to run far more times than the file could possibly contain DIFAT
@@ -222,7 +237,11 @@ const loadDirectory = (
   const raw = followSectorChain(file, header, fat, header.directoryStartSector);
   const records: DirectoryRecord[] = [];
 
-  for (let pos = 0; pos + DIRECTORY_RECORD_BYTES <= raw.length; pos += DIRECTORY_RECORD_BYTES) {
+  for (
+    let pos = 0;
+    pos + DIRECTORY_RECORD_BYTES <= raw.length;
+    pos += DIRECTORY_RECORD_BYTES
+  ) {
     const slice = raw.subarray(pos, pos + DIRECTORY_RECORD_BYTES);
     const view = viewOf(slice);
     const nameChars = Math.max(0, Math.min(u16(view, 64), 64) - 2);
@@ -287,7 +306,10 @@ const walkSiblingTree = (
   }
 };
 
-const resolvePath = (records: DirectoryRecord[], path: string): DirectoryRecord | null => {
+const resolvePath = (
+  records: DirectoryRecord[],
+  path: string,
+): DirectoryRecord | null => {
   const parts = path.split("/").filter(Boolean);
   const root = records[0];
   if (!root) {
@@ -296,7 +318,10 @@ const resolvePath = (records: DirectoryRecord[], path: string): DirectoryRecord 
 
   let current = root;
   for (const part of parts) {
-    if (current.kind !== ENTRY_KIND.ROOT && current.kind !== ENTRY_KIND.STORAGE) {
+    if (
+      current.kind !== ENTRY_KIND.ROOT &&
+      current.kind !== ENTRY_KIND.STORAGE
+    ) {
       return null;
     }
     let match: DirectoryRecord | null = null;
@@ -313,7 +338,11 @@ const resolvePath = (records: DirectoryRecord[], path: string): DirectoryRecord 
   return current;
 };
 
-const loadMiniFat = (file: Uint8Array, header: CompoundHeader, fat: number[]): number[] => {
+const loadMiniFat = (
+  file: Uint8Array,
+  header: CompoundHeader,
+  fat: number[],
+): number[] => {
   if (header.miniFatSectorCount === 0 || header.miniFatStart === SECTOR_END) {
     return [];
   }
@@ -365,7 +394,9 @@ export type CompoundFileReader = {
   readStream: (absolutePath: string) => Uint8Array | null;
 };
 
-export const openCompoundFile = (data: ArrayBuffer | Uint8Array): CompoundFileReader => {
+export const openCompoundFile = (
+  data: ArrayBuffer | Uint8Array,
+): CompoundFileReader => {
   const file = data instanceof Uint8Array ? data : new Uint8Array(data);
   const header = readHeader(file);
   const fat = loadFat(file, header);
@@ -378,7 +409,10 @@ export const openCompoundFile = (data: ArrayBuffer | Uint8Array): CompoundFileRe
   const miniFat = loadMiniFat(file, header, fat);
   const miniContainer =
     root.byteLength > 0 && root.firstSector !== SECTOR_END
-      ? followSectorChain(file, header, fat, root.firstSector).subarray(0, root.byteLength)
+      ? followSectorChain(file, header, fat, root.firstSector).subarray(
+          0,
+          root.byteLength,
+        )
       : new Uint8Array(0);
 
   return {
@@ -395,7 +429,10 @@ export const openCompoundFile = (data: ArrayBuffer | Uint8Array): CompoundFileRe
           entry.firstSector,
         ).subarray(0, entry.byteLength);
       }
-      return followSectorChain(file, header, fat, entry.firstSector).subarray(0, entry.byteLength);
+      return followSectorChain(file, header, fat, entry.firstSector).subarray(
+        0,
+        entry.byteLength,
+      );
     },
   };
 };

@@ -17,7 +17,12 @@
     <option v-if="placeholder && value === undefined" disabled value="">
       {{ placeholder }}
     </option>
-    <option v-for="item in items" :key="item.value" :disabled="item.disabled" :value="item.value">
+    <option
+      v-for="item in items"
+      :key="item.value"
+      :disabled="item.disabled"
+      :value="item.value"
+    >
       {{ item.label }}
     </option>
   </select>

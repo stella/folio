@@ -22,29 +22,36 @@ import {
   UNDERLINE_THICKNESS_RATIO,
 } from "../display-list/build/textDecorations";
 import type { ColorValue } from "../types/colors";
-import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
 import type {
-  TextFormatting,
+  BorderSpec,
   ParagraphAlignment,
   ParagraphFormatting,
-  BorderSpec,
   ShadingProperties,
   TextDirection,
+  TextFormatting,
   Theme,
   UnderlineStyle,
 } from "../types/document";
+import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
 import { cssBorderStyle } from "./borderCss";
-import { resolveColor, resolveHighlightToCss, resolveShadingColor } from "./colorResolver";
+import {
+  resolveColor,
+  resolveHighlightToCss,
+  resolveShadingColor,
+} from "./colorResolver";
 import { resolveFontFamily, resolveThemeFont } from "./fontResolver";
-import { getHorizontalScaleFactor, normalizeHorizontalScalePercent } from "./horizontalScale";
+import {
+  getHorizontalScaleFactor,
+  normalizeHorizontalScalePercent,
+} from "./horizontalScale";
 import { textFlowCss } from "./textDirectionFlow";
 import {
   AUTO_PARAGRAPH_SPACING_PX,
-  halfPointsToPixels,
-  twipsToPixels,
   eighthsToPixels,
   formatPx,
+  halfPointsToPixels,
   halfPointsToPoints,
+  twipsToPixels,
 } from "./units";
 
 // React's `CSSProperties` is `csstype.Properties` plus a custom-property index
@@ -81,7 +88,10 @@ export function textToStyle(
 
     // Check for theme font reference first
     if (formatting.fontFamily.asciiTheme && theme?.fontScheme) {
-      fontName = resolveThemeFont(formatting.fontFamily.asciiTheme, theme.fontScheme);
+      fontName = resolveThemeFont(
+        formatting.fontFamily.asciiTheme,
+        theme.fontScheme,
+      );
     }
 
     // Fall back to explicit font names
@@ -155,7 +165,10 @@ export function textToStyle(
     decorations.push("underline");
 
     const underline = underlineDecorationCss(formatting.underline.style);
-    if (underline.decorationStyle !== undefined && underline.decorationStyle !== "solid") {
+    if (
+      underline.decorationStyle !== undefined &&
+      underline.decorationStyle !== "solid"
+    ) {
       decorationStyles.push(underline.decorationStyle);
     }
     decorationThickness = underline.decorationThickness;
@@ -264,12 +277,14 @@ export function textToStyle(
 
   // Emboss
   if (formatting.emboss) {
-    style.textShadow = "1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)";
+    style.textShadow =
+      "1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)";
   }
 
   // Imprint/Engrave
   if (formatting.imprint) {
-    style.textShadow = "-1px -1px 1px rgba(255,255,255,0.5), 1px 1px 1px rgba(0,0,0,0.3)";
+    style.textShadow =
+      "-1px -1px 1px rgba(255,255,255,0.5), 1px 1px 1px rgba(0,0,0,0.3)";
   }
 
   // Outline
@@ -316,7 +331,8 @@ export function paragraphToStyle(
   // ============================================================================
 
   if (formatting.alignment) {
-    style.textAlign = CSS_TEXT_ALIGN_BY_PARAGRAPH_ALIGNMENT[formatting.alignment];
+    style.textAlign =
+      CSS_TEXT_ALIGN_BY_PARAGRAPH_ALIGNMENT[formatting.alignment];
   }
 
   // ============================================================================
@@ -399,13 +415,22 @@ export function paragraphToStyle(
       Object.assign(style, borderToStyle(formatting.borders.top, "Top", theme));
     }
     if (formatting.borders.bottom) {
-      Object.assign(style, borderToStyle(formatting.borders.bottom, "Bottom", theme));
+      Object.assign(
+        style,
+        borderToStyle(formatting.borders.bottom, "Bottom", theme),
+      );
     }
     if (formatting.borders.left) {
-      Object.assign(style, borderToStyle(formatting.borders.left, "Left", theme));
+      Object.assign(
+        style,
+        borderToStyle(formatting.borders.left, "Left", theme),
+      );
     }
     if (formatting.borders.right) {
-      Object.assign(style, borderToStyle(formatting.borders.right, "Right", theme));
+      Object.assign(
+        style,
+        borderToStyle(formatting.borders.right, "Right", theme),
+      );
     }
   }
 
@@ -471,7 +496,10 @@ export function borderToStyle(
   const style: CSSProperties = {};
 
   // Width in eighths of a point
-  const widthPx = border.size !== undefined && border.size !== 0 ? eighthsToPixels(border.size) : 1;
+  const widthPx =
+    border.size !== undefined && border.size !== 0
+      ? eighthsToPixels(border.size)
+      : 1;
 
   // Color
   const color = border.color ? resolveColor(border.color, theme) : "#000000";
@@ -493,11 +521,18 @@ export function borderToStyle(
   return style;
 }
 
-const HALF_STEP_SHADING_PATTERNS = new Set(["pct12", "pct37", "pct62", "pct87"]);
+const HALF_STEP_SHADING_PATTERNS = new Set([
+  "pct12",
+  "pct37",
+  "pct62",
+  "pct87",
+]);
 const AUTO_PATTERN_COLOR = "000000";
 const AUTO_PATTERN_BACKGROUND = "FFFFFF";
 
-function percentageShadingRatio(pattern: ShadingProperties["pattern"]): number | undefined {
+function percentageShadingRatio(
+  pattern: ShadingProperties["pattern"],
+): number | undefined {
   if (!pattern?.startsWith("pct")) {
     return undefined;
   }
@@ -505,7 +540,9 @@ function percentageShadingRatio(pattern: ShadingProperties["pattern"]): number |
   if (!Number.isFinite(percentage)) {
     return undefined;
   }
-  return (percentage + (HALF_STEP_SHADING_PATTERNS.has(pattern) ? 0.5 : 0)) / 100;
+  return (
+    (percentage + (HALF_STEP_SHADING_PATTERNS.has(pattern) ? 0.5 : 0)) / 100
+  );
 }
 
 type ResolvePatternHexOptions = {
@@ -514,7 +551,11 @@ type ResolvePatternHexOptions = {
   theme: Theme | null | undefined;
 };
 
-function resolvePatternHex({ color, fallback, theme }: ResolvePatternHexOptions): string {
+function resolvePatternHex({
+  color,
+  fallback,
+  theme,
+}: ResolvePatternHexOptions): string {
   const resolved = resolveShadingColor(color, theme);
   const match = /^#(?<hex>[0-9A-F]{6})$/iu.exec(resolved);
   return match?.groups?.["hex"]?.toUpperCase() ?? fallback;
@@ -526,11 +567,21 @@ type BlendShadingColorsOptions = {
   ratio: number;
 };
 
-function blendShadingColors({ foreground, background, ratio }: BlendShadingColorsOptions): string {
+function blendShadingColors({
+  foreground,
+  background,
+  ratio,
+}: BlendShadingColorsOptions): string {
   const channels: string[] = [];
   for (let offset = 0; offset < 6; offset += 2) {
-    const foregroundChannel = Number.parseInt(foreground.slice(offset, offset + 2), 16);
-    const backgroundChannel = Number.parseInt(background.slice(offset, offset + 2), 16);
+    const foregroundChannel = Number.parseInt(
+      foreground.slice(offset, offset + 2),
+      16,
+    );
+    const backgroundChannel = Number.parseInt(
+      background.slice(offset, offset + 2),
+      16,
+    );
     channels.push(
       Math.round(foregroundChannel * ratio + backgroundChannel * (1 - ratio))
         .toString(16)
@@ -604,7 +655,8 @@ export function resolveShadingFill(
 }
 
 /** The CSS `text-decoration-style` keywords folio paints an underline with. */
-export type CssTextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
+export type CssTextDecorationStyle =
+  "solid" | "double" | "dotted" | "dashed" | "wavy";
 
 /**
  * What an authored underline paints as, in CSS.
@@ -676,7 +728,9 @@ export const UNDERLINE_DECORATION_STYLES = {
  * with the font size, and which members are heavy is read off the row rather
  * than listed again here, so the page and the editor cannot disagree about it.
  */
-export const underlineDecorationCss = (style: UnderlineStyle): UnderlineDecorationCss => {
+export const underlineDecorationCss = (
+  style: UnderlineStyle,
+): UnderlineDecorationCss => {
   const decorationStyle = UNDERLINE_DECORATION_STYLES[style];
   if (decorationStyle === undefined) {
     return {};
@@ -697,19 +751,21 @@ export const underlineDecorationCss = (style: UnderlineStyle): UnderlineDecorati
  * member in enumeration order that paints exactly that keyword at the font's
  * own weight.
  */
-const CANONICAL_UNDERLINE_STYLE_BY_CSS: ReadonlyMap<string, UnderlineStyle> = (() => {
-  const canonical = new Map<string, UnderlineStyle>();
-  for (const style of UNDERLINE_STYLE_VALUES) {
-    const { decorationStyle, decorationThickness } = underlineDecorationCss(style);
-    if (decorationStyle === undefined || decorationThickness !== undefined) {
-      continue;
+const CANONICAL_UNDERLINE_STYLE_BY_CSS: ReadonlyMap<string, UnderlineStyle> =
+  (() => {
+    const canonical = new Map<string, UnderlineStyle>();
+    for (const style of UNDERLINE_STYLE_VALUES) {
+      const { decorationStyle, decorationThickness } =
+        underlineDecorationCss(style);
+      if (decorationStyle === undefined || decorationThickness !== undefined) {
+        continue;
+      }
+      if (!canonical.has(decorationStyle)) {
+        canonical.set(decorationStyle, style);
+      }
     }
-    if (!canonical.has(decorationStyle)) {
-      canonical.set(decorationStyle, style);
-    }
-  }
-  return canonical;
-})();
+    return canonical;
+  })();
 
 /**
  * The `ST_Underline` member an authored `text-decoration` or
@@ -722,7 +778,9 @@ const CANONICAL_UNDERLINE_STYLE_BY_CSS: ReadonlyMap<string, UnderlineStyle> = ((
  * as `dotted`, `words` and `thick` as `single`, `wavyDouble` as `double`. A
  * value naming no keyword folio writes parses as the plain underline.
  */
-export const underlineStyleFromCssDecoration = (value: string): UnderlineStyle => {
+export const underlineStyleFromCssDecoration = (
+  value: string,
+): UnderlineStyle => {
   for (const token of value.toLowerCase().split(/[\s,]+/u)) {
     const style = CANONICAL_UNDERLINE_STYLE_BY_CSS.get(token);
     if (style !== undefined) {
@@ -765,7 +823,9 @@ const CSS_TEXT_ALIGN_BY_PARAGRAPH_ALIGNMENT = {
  * @param styles - Array of CSSProperties objects
  * @returns Merged CSSProperties
  */
-export function mergeStyles(...styles: (CSSProperties | undefined | null)[]): CSSProperties {
+export function mergeStyles(
+  ...styles: (CSSProperties | undefined | null)[]
+): CSSProperties {
   const result: CSSProperties = {};
 
   for (const style of styles) {
@@ -844,29 +904,56 @@ export function tableCellToStyle(
       Object.assign(style, borderToStyle(formatting.borders.top, "Top", theme));
     }
     if (formatting.borders.bottom) {
-      Object.assign(style, borderToStyle(formatting.borders.bottom, "Bottom", theme));
+      Object.assign(
+        style,
+        borderToStyle(formatting.borders.bottom, "Bottom", theme),
+      );
     }
     if (formatting.borders.left) {
-      Object.assign(style, borderToStyle(formatting.borders.left, "Left", theme));
+      Object.assign(
+        style,
+        borderToStyle(formatting.borders.left, "Left", theme),
+      );
     }
     if (formatting.borders.right) {
-      Object.assign(style, borderToStyle(formatting.borders.right, "Right", theme));
+      Object.assign(
+        style,
+        borderToStyle(formatting.borders.right, "Right", theme),
+      );
     }
   }
 
   // Cell padding (from margins)
   if (formatting.margins) {
-    if (formatting.margins.top?.value !== undefined && formatting.margins.top.value !== 0) {
+    if (
+      formatting.margins.top?.value !== undefined &&
+      formatting.margins.top.value !== 0
+    ) {
       style.paddingTop = formatPx(twipsToPixels(formatting.margins.top.value));
     }
-    if (formatting.margins.bottom?.value !== undefined && formatting.margins.bottom.value !== 0) {
-      style.paddingBottom = formatPx(twipsToPixels(formatting.margins.bottom.value));
+    if (
+      formatting.margins.bottom?.value !== undefined &&
+      formatting.margins.bottom.value !== 0
+    ) {
+      style.paddingBottom = formatPx(
+        twipsToPixels(formatting.margins.bottom.value),
+      );
     }
-    if (formatting.margins.left?.value !== undefined && formatting.margins.left.value !== 0) {
-      style.paddingLeft = formatPx(twipsToPixels(formatting.margins.left.value));
+    if (
+      formatting.margins.left?.value !== undefined &&
+      formatting.margins.left.value !== 0
+    ) {
+      style.paddingLeft = formatPx(
+        twipsToPixels(formatting.margins.left.value),
+      );
     }
-    if (formatting.margins.right?.value !== undefined && formatting.margins.right.value !== 0) {
-      style.paddingRight = formatPx(twipsToPixels(formatting.margins.right.value));
+    if (
+      formatting.margins.right?.value !== undefined &&
+      formatting.margins.right.value !== 0
+    ) {
+      style.paddingRight = formatPx(
+        twipsToPixels(formatting.margins.right.value),
+      );
     }
   }
 
@@ -912,13 +999,19 @@ export function sectionToStyle(
   if (sectionProps.marginTop !== undefined && sectionProps.marginTop !== 0) {
     style.paddingTop = formatPx(twipsToPixels(sectionProps.marginTop));
   }
-  if (sectionProps.marginBottom !== undefined && sectionProps.marginBottom !== 0) {
+  if (
+    sectionProps.marginBottom !== undefined &&
+    sectionProps.marginBottom !== 0
+  ) {
     style.paddingBottom = formatPx(twipsToPixels(sectionProps.marginBottom));
   }
   if (sectionProps.marginLeft !== undefined && sectionProps.marginLeft !== 0) {
     style.paddingLeft = formatPx(twipsToPixels(sectionProps.marginLeft));
   }
-  if (sectionProps.marginRight !== undefined && sectionProps.marginRight !== 0) {
+  if (
+    sectionProps.marginRight !== undefined &&
+    sectionProps.marginRight !== 0
+  ) {
     style.paddingRight = formatPx(twipsToPixels(sectionProps.marginRight));
   }
 

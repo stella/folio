@@ -14,15 +14,15 @@ import { describe, expect, mock, test } from "bun:test";
 import JSZip from "jszip";
 
 import { parseDocx } from "./parser";
-import { DocxSecurityError, unzipDocx } from "./unzip";
 import { loadDocxArchive } from "./server/boundedArchive";
+import { DocxSecurityError, unzipDocx } from "./unzip";
+import * as xmlParser from "./xmlParser";
 import {
   assertXmlResourceLimits,
   createXmlPackageBudget,
   FOLIO_XML_RESOURCE_LIMITS,
   XmlResourceLimitError,
 } from "./xmlResourceLimits";
-import * as xmlParser from "./xmlParser";
 
 const CONTENT_TYPES = "<Types />";
 
@@ -30,7 +30,9 @@ const CONTENT_TYPES = "<Types />";
  * Repeated markup compresses past the archive ratio cap, which would refuse
  * these packages before the structure bounds under test ever see them.
  */
-const STRUCTURE_ONLY = { maxCompressionRatio: Number.MAX_SAFE_INTEGER } as const;
+const STRUCTURE_ONLY = {
+  maxCompressionRatio: Number.MAX_SAFE_INTEGER,
+} as const;
 
 type Part = { path: string; xml: string };
 
@@ -40,7 +42,10 @@ const packageOf = async (parts: readonly Part[]): Promise<ArrayBuffer> => {
   for (const { path, xml } of parts) {
     zip.file(path, xml);
   }
-  return await zip.generateAsync({ compression: "DEFLATE", type: "arraybuffer" });
+  return await zip.generateAsync({
+    compression: "DEFLATE",
+    type: "arraybuffer",
+  });
 };
 
 const document = (body: string): Part => ({
@@ -67,7 +72,9 @@ describe("element-dense markup", () => {
     const runs = FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPart + 1000;
     const buffer = await packageOf([document("<w:r/>".repeat(runs))]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
+    const error = asLimitError(
+      await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)),
+    );
 
     expect(error.limit).toBe("elements");
     expect(error.partPath).toBe("word/document.xml");
@@ -81,7 +88,10 @@ describe("element-dense markup", () => {
     const limits = { ...FOLIO_XML_RESOURCE_LIMITS, maxElementsPerPart: 10 };
     const error = (() => {
       try {
-        assertXmlResourceLimits({ xml: `<root>${"<a/>".repeat(1_000_000)}</root>`, limits });
+        assertXmlResourceLimits({
+          xml: `<root>${"<a/>".repeat(1_000_000)}</root>`,
+          limits,
+        });
         return expect.unreachable("expected a refusal");
       } catch (thrown) {
         return asLimitError(thrown);
@@ -107,7 +117,9 @@ describe("element-dense markup", () => {
     try {
       // The spy has to be able to see a tree being built, or observing none
       // proves nothing: a package folio accepts must run it up first.
-      await parseDocx(await packageOf([document("<w:p><w:r><w:t>a</w:t></w:r></w:p>")]));
+      await parseDocx(
+        await packageOf([document("<w:p><w:r><w:t>a</w:t></w:r></w:p>")]),
+      );
       expect(parseCalls).toBeGreaterThan(0);
 
       parseCalls = 0;
@@ -128,11 +140,16 @@ describe("attribute-dense markup", () => {
   test("one paragraph of attribute-bearing runs is refused on attributes", async () => {
     // Few enough elements to clear the element bound, enough attributes to
     // cross the attribute bound: an element budget alone would accept this.
-    const runs = Math.ceil(FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart / 5) + 100;
+    const runs =
+      Math.ceil(FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart / 5) + 100;
     const run = `<w:r w:a="1" w:b="2" w:c="3" w:d="4" w:e="5"/>`;
-    const buffer = await packageOf([document(`<w:p>${run.repeat(runs)}</w:p>`)]);
+    const buffer = await packageOf([
+      document(`<w:p>${run.repeat(runs)}</w:p>`),
+    ]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
+    const error = asLimitError(
+      await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)),
+    );
 
     expect(error.limit).toBe("attributes");
     expect(error.allowed).toBe(FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart);
@@ -146,7 +163,8 @@ describe("a package spread thin across parts", () => {
     // package is. Before the package budget existed, only three parts were
     // counted at all and the rest of these would have been parsed.
     const perPart = 50_000;
-    const parts = Math.ceil(FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPackage / perPart) + 2;
+    const parts =
+      Math.ceil(FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPackage / perPart) + 2;
     const body = "<w:r/>".repeat(perPart);
     const buffer = await packageOf([
       document(""),
@@ -156,7 +174,9 @@ describe("a package spread thin across parts", () => {
       })),
     ]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
+    const error = asLimitError(
+      await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)),
+    );
 
     expect(error.limit).toBe("package-elements");
     expect(error.allowed).toBe(FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPackage);
@@ -171,7 +191,12 @@ describe("a package spread thin across parts", () => {
     assertXmlResourceLimits({ xml: part, limits, budget });
     const error = (() => {
       try {
-        assertXmlResourceLimits({ xml: part, limits, budget, partPath: "word/footer1.xml" });
+        assertXmlResourceLimits({
+          xml: part,
+          limits,
+          budget,
+          partPath: "word/footer1.xml",
+        });
         return expect.unreachable("expected a refusal");
       } catch (thrown) {
         return asLimitError(thrown);
@@ -187,12 +212,18 @@ describe("a package spread thin across parts", () => {
 describe("repetitive nesting", () => {
   test("a deeply repeated table is refused on depth", async () => {
     let body = "<w:p/>";
-    for (let level = 0; level < FOLIO_XML_RESOURCE_LIMITS.maxDepth; level += 1) {
+    for (
+      let level = 0;
+      level < FOLIO_XML_RESOURCE_LIMITS.maxDepth;
+      level += 1
+    ) {
       body = `<w:tbl><w:tr><w:tc>${body}</w:tc></w:tr></w:tbl>`;
     }
     const buffer = await packageOf([document(body)]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
+    const error = asLimitError(
+      await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)),
+    );
 
     expect(error.limit).toBe("depth");
     expect(error.allowed).toBe(FOLIO_XML_RESOURCE_LIMITS.maxDepth);
@@ -227,7 +258,9 @@ describe("the server archive reader", () => {
       xmlLimits: { maxElementsPerPart: 10 },
     });
 
-    const error = asLimitError(await rejectedError(archive.readEntryString("word/document.xml")));
+    const error = asLimitError(
+      await rejectedError(archive.readEntryString("word/document.xml")),
+    );
 
     expect(error.limit).toBe("elements");
     expect(error.partPath).toBe("word/document.xml");
@@ -240,7 +273,9 @@ describe("the server archive reader", () => {
     });
 
     await archive.readEntryString("word/document.xml");
-    expect(await archive.readEntryString("word/document.xml")).toContain("<w:r/>");
+    expect(await archive.readEntryString("word/document.xml")).toContain(
+      "<w:r/>",
+    );
   });
 });
 

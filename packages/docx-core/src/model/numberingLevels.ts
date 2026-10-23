@@ -4,7 +4,11 @@ const MIN_NUMBERING_LEVEL = 0;
 const MAX_NUMBERING_LEVEL = 8;
 
 export type NumberingLevelResolution =
-  | { kind: "level"; level: ListLevel; source: "abstract" | "override" | "styleLink" }
+  | {
+      kind: "level";
+      level: ListLevel;
+      source: "abstract" | "override" | "styleLink";
+    }
   | {
       kind: "undefined";
       reason:
@@ -15,14 +19,22 @@ export type NumberingLevelResolution =
         | "levelNotDefined";
     };
 
-export type NumberingLevelEntry = { numId: number; ilvl: number; level: ListLevel };
+export type NumberingLevelEntry = {
+  numId: number;
+  ilvl: number;
+  level: ListLevel;
+};
 
 /** Whether a numbering level reserves space for a visible marker. */
-export const numberingLevelHasMarkerSlot = (level: Pick<ListLevel, "numFmt">): boolean =>
-  level.numFmt !== "none";
+export const numberingLevelHasMarkerSlot = (
+  level: Pick<ListLevel, "numFmt">,
+): boolean => level.numFmt !== "none";
 
-const firstById = <Value>(values: readonly Value[], idOf: (value: Value) => number, id: number) =>
-  values.find((value) => idOf(value) === id);
+const firstById = <Value>(
+  values: readonly Value[],
+  idOf: (value: Value) => number,
+  id: number,
+) => values.find((value) => idOf(value) === id);
 
 /**
  * Resolves the level named by a concrete numbering reference.
@@ -41,15 +53,25 @@ export const resolveNumberingLevel = (
   numId: number,
   ilvl: number,
 ): NumberingLevelResolution => {
-  if (!Number.isInteger(ilvl) || ilvl < MIN_NUMBERING_LEVEL || ilvl > MAX_NUMBERING_LEVEL) {
+  if (
+    !Number.isInteger(ilvl) ||
+    ilvl < MIN_NUMBERING_LEVEL ||
+    ilvl > MAX_NUMBERING_LEVEL
+  ) {
     return { kind: "undefined", reason: "levelOutOfRange" };
   }
-  const instance = firstById(definitions.nums, (candidate) => candidate.numId, numId);
+  const instance = firstById(
+    definitions.nums,
+    (candidate) => candidate.numId,
+    numId,
+  );
   if (!instance) return { kind: "undefined", reason: "noInstance" };
 
   // A full level override is a complete level definition of its own, so it
   // resolves even when the instance's abstract definition is missing.
-  const override = instance.levelOverrides?.find((candidate) => candidate.ilvl === ilvl);
+  const override = instance.levelOverrides?.find(
+    (candidate) => candidate.ilvl === ilvl,
+  );
   if (override?.lvl) {
     return {
       kind: "level",
@@ -81,7 +103,8 @@ export const resolveNumberingLevel = (
 
   const level = levelOwner.levels.find((candidate) => candidate.ilvl === ilvl);
   if (!level) return { kind: "undefined", reason: "levelNotDefined" };
-  if (override?.startOverride === undefined) return { kind: "level", level, source };
+  if (override?.startOverride === undefined)
+    return { kind: "level", level, source };
   return {
     kind: "level",
     level: { ...level, start: override.startOverride },
@@ -90,14 +113,24 @@ export const resolveNumberingLevel = (
 };
 
 /** ECMA-376 §17.9.6 permits nine levels; enumerate each instance through the owner. */
-export const numberingLevelEntries = (definitions: NumberingDefinitions): NumberingLevelEntry[] => {
+export const numberingLevelEntries = (
+  definitions: NumberingDefinitions,
+): NumberingLevelEntry[] => {
   const entries: NumberingLevelEntry[] = [];
   const seen = new Set<number>();
   for (const instance of definitions.nums) {
     if (seen.has(instance.numId)) continue;
     seen.add(instance.numId);
-    for (let ilvl = MIN_NUMBERING_LEVEL; ilvl <= MAX_NUMBERING_LEVEL; ilvl += 1) {
-      const resolution = resolveNumberingLevel(definitions, instance.numId, ilvl);
+    for (
+      let ilvl = MIN_NUMBERING_LEVEL;
+      ilvl <= MAX_NUMBERING_LEVEL;
+      ilvl += 1
+    ) {
+      const resolution = resolveNumberingLevel(
+        definitions,
+        instance.numId,
+        ilvl,
+      );
       if (resolution.kind === "level") {
         entries.push({ numId: instance.numId, ilvl, level: resolution.level });
       }
@@ -117,14 +150,26 @@ export const levelShowsMarker = (
   ilvl: number,
 ): boolean => {
   const resolution = resolveNumberingLevel(definitions, numId, ilvl);
-  if (resolution.kind === "undefined" || resolution.level.rPr?.hidden === true) return false;
+  if (resolution.kind === "undefined" || resolution.level.rPr?.hidden === true)
+    return false;
   const { level } = resolution;
-  if (level.lvlText.length === 0) return level.isLgl === true || numberingLevelHasMarkerSlot(level);
+  if (level.lvlText.length === 0)
+    return level.isLgl === true || numberingLevelHasMarkerSlot(level);
 
-  const rendered = level.lvlText.replace(/%([1-9])/gu, (_placeholder, ordinal: string) => {
-    const referenced = resolveNumberingLevel(definitions, numId, Number.parseInt(ordinal, 10) - 1);
-    if (referenced.kind === "undefined") return "";
-    return level.isLgl === true || numberingLevelHasMarkerSlot(referenced.level) ? "x" : "";
-  });
+  const rendered = level.lvlText.replace(
+    /%([1-9])/gu,
+    (_placeholder, ordinal: string) => {
+      const referenced = resolveNumberingLevel(
+        definitions,
+        numId,
+        Number.parseInt(ordinal, 10) - 1,
+      );
+      if (referenced.kind === "undefined") return "";
+      return level.isLgl === true ||
+        numberingLevelHasMarkerSlot(referenced.level)
+        ? "x"
+        : "";
+    },
+  );
   return rendered.trim().length > 0;
 };

@@ -32,7 +32,9 @@ describe("initial layout font loading", () => {
     const document = createEmptyDocument({ initialText: "Hello" });
     const pmDoc = toProseDoc(document);
 
-    const faces = collectInitialLayoutFontFaces(document, pmDoc).map(fontFaceKey);
+    const faces = collectInitialLayoutFontFaces(document, pmDoc).map(
+      fontFaceKey,
+    );
 
     expect(faces).toContain("Arial|normal|400");
     expect(faces).toContain("Arimo|normal|400");
@@ -51,7 +53,9 @@ describe("initial layout font loading", () => {
     }
 
     const pmDoc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("Bold Cambria", [bold, fontFamily])]),
+      schema.node("paragraph", null, [
+        schema.text("Bold Cambria", [bold, fontFamily]),
+      ]),
     ]);
 
     const faces = collectInitialLayoutFontFaces(null, pmDoc).map(fontFaceKey);
@@ -158,7 +162,9 @@ describe("initial layout font loading", () => {
     // returns null: the gate must resolve rather than block the first layout
     // forever in a non-browser host, and the font set never changes.
     const document = createEmptyDocument({ initialText: "Hello" });
-    expect(await waitForInitialLayoutFonts(document, toProseDoc(document))).toBe(true);
+    expect(
+      await waitForInitialLayoutFonts(document, toProseDoc(document)),
+    ).toBe(true);
     expect(readFontSetSignature()).toBe(readFontSetSignature());
   });
 
@@ -186,7 +192,10 @@ describe("initial layout font loading", () => {
   // that face. Waiting only for authored names released the first layout before
   // it had loaded, and the measurement taken then disagreed with what was drawn.
   test("waits for the substitutes and fallbacks the renderer actually uses", () => {
-    const fontFamily = schema.marks["fontFamily"]?.create({ ascii: "Arial", hAnsi: "Arial" });
+    const fontFamily = schema.marks["fontFamily"]?.create({
+      ascii: "Arial",
+      hAnsi: "Arial",
+    });
     if (!fontFamily) {
       throw new Error("Expected a fontFamily mark in schema");
     }
@@ -206,7 +215,10 @@ describe("initial layout font loading", () => {
   });
 
   test("a quoted stack entry containing a comma stays one family", () => {
-    const fontFamily = schema.marks["fontFamily"]?.create({ ascii: "Foo, Bar", hAnsi: "Foo, Bar" });
+    const fontFamily = schema.marks["fontFamily"]?.create({
+      ascii: "Foo, Bar",
+      hAnsi: "Foo, Bar",
+    });
     if (!fontFamily) {
       throw new Error("Expected a fontFamily mark in schema");
     }
@@ -227,22 +239,36 @@ describe("initial layout font loading", () => {
   // measured Czech, Greek and Cyrillic in a fallback.
   test("waits for every subset the text of each story needs", async () => {
     const storyParagraph = (text: string) => {
-      const [paragraph] = createEmptyDocument({ initialText: text }).package.document.content;
+      const [paragraph] = createEmptyDocument({ initialText: text }).package
+        .document.content;
       if (!paragraph) {
         throw new Error("Expected a paragraph");
       }
       return paragraph;
     };
-    const document = createEmptyDocument({ initialText: "Dodavatel dodá zboží" });
+    const document = createEmptyDocument({
+      initialText: "Dodavatel dodá zboží",
+    });
     document.package.headers = new Map([
-      ["rIdHeader", { type: "header", hdrFtrType: "default", content: [storyParagraph("Αγαθά")] }],
+      [
+        "rIdHeader",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [storyParagraph("Αγαθά")],
+        },
+      ],
     ]);
     document.package.footnotes = [
       { type: "footnote", id: 1, content: [storyParagraph("Поставщик")] },
     ];
     const fontSet = new ScriptedFontSet();
 
-    const settled = waitForInitialLayoutFonts(document, toProseDoc(document), fontSet);
+    const settled = waitForInitialLayoutFonts(
+      document,
+      toProseDoc(document),
+      fontSet,
+    );
     for (const face of fontSet.pending()) {
       fontSet.complete(face);
     }
@@ -257,17 +283,28 @@ describe("initial layout font loading", () => {
           face.status === "loaded",
       )
       .map((face) => face.subset);
-    expect(loadedTinos.toSorted()).toEqual(["cyrillic", "greek", "latin", "latin-ext"]);
+    expect(loadedTinos.toSorted()).toEqual([
+      "cyrillic",
+      "greek",
+      "latin",
+      "latin-ext",
+    ]);
   });
 
   test("always includes the default layout font family for a null document model", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("plain")]),
     ]);
-    expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain("Times New Roman");
+    expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain(
+      "Times New Roman",
+    );
   });
 });
 
-function fontFaceKey(face: { family: string; style: string; weight: number }): string {
+function fontFaceKey(face: {
+  family: string;
+  style: string;
+  weight: number;
+}): string {
   return `${face.family}|${face.style}|${face.weight}`;
 }

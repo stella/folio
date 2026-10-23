@@ -1,8 +1,9 @@
-import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 import babel from "@rolldown/plugin-babel";
 import { reactCompilerPreset } from "@vitejs/plugin-react";
 import type { Plugin } from "rolldown";
 import { defineConfig } from "tsdown";
+
+import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 
 // CSS lives in a single bundled stylesheet (`dist/editor.css`, built separately
 // by `scripts/build-css.ts`). The component-level `import "*.css"` statements are
@@ -100,6 +101,11 @@ const shared = {
 // tsdown runs array configs concurrently, so neither pass may `clean` (it would
 // race the other's output). The `build` script clears `dist` up front instead.
 export default defineConfig([
-  { ...shared, plugins: [stripCssImports(), compileReact()], dts: false, clean: false },
+  {
+    ...shared,
+    plugins: [stripCssImports(), compileReact()],
+    dts: false,
+    clean: false,
+  },
   { ...shared, dts: { emitDtsOnly: true }, clean: false },
 ]);

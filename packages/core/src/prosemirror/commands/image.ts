@@ -13,19 +13,22 @@
 
 import type { EditorView } from "prosemirror-view";
 
+import { FOLIO_INSERTED_PICTURE_FRAME_LOCKS } from "../../docx/graphicFrameLocks";
+import { wrapPolygonFor } from "../../docx/wrapPolygon";
+import type { ImageTransform } from "../../types/document";
 import {
   IMAGE_HORIZONTAL_ALIGNMENT_VALUES,
   IMAGE_HORIZONTAL_RELATIVE_TO_VALUES,
   IMAGE_VERTICAL_ALIGNMENT_VALUES,
   IMAGE_VERTICAL_RELATIVE_TO_VALUES,
 } from "../../types/documentEnumValues";
-import { FOLIO_INSERTED_PICTURE_FRAME_LOCKS } from "../../docx/graphicFrameLocks";
-import { wrapPolygonFor } from "../../docx/wrapPolygon";
-import type { ImageTransform } from "../../types/document";
 import { isSafeImageFile } from "../../utils/imageValidation";
 import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
 import { expectImageAttrs, mergeImageAttrs } from "../attrs";
-import { authoredTransformAttrs, readAuthoredTransform } from "../authoredTransformAttrs";
+import {
+  authoredTransformAttrs,
+  readAuthoredTransform,
+} from "../authoredTransformAttrs";
 import type { ImageAttrs, ImagePositionAttrs } from "../schema/nodes";
 
 // ============================================================================
@@ -69,7 +72,9 @@ type ResolvedImageWrap = {
 };
 
 /** Map a toolbar wrap selection to the image's wrapType/displayMode/cssFloat, or null when unknown. */
-export const resolveImageWrap = (wrapType: string): ResolvedImageWrap | null => {
+export const resolveImageWrap = (
+  wrapType: string,
+): ResolvedImageWrap | null => {
   switch (wrapType) {
     case "inline":
       return { wrapType: "inline", displayMode: "inline", cssFloat: undefined };
@@ -78,7 +83,11 @@ export const resolveImageWrap = (wrapType: string): ResolvedImageWrap | null => 
     case "through":
       return { wrapType, displayMode: "float", cssFloat: "left" };
     case "topAndBottom":
-      return { wrapType: "topAndBottom", displayMode: "block", cssFloat: undefined };
+      return {
+        wrapType: "topAndBottom",
+        displayMode: "block",
+        cssFloat: undefined,
+      };
     case "behind":
     case "inFront":
       return { wrapType, displayMode: "float", cssFloat: "none" };
@@ -101,7 +110,8 @@ const FULL_TURN = 360;
  * rotation may be negative, so a bare remainder answers `-270` where the
  * drawing is at `90`.
  */
-const withinOneTurn = (degrees: number): number => ((degrees % FULL_TURN) + FULL_TURN) % FULL_TURN;
+const withinOneTurn = (degrees: number): number =>
+  ((degrees % FULL_TURN) + FULL_TURN) % FULL_TURN;
 
 /**
  * The authored transform after applying a rotate/flip action.
@@ -131,7 +141,10 @@ export const computeImageTransform = (
   }
 };
 
-const isOneOf = <T extends string>(value: string | undefined, values: readonly T[]): value is T =>
+const isOneOf = <T extends string>(
+  value: string | undefined,
+  values: readonly T[],
+): value is T =>
   value !== undefined && values.some((allowed) => allowed === value);
 
 export const normalizeImageHorizontalPosition = (
@@ -144,10 +157,14 @@ export const normalizeImageHorizontalPosition = (
     return undefined;
   }
 
-  const align = isOneOf(data.align, IMAGE_HORIZONTAL_ALIGNMENT_VALUES) ? data.align : undefined;
+  const align = isOneOf(data.align, IMAGE_HORIZONTAL_ALIGNMENT_VALUES)
+    ? data.align
+    : undefined;
   return {
     relativeTo: data.relativeTo,
-    ...(typeof data.posOffset === "number" ? { posOffset: data.posOffset } : {}),
+    ...(typeof data.posOffset === "number"
+      ? { posOffset: data.posOffset }
+      : {}),
     ...(align ? { align } : {}),
   };
 };
@@ -162,10 +179,14 @@ export const normalizeImageVerticalPosition = (
     return undefined;
   }
 
-  const align = isOneOf(data.align, IMAGE_VERTICAL_ALIGNMENT_VALUES) ? data.align : undefined;
+  const align = isOneOf(data.align, IMAGE_VERTICAL_ALIGNMENT_VALUES)
+    ? data.align
+    : undefined;
   return {
     relativeTo: data.relativeTo,
-    ...(typeof data.posOffset === "number" ? { posOffset: data.posOffset } : {}),
+    ...(typeof data.posOffset === "number"
+      ? { posOffset: data.posOffset }
+      : {}),
     ...(align ? { align } : {}),
   };
 };
@@ -200,7 +221,11 @@ const imageNodeAt = (view: EditorView, pos: number) => {
 };
 
 /** Change the wrap mode of the image at `pos`. Returns whether it applied. */
-export const applyImageWrapType = (view: EditorView, pos: number, wrapType: string): boolean => {
+export const applyImageWrapType = (
+  view: EditorView,
+  pos: number,
+  wrapType: string,
+): boolean => {
   const node = imageNodeAt(view, pos);
   if (!node) {
     return false;
@@ -227,7 +252,8 @@ export const applyImageWrapType = (view: EditorView, pos: number, wrapType: stri
       wrapType: resolved.wrapType,
       displayMode: resolved.displayMode,
       cssFloat: resolved.cssFloat,
-      wrapPolygon: wrapPolygonFor(resolved.wrapType, authoredPolygon) ?? authoredPolygon,
+      wrapPolygon:
+        wrapPolygonFor(resolved.wrapType, authoredPolygon) ?? authoredPolygon,
     }),
   );
   view.dispatch(tr.scrollIntoView());
@@ -245,7 +271,10 @@ export const applyImageTransform = (
     return false;
   }
 
-  const transform = computeImageTransform(readAuthoredTransform(expectImageAttrs(node)), action);
+  const transform = computeImageTransform(
+    readAuthoredTransform(expectImageAttrs(node)),
+    action,
+  );
 
   const tr = view.state.tr.setNodeMarkup(
     pos,
@@ -371,7 +400,9 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function loadImageDimensions(src: string): Promise<{ width: number; height: number }> {
+function loadImageDimensions(
+  src: string,
+): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const safeSrc = sanitizeImageSrc(src);
     if (!safeSrc) {

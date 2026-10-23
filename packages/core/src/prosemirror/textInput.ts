@@ -1,5 +1,10 @@
 import type { EditorState, Transaction } from "prosemirror-state";
-import { AllSelection, Plugin, Selection, TextSelection } from "prosemirror-state";
+import {
+  AllSelection,
+  Plugin,
+  Selection,
+  TextSelection,
+} from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 type TextInputHandler<TView> = (
@@ -21,7 +26,9 @@ type TextInputDispatchTarget<TView> = {
 
 type TextInput = { text: string; from: number; to: number };
 
-export const dispatchEditorTextInput = <TView extends TextInputDispatchTarget<TView>>(
+export const dispatchEditorTextInput = <
+  TView extends TextInputDispatchTarget<TView>,
+>(
   view: TView,
   input: string | TextInput,
 ) => {
@@ -55,7 +62,9 @@ export const dispatchEditorTextInput = <TView extends TextInputDispatchTarget<TV
     ) {
       tr.setNodeMarkup($typed.before(), undefined, last.attrs);
     }
-    return tr.setSelection(TextSelection.create(tr.doc, start.from + text.length));
+    return tr.setSelection(
+      TextSelection.create(tr.doc, start.from + text.length),
+    );
   };
   const handled = view.someProp("handleTextInput", (handler) =>
     handler(view, from, to, text, defaultTransaction),
@@ -69,7 +78,10 @@ export const dispatchEditorTextInput = <TView extends TextInputDispatchTarget<TV
 // Browser replacement operations (spellcheck/autocorrect) may target text other
 // than the current selection. Ordinary typing uses the model selection, whose
 // mark boundary is unambiguous even when the DOM caret is inside the left span.
-export const getEditorInputTargetRange = (view: EditorView, event: InputEvent) => {
+export const getEditorInputTargetRange = (
+  view: EditorView,
+  event: InputEvent,
+) => {
   if (typeof event.getTargetRanges !== "function") return null;
   const ranges = event.getTargetRanges();
   if (ranges.length !== 1) return null;
@@ -88,7 +100,10 @@ export const getEditorInputTargetRange = (view: EditorView, event: InputEvent) =
 };
 
 /** Shared DOM boundary for editor runtimes and standalone suggestion views. */
-export const handleEditorBeforeInput = (view: EditorView, event: InputEvent): boolean => {
+export const handleEditorBeforeInput = (
+  view: EditorView,
+  event: InputEvent,
+): boolean => {
   if (
     !view.editable ||
     !event.cancelable ||
@@ -98,7 +113,10 @@ export const handleEditorBeforeInput = (view: EditorView, event: InputEvent): bo
   ) {
     return false;
   }
-  if (event.inputType !== "insertText" && event.inputType !== "insertReplacementText") {
+  if (
+    event.inputType !== "insertText" &&
+    event.inputType !== "insertReplacementText"
+  ) {
     return false;
   }
   const text =

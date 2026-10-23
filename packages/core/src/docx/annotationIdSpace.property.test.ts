@@ -17,13 +17,16 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** Small ids, so the allocator's lowest-free search actually has to step over them. */
 const annotationId = fc.integer({ min: 0, max: 12 });
@@ -61,9 +64,14 @@ const documentXml = ({
     )
     .join("") +
   bookmarkIds
-    .map((id) => `<w:bookmarkStart w:id="${id}" w:name="bm${id}"/><w:bookmarkEnd w:id="${id}"/>`)
+    .map(
+      (id) =>
+        `<w:bookmarkStart w:id="${id}" w:name="bm${id}"/><w:bookmarkEnd w:id="${id}"/>`,
+    )
     .join("") +
-  permIds.map((id) => `<w:permStart w:id="${id}"/><w:permEnd w:id="${id}"/>`).join("") +
+  permIds
+    .map((id) => `<w:permStart w:id="${id}"/><w:permEnd w:id="${id}"/>`)
+    .join("") +
   moveRangeIds
     .map(
       (id) =>
@@ -72,7 +80,10 @@ const documentXml = ({
     )
     .join("") +
   revisionIds
-    .map((id) => `<w:ins w:id="${id}" w:author="A"><w:r><w:t>i</w:t></w:r></w:ins>`)
+    .map(
+      (id) =>
+        `<w:ins w:id="${id}" w:author="A"><w:r><w:t>i</w:t></w:r></w:ins>`,
+    )
     .join("") +
   `</w:p></w:body></w:document>`;
 
@@ -80,7 +91,8 @@ const commentsXml = (commentIds: readonly number[]): string =>
   `<w:comments ${W}>` +
   commentIds
     .map(
-      (id) => `<w:comment w:id="${id}" w:author="A"><w:p><w:r><w:t>n</w:t></w:r></w:p></w:comment>`,
+      (id) =>
+        `<w:comment w:id="${id}" w:author="A"><w:p><w:r><w:t>n</w:t></w:r></w:p></w:comment>`,
     )
     .join("") +
   `</w:comments>`;
@@ -92,9 +104,9 @@ const buildParts = (generated: GeneratedPackage): Map<string, string> =>
   ]);
 
 const numbersIn = (xml: string, element: string): number[] =>
-  [...xml.matchAll(new RegExp(`<w:${element}\\b[^>]*\\bw:id="(\\d+)"`, "gu"))].map(([, value]) =>
-    Number(value),
-  );
+  [
+    ...xml.matchAll(new RegExp(`<w:${element}\\b[^>]*\\bw:id="(\\d+)"`, "gu")),
+  ].map(([, value]) => Number(value));
 
 const revisionIdsOf = (xml: string): number[] => numbersIn(xml, "ins");
 
@@ -144,7 +156,9 @@ describe("revision ids are minted out of the whole annotation space", () => {
         expect(new Set(ids).size).toBe(ids.length);
 
         // Nothing is rewritten when the revision ids were already unique.
-        if (new Set(generated.revisionIds).size === generated.revisionIds.length) {
+        if (
+          new Set(generated.revisionIds).size === generated.revisionIds.length
+        ) {
           expect(ids).toEqual(generated.revisionIds);
         }
       }),

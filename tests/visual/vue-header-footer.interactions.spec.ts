@@ -1,11 +1,14 @@
 import { expect, test } from "@playwright/test";
+
 import { VUE_ADAPTER } from "../parity/parity-fixture";
 
 test("Vue header editing uses the shared persistent view and saves outside the body", async ({
   page,
 }) => {
   await page.goto(`${VUE_ADAPTER.baseUrl}/?file=sample.docx`);
-  await expect(page.locator(".layout-page-header").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".layout-page-header").first()).toBeVisible({
+    timeout: 30_000,
+  });
 
   const header = page.locator(".layout-page-header").first();
   const headerRId = await header.getAttribute("data-rid");
@@ -29,9 +32,13 @@ test("Vue header editing uses the shared persistent view and saves outside the b
   await expect(page.locator(".hf-inline-editor")).toHaveCount(0);
   await expect(hiddenHeader).toContainText("VueHeaderMark");
 
-  const bodyText = await page.evaluate(() => window.__folioParity?.getDocumentText() ?? "");
+  const bodyText = await page.evaluate(
+    () => window.__folioParity?.getDocumentText() ?? "",
+  );
   expect(bodyText).not.toContain("VueHeaderMark");
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.save() ?? Promise.resolve(0)))
+    .poll(() =>
+      page.evaluate(() => window.__folioParity?.save() ?? Promise.resolve(0)),
+    )
     .toBeGreaterThan(0);
 });

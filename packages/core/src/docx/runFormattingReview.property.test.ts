@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
+
+import type { Document } from "@stll/docx-core/model";
 import {
   applyDocumentOp,
   DOCUMENT_OP_TYPES,
@@ -8,15 +10,20 @@ import {
   revisionIdDemand,
 } from "@stll/docx-core/ops";
 import type { SetRunPropsOp } from "@stll/docx-core/ops";
-import type { Document } from "@stll/docx-core/model";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
 
 const runsOf = (document: Document) => {
   const paragraph = document.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") throw new Error("Expected paragraph");
-  return paragraph.content.flatMap((entry) => (entry.type === "run" ? [entry] : []));
+  return paragraph.content.flatMap((entry) =>
+    entry.type === "run" ? [entry] : [],
+  );
 };
 
 // Formatting generators did not combine multiple authors with a persisted overlapping range.
@@ -30,8 +37,11 @@ test(
         fc.boolean(),
         fc.boolean(),
         async (firstEnd, secondEnd, hasBaseline, hasEmptyBaseline) => {
-          const populatedBaseline = hasBaseline ? { fontSize: 22, bold: false } : undefined;
-          const baseline = populatedBaseline ?? (hasEmptyBaseline ? {} : undefined);
+          const populatedBaseline = hasBaseline
+            ? { fontSize: 22, bold: false }
+            : undefined;
+          const baseline =
+            populatedBaseline ?? (hasEmptyBaseline ? {} : undefined);
           const original = {
             package: {
               document: {
@@ -42,7 +52,9 @@ test(
                     content: [
                       {
                         type: "run",
-                        ...(baseline === undefined ? {} : { formatting: baseline }),
+                        ...(baseline === undefined
+                          ? {}
+                          : { formatting: baseline }),
                         content: [{ type: "text", text: "abcdefghi" }],
                       },
                     ],
@@ -52,10 +64,26 @@ test(
             },
           } satisfies Document;
           let document: Document = original;
-          const at = (offset: number) => ({ story: OP_STORIES.MAIN, blockId: "12345678", offset });
+          const at = (offset: number) => ({
+            story: OP_STORIES.MAIN,
+            blockId: "12345678",
+            offset,
+          });
           const patches = [
-            { from: 0, to: firstEnd, patch: { bold: true }, author: "A", id: 1 },
-            { from: 2, to: secondEnd, patch: { italic: true }, author: "B", id: 2 },
+            {
+              from: 0,
+              to: firstEnd,
+              patch: { bold: true },
+              author: "A",
+              id: 1,
+            },
+            {
+              from: 2,
+              to: secondEnd,
+              patch: { italic: true },
+              author: "B",
+              id: 2,
+            },
           ];
           for (const { from, to, patch, author, id } of patches) {
             const operation = {
@@ -69,7 +97,12 @@ test(
             const count = revisionIdDemand(document, operation).unwrap();
             document = applyDocumentOp(document, {
               ...operation,
-              newIds: { revision: Array.from({ length: count }, (_, index) => 100 + index) },
+              newIds: {
+                revision: Array.from(
+                  { length: count },
+                  (_, index) => 100 + index,
+                ),
+              },
             }).unwrap().document;
           }
           let offset = 0;
@@ -84,9 +117,13 @@ test(
             );
             expect(pending?.info.author).toBe(latest?.author);
             expect(pending?.info.date).toBe(
-              latest === undefined ? undefined : `2000-01-0${latest.id}T00:00:00Z`,
+              latest === undefined
+                ? undefined
+                : `2000-01-0${latest.id}T00:00:00Z`,
             );
-            expect(pending?.previousFormatting).toEqual(pending ? baseline : undefined);
+            expect(pending?.previousFormatting).toEqual(
+              pending ? baseline : undefined,
+            );
             const text = run.content
               .flatMap((leaf) => (leaf.type === "text" ? [leaf.text] : []))
               .join("");
@@ -103,16 +140,23 @@ test(
             }
           }
           expect(offset).toBe(9);
-          const saved = await parseDocx(await createDocx(document), { preloadFonts: false });
-          expect(runsOf(saved).map(({ propertyChanges }) => propertyChanges?.length)).toEqual(
-            runsOf(document).map(({ propertyChanges }) => propertyChanges?.length),
+          const saved = await parseDocx(await createDocx(document), {
+            preloadFonts: false,
+          });
+          expect(
+            runsOf(saved).map(({ propertyChanges }) => propertyChanges?.length),
+          ).toEqual(
+            runsOf(document).map(
+              ({ propertyChanges }) => propertyChanges?.length,
+            ),
           );
           for (const decision of ["accept", "reject"] as const) {
             for (const source of [document, saved]) {
               const revisionIds = [
                 ...new Set(
                   runsOf(source).flatMap(
-                    ({ propertyChanges }) => propertyChanges?.map(({ info }) => info.id) ?? [],
+                    ({ propertyChanges }) =>
+                      propertyChanges?.map(({ info }) => info.id) ?? [],
                   ),
                 ),
               ];
@@ -123,16 +167,18 @@ test(
                 decision,
               }).unwrap().document;
               expect(
-                runsOf(resolved).every(({ propertyChanges }) => !propertyChanges?.length),
+                runsOf(resolved).every(
+                  ({ propertyChanges }) => !propertyChanges?.length,
+                ),
               ).toBe(true);
               if (decision === "reject") {
                 for (const run of runsOf(resolved)) {
                   expect(run.formatting).toEqual(baseline);
                 }
               } else {
-                expect(runsOf(resolved).map(({ formatting }) => formatting)).toEqual(
-                  runsOf(source).map(({ formatting }) => formatting),
-                );
+                expect(
+                  runsOf(resolved).map(({ formatting }) => formatting),
+                ).toEqual(runsOf(source).map(({ formatting }) => formatting));
               }
             }
           }

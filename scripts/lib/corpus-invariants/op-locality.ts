@@ -1,45 +1,53 @@
+import { Result } from "better-result";
 import path from "node:path";
-import { parseRelationships, RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
+
 import {
-  parseXmlDocument,
+  parseRelationships,
+  RELATIONSHIP_TYPES,
+} from "@stll/folio-core/docx/relsParser";
+import {
+  getAttribute,
+  getAttributes,
   getChildElements,
   getLocalName,
-  getAttributes,
-  getAttribute,
   getNamespaceUri,
+  parseXmlDocument,
 } from "@stll/folio-core/docx/xmlParser";
+
 import type {
   BlockContent,
   Document,
+  DocumentBody,
   Relationship,
   SectionProperties,
-  DocumentBody,
 } from "../../../packages/docx-core/src/model/document";
 import {
   COMMENT_PART_RELATIONSHIPS,
   DEFAULT_TAB_STOP_TWIPS,
 } from "../../../packages/docx-core/src/model/document";
-import { Result } from "better-result";
+import { storyParagraphs } from "../../../packages/docx-core/src/ops/blocks";
 import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
   documentStories,
   isCommentExhausted,
-  storyBody,
-  type DocumentOp,
-  DOCUMENT_OP_TYPES,
   OP_STORIES,
-  sameStory,
-  survivingComments,
   type OpStory,
+  sameStory,
+  storyBody,
+  survivingComments,
 } from "../../../packages/docx-core/src/ops/documentOps";
+import { idKey } from "../../../packages/docx-core/src/ops/ids";
+import {
+  isCommentAnchor,
+  leafSpans,
+} from "../../../packages/docx-core/src/ops/leaves";
 import type {
+  CommentOp,
   DeleteBlocksOp,
   PackageResources,
   StoryParts,
 } from "../../../packages/docx-core/src/ops/types";
-import { storyParagraphs } from "../../../packages/docx-core/src/ops/blocks";
-import { leafSpans, isCommentAnchor } from "../../../packages/docx-core/src/ops/leaves";
-import type { CommentOp } from "../../../packages/docx-core/src/ops/types";
-import { idKey } from "../../../packages/docx-core/src/ops/ids";
 import { failureFromAssertion } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
@@ -47,20 +55,19 @@ import {
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
+import { opErrorOutcome } from "./op-outcome";
+import { firstDifferingOpPart } from "./op-part-difference";
 import {
   generateOpSequence,
   OP_SEQUENCE_SEEDS,
+  type OpSequence,
+  type OpSequenceStep,
   prepareOpDocument,
   sameOpModel,
   seedFromBytes,
-  serializeOpDocument,
   serializedOpParts,
-  type OpSequenceStep,
-  type OpSequence,
+  serializeOpDocument,
 } from "./op-sequences";
-import { firstDifferingOpPart } from "./op-part-difference";
-
-import { opErrorOutcome } from "./op-outcome";
 
 const INVARIANT = EXTENDED_CORPUS_INVARIANTS.opLocality;
 
@@ -73,7 +80,8 @@ const untouchedBlocks = (
   for (const block of blocks) {
     switch (block.type) {
       case "paragraph":
-        if (block.paraId === undefined || !touched.has(idKey(block.paraId))) out.push(block);
+        if (block.paraId === undefined || !touched.has(idKey(block.paraId)))
+          out.push(block);
         break;
       case "table": {
         const rows = block.rows.flatMap((row) => {
@@ -122,7 +130,9 @@ const lifecycleOwnership = (op: DocumentOp) => {
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
       return {
         sectionIndex: op.sectionIndex,
-        sectionKeys: [op.story.kind === "header" ? "headerReferences" : "footerReferences"],
+        sectionKeys: [
+          op.story.kind === "header" ? "headerReferences" : "footerReferences",
+        ],
         story: op.story,
         settingsEven: false,
       };
@@ -143,7 +153,12 @@ const lifecycleOwnership = (op: DocumentOp) => {
         settingsEven: false,
       };
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
-      return { sectionIndex: undefined, sectionKeys: [], story: op.story, settingsEven: false };
+      return {
+        sectionIndex: undefined,
+        sectionKeys: [],
+        story: op.story,
+        settingsEven: false,
+      };
     default:
       return undefined;
   }
@@ -157,7 +172,10 @@ type WithoutOwnedRecordsOptions = {
 };
 
 /** Restoration owns precisely the present payload fields, including fields restoring absence. */
-const withoutRestoredRecords = (document: Document, parts: StoryParts): Document => {
+const withoutRestoredRecords = (
+  document: Document,
+  parts: StoryParts,
+): Document => {
   const out = structuredClone(document);
   const body = out.package.document;
   const stripBody = {
@@ -168,7 +186,8 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
       if (parts.body?.background !== undefined) delete body.background;
     },
     finalSectionProperties: () => {
-      if (parts.body?.finalSectionProperties !== undefined) delete body.finalSectionProperties;
+      if (parts.body?.finalSectionProperties !== undefined)
+        delete body.finalSectionProperties;
     },
     comments: () => {
       if (parts.body?.comments !== undefined) delete body.comments;
@@ -191,7 +210,10 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
     settings: () => {
       if (parts.settings !== undefined) delete out.package.settings;
     },
-  } satisfies Record<keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">, () => void>;
+  } satisfies Record<
+    keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">,
+    () => void
+  >;
   for (const strip of Object.values(stripPackage)) strip();
   const restoredSections = new Set(
     (parts.sections ?? []).flatMap(({ index, properties }) =>
@@ -200,7 +222,8 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
   );
   let sectionIndex = 0;
   for (const block of body.content) {
-    if (block.type !== "paragraph" || block.sectionProperties === undefined) continue;
+    if (block.type !== "paragraph" || block.sectionProperties === undefined)
+      continue;
     if (restoredSections.has(sectionIndex)) delete block.sectionProperties;
     sectionIndex += 1;
   }
@@ -223,24 +246,32 @@ const isCommentOp = (op: DocumentOp): op is CommentOp => {
   }
 };
 const ownedCommentIds = (op: CommentOp, original: Document): Set<number> => {
-  if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) return new Set([op.comment.id]);
-  if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) return new Set(op.ids);
+  if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT)
+    return new Set([op.comment.id]);
+  if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+    return new Set(op.ids);
   const ids = new Set([op.id]);
   if (op.type !== DOCUMENT_OP_TYPES.DELETE_COMMENT) return ids;
   let previous = 0;
   while (previous !== ids.size) {
     previous = ids.size;
     for (const comment of original.package.document.comments ?? [])
-      if (comment.parentId !== undefined && ids.has(comment.parentId)) ids.add(comment.id);
+      if (comment.parentId !== undefined && ids.has(comment.parentId))
+        ids.add(comment.id);
   }
   return ids;
 };
 
 /** Comment threads owned by a block deletion because their last covered content is selected. */
-const blockDeletionCommentIds = (op: DeleteBlocksOp, original: Document): Set<number> => {
+const blockDeletionCommentIds = (
+  op: DeleteBlocksOp,
+  original: Document,
+): Set<number> => {
   const withoutSelectedContent = structuredClone(original);
   const selected = new Set(op.blockIds.map(idKey));
-  for (const { paragraph } of storyParagraphs(storyBody(withoutSelectedContent, op.story)))
+  for (const { paragraph } of storyParagraphs(
+    storyBody(withoutSelectedContent, op.story),
+  ))
     if (paragraph.paraId !== undefined && selected.has(idKey(paragraph.paraId)))
       paragraph.content = [];
 
@@ -248,7 +279,11 @@ const blockDeletionCommentIds = (op: DeleteBlocksOp, original: Document): Set<nu
     (original.package.document.comments ?? []).flatMap(({ id, parentId }) =>
       parentId === undefined &&
       !isCommentExhausted({ type: "document", document: original, id }) &&
-      isCommentExhausted({ type: "document", document: withoutSelectedContent, id })
+      isCommentExhausted({
+        type: "document",
+        document: withoutSelectedContent,
+        id,
+      })
         ? [id]
         : [],
     ),
@@ -257,13 +292,16 @@ const blockDeletionCommentIds = (op: DeleteBlocksOp, original: Document): Set<nu
   while (previous !== ids.size) {
     previous = ids.size;
     for (const comment of original.package.document.comments ?? [])
-      if (comment.parentId !== undefined && ids.has(comment.parentId)) ids.add(comment.id);
+      if (comment.parentId !== undefined && ids.has(comment.parentId))
+        ids.add(comment.id);
   }
   return ids;
 };
 const commentStories = (op: CommentOp, original: Document): OpStory[] => {
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
-    return [...op.expected.anchors, ...op.state.anchors].map(({ story }) => story);
+    return [...op.expected.anchors, ...op.state.anchors].map(
+      ({ story }) => story,
+    );
   if (
     op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT ||
     op.type === DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION
@@ -318,25 +356,33 @@ const withoutOwnedRecords = ({
         if (!ids.has(comment.id)) continue;
         if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
           comment.content = [];
-          for (const key of Object.keys(op.patch ?? {})) Reflect.deleteProperty(comment, key);
+          for (const key of Object.keys(op.patch ?? {}))
+            Reflect.deleteProperty(comment, key);
         } else delete comment.done;
       }
     } else {
       out.package.document.comments = comments.filter(({ id }) => !ids.has(id));
-      if (out.package.document.comments.length === 0) delete out.package.document.comments;
+      if (out.package.document.comments.length === 0)
+        delete out.package.document.comments;
     }
     const ownsCommentPartLifecycle =
       isCommentOp(op) ||
-      (ids.size > 0 && (original.package.document.comments ?? []).every(({ id }) => ids.has(id)));
+      (ids.size > 0 &&
+        (original.package.document.comments ?? []).every(({ id }) =>
+          ids.has(id),
+        ));
     if (ownsCommentPartLifecycle && out.package.relationships !== undefined) {
       out.package.relationships = new Map(
         [...out.package.relationships].filter(
           ([, relation]) =>
             counterpart.package.relationships?.has(relation.id) ||
-            !Object.values(COMMENT_PART_RELATIONSHIPS).some(({ type }) => type === relation.type),
+            !Object.values(COMMENT_PART_RELATIONSHIPS).some(
+              ({ type }) => type === relation.type,
+            ),
         ),
       );
-      if (out.package.relationships.size === 0) delete out.package.relationships;
+      if (out.package.relationships.size === 0)
+        delete out.package.relationships;
     }
     return out;
   }
@@ -369,9 +415,11 @@ const withoutOwnedRecords = ({
         ({ numId }) => numId !== op.num.numId,
       );
       if (op.abstractNum !== undefined)
-        out.package.numbering.abstractNums = out.package.numbering.abstractNums.filter(
-          ({ abstractNumId }) => abstractNumId !== op.abstractNum?.abstractNumId,
-        );
+        out.package.numbering.abstractNums =
+          out.package.numbering.abstractNums.filter(
+            ({ abstractNumId }) =>
+              abstractNumId !== op.abstractNum?.abstractNumId,
+          );
       if (
         (original.package.numbering === undefined ||
           (op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE &&
@@ -379,7 +427,8 @@ const withoutOwnedRecords = ({
         out.package.numbering.nums.length === 0 &&
         out.package.numbering.abstractNums.length === 0
       ) {
-        if (Object.hasOwn(original.package, "numbering")) out.package.numbering = undefined;
+        if (Object.hasOwn(original.package, "numbering"))
+          out.package.numbering = undefined;
         else delete out.package.numbering;
       }
     }
@@ -387,7 +436,8 @@ const withoutOwnedRecords = ({
   }
   if (op.type === DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT) {
     const out = structuredClone(document);
-    if (op.endpoint.type === "final") delete out.package.document.finalSectionProperties;
+    if (op.endpoint.type === "final")
+      delete out.package.document.finalSectionProperties;
     else {
       const endpoint = op.endpoint;
       for (const block of out.package.document.content)
@@ -419,18 +469,21 @@ const withoutOwnedRecords = ({
       op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER ||
       op.type === DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER
     ) {
-      const referenceKey = op.story.kind === "header" ? "headerReferences" : "footerReferences";
+      const referenceKey =
+        op.story.kind === "header" ? "headerReferences" : "footerReferences";
       const references = properties[referenceKey]?.filter(
         ({ type, rId }) => type !== op.referenceType || rId !== op.story.rId,
       );
-      if (references && references.length > 0) remaining[referenceKey] = references;
+      if (references && references.length > 0)
+        remaining[referenceKey] = references;
     }
 
     return Object.keys(remaining).length === 0 ? undefined : remaining;
   };
   let sectionIndex = 0;
   for (const block of out.package.document.content) {
-    if (block.type !== "paragraph" || block.sectionProperties === undefined) continue;
+    if (block.type !== "paragraph" || block.sectionProperties === undefined)
+      continue;
     if (sectionIndex === ownership.sectionIndex) {
       const properties = stripProperties(block.sectionProperties);
       if (properties === undefined) delete block.sectionProperties;
@@ -439,8 +492,11 @@ const withoutOwnedRecords = ({
     sectionIndex += 1;
   }
   if (sectionIndex === ownership.sectionIndex) {
-    const properties = stripProperties(out.package.document.finalSectionProperties);
-    if (properties === undefined) delete out.package.document.finalSectionProperties;
+    const properties = stripProperties(
+      out.package.document.finalSectionProperties,
+    );
+    if (properties === undefined)
+      delete out.package.document.finalSectionProperties;
     else out.package.document.finalSectionProperties = properties;
   }
   const story = ownership.story;
@@ -453,9 +509,13 @@ const withoutOwnedRecords = ({
     out.package.footers.delete(story.rId);
   }
   if (story?.kind === "footnote")
-    out.package.footnotes = (out.package.footnotes ?? []).filter(({ id }) => id !== story.id);
+    out.package.footnotes = (out.package.footnotes ?? []).filter(
+      ({ id }) => id !== story.id,
+    );
   if (story?.kind === "endnote")
-    out.package.endnotes = (out.package.endnotes ?? []).filter(({ id }) => id !== story.id);
+    out.package.endnotes = (out.package.endnotes ?? []).filter(
+      ({ id }) => id !== story.id,
+    );
   if (ownership.settingsEven && out.package.settings !== undefined) {
     const settings = { ...out.package.settings };
     delete settings.evenAndOddHeaders;
@@ -473,8 +533,13 @@ const withoutOwnedRecords = ({
   return out;
 };
 
-const projected = (document: Document, touched: ReadonlySet<string>): Document => {
-  const projectContent = <Part extends Pick<DocumentBody, "content">>(part: Part) => ({
+const projected = (
+  document: Document,
+  touched: ReadonlySet<string>,
+): Document => {
+  const projectContent = <Part extends Pick<DocumentBody, "content">>(
+    part: Part,
+  ) => ({
     ...part,
     content: untouchedBlocks(part.content, touched),
   });
@@ -484,22 +549,33 @@ const projected = (document: Document, touched: ReadonlySet<string>): Document =
   delete body.sections;
   const pkg = { ...document.package, document: body };
   if (pkg.headers !== undefined)
-    pkg.headers = new Map([...pkg.headers].map(([id, part]) => [id, projectContent(part)]));
+    pkg.headers = new Map(
+      [...pkg.headers].map(([id, part]) => [id, projectContent(part)]),
+    );
   if (pkg.footers !== undefined)
-    pkg.footers = new Map([...pkg.footers].map(([id, part]) => [id, projectContent(part)]));
-  if (pkg.footnotes !== undefined) pkg.footnotes = pkg.footnotes.map(projectContent);
-  if (pkg.endnotes !== undefined) pkg.endnotes = pkg.endnotes.map(projectContent);
+    pkg.footers = new Map(
+      [...pkg.footers].map(([id, part]) => [id, projectContent(part)]),
+    );
+  if (pkg.footnotes !== undefined)
+    pkg.footnotes = pkg.footnotes.map(projectContent);
+  if (pkg.endnotes !== undefined)
+    pkg.endnotes = pkg.endnotes.map(projectContent);
   return { ...document, package: pkg };
 };
 
 const addressedStory = (op: DocumentOp) => {
-  if ("at" in op && typeof op.at === "object" && "story" in op.at) return op.at.story;
+  if ("at" in op && typeof op.at === "object" && "story" in op.at)
+    return op.at.story;
   if ("from" in op) return op.from.story;
   if ("story" in op) return op.story;
   return undefined;
 };
 
-type StoryOwnershipOptions = { op: DocumentOp; story: OpStory; original: Document };
+type StoryOwnershipOptions = {
+  op: DocumentOp;
+  story: OpStory;
+  original: Document;
+};
 const storyOwnership = ({
   op,
   story,
@@ -513,8 +589,10 @@ const storyOwnership = ({
   if (addressed !== undefined && sameStory(addressed, story)) return "content";
   const lifecycle = lifecycleOwnership(op);
   if (lifecycle !== undefined) {
-    if (lifecycle.story !== undefined && sameStory(lifecycle.story, story)) return "content";
-    if (lifecycle.sectionIndex !== undefined && story === OP_STORIES.MAIN) return "fields";
+    if (lifecycle.story !== undefined && sameStory(lifecycle.story, story))
+      return "content";
+    if (lifecycle.sectionIndex !== undefined && story === OP_STORIES.MAIN)
+      return "fields";
   }
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) return "none";
   if (story === OP_STORIES.MAIN) {
@@ -538,7 +616,11 @@ const storyOwnership = ({
 };
 
 /** Check the producer's declared touched set, never infer it from observed differences. */
-export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): string[] => {
+export const localityStepFailures = ({
+  before,
+  op,
+  edit,
+}: OpSequenceStep): string[] => {
   const failures: string[] = [];
   const modified = new Set(edit.touched.modified.map(idKey));
   const inserted = new Set(edit.touched.inserted.map(idKey));
@@ -549,30 +631,39 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
       if (storyOwnership({ op, story, original: before }) !== "none") continue;
       if (
         storyParagraphs(storyBody(document, story)).some(
-          ({ paragraph }) => paragraph.paraId !== undefined && touched.has(idKey(paragraph.paraId)),
+          ({ paragraph }) =>
+            paragraph.paraId !== undefined &&
+            touched.has(idKey(paragraph.paraId)),
         )
       )
-        failures.push(`${op.type} declared a touched block outside its addressed story`);
+        failures.push(
+          `${op.type} declared a touched block outside its addressed story`,
+        );
     }
   }
   const beforeParagraphs = new Map(
     documentStories(before)
       .flatMap((story) => storyParagraphs(storyBody(before, story)))
       .flatMap(({ paragraph }) =>
-        paragraph.paraId === undefined ? [] : [[idKey(paragraph.paraId), paragraph] as const],
+        paragraph.paraId === undefined
+          ? []
+          : [[idKey(paragraph.paraId), paragraph] as const],
       ),
   );
   const afterParagraphs = new Map(
     documentStories(edit.document)
       .flatMap((story) => storyParagraphs(storyBody(edit.document, story)))
       .flatMap(({ paragraph }) =>
-        paragraph.paraId === undefined ? [] : [[idKey(paragraph.paraId), paragraph] as const],
+        paragraph.paraId === undefined
+          ? []
+          : [[idKey(paragraph.paraId), paragraph] as const],
       ),
   );
   for (const [id, paragraph] of beforeParagraphs) {
     const after = afterParagraphs.get(id);
     if (after === undefined) {
-      if (!removed.has(id)) failures.push(`${op.type} removed an undeclared block`);
+      if (!removed.has(id))
+        failures.push(`${op.type} removed an undeclared block`);
     } else if (!touched.has(id) && !sameOpModel(paragraph, after)) {
       failures.push(`${op.type} changed an untouched paragraph`);
     }
@@ -595,16 +686,20 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
   });
   // Section-field ownership does not grant ownership of the paragraph carrying it.
   const ownsMainContent =
-    storyOwnership({ op, story: OP_STORIES.MAIN, original: before }) === "content";
+    storyOwnership({ op, story: OP_STORIES.MAIN, original: before }) ===
+    "content";
   const projectedTouched = new Set(touched);
   if (!ownsMainContent)
     for (const document of [before, edit.document])
       for (const { paragraph } of storyParagraphs(document.package.document))
-        if (paragraph.paraId !== undefined) projectedTouched.delete(idKey(paragraph.paraId));
+        if (paragraph.paraId !== undefined)
+          projectedTouched.delete(idKey(paragraph.paraId));
   const originalUntouched = projected(scopedBefore, projectedTouched);
   const editedUntouched = projected(scopedAfter, projectedTouched);
   if (!sameOpModel(originalUntouched, editedUntouched))
-    failures.push(`${op.type} changed records outside its declared story and section fields`);
+    failures.push(
+      `${op.type} changed records outside its declared story and section fields`,
+    );
   if (
     !sameOpModel(
       originalUntouched.package.document.content,
@@ -612,8 +707,13 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
     )
   )
     failures.push(`${op.type} changed an untouched block or container`);
-  if (serializeOpDocument(originalUntouched) !== serializeOpDocument(editedUntouched))
-    failures.push(`${op.type} changed serialization outside its touched blocks`);
+  if (
+    serializeOpDocument(originalUntouched) !==
+    serializeOpDocument(editedUntouched)
+  )
+    failures.push(
+      `${op.type} changed serialization outside its touched blocks`,
+    );
   return [...new Set(failures)];
 };
 
@@ -635,7 +735,9 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
   for (const { op, before, edit } of sequence.steps) {
-    if (!sameOpModel(survivingComments(before), survivingComments(edit.document))) {
+    if (
+      !sameOpModel(survivingComments(before), survivingComments(edit.document))
+    ) {
       lifecycle = true;
       ownedPaths.add("word/comments.xml");
       ownedPaths.add("word/commentsExtended.xml");
@@ -663,8 +765,16 @@ export const serializedLocalityFailures = ({
         styles: RELATIONSHIP_TYPES.styles,
         numbering: RELATIONSHIP_TYPES.numbering,
       } satisfies Record<keyof PackageResources, string>;
-      for (const [key, relationshipType] of Object.entries(resourceRelationships)) {
-        if (sameOpModel(Reflect.get(op.expected, key), Reflect.get(op.resources, key))) continue;
+      for (const [key, relationshipType] of Object.entries(
+        resourceRelationships,
+      )) {
+        if (
+          sameOpModel(
+            Reflect.get(op.expected, key),
+            Reflect.get(op.resources, key),
+          )
+        )
+          continue;
         lifecycle = true;
         ownedRelationshipTypes.add(relationshipType);
       }
@@ -677,7 +787,8 @@ export const serializedLocalityFailures = ({
         op.relationships.entries.length > 0
       )
         lifecycle = true;
-      for (const { key } of op.relationships.entries) ownedRelationshipIds.add(key);
+      for (const { key } of op.relationships.entries)
+        ownedRelationshipIds.add(key);
     }
     if (
       op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||
@@ -695,8 +806,13 @@ export const serializedLocalityFailures = ({
         footnotes: RELATIONSHIP_TYPES.footnotes,
         endnotes: RELATIONSHIP_TYPES.endnotes,
         settings: RELATIONSHIP_TYPES.settings,
-      } satisfies Record<keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">, string>;
-      for (const [key, relationshipType] of Object.entries(restoredRelationships)) {
+      } satisfies Record<
+        keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">,
+        string
+      >;
+      for (const [key, relationshipType] of Object.entries(
+        restoredRelationships,
+      )) {
         if (
           Object.entries(op.parts).some(
             ([ownedKey, value]) => ownedKey === key && value !== undefined,
@@ -711,13 +827,17 @@ export const serializedLocalityFailures = ({
         lifecycle = true;
       }
     }
-    if (op.type === DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT) ownedPaths.add(documentPart);
+    if (op.type === DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT)
+      ownedPaths.add(documentPart);
     const story = addressedStory(op);
     if (story === OP_STORIES.MAIN) ownedPaths.add(documentPart);
     if (story !== undefined && story !== OP_STORIES.MAIN) {
-      if (story.kind === "header" || story.kind === "footer") ownedRelationshipIds.add(story.rId);
-      if (story.kind === "footnote") ownedRelationshipTypes.add(RELATIONSHIP_TYPES.footnotes);
-      if (story.kind === "endnote") ownedRelationshipTypes.add(RELATIONSHIP_TYPES.endnotes);
+      if (story.kind === "header" || story.kind === "footer")
+        ownedRelationshipIds.add(story.rId);
+      if (story.kind === "footnote")
+        ownedRelationshipTypes.add(RELATIONSHIP_TYPES.footnotes);
+      if (story.kind === "endnote")
+        ownedRelationshipTypes.add(RELATIONSHIP_TYPES.endnotes);
     }
     const ownership = lifecycleOwnership(op);
     if (!ownership) continue;
@@ -726,9 +846,12 @@ export const serializedLocalityFailures = ({
     const ownedStory = ownership.story;
     if (ownedStory?.kind === "header" || ownedStory?.kind === "footer")
       ownedRelationshipIds.add(ownedStory.rId);
-    if (ownedStory?.kind === "footnote") ownedRelationshipTypes.add(RELATIONSHIP_TYPES.footnotes);
-    if (ownedStory?.kind === "endnote") ownedRelationshipTypes.add(RELATIONSHIP_TYPES.endnotes);
-    if (ownership.settingsEven) ownedRelationshipTypes.add(RELATIONSHIP_TYPES.settings);
+    if (ownedStory?.kind === "footnote")
+      ownedRelationshipTypes.add(RELATIONSHIP_TYPES.footnotes);
+    if (ownedStory?.kind === "endnote")
+      ownedRelationshipTypes.add(RELATIONSHIP_TYPES.endnotes);
+    if (ownership.settingsEven)
+      ownedRelationshipTypes.add(RELATIONSHIP_TYPES.settings);
   }
   const relationshipsPath = path.posix.join(
     path.posix.dirname(documentPart),
@@ -737,12 +860,18 @@ export const serializedLocalityFailures = ({
   );
   const decode = (parts: Map<string, Uint8Array>, part: string) =>
     new TextDecoder().decode(parts.get(part) ?? new Uint8Array());
-  const controlRelationships = parseRelationships(decode(control, relationshipsPath));
-  const editedRelationships = parseRelationships(decode(edited, relationshipsPath));
+  const controlRelationships = parseRelationships(
+    decode(control, relationshipsPath),
+  );
+  const editedRelationships = parseRelationships(
+    decode(edited, relationshipsPath),
+  );
   if (sequence.steps.some(({ op }) => isCommentOp(op))) {
     const attributes = (parts: Map<string, Uint8Array>) =>
       new Map(
-        getChildElements(parseXmlDocument(decode(parts, relationshipsPath))).flatMap((element) => {
+        getChildElements(
+          parseXmlDocument(decode(parts, relationshipsPath)),
+        ).flatMap((element) => {
           const id = getAttribute(element, null, "Id");
           return id ? [[id, getAttributes(element)] as const] : [];
         }),
@@ -752,7 +881,9 @@ export const serializedLocalityFailures = ({
     for (const [id, relation] of controlRelationships) {
       if (
         !editedRelationships.has(id) ||
-        !Object.values(COMMENT_PART_RELATIONSHIPS).some(({ type }) => type === relation.type)
+        !Object.values(COMMENT_PART_RELATIONSHIPS).some(
+          ({ type }) => type === relation.type,
+        )
       )
         continue;
       if (!sameOpModel(baselineAttributes.get(id), editedAttributes.get(id)))
@@ -762,27 +893,50 @@ export const serializedLocalityFailures = ({
     }
   }
   const ownsRelationship = (relationship: Relationship) =>
-    ownedRelationshipIds.has(relationship.id) || ownedRelationshipTypes.has(relationship.type);
-  for (const relationship of [...controlRelationships.values(), ...editedRelationships.values()]) {
-    if (ownsRelationship(relationship) && relationship.targetMode !== "External")
+    ownedRelationshipIds.has(relationship.id) ||
+    ownedRelationshipTypes.has(relationship.type);
+  for (const relationship of [
+    ...controlRelationships.values(),
+    ...editedRelationships.values(),
+  ]) {
+    if (
+      ownsRelationship(relationship) &&
+      relationship.targetMode !== "External"
+    )
       ownedPaths.add(
-        path.posix.resolve("/", path.posix.dirname(documentPart), relationship.target).slice(1),
+        path.posix
+          .resolve("/", path.posix.dirname(documentPart), relationship.target)
+          .slice(1),
       );
   }
   if (lifecycle) {
     const remaining = (relationships: typeof controlRelationships) =>
-      new Map([...relationships].filter(([, relationship]) => !ownsRelationship(relationship)));
-    if (!sameOpModel(remaining(controlRelationships), remaining(editedRelationships)))
-      failures.push(`sequence changed unrelated package relationships: ${relationshipsPath}`);
+      new Map(
+        [...relationships].filter(
+          ([, relationship]) => !ownsRelationship(relationship),
+        ),
+      );
+    if (
+      !sameOpModel(
+        remaining(controlRelationships),
+        remaining(editedRelationships),
+      )
+    )
+      failures.push(
+        `sequence changed unrelated package relationships: ${relationshipsPath}`,
+      );
     const contentTypesPath = "[Content_Types].xml";
     const unownedContentTypes = (parts: Map<string, Uint8Array>) => {
       const root = parseXmlDocument(decode(parts, contentTypesPath));
       if (
         !root ||
         getLocalName(root.name) !== "Types" ||
-        getNamespaceUri(root) !== "http://schemas.openxmlformats.org/package/2006/content-types"
+        getNamespaceUri(root) !==
+          "http://schemas.openxmlformats.org/package/2006/content-types"
       ) {
-        failures.push("sequence has invalid package content types: [Content_Types].xml");
+        failures.push(
+          "sequence has invalid package content types: [Content_Types].xml",
+        );
         return undefined;
       }
       return getChildElements(root)
@@ -798,14 +952,20 @@ export const serializedLocalityFailures = ({
           name: getLocalName(element.name),
           attributes: getAttributes(element),
         }))
-        .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+        .sort((left, right) =>
+          JSON.stringify(left).localeCompare(JSON.stringify(right)),
+        );
     };
     if (!sameOpModel(unownedContentTypes(control), unownedContentTypes(edited)))
-      failures.push("sequence changed unrelated package content types: [Content_Types].xml");
+      failures.push(
+        "sequence changed unrelated package content types: [Content_Types].xml",
+      );
     ownedPaths.add(relationshipsPath);
     ownedPaths.add(contentTypesPath);
   }
-  for (const part of [...new Set([...control.keys(), ...edited.keys()])].toSorted()) {
+  for (const part of [
+    ...new Set([...control.keys(), ...edited.keys()]),
+  ].toSorted()) {
     if (ownedPaths.has(part)) continue;
     if (!sameOpModel(control.get(part), edited.get(part))) {
       failures.push(`sequence changed unrelated serialized part: ${part}`);
@@ -815,7 +975,10 @@ export const serializedLocalityFailures = ({
   return failures;
 };
 
-type SerializedLocalityStepOptions = Omit<SerializedLocalityOptions, "sequence"> & {
+type SerializedLocalityStepOptions = Omit<
+  SerializedLocalityOptions,
+  "sequence"
+> & {
   step: OpSequenceStep;
 };
 
@@ -828,10 +991,17 @@ export const serializedLocalityStepFailures = ({
     ...options,
     sequence: { steps: [step] },
   })
-    .map((message) => ({ message, part: message.slice(message.indexOf(": ") + 2) }))
-    .toSorted((left, right) => (left.part < right.part ? -1 : Number(left.part > right.part)))
+    .map((message) => ({
+      message,
+      part: message.slice(message.indexOf(": ") + 2),
+    }))
+    .toSorted((left, right) =>
+      left.part < right.part ? -1 : Number(left.part > right.part),
+    )
     .at(0);
-  return first === undefined ? [] : [`${step.op.type} ${first.message.replace(/^sequence /u, "")}`];
+  return first === undefined
+    ? []
+    : [`${step.op.type} ${first.message.replace(/^sequence /u, "")}`];
 };
 
 export const runOpLocalityInvariant = async (
@@ -847,7 +1017,11 @@ export const runOpLocalityInvariant = async (
         const control = await serializedOpParts(document);
         for (const salt of OP_SEQUENCE_SEEDS) {
           const sequence = generateOpSequence(document, seed ^ salt);
-          failures.push(...sequence.mutations.map((type) => `${type} mutated its input document`));
+          failures.push(
+            ...sequence.mutations.map(
+              (type) => `${type} mutated its input document`,
+            ),
+          );
           // oxlint-disable-next-line no-await-in-loop -- each sequence is checked against one shared control save
           const edited = await serializedOpParts(sequence.document);
           const compoundFailures = serializedLocalityFailures({
@@ -859,7 +1033,8 @@ export const runOpLocalityInvariant = async (
           let classified = false;
           for (const step of sequence.steps) {
             const modelFailures = localityStepFailures(step);
-            if (compoundFailures.length === 0 && modelFailures.length === 0) continue;
+            if (compoundFailures.length === 0 && modelFailures.length === 0)
+              continue;
             // oxlint-disable-next-line no-await-in-loop -- extra package saves classify only observed failures
             const [beforeParts, editedParts] = await Promise.all([
               serializedOpParts(step.before),
@@ -873,16 +1048,22 @@ export const runOpLocalityInvariant = async (
             });
             classified ||= stepFailures.length > 0;
             failures.push(...stepFailures);
-            const part = firstDifferingOpPart({ control: beforeParts, edited: editedParts });
+            const part = firstDifferingOpPart({
+              control: beforeParts,
+              edited: editedParts,
+            });
             failures.push(
-              ...modelFailures.map((message) => `${message}; part: ${part ?? "model-only"}`),
+              ...modelFailures.map(
+                (message) => `${message}; part: ${part ?? "model-only"}`,
+              ),
             );
           }
           if (!classified)
             for (const type of new Set(sequence.steps.map(({ op }) => op.type)))
               failures.push(
                 ...compoundFailures.map(
-                  (message) => `${type} ${message.replace(/^sequence /u, "composition ")}`,
+                  (message) =>
+                    `${type} ${message.replace(/^sequence /u, "composition ")}`,
                 ),
               );
         }
@@ -892,10 +1073,16 @@ export const runOpLocalityInvariant = async (
     }),
   );
   if (outcome.isErr())
-    return opErrorOutcome({ invariant: INVARIANT, error: outcome.error, timings });
+    return opErrorOutcome({
+      invariant: INVARIANT,
+      error: outcome.error,
+      timings,
+    });
   return {
     status: "evaluated",
     timings,
-    failures: outcome.value.map((message) => failureFromAssertion(INVARIANT, message)),
+    failures: outcome.value.map((message) =>
+      failureFromAssertion(INVARIANT, message),
+    ),
   };
 };

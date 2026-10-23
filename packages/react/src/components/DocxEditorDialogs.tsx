@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { lazy, Suspense } from "react";
 
 import type {
   EndnoteProperties,
@@ -6,7 +6,12 @@ import type {
   SectionProperties,
 } from "@stll/folio-core/types/document";
 import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
-import type { FindMatch, FindOptions, FindResult } from "./dialogs/findReplaceUtils";
+
+import type {
+  FindMatch,
+  FindOptions,
+  FindResult,
+} from "./dialogs/findReplaceUtils";
 import type { ImagePositionData } from "./dialogs/ImagePositionDialog";
 import type { ImagePropertiesData } from "./dialogs/ImagePropertiesDialog";
 import type { TableProperties } from "./dialogs/TablePropertiesDialog";
@@ -100,7 +105,10 @@ export type PageSetupMount = {
 export type FootnotePropertiesMount = {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => void;
+  onApply: (
+    footnotePr: FootnoteProperties,
+    endnotePr: EndnoteProperties,
+  ) => void;
   footnotePr: FootnoteProperties | undefined;
   endnotePr: EndnoteProperties | undefined;
 };
@@ -161,7 +169,9 @@ export function DocxEditorDialogs({
           isOpen={tableProperties.isOpen}
           onClose={tableProperties.onClose}
           onApply={tableProperties.onApply}
-          {...(tableProperties.currentProps ? { currentProps: tableProperties.currentProps } : {})}
+          {...(tableProperties.currentProps
+            ? { currentProps: tableProperties.currentProps }
+            : {})}
         />
       )}
       {imagePosition.isOpen && (
@@ -176,7 +186,9 @@ export function DocxEditorDialogs({
           isOpen={imageProperties.isOpen}
           onClose={imageProperties.onClose}
           onApply={imageProperties.onApply}
-          {...(imageProperties.currentData ? { currentData: imageProperties.currentData } : {})}
+          {...(imageProperties.currentData
+            ? { currentData: imageProperties.currentData }
+            : {})}
         />
       )}
       {pageSetup.isOpen && (
@@ -184,7 +196,9 @@ export function DocxEditorDialogs({
           isOpen={pageSetup.isOpen}
           onClose={pageSetup.onClose}
           onApply={pageSetup.onApply}
-          {...(pageSetup.currentProps ? { currentProps: pageSetup.currentProps } : {})}
+          {...(pageSetup.currentProps
+            ? { currentProps: pageSetup.currentProps }
+            : {})}
         />
       )}
       {footnoteProperties.isOpen && (
@@ -192,8 +206,12 @@ export function DocxEditorDialogs({
           isOpen={footnoteProperties.isOpen}
           onClose={footnoteProperties.onClose}
           onApply={footnoteProperties.onApply}
-          {...(footnoteProperties.footnotePr ? { footnotePr: footnoteProperties.footnotePr } : {})}
-          {...(footnoteProperties.endnotePr ? { endnotePr: footnoteProperties.endnotePr } : {})}
+          {...(footnoteProperties.footnotePr
+            ? { footnotePr: footnoteProperties.footnotePr }
+            : {})}
+          {...(footnoteProperties.endnotePr
+            ? { endnotePr: footnoteProperties.endnotePr }
+            : {})}
         />
       )}
       {insertSymbol.isOpen && (

@@ -22,25 +22,28 @@
  *   a record carried by an index rather than by the row would drift.
  */
 
-import assert from "node:assert/strict";
-
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import assert from "node:assert/strict";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import type { Document } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document } from "../types/document";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const AUTHORED = 'w:author="A" w:date="2024-01-01T00:00:00Z"';
 
 const cell = (text: string): string =>
@@ -120,15 +123,20 @@ const DECLARED_CHILD_MARKUP = {
  * content the control wraps, and the nested `w:sdt` has a test of its own
  * below. What is left is exactly the markers a splicing walk misplaces.
  */
-const siblingsOf = (container: "table-content" | "row-content"): readonly string[] =>
+const siblingsOf = (
+  container: "table-content" | "row-content",
+): readonly string[] =>
   CONTAINER_CHILDREN[container]
     .map((name) => DECLARED_CHILD_MARKUP[name])
-    .filter((markup) => markup.length > 0 && markup !== DECLARED_CHILD_MARKUP.sdt);
+    .filter(
+      (markup) => markup.length > 0 && markup !== DECLARED_CHILD_MARKUP.sdt,
+    );
 
 const TABLE_SIBLINGS = siblingsOf("table-content");
 const ROW_SIBLINGS = siblingsOf("row-content");
 
-const GRID = '<w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid>';
+const GRID =
+  '<w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid>';
 
 /** A table whose first row sits inside a row-level control, with a sibling. */
 const tableWithRowControl = (sibling: string): string =>
@@ -209,7 +217,9 @@ const documentForLeg = (parsed: Document, leg: Leg): Document => {
       clearCaptures(parsed.package, new WeakSet());
       return parsed;
     case LEGS.editor:
-      return fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } });
+      return fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      });
     default: {
       const unreachable: never = leg;
       return unreachable;
@@ -218,8 +228,12 @@ const documentForLeg = (parsed: Document, leg: Leg): Document => {
 };
 
 const savedDocumentXml = async (body: string, leg: Leg): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
-  const saved = await repackDocx(documentForLeg(parsed, leg), { updateModifiedDate: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
+  const saved = await repackDocx(documentForLeg(parsed, leg), {
+    updateModifiedDate: false,
+  });
   const zip = await JSZip.loadAsync(saved);
   return (await zip.file("word/document.xml")?.async("text")) ?? "";
 };
@@ -260,7 +274,9 @@ describe("a table content control keeps its wrapper", () => {
       `<w:sdt>${properties}<w:sdtContent><w:p><w:r><w:t>2 January 2026</w:t></w:r></w:p></w:sdtContent></w:sdt>` +
       "<w:p/></w:tc></w:tr></w:tbl>";
     const captured = (document: Document) => {
-      const table = document.package.document.content.find((block) => block.type === "table");
+      const table = document.package.document.content.find(
+        (block) => block.type === "table",
+      );
       assert.ok(table);
       const cellControl = table.rows
         .at(0)
@@ -269,13 +285,17 @@ describe("a table content control keeps its wrapper", () => {
       assert.ok(cellControl);
       return cellControl.properties.preserved?.children?.map(({ xml }) => xml);
     };
-    const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+    const parsed = await parseDocx(await buildDocx(body), {
+      preloadFonts: false,
+    });
     const before = captured(parsed);
     expect(before?.length).toBeGreaterThan(0);
 
     for (const document of [
       parsed,
-      fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     ]) {
       const saved = await repackDocx(document, { updateModifiedDate: false });
       const reopened = await parseDocx(saved, { preloadFonts: false });
@@ -291,12 +311,20 @@ describe("a table content control keeps its wrapper", () => {
           fc.constantFrom(...TABLE_SIBLINGS),
           fc.constantFrom(...LEG_VALUES),
           async (sibling, leg) => {
-            const saved = await savedDocumentXml(tableWithRowControl(sibling), leg);
+            const saved = await savedDocumentXml(
+              tableWithRowControl(sibling),
+              leg,
+            );
 
-            expect({ leg, ...controlSurvives(saved) }).toEqual({ leg, ...ALL_PRESENT });
+            expect({ leg, ...controlSurvives(saved) }).toEqual({
+              leg,
+              ...ALL_PRESENT,
+            });
             // The control still holds the row it held, and only that row: a walk
             // that spliced would leave the wrapper empty or swallow the sibling.
-            expect(insideFirstControl(saved)).toContain("<w:t>controlled</w:t>");
+            expect(insideFirstControl(saved)).toContain(
+              "<w:t>controlled</w:t>",
+            );
             expect(insideFirstControl(saved)).not.toContain("<w:t>plain</w:t>");
           },
         ),
@@ -316,10 +344,18 @@ describe("a table content control keeps its wrapper", () => {
           fc.constantFrom(...ROW_SIBLINGS),
           fc.constantFrom(...LEG_VALUES),
           async (sibling, leg) => {
-            const saved = await savedDocumentXml(tableWithCellControl(sibling), leg);
+            const saved = await savedDocumentXml(
+              tableWithCellControl(sibling),
+              leg,
+            );
 
-            expect({ leg, ...controlSurvives(saved) }).toEqual({ leg, ...ALL_PRESENT });
-            expect(insideFirstControl(saved)).toContain("<w:t>controlled</w:t>");
+            expect({ leg, ...controlSurvives(saved) }).toEqual({
+              leg,
+              ...ALL_PRESENT,
+            });
+            expect(insideFirstControl(saved)).toContain(
+              "<w:t>controlled</w:t>",
+            );
             expect(insideFirstControl(saved)).not.toContain("<w:t>plain</w:t>");
           },
         ),
@@ -332,10 +368,15 @@ describe("a table content control keeps its wrapper", () => {
   test("saving is a fixed point: the second save writes what the first did", async () => {
     for (const body of [tableWithRowControl(""), tableWithCellControl("")]) {
       const once = await savedDocumentXml(body, LEGS.editor);
-      const table = once.slice(once.indexOf("<w:tbl>"), once.indexOf("</w:tbl>") + 8);
+      const table = once.slice(
+        once.indexOf("<w:tbl>"),
+        once.indexOf("</w:tbl>") + 8,
+      );
       const twice = await savedDocumentXml(table, LEGS.editor);
 
-      expect(twice.slice(twice.indexOf("<w:tbl>"), twice.indexOf("</w:tbl>") + 8)).toBe(table);
+      expect(
+        twice.slice(twice.indexOf("<w:tbl>"), twice.indexOf("</w:tbl>") + 8),
+      ).toBe(table);
     }
   }, 60_000);
 
@@ -349,7 +390,10 @@ describe("a table content control keeps its wrapper", () => {
 
       // One wrapper: rebuilding one per row would mint a second `w:id` for a
       // control the author wrote once.
-      expect({ leg, wrappers: saved.split("<w:sdt>").length - 1 }).toEqual({ leg, wrappers: 1 });
+      expect({ leg, wrappers: saved.split("<w:sdt>").length - 1 }).toEqual({
+        leg,
+        wrappers: 1,
+      });
       const inside = insideFirstControl(saved);
       expect(inside).toContain("<w:t>first</w:t>");
       expect(inside).toContain("<w:t>second</w:t>");
@@ -457,7 +501,10 @@ describe("a table content control keeps its wrapper", () => {
     for (const leg of LEG_VALUES) {
       const saved = await savedDocumentXml(body, leg);
 
-      expect({ leg, outer: saved.indexOf('<w:tag w:val="outer"/>') }).not.toEqual({
+      expect({
+        leg,
+        outer: saved.indexOf('<w:tag w:val="outer"/>'),
+      }).not.toEqual({
         leg,
         outer: -1,
       });
@@ -481,7 +528,10 @@ describe("a table content control keeps its wrapper", () => {
     for (const leg of LEG_VALUES) {
       const saved = await savedDocumentXml(body, leg);
 
-      expect({ leg, wrappers: saved.split("<w:sdt>").length - 1 }).toEqual({ leg, wrappers: 2 });
+      expect({ leg, wrappers: saved.split("<w:sdt>").length - 1 }).toEqual({
+        leg,
+        wrappers: 2,
+      });
       expect(saved.indexOf('<w:tag w:val="section"/>')).toBeLessThan(
         saved.indexOf('<w:tag w:val="item"/>'),
       );

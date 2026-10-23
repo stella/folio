@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { validateOpsDocument, normalizeForOps } from "@stll/docx-core/ops";
-import { createDocx } from "../docx/rezip";
-import { CanonicalDocxInputError } from "../docx/canonicalSessionInput";
 
+import { normalizeForOps, validateOpsDocument } from "@stll/docx-core/ops";
+
+import { CanonicalDocxInputError } from "../docx/canonicalSessionInput";
+import { createDocx } from "../docx/rezip";
 import type { Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { DocumentLoaderManager } from "./DocumentLoaderManager";
-import type { DocumentLoaderCallbacks, DocumentLoadState } from "./DocumentLoaderManager";
+import type {
+  DocumentLoaderCallbacks,
+  DocumentLoadState,
+} from "./DocumentLoaderManager";
 
 type Recorded = {
   events: string[];
@@ -16,9 +20,18 @@ type Recorded = {
   history: { state: Document | null };
 };
 
-const makeCallbacks = (): { callbacks: DocumentLoaderCallbacks; recorded: Recorded } => {
+const makeCallbacks = (): {
+  callbacks: DocumentLoaderCallbacks;
+  recorded: Recorded;
+} => {
   const history: Recorded["history"] = { state: null };
-  const recorded: Recorded = { events: [], identities: [], loadStates: [], errors: [], history };
+  const recorded: Recorded = {
+    events: [],
+    identities: [],
+    loadStates: [],
+    errors: [],
+    history,
+  };
   const callbacks: DocumentLoaderCallbacks = {
     history: {
       get state() {
@@ -55,7 +68,9 @@ describe("DocumentLoaderManager", () => {
       const { callbacks, recorded } = makeCallbacks();
       callbacks.getExperimentalSession = () => "canonical";
       const manager = new DocumentLoaderManager(callbacks);
-      const compoundHeader = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+      const compoundHeader = new Uint8Array([
+        0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1,
+      ]);
       await manager.loadBuffer(compoundHeader, { password });
       expect(recorded.history.state).toBeNull();
       expect(recorded.errors).toHaveLength(1);
@@ -81,8 +96,13 @@ describe("DocumentLoaderManager", () => {
     expect(error).toBeInstanceOf(CanonicalDocxInputError);
     if (!(error instanceof CanonicalDocxInputError)) return;
     expect(error.cause).toBeInstanceOf(Error);
-    expect(error.message).toBe(error.cause instanceof Error ? error.cause.message : undefined);
-    expect(recorded.loadStates.at(-1)).toEqual({ status: "error", message: error.message });
+    expect(error.message).toBe(
+      error.cause instanceof Error ? error.cause.message : undefined,
+    );
+    expect(recorded.loadStates.at(-1)).toEqual({
+      status: "error",
+      message: error.message,
+    });
   });
 
   test("canonical byte loads establish unique paragraph IDs before parsing", async () => {

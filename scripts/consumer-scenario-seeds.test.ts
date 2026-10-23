@@ -1,18 +1,28 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { afterEach, test } from "node:test";
 
-import { scanTestTimeout } from "../test/scan-timeout";
 import {
   loadScenarioSeedRegistry,
-  scenarioSeedFileName,
   type PinnedScenarioFlow,
+  scenarioSeedFileName,
 } from "../test/consumer-scenarios/support/scenario-seeds.ts";
+import { scanTestTimeout } from "../test/scan-timeout";
 
-const seedDirectory = path.join(import.meta.dir, "../test/consumer-scenarios/seeds");
+const seedDirectory = path.join(
+  import.meta.dir,
+  "../test/consumer-scenarios/seeds",
+);
 const temporaryDirectories: string[] = [];
 const flow = {
   seed: 41,
@@ -22,7 +32,9 @@ const flow = {
   title: "keeps a stable example",
 } as const satisfies PinnedScenarioFlow;
 
-const makeRegistry = (...entries: Array<{ fileName: string; value: unknown }>): string => {
+const makeRegistry = (
+  ...entries: Array<{ fileName: string; value: unknown }>
+): string => {
   const directory = mkdtempSync(path.join(tmpdir(), "folio-scenario-seeds-"));
   temporaryDirectories.push(directory);
   for (const { fileName, value } of entries) {
@@ -56,7 +68,10 @@ test("the registry loads files in stable file-name order", () => {
 });
 
 test("the registry rejects malformed entries", () => {
-  const directory = makeRegistry({ fileName: "41-random-invalid.json", value: { seed: "bad" } });
+  const directory = makeRegistry({
+    fileName: "41-random-invalid.json",
+    value: { seed: "bad" },
+  });
 
   assert.throws(
     () => loadScenarioSeedRegistry(directory),
@@ -71,11 +86,17 @@ test("the registry rejects duplicate seed and kind pairs", () => {
     { fileName: scenarioSeedFileName(duplicate), value: duplicate },
   );
 
-  assert.throws(() => loadScenarioSeedRegistry(directory), /duplicate seed and kind/u);
+  assert.throws(
+    () => loadScenarioSeedRegistry(directory),
+    /duplicate seed and kind/u,
+  );
 });
 
 test("the registry rejects a file name that does not match its content", () => {
-  const directory = makeRegistry({ fileName: "41-random-wrong-title.json", value: flow });
+  const directory = makeRegistry({
+    fileName: "41-random-wrong-title.json",
+    value: flow,
+  });
 
   assert.throws(() => loadScenarioSeedRegistry(directory), /file name/u);
 });
@@ -90,11 +111,15 @@ const filesReferencing = (fileNames: string[], removedName: string): string[] =>
 
 test("the legacy-reference guard detects a leftover reference", () => {
   const removedName = ["scenario", "seeds.json"].join("-");
-  const directory = makeRegistry({ fileName: "reference.txt", value: removedName });
+  const directory = makeRegistry({
+    fileName: "reference.txt",
+    value: removedName,
+  });
 
-  assert.deepEqual(filesReferencing([path.join(directory, "reference.txt")], removedName), [
-    path.join(directory, "reference.txt"),
-  ]);
+  assert.deepEqual(
+    filesReferencing([path.join(directory, "reference.txt")], removedName),
+    [path.join(directory, "reference.txt")],
+  );
 });
 
 test(
@@ -105,10 +130,14 @@ test(
   () => {
     const repository = path.join(import.meta.dir, "..");
     const removedName = ["scenario", "seeds.json"].join("-");
-    const tracked = spawnSync("git", ["ls-files", "-co", "--exclude-standard"], {
-      cwd: repository,
-      encoding: "utf8",
-    });
+    const tracked = spawnSync(
+      "git",
+      ["ls-files", "-co", "--exclude-standard"],
+      {
+        cwd: repository,
+        encoding: "utf8",
+      },
+    );
     assert.equal(tracked.status, 0, tracked.stderr);
     const fileNames = tracked.stdout
       .trim()

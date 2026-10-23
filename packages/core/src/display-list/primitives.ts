@@ -44,7 +44,10 @@ export { hasCursiveLetter, joinsAcrossBoundary } from "../utils/cursiveJoining";
  * know when it is about to. Which scripts those are is Unicode data, not a
  * layout fact, which is why it lives here beside the other shared rules.
  */
-export { isComplexScriptCodePoint, hasComplexScript } from "../utils/scriptSegments";
+export {
+  isComplexScriptCodePoint,
+  hasComplexScript,
+} from "../utils/scriptSegments";
 
 type PrimitiveKind = DisplayPrimitive["kind"];
 
@@ -65,7 +68,9 @@ export const glyphCellOffsetsPx = (run: DisplayGlyphRun): readonly number[] => {
   const offsetsPx: number[] = [];
   let consumedPx = 0;
   for (const advancePx of run.advancesPx) {
-    offsetsPx.push(run.direction === "ltr" ? consumedPx : totalPx - consumedPx - advancePx);
+    offsetsPx.push(
+      run.direction === "ltr" ? consumedPx : totalPx - consumedPx - advancePx,
+    );
     consumedPx += advancePx;
   }
   return offsetsPx;
@@ -111,7 +116,10 @@ export const STROKE_DASH_FACTORS = {
   dotted: { dash: 1, gap: 1 },
   double: null,
   wavy: null,
-} as const satisfies Record<DisplayStrokePattern, { dash: number; gap: number } | null>;
+} as const satisfies Record<
+  DisplayStrokePattern,
+  { dash: number; gap: number } | null
+>;
 
 /**
  * Gap between the two lines of a `double` stroke, as a multiple of thickness.
@@ -154,7 +162,9 @@ export const strokeCrossExtentPx = (stroke: DisplayStroke): number => {
       return stroke.thicknessPx * (WAVY_STROKE_AMPLITUDE_FACTOR + 1);
     default: {
       const unreachable: never = stroke.pattern;
-      panic(`strokeCrossExtentPx: unhandled stroke pattern ${JSON.stringify(unreachable)}`);
+      panic(
+        `strokeCrossExtentPx: unhandled stroke pattern ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -202,7 +212,11 @@ export const walkRegions = (
   regions: readonly DisplayHitRegion[],
   visitor: RegionVisitor,
 ): void => {
-  const visit = (from: number, to: number, children: readonly DisplayHitRegion[]): void => {
+  const visit = (
+    from: number,
+    to: number,
+    children: readonly DisplayHitRegion[],
+  ): void => {
     let cursor = from;
     for (const child of children) {
       for (; cursor < child.from; cursor += 1) {

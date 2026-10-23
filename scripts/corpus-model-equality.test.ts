@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document } from "@stll/folio-core/types/document";
 import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
+import type { Document } from "@stll/folio-core/types/document";
 
+import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 import {
   describeChange,
   describePackageDifferences,
@@ -11,7 +12,6 @@ import {
   omittedDifferencesMessage,
 } from "./lib/corpus-invariants/model-equality";
 import { valueVocabulary } from "./lib/corpus-invariants/value-vocabulary";
-import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 
 /**
  * The model-equality projection is data-shaped, so a test can hand it a package
@@ -31,9 +31,17 @@ const onlyMessage = (left: unknown, right: unknown): string | undefined =>
 
 describe("describePackageDifferences", () => {
   test("missing Document containers cannot make the equality oracle pass vacuously", () => {
-    const malformed = [undefined, null, {}, { document: { content: [] } }, { package: {} }];
+    const malformed = [
+      undefined,
+      null,
+      {},
+      { document: { content: [] } },
+      { package: {} },
+    ];
     for (const value of malformed) {
-      expect(() => Reflect.apply(describePackageDifferences, undefined, [value, value])).toThrow(
+      expect(() =>
+        Reflect.apply(describePackageDifferences, undefined, [value, value]),
+      ).toThrow(
         "Model equality requires Document inputs containing a document package.",
       );
     }
@@ -44,11 +52,22 @@ describe("describePackageDifferences", () => {
   });
 
   test("internal OPC target casing is equivalent while different parts and URLs remain distinct", () => {
-    const withTarget = (target: string, targetMode: "Internal" | "External"): Document => ({
+    const withTarget = (
+      target: string,
+      targetMode: "Internal" | "External",
+    ): Document => ({
       package: {
         document: { content: [] },
         relationships: new Map([
-          ["rId1", { id: "rId1", type: RELATIONSHIP_TYPES.comments, target, targetMode }],
+          [
+            "rId1",
+            {
+              id: "rId1",
+              type: RELATIONSHIP_TYPES.comments,
+              target,
+              targetMode,
+            },
+          ],
         ]),
       },
     });
@@ -88,9 +107,12 @@ describe("describePackageDifferences", () => {
   });
 
   test("array positions collapse, so one defect is one signature", () => {
-    expect(onlyMessage([{ bold: true }, { bold: true }], [{ bold: true }, { bold: false }])).toBe(
-      onlyMessage([{ bold: true }], [{ bold: false }]),
-    );
+    expect(
+      onlyMessage(
+        [{ bold: true }, { bold: true }],
+        [{ bold: true }, { bold: false }],
+      ),
+    ).toBe(onlyMessage([{ bold: true }], [{ bold: false }]));
   });
 
   /**
@@ -100,21 +122,35 @@ describe("describePackageDifferences", () => {
    * every package that carries the slot.
    */
   test("a capture slot present on one side only is not a difference", () => {
-    expect(messagesBetween([{ text: "a", sourceXml: "<w:tblPr/>" }], [{ text: "a" }])).toEqual([]);
     expect(
-      messagesBetween([{ text: "a", rawEndPropertiesXml: "<w:sdtEndPr/>" }], [{ text: "a" }]),
+      messagesBetween(
+        [{ text: "a", sourceXml: "<w:tblPr/>" }],
+        [{ text: "a" }],
+      ),
+    ).toEqual([]);
+    expect(
+      messagesBetween(
+        [{ text: "a", rawEndPropertiesXml: "<w:sdtEndPr/>" }],
+        [{ text: "a" }],
+      ),
     ).toEqual([]);
   });
 
   test("a volatile field present on one side only is not a difference", () => {
-    expect(messagesBetween([{ text: "a", lastModifiedBy: "someone" }], [{ text: "a" }])).toEqual(
-      [],
-    );
+    expect(
+      messagesBetween(
+        [{ text: "a", lastModifiedBy: "someone" }],
+        [{ text: "a" }],
+      ),
+    ).toEqual([]);
   });
 
   test("a capture slot with different content on both sides is still not a difference", () => {
     expect(
-      messagesBetween([{ sourceXml: "<w:tblPr><w:x/></w:tblPr>" }], [{ sourceXml: "<w:tblPr/>" }]),
+      messagesBetween(
+        [{ sourceXml: "<w:tblPr><w:x/></w:tblPr>" }],
+        [{ sourceXml: "<w:tblPr/>" }],
+      ),
     ).toEqual([]);
   });
 
@@ -162,8 +198,14 @@ describe("describePackageDifferences", () => {
  * nobody could tell apart.
  */
 describe("a path segment names the kind it steps into", () => {
-  const run = (fields: Record<string, unknown> = {}) => ({ type: "run", ...fields });
-  const paragraph = (content: unknown[], fields: Record<string, unknown> = {}) => ({
+  const run = (fields: Record<string, unknown> = {}) => ({
+    type: "run",
+    ...fields,
+  });
+  const paragraph = (
+    content: unknown[],
+    fields: Record<string, unknown> = {},
+  ) => ({
     type: "paragraph",
     content,
     ...fields,
@@ -171,7 +213,10 @@ describe("a path segment names the kind it steps into", () => {
 
   test("an element the model discriminates carries its kind", () => {
     expect(
-      onlyMessage([paragraph([run({ preservedAttributes: [1] })])], [paragraph([run()])]),
+      onlyMessage(
+        [paragraph([run({ preservedAttributes: [1] })])],
+        [paragraph([run()])],
+      ),
     ).toBe(
       "package.document.content[paragraph].content[run].preservedAttributes: array became absent",
     );
@@ -183,7 +228,12 @@ describe("a path segment names the kind it steps into", () => {
       [paragraph([run()])],
     );
     const paragraphOwned = onlyMessage(
-      [{ type: "blockSdt", content: [paragraph([], { preservedAttributes: [1] })] }],
+      [
+        {
+          type: "blockSdt",
+          content: [paragraph([], { preservedAttributes: [1] })],
+        },
+      ],
       [{ type: "blockSdt", content: [paragraph([])] }],
     );
     expect(runOwned).toBe(
@@ -197,9 +247,9 @@ describe("a path segment names the kind it steps into", () => {
 
   test("an element the model gives no discriminator stays untyped", () => {
     // A section is a model member without a `type`, so there is no kind to name.
-    expect(onlyMessage([{ properties: { a: 1 } }], [{ properties: { a: 2 } }])).toBe(
-      "package.document.content[].properties.a: 1 became 2",
-    );
+    expect(
+      onlyMessage([{ properties: { a: 1 } }], [{ properties: { a: 2 } }]),
+    ).toBe("package.document.content[].properties.a: 1 became 2");
   });
 
   test("the kind is read from whichever side declares one", () => {
@@ -212,7 +262,9 @@ describe("a path segment names the kind it steps into", () => {
   });
 
   test("a length row belongs to the array, not to any one element", () => {
-    expect(messagesBetween([paragraph([run(), run()])], [paragraph([run()])])).toEqual([
+    expect(
+      messagesBetween([paragraph([run(), run()])], [paragraph([run()])]),
+    ).toEqual([
       "package.document.content[paragraph].content[]: length changed",
     ]);
   });
@@ -228,7 +280,10 @@ describe("a path segment names the kind it steps into", () => {
     ["a name", "Jane Q. Reviewer"],
     ["a plausible near-miss", "runs"],
   ])("%s under `type` never reaches the path", (_label, hostile) => {
-    const message = onlyMessage([{ type: hostile, bold: true }], [{ type: hostile, bold: false }]);
+    const message = onlyMessage(
+      [{ type: hostile, bold: true }],
+      [{ type: hostile, bold: false }],
+    );
     expect(message).toBe("package.document.content[].bold: true became false");
   });
 });
@@ -242,7 +297,10 @@ describe("a path segment names the kind it steps into", () => {
 describe("every difference a file exhibits", () => {
   test("two independent differences in one file produce two messages", () => {
     expect(
-      messagesBetween([{ bold: true, italic: true }], [{ bold: false, italic: false }]),
+      messagesBetween(
+        [{ bold: true, italic: true }],
+        [{ bold: false, italic: false }],
+      ),
     ).toEqual([
       "package.document.content[].bold: true became false",
       "package.document.content[].italic: true became false",
@@ -254,15 +312,23 @@ describe("every difference a file exhibits", () => {
       [{ bold: true, italic: true }],
       [{ bold: false, italic: false }],
     );
-    const after = messagesBetween([{ bold: true, italic: true }], [{ bold: true, italic: false }]);
-    expect(after).toEqual(["package.document.content[].italic: true became false"]);
+    const after = messagesBetween(
+      [{ bold: true, italic: true }],
+      [{ bold: true, italic: false }],
+    );
+    expect(after).toEqual([
+      "package.document.content[].italic: true became false",
+    ]);
     expect(before).toContain(after[0] as string);
     expect(before.length).toBe(after.length + 1);
   });
 
   test("the same difference under two blocks is reported once", () => {
     expect(
-      messagesBetween([{ bold: true }, { bold: true }], [{ bold: false }, { bold: false }]),
+      messagesBetween(
+        [{ bold: true }, { bold: true }],
+        [{ bold: false }, { bold: false }],
+      ),
     ).toEqual(["package.document.content[].bold: true became false"]);
   });
 
@@ -271,9 +337,9 @@ describe("every difference a file exhibits", () => {
    * the loss, so the length row stays the end of that subtree.
    */
   test("an array whose length changed is one message and is not descended into", () => {
-    expect(messagesBetween([{ runs: [{ bold: true }] }], [{ runs: [] }])).toEqual([
-      "package.document.content[].runs[]: length changed",
-    ]);
+    expect(
+      messagesBetween([{ runs: [{ bold: true }] }], [{ runs: [] }]),
+    ).toEqual(["package.document.content[].runs[]: length changed"]);
   });
 
   test("past the cap the file reports a marker instead, and says how many it dropped", () => {
@@ -310,7 +376,10 @@ describe("every difference a file exhibits", () => {
   test("a comparison with nothing past the cap adds no marker", () => {
     const failures = differenceFailures(
       EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
-      describePackageDifferences(documentWith([{ bold: true }]), documentWith([{ bold: false }])),
+      describePackageDifferences(
+        documentWith([{ bold: true }]),
+        documentWith([{ bold: false }]),
+      ),
       (message) => message,
     );
     expect(failures.length).toBe(1);
@@ -335,7 +404,13 @@ describe("signatures quote tokens, never document content", () => {
     ).every((fragment) => !message.includes(fragment));
 
   test.each([
-    ["an author name", "author", "Jane Q. Reviewer", "Ana Nov", '"<string A>" became "<string B>"'],
+    [
+      "an author name",
+      "author",
+      "Jane Q. Reviewer",
+      "Ana Nov",
+      '"<string A>" became "<string B>"',
+    ],
     [
       "comment text",
       "text",
@@ -343,8 +418,20 @@ describe("signatures quote tokens, never document content", () => {
       "I checked it",
       '"<string A>" became "<string B>"',
     ],
-    ["a drawing name", "name", "Grupo 17", "Gruppe 4", '"<string A>" became "<string B>"'],
-    ["a style id", "styleId", "Ttulo1", "berschrift1", '"<string A>" became "<string B>"'],
+    [
+      "a drawing name",
+      "name",
+      "Grupo 17",
+      "Gruppe 4",
+      '"<string A>" became "<string B>"',
+    ],
+    [
+      "a style id",
+      "styleId",
+      "Ttulo1",
+      "berschrift1",
+      '"<string A>" became "<string B>"',
+    ],
     [
       "a hyperlink target",
       "href",
@@ -369,21 +456,26 @@ describe("signatures quote tokens, never document content", () => {
     expect(onlyMessage([{ alignment: "start" }], [{ alignment: "left" }])).toBe(
       'package.document.content[].alignment: "start" became "left"',
     );
-    expect(onlyMessage([{ conformance: "strict" }], [{ conformance: "transitional" }])).toBe(
+    expect(
+      onlyMessage(
+        [{ conformance: "strict" }],
+        [{ conformance: "transitional" }],
+      ),
+    ).toBe(
       'package.document.content[].conformance: "strict" became "transitional"',
     );
     expect(onlyMessage([{ direction: "rtl" }], [{ direction: "ltr" }])).toBe(
       'package.document.content[].direction: "rtl" became "ltr"',
     );
-    expect(onlyMessage([{ restart: "restart" }], [{ restart: "continue" }])).toBe(
-      'package.document.content[].restart: "restart" became "continue"',
-    );
+    expect(
+      onlyMessage([{ restart: "restart" }], [{ restart: "continue" }]),
+    ).toBe('package.document.content[].restart: "restart" became "continue"');
   });
 
   test("a part path, a relationship id and a paragraph id read by shape", () => {
-    expect(onlyMessage([{ target: "media/image1.png" }], [{ target: undefined }])).toBe(
-      'package.document.content[].target: "<path>" became absent',
-    );
+    expect(
+      onlyMessage([{ target: "media/image1.png" }], [{ target: undefined }]),
+    ).toBe('package.document.content[].target: "<path>" became absent');
     expect(onlyMessage([{ rId: "rId7" }], [{ rId: undefined }])).toBe(
       'package.document.content[].rId: "<id>" became absent',
     );
@@ -452,6 +544,8 @@ describe("the quoting vocabulary is derived, not written down", () => {
   });
 
   test("no member carries whitespace, so no member can be a sentence", () => {
-    expect([...valueVocabulary()].filter((token) => /\s/u.test(token))).toEqual([]);
+    expect([...valueVocabulary()].filter((token) => /\s/u.test(token))).toEqual(
+      [],
+    );
   });
 });

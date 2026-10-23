@@ -6,7 +6,12 @@ import { DOCUMENT_OP_TYPES, type DocumentOp } from "./types";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const tableSnapshot = (value: unknown): boolean => {
-  if (!isRecord(value) || value["type"] !== "table" || !Array.isArray(value["rows"])) return false;
+  if (
+    !isRecord(value) ||
+    value["type"] !== "table" ||
+    !Array.isArray(value["rows"])
+  )
+    return false;
   return Array.from(value["rows"]).every(
     (row: unknown) =>
       isRecord(row) &&
@@ -22,7 +27,9 @@ const tableSnapshot = (value: unknown): boolean => {
             if (block["type"] === "table") return tableSnapshot(block);
             return (
               typeof block["type"] === "string" &&
-              (!["paragraph", "blockSdt", "blockCustomXml"].includes(block["type"]) ||
+              (!["paragraph", "blockSdt", "blockCustomXml"].includes(
+                block["type"],
+              ) ||
                 Array.isArray(block["content"]))
             );
           }),
@@ -30,9 +37,12 @@ const tableSnapshot = (value: unknown): boolean => {
   );
 };
 const strings = (value: unknown): boolean =>
-  Array.isArray(value) && Array.from(value).every((id) => typeof id === "string");
+  Array.isArray(value) &&
+  Array.from(value).every((id) => typeof id === "string");
 
-export const tableEditBoundaryRefusal = (op: DocumentOp): DocumentOpRefusal | undefined => {
+export const tableEditBoundaryRefusal = (
+  op: DocumentOp,
+): DocumentOpRefusal | undefined => {
   let valid = true;
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_COLUMN:

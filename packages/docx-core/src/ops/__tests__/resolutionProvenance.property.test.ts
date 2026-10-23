@@ -1,30 +1,53 @@
+import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
+
+import { assertExactModel } from "../../../../../test/exactModel";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type { Document, ParagraphContent, Run } from "../../model/document";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
+import { storyBody, storyParagraphs } from "../blocks";
+import { normalizeForOps } from "../contract";
+import {
+  allocateEditorIntentIds,
+  compileEditorIntent,
+  type EditorIntent,
+} from "../editorIntent";
+import {
+  asParagraphContent,
+  childNodes,
+  type InlineNode,
+  rebuildNode,
+} from "../leaves";
+import {
+  childrenOf,
+  isInlineContainer,
+  paragraphLogicalText,
+} from "../offsets";
+import { planTrackedReplace } from "../rangeReplacement";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  type DocumentOpRefusalReason,
+} from "../refusal";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  SPLIT_HALVES,
+} from "../types";
+import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
 import {
   assertOutsideRunReviewCoverage,
   resolvePendingRunFormatting,
 } from "./runPropertyReviewOracle";
-import { expect, setDefaultTimeout, test } from "bun:test";
-import fc from "fast-check";
-import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
-import { panic } from "better-result";
-
-import { assertExactModel } from "../../../../../test/exactModel";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { Document, ParagraphContent, Run } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
-import { storyBody, storyParagraphs } from "../blocks";
-import { normalizeForOps } from "../contract";
-import { planTrackedReplace } from "../rangeReplacement";
-import { asParagraphContent, childNodes, type InlineNode, rebuildNode } from "../leaves";
-import { allocateEditorIntentIds, compileEditorIntent, type EditorIntent } from "../editorIntent";
-import { childrenOf, isInlineContainer, paragraphLogicalText } from "../offsets";
-import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "../refusal";
-import {
-  DOCUMENT_OP_TYPES,
-  OP_STORIES,
-  REVISION_DECISIONS,
-  SPLIT_HALVES,
-  type DocumentOp,
-} from "../types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -38,7 +61,13 @@ const shapeArbitrary = fc.record({
 
 type Shape = fc.ArbitraryValue<typeof shapeArbitrary>;
 
-const fixture = ({ token, count, wrapper, formatting, priorReview }: Shape): Document => {
+const fixture = ({
+  token,
+  count,
+  wrapper,
+  formatting,
+  priorReview,
+}: Shape): Document => {
   const runs: Run[] = [];
   for (let index = 0; index < count; index += 1) {
     const run: Run = {
@@ -63,9 +92,16 @@ const fixture = ({ token, count, wrapper, formatting, priorReview }: Shape): Doc
     runs.push(run);
   }
   let content: ParagraphContent[] = runs;
-  if (wrapper === "link") content = [{ type: "hyperlink", anchor: "target", children: runs }];
+  if (wrapper === "link")
+    content = [{ type: "hyperlink", anchor: "target", children: runs }];
   if (wrapper === "control")
-    content = [{ type: "inlineSdt", properties: { id: 100, sdtType: "richText" }, content: runs }];
+    content = [
+      {
+        type: "inlineSdt",
+        properties: { id: 100, sdtType: "richText" },
+        content: runs,
+      },
+    ];
   if (wrapper === "nested") {
     content = [
       {
@@ -81,7 +117,8 @@ const fixture = ({ token, count, wrapper, formatting, priorReview }: Shape): Doc
       if (node.type === "run") {
         for (const change of node.propertyChanges ?? []) change.info.id += 20;
       }
-      if (node.type === "inlineSdt" && node.properties.id !== undefined) node.properties.id += 100;
+      if (node.type === "inlineSdt" && node.properties.id !== undefined)
+        node.properties.id += 100;
       if (isInlineContainer(node)) remint(childrenOf(node));
     }
   };
@@ -98,7 +135,13 @@ const fixture = ({ token, count, wrapper, formatting, priorReview }: Shape): Doc
   });
 };
 
-const position = ({ offset, blockId = "00000001" }: { offset: number; blockId?: string }) => ({
+const position = ({
+  offset,
+  blockId = "00000001",
+}: {
+  offset: number;
+  blockId?: string;
+}) => ({
   story: OP_STORIES.MAIN,
   blockId,
   offset,
@@ -108,7 +151,8 @@ const lengthOf = (document: Document, blockId = "00000001"): number => {
   const paragraph = document.package.document.content.find(
     (node) => node.type === "paragraph" && node.paraId === blockId,
   );
-  if (paragraph?.type !== "paragraph") panic("The fixture must contain its paragraph.");
+  if (paragraph?.type !== "paragraph")
+    panic("The fixture must contain its paragraph.");
   return paragraphLogicalText(paragraph).length;
 };
 
@@ -126,12 +170,17 @@ const authoredHyperlinkBookmarkNames = (document: Document): string[][] => {
       if (isInlineContainer(node)) visit(childrenOf(node));
     }
   };
-  for (const { paragraph } of storyParagraphs(storyBody(document, OP_STORIES.MAIN)))
+  for (const { paragraph } of storyParagraphs(
+    storyBody(document, OP_STORIES.MAIN),
+  ))
     visit(paragraph.content);
   return names;
 };
 
-const expectInverse = (applied: AppliedDocumentOp, original: Document): void => {
+const expectInverse = (
+  applied: AppliedDocumentOp,
+  original: Document,
+): void => {
   const undo = applyDocumentOps(applied.document, applied.inverse);
   if (undo.isErr()) throw undo.error;
   assertExactModel(undo.value.document, original);
@@ -140,8 +189,16 @@ const expectInverse = (applied: AppliedDocumentOp, original: Document): void => 
   assertExactModel(redo.value.document, applied.document);
 };
 
-type ResolveOptions = { document: Document; revisionIds: number[]; decision: "accept" | "reject" };
-const resolve = ({ document, revisionIds, decision }: ResolveOptions): Document => {
+type ResolveOptions = {
+  document: Document;
+  revisionIds: number[];
+  decision: "accept" | "reject";
+};
+const resolve = ({
+  document,
+  revisionIds,
+  decision,
+}: ResolveOptions): Document => {
   const result = applyDocumentOp(document, {
     type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
     story: OP_STORIES.MAIN,
@@ -176,18 +233,28 @@ const compile = ({
       mode === "suggesting"
         ? {
             type: "suggesting",
-            revision: { id: allocation.revisionId, author, date: "2026-10-02T00:00:00Z" },
+            revision: {
+              id: allocation.revisionId,
+              author,
+              date: "2026-10-02T00:00:00Z",
+            },
             newIds: allocation.newIds,
           }
         : { type: "editing", newIds: allocation.newIds },
   });
   if (result.isErr()) {
-    refusals.set(result.error.reason, (refusals.get(result.error.reason) ?? 0) + 1);
+    refusals.set(
+      result.error.reason,
+      (refusals.get(result.error.reason) ?? 0) + 1,
+    );
     throw result.error;
   }
   const applied = applyDocumentOps(document, result.value.ops);
   if (applied.isErr()) {
-    refusals.set(applied.error.reason, (refusals.get(applied.error.reason) ?? 0) + 1);
+    refusals.set(
+      applied.error.reason,
+      (refusals.get(applied.error.reason) ?? 0) + 1,
+    );
     throw applied.error;
   }
   if (intent.type === "formatRun")
@@ -223,14 +290,18 @@ test("generated same-author insertion bursts preserve exact authored seams", () 
         const revisions: number[] = [];
         const journal: AppliedDocumentOp[] = [];
         for (const [index, step] of steps.entries()) {
-          const target = index === 1 ? (steps.at(0) ?? panic("A burst has a first step.")) : step;
+          const target =
+            index === 1
+              ? (steps.at(0) ?? panic("A burst has a first step."))
+              : step;
           const blockId = target.paragraph === 1 ? "00000001" : "00000002";
           const width = lengthOf(direct, blockId);
           // Include adjacent atoms inside a run, then arbitrary authored boundaries.
           const paragraph = direct.package.document.content.find(
             (node) => node.type === "paragraph" && node.paraId === blockId,
           );
-          if (paragraph?.type !== "paragraph") panic("The fixture must retain its paragraph.");
+          if (paragraph?.type !== "paragraph")
+            panic("The fixture must retain its paragraph.");
           const gaps = [0];
           for (const character of paragraphLogicalText(paragraph)) {
             gaps.push((gaps.at(-1) ?? 0) + character.length);
@@ -239,7 +310,8 @@ test("generated same-author insertion bursts preserve exact authored seams", () 
           const offset =
             index < 2
               ? Math.min(initialGap + index, width)
-              : (gaps.at(step.at % gaps.length) ?? panic("A generated gap must exist."));
+              : (gaps.at(step.at % gaps.length) ??
+                panic("A generated gap must exist."));
           const at = position({ offset, blockId });
           const intent: EditorIntent = step.atom
             ? { type: "insertAtom", from: at, to: at, atom: { type: "tab" } }
@@ -288,7 +360,10 @@ test("generated same-author insertion bursts preserve exact authored seams", () 
         expect(tracked).toStrictEqual(original);
       },
     ),
-    { numRuns: 50, id: "generated same-author insertion bursts preserve exact authored seams" },
+    {
+      numRuns: 50,
+      id: "generated same-author insertion bursts preserve exact authored seams",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -317,7 +392,9 @@ test("generated replacement preserves authored hyperlink cuts after emptying an 
               {
                 type: "hyperlink" as const,
                 anchor: "same-target",
-                children: [{ type: "bookmarkStart" as const, id: 1, name: "left" }],
+                children: [
+                  { type: "bookmarkStart" as const, id: 1, name: "left" },
+                ],
               },
               oldWrapper,
               {
@@ -325,7 +402,10 @@ test("generated replacement preserves authored hyperlink cuts after emptying an 
                 anchor: "same-target",
                 children: [
                   { type: "bookmarkStart" as const, id: 2, name: "right" },
-                  { type: "run" as const, content: [{ type: "text" as const, text: "tail" }] },
+                  {
+                    type: "run" as const,
+                    content: [{ type: "text" as const, text: "tail" }],
+                  },
                 ],
               },
             ],
@@ -339,12 +419,16 @@ test("generated replacement preserves authored hyperlink cuts after emptying an 
                     rows: [
                       {
                         type: "tableRow" as const,
-                        cells: [{ type: "tableCell" as const, content: [paragraph] }],
+                        cells: [
+                          { type: "tableCell" as const, content: [paragraph] },
+                        ],
                       },
                     ],
                   },
                 ];
-          const original = normalizeForOps({ package: { document: { content } } });
+          const original = normalizeForOps({
+            package: { document: { content } },
+          });
           const intent = {
             type: "replaceText",
             from: position({ offset: 0 }),
@@ -372,11 +456,13 @@ test("generated replacement preserves authored hyperlink cuts after emptying an 
             revisionIds: tracked.revisions,
             decision: REVISION_DECISIONS.ACCEPT,
           });
-          expect(authoredHyperlinkBookmarkNames(accepted)).toStrictEqual([["left"], ["right"]]);
-          expect(authoredHyperlinkBookmarkNames(direct.document)).toStrictEqual([
+          expect(authoredHyperlinkBookmarkNames(accepted)).toStrictEqual([
             ["left"],
             ["right"],
           ]);
+          expect(authoredHyperlinkBookmarkNames(direct.document)).toStrictEqual(
+            [["left"], ["right"]],
+          );
           assertFreshIdentityEquivalent({
             actual: accepted,
             expected: direct.document,
@@ -396,36 +482,54 @@ test("generated replacement preserves authored hyperlink cuts after emptying an 
 test("generated deletion cuts accept and reject at the recorded wrapper depth", () => {
   const refusals = new Map<DocumentOpRefusalReason, number>();
   assertProperty(
-    fc.property(shapeArbitrary, fc.nat(50), fc.nat(50), (shape, start, extent) => {
-      const original = fixture(shape);
-      const width = lengthOf(original);
-      const unit = shape.token === "😀" ? 2 : 1;
-      const from = (start % (width / unit)) * unit;
-      const to = from + (1 + (extent % ((width - from) / unit))) * unit;
-      const intent: EditorIntent = {
-        type: "replaceText",
-        from: position({ offset: from }),
-        to: position({ offset: to }),
-        text: "",
-      };
-      const direct = compile({ document: original, intent, mode: "editing", refusals });
-      const tracked = compile({ document: original, intent, mode: "suggesting", refusals });
-      expect(
-        resolve({
-          document: tracked.document,
-          revisionIds: tracked.revisions,
-          decision: REVISION_DECISIONS.ACCEPT,
-        }),
-      ).toStrictEqual(direct.document);
-      expect(
-        resolve({
-          document: tracked.document,
-          revisionIds: tracked.revisions,
-          decision: REVISION_DECISIONS.REJECT,
-        }),
-      ).toStrictEqual(original);
-    }),
-    { numRuns: 50, id: "generated deletion cuts accept and reject at the recorded wrapper depth" },
+    fc.property(
+      shapeArbitrary,
+      fc.nat(50),
+      fc.nat(50),
+      (shape, start, extent) => {
+        const original = fixture(shape);
+        const width = lengthOf(original);
+        const unit = shape.token === "😀" ? 2 : 1;
+        const from = (start % (width / unit)) * unit;
+        const to = from + (1 + (extent % ((width - from) / unit))) * unit;
+        const intent: EditorIntent = {
+          type: "replaceText",
+          from: position({ offset: from }),
+          to: position({ offset: to }),
+          text: "",
+        };
+        const direct = compile({
+          document: original,
+          intent,
+          mode: "editing",
+          refusals,
+        });
+        const tracked = compile({
+          document: original,
+          intent,
+          mode: "suggesting",
+          refusals,
+        });
+        expect(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          }),
+        ).toStrictEqual(direct.document);
+        expect(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }),
+        ).toStrictEqual(original);
+      },
+    ),
+    {
+      numRuns: 50,
+      id: "generated deletion cuts accept and reject at the recorded wrapper depth",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -442,65 +546,86 @@ const runsIn = (content: readonly ParagraphContent[]): Run[] => {
 test("generated later property rejection retains earlier cut provenance", () => {
   const refusals = new Map<DocumentOpRefusalReason, number>();
   assertProperty(
-    fc.property(shapeArbitrary, fc.nat(10), fc.nat(10), (shape, start, extent) => {
-      const original = fixture(shape);
-      const width = lengthOf(original);
-      const unit = shape.token === "😀" ? 2 : 1;
-      const from = (start % (width / unit)) * unit;
-      const to = from + (1 + (extent % ((width - from) / unit))) * unit;
-      const intent: EditorIntent = {
-        type: "formatRun",
-        from: position({ offset: from }),
-        to: position({ offset: to }),
-        patch: { bold: true },
-      };
-      const direct = compile({ document: original, intent, mode: "editing", refusals });
-      const first = compile({ document: original, intent, mode: "suggesting", refusals });
-      expect(
-        resolvePendingRunFormatting(
-          resolve({
-            document: first.document,
-            revisionIds: first.revisions,
-            decision: REVISION_DECISIONS.ACCEPT,
-          }),
-          "accept",
-        ),
-      ).toStrictEqual(resolvePendingRunFormatting(direct.document, "accept"));
-      const second = compile({
-        document: first.document,
-        intent: {
+    fc.property(
+      shapeArbitrary,
+      fc.nat(10),
+      fc.nat(10),
+      (shape, start, extent) => {
+        const original = fixture(shape);
+        const width = lengthOf(original);
+        const unit = shape.token === "😀" ? 2 : 1;
+        const from = (start % (width / unit)) * unit;
+        const to = from + (1 + (extent % ((width - from) / unit))) * unit;
+        const intent: EditorIntent = {
           type: "formatRun",
           from: position({ offset: from }),
           to: position({ offset: to }),
-          patch: { underline: { style: "single" } },
-        },
-        mode: "suggesting",
-        refusals,
-      });
-      const paragraph = second.document.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") panic("The fixture must retain its paragraph.");
-      const newlyRecorded = runsIn(paragraph.content)
-        .flatMap((run) => run.propertyChanges ?? [])
-        .filter((record) => second.revisions.includes(record.info.id));
-      expect(newlyRecorded.length).toBeGreaterThan(0);
-      expect(newlyRecorded.every((record) => record.info.author === "Editor")).toBe(true);
-      const rejectedFirst = resolve({
-        document: second.document,
-        revisionIds: first.revisions,
-        decision: REVISION_DECISIONS.REJECT,
-      });
-      expect(
-        resolvePendingRunFormatting(
-          resolve({
-            document: rejectedFirst,
-            revisionIds: second.revisions,
-            decision: REVISION_DECISIONS.REJECT,
-          }),
-          "reject",
-        ),
-      ).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
-    }),
-    { numRuns: 50, id: "generated later property rejection retains earlier cut provenance" },
+          patch: { bold: true },
+        };
+        const direct = compile({
+          document: original,
+          intent,
+          mode: "editing",
+          refusals,
+        });
+        const first = compile({
+          document: original,
+          intent,
+          mode: "suggesting",
+          refusals,
+        });
+        expect(
+          resolvePendingRunFormatting(
+            resolve({
+              document: first.document,
+              revisionIds: first.revisions,
+              decision: REVISION_DECISIONS.ACCEPT,
+            }),
+            "accept",
+          ),
+        ).toStrictEqual(resolvePendingRunFormatting(direct.document, "accept"));
+        const second = compile({
+          document: first.document,
+          intent: {
+            type: "formatRun",
+            from: position({ offset: from }),
+            to: position({ offset: to }),
+            patch: { underline: { style: "single" } },
+          },
+          mode: "suggesting",
+          refusals,
+        });
+        const paragraph = second.document.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph")
+          panic("The fixture must retain its paragraph.");
+        const newlyRecorded = runsIn(paragraph.content)
+          .flatMap((run) => run.propertyChanges ?? [])
+          .filter((record) => second.revisions.includes(record.info.id));
+        expect(newlyRecorded.length).toBeGreaterThan(0);
+        expect(
+          newlyRecorded.every((record) => record.info.author === "Editor"),
+        ).toBe(true);
+        const rejectedFirst = resolve({
+          document: second.document,
+          revisionIds: first.revisions,
+          decision: REVISION_DECISIONS.REJECT,
+        });
+        expect(
+          resolvePendingRunFormatting(
+            resolve({
+              document: rejectedFirst,
+              revisionIds: second.revisions,
+              decision: REVISION_DECISIONS.REJECT,
+            }),
+            "reject",
+          ),
+        ).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
+      },
+    ),
+    {
+      numRuns: 50,
+      id: "generated later property rejection retains earlier cut provenance",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -538,14 +663,22 @@ test("overlapping formatting rejection preserves authored runs in either resolut
         ...new Set(
           storyParagraphs(second.document.package.document)
             .flatMap(({ paragraph }) => runsIn(paragraph.content))
-            .flatMap((run) => (run.propertyChanges ?? []).map((change) => change.info.id)),
+            .flatMap((run) =>
+              (run.propertyChanges ?? []).map((change) => change.info.id),
+            ),
         ),
       ];
       expect(ids.length).toBeGreaterThan(1);
       let resolved = second.document;
       for (const id of reverse ? ids.toReversed() : ids)
-        resolved = resolve({ document: resolved, revisionIds: [id], decision: "reject" });
-      expect(resolved).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
+        resolved = resolve({
+          document: resolved,
+          revisionIds: [id],
+          decision: "reject",
+        });
+      expect(resolved).toStrictEqual(
+        resolvePendingRunFormatting(original, "reject"),
+      );
     }),
     {
       numRuns: 24,
@@ -562,7 +695,9 @@ test("generated retained source identities survive a later pending formatting ac
   assertProperty(
     fc.property(shapeArbitrary, (shape) => {
       for (const includeDeleted of [false, true]) {
-        const original = fixture(Object.assign({}, shape, { priorReview: true }));
+        const original = fixture(
+          Object.assign({}, shape, { priorReview: true }),
+        );
         const deletedLength = shape.token.length;
         const deletion: EditorIntent = {
           type: "replaceText",
@@ -666,7 +801,12 @@ test("generated source-review acceptance retires its pending deletion transfer",
         to: position({ offset: shape.token === "😀" ? 2 : 1 }),
         text: "",
       };
-      const deleted = compile({ document: original, intent, mode: "suggesting", refusals });
+      const deleted = compile({
+        document: original,
+        intent,
+        mode: "suggesting",
+        refusals,
+      });
       const acceptedSource = resolve({
         document: deleted.document,
         revisionIds: [10],
@@ -675,12 +815,19 @@ test("generated source-review acceptance retires its pending deletion transfer",
       const expected = structuredClone(acceptedSource);
       const strip = (nodes: readonly InlineNode[]): InlineNode[] =>
         nodes.flatMap((node) => {
-          if (node.type === "deletion" && deleted.revisions.includes(node.info.id)) return [];
+          if (
+            node.type === "deletion" &&
+            deleted.revisions.includes(node.info.id)
+          )
+            return [];
           const children = childNodes(node);
-          return [children === undefined ? node : rebuildNode(node, strip(children))];
+          return [
+            children === undefined ? node : rebuildNode(node, strip(children)),
+          ];
         });
       const paragraph = expected.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") panic("The fixture retains its first paragraph.");
+      if (paragraph?.type !== "paragraph")
+        panic("The fixture retains its first paragraph.");
       paragraph.content = asParagraphContent(strip(paragraph.content));
       expect(
         resolve({
@@ -690,7 +837,10 @@ test("generated source-review acceptance retires its pending deletion transfer",
         }),
       ).toStrictEqual(expected);
     }),
-    { numRuns: 25, id: "generated source-review acceptance retires its pending deletion transfer" },
+    {
+      numRuns: 25,
+      id: "generated source-review acceptance retires its pending deletion transfer",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -710,7 +860,12 @@ test("malformed journal resolution provenance refuses atomically", () => {
     to: position({ offset: 1 }),
     text: "",
   };
-  const tracked = compile({ document: original, intent, mode: "suggesting", refusals });
+  const tracked = compile({
+    document: original,
+    intent,
+    mode: "suggesting",
+    refusals,
+  });
   for (const malformed of [
     null,
     {},
@@ -721,7 +876,8 @@ test("malformed journal resolution provenance refuses atomically", () => {
   ]) {
     const input = structuredClone(tracked.document);
     const paragraph = input.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") panic("The fixture retains its first paragraph.");
+    if (paragraph?.type !== "paragraph")
+      panic("The fixture retains its first paragraph.");
     const deletion = paragraph.content.find((node) => node.type === "deletion");
     if (deletion?.type !== "deletion" || deletion.resolutionJoins === undefined)
       panic("The fixture has deletion provenance.");
@@ -736,7 +892,9 @@ test("malformed journal resolution provenance refuses atomically", () => {
     });
     expect(result.isErr()).toBe(true);
     if (result.isErr())
-      expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+      expect(result.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      );
     expect(input).toStrictEqual(before);
   }
 });
@@ -764,7 +922,11 @@ test("generated pending deletion splits preserve resolution order and exact hist
         document: first.document,
         mode: "suggesting",
         refusals,
-        intent: { type: "splitParagraph", at: position({ offset: unit }), newBlockId: "00000003" },
+        intent: {
+          type: "splitParagraph",
+          at: position({ offset: unit }),
+          newBlockId: "00000003",
+        },
       });
       const third = compile({
         document: second.document,
@@ -778,13 +940,25 @@ test("generated pending deletion splits preserve resolution order and exact hist
         },
       });
       const ids = [...first.revisions, ...second.revisions, ...third.revisions];
-      for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
-        const together = resolve({ document: third.document, revisionIds: ids, decision });
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const together = resolve({
+          document: third.document,
+          revisionIds: ids,
+          decision,
+        });
         let separately = third.document;
-        for (const revisionIds of [first.revisions, second.revisions, third.revisions])
+        for (const revisionIds of [
+          first.revisions,
+          second.revisions,
+          third.revisions,
+        ])
           separately = resolve({ document: separately, revisionIds, decision });
         assertExactModel(separately, together);
-        if (decision === REVISION_DECISIONS.REJECT) assertExactModel(together, original);
+        if (decision === REVISION_DECISIONS.REJECT)
+          assertExactModel(together, original);
       }
     }),
     {
@@ -816,7 +990,8 @@ test("generated nested replacements preserve reviewed source seams in every reso
         const source = original.package.document.content.find(
           (node) => node.type === "paragraph" && node.paraId === blockId,
         );
-        if (source?.type !== "paragraph") panic("The generated source paragraph exists.");
+        if (source?.type !== "paragraph")
+          panic("The generated source paragraph exists.");
         const gaps = [0];
         for (const character of paragraphLogicalText(source))
           gaps.push((gaps.at(-1) ?? 0) + character.length);
@@ -824,13 +999,19 @@ test("generated nested replacements preserve reviewed source seams in every reso
         const upper = lower + 1 + (end % (gaps.length - lower - 1));
         const from = position({
           blockId,
-          offset: gaps.at(lower) ?? panic("The source start is a generated gap."),
+          offset:
+            gaps.at(lower) ?? panic("The source start is a generated gap."),
         });
         const to = position({
           blockId,
           offset: gaps.at(upper) ?? panic("The source end is a generated gap."),
         });
-        const intent = { type: "replaceText", from, to, text: "paste" } as const;
+        const intent = {
+          type: "replaceText",
+          from,
+          to,
+          text: "paste",
+        } as const;
         const allocation = allocateEditorIntentIds(original, intent);
         const direct = compile({
           document: original,
@@ -859,7 +1040,9 @@ test("generated nested replacements preserve reviewed source seams in every reso
               node.resolutionJoins !== undefined
             )
               return Object.assign({}, node, {
-                resolutionJoins: Object.assign({}, node.resolutionJoins, { remove: 0 }),
+                resolutionJoins: Object.assign({}, node.resolutionJoins, {
+                  remove: 0,
+                }),
               });
             const children = childNodes(node);
             return children === undefined
@@ -869,7 +1052,8 @@ test("generated nested replacements preserve reviewed source seams in every reso
           const selected = trackedDocument.package.document.content.find(
             (node) => node.type === "paragraph" && node.paraId === blockId,
           );
-          if (selected?.type !== "paragraph") panic("Tracked replacement retains its paragraph.");
+          if (selected?.type !== "paragraph")
+            panic("Tracked replacement retains its paragraph.");
           const captured = applyDocumentOp(trackedDocument, {
             type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
             story: OP_STORIES.MAIN,
@@ -881,7 +1065,10 @@ test("generated nested replacements preserve reviewed source seams in every reso
           expectInverse(captured.value, trackedDocument);
           trackedDocument = captured.value.document;
         }
-        for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+        for (const decision of [
+          REVISION_DECISIONS.ACCEPT,
+          REVISION_DECISIONS.REJECT,
+        ]) {
           const together = resolve({
             document: trackedDocument,
             revisionIds: tracked.revisions,
@@ -895,10 +1082,17 @@ test("generated nested replacements preserve reviewed source seams in every reso
               allocated: allocation.newIds,
             });
           } else assertExactModel(together, original);
-          for (const order of [tracked.revisions, tracked.revisions.toReversed()]) {
+          for (const order of [
+            tracked.revisions,
+            tracked.revisions.toReversed(),
+          ]) {
             let separately = trackedDocument;
             for (const id of order)
-              separately = resolve({ document: separately, revisionIds: [id], decision });
+              separately = resolve({
+                document: separately,
+                revisionIds: [id],
+                decision,
+              });
             assertExactModel(separately, together);
           }
         }
@@ -907,8 +1101,13 @@ test("generated nested replacements preserve reviewed source seams in every reso
         const firstId = tracked.revisions.at(0);
         const secondId = tracked.revisions.at(1);
         if (firstId === undefined || secondId === undefined)
-          panic("A nonempty tracked replacement stamps deletion and insertion.");
-        for (const firstDecision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+          panic(
+            "A nonempty tracked replacement stamps deletion and insertion.",
+          );
+        for (const firstDecision of [
+          REVISION_DECISIONS.ACCEPT,
+          REVISION_DECISIONS.REJECT,
+        ]) {
           const secondDecision =
             firstDecision === REVISION_DECISIONS.ACCEPT
               ? REVISION_DECISIONS.REJECT
@@ -948,69 +1147,93 @@ test("generated nested replacements preserve reviewed source seams in every reso
 test("generated comment-bearing replacements share the planned anchor policy", () => {
   const refusals = new Map<DocumentOpRefusalReason, number>();
   assertProperty(
-    fc.property(fc.integer({ min: 0, max: 3 }), fc.integer({ min: 0, max: 3 }), (before, after) => {
-      const content: ParagraphContent[] = [];
-      if (before > 0)
-        content.push({ type: "run", content: [{ type: "text", text: "a".repeat(before) }] });
-      content.push(
-        { type: "commentRangeStart", id: 7 },
-        { type: "commentReference", id: 7 },
-        { type: "commentRangeEnd", id: 7 },
-      );
-      if (after > 0)
-        content.push({ type: "run", content: [{ type: "text", text: "b".repeat(after) }] });
-      const original = normalizeForOps({
-        package: {
-          document: {
-            content: [{ type: "paragraph", paraId: "00000001", content }],
-            comments: [
-              {
-                id: 7,
-                author: "Earlier",
-                content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
-              },
-            ],
+    fc.property(
+      fc.integer({ min: 0, max: 3 }),
+      fc.integer({ min: 0, max: 3 }),
+      (before, after) => {
+        const content: ParagraphContent[] = [];
+        if (before > 0)
+          content.push({
+            type: "run",
+            content: [{ type: "text", text: "a".repeat(before) }],
+          });
+        content.push(
+          { type: "commentRangeStart", id: 7 },
+          { type: "commentReference", id: 7 },
+          { type: "commentRangeEnd", id: 7 },
+        );
+        if (after > 0)
+          content.push({
+            type: "run",
+            content: [{ type: "text", text: "b".repeat(after) }],
+          });
+        const original = normalizeForOps({
+          package: {
+            document: {
+              content: [{ type: "paragraph", paraId: "00000001", content }],
+              comments: [
+                {
+                  id: 7,
+                  author: "Earlier",
+                  content: [
+                    { type: "paragraph", paraId: "7FFFFFF0", content: [] },
+                  ],
+                },
+              ],
+            },
           },
-        },
-      });
-      const intent: EditorIntent = {
-        type: "replaceText",
-        from: position({ offset: 0 }),
-        to: position({ offset: before + 1 + after }),
-        text: "edited",
-      };
-      const allocation = allocateEditorIntentIds(original, intent);
-      const direct = compile({ document: original, intent, allocation, mode: "editing", refusals });
-      const tracked = compile({
-        document: original,
-        intent,
-        allocation,
-        mode: "suggesting",
-        refusals,
-      });
-      assertExactModel(
-        resolve({
-          document: tracked.document,
-          revisionIds: tracked.revisions,
-          decision: REVISION_DECISIONS.ACCEPT,
-        }),
-        direct.document,
-      );
-      assertExactModel(
-        resolve({
-          document: tracked.document,
-          revisionIds: tracked.revisions,
-          decision: REVISION_DECISIONS.REJECT,
-        }),
-        original,
-      );
-      const paragraph = direct.document.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") panic("The replacement must retain its paragraph.");
-      expect(paragraph.content.filter((node) => node.type.startsWith("comment"))).toStrictEqual(
-        content.filter((node) => node.type.startsWith("comment")),
-      );
-    }),
-    { numRuns: 25, id: "generated comment-bearing replacements share the planned anchor policy" },
+        });
+        const intent: EditorIntent = {
+          type: "replaceText",
+          from: position({ offset: 0 }),
+          to: position({ offset: before + 1 + after }),
+          text: "edited",
+        };
+        const allocation = allocateEditorIntentIds(original, intent);
+        const direct = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "editing",
+          refusals,
+        });
+        const tracked = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "suggesting",
+          refusals,
+        });
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          }),
+          direct.document,
+        );
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }),
+          original,
+        );
+        const paragraph = direct.document.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph")
+          panic("The replacement must retain its paragraph.");
+        expect(
+          paragraph.content.filter((node) => node.type.startsWith("comment")),
+        ).toStrictEqual(
+          content.filter((node) => node.type.startsWith("comment")),
+        );
+      },
+    ),
+    {
+      numRuns: 25,
+      id: "generated comment-bearing replacements share the planned anchor policy",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1032,11 +1255,15 @@ test("generated replacements preserve input affinity around zero-width leaves", 
         const markerAt = target % (width + 1);
         const content: ParagraphContent[] = [];
         const addText = (text: string): void => {
-          if (text !== "") content.push({ type: "run", content: [{ type: "text", text }] });
+          if (text !== "")
+            content.push({ type: "run", content: [{ type: "text", text }] });
         };
         addText("a".repeat(markerAt));
         if (kind === "pageBreak")
-          content.push({ type: "run", content: [{ type: "renderedPageBreak" }] });
+          content.push({
+            type: "run",
+            content: [{ type: "renderedPageBreak" }],
+          });
         else
           content.push(
             { type: "bookmarkStart", id: 7, name: "range" },
@@ -1049,12 +1276,15 @@ test("generated replacements preserve input affinity around zero-width leaves", 
           { type: "paragraph", paraId: "00000002", content: [] },
         ] satisfies Document["package"]["document"]["content"];
         const chosen = paragraphs.at(paragraphNumber - 1);
-        if (chosen === undefined) panic("The generated replacement target must exist.");
+        if (chosen === undefined)
+          panic("The generated replacement target must exist.");
         const original = normalizeForOps({
           package: {
             document: {
               content: paragraphs.map((paragraph) =>
-                paragraph === chosen ? Object.assign({}, paragraph, { content }) : paragraph,
+                paragraph === chosen
+                  ? Object.assign({}, paragraph, { content })
+                  : paragraph,
               ),
             },
           },
@@ -1101,7 +1331,8 @@ test("generated replacements preserve input affinity around zero-width leaves", 
         const paragraph = direct.document.package.document.content.find(
           (node) => node.type === "paragraph" && node.paraId === blockId,
         );
-        if (paragraph?.type !== "paragraph") panic("Replacement must retain its target.");
+        if (paragraph?.type !== "paragraph")
+          panic("Replacement must retain its target.");
         const actual: string[] = [];
         for (const node of paragraph.content) {
           if (node.type === "bookmarkStart") actual.push("marker");
@@ -1111,7 +1342,11 @@ test("generated replacements preserve input affinity around zero-width leaves", 
             if (leaf.type === "renderedPageBreak") actual.push("marker");
           }
         }
-        const expected = [..."a".repeat(from), ..."edited", ..."a".repeat(width - to)];
+        const expected = [
+          ..."a".repeat(from),
+          ..."edited",
+          ..."a".repeat(width - to),
+        ];
         if (kind === "bookmark" || markerAt <= from || markerAt >= to) {
           let markerIndex = markerAt;
           if (markerAt > from || (markerAt === from && kind === "bookmark"))
@@ -1122,7 +1357,8 @@ test("generated replacements preserve input affinity around zero-width leaves", 
         if (kind === "bookmark")
           expect(
             paragraph.content.filter(
-              (node) => node.type === "bookmarkStart" || node.type === "bookmarkEnd",
+              (node) =>
+                node.type === "bookmarkStart" || node.type === "bookmarkEnd",
             ),
           ).toStrictEqual([
             { type: "bookmarkStart", id: 7, name: "range" },
@@ -1130,7 +1366,10 @@ test("generated replacements preserve input affinity around zero-width leaves", 
           ]);
       },
     ),
-    { numRuns: 50, id: "generated replacements preserve input affinity around zero-width leaves" },
+    {
+      numRuns: 50,
+      id: "generated replacements preserve input affinity around zero-width leaves",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1142,9 +1381,17 @@ test("generated provenance-bearing cuts capture exact inverse source state", () 
   assertProperty(
     fc.property(
       shapeArbitrary,
-      fc.constantFrom("insert", "inlineSplit", "delete", "format", "blockSplit"),
+      fc.constantFrom(
+        "insert",
+        "inlineSplit",
+        "delete",
+        "format",
+        "blockSplit",
+      ),
       (shape, kind) => {
-        const original = fixture(Object.assign({}, shape, { priorReview: true }));
+        const original = fixture(
+          Object.assign({}, shape, { priorReview: true }),
+        );
         const unit = shape.token === "😀" ? 2 : 1;
         const pending = compile({
           document: original,
@@ -1172,7 +1419,9 @@ test("generated provenance-bearing cuts capture exact inverse source state", () 
                 slice: {
                   openStart: 0,
                   openEnd: 0,
-                  content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "x" }] },
+                  ],
                 },
                 newIds: allocation.newIds,
               } as const satisfies DocumentOp;
@@ -1214,13 +1463,19 @@ test("generated provenance-bearing cuts capture exact inverse source state", () 
         };
         const changed = applyDocumentOp(pending.document, makeOp());
         if (changed.isErr()) {
-          refusals.set(changed.error.reason, (refusals.get(changed.error.reason) ?? 0) + 1);
+          refusals.set(
+            changed.error.reason,
+            (refusals.get(changed.error.reason) ?? 0) + 1,
+          );
           throw changed.error;
         }
         expectInverse(changed.value, pending.document);
       },
     ),
-    { numRuns: 50, id: "generated provenance-bearing cuts capture exact inverse source state" },
+    {
+      numRuns: 50,
+      id: "generated provenance-bearing cuts capture exact inverse source state",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1246,7 +1501,10 @@ test("generated replacement retains prior removed revisions and visible inserted
                       type: kind,
                       info: { id: 10, author: "Earlier" },
                       content: [
-                        { type: "run", content: [{ type: "text", text: "a".repeat(width) }] },
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "a".repeat(width) }],
+                        },
                         { type: "bookmarkEnd", id: 7 },
                       ],
                     },
@@ -1296,11 +1554,14 @@ test("generated replacement retains prior removed revisions and visible inserted
           original,
         );
         const paragraph = direct.document.package.document.content.at(0);
-        if (paragraph?.type !== "paragraph") panic("Replacement must retain its target paragraph.");
+        if (paragraph?.type !== "paragraph")
+          panic("Replacement must retain its target paragraph.");
         const visible = paragraph.content
           .flatMap((node) =>
             node.type === "run"
-              ? node.content.flatMap((leaf) => (leaf.type === "text" ? [leaf.text] : []))
+              ? node.content.flatMap((leaf) =>
+                  leaf.type === "text" ? [leaf.text] : [],
+                )
               : [],
           )
           .join("");
@@ -1324,19 +1585,29 @@ test("generated provenance-bearing joins restore independent empty transfer meta
   assertProperty(
     fc.property(shapeArbitrary, (shape) => {
       const original = fixture(Object.assign({}, shape, { priorReview: true }));
-      for (const [index, paragraph] of original.package.document.content.entries()) {
-        if (paragraph.type !== "paragraph") panic("The join fixture must contain two paragraphs.");
+      for (const [
+        index,
+        paragraph,
+      ] of original.package.document.content.entries()) {
+        if (paragraph.type !== "paragraph")
+          panic("The join fixture must contain two paragraphs.");
         paragraph.content = [
           {
             type: "deletion",
             info: { id: index + 1, author: "Earlier" },
-            resolutionJoins: { before: 0, after: 0, remove: 0, retainedAfter: [] },
+            resolutionJoins: {
+              before: 0,
+              after: 0,
+              remove: 0,
+              retainedAfter: [],
+            },
             content: paragraph.content,
           },
         ];
       }
       let innerDepth = 2;
-      if (shape.wrapper === "link" || shape.wrapper === "control") innerDepth += 1;
+      if (shape.wrapper === "link" || shape.wrapper === "control")
+        innerDepth += 1;
       if (shape.wrapper === "nested") innerDepth += 2;
       // Tabs are atoms: merge their run, leaving the two tab leaves distinct.
       if (shape.token === "tab") innerDepth -= 1;
@@ -1375,14 +1646,24 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
             kind: "bidi",
             control: "embedding",
             content: [
-              { type: "preservedInline", xml: "<w:proofErr w:type='spellStart'/>", text: "" },
+              {
+                type: "preservedInline",
+                xml: "<w:proofErr w:type='spellStart'/>",
+                text: "",
+              },
             ],
           },
           {
             type: "inlineWrapper",
             kind: "bidi",
             control: "embedding",
-            content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "aaa" }] }],
+            content: [
+              {
+                type: "run",
+                formatting: {},
+                content: [{ type: "text", text: "aaa" }],
+              },
+            ],
           },
         ];
         const authoredContent: ParagraphContent[] = nested
@@ -1433,11 +1714,19 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
           refusals,
         });
         assertExactModel(
-          resolve({ document: split.document, revisionIds: split.revisions, decision: "accept" }),
+          resolve({
+            document: split.document,
+            revisionIds: split.revisions,
+            decision: "accept",
+          }),
           direct.document,
         );
         assertExactModel(
-          resolve({ document: split.document, revisionIds: split.revisions, decision: "reject" }),
+          resolve({
+            document: split.document,
+            revisionIds: split.revisions,
+            decision: "reject",
+          }),
           original,
         );
         let current = split.document;
@@ -1465,10 +1754,18 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
           decision: "reject",
         });
         assertExactModel(together, original);
-        for (const order of [groups, groups.toReversed(), [...blockers, split.revisions]]) {
+        for (const order of [
+          groups,
+          groups.toReversed(),
+          [...blockers, split.revisions],
+        ]) {
           let separate = current;
           for (const revisionIds of order)
-            separate = resolve({ document: separate, revisionIds, decision: "reject" });
+            separate = resolve({
+              document: separate,
+              revisionIds,
+              decision: "reject",
+            });
           assertExactModel(separate, together);
           if (pendingSource) {
             const sourceIds: number[] = [];
@@ -1498,18 +1795,40 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
         // Accepting any intervening insertion breaks only its deferred source
         // seam; rejecting the others must preserve that accepted authored payload.
         if (blockers.length === 2) {
-          const acceptIds = blockers.at(0) ?? panic("Two blockers contain a first group.");
-          const rejectIds = blockers.at(1) ?? panic("Two blockers contain a second group.");
+          const acceptIds =
+            blockers.at(0) ?? panic("Two blockers contain a first group.");
+          const rejectIds =
+            blockers.at(1) ?? panic("Two blockers contain a second group.");
           let left = resolve({
             document: current,
             revisionIds: split.revisions,
             decision: "reject",
           });
-          left = resolve({ document: left, revisionIds: acceptIds, decision: "accept" });
-          left = resolve({ document: left, revisionIds: rejectIds, decision: "reject" });
-          let right = resolve({ document: current, revisionIds: rejectIds, decision: "reject" });
-          right = resolve({ document: right, revisionIds: acceptIds, decision: "accept" });
-          right = resolve({ document: right, revisionIds: split.revisions, decision: "reject" });
+          left = resolve({
+            document: left,
+            revisionIds: acceptIds,
+            decision: "accept",
+          });
+          left = resolve({
+            document: left,
+            revisionIds: rejectIds,
+            decision: "reject",
+          });
+          let right = resolve({
+            document: current,
+            revisionIds: rejectIds,
+            decision: "reject",
+          });
+          right = resolve({
+            document: right,
+            revisionIds: acceptIds,
+            decision: "accept",
+          });
+          right = resolve({
+            document: right,
+            revisionIds: split.revisions,
+            decision: "reject",
+          });
           assertExactModel(left, right);
         }
       },
@@ -1542,7 +1861,9 @@ test("generated compound intents reserve source IDs before additional action sta
                   {
                     type: "hyperlink",
                     anchor: "target",
-                    children: [{ type: "bookmarkStart", id: 1, name: "target" }],
+                    children: [
+                      { type: "bookmarkStart", id: 1, name: "target" },
+                    ],
                   },
                 ],
               },
@@ -1568,10 +1889,18 @@ test("generated compound intents reserve source IDs before additional action sta
             paraId: (index + 1).toString(16).padStart(8, "0").toUpperCase(),
             content: [],
           });
-        const finalId = (paragraphCount + 1).toString(16).padStart(8, "0").toUpperCase();
+        const finalId = (paragraphCount + 1)
+          .toString(16)
+          .padStart(8, "0")
+          .toUpperCase();
         const original = normalizeForOps({
           package: {
-            document: { content: [...blocks, { type: "paragraph", paraId: finalId, content }] },
+            document: {
+              content: [
+                ...blocks,
+                { type: "paragraph", paraId: finalId, content },
+              ],
+            },
           },
         });
         const intent: EditorIntent = marker
@@ -1629,13 +1958,19 @@ test("generated compound intents reserve source IDs before additional action sta
           intent,
           mode: {
             type: "suggesting",
-            revision: { id: allocation.revisionId, author: "Editor", date: "2026-10-02T00:00:00Z" },
+            revision: {
+              id: allocation.revisionId,
+              author: "Editor",
+              date: "2026-10-02T00:00:00Z",
+            },
             newIds: { revision: [], control: allocation.newIds.control },
           },
         });
         expect(short.isOk()).toBe(!marker);
         if (short.isErr())
-          expect(short.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
+          expect(short.error.reason).toBe(
+            DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          );
         else
           assertExactModel(
             applyDocumentOps(original, short.value.ops).unwrap().document,
@@ -1656,110 +1991,151 @@ test("generated compound intents reserve source IDs before additional action sta
 // slots while leaving deferred blocker references and selected IDs stale.
 test("generated retained wrapper transfers rebase deferred references and selected lineage", () => {
   assertProperty(
-    fc.property(fc.integer({ min: 5, max: 30 }), fc.boolean(), (sourceId, ownEmptyFormatting) => {
-      const targetId = sourceId + 1;
-      const deletionId = sourceId + 2;
-      const original = normalizeForOps({
-        package: {
-          document: {
-            content: [
-              {
-                type: "paragraph",
-                paraId: "00000001",
-                pPrMark: {
-                  kind: "ins",
-                  info: { id: sourceId + 3, author: "Split" },
-                  resolutionJoin: 2,
-                },
-                content: [
-                  {
-                    type: "inlineSdt",
-                    properties: { id: targetId },
-                    content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+    fc.property(
+      fc.integer({ min: 5, max: 30 }),
+      fc.boolean(),
+      (sourceId, ownEmptyFormatting) => {
+        const targetId = sourceId + 1;
+        const deletionId = sourceId + 2;
+        const original = normalizeForOps({
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000001",
+                  pPrMark: {
+                    kind: "ins",
+                    info: { id: sourceId + 3, author: "Split" },
+                    resolutionJoin: 2,
                   },
-                  {
-                    type: "deletion",
-                    info: { id: deletionId, author: "Earlier" },
-                    content: [
-                      {
-                        type: "insertion",
-                        info: { id: sourceId, author: "Author" },
-                        content: [{ type: "run", content: [{ type: "text", text: "source" }] }],
-                      },
-                    ],
-                    resolutionJoins: {
-                      before: 0,
-                      after: 0,
-                      remove: 0,
-                      retainedAfter: [
+                  content: [
+                    {
+                      type: "inlineSdt",
+                      properties: { id: targetId },
+                      content: [
                         {
-                          depth: 0,
-                          source: [{ space: "revision", id: sourceId }],
-                          target: [{ space: "revision", id: targetId }],
+                          type: "run",
+                          content: [{ type: "text", text: "kept" }],
                         },
                       ],
                     },
-                  },
-                  {
-                    type: "insertion",
-                    info: { id: targetId, author: "Author" },
-                    content: [
-                      {
-                        type: "run",
-                        ...(ownEmptyFormatting ? { formatting: {} } : {}),
-                        content: [{ type: "text", text: "target" }],
+                    {
+                      type: "deletion",
+                      info: { id: deletionId, author: "Earlier" },
+                      content: [
+                        {
+                          type: "insertion",
+                          info: { id: sourceId, author: "Author" },
+                          content: [
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "source" }],
+                            },
+                          ],
+                        },
+                      ],
+                      resolutionJoins: {
+                        before: 0,
+                        after: 0,
+                        remove: 0,
+                        retainedAfter: [
+                          {
+                            depth: 0,
+                            source: [{ space: "revision", id: sourceId }],
+                            target: [{ space: "revision", id: targetId }],
+                          },
+                        ],
                       },
-                    ],
-                    resolutionJoins: {
-                      before: 0,
-                      after: 0,
-                      remove: 0,
-                      deferredRemove: [{ depth: 0, blockers: [targetId] }],
                     },
-                  },
-                ],
-              },
-              {
-                type: "paragraph",
-                paraId: "00000002",
-                content: [{ type: "run", content: [{ type: "text", text: "following" }] }],
-              },
-            ],
+                    {
+                      type: "insertion",
+                      info: { id: targetId, author: "Author" },
+                      content: [
+                        {
+                          type: "run",
+                          ...(ownEmptyFormatting ? { formatting: {} } : {}),
+                          content: [{ type: "text", text: "target" }],
+                        },
+                      ],
+                      resolutionJoins: {
+                        before: 0,
+                        after: 0,
+                        remove: 0,
+                        deferredRemove: [{ depth: 0, blockers: [targetId] }],
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "following" }],
+                    },
+                  ],
+                },
+              ],
+            },
           },
-        },
-      });
-      const first = resolve({ document: original, revisionIds: [deletionId], decision: "accept" });
-      const paragraph = first.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") panic("The source transfer retains its paragraph.");
-      const retained = paragraph.content.at(1);
-      if (retained?.type !== "insertion") panic("The source transfer retains its target wrapper.");
-      expect(retained.info.id).toBe(sourceId);
-      expect(retained.resolutionJoins?.deferredRemove).toStrictEqual([
-        { depth: 0, blockers: [sourceId] },
-      ]);
-      const separate = resolve({ document: first, revisionIds: [sourceId], decision: "accept" });
-      const together = resolve({
-        document: original,
-        revisionIds: [deletionId, targetId],
-        decision: "accept",
-      });
-      assertExactModel(separate, together);
-      const selectedSource = resolve({
-        document: original,
-        revisionIds: [deletionId, sourceId],
-        decision: "accept",
-      });
-      assertExactModel(selectedSource, together);
-      const selectedParagraph = selectedSource.package.document.content.at(0);
-      if (selectedParagraph?.type !== "paragraph")
-        panic("The selected lineage retains its paragraph.");
-      expect(selectedParagraph.pPrMark?.resolutionJoin).toBe(0);
-      assertExactModel(
-        resolve({ document: selectedSource, revisionIds: [sourceId + 3], decision: "reject" }),
-        resolve({ document: together, revisionIds: [sourceId + 3], decision: "reject" }),
-      );
-      resolve({ document: first, revisionIds: [sourceId], decision: "reject" });
-    }),
+        });
+        const first = resolve({
+          document: original,
+          revisionIds: [deletionId],
+          decision: "accept",
+        });
+        const paragraph = first.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph")
+          panic("The source transfer retains its paragraph.");
+        const retained = paragraph.content.at(1);
+        if (retained?.type !== "insertion")
+          panic("The source transfer retains its target wrapper.");
+        expect(retained.info.id).toBe(sourceId);
+        expect(retained.resolutionJoins?.deferredRemove).toStrictEqual([
+          { depth: 0, blockers: [sourceId] },
+        ]);
+        const separate = resolve({
+          document: first,
+          revisionIds: [sourceId],
+          decision: "accept",
+        });
+        const together = resolve({
+          document: original,
+          revisionIds: [deletionId, targetId],
+          decision: "accept",
+        });
+        assertExactModel(separate, together);
+        const selectedSource = resolve({
+          document: original,
+          revisionIds: [deletionId, sourceId],
+          decision: "accept",
+        });
+        assertExactModel(selectedSource, together);
+        const selectedParagraph = selectedSource.package.document.content.at(0);
+        if (selectedParagraph?.type !== "paragraph")
+          panic("The selected lineage retains its paragraph.");
+        expect(selectedParagraph.pPrMark?.resolutionJoin).toBe(0);
+        assertExactModel(
+          resolve({
+            document: selectedSource,
+            revisionIds: [sourceId + 3],
+            decision: "reject",
+          }),
+          resolve({
+            document: together,
+            revisionIds: [sourceId + 3],
+            decision: "reject",
+          }),
+        );
+        resolve({
+          document: first,
+          revisionIds: [sourceId],
+          decision: "reject",
+        });
+      },
+    ),
     {
       numRuns: 25,
       id: "generated retained wrapper transfers rebase deferred references and selected lineage",
@@ -1780,7 +2156,9 @@ test("generated replacement breaks restore deletion cut depths across paragraphs
         const run: Run = {
           type: "run",
           content: [{ type: "text", text: "a".repeat(width) }],
-          ...(explicitFormatting ? { formatting: { bold: false, italic: false } } : {}),
+          ...(explicitFormatting
+            ? { formatting: { bold: false, italic: false } }
+            : {}),
         };
         const content: ParagraphContent[] = linked
           ? [{ type: "hyperlink", anchor: "target", children: [run] }]
@@ -1795,7 +2173,10 @@ test("generated replacement breaks restore deletion cut depths across paragraphs
             },
           },
         });
-        const revisionIds = Array.from({ length: 32 }, (_, index) => 1001 + index);
+        const revisionIds = Array.from(
+          { length: 32 },
+          (_, index) => 1001 + index,
+        );
         const planned = planTrackedReplace(original, {
           sourceContainerPolicy: "join",
           from: position({ offset: 1 + (cutPick % (width - 1)) }),
@@ -1803,7 +2184,9 @@ test("generated replacement breaks restore deletion cut depths across paragraphs
           revision: { id: 1000, author: "Reviewer" },
           newIds: { revision: revisionIds },
           replacement: {
-            paragraphs: [{ type: "paragraph", paraId: "00000003", content: [] }],
+            paragraphs: [
+              { type: "paragraph", paraId: "00000003", content: [] },
+            ],
             tail: { content: [], openStart: 0, openEnd: 0 },
           },
         });

@@ -1,13 +1,17 @@
 import type { EditorState } from "prosemirror-state";
+
 import {
-  getCaretPositionFromDom,
   clickToPositionDom,
+  getCaretPositionFromDom,
 } from "../../packages/core/src/layout-bridge/dom/clickToPositionDom";
-import { resolvePainterTarget } from "./painterTargetCommit";
 import type { BrowserDragTarget } from "./browserDragTarget";
+import { resolvePainterTarget } from "./painterTargetCommit";
 
 type PaintedTargetEditor = {
-  getEditorRef: () => { getView: () => { state: EditorState } | null; relayout: () => void } | null;
+  getEditorRef: () => {
+    getView: () => { state: EditorState } | null;
+    relayout: () => void;
+  } | null;
   onLayoutChange: (listener: () => void) => () => void;
 };
 
@@ -75,7 +79,11 @@ export const resolvePaintedDragTarget = (
     read: () => {
       const view = ref.getEditorRef()?.getView();
       if (!view) throw new Error("browser editor unavailable");
-      const targets: { pos: number; size: number; type: "paragraph" | "inline" }[] = [];
+      const targets: {
+        pos: number;
+        size: number;
+        type: "paragraph" | "inline";
+      }[] = [];
       const targetName = {
         list: "paragraph",
         note: "footnoteRef",
@@ -86,11 +94,13 @@ export const resolvePaintedDragTarget = (
         const matches =
           node.type.name === targetName &&
           (wanted !== "list" ||
-            (node.attrs["numPr"] !== null && node.attrs["numPr"] !== undefined));
+            (node.attrs["numPr"] !== null &&
+              node.attrs["numPr"] !== undefined));
         if (targets.length >= 2) return false;
         if (
           matches ||
-          (wanted === "note" && node.marks.some((mark) => mark.type.name === targetName))
+          (wanted === "note" &&
+            node.marks.some((mark) => mark.type.name === targetName))
         ) {
           targets.push({
             pos,
@@ -105,7 +115,8 @@ export const resolvePaintedDragTarget = (
       const last = targets.at(1) ?? first;
       // Paragraph node boundaries are not caret positions. Start inside the
       // paragraph, or in text before an atom so image mousedown can drag text.
-      const rawFrom = first.type === "paragraph" ? first.pos + 1 : first.pos - 1;
+      const rawFrom =
+        first.type === "paragraph" ? first.pos + 1 : first.pos - 1;
       const rawTo =
         last.type === "paragraph"
           ? last.pos + Math.min(2, last.size - 1)
@@ -126,19 +137,29 @@ export const resolvePaintedDragTarget = (
         targetType: first.type,
       };
       const coordinate = (position: number) => {
-        const caret = getCaretPositionFromDom(document.body, position, new DOMRect());
+        const caret = getCaretPositionFromDom(
+          document.body,
+          position,
+          new DOMRect(),
+        );
         if (!caret) return null;
         const y = caret.y + caret.height / 2;
         for (const offset of [0, 0.25, -0.25, 0.5, -0.5]) {
           const x = caret.x + offset;
-          if (clickToPositionDom(document.body, x, y) === position) return { x, y };
+          if (clickToPositionDom(document.body, x, y) === position)
+            return { x, y };
         }
         return null;
       };
       const fromCoordinate = coordinate(positions.from);
       const toCoordinate = coordinate(positions.to);
       return fromCoordinate && toCoordinate
-        ? ({ type: "ready", positions, from: fromCoordinate, to: toCoordinate } as const)
+        ? ({
+            type: "ready",
+            positions,
+            from: fromCoordinate,
+            to: toCoordinate,
+          } as const)
         : null;
     },
   });

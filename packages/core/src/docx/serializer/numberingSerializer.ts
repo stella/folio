@@ -13,6 +13,10 @@
  * retain byte-exact source definitions that the editor did not change.
  */
 
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
+
+import { serializeParagraphPropertySet } from "../../internal/paragraphFormattingSerialization";
 import type {
   AbstractNumbering,
   LevelOverride,
@@ -20,13 +24,10 @@ import type {
   NumberingDefinitions,
   NumberingInstance,
 } from "../../types/document";
-import { serializeParagraphPropertySet } from "../../internal/paragraphFormattingSerialization";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
-import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 /** Serialize one `w:lvl`. */
 function serializeLevel(level: ListLevel): string {
@@ -38,7 +39,10 @@ function serializeLevel(level: ListLevel): string {
     level.pPr === undefined
       ? ""
       : serializeParagraphPropertySet({ formatting: level.pPr }) || "<w:pPr/>";
-  const rPr = level.rPr === undefined ? "" : serializeTextFormatting(level.rPr) || "<w:rPr/>";
+  const rPr =
+    level.rPr === undefined
+      ? ""
+      : serializeTextFormatting(level.rPr) || "<w:rPr/>";
   const lvlTextAttrs = [`w:val="${escapeXmlAttribute(level.lvlText)}"`];
   if (level.lvlTextNull !== undefined) {
     lvlTextAttrs.push(`w:null="${level.lvlTextNull ? 1 : 0}"`);
@@ -56,14 +60,25 @@ function serializeLevel(level: ListLevel): string {
     if (level.legacy.legacyIndent !== undefined) {
       attributes.push(`w:legacyIndent="${intAttr(level.legacy.legacyIndent)}"`);
     }
-    legacy = attributes.length === 0 ? "<w:legacy/>" : `<w:legacy ${attributes.join(" ")}/>`;
+    legacy =
+      attributes.length === 0
+        ? "<w:legacy/>"
+        : `<w:legacy ${attributes.join(" ")}/>`;
   }
 
   const children = serializeSequenceChildren({
     container: "w:lvl",
     modelled: [
-      ["start", level.start === undefined ? "" : `<w:start w:val="${intAttr(level.start)}"/>`],
-      ["numFmt", `<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"${numFmtFormat}/>`],
+      [
+        "start",
+        level.start === undefined
+          ? ""
+          : `<w:start w:val="${intAttr(level.start)}"/>`,
+      ],
+      [
+        "numFmt",
+        `<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"${numFmtFormat}/>`,
+      ],
       [
         "lvlRestart",
         level.lvlRestart === undefined
@@ -72,12 +87,16 @@ function serializeLevel(level: ListLevel): string {
       ],
       [
         "pStyle",
-        level.pStyle === undefined ? "" : `<w:pStyle w:val="${escapeXmlAttribute(level.pStyle)}"/>`,
+        level.pStyle === undefined
+          ? ""
+          : `<w:pStyle w:val="${escapeXmlAttribute(level.pStyle)}"/>`,
       ],
       ["isLgl", serializeOnOffElement(level.isLgl, "isLgl")],
       [
         "suff",
-        level.suffix === undefined ? "" : `<w:suff w:val="${escapeXmlAttribute(level.suffix)}"/>`,
+        level.suffix === undefined
+          ? ""
+          : `<w:suff w:val="${escapeXmlAttribute(level.suffix)}"/>`,
       ],
       ["lvlText", `<w:lvlText ${lvlTextAttrs.join(" ")}/>`],
       [
@@ -89,7 +108,9 @@ function serializeLevel(level: ListLevel): string {
       ["legacy", legacy],
       [
         "lvlJc",
-        level.lvlJc === undefined ? "" : `<w:lvlJc w:val="${escapeXmlAttribute(level.lvlJc)}"/>`,
+        level.lvlJc === undefined
+          ? ""
+          : `<w:lvlJc w:val="${escapeXmlAttribute(level.lvlJc)}"/>`,
       ],
       ["pPr", pPr],
       ["rPr", rPr],
@@ -104,13 +125,18 @@ function serializeLevel(level: ListLevel): string {
   if (level.tentative !== undefined) {
     attributes.push(`w:tentative="${level.tentative ? 1 : 0}"`);
   }
-  const startTag = serializePreservedAttributes(attributes, level.preservedAttributes).join(" ");
+  const startTag = serializePreservedAttributes(
+    attributes,
+    level.preservedAttributes,
+  ).join(" ");
   return `<w:lvl ${startTag}>${children.join("")}</w:lvl>`;
 }
 
 /** Serialize one reusable `w:abstractNum` list template. */
 function serializeAbstractNum(abstractNum: AbstractNumbering): string {
-  const levels = [...abstractNum.levels].sort((left, right) => left.ilvl - right.ilvl);
+  const levels = [...abstractNum.levels].sort(
+    (left, right) => left.ilvl - right.ilvl,
+  );
   const children = serializeSequenceChildren({
     container: "w:abstractNum",
     modelled: [
@@ -188,8 +214,14 @@ function serializeNum(instance: NumberingInstance): string {
   const children = serializeSequenceChildren({
     container: "w:num",
     modelled: [
-      ["abstractNumId", `<w:abstractNumId w:val="${intAttr(instance.abstractNumId)}"/>`],
-      ["lvlOverride", (instance.levelOverrides ?? []).map(serializeLevelOverride).join("")],
+      [
+        "abstractNumId",
+        `<w:abstractNumId w:val="${intAttr(instance.abstractNumId)}"/>`,
+      ],
+      [
+        "lvlOverride",
+        (instance.levelOverrides ?? []).map(serializeLevelOverride).join(""),
+      ],
     ],
     preserved: instance.preserved,
   });
@@ -205,7 +237,10 @@ export function serializeNumberingXml(numbering: NumberingDefinitions): string {
   const children = serializeSequenceChildren({
     container: "w:numbering",
     modelled: [
-      ["abstractNum", numbering.abstractNums.map(serializeAbstractNum).join("")],
+      [
+        "abstractNum",
+        numbering.abstractNums.map(serializeAbstractNum).join(""),
+      ],
       ["num", numbering.nums.map(serializeNum).join("")],
     ],
     preserved: numbering.preserved,
@@ -215,7 +250,10 @@ export function serializeNumberingXml(numbering: NumberingDefinitions): string {
     serializePartElement({
       partPath: "word/numbering.xml",
       rootName: "w:numbering",
-      rootAttributes: serializePreservedAttributes([], numbering.preservedAttributes).join(" "),
+      rootAttributes: serializePreservedAttributes(
+        [],
+        numbering.preservedAttributes,
+      ).join(" "),
       baselinePrefixes: ["w"],
       sourceBindings: undefined,
       body: children.join(""),

@@ -29,7 +29,9 @@ export const enclosingRevisionIds = (control: PMNode): readonly number[] => {
   // Validated with the rest of the control's attrs (`readSdtAttrs`); kept off
   // the published attrs type, since it records editor state, not `w:sdtPr`.
   const ids: unknown = control.attrs[ENCLOSING_REVISION_IDS_ATTR];
-  return Array.isArray(ids) ? ids.filter((id): id is number => typeof id === "number") : [];
+  return Array.isArray(ids)
+    ? ids.filter((id): id is number => typeof id === "number")
+    : [];
 };
 
 /** `control`'s attrs with `revisionId` added to its enclosing revisions. */
@@ -49,7 +51,11 @@ const REMOVED_LAYERS = {
 } as const;
 
 /** Whether `mark`, or a revision it is nested in, is `revisionId` of `removeType`'s kind. */
-const carriesRevision = (mark: Mark, removeType: MarkType, revisionId: number): boolean => {
+const carriesRevision = (
+  mark: Mark,
+  removeType: MarkType,
+  revisionId: number,
+): boolean => {
   if (mark.type.name !== "insertion" && mark.type.name !== "deletion") {
     return false;
   }
@@ -58,7 +64,9 @@ const carriesRevision = (mark: Mark, removeType: MarkType, revisionId: number): 
     return true;
   }
   const removed =
-    removeType.name === "deletion" ? REMOVED_LAYERS.deletion : REMOVED_LAYERS.insertion;
+    removeType.name === "deletion"
+      ? REMOVED_LAYERS.deletion
+      : REMOVED_LAYERS.insertion;
   return (attrs._docxRevisionAncestors ?? []).some(
     (layer) => layer.revisionId === revisionId && removed.has(layer.type),
   );
@@ -106,7 +114,9 @@ export const resolutionRemovesControl = ({
   return enclosingRevisionIds(control).some(
     (revisionId) =>
       resolves(revisionId) &&
-      coveredBy(control, (mark) => carriesRevision(mark, removeType, revisionId)),
+      coveredBy(control, (mark) =>
+        carriesRevision(mark, removeType, revisionId),
+      ),
   );
 };
 
@@ -144,7 +154,12 @@ type EncloseWholeControlsOptions = {
  * the range covers only the content of is left alone, and its revision stays
  * one over that content.
  */
-export const encloseWholeControls = ({ tr, from, to, revisionId }: EncloseWholeControlsOptions) => {
+export const encloseWholeControls = ({
+  tr,
+  from,
+  to,
+  revisionId,
+}: EncloseWholeControlsOptions) => {
   const enclosed: { pos: number; attrs: PMNode["attrs"] }[] = [];
   tr.doc.nodesBetween(from, to, (node, pos) => {
     if (!isInlineControl(node) || pos < from || pos + node.nodeSize > to) {

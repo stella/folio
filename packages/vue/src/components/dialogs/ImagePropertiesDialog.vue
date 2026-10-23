@@ -9,13 +9,23 @@
     @close="close"
   >
     <div class="dialog__header">
-      <span class="dialog__title">{{ t("dialogs.imageProperties.title") }}</span>
-      <button class="dialog__close" :aria-label="t('common.closeDialog')" @click="close">✕</button>
+      <span class="dialog__title">{{
+        t("dialogs.imageProperties.title")
+      }}</span>
+      <button
+        class="dialog__close"
+        :aria-label="t('common.closeDialog')"
+        @click="close"
+      >
+        ✕
+      </button>
     </div>
     <div class="dialog__body">
       <!-- Alt text -->
       <div class="field">
-        <label class="field__label">{{ t("dialogs.imageProperties.altText") }}</label>
+        <label class="field__label">{{
+          t("dialogs.imageProperties.altText")
+        }}</label>
         <textarea
           v-model="altText"
           class="field__textarea"
@@ -26,9 +36,13 @@
 
       <!-- Wrap type -->
       <div class="field">
-        <label class="field__label">{{ t("dialogs.imageProperties.textWrapping") }}</label>
+        <label class="field__label">{{
+          t("dialogs.imageProperties.textWrapping")
+        }}</label>
         <select v-model="wrapType" class="field__select">
-          <option value="inline">{{ t("dialogs.imageProperties.wrapOptions.inline") }}</option>
+          <option value="inline">
+            {{ t("dialogs.imageProperties.wrapOptions.inline") }}
+          </option>
           <option value="wrapRight">
             {{ t("dialogs.imageProperties.wrapOptions.wrapRight") }}
           </option>
@@ -38,14 +52,20 @@
           <option value="topAndBottom">
             {{ t("dialogs.imageProperties.wrapOptions.topAndBottom") }}
           </option>
-          <option value="behind">{{ t("dialogs.imageProperties.wrapOptions.behind") }}</option>
-          <option value="inFront">{{ t("dialogs.imageProperties.wrapOptions.inFront") }}</option>
+          <option value="behind">
+            {{ t("dialogs.imageProperties.wrapOptions.behind") }}
+          </option>
+          <option value="inFront">
+            {{ t("dialogs.imageProperties.wrapOptions.inFront") }}
+          </option>
         </select>
       </div>
 
       <!-- Border -->
       <div class="field">
-        <label class="field__label">{{ t("dialogs.imageProperties.border") }}</label>
+        <label class="field__label">{{
+          t("dialogs.imageProperties.border")
+        }}</label>
         <div class="field-row">
           <label
             >{{ t("dialogs.imageProperties.width") }}:
@@ -61,7 +81,9 @@
           <label
             >{{ t("dialogs.imageProperties.style") }}:
             <select v-model="borderStyle" class="field__select--small">
-              <option value="solid">{{ t("dialogs.imageProperties.borderStyles.solid") }}</option>
+              <option value="solid">
+                {{ t("dialogs.imageProperties.borderStyles.solid") }}
+              </option>
               <option value="dashed">
                 {{ t("dialogs.imageProperties.borderStyles.dashed") }}
               </option>
@@ -82,7 +104,9 @@
 
       <!-- Dimensions -->
       <div class="field">
-        <label class="field__label">{{ t("dialogs.imageProperties.dimensions") }}</label>
+        <label class="field__label">{{
+          t("dialogs.imageProperties.dimensions")
+        }}</label>
         <div class="field-row">
           <label
             >{{ t("dialogs.imageProperties.widthLabel") }}
@@ -114,8 +138,13 @@
       </div>
 
       <div class="dialog__actions">
-        <button class="dialog__btn" @click="close">{{ t("common.cancel") }}</button>
-        <button class="dialog__btn dialog__btn--primary" @mousedown.prevent="apply">
+        <button class="dialog__btn" @click="close">
+          {{ t("common.cancel") }}
+        </button>
+        <button
+          class="dialog__btn dialog__btn--primary"
+          @mousedown.prevent="apply"
+        >
           {{ t("common.apply") }}
         </button>
       </div>
@@ -124,8 +153,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
 import type { EditorView } from "prosemirror-view";
+import { ref, watch } from "vue";
+
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 

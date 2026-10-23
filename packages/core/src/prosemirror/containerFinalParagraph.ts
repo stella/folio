@@ -8,7 +8,8 @@ import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
  * child of the container at all. A paragraph and a table are children in both.
  */
 const isAContainerChild = (node: PMNode, paragraphTypeName: string): boolean =>
-  node.type.name === paragraphTypeName || node.type.spec["tableRole"] === "table";
+  node.type.name === paragraphTypeName ||
+  node.type.spec["tableRole"] === "table";
 
 /** Whether every child from `fromIndex` on is one the file does not hold here. */
 const nothingFollowsIn = (
@@ -40,8 +41,10 @@ const nothingFollowsIn = (
  * sibling, so the paragraph does not end anything and carries its own mark
  * like any other.
  */
-export const paragraphEndsItsContainer = (at: ResolvedPos, paragraphTypeName: string): boolean =>
-  nothingFollowsIn(at.parent, at.index() + 1, paragraphTypeName);
+export const paragraphEndsItsContainer = (
+  at: ResolvedPos,
+  paragraphTypeName: string,
+): boolean => nothingFollowsIn(at.parent, at.index() + 1, paragraphTypeName);
 
 /**
  * Every paragraph a container ENDS with in `doc`, with its position.
@@ -107,7 +110,10 @@ export const addedBreakCarrierBefore = ({
   at,
   paragraphTypeName,
   canCrossTable,
-}: AddedBreakCarrierBeforeOptions): { position: number; node: PMNode } | null => {
+}: AddedBreakCarrierBeforeOptions): {
+  position: number;
+  node: PMNode;
+} | null => {
   let position = at.pos;
   for (let index = at.index() - 1; index >= 0; index--) {
     const sibling = at.parent.child(index);
@@ -115,7 +121,10 @@ export const addedBreakCarrierBefore = ({
     if (sibling.type.name !== paragraphTypeName) {
       // Existing and partially inserted tables stop the walk. A text box is
       // not between these paragraphs in the file's container at all.
-      if (isAContainerChild(sibling, paragraphTypeName) && !canCrossTable?.(sibling)) {
+      if (
+        isAContainerChild(sibling, paragraphTypeName) &&
+        !canCrossTable?.(sibling)
+      ) {
         return null;
       }
       continue;

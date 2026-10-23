@@ -10,14 +10,19 @@
  * - Colors can be srgbClr, sysClr, or schemeClr
  */
 
-import type { Theme, ThemeColorScheme, ThemeFontScheme, ThemeFont } from "../types/document";
+import type {
+  Theme,
+  ThemeColorScheme,
+  ThemeFont,
+  ThemeFontScheme,
+} from "../types/document";
 import {
-  parseXmlDocument,
   findChild,
   findChildren,
   getAttribute,
   getChildElements,
   getLocalName,
+  parseXmlDocument,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -101,7 +106,8 @@ function parseColorElement(element: XmlElement | null): string | null {
   switch (localName) {
     case "srgbClr": {
       // Direct RGB color: <a:srgbClr val="4472C4"/>
-      const val = getAttribute(element, "a", "val") ?? getAttribute(element, null, "val");
+      const val =
+        getAttribute(element, "a", "val") ?? getAttribute(element, null, "val");
       return val ?? null;
     }
 
@@ -109,13 +115,15 @@ function parseColorElement(element: XmlElement | null): string | null {
       // System color with fallback: <a:sysClr val="windowText" lastClr="000000"/>
       // Use lastClr as the fallback since we can't access actual system colors
       const lastClr =
-        getAttribute(element, "a", "lastClr") ?? getAttribute(element, null, "lastClr");
+        getAttribute(element, "a", "lastClr") ??
+        getAttribute(element, null, "lastClr");
       if (lastClr) {
         return lastClr;
       }
 
       // Fallback based on common system color names
-      const val = getAttribute(element, "a", "val") ?? getAttribute(element, null, "val");
+      const val =
+        getAttribute(element, "a", "val") ?? getAttribute(element, null, "val");
       switch (val) {
         case "windowText":
         case "menuText":
@@ -208,24 +216,35 @@ function parseThemeFonts(fontElement: XmlElement | null): ThemeFont {
   const latinEl = findChild(fontElement, "a", "latin");
   if (latinEl) {
     result.latin =
-      getAttribute(latinEl, "a", "typeface") ?? getAttribute(latinEl, null, "typeface") ?? "";
+      getAttribute(latinEl, "a", "typeface") ??
+      getAttribute(latinEl, null, "typeface") ??
+      "";
   }
 
   const eaEl = findChild(fontElement, "a", "ea");
   if (eaEl) {
-    result.ea = getAttribute(eaEl, "a", "typeface") ?? getAttribute(eaEl, null, "typeface") ?? "";
+    result.ea =
+      getAttribute(eaEl, "a", "typeface") ??
+      getAttribute(eaEl, null, "typeface") ??
+      "";
   }
 
   const csEl = findChild(fontElement, "a", "cs");
   if (csEl) {
-    result.cs = getAttribute(csEl, "a", "typeface") ?? getAttribute(csEl, null, "typeface") ?? "";
+    result.cs =
+      getAttribute(csEl, "a", "typeface") ??
+      getAttribute(csEl, null, "typeface") ??
+      "";
   }
 
   // Parse script-specific fonts (a:font elements with script attribute)
   const fontElements = findChildren(fontElement, "a", "font");
   for (const font of fontElements) {
-    const script = getAttribute(font, "a", "script") ?? getAttribute(font, null, "script");
-    const typeface = getAttribute(font, "a", "typeface") ?? getAttribute(font, null, "typeface");
+    const script =
+      getAttribute(font, "a", "script") ?? getAttribute(font, null, "script");
+    const typeface =
+      getAttribute(font, "a", "typeface") ??
+      getAttribute(font, null, "typeface");
 
     if (script && typeface) {
       (result.fonts ??= {})[script] = typeface;
@@ -281,7 +300,9 @@ export function parseTheme(themeXml: string | null): Theme {
 
     // Get theme name from root element
     const themeName =
-      getAttribute(doc, "a", "name") ?? getAttribute(doc, null, "name") ?? "Office Theme";
+      getAttribute(doc, "a", "name") ??
+      getAttribute(doc, null, "name") ??
+      "Office Theme";
 
     // Find a:themeElements which contains clrScheme and fontScheme
     const themeElements = findChild(doc, "a", "themeElements");
@@ -369,8 +390,12 @@ export function applyThemeFontLang(
     return;
   }
 
-  const eaScript = themeFontLang.eastAsia ? eastAsiaLangToScript(themeFontLang.eastAsia) : null;
-  const csScript = themeFontLang.bidi ? bidiLangToScript(themeFontLang.bidi) : null;
+  const eaScript = themeFontLang.eastAsia
+    ? eastAsiaLangToScript(themeFontLang.eastAsia)
+    : null;
+  const csScript = themeFontLang.bidi
+    ? bidiLangToScript(themeFontLang.bidi)
+    : null;
 
   for (const font of [theme.fontScheme.majorFont, theme.fontScheme.minorFont]) {
     if (!font) {
@@ -410,7 +435,10 @@ export function getThemeColor(
  * @param script - Optional script code (defaults to latin)
  * @returns Font family name
  */
-export function getMajorFont(theme: Theme | null | undefined, script: string = "latin"): string {
+export function getMajorFont(
+  theme: Theme | null | undefined,
+  script: string = "latin",
+): string {
   if (!theme?.fontScheme?.majorFont) {
     return DEFAULT_FONTS.majorFont?.latin ?? "Calibri Light";
   }
@@ -443,7 +471,10 @@ export function getMajorFont(theme: Theme | null | undefined, script: string = "
  * @param script - Optional script code (defaults to latin)
  * @returns Font family name
  */
-export function getMinorFont(theme: Theme | null | undefined, script: string = "latin"): string {
+export function getMinorFont(
+  theme: Theme | null | undefined,
+  script: string = "latin",
+): string {
   if (!theme?.fontScheme?.minorFont) {
     return DEFAULT_FONTS.minorFont?.latin ?? "Calibri";
   }
@@ -478,7 +509,10 @@ export function getMinorFont(theme: Theme | null | undefined, script: string = "
  * @param themeRef - Theme font reference
  * @returns Font family name
  */
-export function resolveThemeFontRef(theme: Theme | null | undefined, themeRef: string): string {
+export function resolveThemeFontRef(
+  theme: Theme | null | undefined,
+  themeRef: string,
+): string {
   if (!themeRef) {
     return "Calibri";
   }

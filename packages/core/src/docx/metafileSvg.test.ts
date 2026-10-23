@@ -1,16 +1,19 @@
+import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
-
+import { renderEmfSvg } from "./metafileSvg";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
-import { renderEmfSvg } from "./metafileSvg";
 
 const FIXTURE = resolve(import.meta.dir, "__fixtures__/header-vml-emf.docx");
 
-const record = (type: number, size: number, write?: (view: DataView) => void): Uint8Array => {
+const record = (
+  type: number,
+  size: number,
+  write?: (view: DataView) => void,
+): Uint8Array => {
   const bytes = new Uint8Array(size);
   const view = new DataView(bytes.buffer);
   view.setUint32(0, type, true);
@@ -28,7 +31,9 @@ const pointRecord = (type: number, x: number, y: number): Uint8Array =>
     view.setInt32(12, y, true);
   });
 
-const polyBezierTo16 = (points: readonly { x: number; y: number }[]): Uint8Array =>
+const polyBezierTo16 = (
+  points: readonly { x: number; y: number }[],
+): Uint8Array =>
   record(88, 28 + points.length * 4, (view) => {
     view.setUint32(24, points.length, true);
     for (const [index, point] of points.entries()) {
@@ -37,7 +42,9 @@ const polyBezierTo16 = (points: readonly { x: number; y: number }[]): Uint8Array
     }
   });
 
-const polyPolygon16 = (polygons: readonly (readonly { x: number; y: number }[])[]): Uint8Array => {
+const polyPolygon16 = (
+  polygons: readonly (readonly { x: number; y: number }[])[],
+): Uint8Array => {
   const points = polygons.flat();
   return record(91, 32 + polygons.length * 4 + points.length * 4, (view) => {
     view.setUint32(24, polygons.length, true);
@@ -139,7 +146,8 @@ const vectorEmf = ({
     uint32Record(40, 2),
     record(14, 20),
   ];
-  const byteLength = 88 + records.reduce((sum, item) => sum + item.byteLength, 0);
+  const byteLength =
+    88 + records.reduce((sum, item) => sum + item.byteLength, 0);
   const header = record(1, 88, (view) => {
     view.setInt32(8, 0, true);
     view.setInt32(12, 0, true);
@@ -192,7 +200,9 @@ describe("renderEmfSvg", () => {
   });
 
   test("rejects zero mapping extents before evaluating any points", () => {
-    expect(renderEmfSvg(vectorEmf({ windowExtent: { x: 0, y: 1_000 } }))).toBeNull();
+    expect(
+      renderEmfSvg(vectorEmf({ windowExtent: { x: 0, y: 1_000 } })),
+    ).toBeNull();
   });
 
   test("selects stock brushes using unsigned EMF handles", () => {
@@ -225,7 +235,9 @@ describe("renderEmfSvg", () => {
   });
 
   test("does not reuse a selected brush after its object is deleted", () => {
-    expect(renderEmfSvg(vectorEmf({ deleteBrushBeforePolygon: true }))).toBeNull();
+    expect(
+      renderEmfSvg(vectorEmf({ deleteBrushBeforePolygon: true })),
+    ).toBeNull();
   });
 
   test("preserves a completed path while rendering standalone geometry", () => {
@@ -271,7 +283,9 @@ describe("vector-only EMF package previews", () => {
 
     const output = await repackDocx(document);
     const outputZip = await JSZip.loadAsync(output);
-    const roundTripped = await outputZip.file("word/media/image1.emf")?.async("uint8array");
+    const roundTripped = await outputZip
+      .file("word/media/image1.emf")
+      ?.async("uint8array");
     expect(roundTripped).toEqual(emf);
   });
 
@@ -294,7 +308,10 @@ describe("vector-only EMF package previews", () => {
     ).join("");
     zip.file(
       relationshipPath,
-      relationships.replace("</Relationships>", `${addedRelationships}</Relationships>`),
+      relationships.replace(
+        "</Relationships>",
+        `${addedRelationships}</Relationships>`,
+      ),
     );
     for (let index = 0; index < mediaCount; index += 1) {
       zip.file(`word/media/budget-${index}.emf`, emf);

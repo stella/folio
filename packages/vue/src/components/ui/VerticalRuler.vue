@@ -55,9 +55,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, type CSSProperties } from "vue";
+import { computed, type CSSProperties, onBeforeUnmount, ref } from "vue";
+
 import type { SectionProperties } from "@stll/folio-core/types/document";
-import { twipsToPixels, pixelsToTwips } from "@stll/folio-core/utils/units";
+import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
 
 type MarkerType = "topMargin" | "bottomMargin";
 
@@ -94,9 +95,15 @@ function px2tw(px: number): number {
   return Math.round(pixelsToTwips(px / props.zoom));
 }
 
-const pageHeightTwips = computed(() => props.sectionProps?.pageHeight ?? DEFAULT_PAGE_HEIGHT_TWIPS);
-const topMarginTwips = computed(() => props.sectionProps?.marginTop ?? DEFAULT_MARGIN_TWIPS);
-const bottomMarginTwips = computed(() => props.sectionProps?.marginBottom ?? DEFAULT_MARGIN_TWIPS);
+const pageHeightTwips = computed(
+  () => props.sectionProps?.pageHeight ?? DEFAULT_PAGE_HEIGHT_TWIPS,
+);
+const topMarginTwips = computed(
+  () => props.sectionProps?.marginTop ?? DEFAULT_MARGIN_TWIPS,
+);
+const bottomMarginTwips = computed(
+  () => props.sectionProps?.marginBottom ?? DEFAULT_MARGIN_TWIPS,
+);
 
 const pageHeightPx = computed(() => tw2px(pageHeightTwips.value));
 const topMarginPx = computed(() => tw2px(topMarginTwips.value));
@@ -114,7 +121,8 @@ const containerStyle = computed<CSSProperties>(() => ({
 
 // Mirror generateVerticalTicks() from React VerticalRuler.tsx.
 const ticks = computed(() => {
-  const out: { position: number; width: number; label?: string | undefined }[] = [];
+  const out: { position: number; width: number; label?: string | undefined }[] =
+    [];
   if (props.unit === "inch") {
     const eighth = TWIPS_PER_INCH / 8;
     const total = Math.ceil(pageHeightTwips.value / eighth);
@@ -123,7 +131,11 @@ const ticks = computed(() => {
       if (tw > pageHeightTwips.value) break;
       const px = tw2px(tw);
       if (i % 8 === 0) {
-        out.push({ position: px, width: 10, label: i / 8 > 0 ? String(i / 8) : undefined });
+        out.push({
+          position: px,
+          width: 10,
+          label: i / 8 > 0 ? String(i / 8) : undefined,
+        });
       } else if (i % 4 === 0) {
         out.push({ position: px, width: 6 });
       } else if (i % 2 === 0) {
@@ -140,7 +152,11 @@ const ticks = computed(() => {
       if (tw > pageHeightTwips.value) break;
       const px = tw2px(tw);
       if (i % 10 === 0) {
-        out.push({ position: px, width: 10, label: i / 10 > 0 ? String(i / 10) : undefined });
+        out.push({
+          position: px,
+          width: 10,
+          label: i / 10 > 0 ? String(i / 10) : undefined,
+        });
       } else if (i % 5 === 0) {
         out.push({ position: px, width: 6 });
       } else {
@@ -192,7 +208,8 @@ function startDrag(type: MarkerType, event: MouseEvent) {
   if (!props.editable) return;
   dragging.value = type;
   dragStartY = event.clientY;
-  dragStartValue = type === "topMargin" ? topMarginTwips.value : bottomMarginTwips.value;
+  dragStartValue =
+    type === "topMargin" ? topMarginTwips.value : bottomMarginTwips.value;
   document.addEventListener("mousemove", handleMove);
   document.addEventListener("mouseup", handleUp);
 }
@@ -203,7 +220,9 @@ function handleMove(e: MouseEvent) {
   const dTwips = px2tw(dragging.value === "topMargin" ? dy : -dy);
   const max =
     pageHeightTwips.value -
-    (dragging.value === "topMargin" ? bottomMarginTwips.value : topMarginTwips.value) -
+    (dragging.value === "topMargin"
+      ? bottomMarginTwips.value
+      : topMarginTwips.value) -
     720;
   const value = Math.round(Math.max(0, Math.min(dragStartValue + dTwips, max)));
   if (dragging.value === "topMargin") emit("top-margin-change", value);

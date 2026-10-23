@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseShape, parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
+import {
+  parseShape,
+  parseShapeFromDrawing,
+  shouldPreserveRawShapeDrawing,
+} from "./shapeParser";
 import { parseXmlDocument } from "./xmlParser";
 
 const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
@@ -122,7 +126,9 @@ describe("parseShapeFromDrawing — preset geometry", () => {
   });
 
   test("unknown presets are preserved as raw drawings instead of editable rectangles", () => {
-    const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "completelyUnknownShapeXYZ" })));
+    const root = parseXmlDocument(
+      drawingWith(buildSpPr({ prst: "completelyUnknownShapeXYZ" })),
+    );
     const shape = root ? parseShapeFromDrawing(root) : null;
     expect(shape).toBeNull();
     expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(true);
@@ -239,7 +245,9 @@ describe("parseShapeFromDrawing — fill", () => {
   });
 
   test("recognises a:noFill as type=none", () => {
-    const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "ellipse", fill: `<a:noFill/>` })));
+    const root = parseXmlDocument(
+      drawingWith(buildSpPr({ prst: "ellipse", fill: `<a:noFill/>` })),
+    );
     const shape = root ? parseShapeFromDrawing(root) : null;
     expect(shape?.fill).toEqual({ type: "none" });
   });
@@ -336,7 +344,9 @@ describe("parseShapeFromDrawing — outline", () => {
 
 describe("parseShapeFromDrawing — anchor", () => {
   test("captures wrap type and position for anchored shapes", () => {
-    const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "rightArrow" }), { anchor: true }));
+    const root = parseXmlDocument(
+      drawingWith(buildSpPr({ prst: "rightArrow" }), { anchor: true }),
+    );
     const shape = root ? parseShapeFromDrawing(root) : null;
     expect(shape?.wrap?.type).toBe("square");
     expect(shape?.position?.horizontal.relativeTo).toBe("column");
@@ -352,15 +362,26 @@ describe("parseShapeFromDrawing — anchor", () => {
 
 describe("parseShapeFromDrawing — effects and 3-D", () => {
   test.each([
-    ["shadow effects", `<a:effectLst><a:outerShdw blurRad="50800" dist="38100"/></a:effectLst>`],
-    ["an effect DAG", `<a:effectDag><a:cont><a:glow rad="63500"/></a:cont></a:effectDag>`],
+    [
+      "shadow effects",
+      `<a:effectLst><a:outerShdw blurRad="50800" dist="38100"/></a:effectLst>`,
+    ],
+    [
+      "an effect DAG",
+      `<a:effectDag><a:cont><a:glow rad="63500"/></a:cont></a:effectDag>`,
+    ],
     [
       "a 3-D scene",
       `<a:scene3d><a:camera prst="orthographicFront"/><a:lightRig rig="threePt" dir="t"/></a:scene3d>`,
     ],
-    ["3-D shape properties", `<a:sp3d extrusionH="57150" prstMaterial="metal"/>`],
+    [
+      "3-D shape properties",
+      `<a:sp3d extrusionH="57150" prstMaterial="metal"/>`,
+    ],
   ])("%s are preserved as raw drawings", (_name, effects) => {
-    const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "rect", effects })));
+    const root = parseXmlDocument(
+      drawingWith(buildSpPr({ prst: "rect", effects })),
+    );
     expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(true);
     expect(root ? parseShapeFromDrawing(root) : null).toBeNull();
   });
@@ -370,7 +391,9 @@ describe("parseShapeFromDrawing — effects and 3-D", () => {
       drawingWith(buildSpPr({ prst: "rect", effects: `<a:effectLst/>` })),
     );
     expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(false);
-    expect(root ? parseShapeFromDrawing(root)?.shapeType : undefined).toBe("rect");
+    expect(root ? parseShapeFromDrawing(root)?.shapeType : undefined).toBe(
+      "rect",
+    );
   });
 
   test("a text box with effects stays with the text-box pipeline", () => {
@@ -398,9 +421,13 @@ describe("parseShapeFromDrawing — effects and 3-D", () => {
     // parseOutline captures the whole a:ln verbatim and serializeOutline
     // replays it, so a custom dash or a gradient line needs no preservation.
     const outline = `<a:ln w="9525"><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="FFFFFF"/></a:gs></a:gsLst></a:gradFill><a:custDash><a:ds d="300000" sp="150000"/></a:custDash></a:ln>`;
-    const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "rect", outline })));
+    const root = parseXmlDocument(
+      drawingWith(buildSpPr({ prst: "rect", outline })),
+    );
     expect(root ? shouldPreserveRawShapeDrawing(root) : true).toBe(false);
-    expect(root ? parseShapeFromDrawing(root)?.outline?.rawXml : undefined).toContain("a:custDash");
+    expect(
+      root ? parseShapeFromDrawing(root)?.outline?.rawXml : undefined,
+    ).toContain("a:custDash");
   });
 });
 

@@ -1,9 +1,27 @@
-import { sliceText } from "../utils/sliceText";
-import {
-  isEmptyRunPropertiesAttribute,
-  retainsEmptyRunProperties,
-  omitsPreviousRunProperties,
-} from "./runPropertyPresence";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+
+import type {
+  BreakContent,
+  ColorValue,
+  DrawingContent,
+  FieldCharContent,
+  Image,
+  InstrTextContent,
+  MediaFile,
+  NoBreakHyphenContent,
+  NoteReferenceContent,
+  RelationshipMap,
+  Run,
+  RunContent,
+  RunPropertyChange,
+  ShapeContent,
+  SoftHyphenContent,
+  SymbolContent,
+  TabContent,
+  TextContent,
+  TextFormatting,
+  Theme,
+} from "../types/document";
 /**
  * Run Parser - Parse text runs (w:r) with complete formatting
  *
@@ -23,32 +41,13 @@ import {
  * - Run properties: w:rPr
  * - Text content: w:t
  */
-
-import { parseBoundaryJoins } from "./reviewResolutionProvenance";
-import type {
-  Run,
-  RunContent,
-  TextContent,
-  TabContent,
-  BreakContent,
-  SymbolContent,
-  NoteReferenceContent,
-  FieldCharContent,
-  InstrTextContent,
-  SoftHyphenContent,
-  NoBreakHyphenContent,
-  DrawingContent,
-  RunPropertyChange,
-  TextFormatting,
-  ColorValue,
-  Theme,
-  Image,
-  RelationshipMap,
-  MediaFile,
-  ShapeContent,
-} from "../types/document";
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
-import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
+import { parseHorizontalScalePercent } from "../utils/horizontalScale";
+import { sliceText } from "../utils/sliceText";
+import {
+  attributeRemainder,
+  NO_MODELLED_ATTRIBUTES,
+} from "./attributeRemainder";
+import { parseChartPreview } from "./chartPreview";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -58,9 +57,9 @@ import {
   ownedElsewhere,
   sequencePositions,
 } from "./containerChildren";
-import { isGroupDrawing, parseGroupDrawing } from "./groupDrawingParser";
 import { parseDiagramPreview } from "./diagramPreview";
-import { parseChartPreview } from "./chartPreview";
+import { parseFieldState } from "./fieldState";
+import { isGroupDrawing, parseGroupDrawing } from "./groupDrawingParser";
 import { parseImage } from "./imageParser";
 import { imageRawXmlFingerprint } from "./imageRawXml";
 import {
@@ -68,25 +67,37 @@ import {
   FontHintSchema,
   FontThemeSchema,
   HighlightColorSchema,
+  narrowEnum,
   PositionalTabAlignmentSchema,
   PositionalTabLeaderSchema,
   PositionalTabRelativeToSchema,
   TextEffectSchema,
   UnderlineStyleSchema,
-  narrowEnum,
 } from "./parserEnums";
-import { parseThemeColorAttribute } from "./themeColorAttribute";
-import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
+import { preserveRunChild } from "./preservedRunContent";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
+import { parseBoundaryJoins } from "./reviewResolutionProvenance";
+import {
+  isEmptyRunPropertiesAttribute,
+  omitsPreviousRunProperties,
+  retainsEmptyRunProperties,
+} from "./runPropertyPresence";
+import { parseShading } from "./shadingParser";
 import { captureShapeAlternateContent } from "./shapeAlternateContent";
+import {
+  parseShapeFromDrawing,
+  shouldPreserveRawShapeDrawing,
+} from "./shapeParser";
 import type { StyleMap } from "./styleParser";
 import { isTextBoxDrawing } from "./textBoxParser";
-import { parseVmlImageContent, shouldPreserveRawVmlPict } from "./vmlImageParser";
-import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
+import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { resolveThemeFontRef } from "./themeParser";
-import { parseHorizontalScalePercent } from "../utils/horizontalScale";
-import { preserveRunChild } from "./preservedRunContent";
+import { parsePropertyChangeInfo } from "./trackedChangeInfo";
 import { captureVerbatimXml } from "./verbatimCapture";
-import { parseShading } from "./shadingParser";
+import {
+  parseVmlImageContent,
+  shouldPreserveRawVmlPict,
+} from "./vmlImageParser";
 import {
   cloneWithXmlnsDeclarations,
   findAllDeep,
@@ -105,8 +116,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
-import { parseFieldState } from "./fieldState";
-import { parsePropertyChangeInfo } from "./trackedChangeInfo";
 
 /**
  * Sanity cap on `w:lang` `@w:val`/`@w:eastAsia`/`@w:bidi` tag length. BCP-47
@@ -119,7 +128,11 @@ const MAX_LANGUAGE_TAG_LENGTH = 35;
 const truncateLanguageTag = (value: string | undefined): string | undefined =>
   value === undefined
     ? undefined
-    : sliceText({ text: value, units: "codeUnits", end: MAX_LANGUAGE_TAG_LENGTH });
+    : sliceText({
+        text: value,
+        units: "codeUnits",
+        end: MAX_LANGUAGE_TAG_LENGTH,
+      });
 
 /**
  * Parse color value from attributes
@@ -147,7 +160,10 @@ function parseColorValue({
     color.auto = true;
   }
 
-  const parsedThemeColor = parseThemeColorAttribute({ raw: themeColor, element });
+  const parsedThemeColor = parseThemeColorAttribute({
+    raw: themeColor,
+    element,
+  });
   if (parsedThemeColor !== undefined) {
     color.themeColor = parsedThemeColor;
   }
@@ -189,7 +205,8 @@ export const RUN_PROPERTY_OWNERS = {
   standalone: "standalone",
 } as const;
 
-export type RunPropertyOwner = (typeof RUN_PROPERTY_OWNERS)[keyof typeof RUN_PROPERTY_OWNERS];
+export type RunPropertyOwner =
+  (typeof RUN_PROPERTY_OWNERS)[keyof typeof RUN_PROPERTY_OWNERS];
 
 /**
  * The children each owner's sibling record claims.
@@ -234,7 +251,10 @@ const OWNED_BY_A_SIBLING_RECORD = {
     }),
   },
   standalone: {},
-} as const satisfies Record<RunPropertyOwner, Readonly<Partial<ChildHandlers<"run-properties">>>>;
+} as const satisfies Record<
+  RunPropertyOwner,
+  Readonly<Partial<ChildHandlers<"run-properties">>>
+>;
 
 /** The last statement of each declared property in `rPr`, by local name. */
 const lastOccurrences = (rPr: XmlElement): ReadonlyMap<string, XmlElement> => {
@@ -243,7 +263,10 @@ const lastOccurrences = (rPr: XmlElement): ReadonlyMap<string, XmlElement> => {
     const namespace = getNamespaceUri(child);
     // A child from another namespace never reaches a declared handler, so
     // counting it as an occurrence would let `m:r` beat `w:r`.
-    if (namespace !== undefined && !WORDPROCESSINGML_NAMESPACE_URIS.has(namespace)) {
+    if (
+      namespace !== undefined &&
+      !WORDPROCESSINGML_NAMESPACE_URIS.has(namespace)
+    ) {
       continue;
     }
     winner.set(getLocalName(child.name), child);
@@ -287,11 +310,15 @@ type RunPropertyReader = ChildReader<RunPropertyReadContext>;
 const readLastOccurrenceOnly =
   (read: RunPropertyReader): RunPropertyReader =>
   (child, context) =>
-    context.winner.get(getLocalName(child.name)) === child ? read(child, context) : undefined;
+    context.winner.get(getLocalName(child.name)) === child
+      ? read(child, context)
+      : undefined;
 
 /** A `w:rPr` child folio models as a tri-state `CT_OnOff` toggle. */
 type RunToggleField = {
-  [Field in keyof TextFormatting]-?: NonNullable<TextFormatting[Field]> extends boolean
+  [Field in keyof TextFormatting]-?: NonNullable<
+    TextFormatting[Field]
+  > extends boolean
     ? Field
     : never;
 }[keyof TextFormatting];
@@ -302,7 +329,9 @@ const readToggle = (field: RunToggleField): RunPropertyReader =>
   });
 
 type RunNumericField = {
-  [Field in keyof TextFormatting]-?: NonNullable<TextFormatting[Field]> extends number
+  [Field in keyof TextFormatting]-?: NonNullable<
+    TextFormatting[Field]
+  > extends number
     ? Field
     : never;
 }[keyof TextFormatting];
@@ -322,8 +351,9 @@ const readNumericVal = (field: RunNumericField): RunPropertyReader =>
  * answered here because this module reads the slot, so a consumer deciding
  * whether a run sits on the baseline cannot drift from how it was parsed.
  */
-export const isBaselineVertAlign = (vertAlign: TextFormatting["vertAlign"]): boolean =>
-  vertAlign === "baseline";
+export const isBaselineVertAlign = (
+  vertAlign: TextFormatting["vertAlign"],
+): boolean => vertAlign === "baseline";
 
 /**
  * Read `w:rFonts` into `fontFamily`, resolving each theme slot to the font the
@@ -358,7 +388,10 @@ const readFontFamily = (
     fontFamily.hint = hint;
   }
 
-  const asciiTheme = narrowEnum(getAttribute(rFonts, "w", "asciiTheme"), FontThemeSchema);
+  const asciiTheme = narrowEnum(
+    getAttribute(rFonts, "w", "asciiTheme"),
+    FontThemeSchema,
+  );
   if (asciiTheme) {
     fontFamily.asciiTheme = asciiTheme;
     // Also resolve the actual font name for convenience.
@@ -370,7 +403,10 @@ const readFontFamily = (
     }
   }
 
-  const hAnsiTheme = narrowEnum(getAttribute(rFonts, "w", "hAnsiTheme"), FontThemeSchema);
+  const hAnsiTheme = narrowEnum(
+    getAttribute(rFonts, "w", "hAnsiTheme"),
+    FontThemeSchema,
+  );
   if (hAnsiTheme) {
     fontFamily.hAnsiTheme = hAnsiTheme;
     if (theme && !fontFamily.hAnsi) {
@@ -381,7 +417,10 @@ const readFontFamily = (
     }
   }
 
-  const eastAsiaTheme = narrowEnum(getAttribute(rFonts, "w", "eastAsiaTheme"), FontThemeSchema);
+  const eastAsiaTheme = narrowEnum(
+    getAttribute(rFonts, "w", "eastAsiaTheme"),
+    FontThemeSchema,
+  );
   if (eastAsiaTheme) {
     fontFamily.eastAsiaTheme = eastAsiaTheme;
     if (theme && !fontFamily.eastAsia) {
@@ -393,7 +432,10 @@ const readFontFamily = (
   }
 
   // OOXML spells this attribute all-lowercase, unlike its camelCase siblings.
-  const csTheme = narrowEnum(getAttribute(rFonts, "w", "cstheme"), FontThemeSchema);
+  const csTheme = narrowEnum(
+    getAttribute(rFonts, "w", "cstheme"),
+    FontThemeSchema,
+  );
   if (csTheme) {
     fontFamily.csTheme = csTheme;
     if (theme && !fontFamily.cs) {
@@ -433,10 +475,17 @@ const readUnderline = (u: XmlElement, formatting: TextFormatting): boolean => {
 };
 
 /** @returns whether `w:lang` named a tag for any of the three scripts. */
-const readLanguage = (lang: XmlElement, formatting: TextFormatting): boolean => {
+const readLanguage = (
+  lang: XmlElement,
+  formatting: TextFormatting,
+): boolean => {
   const val = truncateLanguageTag(getAttribute(lang, "w", "val") || undefined);
-  const eastAsia = truncateLanguageTag(getAttribute(lang, "w", "eastAsia") || undefined);
-  const bidi = truncateLanguageTag(getAttribute(lang, "w", "bidi") || undefined);
+  const eastAsia = truncateLanguageTag(
+    getAttribute(lang, "w", "eastAsia") || undefined,
+  );
+  const bidi = truncateLanguageTag(
+    getAttribute(lang, "w", "bidi") || undefined,
+  );
   if (!val && !eastAsia && !bidi) {
     return false;
   }
@@ -526,7 +575,10 @@ const RUN_PROPERTY_BASE_HANDLERS = {
   sz: readNumericVal("fontSize"),
   szCs: readNumericVal("fontSizeCs"),
   highlight: readLastOccurrenceOnly((child, { formatting }) => {
-    const val = narrowEnum(getAttribute(child, "w", "val"), HighlightColorSchema);
+    const val = narrowEnum(
+      getAttribute(child, "w", "val"),
+      HighlightColorSchema,
+    );
     if (val) {
       formatting.highlight = val;
     }
@@ -596,7 +648,10 @@ const RUN_PROPERTY_HANDLERS = {
     ...RUN_PROPERTY_BASE_HANDLERS,
     ...OWNED_BY_A_SIBLING_RECORD.paragraphMark,
   },
-  standalone: { ...RUN_PROPERTY_BASE_HANDLERS, ...OWNED_BY_A_SIBLING_RECORD.standalone },
+  standalone: {
+    ...RUN_PROPERTY_BASE_HANDLERS,
+    ...OWNED_BY_A_SIBLING_RECORD.standalone,
+  },
 } as const satisfies Record<
   RunPropertyOwner,
   ChildHandlers<"run-properties", RunPropertyReadContext>
@@ -660,7 +715,10 @@ export function parseRunProperties(
     children.every(
       (child) =>
         WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
-        Object.hasOwn(OWNED_BY_A_SIBLING_RECORD[owner], getLocalName(child.name)),
+        Object.hasOwn(
+          OWNED_BY_A_SIBLING_RECORD[owner],
+          getLocalName(child.name),
+        ),
     )
   ) {
     return undefined;
@@ -690,30 +748,33 @@ function parseRunPropertyChanges(
   // empty. `<w:rPrChange …><w:rPr/></w:rPrChange>` on a run that states no
   // properties of its own used to be filtered out here, taking the revision
   // with it, which is the same defect `w:tblPrChange` had.
-  const changes = findChildren(rPr, "w", "rPrChange").map((changeElement): RunPropertyChange => {
-    const previousRPr = findChild(changeElement, "w", "rPr");
-    const change: RunPropertyChange = {
-      type: "runPropertyChange",
-      info: parsePropertyChangeInfo(changeElement),
-    };
-    const boundaryJoins = parseBoundaryJoins(changeElement);
-    if (boundaryJoins !== undefined) change.boundaryJoins = boundaryJoins;
-    const previousFormatting = parseRunProperties(
-      previousRPr,
-      theme,
-      RUN_PROPERTY_OWNERS.standalone,
-    );
-    if (
-      previousFormatting &&
-      (!omitsPreviousRunProperties(changeElement) || Object.keys(previousFormatting).length > 0)
-    ) {
-      change.previousFormatting = previousFormatting;
-    }
-    if (currentFormatting) {
-      change.currentFormatting = currentFormatting;
-    }
-    return change;
-  });
+  const changes = findChildren(rPr, "w", "rPrChange").map(
+    (changeElement): RunPropertyChange => {
+      const previousRPr = findChild(changeElement, "w", "rPr");
+      const change: RunPropertyChange = {
+        type: "runPropertyChange",
+        info: parsePropertyChangeInfo(changeElement),
+      };
+      const boundaryJoins = parseBoundaryJoins(changeElement);
+      if (boundaryJoins !== undefined) change.boundaryJoins = boundaryJoins;
+      const previousFormatting = parseRunProperties(
+        previousRPr,
+        theme,
+        RUN_PROPERTY_OWNERS.standalone,
+      );
+      if (
+        previousFormatting &&
+        (!omitsPreviousRunProperties(changeElement) ||
+          Object.keys(previousFormatting).length > 0)
+      ) {
+        change.previousFormatting = previousFormatting;
+      }
+      if (currentFormatting) {
+        change.currentFormatting = currentFormatting;
+      }
+      return change;
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -744,7 +805,10 @@ function parsePositionalTabContent(element: XmlElement): TabContent {
     getAttribute(element, "w", "alignment"),
     PositionalTabAlignmentSchema,
   );
-  const leader = narrowEnum(getAttribute(element, "w", "leader"), PositionalTabLeaderSchema);
+  const leader = narrowEnum(
+    getAttribute(element, "w", "leader"),
+    PositionalTabLeaderSchema,
+  );
   if (relativeTo !== undefined) {
     positional.relativeTo = relativeTo;
   }
@@ -766,11 +830,20 @@ function parseBreakContent(element: XmlElement): BreakContent {
 
   const content: BreakContent = { type: "break" };
 
-  if (breakType === "page" || breakType === "column" || breakType === "textWrapping") {
+  if (
+    breakType === "page" ||
+    breakType === "column" ||
+    breakType === "textWrapping"
+  ) {
     content.breakType = breakType;
   }
 
-  if (clear === "none" || clear === "left" || clear === "right" || clear === "all") {
+  if (
+    clear === "none" ||
+    clear === "left" ||
+    clear === "right" ||
+    clear === "all"
+  ) {
     content.clear = clear;
   }
 
@@ -800,7 +873,11 @@ function parseFootnoteReference(element: XmlElement): NoteReferenceContent {
     type: "footnoteRef",
     id,
   };
-  const customMarkFollows = parseOnOffAttribute(element, "w", "customMarkFollows");
+  const customMarkFollows = parseOnOffAttribute(
+    element,
+    "w",
+    "customMarkFollows",
+  );
   if (customMarkFollows !== undefined) {
     reference.customMarkFollows = customMarkFollows;
   }
@@ -816,7 +893,11 @@ function parseEndnoteReference(element: XmlElement): NoteReferenceContent {
     type: "endnoteRef",
     id,
   };
-  const customMarkFollows = parseOnOffAttribute(element, "w", "customMarkFollows");
+  const customMarkFollows = parseOnOffAttribute(
+    element,
+    "w",
+    "customMarkFollows",
+  );
   if (customMarkFollows !== undefined) {
     reference.customMarkFollows = customMarkFollows;
   }
@@ -906,7 +987,12 @@ function parseDrawingContent(
   media: Map<string, MediaFile> | null,
   previews: PreviewLedger,
 ): DrawingContent | ShapeContent | null {
-  const groupImage = parseGroupDrawing(element, previews, rels ?? undefined, media ?? undefined);
+  const groupImage = parseGroupDrawing(
+    element,
+    previews,
+    rels ?? undefined,
+    media ?? undefined,
+  );
   if (groupImage) {
     // The rasterized group is a preview, not a projection: it replays while
     // untouched, and an edit must block the save rather than regenerate one
@@ -925,7 +1011,11 @@ function parseDrawingContent(
   if (isGroupDrawing(element)) {
     return preserveOnlyDrawing(captureVerbatimXml(element));
   }
-  const diagramImage = parseDiagramPreview(element, rels ?? undefined, media ?? undefined);
+  const diagramImage = parseDiagramPreview(
+    element,
+    rels ?? undefined,
+    media ?? undefined,
+  );
   if (diagramImage) {
     return {
       type: "drawing",
@@ -934,7 +1024,11 @@ function parseDrawingContent(
       rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
     };
   }
-  const chartImage = parseChartPreview(element, rels ?? undefined, media ?? undefined);
+  const chartImage = parseChartPreview(
+    element,
+    rels ?? undefined,
+    media ?? undefined,
+  );
   if (chartImage) {
     return {
       type: "drawing",
@@ -965,9 +1059,19 @@ function parseDrawingContent(
     // `a:graphic` at all. `image` records the anchor's geometry for layout, but
     // the authored XML is the content, so the drawing replays unconditionally
     // rather than regenerating into a `pic:pic` it never held.
-    return { type: "drawing", image, rawXml, rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY };
+    return {
+      type: "drawing",
+      image,
+      rawXml,
+      rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
+    };
   }
-  return { type: "drawing", image, rawXml, rawImageFingerprint: imageRawXmlFingerprint(image) };
+  return {
+    type: "drawing",
+    image,
+    rawXml,
+    rawImageFingerprint: imageRawXmlFingerprint(image),
+  };
 }
 
 /**
@@ -1069,7 +1173,13 @@ function parseRunContents(
         // it to the same drawing/image node a DrawingML image produces so it
         // renders through the existing image path; the original VML round-trips
         // verbatim via the drawing's rawXml.
-        const vmlDrawing = parseVmlImageContent(child, rels, media, previews, rootXmlns);
+        const vmlDrawing = parseVmlImageContent(
+          child,
+          rels,
+          media,
+          previews,
+          rootXmlns,
+        );
         if (vmlDrawing) {
           contents.push(vmlDrawing);
           break;
@@ -1078,7 +1188,9 @@ function parseRunContents(
         // emits DrawingML only, so raw replay is the sole way to keep it.
         if (shouldPreserveRawVmlPict(child)) {
           contents.push(
-            preserveOnlyDrawing(captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns))),
+            preserveOnlyDrawing(
+              captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns)),
+            ),
           );
         }
         break;
@@ -1087,7 +1199,13 @@ function parseRunContents(
       case "object": {
         // Embedded objects can carry a relationship-backed VML preview. Route
         // that preview through the image path while retaining the source XML.
-        const objectPreview = parseVmlImageContent(child, rels, media, previews, rootXmlns);
+        const objectPreview = parseVmlImageContent(
+          child,
+          rels,
+          media,
+          previews,
+          rootXmlns,
+        );
         // No preview resolved: nothing else claims a `w:object`, so the sink is
         // the only thing between the embedding and the floor.
         contents.push(objectPreview ?? preserveRunChild(child));
@@ -1124,12 +1242,18 @@ function parseRunContents(
         // relationship), then fall through to the Choice's DrawingML image.
         // The whole AlternateContent is kept on save so the Choice is not lost.
         const alternateChildren = getChildElements(child);
-        const choiceEl = alternateChildren.find((el) => getLocalName(el.name) === "Choice");
-        const fallbackEl = alternateChildren.find((el) => getLocalName(el.name) === "Fallback");
+        const choiceEl = alternateChildren.find(
+          (el) => getLocalName(el.name) === "Choice",
+        );
+        const fallbackEl = alternateChildren.find(
+          (el) => getLocalName(el.name) === "Fallback",
+        );
         const contentsBeforeAlternate = contents.length;
         const choiceTextBoxDrawing = choiceEl
           ? getChildElements(choiceEl).find(
-              (element) => getLocalName(element.name) === "drawing" && isTextBoxDrawing(element),
+              (element) =>
+                getLocalName(element.name) === "drawing" &&
+                isTextBoxDrawing(element),
             )
           : undefined;
 
@@ -1141,7 +1265,12 @@ function parseRunContents(
             )
           : undefined;
         if (groupedChoiceDrawing) {
-          const groupedDrawing = parseDrawingContent(groupedChoiceDrawing, rels, media, previews);
+          const groupedDrawing = parseDrawingContent(
+            groupedChoiceDrawing,
+            rels,
+            media,
+            previews,
+          );
           // Widen the captured XML from the Choice to the whole
           // mc:AlternateContent so the Fallback replays too. Narrowing on the
           // mode keeps the result a preview-only member rather than a widened
@@ -1151,13 +1280,18 @@ function parseRunContents(
             groupedDrawing.rawXmlMode === DRAWING_RAW_XML_MODES.PREVIEW_ONLY &&
             groupedDrawing.image.src
           ) {
-            contents.push({ ...groupedDrawing, rawXml: captureVerbatimXml(child) });
+            contents.push({
+              ...groupedDrawing,
+              rawXml: captureVerbatimXml(child),
+            });
             break;
           }
         }
 
         const fallbackDrawing = fallbackEl
-          ? getChildElements(fallbackEl).find((el) => getLocalName(el.name) === "drawing")
+          ? getChildElements(fallbackEl).find(
+              (el) => getLocalName(el.name) === "drawing",
+            )
           : undefined;
         const fallbackImage = fallbackDrawing
           ? parseImage(fallbackDrawing, rels ?? undefined, media ?? undefined)
@@ -1180,14 +1314,24 @@ function parseRunContents(
         }
 
         const fallbackPict = fallbackEl
-          ? getChildElements(fallbackEl).find((el) => getLocalName(el.name) === "pict")
+          ? getChildElements(fallbackEl).find(
+              (el) => getLocalName(el.name) === "pict",
+            )
           : undefined;
         const fallbackVml =
           fallbackPict && !choiceTextBoxDrawing
-            ? parseVmlImageContent(fallbackPict, rels, media, previews, rootXmlns)
+            ? parseVmlImageContent(
+                fallbackPict,
+                rels,
+                media,
+                previews,
+                rootXmlns,
+              )
             : null;
         if (fallbackVml?.image.src) {
-          fallbackVml.rawXml = captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+          fallbackVml.rawXml = captureVerbatimXml(
+            cloneWithXmlnsDeclarations(child, rootXmlns),
+          );
           contents.push(fallbackVml);
           break;
         }
@@ -1197,7 +1341,12 @@ function parseRunContents(
           for (const innerChild of getChildElements(targetEl)) {
             const innerName = getLocalName(innerChild.name);
             if (innerName === "drawing") {
-              const innerDrawing = parseDrawingContent(innerChild, rels, media, previews);
+              const innerDrawing = parseDrawingContent(
+                innerChild,
+                rels,
+                media,
+                previews,
+              );
               // Keep package-referenced drawings even when the browser cannot render
               // the media. The serializer must preserve the relationship reference.
               if (innerDrawing) {
@@ -1222,9 +1371,17 @@ function parseRunContents(
               }
             } else if (innerName === "pict") {
               // A VML picture in the chosen Choice (no Fallback image present).
-              const innerVml = parseVmlImageContent(innerChild, rels, media, previews, rootXmlns);
+              const innerVml = parseVmlImageContent(
+                innerChild,
+                rels,
+                media,
+                previews,
+                rootXmlns,
+              );
               if (innerVml) {
-                innerVml.rawXml = captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+                innerVml.rawXml = captureVerbatimXml(
+                  cloneWithXmlnsDeclarations(child, rootXmlns),
+                );
                 contents.push(innerVml);
               }
             } else {
@@ -1250,12 +1407,16 @@ function parseRunContents(
         // preserving it here too would emit the shape twice.
         const hasTextBoxBranch = [choiceEl, fallbackEl].some((branch) =>
           getChildElements(branch).some(
-            (element) => getLocalName(element.name) === "drawing" && isTextBoxDrawing(element),
+            (element) =>
+              getLocalName(element.name) === "drawing" &&
+              isTextBoxDrawing(element),
           ),
         );
         if (contents.length === contentsBeforeAlternate && !hasTextBoxBranch) {
           contents.push(
-            preserveOnlyDrawing(captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns))),
+            preserveOnlyDrawing(
+              captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns)),
+            ),
           );
         }
         break;
@@ -1312,7 +1473,11 @@ export function parseRun(
     if (formattingResult) {
       run.formatting = formattingResult;
     }
-    const propertyChangesResult = parseRunPropertyChanges(rPr, theme, run.formatting);
+    const propertyChangesResult = parseRunPropertyChanges(
+      rPr,
+      theme,
+      run.formatting,
+    );
     if (propertyChangesResult) {
       run.propertyChanges = propertyChangesResult;
     }
@@ -1332,9 +1497,10 @@ export function parseRun(
   // `CT_R` declares `w:rsidR`, `w:rsidDel` and `w:rsidRPr`, and `serializeRun`
   // writes no attribute of its own, so every attribute the source wrote is
   // the remainder.
-  const remainder = attributeRemainder({ element: node, modelled: NO_MODELLED_ATTRIBUTES })?.filter(
-    (attribute) => !isEmptyRunPropertiesAttribute(attribute),
-  );
+  const remainder = attributeRemainder({
+    element: node,
+    modelled: NO_MODELLED_ATTRIBUTES,
+  })?.filter((attribute) => !isEmptyRunPropertiesAttribute(attribute));
   if (remainder?.length) {
     run.preservedAttributes = remainder;
   }
@@ -1399,7 +1565,9 @@ export function hasImage(run: Run): boolean {
  * @returns Array of Image objects
  */
 export function getImages(run: Run): Image[] {
-  return run.content.filter((c): c is DrawingContent => c.type === "drawing").map((c) => c.image);
+  return run.content
+    .filter((c): c is DrawingContent => c.type === "drawing")
+    .map((c) => c.image);
 }
 
 /**
@@ -1418,7 +1586,11 @@ export function hasFieldChar(run: Run): boolean {
  * @param run - Parsed Run object
  * @returns Field character type or null
  */
-export function getFieldCharType(run: Run): "begin" | "separate" | "end" | null {
-  const fieldChar = run.content.find((c): c is FieldCharContent => c.type === "fieldChar");
+export function getFieldCharType(
+  run: Run,
+): "begin" | "separate" | "end" | null {
+  const fieldChar = run.content.find(
+    (c): c is FieldCharContent => c.type === "fieldChar",
+  );
   return fieldChar?.charType ?? null;
 }

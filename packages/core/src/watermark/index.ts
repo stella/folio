@@ -8,6 +8,8 @@
  * to every header part so all sections render it.
  */
 
+import { isEmptyParagraph } from "../docx/paragraphParser";
+import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import type {
   Document,
   HeaderFooter,
@@ -15,10 +17,12 @@ import type {
   SectionProperties,
   Watermark,
 } from "../types/document";
-import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
-import { isEmptyParagraph } from "../docx/paragraphParser";
 
-export type { Watermark, TextWatermark, PictureWatermark } from "../types/document";
+export type {
+  Watermark,
+  TextWatermark,
+  PictureWatermark,
+} from "../types/document";
 
 /**
  * Schemes allowed for a picture watermark's external image target
@@ -68,7 +72,10 @@ export function getDocumentWatermark(doc: Document): Watermark | undefined {
  * document needs but lacks — see {@link ensureWatermarkHeaderCoverage}. Pass
  * `undefined` to remove the watermark from every header.
  */
-export function setDocumentWatermark(doc: Document, watermark: Watermark | undefined): Document {
+export function setDocumentWatermark(
+  doc: Document,
+  watermark: Watermark | undefined,
+): Document {
   const headers = doc.package.headers;
   const nextHeaders = new Map<string, HeaderFooter>();
   if (headers) {
@@ -136,13 +143,21 @@ export function setDocumentWatermark(doc: Document, watermark: Watermark | undef
  * Created headers use freshly minted rIds that the save pipeline materializes
  * into real parts.
  */
-export function ensureWatermarkHeaderCoverage(doc: Document, watermark: Watermark): Document {
+export function ensureWatermarkHeaderCoverage(
+  doc: Document,
+  watermark: Watermark,
+): Document {
   const body = doc.package.document;
   const headers = new Map<string, HeaderFooter>(doc.package.headers);
   const evenOddMode = doc.package.settings?.evenAndOddHeaders === true;
 
-  const resolvesType = (props: SectionProperties, type: HeaderFooterType): boolean =>
-    props.headerReferences?.some((ref) => ref.type === type && headers.has(ref.rId)) ?? false;
+  const resolvesType = (
+    props: SectionProperties,
+    type: HeaderFooterType,
+  ): boolean =>
+    props.headerReferences?.some(
+      (ref) => ref.type === type && headers.has(ref.rId),
+    ) ?? false;
 
   // Mint a coverage rId that collides with no existing relationship, header, or
   // footer id (a fixed id could clash with a producer-chosen one and corrupt
@@ -238,7 +253,10 @@ export function ensureWatermarkHeaderCoverage(doc: Document, watermark: Watermar
     }
   }
 
-  const withRefs = (props: SectionProperties, refs: Ref[]): SectionProperties =>
+  const withRefs = (
+    props: SectionProperties,
+    refs: Ref[],
+  ): SectionProperties =>
     refs.length === 0
       ? props
       : {
@@ -268,7 +286,10 @@ export function ensureWatermarkHeaderCoverage(doc: Document, watermark: Watermar
     return block;
   });
   // The final section is always the last slot.
-  const newFinal = withRefs(body.finalSectionProperties ?? {}, additions.at(-1) ?? []);
+  const newFinal = withRefs(
+    body.finalSectionProperties ?? {},
+    additions.at(-1) ?? [],
+  );
 
   return {
     ...doc,

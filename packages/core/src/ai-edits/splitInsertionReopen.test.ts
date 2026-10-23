@@ -7,8 +7,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { createDocx } from "../docx/rezip";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
@@ -23,9 +23,19 @@ const CASES = [
 type Case = (typeof CASES)[number];
 
 const changes = (reviewer: FolioDocxReviewer) =>
-  reviewer.getChanges().map(({ type, author, text, blockId }) => ({ type, author, text, blockId }));
+  reviewer.getChanges().map(({ type, author, text, blockId }) => ({
+    type,
+    author,
+    text,
+    blockId,
+  }));
 
-const build = async ([, find, replace, styleId]: Case): Promise<FolioDocxReviewer> => {
+const build = async ([
+  ,
+  find,
+  replace,
+  styleId,
+]: Case): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(fromMarkdown("# Title\n\nFirst clause.\n\nLast clause.")),
     { author: "AI" },
@@ -41,21 +51,34 @@ const build = async ([, find, replace, styleId]: Case): Promise<FolioDocxReviewe
         { undefinedReferences: "refuse" },
       ).skipped,
     ).toEqual([]);
-  const first = reviewer.getContent().find(({ text }) => text === "First clause.")?.id;
-  apply({ type: "insertAfterBlock", blockId: first, text: INSERTED, ...(styleId && { styleId }) });
-  const inserted = reviewer.getContent().find(({ text }) => text === INSERTED)?.id;
+  const first = reviewer
+    .getContent()
+    .find(({ text }) => text === "First clause.")?.id;
+  apply({
+    type: "insertAfterBlock",
+    blockId: first,
+    text: INSERTED,
+    ...(styleId && { styleId }),
+  });
+  const inserted = reviewer
+    .getContent()
+    .find(({ text }) => text === INSERTED)?.id;
   apply({ type: "replaceInBlock", blockId: inserted, find, replace });
   return reviewer;
 };
 
-const reopen = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> =>
+const reopen = async (
+  reviewer: FolioDocxReviewer,
+): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
 
 /** Accept the insertion's last stretch; the rest must stay pending. */
 const acceptLastStretch = (reviewer: FolioDocxReviewer) => {
   const insertions = reviewer
     .getChanges()
-    .filter(({ type, text }) => type === "insertion" && INSERTED.includes(text));
+    .filter(
+      ({ type, text }) => type === "insertion" && INSERTED.includes(text),
+    );
   expect(insertions.length).toBeGreaterThan(1);
   const last = insertions.at(-1);
   if (!last) throw new Error("no insertion stretch");
@@ -91,9 +114,11 @@ describe("an edit inside a pending insertion", () => {
       const saved = await reopen(reviewer);
       const live = acceptLastStretch(reviewer);
       const reopened = acceptLastStretch(saved);
-      expect(live.some(({ type, text }) => type === "insertion" && INSERTED.startsWith(text))).toBe(
-        true,
-      );
+      expect(
+        live.some(
+          ({ type, text }) => type === "insertion" && INSERTED.startsWith(text),
+        ),
+      ).toBe(true);
       expect(reopened).toEqual(live);
     },
   );

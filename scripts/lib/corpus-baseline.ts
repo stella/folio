@@ -14,8 +14,11 @@
  * "no worse" means.
  */
 
-import { declaredRefusalDifferences, type DeclaredRefusalCounts } from "./corpus-declared-refusals";
 import type { CorpusCensus } from "./corpus-census";
+import {
+  type DeclaredRefusalCounts,
+  declaredRefusalDifferences,
+} from "./corpus-declared-refusals";
 import { isGatingFailure, isZeroFailure } from "./corpus-invariants/contract";
 import type { CorpusInvariant } from "./corpus-signature";
 
@@ -27,7 +30,10 @@ import type { CorpusInvariant } from "./corpus-signature";
  */
 const gatingSignatures = <T extends { invariant: CorpusInvariant }>(
   signatures: readonly T[],
-): T[] => signatures.filter((signature) => isGatingFailure(signature) && !isZeroFailure(signature));
+): T[] =>
+  signatures.filter(
+    (signature) => isGatingFailure(signature) && !isZeroFailure(signature),
+  );
 
 export type CorpusBaselineEntry = {
   signature: string;
@@ -58,12 +64,16 @@ export type CorpusBaseline = {
  * missing for a reason nobody wrote down: the run is degraded, whatever share
  * of the corpus it is.
  */
-export const isDegradedRun = (census: CorpusCensus): boolean => (census.truncated ?? 0) > 0;
+export const isDegradedRun = (census: CorpusCensus): boolean =>
+  (census.truncated ?? 0) > 0;
 
 /** How a degraded run names what it lost, and what to do about it. */
 export const describeDegradedRun = (census: CorpusCensus): string => {
   const named = (census.truncatedExamples ?? [])
-    .map(({ file, stage }) => `${file.sourceId}/${file.path} (stopped at ${stage})`)
+    .map(
+      ({ file, stage }) =>
+        `${file.sourceId}/${file.path} (stopped at ${stage})`,
+    )
     .join(", ");
   return `${census.truncated} of ${census.files} files stopped at a budget without being listed as report-only: ${named}. Add each to corpus/report-only-files.json with a reason, or make it finish inside the budget.`;
 };
@@ -145,7 +155,13 @@ export const compareToBaseline = (
   // with it, so the comparison is over a set nobody chose: there is nothing
   // sound to report until the run is repeated or the file is listed.
   if (isDegradedRun(census)) {
-    return [{ kind: "run-degraded", signature: "-", detail: describeDegradedRun(census) }];
+    return [
+      {
+        kind: "run-degraded",
+        signature: "-",
+        detail: describeDegradedRun(census),
+      },
+    ];
   }
 
   const listChanged = reportOnlyListChanged(baseline, census);
@@ -158,16 +174,18 @@ export const compareToBaseline = (
           {
             kind: "corpus-changed",
             signature: "declared-refusals",
-            detail: "Baseline predates declared-refusal accounting; measure and refresh it",
+            detail:
+              "Baseline predates declared-refusal accounting; measure and refresh it",
           },
         ]
-      : declaredRefusalDifferences(baseline.declaredRefusals, census.declaredRefusals).map(
-          ({ invariant, reason, before, after }) => ({
-            kind: after > before ? "more-files" : "fewer-files",
-            signature: `declared-refusal | ${invariant} | ${reason}`,
-            detail: `${after} declared refusals, recorded ${before}; measure and refresh the counts`,
-          }),
-        );
+      : declaredRefusalDifferences(
+          baseline.declaredRefusals,
+          census.declaredRefusals,
+        ).map(({ invariant, reason, before, after }) => ({
+          kind: after > before ? "more-files" : "fewer-files",
+          signature: `declared-refusal | ${invariant} | ${reason}`,
+          detail: `${after} declared refusals, recorded ${before}; measure and refresh the counts`,
+        }));
   for (const observed of gatingSignatures(census.signatures)) {
     const entry = recorded.get(observed.signature);
     if (entry === undefined) {
@@ -224,9 +242,18 @@ export const compareToBaseline = (
 };
 
 /** Every ratchet this gate runs reports the same shape, so one renderer serves. */
-export type RatchetViolation = { kind: string; signature: string; detail: string };
+export type RatchetViolation = {
+  kind: string;
+  signature: string;
+  detail: string;
+};
 
-export const renderViolations = (violations: readonly RatchetViolation[]): string =>
+export const renderViolations = (
+  violations: readonly RatchetViolation[],
+): string =>
   violations
-    .map(({ kind, signature, detail }) => `- [${kind}] ${signature}\n    ${detail}`)
+    .map(
+      ({ kind, signature, detail }) =>
+        `- [${kind}] ${signature}\n    ${detail}`,
+    )
     .join("\n");

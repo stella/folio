@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { FolioDocxReviewer } from "@stll/folio-core/server";
 import JSZip from "jszip";
+
+import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { createReviewerBridge } from "./bridges/reviewer";
 import { executeFolioToolCall } from "./execute";
@@ -31,7 +32,9 @@ describe("read_document inside block custom XML", () => {
       throw new Error(read.error);
     }
     const expected = ["First clause.", "Second clause.", "After."];
-    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual(expected);
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual(
+      expected,
+    );
     expect(read.result.map(({ text }) => text)).toEqual(expected);
   });
 });

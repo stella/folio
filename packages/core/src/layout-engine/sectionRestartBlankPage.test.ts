@@ -20,8 +20,16 @@ import type {
 const PAGE_SIZE = { w: 600, h: 800 };
 const MARGINS = { top: 50, right: 50, bottom: 50, left: 50 };
 
-const paragraph = (id: string): { block: ParagraphBlock; measure: ParagraphMeasure } => ({
-  block: { kind: "paragraph", id, pmStart: 0, pmEnd: 0, runs: [{ kind: "text", text: id }] },
+const paragraph = (
+  id: string,
+): { block: ParagraphBlock; measure: ParagraphMeasure } => ({
+  block: {
+    kind: "paragraph",
+    id,
+    pmStart: 0,
+    pmEnd: 0,
+    runs: [{ kind: "text", text: id }],
+  },
   measure: {
     kind: "paragraph",
     lines: [
@@ -57,7 +65,9 @@ const layoutRestartedSection = ({
     headerEven: "header-even",
     footerDefault: "footer-default",
   };
-  const outgoing = Array.from({ length: outgoingPages }, (_, index) => paragraph(`out-${index}`));
+  const outgoing = Array.from({ length: outgoingPages }, (_, index) =>
+    paragraph(`out-${index}`),
+  );
   const incoming = paragraph("incoming");
   const blocks: FlowBlock[] = [];
   const measures: Measure[] = [];
@@ -92,7 +102,9 @@ const layoutRestartedSection = ({
 };
 
 const pageHolding = (layout: Layout, blockId: string) =>
-  layout.pages.find((page) => page.fragments.some((fragment) => fragment.blockId === blockId));
+  layout.pages.find((page) =>
+    page.fragments.some((fragment) => fragment.blockId === blockId),
+  );
 
 describe("odd and even page numbers at a restarted section", () => {
   test("inserts a blank sheet when the restart repeats the previous page's odd or even number", () => {
@@ -109,7 +121,11 @@ describe("odd and even page numbers at a restarted section", () => {
     expect(filler.headerFooterRefs).toEqual({});
     const first = pageHolding(layout, "incoming");
     expect(first?.number).toBe(3);
-    expect(first).toMatchObject({ logicalNumber: 1, sectionIndex: 1, sectionPageNumber: 1 });
+    expect(first).toMatchObject({
+      logicalNumber: 1,
+      sectionIndex: 1,
+      sectionPageNumber: 1,
+    });
     expect(first?.headerFooterRefs?.headerDefault).toBe("header-default");
   });
 
@@ -121,7 +137,10 @@ describe("odd and even page numbers at a restarted section", () => {
     });
 
     expect(layout.pages).toHaveLength(3);
-    expect(pageHolding(layout, "incoming")).toMatchObject({ number: 3, logicalNumber: 1 });
+    expect(pageHolding(layout, "incoming")).toMatchObject({
+      number: 3,
+      logicalNumber: 1,
+    });
   });
 
   test("keeps consecutive sheets without even and odd headers", () => {
@@ -132,6 +151,9 @@ describe("odd and even page numbers at a restarted section", () => {
     });
 
     expect(layout.pages).toHaveLength(2);
-    expect(pageHolding(layout, "incoming")).toMatchObject({ number: 2, logicalNumber: 1 });
+    expect(pageHolding(layout, "incoming")).toMatchObject({
+      number: 2,
+      logicalNumber: 1,
+    });
   });
 });

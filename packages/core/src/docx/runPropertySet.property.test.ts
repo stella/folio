@@ -21,19 +21,28 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import type { TextFormatting } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type {
+  Document,
+  Paragraph,
+  Run,
+  TextFormatting,
+} from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
-import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+} from "./containerChildren.gen";
 import { parseParagraph } from "./paragraphParser";
 import { parseRun, parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { serializeRun } from "./serializer/runSerializer";
 import { serializeTextFormatting } from "./serializer/textFormattingSerializer";
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Paragraph, Run } from "../types/document";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -52,8 +61,10 @@ const DECLARED = CONTAINER_CHILDREN["run-properties"];
 const SAMPLES = {
   ins: '<w:ins w:id="11" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
   del: '<w:del w:id="12" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
-  moveFrom: '<w:moveFrom w:id="13" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
-  moveTo: '<w:moveTo w:id="14" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
+  moveFrom:
+    '<w:moveFrom w:id="13" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
+  moveTo:
+    '<w:moveTo w:id="14" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
   rStyle: '<w:rStyle w:val="Emphasis"/>',
   rFonts: '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/>',
   b: "<w:b/>",
@@ -128,7 +139,9 @@ const parseOne = (xml: string): XmlElement => {
 /** A run's own `w:rPr`, parsed and written back from the model alone. */
 const rebuildRun = (properties: string): string => {
   const run = parseRun(
-    parseOne(`<w:r xmlns:w="${W}"><w:rPr>${properties}</w:rPr><w:t>x</w:t></w:r>`),
+    parseOne(
+      `<w:r xmlns:w="${W}"><w:rPr>${properties}</w:rPr><w:t>x</w:t></w:r>`,
+    ),
     null,
     null,
   );
@@ -145,7 +158,9 @@ const rebuildRun = (properties: string): string => {
  */
 const rebuildParagraphMark = (properties: string): string => {
   const paragraph = parseParagraph(
-    parseOne(`<w:p xmlns:w="${W}"><w:pPr><w:rPr>${properties}</w:rPr></w:pPr></w:p>`),
+    parseOne(
+      `<w:p xmlns:w="${W}"><w:pPr><w:rPr>${properties}</w:rPr></w:pPr></w:p>`,
+    ),
     null,
     null,
     null,
@@ -179,7 +194,10 @@ const childAt = (saved: string, name: string): number =>
 
 /** The outer `w:rPr`'s own children: a `w:rPrChange` nests a second one. */
 const propertiesOf = (saved: string): string =>
-  saved.slice(saved.indexOf("<w:rPr>") + "<w:rPr>".length, saved.lastIndexOf("</w:rPr>"));
+  saved.slice(
+    saved.indexOf("<w:rPr>") + "<w:rPr>".length,
+    saved.lastIndexOf("</w:rPr>"),
+  );
 
 describe("a run property set survives a rebuild", () => {
   test("every declared child comes back on a run, and the save after it is a fixed point", () => {
@@ -241,11 +259,15 @@ describe("a run property set survives a rebuild", () => {
 
     const positions = DECLARED.map((name) => childAt(saved, name));
     expect(positions.every((at) => at > -1)).toBe(true);
-    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
   });
 
   test("a capture comes back between the same two modelled properties", () => {
-    const saved = rebuildRun('<w:b/><w:bdr w:val="single" w:sz="4" w:space="0" w:color="auto"/>');
+    const saved = rebuildRun(
+      '<w:b/><w:bdr w:val="single" w:sz="4" w:space="0" w:color="auto"/>',
+    );
 
     expect(childAt(saved, "b")).toBeGreaterThan(-1);
     expect(childAt(saved, "b")).toBeLessThan(childAt(saved, "bdr"));
@@ -263,7 +285,9 @@ describe("a run property set survives a rebuild", () => {
     const saved = rebuildRun(`<w:i/>${SAMPLES.rPrChange}`);
 
     expect(saved).toContain('<w:rPrChange w:id="7" w:author="Reviewer"');
-    expect(saved).toContain('<w:bdr w:val="single" w:sz="4" w:space="0" w:color="auto"/>');
+    expect(saved).toContain(
+      '<w:bdr w:val="single" w:sz="4" w:space="0" w:color="auto"/>',
+    );
     expect(rebuildRun(propertiesOf(saved))).toBe(saved);
   });
 
@@ -271,7 +295,9 @@ describe("a run property set survives a rebuild", () => {
     // `ParagraphFormatting.runInWithNext` is tri-state, so both an on and the
     // explicit off that cancels a style's run-in land in the paragraph record
     // and are written back from there.
-    expect(rebuildParagraphMark("<w:specVanish/>")).toContain("<w:specVanish/>");
+    expect(rebuildParagraphMark("<w:specVanish/>")).toContain(
+      "<w:specVanish/>",
+    );
     expect(rebuildParagraphMark('<w:specVanish w:val="0"/>')).toContain(
       '<w:specVanish w:val="0"/>',
     );
@@ -289,7 +315,9 @@ describe("a run property set survives a rebuild", () => {
     // it is the bytes one `w:rPr` held, and a merge that carried them would
     // write a style's or a paragraph mark's markup into every run below it.
     const inherited = parseRunProperties(
-      parseOne(`<w:rPr xmlns:w="${W}"><w:bdr w:val="single" w:sz="4"/></w:rPr>`),
+      parseOne(
+        `<w:rPr xmlns:w="${W}"><w:bdr w:val="single" w:sz="4"/></w:rPr>`,
+      ),
       null,
       RUN_PROPERTY_OWNERS.standalone,
     );
@@ -300,9 +328,15 @@ describe("a run property set survives a rebuild", () => {
     // whole: a rule enforced on the long path only is a rule that drifts.
     expect(mergeTextFormatting(inherited, direct)?.preserved).toBeUndefined();
     expect(mergeTextFormatting(direct, inherited)?.preserved).toBeUndefined();
-    expect(mergeTextFormatting(inherited, undefined)?.preserved).toBeUndefined();
-    expect(mergeTextFormatting(undefined, inherited)?.preserved).toBeUndefined();
-    expect(serializeTextFormatting(mergeTextFormatting(inherited, direct))).not.toContain("w:bdr");
+    expect(
+      mergeTextFormatting(inherited, undefined)?.preserved,
+    ).toBeUndefined();
+    expect(
+      mergeTextFormatting(undefined, inherited)?.preserved,
+    ).toBeUndefined();
+    expect(
+      serializeTextFormatting(mergeTextFormatting(inherited, direct)),
+    ).not.toContain("w:bdr");
   });
 });
 
@@ -315,13 +349,17 @@ describe("a run property set survives a rebuild", () => {
 describe("a run property set survives the editor", () => {
   const throughTheEditor = (properties: string): Run => {
     const run = parseRun(
-      parseOne(`<w:r xmlns:w="${W}"><w:rPr>${properties}</w:rPr><w:t>x</w:t></w:r>`),
+      parseOne(
+        `<w:r xmlns:w="${W}"><w:rPr>${properties}</w:rPr><w:t>x</w:t></w:r>`,
+      ),
       null,
       null,
     );
     const source = {
       package: {
-        document: { content: [{ type: "paragraph", content: [run] } satisfies Paragraph] },
+        document: {
+          content: [{ type: "paragraph", content: [run] } satisfies Paragraph],
+        },
       },
     } as unknown as Document;
     const rebuilt = fromProseDoc(toProseDoc(source), source, {
@@ -331,7 +369,9 @@ describe("a run property set survives the editor", () => {
     if (paragraph?.type !== "paragraph") {
       throw new Error("the projection produced no paragraph");
     }
-    const saved = paragraph.content.find((item): item is Run => item.type === "run");
+    const saved = paragraph.content.find(
+      (item): item is Run => item.type === "run",
+    );
     if (!saved) {
       throw new Error("the projection produced no run");
     }

@@ -96,15 +96,17 @@ cannot silently apply one.
 ## Headless quickstart
 
 ```ts
-import { FolioDocxReviewer } from "@stll/folio-core/server";
 import {
   createReviewerBridge,
   executeFolioToolCallUntyped,
   getFolioToolDefinitions,
   toAnthropicTools,
 } from "@stll/folio-agents";
+import { FolioDocxReviewer } from "@stll/folio-core/server";
 
-const reviewer = await FolioDocxReviewer.fromBuffer(docxBuffer, { author: "AI" });
+const reviewer = await FolioDocxReviewer.fromBuffer(docxBuffer, {
+  author: "AI",
+});
 const bridge = createReviewerBridge(reviewer);
 const tools = toAnthropicTools(getFolioToolDefinitions());
 
@@ -154,8 +156,8 @@ host configures per surface instead of re-deriving. Pass the same options to
 import {
   describeSuggestChangesCapabilities,
   executeFolioToolCall,
-  getFolioToolDefinitions,
   type FolioSuggestChangesOptions,
+  getFolioToolDefinitions,
 } from "@stll/folio-agents";
 
 const suggestChanges: FolioSuggestChangesOptions = {
@@ -170,7 +172,9 @@ const suggestChanges: FolioSuggestChangesOptions = {
 };
 
 const tools = getFolioToolDefinitions({ suggestChanges });
-const result = executeFolioToolCall("suggest_changes", args, bridge, { suggestChanges });
+const result = executeFolioToolCall("suggest_changes", args, bridge, {
+  suggestChanges,
+});
 // `describeSuggestChangesCapabilities({ ...suggestChanges })` returns the same
 // capability text the tool description carries, for reuse in a system prompt.
 ```
@@ -206,8 +210,8 @@ included, and the host keeps the automatic `precondition` stamping and the
 document-version check:
 
 ```ts
-import { getFolioDocumentOperationReceipts } from "@stll/folio-core/server";
 import type { FolioAgentBridge } from "@stll/folio-agents";
+import { getFolioDocumentOperationReceipts } from "@stll/folio-core/server";
 
 const queueBridge: FolioAgentBridge = {
   snapshot: () => lastSnapshotShownToTheModel,
@@ -258,9 +262,15 @@ independent of whether either one has any tracked changes at all. Use
 `compareDocxVersions` + `formatVersionDiffForLLM`:
 
 ```ts
-import { compareDocxVersions, formatVersionDiffForLLM } from "@stll/folio-agents";
+import {
+  compareDocxVersions,
+  formatVersionDiffForLLM,
+} from "@stll/folio-agents";
 
-const diff = await compareDocxVersions(previousVersionBuffer, currentVersionBuffer);
+const diff = await compareDocxVersions(
+  previousVersionBuffer,
+  currentVersionBuffer,
+);
 const prompt = `Summarize what changed between these two document versions:\n${formatVersionDiffForLLM(diff)}`;
 // -> feed `prompt` to your model as a normal user/system message.
 ```
@@ -286,9 +296,13 @@ to the generated output and returned as a structured report:
 ```ts
 import { generateRedlineDocx } from "@stll/folio-agents";
 
-const result = await generateRedlineDocx(previousVersionBuffer, currentVersionBuffer, {
-  privacy: { transforms: ["remove-attribution", "remove-timestamps"] },
-});
+const result = await generateRedlineDocx(
+  previousVersionBuffer,
+  currentVersionBuffer,
+  {
+    privacy: { transforms: ["remove-attribution", "remove-timestamps"] },
+  },
+);
 
 await storeGeneratedPackage(result.buffer);
 console.log(result.privacyReport);
@@ -301,6 +315,7 @@ TanStack AI's `toolDefinition` accepts a raw JSON Schema object as
 
 ```ts
 import { toolDefinition } from "@tanstack/ai";
+
 import { getFolioToolDefinitions } from "@stll/folio-agents";
 
 const defs = getFolioToolDefinitions().map((def) =>
@@ -328,7 +343,11 @@ SDK's own `jsonSchema()` / `tool()` helpers:
 
 ```ts
 import { jsonSchema, tool } from "ai";
-import { executeFolioToolCallUntyped, getFolioToolDefinitions } from "@stll/folio-agents";
+
+import {
+  executeFolioToolCallUntyped,
+  getFolioToolDefinitions,
+} from "@stll/folio-agents";
 
 const tools = Object.fromEntries(
   getFolioToolDefinitions().map((def) => [
@@ -336,7 +355,8 @@ const tools = Object.fromEntries(
     tool({
       description: def.description,
       inputSchema: jsonSchema(def.inputSchema),
-      execute: async (input) => executeFolioToolCallUntyped(def.name, input, bridge),
+      execute: async (input) =>
+        executeFolioToolCallUntyped(def.name, input, bridge),
     }),
   ]),
 );

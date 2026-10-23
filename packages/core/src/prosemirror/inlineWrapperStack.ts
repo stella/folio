@@ -11,7 +11,7 @@
  * preserves whatever order the markup happened to carry.
  */
 
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
 
 import type { InlineWrapper } from "../types/document";
 import { readInlineWrapperStack } from "./attrs";
@@ -32,7 +32,12 @@ const taggedLayer = <Kind extends "smartTag" | "customXml">(
   kind: Kind,
   layer: { element: string; uri?: string; propertiesXml?: string },
 ): { kind: Kind; element: string; uri?: string; propertiesXml?: string } => {
-  const canonical: { kind: Kind; element: string; uri?: string; propertiesXml?: string } = {
+  const canonical: {
+    kind: Kind;
+    element: string;
+    uri?: string;
+    propertiesXml?: string;
+  } = {
     kind,
     element: layer.element,
   };
@@ -46,7 +51,9 @@ const taggedLayer = <Kind extends "smartTag" | "customXml">(
 };
 
 /** A layer with its keys in canonical order, absent fields left absent. */
-export const inlineWrapperLayer = (layer: InlineWrapperLayer): InlineWrapperLayer => {
+export const inlineWrapperLayer = (
+  layer: InlineWrapperLayer,
+): InlineWrapperLayer => {
   switch (layer.kind) {
     case "bidi":
       return layer.direction === undefined
@@ -75,7 +82,11 @@ export const inlineWrapperLayer = (layer: InlineWrapperLayer): InlineWrapperLaye
 export const inlineWrapperMember = (
   layer: InlineWrapperLayer,
   content: InlineWrapper["content"],
-): InlineWrapper => ({ ...inlineWrapperLayer(layer), type: "inlineWrapper", content });
+): InlineWrapper => ({
+  ...inlineWrapperLayer(layer),
+  type: "inlineWrapper",
+  content,
+});
 
 /** `layers` in canonical form, or `null` when there is no wrapper to record. */
 export const inlineWrapperStack = (
@@ -83,8 +94,9 @@ export const inlineWrapperStack = (
 ): readonly InlineWrapperLayer[] | null =>
   layers.length === 0 ? null : layers.map(inlineWrapperLayer);
 
-export const serializeInlineWrapperStack = (stack: readonly InlineWrapperLayer[]): string =>
-  JSON.stringify(stack);
+export const serializeInlineWrapperStack = (
+  stack: readonly InlineWrapperLayer[],
+): string => JSON.stringify(stack);
 
 /**
  * The key two stacks share exactly when they are the same nest of wrappers.
@@ -95,8 +107,12 @@ export const serializeInlineWrapperStack = (stack: readonly InlineWrapperLayer[]
  * be written as two `w:bdo` elements. The empty stack keys as the empty string,
  * which is what "inside no wrapper" compares as.
  */
-export const inlineWrapperStackKey = (stack: readonly InlineWrapperLayer[]): string =>
-  stack.length === 0 ? "" : serializeInlineWrapperStack(stack.map(inlineWrapperLayer));
+export const inlineWrapperStackKey = (
+  stack: readonly InlineWrapperLayer[],
+): string =>
+  stack.length === 0
+    ? ""
+    : serializeInlineWrapperStack(stack.map(inlineWrapperLayer));
 
 /**
  * A stack read back from the DOM, or `null` when the markup carries none.

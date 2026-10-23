@@ -27,15 +27,18 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { RELATIONSHIP_TYPES } from "./relsParser";
-import { docxToMarkdown } from "../server";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { docxToMarkdown } from "../server";
+import { RELATIONSHIP_TYPES } from "./relsParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const MAX_DEPTH = 3;
 
@@ -68,7 +71,8 @@ const generatedCase: fc.Arbitrary<GeneratedCase> = fc
 const resultSentinel = (level: number): string => `RESULT_${level}_TOKEN`;
 const codeMarker = (level: number): string => `CODE_${level}_MARKER`;
 
-const run = (text: string): string => `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+const run = (text: string): string =>
+  `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
 const instrRun = (text: string): string =>
   `<w:r><w:instrText xml:space="preserve">${text}</w:instrText></w:r>`;
 const fldChar = (charType: "begin" | "separate" | "end"): string =>
@@ -101,7 +105,9 @@ const buildNestedFieldXml = ({
     const isLeaf = level === depth - 1;
     const sentinel = resultSentinel(level);
     const resultText =
-      isLeaf && splitLeafRuns ? run(sentinel.slice(0, 3)) + run(sentinel.slice(3)) : run(sentinel);
+      isLeaf && splitLeafRuns
+        ? run(sentinel.slice(0, 3)) + run(sentinel.slice(3))
+        : run(sentinel);
     let levelXml: string;
     if (isLeaf && leafKind === "simple") {
       levelXml = `<w:fldSimple w:instr=" DOCPROPERTY X${level} ">${resultText}</w:fldSimple>`;
@@ -198,8 +204,12 @@ describe("nested field-code visibility oracle", () => {
           const mainText = reviewer.getContent().at(0)?.text ?? "";
           expect(sentinelsPresent(mainText, generated.depth)).toEqual(expected);
 
-          const footnote = reviewer.listStories().find(({ handle }) => handle.type === "footnote");
-          expect(sentinelsPresent(footnote?.text ?? "", generated.depth)).toEqual(expected);
+          const footnote = reviewer
+            .listStories()
+            .find(({ handle }) => handle.type === "footnote");
+          expect(
+            sentinelsPresent(footnote?.text ?? "", generated.depth),
+          ).toEqual(expected);
 
           const markdown = await docxToMarkdown(buffer);
           expect(sentinelsPresent(markdown, generated.depth)).toEqual(expected);

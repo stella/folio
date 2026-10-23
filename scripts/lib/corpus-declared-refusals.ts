@@ -1,8 +1,9 @@
 import { TaggedError } from "better-result";
+
 import {
+  type CorpusDeclaredRefusal,
   DECLARED_REFUSAL_INVARIANTS,
   DECLARED_REFUSAL_REASONS,
-  type CorpusDeclaredRefusal,
   type DeclaredRefusalInvariant,
   type DeclaredRefusalReason,
 } from "./corpus-invariants/contract";
@@ -12,23 +13,32 @@ export type DeclaredRefusalCounts = Record<
   Record<DeclaredRefusalReason, number>
 >;
 
-export class DeclaredRefusalAccountingError extends TaggedError("DeclaredRefusalAccountingError")<{
+export class DeclaredRefusalAccountingError extends TaggedError(
+  "DeclaredRefusalAccountingError",
+)<{
   message: string;
 }> {}
 
 export const emptyDeclaredRefusalCounts = (): DeclaredRefusalCounts => ({
-  [DECLARED_REFUSAL_INVARIANTS.opInverse]: { [DECLARED_REFUSAL_REASONS.SIGNED_PACKAGE]: 0 },
-  [DECLARED_REFUSAL_INVARIANTS.opLocality]: { [DECLARED_REFUSAL_REASONS.SIGNED_PACKAGE]: 0 },
+  [DECLARED_REFUSAL_INVARIANTS.opInverse]: {
+    [DECLARED_REFUSAL_REASONS.SIGNED_PACKAGE]: 0,
+  },
+  [DECLARED_REFUSAL_INVARIANTS.opLocality]: {
+    [DECLARED_REFUSAL_REASONS.SIGNED_PACKAGE]: 0,
+  },
 });
 
 const INVARIANTS = Object.values(DECLARED_REFUSAL_INVARIANTS);
 const REASONS = Object.values(DECLARED_REFUSAL_REASONS);
 
 /** Refuse old or unknown accounting instead of merging it as zero. */
-export const assertDeclaredRefusalCounts = (counts: DeclaredRefusalCounts): void => {
+export const assertDeclaredRefusalCounts = (
+  counts: DeclaredRefusalCounts,
+): void => {
   if (counts === undefined || Object.keys(counts).length !== INVARIANTS.length)
     throw new DeclaredRefusalAccountingError({
-      message: "Census lacks complete declared-refusal accounting; measure it again",
+      message:
+        "Census lacks complete declared-refusal accounting; measure it again",
     });
   for (const invariant of INVARIANTS) {
     const reasons = counts[invariant];
@@ -38,7 +48,9 @@ export const assertDeclaredRefusalCounts = (counts: DeclaredRefusalCounts): void
       });
     for (const reason of REASONS) {
       if (!Number.isSafeInteger(reasons[reason]) || reasons[reason] < 0)
-        throw new DeclaredRefusalAccountingError({ message: "Invalid declared-refusal count" });
+        throw new DeclaredRefusalAccountingError({
+          message: "Invalid declared-refusal count",
+        });
     }
   }
 };
@@ -54,7 +66,9 @@ export const countDeclaredRefusals = (
     if (seen.has(key)) continue;
     seen.add(key);
     if (counts[invariant]?.[reason] === undefined)
-      throw new DeclaredRefusalAccountingError({ message: "Unknown declared refusal" });
+      throw new DeclaredRefusalAccountingError({
+        message: "Unknown declared refusal",
+      });
     counts[invariant][reason] += 1;
   }
 };
@@ -65,20 +79,28 @@ export const mergeDeclaredRefusalCounts = (
 ): void => {
   assertDeclaredRefusalCounts(from);
   for (const invariant of INVARIANTS)
-    for (const reason of REASONS) into[invariant][reason] += from[invariant][reason];
+    for (const reason of REASONS)
+      into[invariant][reason] += from[invariant][reason];
 };
 
-export const declaredRefusalCount = (counts: DeclaredRefusalCounts, family: string): number =>
+export const declaredRefusalCount = (
+  counts: DeclaredRefusalCounts,
+  family: string,
+): number =>
   INVARIANTS.filter((invariant) => invariant === family).reduce(
     (total, invariant) =>
-      total + REASONS.reduce((sum, reason) => sum + counts[invariant][reason], 0),
+      total +
+      REASONS.reduce((sum, reason) => sum + counts[invariant][reason], 0),
     0,
   );
 
-export const renderDeclaredRefusals = (counts: DeclaredRefusalCounts): string[] =>
+export const renderDeclaredRefusals = (
+  counts: DeclaredRefusalCounts,
+): string[] =>
   INVARIANTS.flatMap((invariant) =>
     REASONS.map(
-      (reason) => `  declared refusal ${invariant} / ${reason}: ${counts[invariant][reason]}`,
+      (reason) =>
+        `  declared refusal ${invariant} / ${reason}: ${counts[invariant][reason]}`,
     ),
   );
 

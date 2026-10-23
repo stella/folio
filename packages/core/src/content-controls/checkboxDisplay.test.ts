@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { checkboxDisplayContent } from "./checkboxDisplay";
 
 /** The `w14:checkbox` a property set preserves, as the parser captured it. */
-const checkboxXml = (states: string): string => `<w14:checkbox>${states}</w14:checkbox>`;
+const checkboxXml = (states: string): string =>
+  `<w14:checkbox>${states}</w14:checkbox>`;
 
 describe("checkboxDisplayContent", () => {
   test("uses the state matching the requested value", () => {
@@ -23,13 +24,21 @@ describe("checkboxDisplayContent", () => {
   });
 
   test("normalizes short BMP codes and preserves supplementary Unicode as text", () => {
-    expect(checkboxDisplayContent(checkboxXml('<w14:checkedState w14:val="41"/>'), true)).toEqual({
+    expect(
+      checkboxDisplayContent(
+        checkboxXml('<w14:checkedState w14:val="41"/>'),
+        true,
+      ),
+    ).toEqual({
       type: "symbol",
       char: "0041",
       font: "MS Gothic",
     });
     expect(
-      checkboxDisplayContent(checkboxXml('<w14:checkedState w14:val="1F5F9"/>'), true),
+      checkboxDisplayContent(
+        checkboxXml('<w14:checkedState w14:val="1F5F9"/>'),
+        true,
+      ),
     ).toEqual({ type: "text", text: "🗹" });
   });
 
@@ -37,7 +46,10 @@ describe("checkboxDisplayContent", () => {
     const expected = { type: "symbol", char: "2612", font: "MS Gothic" };
     expect(checkboxDisplayContent(undefined, true)).toEqual(expected);
     expect(
-      checkboxDisplayContent(checkboxXml('<w14:checkedState w14:val="not-hex"/>'), true),
+      checkboxDisplayContent(
+        checkboxXml('<w14:checkedState w14:val="not-hex"/>'),
+        true,
+      ),
     ).toEqual(expected);
     expect(
       checkboxDisplayContent(

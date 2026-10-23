@@ -26,11 +26,19 @@ export type {
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
 export type { FontOption } from "./components/ui/FontPicker";
 export type { FontDefinition } from "./paged-editor/hostFonts";
-export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } from "./ui/folio-ui";
+export type {
+  ColorPreset,
+  FolioButtonProps,
+  FolioUIComponents,
+  OutlineItem,
+} from "./ui/folio-ui";
 // Consumers rendering folio chrome (e.g. FormattingBar) outside DocxEditor wrap
 // it in this provider to inject their own UI components.
 export { FolioUIProvider } from "./ui/folio-ui";
-export { FormattingBar, type FormattingBarProps } from "./components/FormattingBar";
+export {
+  FormattingBar,
+  type FormattingBarProps,
+} from "./components/FormattingBar";
 export {
   FindReplaceDialog,
   FootnotePropertiesDialog,
@@ -84,7 +92,11 @@ export {
   type TextWatermark,
   type Watermark,
 } from "@stll/folio-core/watermark";
-export { ZoomControl, type ZoomControlProps, type ZoomLevel } from "./components/ui/ZoomControl";
+export {
+  ZoomControl,
+  type ZoomControlProps,
+  type ZoomLevel,
+} from "./components/ui/ZoomControl";
 export {
   clampZoom,
   formatZoom,
@@ -146,7 +158,10 @@ export {
   type AIBarStatus,
   type AIGenerateInput,
 } from "@stll/folio-core/ai-suggestions/types";
-export { applySuggestions, type ApplyResult } from "@stll/folio-core/ai-suggestions/apply";
+export {
+  applySuggestions,
+  type ApplyResult,
+} from "@stll/folio-core/ai-suggestions/apply";
 export {
   applyFolioAIEditOperations,
   createFolioAIEditSnapshot,

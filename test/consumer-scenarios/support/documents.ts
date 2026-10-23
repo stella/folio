@@ -33,11 +33,15 @@ type OperationBatch = Parameters<Reviewer["applyDocumentOperations"]>[0];
 export const AUTHOR = "Consumer Scenario";
 
 export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 
 /** A paraId `ensureParaIds` keeps: eight hex digits, below 0x80000000, not all zero. */
 const fixtureParaId = (seed: string): string => {
-  const value = createHash("sha256").update(seed).digest().readUInt32BE(0) & 0x7f_ff_ff_ff;
+  const value =
+    createHash("sha256").update(seed).digest().readUInt32BE(0) & 0x7f_ff_ff_ff;
   return value.toString(16).toUpperCase().padStart(8, "0");
 };
 
@@ -61,7 +65,9 @@ const PINNED_PARA_IDS = new WeakMap<Uint8Array, ReadonlySet<string>>();
 export const pinnedParaIdsOf = (bytes: Uint8Array): ReadonlySet<string> => {
   const pinned = PINNED_PARA_IDS.get(bytes);
   if (pinned === undefined) {
-    throw new TypeError("pinnedParaIdsOf: these bytes are not a fixture packFixture returned");
+    throw new TypeError(
+      "pinnedParaIdsOf: these bytes are not a fixture packFixture returned",
+    );
   }
   return pinned;
 };
@@ -75,15 +81,29 @@ export const pinnedParaIdsOf = (bytes: Uint8Array): ReadonlySet<string> => {
  * document.xml as the serializer writes it, so a serializer change would
  * re-mint every id and detach every flow.
  */
-const pinParaIds = (source: FolioDocument): { document: FolioDocument; pinned: Set<string> } => {
+const pinParaIds = (
+  source: FolioDocument,
+): { document: FolioDocument; pinned: Set<string> } => {
   const document = structuredClone(source);
   const pkg = document.package;
   const stories: [string, unknown][] = [
     ["body", pkg.document.content],
-    ...[...(pkg.headers ?? [])].map(([rId, part]): [string, unknown] => [`header:${rId}`, part]),
-    ...[...(pkg.footers ?? [])].map(([rId, part]): [string, unknown] => [`footer:${rId}`, part]),
-    ...(pkg.footnotes ?? []).map((note): [string, unknown] => [`footnote:${note.id}`, note]),
-    ...(pkg.endnotes ?? []).map((note): [string, unknown] => [`endnote:${note.id}`, note]),
+    ...[...(pkg.headers ?? [])].map(([rId, part]): [string, unknown] => [
+      `header:${rId}`,
+      part,
+    ]),
+    ...[...(pkg.footers ?? [])].map(([rId, part]): [string, unknown] => [
+      `footer:${rId}`,
+      part,
+    ]),
+    ...(pkg.footnotes ?? []).map((note): [string, unknown] => [
+      `footnote:${note.id}`,
+      note,
+    ]),
+    ...(pkg.endnotes ?? []).map((note): [string, unknown] => [
+      `endnote:${note.id}`,
+      note,
+    ]),
   ];
   const pinned = new Set<string>();
   for (const [story, root] of stories) {
@@ -118,7 +138,9 @@ const pinParaIds = (source: FolioDocument): { document: FolioDocument; pinned: S
  * `ensureParaIds` mints every paraId. For an ad-hoc document; a fixture a
  * flow can name blocks of goes through `packFixture`.
  */
-export const packDocument = async (document: FolioDocument): Promise<Uint8Array> =>
+export const packDocument = async (
+  document: FolioDocument,
+): Promise<Uint8Array> =>
   (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
 
 /**
@@ -128,7 +150,9 @@ export const packDocument = async (document: FolioDocument): Promise<Uint8Array>
  * returned bytes. Positional ids repeat across fixtures, so two unrelated
  * fixtures share paraIds: never compare or merge them by paragraph identity.
  */
-export const packFixture = async (source: FolioDocument): Promise<Uint8Array> => {
+export const packFixture = async (
+  source: FolioDocument,
+): Promise<Uint8Array> => {
   const { document, pinned } = pinParaIds(source);
   const bytes = await packDocument(document);
   PINNED_PARA_IDS.set(bytes, pinned);
@@ -136,16 +160,25 @@ export const packFixture = async (source: FolioDocument): Promise<Uint8Array> =>
 };
 
 /** A reviewer-built fixture's save, carrying the pinned ids of the fixture it opened. */
-const saveFixture = async (reviewer: Reviewer, base: Uint8Array): Promise<Uint8Array> => {
+const saveFixture = async (
+  reviewer: Reviewer,
+  base: Uint8Array,
+): Promise<Uint8Array> => {
   const bytes = new Uint8Array(await reviewer.toBuffer());
   PINNED_PARA_IDS.set(bytes, pinnedParaIdsOf(base));
   return bytes;
 };
 
-export const openReviewer = (bytes: Uint8Array, author = AUTHOR): Promise<Reviewer> =>
+export const openReviewer = (
+  bytes: Uint8Array,
+  author = AUTHOR,
+): Promise<Reviewer> =>
   FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), { author });
 
-export const decimalLevel = (ilvl: number, lvlText: string): NumberingLevel => ({
+export const decimalLevel = (
+  ilvl: number,
+  lvlText: string,
+): NumberingLevel => ({
   ilvl,
   start: 1,
   numFmt: "decimal",
@@ -155,7 +188,9 @@ export const decimalLevel = (ilvl: number, lvlText: string): NumberingLevel => (
 });
 
 const findStyle = (document: FolioDocument, styleId: string) => {
-  const style = document.package.styles?.styles.find((candidate) => candidate.styleId === styleId);
+  const style = document.package.styles?.styles.find(
+    (candidate) => candidate.styleId === styleId,
+  );
   if (!style) {
     throw new Error(`fixture style ${styleId} is missing`);
   }
@@ -169,7 +204,9 @@ const findParagraph = (document: FolioDocument, text: string): Paragraph => {
       block.content.some(
         (item) =>
           item.type === "run" &&
-          item.content.some((content) => content.type === "text" && content.text === text),
+          item.content.some(
+            (content) => content.type === "text" && content.text === text,
+          ),
       ),
   );
   if (!found) {
@@ -179,14 +216,19 @@ const findParagraph = (document: FolioDocument, text: string): Paragraph => {
 };
 
 const blockIdOf = (reviewer: Reviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`fixture block "${text}" is missing`);
   }
   return block.id;
 };
 
-const applyOrThrow = (reviewer: Reviewer, batch: Omit<OperationBatch, "version">): void => {
+const applyOrThrow = (
+  reviewer: Reviewer,
+  batch: Omit<OperationBatch, "version">,
+): void => {
   const result = reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -195,7 +237,9 @@ const applyOrThrow = (reviewer: Reviewer, batch: Omit<OperationBatch, "version">
     { undefinedReferences: "refuse" },
   );
   if (result.skipped.length > 0 || result.issues.length > 0) {
-    throw new Error(`fixture operations were refused: ${JSON.stringify(result.issues)}`);
+    throw new Error(
+      `fixture operations were refused: ${JSON.stringify(result.issues)}`,
+    );
   }
 };
 
@@ -208,7 +252,8 @@ const PLAIN_MARKDOWN = [
 ].join("\n\n");
 
 /** Headings and paragraphs; no numbering part at all. */
-export const plainDocument = (): Promise<Uint8Array> => packFixture(fromMarkdown(PLAIN_MARKDOWN));
+export const plainDocument = (): Promise<Uint8Array> =>
+  packFixture(fromMarkdown(PLAIN_MARKDOWN));
 
 /** A bulleted, a numbered and a nested list (the Markdown numbering part). */
 export const listDocument = (): Promise<Uint8Array> =>
@@ -254,20 +299,35 @@ export const styleNumberedDocument = (): Promise<Uint8Array> => {
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   const heading2 = findStyle(document, "Heading2");
-  heading2.pPr = { ...heading2.pPr, numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 0 }) };
+  heading2.pPr = {
+    ...heading2.pPr,
+    numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 0 }),
+  };
   const heading3 = findStyle(document, "Heading3");
-  heading3.pPr = { ...heading3.pPr, numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 1 }) };
+  heading3.pPr = {
+    ...heading3.pPr,
+    numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 1 }),
+  };
   return packFixture(document);
 };
 
 /** A clause numbered by a direct `w:numPr` next to plain body text. */
 export const directNumberedDocument = (): Promise<Uint8Array> => {
   const document = fromMarkdown(
-    ["# Terms", "Numbered clause one", "Unnumbered body text.", "Numbered clause two"].join("\n\n"),
+    [
+      "# Terms",
+      "Numbered clause one",
+      "Unnumbered body text.",
+      "Numbered clause two",
+    ].join("\n\n"),
   );
   document.package.numbering = {
     abstractNums: [
-      { abstractNumId: 7, multiLevelType: "singleLevel", levels: [decimalLevel(0, "(%1)")] },
+      {
+        abstractNumId: 7,
+        multiLevelType: "singleLevel",
+        levels: [decimalLevel(0, "(%1)")],
+      },
     ],
     nums: [{ numId: 7, abstractNumId: 7 }],
   };
@@ -284,7 +344,11 @@ export const directNumberedDocument = (): Promise<Uint8Array> => {
 /** One decimal definition that no paragraph uses (instance 901, #1103). */
 export const UNUSED_NUMBERING: Numbering = {
   abstractNums: [
-    { abstractNumId: 901, multiLevelType: "multilevel", levels: [decimalLevel(0, "%1.")] },
+    {
+      abstractNumId: 901,
+      multiLevelType: "multilevel",
+      levels: [decimalLevel(0, "%1.")],
+    },
   ],
   nums: [{ numId: 901, abstractNumId: 901 }],
 };
@@ -325,14 +389,21 @@ export const notesDocument = (): Promise<Uint8Array> => {
   const content = document.package.document.content;
   const footnoteId = 1;
   document.package.footnotes = [
-    { type: "footnote", id: footnoteId, content: [paragraph("As defined in the order form.")] },
+    {
+      type: "footnote",
+      id: footnoteId,
+      content: [paragraph("As defined in the order form.")],
+    },
   ];
   content.push(
     paragraph([
       run("Goods are defined in the order form."),
       { type: "run", content: [{ type: "footnoteRef", id: footnoteId }] },
     ]),
-    paragraph([run("Warranty terms apply."), endnote(document, "See the warranty schedule.")]),
+    paragraph([
+      run("Warranty terms apply."),
+      endnote(document, "See the warranty schedule."),
+    ]),
   );
   return packFixture(document);
 };
@@ -347,25 +418,35 @@ export const commentDocument = async (): Promise<Uint8Array> => {
       {
         id: "c1",
         type: "commentOnBlock",
-        blockId: blockIdOf(reviewer, "The Supplier delivers the goods on time and in good order."),
+        blockId: blockIdOf(
+          reviewer,
+          "The Supplier delivers the goods on time and in good order.",
+        ),
         comment: { text: "Define good order." },
       },
       {
         id: "c2",
         type: "commentOnBlock",
-        blockId: blockIdOf(reviewer, "The Buyer pays each invoice within thirty days."),
+        blockId: blockIdOf(
+          reviewer,
+          "The Buyer pays each invoice within thirty days.",
+        ),
         comment: { text: "Thirty days is long." },
       },
     ],
   });
   const comment = (text: string) => {
-    const found = reviewer.getComments().find((candidate) => candidate.text === text);
+    const found = reviewer
+      .getComments()
+      .find((candidate) => candidate.text === text);
     if (!found) {
       throw new Error(`fixture comment "${text}" was not created`);
     }
     return found;
   };
-  reviewer.replyTo(comment("Define good order."), { text: "Good order means undamaged." });
+  reviewer.replyTo(comment("Define good order."), {
+    text: "Good order means undamaged.",
+  });
   reviewer.resolveComment(String(comment("Thirty days is long.").id));
   return saveFixture(reviewer, base);
 };
@@ -409,7 +490,11 @@ export const importedMoveDocument = (): Promise<Uint8Array> => {
   document.package.document.content.push(
     {
       ...paragraph([
-        { type: "moveFrom", info: { ...info, id: 2 }, content: [run("Moved clause.")] },
+        {
+          type: "moveFrom",
+          info: { ...info, id: 2 },
+          content: [run("Moved clause.")],
+        },
       ]),
       pPrMark: { kind: "moveFrom", info: { ...info, id: 1 } },
     },
@@ -417,7 +502,11 @@ export const importedMoveDocument = (): Promise<Uint8Array> => {
     {
       ...paragraph([
         { type: "bookmarkStart", id: 11, name: "MovedClause" },
-        { type: "moveTo", info: { ...info, id: 4 }, content: [run("Moved clause.")] },
+        {
+          type: "moveTo",
+          info: { ...info, id: 4 },
+          content: [run("Moved clause.")],
+        },
       ]),
       pPrMark: { kind: "moveTo", info: { ...info, id: 3 } },
     },
@@ -438,14 +527,71 @@ export const EMOJI_TEXTS = [
 export const emojiDocument = (): Promise<Uint8Array> =>
   packFixture(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
 
+/** A deterministic generated document whose paragraph marks end several distinct sections. */
+export const randomMultiSectionDocument = (
+  seed: number,
+  sectionCount: number,
+): Promise<Uint8Array> => {
+  const document = fromMarkdown(
+    Array.from(
+      { length: sectionCount * 2 },
+      (_, index) => `Section ${index + 1}.`,
+    ).join("\n\n"),
+  );
+  const paragraphs = document.package.document.content.filter(isParagraph);
+  for (let section = 0; section < sectionCount - 1; section += 1) {
+    const adjacent = seed % 2 === 1;
+    const carrier = paragraphs.at(adjacent ? section : section * 2 + 1);
+    if (carrier === undefined) {
+      throw new TypeError("A generated section needs its boundary paragraph.");
+    }
+    carrier.sectionProperties = {
+      pageWidth: 10_000 + ((seed + section * 977) % 2_000),
+      sectionStart: section % 2 === 0 ? "nextPage" : "continuous",
+    };
+  }
+  document.package.document.finalSectionProperties = {
+    pageWidth: 12_000 + (seed % 2_000),
+  };
+  return packFixture(document);
+};
+
+/** An added empty paragraph whose section immediately follows another boundary. */
+export const adjacentSectionRevisionDocument = (): Promise<Uint8Array> => {
+  const document = fromMarkdown("First section.\n\nFollowing section.");
+  document.package.document.content.splice(1, 0, paragraph([]));
+  const paragraphs = document.package.document.content.filter(isParagraph);
+  const preceding = paragraphs.at(0);
+  const added = paragraphs.at(1);
+  if (preceding === undefined || added === undefined) {
+    throw new TypeError(
+      "The adjacent-section fixture needs two boundary paragraphs.",
+    );
+  }
+  preceding.sectionProperties = { pageWidth: 10_000 };
+  added.sectionProperties = { pageWidth: 12_000 };
+  added.pPrMark = {
+    kind: "ins",
+    info: { id: 1, author: AUTHOR, date: "2026-10-18T00:00:00Z" },
+  };
+  document.package.document.finalSectionProperties = { pageWidth: 14_000 };
+  return packFixture(document);
+};
+
 /** A table whose first column merges vertically through its last two rows. */
 export const mergedTableDocument = (): Promise<Uint8Array> => {
-  const document = fromMarkdown("# Merged cells\n\nThe table below merges a column.");
+  const document = fromMarkdown(
+    "# Merged cells\n\nThe table below merges a column.",
+  );
   document.package.document.content.push(
     table({
       header: ["Party", "Role", "Share"],
       rows: [
-        [{ content: [paragraph("Supplier")], vMerge: "restart" }, "Delivers", "60"],
+        [
+          { content: [paragraph("Supplier")], vMerge: "restart" },
+          "Delivers",
+          "60",
+        ],
         [{ content: [paragraph([])], vMerge: "continue" }, "Installs", "40"],
       ],
     }),
@@ -503,15 +649,25 @@ export const storiesDocument = (): Promise<Uint8Array> => {
   );
   const pkg = document.package;
   pkg.headers = new Map([
-    ["rIdStoryHeader1", headerFooterPart("header", "default", "Master Agreement header")],
-    ["rIdStoryHeader2", headerFooterPart("header", "first", "First page header")],
+    [
+      "rIdStoryHeader1",
+      headerFooterPart("header", "default", "Master Agreement header"),
+    ],
+    [
+      "rIdStoryHeader2",
+      headerFooterPart("header", "first", "First page header"),
+    ],
     ["rIdStoryHeader3", headerFooterPart("header", "even", "Even page header")],
   ]);
   pkg.footers = new Map([
     ["rIdStoryFooter1", headerFooterPart("footer", "default", "Page ")],
     ["rIdStoryFooter2", headerFooterPart("footer", "even", "Even page ")],
   ]);
-  pkg.settings = { defaultTabStop: 720, ...pkg.settings, evenAndOddHeaders: true };
+  pkg.settings = {
+    defaultTabStop: 720,
+    ...pkg.settings,
+    evenAndOddHeaders: true,
+  };
   const references = {
     headerReferences: [
       { type: "default" as const, rId: "rIdStoryHeader1" },
@@ -525,7 +681,11 @@ export const storiesDocument = (): Promise<Uint8Array> => {
     titlePg: true,
   };
   pkg.footnotes = [
-    { type: "footnote", id: 1, content: [paragraph("Schedules are part of this agreement.")] },
+    {
+      type: "footnote",
+      id: 1,
+      content: [paragraph("Schedules are part of this agreement.")],
+    },
   ];
   const textBox = {
     type: "shape" as const,
@@ -553,13 +713,27 @@ export const storiesDocument = (): Promise<Uint8Array> => {
     ]),
     paragraph([
       run("Notices go to "),
-      hyperlink({ text: "the notice address", href: "https://example.com/notices" }),
+      hyperlink({
+        text: "the notice address",
+        href: "https://example.com/notices",
+      }),
       run(" dated "),
-      { type: "simpleField", instruction: "DATE", fieldType: "DATE", content: [run("1 May 2026")] },
+      {
+        type: "simpleField",
+        instruction: "DATE",
+        fieldType: "DATE",
+        content: [run("1 May 2026")],
+      },
       run(" in writing."),
     ]),
-    { ...paragraph("This clause ends the first section."), sectionProperties: references },
-    paragraph([{ type: "commentRangeStart", id: 41 }, run("The schedule below is binding.")]),
+    {
+      ...paragraph("This clause ends the first section."),
+      sectionProperties: references,
+    },
+    paragraph([
+      { type: "commentRangeStart", id: 41 },
+      run("The schedule below is binding."),
+    ]),
     table({
       header: ["Item", "Price"],
       rows: [
@@ -575,7 +749,11 @@ export const storiesDocument = (): Promise<Uint8Array> => {
     paragraph("Signed by both parties 👍🏽 today."),
   );
   pkg.document.comments = [
-    { id: 41, author: "Earlier Reviewer", content: [paragraph("Check the whole schedule.")] },
+    {
+      id: 41,
+      author: "Earlier Reviewer",
+      content: [paragraph("Check the whole schedule.")],
+    },
   ];
   pkg.document.finalSectionProperties = {
     ...pkg.document.finalSectionProperties,

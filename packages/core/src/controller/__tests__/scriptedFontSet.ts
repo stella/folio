@@ -17,19 +17,29 @@
  * The test decides the order and interleaving of completions and deliveries.
  */
 
-import type { LayoutFontSet, LayoutFontSetFace } from "../fontReadiness";
 import { parseFontFamilyList } from "../../utils/fontResolver";
+import type { LayoutFontSet, LayoutFontSetFace } from "../fontReadiness";
 
 // Synthetic text, one entry per script a bundled subset covers; the Greek and
 // Cyrillic entries reach into the `-ext` subsets too.
-export const SCRIPTS = ["english", "czech", "polish", "greek", "cyrillic"] as const;
+export const SCRIPTS = [
+  "english",
+  "czech",
+  "polish",
+  "greek",
+  "cyrillic",
+] as const;
 export type Script = (typeof SCRIPTS)[number];
 export const SCRIPT_TEXT = {
-  english: "The Supplier shall deliver the goods within ten business days of the order",
-  czech: "Dodavatel se zavazuje dodat zboží do provozovny kupujícího, přechází ůčinností",
-  polish: "Dostawca zobowiązuje się dostarczyć towar w ciągu dziesięciu dni, łódź",
+  english:
+    "The Supplier shall deliver the goods within ten business days of the order",
+  czech:
+    "Dodavatel se zavazuje dodat zboží do provozovny kupujícího, přechází ůčinností",
+  polish:
+    "Dostawca zobowiązuje się dostarczyć towar w ciągu dziesięciu dni, łódź",
   greek: "Ο Προμηθευτής υποχρεούται να παραδώσει τα ἀγαθά εντός δέκα ημερών",
-  cyrillic: "Поставщик обязуется доставить товары в течение десяти дней, Ґрунт ѣ",
+  cyrillic:
+    "Поставщик обязуется доставить товары в течение десяти дней, Ґрунт ѣ",
 } as const satisfies Record<Script, string>;
 
 type CodePointRange = readonly [number, number];
@@ -58,9 +68,19 @@ export const BUNDLED_SUBSETS = {
     "cyrillic-ext": CYRILLIC_EXT,
   },
   Lato: { latin: LATIN, "latin-ext": LATIN_EXT },
-  Tinos: { latin: LATIN, "latin-ext": LATIN_EXT, greek: GREEK, cyrillic: CYRILLIC },
+  Tinos: {
+    latin: LATIN,
+    "latin-ext": LATIN_EXT,
+    greek: GREEK,
+    cyrillic: CYRILLIC,
+  },
   // A host UI face no document stack names: its loads must not relay out.
-  "Host UI": { latin: LATIN, "latin-ext": LATIN_EXT, greek: GREEK, cyrillic: CYRILLIC },
+  "Host UI": {
+    latin: LATIN,
+    "latin-ext": LATIN_EXT,
+    greek: GREEK,
+    cyrillic: CYRILLIC,
+  },
 } as const satisfies Record<string, Record<string, readonly CodePointRange[]>>;
 
 export const HOST_UI_FAMILY = "Host UI";
@@ -86,7 +106,9 @@ export class ScriptedFontFace implements LayoutFontSetFace {
   ) {}
 
   covers(codePoint: number): boolean {
-    return this.ranges.some(([from, to]) => codePoint >= from && codePoint <= to);
+    return this.ranges.some(
+      ([from, to]) => codePoint >= from && codePoint <= to,
+    );
   }
 
   get key(): string {
@@ -94,7 +116,9 @@ export class ScriptedFontFace implements LayoutFontSetFace {
   }
 }
 
-type LoadingDoneListener = (event: { fontfaces: readonly LayoutFontSetFace[] }) => void;
+type LoadingDoneListener = (event: {
+  fontfaces: readonly LayoutFontSetFace[];
+}) => void;
 
 type ParsedFont = { style: FaceStyle; weight: FaceWeight; families: string[] };
 
@@ -109,12 +133,14 @@ const parseFont = (font: string): ParsedFont => {
   const descriptors = font.slice(0, match.index).split(/\s+/u);
   return {
     style: descriptors.includes("italic") ? "italic" : "normal",
-    weight: descriptors.includes("700") || descriptors.includes("bold") ? 700 : 400,
+    weight:
+      descriptors.includes("700") || descriptors.includes("bold") ? 700 : 400,
     families: parseFontFamilyList(font.slice(match.index + match[0].length)),
   };
 };
 
-const sameFamily = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+const sameFamily = (a: string, b: string): boolean =>
+  a.toLowerCase() === b.toLowerCase();
 
 export class ScriptedFontSet implements LayoutFontSet {
   readonly faces: ScriptedFontFace[] = [];
@@ -129,7 +155,9 @@ export class ScriptedFontSet implements LayoutFontSet {
       for (const [subset, ranges] of Object.entries(subsets)) {
         for (const style of FACE_STYLES) {
           for (const weight of FACE_WEIGHTS) {
-            this.faces.push(new ScriptedFontFace(family, subset, ranges, style, weight));
+            this.faces.push(
+              new ScriptedFontFace(family, subset, ranges, style, weight),
+            );
           }
         }
       }
@@ -153,13 +181,19 @@ export class ScriptedFontSet implements LayoutFontSet {
     this.listeners.add(listener);
   }
 
-  removeEventListener(_type: "loadingdone", listener: LoadingDoneListener): void {
+  removeEventListener(
+    _type: "loadingdone",
+    listener: LoadingDoneListener,
+  ): void {
     this.listeners.delete(listener);
   }
 
   load(font: string, text = " "): Promise<unknown> {
     const { style, weight, families } = parseFont(font);
-    const codePoints = Array.from(text, (character) => character.codePointAt(0) ?? 0);
+    const codePoints = Array.from(
+      text,
+      (character) => character.codePointAt(0) ?? 0,
+    );
     const matched = this.faces.filter(
       (face) =>
         face.style === style &&
@@ -253,7 +287,10 @@ export class ScriptedFontSet implements LayoutFontSet {
 
 /** Deterministic per-face advances: families and weights differ. */
 const faceAdvance = (face: ScriptedFontFace, codePoint: number): number =>
-  (face.family.length % 3) + (face.weight === 700 ? 1 : 0) + 5 + (codePoint % 3);
+  (face.family.length % 3) +
+  (face.weight === 700 ? 1 : 0) +
+  5 +
+  (codePoint % 3);
 
 /**
  * A `document` whose canvas measures through `fontSet` and whose `fonts` is it,
@@ -270,7 +307,11 @@ export const scriptedDocument = (fontSet: ScriptedFontSet): object => ({
         for (const character of text) {
           width += fontSet.advance(this.font, character);
         }
-        return { width, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 };
+        return {
+          width,
+          actualBoundingBoxAscent: 8,
+          actualBoundingBoxDescent: 2,
+        };
       },
     }),
   }),

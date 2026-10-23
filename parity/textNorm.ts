@@ -7,7 +7,8 @@ import { detectBaseDirection } from "../packages/core/src/utils/baseDirection";
  * of the diff must normalise identically or alignment falls apart.
  */
 
-const RTL_LEADER_LINE_PATTERN = /^(?<page>[\p{Decimal_Number}]+)\s+…\s+(?<title>.+)$/u;
+const RTL_LEADER_LINE_PATTERN =
+  /^(?<page>[\p{Decimal_Number}]+)\s+…\s+(?<title>.+)$/u;
 
 const MIRRORABLE_BRACKET_PATTERN = /[()[\]{}]/u;
 const MIRRORABLE_BRACKETS_PATTERN = /[()[\]{}]/gu;
@@ -29,7 +30,10 @@ const BRACKET_PAIR_REPRESENTATIVE: Record<string, string> = {
  * LTR lines keep both characters distinct.
  */
 const canonicalizeRtlBracketPairs = (text: string): string => {
-  if (!MIRRORABLE_BRACKET_PATTERN.test(text) || detectBaseDirection(text) !== "rtl") {
+  if (
+    !MIRRORABLE_BRACKET_PATTERN.test(text) ||
+    detectBaseDirection(text) !== "rtl"
+  ) {
     return text;
   }
   return text.replace(

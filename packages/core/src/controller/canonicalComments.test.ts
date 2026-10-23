@@ -1,19 +1,30 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
-import { freshCommentId, findStoryBody } from "@stll/docx-core/ops";
+
 import { validateDocxPackage } from "@stll/docx-core";
+import { findStoryBody, freshCommentId } from "@stll/docx-core/ops";
+
+import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
-import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { canonicalCommentBody, compileCanonicalComments } from "./canonicalComments";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
-import type { Document, Paragraph } from "../types/document";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
-import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
+import type { Document, Paragraph } from "../types/document";
+import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
+import {
+  canonicalCommentBody,
+  compileCanonicalComments,
+} from "./canonicalComments";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -25,7 +36,9 @@ const seed = () =>
           {
             type: "paragraph",
             paraId: "ABCDEF01",
-            content: [{ type: "run", content: [{ type: "text", text: "A😀éB" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "A😀éB" }] },
+            ],
           },
         ],
       },
@@ -35,15 +48,31 @@ const seed = () =>
 const setup = (document = seed()) => {
   const session = createCanonicalSession(document).unwrap();
   let state = EditorState.create({ doc: session.projection.doc });
-  const apply = (command: Parameters<typeof compileCanonicalComments>[0]["command"]) => {
-    const compiled = compileCanonicalComments({ document: session.document, command }).unwrap();
+  const apply = (
+    command: Parameters<typeof compileCanonicalComments>[0]["command"],
+  ) => {
+    const compiled = compileCanonicalComments({
+      document: session.document,
+      command,
+    }).unwrap();
     if (compiled.ops.length === 0) return;
     const prepared = session.prepareOperations(state, compiled.ops).unwrap();
-    state = publishCanonicalProjection({ state, commit: prepared, session }).unwrap().state;
+    state = publishCanonicalProjection({
+      state,
+      commit: prepared,
+      session,
+    }).unwrap().state;
   };
   const history = (direction: "undo" | "redo") => {
-    const commit = direction === "undo" ? session.prepareUndo(state) : session.prepareRedo(state);
-    state = publishCanonicalProjection({ state, commit: commit.unwrap(), session }).unwrap().state;
+    const commit =
+      direction === "undo"
+        ? session.prepareUndo(state)
+        : session.prepareRedo(state);
+    state = publishCanonicalProjection({
+      state,
+      commit: commit.unwrap(),
+      session,
+    }).unwrap().state;
   };
   const create = (text: string, kind: "point" | "range") => {
     const id = freshCommentId(session.document).unwrap();
@@ -60,7 +89,10 @@ const setup = (document = seed()) => {
         date: "2026-01-01T00:00:00Z",
         content: canonicalCommentBody(session.document, text),
       },
-      anchor: kind === "point" ? { kind, at } : { kind, from: at, to: { ...at, offset: 5 } },
+      anchor:
+        kind === "point"
+          ? { kind, at }
+          : { kind, from: at, to: { ...at, offset: 5 } },
     });
     return id;
   };
@@ -73,11 +105,14 @@ const COMMENTS_SOURCE_PATHS = [
   "word/COMMENTS.XML",
 ] as const;
 
-const openCommentSource = async (path: (typeof COMMENTS_SOURCE_PATHS)[number]) => {
+const openCommentSource = async (
+  path: (typeof COMMENTS_SOURCE_PATHS)[number],
+) => {
   const source = setup();
   const id = freshCommentId(source.session.document).unwrap();
   const block = source.session.document.package.document.content.at(0);
-  if (block?.type !== "paragraph" || !block.paraId) throw new Error("Missing source paragraph");
+  if (block?.type !== "paragraph" || !block.paraId)
+    throw new Error("Missing source paragraph");
   source.apply({
     type: "create",
     comment: {
@@ -85,7 +120,10 @@ const openCommentSource = async (path: (typeof COMMENTS_SOURCE_PATHS)[number]) =
       author: "source",
       content: canonicalCommentBody(source.session.document, "source"),
     },
-    anchor: { kind: "point", at: { story: "main", blockId: block.paraId, offset: 1 } },
+    anchor: {
+      kind: "point",
+      at: { story: "main", blockId: block.paraId, offset: 1 },
+    },
   });
   const zip = await JSZip.loadAsync(await createDocx(source.session.document));
   const comments = await zip.file("word/comments.xml")?.async("text");
@@ -94,19 +132,32 @@ const openCommentSource = async (path: (typeof COMMENTS_SOURCE_PATHS)[number]) =
   zip.remove("word/comments.xml");
   zip.file(path, comments);
   const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
-  const relationships = await zip.file("word/_rels/document.xml.rels")?.async("text");
-  if (!contentTypes || !relationships) throw new Error("Missing source comment packaging");
-  zip.file("[Content_Types].xml", contentTypes.replace("/word/comments.xml", `/${path}`));
+  const relationships = await zip
+    .file("word/_rels/document.xml.rels")
+    ?.async("text");
+  if (!contentTypes || !relationships)
+    throw new Error("Missing source comment packaging");
+  zip.file(
+    "[Content_Types].xml",
+    contentTypes.replace("/word/comments.xml", `/${path}`),
+  );
   zip.file(
     "word/_rels/document.xml.rels",
-    relationships.replace('Target="comments.xml"', `Target="${path.slice("word/".length)}"`),
+    relationships.replace(
+      'Target="comments.xml"',
+      `Target="${path.slice("word/".length)}"`,
+    ),
   );
   const buffer = await zip.generateAsync({ type: "arraybuffer" });
-  expect(await validateDocxPackage(new Uint8Array(buffer))).toEqual({ valid: true });
+  expect(await validateDocxPackage(new Uint8Array(buffer))).toEqual({
+    valid: true,
+  });
   return { document: await parseDocx(buffer, { preloadFonts: false }), id };
 };
 
-const assertCanonicalCommentSave = async (session: ReturnType<typeof setup>["session"]) => {
+const assertCanonicalCommentSave = async (
+  session: ReturnType<typeof setup>["session"],
+) => {
   const snapshot = session.captureSaveSnapshot();
   expect(snapshot.structure).toBe("stable");
   for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
@@ -115,7 +166,9 @@ const assertCanonicalCommentSave = async (session: ReturnType<typeof setup>["ses
       featureFlags: { selectiveSave: true },
       options: { mode },
     });
-    expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({ valid: true });
+    expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({
+      valid: true,
+    });
     const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
     // The package oracle includes root/reply status and body range/reference
     // anchors, rather than only the visible comment text.
@@ -136,7 +189,9 @@ test.each(["header", "footnote"] as const)(
     const block = {
       type: "paragraph",
       paraId: "ABCDEF02",
-      content: [{ type: "run", content: [{ type: "text", text: "Secondary story" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "Secondary story" }] },
+      ],
     } satisfies Paragraph;
     const story =
       storyKind === "header"
@@ -144,30 +199,47 @@ test.each(["header", "footnote"] as const)(
         : ({ kind: "footnote", id: 1 } as const);
     if (storyKind === "header") {
       document.package.headers = new Map([
-        ["rIdHeader", { type: "header", hdrFtrType: "default", content: [block] }],
+        [
+          "rIdHeader",
+          { type: "header", hdrFtrType: "default", content: [block] },
+        ],
       ]);
       document.package.document.finalSectionProperties = {
         headerReferences: [{ type: "default", rId: "rIdHeader" }],
       };
     } else {
-      document.package.footnotes = [{ type: "footnote", id: 1, content: [block] }];
+      document.package.footnotes = [
+        { type: "footnote", id: 1, content: [block] },
+      ];
       const body = document.package.document.content.at(0);
       if (body?.type !== "paragraph") throw new Error("Missing body paragraph");
-      body.content.push({ type: "run", content: [{ type: "footnoteRef", id: 1 }] });
+      body.content.push({
+        type: "run",
+        content: [{ type: "footnoteRef", id: 1 }],
+      });
     }
-    const source = await parseDocx(await createDocx(document), { preloadFonts: false });
+    const source = await parseDocx(await createDocx(document), {
+      preloadFonts: false,
+    });
     const editor = setup(source);
     const id = freshCommentId(editor.session.document).unwrap();
     const target = findStoryBody(editor.session.document, story)?.content.at(0);
-    if (target?.type !== "paragraph" || !target.paraId) throw new Error("Missing story paragraph");
+    if (target?.type !== "paragraph" || !target.paraId)
+      throw new Error("Missing story paragraph");
     editor.apply({
       type: "create",
       comment: {
         id,
         author: "Reviewer",
-        content: canonicalCommentBody(editor.session.document, "Secondary comment"),
+        content: canonicalCommentBody(
+          editor.session.document,
+          "Secondary comment",
+        ),
       },
-      anchor: { kind: "point", at: { story, blockId: target.paraId, offset: 2 } },
+      anchor: {
+        kind: "point",
+        at: { story, blockId: target.paraId, offset: 2 },
+      },
     });
     const saveAndReopen = async (current: ReturnType<typeof setup>) => {
       const snapshot = current.session.captureSaveSnapshot();
@@ -178,7 +250,9 @@ test.each(["header", "footnote"] as const)(
       });
       expect(snapshot.changedBlockIds).toContain(target.paraId);
       expect(saved.diagnostics).toEqual(
-        storyKind === "header" ? [{ type: "selectiveSaveRefused", part: "word/document.xml" }] : [],
+        storyKind === "header"
+          ? [{ type: "selectiveSaveRefused", part: "word/document.xml" }]
+          : [],
       );
       const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
       expect(findStoryBody(reopened, story)?.content).toEqual(
@@ -204,7 +278,10 @@ test.each(["header", "footnote"] as const)(
 test("generated point/range comment histories preserve exact undo, projection and canonical snapshot save", async () => {
   await assertProperty(
     fc.asyncProperty(
-      fc.array(fc.stringMatching(/^[a-z]{1,12}$/u), { minLength: 1, maxLength: 6 }),
+      fc.array(fc.stringMatching(/^[a-z]{1,12}$/u), {
+        minLength: 1,
+        maxLength: 6,
+      }),
       fc.constantFrom("point", "range"),
       fc.constantFrom(...COMMENTS_SOURCE_PATHS),
       async (texts, kind, sourcePath) => {
@@ -219,7 +296,9 @@ test("generated point/range comment histories preserve exact undo, projection an
           options: { mode: FOLIO_DOCX_SERIALIZATION_MODE.preferSelective },
         });
         expect(deletion.diagnostics).toEqual([]);
-        expect(await validateDocxPackage(new Uint8Array(deletion.buffer))).toEqual({ valid: true });
+        expect(
+          await validateDocxPackage(new Uint8Array(deletion.buffer)),
+        ).toEqual({ valid: true });
         const deletedZip = await JSZip.loadAsync(deletion.buffer);
         expect(
           Object.keys(deletedZip.files).filter(
@@ -244,14 +323,18 @@ test("generated point/range comment histories preserve exact undo, projection an
               id: replyId,
               author: "reply",
               done: false,
-              content: canonicalCommentBody(editor.session.document, text + "reply"),
+              content: canonicalCommentBody(
+                editor.session.document,
+                text + "reply",
+              ),
             },
             anchor: { kind: "reply", parentId: id },
           });
           steps += 1;
-          const content = editor.session.document.package.document.comments?.find(
-            (comment) => comment.id === id,
-          )?.content;
+          const content =
+            editor.session.document.package.document.comments?.find(
+              (comment) => comment.id === id,
+            )?.content;
           expect(content).toBeDefined();
           editor.apply({
             type: "update",
@@ -260,7 +343,10 @@ test("generated point/range comment histories preserve exact undo, projection an
               content?.map((paragraph) =>
                 Object.assign({}, paragraph, {
                   content: [
-                    { type: "run", content: [{ type: "text", text: text + "edited" }] },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: text + "edited" }],
+                    },
                   ] satisfies typeof paragraph.content,
                 }),
               ) ?? [],
@@ -268,7 +354,9 @@ test("generated point/range comment histories preserve exact undo, projection an
           steps += 1;
           editor.apply({ type: "resolve", id, status: "resolved" });
           steps += 1;
-          const committed = cloneDocumentWithParagraphPropertySources(editor.session.document);
+          const committed = cloneDocumentWithParagraphPropertySources(
+            editor.session.document,
+          );
           await assertCanonicalCommentSave(editor.session);
           editor.apply({ type: "delete", id });
           expect(
@@ -296,7 +384,11 @@ test("generated point/range comment histories preserve exact undo, projection an
     {
       numRuns: 12,
       seed: 20261005,
-      examples: COMMENTS_SOURCE_PATHS.map((path) => [["a"], "point" as const, path]),
+      examples: COMMENTS_SOURCE_PATHS.map((path) => [
+        ["a"],
+        "point" as const,
+        path,
+      ]),
       id: "generated point/range comment histories preserve exact undo, projection and canonical snapshot save",
     },
   );
@@ -316,11 +408,18 @@ test("controlled comment echoes are inert; content/status edits compile and unan
     done: true,
     content: comment.content.map((paragraph) => ({
       ...paragraph,
-      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "changed" }] }],
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: "changed" }],
+        },
+      ],
     })),
   }));
   editor.apply({ type: "replace", comments: next });
-  expect(editor.session.document.package.document.comments?.at(0)?.done).toBe(true);
+  expect(editor.session.document.package.document.comments?.at(0)?.done).toBe(
+    true,
+  );
   editor.history("undo");
   expect(editor.session.document.package.document.comments).toEqual(comments);
   const before = editor.session.document;
@@ -330,7 +429,11 @@ test("controlled comment echoes are inert; content/status edits compile and unan
       type: "replace",
       comments: [
         ...comments,
-        { id: id + 100, author: "host", content: canonicalCommentBody(before, "unanchored") },
+        {
+          id: id + 100,
+          author: "host",
+          content: canonicalCommentBody(before, "unanchored"),
+        },
       ],
     },
   });
@@ -356,7 +459,12 @@ test("controlled replies compile parent-first and cannot retain an orphan", () =
     document: editor.session.document,
     command: {
       type: "create",
-      comment: { id: firstId, author: "reply", done: false, content: parent.content },
+      comment: {
+        id: firstId,
+        author: "reply",
+        done: false,
+        content: parent.content,
+      },
       anchor: { kind: "reply", parentId: rootId },
     },
   }).unwrap().document;
@@ -402,7 +510,9 @@ test("a loaded root comment without source anchors activates, stays read-only an
         {
           type: "paragraph",
           paraId: "ABCDEF02",
-          content: [{ type: "run", content: [{ type: "text", text: "Orphan" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Orphan" }] },
+          ],
         },
       ],
     },
@@ -410,13 +520,20 @@ test("a loaded root comment without source anchors activates, stays read-only an
   const loaded = await parseDocx(await createDocx(source));
   expect(loaded.package.document.comments?.map(({ id }) => id)).toEqual([7]);
   const editor = setup(loaded);
-  const refusedOnOrphan = (command: Parameters<typeof compileCanonicalComments>[0]["command"]) => {
-    const compiled = compileCanonicalComments({ document: editor.session.document, command });
+  const refusedOnOrphan = (
+    command: Parameters<typeof compileCanonicalComments>[0]["command"],
+  ) => {
+    const compiled = compileCanonicalComments({
+      document: editor.session.document,
+      command,
+    });
     if (compiled.isErr()) return true;
     const state = EditorState.create({ doc: editor.session.projection.doc });
     return editor.session.prepareOperations(state, compiled.value.ops).isErr();
   };
-  expect(refusedOnOrphan({ type: "resolve", id: 7, status: "resolved" })).toBe(true);
+  expect(refusedOnOrphan({ type: "resolve", id: 7, status: "resolved" })).toBe(
+    true,
+  );
   expect(refusedOnOrphan({ type: "delete", id: 7 })).toBe(true);
   expect(
     refusedOnOrphan({
@@ -432,6 +549,8 @@ test("a loaded root comment without source anchors activates, stays read-only an
   ).toBe(true);
   // Other comments stay fully editable beside the preserved one.
   editor.create("anchored", "range");
-  expect(editor.session.document.package.document.comments?.map(({ id }) => id)).toContain(7);
+  expect(
+    editor.session.document.package.document.comments?.map(({ id }) => id),
+  ).toContain(7);
   await assertCanonicalCommentSave(editor.session);
 });

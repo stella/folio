@@ -1,6 +1,7 @@
+import { mergeParagraphNumbering } from "@stll/docx-core/model";
+
 import type { ParagraphFormatting, TabStop } from "../types/document";
 import { mergeTextFormatting } from "./textFormattingMerge";
-import { mergeParagraphNumbering } from "@stll/docx-core/model";
 
 const PARAGRAPH_REPLACE_KEYS = [
   "alignment",
@@ -78,7 +79,9 @@ export function mergeParagraphTabStops(
     stopsByPosition.set(stop.position, stop);
   }
 
-  return [...stopsByPosition.values()].toSorted((a, b) => a.position - b.position);
+  return [...stopsByPosition.values()].toSorted(
+    (a, b) => a.position - b.position,
+  );
 }
 
 /**
@@ -99,7 +102,9 @@ export function mergeParagraphTabStops(
  * wholesale, so an inherited one is written back only where the whole record
  * is, and the attributes the author wrote on it belong with it.
  */
-const withoutPreservedMarkup = (formatting: ParagraphFormatting): ParagraphFormatting => {
+const withoutPreservedMarkup = (
+  formatting: ParagraphFormatting,
+): ParagraphFormatting => {
   const {
     preserved: _preserved,
     indentPreservedAttributes: _indentPreservedAttributes,
@@ -142,7 +147,10 @@ export function mergeParagraphFormatting(
     result.hangingIndent = source.hangingIndent === true;
   }
 
-  const mergedRunProperties = mergeTextFormatting(result.runProperties, source.runProperties);
+  const mergedRunProperties = mergeTextFormatting(
+    result.runProperties,
+    source.runProperties,
+  );
   if (mergedRunProperties) {
     result.runProperties = mergedRunProperties;
   }

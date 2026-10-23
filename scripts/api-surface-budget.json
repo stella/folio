@@ -6,16 +6,16 @@
     "declarationLines": 107
   },
   "docx-core": {
-    "reportBytes": 134402,
-    "reportLines": 4258,
-    "declarationBytes": 311748,
-    "declarationLines": 6746
+    "reportBytes": 137360,
+    "reportLines": 4261,
+    "declarationBytes": 322529,
+    "declarationLines": 7010
   },
   "core": {
     "reportBytes": 351935,
     "reportLines": 11057,
-    "declarationBytes": 2627580,
-    "declarationLines": 53271
+    "declarationBytes": 2627897,
+    "declarationLines": 53279
   },
   "react": {
     "reportBytes": 57073,
@@ -38,8 +38,8 @@
   "vue": {
     "reportBytes": 57793,
     "reportLines": 1650,
-    "declarationBytes": 267485,
-    "declarationLines": 5489
+    "declarationBytes": 271743,
+    "declarationLines": 5574
   },
   "nuxt": {
     "reportBytes": 442,

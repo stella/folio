@@ -39,7 +39,9 @@ const parseListParagraphs = (levels: number[]): Paragraph[] => {
         `<w:r><w:t>Item</w:t></w:r></w:p>`,
     )
     .join("");
-  const root = parseXmlDocument(`<w:body xmlns:w="${W}">${body}</w:body>`) as XmlElement | null;
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="${W}">${body}</w:body>`,
+  ) as XmlElement | null;
   if (!root) {
     throw new Error("Failed to parse body XML");
   }
@@ -59,14 +61,18 @@ describe("bullet w:lvlText characters", () => {
   test("paint a Latin character in a text font as the character itself", () => {
     const paragraphs = parseListParagraphs([0, 3]);
 
-    expect(paragraphs.map((paragraph) => paragraph.listRendering?.marker)).toEqual(["o", "§"]);
+    expect(
+      paragraphs.map((paragraph) => paragraph.listRendering?.marker),
+    ).toEqual(["o", "§"]);
     expect(layoutMarkers(paragraphs)).toEqual(["o", "§"]);
   });
 
   test("read the same character as a symbol-font code in a symbol face or without a face", () => {
     const paragraphs = parseListParagraphs([1, 2]);
 
-    expect(paragraphs.map((paragraph) => paragraph.listRendering?.marker)).toEqual(["○", "○"]);
+    expect(
+      paragraphs.map((paragraph) => paragraph.listRendering?.marker),
+    ).toEqual(["○", "○"]);
     expect(layoutMarkers(paragraphs)).toEqual(["○", "○"]);
   });
 

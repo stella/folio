@@ -13,7 +13,10 @@ const PHYSICAL_DEPENDENCY_TYPES = ["local"];
 // separately proves every `paths` entry in tsconfig.depcruise.json is a real
 // workspace package name pointing into that package's own src. A relative
 // path carries neither tag and stays caught by "*-uses-package-contracts".
-const PACKAGE_NAME_DEPENDENCY_TYPES = ["aliased-workspace", "aliased-tsconfig-paths"];
+const PACKAGE_NAME_DEPENDENCY_TYPES = [
+  "aliased-workspace",
+  "aliased-tsconfig-paths",
+];
 
 const workspaceNames = Object.keys(WORKSPACE_DEPENDENCIES);
 const workspaceModules = Object.fromEntries(
@@ -29,12 +32,17 @@ const workspaceTargetPattern = (workspaces) => {
   const packageNames = workspaces
     .map((workspace) => workspaceModules[workspace].replaceAll("/", "\\/"))
     .join("|");
-  return [`^packages/(?:${packageDirectories})(?:/|$)`, `^(?:${packageNames})(?:/|$)`];
+  return [
+    `^packages/(?:${packageDirectories})(?:/|$)`,
+    `^(?:${packageNames})(?:/|$)`,
+  ];
 };
 
 const closedWorkspaceRules = Object.entries(WORKSPACE_DEPENDENCIES).flatMap(
   ([source, allowedTargets]) => {
-    const otherWorkspaces = workspaceNames.filter((workspace) => workspace !== source);
+    const otherWorkspaces = workspaceNames.filter(
+      (workspace) => workspace !== source,
+    );
     const forbiddenTargets = otherWorkspaces.filter(
       (workspace) => !allowedTargets.includes(workspace),
     );
@@ -56,7 +64,8 @@ const closedWorkspaceRules = Object.entries(WORKSPACE_DEPENDENCIES).flatMap(
     if (forbiddenTargets.length > 0) {
       rules.push({
         name: `${source}-workspace-dependencies`,
-        comment: "Workspace packages may depend only on their explicitly owned lower layers.",
+        comment:
+          "Workspace packages may depend only on their explicitly owned lower layers.",
         severity: "error",
         from: { path: workspacePath(source) },
         to: { path: workspaceTargetPattern(forbiddenTargets) },
@@ -99,15 +108,25 @@ const paintBackendRules = [
     severity: "error",
     // A backend's own test builds the display list it then paints, so it
     // reaches the producer by design; the rule is about the backend itself.
-    from: { path: [coreSource("pdf"), coreSource("display-list/dom")], pathNot: "\\.test\\.ts$" },
-    to: { path: LAYOUT_OWNED_SOURCES, dependencyTypes: PHYSICAL_DEPENDENCY_TYPES },
+    from: {
+      path: [coreSource("pdf"), coreSource("display-list/dom")],
+      pathNot: "\\.test\\.ts$",
+    },
+    to: {
+      path: LAYOUT_OWNED_SOURCES,
+      dependencyTypes: PHYSICAL_DEPENDENCY_TYPES,
+    },
   },
   {
     name: "display-list-types-stay-pure-data",
-    comment: "The paint IR is serializable data: it may not import anything from core.",
+    comment:
+      "The paint IR is serializable data: it may not import anything from core.",
     severity: "error",
     from: { path: "^packages/core/src/display-list/types\\.ts$" },
-    to: { path: "^packages/core/src/", dependencyTypes: PHYSICAL_DEPENDENCY_TYPES },
+    to: {
+      path: "^packages/core/src/",
+      dependencyTypes: PHYSICAL_DEPENDENCY_TYPES,
+    },
   },
 ];
 
@@ -119,7 +138,8 @@ const paintBackendRules = [
 const documentModelRules = [
   {
     name: "docx-core-stays-framework-free",
-    comment: "@stll/docx-core is independent of editor frameworks; it may not import ProseMirror.",
+    comment:
+      "@stll/docx-core is independent of editor frameworks; it may not import ProseMirror.",
     severity: "error",
     from: { path: workspacePath("docx-core") },
     to: { path: "(^|/)prosemirror-" },
@@ -166,7 +186,14 @@ module.exports = {
     combinedDependencies: true,
     doNotFollow: {
       path: "node_modules",
-      dependencyTypes: ["npm", "npm-dev", "npm-optional", "npm-peer", "npm-bundled", "npm-no-pkg"],
+      dependencyTypes: [
+        "npm",
+        "npm-dev",
+        "npm-optional",
+        "npm-peer",
+        "npm-bundled",
+        "npm-no-pkg",
+      ],
     },
     exclude: {
       path: [
@@ -179,7 +206,17 @@ module.exports = {
       ],
     },
     enhancedResolveOptions: {
-      extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue"],
+      extensions: [
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+      ],
     },
     parser: "tsc",
     skipAnalysisNotInRules: true,

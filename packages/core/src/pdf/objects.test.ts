@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import {
   createPdfDocument,
   formatNumber,
@@ -10,7 +11,8 @@ import {
   pdfTextString,
 } from "./objects";
 
-const latin1 = (bytes: Uint8Array): string => new TextDecoder("latin1").decode(bytes);
+const latin1 = (bytes: Uint8Array): string =>
+  new TextDecoder("latin1").decode(bytes);
 
 const serializeOne = (
   value: Parameters<ReturnType<typeof createPdfDocument>["add"]>[0],
@@ -18,7 +20,9 @@ const serializeOne = (
   const document = createPdfDocument();
   const root = document.add(value);
   const info = document.add(pdfDict([]));
-  return latin1(document.serialize({ rootRef: root, infoRef: info, idHex: () => "00" }));
+  return latin1(
+    document.serialize({ rootRef: root, infoRef: info, idHex: () => "00" }),
+  );
 };
 
 describe("formatNumber", () => {
@@ -47,7 +51,9 @@ describe("formatNumber", () => {
   });
 
   test("never emits exponent notation", () => {
-    const values = [1e-9, -1e-9, 1e9, -1e9, 0.00001, 1234567.891, -1234567.891, 1e-21];
+    const values = [
+      1e-9, -1e-9, 1e9, -1e9, 0.00001, 1234567.891, -1234567.891, 1e-21,
+    ];
     for (const value of values) {
       const formatted = formatNumber(value);
       expect(formatted).not.toContain("e");
@@ -73,7 +79,9 @@ describe("value serialization", () => {
   });
 
   test("escapes parentheses and backslashes in a byte string", () => {
-    expect(serializeOne(pdfAsciiString("a(b)c\\d"))).toContain("(a\\(b\\)c\\\\d)");
+    expect(serializeOne(pdfAsciiString("a(b)c\\d"))).toContain(
+      "(a\\(b\\)c\\\\d)",
+    );
   });
 
   test("drops dictionary entries whose value is undefined", () => {
@@ -88,7 +96,9 @@ describe("value serialization", () => {
   });
 
   test("keeps array order", () => {
-    expect(serializeOne(pdfArray([pdfNumber(3), pdfNumber(1), pdfNumber(2)]))).toContain("[3 1 2]");
+    expect(
+      serializeOne(pdfArray([pdfNumber(3), pdfNumber(1), pdfNumber(2)])),
+    ).toContain("[3 1 2]");
   });
 });
 
@@ -115,7 +125,9 @@ describe("file structure", () => {
     const document = createPdfDocument();
     const root = document.add(pdfDict([]));
     const info = document.add(pdfDict([]));
-    const text = latin1(document.serialize({ rootRef: root, infoRef: info, idHex: () => "ABCD" }));
+    const text = latin1(
+      document.serialize({ rootRef: root, infoRef: info, idHex: () => "ABCD" }),
+    );
     expect(text).toContain("/ID [<ABCD> <ABCD>]");
   });
 });

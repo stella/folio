@@ -18,10 +18,10 @@
  * generic doc-change reset racing the host's selection move.
  */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { EditorState, PluginSpec, Transaction } from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { getTemplateDirectives } from "./templateDirectives";
 
 export type TemplateSlashMenuState =
@@ -40,7 +40,8 @@ const IDLE: TemplateSlashMenuState = {
  * host owns the highlighted row and the menu list, so it decides whether each
  * key is consumed; returning `true` lets the plugin `preventDefault` the event.
  */
-export type TemplateSlashMenuKeyAction = "up" | "down" | "forward" | "back" | "commit" | "dismiss";
+export type TemplateSlashMenuKeyAction =
+  "up" | "down" | "forward" | "back" | "commit" | "dismiss";
 
 export type TemplateSlashMenuPluginOptions = {
   /** Fires whenever the trigger state changes (open, query edit, close). */
@@ -93,7 +94,9 @@ const atTriggerBoundary = (state: EditorState, pos: number): boolean => {
  *  `{% if {{ field }} %}`, which the scanner/fill grammar cannot interpret.
  *  Boundaries are exclusive: a caret right before `{{` or after `}}` is fine. */
 const insideDirective = (state: EditorState, pos: number): boolean =>
-  getTemplateDirectives(state).some((range) => pos > range.from && pos < range.to);
+  getTemplateDirectives(state).some(
+    (range) => pos > range.from && pos < range.to,
+  );
 
 /** Whether the `/` that opened the trigger is still present at `from`. */
 const slashStillAt = (state: EditorState, from: number): boolean => {
@@ -104,7 +107,14 @@ const slashStillAt = (state: EditorState, from: number): boolean => {
   if ($from.parentOffset >= $from.parent.content.size) {
     return false;
   }
-  return $from.parent.textBetween($from.parentOffset, $from.parentOffset + 1, "\n", "\n") === "/";
+  return (
+    $from.parent.textBetween(
+      $from.parentOffset,
+      $from.parentOffset + 1,
+      "\n",
+      "\n",
+    ) === "/"
+  );
 };
 
 /**
@@ -118,7 +128,11 @@ const slashStillAt = (state: EditorState, from: number): boolean => {
  * Returns the query string, or `null` when the span contains a terminator (a
  * typed space or punctuation) — the command is over.
  */
-const readRangeQuery = (state: EditorState, from: number, to: number): string | null => {
+const readRangeQuery = (
+  state: EditorState,
+  from: number,
+  to: number,
+): string | null => {
   const start = from + 1;
   if (to <= start) {
     return "";
@@ -132,8 +146,10 @@ const readRangeQuery = (state: EditorState, from: number, to: number): string | 
   return text;
 };
 
-const sameState = (a: TemplateSlashMenuState, b: TemplateSlashMenuState): boolean =>
-  a.active === b.active && a.from === b.from && a.query === b.query;
+const sameState = (
+  a: TemplateSlashMenuState,
+  b: TemplateSlashMenuState,
+): boolean => a.active === b.active && a.from === b.from && a.query === b.query;
 
 /**
  * Open the trigger at the collapsed caret if the guards pass: insert the `/`
@@ -222,7 +238,11 @@ export const templateSlashMenuPlugin = (
         // re-assertion at the query end stays inside it.
         if (tr.selectionSet) {
           const { selection } = newState;
-          if (!selection.empty || selection.from < from || selection.from > to) {
+          if (
+            !selection.empty ||
+            selection.from < from ||
+            selection.from > to
+          ) {
             return IDLE;
           }
         }
@@ -329,8 +349,9 @@ const keyToAction = (key: string): TemplateSlashMenuKeyAction | null => {
 
 // -- Public read / command API -------------------------------------
 
-export const getTemplateSlashMenu = (state: EditorState): TemplateSlashMenuState =>
-  templateSlashMenuKey.getState(state) ?? IDLE;
+export const getTemplateSlashMenu = (
+  state: EditorState,
+): TemplateSlashMenuState => templateSlashMenuKey.getState(state) ?? IDLE;
 
 /** Clear the trigger. Set on the host's marker-insert transaction so the
  *  insertion and the teardown commit together. */
@@ -341,7 +362,9 @@ export const clearTemplateSlashMenu = (tr: Transaction): Transaction =>
  *  active so a submenu can start its own search from a blank query. No-op (and
  *  returns the unmodified state) when no trigger is active or the query is
  *  already empty. */
-export const resetTemplateSlashQuery = (state: EditorState): Transaction | null => {
+export const resetTemplateSlashQuery = (
+  state: EditorState,
+): Transaction | null => {
   const current = getTemplateSlashMenu(state);
   if (!current.active) {
     return null;

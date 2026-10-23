@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { CensusBuilder, type CorpusFileId, mergeCensuses } from "./lib/corpus-census";
+import {
+  CensusBuilder,
+  type CorpusFileId,
+  mergeCensuses,
+} from "./lib/corpus-census";
 import {
   CORPUS_INVARIANTS,
   type CorpusFailure,
@@ -21,7 +25,11 @@ type Observation =
   | { kind: "not-a-docx" }
   | { kind: "checked"; failures: CorpusFailure[] };
 
-const observe = (builder: CensusBuilder, index: number, observation: Observation): void => {
+const observe = (
+  builder: CensusBuilder,
+  index: number,
+  observation: Observation,
+): void => {
   switch (observation.kind) {
     case "duplicate":
       builder.countDuplicate();
@@ -47,7 +55,10 @@ const OBSERVATIONS: Observation[] = [
   { kind: "checked", failures: [failure("text changed")] },
   { kind: "duplicate" },
   { kind: "not-a-docx" },
-  { kind: "checked", failures: [failure("text changed"), failure("blocks changed")] },
+  {
+    kind: "checked",
+    failures: [failure("text changed"), failure("blocks changed")],
+  },
   { kind: "checked", failures: [failure("text changed")] },
   { kind: "checked", failures: [] },
   { kind: "checked", failures: [failure("blocks changed")] },

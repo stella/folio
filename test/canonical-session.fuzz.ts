@@ -1,29 +1,30 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { validateDocxPackage } from "../packages/docx-core/src/validate/docx";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../packages/core/src/controller/canonicalSession";
-import { schema } from "../packages/core/src/prosemirror/schema";
-import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseDoc";
-import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
-import { canonicalJson } from "../packages/core/src/utils/canonicalJson";
-import { createDocx } from "../packages/core/src/docx/rezip";
-import { parseDocx } from "../packages/core/src/docx/parser";
 import {
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
 } from "../packages/core/src/docx/paragraphPropertySource";
+import { parseDocx } from "../packages/core/src/docx/parser";
+import { createDocx } from "../packages/core/src/docx/rezip";
+import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseDoc";
+import { schema } from "../packages/core/src/prosemirror/schema";
+import { canonicalJson } from "../packages/core/src/utils/canonicalJson";
+import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
+import { validateDocxPackage } from "../packages/docx-core/src/validate/docx";
 import { createMissingOpBurndown } from "./canonical-missing-ops";
 import { assertProperty, propertyTestTimeout } from "./property-testing";
 
 // Source ownership is package-specific; reopening intentionally establishes a new contract.
 const portableProjection = (state: EditorState["doc"]) =>
   JSON.stringify(state.toJSON(), (key, value) =>
-    key === PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR || key === PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR
+    key === PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR ||
+    key === PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR
       ? undefined
       : value,
   );
@@ -35,7 +36,12 @@ const textArbitrary = fc
   })
   .map((characters) => characters.join(""));
 const actionArbitrary = fc.record({
-  kind: fc.constantFrom("replace", "delete", "cross-paragraph", "structural-input"),
+  kind: fc.constantFrom(
+    "replace",
+    "delete",
+    "cross-paragraph",
+    "structural-input",
+  ),
   anchor: fc.nat(100),
   head: fc.nat(100),
   text: textArbitrary,
@@ -52,7 +58,8 @@ test(
         async (initial, actions) => {
           const generated = createEmptyDocument({ initialText: initial });
           const first = generated.package.document.content.at(0);
-          if (first?.type !== "paragraph") throw new TypeError("Expected paragraph seed");
+          if (first?.type !== "paragraph")
+            throw new TypeError("Expected paragraph seed");
           first.paraId = "F0220001";
           generated.package.document.content.push({
             type: "paragraph",
@@ -64,7 +71,10 @@ test(
             detectVariables: false,
           });
           const session = createCanonicalSession(source).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const checkProjection = () => {
             expect(state.doc.eq(session.projection.doc)).toBe(true);
             expect(
@@ -96,7 +106,9 @@ test(
               action.kind === "cross-paragraph"
                 ? state.doc.content.size - 1
                 : Math.max(anchor, head);
-            state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+            state = state.apply(
+              state.tr.setSelection(TextSelection.create(state.doc, from, to)),
+            );
             const before = {
               document: session.document,
               projection: state.doc.toJSON(),
@@ -119,11 +131,16 @@ test(
               checkProjection();
               continue;
             }
-            state = publishCanonicalProjection({ state, session, commit: prepared.value }).unwrap()
-              .state;
+            state = publishCanonicalProjection({
+              state,
+              session,
+              commit: prepared.value,
+            }).unwrap().state;
             checkProjection();
             const expectedText =
-              paragraph.textContent.slice(0, from - 1) + text + paragraph.textContent.slice(to - 1);
+              paragraph.textContent.slice(0, from - 1) +
+              text +
+              paragraph.textContent.slice(to - 1);
             expect(state.doc.firstChild?.textContent).toBe(expectedText);
             const after = {
               document: session.document,

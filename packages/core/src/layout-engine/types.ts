@@ -10,22 +10,22 @@ import type {
   ImageWrap,
   InlineWrapper,
   NumberFormat,
-  PreviewDescriptor,
   OutlineLevel,
   ParagraphNumberingOverride,
-  ShapeTextBody,
+  PreviewDescriptor,
   SdtProperties,
   SdtType,
   SectionStart,
+  ShapeTextBody,
   TableCellFormatting,
   TableWidthType,
   UnderlineStyle,
   VerticalAlign,
 } from "@stll/docx-core/model";
 
-import { isFloatingWrapType, isWrapNone } from "../types/wrap";
-import type { NoteStoryKey } from "../types/editor-story";
 import type { OutlineStyleAttr } from "../types/documentEnumValues";
+import type { NoteStoryKey } from "../types/editor-story";
+import { isFloatingWrapType, isWrapNone } from "../types/wrap";
 import type { CssBorderStyle } from "../utils/borderCss";
 
 /**
@@ -152,13 +152,22 @@ export type RunFormatting = {
    * Distinct from `rtl`, which is the run's own `w:rtl` property: the wrapper
    * is a container the author wrote around the run, not a property of it.
    */
-  bidiWrapper?: Omit<Extract<InlineWrapper, { kind: "bidi" }>, "type" | "kind" | "content">;
+  bidiWrapper?: Omit<
+    Extract<InlineWrapper, { kind: "bidi" }>,
+    "type" | "kind" | "content"
+  >;
   /**
    * Text effect animation hint (w:effect). Word 2013+ no longer animates,
    * but the painter emits `docx-text-effect-<name>` plus `data-effect` so
    * host CSS can opt in.
    */
-  textEffect?: "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle";
+  textEffect?:
+    | "blinkBackground"
+    | "lights"
+    | "antsBlack"
+    | "antsRed"
+    | "shimmer"
+    | "sparkle";
   /** Hyperlink info if this run is a link */
   hyperlink?: HyperlinkInfo;
   /** Footnote reference ID (if this run contains a footnote reference) */
@@ -437,7 +446,8 @@ export type ParagraphIndent = {
 /**
  * Tab stop alignment types
  */
-export type TabAlignment = "start" | "end" | "center" | "decimal" | "bar" | "clear";
+export type TabAlignment =
+  "start" | "end" | "center" | "decimal" | "bar" | "clear";
 
 /**
  * Tab stop definition
@@ -1325,7 +1335,8 @@ export type TextBoxFragment = FragmentBase & {
 /**
  * Union of all fragment types.
  */
-export type Fragment = ParagraphFragment | TableFragment | ImageFragment | TextBoxFragment;
+export type Fragment =
+  ParagraphFragment | TableFragment | ImageFragment | TextBoxFragment;
 
 // =============================================================================
 // PAGES AND LAYOUT - Output of layout engine
@@ -1712,7 +1723,11 @@ export const isFloatingImageRun = (run: ImageRun): boolean => {
  */
 export const isTextWrappingFloatingImageRun = (run: ImageRun): boolean => {
   const wrapType = run.wrapType;
-  if (wrapType === "behind" || wrapType === "inFront" || wrapType === "topAndBottom") {
+  if (
+    wrapType === "behind" ||
+    wrapType === "inFront" ||
+    wrapType === "topAndBottom"
+  ) {
     return false;
   }
   if (wrapType === "square" || wrapType === "tight" || wrapType === "through") {
@@ -1830,12 +1845,17 @@ const tableRowOwnsNestedGrid = (row: TableRow): boolean => {
   }
 
   return cell.blocks.every(
-    (block) => block.kind === "table" || (block.kind === "paragraph" && block.runs.length === 0),
+    (block) =>
+      block.kind === "table" ||
+      (block.kind === "paragraph" && block.runs.length === 0),
   );
 };
 
 /** Return the leading visual offset for a row with omitted grid columns. */
-export const getTableRowLeadingWidth = (row: TableRow, columnWidths: readonly number[]): number => {
+export const getTableRowLeadingWidth = (
+  row: TableRow,
+  columnWidths: readonly number[],
+): number => {
   if (tableRowOwnsNestedGrid(row)) {
     return 0;
   }

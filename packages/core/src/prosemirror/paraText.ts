@@ -34,7 +34,11 @@ export function getVanillaNodeText(node: PMNode): string {
 }
 
 /** Text between two doc positions, vanilla view. */
-export function getVanillaTextBetween(doc: PMNode, from: number, to: number): string {
+export function getVanillaTextBetween(
+  doc: PMNode,
+  from: number,
+  to: number,
+): string {
   if (from >= to) return "";
   const parts: string[] = [];
   doc.nodesBetween(from, to, (child, pos) => {
@@ -93,12 +97,22 @@ export function findTextInPmParagraph(
     }
     if (node.marks.some((m) => m.type.name === "insertion")) return false;
     if (node.isText && node.text) {
-      textPositions.push({ text: node.text, pos, pmLength: node.text.length, atomic: false });
+      textPositions.push({
+        text: node.text,
+        pos,
+        pmLength: node.text.length,
+        atomic: false,
+      });
       fullText += node.text;
       return false;
     }
     if (node.isLeaf && node.textContent) {
-      textPositions.push({ text: node.textContent, pos, pmLength: node.nodeSize, atomic: true });
+      textPositions.push({
+        text: node.textContent,
+        pos,
+        pmLength: node.nodeSize,
+        atomic: true,
+      });
       fullText += node.textContent;
       return false;
     }
@@ -112,7 +126,11 @@ export function findTextInPmParagraph(
   if (secondMatch !== -1) return null;
 
   const matchEnd = firstMatch + searchText.length;
-  if (structuralBoundaryOffsets.some((offset) => offset > firstMatch && offset < matchEnd)) {
+  if (
+    structuralBoundaryOffsets.some(
+      (offset) => offset > firstMatch && offset < matchEnd,
+    )
+  ) {
     return null;
   }
   let segmentStart = 0;
@@ -139,7 +157,10 @@ export function findTextInPmParagraph(
       const localOffset = firstMatch - charOffset;
       fromPos = tp.atomic ? tp.pos : tp.pos + localOffset;
     }
-    if (charOffset <= firstMatch + searchText.length && firstMatch + searchText.length <= segEnd) {
+    if (
+      charOffset <= firstMatch + searchText.length &&
+      firstMatch + searchText.length <= segEnd
+    ) {
       const localOffset = firstMatch + searchText.length - charOffset;
       toPos = tp.atomic ? tp.pos + tp.pmLength : tp.pos + localOffset;
       break;

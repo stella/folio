@@ -16,21 +16,23 @@
  *     [--signature <text>] [--out <dir>] [--budget <evaluations>]
  */
 
+import { TaggedError } from "better-result";
+import JSZip from "jszip";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
-import JSZip from "jszip";
-
-import { type RunCorpusChecksOptions, runCorpusChecks } from "./lib/corpus-check";
+import {
+  runCorpusChecks,
+  type RunCorpusChecksOptions,
+} from "./lib/corpus-check";
 import { deltaDebug } from "./lib/corpus-delta-debug";
+import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 import {
   assertOutsideRepository,
   corpusCacheRoot,
   sha256Bytes,
   writeJsonFile,
 } from "./lib/corpus-manifest";
-import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 import {
   CORPUS_INVARIANTS,
   type CorpusFailure,
@@ -39,7 +41,9 @@ import {
 } from "./lib/corpus-signature";
 import { prepareXmlPruning } from "./lib/corpus-xml-prune";
 
-class CorpusMinimizeError extends TaggedError("CorpusMinimizeError")<{ message: string }> {}
+class CorpusMinimizeError extends TaggedError("CorpusMinimizeError")<{
+  message: string;
+}> {}
 
 const DEFAULT_BUDGET = 400;
 /** The parts whose elements are worth shrinking; the rest survive or die whole. */
@@ -54,12 +58,17 @@ type Package = { names: string[]; contents: Map<string, Uint8Array> };
 
 const readPackage = async (bytes: Uint8Array): Promise<Package> => {
   const archive = await JSZip.loadAsync(bytes);
-  const names = Object.keys(archive.files).filter((name) => !archive.files[name]?.dir);
+  const names = Object.keys(archive.files).filter(
+    (name) => !archive.files[name]?.dir,
+  );
   names.sort();
   const contents = new Map<string, Uint8Array>();
   await Promise.all(
     names.map(async (name) => {
-      contents.set(name, await (archive.file(name) as JSZip.JSZipObject).async("uint8array"));
+      contents.set(
+        name,
+        await (archive.file(name) as JSZip.JSZipObject).async("uint8array"),
+      );
     }),
   );
   return { names, contents };
@@ -76,10 +85,16 @@ const writePackage = async (
       archive.file(name, data);
     }
   }
-  return await archive.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  return await archive.generateAsync({
+    type: "uint8array",
+    compression: "DEFLATE",
+  });
 };
 
-const failureMatching = (failures: readonly CorpusFailure[], signature: string): boolean =>
+const failureMatching = (
+  failures: readonly CorpusFailure[],
+  signature: string,
+): boolean =>
   failures.some((failure) => failureSignature(failure) === signature);
 
 /**
@@ -100,13 +115,17 @@ export const selectFailure = (
     // SAFETY: the caller refuses an empty candidate list before calling.
     return candidates[0] as CorpusFailure;
   }
-  const matched = candidates.filter((candidate) => failureSignature(candidate).includes(wanted));
+  const matched = candidates.filter((candidate) =>
+    failureSignature(candidate).includes(wanted),
+  );
   const first = matched.at(0);
   if (first === undefined || matched.length > 1) {
     throw new CorpusMinimizeError({
       message:
         `--signature ${JSON.stringify(wanted)} ${first === undefined ? "matches none" : `matches ${matched.length}`} of this file's failures:\n` +
-        candidates.map((candidate) => `  ${failureSignature(candidate)}`).join("\n"),
+        candidates
+          .map((candidate) => `  ${failureSignature(candidate)}`)
+          .join("\n"),
     });
   }
   return first;
@@ -127,7 +146,9 @@ const KNOWN_INVARIANTS = new Set<string>([
   ...Object.values(EXTENDED_CORPUS_INVARIANTS),
 ]);
 
-const asInvariant = (value: string | undefined): CorpusInvariant | undefined => {
+const asInvariant = (
+  value: string | undefined,
+): CorpusInvariant | undefined => {
   if (value === undefined) {
     return undefined;
   }
@@ -145,8 +166,12 @@ const asInvariant = (value: string | undefined): CorpusInvariant | undefined => 
  * only ever asks about one signature. Running the other invariants on every
  * candidate would make shrinking a finding cost more than finding it.
  */
-const checkOptions = (invariant: CorpusInvariant | undefined): RunCorpusChecksOptions =>
-  invariant === undefined ? MINIMIZE_BUDGETS : { ...MINIMIZE_BUDGETS, only: new Set([invariant]) };
+const checkOptions = (
+  invariant: CorpusInvariant | undefined,
+): RunCorpusChecksOptions =>
+  invariant === undefined
+    ? MINIMIZE_BUDGETS
+    : { ...MINIMIZE_BUDGETS, only: new Set([invariant]) };
 
 const reproducesSignature = async (
   bytes: Uint8Array,
@@ -154,10 +179,15 @@ const reproducesSignature = async (
   invariant: CorpusInvariant,
 ): Promise<boolean> => {
   const result = await runCorpusChecks(bytes, checkOptions(invariant));
-  return result.kind === "checked" && failureMatching(result.failures, signature);
+  return (
+    result.kind === "checked" && failureMatching(result.failures, signature)
+  );
 };
 
-const flagValue = (args: readonly string[], flag: string): string | undefined => {
+const flagValue = (
+  args: readonly string[],
+  flag: string,
+): string | undefined => {
   const index = args.indexOf(flag);
   if (index === -1) {
     return undefined;
@@ -197,7 +227,10 @@ const minimizeElements = async ({
   signature,
   invariant,
   remainingBudget,
-}: MinimizeElementsOptions): Promise<{ parts: MinimizedPart[]; evaluations: number }> => {
+}: MinimizeElementsOptions): Promise<{
+  parts: MinimizedPart[];
+  evaluations: number;
+}> => {
   const parts: MinimizedPart[] = [];
   let evaluations = 0;
   const decoder = new TextDecoder();
@@ -205,7 +238,11 @@ const minimizeElements = async ({
 
   for (const part of PRUNABLE_PARTS) {
     const original = contents.get(part);
-    if (original === undefined || !names.includes(part) || evaluations >= remainingBudget) {
+    if (
+      original === undefined ||
+      !names.includes(part) ||
+      evaluations >= remainingBudget
+    ) {
       continue;
     }
     const prunable = prepareXmlPruning(decoder.decode(original));
@@ -234,10 +271,17 @@ const minimizeElements = async ({
       items: prunable.addresses,
       budget: remainingBudget - evaluations,
       reproduces: async (kept) =>
-        await reproducesSignature(await withPart(new Set(kept)), signature, invariant),
+        await reproducesSignature(
+          await withPart(new Set(kept)),
+          signature,
+          invariant,
+        ),
     });
     evaluations += minimized.evaluations;
-    contents.set(part, encoder.encode(prunable.render(new Set(minimized.kept))));
+    contents.set(
+      part,
+      encoder.encode(prunable.render(new Set(minimized.kept))),
+    );
     parts.push({
       part,
       elementsKept: minimized.kept.length,
@@ -259,20 +303,26 @@ const main = async (args: string[]): Promise<void> => {
   }
   const budget = Number(flagValue(args, "--budget") ?? DEFAULT_BUDGET);
   if (!Number.isInteger(budget) || budget < 1) {
-    throw new CorpusMinimizeError({ message: "--budget expects a positive integer" });
+    throw new CorpusMinimizeError({
+      message: "--budget expects a positive integer",
+    });
   }
   const wantedInvariant = flagValue(args, "--invariant");
 
   const inputPath = resolveInput(target);
   const inputBytes = new Uint8Array(await Bun.file(inputPath).arrayBuffer());
-  const baseline = await runCorpusChecks(inputBytes, checkOptions(asInvariant(wantedInvariant)));
+  const baseline = await runCorpusChecks(
+    inputBytes,
+    checkOptions(asInvariant(wantedInvariant)),
+  );
   if (baseline.kind !== "checked") {
     throw new CorpusMinimizeError({
       message: `${target} is classified ${baseline.reason}: ${baseline.detail}`,
     });
   }
   const candidates = baseline.failures.filter(
-    (candidate) => wantedInvariant === undefined || candidate.invariant === wantedInvariant,
+    (candidate) =>
+      wantedInvariant === undefined || candidate.invariant === wantedInvariant,
   );
   if (candidates.length === 0) {
     throw new CorpusMinimizeError({
@@ -296,7 +346,11 @@ const main = async (args: string[]): Promise<void> => {
     items: names,
     budget,
     reproduces: async (kept) =>
-      await reproducesSignature(await writePackage(kept, contents), signature, failure.invariant),
+      await reproducesSignature(
+        await writePackage(kept, contents),
+        signature,
+        failure.invariant,
+      ),
   });
   process.stdout.write(
     `Parts: ${partResult.kept.length}/${names.length} kept after ${partResult.evaluations} evaluations\n`,
@@ -320,7 +374,11 @@ const main = async (args: string[]): Promise<void> => {
   const minimized = await writePackage(partResult.kept, contents);
   const outDirectory = assertOutsideRepository(
     flagValue(args, "--out") ??
-      path.join(corpusCacheRoot(), "minimized", sha256Bytes(inputBytes).slice(0, 12)),
+      path.join(
+        corpusCacheRoot(),
+        "minimized",
+        sha256Bytes(inputBytes).slice(0, 12),
+      ),
   );
   await mkdir(outDirectory, { recursive: true });
   await Bun.write(path.join(outDirectory, "minimized.docx"), minimized);
@@ -347,7 +405,9 @@ const main = async (args: string[]): Promise<void> => {
 
 if (import.meta.main) {
   main(process.argv.slice(2)).catch((cause: unknown) => {
-    process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+    process.stderr.write(
+      `${cause instanceof Error ? cause.message : String(cause)}\n`,
+    );
     process.exitCode = 1;
   });
 }

@@ -2,19 +2,25 @@ import { describe, expect, test } from "bun:test";
 
 import { CORPUS_EVIDENCE, type CorpusFileId } from "./lib/corpus-census";
 import {
-  FAMILY_BASELINE_FAMILIES,
   compareFamilyToBaseline,
+  FAMILY_BASELINE_FAMILIES,
   familyBaselineFromCensus,
   familyBaselinePath,
 } from "./lib/corpus-family-baseline";
-import { FamilyCensusBuilder, type FamilyCensus } from "./lib/corpus-family-census";
 import {
+  type FamilyCensus,
+  FamilyCensusBuilder,
+} from "./lib/corpus-family-census";
+import {
+  CORPUS_FAMILY_GATING,
   CORPUS_INVARIANT_FAMILIES,
   EXTENDED_CORPUS_INVARIANTS,
   EXTENDED_INVARIANT_FAMILY,
-  CORPUS_FAMILY_GATING,
 } from "./lib/corpus-invariants/contract";
-import { type CorpusFailure, failureFromAssertion } from "./lib/corpus-signature";
+import {
+  type CorpusFailure,
+  failureFromAssertion,
+} from "./lib/corpus-signature";
 
 const file = (name: string): CorpusFileId => ({
   sourceId: "synthetic",
@@ -60,12 +66,18 @@ describe("family baseline files", () => {
         .filter((family) => CORPUS_FAMILY_GATING[family] === "gating")
         .sort(),
     );
-    expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.core);
-    expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.performance);
+    expect(FAMILY_BASELINE_FAMILIES).not.toContain(
+      CORPUS_INVARIANT_FAMILIES.core,
+    );
+    expect(FAMILY_BASELINE_FAMILIES).not.toContain(
+      CORPUS_INVARIANT_FAMILIES.performance,
+    );
   });
 
   test("a family's file is named after it, under corpus/baselines", () => {
-    expect(familyBaselinePath(RESERIALIZE)).toEndWith("corpus/baselines/reserialize.json");
+    expect(familyBaselinePath(RESERIALIZE)).toEndWith(
+      "corpus/baselines/reserialize.json",
+    );
   });
 
   test("a baseline carries only its own family's signatures", () => {
@@ -82,7 +94,9 @@ describe("family baseline files", () => {
       },
     ]);
     const baseline = familyBaselineFromCensus(census, RESERIALIZE);
-    expect(baseline.entries.map((entry) => entry.message)).toEqual([FIRST.message]);
+    expect(baseline.entries.map((entry) => entry.message)).toEqual([
+      FIRST.message,
+    ]);
     expect(baseline.failedFiles).toBe(1);
   });
 });
@@ -110,13 +124,17 @@ describe("compareFamilyToBaseline", () => {
       { name: "two", failures: [FIRST] },
       { name: "three", failures: [FIRST] },
     ]);
-    expect(compareFamilyToBaseline(baseline, census).map((v) => v.kind)).toEqual(["more-files"]);
+    expect(
+      compareFamilyToBaseline(baseline, census).map((v) => v.kind),
+    ).toEqual(["more-files"]);
   });
 
   /** An improvement must be written down, so an accidental re-regression cannot hide in old slack. */
   test("a signature that improved must be rewritten before the gate passes", () => {
     const census = censusOf("digest", [{ name: "one", failures: [FIRST] }]);
-    expect(compareFamilyToBaseline(baseline, census).map((v) => v.kind)).toEqual(["fewer-files"]);
+    expect(
+      compareFamilyToBaseline(baseline, census).map((v) => v.kind),
+    ).toEqual(["fewer-files"]);
   });
 
   test("a signature the corpus has never seen is a new defect", () => {
@@ -124,7 +142,9 @@ describe("compareFamilyToBaseline", () => {
       { name: "one", failures: [FIRST] },
       { name: "two", failures: [FIRST, SECOND] },
     ]);
-    expect(compareFamilyToBaseline(baseline, census).map((v) => v.kind)).toEqual(["new-signature"]);
+    expect(
+      compareFamilyToBaseline(baseline, census).map((v) => v.kind),
+    ).toEqual(["new-signature"]);
   });
 
   test("a signature nothing reproduces any more must be removed", () => {
@@ -132,9 +152,9 @@ describe("compareFamilyToBaseline", () => {
       { name: "one", failures: [] },
       { name: "two", failures: [] },
     ]);
-    expect(compareFamilyToBaseline(baseline, census).map((v) => v.kind)).toEqual([
-      "resolved-signature",
-    ]);
+    expect(
+      compareFamilyToBaseline(baseline, census).map((v) => v.kind),
+    ).toEqual(["resolved-signature"]);
   });
 
   test("a different corpus is refused rather than compared", () => {
@@ -142,9 +162,9 @@ describe("compareFamilyToBaseline", () => {
       { name: "one", failures: [FIRST] },
       { name: "two", failures: [FIRST] },
     ]);
-    expect(compareFamilyToBaseline(baseline, census).map((v) => v.kind)).toEqual([
-      "corpus-changed",
-    ]);
+    expect(
+      compareFamilyToBaseline(baseline, census).map((v) => v.kind),
+    ).toEqual(["corpus-changed"]);
   });
 
   test("another family's regression is not this family's violation", () => {

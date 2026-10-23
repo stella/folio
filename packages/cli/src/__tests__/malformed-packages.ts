@@ -19,13 +19,20 @@ const MAIN_CONTENT_TYPE =
 
 type Rewrite = (zip: JSZip) => Promise<void> | void;
 
-const rewritePart = async (zip: JSZip, name: string, edit: (xml: string) => string) => {
+const rewritePart = async (
+  zip: JSZip,
+  name: string,
+  edit: (xml: string) => string,
+) => {
   const xml = await zip.file(name)?.async("string");
   if (xml === undefined) throw new Error(`fixture has no ${name}`);
   zip.file(name, edit(xml));
 };
 
-const rewritten = async (valid: Uint8Array, rewrite: Rewrite): Promise<Uint8Array> => {
+const rewritten = async (
+  valid: Uint8Array,
+  rewrite: Rewrite,
+): Promise<Uint8Array> => {
   const zip = await JSZip.loadAsync(valid);
   await rewrite(zip);
   return await zip.generateAsync({ type: "uint8array" });
@@ -42,18 +49,27 @@ const duplicateExactMember = (valid: Uint8Array): Uint8Array => {
   for (let index = 0; index < count; index += 1) {
     const nameLength = view.getUint16(offset + 28, true);
     const length =
-      46 + nameLength + view.getUint16(offset + 30, true) + view.getUint16(offset + 32, true);
-    const name = new TextDecoder().decode(valid.subarray(offset + 46, offset + 46 + nameLength));
+      46 +
+      nameLength +
+      view.getUint16(offset + 30, true) +
+      view.getUint16(offset + 32, true);
+    const name = new TextDecoder().decode(
+      valid.subarray(offset + 46, offset + 46 + nameLength),
+    );
     if (name === "word/document.xml") {
       member = { offset, length };
       break;
     }
     offset += length;
   }
-  if (!member) throw new Error("fixture has no main part in its central directory");
+  if (!member)
+    throw new Error("fixture has no main part in its central directory");
   const duplicate = new Uint8Array(valid.length + member.length);
   duplicate.set(valid.subarray(0, end));
-  duplicate.set(valid.subarray(member.offset, member.offset + member.length), end);
+  duplicate.set(
+    valid.subarray(member.offset, member.offset + member.length),
+    end,
+  );
   duplicate.set(valid.subarray(end), end + member.length);
   const updated = new DataView(duplicate.buffer);
   updated.setUint16(end + member.length + 8, count + 1, true);
@@ -103,7 +119,10 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     build: (valid) =>
       rewritten(valid, (zip) =>
         rewritePart(zip, "[Content_Types].xml", (xml) =>
-          xml.replace("http://schemas.openxmlformats.org/package/2006/content-types", "urn:x"),
+          xml.replace(
+            "http://schemas.openxmlformats.org/package/2006/content-types",
+            "urn:x",
+          ),
         ),
       ),
   },
@@ -180,7 +199,10 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "mainPartRoot",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.file("word/document.xml", '<w:document xmlns:w="urn:x"><w:body/></w:document>');
+        zip.file(
+          "word/document.xml",
+          '<w:document xmlns:w="urn:x"><w:body/></w:document>',
+        );
       }),
   },
   {
@@ -228,8 +250,12 @@ export const WELL_FORMED_PACKAGES: readonly {
         await rewritePart(zip, "_rels/.rels", (xml) =>
           xml.replace(OFFICE_DOCUMENT, STRICT_OFFICE_DOCUMENT),
         );
-        await rewritePart(zip, "word/document.xml", (xml) => xml.replaceAll(W_NS, STRICT_W_NS));
-        await rewritePart(zip, "word/styles.xml", (xml) => xml.replaceAll(W_NS, STRICT_W_NS));
+        await rewritePart(zip, "word/document.xml", (xml) =>
+          xml.replaceAll(W_NS, STRICT_W_NS),
+        );
+        await rewritePart(zip, "word/styles.xml", (xml) =>
+          xml.replaceAll(W_NS, STRICT_W_NS),
+        );
       }),
   },
   {
@@ -237,7 +263,10 @@ export const WELL_FORMED_PACKAGES: readonly {
     build: (valid) =>
       rewritten(valid, async (zip) => {
         await rewritePart(zip, "word/document.xml", (xml) =>
-          xml.replaceAll("<w:", "<x:").replaceAll("</w:", "</x:").replace("xmlns:w=", "xmlns:x="),
+          xml
+            .replaceAll("<w:", "<x:")
+            .replaceAll("</w:", "</x:")
+            .replace("xmlns:w=", "xmlns:x="),
         );
         await rewritePart(zip, "[Content_Types].xml", (xml) =>
           xml
@@ -255,20 +284,23 @@ export const WELL_FORMED_PACKAGES: readonly {
  * Arguments that get each tool past its own validation, so the file is what
  * a command is refused for. Keyed by tool and checked against the registry.
  */
-export const TOOL_ARGUMENTS: Readonly<Record<string, Record<string, unknown>>> = {
-  read_document: {},
-  get_document_outline: {},
-  read_section: { handle: "section-1" },
-  list_stories: {},
-  read_story: { handle: "story-1" },
-  find_text: { query: "payment" },
-  read_comments: {},
-  read_changes: {},
-  suggest_changes: {
-    operations: [{ type: "insertAfterBlock", blockId: "10000001", text: "Added." }],
-  },
-  add_comment: { blockId: "10000001", text: "Why?" },
-  reply_comment: { commentId: "0", text: "Because." },
-  resolve_comment: { commentId: "0" },
-  resolve_changes: { all: true },
-};
+export const TOOL_ARGUMENTS: Readonly<Record<string, Record<string, unknown>>> =
+  {
+    read_document: {},
+    get_document_outline: {},
+    read_section: { handle: "section-1" },
+    list_stories: {},
+    read_story: { handle: "story-1" },
+    find_text: { query: "payment" },
+    read_comments: {},
+    read_changes: {},
+    suggest_changes: {
+      operations: [
+        { type: "insertAfterBlock", blockId: "10000001", text: "Added." },
+      ],
+    },
+    add_comment: { blockId: "10000001", text: "Why?" },
+    reply_comment: { commentId: "0", text: "Because." },
+    resolve_comment: { commentId: "0" },
+    resolve_changes: { all: true },
+  };

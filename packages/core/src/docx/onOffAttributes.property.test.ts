@@ -13,18 +13,32 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseParagraphProperties } from "./paragraphProperties";
-import { parseBooleanElement, parseOnOffValue } from "./xmlParser";
+import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { parseStyles } from "./styleParser";
-import { parseXmlDocument } from "./xmlParser";
+import {
+  parseBooleanElement,
+  parseOnOffValue,
+  parseXmlDocument,
+} from "./xmlParser";
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** Every `ST_OnOff` lexical value, plus the attribute being absent (`null`). */
-const ON_OFF_SPELLINGS = ["1", "true", "on", "0", "false", "off", null] as const;
+const ON_OFF_SPELLINGS = [
+  "1",
+  "true",
+  "on",
+  "0",
+  "false",
+  "off",
+  null,
+] as const;
 
 type OnOffSpelling = (typeof ON_OFF_SPELLINGS)[number];
 
@@ -71,7 +85,9 @@ describe("ST_OnOff attributes", () => {
     const formatting = parseParagraphTier("on");
 
     expect(formatting?.beforeAutospacing).toBe(true);
-    expect(serializeParagraphFormatting(formatting ?? {})).toContain('w:beforeAutospacing="1"');
+    expect(serializeParagraphFormatting(formatting ?? {})).toContain(
+      'w:beforeAutospacing="1"',
+    );
   });
 
   test(
@@ -143,11 +159,15 @@ describe("ST_OnOff attributes", () => {
           );
           expect(paragraph).not.toBeNull();
           if (paragraph) {
-            expect(parseParagraphProperties(paragraph, null)?.beforeAutospacing).toBeUndefined();
+            expect(
+              parseParagraphProperties(paragraph, null)?.beforeAutospacing,
+            ).toBeUndefined();
           }
 
           // Element shape: absent collapses to the element's own default, off.
-          const element = parseXmlDocument(`<w:b ${WORD_NAMESPACE} w:val="${value}"/>`);
+          const element = parseXmlDocument(
+            `<w:b ${WORD_NAMESPACE} w:val="${value}"/>`,
+          );
           expect(element).not.toBeNull();
           if (element) {
             expect(parseBooleanElement(element)).toBe(false);
@@ -167,7 +187,9 @@ describe("ST_OnOff attributes", () => {
           if (spelling === null) {
             return;
           }
-          const element = parseXmlDocument(`<w:b ${WORD_NAMESPACE} w:val="${spelling}"/>`);
+          const element = parseXmlDocument(
+            `<w:b ${WORD_NAMESPACE} w:val="${spelling}"/>`,
+          );
           expect(element).not.toBeNull();
           if (element) {
             expect(parseBooleanElement(element)).toBe(expectedValue(spelling));

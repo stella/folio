@@ -7,9 +7,9 @@ import { initProseMirrorDoc, prosemirrorToYXmlFragment } from "y-prosemirror";
 import * as Y from "yjs";
 
 import { splitTrackedVerticalTableCell } from "../../ai-edits/table-cell-mutations";
-import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { expectTableCellAttrs } from "../../prosemirror/attrs";
+import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
@@ -18,15 +18,15 @@ import {
   withParagraphSourceContract,
   writeYjsDocumentMetadata,
 } from "../../prosemirror/yjsDocumentMetadata";
+import { createEmptyDocument } from "../../utils/createDocument";
 import {
+  decodeTableCellParagraphSourcePayload,
   ParagraphPropertySourceValidationError,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
   TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
-  decodeTableCellParagraphSourcePayload,
 } from "../paragraphPropertySource";
 import { parseDocx } from "../parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../rezip";
-import { createEmptyDocument } from "../../utils/createDocument";
 import { extractDocxText } from "./extractDocxText";
 import {
   FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME,
@@ -37,16 +37,23 @@ import {
 
 const FOLIO_YJS_METADATA_MAP_NAME = "folio:document-metadata";
 
-const encodeCollaborativeDocument = (document: EditorState["doc"]): Uint8Array => {
+const encodeCollaborativeDocument = (
+  document: EditorState["doc"],
+): Uint8Array => {
   const ydoc = new Y.Doc();
-  prosemirrorToYXmlFragment(document, ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME));
+  prosemirrorToYXmlFragment(
+    document,
+    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+  );
   writeYjsDocumentMetadata(ydoc, document);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
   return update;
 };
 
-const decodeCollaborativeDocument = (update: Uint8Array): EditorState["doc"] => {
+const decodeCollaborativeDocument = (
+  update: Uint8Array,
+): EditorState["doc"] => {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, update);
   const contract = readYjsParagraphSourceContract(ydoc);
@@ -54,14 +61,20 @@ const decodeCollaborativeDocument = (update: Uint8Array): EditorState["doc"] => 
     throw new Error("Collaborative fixture lost its paragraph source contract");
   }
   const document = withParagraphSourceContract(
-    initProseMirrorDoc(ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME), schema).doc,
+    initProseMirrorDoc(
+      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+      schema,
+    ).doc,
     contract,
   );
   ydoc.destroy();
   return document;
 };
 
-const createCollaborativeUpdate = async (sourceDocx: ArrayBuffer, text: string) => {
+const createCollaborativeUpdate = async (
+  sourceDocx: ArrayBuffer,
+  text: string,
+) => {
   const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
   const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
   const bodyEnd = initialState.doc.content.size - 1;
@@ -71,53 +84,68 @@ const createCollaborativeUpdate = async (sourceDocx: ArrayBuffer, text: string) 
   return encodeCollaborativeDocument(nextState.doc);
 };
 
-const sourceWithDistinctParagraphProperties = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentXml = await zip.file("word/document.xml")?.async("text");
-  if (!documentXml) {
-    throw new Error("Generated DOCX has no main document part");
-  }
-  const paragraph = (text: string, sentinel: string, left: number, paraId?: string) =>
-    `<w:p${paraId ? ` w14:paraId="${paraId}"` : ""}><w:pPr><w:ind w:left="${String(left)}"/><x:sentinel x:id="${sentinel}"/></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
-  zip.file(
-    "word/document.xml",
-    documentXml
-      .replace("<w:document", '<w:document xmlns:x="urn:folio:test:paragraph-source"')
-      .replace(
-        /<w:body>[\s\S]*<\/w:body>/u,
-        `<w:body>${paragraph("Idless", "idless", 720)}<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="7200"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="7200" w:type="dxa"/></w:tcPr>${paragraph("Duplicate A", "duplicate-a", 1440, "12345678")}</w:tc></w:tr></w:tbl>${paragraph("Duplicate B", "duplicate-b", 2160, "12345678")}<w:sectPr/></w:body>`,
-      ),
-  );
-  return await zip.generateAsync({ type: "arraybuffer" });
-};
+const sourceWithDistinctParagraphProperties =
+  async (): Promise<ArrayBuffer> => {
+    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const documentXml = await zip.file("word/document.xml")?.async("text");
+    if (!documentXml) {
+      throw new Error("Generated DOCX has no main document part");
+    }
+    const paragraph = (
+      text: string,
+      sentinel: string,
+      left: number,
+      paraId?: string,
+    ) =>
+      `<w:p${paraId ? ` w14:paraId="${paraId}"` : ""}><w:pPr><w:ind w:left="${String(left)}"/><x:sentinel x:id="${sentinel}"/></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
+    zip.file(
+      "word/document.xml",
+      documentXml
+        .replace(
+          "<w:document",
+          '<w:document xmlns:x="urn:folio:test:paragraph-source"',
+        )
+        .replace(
+          /<w:body>[\s\S]*<\/w:body>/u,
+          `<w:body>${paragraph("Idless", "idless", 720)}<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="7200"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="7200" w:type="dxa"/></w:tcPr>${paragraph("Duplicate A", "duplicate-a", 1440, "12345678")}</w:tc></w:tr></w:tbl>${paragraph("Duplicate B", "duplicate-b", 2160, "12345678")}<w:sectPr/></w:body>`,
+        ),
+    );
+    return await zip.generateAsync({ type: "arraybuffer" });
+  };
 
-const sourceWithCollapsedVerticalMergeProperties = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentXml = await zip.file("word/document.xml")?.async("text");
-  if (!documentXml) {
-    throw new Error("Generated DOCX has no main document part");
-  }
-  zip.file(
-    "word/document.xml",
-    documentXml
-      .replace("<w:document", '<w:document xmlns:x="urn:folio:test:paragraph-source"')
-      .replace(
-        /<w:body>[\s\S]*<\/w:body>/u,
-        "<w:body><w:p><w:r><w:t>Before</w:t></w:r></w:p>" +
-          '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="3600"/><w:gridCol w:w="3600"/></w:tblGrid>' +
-          '<w:tr><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Visible</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Top</w:t></w:r></w:p></w:tc></w:tr>' +
-          '<w:tr><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:vMerge/></w:tcPr><w:p><w:pPr><w:ind w:left="1440"/><x:sentinel x:id="hidden-continuation"/></w:pPr></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Bottom</w:t></w:r></w:p></w:tc></w:tr>' +
-          "</w:tbl><w:sectPr/></w:body>",
-      ),
-  );
-  return await zip.generateAsync({ type: "arraybuffer" });
-};
+const sourceWithCollapsedVerticalMergeProperties =
+  async (): Promise<ArrayBuffer> => {
+    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const documentXml = await zip.file("word/document.xml")?.async("text");
+    if (!documentXml) {
+      throw new Error("Generated DOCX has no main document part");
+    }
+    zip.file(
+      "word/document.xml",
+      documentXml
+        .replace(
+          "<w:document",
+          '<w:document xmlns:x="urn:folio:test:paragraph-source"',
+        )
+        .replace(
+          /<w:body>[\s\S]*<\/w:body>/u,
+          "<w:body><w:p><w:r><w:t>Before</w:t></w:r></w:p>" +
+            '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="3600"/><w:gridCol w:w="3600"/></w:tblGrid>' +
+            '<w:tr><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Visible</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Top</w:t></w:r></w:p></w:tc></w:tr>' +
+            '<w:tr><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:vMerge/></w:tcPr><w:p><w:pPr><w:ind w:left="1440"/><x:sentinel x:id="hidden-continuation"/></w:pPr></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Bottom</w:t></w:r></w:p></w:tc></w:tr>' +
+            "</w:tbl><w:sectPr/></w:body>",
+        ),
+    );
+    return await zip.generateAsync({ type: "arraybuffer" });
+  };
 
 const collapsedContinuation = (document: EditorState["doc"]) => {
   let result:
     | {
         cellPos: number;
-        cells: ReturnType<typeof decodeTableCellParagraphSourcePayload>["cells"];
+        cells: ReturnType<
+          typeof decodeTableCellParagraphSourcePayload
+        >["cells"];
       }
     | undefined;
   document.descendants((node, pos) => {
@@ -143,7 +171,10 @@ const collapsedContinuationSourceToken = (paragraph: unknown): string => {
   if (typeof paragraph !== "object" || paragraph === null) {
     throw new Error("Fixture did not retain its hidden continuation paragraph");
   }
-  const binding = Reflect.get(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR);
+  const binding = Reflect.get(
+    paragraph,
+    TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+  );
   if (
     typeof binding !== "object" ||
     binding === null ||
@@ -152,7 +183,9 @@ const collapsedContinuationSourceToken = (paragraph: unknown): string => {
     !("token" in binding) ||
     typeof binding.token !== "string"
   ) {
-    throw new Error("Fixture hidden continuation paragraph has no source binding");
+    throw new Error(
+      "Fixture hidden continuation paragraph has no source binding",
+    );
   }
   return binding.token;
 };
@@ -169,7 +202,8 @@ const HIDDEN_SOURCE_BINDING_CORRUPTIONS = [
   { expectedCode: "duplicate_token", type: "duplicateVisibleToken" },
 ] as const;
 
-type HiddenSourceBindingCorruption = (typeof HIDDEN_SOURCE_BINDING_CORRUPTIONS)[number]["type"];
+type HiddenSourceBindingCorruption =
+  (typeof HIDDEN_SOURCE_BINDING_CORRUPTIONS)[number]["type"];
 
 type CorruptedHiddenBindingOptions = {
   corruption: HiddenSourceBindingCorruption;
@@ -291,7 +325,9 @@ const HIDDEN_PAYLOAD_CORRUPTIONS = [
     payload: [
       {
         type: "tableCell",
-        content: [{ type: "table", rows: [{ type: "tableRow", cells: [null] }] }],
+        content: [
+          { type: "table", rows: [{ type: "tableRow", cells: [null] }] },
+        ],
       },
     ],
     type: "nullNestedTableCell",
@@ -300,8 +336,13 @@ const HIDDEN_PAYLOAD_CORRUPTIONS = [
 
 describe("materializeYjsDocx", () => {
   test("replaces body content while preserving the source DOCX package", async () => {
-    const sourceDocx = await createDocx(createEmptyDocument({ initialText: "Original text" }));
-    const yjsUpdate = await createCollaborativeUpdate(sourceDocx, "Collaborative text");
+    const sourceDocx = await createDocx(
+      createEmptyDocument({ initialText: "Original text" }),
+    );
+    const yjsUpdate = await createCollaborativeUpdate(
+      sourceDocx,
+      "Collaborative text",
+    );
 
     const output = await materializeYjsDocx({ sourceDocx, yjsUpdate });
     const extracted = await extractDocxText(output);
@@ -310,8 +351,12 @@ describe("materializeYjsDocx", () => {
       JSZip.loadAsync(output),
     ]);
 
-    expect(extracted.paragraphs.map(({ text }) => text)).toContain("Collaborative text");
-    expect(extracted.paragraphs.map(({ text }) => text)).not.toContain("Original text");
+    expect(extracted.paragraphs.map(({ text }) => text)).toContain(
+      "Collaborative text",
+    );
+    expect(extracted.paragraphs.map(({ text }) => text)).not.toContain(
+      "Original text",
+    );
     expect(await outputZip.file("word/styles.xml")?.async("text")).toBe(
       await sourceZip.file("word/styles.xml")?.async("text"),
     );
@@ -320,7 +365,9 @@ describe("materializeYjsDocx", () => {
   test("rebinds id-less and duplicate-id paragraph properties after Yjs reconstruction", async () => {
     const sourceDocx = await sourceWithDistinctParagraphProperties();
     const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
-    const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
+    const initialState = EditorState.create({
+      doc: toProseDoc(sourceDocument),
+    });
     const paragraphPositions: number[] = [];
     initialState.doc.descendants((node, pos) => {
       if (node.type.name === "paragraph") {
@@ -333,7 +380,9 @@ describe("materializeYjsDocx", () => {
     for (const pos of paragraphPositions.toReversed()) {
       transaction.insertText("!", pos + 1);
     }
-    const yjsUpdate = encodeCollaborativeDocument(initialState.apply(transaction).doc);
+    const yjsUpdate = encodeCollaborativeDocument(
+      initialState.apply(transaction).doc,
+    );
 
     const output = await materializeYjsDocx({ sourceDocx, yjsUpdate });
     const outputXml = await (
@@ -360,14 +409,20 @@ describe("materializeYjsDocx", () => {
     const { cells } = collapsedContinuation(proseDocument);
     const hiddenParagraph = cells.at(0)?.content.at(0);
     if (hiddenParagraph?.type !== "paragraph") {
-      throw new Error("Fixture did not retain its hidden continuation paragraph");
+      throw new Error(
+        "Fixture did not retain its hidden continuation paragraph",
+      );
     }
     const sourceToken = collapsedContinuationSourceToken(hiddenParagraph);
 
     const yjsUpdate = encodeCollaborativeDocument(proseDocument);
     const reconstructed = decodeCollaborativeDocument(yjsUpdate);
-    const reconstructedParagraph = collapsedContinuation(reconstructed).cells.at(0)?.content.at(0);
-    expect(collapsedContinuationSourceToken(reconstructedParagraph)).toBe(sourceToken);
+    const reconstructedParagraph = collapsedContinuation(reconstructed)
+      .cells.at(0)
+      ?.content.at(0);
+    expect(collapsedContinuationSourceToken(reconstructedParagraph)).toBe(
+      sourceToken,
+    );
 
     let output = await materializeYjsDocx({ sourceDocx, yjsUpdate });
     for (let repeatedSave = 0; repeatedSave < 2; repeatedSave += 1) {
@@ -400,7 +455,9 @@ describe("materializeYjsDocx", () => {
     const table = originalState.doc.child(1);
     const tablePosition = originalState.doc.child(0).nodeSize;
     if (table.type.name !== "table") {
-      throw new Error("Collapsed-cell fixture did not contain its expected table");
+      throw new Error(
+        "Collapsed-cell fixture did not contain its expected table",
+      );
     }
     const rectangle = TableMap.get(table).findCell(cellPos - tablePosition - 1);
     const edit = splitTrackedVerticalTableCell({
@@ -455,28 +512,57 @@ describe("materializeYjsDocx", () => {
     "rejects $type hidden continuation source binding",
     async ({ expectedCode, type }) => {
       const sourceDocx = await sourceWithCollapsedVerticalMergeProperties();
-      const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
-      const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
+      const sourceDocument = await parseDocx(sourceDocx, {
+        preloadFonts: false,
+      });
+      const initialState = EditorState.create({
+        doc: toProseDoc(sourceDocument),
+      });
       const { cellPos, cells } = collapsedContinuation(initialState.doc);
-      const visibleToken = initialState.doc.child(0).attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
+      const visibleToken =
+        initialState.doc.child(0).attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
       const copiedCells = structuredClone(cells);
       const hiddenParagraph = copiedCells.at(0)?.content.at(0);
-      if (typeof visibleToken !== "string" || hiddenParagraph?.type !== "paragraph") {
-        throw new Error("Fixture did not expose both paragraph source identities");
+      if (
+        typeof visibleToken !== "string" ||
+        hiddenParagraph?.type !== "paragraph"
+      ) {
+        throw new Error(
+          "Fixture did not expose both paragraph source identities",
+        );
       }
       const sourceToken = collapsedContinuationSourceToken(hiddenParagraph);
       const nextParagraph = { ...hiddenParagraph };
-      const binding = corruptedHiddenBinding({ corruption: type, sourceToken, visibleToken });
+      const binding = corruptedHiddenBinding({
+        corruption: type,
+        sourceToken,
+        visibleToken,
+      });
       if (binding === undefined) {
-        if (!Reflect.deleteProperty(nextParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)) {
+        if (
+          !Reflect.deleteProperty(
+            nextParagraph,
+            TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+          )
+        ) {
           throw new Error("Fixture could not remove the hidden source binding");
         }
-      } else if (!Reflect.set(nextParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR, binding)) {
+      } else if (
+        !Reflect.set(
+          nextParagraph,
+          TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+          binding,
+        )
+      ) {
         throw new Error("Fixture could not replace the hidden source binding");
       }
       copiedCells[0]!.content[0] = nextParagraph;
       const corrupted = initialState.apply(
-        initialState.tr.setNodeAttribute(cellPos, "_docxVMergeContinuationCells", copiedCells),
+        initialState.tr.setNodeAttribute(
+          cellPos,
+          "_docxVMergeContinuationCells",
+          copiedCells,
+        ),
       );
 
       try {
@@ -502,11 +588,19 @@ describe("materializeYjsDocx", () => {
     "rejects $type malformed hidden continuation payload",
     async ({ classification, payload }) => {
       const sourceDocx = await sourceWithCollapsedVerticalMergeProperties();
-      const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
-      const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
+      const sourceDocument = await parseDocx(sourceDocx, {
+        preloadFonts: false,
+      });
+      const initialState = EditorState.create({
+        doc: toProseDoc(sourceDocument),
+      });
       const { cellPos } = collapsedContinuation(initialState.doc);
       const corrupted = initialState.apply(
-        initialState.tr.setNodeAttribute(cellPos, "_docxVMergeContinuationCells", payload),
+        initialState.tr.setNodeAttribute(
+          cellPos,
+          "_docxVMergeContinuationCells",
+          payload,
+        ),
       );
 
       try {
@@ -538,14 +632,18 @@ describe("materializeYjsDocx", () => {
     const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
     ydoc.destroy();
 
-    await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
+    await expect(
+      materializeYjsDocx({ sourceDocx, yjsUpdate }),
+    ).rejects.toMatchObject({
       _tag: "FolioYjsDocxMaterializationError",
       code: "missing_document",
     } satisfies Partial<FolioYjsDocxMaterializationError>);
   });
 
   test("rejects collaboration state without its source contract", async () => {
-    const sourceDocx = await createDocx(createEmptyDocument({ initialText: "Original" }));
+    const sourceDocx = await createDocx(
+      createEmptyDocument({ initialText: "Original" }),
+    );
     const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
     const ydoc = new Y.Doc();
     prosemirrorToYXmlFragment(
@@ -555,15 +653,21 @@ describe("materializeYjsDocx", () => {
     const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
     ydoc.destroy();
 
-    await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
+    await expect(
+      materializeYjsDocx({ sourceDocx, yjsUpdate }),
+    ).rejects.toMatchObject({
       _tag: "FolioYjsDocxMaterializationError",
       code: "source_mismatch",
     } satisfies Partial<FolioYjsDocxMaterializationError>);
   });
 
   test("rejects collaboration state paired with a different source package", async () => {
-    const sourceDocx = await createDocx(createEmptyDocument({ initialText: "Source A" }));
-    const otherSourceDocx = await createDocx(createEmptyDocument({ initialText: "Source B" }));
+    const sourceDocx = await createDocx(
+      createEmptyDocument({ initialText: "Source A" }),
+    );
+    const otherSourceDocx = await createDocx(
+      createEmptyDocument({ initialText: "Source B" }),
+    );
     const yjsUpdate = await createCollaborativeUpdate(sourceDocx, "Edited A");
 
     await expect(
@@ -577,7 +681,9 @@ describe("materializeYjsDocx", () => {
   test("rejects duplicated paragraph-property source tokens", async () => {
     const sourceDocx = await sourceWithDistinctParagraphProperties();
     const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
-    const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
+    const initialState = EditorState.create({
+      doc: toProseDoc(sourceDocument),
+    });
     const paragraphPositions: number[] = [];
     initialState.doc.descendants((node, pos) => {
       if (node.type.name === "paragraph") {
@@ -599,12 +705,15 @@ describe("materializeYjsDocx", () => {
     const duplicated = initialState.apply(
       initialState.tr.setNodeMarkup(secondPos, undefined, {
         ...second.attrs,
-        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: first.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR],
+        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]:
+          first.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR],
       }),
     );
     const yjsUpdate = encodeCollaborativeDocument(duplicated.doc);
 
-    await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
+    await expect(
+      materializeYjsDocx({ sourceDocx, yjsUpdate }),
+    ).rejects.toMatchObject({
       _tag: "FolioYjsDocxMaterializationError",
       code: "source_mismatch",
     } satisfies Partial<FolioYjsDocxMaterializationError>);
@@ -613,7 +722,9 @@ describe("materializeYjsDocx", () => {
   test("rejects a well-formed token absent from the exact source", async () => {
     const sourceDocx = await sourceWithDistinctParagraphProperties();
     const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
-    const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
+    const initialState = EditorState.create({
+      doc: toProseDoc(sourceDocument),
+    });
     const first = initialState.doc.child(0);
     const sourceToken = first.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
     if (typeof sourceToken !== "string") {
@@ -628,14 +739,18 @@ describe("materializeYjsDocx", () => {
     );
     const yjsUpdate = encodeCollaborativeDocument(spoofed.doc);
 
-    await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
+    await expect(
+      materializeYjsDocx({ sourceDocx, yjsUpdate }),
+    ).rejects.toMatchObject({
       _tag: "FolioYjsDocxMaterializationError",
       code: "source_mismatch",
     } satisfies Partial<FolioYjsDocxMaterializationError>);
   });
 
   test("materializes a snapshot written before the attr-schema marker existed", async () => {
-    const sourceDocx = await createDocx(createEmptyDocument({ initialText: "Original" }));
+    const sourceDocx = await createDocx(
+      createEmptyDocument({ initialText: "Original" }),
+    );
     const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
     const proseDocument = toProseDoc(sourceDocument);
     const contract = proseDocumentParagraphSourceContract(proseDocument);
@@ -648,17 +763,23 @@ describe("materializeYjsDocx", () => {
       ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
     );
     // Exactly what a pre-marker build stored: the contract key and nothing else.
-    ydoc.getMap(FOLIO_YJS_METADATA_MAP_NAME).set("paragraphSourceContract", contract);
+    ydoc
+      .getMap(FOLIO_YJS_METADATA_MAP_NAME)
+      .set("paragraphSourceContract", contract);
     const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
     ydoc.destroy();
 
-    const extracted = await extractDocxText(await materializeYjsDocx({ sourceDocx, yjsUpdate }));
+    const extracted = await extractDocxText(
+      await materializeYjsDocx({ sourceDocx, yjsUpdate }),
+    );
 
     expect(extracted.paragraphs.map(({ text }) => text)).toContain("Original");
   });
 
   test("rejects a snapshot written by a newer attr schema", async () => {
-    const sourceDocx = await createDocx(createEmptyDocument({ initialText: "Original" }));
+    const sourceDocx = await createDocx(
+      createEmptyDocument({ initialText: "Original" }),
+    );
     const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
     const ydoc = new Y.Doc();
     const proseDocument = toProseDoc(sourceDocument);
@@ -673,7 +794,9 @@ describe("materializeYjsDocx", () => {
     const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
     ydoc.destroy();
 
-    await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
+    await expect(
+      materializeYjsDocx({ sourceDocx, yjsUpdate }),
+    ).rejects.toMatchObject({
       _tag: "FolioYjsDocxMaterializationError",
       code: "stale_attr_schema",
     } satisfies Partial<FolioYjsDocxMaterializationError>);
@@ -695,15 +818,22 @@ describe("materializeYjsDocx", () => {
 test("materialization surfaces the typed occurrence-schema refusal", async () => {
   const ydoc = new Y.Doc();
   const text = new Y.XmlText();
-  text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+  text.insert(0, "123123", {
+    footnoteRef: { id: "123", noteType: "footnote" },
+  });
   const paragraph = new Y.XmlElement("paragraph");
   paragraph.insert(0, [text]);
-  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [paragraph]);
+  ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .insert(0, [paragraph]);
   ydoc.getMap(FOLIO_YJS_METADATA_MAP_NAME).set("attrSchemaVersion", 11);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
   await expect(
-    materializeYjsDocx({ sourceDocx: await createEmptyDocx(), yjsUpdate: update }),
+    materializeYjsDocx({
+      sourceDocx: await createEmptyDocx(),
+      yjsUpdate: update,
+    }),
   ).rejects.toMatchObject({
     code: "stale_attr_schema",
     message: expect.stringContaining("Yjs schema 11"),

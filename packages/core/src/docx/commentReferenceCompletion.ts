@@ -36,7 +36,9 @@ type LastRangeEnd = {
  * Give every comment that a `commentRangeEnd` closes but no `commentReference`
  * names a reference after its last end. Answers how many were added.
  */
-export const completeCommentReferences = (blocks: readonly BlockContent[]): number => {
+export const completeCommentReferences = (
+  blocks: readonly BlockContent[],
+): number => {
   const lastRangeEnds = new Map<number, LastRangeEnd>();
   const referencedIds = new Set<number>();
 
@@ -52,7 +54,10 @@ export const completeCommentReferences = (blocks: readonly BlockContent[]): numb
 
   // Inserting shifts every later index in the same array, so the insertions
   // are applied per array from the back.
-  const insertionsByContent = new Map<ParagraphContent[], { index: number; id: number }[]>();
+  const insertionsByContent = new Map<
+    ParagraphContent[],
+    { index: number; id: number }[]
+  >();
   for (const [id, { content, index }] of lastRangeEnds) {
     if (referencedIds.has(id)) {
       continue;

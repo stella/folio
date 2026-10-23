@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
+
 import type { SectionPropertyChange } from "../types/document";
 import { parseSectionProperties } from "./sectionParser";
+import { InvalidSectionReferenceHistoryError } from "./sectionReferenceHistory";
 import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
 import { parseXmlDocument } from "./xmlParser";
-import { InvalidSectionReferenceHistoryError } from "./sectionReferenceHistory";
 
 const parse = (xml: string) =>
   parseSectionProperties(
@@ -29,15 +30,23 @@ test("section history distinguishes native behavior from an explicitly empty pri
       footerReferences: [{ type: "default" as const, rId: "rId9" }],
     },
   ]) {
-    const xml = serializeSectionProperties({ propertyChanges: [revision(references)] });
+    const xml = serializeSectionProperties({
+      propertyChanges: [revision(references)],
+    });
     const parsed = parse(xml.slice("<w:sectPr>".length, -"</w:sectPr>".length));
-    expect(parsed.propertyChanges?.at(0)?.previousReferences).toEqual(references);
+    expect(parsed.propertyChanges?.at(0)?.previousReferences).toEqual(
+      references,
+    );
   }
 });
 
 test("previous selections stay out of the native CT_SectPrBase payload", () => {
-  const change = revision({ headerReferences: [{ type: "default", rId: "rId1" }] });
-  change.previousProperties = { headerReferences: [{ type: "default", rId: "rId1" }] };
+  const change = revision({
+    headerReferences: [{ type: "default", rId: "rId1" }],
+  });
+  change.previousProperties = {
+    headerReferences: [{ type: "default", rId: "rId1" }],
+  };
   const xml = serializeSectionProperties({ propertyChanges: [change] });
   expect(xml).toContain("<w:sectPr/>");
   expect(xml.match(/<w:headerReference/gu)).toHaveLength(1);

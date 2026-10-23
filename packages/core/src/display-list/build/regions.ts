@@ -57,7 +57,11 @@ export const createPageComposer = (): PageComposer => {
   };
 
   const region = (descriptor: RegionDescriptor, paint: () => void): void => {
-    const entry: OpenRegion = { descriptor, from: primitives.length, children: [] };
+    const entry: OpenRegion = {
+      descriptor,
+      from: primitives.length,
+      children: [],
+    };
     open.push(entry);
     try {
       paint();
@@ -107,7 +111,11 @@ type BlockRegionOptions = {
   readonly context: { readonly story: DisplayStoryRef };
 };
 
-export const blockRegion = ({ fragment, kind, context }: BlockRegionOptions): RegionDescriptor => ({
+export const blockRegion = ({
+  fragment,
+  kind,
+  context,
+}: BlockRegionOptions): RegionDescriptor => ({
   kind,
   rect: {
     xPx: fragment.x,
@@ -119,6 +127,12 @@ export const blockRegion = ({ fragment, kind, context }: BlockRegionOptions): Re
     blockId: String(fragment.blockId),
     ...(fragment.pmStart === undefined || fragment.pmEnd === undefined
       ? {}
-      : { pmRange: { start: fragment.pmStart, end: fragment.pmEnd, story: context.story } }),
+      : {
+          pmRange: {
+            start: fragment.pmStart,
+            end: fragment.pmEnd,
+            story: context.story,
+          },
+        }),
   },
 });

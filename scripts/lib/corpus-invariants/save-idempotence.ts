@@ -19,16 +19,21 @@
  * are compared by content.
  */
 
+import { Result } from "better-result";
+
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
 import type { Document } from "@stll/folio-core/types/document";
-import { Result } from "better-result";
 
-import { type CorpusFailure, failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
+  type CorpusFailure,
+  failureFromAssertion,
+  failureFromError,
+} from "../corpus-signature";
+import {
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -42,7 +47,8 @@ const DIGIT_RUN_RE = /\d+/gu;
  * about headers, not two about numbers, so every digit run collapses to `N`.
  * A path that carries no number (`docProps/app.xml`) is already general.
  */
-export const generalizePartPath = (path: string): string => path.replaceAll(DIGIT_RUN_RE, "N");
+export const generalizePartPath = (path: string): string =>
+  path.replaceAll(DIGIT_RUN_RE, "N");
 
 const PART_KINDS = {
   xml: "xml",
@@ -60,18 +66,27 @@ type PackagePart =
  * else comes off the archive as bytes, so a macro project or an embedded
  * workbook is compared too.
  */
-const readPackageParts = async (buffer: ArrayBuffer): Promise<Map<string, PackagePart>> => {
+const readPackageParts = async (
+  buffer: ArrayBuffer,
+): Promise<Map<string, PackagePart>> => {
   const raw = await unzipDocx(buffer, { extractAllXml: true });
-  const entries = Object.entries(raw.originalZip.files).filter(([, file]) => !file.dir);
+  const entries = Object.entries(raw.originalZip.files).filter(
+    ([, file]) => !file.dir,
+  );
   return new Map(
     await Promise.all(
-      entries.map(async ([path, file]): Promise<readonly [string, PackagePart]> => {
-        const xml = raw.allXml.get(path);
-        if (xml !== undefined) {
-          return [path, { kind: PART_KINDS.xml, text: xml }];
-        }
-        return [path, { kind: PART_KINDS.binary, bytes: await file.async("uint8array") }];
-      }),
+      entries.map(
+        async ([path, file]): Promise<readonly [string, PackagePart]> => {
+          const xml = raw.allXml.get(path);
+          if (xml !== undefined) {
+            return [path, { kind: PART_KINDS.xml, text: xml }];
+          }
+          return [
+            path,
+            { kind: PART_KINDS.binary, bytes: await file.async("uint8array") },
+          ];
+        },
+      ),
     ),
   );
 };
@@ -88,7 +103,10 @@ const partsDiffer = (first: PackagePart, second: PackagePart): boolean => {
     case PART_KINDS.xml:
       return second.kind !== PART_KINDS.xml || first.text !== second.text;
     case PART_KINDS.binary:
-      return second.kind !== PART_KINDS.binary || !sameBytes(first.bytes, second.bytes);
+      return (
+        second.kind !== PART_KINDS.binary ||
+        !sameBytes(first.bytes, second.bytes)
+      );
     default: {
       const unreachable: never = first;
       return unreachable;
@@ -102,14 +120,16 @@ const PART_DIFFERENCE_KINDS = {
   changed: "changed",
 } as const;
 
-type PartDifferenceKind = (typeof PART_DIFFERENCE_KINDS)[keyof typeof PART_DIFFERENCE_KINDS];
+type PartDifferenceKind =
+  (typeof PART_DIFFERENCE_KINDS)[keyof typeof PART_DIFFERENCE_KINDS];
 
 /** What each difference says, with the part path appended and nothing else. */
 const PART_DIFFERENCE_MESSAGES = {
   [PART_DIFFERENCE_KINDS.missing]:
     "a part present after the first save is missing after the second",
   [PART_DIFFERENCE_KINDS.added]: "a part appears only after the second save",
-  [PART_DIFFERENCE_KINDS.changed]: "a part changed between the first and the second save",
+  [PART_DIFFERENCE_KINDS.changed]:
+    "a part changed between the first and the second save",
 } as const satisfies Record<PartDifferenceKind, string>;
 
 type PartDifference = { kind: PartDifferenceKind; path: string };
@@ -147,11 +167,16 @@ const findPartDifferences = (
   return differences.sort((left, right) => (left.path < right.path ? -1 : 1));
 };
 
-const failuresForDifferences = (differences: PartDifference[]): CorpusFailure[] => {
+const failuresForDifferences = (
+  differences: PartDifference[],
+): CorpusFailure[] => {
   const messages = new Set(
     differences
       .slice(0, MAX_REPORTED_PART_DIFFERENCES)
-      .map(({ kind, path }) => `${PART_DIFFERENCE_MESSAGES[kind]}: ${generalizePartPath(path)}`),
+      .map(
+        ({ kind, path }) =>
+          `${PART_DIFFERENCE_MESSAGES[kind]}: ${generalizePartPath(path)}`,
+      ),
   );
   return [...messages].map((message) =>
     failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, message),
@@ -167,12 +192,20 @@ export const runSaveIdempotenceInvariant = async ({
   const timings: Record<string, number> = {};
 
   const first = await timeStage(timings, "first-save", () =>
-    Result.tryPromise({ try: () => save(parsed), catch: (cause: unknown) => cause }),
+    Result.tryPromise({
+      try: () => save(parsed),
+      catch: (cause: unknown) => cause,
+    }),
   );
   if (first.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, first.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.saveIdempotence,
+          first.error,
+        ),
+      ],
       timings,
     };
   }
@@ -186,32 +219,54 @@ export const runSaveIdempotenceInvariant = async ({
   if (reparsed.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, reparsed.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.saveIdempotence,
+          reparsed.error,
+        ),
+      ],
       timings,
     };
   }
 
   const second = await timeStage(timings, "second-save", () =>
-    Result.tryPromise({ try: () => save(reparsed.value), catch: (cause: unknown) => cause }),
+    Result.tryPromise({
+      try: () => save(reparsed.value),
+      catch: (cause: unknown) => cause,
+    }),
   );
   if (second.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, second.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.saveIdempotence,
+          second.error,
+        ),
+      ],
       timings,
     };
   }
 
   const parts = await timeStage(timings, "unzip", () =>
     Result.tryPromise({
-      try: () => Promise.all([readPackageParts(first.value), readPackageParts(second.value)]),
+      try: () =>
+        Promise.all([
+          readPackageParts(first.value),
+          readPackageParts(second.value),
+        ]),
       catch: (cause: unknown) => cause,
     }),
   );
   if (parts.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, parts.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.saveIdempotence,
+          parts.error,
+        ),
+      ],
       timings,
     };
   }
@@ -220,5 +275,9 @@ export const runSaveIdempotenceInvariant = async ({
   const differences = await timeStage(timings, "compare", () =>
     Promise.resolve(findPartDifferences(firstParts, secondParts)),
   );
-  return { status: "evaluated", failures: failuresForDifferences(differences), timings };
+  return {
+    status: "evaluated",
+    failures: failuresForDifferences(differences),
+    timings,
+  };
 };

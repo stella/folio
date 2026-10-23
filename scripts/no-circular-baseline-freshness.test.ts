@@ -5,7 +5,10 @@ import path from "node:path";
 import { dependencyCruiseCoverageIssue } from "./check-dependency-cruise";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
-const DEPCRUISE_BINARY = path.join(REPOSITORY_ROOT, "node_modules/.bin/depcruise");
+const DEPCRUISE_BINARY = path.join(
+  REPOSITORY_ROOT,
+  "node_modules/.bin/depcruise",
+);
 const DEPCRUISE_CONFIG = path.join(REPOSITORY_ROOT, ".dependency-cruiser.cjs");
 const TYPESCRIPT_PRELOAD = path.join(
   REPOSITORY_ROOT,
@@ -46,7 +49,10 @@ setDefaultTimeout(60_000);
 // module that starts the loop. A non-cycle (plain "dependency") violation is
 // keyed by its edge, matching dependency-cruiser's own known-violations
 // softening logic (src/analyze/summarize/is-same-violation.mjs).
-const isSameViolation = (known: KnownViolation, current: CruiseViolation): boolean => {
+const isSameViolation = (
+  known: KnownViolation,
+  current: CruiseViolation,
+): boolean => {
   if (known.rule.name !== current.rule.name) return false;
   if (known.cycle && current.cycle) {
     if (known.cycle.length !== current.cycle.length) return false;
@@ -61,7 +67,14 @@ const readKnownViolations = (): KnownViolation[] =>
 
 const runCruise = (): CruiseRun => {
   const result = Bun.spawnSync(
-    [DEPCRUISE_BINARY, "--config", DEPCRUISE_CONFIG, "--output-type", "json", "packages"],
+    [
+      DEPCRUISE_BINARY,
+      "--config",
+      DEPCRUISE_CONFIG,
+      "--output-type",
+      "json",
+      "packages",
+    ],
     {
       cwd: REPOSITORY_ROOT,
       env: {
@@ -109,11 +122,15 @@ test("the known-violations allowlist may only shrink: every entry still reproduc
 
   const { violations: currentViolations } = runCruise();
   const staleEntries = knownViolations.filter(
-    (known) => !currentViolations.some((current) => isSameViolation(known, current)),
+    (known) =>
+      !currentViolations.some((current) => isSameViolation(known, current)),
   );
 
   expect(
-    staleEntries.map((entry) => `${entry.rule.name}: ${entry.from} -> ${entry.to ?? "(cycle)"}`),
+    staleEntries.map(
+      (entry) =>
+        `${entry.rule.name}: ${entry.from} -> ${entry.to ?? "(cycle)"}`,
+    ),
     "an entry in .dependency-cruiser-known-violations.json no longer reproduces; remove it " +
       "instead of leaving it allowlisted",
   ).toEqual([]);

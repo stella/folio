@@ -1,3 +1,4 @@
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import {
   afterAll,
   afterEach,
@@ -7,14 +8,15 @@ import {
   setDefaultTimeout,
   test,
 } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { Schema } from "prosemirror-model";
 import fc from "fast-check";
+import { Schema } from "prosemirror-model";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createSuggestionModePlugin } from "./plugins/suggestionMode";
 import { createTextInputPlugin } from "./textInput";
 
@@ -36,7 +38,11 @@ const schema = new Schema({
         date: { default: "" },
       },
       inclusive: false,
-      toDOM: (mark) => ["ins", { "data-revision-id": String(mark.attrs["revisionId"]) }, 0],
+      toDOM: (mark) => [
+        "ins",
+        { "data-revision-id": String(mark.attrs["revisionId"]) },
+        0,
+      ],
     },
     deletion: {
       attrs: {
@@ -62,7 +68,9 @@ const createView = (
   content: Parameters<typeof schema.node>[2],
   options: CreateViewOptions = {},
 ) => {
-  const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, content),
+  ]);
   const from = options.selection?.from ?? doc.content.size - 1;
   const to = options.selection?.to ?? from;
   const mount = document.createElement("div");
@@ -154,40 +162,46 @@ describe("text input routing", () => {
     { markName: "insertion", edge: "after" },
     { markName: "deletion", edge: "before" },
     { markName: "deletion", edge: "after" },
-  ])("preserves $markName contents at its $edge edge for Unicode input", ({ markName, edge }) => {
-    const view = createView([schema.text("A")]);
-    const text = fc
-      .array(fc.constantFrom("a", "ž", "字", "😀", " ", "\u0301"), { minLength: 1, maxLength: 12 })
-      .map((chars) => chars.join(""));
-    fc.assert(
-      fc.property(text, text, (revisionText, insertedText) => {
-        const doc = schema.node("doc", null, [
-          schema.node("paragraph", null, [
-            schema.text("A"),
-            schema.text(revisionText, [schema.mark(markName)]),
-            schema.text("Z"),
-          ]),
-        ]);
-        const position = edge === "before" ? 2 : revisionText.length + 2;
-        view.updateState(
-          EditorState.create({
-            doc,
-            plugins: view.state.plugins,
-            selection: TextSelection.create(doc, position),
-          }),
-        );
-        const event = dispatchBeforeInput(view, { data: insertedText });
-        expect(event.defaultPrevented).toBe(true);
-        expect(view.state.doc.textContent).toBe(
-          edge === "before"
-            ? `A${insertedText}${revisionText}Z`
-            : `A${revisionText}${insertedText}Z`,
-        );
-        expect(markedText(view, markName)).toBe(revisionText);
-      }),
-      propertyConfig({ numRuns: 40 }),
-    );
-  });
+  ])(
+    "preserves $markName contents at its $edge edge for Unicode input",
+    ({ markName, edge }) => {
+      const view = createView([schema.text("A")]);
+      const text = fc
+        .array(fc.constantFrom("a", "ž", "字", "😀", " ", "\u0301"), {
+          minLength: 1,
+          maxLength: 12,
+        })
+        .map((chars) => chars.join(""));
+      fc.assert(
+        fc.property(text, text, (revisionText, insertedText) => {
+          const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, [
+              schema.text("A"),
+              schema.text(revisionText, [schema.mark(markName)]),
+              schema.text("Z"),
+            ]),
+          ]);
+          const position = edge === "before" ? 2 : revisionText.length + 2;
+          view.updateState(
+            EditorState.create({
+              doc,
+              plugins: view.state.plugins,
+              selection: TextSelection.create(doc, position),
+            }),
+          );
+          const event = dispatchBeforeInput(view, { data: insertedText });
+          expect(event.defaultPrevented).toBe(true);
+          expect(view.state.doc.textContent).toBe(
+            edge === "before"
+              ? `A${insertedText}${revisionText}Z`
+              : `A${revisionText}${insertedText}Z`,
+          );
+          expect(markedText(view, markName)).toBe(revisionText);
+        }),
+        propertyConfig({ numRuns: 40 }),
+      );
+    },
+  );
 
   test("preserves stored marks for Unicode input", () => {
     const view = createView([schema.text("plain")]);
@@ -232,7 +246,9 @@ describe("text input routing", () => {
   test("preserves beforeinput tracking for standalone suggestion views", () => {
     const view = createView([schema.text("A")]);
     view.updateState(
-      view.state.reconfigure({ plugins: [createSuggestionModePlugin(true, "Reviewer")] }),
+      view.state.reconfigure({
+        plugins: [createSuggestionModePlugin(true, "Reviewer")],
+      }),
     );
     const event = dispatchBeforeInput(view, { data: "新" });
     expect(event.defaultPrevented).toBe(true);
@@ -260,10 +276,14 @@ describe("text input routing", () => {
 
   test("does not intercept through the native composition-end flush", async () => {
     const view = createView([schema.text("A")]);
-    view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    view.dom.dispatchEvent(
+      new CompositionEvent("compositionstart", { bubbles: true }),
+    );
 
     const composingEvent = dispatchBeforeInput(view, { data: "あ" });
-    view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    view.dom.dispatchEvent(
+      new CompositionEvent("compositionend", { bubbles: true }),
+    );
     const settlingEvent = dispatchBeforeInput(view, { data: "い" });
 
     expect(composingEvent.defaultPrevented).toBe(false);
@@ -335,13 +355,20 @@ describe("text input routing", () => {
     { name: "read-only", options: { editable: false }, event: {} },
     { name: "non-cancelable", options: {}, event: { cancelable: false } },
     { name: "composition event", options: {}, event: { isComposing: true } },
-    { name: "unsupported input type", options: {}, event: { inputType: "insertParagraph" } },
-  ])("leaves $name input to the browser", ({ options, event: eventOptions }) => {
-    const view = createView([schema.text("A")], options);
+    {
+      name: "unsupported input type",
+      options: {},
+      event: { inputType: "insertParagraph" },
+    },
+  ])(
+    "leaves $name input to the browser",
+    ({ options, event: eventOptions }) => {
+      const view = createView([schema.text("A")], options);
 
-    const event = dispatchBeforeInput(view, eventOptions);
+      const event = dispatchBeforeInput(view, eventOptions);
 
-    expect(event.defaultPrevented).toBe(false);
-    expect(view.state.doc.textContent).toBe("A");
-  });
+      expect(event.defaultPrevented).toBe(false);
+      expect(view.state.doc.textContent).toBe("A");
+    },
+  );
 });

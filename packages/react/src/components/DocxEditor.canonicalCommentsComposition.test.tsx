@@ -2,27 +2,36 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, setSystemTime, spyOn, test } from "bun:test";
-import { panic } from "better-result";
-import fc from "fast-check";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, setSystemTime, spyOn, test } from "bun:test";
+import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
-import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+
 import { createCanonicalSession } from "@stll/folio-core/controller/canonicalSession";
 import { createDocx } from "@stll/folio-core/docx/rezip";
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { schema } from "@stll/folio-core/prosemirror/schema";
-import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
-import { assertExactModel } from "../../../../test/exactModel";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Comment, DrawingContent } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+
+import { assertExactModel } from "../../../../test/exactModel";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -34,24 +43,30 @@ const createErrorObserver = () => {
   return { errors, onError: (error: Error) => errors.push(error) };
 };
 
-const recordDocumentNotifications = (notifications: Document[]) => (next: Document) => {
-  notifications.push(next);
-};
+const recordDocumentNotifications =
+  (notifications: Document[]) => (next: Document) => {
+    notifications.push(next);
+  };
 
 const captureDocumentNotifications = () => {
   const pending = new Map<number, () => void>();
   const schedule = window.setTimeout.bind(window);
   const clear = window.clearTimeout.bind(window);
-  const scheduleSpy = spyOn(window, "setTimeout").mockImplementation((callback, delay, ...args) => {
-    if (delay !== 250 || typeof callback !== "function") return schedule(callback, delay, ...args);
-    const handle = schedule(() => {}, 60_000);
-    pending.set(handle, () => callback(...args));
-    return handle;
-  });
-  const clearSpy = spyOn(window, "clearTimeout").mockImplementation((handle) => {
-    if (handle !== undefined) pending.delete(handle);
-    clear(handle);
-  });
+  const scheduleSpy = spyOn(window, "setTimeout").mockImplementation(
+    (callback, delay, ...args) => {
+      if (delay !== 250 || typeof callback !== "function")
+        return schedule(callback, delay, ...args);
+      const handle = schedule(() => {}, 60_000);
+      pending.set(handle, () => callback(...args));
+      return handle;
+    },
+  );
+  const clearSpy = spyOn(window, "clearTimeout").mockImplementation(
+    (handle) => {
+      if (handle !== undefined) pending.delete(handle);
+      clear(handle);
+    },
+  );
   return {
     get pendingCount() {
       return pending.size;
@@ -91,7 +106,9 @@ const createShapeBuffer = async (shape: (typeof SHAPES)[number]) => {
     return createDocx(fromMarkdown(markdown));
   }
 
-  const document = createEmptyDocument({ initialText: "Body paragraph under a header." });
+  const document = createEmptyDocument({
+    initialText: "Body paragraph under a header.",
+  });
   if (shape === "header-footer") {
     document.package.headers = new Map([
       [
@@ -102,7 +119,12 @@ const createShapeBuffer = async (shape: (typeof SHAPES)[number]) => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Header text" }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Header text" }],
+                },
+              ],
             },
           ],
         },
@@ -117,7 +139,12 @@ const createShapeBuffer = async (shape: (typeof SHAPES)[number]) => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Footer text" }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Footer text" }],
+                },
+              ],
             },
           ],
         },
@@ -181,12 +208,14 @@ for (const shape of SHAPES) {
                 const messages = getFolioMessages("en");
                 const observer = createErrorObserver();
                 const notifications: Document[] = [];
-                const onDocumentChange = recordDocumentNotifications(notifications);
+                const onDocumentChange =
+                  recordDocumentNotifications(notifications);
                 const notificationTimer = captureDocumentNotifications();
-                const controls: { comments: Comment[]; showToolbar: boolean } = {
-                  comments: [],
-                  showToolbar: false,
-                };
+                const controls: { comments: Comment[]; showToolbar: boolean } =
+                  {
+                    comments: [],
+                    showToolbar: false,
+                  };
                 const renderEditor = () => (
                   <IntlProvider locale="en" timeZone="UTC" messages={messages}>
                     <DocxEditor
@@ -202,20 +231,32 @@ for (const shape of SHAPES) {
                 );
                 try {
                   await act(async () => root.render(renderEditor()));
-                  await act(async () => editor.current?.loadDocumentBuffer(bytes));
-                  await act(async () => editor.current?.ensureEditorView({ focus: false }));
-                  const api = editor.current?.getEditor() ?? panic("Expected canonical editor");
-                  const view = api.getView() ?? panic("Expected mounted canonical view");
+                  await act(async () =>
+                    editor.current?.loadDocumentBuffer(bytes),
+                  );
+                  await act(async () =>
+                    editor.current?.ensureEditorView({ focus: false }),
+                  );
+                  const api =
+                    editor.current?.getEditor() ??
+                    panic("Expected canonical editor");
+                  const view =
+                    api.getView() ?? panic("Expected mounted canonical view");
                   const sessionMode =
                     mode === "editing"
                       ? { type: "editing" as const }
-                      : { type: "suggesting" as const, author: "Composition author" };
+                      : {
+                          type: "suggesting" as const,
+                          author: "Composition author",
+                        };
                   expect(api.setCanonicalMode(sessionMode)).toBe(true);
                   let from: number | undefined;
                   view.state.doc.descendants((node, pos) => {
-                    if (from === undefined && node.isText && node.nodeSize >= 3) from = pos;
+                    if (from === undefined && node.isText && node.nodeSize >= 3)
+                      from = pos;
                   });
-                  const compositionFrom = from ?? panic("Expected a text span beside the picture");
+                  const compositionFrom =
+                    from ?? panic("Expected a text span beside the picture");
                   const compositionTo = compositionFrom + 3;
                   await act(async () => notificationTimer.fire());
                   notifications.length = 0;
@@ -235,12 +276,18 @@ for (const shape of SHAPES) {
                     );
                     view.dispatch(
                       view.state.tr.setSelection(
-                        TextSelection.create(view.state.doc, compositionFrom, compositionTo),
+                        TextSelection.create(
+                          view.state.doc,
+                          compositionFrom,
+                          compositionTo,
+                        ),
                       ),
                     );
                   });
                   expect(notificationTimer.pendingCount).toBeGreaterThan(0);
-                  const baseline = api.getCanonicalDocument() ?? panic("Expected committed model");
+                  const baseline =
+                    api.getCanonicalDocument() ??
+                    panic("Expected committed model");
                   const baselineProjection = view.state.doc;
                   setSystemTime(new Date("2026-10-05T12:00:00Z"));
                   const expected = createCanonicalSession(baseline).unwrap();
@@ -263,7 +310,9 @@ for (const shape of SHAPES) {
                   }
                   await act(async () => {
                     view.dom.dispatchEvent(
-                      new CompositionEvent("compositionstart", { bubbles: true }),
+                      new CompositionEvent("compositionstart", {
+                        bubbles: true,
+                      }),
                     );
                     view.dispatch(
                       view.state.tr
@@ -272,10 +321,13 @@ for (const shape of SHAPES) {
                     );
                   });
                   const fireDuringComposition = async () => {
-                    await act(async () => expect(notificationTimer.fire).not.toThrow());
+                    await act(async () =>
+                      expect(notificationTimer.fire).not.toThrow(),
+                    );
                     expect(notifications).toEqual([]);
                   };
-                  if (timerPhase === "beforeSelection") await fireDuringComposition();
+                  if (timerPhase === "beforeSelection")
+                    await fireDuringComposition();
                   expect(api.getCanonicalDocument).toThrow(
                     "Composition must finish before taking a snapshot.",
                   );
@@ -284,15 +336,21 @@ for (const shape of SHAPES) {
                   await act(async () => {
                     view.dispatch(
                       view.state.tr.setSelection(
-                        TextSelection.create(view.state.doc, compositionFrom, compositionFrom + 1),
+                        TextSelection.create(
+                          view.state.doc,
+                          compositionFrom,
+                          compositionFrom + 1,
+                        ),
                       ),
                     );
                   });
-                  if (timerPhase === "beforeRender") await fireDuringComposition();
+                  if (timerPhase === "beforeRender")
+                    await fireDuringComposition();
                   controls.comments = [...controls.comments];
                   controls.showToolbar = true;
                   await act(async () => root.render(renderEditor()));
-                  if (timerPhase === "afterRender") await fireDuringComposition();
+                  if (timerPhase === "afterRender")
+                    await fireDuringComposition();
                   expect(notifications).toEqual([]);
                   expect(editor.current?.getEditor()?.getView()).toBe(view);
                   expect(view.isDestroyed).toBe(false);
@@ -308,7 +366,10 @@ for (const shape of SHAPES) {
                           .replaceWith(
                             compositionFrom,
                             compositionFrom + "alpha".length,
-                            baselineProjection.slice(compositionFrom, compositionTo).content,
+                            baselineProjection.slice(
+                              compositionFrom,
+                              compositionTo,
+                            ).content,
                           )
                           .setMeta("composition", 1),
                       );
@@ -317,10 +378,13 @@ for (const shape of SHAPES) {
                     view.dom.dispatchEvent(
                       new CompositionEvent("compositionend", { bubbles: true }),
                     );
-                    await new Promise<void>((resolve) => setTimeout(resolve, 40));
+                    await new Promise<void>((resolve) =>
+                      setTimeout(resolve, 40),
+                    );
                   });
                   const committed =
-                    api.getCanonicalDocument() ?? panic("Expected completed snapshot");
+                    api.getCanonicalDocument() ??
+                    panic("Expected completed snapshot");
                   assertExactModel(committed, expected.document);
                   await act(async () => notificationTimer.fire());
                   expect(notifications).toHaveLength(1);
@@ -376,7 +440,8 @@ test("committed comments are derived once across caret and composition renders",
     await act(async () => root.render(renderEditor()));
     await act(async () => editor.current?.loadDocumentBuffer(bytes));
     await act(async () => editor.current?.ensureEditorView({ focus: false }));
-    const api = editor.current?.getEditor() ?? panic("Missing canonical editor.");
+    const api =
+      editor.current?.getEditor() ?? panic("Missing canonical editor.");
     const view = api.getView() ?? panic("Missing canonical view.");
     await act(async () => {
       const result = api.applyCanonicalComment({
@@ -404,7 +469,9 @@ test("committed comments are derived once across caret and composition renders",
       ).length;
     const projectionWork = () => ({
       clones: commentProjectionCalls(clones.mock.calls.map(([value]) => value)),
-      serializations: commentProjectionCalls(serializations.mock.calls.map(([value]) => value)),
+      serializations: commentProjectionCalls(
+        serializations.mock.calls.map(([value]) => value),
+      ),
     });
     try {
       for (const position of [2, 3, 4, 2, 1]) {
@@ -414,15 +481,23 @@ test("committed comments are derived once across caret and composition renders",
       await act(async () => root.render(renderEditor()));
       expect(projectionWork()).toEqual({ clones: 0, serializations: 0 });
       await act(async () => {
-        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
-        view.dispatch(view.state.tr.insertText("alpha", 1, 3).setMeta("composition", 1));
+        view.dom.dispatchEvent(
+          new CompositionEvent("compositionstart", { bubbles: true }),
+        );
+        view.dispatch(
+          view.state.tr.insertText("alpha", 1, 3).setMeta("composition", 1),
+        );
       });
       showToolbar = false;
       await act(async () => root.render(renderEditor()));
       expect(projectionWork()).toEqual({ clones: 0, serializations: 0 });
-      expect(api.getCanonicalDocument).toThrow("Composition must finish before taking a snapshot.");
+      expect(api.getCanonicalDocument).toThrow(
+        "Composition must finish before taking a snapshot.",
+      );
       await act(async () => {
-        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        view.dom.dispatchEvent(
+          new CompositionEvent("compositionend", { bubbles: true }),
+        );
         await new Promise<void>((resolve) => setTimeout(resolve, 40));
       });
       showToolbar = true;
@@ -447,15 +522,24 @@ test("committed comments are derived once across caret and composition renders",
 const createLoadedCommentDocument = (text: string, count = 1) => {
   const source = createEmptyDocument({ initialText: "Unchanged body" });
   const paragraph = source.package.document.content.at(0);
-  if (paragraph?.type !== "paragraph") panic("Expected loaded comment paragraph");
+  if (paragraph?.type !== "paragraph")
+    panic("Expected loaded comment paragraph");
   paragraph.paraId = "76100000";
   paragraph.content.unshift({ type: "commentRangeStart", id: 1 });
   paragraph.content.push({ type: "commentRangeEnd", id: 1 });
-  source.package.document.comments = Array.from({ length: count }, (_, index) => ({
-    id: index + 1,
-    author: "Projection fixture",
-    content: [{ type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] }],
-  }));
+  source.package.document.comments = Array.from(
+    { length: count },
+    (_, index) => ({
+      id: index + 1,
+      author: "Projection fixture",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text }] }],
+        },
+      ],
+    }),
+  );
   return source;
 };
 
@@ -483,11 +567,15 @@ test("external loads refresh committed comments when selection and history stay 
       ),
     );
     await act(async () => editor.current?.ensureEditorView({ focus: false }));
-    const api = editor.current?.getEditor() ?? panic("Expected loaded canonical editor");
+    const api =
+      editor.current?.getEditor() ?? panic("Expected loaded canonical editor");
     const view = api.getView() ?? panic("Expected loaded canonical view");
     const selection = view.state.selection.toJSON();
     expect(api.canUndo()).toBe(false);
-    expect(container.querySelector("[data-testid=toolbar-comments-count]")?.textContent).toBe("1");
+    expect(
+      container.querySelector("[data-testid=toolbar-comments-count]")
+        ?.textContent,
+    ).toBe("1");
     await act(async () =>
       root.render(
         <IntlProvider locale="en" timeZone="UTC" messages={messages}>
@@ -504,8 +592,13 @@ test("external loads refresh committed comments when selection and history stay 
     expect(view.state.selection.toJSON()).toEqual(selection);
     expect(api.canUndo()).toBe(false);
     expect(api.getCanonicalComments()).toHaveLength(2);
-    expect(JSON.stringify(api.getCanonicalComments())).toContain("Second loaded note");
-    expect(container.querySelector("[data-testid=toolbar-comments-count]")?.textContent).toBe("2");
+    expect(JSON.stringify(api.getCanonicalComments())).toContain(
+      "Second loaded note",
+    );
+    expect(
+      container.querySelector("[data-testid=toolbar-comments-count]")
+        ?.textContent,
+    ).toBe("2");
     expect(container.textContent).not.toContain("First loaded note");
     const nextToggle = container.querySelector<HTMLButtonElement>(
       "[data-testid=toolbar-comments-toggle]",

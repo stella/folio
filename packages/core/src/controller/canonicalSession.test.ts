@@ -1,37 +1,45 @@
-import { describe, expect, test, setDefaultTimeout, spyOn } from "bun:test";
+import { panic } from "better-result";
+import { describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
+import fc from "fast-check";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 import {
-  createParagraphChangeTrackerPlugin,
-  hasUntrackedChanges,
-  clearTrackedChanges,
-  paragraphChangeTrackerKey,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { schema } from "../prosemirror/schema";
-import { serializeCanonicalSave } from "../docx/canonicalSave";
-import { parseDocx } from "../docx/parser";
-import { createDocx } from "../docx/rezip";
-import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import {
-  normalizeForOps,
   DOCUMENT_OP_TYPES,
+  editorParagraphGroups,
+  normalizeForOps,
   OP_STORIES,
   paragraphVisibleText,
-  editorParagraphGroups,
   physicalOffsetAtVisibleOffset,
 } from "@stll/docx-core/ops";
 import * as documentOps from "@stll/docx-core/ops";
-import * as conversion from "../prosemirror/conversion/toProseDoc";
-import { panic } from "better-result";
-import fc from "fast-check";
+
 import { assertExactModel } from "../../../../test/exactModel";
-import { visitParagraphRuns } from "../docx/paragraphTraversal";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { FIRST_ID, fixture, seedArbitrary } from "../../typecheck/ops/reviewGenerators.typecheck";
+import {
+  FIRST_ID,
+  fixture,
+  seedArbitrary,
+} from "../../typecheck/ops/reviewGenerators.typecheck";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
+import { visitParagraphRuns } from "../docx/paragraphTraversal";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import * as conversion from "../prosemirror/conversion/toProseDoc";
+import {
+  clearTrackedChanges,
+  createParagraphChangeTrackerPlugin,
+  hasUntrackedChanges,
+  paragraphChangeTrackerKey,
+} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { schema } from "../prosemirror/schema";
+import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -40,7 +48,8 @@ test.each(["editing", "suggesting"] as const)(
   (mode) => {
     const document = fromMarkdown("| A | B |\n|---|---|\n| C | D |");
     const table = document.package.document.content.at(0);
-    if (table?.type !== "table") throw new TypeError("Expected the table fixture.");
+    if (table?.type !== "table")
+      throw new TypeError("Expected the table fixture.");
     let paragraphId = 1;
     for (const row of table.rows)
       for (const cell of row.cells)
@@ -49,12 +58,15 @@ test.each(["editing", "suggesting"] as const)(
             paragraph.paraId = (paragraphId++).toString(16).padStart(8, "0");
     const session = createCanonicalSession(document).unwrap();
     session.setMode(
-      mode === "editing" ? { type: "editing" } : { type: "suggesting", author: "Reviewer" },
+      mode === "editing"
+        ? { type: "editing" }
+        : { type: "suggesting", author: "Reviewer" },
     );
     let state = EditorState.create({ schema, doc: session.projection.doc });
     const positions = new Map<string, number>();
     state.doc.descendants((node, position) => {
-      if (node.type.name === "tableCell") positions.set(node.textContent, position);
+      if (node.type.name === "tableCell")
+        positions.set(node.textContent, position);
     });
     const selection = CellSelection.create(
       state.doc,
@@ -81,16 +93,22 @@ import {
   getParagraphPropertySourceToken,
   paragraphPropertySourceBelongsToDocument,
 } from "../docx/paragraphPropertySource";
-import type { BlockContent, Document, Paragraph, Run, StyleDefinitions } from "../types/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Run,
+  StyleDefinitions,
+} from "../types/document";
 import {
   CANONICAL_PROJECTION_META,
+  type CanonicalCommit,
+  type CanonicalSession,
   CanonicalSessionError,
   createCanonicalSession,
   deletionRange,
   isCanonicalProjectionTransaction,
   publishCanonicalProjection,
-  type CanonicalCommit,
-  type CanonicalSession,
 } from "./canonicalSession";
 
 const seed = (text = "ab😀cd"): Document => ({
@@ -134,7 +152,9 @@ const tableSeed = (): Document => ({
                     {
                       type: "paragraph",
                       paraId: "20000000",
-                      content: [{ type: "run", content: [{ type: "text", text: "A" }] }],
+                      content: [
+                        { type: "run", content: [{ type: "text", text: "A" }] },
+                      ],
                     },
                   ],
                 },
@@ -144,7 +164,9 @@ const tableSeed = (): Document => ({
                     {
                       type: "paragraph",
                       paraId: "30000000",
-                      content: [{ type: "run", content: [{ type: "text", text: "B" }] }],
+                      content: [
+                        { type: "run", content: [{ type: "text", text: "B" }] },
+                      ],
                     },
                     {
                       type: "table",
@@ -159,7 +181,12 @@ const tableSeed = (): Document => ({
                                   type: "paragraph",
                                   paraId: "35000000",
                                   content: [
-                                    { type: "run", content: [{ type: "text", text: "nested" }] },
+                                    {
+                                      type: "run",
+                                      content: [
+                                        { type: "text", text: "nested" },
+                                      ],
+                                    },
                                   ],
                                 },
                               ],
@@ -177,7 +204,9 @@ const tableSeed = (): Document => ({
         {
           type: "paragraph",
           paraId: "40000000",
-          content: [{ type: "run", content: [{ type: "text", text: "after" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "after" }] },
+          ],
         },
       ],
     },
@@ -209,7 +238,9 @@ describe("canonical session", () => {
         .unwrap();
       const base = stateFor(session);
       const state = base.apply(
-        base.tr.setSelection(TextSelection.create(session.projection.doc, position)),
+        base.tr.setSelection(
+          TextSelection.create(session.projection.doc, position),
+        ),
       );
       const result = session.prepareJoin(state, direction);
       expect(result.isErr()).toBe(true);
@@ -224,10 +255,14 @@ describe("canonical session", () => {
     const position = session.projection
       .positionAt({ story: OP_STORIES.MAIN, blockId: "20000000", offset: 1 })
       .unwrap();
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, position)),
+    );
     state = accept(
       state,
-      session.prepareReplace(state, { from: position, to: position, text: "X" }).unwrap(),
+      session
+        .prepareReplace(state, { from: position, to: position, text: "X" })
+        .unwrap(),
     );
     state = accept(
       state,
@@ -252,8 +287,12 @@ describe("canonical session", () => {
         .unwrap(),
     );
     const second = session.projection.addressAt(state.selection.head).unwrap();
-    const secondStart = session.projection.positionAt({ ...second, offset: 0 }).unwrap();
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, secondStart)));
+    const secondStart = session.projection
+      .positionAt({ ...second, offset: 0 })
+      .unwrap();
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, secondStart)),
+    );
     state = accept(state, session.prepareJoin(state, "backward").unwrap());
     expect(state.doc.textContent).toBe(session.projection.doc.textContent);
 
@@ -268,11 +307,15 @@ describe("canonical session", () => {
   test("every table paragraph address round-trips through its projected position", () => {
     assertProperty(
       fc.property(
-        fc.array(fc.stringMatching(/^[a-z]{0,12}$/u), { minLength: 1, maxLength: 6 }),
+        fc.array(fc.stringMatching(/^[a-z]{0,12}$/u), {
+          minLength: 1,
+          maxLength: 6,
+        }),
         (texts) => {
           const document = tableSeed();
           const table = document.package.document.content.at(1);
-          if (table?.type !== "table") return panic("Table fixture lost its table.");
+          if (table?.type !== "table")
+            return panic("Table fixture lost its table.");
           const cell = table.rows.at(0)?.cells.at(0);
           if (!cell) return panic("Table fixture lost its cell.");
           cell.content = texts.map((text, index) => ({
@@ -287,21 +330,36 @@ describe("canonical session", () => {
               if (block.type === "paragraph") paragraphs.push(block);
               if (block.type === "table")
                 for (const row of block.rows)
-                  for (const nestedCell of row.cells) collect(nestedCell.content);
+                  for (const nestedCell of row.cells)
+                    collect(nestedCell.content);
             }
           };
           collect(document.package.document.content);
           for (const paragraph of paragraphs) {
             if (paragraph.paraId === undefined) continue;
-            for (let offset = 0; offset <= paragraphVisibleText(paragraph).length; offset++) {
-              const address = { story: OP_STORIES.MAIN, blockId: paragraph.paraId, offset };
+            for (
+              let offset = 0;
+              offset <= paragraphVisibleText(paragraph).length;
+              offset++
+            ) {
+              const address = {
+                story: OP_STORIES.MAIN,
+                blockId: paragraph.paraId,
+                offset,
+              };
               const position = session.projection.positionAt(address).unwrap();
-              expect(session.projection.addressAt(position).unwrap()).toEqual(address);
+              expect(session.projection.addressAt(position).unwrap()).toEqual(
+                address,
+              );
             }
           }
         },
       ),
-      { numRuns: 30, seed: 20261015, id: "table paragraph addresses round-trip" },
+      {
+        numRuns: 30,
+        seed: 20261015,
+        id: "table paragraph addresses round-trip",
+      },
     );
   });
 
@@ -414,7 +472,11 @@ describe("canonical session", () => {
       if (result.isOk()) panic("A benign no-op unexpectedly committed.");
       expect(result.error.reason).toBe("noChange");
     }
-    const refused = session.prepareReplace(state, { from: 1, to: 1, text: "\u0000" });
+    const refused = session.prepareReplace(state, {
+      from: 1,
+      to: 1,
+      text: "\u0000",
+    });
     if (refused.isOk()) panic("Illegal XML input unexpectedly committed.");
     expect(refused.error.reason).toBe("refused");
     expect(session.version).toBe(0);
@@ -448,7 +510,11 @@ describe("canonical session", () => {
   test("separator note types, rather than producer-specific ids, govern activation", () => {
     for (const kind of ["footnote", "endnote"] as const) {
       for (const id of [0, 1, 7]) {
-        for (const noteType of ["separator", "continuationSeparator", "normal"] as const) {
+        for (const noteType of [
+          "separator",
+          "continuationSeparator",
+          "normal",
+        ] as const) {
           const document = seed("Body");
           const content: Paragraph[] = [
             {
@@ -469,16 +535,25 @@ describe("canonical session", () => {
             },
           ];
           if (kind === "footnote")
-            document.package.footnotes = [{ type: "footnote", id, noteType, content }];
-          else document.package.endnotes = [{ type: "endnote", id, noteType, content }];
+            document.package.footnotes = [
+              { type: "footnote", id, noteType, content },
+            ];
+          else
+            document.package.endnotes = [
+              { type: "endnote", id, noteType, content },
+            ];
           // Clipboard support admits preserved inline XML in ordinary notes too.
           expect(createCanonicalSession(document).isOk()).toBe(true);
           content.push({
             type: "paragraph",
             paraId: "34567891",
-            content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+            content: [
+              { type: "run", content: [{ type: "renderedPageBreak" }] },
+            ],
           });
-          expect(createCanonicalSession(document).isOk()).toBe(noteType !== "normal");
+          expect(createCanonicalSession(document).isOk()).toBe(
+            noteType !== "normal",
+          );
         }
       }
     }
@@ -496,7 +571,9 @@ describe("canonical session", () => {
             {
               type: "paragraph",
               paraId: "34567890",
-              content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Header" }] },
+              ],
             },
           ],
         },
@@ -510,10 +587,18 @@ describe("canonical session", () => {
       const initialProjection = session.projectStory(header).unwrap();
       expect(session.projectStory(header).unwrap()).toBe(initialProjection);
       expect(storySpy).toHaveBeenCalledTimes(1);
-      const initialState = EditorState.create({ schema, doc: initialProjection.doc });
+      const initialState = EditorState.create({
+        schema,
+        doc: initialProjection.doc,
+      });
       const body = session.projection;
       const edit = session
-        .prepareReplace(initialState, { from: 1, to: 1, text: "X", story: header })
+        .prepareReplace(initialState, {
+          from: 1,
+          to: 1,
+          text: "X",
+          story: header,
+        })
         .unwrap();
       const state = accept(initialState, edit);
       expect(edit.bodyProjection).toBe(body);
@@ -521,25 +606,41 @@ describe("canonical session", () => {
       expect(bodySpy).not.toHaveBeenCalled();
       expect(storySpy).toHaveBeenCalledTimes(2);
       expect(session.projectStory(header).unwrap()).toBe(edit.projection);
-      expect(session.projectStory(header).unwrap().doc.textContent).toBe("XHeader");
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe(
+        "XHeader",
+      );
       expect(
         session
-          .prepareReplace(initialState, { from: 1, to: 1, text: "stale", story: header })
+          .prepareReplace(initialState, {
+            from: 1,
+            to: 1,
+            text: "stale",
+            story: header,
+          })
           .isErr(),
       ).toBe(true);
       expect(storySpy).toHaveBeenCalledTimes(2);
       const mainState = stateFor(session);
-      accept(mainState, session.prepareReplace(mainState, { from: 1, to: 1, text: "Y" }).unwrap());
+      accept(
+        mainState,
+        session
+          .prepareReplace(mainState, { from: 1, to: 1, text: "Y" })
+          .unwrap(),
+      );
       expect(session.projectStory(header).unwrap()).toBe(edit.projection);
       expect(storySpy).toHaveBeenCalledTimes(2);
       accept(state, session.prepareUndo(state, header).unwrap());
-      expect(session.projectStory(header).unwrap().doc.textContent).toBe("XHeader");
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe(
+        "XHeader",
+      );
       const current = EditorState.create({
         schema,
         doc: session.projectStory(header).unwrap().doc,
       });
       accept(current, session.prepareUndo(current, header).unwrap());
-      expect(session.projectStory(header).unwrap().doc.textContent).toBe("Header");
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe(
+        "Header",
+      );
     } finally {
       bodySpy.mockRestore();
       storySpy.mockRestore();
@@ -584,12 +685,18 @@ describe("canonical session", () => {
       doc: session.projection.doc,
       plugins: [createParagraphChangeTrackerPlugin()],
     });
-    const text = session.prepareReplace(state, { from: 1, to: 1, text: "Text" }).unwrap();
+    const text = session
+      .prepareReplace(state, { from: 1, to: 1, text: "Text" })
+      .unwrap();
     state = accept(state, text);
     expect(hasUntrackedChanges(state)).toBe(false);
     const properties = session
       .prepareOperations(state, [
-        { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { titlePg: true } },
+        {
+          type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+          sectionIndex: 0,
+          patch: { titlePg: true },
+        },
       ])
       .unwrap();
     expect(properties.transaction.docChanged).toBe(false);
@@ -603,38 +710,44 @@ describe("canonical session", () => {
   test.each([
     [OP_STORIES.MAIN, false],
     [{ kind: "header", rId: "rIdHeader1" }, true],
-  ] as const)("block insertion in %s tracks the operation's story", (story, packageChange) => {
-    const source = seed("Body");
-    source.package.headers = new Map([
-      [
-        "rIdHeader1",
-        {
-          type: "header",
-          hdrFtrType: "default",
-          content: [{ type: "paragraph", paraId: "34567890", content: [] }],
-        },
-      ],
-    ]);
-    const session = createCanonicalSession(source).unwrap();
-    const original = structuredClone(session.document);
-    const state = stateFor(session);
-    const commit = session
-      .prepareOperations(state, [
-        {
-          type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-          story,
-          at: { type: "after", blockId: story === OP_STORIES.MAIN ? "12345678" : "34567890" },
-          blocks: [{ type: "paragraph", paraId: "45678901", content: [] }],
-        },
-      ])
-      .unwrap();
-    expect(commit.transaction.getMeta(paragraphChangeTrackerKey)).toBe(
-      packageChange ? "package-change" : undefined,
-    );
-    const inserted = accept(state, commit);
-    accept(inserted, session.prepareUndo(inserted).unwrap());
-    expect(session.document).toStrictEqual(original);
-  });
+  ] as const)(
+    "block insertion in %s tracks the operation's story",
+    (story, packageChange) => {
+      const source = seed("Body");
+      source.package.headers = new Map([
+        [
+          "rIdHeader1",
+          {
+            type: "header",
+            hdrFtrType: "default",
+            content: [{ type: "paragraph", paraId: "34567890", content: [] }],
+          },
+        ],
+      ]);
+      const session = createCanonicalSession(source).unwrap();
+      const original = structuredClone(session.document);
+      const state = stateFor(session);
+      const commit = session
+        .prepareOperations(state, [
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+            story,
+            at: {
+              type: "after",
+              blockId: story === OP_STORIES.MAIN ? "12345678" : "34567890",
+            },
+            blocks: [{ type: "paragraph", paraId: "45678901", content: [] }],
+          },
+        ])
+        .unwrap();
+      expect(commit.transaction.getMeta(paragraphChangeTrackerKey)).toBe(
+        packageChange ? "package-change" : undefined,
+      );
+      const inserted = accept(state, commit);
+      accept(inserted, session.prepareUndo(inserted).unwrap());
+      expect(session.document).toStrictEqual(original);
+    },
+  );
   test("story typing groups and pending composition share the body journal boundary", () => {
     const session = createCanonicalSession(seed("Body")).unwrap();
     let bodyState = stateFor(session);
@@ -654,7 +767,10 @@ describe("canonical session", () => {
         .unwrap(),
     );
     const created = session.document;
-    let state = EditorState.create({ schema, doc: session.projectStory(header).unwrap().doc });
+    let state = EditorState.create({
+      schema,
+      doc: session.projectStory(header).unwrap().doc,
+    });
 
     for (const [time, text] of [
       [1000, "X"],
@@ -679,7 +795,9 @@ describe("canonical session", () => {
     session.beginComposition().unwrap();
     expect(() => session.document).toThrow(CanonicalSessionError);
     expect(
-      session.prepareReplace(state, { from: 1, to: 1, text: "Z", story: header }).isErr(),
+      session
+        .prepareReplace(state, { from: 1, to: 1, text: "Z", story: header })
+        .isErr(),
     ).toBe(true);
     expect(session.prepareUndo(state, header).isErr()).toBe(true);
     session.endComposition();
@@ -708,7 +826,9 @@ describe("canonical session", () => {
               {
                 type: "paragraph",
                 paraId: "34567890",
-                content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "Header" }] },
+                ],
               },
             ],
           },
@@ -720,7 +840,12 @@ describe("canonical session", () => {
     headerState = accept(
       headerState,
       session
-        .prepareReplace(headerState, { from: 1, to: 7, text: "Edited", story: header })
+        .prepareReplace(headerState, {
+          from: 1,
+          to: 7,
+          text: "Edited",
+          story: header,
+        })
         .unwrap(),
     );
     expect(headerState.doc.textContent).toBe("Edited");
@@ -740,7 +865,9 @@ describe("canonical session", () => {
         ])
         .unwrap(),
     );
-    expect(session.document.package.document.finalSectionProperties?.titlePg).toBe(true);
+    expect(
+      session.document.package.document.finalSectionProperties?.titlePg,
+    ).toBe(true);
     state = accept(
       state,
       session
@@ -755,7 +882,9 @@ describe("canonical session", () => {
                 {
                   type: "paragraph",
                   paraId: "56789012",
-                  content: [{ type: "run", content: [{ type: "text", text: "Note" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "Note" }] },
+                  ],
                 },
               ],
             },
@@ -828,20 +957,29 @@ describe("canonical session", () => {
             { type: "bookmarkEnd", id: paired ? 71 : 72 },
           ] satisfies Paragraph["content"];
           let wrapper = makeWrapper(markers);
-          for (let level = 1; level < depth; level++) wrapper = makeWrapper([wrapper]);
+          for (let level = 1; level < depth; level++)
+            wrapper = makeWrapper([wrapper]);
           const cases = [
             { content: [wrapper], size: paired ? 3 : 1 },
             ...(paired
               ? ([
                   {
                     content: [
-                      { type: "insertion", info: { id: 1, author: "Test" }, content: [wrapper] },
+                      {
+                        type: "insertion",
+                        info: { id: 1, author: "Test" },
+                        content: [wrapper],
+                      },
                     ],
                     size: 3,
                   },
                   {
                     content: [
-                      { type: "hyperlink", href: "https://example.test", children: [wrapper] },
+                      {
+                        type: "hyperlink",
+                        href: "https://example.test",
+                        children: [wrapper],
+                      },
                     ],
                     size: 3,
                   },
@@ -851,7 +989,8 @@ describe("canonical session", () => {
           for (const { content, size } of cases) {
             const source = seed("X");
             const paragraph = source.package.document.content.at(0);
-            if (paragraph?.type !== "paragraph") panic("The projection fixture has no paragraph");
+            if (paragraph?.type !== "paragraph")
+              panic("The projection fixture has no paragraph");
             paragraph.content = content;
             // Bind the address oracle to actual conversion: transparent
             // paragraph wrappers drop orphan boundaries and preserve pairs.
@@ -862,9 +1001,15 @@ describe("canonical session", () => {
             expect(session.projection.doc.firstChild?.textContent).toBe("X");
             for (const offset of [0, 1]) {
               const position = session.projection
-                .positionAt({ story: OP_STORIES.MAIN, blockId: "12345678", offset })
+                .positionAt({
+                  story: OP_STORIES.MAIN,
+                  blockId: "12345678",
+                  offset,
+                })
                 .unwrap();
-              expect(session.projection.addressAt(position).unwrap().offset).toBe(offset);
+              expect(
+                session.projection.addressAt(position).unwrap().offset,
+              ).toBe(offset);
             }
           }
         }
@@ -886,7 +1031,8 @@ describe("canonical session", () => {
           ],
         },
       ] satisfies Paragraph[];
-      if (kind === "footnote") source.package.footnotes = [{ type: kind, id: 12, content }];
+      if (kind === "footnote")
+        source.package.footnotes = [{ type: kind, id: 12, content }];
       else source.package.endnotes = [{ type: kind, id: 12, content }];
       const session = createCanonicalSession(source).unwrap();
       const initial = structuredClone(session.document);
@@ -897,7 +1043,9 @@ describe("canonical session", () => {
         expect(projection.positionAt(address).unwrap()).toBe(position);
       }
       expect(projection.addressAt(3).isErr()).toBe(true);
-      const afterMarker = projection.positionAt({ story, blockId: "34567890", offset: 0 }).unwrap();
+      const afterMarker = projection
+        .positionAt({ story, blockId: "34567890", offset: 0 })
+        .unwrap();
       expect(afterMarker).toBe(2);
       const deletingState = (position: number) =>
         EditorState.create({
@@ -905,8 +1053,14 @@ describe("canonical session", () => {
           doc: projection.doc,
           selection: TextSelection.create(projection.doc, position),
         });
-      expect(deletionRange(deletingState(2), "forward").unwrap()).toEqual({ from: 2, to: 4 });
-      expect(deletionRange(deletingState(4), "backward").unwrap()).toEqual({ from: 2, to: 4 });
+      expect(deletionRange(deletingState(2), "forward").unwrap()).toEqual({
+        from: 2,
+        to: 4,
+      });
+      expect(deletionRange(deletingState(4), "backward").unwrap()).toEqual({
+        from: 2,
+        to: 4,
+      });
       expect(deletionRange(deletingState(2), "backward").isErr()).toBe(true);
       expect(deletionRange(deletingState(1), "forward").isErr()).toBe(true);
       let state = EditorState.create({
@@ -916,7 +1070,9 @@ describe("canonical session", () => {
       });
       state = accept(
         state,
-        session.prepareReplace(state, { from: 2, to: 2, text: "x", story }).unwrap(),
+        session
+          .prepareReplace(state, { from: 2, to: 2, text: "x", story })
+          .unwrap(),
       );
       expect(state.selection.from).toBe(3);
       expect(state.doc.firstChild?.firstChild?.type.name).toBe("noteMarker");
@@ -942,18 +1098,33 @@ describe("canonical session", () => {
             {
               type: "paragraph",
               paraId: "34567890",
-              content: [{ type: "run", content: [{ type: "noteMarker", kind: "footnote" }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "noteMarker", kind: "footnote" }],
+                },
+              ],
             },
           ],
         },
       ];
       const session = createCanonicalSession(source).unwrap();
       session.setMode(
-        mode === "editing" ? { type: "editing" } : { type: "suggesting", author: "Reviewer" },
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Reviewer" },
       );
       const story = { kind: "footnote", id: 12 } as const;
-      const state = EditorState.create({ schema, doc: session.projectStory(story).unwrap().doc });
-      const result = session.prepareReplace(state, { from: 1, to: 2, text: "", story });
+      const state = EditorState.create({
+        schema,
+        doc: session.projectStory(story).unwrap().doc,
+      });
+      const result = session.prepareReplace(state, {
+        from: 1,
+        to: 2,
+        text: "",
+        story,
+      });
       expect(result.isErr()).toBe(true);
       if (result.isErr()) expect(result.error.reason).toBe("noChange");
       expect(session.version).toBe(0);
@@ -973,20 +1144,32 @@ describe("canonical session", () => {
             {
               type: "paragraph",
               paraId: "34567890",
-              content: [{ type: "run", content: [{ type: "noteMarker", kind: "footnote" }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "noteMarker", kind: "footnote" }],
+                },
+              ],
             },
           ],
         },
       ];
       const session = createCanonicalSession(source).unwrap();
       session.setMode(
-        mode === "editing" ? { type: "editing" } : { type: "suggesting", author: "Reviewer" },
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Reviewer" },
       );
       const story = { kind: "footnote", id: 12 } as const;
-      const state = EditorState.create({ schema, doc: session.projectStory(story).unwrap().doc });
+      const state = EditorState.create({
+        schema,
+        doc: session.projectStory(story).unwrap().doc,
+      });
       accept(
         state,
-        session.prepareReplace(state, { from: 1, to: 2, text: "hello", story }).unwrap(),
+        session
+          .prepareReplace(state, { from: 1, to: 2, text: "hello", story })
+          .unwrap(),
       );
       const note = JSON.stringify(session.document.package.footnotes?.at(0));
       expect(note).toContain('"noteMarker"');
@@ -1001,7 +1184,11 @@ describe("canonical session", () => {
         seedArbitrary,
         fc.array(seedArbitrary, { minLength: 18, maxLength: 24 }),
         async (generated, inputs) => {
-          const parsed = await fixture({ ...generated, container: "body", nesting: "plain" });
+          const parsed = await fixture({
+            ...generated,
+            container: "body",
+            nesting: "plain",
+          });
           const session = createCanonicalSession(
             normalizeForOps({
               ...parsed,
@@ -1018,7 +1205,10 @@ describe("canonical session", () => {
                           (text, index) =>
                             ({
                               type: "run",
-                              formatting: index % 2 === 0 ? { bold: true } : { italic: true },
+                              formatting:
+                                index % 2 === 0
+                                  ? { bold: true }
+                                  : { italic: true },
                               content: [{ type: "text", text }],
                             }) satisfies Run,
                         ),
@@ -1028,7 +1218,10 @@ describe("canonical session", () => {
               },
             }),
           ).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const initial = session.document;
           const journal: {
             before: Document;
@@ -1049,10 +1242,13 @@ describe("canonical session", () => {
           ] as const;
           const exercised = new Set<(typeof kinds)[number]>();
           for (const [index, input] of inputs.entries()) {
-            const kind = kinds.at(index % kinds.length) ?? panic("Missing generated input kind");
+            const kind =
+              kinds.at(index % kinds.length) ??
+              panic("Missing generated input kind");
             exercised.add(kind);
             const paragraph =
-              session.projection.paragraph(FIRST_ID) ?? panic("Generated paragraph disappeared");
+              session.projection.paragraph(FIRST_ID) ??
+              panic("Generated paragraph disappeared");
             const gaps = [paragraph.start];
             let offset = paragraph.start;
             for (const character of paragraph.text) {
@@ -1063,7 +1259,8 @@ describe("canonical session", () => {
             let headIndex = (input.offset + input.text.length) % gaps.length;
             if (headIndex === anchorIndex && gaps.length > 1)
               headIndex = (headIndex + 1) % gaps.length;
-            const anchor = gaps.at(anchorIndex) ?? panic("Generated anchor disappeared");
+            const anchor =
+              gaps.at(anchorIndex) ?? panic("Generated anchor disappeared");
             const head =
               kind === "insert"
                 ? anchor
@@ -1088,32 +1285,37 @@ describe("canonical session", () => {
               const validInput = { from, to, text: input.insertion };
               switch (kind) {
                 case "reject": {
-                  const invalidText = input.offset % 2 === 0 ? `${input.insertion}\n` : "\ud800";
+                  const invalidText =
+                    input.offset % 2 === 0 ? `${input.insertion}\n` : "\ud800";
                   expect(
-                    session.prepareReplace(state, { from, to, text: invalidText }).isErr(),
+                    session
+                      .prepareReplace(state, { from, to, text: invalidText })
+                      .isErr(),
                   ).toBe(true);
                   break;
                 }
                 case "op-refusal": {
                   const apply = documentOps.applyDocumentOps;
-                  const injected = spyOn(documentOps, "applyDocumentOps").mockImplementation(
-                    (document, ops) =>
-                      apply(document, [
-                        ...ops,
-                        {
-                          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-                          from: {
-                            story: OP_STORIES.MAIN,
-                            blockId: FIRST_ID,
-                            offset: Number.MAX_SAFE_INTEGER - 1,
-                          },
-                          to: {
-                            story: OP_STORIES.MAIN,
-                            blockId: FIRST_ID,
-                            offset: Number.MAX_SAFE_INTEGER,
-                          },
+                  const injected = spyOn(
+                    documentOps,
+                    "applyDocumentOps",
+                  ).mockImplementation((document, ops) =>
+                    apply(document, [
+                      ...ops,
+                      {
+                        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                        from: {
+                          story: OP_STORIES.MAIN,
+                          blockId: FIRST_ID,
+                          offset: Number.MAX_SAFE_INTEGER - 1,
                         },
-                      ]),
+                        to: {
+                          story: OP_STORIES.MAIN,
+                          blockId: FIRST_ID,
+                          offset: Number.MAX_SAFE_INTEGER,
+                        },
+                      },
+                    ]),
                   );
                   try {
                     const prepared = session.prepareReplace(state, validInput);
@@ -1125,9 +1327,16 @@ describe("canonical session", () => {
                   break;
                 }
                 case "projection-refusal": {
-                  const injected = spyOn(conversion, "toProseDoc").mockReturnValue(
+                  const injected = spyOn(
+                    conversion,
+                    "toProseDoc",
+                  ).mockReturnValue(
                     schema.node("doc", null, [
-                      schema.node("paragraph", { paraId: FIRST_ID }, schema.text("foreign")),
+                      schema.node(
+                        "paragraph",
+                        { paraId: FIRST_ID },
+                        schema.text("foreign"),
+                      ),
                     ]),
                   );
                   try {
@@ -1148,13 +1357,18 @@ describe("canonical session", () => {
                         return new Plugin({ filterTransaction: () => false });
                       case "plugin-append":
                         return new Plugin({
-                          appendTransaction: (_transactions, _oldState, nextState) =>
-                            nextState.tr.insertText(input.insertion, from),
+                          appendTransaction: (
+                            _transactions,
+                            _oldState,
+                            nextState,
+                          ) => nextState.tr.insertText(input.insertion, from),
                         });
                       case "plugin-throw":
                         return new Plugin({
                           filterTransaction: () => {
-                            throw new TypeError("Generated plugin staging refusal");
+                            throw new TypeError(
+                              "Generated plugin staging refusal",
+                            );
                           },
                         });
                       default: {
@@ -1164,9 +1378,15 @@ describe("canonical session", () => {
                     }
                   })();
                   const stagedState = state.reconfigure({ plugins: [plugin] });
-                  const commit = session.prepareReplace(stagedState, validInput).unwrap();
+                  const commit = session
+                    .prepareReplace(stagedState, validInput)
+                    .unwrap();
                   expect(
-                    publishCanonicalProjection({ state: stagedState, commit, session }).isErr(),
+                    publishCanonicalProjection({
+                      state: stagedState,
+                      commit,
+                      session,
+                    }).isErr(),
                   ).toBe(true);
                   expect(stagedState.doc).toBe(state.doc);
                   expect(stagedState.selection.toJSON()).toEqual(preSelection);
@@ -1181,15 +1401,23 @@ describe("canonical session", () => {
               expect(session.projection).toBe(projection);
               expect(session.version).toBe(version);
               expect(state.selection.toJSON()).toEqual(preSelection);
-              expect({ undo: session.canUndo, redo: session.canRedo }).toEqual(history);
+              expect({ undo: session.canUndo, redo: session.canRedo }).toEqual(
+                history,
+              );
               continue;
             }
             const text = kind === "delete" ? "" : input.insertion;
-            const commit = session.prepareReplace(state, { from, to, text }).unwrap();
+            const commit = session
+              .prepareReplace(state, { from, to, text })
+              .unwrap();
             expect(session.document).toBe(before);
             expect(session.version).toBe(version);
             expect(commit.transaction.getMeta("addToHistory")).toBe(false);
-            state = publishCanonicalProjection({ state, commit, session }).unwrap().state;
+            state = publishCanonicalProjection({
+              state,
+              commit,
+              session,
+            }).unwrap().state;
             expect(session.version).toBe(version + 1);
             expect(state.doc.eq(toProseDoc(session.document))).toBe(true);
             expect(state.doc.eq(session.projection.doc)).toBe(true);
@@ -1206,7 +1434,11 @@ describe("canonical session", () => {
           for (const entry of journal.toReversed()) {
             const version = session.version;
             const commit = session.prepareUndo(state).unwrap();
-            state = publishCanonicalProjection({ state, commit, session }).unwrap().state;
+            state = publishCanonicalProjection({
+              state,
+              commit,
+              session,
+            }).unwrap().state;
             expect(session.document).toStrictEqual(entry.before);
             expect(state.selection.toJSON()).toEqual(entry.preSelection);
             expect(session.version).toBe(version + 1);
@@ -1217,7 +1449,11 @@ describe("canonical session", () => {
           for (const entry of journal) {
             const version = session.version;
             const commit = session.prepareRedo(state).unwrap();
-            state = publishCanonicalProjection({ state, commit, session }).unwrap().state;
+            state = publishCanonicalProjection({
+              state,
+              commit,
+              session,
+            }).unwrap().state;
             expect(session.document).toStrictEqual(entry.after);
             expect(state.selection.toJSON()).toEqual(entry.postSelection);
             expect(session.version).toBe(version + 1);
@@ -1260,12 +1496,22 @@ describe("canonical session", () => {
     state = publishCanonicalProjection({
       state,
       session,
-      commit: session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
+      commit: session
+        .prepareReplace(state, { from: 1, to: 1, text: "X" })
+        .unwrap(),
     }).unwrap().state;
     expect(
       state.doc.eq(
         toProseDoc(session.document, {
-          styles: { styles: [{ styleId: "HostStyle", type: "paragraph", rPr: { italic: true } }] },
+          styles: {
+            styles: [
+              {
+                styleId: "HostStyle",
+                type: "paragraph",
+                rPr: { italic: true },
+              },
+            ],
+          },
         }),
       ),
     ).toBe(true);
@@ -1282,9 +1528,13 @@ describe("canonical session", () => {
     const session = createCanonicalSession(seed()).unwrap();
     const original = session.document;
     let state = stateFor(session);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 6, 2)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 6, 2)),
+    );
     const selected = state.selection.toJSON();
-    const commit = session.prepareReplace(state, { from: 2, to: 6, text: "XY" }).unwrap();
+    const commit = session
+      .prepareReplace(state, { from: 2, to: 6, text: "XY" })
+      .unwrap();
     expect(session.document).toBe(original);
     expect(session.version).toBe(0);
     expect(session.canUndo).toBe(false);
@@ -1313,7 +1563,11 @@ describe("canonical session", () => {
 
   test("activation rejects absent/duplicate identities, secondary stories and unsupported leaves", () => {
     const unsupported: Document[] = [
-      { package: { document: { content: [{ type: "paragraph", content: [] }] } } },
+      {
+        package: {
+          document: { content: [{ type: "paragraph", content: [] }] },
+        },
+      },
       {
         package: {
           document: {
@@ -1327,7 +1581,9 @@ describe("canonical session", () => {
       {
         package: {
           ...seed().package,
-          headers: new Map([["rId1", { type: "header", hdrFtrType: "default", content: [] }]]),
+          headers: new Map([
+            ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
+          ]),
         },
       },
       {
@@ -1337,7 +1593,9 @@ describe("canonical session", () => {
               {
                 type: "paragraph",
                 paraId: "12345678",
-                content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+                content: [
+                  { type: "run", content: [{ type: "renderedPageBreak" }] },
+                ],
               },
             ],
           },
@@ -1346,7 +1604,8 @@ describe("canonical session", () => {
       seed("bad\ud800"),
       seed("bad\u0000"),
     ];
-    for (const document of unsupported) expect(createCanonicalSession(document).isErr()).toBe(true);
+    for (const document of unsupported)
+      expect(createCanonicalSession(document).isErr()).toBe(true);
   });
 
   test("activation refuses list paragraphs inside a block SDT before normalization", () => {
@@ -1354,7 +1613,9 @@ describe("canonical session", () => {
       type: "paragraph",
       paraId: "34567890",
       formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
-      content: [{ type: "run", content: [{ type: "text", text: "Nested list" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "Nested list" }] },
+      ],
     };
     const document = seed("Body");
     document.package.document.content.push({
@@ -1378,13 +1639,20 @@ describe("canonical session", () => {
     const session = createCanonicalSession(seed("plain")).unwrap();
     let state = stateFor(session);
     const original = session.document;
-    const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
+    const italic =
+      schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
     state = state.apply(state.tr.setStoredMarks([italic]));
-    state = accept(state, session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap());
+    state = accept(
+      state,
+      session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
+    );
     const paragraph = session.document.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") return panic("Formatted input lost its paragraph.");
+    if (paragraph?.type !== "paragraph")
+      return panic("Formatted input lost its paragraph.");
     const inserted = paragraph.content.at(0);
-    expect(inserted?.type === "run" ? inserted.formatting?.italic : undefined).toBe(true);
+    expect(
+      inserted?.type === "run" ? inserted.formatting?.italic : undefined,
+    ).toBe(true);
     expect(state.doc.textContent).toBe("Xplain");
     state = accept(state, session.prepareUndo(state).unwrap());
     expect(session.document).toStrictEqual(original);
@@ -1401,7 +1669,8 @@ describe("canonical session", () => {
     }) => {
       const document = seed("plain");
       const paragraph = document.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") panic("The formatting fixture needs a paragraph.");
+      if (paragraph?.type !== "paragraph")
+        panic("The formatting fixture needs a paragraph.");
       const run = paragraph.content.at(0);
       if (run?.type !== "run") panic("The formatting fixture needs a run.");
       run.formatting = {
@@ -1412,36 +1681,53 @@ describe("canonical session", () => {
         fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
         language: { val: "fr-FR", bidi: "ar-SA" },
       };
-      for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Author" }] as const) {
+      for (const mode of [
+        { type: "editing" },
+        { type: "suggesting", author: "Author" },
+      ] as const) {
         const session = createCanonicalSession(document).unwrap();
         session.setMode(mode);
         let state = stateFor(session);
         const original = session.document;
-        const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
+        const italic =
+          schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
         const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
         const characterStyle =
-          schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
-        const transaction = state.tr.addStoredMark(italic).removeStoredMark(bold);
-        if (destinationStyle === undefined) transaction.removeStoredMark(characterStyle);
-        else transaction.addStoredMark(characterStyle.create({ styleId: destinationStyle }));
+          schema.marks.characterStyle ??
+          panic("Character style mark is unavailable.");
+        const transaction = state.tr
+          .addStoredMark(italic)
+          .removeStoredMark(bold);
+        if (destinationStyle === undefined)
+          transaction.removeStoredMark(characterStyle);
+        else
+          transaction.addStoredMark(
+            characterStyle.create({ styleId: destinationStyle }),
+          );
         state = state.apply(transaction);
         state = accept(
           state,
           session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
         );
         const authored = session.document.package.document.content.at(0);
-        if (authored?.type !== "paragraph") panic("Stored-mark input lost its paragraph.");
+        if (authored?.type !== "paragraph")
+          panic("Stored-mark input lost its paragraph.");
         const authoredRuns = authored.content.flatMap((item) =>
           item.type === "insertion" ? item.content : [item],
         );
         const inserted = authoredRuns.find(
           (item) =>
             item.type === "run" &&
-            item.content.some((leaf) => leaf.type === "text" && leaf.text === "X"),
+            item.content.some(
+              (leaf) => leaf.type === "text" && leaf.text === "X",
+            ),
         );
-        if (inserted?.type !== "run") panic("Stored-mark input lost its authored run.");
+        if (inserted?.type !== "run")
+          panic("Stored-mark input lost its authored run.");
         assertExactModel(inserted.formatting, {
-          ...(destinationStyle === undefined ? {} : { styleId: destinationStyle }),
+          ...(destinationStyle === undefined
+            ? {}
+            : { styleId: destinationStyle }),
           boldCs: false,
           noProof: true,
           italic: true,
@@ -1464,7 +1750,11 @@ describe("canonical session", () => {
         fc.constantFrom(undefined, "SourceStyle", "DestinationStyle"),
         fc.array(
           fc.record({
-            destinationStyle: fc.constantFrom(undefined, "SourceStyle", "DestinationStyle"),
+            destinationStyle: fc.constantFrom(
+              undefined,
+              "SourceStyle",
+              "DestinationStyle",
+            ),
             target: fc.constantFrom("offset", "surrogate"),
             offset: fc.nat(500),
           }),
@@ -1473,7 +1763,8 @@ describe("canonical session", () => {
         (sourceStyle, trace) => {
           const document = seed("p😀lain");
           const paragraph = document.package.document.content.at(0);
-          if (paragraph?.type !== "paragraph") panic("Style trace needs a paragraph.");
+          if (paragraph?.type !== "paragraph")
+            panic("Style trace needs a paragraph.");
           const run = paragraph.content.at(0);
           if (run?.type !== "run") panic("Style trace needs a run.");
           run.formatting = {
@@ -1496,7 +1787,8 @@ describe("canonical session", () => {
             const refusals = { refused: 0, noChange: 0 };
             for (const [index, input] of trace.entries()) {
               const pmParagraph = state.doc.firstChild;
-              if (pmParagraph === null) panic("Style trace lost its projection paragraph.");
+              if (pmParagraph === null)
+                panic("Style trace lost its projection paragraph.");
               const text = pmParagraph.textContent;
               const offset =
                 input.target === "surrogate"
@@ -1509,12 +1801,21 @@ describe("canonical session", () => {
                 legalGaps.add(physicalOffset);
               }
               const position = 1 + offset;
-              state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
-              const italic = schema.marks.italic ?? panic("Italic mark is unavailable.");
-              const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
+              state = state.apply(
+                state.tr.setSelection(
+                  TextSelection.create(state.doc, position),
+                ),
+              );
+              const italic =
+                schema.marks.italic ?? panic("Italic mark is unavailable.");
+              const bold =
+                schema.marks.bold ?? panic("Bold mark is unavailable.");
               const characterStyle =
-                schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
-              const transaction = state.tr.addStoredMark(italic.create()).removeStoredMark(bold);
+                schema.marks.characterStyle ??
+                panic("Character style mark is unavailable.");
+              const transaction = state.tr
+                .addStoredMark(italic.create())
+                .removeStoredMark(bold);
               if (input.destinationStyle === undefined)
                 transaction.removeStoredMark(characterStyle);
               else
@@ -1533,7 +1834,8 @@ describe("canonical session", () => {
               });
               if (!legalGaps.has(offset)) {
                 expectedRefusals += 1;
-                if (prepared.isOk()) panic("A style trace accepted an interior surrogate cut.");
+                if (prepared.isOk())
+                  panic("A style trace accepted an interior surrogate cut.");
                 refusals[prepared.error.reason] += 1;
                 expect(prepared.error.reason).toBe("refused");
                 assertExactModel(session.document, before);
@@ -1543,21 +1845,24 @@ describe("canonical session", () => {
               } else {
                 if (prepared.isErr()) refusals[prepared.error.reason] += 1;
                 state = accept(state, prepared.unwrap());
-                const authored = session.document.package.document.content.at(0);
+                const authored =
+                  session.document.package.document.content.at(0);
                 if (authored?.type !== "paragraph")
                   panic("Style trace lost its authored paragraph.");
                 const insertedRuns: Run[] = [];
                 visitParagraphRuns(authored, (candidate) => {
                   if (
                     candidate.content.some(
-                      (leaf) => leaf.type === "text" && leaf.text.includes(token),
+                      (leaf) =>
+                        leaf.type === "text" && leaf.text.includes(token),
                     )
                   )
                     insertedRuns.push(candidate);
                 });
                 expect(insertedRuns).toHaveLength(1);
                 const inserted = insertedRuns.at(0);
-                if (inserted === undefined) panic("Style trace lost its inserted text.");
+                if (inserted === undefined)
+                  panic("Style trace lost its inserted text.");
                 assertExactModel(inserted.formatting, {
                   ...(input.destinationStyle === undefined
                     ? {}
@@ -1576,7 +1881,10 @@ describe("canonical session", () => {
                 snapshots.push(after);
               }
             }
-            assertExactModel(refusals, { refused: expectedRefusals, noChange: 0 });
+            assertExactModel(refusals, {
+              refused: expectedRefusals,
+              noChange: 0,
+            });
             for (let index = snapshots.length - 2; index >= 0; index -= 1) {
               state = accept(state, session.prepareUndo(state).unwrap());
               assertExactModel(session.document, snapshots.at(index));
@@ -1607,9 +1915,12 @@ describe("canonical session", () => {
       { from: 2, to: 3, text: "\u0000" },
       { from: 3, to: 2, text: "X" },
     ];
-    for (const input of attempts) expect(session.prepareReplace(state, input).isErr()).toBe(true);
+    for (const input of attempts)
+      expect(session.prepareReplace(state, input).isErr()).toBe(true);
     const stale = state.apply(state.tr.insertText("outside", 1));
-    expect(session.prepareReplace(stale, { from: 1, to: 1, text: "X" }).isErr()).toBe(true);
+    expect(
+      session.prepareReplace(stale, { from: 1, to: 1, text: "X" }).isErr(),
+    ).toBe(true);
     expect(session.document).toBe(original);
     expect(session.projection).toBe(projection);
     expect(session.version).toBe(0);
@@ -1621,28 +1932,47 @@ describe("canonical session", () => {
     const session = createCanonicalSession(seed()).unwrap();
     const other = createCanonicalSession(seed()).unwrap();
     const state = stateFor(session);
-    const commit = session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap();
+    const commit = session
+      .prepareReplace(state, { from: 1, to: 1, text: "X" })
+      .unwrap();
     const spoofed = state.tr
       .insertText("outside", 1)
-      .setMeta(CANONICAL_PROJECTION_META, { type: "canonical", origin: "input", version: 1 });
+      .setMeta(CANONICAL_PROJECTION_META, {
+        type: "canonical",
+        origin: "input",
+        version: 1,
+      });
     expect(isCanonicalProjectionTransaction(spoofed, session)).toBe(false);
-    expect(isCanonicalProjectionTransaction(commit.transaction, other)).toBe(false);
-    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(true);
+    expect(isCanonicalProjectionTransaction(commit.transaction, other)).toBe(
+      false,
+    );
+    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(
+      true,
+    );
     accept(state, commit);
-    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(false);
+    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(
+      false,
+    );
     expect(commit.publish().isErr()).toBe(true);
   });
 
   test("staged commits become stale and new input after undo invalidates redo", () => {
     const session = createCanonicalSession(seed()).unwrap();
     let state = stateFor(session);
-    const first = session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap();
-    const stale = session.prepareReplace(state, { from: 1, to: 1, text: "Y" }).unwrap();
+    const first = session
+      .prepareReplace(state, { from: 1, to: 1, text: "X" })
+      .unwrap();
+    const stale = session
+      .prepareReplace(state, { from: 1, to: 1, text: "Y" })
+      .unwrap();
     state = accept(state, first);
     expect(stale.publish().isErr()).toBe(true);
     state = accept(state, session.prepareUndo(state).unwrap());
     expect(session.canRedo).toBe(true);
-    state = accept(state, session.prepareReplace(state, { from: 1, to: 1, text: "Z" }).unwrap());
+    state = accept(
+      state,
+      session.prepareReplace(state, { from: 1, to: 1, text: "Z" }).unwrap(),
+    );
     expect(session.canRedo).toBe(false);
     expect(session.prepareRedo(state).isErr()).toBe(true);
     expect(state.doc.textContent).toBe("Zab😀cd");
@@ -1661,10 +1991,16 @@ describe("canonical session", () => {
     const session = createCanonicalSession(seed()).unwrap();
     const original = session.document;
     const state = stateFor(session);
-    const commit = session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap();
-    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(true);
+    const commit = session
+      .prepareReplace(state, { from: 1, to: 1, text: "X" })
+      .unwrap();
+    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(
+      true,
+    );
     commit.transaction.insertText("outside", 1);
-    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(false);
+    expect(isCanonicalProjectionTransaction(commit.transaction, session)).toBe(
+      false,
+    );
     expect(commit.publish().isErr()).toBe(true);
     expect(session.document).toBe(original);
     expect(session.version).toBe(0);
@@ -1698,19 +2034,27 @@ describe("canonical session", () => {
     };
     const session = createCanonicalSession(document).unwrap();
     let state = stateFor(session);
-    state = accept(state, session.prepareReplace(state, { from: 1, to: 3, text: "X" }).unwrap());
-    expect(state.doc.textContent).toBe("Xcd");
-    expect(state.doc.resolve(1).nodeAfter?.marks.some((mark) => mark.type.name === "bold")).toBe(
-      true,
+    state = accept(
+      state,
+      session.prepareReplace(state, { from: 1, to: 3, text: "X" }).unwrap(),
     );
+    expect(state.doc.textContent).toBe("Xcd");
+    expect(
+      state.doc
+        .resolve(1)
+        .nodeAfter?.marks.some((mark) => mark.type.name === "bold"),
+    ).toBe(true);
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(session.document.package.document.content).toEqual(document.package.document.content);
+    expect(session.document.package.document.content).toEqual(
+      document.package.document.content,
+    );
   });
 
   test("normalization, text replacement, undo and redo preserve private paragraph-property provenance", () => {
     const document = seed();
     const paragraph = document.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new TypeError("The fixture needs a paragraph.");
+    if (paragraph?.type !== "paragraph")
+      throw new TypeError("The fixture needs a paragraph.");
     const xml = "<w:pPr><w:keepNext/><w:contextualSpacing/></w:pPr>";
     assignParagraphPropertySource(paragraph, xml);
     assignDocumentParagraphPropertySourceContract(document, "a".repeat(64));
@@ -1721,14 +2065,22 @@ describe("canonical session", () => {
     let state = stateFor(session);
     const check = () => {
       const current = session.document.package.document.content.at(0);
-      if (current?.type !== "paragraph") throw new TypeError("The session lost its paragraph.");
+      if (current?.type !== "paragraph")
+        throw new TypeError("The session lost its paragraph.");
       expect(getParagraphPropertySource(current)?.xml).toBe(xml);
       expect(getParagraphPropertySourceToken(current)).toBe(token);
-      expect(getDocumentParagraphPropertySourceContract(session.document)).toBe(contract);
-      expect(paragraphPropertySourceBelongsToDocument(current, session.document)).toBe(true);
+      expect(getDocumentParagraphPropertySourceContract(session.document)).toBe(
+        contract,
+      );
+      expect(
+        paragraphPropertySourceBelongsToDocument(current, session.document),
+      ).toBe(true);
     };
     check();
-    state = accept(state, session.prepareReplace(state, { from: 2, to: 3, text: "X" }).unwrap());
+    state = accept(
+      state,
+      session.prepareReplace(state, { from: 2, to: 3, text: "X" }).unwrap(),
+    );
     check();
     state = accept(state, session.prepareUndo(state).unwrap());
     check();
@@ -1740,17 +2092,38 @@ describe("canonical session", () => {
   test("deletion consumes emoji and combining graphemes without joining paragraphs", () => {
     const session = createCanonicalSession(seed("A😀éB")).unwrap();
     let state = stateFor(session);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 4)));
-    expect(deletionRange(state, "backward").unwrap()).toEqual({ from: 2, to: 4 });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
-    expect(deletionRange(state, "forward").unwrap()).toEqual({ from: 2, to: 4 });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 6)));
-    expect(deletionRange(state, "backward").unwrap()).toEqual({ from: 4, to: 6 });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 4)),
+    );
+    expect(deletionRange(state, "backward").unwrap()).toEqual({
+      from: 2,
+      to: 4,
+    });
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 2)),
+    );
+    expect(deletionRange(state, "forward").unwrap()).toEqual({
+      from: 2,
+      to: 4,
+    });
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 6)),
+    );
+    expect(deletionRange(state, "backward").unwrap()).toEqual({
+      from: 4,
+      to: 6,
+    });
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 5)),
+    );
     expect(deletionRange(state, "backward").isErr()).toBe(true);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1)),
+    );
     expect(deletionRange(state, "backward").isErr()).toBe(true);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 7)),
+    );
     expect(deletionRange(state, "forward").isErr()).toBe(true);
   });
 });
@@ -1775,7 +2148,13 @@ describe("canonical tracked input", () => {
         bookmarkCases.flatMap((bookmarks) =>
           adjacentCharacters.map(
             (adjacentText) =>
-              [direction, 4, bookmarks, adjacentText, ownership] satisfies ReversalExample,
+              [
+                direction,
+                4,
+                bookmarks,
+                adjacentText,
+                ownership,
+              ] satisfies ReversalExample,
           ),
         ),
       ),
@@ -1807,7 +2186,9 @@ describe("canonical tracked input", () => {
                 } satisfies Paragraph["content"][number]);
           const originalText = "I".repeat(deletedLength);
           const original = [
-            ...(bookmarks ? [{ type: "bookmarkStart" as const, id: 17, name: "retained" }] : []),
+            ...(bookmarks
+              ? [{ type: "bookmarkStart" as const, id: 17, name: "retained" }]
+              : []),
             { ...textRun(originalText), formatting: { bold: true } },
             ...(bookmarks ? [{ type: "bookmarkEnd" as const, id: 17 }] : []),
           ];
@@ -1835,9 +2216,12 @@ describe("canonical tracked input", () => {
           let state = stateFor(session);
           const positions: number[] = [];
           state.doc.descendants((node, position) => {
-            if (node.isText && node.text === originalText) positions.push(position);
+            if (node.isText && node.text === originalText)
+              positions.push(position);
           });
-          const from = positions.at(0) ?? panic("The reversal fixture lost its original run.");
+          const from =
+            positions.at(0) ??
+            panic("The reversal fixture lost its original run.");
           const to = from + deletedLength;
           state = accept(
             state,
@@ -1846,13 +2230,17 @@ describe("canonical tracked input", () => {
                 from,
                 to,
                 text: "",
-                semantic: direction === "backward" ? "deleteForward" : "deleteBackward",
+                semantic:
+                  direction === "backward" ? "deleteForward" : "deleteBackward",
               })
               .unwrap(),
           );
           state = state.apply(
             state.tr.setSelection(
-              TextSelection.create(state.doc, direction === "backward" ? to : from),
+              TextSelection.create(
+                state.doc,
+                direction === "backward" ? to : from,
+              ),
             ),
           );
           const beforeReversal = session.document;
@@ -1863,18 +2251,23 @@ describe("canonical tracked input", () => {
               .prepareReplace(state, {
                 ...range,
                 text: "",
-                semantic: direction === "backward" ? "deleteBackward" : "deleteForward",
+                semantic:
+                  direction === "backward" ? "deleteBackward" : "deleteForward",
               })
               .unwrap(),
           );
           expect(
-            editorParagraphGroups(session.document, OP_STORIES.MAIN).map(({ text }) => text),
+            editorParagraphGroups(session.document, OP_STORIES.MAIN).map(
+              ({ text }) => text,
+            ),
           ).toEqual(["LR"]);
           const paragraph = session.document.package.document.content.at(0);
-          if (paragraph?.type !== "paragraph") panic("Reversal lost its paragraph.");
+          if (paragraph?.type !== "paragraph")
+            panic("Reversal lost its paragraph.");
           expect(
             paragraph.content.filter(
-              (item) => item.type === "bookmarkStart" || item.type === "bookmarkEnd",
+              (item) =>
+                item.type === "bookmarkStart" || item.type === "bookmarkEnd",
             ),
           ).toEqual(
             bookmarks
@@ -1885,9 +2278,12 @@ describe("canonical tracked input", () => {
               : [],
           );
           const revisionIds = new Set<number>();
-          const collect = (items: readonly Paragraph["content"][number][]): void => {
+          const collect = (
+            items: readonly Paragraph["content"][number][],
+          ): void => {
             for (const item of items) {
-              if (item.type !== "insertion" && item.type !== "deletion") continue;
+              if (item.type !== "insertion" && item.type !== "deletion")
+                continue;
               revisionIds.add(item.info.id);
               collect(item.content);
             }
@@ -1910,7 +2306,9 @@ describe("canonical tracked input", () => {
                 ? `L${ownership === "existing" ? adjacentText : ""}${originalText}R`
                 : `L${originalText}${ownership === "existing" ? adjacentText : ""}R`;
             expect(
-              editorParagraphGroups(resolved.document, OP_STORIES.MAIN).map(({ text }) => text),
+              editorParagraphGroups(resolved.document, OP_STORIES.MAIN).map(
+                ({ text }) => text,
+              ),
             ).toEqual([resolution === "accept" ? "LR" : rejectedText]);
             expect(resolvedState.doc.eq(resolved.projection.doc)).toBe(true);
           }
@@ -1948,7 +2346,8 @@ describe("canonical tracked input", () => {
           const snapshots = [tracked.document];
           for (const input of trace) {
             const paragraph = tracked.document.package.document.content.at(0);
-            if (paragraph?.type !== "paragraph") panic("Trace lost its paragraph");
+            if (paragraph?.type !== "paragraph")
+              panic("Trace lost its paragraph");
             const gaps = [0];
             let offset = 0;
             for (const character of paragraphVisibleText(paragraph)) {
@@ -1964,7 +2363,11 @@ describe("canonical tracked input", () => {
             directState = accept(
               directState,
               direct
-                .prepareReplace(directState, { from: from + 1, to: to + 1, text: input.text })
+                .prepareReplace(directState, {
+                  from: from + 1,
+                  to: to + 1,
+                  text: input.text,
+                })
                 .unwrap(),
             );
             trackedState = accept(
@@ -1977,7 +2380,9 @@ describe("canonical tracked input", () => {
                 })
                 .unwrap(),
             );
-            expect(trackedState.doc.eq(toProseDoc(tracked.document))).toBe(true);
+            expect(trackedState.doc.eq(toProseDoc(tracked.document))).toBe(
+              true,
+            );
             snapshots.push(tracked.document);
           }
           const suggested = tracked.document;
@@ -2025,11 +2430,13 @@ describe("canonical tracked input", () => {
               expect(resolved.canUndo).toBe(before.canUndo);
               expect(resolved.canRedo).toBe(before.canRedo);
             } else state = accept(state, prepared.unwrap());
-            const expected = resolution === "accept" ? direct.document : snapshots.at(0);
-            if (expected === undefined) panic("The resolution oracle lost its baseline.");
-            expect(canonicalReviewBlocks(resolved.document.package.document.content)).toEqual(
-              canonicalReviewBlocks(expected.package.document.content),
-            );
+            const expected =
+              resolution === "accept" ? direct.document : snapshots.at(0);
+            if (expected === undefined)
+              panic("The resolution oracle lost its baseline.");
+            expect(
+              canonicalReviewBlocks(resolved.document.package.document.content),
+            ).toEqual(canonicalReviewBlocks(expected.package.document.content));
             if (revisions.size > 0) {
               state = accept(state, resolved.prepareUndo(state).unwrap());
               expect(resolved.document).toStrictEqual(suggested);
@@ -2038,11 +2445,17 @@ describe("canonical tracked input", () => {
             expect(state.doc.eq(resolved.projection.doc)).toBe(true);
           }
           for (let index = snapshots.length - 2; index >= 0; index -= 1) {
-            trackedState = accept(trackedState, tracked.prepareUndo(trackedState).unwrap());
+            trackedState = accept(
+              trackedState,
+              tracked.prepareUndo(trackedState).unwrap(),
+            );
             expect(tracked.document).toStrictEqual(snapshots.at(index));
           }
           for (let index = 1; index < snapshots.length; index += 1) {
-            trackedState = accept(trackedState, tracked.prepareRedo(trackedState).unwrap());
+            trackedState = accept(
+              trackedState,
+              tracked.prepareRedo(trackedState).unwrap(),
+            );
             expect(tracked.document).toStrictEqual(snapshots.at(index));
           }
         },
@@ -2059,11 +2472,19 @@ describe("canonical tracked input", () => {
     session.setMode({ type: "suggesting", author: "Author" });
     let state = stateFor(session);
     const baseline = session.document;
-    state = accept(state, session.prepareReplace(state, { from: 2, to: 3, text: "" }).unwrap());
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+    state = accept(
+      state,
+      session.prepareReplace(state, { from: 2, to: 3, text: "" }).unwrap(),
+    );
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 2)),
+    );
     const next = deletionRange(state, "forward").unwrap();
     expect(next).toEqual({ from: 3, to: 4 });
-    state = accept(state, session.prepareReplace(state, { ...next, text: "" }).unwrap());
+    state = accept(
+      state,
+      session.prepareReplace(state, { ...next, text: "" }).unwrap(),
+    );
     const beforeSplit = session.document;
     state = accept(state, session.prepareSplit(state).unwrap());
     const split = session.document;
@@ -2082,48 +2503,73 @@ describe("canonical tracked input", () => {
     (direction) => {
       const document = seed("ab");
       const second = document.package.document.content.at(1);
-      if (second?.type !== "paragraph") panic("The join fixture lost its second paragraph.");
-      second.content = [{ type: "run", content: [{ type: "text", text: "cd" }] }];
+      if (second?.type !== "paragraph")
+        panic("The join fixture lost its second paragraph.");
+      second.content = [
+        { type: "run", content: [{ type: "text", text: "cd" }] },
+      ];
       const session = createCanonicalSession(document).unwrap();
       const baseline = session.document;
       session.setMode({ type: "suggesting", author: "Author" });
       let state = stateFor(session);
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 5)),
+      );
       state = accept(state, session.prepareJoin(state, "backward").unwrap());
       const joined = session.document;
       const caret = direction === "backward" ? 5 : 3;
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, caret)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, caret)),
+      );
       const range = deletionRange(state, direction).unwrap();
-      expect(range).toEqual(direction === "backward" ? { from: 2, to: 3 } : { from: 5, to: 6 });
-      state = accept(state, session.prepareReplace(state, { ...range, text: "" }).unwrap());
+      expect(range).toEqual(
+        direction === "backward" ? { from: 2, to: 3 } : { from: 5, to: 6 },
+      );
+      state = accept(
+        state,
+        session.prepareReplace(state, { ...range, text: "" }).unwrap(),
+      );
       expect(
-        editorParagraphGroups(session.document, OP_STORIES.MAIN).map(({ text }) => text),
+        editorParagraphGroups(session.document, OP_STORIES.MAIN).map(
+          ({ text }) => text,
+        ),
       ).toEqual([direction === "backward" ? "acd" : "abd"]);
       const suggested = session.document;
-      const revisionIds = suggested.package.document.content.flatMap((block) => {
-        if (block.type !== "paragraph") return [];
-        return [
-          ...(block.pPrMark === undefined ? [] : [block.pPrMark.info.id]),
-          ...block.content.flatMap((item) => (item.type === "deletion" ? [item.info.id] : [])),
-        ];
-      });
+      const revisionIds = suggested.package.document.content.flatMap(
+        (block) => {
+          if (block.type !== "paragraph") return [];
+          return [
+            ...(block.pPrMark === undefined ? [] : [block.pPrMark.info.id]),
+            ...block.content.flatMap((item) =>
+              item.type === "deletion" ? [item.info.id] : [],
+            ),
+          ];
+        },
+      );
       for (const resolution of ["accept", "reject"] as const) {
         const resolved = createCanonicalSession(suggested).unwrap();
         let resolvedState = stateFor(resolved);
         resolvedState = accept(
           resolvedState,
-          resolved.prepareResolve(resolvedState, { revisionIds, resolution }).unwrap(),
+          resolved
+            .prepareResolve(resolvedState, { revisionIds, resolution })
+            .unwrap(),
         );
         if (resolution === "accept") {
           expect(
-            editorParagraphGroups(resolved.document, OP_STORIES.MAIN).map(({ text }) => text),
+            editorParagraphGroups(resolved.document, OP_STORIES.MAIN).map(
+              ({ text }) => text,
+            ),
           ).toEqual([direction === "backward" ? "acd" : "abd"]);
         } else {
           expect(resolved.document.package.document.content).toEqual(
             baseline.package.document.content,
           );
         }
-        resolvedState = accept(resolvedState, resolved.prepareUndo(resolvedState).unwrap());
+        resolvedState = accept(
+          resolvedState,
+          resolved.prepareUndo(resolvedState).unwrap(),
+        );
         expect(resolved.document).toStrictEqual(suggested);
       }
       state = accept(state, session.prepareUndo(state).unwrap());
@@ -2142,34 +2588,47 @@ test.each([
   async (change, expected) => {
     const document = seed("ab");
     const second = document.package.document.content.at(1);
-    if (second?.type !== "paragraph") panic("The fixture lost its second paragraph.");
+    if (second?.type !== "paragraph")
+      panic("The fixture lost its second paragraph.");
     second.content = [{ type: "run", content: [{ type: "text", text: "cd" }] }];
     const suggesting = createCanonicalSession(document).unwrap();
     suggesting.setMode({ type: "suggesting", author: "Author" });
     let state = stateFor(suggesting);
     if (change === "deletion") {
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 5)),
+      );
       accept(state, suggesting.prepareJoin(state, "backward").unwrap());
     } else {
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 2)),
+      );
       accept(state, suggesting.prepareSplit(state).unwrap());
     }
-    const loaded = await parseDocx(await createDocx(suggesting.document), { preloadFonts: false });
-    const session = createCanonicalSession(loaded).unwrap();
-    const revisionIds = session.document.package.document.content.flatMap((block) => {
-      if (block.type !== "paragraph") return [];
-      return [
-        ...(block.pPrMark === undefined ? [] : [block.pPrMark.info.id]),
-        ...block.content.flatMap((item) =>
-          item.type === "deletion" || item.type === "insertion" ? [item.info.id] : [],
-        ),
-      ];
+    const loaded = await parseDocx(await createDocx(suggesting.document), {
+      preloadFonts: false,
     });
+    const session = createCanonicalSession(loaded).unwrap();
+    const revisionIds = session.document.package.document.content.flatMap(
+      (block) => {
+        if (block.type !== "paragraph") return [];
+        return [
+          ...(block.pPrMark === undefined ? [] : [block.pPrMark.info.id]),
+          ...block.content.flatMap((item) =>
+            item.type === "deletion" || item.type === "insertion"
+              ? [item.info.id]
+              : [],
+          ),
+        ];
+      },
+    );
     expect(revisionIds.length).toBeGreaterThan(0);
     const resolvedState = stateFor(session);
     accept(
       resolvedState,
-      session.prepareResolve(resolvedState, { revisionIds, resolution: "accept" }).unwrap(),
+      session
+        .prepareResolve(resolvedState, { revisionIds, resolution: "accept" })
+        .unwrap(),
     );
     const paragraphs = (value: Document) =>
       editorParagraphGroups(value, OP_STORIES.MAIN).map(({ text }) => text);
@@ -2200,7 +2659,9 @@ test("a header text edit changes the save structure while comment edits keep the
           {
             type: "paragraph",
             paraId: "4ABC0001",
-            content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Header" }] },
+            ],
           },
         ],
       },
@@ -2217,7 +2678,11 @@ test("a header text edit changes the save structure while comment edits keep the
     .prepareOperations(state, [
       {
         type: documentOps.DOCUMENT_OP_TYPES.INSERT_TEXT,
-        at: { story: { kind: "header", rId: "rIdHeader1" }, blockId: "4ABC0001", offset: 0 },
+        at: {
+          story: { kind: "header", rId: "rIdHeader1" },
+          blockId: "4ABC0001",
+          offset: 0,
+        },
         text: "New ",
       },
     ])

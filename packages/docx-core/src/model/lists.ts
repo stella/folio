@@ -4,7 +4,7 @@
  * Types for bullet lists, numbered lists, and numbering definitions.
  */
 
-import type { TextFormatting, ParagraphFormatting } from "./formatting";
+import type { ParagraphFormatting, TextFormatting } from "./formatting";
 import {
   NUMBER_FORMATS,
   type NumberFormat,

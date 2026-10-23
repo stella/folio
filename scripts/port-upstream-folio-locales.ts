@@ -12,7 +12,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { setNestedValue, type NestedObject } from "./lib/nested-object";
+import { type NestedObject, setNestedValue } from "./lib/nested-object";
 
 type Nested = NestedObject;
 
@@ -46,9 +46,13 @@ if (!upstreamLocalePath || !folioOutPath) {
 const folioEnPath = "packages/react/src/i18n/messages/en.json";
 const upstreamEnPath = upstreamLocalePath.replace(/[^/]+$/, "en.json");
 
-const folioEn = JSON.parse(readFileSync(folioEnPath, "utf8")) as { folio: Nested };
+const folioEn = JSON.parse(readFileSync(folioEnPath, "utf8")) as {
+  folio: Nested;
+};
 const upstreamEn = JSON.parse(readFileSync(upstreamEnPath, "utf8")) as Nested;
-const upstreamLocale = JSON.parse(readFileSync(upstreamLocalePath, "utf8")) as Nested;
+const upstreamLocale = JSON.parse(
+  readFileSync(upstreamLocalePath, "utf8"),
+) as Nested;
 
 const folioFlat = flatten(folioEn.folio, "folio");
 const upstreamEnFlat = flatten(upstreamEn);
@@ -68,7 +72,8 @@ let fallback = 0;
 
 for (const [folioKey, english] of folioFlat) {
   const upstreamKey = enValueToUpstreamKey.get(english);
-  const translated = upstreamKey !== undefined ? upstreamLocaleFlat.get(upstreamKey) : undefined;
+  const translated =
+    upstreamKey !== undefined ? upstreamLocaleFlat.get(upstreamKey) : undefined;
   if (translated !== undefined) {
     setNestedValue(out, folioKey, translated);
     matched++;
@@ -79,4 +84,6 @@ for (const [folioKey, english] of folioFlat) {
 }
 
 writeFileSync(folioOutPath, `${JSON.stringify(out, null, 2)}\n`);
-console.error(`Wrote ${folioOutPath}: ${matched} matched, ${fallback} English fallback`);
+console.error(
+  `Wrote ${folioOutPath}: ${matched} matched, ${fallback} English fallback`,
+);

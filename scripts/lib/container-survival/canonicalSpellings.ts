@@ -102,7 +102,8 @@ export type CanonicalSpelling =
     });
 
 const TABLE_SERIALIZER = "packages/core/src/docx/serializer/tableSerializer.ts";
-const PARAGRAPH_FORMATTING = "packages/core/src/internal/paragraphFormattingSerialization.ts";
+const PARAGRAPH_FORMATTING =
+  "packages/core/src/internal/paragraphFormattingSerialization.ts";
 const ON_OFF_SERIALIZER = "packages/docx-core/src/serialize/xml.ts";
 
 /**
@@ -163,7 +164,10 @@ const RENAME_SITES = {
   // needed to observe its survival.
   "CT_Ind @startChars": null,
   "CT_Ind @endChars": null,
-} as const satisfies Record<StrictName, readonly [Citation, ...Citation[]] | null>;
+} as const satisfies Record<
+  StrictName,
+  readonly [Citation, ...Citation[]] | null
+>;
 
 /** One generated rename, as the probe reads it. */
 const renameSpelling = (key: StrictName): CanonicalSpelling | undefined => {
@@ -178,13 +182,27 @@ const renameSpelling = (key: StrictName): CanonicalSpelling | undefined => {
   const canonical = `w:${TRANSITIONAL_NAME_BY_STRICT_NAME[key]}`;
   const { reason } = renameOf(strict);
   return name.startsWith("@")
-    ? { kind: "attribute", type, authored: `w:${strict}`, canonical, reason, writtenBy }
-    : { kind: "element", type, authored: `w:${strict}`, canonical, reason, writtenBy };
+    ? {
+        kind: "attribute",
+        type,
+        authored: `w:${strict}`,
+        canonical,
+        reason,
+        writtenBy,
+      }
+    : {
+        kind: "element",
+        type,
+        authored: `w:${strict}`,
+        canonical,
+        reason,
+        writtenBy,
+      };
 };
 
-const RENAME_SPELLINGS: readonly CanonicalSpelling[] = STRICT_NAMES.map(renameSpelling).filter(
-  (entry): entry is CanonicalSpelling => entry !== undefined,
-);
+const RENAME_SPELLINGS: readonly CanonicalSpelling[] = STRICT_NAMES.map(
+  renameSpelling,
+).filter((entry): entry is CanonicalSpelling => entry !== undefined);
 
 /**
  * The attributes folio writes by leaving out: prose the XSD cannot express.
@@ -227,7 +245,11 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "record `vmerge-absent-means-continue`, and as the reserved value `absent|continue` in " +
       "`specifications/reserved-values/formatting.ts`.",
     writtenBy: [
-      { file: TABLE_SERIALIZER, declaration: "serializeVerticalMerge", writes: '"<w:vMerge/>"' },
+      {
+        file: TABLE_SERIALIZER,
+        declaration: "serializeVerticalMerge",
+        writes: '"<w:vMerge/>"',
+      },
     ],
   },
   {
@@ -241,7 +263,11 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "graph records no default, and `none` is the member of ST_TabTlc that says so. folio " +
       "reads the token and writes the attribute only for a leader that draws something.",
     writtenBy: [
-      { file: PARAGRAPH_FORMATTING, declaration: "serializeTabStops", writes: 'leader !== "none"' },
+      {
+        file: PARAGRAPH_FORMATTING,
+        declaration: "serializeTabStops",
+        writes: 'leader !== "none"',
+      },
     ],
   },
 ] as const satisfies readonly CanonicalSpelling[];
@@ -308,9 +334,12 @@ const onType = (subject: CanonicalSubject): readonly CanonicalSpelling[] => {
  * equivalence is exactly the thing that turns a real loss into a reported
  * survival.
  */
-export const canonicalSpellingsFor = (subject: CanonicalSubject): readonly CanonicalSpelling[] => {
+export const canonicalSpellingsFor = (
+  subject: CanonicalSubject,
+): readonly CanonicalSpelling[] => {
   const element = spell(subject.element);
-  const attribute = subject.attribute === undefined ? undefined : spell(subject.attribute);
+  const attribute =
+    subject.attribute === undefined ? undefined : spell(subject.attribute);
   return onType(subject).filter((entry) => {
     switch (entry.kind) {
       // An element entry applies to the element itself and to a subject that

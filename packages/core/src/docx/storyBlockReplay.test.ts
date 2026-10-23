@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
+
 import type { BlockContent } from "../types/document";
 import { parseHeader } from "./headerFooterParser";
 import { buildStoryBlockReplay } from "./storyBlockReplay";
-import { getChildElements, getNamespaceUri } from "./xmlParser";
 import { parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
+import { getChildElements, getNamespaceUri } from "./xmlParser";
 
 const WORD = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const STRICT_WORD = "http://purl.oclc.org/ooxml/wordprocessingml/main";
-const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const REL =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const STRICT_REL = "http://purl.oclc.org/ooxml/officeDocument/relationships";
 const block = (paraId: string | undefined, text: string) => {
   const value = {
@@ -27,8 +29,10 @@ const block = (paraId: string | undefined, text: string) => {
 };
 const story = (body: string) => `<q:hdr xmlns:q="${WORD}">${body}</q:hdr>`;
 const emitted = (body: string) => `<w:hdr xmlns:w="${WORD}">${body}</w:hdr>`;
-const sourceParagraph = (text: string) => `<q:p><q:r><q:t>${text}</q:t></q:r></q:p>`;
-const emittedParagraph = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const sourceParagraph = (text: string) =>
+  `<q:p><q:r><q:t>${text}</q:t></q:r></q:p>`;
+const emittedParagraph = (text: string) =>
+  `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
 test("moves paragraphs with identical text by stable identity without reusing a source range", () => {
   const first = block("11111111", "same");
@@ -41,7 +45,9 @@ test("moves paragraphs with identical text by stable identity without reusing a 
       sourceXml,
       baselineContent: Object.freeze([first, second]),
       currentContent: Object.freeze([second, first]),
-      serializedXml: emitted(emittedParagraph("same") + emittedParagraph("same")),
+      serializedXml: emitted(
+        emittedParagraph("same") + emittedParagraph("same"),
+      ),
     }),
   ).toBe(story(`\n${secondXml}\n<!-- between -->\t${firstXml}\n\n`));
 });
@@ -59,7 +65,12 @@ test("identical id-less blocks consume distinct original ranges once", () => {
       serializedXml: emitted(emittedParagraph("same").repeat(3)),
     }),
   ).toBe(
-    story(firstXml + " " + secondXml + `<w:p xmlns:w="${WORD}"><w:r><w:t>same</w:t></w:r></w:p>`),
+    story(
+      firstXml +
+        " " +
+        secondXml +
+        `<w:p xmlns:w="${WORD}"><w:r><w:t>same</w:t></w:r></w:p>`,
+    ),
   );
 });
 
@@ -76,7 +87,9 @@ test("insertions and deletions reflect the current sequence and retain all autho
     baselineContent: [first, second],
     currentContent: [third, first, third],
     serializedXml: emitted(
-      emittedParagraph("third") + emittedParagraph("first") + emittedParagraph("third"),
+      emittedParagraph("third") +
+        emittedParagraph("first") +
+        emittedParagraph("third"),
     ),
   });
   expect(output).toBe(
@@ -128,7 +141,11 @@ test("changed fragments bind generated aliases locally and map namespace declara
   expect(output).toContain(`xmlns:r="${STRICT_REL}"`);
   expect(output).toContain(`xmlns:local="${STRICT_WORD}"`);
   expect(output).toContain(`<z:t>${REL}</z:t>`);
-  expect(output?.startsWith(`<q:hdr xmlns:q='${STRICT_WORD}' xmlns:w="urn:foreign">`)).toBe(true);
+  expect(
+    output?.startsWith(
+      `<q:hdr xmlns:q='${STRICT_WORD}' xmlns:w="urn:foreign">`,
+    ),
+  ).toBe(true);
   const parsed = parseStreamingXmlWithSourceRanges(output ?? "");
   expect(parsed.status).toBe("parsed");
   if (parsed.status !== "parsed") return;
@@ -179,7 +196,9 @@ test("block deletion or movement cannot unbalance a formerly balanced comment ra
         sourceXml,
         baselineContent: [first, second],
         currentContent,
-        serializedXml: emitted(currentContent.map(() => emittedParagraph("ignored")).join("")),
+        serializedXml: emitted(
+          currentContent.map(() => emittedParagraph("ignored")).join(""),
+        ),
       }),
     ).toBeNull();
   }
@@ -222,7 +241,8 @@ test.each(["blockSdt", "blockCustomXml", "table"] as const)(
   "edited nested content retains sibling bytes and original $0 wrapper syntax",
   (kind) => {
     const sourceSibling = `<q:p>\n  <q:r><q:rPr><q:webHidden/></q:rPr><q:t>same</q:t></q:r>\n</q:p>`;
-    const sourceContent = sourceParagraph("old") + "\n<!-- nested gap -->\t" + sourceSibling;
+    const sourceContent =
+      sourceParagraph("old") + "\n<!-- nested gap -->\t" + sourceSibling;
     const generatedContent = emittedParagraph("new") + emittedParagraph("same");
     const sourceContainer = {
       table: `<q:tbl>\n<q:tblPr><q:tblLook q:val='04A0'/></q:tblPr><q:tblGrid/><q:tr>\n<q:tc>\n<q:tcPr><q:tcW q:w='2400' q:type='dxa'/></q:tcPr>\n${sourceContent}\n</q:tc></q:tr></q:tbl>`,
@@ -249,15 +269,22 @@ test.each(["blockSdt", "blockCustomXml", "table"] as const)(
     expect(output).toContain(`<w:t>new</w:t>`);
     expect(output).not.toContain("<q:t>old</q:t>");
     if (kind === "table")
-      expect(output).toContain(`<q:tc>\n<q:tcPr><q:tcW q:w='2400' q:type='dxa'/></q:tcPr>\n`);
+      expect(output).toContain(
+        `<q:tc>\n<q:tcPr><q:tcW q:w='2400' q:type='dxa'/></q:tcPr>\n`,
+      );
     if (kind === "blockSdt")
-      expect(output).toContain(`<q:sdt><q:sdtPr><q:richText/></q:sdtPr><q:sdtContent>\n`);
+      expect(output).toContain(
+        `<q:sdt><q:sdtPr><q:richText/></q:sdtPr><q:sdtContent>\n`,
+      );
   },
 );
 
 test("opaque preserved children and one-block AlternateContent projections retain authored ranges", () => {
   const opaqueXml = `<vendor:payload xmlns:vendor='urn:vendor'>opaque</vendor:payload>`;
-  const opaque = { type: "preservedBlock", xml: opaqueXml } as const satisfies BlockContent;
+  const opaque = {
+    type: "preservedBlock",
+    xml: opaqueXml,
+  } as const satisfies BlockContent;
   const alternateXml = `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Fallback>${sourceParagraph("same")}</mc:Fallback></mc:AlternateContent>`;
   const projected = block(undefined, "same");
   const old = block(undefined, "old");
@@ -266,7 +293,9 @@ test("opaque preserved children and one-block AlternateContent projections retai
     sourceXml: story(opaqueXml + alternateXml + sourceParagraph("old")),
     baselineContent: [opaque, projected, old],
     currentContent: [opaque, projected, changed],
-    serializedXml: emitted(opaqueXml + emittedParagraph("same") + emittedParagraph("new")),
+    serializedXml: emitted(
+      opaqueXml + emittedParagraph("same") + emittedParagraph("new"),
+    ),
   });
   expect(output).toContain(opaqueXml + alternateXml);
   expect(output).toContain(`<w:t>new</w:t>`);
@@ -278,7 +307,8 @@ test("changed extension markup inherits local Ignorable tokens without altering 
   const untouched = block(undefined, "same");
   const sibling = `<q:p>\n<q:r><q:t>same</q:t></q:r></q:p>`;
   const mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-  const extension = "http://schemas.microsoft.com/office/word/2023/wordml/word16du";
+  const extension =
+    "http://schemas.microsoft.com/office/word/2023/wordml/word16du";
   const output = buildStoryBlockReplay({
     sourceXml: story(sourceParagraph("old") + sibling),
     baselineContent: [old, untouched],
@@ -294,7 +324,8 @@ test("changed extension markup inherits local Ignorable tokens without altering 
 test("changed Strict table widths use source-profile slot conversion", () => {
   const sourceXml = `<q:hdr xmlns:q="${STRICT_WORD}"><q:tbl><q:tblPr><q:tblW q:w="25%" q:type="pct"/></q:tblPr><q:tblGrid/><q:tr><q:tc><q:tcPr/><q:p/></q:tc></q:tr></q:tbl></q:hdr>`;
   const baseline = parseHeader(sourceXml).content.at(0);
-  if (!baseline || baseline.type !== "table") throw new Error("Missing fixture table");
+  if (!baseline || baseline.type !== "table")
+    throw new Error("Missing fixture table");
   const current = {
     ...baseline,
     formatting: { ...baseline.formatting, width: { type: "pct", value: 2500 } },
@@ -310,7 +341,8 @@ test("changed Strict table widths use source-profile slot conversion", () => {
   expect(output).toContain(`w:w="50%"`);
   expect(output).toContain(`xmlns:w="${STRICT_WORD}"`);
   const reopened = parseHeader(output ?? "").content.at(0);
-  if (!reopened || reopened.type !== "table") throw new Error("Missing reopened table");
+  if (!reopened || reopened.type !== "table")
+    throw new Error("Missing reopened table");
   expect(reopened.formatting?.width).toEqual({ type: "pct", value: 2500 });
 });
 

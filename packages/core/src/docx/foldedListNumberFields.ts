@@ -48,17 +48,22 @@ export const isListNumberGapMarker = (content: ParagraphContent): boolean =>
   RANGE_MARKER_TYPES.has(content.type);
 
 const isZeroWidth = (content: ParagraphContent): boolean =>
-  ZERO_WIDTH_TYPES.has(content.type) || (content.type === "preservedInline" && content.text === "");
+  ZERO_WIDTH_TYPES.has(content.type) ||
+  (content.type === "preservedInline" && content.text === "");
 
 /** Whether `content` is a `LISTNUM` field, by its parsed type or its instruction. */
-export const isListNumberField = (content: ParagraphContent): content is ComplexField =>
+export const isListNumberField = (
+  content: ParagraphContent,
+): content is ComplexField =>
   content.type === "complexField" &&
   (content.fieldType === "LISTNUM" ||
     content.instruction.trim().toUpperCase().startsWith("LISTNUM"));
 
 /** A run that holds one tab and nothing else. */
 export const isTabOnlyRun = (content: ParagraphContent): content is Run =>
-  content.type === "run" && content.content.length === 1 && content.content[0]?.type === "tab";
+  content.type === "run" &&
+  content.content.length === 1 &&
+  content.content[0]?.type === "tab";
 
 /** The text a field's cached result puts in the marker. */
 const cachedListNumberText = (field: ComplexField): string => {
@@ -77,7 +82,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 /** Whether `value` is what a capture stands for: a complex field, or a run. */
-export const isFoldedListNumber = (value: unknown): value is FoldedListNumber => {
+export const isFoldedListNumber = (
+  value: unknown,
+): value is FoldedListNumber => {
   if (!isRecord(value)) {
     return false;
   }
@@ -93,13 +100,17 @@ export const isFoldedListNumber = (value: unknown): value is FoldedListNumber =>
   }
   if (value["kind"] === "tab") {
     const run = value["run"];
-    return isRecord(run) && run["type"] === "run" && Array.isArray(run["content"]);
+    return (
+      isRecord(run) && run["type"] === "run" && Array.isArray(run["content"])
+    );
   }
   return false;
 };
 
 /** What `content` stands for when it is a capture the fold left, else nothing. */
-export const foldedListNumberOf = (content: ParagraphContent): FoldedListNumber | undefined =>
+export const foldedListNumberOf = (
+  content: ParagraphContent,
+): FoldedListNumber | undefined =>
   content.type === "preservedInline" ? content.foldedListNumber : undefined;
 
 /** Whether `content` is a capture the fold left in place of a field or its tab. */
@@ -225,7 +236,11 @@ export const planListNumberFold = (
   markerShowsFields: boolean,
 ): ListNumberFoldPlan => {
   const unmoved = items.map((_, index) => index);
-  const none: ListNumberFoldPlan = { order: unmoved, hidden: new Set(), suffix: undefined };
+  const none: ListNumberFoldPlan = {
+    order: unmoved,
+    hidden: new Set(),
+    suffix: undefined,
+  };
   const first = items.findIndex((item) => isCapture(item));
   if (!markerShowsFields || first === -1) {
     return none;
@@ -245,7 +260,11 @@ export const planListNumberFold = (
         end = index + 1;
       }
     }
-    order = [...unmoved.slice(first, end), ...unmoved.slice(0, first), ...unmoved.slice(end)];
+    order = [
+      ...unmoved.slice(first, end),
+      ...unmoved.slice(0, first),
+      ...unmoved.slice(end),
+    ];
   }
 
   const hidden = new Set<number>();
@@ -273,7 +292,9 @@ export const planListNumberFold = (
   }
 
   // A marker with nothing to show hides nothing, as the reader folds nothing.
-  return cached.length === 0 ? none : { order, hidden, suffix: cached.join(" ") };
+  return cached.length === 0
+    ? none
+    : { order, hidden, suffix: cached.join(" ") };
 };
 
 type ListMarkerFoldState = {
@@ -301,15 +322,24 @@ const listMarkerFoldState = ({
   numbered,
 }: ListMarkerFoldInput): ListMarkerFoldState => {
   const tab = marker?.indexOf("\t") ?? -1;
-  if (!marker || !numbered || isBullet || !template || template.includes("\t") || tab === -1) {
+  if (
+    !marker ||
+    !numbered ||
+    isBullet ||
+    !template ||
+    template.includes("\t") ||
+    tab === -1
+  ) {
     return { showsFields: false, base: marker ?? "" };
   }
   return { showsFields: true, base: marker.slice(0, tab) };
 };
 
 /** The marker text for `state` showing `suffix`. */
-const listMarkerWithFold = (state: ListMarkerFoldState, suffix: string | undefined): string =>
-  suffix === undefined ? state.base : `${state.base}\t${suffix}`;
+const listMarkerWithFold = (
+  state: ListMarkerFoldState,
+  suffix: string | undefined,
+): string => (suffix === undefined ? state.base : `${state.base}\t${suffix}`);
 
 const foldItemOf = (content: ParagraphContent): ListNumberFoldItem => {
   const folded = foldedListNumberOf(content);
@@ -325,10 +355,13 @@ const foldItemOf = (content: ParagraphContent): ListNumberFoldItem => {
 export const planParagraphListNumberFold = (
   content: readonly ParagraphContent[],
   showsFields: boolean,
-): ListNumberFoldPlan => planListNumberFold(content.map(foldItemOf), showsFields);
+): ListNumberFoldPlan =>
+  planListNumberFold(content.map(foldItemOf), showsFields);
 
 /** The item a capture stands for, which shows on the line; any other item is itself. */
-export const unfoldedListNumberContent = (content: ParagraphContent): ParagraphContent => {
+export const unfoldedListNumberContent = (
+  content: ParagraphContent,
+): ParagraphContent => {
   const folded = foldedListNumberOf(content);
   if (!folded) {
     return content;
@@ -354,13 +387,17 @@ const isTrackedChange = (content: ParagraphContent): content is TrackedChange =>
  * text is `w:delText`, a deleted instruction `w:delInstrText`), which markup
  * replayed as it was read does not have; the field and the run do.
  */
-const withTrackedCapturesShown = (content: ParagraphContent[]): ParagraphContent[] => {
+const withTrackedCapturesShown = (
+  content: ParagraphContent[],
+): ParagraphContent[] => {
   let changed = false;
   const next = content.map((item): ParagraphContent => {
     if (!isTrackedChange(item)) {
       return item;
     }
-    if (!item.content.some((child) => foldedListNumberOf(child) !== undefined)) {
+    if (
+      !item.content.some((child) => foldedListNumberOf(child) !== undefined)
+    ) {
       return item;
     }
     changed = true;
@@ -371,7 +408,9 @@ const withTrackedCapturesShown = (content: ParagraphContent[]): ParagraphContent
         if (!folded) {
           return child;
         }
-        return structuredClone(folded.kind === "field" ? folded.field : folded.run);
+        return structuredClone(
+          folded.kind === "field" ? folded.field : folded.run,
+        );
       }),
     };
   });

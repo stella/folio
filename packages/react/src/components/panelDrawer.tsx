@@ -17,9 +17,13 @@ const FOCUSABLE =
  */
 export type DrawerInitialFocus = "item" | "container";
 
-const LIST_TAB_STOP = ':is(ol, ul) :is(button, [href], [tabindex]):not([tabindex="-1"])';
+const LIST_TAB_STOP =
+  ':is(ol, ul) :is(button, [href], [tabindex]):not([tabindex="-1"])';
 
-const initialFocusTarget = (container: HTMLElement, initial: DrawerInitialFocus): HTMLElement => {
+const initialFocusTarget = (
+  container: HTMLElement,
+  initial: DrawerInitialFocus,
+): HTMLElement => {
   if (initial === "container") {
     return container;
   }
@@ -57,7 +61,10 @@ export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
     if (!active) {
       return undefined;
     }
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     const element = container.current;
     if (element) {
       initialFocusTarget(element, initial).focus({ preventScroll: true });

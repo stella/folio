@@ -9,7 +9,9 @@
  * because SFCs render via `<component :is="...">`-style dispatch.
  */
 import { computed, type ComputedRef, type Ref } from "vue";
+
 import type { Comment } from "@stll/folio-core/types/content";
+
 import type { TrackedChangeEntry } from "./useTrackedChanges";
 
 export type CommentSidebarItem = {

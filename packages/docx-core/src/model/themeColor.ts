@@ -21,8 +21,8 @@ import {
   SCHEME_COLOR_VALUES,
   type SchemeColorSlot,
   type SchemeColorValue,
-  type ThemeColor,
   THEME_COLORS,
+  type ThemeColor,
 } from "./themeColor.gen";
 
 /** What a theme reference resolves against, before a theme is consulted. */
@@ -31,7 +31,10 @@ export type ThemeColorTarget =
   | { readonly kind: "mapped"; readonly mapping: ClrSchemeMappingKey }
   | { readonly kind: "cancel" };
 
-const slot = (value: SchemeColorSlot): ThemeColorTarget => ({ kind: "slot", slot: value });
+const slot = (value: SchemeColorSlot): ThemeColorTarget => ({
+  kind: "slot",
+  slot: value,
+});
 const mapped = (value: ClrSchemeMappingKey): ThemeColorTarget => ({
   kind: "mapped",
   mapping: value,
@@ -147,16 +150,22 @@ export const THEME_COLOR_BY_SCHEME_COLOR_VALUE = {
  * treatment `w:val` on `CT_Border` already gets for a style outside
  * `ST_Border`.
  */
-export type UnrecognisedThemeColor = { readonly kind: "unrecognised"; readonly raw: string };
+export type UnrecognisedThemeColor = {
+  readonly kind: "unrecognised";
+  readonly raw: string;
+};
 
 /** What a theme-colour attribute parses to: a schema token, or the raw text. */
 export type ThemeColorValue = ThemeColor | UnrecognisedThemeColor;
 
 const THEME_COLOR_SET: ReadonlySet<string> = new Set(THEME_COLORS);
 
-export const isThemeColor = (value: string): value is ThemeColor => THEME_COLOR_SET.has(value);
+export const isThemeColor = (value: string): value is ThemeColor =>
+  THEME_COLOR_SET.has(value);
 
-const SCHEME_COLOR_VALUE_SET: ReadonlySet<string> = new Set(SCHEME_COLOR_VALUES);
+const SCHEME_COLOR_VALUE_SET: ReadonlySet<string> = new Set(
+  SCHEME_COLOR_VALUES,
+);
 
 export const isSchemeColorValue = (value: string): value is SchemeColorValue =>
   SCHEME_COLOR_VALUE_SET.has(value);
@@ -167,7 +176,9 @@ export const isSchemeColorValue = (value: string): value is SchemeColorValue =>
  * An unrecognised token is captured rather than refused; the caller decides
  * whether to report it.
  */
-export const readThemeColor = (raw: string | null | undefined): ThemeColorValue | undefined => {
+export const readThemeColor = (
+  raw: string | null | undefined,
+): ThemeColorValue | undefined => {
   if (raw === null || raw === undefined || raw === "") {
     return undefined;
   }
@@ -179,8 +190,9 @@ export const themeColorToken = (value: ThemeColorValue): string =>
   typeof value === "string" ? value : value.raw;
 
 /** The schema token, or `undefined` for one the model only carries verbatim. */
-export const knownThemeColor = (value: ThemeColorValue): ThemeColor | undefined =>
-  typeof value === "string" ? value : undefined;
+export const knownThemeColor = (
+  value: ThemeColorValue,
+): ThemeColor | undefined => (typeof value === "string" ? value : undefined);
 
 /**
  * The theme slot a reference paints with, or `undefined` when it names none.
@@ -188,7 +200,9 @@ export const knownThemeColor = (value: ThemeColorValue): ThemeColor | undefined 
  * `undefined` covers both `none`, which cancels an inherited theme colour, and
  * a token the schema does not enumerate.
  */
-export const themeColorSlot = (value: ThemeColorValue): SchemeColorSlot | undefined => {
+export const themeColorSlot = (
+  value: ThemeColorValue,
+): SchemeColorSlot | undefined => {
   const known = knownThemeColor(value);
   if (known === undefined) {
     return undefined;

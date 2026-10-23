@@ -20,10 +20,15 @@ import JSZip from "jszip";
 import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { setSectionBreakType } from "../prosemirror/commands/sectionBreak";
-import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import {
+  fromProseDoc,
+  proseDocToBlocks,
+} from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { BaseKeymapExtension } from "../prosemirror/extensions/features/BaseKeymapExtension";
 import { schema } from "../prosemirror/schema";
@@ -33,9 +38,11 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const WP =
+  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
 const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 
@@ -73,7 +80,11 @@ const packageFor = async (xml: string): Promise<ArrayBuffer> => {
 };
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
@@ -85,7 +96,11 @@ const open = (xml: string): Promise<Document> =>
 const startTag = (xml: string, name: string): string =>
   new RegExp(`<w:${name}(\\s[^>]*)?/?>`, "u").exec(xml)?.[0] ?? "";
 
-const expectCarried = (xml: string, chosen: Chosen, owners: readonly Owner[]): void => {
+const expectCarried = (
+  xml: string,
+  chosen: Chosen,
+  owners: readonly Owner[],
+): void => {
   for (const owner of owners) {
     const tag = startTag(xml, owner);
     for (const attribute of chosen[owner]) {
@@ -118,12 +133,16 @@ describe("the attribute remainder survives a save", () => {
     async () => {
       await fc.assert(
         fc.asyncProperty(chosenArbitrary, async (chosen) => {
-          const saved = await documentPartOf(await save(await open(documentXml(chosen))));
+          const saved = await documentPartOf(
+            await save(await open(documentXml(chosen))),
+          );
           expectCarried(saved, chosen, ALL_OWNERS);
 
           // Save, reopen, save: the second save is where a remainder that only
           // replays and does not re-parse stops being a fixed point.
-          expect(await documentPartOf(await save(await open(saved)))).toBe(saved);
+          expect(await documentPartOf(await save(await open(saved)))).toBe(
+            saved,
+          );
         }),
         propertyConfig({ numRuns: 25 }),
       );
@@ -137,7 +156,10 @@ describe("the attribute remainder survives a save", () => {
       'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>' +
       '<w:p altw:rsidR="00ABCDEF" altw:paraId="1F2E3D4C" w14:textId="0A0B0C0D">' +
       "<w:r><w:t>folio</w:t></w:r></w:p></w:body></w:document>";
-    const tag = startTag(await documentPartOf(await save(await open(xml))), "p");
+    const tag = startTag(
+      await documentPartOf(await save(await open(xml))),
+      "p",
+    );
 
     // The remainder is resolved, so the alternative binding comes back under
     // the prefix the rebuilt part declares for that namespace.
@@ -159,7 +181,11 @@ describe("the attribute remainder follows the record through the editor", () => 
           const projected = fromProseDoc(toProseDoc(parsed), parsed, {
             stylesheetSource: { type: "package" },
           });
-          expectCarried(await documentPartOf(await save(projected)), chosen, EDITOR_OWNERS);
+          expectCarried(
+            await documentPartOf(await save(projected)),
+            chosen,
+            EDITOR_OWNERS,
+          );
         }),
         propertyConfig({ numRuns: 25 }),
       );
@@ -168,7 +194,9 @@ describe("the attribute remainder follows the record through the editor", () => 
   );
 
   test("a paragraph the editor creates from scratch has no remainder", async () => {
-    const parsed = await open(documentXml({ p: ["rsidR"], r: [], tr: [], sectPr: [] }));
+    const parsed = await open(
+      documentXml({ p: ["rsidR"], r: [], tr: [], sectPr: [] }),
+    );
     const projected = toProseDoc(parsed);
     const created = schema.nodes["paragraph"]?.createAndFill();
     if (!created) {
@@ -176,7 +204,10 @@ describe("the attribute remainder follows the record through the editor", () => 
     }
 
     const rebuilt = fromProseDoc(
-      schema.node("doc", projected.attrs, [created, ...projected.content.content]),
+      schema.node("doc", projected.attrs, [
+        created,
+        ...projected.content.content,
+      ]),
       parsed,
       { stylesheetSource: { type: "package" } },
     );
@@ -215,13 +246,15 @@ describe("the attribute remainder follows the record through the editor", () => 
     });
     const rebuilt = projected.package.document.content.at(0) as Paragraph;
     expect(rebuilt.preservedAttributes).toEqual(host.preservedAttributes);
-    expect(startTag(await documentPartOf(await save(projected)), "p")).toContain(
-      'w:rsidR="00ABCDEF"',
-    );
+    expect(
+      startTag(await documentPartOf(await save(projected)), "p"),
+    ).toContain('w:rsidR="00ABCDEF"');
   });
 
   test("a split paragraph keeps the remainder on the half that was authored", async () => {
-    const parsed = await open(documentXml({ p: ["rsidR"], r: [], tr: [], sectPr: [] }));
+    const parsed = await open(
+      documentXml({ p: ["rsidR"], r: [], tr: [], sectPr: [] }),
+    );
     const projection = toProseDoc(parsed);
     const authored = projection.content.content.at(0);
     if (!authored) {
@@ -294,7 +327,9 @@ describe("the attribute remainder follows the record through the editor", () => 
     };
 
     const carriesTheAuthoredRun = (tag: string): boolean =>
-      ["rsidR", "rsidRPr"].every((name) => tag.includes(`w:${name}="${valueFor("r", name)}"`));
+      ["rsidR", "rsidRPr"].every((name) =>
+        tag.includes(`w:${name}="${valueFor("r", name)}"`),
+      );
 
     test("comes back as the one run it was authored as when nothing divides it", async () => {
       const runs = await splitRun(() => []);
@@ -332,7 +367,9 @@ describe("the attribute remainder follows the record through the editor", () => 
     const parsed = await open(xml);
     const saved = await documentPartOf(
       await save(
-        fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(toProseDoc(parsed), parsed, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     );
 
@@ -390,7 +427,8 @@ const anchoredTextBoxAround = (inner: string): string =>
 
 const CONTAINER_FIXTURES: Record<string, (inner: string) => string> = {
   doc: (inner) => inner,
-  blockCustomXml: (inner) => `<w:customXml w:element="container">${inner}</w:customXml>`,
+  blockCustomXml: (inner) =>
+    `<w:customXml w:element="container">${inner}</w:customXml>`,
   blockSdt: (inner) =>
     `<w:sdt><w:sdtPr><w:tag w:val="container"/></w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`,
   tableCell: (inner) => tableAround(inner, ""),
@@ -430,7 +468,9 @@ const remainderCensus = (value: unknown, path = ""): string[] => {
       }
       continue;
     }
-    found.push(...remainderCensus(entry, key === "textBody" ? `${path}textBox/` : path));
+    found.push(
+      ...remainderCensus(entry, key === "textBody" ? `${path}textBox/` : path),
+    );
   }
   return found.sort();
 };
@@ -448,7 +488,10 @@ const nodeTypeNames = (doc: PMNode): Set<string> => {
  * The attrs a copy holds by reference rather than by value, which is what
  * tells a copy apart from a record that parsed its own.
  */
-const SHARED_CARRIER_ATTRS = ["_preservedAttributes", "_sectionProperties"] as const;
+const SHARED_CARRIER_ATTRS = [
+  "_preservedAttributes",
+  "_sectionProperties",
+] as const;
 
 /** What `splitBlock` leaves behind: `copies` extra nodes over one attrs object. */
 const duplicateRecordNodes = (node: PMNode, copies = 1): PMNode => {
@@ -465,14 +508,19 @@ const duplicateRecordNodes = (node: PMNode, copies = 1): PMNode => {
       SHARED_CARRIER_ATTRS.some((attr) => child.attrs[attr])
     ) {
       for (let copy = 0; copy < copies; copy++) {
-        children.push(child.type.create(child.attrs, child.content, child.marks));
+        children.push(
+          child.type.create(child.attrs, child.content, child.marks),
+        );
       }
     }
   });
   return node.type.create(node.attrs, Fragment.fromArray(children), node.marks);
 };
 
-const containerArbitrary = fc.record({ p: subsetsOf("p"), tr: subsetsOf("tr") });
+const containerArbitrary = fc.record({
+  p: subsetsOf("p"),
+  tr: subsetsOf("tr"),
+});
 
 describe("the attribute remainder holds in every block container", () => {
   test("every container the schema declares has a fixture", () => {
@@ -487,7 +535,9 @@ describe("the attribute remainder holds in every block container", () => {
       async () => {
         await fc.assert(
           fc.asyncProperty(containerArbitrary, async (chosen) => {
-            const parsed = await open(containerDocumentXml(wrap(recordsXml(chosen))));
+            const parsed = await open(
+              containerDocumentXml(wrap(recordsXml(chosen))),
+            );
             const authored = remainderCensus(parsed.package.document.content);
             const projection = toProseDoc(parsed);
 
@@ -498,7 +548,9 @@ describe("the attribute remainder holds in every block container", () => {
             const rebuilt = fromProseDoc(projection, parsed, {
               stylesheetSource: { type: "package" },
             });
-            expect(remainderCensus(rebuilt.package.document.content)).toEqual(authored);
+            expect(remainderCensus(rebuilt.package.document.content)).toEqual(
+              authored,
+            );
           }),
           propertyConfig({ numRuns: 10 }),
         );
@@ -511,7 +563,9 @@ describe("the attribute remainder holds in every block container", () => {
       async () => {
         await fc.assert(
           fc.asyncProperty(containerArbitrary, async (chosen) => {
-            const parsed = await open(containerDocumentXml(wrap(recordsXml(chosen))));
+            const parsed = await open(
+              containerDocumentXml(wrap(recordsXml(chosen))),
+            );
             const authored = remainderCensus(parsed.package.document.content);
 
             // `proseDocToBlocks` rather than `fromProseDoc`: the
@@ -553,7 +607,10 @@ describe("the attribute remainder holds in every block container", () => {
 
 const SECTION_FIXTURE_TEXT = "folio";
 
-const sectionDocumentXml = ({ p, sectPr }: Pick<Chosen, "p" | "sectPr">): string =>
+const sectionDocumentXml = ({
+  p,
+  sectPr,
+}: Pick<Chosen, "p" | "sectPr">): string =>
   `${XML_DECLARATION}<w:document xmlns:w="${W}"><w:body>` +
   "<w:p><w:r><w:t>lead</w:t></w:r></w:p>" +
   `<w:p${attributesFor("p", p)}><w:pPr><w:sectPr${attributesFor("sectPr", sectPr)}>` +
@@ -568,12 +625,16 @@ const SECTION_CARRIER_INDEX = 1;
 
 const SECT_PR = /<w:sectPr[\s/>]/gu;
 
-const occurrences = (xml: string, pattern: RegExp): number => [...xml.matchAll(pattern)].length;
+const occurrences = (xml: string, pattern: RegExp): number =>
+  [...xml.matchAll(pattern)].length;
 
 const valuePattern = (owner: Owner, attribute: string): RegExp =>
   new RegExp(`w:${attribute}="${valueFor(owner, attribute)}"`, "gu");
 
-const documentWithContent = (parsed: Document, content: BlockContent[]): Document => ({
+const documentWithContent = (
+  parsed: Document,
+  content: BlockContent[],
+): Document => ({
   ...parsed,
   package: {
     ...parsed.package,
@@ -606,12 +667,20 @@ describe("the section break belongs to the last paragraph of its section", () =>
             parsed.package.document.content,
             parsed.package.styles,
           );
-          expect(sectionCarrierIndexes(blocks)).toEqual([SECTION_CARRIER_INDEX + copies]);
+          expect(sectionCarrierIndexes(blocks)).toEqual([
+            SECTION_CARRIER_INDEX + copies,
+          ]);
 
-          const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
-          expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
+          const saved = await documentPartOf(
+            await save(documentWithContent(parsed, blocks)),
+          );
+          expect(occurrences(saved, SECT_PR)).toBe(
+            occurrences(authored, SECT_PR),
+          );
           for (const attribute of chosen.sectPr) {
-            expect(occurrences(saved, valuePattern("sectPr", attribute))).toBe(1);
+            expect(occurrences(saved, valuePattern("sectPr", attribute))).toBe(
+              1,
+            );
           }
           for (const attribute of chosen.p) {
             expect(occurrences(saved, valuePattern("p", attribute))).toBe(1);
@@ -636,9 +705,8 @@ describe("the section break belongs to the last paragraph of its section", () =>
     // Backspace with the caret at the start of the section-ending paragraph:
     // its predecessor's mark goes, its own survives, and the two become one
     // paragraph that still ends the section.
-    const backspace = BaseKeymapExtension().onSchemaReady({ schema }).keyboardShortcuts?.[
-      "Backspace"
-    ];
+    const backspace = BaseKeymapExtension().onSchemaReady({ schema })
+      .keyboardShortcuts?.["Backspace"];
     if (!backspace) {
       throw new Error("the base keymap binds no Backspace");
     }
@@ -657,7 +725,9 @@ describe("the section break belongs to the last paragraph of its section", () =>
     expect(merged.textContent).toBe(`lead${SECTION_FIXTURE_TEXT}`);
     // The very object, not an equal one: the properties were carried across
     // the join rather than rebuilt from the break type.
-    expect(merged.attrs["_sectionProperties"]).toBe(carrier.attrs["_sectionProperties"]);
+    expect(merged.attrs["_sectionProperties"]).toBe(
+      carrier.attrs["_sectionProperties"],
+    );
 
     const blocks = proseDocToBlocks(
       joined.doc,
@@ -666,7 +736,9 @@ describe("the section break belongs to the last paragraph of its section", () =>
     );
     expect(sectionCarrierIndexes(blocks)).toEqual([0]);
 
-    const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
+    const saved = await documentPartOf(
+      await save(documentWithContent(parsed, blocks)),
+    );
     expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
     expect(occurrences(saved, valuePattern("sectPr", "rsidSect"))).toBe(1);
   });
@@ -676,18 +748,21 @@ describe("the section break belongs to the last paragraph of its section", () =>
     // was deleted rather than joined away leaves nothing to inherit it, or a
     // section could never be removed at all. The save leg refuses a repack
     // that drops a section, so the assertion stops at the model.
-    const parsed = await open(sectionDocumentXml({ p: [], sectPr: ["rsidSect"] }));
+    const parsed = await open(
+      sectionDocumentXml({ p: [], sectPr: ["rsidSect"] }),
+    );
     const projection = toProseDoc(parsed);
-    const backspace = BaseKeymapExtension().onSchemaReady({ schema }).keyboardShortcuts?.[
-      "Backspace"
-    ];
+    const backspace = BaseKeymapExtension().onSchemaReady({ schema })
+      .keyboardShortcuts?.["Backspace"];
     if (!backspace) {
       throw new Error("the base keymap binds no Backspace");
     }
 
     const state = EditorState.create({ doc: projection });
     const selected = state.apply(
-      state.tr.setSelection(NodeSelection.create(state.doc, projection.child(0).nodeSize)),
+      state.tr.setSelection(
+        NodeSelection.create(state.doc, projection.child(0).nodeSize),
+      ),
     );
     let deleted = selected;
     expect(
@@ -710,19 +785,22 @@ describe("the section break belongs to the last paragraph of its section", () =>
     // that consumes the mark takes the section with it. ProseMirror keeps the
     // first node's attrs, which used to leave the record on a paragraph whose
     // mark was gone: the break stayed where Word deletes it.
-    const parsed = await open(sectionDocumentXml({ p: [], sectPr: ["rsidSect"] }));
+    const parsed = await open(
+      sectionDocumentXml({ p: [], sectPr: ["rsidSect"] }),
+    );
     const authored = await documentPartOf(await save(parsed));
     const projection = toProseDoc(parsed);
-    const backspace = BaseKeymapExtension().onSchemaReady({ schema }).keyboardShortcuts?.[
-      "Backspace"
-    ];
+    const backspace = BaseKeymapExtension().onSchemaReady({ schema })
+      .keyboardShortcuts?.["Backspace"];
     if (!backspace) {
       throw new Error("the base keymap binds no Backspace");
     }
 
     // The caret at the start of the paragraph that FOLLOWS the break.
     const afterBreak =
-      projection.child(0).nodeSize + projection.child(SECTION_CARRIER_INDEX).nodeSize + 1;
+      projection.child(0).nodeSize +
+      projection.child(SECTION_CARRIER_INDEX).nodeSize +
+      1;
     const state = EditorState.create({ doc: projection });
     const caretAfterBreak = state.apply(
       state.tr.setSelection(TextSelection.create(state.doc, afterBreak)),
@@ -758,7 +836,9 @@ describe("the section break belongs to the last paragraph of its section", () =>
     const authored = await documentPartOf(await save(parsed));
     const state = EditorState.create({ doc: toProseDoc(parsed) });
     const caretInCarrier = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, state.doc.child(0).nodeSize + 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, state.doc.child(0).nodeSize + 1),
+      ),
     );
     let retyped = caretInCarrier;
     expect(
@@ -774,7 +854,9 @@ describe("the section break belongs to the last paragraph of its section", () =>
     );
     expect(sectionCarrierIndexes(blocks)).toEqual([SECTION_CARRIER_INDEX]);
 
-    const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
+    const saved = await documentPartOf(
+      await save(documentWithContent(parsed, blocks)),
+    );
     expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
     expect(saved).toContain('<w:type w:val="oddPage"/>');
     // Everything the type never carried is still on the record it was read from.

@@ -16,9 +16,9 @@
 
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import {
+  getAttributeByNamespaceUri,
   NAMESPACES,
   WORDPROCESSINGML_NAMESPACE_URIS,
-  getAttributeByNamespaceUri,
   type XmlElement,
 } from "./xmlParser";
 
@@ -43,8 +43,15 @@ export const PARA_ID_NAMESPACE_URIS: ReadonlySet<string> = new Set([
  */
 const CONVENTIONAL_PARA_ID_PREFIXES = ["w14", "w15", "w16cex"] as const;
 
-const paraIdValuedAttribute = (element: XmlElement, localName: string): string | undefined => {
-  const byUri = getAttributeByNamespaceUri(element, PARA_ID_NAMESPACE_URIS, localName);
+const paraIdValuedAttribute = (
+  element: XmlElement,
+  localName: string,
+): string | undefined => {
+  const byUri = getAttributeByNamespaceUri(
+    element,
+    PARA_ID_NAMESPACE_URIS,
+    localName,
+  );
   if (byUri !== null) {
     return byUri;
   }
@@ -74,8 +81,9 @@ export const paraIdAttribute = (element: XmlElement): string | undefined =>
   paraIdValuedAttribute(element, "paraId");
 
 /** The paraId of the parent this element names, by the same rule. */
-export const paraIdParentAttribute = (element: XmlElement): string | undefined =>
-  paraIdValuedAttribute(element, "paraIdParent");
+export const paraIdParentAttribute = (
+  element: XmlElement,
+): string | undefined => paraIdValuedAttribute(element, "paraIdParent");
 
 /**
  * The textId this element carries: a paragraph identity written beside
@@ -135,7 +143,10 @@ const ordinalsById = (
     if (identity.type === "anonymous") {
       continue;
     }
-    byId.set(identity.paraId, byId.has(identity.paraId) ? null : identity.ordinal);
+    byId.set(
+      identity.paraId,
+      byId.has(identity.paraId) ? null : identity.ordinal,
+    );
   }
   return byId;
 };
@@ -164,7 +175,11 @@ export const alignParagraphOrdinals = (
     if (revisedOrdinal === undefined) {
       continue;
     }
-    if (baseOrdinal === null || revisedOrdinal === null || baseOrdinal !== revisedOrdinal) {
+    if (
+      baseOrdinal === null ||
+      revisedOrdinal === null ||
+      baseOrdinal !== revisedOrdinal
+    ) {
       return { consistent: false, sharedOrdinals: 0 };
     }
     sharedOrdinals += 1;
@@ -207,21 +222,29 @@ export const resolveParagraphIdentities = ({
   sourceParaIds,
   serializedParaIds,
 }: ResolveParagraphIdentitiesOptions): ParagraphIdentityPlan => {
-  const sourceIdentities = sourceParaIds.map((paraId, ordinal): ParagraphIdentity =>
-    paraId === undefined ? { type: "anonymous", ordinal } : { type: "authored", paraId, ordinal },
+  const sourceIdentities = sourceParaIds.map(
+    (paraId, ordinal): ParagraphIdentity =>
+      paraId === undefined
+        ? { type: "anonymous", ordinal }
+        : { type: "authored", paraId, ordinal },
   );
-  const sourceIds = new Set(sourceParaIds.filter((paraId) => paraId !== undefined));
-  const identities = serializedParaIds.map((paraId, ordinal): ParagraphIdentity => {
-    if (paraId === undefined) {
-      return { type: "anonymous", ordinal };
-    }
-    return sourceIds.has(paraId)
-      ? { type: "authored", paraId, ordinal }
-      : { type: "minted", paraId, ordinal };
-  });
+  const sourceIds = new Set(
+    sourceParaIds.filter((paraId) => paraId !== undefined),
+  );
+  const identities = serializedParaIds.map(
+    (paraId, ordinal): ParagraphIdentity => {
+      if (paraId === undefined) {
+        return { type: "anonymous", ordinal };
+      }
+      return sourceIds.has(paraId)
+        ? { type: "authored", paraId, ordinal }
+        : { type: "minted", paraId, ordinal };
+    },
+  );
 
   return {
     identities,
-    ordinalsAligned: alignParagraphOrdinals(sourceIdentities, identities).consistent,
+    ordinalsAligned: alignParagraphOrdinals(sourceIdentities, identities)
+      .consistent,
   };
 };

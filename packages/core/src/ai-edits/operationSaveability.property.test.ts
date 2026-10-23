@@ -20,17 +20,19 @@ import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { createDocx } from "../docx/rezip";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
-  InvalidFolioDocumentOperationBatchError,
   type FolioDocumentOperation,
   type FolioDocumentOperationMode,
+  InvalidFolioDocumentOperationBatchError,
 } from "../document-operations";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { NumberingDefinitions } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
@@ -46,7 +48,9 @@ const decimalDefinition = (numId: number): NumberingDefinitions => ({
     {
       abstractNumId: numId,
       multiLevelType: "multilevel",
-      levels: [{ ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1.", suffix: "tab" }],
+      levels: [
+        { ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1.", suffix: "tab" },
+      ],
     },
   ],
   nums: [{ numId, abstractNumId: numId }],
@@ -62,17 +66,32 @@ const docxFromMarkdown = async (
 };
 
 const SHAPE_BUILDERS: Record<string, () => Promise<Uint8Array>> = {
-  plain: () => docxFromMarkdown("# Title\n\nAlpha clause here.\n\nBeta clause here.\n\nGamma."),
-  bullets: () => docxFromMarkdown("Intro text.\n\n- one item\n- two item\n- three item\n\nOutro."),
-  decimals: () => docxFromMarkdown("Intro text.\n\n1. first item\n2. second item\n\nOutro."),
+  plain: () =>
+    docxFromMarkdown(
+      "# Title\n\nAlpha clause here.\n\nBeta clause here.\n\nGamma.",
+    ),
+  bullets: () =>
+    docxFromMarkdown(
+      "Intro text.\n\n- one item\n- two item\n- three item\n\nOutro.",
+    ),
+  decimals: () =>
+    docxFromMarkdown("Intro text.\n\n1. first item\n2. second item\n\nOutro."),
   styleNumberedHeadings: () =>
-    docxFromMarkdown("# Heading one\n\nBody one.\n\n# Heading two\n\nBody two.", (model) => {
-      model.package.numbering = decimalDefinition(7);
-      const heading = model.package.styles?.styles.find(({ styleId }) => styleId === "Heading1");
-      if (heading) {
-        heading.pPr = { ...heading.pPr, numPr: { kind: "reference", numId: 7, ilvl: 0 } };
-      }
-    }),
+    docxFromMarkdown(
+      "# Heading one\n\nBody one.\n\n# Heading two\n\nBody two.",
+      (model) => {
+        model.package.numbering = decimalDefinition(7);
+        const heading = model.package.styles?.styles.find(
+          ({ styleId }) => styleId === "Heading1",
+        );
+        if (heading) {
+          heading.pPr = {
+            ...heading.pPr,
+            numPr: { kind: "reference", numId: 7, ilvl: 0 },
+          };
+        }
+      },
+    ),
   tables: () =>
     docxFromMarkdown(
       "Intro text.\n\n| Head A | Head B |\n| --- | --- |\n| cell c | cell d |\n| cell e | cell f |\n\nOutro.",
@@ -83,7 +102,9 @@ const SHAPE_BUILDERS: Record<string, () => Promise<Uint8Array>> = {
     ),
   comments: async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
-      await docxFromMarkdown("Commented clause text.\n\nSecond clause.\n\nThird."),
+      await docxFromMarkdown(
+        "Commented clause text.\n\nSecond clause.\n\nThird.",
+      ),
       { author: "Reader" },
     );
     const target = reviewer.getContent()[0];
@@ -116,7 +137,9 @@ beforeAll(async () => {
   for (const shape of SHAPES) {
     const bytes = await SHAPE_BUILDERS[shape]!();
     shapeBytes.set(shape, bytes);
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { author: "AI" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      author: "AI",
+    });
     foreignIds.push(...reviewer.getContent().map((block) => block.id));
   }
 });
@@ -138,16 +161,32 @@ type NumberingRef =
   | { kind: "newList"; format: "numbered" | "bullet"; level?: number }
   | { kind: "malformed" };
 
-type StyleRef = { kind: "none" } | { kind: "clear" } | { kind: "named"; styleId: string };
+type StyleRef =
+  { kind: "none" } | { kind: "clear" } | { kind: "named"; styleId: string };
 
 const blockRefArb: fc.Arbitrary<BlockRef> = fc.oneof(
-  { weight: 5, arbitrary: fc.record({ kind: fc.constant("valid" as const), pick: fc.nat(50) }) },
+  {
+    weight: 5,
+    arbitrary: fc.record({
+      kind: fc.constant("valid" as const),
+      pick: fc.nat(50),
+    }),
+  },
   {
     weight: 3,
-    arbitrary: fc.record({ kind: fc.constant("tableCell" as const), pick: fc.nat(50) }),
+    arbitrary: fc.record({
+      kind: fc.constant("tableCell" as const),
+      pick: fc.nat(50),
+    }),
   },
   { weight: 1, arbitrary: fc.constant({ kind: "stale" as const }) },
-  { weight: 1, arbitrary: fc.record({ kind: fc.constant("foreign" as const), pick: fc.nat(200) }) },
+  {
+    weight: 1,
+    arbitrary: fc.record({
+      kind: fc.constant("foreign" as const),
+      pick: fc.nat(200),
+    }),
+  },
   { weight: 1, arbitrary: fc.constant({ kind: "malformed" as const }) },
 );
 
@@ -165,9 +204,18 @@ const numberingRefArb: fc.Arbitrary<NumberingRef> = fc.oneof(
   },
   {
     weight: 3,
-    arbitrary: fc.record({ kind: fc.constant("stale" as const), ilvl: fc.nat(3) }),
+    arbitrary: fc.record({
+      kind: fc.constant("stale" as const),
+      ilvl: fc.nat(3),
+    }),
   },
-  { weight: 2, arbitrary: fc.record({ kind: fc.constant("levelOnly" as const), ilvl: fc.nat(3) }) },
+  {
+    weight: 2,
+    arbitrary: fc.record({
+      kind: fc.constant("levelOnly" as const),
+      ilvl: fc.nat(3),
+    }),
+  },
   {
     weight: 1,
     arbitrary: fc.record({
@@ -186,7 +234,13 @@ const styleRefArb: fc.Arbitrary<StyleRef> = fc.oneof(
     weight: 2,
     arbitrary: fc.record({
       kind: fc.constant("named" as const),
-      styleId: fc.constantFrom("Heading1", "Heading2", "ListParagraph", "NoSuchStyle", "Title"),
+      styleId: fc.constantFrom(
+        "Heading1",
+        "Heading2",
+        "ListParagraph",
+        "NoSuchStyle",
+        "Title",
+      ),
     }),
   },
 );
@@ -231,9 +285,17 @@ const operationSpecArb: fc.Arbitrary<OperationSpec> = fc.record({
 const batchArb = fc.record({
   shape: fc.constantFrom(...SHAPES),
   operations: fc.array(operationSpecArb, { minLength: 1, maxLength: 4 }),
-  mode: fc.constantFrom<FolioDocumentOperationMode>(...FOLIO_DOCUMENT_OPERATION_MODES),
-  atomic: fc.oneof({ weight: 3, arbitrary: fc.constant(false) }, fc.constant(true)),
-  dryRun: fc.oneof({ weight: 4, arbitrary: fc.constant(false) }, fc.constant(true)),
+  mode: fc.constantFrom<FolioDocumentOperationMode>(
+    ...FOLIO_DOCUMENT_OPERATION_MODES,
+  ),
+  atomic: fc.oneof(
+    { weight: 3, arbitrary: fc.constant(false) },
+    fc.constant(true),
+  ),
+  dryRun: fc.oneof(
+    { weight: 4, arbitrary: fc.constant(false) },
+    fc.constant(true),
+  ),
 });
 
 type Materials = {
@@ -249,7 +311,10 @@ const resolveBlockId = (ref: BlockRef, materials: Materials): string => {
     case "valid":
       return pickFrom(materials.blocks, ref.pick);
     case "tableCell":
-      return pickFrom(materials.cells.length > 0 ? materials.cells : materials.blocks, ref.pick);
+      return pickFrom(
+        materials.cells.length > 0 ? materials.cells : materials.blocks,
+        ref.pick,
+      );
     case "stale":
       return "7FFFFFF1";
     case "foreign":
@@ -271,7 +336,10 @@ const resolveNumbering = (
     case "none":
       return { kind: "none" };
     case "defined": {
-      const numId = materials.definedNumIds[ref.pick % Math.max(1, materials.definedNumIds.length)];
+      const numId =
+        materials.definedNumIds[
+          ref.pick % Math.max(1, materials.definedNumIds.length)
+        ];
       return { kind: "reference", numId: numId ?? 4242, ilvl: ref.ilvl };
     }
     case "stale":
@@ -323,7 +391,10 @@ const materialize = (
         id,
         type: spec.type,
         blockId,
-        properties: Object.keys(paragraph).length > 0 ? paragraph : { alignment: "center" },
+        properties:
+          Object.keys(paragraph).length > 0
+            ? paragraph
+            : { alignment: "center" },
       };
     case "replaceInBlock": {
       const find = /[A-Za-z]{3,}/u.exec(block?.text ?? "")?.[0] ?? "missing";
@@ -349,14 +420,18 @@ const materialize = (
         type: spec.type,
         blockId,
         offset: Math.min(2, Math.max(0, (block?.text.length ?? 1) - 1)),
-        ...(Object.keys(paragraph).length > 0 && { secondParagraphProperties: paragraph }),
+        ...(Object.keys(paragraph).length > 0 && {
+          secondParagraphProperties: paragraph,
+        }),
       };
     case "mergeBlockWithNext":
       return {
         id,
         type: spec.type,
         blockId,
-        ...(Object.keys(paragraph).length > 0 && { mergedParagraphProperties: paragraph }),
+        ...(Object.keys(paragraph).length > 0 && {
+          mergedParagraphProperties: paragraph,
+        }),
       };
     case "commentOnBlock":
       return { id, type: spec.type, blockId, comment: { text: spec.text } };
@@ -391,64 +466,82 @@ describe("operation batches never commit an unsaveable document", () => {
     "every batch is refused, or reports its skips, and the reviewer saves",
     async () => {
       await fc.assert(
-        fc.asyncProperty(batchArb, async ({ shape, operations, mode, atomic, dryRun }) => {
-          const reviewer = await FolioDocxReviewer.fromBuffer(shapeBytes.get(shape)!, {
-            author: "AI",
-          });
-          const blocks = reviewer.getContent();
-          const materials: Materials = {
-            blocks,
-            cells: blocks.filter((block) => block.table !== undefined),
-            definedNumIds: [
-              ...new Set(
-                blocks.flatMap((block) => {
-                  switch (block.kind) {
-                    case "paragraph":
-                    case "heading":
-                    case "listItem":
-                      return block.listReference === undefined ? [] : [block.listReference.numId];
-                    case "diagnostic":
-                      return [];
-                    default: {
-                      const unreachable: never = block;
-                      return unreachable;
+        fc.asyncProperty(
+          batchArb,
+          async ({ shape, operations, mode, atomic, dryRun }) => {
+            const reviewer = await FolioDocxReviewer.fromBuffer(
+              shapeBytes.get(shape)!,
+              {
+                author: "AI",
+              },
+            );
+            const blocks = reviewer.getContent();
+            const materials: Materials = {
+              blocks,
+              cells: blocks.filter((block) => block.table !== undefined),
+              definedNumIds: [
+                ...new Set(
+                  blocks.flatMap((block) => {
+                    switch (block.kind) {
+                      case "paragraph":
+                      case "heading":
+                      case "listItem":
+                        return block.listReference === undefined
+                          ? []
+                          : [block.listReference.numId];
+                      case "diagnostic":
+                        return [];
+                      default: {
+                        const unreachable: never = block;
+                        return unreachable;
+                      }
                     }
-                  }
-                }),
+                  }),
+                ),
+              ],
+            };
+            const batch = {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              atomic,
+              dryRun,
+              operations: operations.map((spec, index) =>
+                materialize(spec, index, materials),
               ),
-            ],
-          };
-          const batch = {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode,
-            atomic,
-            dryRun,
-            operations: operations.map((spec, index) => materialize(spec, index, materials)),
-          };
+            };
 
-          const before = reviewer.getContentAsText({ annotated: true });
-          let result;
-          try {
-            result = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
-          } catch (error) {
-            // A malformed reference is refused by the parser. Any other throw
-            // (operations in one batch that contradict each other) is not this
-            // property's subject, but it must still leave the document as it
-            // was and saveable: a throw commits nothing.
-            if (!(error instanceof InvalidFolioDocumentOperationBatchError)) {
-              expect(reviewer.getContentAsText({ annotated: true })).toBe(before);
+            const before = reviewer.getContentAsText({ annotated: true });
+            let result;
+            try {
+              result = reviewer.applyDocumentOperations(batch, {
+                undefinedReferences: "refuse",
+              });
+            } catch (error) {
+              // A malformed reference is refused by the parser. Any other throw
+              // (operations in one batch that contradict each other) is not this
+              // property's subject, but it must still leave the document as it
+              // was and saveable: a throw commits nothing.
+              if (!(error instanceof InvalidFolioDocumentOperationBatchError)) {
+                expect(reviewer.getContentAsText({ annotated: true })).toBe(
+                  before,
+                );
+              }
+              await assertSaveable(reviewer);
+              return;
+            }
+
+            const issueCodes = result.issues.map(
+              ({ operationId, code }) => `${operationId}:${code}`,
+            );
+            expect(issueCodes).toEqual(
+              result.skipped.map(({ id, reason }) => `${id}:${reason}`),
+            );
+            for (const { id } of result.applied) {
+              expect(result.skipped.some((skip) => skip.id === id)).toBe(false);
             }
             await assertSaveable(reviewer);
-            return;
-          }
-
-          const issueCodes = result.issues.map(({ operationId, code }) => `${operationId}:${code}`);
-          expect(issueCodes).toEqual(result.skipped.map(({ id, reason }) => `${id}:${reason}`));
-          for (const { id } of result.applied) {
-            expect(result.skipped.some((skip) => skip.id === id)).toBe(false);
-          }
-          await assertSaveable(reviewer);
-        }),
+          },
+        ),
         propertyConfig({ numRuns: 120, seed: 1103 }),
       );
     },

@@ -1,27 +1,35 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
-import { expect, test, type Page } from "@playwright/test";
-import { createDocx } from "../../packages/core/src/docx/rezip";
+import { expect, type Page, test } from "@playwright/test";
+
 import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { reviewDifferences } from "../../test/reviewDifferences";
 import type {} from "../parity/canonicalBridge";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 
 const adapters = [
   { name: "React", port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200 },
-  { name: "Vue", port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201 },
+  {
+    name: "Vue",
+    port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201,
+  },
 ] as const;
 
 const canonicalSnapshot = async (page: Page) => {
   await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
-  const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+  const current = await page.evaluate(() =>
+    globalThis.__folioCanonical?.snapshot(),
+  );
   expect(current?.active).toBe(true);
   expect(current?.projectionMatchesCanonical).toBe(true);
-  if (!current?.document) throw new TypeError("Canonical document unavailable.");
+  if (!current?.document)
+    throw new TypeError("Canonical document unavailable.");
   return { ...current, document: current.document };
 };
 
 const hasInsertionBy = (value: unknown, author: string): boolean => {
-  if (Array.isArray(value)) return value.some((entry) => hasInsertionBy(entry, author));
+  if (Array.isArray(value))
+    return value.some((entry) => hasInsertionBy(entry, author));
   if (value === null || typeof value !== "object") return false;
   if (
     "type" in value &&
@@ -40,7 +48,8 @@ const hasInsertionBy = (value: unknown, author: string): boolean => {
 const makeNoteDocument = async () => {
   const document = createEmptyDocument({ initialText: "Body seed" });
   const body = document.package.document.content.at(0);
-  if (body?.type !== "paragraph") throw new TypeError("Expected body paragraph.");
+  if (body?.type !== "paragraph")
+    throw new TypeError("Expected body paragraph.");
   body.content.push(
     { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
     {
@@ -58,7 +67,9 @@ const makeNoteDocument = async () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Footnote seed" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Footnote seed" }] },
+          ],
         },
       ],
     },
@@ -70,7 +81,9 @@ const makeNoteDocument = async () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Endnote seed" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Endnote seed" }] },
+          ],
         },
       ],
     },
@@ -89,22 +102,34 @@ for (const adapter of adapters) {
     expect(await evaluateCanonicalLoad(page, bytes)).toBe(true);
     const initial = await canonicalSnapshot(page);
     const initialBody = initial.document.package.document.content;
-    const initialFootnote = initial.document.package.footnotes?.find(({ id }) => id === 1)?.content;
-    const initialEndnote = initial.document.package.endnotes?.find(({ id }) => id === 1)?.content;
-    if (!initialFootnote || !initialEndnote) throw new TypeError("Note fixture did not load.");
+    const initialFootnote = initial.document.package.footnotes?.find(
+      ({ id }) => id === 1,
+    )?.content;
+    const initialEndnote = initial.document.package.endnotes?.find(
+      ({ id }) => id === 1,
+    )?.content;
+    if (!initialFootnote || !initialEndnote)
+      throw new TypeError("Note fixture did not load.");
 
     const body = page.locator(".layout-paragraph").first();
     await body.click();
     await page.keyboard.press("End");
     await page.keyboard.type(" edited");
-    const bodyEdited = (await canonicalSnapshot(page)).document.package.document.content;
+    const bodyEdited = (await canonicalSnapshot(page)).document.package.document
+      .content;
     expect(bodyEdited).not.toEqual(initialBody);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
-    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(initialBody);
+    expect(
+      (await canonicalSnapshot(page)).document.package.document.content,
+    ).toEqual(initialBody);
     await page.getByRole("button", { name: "Redo", exact: true }).click();
-    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyEdited);
+    expect(
+      (await canonicalSnapshot(page)).document.package.document.content,
+    ).toEqual(bodyEdited);
 
-    const footnoteRef = page.locator('[data-note-kind="footnote"][data-note-id="1"]').first();
+    const footnoteRef = page
+      .locator('[data-note-kind="footnote"][data-note-id="1"]')
+      .first();
     await expect(footnoteRef).toBeVisible();
     await footnoteRef.dblclick();
     const noteEditor = page.locator(
@@ -119,22 +144,28 @@ for (const adapter of adapters) {
     await page.keyboard.press("End");
     await page.keyboard.type(" edited");
     await expect(noteProseMirror).toContainText("Footnote seed edited");
-    const footnoteEdited = (await canonicalSnapshot(page)).document.package.footnotes?.find(
-      ({ id }) => id === 1,
-    )?.content;
+    const footnoteEdited = (
+      await canonicalSnapshot(page)
+    ).document.package.footnotes?.find(({ id }) => id === 1)?.content;
     expect(footnoteEdited).not.toEqual(initialFootnote);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     expect(
-      (await canonicalSnapshot(page)).document.package.footnotes?.find(({ id }) => id === 1)
-        ?.content,
+      (await canonicalSnapshot(page)).document.package.footnotes?.find(
+        ({ id }) => id === 1,
+      )?.content,
     ).toEqual(initialFootnote);
     await page.getByRole("button", { name: "Redo", exact: true }).click();
     expect(
-      (await canonicalSnapshot(page)).document.package.footnotes?.find(({ id }) => id === 1)
-        ?.content,
+      (await canonicalSnapshot(page)).document.package.footnotes?.find(
+        ({ id }) => id === 1,
+      )?.content,
     ).toEqual(footnoteEdited);
-    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyEdited);
-    await noteEditor.getByRole("button", { name: "Close", exact: true }).click();
+    expect(
+      (await canonicalSnapshot(page)).document.package.document.content,
+    ).toEqual(bodyEdited);
+    await noteEditor
+      .getByRole("button", { name: "Close", exact: true })
+      .click();
 
     const trackChanges = page.getByRole("button", {
       name: "Toggle Track Changes",
@@ -142,7 +173,9 @@ for (const adapter of adapters) {
     });
     await trackChanges.click();
     await expect(trackChanges).toHaveAttribute("aria-pressed", "true");
-    const endnoteRef = page.locator('[data-note-kind="endnote"][data-note-id="1"]').first();
+    const endnoteRef = page
+      .locator('[data-note-kind="endnote"][data-note-id="1"]')
+      .first();
     await expect(endnoteRef).toBeVisible();
     await endnoteRef.dblclick();
     await expect(noteEditor).toBeVisible();
@@ -153,35 +186,46 @@ for (const adapter of adapters) {
     await page.keyboard.press("End");
     await page.keyboard.type(" suggested");
     await expect(endnoteEditor).toContainText("Endnote seed suggested");
-    const endnoteSuggested = (await canonicalSnapshot(page)).document.package.endnotes?.find(
-      ({ id }) => id === 1,
-    )?.content;
+    const endnoteSuggested = (
+      await canonicalSnapshot(page)
+    ).document.package.endnotes?.find(({ id }) => id === 1)?.content;
     expect(hasInsertionBy(endnoteSuggested, "Folio User")).toBe(true);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     expect(
-      (await canonicalSnapshot(page)).document.package.endnotes?.find(({ id }) => id === 1)
-        ?.content,
+      (await canonicalSnapshot(page)).document.package.endnotes?.find(
+        ({ id }) => id === 1,
+      )?.content,
     ).toEqual(initialEndnote);
     await page.getByRole("button", { name: "Redo", exact: true }).click();
     expect(
-      (await canonicalSnapshot(page)).document.package.endnotes?.find(({ id }) => id === 1)
-        ?.content,
+      (await canonicalSnapshot(page)).document.package.endnotes?.find(
+        ({ id }) => id === 1,
+      )?.content,
     ).toEqual(endnoteSuggested);
     const beforeSave = await canonicalSnapshot(page);
     expect(beforeSave.document.package.document.content).toEqual(bodyEdited);
-    expect(beforeSave.document.package.footnotes?.find(({ id }) => id === 1)?.content).toEqual(
-      footnoteEdited,
-    );
+    expect(
+      beforeSave.document.package.footnotes?.find(({ id }) => id === 1)
+        ?.content,
+    ).toEqual(footnoteEdited);
 
-    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    const saved = await page.evaluate(() =>
+      globalThis.__folioCanonical?.save(),
+    );
     if (!saved) throw new TypeError("Canonical save unavailable.");
     const reopened = await parseDocx(new Uint8Array(saved).buffer, {
       preloadFonts: false,
       detectVariables: false,
     });
-    expect(reviewDifferences(beforeSave.document, reopened)).toEqual({ messages: [], omitted: 0 });
+    expect(reviewDifferences(beforeSave.document, reopened)).toEqual({
+      messages: [],
+      omitted: 0,
+    });
     expect(
-      hasInsertionBy(reopened.package.endnotes?.find(({ id }) => id === 1)?.content, "Folio User"),
+      hasInsertionBy(
+        reopened.package.endnotes?.find(({ id }) => id === 1)?.content,
+        "Folio User",
+      ),
     ).toBe(true);
   });
 }

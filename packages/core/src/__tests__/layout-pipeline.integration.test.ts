@@ -7,30 +7,34 @@
  * 3. Block changes produce correct layout updates
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { parseDocumentBody } from "../docx/documentParser";
 import { resolveFieldValues } from "../fields/resolveFieldValues";
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import {
   clickToPosition,
   clickToPositionInParagraph,
 } from "../layout-bridge/engine/clickToPosition";
-import { hitTestPage, hitTestFragment, getPageTop } from "../layout-bridge/engine/hitTest";
+import {
+  getPageTop,
+  hitTestFragment,
+  hitTestPage,
+} from "../layout-bridge/engine/hitTest";
 import { layoutDocument } from "../layout-engine/index";
-import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
-import { getPageNumbering } from "../paged-layout/sectionGeometry";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type {
+  FlowBlock,
+  LayoutOptions,
+  Measure,
+  MeasuredLine,
+  PageMargins,
   ParagraphBlock,
   ParagraphMeasure,
-  MeasuredLine,
-  FlowBlock,
-  Measure,
-  PageMargins,
-  LayoutOptions,
   TableBlock,
   TableMeasure,
 } from "../layout-engine/types";
+import { getPageNumbering } from "../paged-layout/sectionGeometry";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 
 // =============================================================================
 // TEST HELPERS
@@ -119,7 +123,9 @@ const DEFAULT_MARGINS: PageMargins = {
 /**
  * Create default layout options.
  */
-function makeLayoutOptions(overrides: Partial<LayoutOptions> = {}): LayoutOptions {
+function makeLayoutOptions(
+  overrides: Partial<LayoutOptions> = {},
+): LayoutOptions {
   return {
     pageSize: DEFAULT_PAGE_SIZE,
     margins: DEFAULT_MARGINS,
@@ -147,7 +153,9 @@ describe("Layout Engine - Page Production", () => {
 
     test("single paragraph fits on one page", () => {
       const blocks: FlowBlock[] = [makeParagraphBlock(0, "Hello, World!", 1)];
-      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 13, 100, 24)])];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 13, 100, 24)]),
+      ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
@@ -170,7 +178,10 @@ describe("Layout Engine - Page Production", () => {
           </w:body>
         </w:document>
       `);
-      const blocks = toFlowBlocks(toProseDoc({ package: { document: body } }), {});
+      const blocks = toFlowBlocks(
+        toProseDoc({ package: { document: body } }),
+        {},
+      );
       const paragraph = blocks.at(0);
       expect(paragraph?.kind).toBe("paragraph");
       if (paragraph?.kind !== "paragraph") {
@@ -194,7 +205,10 @@ describe("Layout Engine - Page Production", () => {
         now: new Date(0),
       });
 
-      expect(layout.pages.at(0)).toMatchObject({ number: 1, logicalNumber: 13 });
+      expect(layout.pages.at(0)).toMatchObject({
+        number: 1,
+        logicalNumber: 13,
+      });
       expect(resolved.values.get(field?.pmStart ?? -1)).toBe("13");
     });
 
@@ -205,7 +219,10 @@ describe("Layout Engine - Page Production", () => {
         makeLayoutOptions({ pageNumbering: { type: "restart", start: 13 } }),
       );
 
-      expect(layout.pages.at(0)).toMatchObject({ number: 1, logicalNumber: 13 });
+      expect(layout.pages.at(0)).toMatchObject({
+        number: 1,
+        logicalNumber: 13,
+      });
     });
 
     test("positions a text-anchored floating table from the current text cursor", () => {
@@ -228,7 +245,9 @@ describe("Layout Engine - Page Production", () => {
         columnWidths: [200],
         floating: { vertAnchor: "text", tblpY: 10 },
       };
-      const paragraphMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 6, 50, 40)]);
+      const paragraphMeasure = makeParagraphMeasure([
+        makeLine(0, 0, 0, 6, 50, 40),
+      ]);
       const tableMeasure: TableMeasure = {
         kind: "table",
         rows: [
@@ -267,7 +286,9 @@ describe("Layout Engine - Page Production", () => {
           attrs: { spacing: { before: 18, after: 0 } },
         },
       ];
-      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)])];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+      ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
@@ -537,7 +558,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(1);
-      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0, 1]);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        0, 1,
+      ]);
     });
 
     test("a fitting keep-next chain ignores a stale rendered page break", () => {
@@ -562,14 +585,20 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(1);
-      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0, 1, 2]);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        0, 1, 2,
+      ]);
     });
 
     test("rendered page break moves a paragraph that would cross the current page", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Nearly fills page one", 1),
         {
-          ...makeParagraphBlock(1, "Cached paragraph wraps across four lines", 23),
+          ...makeParagraphBlock(
+            1,
+            "Cached paragraph wraps across four lines",
+            23,
+          ),
           attrs: { renderedPageBreakBefore: true },
         },
       ];
@@ -586,8 +615,12 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1]);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        0,
+      ]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1,
+      ]);
     });
 
     test("rendered page break reconciles small line-metric drift near the page end", () => {
@@ -606,8 +639,12 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1]);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        0,
+      ]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1,
+      ]);
     });
 
     test("rendered page break reconciles a cached boundary inside a paragraph", () => {
@@ -626,7 +663,10 @@ describe("Layout Engine - Page Production", () => {
         ...makeLine(2, 0, 2, 5, 50, 20),
         renderedPageBreakBefore: true,
       };
-      const blocks: FlowBlock[] = [makeParagraphBlock(0, "Nearly fills page one", 16), paragraph];
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Nearly fills page one", 16),
+        paragraph,
+      ];
       const measures: Measure[] = [
         makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 790)]),
         makeParagraphMeasure([makeLine(0, 0, 0, 6, 60, 20), markerLine]),
@@ -724,15 +764,22 @@ describe("Layout Engine - Page Production", () => {
         },
       ];
       const measures: Measure[] = [
-        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 850), makeLine(0, 20, 0, 37, 300, 24)]),
+        makeParagraphMeasure([
+          makeLine(0, 0, 0, 20, 500, 850),
+          makeLine(0, 20, 0, 37, 300, 24),
+        ]),
         makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 24)]),
       ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[1].fragments.map((fragment) => fragment.blockId)).toEqual([0, 1]);
-      expect(layout.pages[1].fragments[0]).toMatchObject({ continuesFromPrev: true });
+      expect(
+        layout.pages[1].fragments.map((fragment) => fragment.blockId),
+      ).toEqual([0, 1]);
+      expect(layout.pages[1].fragments[0]).toMatchObject({
+        continuesFromPrev: true,
+      });
     });
 
     test("rendered page break reuses a page containing only an overflowed empty paragraph", () => {
@@ -760,7 +807,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages.length).toBe(2);
-      expect(layout.pages[1].fragments.map((fragment) => fragment.blockId)).toEqual([1, 2]);
+      expect(
+        layout.pages[1].fragments.map((fragment) => fragment.blockId),
+      ).toEqual([1, 2]);
     });
 
     test("empty rendered break marker reuses a page opened by the preceding paragraph", () => {
@@ -793,7 +842,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2, 3, 4]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2, 3, 4,
+      ]);
     });
 
     test("rendered page break reuses a page opened by a keep-next chain", () => {
@@ -817,7 +868,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2, 3]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2, 3,
+      ]);
     });
 
     test("rendered page break reuses a page containing a paragraph continuation", () => {
@@ -837,15 +890,22 @@ describe("Layout Engine - Page Production", () => {
       ];
       const measures: Measure[] = [
         makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 800)]),
-        makeParagraphMeasure([makeLine(0, 0, 0, 31, 200, 40), makeLine(0, 32, 0, 64, 200, 40)]),
+        makeParagraphMeasure([
+          makeLine(0, 0, 0, 31, 200, 40),
+          makeLine(0, 32, 0, 64, 200, 40),
+        ]),
         makeParagraphMeasure([makeLine(0, 0, 0, 15, 100, 24)]),
       ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0, 1]);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        0, 1,
+      ]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2,
+      ]);
     });
 
     test("stale rendered page break remains advisory after a whole paragraph moves", () => {
@@ -874,7 +934,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2,
+      ]);
     });
 
     test("rendered page break reuses a page opened within one numbered sequence", () => {
@@ -903,7 +965,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2,
+      ]);
     });
 
     test("rendered page break reuses a page opened within one tabbed style sequence", () => {
@@ -948,7 +1012,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2,
+      ]);
     });
 
     test("stale rendered page break remains advisory when tabbed layouts reflow", () => {
@@ -993,7 +1059,9 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2,
+      ]);
     });
 
     test("successive stale rendered page breaks remain advisory after natural reflow", () => {
@@ -1023,8 +1091,12 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       expect(layout.pages).toHaveLength(3);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2, 3]);
-      expect(layout.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual([4, 5]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        1, 2, 3,
+      ]);
+      expect(layout.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        4, 5,
+      ]);
     });
 
     test("explicit pageBreakBefore with a rendered page break hint breaks once", () => {
@@ -1096,7 +1168,9 @@ describe("Layout Engine - Page Production", () => {
       }
 
       // Add keepNext paragraph that should pull next paragraph to new page
-      blocks.push(makeParagraphBlock(7, "KeepNext heading", 70, { keepNext: true }));
+      blocks.push(
+        makeParagraphBlock(7, "KeepNext heading", 70, { keepNext: true }),
+      );
       measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 16, 120, 100)]));
 
       // Add following paragraph
@@ -1106,15 +1180,23 @@ describe("Layout Engine - Page Production", () => {
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       // The keepNext heading and following paragraph should be on same page
-      const headingFrag = layout.pages.flatMap((p) => p.fragments).find((f) => f.blockId === 7);
-      const followingFrag = layout.pages.flatMap((p) => p.fragments).find((f) => f.blockId === 8);
+      const headingFrag = layout.pages
+        .flatMap((p) => p.fragments)
+        .find((f) => f.blockId === 7);
+      const followingFrag = layout.pages
+        .flatMap((p) => p.fragments)
+        .find((f) => f.blockId === 8);
 
       // They should be on the same page
       if (!headingFrag || !followingFrag) {
         throw new Error("Expected heading and following fragments");
       }
-      const headingPage = layout.pages.findIndex((p) => p.fragments.includes(headingFrag));
-      const followingPage = layout.pages.findIndex((p) => p.fragments.includes(followingFrag));
+      const headingPage = layout.pages.findIndex((p) =>
+        p.fragments.includes(headingFrag),
+      );
+      const followingPage = layout.pages.findIndex((p) =>
+        p.fragments.includes(followingFrag),
+      );
 
       expect(headingPage).toBe(followingPage);
     });
@@ -1147,10 +1229,14 @@ describe("Layout Engine - Page Production", () => {
 
     test("moves an oversized keepNext chain before paginating it naturally", () => {
       const blocks: FlowBlock[] = [makeParagraphBlock(0, "Filler", 0)];
-      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 6, 80, 400)])];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 6, 80, 400)]),
+      ];
 
       for (let id = 1; id <= 6; id++) {
-        blocks.push(makeParagraphBlock(id, `Chain ${id}`, id * 10, { keepNext: id < 6 }));
+        blocks.push(
+          makeParagraphBlock(id, `Chain ${id}`, id * 10, { keepNext: id < 6 }),
+        );
         measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 7, 80, 200)]));
       }
 
@@ -1160,7 +1246,9 @@ describe("Layout Engine - Page Production", () => {
       );
 
       expect(chainStartPage).toBe(1);
-      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([
+        0,
+      ]);
       const chainPageCount = layout.pages.filter((page) =>
         page.fragments.some(({ blockId }) => blockId !== 0),
       ).length;
@@ -1171,7 +1259,9 @@ describe("Layout Engine - Page Production", () => {
   describe("margin and positioning", () => {
     test("fragments are positioned within content area", () => {
       const blocks: FlowBlock[] = [makeParagraphBlock(0, "Test content", 1)];
-      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)])];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+      ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
@@ -1186,12 +1276,15 @@ describe("Layout Engine - Page Production", () => {
 
     test("content width is page width minus margins", () => {
       const blocks: FlowBlock[] = [makeParagraphBlock(0, "Test", 1)];
-      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 4, 50, 24)])];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 4, 50, 24)]),
+      ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
       const fragment = layout.pages[0].fragments[0];
-      const expectedWidth = DEFAULT_PAGE_SIZE.w - DEFAULT_MARGINS.left - DEFAULT_MARGINS.right;
+      const expectedWidth =
+        DEFAULT_PAGE_SIZE.w - DEFAULT_MARGINS.left - DEFAULT_MARGINS.right;
 
       expect(fragment.width).toBe(expectedWidth);
     });
@@ -1214,7 +1307,11 @@ describe("Click-to-Position Mapping", () => {
         measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 8, 60, 50)]));
       }
 
-      const layout = layoutDocument(blocks, measures, makeLayoutOptions({ pageGap: 20 }));
+      const layout = layoutDocument(
+        blocks,
+        measures,
+        makeLayoutOptions({ pageGap: 20 }),
+      );
 
       expect(layout.pages.length).toBeGreaterThan(1);
 
@@ -1234,7 +1331,9 @@ describe("Click-to-Position Mapping", () => {
 
     test("hitTestPage returns correct pageY offset", () => {
       const blocks: FlowBlock[] = [makeParagraphBlock(0, "Test", 1)];
-      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 4, 50, 24)])];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 4, 50, 24)]),
+      ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
@@ -1252,7 +1351,11 @@ describe("Click-to-Position Mapping", () => {
         measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 8, 60, 50)]));
       }
 
-      const layout = layoutDocument(blocks, measures, makeLayoutOptions({ pageGap: 20 }));
+      const layout = layoutDocument(
+        blocks,
+        measures,
+        makeLayoutOptions({ pageGap: 20 }),
+      );
 
       expect(getPageTop(layout, 0)).toBe(0);
 
@@ -1296,7 +1399,9 @@ describe("Click-to-Position Mapping", () => {
 
     test("hitTestFragment calculates correct local coordinates", () => {
       const blocks: FlowBlock[] = [makeParagraphBlock(0, "Test content", 1)];
-      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)])];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+      ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
@@ -1426,9 +1531,15 @@ describe("Document Updates", () => {
     test("adding paragraph increases fragment count", () => {
       // Initial state: 1 paragraph
       const initialBlocks: FlowBlock[] = [makeParagraphBlock(0, "Initial", 1)];
-      const initialMeasures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 7, 60, 24)])];
+      const initialMeasures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 7, 60, 24)]),
+      ];
 
-      const initialLayout = layoutDocument(initialBlocks, initialMeasures, makeLayoutOptions());
+      const initialLayout = layoutDocument(
+        initialBlocks,
+        initialMeasures,
+        makeLayoutOptions(),
+      );
 
       // After adding paragraph: 2 paragraphs
       const updatedBlocks: FlowBlock[] = [
@@ -1440,7 +1551,11 @@ describe("Document Updates", () => {
         makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]),
       ];
 
-      const updatedLayout = layoutDocument(updatedBlocks, updatedMeasures, makeLayoutOptions());
+      const updatedLayout = layoutDocument(
+        updatedBlocks,
+        updatedMeasures,
+        makeLayoutOptions(),
+      );
 
       expect(updatedLayout.pages[0].fragments.length).toBe(
         initialLayout.pages[0].fragments.length + 1,
@@ -1450,9 +1565,15 @@ describe("Document Updates", () => {
     test("adding enough content creates new page", () => {
       // Start with content that fits on one page
       const smallBlocks: FlowBlock[] = [makeParagraphBlock(0, "Small", 1)];
-      const smallMeasures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)])];
+      const smallMeasures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]),
+      ];
 
-      const smallLayout = layoutDocument(smallBlocks, smallMeasures, makeLayoutOptions());
+      const smallLayout = layoutDocument(
+        smallBlocks,
+        smallMeasures,
+        makeLayoutOptions(),
+      );
       expect(smallLayout.pages.length).toBe(1);
 
       // Add content that overflows
@@ -1461,10 +1582,16 @@ describe("Document Updates", () => {
 
       for (let i = 0; i < 20; i++) {
         largeBlocks.push(makeParagraphBlock(i, `Para ${i}`, i * 10));
-        largeMeasures.push(makeParagraphMeasure([makeLine(0, 0, 0, 8, 60, 50)]));
+        largeMeasures.push(
+          makeParagraphMeasure([makeLine(0, 0, 0, 8, 60, 50)]),
+        );
       }
 
-      const largeLayout = layoutDocument(largeBlocks, largeMeasures, makeLayoutOptions());
+      const largeLayout = layoutDocument(
+        largeBlocks,
+        largeMeasures,
+        makeLayoutOptions(),
+      );
       expect(largeLayout.pages.length).toBeGreaterThan(1);
     });
   });
@@ -1480,13 +1607,21 @@ describe("Document Updates", () => {
         makeParagraphMeasure([makeLine(0, 0, 0, 6, 60, 24)]),
       ];
 
-      const beforeLayout = layoutDocument(blocks, measures, makeLayoutOptions());
+      const beforeLayout = layoutDocument(
+        blocks,
+        measures,
+        makeLayoutOptions(),
+      );
 
       // Remove second paragraph
       const afterBlocks = blocks.slice(0, 1);
       const afterMeasures = measures.slice(0, 1);
 
-      const afterLayout = layoutDocument(afterBlocks, afterMeasures, makeLayoutOptions());
+      const afterLayout = layoutDocument(
+        afterBlocks,
+        afterMeasures,
+        makeLayoutOptions(),
+      );
 
       expect(afterLayout.pages[0].fragments.length).toBe(
         beforeLayout.pages[0].fragments.length - 1,
@@ -1503,14 +1638,22 @@ describe("Document Updates", () => {
         measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 8, 60, 50)]));
       }
 
-      const multiPageLayout = layoutDocument(blocks, measures, makeLayoutOptions());
+      const multiPageLayout = layoutDocument(
+        blocks,
+        measures,
+        makeLayoutOptions(),
+      );
       expect(multiPageLayout.pages.length).toBeGreaterThan(1);
 
       // Remove most content
       const smallBlocks = blocks.slice(0, 2);
       const smallMeasures = measures.slice(0, 2);
 
-      const singlePageLayout = layoutDocument(smallBlocks, smallMeasures, makeLayoutOptions());
+      const singlePageLayout = layoutDocument(
+        smallBlocks,
+        smallMeasures,
+        makeLayoutOptions(),
+      );
       expect(singlePageLayout.pages.length).toBe(1);
     });
   });
@@ -1519,7 +1662,9 @@ describe("Document Updates", () => {
     test("changing text updates PM positions in layout", () => {
       // Original paragraph
       const originalBlock = makeParagraphBlock(0, "Original", 1);
-      const originalMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 8, 70, 24)]);
+      const originalMeasure = makeParagraphMeasure([
+        makeLine(0, 0, 0, 8, 70, 24),
+      ]);
 
       const originalLayout = layoutDocument(
         [originalBlock],
@@ -1529,7 +1674,9 @@ describe("Document Updates", () => {
 
       // Modified paragraph (longer text)
       const modifiedBlock = makeParagraphBlock(0, "Modified text here", 1);
-      const modifiedMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 18, 140, 24)]);
+      const modifiedMeasure = makeParagraphMeasure([
+        makeLine(0, 0, 0, 18, 140, 24),
+      ]);
 
       const modifiedLayout = layoutDocument(
         [modifiedBlock],
@@ -1562,7 +1709,11 @@ describe("Document Updates", () => {
         makeParagraphMeasure([makeLine(0, 0, 0, 6, 60, 24)]),
       ];
 
-      const smallLayout = layoutDocument(blocks, smallMeasures, makeLayoutOptions());
+      const smallLayout = layoutDocument(
+        blocks,
+        smallMeasures,
+        makeLayoutOptions(),
+      );
 
       // Large line height
       const largeMeasures: Measure[] = [
@@ -1570,7 +1721,11 @@ describe("Document Updates", () => {
         makeParagraphMeasure([makeLine(0, 0, 0, 6, 60, 48)]),
       ];
 
-      const largeLayout = layoutDocument(blocks, largeMeasures, makeLayoutOptions());
+      const largeLayout = layoutDocument(
+        blocks,
+        largeMeasures,
+        makeLayoutOptions(),
+      );
 
       // Second fragment should be positioned further down with larger line height
       const smallSecondY = smallLayout.pages[0].fragments[1].y;
@@ -1651,7 +1806,9 @@ describe("Section Breaks", () => {
       },
       makeParagraphBlock(4, "Third", 20),
     ];
-    const paragraphMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]);
+    const paragraphMeasure = makeParagraphMeasure([
+      makeLine(0, 0, 0, 5, 50, 24),
+    ]);
     const measures: Measure[] = [
       paragraphMeasure,
       { kind: "sectionBreak" },
@@ -1667,48 +1824,57 @@ describe("Section Breaks", () => {
     );
 
     expect(layout.pages.map(({ number }) => number)).toEqual([1, 2, 3]);
-    expect(layout.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([13, 14, 4]);
-    expect(layout.pages.map(({ sectionPageNumber }) => sectionPageNumber)).toEqual([1, 1, 1]);
+    expect(layout.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([
+      13, 14, 4,
+    ]);
+    expect(
+      layout.pages.map(({ sectionPageNumber }) => sectionPageNumber),
+    ).toEqual([1, 1, 1]);
   });
 
   test.each([
     { type: "evenPage" as const, leadingBreaks: 1, targetPage: 4 },
     { type: "oddPage" as const, leadingBreaks: 0, targetPage: 3 },
-  ])("keeps $type filler pages in the previous section", ({ type, leadingBreaks, targetPage }) => {
-    const blocks: FlowBlock[] = [makeParagraphBlock(0, "Before", 1)];
-    const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)])];
-    for (let index = 0; index < leadingBreaks; index += 1) {
-      blocks.push({ kind: "pageBreak", id: `page-break-${index}` });
-      measures.push({ kind: "pageBreak" });
-      blocks.push(makeParagraphBlock(`before-${index}`, "Before", 1));
+  ])(
+    "keeps $type filler pages in the previous section",
+    ({ type, leadingBreaks, targetPage }) => {
+      const blocks: FlowBlock[] = [makeParagraphBlock(0, "Before", 1)];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]),
+      ];
+      for (let index = 0; index < leadingBreaks; index += 1) {
+        blocks.push({ kind: "pageBreak", id: `page-break-${index}` });
+        measures.push({ kind: "pageBreak" });
+        blocks.push(makeParagraphBlock(`before-${index}`, "Before", 1));
+        measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]));
+      }
+      blocks.push({ kind: "sectionBreak", id: "section", type });
+      measures.push({ kind: "sectionBreak" });
+      blocks.push(makeParagraphBlock("after", "After", 1));
       measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]));
-    }
-    blocks.push({ kind: "sectionBreak", id: "section", type });
-    measures.push({ kind: "sectionBreak" });
-    blocks.push(makeParagraphBlock("after", "After", 1));
-    measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]));
 
-    const layout = layoutDocument(
-      blocks,
-      measures,
-      makeLayoutOptions({
-        finalPageNumbering: { type: "restart", start: 13 },
-      }),
-    );
+      const layout = layoutDocument(
+        blocks,
+        measures,
+        makeLayoutOptions({
+          finalPageNumbering: { type: "restart", start: 13 },
+        }),
+      );
 
-    const target = layout.pages.at(-1);
-    expect(target).toMatchObject({
-      number: targetPage,
-      logicalNumber: 13,
-      sectionIndex: 1,
-      sectionPageNumber: 1,
-    });
-    expect(layout.pages.at(-2)).toMatchObject({
-      number: targetPage - 1,
-      logicalNumber: targetPage - 1,
-      sectionIndex: 0,
-    });
-  });
+      const target = layout.pages.at(-1);
+      expect(target).toMatchObject({
+        number: targetPage,
+        logicalNumber: 13,
+        sectionIndex: 1,
+        sectionPageNumber: 1,
+      });
+      expect(layout.pages.at(-2)).toMatchObject({
+        number: targetPage - 1,
+        logicalNumber: targetPage - 1,
+        sectionIndex: 0,
+      });
+    },
+  );
 
   test("continuous section break does not force new page", () => {
     const blocks: FlowBlock[] = [
@@ -1729,7 +1895,8 @@ describe("Section Breaks", () => {
   });
 
   test("evenPage section break preserves the blank parity page", () => {
-    const pageContentHeight = DEFAULT_PAGE_SIZE.h - DEFAULT_MARGINS.top - DEFAULT_MARGINS.bottom;
+    const pageContentHeight =
+      DEFAULT_PAGE_SIZE.h - DEFAULT_MARGINS.top - DEFAULT_MARGINS.bottom;
     const blocks: FlowBlock[] = [
       makeParagraphBlock(0, "Before section", 1),
       { kind: "sectionBreak", id: 1, type: "evenPage" },
@@ -1761,7 +1928,9 @@ describe("Section Breaks", () => {
       { kind: "sectionBreak", id: "second-break", type: "oddPage" },
       makeParagraphBlock("third", "Third", 1),
     ];
-    const paragraphMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]);
+    const paragraphMeasure = makeParagraphMeasure([
+      makeLine(0, 0, 0, 5, 50, 24),
+    ]);
     const measures: Measure[] = [
       paragraphMeasure,
       { kind: "sectionBreak" },
@@ -1775,9 +1944,13 @@ describe("Section Breaks", () => {
     const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
     expect(layout.pages).toHaveLength(5);
-    expect(layout.pages[1]?.fragments.some(({ blockId }) => blockId === "second")).toBe(true);
+    expect(
+      layout.pages[1]?.fragments.some(({ blockId }) => blockId === "second"),
+    ).toBe(true);
     expect(layout.pages[3]?.fragments).toEqual([]);
-    expect(layout.pages[4]?.fragments.some(({ blockId }) => blockId === "third")).toBe(true);
+    expect(
+      layout.pages[4]?.fragments.some(({ blockId }) => blockId === "third"),
+    ).toBe(true);
   });
 });
 

@@ -5,7 +5,12 @@
  * turns an `@directive` line into its own token so the line never merges into
  * a neighbouring paragraph.
  */
-import { Marked, type Token, type TokenizerExtension, type Tokens } from "marked";
+import {
+  Marked,
+  type Token,
+  type TokenizerExtension,
+  type Tokens,
+} from "marked";
 
 /** A `@directive [argument]` line of a legal draft, tokenized as its own block. */
 export type LegalDirectiveToken = {
@@ -57,10 +62,14 @@ const legalDirectiveExtension: TokenizerExtension = {
 // every other consumer in the process, and the directive extension must only
 // apply to legal drafts.
 const plainMarkdown = new Marked({ gfm: true });
-const legalMarkdown = new Marked({ gfm: true, extensions: [legalDirectiveExtension] });
+const legalMarkdown = new Marked({
+  gfm: true,
+  extensions: [legalDirectiveExtension],
+});
 
 /** GFM block tokens of a markdown document. */
-export const lexMarkdown = (source: string): Token[] => plainMarkdown.lexer(source);
+export const lexMarkdown = (source: string): Token[] =>
+  plainMarkdown.lexer(source);
 
 export type LegalSourceLexResult = {
   tokens: Token[];
@@ -118,8 +127,9 @@ export const lexLegalSource = (source: string): LegalSourceLexResult => {
 export const lexInlineMarkdown = (text: string): Token[] =>
   plainMarkdown.Lexer.lexInline(text, plainMarkdown.defaults);
 
-export const isLegalDirectiveToken = (token: Token): token is LegalDirectiveToken =>
-  token.type === LEGAL_DIRECTIVE_TOKEN_TYPE;
+export const isLegalDirectiveToken = (
+  token: Token,
+): token is LegalDirectiveToken => token.type === LEGAL_DIRECTIVE_TOKEN_TYPE;
 
 // marked's `Token` union carries a `Tokens.Generic` member whose `type: string`
 // overlaps every literal (and whose `any` index signature absorbs the whole

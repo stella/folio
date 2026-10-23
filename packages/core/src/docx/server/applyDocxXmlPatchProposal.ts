@@ -1,30 +1,31 @@
-import { encodeUtf8 } from "../../utils/textEncoding";
-import { writeZipPart } from "@stll/docx-core/zip";
-import { createHash } from "node:crypto";
-
 import { panic, TaggedError } from "better-result";
 import JSZip from "jszip";
+import { createHash } from "node:crypto";
 
+import { writeZipPart } from "@stll/docx-core/zip";
+
+import { encodeUtf8 } from "../../utils/textEncoding";
 import type { DocxArchiveOptions } from "./boundedArchive";
 import { loadDocxArchive } from "./boundedArchive";
 import {
   evaluateDocxXmlPatchProposal,
   FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE,
-  InvalidFolioDocxXmlPatchProposalError,
-  parseFolioDocxXmlPatchProposal,
   type FolioDocxPreparedXmlReplacement,
   type FolioDocxXmlPatchProposal,
   type FolioDocxXmlPatchProposalEvaluation,
   type FolioDocxXmlPatchProposalLimits,
+  InvalidFolioDocxXmlPatchProposalError,
+  parseFolioDocxXmlPatchProposal,
 } from "./evaluateDocxXmlPatchProposal";
 import {
   FOLIO_DOCX_CONFORMANCE_PROFILE,
-  validateDocxConformance,
   type FolioDocxConformanceReport,
+  validateDocxConformance,
 } from "./validateDocxConformance";
 
 export const FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION = 1 as const;
-export const FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE = "folio-xml-patch-application-v1" as const;
+export const FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE =
+  "folio-xml-patch-application-v1" as const;
 
 export type ApplyDocxXmlPatchProposalArgs = {
   readonly bytes: ArrayBuffer | Uint8Array;
@@ -63,10 +64,13 @@ type RejectedProposalEvaluation = Extract<
   FolioDocxXmlPatchProposalEvaluation,
   { status: "rejected" }
 >;
-type ConformantReport = FolioDocxConformanceReport & { readonly status: "conformant" };
+type ConformantReport = FolioDocxConformanceReport & {
+  readonly status: "conformant";
+};
 
-const isConformantReport = (report: FolioDocxConformanceReport): report is ConformantReport =>
-  report.status === "conformant";
+const isConformantReport = (
+  report: FolioDocxConformanceReport,
+): report is ConformantReport => report.status === "conformant";
 
 export type FolioDocxXmlPatchApplication =
   | {
@@ -74,7 +78,10 @@ export type FolioDocxXmlPatchApplication =
       readonly profile: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE;
       readonly status: "proposal-rejected";
       readonly producesOutput: false;
-      readonly evaluation: Extract<FolioDocxXmlPatchProposalEvaluation, { status: "rejected" }>;
+      readonly evaluation: Extract<
+        FolioDocxXmlPatchProposalEvaluation,
+        { status: "rejected" }
+      >;
       readonly conformance: null;
       readonly receipt: null;
     }
@@ -83,7 +90,10 @@ export type FolioDocxXmlPatchApplication =
       readonly profile: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE;
       readonly status: "output-rejected";
       readonly producesOutput: false;
-      readonly evaluation: Extract<FolioDocxXmlPatchProposalEvaluation, { status: "accepted" }>;
+      readonly evaluation: Extract<
+        FolioDocxXmlPatchProposalEvaluation,
+        { status: "accepted" }
+      >;
       readonly conformance: FolioDocxConformanceReport;
       readonly receipt: null;
     }
@@ -92,8 +102,13 @@ export type FolioDocxXmlPatchApplication =
       readonly profile: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE;
       readonly status: "applied";
       readonly producesOutput: true;
-      readonly evaluation: Extract<FolioDocxXmlPatchProposalEvaluation, { status: "accepted" }>;
-      readonly conformance: FolioDocxConformanceReport & { readonly status: "conformant" };
+      readonly evaluation: Extract<
+        FolioDocxXmlPatchProposalEvaluation,
+        { status: "accepted" }
+      >;
+      readonly conformance: FolioDocxConformanceReport & {
+        readonly status: "conformant";
+      };
       readonly receipt: FolioDocxXmlPatchApplicationReceipt;
       readonly bytes: Uint8Array;
     };
@@ -114,7 +129,8 @@ export class FolioDocxXmlPatchApplicationError extends TaggedError(
   cause?: unknown;
 }> {}
 
-const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array): string =>
+  createHash("sha256").update(bytes).digest("hex");
 
 const snapshotInput = (bytes: ArrayBuffer | Uint8Array): Uint8Array =>
   Uint8Array.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
@@ -126,10 +142,18 @@ const snapshotArchiveOptions = (
     return undefined;
   }
   return {
-    ...(archive.maxInputBytes === undefined ? {} : { maxInputBytes: archive.maxInputBytes }),
-    ...(archive.maxEntryBytes === undefined ? {} : { maxEntryBytes: archive.maxEntryBytes }),
-    ...(archive.maxTotalBytes === undefined ? {} : { maxTotalBytes: archive.maxTotalBytes }),
-    ...(archive.maxEntries === undefined ? {} : { maxEntries: archive.maxEntries }),
+    ...(archive.maxInputBytes === undefined
+      ? {}
+      : { maxInputBytes: archive.maxInputBytes }),
+    ...(archive.maxEntryBytes === undefined
+      ? {}
+      : { maxEntryBytes: archive.maxEntryBytes }),
+    ...(archive.maxTotalBytes === undefined
+      ? {}
+      : { maxTotalBytes: archive.maxTotalBytes }),
+    ...(archive.maxEntries === undefined
+      ? {}
+      : { maxEntries: archive.maxEntries }),
   };
 };
 
@@ -140,9 +164,15 @@ const snapshotProposalLimits = (
     return undefined;
   }
   return {
-    ...(limits.maxReplacements === undefined ? {} : { maxReplacements: limits.maxReplacements }),
-    ...(limits.maxPartBytes === undefined ? {} : { maxPartBytes: limits.maxPartBytes }),
-    ...(limits.maxTotalBytes === undefined ? {} : { maxTotalBytes: limits.maxTotalBytes }),
+    ...(limits.maxReplacements === undefined
+      ? {}
+      : { maxReplacements: limits.maxReplacements }),
+    ...(limits.maxPartBytes === undefined
+      ? {}
+      : { maxPartBytes: limits.maxPartBytes }),
+    ...(limits.maxTotalBytes === undefined
+      ? {}
+      : { maxTotalBytes: limits.maxTotalBytes }),
   };
 };
 
@@ -194,14 +224,16 @@ const verifyArchiveContents = async (
     archive = await loadDocxArchive(bytes, options);
   } catch (cause) {
     throw new FolioDocxXmlPatchApplicationError({
-      message: "The evaluated package could not be verified within the archive limits.",
+      message:
+        "The evaluated package could not be verified within the archive limits.",
       stage: "verify",
       cause,
     });
   }
 
-  for (const entry of archive.entryMetadata.toSorted(({ path: left }, { path: right }) =>
-    left < right ? -1 : Number(left > right),
+  for (const entry of archive.entryMetadata.toSorted(
+    ({ path: left }, { path: right }) =>
+      left < right ? -1 : Number(left > right),
   )) {
     if (entry.directory) {
       continue;
@@ -221,7 +253,8 @@ const verifyArchiveContents = async (
         throw cause;
       }
       throw new FolioDocxXmlPatchApplicationError({
-        message: "An archive entry could not be verified within the configured limits.",
+        message:
+          "An archive entry could not be verified within the configured limits.",
         stage: "verify",
         part: entry.path,
         cause,
@@ -254,7 +287,8 @@ const applyReplacements = async ({
     const current = zip.file(replacement.path);
     if (current === null) {
       throw new FolioDocxXmlPatchApplicationError({
-        message: "An evaluated package part was unavailable during replacement.",
+        message:
+          "An evaluated package part was unavailable during replacement.",
         stage: "replace",
       });
     }

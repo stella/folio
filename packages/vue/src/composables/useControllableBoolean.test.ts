@@ -1,5 +1,6 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { ref } from "vue";
+
 import { useControllableBoolean } from "./useControllableBoolean";
 
 /**

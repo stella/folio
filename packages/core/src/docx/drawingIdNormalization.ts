@@ -1,18 +1,22 @@
 // PARSE-WARNING-EXEMPT: renumbers drawing ids to keep them unique; an id is
 // not content, and every reference is remapped with it.
 
-import { assertValidOoxmlNumericId, isValidOoxmlNumericId } from "@stll/docx-core";
-
-import { captureVerbatimXml } from "./verbatimCapture";
-import { toTransitionalNamespaceUri } from "./transitionalSpelling";
-import type { DrawingContent, Image, Shape } from "../types/document";
 import { panic } from "better-result";
+
+import {
+  assertValidOoxmlNumericId,
+  isValidOoxmlNumericId,
+} from "@stll/docx-core";
+
+import type { DrawingContent, Image, Shape } from "../types/document";
 import { isNewDataUrlDrawing } from "./newImage";
 import {
+  type DocxParagraphSurfaces,
   visitDocxParagraphs,
   visitParagraphRuns,
-  type DocxParagraphSurfaces,
 } from "./paragraphTraversal";
+import { toTransitionalNamespaceUri } from "./transitionalSpelling";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   getLocalName,
   getNamespaceUri,
@@ -32,24 +36,35 @@ type DrawingIdEntry = {
   rawDrawing?: DrawingContent;
 };
 
-const isDetachedRawDrawing = (drawing: DrawingContent | undefined): drawing is DrawingContent =>
+const isDetachedRawDrawing = (
+  drawing: DrawingContent | undefined,
+): drawing is DrawingContent =>
   drawing?.rawXml !== undefined && isNewDataUrlDrawing(drawing);
 
-const reassignRawDrawingId = ({ xml, id }: { xml: string; id: string }): string | null => {
+const reassignRawDrawingId = ({
+  xml,
+  id,
+}: {
+  xml: string;
+  id: string;
+}): string | null => {
   const root = parseXml(xml, OOXML_NAMESPACE_SCOPE);
   let foundDocPr = false;
   const visit = (element: XmlElement): void => {
     if (
-      (toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.wp &&
+      (toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") ===
+        NAMESPACES.wp &&
         getLocalName(element.name) === "docPr") ||
-      (toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.pic &&
+      (toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") ===
+        NAMESPACES.pic &&
         getLocalName(element.name) === "cNvPr")
     ) {
       for (const name of Object.keys(element.attributes ?? {})) {
         if (getLocalName(name) === "id" && element.attributes) {
           element.attributes[name] = id;
           if (
-            toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.wp &&
+            toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") ===
+              NAMESPACES.wp &&
             getLocalName(element.name) === "docPr"
           )
             foundDocPr = true;
@@ -59,7 +74,9 @@ const reassignRawDrawingId = ({ xml, id }: { xml: string; id: string }): string 
     for (const child of element.elements ?? []) visit(child);
   };
   visit(root);
-  return foundDocPr ? (root.elements ?? []).map(captureVerbatimXml).join("") : null;
+  return foundDocPr
+    ? (root.elements ?? []).map(captureVerbatimXml).join("")
+    : null;
 };
 
 /** Drawing IDs are package-local identifiers, not image content. */
@@ -92,7 +109,9 @@ export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
 
   const usedIds = new Set(
     entries.flatMap(({ drawing, rawDrawing }) =>
-      needsGeneratedId(drawing) || isDetachedRawDrawing(rawDrawing) ? [] : [Number(drawing.id)],
+      needsGeneratedId(drawing) || isDetachedRawDrawing(rawDrawing)
+        ? []
+        : [Number(drawing.id)],
     ),
   );
   let nextId = GENERATED_DRAWING_ID_START;

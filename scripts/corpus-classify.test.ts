@@ -3,7 +3,8 @@ import JSZip from "jszip";
 
 import { classifyCorpusFile } from "./lib/corpus-classify";
 
-const TRANSITIONAL = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const TRANSITIONAL =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const STRICT = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 const OFFICE_DOCUMENT =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
@@ -35,7 +36,9 @@ const conventionalPackage = (
 
 describe("classifyCorpusFile", () => {
   test("accepts a conventional package", async () => {
-    const result = await classifyCorpusFile(await packageBytes(conventionalPackage()));
+    const result = await classifyCorpusFile(
+      await packageBytes(conventionalPackage()),
+    );
     expect(result).toEqual({ kind: "docx", documentPart: "word/document.xml" });
   });
 
@@ -45,7 +48,10 @@ describe("classifyCorpusFile", () => {
     const result = await classifyCorpusFile(
       await packageBytes(conventionalPackage("word/document2.xml")),
     );
-    expect(result).toEqual({ kind: "docx", documentPart: "word/document2.xml" });
+    expect(result).toEqual({
+      kind: "docx",
+      documentPart: "word/document2.xml",
+    });
   });
 
   test("accepts a Strict-namespace document", async () => {
@@ -95,7 +101,10 @@ describe("classifyCorpusFile", () => {
         "word/document.xml": documentXml(TRANSITIONAL),
       }),
     );
-    expect(result).toMatchObject({ kind: "not-a-docx", reason: "not-an-opc-package" });
+    expect(result).toMatchObject({
+      kind: "not-a-docx",
+      reason: "not-an-opc-package",
+    });
   });
 
   test("rejects a package with no officeDocument relationship", async () => {
@@ -106,7 +115,10 @@ describe("classifyCorpusFile", () => {
         "word/document.xml": documentXml(TRANSITIONAL),
       }),
     );
-    expect(result).toMatchObject({ kind: "not-a-docx", reason: "not-an-opc-package" });
+    expect(result).toMatchObject({
+      kind: "not-a-docx",
+      reason: "not-an-opc-package",
+    });
   });
 
   test("rejects a relationship that targets a missing part", async () => {
@@ -116,7 +128,10 @@ describe("classifyCorpusFile", () => {
         "_rels/.rels": relationships("word/gone.xml"),
       }),
     );
-    expect(result).toMatchObject({ kind: "not-a-docx", reason: "not-a-wordprocessing-package" });
+    expect(result).toMatchObject({
+      kind: "not-a-docx",
+      reason: "not-a-wordprocessing-package",
+    });
   });
 
   test("rejects a package whose main part is not a WordprocessingML document", async () => {
@@ -128,14 +143,22 @@ describe("classifyCorpusFile", () => {
           '<themeManager xmlns="http://schemas.openxmlformats.org/drawingml/2006/main"/>',
       }),
     );
-    expect(result).toMatchObject({ kind: "not-a-docx", reason: "not-a-wordprocessing-package" });
+    expect(result).toMatchObject({
+      kind: "not-a-docx",
+      reason: "not-a-wordprocessing-package",
+    });
   });
 
   test("rejects a document root in an unrelated namespace", async () => {
     const result = await classifyCorpusFile(
-      await packageBytes(conventionalPackage("word/document.xml", "urn:invented")),
+      await packageBytes(
+        conventionalPackage("word/document.xml", "urn:invented"),
+      ),
     );
-    expect(result).toMatchObject({ kind: "not-a-docx", reason: "not-a-wordprocessing-package" });
+    expect(result).toMatchObject({
+      kind: "not-a-docx",
+      reason: "not-a-wordprocessing-package",
+    });
   });
 
   test("rejects malformed document markup", async () => {
@@ -146,29 +169,52 @@ describe("classifyCorpusFile", () => {
         "word/document.xml": `<w:document xmlns:w="${TRANSITIONAL}"><w:body></w:document>`,
       }),
     );
-    expect(result).toMatchObject({ kind: "not-a-docx", reason: "malformed-document-xml" });
+    expect(result).toMatchObject({
+      kind: "not-a-docx",
+      reason: "malformed-document-xml",
+    });
   });
 
   test("rejects bytes that are not a ZIP", async () => {
-    const result = await classifyCorpusFile(new TextEncoder().encode("not a zip at all"));
+    const result = await classifyCorpusFile(
+      new TextEncoder().encode("not a zip at all"),
+    );
     expect(result).toMatchObject({ kind: "not-a-docx", reason: "not-a-zip" });
   });
 
   test("rejects a truncated archive", async () => {
     const whole = await packageBytes(conventionalPackage());
-    const result = await classifyCorpusFile(whole.slice(0, Math.floor(whole.length / 2)));
-    expect(result).toMatchObject({ kind: "not-a-docx", reason: "unreadable-archive" });
+    const result = await classifyCorpusFile(
+      whole.slice(0, Math.floor(whole.length / 2)),
+    );
+    expect(result).toMatchObject({
+      kind: "not-a-docx",
+      reason: "unreadable-archive",
+    });
   });
 
   test("separates an encrypted package from any other compound file", async () => {
-    const signature = Uint8Array.of(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1);
+    const signature = Uint8Array.of(
+      0xd0,
+      0xcf,
+      0x11,
+      0xe0,
+      0xa1,
+      0xb1,
+      0x1a,
+      0xe1,
+    );
     const plain = new Uint8Array(512);
     plain.set(signature);
-    expect(await classifyCorpusFile(plain)).toMatchObject({ reason: "ole-compound-file" });
+    expect(await classifyCorpusFile(plain)).toMatchObject({
+      reason: "ole-compound-file",
+    });
 
     const encrypted = new Uint8Array(512);
     encrypted.set(signature);
     encrypted.set(Buffer.from("EncryptedPackage", "utf16le"), 64);
-    expect(await classifyCorpusFile(encrypted)).toMatchObject({ reason: "encrypted-package" });
+    expect(await classifyCorpusFile(encrypted)).toMatchObject({
+      reason: "encrypted-package",
+    });
   });
 });

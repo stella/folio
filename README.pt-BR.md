@@ -50,12 +50,15 @@ bun add @stll/folio-react react react-dom use-intl
 
 ```tsx
 import { useState } from "react";
+
 import { IntlProvider } from "use-intl";
+
 import { DocxEditor } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
 import "@stll/folio-react/standalone.css";
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 const downloadDocx = (buffer: ArrayBuffer) => {
   const url = URL.createObjectURL(new Blob([buffer], { type: DOCX_MIME }));
@@ -78,7 +81,13 @@ export function Editor() {
         accept=".docx"
         onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
       />
-      {file && <DocxEditor documentBuffer={file} author="Editor" onSave={downloadDocx} />}
+      {file && (
+        <DocxEditor
+          documentBuffer={file}
+          author="Editor"
+          onSave={downloadDocx}
+        />
+      )}
     </IntlProvider>
   );
 }

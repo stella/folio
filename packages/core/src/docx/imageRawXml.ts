@@ -1,6 +1,10 @@
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
-import type { DrawingContent, DrawingRawXmlMode, Image } from "../types/document";
+import type {
+  DrawingContent,
+  DrawingRawXmlMode,
+  Image,
+} from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 
 /**
@@ -17,11 +21,15 @@ const DRAWING_RAW_XML_MODE_ALLOWS_DIRECT_EDIT = {
 } as const satisfies Record<DrawingRawXmlMode, boolean>;
 
 /** An unclassified drawing is an ordinary editable projection; a classified one is not. */
-export const allowsDirectDrawingEdit = (mode: DrawingRawXmlMode | undefined): boolean =>
+export const allowsDirectDrawingEdit = (
+  mode: DrawingRawXmlMode | undefined,
+): boolean =>
   mode === undefined || DRAWING_RAW_XML_MODE_ALLOWS_DIRECT_EDIT[mode];
 
 /** Narrow an unvalidated value (a ProseMirror attr) to a raw-XML mode. */
-export const isDrawingRawXmlMode = (value: unknown): value is DrawingRawXmlMode =>
+export const isDrawingRawXmlMode = (
+  value: unknown,
+): value is DrawingRawXmlMode =>
   typeof value === "string" && value in DRAWING_RAW_XML_MODE_ALLOWS_DIRECT_EDIT;
 
 /**
@@ -45,7 +53,10 @@ export const imageRawXmlFingerprint = (image: Image): string =>
   canonicalJson(editableImageProjection(image));
 
 /** Whether the modeled image still says what the captured raw drawing says. */
-const modelAgreesWithRawXml = (drawing: { image: Image; rawImageFingerprint?: string }): boolean =>
+const modelAgreesWithRawXml = (drawing: {
+  image: Image;
+  rawImageFingerprint?: string;
+}): boolean =>
   drawing.rawImageFingerprint === undefined ||
   drawing.rawImageFingerprint === imageRawXmlFingerprint(drawing.image);
 
@@ -63,7 +74,9 @@ const modelAgreesWithRawXml = (drawing: { image: Image; rawImageFingerprint?: st
  * which {@link classifyDrawingSafety} reports as `opaque`, and never that
  * folio may build a replacement.
  */
-export const canReplayEditableImageRawXml = (drawing: DrawingContent): boolean => {
+export const canReplayEditableImageRawXml = (
+  drawing: DrawingContent,
+): boolean => {
   switch (drawing.rawXmlMode) {
     case DRAWING_RAW_XML_MODES.PRESERVE_ONLY:
     case DRAWING_RAW_XML_MODES.PREVIEW_ONLY:
@@ -101,7 +114,8 @@ export type DrawingSafetyClass =
  * anchor that never had one and lossy for a chart or an OLE frame, so the
  * drawing counts as opaque and an edit must block the save.
  */
-const canRegenerateDrawing = (drawing: DrawingContent): boolean => drawing.image.rId !== undefined;
+const canRegenerateDrawing = (drawing: DrawingContent): boolean =>
+  drawing.image.rId !== undefined;
 
 /**
  * Classify a drawing by what the run serializer will do with it.
@@ -109,7 +123,9 @@ const canRegenerateDrawing = (drawing: DrawingContent): boolean => drawing.image
  * Shares {@link canReplayEditableImageRawXml} with the serializer so a
  * compatibility probe and a save can never disagree about the same drawing.
  */
-export const classifyDrawingSafety = (drawing: DrawingContent): DrawingSafetyClass => {
+export const classifyDrawingSafety = (
+  drawing: DrawingContent,
+): DrawingSafetyClass => {
   if (drawing.rawXml === undefined) {
     return DRAWING_SAFETY_CLASSES.NATIVE;
   }

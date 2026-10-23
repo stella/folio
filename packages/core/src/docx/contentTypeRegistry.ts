@@ -1,9 +1,11 @@
+import { panic } from "better-result";
+
+import { escapeXmlAttribute } from "@stll/docx-core";
 /** Register a package part without rewriting authored content-type entries. */
 import { OOXML_NS } from "@stll/docx-utils";
-import { escapeXmlAttribute } from "@stll/docx-core";
-import { panic } from "better-result";
-import { spliceXml } from "./selectiveXmlPatch";
+
 import { resolvePackageRelationshipTarget } from "./packageParts";
+import { spliceXml } from "./selectiveXmlPatch";
 import {
   getAttribute,
   getLocalName,
@@ -24,7 +26,9 @@ export const registerContentTypeParts = (
     getLocalName(root.name) !== "Types" ||
     getNamespaceUri(root) !== OOXML_NS.ct
   )
-    return panic("The package content-type registry must have a valid Types root.");
+    return panic(
+      "The package content-type registry must have a valid Types root.",
+    );
   const overrides = new Map<string, string>();
   const defaults = new Map<string, string>();
   for (const element of root.elements ?? []) {
@@ -34,7 +38,9 @@ export const registerContentTypeParts = (
     if (getLocalName(element.name) === "Override") {
       const name = getAttribute(element, null, "PartName");
       const path =
-        name === null ? undefined : resolvePackageRelationshipTarget(name, "_rels/.rels");
+        name === null
+          ? undefined
+          : resolvePackageRelationshipTarget(name, "_rels/.rels");
       if (path !== undefined) overrides.set(path, type);
     }
     if (getLocalName(element.name) === "Default") {
@@ -47,7 +53,8 @@ export const registerContentTypeParts = (
   const additions: string[] = [];
   for (const part of parts) {
     const path = resolvePackageRelationshipTarget(part.partName, "_rels/.rels");
-    if (path === undefined) return panic("A registered part must have a safe package URI.");
+    if (path === undefined)
+      return panic("A registered part must have a safe package URI.");
     const type = overrides.get(path);
     if (type !== undefined) {
       if (type !== part.contentType)
@@ -69,8 +76,9 @@ export const registerContentTypeParts = (
     const markup = token[0];
     if (markup.startsWith("</") && markup.slice(2, -1).trim() === root.name)
       return (
-        spliceXml(xml, [{ start: token.index, end: token.index, newXml: additions.join("") }]) ??
-        panic("A registry insertion must preserve XML ranges.")
+        spliceXml(xml, [
+          { start: token.index, end: token.index, newXml: additions.join("") },
+        ]) ?? panic("A registry insertion must preserve XML ranges.")
       );
     if (
       markup.startsWith(`<${root.name}`) &&
@@ -80,7 +88,11 @@ export const registerContentTypeParts = (
       const end = token.index + markup.length - 2;
       return (
         spliceXml(xml, [
-          { start: end, end: end + 2, newXml: ">" + additions.join("") + `</${root.name}>` },
+          {
+            start: end,
+            end: end + 2,
+            newXml: ">" + additions.join("") + `</${root.name}>`,
+          },
         ]) ?? panic("A registry insertion must preserve XML ranges.")
       );
     }

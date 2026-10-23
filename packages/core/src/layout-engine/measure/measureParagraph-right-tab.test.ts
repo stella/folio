@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { calculateTabWidth } from "./tabCalculator";
-import type { TabContext } from "./tabCalculator";
 import { withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
 import { measureParagraph } from "./measureParagraph";
+import { calculateTabWidth } from "./tabCalculator";
+import type { TabContext } from "./tabCalculator";
 
 // Regression: the legacy `computeTabWidth` in measureParagraph ignored the
 // tab stop's `val` field, so a right (`end`) or center stop was measured as
@@ -17,7 +17,10 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
         {
           kind: "paragraph",
           id: "leading-left-tab-wrap",
-          runs: [{ kind: "tab" }, { kind: "text", text: "abcdefghijklmno", fontSize: 11 }],
+          runs: [
+            { kind: "tab" },
+            { kind: "text", text: "abcdefghijklmno", fontSize: 11 },
+          ],
           attrs: {
             tabs: [{ val: "start", pos: 1500 }],
           },
@@ -216,7 +219,9 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
       });
       const painterLineWidth = titleWidth + tabResult.width + followingWidth;
 
-      expect(Math.abs((line?.width ?? 0) - painterLineWidth)).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((line?.width ?? 0) - painterLineWidth),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 
@@ -269,7 +274,11 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
   });
 
   test.each([
-    { label: "after text", runs: ["Title"], stops: [{ val: "start" as const, pos: 5700 }] },
+    {
+      label: "after text",
+      runs: ["Title"],
+      stops: [{ val: "start" as const, pos: 5700 }],
+    },
     {
       label: "after an earlier tab",
       runs: ["1.1", "Title"],
@@ -278,34 +287,37 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
         { val: "start" as const, pos: 5700 },
       ],
     },
-  ])("honours an explicit start tab past the right indent $label", ({ runs, stops }) => {
-    withFakeTextMeasure(() => {
-      const measure = measureParagraph(
-        {
-          kind: "paragraph",
-          id: "indented-explicit-start-tab",
-          runs: [
-            ...runs.flatMap((text) => [
-              { kind: "text" as const, text, fontSize: 11 },
-              { kind: "tab" as const },
-            ]),
-            { kind: "text", text: "7", fontSize: 11 },
-          ],
-          attrs: {
-            indent: { right: 50 },
-            tabs: stops,
+  ])(
+    "honours an explicit start tab past the right indent $label",
+    ({ runs, stops }) => {
+      withFakeTextMeasure(() => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "indented-explicit-start-tab",
+            runs: [
+              ...runs.flatMap((text) => [
+                { kind: "text" as const, text, fontSize: 11 },
+                { kind: "tab" as const },
+              ]),
+              { kind: "text", text: "7", fontSize: 11 },
+            ],
+            attrs: {
+              indent: { right: 50 },
+              tabs: stops,
+            },
           },
-        },
-        400,
-      );
+          400,
+        );
 
-      // The stop sits at 380 px, past the 350 px right-indent edge but inside
-      // the 400 px content box, so "7" starts there instead of being pulled
-      // back to end at the indent.
-      expect(measure.lines).toHaveLength(1);
-      expect(measure.lines.at(0)?.width).toBe(385);
-    });
-  });
+        // The stop sits at 380 px, past the 350 px right-indent edge but inside
+        // the 400 px content box, so "7" starts there instead of being pulled
+        // back to end at the indent.
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines.at(0)?.width).toBe(385);
+      });
+    },
+  );
 
   test("bounds an explicit start tab whose content would leave the content box", () => {
     withFakeTextMeasure(() => {
@@ -458,12 +470,17 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
           },
           624,
           {
-            floatingZones: [{ leftMargin: 0, rightMargin: 300, topY: 0, bottomY: 100 }],
+            floatingZones: [
+              { leftMargin: 0, rightMargin: 300, topY: 0, bottomY: 100 },
+            ],
           },
         );
 
         expect(measure.lines).toHaveLength(1);
-        expect(measure.lines[0]).toMatchObject({ width: 276, rightOffset: 300 });
+        expect(measure.lines[0]).toMatchObject({
+          width: 276,
+          rightOffset: 300,
+        });
       },
       { charWidth: () => 5 },
     );
@@ -489,7 +506,9 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
           },
           624,
           {
-            floatingZones: [{ leftMargin: 300, rightMargin: 0, topY: 0, bottomY: 100 }],
+            floatingZones: [
+              { leftMargin: 300, rightMargin: 0, topY: 0, bottomY: 100 },
+            ],
           },
         );
 
@@ -537,7 +556,9 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
         },
       );
       const painterLineWidth = titleWidth + tabResult.width + followingWidth;
-      expect(Math.abs((line?.width ?? 0) - painterLineWidth)).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((line?.width ?? 0) - painterLineWidth),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 });

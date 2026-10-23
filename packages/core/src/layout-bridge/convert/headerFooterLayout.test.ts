@@ -1,9 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
-
-import { resolveStateStory } from "../../prosemirror/markupViewProjection";
-import { proseDocToBlocks } from "../../prosemirror/conversion/fromProseDoc";
 
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -18,7 +15,9 @@ import type {
   ParagraphBlock,
   TableBlock,
 } from "../../layout-engine/types";
+import { proseDocToBlocks } from "../../prosemirror/conversion/fromProseDoc";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { resolveStateStory } from "../../prosemirror/markupViewProjection";
 import { schema } from "../../prosemirror/schema";
 import type { BlockContent, HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";
@@ -34,13 +33,20 @@ import {
 
 const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
-const headerFooterToProseDocWithDetachedWatermarkHost = (headerFooter: HeaderFooter) => {
-  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
-    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
-      return block;
-    }
-    return { ...block, [DETACHED_WATERMARK_HOST]: true };
-  });
+const headerFooterToProseDocWithDetachedWatermarkHost = (
+  headerFooter: HeaderFooter,
+) => {
+  const markedContent: BlockContent[] = headerFooter.content.map(
+    (block, blockIndex) => {
+      if (
+        blockIndex !== headerFooter.watermarkBlockIndex ||
+        block.type !== "paragraph"
+      ) {
+        return block;
+      }
+      return { ...block, [DETACHED_WATERMARK_HOST]: true };
+    },
+  );
   return headerFooterToProseDoc(markedContent);
 };
 
@@ -126,7 +132,10 @@ function measureBlocks(blocks: FlowBlock[]): Measure[] {
     return {
       kind: "paragraph",
       lines: [],
-      totalHeight: block.kind === "paragraph" && block.attrs?.suppressEmptyParagraphHeight ? 0 : 12,
+      totalHeight:
+        block.kind === "paragraph" && block.attrs?.suppressEmptyParagraphHeight
+          ? 0
+          : 12,
     };
   });
 }
@@ -162,7 +171,9 @@ describe("header/footer character-style cascade", () => {
     "resolves every toggle for live %s ProseMirror content",
     (section) => {
       const styles = makeStyleToggleDefinitions();
-      const pmDoc = headerFooterToProseDoc([makeStyleToggleParagraph()], { styles });
+      const pmDoc = headerFooterToProseDoc([makeStyleToggleParagraph()], {
+        styles,
+      });
       const result = convertHeaderFooterPmDocToContent(
         pmDoc,
         456,
@@ -259,7 +270,12 @@ describe("calculateHeaderFooterVisualBounds", () => {
       },
     ];
 
-    const bounds = calculateHeaderFooterVisualBounds(blocks, [tableMeasure(50)], 0, metrics);
+    const bounds = calculateHeaderFooterVisualBounds(
+      blocks,
+      [tableMeasure(50)],
+      0,
+      metrics,
+    );
 
     expect(bounds).toEqual({ visualTop: 0, visualBottom: 752 });
   });
@@ -566,13 +582,16 @@ describe("calculateHeaderFooterMarginPushBounds", () => {
 
     // Simulate the pre-fix conversion path, where flowHeight was seeded with
     // paragraph + floating box height. Push still derives from in-flow blocks.
-    expect(calculateHeaderFooterMarginPushBounds(blocks, measures, 1112, metrics)).toEqual({
+    expect(
+      calculateHeaderFooterMarginPushBounds(blocks, measures, 1112, metrics),
+    ).toEqual({
       top: 0,
       bottom: 12,
     });
     // Visual: the letterhead is still part of the rendered extent.
     expect(
-      calculateHeaderFooterVisualBounds(blocks, measures, 12, metrics).visualBottom,
+      calculateHeaderFooterVisualBounds(blocks, measures, 12, metrics)
+        .visualBottom,
     ).toBeGreaterThanOrEqual(1100);
   });
 
@@ -678,7 +697,9 @@ describe("calculateHeaderFooterBodyTopClearance", () => {
       },
     ];
 
-    expect(calculateHeaderFooterBodyTopClearance(blocks, 0, metrics)).toBeUndefined();
+    expect(
+      calculateHeaderFooterBodyTopClearance(blocks, 0, metrics),
+    ).toBeUndefined();
   });
 
   test("does not flatten a mid-page wrap band into the top margin", () => {
@@ -702,7 +723,9 @@ describe("calculateHeaderFooterBodyTopClearance", () => {
       },
     ];
 
-    expect(calculateHeaderFooterBodyTopClearance(blocks, 0, metrics)).toBeUndefined();
+    expect(
+      calculateHeaderFooterBodyTopClearance(blocks, 0, metrics),
+    ).toBeUndefined();
   });
 });
 
@@ -887,8 +910,12 @@ describe("header/footer layout conversion", () => {
       ],
     });
 
-    const smaller = convertHeaderFooterToContent(header(20), 600, metrics, { measureBlocks });
-    const larger = convertHeaderFooterToContent(header(32), 600, metrics, { measureBlocks });
+    const smaller = convertHeaderFooterToContent(header(20), 600, metrics, {
+      measureBlocks,
+    });
+    const larger = convertHeaderFooterToContent(header(32), 600, metrics, {
+      measureBlocks,
+    });
 
     expect(smaller?.height).toBe(larger?.height);
     expect(smaller?.textSig).not.toBe(larger?.textSig);
@@ -940,7 +967,9 @@ describe("header/footer layout conversion", () => {
           type: "table",
           columnWidths: [7200, 1800, 1800],
           formatting: { width: { value: 0, type: "auto" } },
-          rows: [{ type: "tableRow", cells: [cell(7200), cell(1800), cell(1800)] }],
+          rows: [
+            { type: "tableRow", cells: [cell(7200), cell(1800), cell(1800)] },
+          ],
         },
       ],
     };
@@ -980,26 +1009,38 @@ describe("header/footer layout conversion", () => {
   });
 
   test.each([
-    { source: "paragraph formatting", attrs: { hasDirectParagraphFormatting: true } },
-    { source: "paragraph-mark formatting", attrs: { hasDirectParagraphMarkFormatting: true } },
+    {
+      source: "paragraph formatting",
+      attrs: { hasDirectParagraphFormatting: true },
+    },
+    {
+      source: "paragraph-mark formatting",
+      attrs: { hasDirectParagraphMarkFormatting: true },
+    },
     { source: "an explicit style", attrs: { styleId: "Spacer" } },
-  ])("keeps inherited spacing on an empty paragraph authored through $source", ({ attrs }) => {
-    const [normalized] = normalizeHeaderFooterMeasureBlocks([
-      emptyParagraph({ attrs: { spacing: { after: 10 }, ...attrs } }),
-    ]);
+  ])(
+    "keeps inherited spacing on an empty paragraph authored through $source",
+    ({ attrs }) => {
+      const [normalized] = normalizeHeaderFooterMeasureBlocks([
+        emptyParagraph({ attrs: { spacing: { after: 10 }, ...attrs } }),
+      ]);
 
-    expect(normalized).toMatchObject({
-      kind: "paragraph",
-      attrs: { spacing: { after: 10 } },
-    });
-  });
+      expect(normalized).toMatchObject({
+        kind: "paragraph",
+        attrs: { spacing: { after: 10 } },
+      });
+    },
+  );
 
   test("strips inherited spacing from a bare empty page-furniture paragraph", () => {
     const [normalized] = normalizeHeaderFooterMeasureBlocks([
       emptyParagraph({ attrs: { spacing: { after: 10 } } }),
     ]);
 
-    expect(normalized).toMatchObject({ kind: "paragraph", attrs: { spacing: {} } });
+    expect(normalized).toMatchObject({
+      kind: "paragraph",
+      attrs: { spacing: {} },
+    });
   });
 
   test("suppresses only the canonical trailing empty paragraph after a final table", () => {
@@ -1011,8 +1052,12 @@ describe("header/footer layout conversion", () => {
       emptyParagraph({ id: "trailing" }),
     ]);
 
-    expect((blocks[1] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight).toBeUndefined();
-    expect((blocks[4] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight).toBe(true);
+    expect(
+      (blocks[1] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight,
+    ).toBeUndefined();
+    expect(
+      (blocks[4] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight,
+    ).toBe(true);
   });
 
   test("keeps top-level footer trailing empty paragraph height for bottom anchoring", () => {
@@ -1021,7 +1066,9 @@ describe("header/footer layout conversion", () => {
       "footer",
     );
 
-    expect((blocks[1] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+    expect(
+      (blocks[1] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight,
+    ).toBeUndefined();
   });
 
   test("excludes canonical trailing empty paragraph from header/footer margin push", () => {
@@ -1135,7 +1182,9 @@ describe("convertHeaderFooterPmDocToContent", () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Header line" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Header line" }] },
+          ],
         },
         {
           type: "table",
@@ -1180,7 +1229,9 @@ describe("convertHeaderFooterPmDocToContent", () => {
     expect(fromPmDoc?.visualBottom).toBe(fromContent!.visualBottom);
     expect(fromPmDoc?.blocks.length).toBe(fromContent!.blocks.length);
     expect(fromPmDoc?.measures.length).toBe(fromContent!.measures.length);
-    expect(fromPmDoc?.blocks.map((b) => b.kind)).toEqual(fromContent!.blocks.map((b) => b.kind));
+    expect(fromPmDoc?.blocks.map((b) => b.kind)).toEqual(
+      fromContent!.blocks.map((b) => b.kind),
+    );
   });
 
   test("applies PR #457 trailing-empty-after-table normalization on the PM-doc path", () => {
@@ -1373,11 +1424,15 @@ describe("convertHeaderFooterPmDocToContent", () => {
   });
 
   test("rejects malformed detached watermark host metadata with its attr path", () => {
-    const malformedParagraph = schema.node("paragraph", { _detachedWatermarkHost: "invalid" });
+    const malformedParagraph = schema.node("paragraph", {
+      _detachedWatermarkHost: "invalid",
+    });
     const malformedDoc = schema.node("doc", null, [malformedParagraph]);
 
     expect(() =>
-      convertHeaderFooterPmDocToContent(malformedDoc, 456, pmMetrics, { measureBlocks }),
+      convertHeaderFooterPmDocToContent(malformedDoc, 456, pmMetrics, {
+        measureBlocks,
+      }),
     ).toThrow("paragraph.attrs._detachedWatermarkHost");
   });
 });
@@ -1385,7 +1440,9 @@ describe("convertHeaderFooterPmDocToContent", () => {
 test("header/footer comment visibility is view-only for live PM stories", () => {
   const pmDoc = schema.node("doc", null, [
     schema.node("paragraph", null, [
-      schema.text("review", [schema.marks["comment"]!.create({ commentId: 7 })]),
+      schema.text("review", [
+        schema.marks["comment"]!.create({ commentId: 7 }),
+      ]),
     ]),
   ]);
   const authored = pmDoc.toJSON();
@@ -1400,7 +1457,9 @@ test("header/footer comment visibility is view-only for live PM stories", () => 
     if (block?.kind !== "paragraph") {
       panic("Expected a paragraph block");
     }
-    expect(block.runs.find((run) => run.kind === "text")).toMatchObject({ text: "review" });
+    expect(block.runs.find((run) => run.kind === "text")).toMatchObject({
+      text: "review",
+    });
     const run = block.runs.find((candidate) => candidate.kind === "text");
     expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
       showCommentHighlights ? [7] : undefined,
@@ -1413,8 +1472,12 @@ test("header/footer review projections match resolved stories and preserve autho
   const doc = schema.node("doc", null, [
     schema.node("paragraph", null, [
       schema.text("before "),
-      schema.text("inserted ", [schema.marks["insertion"]!.create({ revisionId: 1 })]),
-      schema.text("deleted ", [schema.marks["deletion"]!.create({ revisionId: 2 })]),
+      schema.text("inserted ", [
+        schema.marks["insertion"]!.create({ revisionId: 1 }),
+      ]),
+      schema.text("deleted ", [
+        schema.marks["deletion"]!.create({ revisionId: 2 }),
+      ]),
       schema.text("after"),
     ]),
   ]);
@@ -1426,23 +1489,44 @@ test("header/footer review projections match resolved stories and preserve autho
   };
   const authoredDoc = doc.toJSON();
   const authoredModel = JSON.stringify(headerFooter);
-  for (const markupView of ["no-markup", "original", "all-markup", "no-markup"] as const) {
+  for (const markupView of [
+    "no-markup",
+    "original",
+    "all-markup",
+    "no-markup",
+  ] as const) {
     const resolvedDoc =
       markupView === "all-markup"
         ? doc
-        : resolveStateStory(state, markupView === "original" ? "reject" : "accept").resolved;
-    const expected = convertHeaderFooterPmDocToContent(resolvedDoc, 400, metrics, {
-      measureBlocks,
-    });
+        : resolveStateStory(
+            state,
+            markupView === "original" ? "reject" : "accept",
+          ).resolved;
+    const expected = convertHeaderFooterPmDocToContent(
+      resolvedDoc,
+      400,
+      metrics,
+      {
+        measureBlocks,
+      },
+    );
     for (const content of [
-      convertHeaderFooterPmDocToContent(doc, 400, metrics, { measureBlocks, markupView }),
-      convertHeaderFooterToContent(headerFooter, 400, metrics, { measureBlocks, markupView }),
+      convertHeaderFooterPmDocToContent(doc, 400, metrics, {
+        measureBlocks,
+        markupView,
+      }),
+      convertHeaderFooterToContent(headerFooter, 400, metrics, {
+        measureBlocks,
+        markupView,
+      }),
     ]) {
       const texts = (value: HeaderFooterContent | undefined) =>
         value?.blocks
           .flatMap((block) =>
             block.kind === "paragraph"
-              ? block.runs.map((run) => (run.kind === "text" ? run.text : run.kind))
+              ? block.runs.map((run) =>
+                  run.kind === "text" ? run.text : run.kind,
+                )
               : [block.kind],
           )
           .join("");

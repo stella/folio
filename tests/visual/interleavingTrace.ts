@@ -12,8 +12,12 @@ const textArbitrary = fc
     maxLength: 3,
   })
   .map((words) => words.join(" "));
-const suggestArbitrary = textArbitrary.map((text) => ({ kind: "suggest", text }) as const);
-const typingArbitrary = textArbitrary.map((text) => ({ kind: "typing", text }) as const);
+const suggestArbitrary = textArbitrary.map(
+  (text) => ({ kind: "suggest", text }) as const,
+);
+const typingArbitrary = textArbitrary.map(
+  (text) => ({ kind: "typing", text }) as const,
+);
 const remainingArbitrary = fc.oneof(
   suggestArbitrary,
   typingArbitrary,

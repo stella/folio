@@ -1,4 +1,4 @@
-import { RELATIONS, type Relation } from "./relation-contract.js";
+import { type Relation, RELATIONS } from "./relation-contract.js";
 
 /**
  * Stable issue identities for every consumer-oracle and metamorphic check.
@@ -45,11 +45,19 @@ const RULES: readonly { invariant: FailureInvariant; pattern: RegExp }[] = [
   { invariant: "commentLifetime", pattern: /comment .* outlived/iu },
   { invariant: "commentAnchor", pattern: /no comment|comment .*anchor/iu },
   { invariant: "numberingLevel", pattern: /listLevel is|numbering level/iu },
-  { invariant: "numberingLabel", pattern: /numbering format|label is|displayed label/iu },
+  {
+    invariant: "numberingLabel",
+    pattern: /numbering format|label is|displayed label/iu,
+  },
   { invariant: "numberingKind", pattern: /kind is .*expected/iu },
-  { invariant: "blockPlacement", pattern: /block .*placement|block texts differ|block order/iu },
+  {
+    invariant: "blockPlacement",
+    pattern: /block .*placement|block texts differ|block order/iu,
+  },
   { invariant: "requestedOutcome", pattern: /result is not what was asked/iu },
 ];
 
-export const invariantOfFailure = (assertion: string): FailureInvariant | null =>
+export const invariantOfFailure = (
+  assertion: string,
+): FailureInvariant | null =>
   RULES.find(({ pattern }) => pattern.test(assertion))?.invariant ?? null;

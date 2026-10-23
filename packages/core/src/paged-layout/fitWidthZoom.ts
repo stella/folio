@@ -51,7 +51,10 @@ export const fitWidthZoom = ({
   }
   const zoom = Math.min(
     FIT_TO_WIDTH_MAX_ZOOM,
-    Math.max(FIT_TO_WIDTH_MIN_ZOOM, Math.round((available / pageWidth) * 100) / 100),
+    Math.max(
+      FIT_TO_WIDTH_MIN_ZOOM,
+      Math.round((available / pageWidth) * 100) / 100,
+    ),
   );
   return { zoom, reservedEdge: edge };
 };

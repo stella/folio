@@ -1,8 +1,15 @@
 import { test } from "@playwright/test";
 
-import { ensureLiveView, expect, openEditor, VUE_ADAPTER } from "../parity/parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  openEditor,
+  VUE_ADAPTER,
+} from "../parity/parity-fixture";
 
-test("Vue applies and clears a watermark from the Insert menu", async ({ page }) => {
+test("Vue applies and clears a watermark from the Insert menu", async ({
+  page,
+}) => {
   await openEditor(page, VUE_ADAPTER);
   await ensureLiveView(page);
 
@@ -17,9 +24,15 @@ test("Vue applies and clears a watermark from the Insert menu", async ({ page })
 
   await expect(dialog).toBeHidden();
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getTextWatermark() ?? null))
+    .poll(() =>
+      page.evaluate(() => window.__folioParity?.getTextWatermark() ?? null),
+    )
     .toBe("DRAFT");
-  expect(await page.evaluate(() => window.__folioParity?.hasPendingChanges() ?? false)).toBe(true);
+  expect(
+    await page.evaluate(
+      () => window.__folioParity?.hasPendingChanges() ?? false,
+    ),
+  ).toBe(true);
 
   await page.getByRole("button", { name: "Insert", exact: true }).click();
   await page.getByRole("button", { name: "Watermark", exact: true }).click();
@@ -28,6 +41,8 @@ test("Vue applies and clears a watermark from the Insert menu", async ({ page })
 
   await expect(dialog).toBeHidden();
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getTextWatermark() ?? null))
+    .poll(() =>
+      page.evaluate(() => window.__folioParity?.getTextWatermark() ?? null),
+    )
     .toBeNull();
 });

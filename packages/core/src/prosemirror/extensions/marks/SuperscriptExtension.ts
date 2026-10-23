@@ -4,10 +4,13 @@
 
 import { panic } from "better-result";
 
-import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
+import {
+  canonicalRunFormatting,
+  withCanonicalCommand,
+} from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
-import { isMarkActive, toggleDocumentMark } from "./markUtils";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
+import { isMarkActive, toggleDocumentMark } from "./markUtils";
 
 export const SuperscriptExtension = createMarkExtension({
   name: "superscript",
@@ -29,7 +32,9 @@ export const SuperscriptExtension = createMarkExtension({
         toggleSuperscript: () =>
           withCanonicalCommand(toggleDocumentMark(superscriptType), (state) =>
             canonicalRunFormatting(state, {
-              vertAlign: isMarkActive(state, superscriptType) ? null : "superscript",
+              vertAlign: isMarkActive(state, superscriptType)
+                ? null
+                : "superscript",
             }),
           ),
       },

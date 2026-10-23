@@ -28,9 +28,15 @@ import {
   DEFAULT_FONT_SIZE,
   ptToPx,
 } from "../../layout-engine/measure/measureHelpers";
-import { getFontMetrics, measureTextWidth } from "../../layout-engine/measure/measureProvider";
+import {
+  getFontMetrics,
+  measureTextWidth,
+} from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
-import { SMALL_CAPS_SCALE, smallCapsSegments } from "../../layout-engine/measure/smallCapsCasing";
+import {
+  SMALL_CAPS_SCALE,
+  smallCapsSegments,
+} from "../../layout-engine/measure/smallCapsCasing";
 import {
   calculateTabWidth,
   pixelsToTwips,
@@ -73,6 +79,11 @@ import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { resolvePhysicalParagraphInlineLayout } from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { sanitizeExternalUrl } from "../../utils/urlSecurity";
+import {
+  DOUBLE_STROKE_GAP_FACTOR,
+  HIT_REGION_KINDS,
+  strokeCrossExtentPx,
+} from "../primitives";
 import type {
   DisplayColor,
   DisplayGlyphRun,
@@ -85,11 +96,10 @@ import type {
   DisplayStroke,
 } from "../types";
 import { type BuildContext, trackedChangeColor } from "./buildContext";
-import { DOUBLE_STROKE_GAP_FACTOR, HIT_REGION_KINDS, strokeCrossExtentPx } from "../primitives";
-import type { PageComposer, RegionDescriptor } from "./regions";
 import { DOC_CANVAS_TEXT, parseDisplayColor } from "./colors";
 import { buildGlyphs, glyphRunText, type Glyphs } from "./glyphs";
 import { paintImage } from "./imagePrimitives";
+import type { PageComposer, RegionDescriptor } from "./regions";
 import {
   resolveBorderStroke,
   underlinePattern,
@@ -128,7 +138,9 @@ const AUTOMATIC_TEXT_COLOR_VALUES = new Set(["auto", "windowtext"]);
 
 /** `w:color w:val="auto"` and its `windowtext` spelling, normalized as the painter normalizes them. */
 const isAutomaticTextColor = (color: string): boolean =>
-  AUTOMATIC_TEXT_COLOR_VALUES.has(color.trim().toLowerCase().replace(/^#/u, ""));
+  AUTOMATIC_TEXT_COLOR_VALUES.has(
+    color.trim().toLowerCase().replace(/^#/u, ""),
+  );
 
 const isNoteReferenceRun = (run: TextRun | TabRun): boolean =>
   run.footnoteRefId !== undefined || run.endnoteRefId !== undefined;
@@ -156,12 +168,22 @@ const resolveRunColor = (run: TextRun, context: BuildContext): DisplayColor => {
     color = parseDisplayColor(getAutomaticTextColorForBackground(background));
   }
   if (isTracked) {
-    color = trackedChangeColor(context.authorColors, run.changeAuthor, run.isSuggestion);
+    color = trackedChangeColor(
+      context.authorColors,
+      run.changeAuthor,
+      run.isSuggestion,
+    );
   }
   if (run.hyperlink && run.hyperlink.noDefaultStyle !== true) {
     const direct = run.color?.trim();
-    const directWins = direct && !isAutomaticTextColor(direct) && run.textColorSource === "direct";
-    color = (directWins ? parseDisplayColor(direct) : undefined) ?? color ?? HYPERLINK_COLOR;
+    const directWins =
+      direct &&
+      !isAutomaticTextColor(direct) &&
+      run.textColorSource === "direct";
+    color =
+      (directWins ? parseDisplayColor(direct) : undefined) ??
+      color ??
+      HYPERLINK_COLOR;
   }
 
   return color ?? DOC_CANVAS_TEXT;
@@ -245,7 +267,10 @@ const bordersEqual = (a?: BorderStyle, b?: BorderStyle): boolean => {
   return a.style === b.style && a.width === b.width && a.color === b.color;
 };
 
-const bordersFormGroup = (a?: ParagraphBorders, b?: ParagraphBorders): boolean =>
+const bordersFormGroup = (
+  a?: ParagraphBorders,
+  b?: ParagraphBorders,
+): boolean =>
   Boolean(a) &&
   Boolean(b) &&
   bordersEqual(a?.top, b?.top) &&
@@ -263,7 +288,8 @@ const paintParagraphChrome = ({
   nextBorders,
 }: ParagraphPaintOptions): DisplayPrimitive[] => {
   const primitives: DisplayPrimitive[] = [];
-  const { indentLeft, indentRight } = resolvePhysicalParagraphInlineLayout(block);
+  const { indentLeft, indentRight } =
+    resolvePhysicalParagraphInlineLayout(block);
 
   const shading = block.attrs?.shading;
   if (shading) {
@@ -304,8 +330,12 @@ const paintParagraphChrome = ({
     return primitives;
   }
 
-  const topBorder = bordersFormGroup(prevBorders, borders) ? borders.between : borders.top;
-  const bottomBorder = bordersFormGroup(borders, nextBorders) ? undefined : borders.bottom;
+  const topBorder = bordersFormGroup(prevBorders, borders)
+    ? borders.between
+    : borders.top;
+  const bottomBorder = bordersFormGroup(borders, nextBorders)
+    ? undefined
+    : borders.bottom;
   const outsets = resolveParagraphBorderHorizontalOutsets(
     borders,
     topBorder !== undefined || bottomBorder !== undefined,
@@ -315,9 +345,15 @@ const paintParagraphChrome = ({
   const boxRight = fragment.x + fragment.width - (indentRight - outsets.right);
   const boxTop = fragment.y - (topBorder?.space ?? 0) - (topBorder?.width ?? 0);
   const boxBottom =
-    fragment.y + fragment.height + (bottomBorder?.space ?? 0) + (bottomBorder?.width ?? 0);
+    fragment.y +
+    fragment.height +
+    (bottomBorder?.space ?? 0) +
+    (bottomBorder?.width ?? 0);
 
-  const push = (border: BorderStyle | undefined, line: (stroke: DisplayStroke) => DisplayLine) => {
+  const push = (
+    border: BorderStyle | undefined,
+    line: (stroke: DisplayStroke) => DisplayLine,
+  ) => {
     if (!border) {
       return;
     }
@@ -424,7 +460,9 @@ const resolveLineGeometry = ({
 }: ResolveLineGeometryOptions): LineGeometry => {
   const leftOffset = line.leftOffset ?? 0;
   const rightOffset = line.rightOffset ?? 0;
-  const firstLineExtra = isFirstLine ? firstLineOffsetPx + markerInlineWidthPx : 0;
+  const firstLineExtra = isFirstLine
+    ? firstLineOffsetPx + markerInlineWidthPx
+    : 0;
 
   // The measurer accumulates from the fragment's left edge whatever the
   // alignment, so tab stops stay on the document's grid. Both `measureParagraph`
@@ -433,7 +471,8 @@ const resolveLineGeometry = ({
   const layoutRightEdgeXPx = fragment.width - indentRight - rightOffset;
 
   const leftEdge = fragment.x + layoutStartXPx;
-  const rightEdge = fragment.x + layoutRightEdgeXPx - (isRtl ? firstLineExtra : 0);
+  const rightEdge =
+    fragment.x + layoutRightEdgeXPx - (isRtl ? firstLineExtra : 0);
 
   let paintStartXPx: number;
   switch (alignment) {
@@ -452,9 +491,17 @@ const resolveLineGeometry = ({
   // CSS centres the inline box in its line box: half the leading sits above the
   // font's ascent, half below its descent.
   const baselineYPx =
-    lineTopYPx + (line.lineHeight - (line.ascent + line.descent)) / 2 + line.ascent;
+    lineTopYPx +
+    (line.lineHeight - (line.ascent + line.descent)) / 2 +
+    line.ascent;
 
-  return { paintStartXPx, layoutStartXPx, layoutRightEdgeXPx, baselineYPx, lineTopYPx };
+  return {
+    paintStartXPx,
+    layoutStartXPx,
+    layoutRightEdgeXPx,
+    baselineYPx,
+    lineTopYPx,
+  };
 };
 
 type JustificationPlan = {
@@ -542,7 +589,10 @@ const resolveJustification = ({
  * used against the body and address unrelated content; one that says which
  * document it came from can be routed into it instead.
  */
-const modelRangeOf = (run: TextRun, context: BuildContext): DisplayGlyphRun["pmRange"] =>
+const modelRangeOf = (
+  run: TextRun,
+  context: BuildContext,
+): DisplayGlyphRun["pmRange"] =>
   run.pmStart === undefined || run.pmEnd === undefined
     ? undefined
     : { start: run.pmStart, end: run.pmEnd, story: context.story };
@@ -578,7 +628,10 @@ type EmitGlyphRunOptions = {
  * that direction. A wrapper with no `w:val` states nothing, and the paragraph
  * decides as before.
  */
-const runGlyphDirection = (run: TextRun, paragraphIsRtl: boolean): "ltr" | "rtl" =>
+const runGlyphDirection = (
+  run: TextRun,
+  paragraphIsRtl: boolean,
+): "ltr" | "rtl" =>
   run.bidiWrapper?.direction ?? (paragraphIsRtl ? "rtl" : "ltr");
 
 /**
@@ -627,7 +680,10 @@ const smallCapsGlyphRunSegments = (
   let advanceIndex = 0;
   for (const segment of segments) {
     const codePointCount = [...segment.text].length;
-    const advancesPx = glyphs.advancesPx.slice(advanceIndex, advanceIndex + codePointCount);
+    const advancesPx = glyphs.advancesPx.slice(
+      advanceIndex,
+      advanceIndex + codePointCount,
+    );
     advanceIndex += codePointCount;
     result.push({
       text: segment.text,
@@ -776,7 +832,10 @@ const emitGlyphRun = ({
     // Uniform per-run CSS (letter/word spacing, horizontal scale): identical
     // on every segment the split emits, same as it would be on the one
     // primitive this run would otherwise paint as.
-    const adjustments = glyphs.adjustments === undefined ? {} : { adjustments: glyphs.adjustments };
+    const adjustments =
+      glyphs.adjustments === undefined
+        ? {}
+        : { adjustments: glyphs.adjustments };
     let segmentXPx = paintXPx;
     let segmentTextOffset = 0;
     for (const segment of smallCapsRuns) {
@@ -826,7 +885,9 @@ const emitGlyphRun = ({
           heightPx: lineHeightPx,
         },
         target,
-        ...(run.hyperlink.tooltip === undefined ? {} : { tooltip: run.hyperlink.tooltip }),
+        ...(run.hyperlink.tooltip === undefined
+          ? {}
+          : { tooltip: run.hyperlink.tooltip }),
       });
     }
   }
@@ -894,12 +955,19 @@ const underlineSpans = (
  * plus the gap a `double` stroke leaves between its rules, so `wavyDouble`'s
  * waves clear each other by the same margin and stay centred on the underline.
  */
-const stackedStrokeOffsetsPx = (stroke: DisplayStroke, count: number): readonly number[] => {
+const stackedStrokeOffsetsPx = (
+  stroke: DisplayStroke,
+  count: number,
+): readonly number[] => {
   if (count < 2) {
     return [0];
   }
-  const separationPx = strokeCrossExtentPx(stroke) + DOUBLE_STROKE_GAP_FACTOR * stroke.thicknessPx;
-  return Array.from({ length: count }, (_, index) => (index - (count - 1) / 2) * separationPx);
+  const separationPx =
+    strokeCrossExtentPx(stroke) + DOUBLE_STROKE_GAP_FACTOR * stroke.thicknessPx;
+  return Array.from(
+    { length: count },
+    (_, index) => (index - (count - 1) / 2) * separationPx,
+  );
 };
 
 type EmitDecorationsOptions = {
@@ -930,14 +998,21 @@ const emitDecorations = ({
   const plainThicknessPx = underlineThicknessPx(fontSizePx);
   const trackedColor =
     run.isInsertion || run.isDeletion
-      ? trackedChangeColor(context.authorColors, run.changeAuthor, run.isSuggestion)
+      ? trackedChangeColor(
+          context.authorColors,
+          run.changeAuthor,
+          run.isSuggestion,
+        )
       : undefined;
 
   const wantsUnderline = Boolean(run.underline) && !isNoteReferenceRun(run);
   if (wantsUnderline || run.isInsertion) {
-    const authored = typeof run.underline === "object" ? run.underline : undefined;
+    const authored =
+      typeof run.underline === "object" ? run.underline : undefined;
     const authoredColor =
-      authored?.color === undefined ? undefined : parseDisplayColor(authored.color);
+      authored?.color === undefined
+        ? undefined
+        : parseDisplayColor(authored.color);
     // A suggested insertion strokes dotted; an author's insertion strokes solid
     // in the author's hue (`renderParagraph.ts:513-545`). That presentation
     // replaces the authored member whole, weight and word gaps included.
@@ -954,9 +1029,17 @@ const emitDecorations = ({
       };
       const centerYPx = underlineCenterYPx(baselineYPx, fontSizePx);
       for (const span of underlineSpans(glyphs, xPx, style === "words")) {
-        for (const offsetPx of stackedStrokeOffsetsPx(stroke, underlineStrokeCount(style))) {
+        for (const offsetPx of stackedStrokeOffsetsPx(
+          stroke,
+          underlineStrokeCount(style),
+        )) {
           sink.decorations.push(
-            horizontalLine(span.xPx, span.widthPx, centerYPx + offsetPx, stroke),
+            horizontalLine(
+              span.xPx,
+              span.widthPx,
+              centerYPx + offsetPx,
+              stroke,
+            ),
           );
         }
       }
@@ -965,11 +1048,16 @@ const emitDecorations = ({
 
   if (run.strike || run.isDeletion) {
     sink.decorations.push(
-      horizontalLine(xPx, widthPx, strikethroughCenterYPx(baselineYPx, fontSizePx), {
-        color: trackedColor ?? color,
-        thicknessPx: plainThicknessPx,
-        pattern: run.isSuggestion ? "dotted" : "solid",
-      }),
+      horizontalLine(
+        xPx,
+        widthPx,
+        strikethroughCenterYPx(baselineYPx, fontSizePx),
+        {
+          color: trackedColor ?? color,
+          thicknessPx: plainThicknessPx,
+          pattern: run.isSuggestion ? "dotted" : "solid",
+        },
+      ),
     );
   }
 };
@@ -989,10 +1077,18 @@ const reportRunEffects = (run: TextRun, context: BuildContext): void => {
     );
   }
   if (run.textEffect) {
-    unsupported.report(UNSUPPORTED_CONSTRUCT.textEffect, pageIndex, `w:effect ${run.textEffect}`);
+    unsupported.report(
+      UNSUPPORTED_CONSTRUCT.textEffect,
+      pageIndex,
+      `w:effect ${run.textEffect}`,
+    );
   }
   if (run.emphasisMark) {
-    unsupported.report(UNSUPPORTED_CONSTRUCT.emphasisMark, pageIndex, `w:em ${run.emphasisMark}`);
+    unsupported.report(
+      UNSUPPORTED_CONSTRUCT.emphasisMark,
+      pageIndex,
+      `w:em ${run.emphasisMark}`,
+    );
   }
   if (run.emboss || run.imprint || run.textShadow) {
     unsupported.report(
@@ -1003,7 +1099,10 @@ const reportRunEffects = (run: TextRun, context: BuildContext): void => {
   }
 };
 
-const resolveLinkTarget = (href: string, context: BuildContext): DisplayLinkTarget | undefined => {
+const resolveLinkTarget = (
+  href: string,
+  context: BuildContext,
+): DisplayLinkTarget | undefined => {
   if (href.startsWith("#")) {
     return context.bookmarkTargets.get(href.slice(1));
   }
@@ -1053,10 +1152,11 @@ const paintLine = ({
   // splits a part-word part-space run so the collapsed span is a whole run.
   // Reusing it is the only way the editor and the export cannot come to
   // disagree about a space.
-  const { runs, collapsedLeadingRuns, collapsedTrailingRuns } = splitCollapsibleLineEdgeSpaces(
-    splitTextRunsByEastAsia(sliceRunsForLine(block, line)),
-    startsAfterSoftWrap(block, line),
-  );
+  const { runs, collapsedLeadingRuns, collapsedTrailingRuns } =
+    splitCollapsibleLineEdgeSpaces(
+      splitTextRunsByEastAsia(sliceRunsForLine(block, line)),
+      startsAfterSoftWrap(block, line),
+    );
   const isCollapsedEdgeRun = (run: TextRun): boolean =>
     collapsedLeadingRuns.has(run) || collapsedTrailingRuns.has(run);
 
@@ -1088,7 +1188,9 @@ const paintLine = ({
         shrinkableSpaces += countCompressibleSpaces(run.text);
       }
     } else if (run.kind === "field") {
-      shrinkableSpaces += countCompressibleSpaces(resolveFieldText(run, context));
+      shrinkableSpaces += countCompressibleSpaces(
+        resolveFieldText(run, context),
+      );
     }
   }
 
@@ -1112,7 +1214,10 @@ const paintLine = ({
       context,
       // The marker occupies the slot immediately before the body text, which
       // `layoutStartXPx` already sits past.
-      paintXPx: geometry.paintStartXPx - markerInlineWidthPx + getListMarkerVisualOffset(block),
+      paintXPx:
+        geometry.paintStartXPx -
+        markerInlineWidthPx +
+        getListMarkerVisualOffset(block),
       baselineYPx: geometry.baselineYPx,
       isRtl,
     });
@@ -1323,7 +1428,9 @@ type PaintListMarkerOptions = {
   readonly isRtl: boolean;
 };
 
-const parseMarkerColor = (color: string | undefined): DisplayColor | undefined =>
+const parseMarkerColor = (
+  color: string | undefined,
+): DisplayColor | undefined =>
   color === undefined ? undefined : parseDisplayColor(color);
 
 const paintListMarker = ({
@@ -1343,12 +1450,19 @@ const paintListMarker = ({
   // A folded LISTNUM marker carries both slots separated by a tab; without the
   // second-slot offset there is nothing to align it to, so paint it as one run.
   const text = toPaintedText(marker.replaceAll("\t", " "));
-  const glyphs = buildGlyphs({ text, style, allCaps: false, spaceDeltaPx: 0, collapsed: false });
+  const glyphs = buildGlyphs({
+    text,
+    style,
+    allCaps: false,
+    spaceDeltaPx: 0,
+    collapsed: false,
+  });
 
   const revision = block.attrs?.listMarkerRevision;
   const color = revision
     ? trackedChangeColor(context.authorColors, revision.author, undefined)
-    : (parseMarkerColor(getRenderableListMarkerColor(formatting.color)) ?? DOC_CANVAS_TEXT);
+    : (parseMarkerColor(getRenderableListMarkerColor(formatting.color)) ??
+      DOC_CANVAS_TEXT);
 
   const font = context.fonts.intern({
     fontFamily: formatting.fontFamily,
@@ -1437,11 +1551,17 @@ const paintTab = ({
     if (following.kind === "tab" || following.kind === "lineBreak") {
       break;
     }
-    if (following.kind === "text" || following.kind === "field" || following.kind === "math") {
+    if (
+      following.kind === "text" ||
+      following.kind === "field" ||
+      following.kind === "math"
+    ) {
       const text = paintableText(following, context);
       followingText += text;
       followingWidthPx += measureTextWidth(
-        following.kind === "text" && following.allCaps ? text.toLocaleUpperCase() : text,
+        following.kind === "text" && following.allCaps
+          ? text.toLocaleUpperCase()
+          : text,
         runFontStyle(following),
       );
     } else if (following.kind === "image" && !isFloatingImageRun(following)) {
@@ -1451,22 +1571,28 @@ const paintTab = ({
 
   const decimalIndex = followingText.indexOf(".");
   const decimalPrefixWidthPx =
-    decimalIndex === -1 ? 0 : measureDecimalPrefixWidth(runs, index, decimalIndex, context);
+    decimalIndex === -1
+      ? 0
+      : measureDecimalPrefixWidth(runs, index, decimalIndex, context);
 
   const result = calculateTabWidth(layoutXPx, tabContext, {
     followingWidth: followingWidthPx,
-    ...(decimalPrefixWidthPx > 0 ? { decimalPrefixWidth: decimalPrefixWidthPx } : {}),
+    ...(decimalPrefixWidthPx > 0
+      ? { decimalPrefixWidth: decimalPrefixWidthPx }
+      : {}),
   });
 
   let widthPx = result.width;
   if (
     result.alignment === "end" &&
-    layoutXPx + widthPx + followingWidthPx > layoutRightEdgeXPx + WIDTH_EPSILON_PX
+    layoutXPx + widthPx + followingWidthPx >
+      layoutRightEdgeXPx + WIDTH_EPSILON_PX
   ) {
     widthPx = Math.max(1, layoutRightEdgeXPx - layoutXPx - followingWidthPx);
   }
 
-  const leaderChar = result.leader === undefined ? null : getLeaderChar(result.leader);
+  const leaderChar =
+    result.leader === undefined ? null : getLeaderChar(result.leader);
   if (leaderChar !== null && widthPx > 0) {
     const style = runFontStyle(run);
     const unitWidthPx = measureTextWidth(leaderChar, style);
@@ -1527,7 +1653,11 @@ const measureDecimalPrefixWidth = (
 ): number => {
   let width = 0;
   let consumed = 0;
-  for (let index = tabIndex + 1; index < runs.length && consumed < decimalIndex; index += 1) {
+  for (
+    let index = tabIndex + 1;
+    index < runs.length && consumed < decimalIndex;
+    index += 1
+  ) {
     // SAFETY: index < runs.length.
     const run = runs[index]!;
     if (run.kind === "tab" || run.kind === "lineBreak") {
@@ -1547,11 +1677,14 @@ const measureDecimalPrefixWidth = (
 };
 
 /** Every primitive a paragraph fragment paints, back to front. */
-export const paintParagraphFragment = (options: ParagraphPaintOptions): void => {
+export const paintParagraphFragment = (
+  options: ParagraphPaintOptions,
+): void => {
   const { fragment, block, measure, context, composer } = options;
   composer.push(paintParagraphChrome(options));
 
-  const { alignment, indentLeft, indentRight, isRtl } = resolvePhysicalParagraphInlineLayout(block);
+  const { alignment, indentLeft, indentRight, isRtl } =
+    resolvePhysicalParagraphInlineLayout(block);
   const indent = block.attrs?.indent;
   // The measurer's formula, not the painter's `hanging ? -hanging : firstLine`:
   // line breaking was decided on this one, so paint must agree with it.
@@ -1569,7 +1702,11 @@ export const paintParagraphFragment = (options: ParagraphPaintOptions): void => 
   }
 
   let cursorYPx = fragment.y;
-  for (let offset = 0; offset < fragment.toLine - fragment.fromLine; offset += 1) {
+  for (
+    let offset = 0;
+    offset < fragment.toLine - fragment.fromLine;
+    offset += 1
+  ) {
     const lineIndex = fragment.fromLine + offset;
     const line = measure.lines[lineIndex];
     if (!line) {
@@ -1667,26 +1804,40 @@ type LineModelOptions = {
   readonly context: BuildContext;
 };
 
-const lineModel = ({ block, line, runs, context }: LineModelOptions): DisplayHitRegionModel => {
+const lineModel = ({
+  block,
+  line,
+  runs,
+  context,
+}: LineModelOptions): DisplayHitRegionModel => {
   const positions = runs.flatMap((run) =>
     run.kind === "text" && run.pmStart !== undefined && run.pmEnd !== undefined
       ? [{ start: run.pmStart, end: run.pmEnd }]
       : [],
   );
   const commentIds = [
-    ...new Set(runs.flatMap((run) => (run.kind === "text" ? (run.commentIds ?? []) : []))),
+    ...new Set(
+      runs.flatMap((run) =>
+        run.kind === "text" ? (run.commentIds ?? []) : [],
+      ),
+    ),
   ];
   const trailingRun = block.runs.at(-1);
   const trailingBreakEnd =
-    runs.length === 0 && line.fromRun > block.runs.length - 1 && trailingRun?.kind === "lineBreak"
+    runs.length === 0 &&
+    line.fromRun > block.runs.length - 1 &&
+    trailingRun?.kind === "lineBreak"
       ? trailingRun.pmEnd
       : undefined;
   const emptyStart =
-    trailingBreakEnd ?? (block.pmStart === undefined ? undefined : block.pmStart + 1);
+    trailingBreakEnd ??
+    (block.pmStart === undefined ? undefined : block.pmStart + 1);
   const start = positions.at(0)?.start ?? emptyStart;
   const end =
     positions.at(-1)?.end ??
-    (trailingBreakEnd === undefined ? (block.pmEnd ?? emptyStart) : trailingBreakEnd);
+    (trailingBreakEnd === undefined
+      ? (block.pmEnd ?? emptyStart)
+      : trailingBreakEnd);
   return {
     blockId: String(block.id),
     ...(start === undefined || end === undefined

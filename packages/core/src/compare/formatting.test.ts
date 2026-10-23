@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIParagraphBlock, FolioAIInlineBooleanProperty } from "../ai-edits/types";
-import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
+import type {
+  FolioAIInlineBooleanProperty,
+  FolioAIParagraphBlock,
+} from "../ai-edits/types";
 import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import { inlineFormattingSegments } from "./formatting";
 
-const block = (previewRuns: FolioAIParagraphBlock["previewRuns"]): FolioAIParagraphBlock => ({
+const block = (
+  previewRuns: FolioAIParagraphBlock["previewRuns"],
+): FolioAIParagraphBlock => ({
   id: "block",
   kind: "paragraph",
   statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
@@ -36,7 +41,9 @@ const blockWithBooleanState = (
     {
       text: "Contract",
       ...(effective && { [property]: true }),
-      ...("value" in direct && { directFormatting: { [property]: direct.value } }),
+      ...("value" in direct && {
+        directFormatting: { [property]: direct.value },
+      }),
     },
   ]);
 };
@@ -54,12 +61,16 @@ describe("inlineFormattingSegments", () => {
       targetBlock: { ...block(targetRuns), text },
     };
 
-    const exact = inlineFormattingSegments({ ...options, maxSegments: runCount });
+    const exact = inlineFormattingSegments({
+      ...options,
+      maxSegments: runCount,
+    });
     expect(exact).toEqual({
       status: "compared",
       segments: expect.any(Array),
     });
-    if (exact.status !== "compared") throw new Error("Expected compared formatting ranges");
+    if (exact.status !== "compared")
+      throw new Error("Expected compared formatting ranges");
     expect(exact.segments).toHaveLength(runCount);
     expect(exact.segments.at(0)).toEqual({
       startOffset: 0,
@@ -71,7 +82,9 @@ describe("inlineFormattingSegments", () => {
       endOffset: runCount,
       formatting: { italic: true },
     });
-    expect(inlineFormattingSegments({ ...options, maxSegments: runCount - 1 })).toEqual({
+    expect(
+      inlineFormattingSegments({ ...options, maxSegments: runCount - 1 }),
+    ).toEqual({
       status: "budget-exceeded",
       maximum: runCount - 1,
     });
@@ -87,7 +100,11 @@ describe("inlineFormattingSegments", () => {
     const joined = block([{ text: "Contract", strike: true }]);
 
     expect(
-      inlineFormattingSegments({ baseBlock: split, targetBlock: joined, maxSegments: 10 }),
+      inlineFormattingSegments({
+        baseBlock: split,
+        targetBlock: joined,
+        maxSegments: 10,
+      }),
     ).toEqual({ status: "compared", segments: [] });
     expect(sameCanonicalInlinePresentation(split, joined)).toBe(true);
   });
@@ -104,14 +121,18 @@ describe("inlineFormattingSegments", () => {
       }),
     ).toEqual({
       status: "compared",
-      segments: [{ startOffset: 0, endOffset: 8, formatting: { strike: true } }],
+      segments: [
+        { startOffset: 0, endOffset: 8, formatting: { strike: true } },
+      ],
     });
   });
 
   test("reports target font face, half-point size, and normalized RGB color", () => {
     expect(
       inlineFormattingSegments({
-        baseBlock: block([{ text: "Contract", fontFamily: "Arial", fontSizePt: 10 }]),
+        baseBlock: block([
+          { text: "Contract", fontFamily: "Arial", fontSizePt: 10 },
+        ]),
         targetBlock: block([
           {
             text: "Contract",
@@ -133,7 +154,11 @@ describe("inlineFormattingSegments", () => {
         {
           startOffset: 0,
           endOffset: 8,
-          formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+          formatting: {
+            fontFamily: "Georgia",
+            fontSizePt: 10.5,
+            color: "C00000",
+          },
         },
       ],
     });
@@ -189,7 +214,11 @@ describe("inlineFormattingSegments", () => {
         for (const baseDirect of DIRECT_BOOLEAN_STATES) {
           for (const targetDirect of DIRECT_BOOLEAN_STATES) {
             const base = blockWithBooleanState(property, inherited, baseDirect);
-            const target = blockWithBooleanState(property, inherited, targetDirect);
+            const target = blockWithBooleanState(
+              property,
+              inherited,
+              targetDirect,
+            );
             const sameDirectState = baseDirect.label === targetDirect.label;
             const expectedSegments = sameDirectState
               ? []
@@ -198,7 +227,8 @@ describe("inlineFormattingSegments", () => {
                     startOffset: 0,
                     endOffset: 8,
                     formatting: {
-                      [property]: "value" in targetDirect ? targetDirect.value : null,
+                      [property]:
+                        "value" in targetDirect ? targetDirect.value : null,
                     },
                   },
                 ];
@@ -220,7 +250,9 @@ describe("inlineFormattingSegments", () => {
               target: targetDirect.label,
               comparison: { status: "compared", segments: expectedSegments },
             });
-            expect(sameCanonicalInlinePresentation(base, target)).toBe(sameDirectState);
+            expect(sameCanonicalInlinePresentation(base, target)).toBe(
+              sameDirectState,
+            );
           }
         }
       }

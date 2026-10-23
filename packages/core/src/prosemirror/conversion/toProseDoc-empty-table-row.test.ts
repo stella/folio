@@ -37,7 +37,9 @@ describe("toProseDoc — literal empty <w:tr/> rows", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "A" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "A" }] },
+                  ],
                 },
               ],
             },
@@ -46,7 +48,9 @@ describe("toProseDoc — literal empty <w:tr/> rows", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "B" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "B" }] },
+                  ],
                 },
               ],
             },
@@ -55,7 +59,9 @@ describe("toProseDoc — literal empty <w:tr/> rows", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "C" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "C" }] },
+                  ],
                 },
               ],
             },

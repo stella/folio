@@ -14,7 +14,11 @@ const stateWithCaretIn = (markdown: string, text: string): EditorState => {
   });
   let caret: number | null = null;
   state.doc.descendants((node, pos) => {
-    if (caret === null && node.type.name === "paragraph" && node.textContent === text) {
+    if (
+      caret === null &&
+      node.type.name === "paragraph" &&
+      node.textContent === text
+    ) {
       caret = pos + 1;
     }
     return caret === null;
@@ -22,7 +26,9 @@ const stateWithCaretIn = (markdown: string, text: string): EditorState => {
   if (caret === null) {
     throw new Error(`no paragraph reads "${text}"`);
   }
-  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, caret)));
+  return state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, caret)),
+  );
 };
 
 const listNumberingAt = (markdown: string, text: string) => {
@@ -36,7 +42,9 @@ const listNumberingAt = (markdown: string, text: string) => {
 
 describe("ContextMenuManager list numbering entries", () => {
   test("are absent outside a list", () => {
-    expect(listNumberingAt("Plain.\n\n1. Alpha", "Plain.")).toEqual({ type: "none" });
+    expect(listNumberingAt("Plain.\n\n1. Alpha", "Plain.")).toEqual({
+      type: "none",
+    });
   });
 
   test("offer continuing only when an earlier list of the kind exists", () => {

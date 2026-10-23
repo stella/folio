@@ -164,7 +164,8 @@
   }
 
   :where(.folio-root) button,
-  :where(.folio-root) input:where([type="button"], [type="reset"], [type="submit"]) {
+  :where(.folio-root)
+    input:where([type="button"], [type="reset"], [type="submit"]) {
     appearance: button;
   }
 }

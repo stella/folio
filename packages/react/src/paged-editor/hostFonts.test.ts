@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { toFontFaceInputs, type FontDefinition } from "./hostFonts";
+import { type FontDefinition, toFontFaceInputs } from "./hostFonts";
 
 describe("toFontFaceInputs", () => {
   test("returns [] for undefined and empty input", () => {
@@ -9,7 +9,9 @@ describe("toFontFaceInputs", () => {
   });
 
   test("wraps src in a CSS url() source and defaults display to swap", () => {
-    const [input] = toFontFaceInputs([{ family: "Brand Sans", src: "/fonts/BrandSans.woff2" }]);
+    const [input] = toFontFaceInputs([
+      { family: "Brand Sans", src: "/fonts/BrandSans.woff2" },
+    ]);
     expect(input).toEqual({
       family: "Brand Sans",
       source: 'url("/fonts/BrandSans.woff2")',
@@ -27,7 +29,9 @@ describe("toFontFaceInputs", () => {
   });
 
   test("omits the weight descriptor when weight is absent", () => {
-    const [input] = toFontFaceInputs([{ family: "Brand Sans", src: "/a.woff2" }]);
+    const [input] = toFontFaceInputs([
+      { family: "Brand Sans", src: "/a.woff2" },
+    ]);
     expect(input?.descriptors).not.toHaveProperty("weight");
   });
 
@@ -39,7 +43,9 @@ describe("toFontFaceInputs", () => {
   });
 
   test("trims surrounding whitespace on family and src", () => {
-    const [input] = toFontFaceInputs([{ family: "  Brand Sans  ", src: "  /a.woff2  " }]);
+    const [input] = toFontFaceInputs([
+      { family: "  Brand Sans  ", src: "  /a.woff2  " },
+    ]);
     expect(input?.family).toBe("Brand Sans");
     expect(input?.source).toBe('url("/a.woff2")');
   });
@@ -57,7 +63,9 @@ describe("toFontFaceInputs", () => {
   });
 
   test("escapes quotes in src via JSON.stringify", () => {
-    const [input] = toFontFaceInputs([{ family: "Brand Sans", src: '/a".woff2' }]);
+    const [input] = toFontFaceInputs([
+      { family: "Brand Sans", src: '/a".woff2' },
+    ]);
     expect(input?.source).toBe('url("/a\\".woff2")');
   });
 

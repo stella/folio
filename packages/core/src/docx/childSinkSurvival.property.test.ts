@@ -22,10 +22,15 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
+  fromProseDoc,
+  proseDocToBlocks,
+} from "../prosemirror/conversion/fromProseDoc";
 import { PRESERVED_SINK_CARRIERS } from "../prosemirror/conversion/preservedSinkCarriers";
-import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
 import type { Document, PreservedChild, Table } from "../types/document";
@@ -34,7 +39,8 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /**
@@ -74,7 +80,10 @@ const withMarkers = (
     .flatMap((child, at) =>
       at === index ? [...markers.map((name) => MARKERS[name]), child] : child,
     )
-    .join("") + (index >= modelled.length ? markers.map((name) => MARKERS[name]).join("") : "");
+    .join("") +
+  (index >= modelled.length
+    ? markers.map((name) => MARKERS[name]).join("")
+    : "");
 
 type Placement = {
   tableMarkers: readonly MarkerName[];
@@ -84,7 +93,9 @@ type Placement = {
 };
 
 const rowXml = ({ rowMarkers, rowIndex }: Placement, row: number): string => {
-  const cells = Array.from({ length: CELLS }, (_, cell) => cellXml(`r${row}c${cell}`));
+  const cells = Array.from({ length: CELLS }, (_, cell) =>
+    cellXml(`r${row}c${cell}`),
+  );
   // Only the first row carries the row-level sink, so the two sinks cannot be
   // confused for each other when the model comes back.
   return `<w:tr>${row === 0 ? withMarkers(cells, rowMarkers, rowIndex) : cells.join("")}</w:tr>`;
@@ -118,15 +129,19 @@ const reopen = async (document: Document): Promise<Document> =>
   parseDocx(await save(document), { preloadFonts: false });
 
 const firstTable = (document: Document): Table => {
-  const table = document.package.document.content.find((block) => block.type === "table");
+  const table = document.package.document.content.find(
+    (block) => block.type === "table",
+  );
   if (table === undefined) {
     throw new Error("the fixture produced no table");
   }
   return table;
 };
 
-const expected = (markers: readonly MarkerName[], index: number): PreservedChild[] =>
-  markers.map((name) => ({ index, xml: MARKERS[name] }));
+const expected = (
+  markers: readonly MarkerName[],
+  index: number,
+): PreservedChild[] => markers.map((name) => ({ index, xml: MARKERS[name] }));
 
 /** Where one carried record's sink is read back from, and what belongs there. */
 type SinkSite = {
@@ -178,7 +193,9 @@ describe("a container's verbatim sink survives the editor projection", () => {
           expectSinksIntact(parsed, placement);
           expectSinksIntact(
             await reopen(
-              fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+              fromProseDoc(toProseDoc(parsed), parsed, {
+                stylesheetSource: { type: "package" },
+              }),
             ),
             placement,
           );
@@ -206,7 +223,11 @@ describe("a container's verbatim sink survives the editor projection", () => {
           ]);
 
           expectSinksIntact(
-            await reopen(fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } })),
+            await reopen(
+              fromProseDoc(edited, parsed, {
+                stylesheetSource: { type: "package" },
+              }),
+            ),
             placement,
           );
         }),
@@ -228,7 +249,9 @@ describe("the sink follows the record", () => {
   test("a table the editor creates from scratch has no sink", async () => {
     const parsed = await open(documentXml(onlyTableMarker));
     const projected = toProseDoc(parsed);
-    const authored = projected.content.content.find((node) => node.type.name === "table");
+    const authored = projected.content.content.find(
+      (node) => node.type.name === "table",
+    );
     if (!authored) {
       throw new Error("the projection produced no table");
     }
@@ -238,19 +261,26 @@ describe("the sink follows the record", () => {
     }
 
     const blocks = proseDocToBlocks(
-      schema.node("doc", projected.attrs, [created, ...projected.content.content]),
+      schema.node("doc", projected.attrs, [
+        created,
+        ...projected.content.content,
+      ]),
       parsed.package.document.content,
       parsed.package.styles,
     );
     const [fresh] = blocks;
     expect(fresh?.type).toBe("table");
-    expect(fresh?.type === "table" ? fresh.preserved : undefined).toBeUndefined();
+    expect(
+      fresh?.type === "table" ? fresh.preserved : undefined,
+    ).toBeUndefined();
   });
 
   test("a copied table keeps the sink on the copy that comes first", async () => {
     const parsed = await open(documentXml(onlyTableMarker));
     const projection = toProseDoc(parsed);
-    const authored = projection.content.content.find((node) => node.type.name === "table");
+    const authored = projection.content.content.find(
+      (node) => node.type.name === "table",
+    );
     if (!authored) {
       throw new Error("the projection produced no table");
     }
@@ -272,7 +302,11 @@ describe("the sink follows the record", () => {
     expect(tail?.type === "table" ? tail.preserved : undefined).toBeUndefined();
     // The rows are copies of the same nodes, so the rule has to hold one level
     // down as well: a second copy of a row's markup is markup nobody wrote.
-    expect(head?.type === "table" ? head.rows.at(0)?.preserved : undefined).toBeDefined();
-    expect(tail?.type === "table" ? tail.rows.at(0)?.preserved : undefined).toBeUndefined();
+    expect(
+      head?.type === "table" ? head.rows.at(0)?.preserved : undefined,
+    ).toBeDefined();
+    expect(
+      tail?.type === "table" ? tail.rows.at(0)?.preserved : undefined,
+    ).toBeUndefined();
   });
 });

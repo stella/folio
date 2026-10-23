@@ -76,7 +76,10 @@ export type FolioButtonProps = Pick<
 // Dialog
 // ============================================================================
 
-export type FolioDialogRootProps = Pick<DialogPrimitive.Root.Props, "open" | "onOpenChange"> & {
+export type FolioDialogRootProps = Pick<
+  DialogPrimitive.Root.Props,
+  "open" | "onOpenChange"
+> & {
   children?: ReactNode;
 };
 export type FolioDialogPortalProps = { children?: ReactNode };
@@ -119,7 +122,10 @@ export type FolioSelectTriggerProps = Pick<
   children?: ReactNode;
   size?: "sm" | "default" | "lg";
 };
-export type FolioSelectValueProps = Pick<SelectPrimitive.Value.Props, "placeholder"> & {
+export type FolioSelectValueProps = Pick<
+  SelectPrimitive.Value.Props,
+  "placeholder"
+> & {
   className?: string;
   children?: ReactNode;
 };
@@ -203,7 +209,10 @@ export type FolioPopoverTriggerProps = Pick<
   children?: ReactNode;
   "data-testid"?: string;
 };
-export type FolioPopoverPopupProps = Pick<PopoverPrimitive.Popup.Props, "onMouseDown"> & {
+export type FolioPopoverPopupProps = Pick<
+  PopoverPrimitive.Popup.Props,
+  "onMouseDown"
+> & {
   className?: string;
   children?: ReactNode;
   side?: PopoverPrimitive.Positioner.Props["side"];
@@ -211,7 +220,10 @@ export type FolioPopoverPopupProps = Pick<PopoverPrimitive.Popup.Props, "onMouse
   sideOffset?: PopoverPrimitive.Positioner.Props["sideOffset"];
   alignOffset?: PopoverPrimitive.Positioner.Props["alignOffset"];
 };
-export type FolioPopoverCloseProps = Pick<PopoverPrimitive.Close.Props, "render"> & {
+export type FolioPopoverCloseProps = Pick<
+  PopoverPrimitive.Close.Props,
+  "render"
+> & {
   className?: string;
   children?: ReactNode;
 };
@@ -227,7 +239,10 @@ export type FolioPopover = {
 // Input / Checkbox (single primitives)
 // ============================================================================
 
-export type FolioInputProps = Omit<ComponentProps<"input">, "size" | "ref" | "style"> &
+export type FolioInputProps = Omit<
+  ComponentProps<"input">,
+  "size" | "ref" | "style"
+> &
   RefAttributes<HTMLInputElement> & {
     style?: CSSProperties;
     size?: "sm" | "default" | "lg" | number;
@@ -377,8 +392,12 @@ const FolioUIContext = createContext<FolioUIComponents>(DEFAULT_COMPONENTS);
  * present (defaults fill the gaps), and each provided override wins. Pure, so
  * the resolution contract is unit-tested independently of React.
  */
-export function resolveFolioComponents(components?: Partial<FolioUIComponents>): FolioUIComponents {
-  return components ? { ...DEFAULT_COMPONENTS, ...components } : DEFAULT_COMPONENTS;
+export function resolveFolioComponents(
+  components?: Partial<FolioUIComponents>,
+): FolioUIComponents {
+  return components
+    ? { ...DEFAULT_COMPONENTS, ...components }
+    : DEFAULT_COMPONENTS;
 }
 
 export function FolioUIProvider({
@@ -389,7 +408,9 @@ export function FolioUIProvider({
   children: ReactNode;
 }) {
   const value = resolveFolioComponents(components);
-  return <FolioUIContext.Provider value={value}>{children}</FolioUIContext.Provider>;
+  return (
+    <FolioUIContext.Provider value={value}>{children}</FolioUIContext.Provider>
+  );
 }
 
 export function useFolioUI(): FolioUIComponents {

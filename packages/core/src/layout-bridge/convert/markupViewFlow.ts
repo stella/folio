@@ -74,7 +74,10 @@ export function remapMarkupViewBlocks(
   return blocks.map((block) => remapBlock(block, context));
 }
 
-const touchesChangeBar = (block: ParagraphBlock, ranges: readonly PositionRange[]): boolean => {
+const touchesChangeBar = (
+  block: ParagraphBlock,
+  ranges: readonly PositionRange[],
+): boolean => {
   const { pmStart, pmEnd } = block;
   if (pmStart === undefined || pmEnd === undefined) {
     return false;
@@ -85,7 +88,10 @@ const touchesChangeBar = (block: ParagraphBlock, ranges: readonly PositionRange[
 type AnchoredRange = { pmStart?: number; pmEnd?: number };
 
 /** A node's own positions: its start after any hidden content before it, its end before any after. */
-const remapNodeRange = (range: AnchoredRange, toSource: ToSource): AnchoredRange => {
+const remapNodeRange = (
+  range: AnchoredRange,
+  toSource: ToSource,
+): AnchoredRange => {
   if (range.pmStart === undefined || range.pmEnd === undefined) {
     return {};
   }
@@ -99,7 +105,12 @@ const remapSdtGroups = (
 ): { sdtGroups?: SdtGroup[] } =>
   groups === undefined
     ? {}
-    : { sdtGroups: groups.map((group) => ({ ...group, pmPos: toSource(group.pmPos, 1) })) };
+    : {
+        sdtGroups: groups.map((group) => ({
+          ...group,
+          pmPos: toSource(group.pmPos, 1),
+        })),
+      };
 
 function remapBlock(block: FlowBlock, context: RemapContext): FlowBlock {
   switch (block.kind) {
@@ -145,7 +156,10 @@ function remapTable(block: TableBlock, context: RemapContext): TableBlock {
   };
 }
 
-function remapParagraph(block: ParagraphBlock, context: RemapContext): ParagraphBlock {
+function remapParagraph(
+  block: ParagraphBlock,
+  context: RemapContext,
+): ParagraphBlock {
   const runs: Run[] = [];
   for (const run of block.runs) {
     pushRemappedRun(run, context, runs);
@@ -178,7 +192,9 @@ const firstCutAfter = (cuts: readonly number[], position: number): number => {
 };
 
 /** Whether each character of the run occupies exactly one position. */
-const addressesPerCharacter = (run: TextRun): run is TextRun & { pmStart: number; pmEnd: number } =>
+const addressesPerCharacter = (
+  run: TextRun,
+): run is TextRun & { pmStart: number; pmEnd: number } =>
   run.pmStart !== undefined &&
   run.pmEnd !== undefined &&
   run.templatePreview === undefined &&
@@ -197,7 +213,10 @@ function pushRemappedRun(run: Run, context: RemapContext, out: Run[]): void {
     out.push({
       ...run,
       text: run.text.slice(pieceStart - pmStart, pieceEnd - pmStart),
-      ...remapNodeRange({ pmStart: pieceStart, pmEnd: pieceEnd }, context.toSource),
+      ...remapNodeRange(
+        { pmStart: pieceStart, pmEnd: pieceEnd },
+        context.toSource,
+      ),
     });
     if (pieceEnd === pmEnd) {
       return;

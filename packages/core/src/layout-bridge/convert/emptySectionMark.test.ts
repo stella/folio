@@ -14,7 +14,12 @@ import {
   withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import { measureBlocks } from "../../layout-engine/measure/measureBlocks";
-import type { FlowBlock, Layout, LayoutOptions, PageMargins } from "../../layout-engine/types";
+import type {
+  FlowBlock,
+  Layout,
+  LayoutOptions,
+  PageMargins,
+} from "../../layout-engine/types";
 import { schema } from "../../prosemirror/schema";
 import { toFlowBlocks } from "./toFlowBlocks";
 
@@ -37,7 +42,11 @@ const layOut = (doc: PMNode): LaidOut => {
       const blocks = toFlowBlocks(doc);
       laidOut = {
         blocks,
-        layout: layoutDocument(blocks, measureBlocks(blocks, CONTENT_WIDTH), LAYOUT_OPTIONS),
+        layout: layoutDocument(
+          blocks,
+          measureBlocks(blocks, CONTENT_WIDTH),
+          LAYOUT_OPTIONS,
+        ),
       };
     },
     { charWidth: fixedCharWidth(5) },
@@ -56,7 +65,9 @@ const placementOf = ({ blocks, layout }: LaidOut, value: string) => {
       candidate.runs.some((run) => run.kind === "text" && run.text === value),
   );
   for (const [pageIndex, page] of layout.pages.entries()) {
-    const fragment = page.fragments.find((candidate) => candidate.blockId === block?.id);
+    const fragment = page.fragments.find(
+      (candidate) => candidate.blockId === block?.id,
+    );
     if (fragment) {
       return { pageIndex, y: fragment.y };
     }
@@ -75,18 +86,27 @@ describe("a page break before an empty section mark", () => {
   test("still starts the next page when the break ends the text paragraph", () => {
     const laidOut = layOut(
       continuousDoc([
-        schema.node("paragraph", null, [schema.text("one"), schema.node("pageBreakRun")]),
+        schema.node("paragraph", null, [
+          schema.text("one"),
+          schema.node("pageBreakRun"),
+        ]),
       ]),
     );
 
     expect(placementOf(laidOut, "one")?.pageIndex).toBe(0);
-    expect(placementOf(laidOut, "two")).toEqual({ pageIndex: 1, y: MARGINS.top });
+    expect(placementOf(laidOut, "two")).toEqual({
+      pageIndex: 1,
+      y: MARGINS.top,
+    });
     expect(laidOut.layout.pages).toHaveLength(2);
   });
 
   test("still starts the next page when the break has a paragraph of its own", () => {
     const laidOut = layOut(
-      continuousDoc([text("one"), schema.node("paragraph", null, [schema.node("pageBreakRun")])]),
+      continuousDoc([
+        text("one"),
+        schema.node("paragraph", null, [schema.node("pageBreakRun")]),
+      ]),
     );
 
     expect(placementOf(laidOut, "two")?.pageIndex).toBe(1);
@@ -95,7 +115,10 @@ describe("a page break before an empty section mark", () => {
 
   test("advances only one page before a nextPage section", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("one"), schema.node("pageBreakRun")]),
+      schema.node("paragraph", null, [
+        schema.text("one"),
+        schema.node("pageBreakRun"),
+      ]),
       sectionMark(),
       text("two"),
     ]);
@@ -137,7 +160,9 @@ describe("an empty section mark that paints or makes up its section", () => {
       (block) => block.kind === "paragraph" && block.runs.length === 0,
     );
 
-    expect(mark?.kind === "paragraph" && mark.attrs?.pageBreakBefore).toBeFalsy();
+    expect(
+      mark?.kind === "paragraph" && mark.attrs?.pageBreakBefore,
+    ).toBeFalsy();
     expect(placementOf(laidOut, "two")?.pageIndex).toBe(0);
     expect(laidOut.layout.pages).toHaveLength(1);
   });
@@ -145,14 +170,20 @@ describe("an empty section mark that paints or makes up its section", () => {
   test("paints a bordered mark", () => {
     const doc = schema.node("doc", { _finalSectionStart: "continuous" }, [
       text("one"),
-      sectionMark({ borders: { bottom: { style: "single", size: 8, color: { rgb: "000000" } } } }),
+      sectionMark({
+        borders: {
+          bottom: { style: "single", size: 8, color: { rgb: "000000" } },
+        },
+      }),
       text("two"),
     ]);
 
     const mark = toFlowBlocks(doc).at(1);
 
     expect(mark?.kind).toBe("paragraph");
-    expect(mark?.kind === "paragraph" && mark.attrs?.borders?.bottom).toBeTruthy();
+    expect(
+      mark?.kind === "paragraph" && mark.attrs?.borders?.bottom,
+    ).toBeTruthy();
   });
 
   test("still drops a mark whose borders are all none", () => {
@@ -175,10 +206,11 @@ describe("an empty section mark that paints or makes up its section", () => {
       sectionMark({ _sectionProperties: { sectionStart: "continuous" } }),
       text("two"),
     ]);
-    const withoutMarkOnlySection = schema.node("doc", { _finalSectionStart: "continuous" }, [
-      text("one", { _sectionProperties: {} }),
-      text("two"),
-    ]);
+    const withoutMarkOnlySection = schema.node(
+      "doc",
+      { _finalSectionStart: "continuous" },
+      [text("one", { _sectionProperties: {} }), text("two")],
+    );
 
     const markOnly = placementOf(layOut(doc), "two");
     const direct = placementOf(layOut(withoutMarkOnlySection), "two");
@@ -204,7 +236,10 @@ describe("an empty section mark that paints or makes up its section", () => {
   test("honours w:pageBreakBefore on a mark that makes up its section", () => {
     const doc = schema.node("doc", { _finalSectionStart: "continuous" }, [
       text("one", { _sectionProperties: {} }),
-      sectionMark({ _sectionProperties: { sectionStart: "continuous" }, pageBreakBefore: true }),
+      sectionMark({
+        _sectionProperties: { sectionStart: "continuous" },
+        pageBreakBefore: true,
+      }),
       text("two"),
     ]);
 

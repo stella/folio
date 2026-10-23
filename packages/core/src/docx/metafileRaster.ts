@@ -21,7 +21,11 @@ export type ExtractedRaster = {
   mimeType: "image/png" | "image/jpeg";
 };
 
-function indexOfBytes(haystack: Uint8Array, needle: number[], from = 0): number {
+function indexOfBytes(
+  haystack: Uint8Array,
+  needle: number[],
+  from = 0,
+): number {
   outer: for (let i = from; i + needle.length <= haystack.length; i++) {
     for (let j = 0; j < needle.length; j++) {
       if (haystack[i + j] !== needle[j]) {
@@ -34,7 +38,10 @@ function indexOfBytes(haystack: Uint8Array, needle: number[], from = 0): number 
 }
 
 function extractPng(bytes: Uint8Array): Uint8Array | null {
-  const start = indexOfBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const start = indexOfBytes(
+    bytes,
+    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  );
   if (start < 0) {
     return null;
   }
@@ -45,7 +52,9 @@ function extractPng(bytes: Uint8Array): Uint8Array | null {
     const b2 = bytes[off + 2]!;
     const b3 = bytes[off + 3]!;
     const len = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
-    const type = decodeText(bytes.subarray(off + 4, off + 8), { encoding: "binary" });
+    const type = decodeText(bytes.subarray(off + 4, off + 8), {
+      encoding: "binary",
+    });
     const next = off + 12 + (len >>> 0);
     if (type === "IEND") {
       return bytes.slice(start, off + 12);
@@ -77,7 +86,9 @@ function extractJpeg(bytes: Uint8Array): Uint8Array | null {
  * Scan a metafile (EMF or WMF) for an embedded browser-renderable raster.
  * Returns the first PNG, else first JPEG found; `null` when none is present.
  */
-export function extractMetafileRaster(data: ArrayBuffer | Uint8Array): ExtractedRaster | null {
+export function extractMetafileRaster(
+  data: ArrayBuffer | Uint8Array,
+): ExtractedRaster | null {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
   if (bytes.length < 32) {
     return null;
@@ -96,7 +107,12 @@ export function extractMetafileRaster(data: ArrayBuffer | Uint8Array): Extracted
   return null;
 }
 
-const METAFILE_MIME = new Set(["image/x-emf", "image/emf", "image/x-wmf", "image/wmf"]);
+const METAFILE_MIME = new Set([
+  "image/x-emf",
+  "image/emf",
+  "image/x-wmf",
+  "image/wmf",
+]);
 
 /** True for EMF/WMF MIME types — the formats browsers cannot render natively. */
 export function isMetafileMimeType(mimeType: string | undefined): boolean {

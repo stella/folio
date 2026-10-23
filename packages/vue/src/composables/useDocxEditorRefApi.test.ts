@@ -1,6 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 
-import { applyWithStagedOperationComments, saveDocumentForHost } from "./useDocxEditorRefApi";
+import {
+  applyWithStagedOperationComments,
+  saveDocumentForHost,
+} from "./useDocxEditorRefApi";
 
 describe("applyWithStagedOperationComments", () => {
   test("publishes only applied comments after the document commits", () => {
@@ -24,7 +27,12 @@ describe("applyWithStagedOperationComments", () => {
     });
 
     expect(result.applied).toEqual([{ commentId: 2 }]);
-    expect(events).toEqual(["mint:refused", "mint:accepted", "commit", "publish:2"]);
+    expect(events).toEqual([
+      "mint:refused",
+      "mint:accepted",
+      "commit",
+      "publish:2",
+    ]);
   });
 
   test("does not notify the host when every operation is refused", () => {

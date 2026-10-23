@@ -5,14 +5,21 @@
  */
 
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
-import type { ParagraphBlock, MeasuredLine, Run } from "../types";
+import type { MeasuredLine, ParagraphBlock, Run } from "../types";
+import {
+  defaultLineBreakProvider,
+  getLineBreakProvider,
+} from "./lineBreakProvider";
+import type { LineBreakPolicy } from "./lineBreakProvider";
+import { findGraphemeBreaks, isHangingPunctuation } from "./lineBreaks";
 import { twipsToPx } from "./measureHelpers";
 import { measureTextWidth } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
-import { findGraphemeBreaks, isHangingPunctuation } from "./lineBreaks";
-import { defaultLineBreakProvider, getLineBreakProvider } from "./lineBreakProvider";
-import type { LineBreakPolicy } from "./lineBreakProvider";
-import { WIDTH_TOLERANCE, runToFontStyle, isTextRun } from "./paragraphMeasureShared";
+import {
+  isTextRun,
+  runToFontStyle,
+  WIDTH_TOLERANCE,
+} from "./paragraphMeasureShared";
 import type { LineState } from "./paragraphMeasureShared";
 
 /**
@@ -44,7 +51,10 @@ export function findMaxFittingLength(
   return forceMin && best === 0 ? (boundaries.at(0) ?? 0) : best;
 }
 
-export function exceedsHyphenationZone(line: LineState, zoneTwips: number): boolean {
+export function exceedsHyphenationZone(
+  line: LineState,
+  zoneTwips: number,
+): boolean {
   if (line.width <= 0) {
     return true;
   }
@@ -63,7 +73,11 @@ export function isFinalTextCandidate(
   nextBreak: number,
 ): boolean {
   const currentRun = block.runs[runIndex];
-  if (!currentRun || !isTextRun(currentRun) || nextBreak !== currentRun.text.length) {
+  if (
+    !currentRun ||
+    !isTextRun(currentRun) ||
+    nextBreak !== currentRun.text.length
+  ) {
     return false;
   }
   for (let index = runIndex + 1; index < block.runs.length; index += 1) {
@@ -147,13 +161,18 @@ export function measureWordWithTrailingWhitespace(
   // Tabs have contextual advances, while kerning can change the advance at
   // the split boundary. Keep the exact full-string measurement for both.
   if (style.kerning || trailingWhitespace.includes("\t")) {
-    return { measuredWord, wordWidth, fullWordWidth: measureTextWidth(word, style) };
+    return {
+      measuredWord,
+      wordWidth,
+      fullWordWidth: measureTextWidth(word, style),
+    };
   }
 
   const trailingWhitespaceWidth = measureTextWidth(trailingWhitespace, style);
   const boundarySpacing =
     measuredWord.length > 0
-      ? (style.letterSpacing ?? 0) * getHorizontalScaleFactor(style.horizontalScale)
+      ? (style.letterSpacing ?? 0) *
+        getHorizontalScaleFactor(style.horizontalScale)
       : 0;
   return {
     measuredWord,
@@ -212,14 +231,19 @@ function trailingCodePoint(text: string): string | undefined {
   const trailing = text.charCodeAt(text.length - 1);
   const preceding = text.charCodeAt(text.length - 2);
   const hasSurrogatePair =
-    trailing >= 0xdc00 && trailing <= 0xdfff && preceding >= 0xd800 && preceding <= 0xdbff;
+    trailing >= 0xdc00 &&
+    trailing <= 0xdfff &&
+    preceding >= 0xd800 &&
+    preceding <= 0xdbff;
   const start = hasSurrogatePair ? text.length - 2 : text.length - 1;
   return text.slice(start);
 }
 
 const usesDefaultHangingPunctuationClassifier = (): boolean => {
   const provider = getLineBreakProvider();
-  const classifier = provider.isHangingPunctuation ?? defaultLineBreakProvider.isHangingPunctuation;
+  const classifier =
+    provider.isHangingPunctuation ??
+    defaultLineBreakProvider.isHangingPunctuation;
   return classifier === defaultLineBreakProvider.isHangingPunctuation;
 };
 
@@ -233,7 +257,10 @@ export function trailingHangingPunctuationWidth(
     return 0;
   }
   const trailing = trailingCodePoint(text);
-  if (usesDefaultHangingPunctuationClassifier() && !isHangingPunctuation(trailing ?? "", policy)) {
+  if (
+    usesDefaultHangingPunctuationClassifier() &&
+    !isHangingPunctuation(trailing ?? "", policy)
+  ) {
     return 0;
   }
   const boundaries = findGraphemeBreaks(text, policy);

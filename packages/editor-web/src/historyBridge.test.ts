@@ -1,7 +1,14 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { Schema } from "prosemirror-model";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { closeHistory, history, redo, undo } from "prosemirror-history";
+import { Schema } from "prosemirror-model";
 import { EditorState, Plugin } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -50,7 +57,8 @@ const createEditor = (depth = 100) => {
     view,
     changes,
     /** Type into a new undo step, as after a pause. */
-    typeStep: (text: string) => view.dispatch(closeHistory(view.state.tr.insertText(text))),
+    typeStep: (text: string) =>
+      view.dispatch(closeHistory(view.state.tr.insertText(text))),
     /** Type into the open undo step, as while typing on. */
     typeOn: (text: string) => view.dispatch(view.state.tr.insertText(text)),
     undo: () => run(undo),
@@ -79,13 +87,21 @@ describe("createHistoryBridgePlugin", () => {
     editor.typeStep("c");
     expect(editor.undo()).toBe(true);
     expect(editor.redo()).toBe(true);
-    expect(editor.changes).toEqual(["newStep", "sameStep", "newStep", "undoRedo", "undoRedo"]);
+    expect(editor.changes).toEqual([
+      "newStep",
+      "sameStep",
+      "newStep",
+      "undoRedo",
+      "undoRedo",
+    ]);
   });
 
   test("a change another plugin appends joins the step that caused it", () => {
     const editor = createEditor();
     editor.view.dispatch(
-      closeHistory(editor.view.state.tr.insertText("a").setMeta("append", true)),
+      closeHistory(
+        editor.view.state.tr.insertText("a").setMeta("append", true),
+      ),
     );
     expect(editor.view.state.doc.textContent).toBe("+a");
     expect(editor.changes).toEqual(["newStep"]);
@@ -93,7 +109,9 @@ describe("createHistoryBridgePlugin", () => {
 
   test("a change kept out of history opens no step", () => {
     const editor = createEditor();
-    editor.view.dispatch(editor.view.state.tr.insertText("a").setMeta("addToHistory", false));
+    editor.view.dispatch(
+      editor.view.state.tr.insertText("a").setMeta("addToHistory", false),
+    );
     expect(editor.changes).toEqual(["sameStep"]);
   });
 
@@ -104,7 +122,9 @@ describe("createHistoryBridgePlugin", () => {
     for (let step = 0; step < steps; step += 1) {
       editor.typeStep("x");
     }
-    expect(editor.changes).toEqual(Array.from({ length: steps }, () => "newStep"));
+    expect(editor.changes).toEqual(
+      Array.from({ length: steps }, () => "newStep"),
+    );
 
     // The host's stack is `steps` long. The editor trims its own to `depth`
     // once it overflows, so it can walk back only part of it; an undo past
@@ -115,7 +135,9 @@ describe("createHistoryBridgePlugin", () => {
     }
     expect(undone).toBeGreaterThanOrEqual(depth);
     expect(undone).toBeLessThan(steps);
-    expect(editor.changes.slice(steps)).toEqual(Array.from({ length: undone }, () => "undoRedo"));
+    expect(editor.changes.slice(steps)).toEqual(
+      Array.from({ length: undone }, () => "undoRedo"),
+    );
   });
 
   test("loading a new document is not an edit", () => {

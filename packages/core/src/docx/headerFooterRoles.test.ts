@@ -9,7 +9,10 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { buildSectionsDocx, SECTIONS_FIXTURE_PARTS } from "../ai-edits/__fixtures__/sections";
+import {
+  buildSectionsDocx,
+  SECTIONS_FIXTURE_PARTS,
+} from "../ai-edits/__fixtures__/sections";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { Paragraph } from "../types/document";
@@ -17,7 +20,9 @@ import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
 
 const rolesOf = (parts: Map<string, { hdrFtrType: string }> | undefined) =>
-  Object.fromEntries([...(parts ?? [])].map(([id, part]) => [id, part.hdrFtrType]));
+  Object.fromEntries(
+    [...(parts ?? [])].map(([id, part]) => [id, part.hdrFtrType]),
+  );
 
 describe("header and footer roles", () => {
   test("each part takes the role its first section reference gives it", async () => {
@@ -30,20 +35,29 @@ describe("header and footer roles", () => {
       rIdHeaderTwoEven: "even",
       rIdHeaderThreeDefault: "default",
     });
-    expect(rolesOf(document.package.footers)).toEqual({ rIdFooterOneDefault: "default" });
+    expect(rolesOf(document.package.footers)).toEqual({
+      rIdFooterOneDefault: "default",
+    });
   });
 
   test("the roles survive a repack and a reparse", async () => {
     const source = await buildSectionsDocx();
     const document = await parseDocx(source);
-    const reparsed = await parseDocx(await repackDocx({ ...document, originalBuffer: source }));
+    const reparsed = await parseDocx(
+      await repackDocx({ ...document, originalBuffer: source }),
+    );
 
-    expect(rolesOf(reparsed.package.headers)).toEqual(rolesOf(document.package.headers));
+    expect(rolesOf(reparsed.package.headers)).toEqual(
+      rolesOf(document.package.headers),
+    );
   });
 
   test("readers label each part with its roles and the sections that show it", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildSectionsDocx());
-    const text = (id: keyof typeof SECTIONS_FIXTURE_PARTS) => SECTIONS_FIXTURE_PARTS[id].text;
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildSectionsDocx(),
+    );
+    const text = (id: keyof typeof SECTIONS_FIXTURE_PARTS) =>
+      SECTIONS_FIXTURE_PARTS[id].text;
 
     expect(reviewer.getNotesAsText().split("\n")).toEqual([
       `[header default (section 1)] ${text("rIdHeaderOneDefault")}`,
@@ -62,8 +76,22 @@ describe("header and footer roles", () => {
     });
     const model = fromMarkdown("Body.");
     model.package.headers = new Map([
-      ["rIdFirst", { type: "header", hdrFtrType: "first", content: [paragraph("First page.")] }],
-      ["rIdEven", { type: "header", hdrFtrType: "even", content: [paragraph("Even page.")] }],
+      [
+        "rIdFirst",
+        {
+          type: "header",
+          hdrFtrType: "first",
+          content: [paragraph("First page.")],
+        },
+      ],
+      [
+        "rIdEven",
+        {
+          type: "header",
+          hdrFtrType: "even",
+          content: [paragraph("Even page.")],
+        },
+      ],
     ]);
     model.package.document.finalSectionProperties = {
       ...model.package.document.finalSectionProperties,
@@ -74,7 +102,9 @@ describe("header and footer roles", () => {
         { type: "even", rId: "rIdEven" },
       ],
     };
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(model));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(model),
+    );
 
     expect(rolesOf(reviewer.toDocument().package.headers)).toEqual({
       rIdFirst: "first",

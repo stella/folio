@@ -1,5 +1,10 @@
 <template>
-  <button class="print-btn" :disabled="disabled" :title="label" @mousedown.prevent="handlePrint">
+  <button
+    class="print-btn"
+    :disabled="disabled"
+    :title="label"
+    @mousedown.prevent="handlePrint"
+  >
     {{ compact ? "" : label }}
     <span v-if="compact" class="print-btn__icon">&#x1F5A8;</span>
   </button>

@@ -11,15 +11,14 @@
  * marks ends in the paragraph after the last.
  */
 
-import { INSERTION_SEAM_POLICIES } from "../model/content";
-import { runsMergeable } from "./runMerge";
-import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { panic, Result } from "better-result";
 
+import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { MAX_REVISION_ID } from "../model/document";
 import type {
-  Document,
+  BlockContent,
   Deletion,
+  Document,
   Paragraph,
   ParagraphMarkChangeKind,
   ParagraphPropertyChange,
@@ -27,11 +26,20 @@ import type {
   RunPropertyChange,
   Table,
 } from "../model/document";
-import { blockListAt, endsItsContainer, storyBody, storyParagraphs } from "./blocks";
+import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { paragraphMarkOutcome } from "./blockDeletion";
-import { combineEdits, type DocumentEdit } from "./edits";
+import {
+  blockListAt,
+  endsItsContainer,
+  storyBody,
+  storyParagraphs,
+} from "./blocks";
 import { isCommentExhausted } from "./comments";
+import { combineEdits, type DocumentEdit } from "./edits";
+import { structurallyEqual } from "./equality";
+import { canonicalDeferredGroups } from "./identity";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
+import { joinParagraphSeam } from "./inline";
 import {
   alikeDepth,
   asParagraphContent,
@@ -44,23 +52,27 @@ import {
   sameOwnFields,
 } from "./leaves";
 import { paragraphHoldsContent, paragraphLength } from "./offsets";
-import { identitySlots, withInlineIdentity } from "./slots";
-import { canonicalDeferredGroups } from "./identity";
-import { joinParagraphSeam } from "./inline";
-import { storyLifecycleEdit } from "./storyLifecycle";
-import { documentStories } from "./stories";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
-import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
+import {
+  isAddedRevision,
+  isTrackedWrapper,
+  reviewFieldsOf,
+  withMarkFormatting,
+} from "./review";
+import { runsMergeable } from "./runMerge";
+import { identitySlots, withInlineIdentity } from "./slots";
+import { documentStories } from "./stories";
+import { storyLifecycleEdit } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
-  SECTION_BOUNDARY_POLICIES,
   type DocumentOp,
   type OpStory,
   type ParagraphReviewFields,
-  REVISION_DECISIONS,
   type ResolveRevisionOp,
+  REVISION_DECISIONS,
   type RevisionDecision,
+  SECTION_BOUNDARY_POLICIES,
 } from "./types";
 
 /** Applies operations atomically; `applyDocumentOps`, passed in to keep the modules acyclic. */
@@ -69,11 +81,29 @@ export type ApplyOps = (
   ops: readonly DocumentOp[],
 ) => Result<DocumentEdit, DocumentOpRefusal>;
 
-const refusal = (op: ResolveRevisionOp, reason: DocumentOpRefusal["reason"], message: string) =>
-  new DocumentOpRefusal({ message, reason, opType: op.type });
+const refusal = (
+  op: ResolveRevisionOp,
+  reason: DocumentOpRefusal["reason"],
+  message: string,
+) => new DocumentOpRefusal({ message, reason, opType: op.type });
+
+const precedingSectionOwner = (
+  previous: BlockContent | undefined,
+  paragraph: Paragraph,
+): "unavailable" | "available" | "same" | "occupied" => {
+  if (previous?.type !== "paragraph") return "unavailable";
+  if (previous.sectionProperties === undefined) return "available";
+  return JSON.stringify(previous.sectionProperties) ===
+    JSON.stringify(paragraph.sectionProperties)
+    ? "same"
+    : "occupied";
+};
 
 /** Prepends a retired paragraph's content to the paragraph in a table's first cell. */
-const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | undefined => {
+const runParagraphIntoTable = (
+  paragraph: Paragraph,
+  table: Table,
+): Table | undefined => {
   const row = table.rows.at(0);
   const cell = row?.cells.at(0);
   const target = cell?.content.at(0);
@@ -86,7 +116,10 @@ const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | unde
       rows: [
         {
           ...row,
-          cells: [{ ...cell, content: [nested, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+          cells: [
+            { ...cell, content: [nested, ...cell.content.slice(1)] },
+            ...row.cells.slice(1),
+          ],
         },
         ...table.rows.slice(1),
       ],
@@ -102,14 +135,20 @@ const runParagraphIntoTable = (paragraph: Paragraph, table: Table): Table | unde
     rows: [
       {
         ...row,
-        cells: [{ ...cell, content: [survivor, ...cell.content.slice(1)] }, ...row.cells.slice(1)],
+        cells: [
+          { ...cell, content: [survivor, ...cell.content.slice(1)] },
+          ...row.cells.slice(1),
+        ],
       },
       ...table.rows.slice(1),
     ],
   };
 };
 
-const tableCanReceiveParagraphRunIn = (paragraph: Paragraph, table: Table): boolean => {
+const tableCanReceiveParagraphRunIn = (
+  paragraph: Paragraph,
+  table: Table,
+): boolean => {
   if (paragraph.sectionProperties !== undefined) return false;
   let current = table;
   for (;;) {
@@ -124,17 +163,27 @@ const tableCanReceiveParagraphRunIn = (paragraph: Paragraph, table: Table): bool
       return false;
     }
     const target = cell.content.at(0);
-    if (target?.type === "paragraph") return target.sectionProperties === undefined;
+    if (target?.type === "paragraph")
+      return target.sectionProperties === undefined;
     if (target?.type !== "table") return false;
     current = target;
   }
 };
 
 /** Whether a decision removes the content of a tracked change of this kind. */
-const removesContent = (node: InlineNode, decision: RevisionDecision): boolean =>
-  decision === REVISION_DECISIONS.ACCEPT ? !isAddedRevision(node) : isAddedRevision(node);
+const removesContent = (
+  node: InlineNode,
+  decision: RevisionDecision,
+): boolean =>
+  decision === REVISION_DECISIONS.ACCEPT
+    ? !isAddedRevision(node)
+    : isAddedRevision(node);
 
-type NoteReference = { kind: "footnote" | "endnote"; id: number; added: boolean };
+type NoteReference = {
+  kind: "footnote" | "endnote";
+  id: number;
+  added: boolean;
+};
 
 /** Note bodies whose selected reference revision is removed by this decision. */
 const removedNoteReferences = (
@@ -164,13 +213,17 @@ const removedNoteReferences = (
   return [...references.values()];
 };
 
-const hasNoteReference = (document: Document, reference: NoteReference): boolean =>
+const hasNoteReference = (
+  document: Document,
+  reference: NoteReference,
+): boolean =>
   documentStories(document).some((story) =>
     storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
       leafSpans(paragraph.content).some(
         ({ node }) =>
           (node.type === "footnoteRef" || node.type === "endnoteRef") &&
-          node.type === (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
+          node.type ===
+            (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
           node.id === reference.id,
       ),
     ),
@@ -194,7 +247,11 @@ type PropertyChange = RunPropertyChange | ParagraphPropertyChange;
 type RemovedPropertyChanges<Change extends PropertyChange> =
   | { kind: "unchanged" }
   | { kind: "keepLive"; remaining: Change[] }
-  | { kind: "restore"; remaining: Change[]; previous: Change["previousFormatting"] | undefined };
+  | {
+      kind: "restore";
+      remaining: Change[];
+      previous: Change["previousFormatting"] | undefined;
+    };
 
 const removePropertyChanges = <Change extends PropertyChange>(
   changes: readonly Change[],
@@ -236,7 +293,9 @@ const removePropertyChanges = <Change extends PropertyChange>(
         rebased.boundaryJoins = [
           ...new Set([
             ...rebased.boundaryJoins,
-            ...removedRunChanges.flatMap((removed) => removed.boundaryJoins ?? []),
+            ...removedRunChanges.flatMap(
+              (removed) => removed.boundaryJoins ?? [],
+            ),
           ]),
         ];
       }
@@ -271,7 +330,8 @@ type Resolution = {
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
   const changes = run.propertyChanges ?? [];
-  const selected = (change: (typeof changes)[number]): boolean => ids.has(change.info.id);
+  const selected = (change: (typeof changes)[number]): boolean =>
+    ids.has(change.info.id);
   if (!changes.some(selected)) {
     return run;
   }
@@ -305,7 +365,11 @@ const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
  * piece, whichever emptied first). A container that held nothing before (an
  * empty content control or hyperlink) is markup of its own and is never merged.
  */
-const emptyPieceOf = (empty: InlineNode, other: InlineNode, emptied: Emptied): boolean => {
+const emptyPieceOf = (
+  empty: InlineNode,
+  other: InlineNode,
+  emptied: Emptied,
+): boolean => {
   const emptyChildren = childNodes(empty);
   const otherChildren = childNodes(other);
   return (
@@ -330,7 +394,8 @@ const foldedPiece = (
   emptied: Emptied,
 ): InlineNode | undefined => {
   if (emptyPieceOf(right, left, emptied)) return left;
-  if (emptyPieceOf(left, right, emptied)) return rebuildNode(left, childNodes(right) ?? []);
+  if (emptyPieceOf(left, right, emptied))
+    return rebuildNode(left, childNodes(right) ?? []);
   return undefined;
 };
 
@@ -340,7 +405,11 @@ const foldedPiece = (
  * chain of alike containers at their facing edges when it sits inside one.
  * Nothing else merges there.
  */
-const foldAtSeam = (left: InlineNode, right: InlineNode, emptied: Emptied): InlineNode[] => {
+const foldAtSeam = (
+  left: InlineNode,
+  right: InlineNode,
+  emptied: Emptied,
+): InlineNode[] => {
   const folded = foldedPiece(left, right, emptied);
   if (folded !== undefined) return [folded];
   const leftChildren = childNodes(left);
@@ -359,7 +428,13 @@ const foldAtSeam = (left: InlineNode, right: InlineNode, emptied: Emptied): Inli
   }
   const inner = foldAtSeam(last, first, emptied);
   if (inner.length !== 1) return [left, right];
-  return [rebuildNode(left, [...leftChildren.slice(0, -1), ...inner, ...rightChildren.slice(1)])];
+  return [
+    rebuildNode(left, [
+      ...leftChildren.slice(0, -1),
+      ...inner,
+      ...rightChildren.slice(1),
+    ]),
+  ];
 };
 
 /** A pending formatting review retains a recorded seam until it can be joined. */
@@ -368,7 +443,11 @@ type DeferredRunReviewSeamOptions = {
   right: InlineNode;
   depth: number;
 };
-const deferRunReviewSeam = ({ left, right, depth }: DeferredRunReviewSeamOptions): InlineNode[] => {
+const deferRunReviewSeam = ({
+  left,
+  right,
+  depth,
+}: DeferredRunReviewSeamOptions): InlineNode[] => {
   if (depth === 0) return [left, right];
   if (left.type !== "run" || right.type !== "run") {
     const leftChildren = childNodes(left);
@@ -383,9 +462,15 @@ const deferRunReviewSeam = ({ left, right, depth }: DeferredRunReviewSeamOptions
       !sameOwnFields(left, right)
     )
       return [left, right];
-    const deferred = deferRunReviewSeam({ left: last, right: first, depth: depth - 1 });
-    const deferredLeft = deferred.at(0) ?? panic("A deferred seam retains its left node.");
-    const deferredRight = deferred.at(1) ?? panic("A deferred seam retains its right node.");
+    const deferred = deferRunReviewSeam({
+      left: last,
+      right: first,
+      depth: depth - 1,
+    });
+    const deferredLeft =
+      deferred.at(0) ?? panic("A deferred seam retains its left node.");
+    const deferredRight =
+      deferred.at(1) ?? panic("A deferred seam retains its right node.");
     return [
       deferredLeft === last
         ? left
@@ -406,7 +491,9 @@ const deferRunReviewSeam = ({ left, right, depth }: DeferredRunReviewSeamOptions
       return run;
     return {
       ...run,
-      propertyChanges: [{ ...change, boundaryJoins: [...change.boundaryJoins, side] }],
+      propertyChanges: [
+        { ...change, boundaryJoins: [...change.boundaryJoins, side] },
+      ],
     };
   };
   return [retain(left, "after"), retain(right, "before")];
@@ -449,14 +536,21 @@ const mergedAtSeam = (
   if (last === undefined || first === undefined) {
     return [...left, ...right];
   }
-  return [...left.slice(0, -1), ...mergeAtSeam(last, first, emptied), ...right.slice(1)];
+  return [
+    ...left.slice(0, -1),
+    ...mergeAtSeam(last, first, emptied),
+    ...right.slice(1),
+  ];
 };
 
 type RetainedIdentity = NonNullable<
   NonNullable<Deletion["resolutionJoins"]>["retainedAfter"]
 >[number];
 
-const hasSlots = (node: InlineNode, expected: RetainedIdentity["target"]): boolean => {
+const hasSlots = (
+  node: InlineNode,
+  expected: RetainedIdentity["target"],
+): boolean => {
   const actual = identitySlots(node);
   return expected.every((target) =>
     actual.some((slot) => slot.space === target.space && slot.id === target.id),
@@ -477,7 +571,9 @@ const restoreRetainedIdentities = ({
   const references = new Map<string, RetainedIdentity["source"][number]>();
   let out = [...nodes];
   for (const transfer of transfers) {
-    const source = transfer.source.map((slot) => references.get(slotKey(slot)) ?? slot);
+    const source = transfer.source.map(
+      (slot) => references.get(slotKey(slot)) ?? slot,
+    );
     let matched = false;
     const restore = (node: InlineNode): InlineNode => {
       const matches = hasSlots(node, transfer.target);
@@ -487,17 +583,21 @@ const restoreRetainedIdentities = ({
             node,
             identitySlots(node).map((slot) => {
               const index = transfer.target.findIndex(
-                (target) => slot.space === target.space && slot.id === target.id,
+                (target) =>
+                  slot.space === target.space && slot.id === target.id,
               );
               return index < 0
                 ? slot.id
                 : (source.at(index)?.id ??
-                    panic("A validated identity transfer has its source slot."));
+                    panic(
+                      "A validated identity transfer has its source slot.",
+                    ));
             }),
           )
         : node;
       const children = childNodes(next);
-      if (children !== undefined) next = rebuildNode(next, children.map(restore));
+      if (children !== undefined)
+        next = rebuildNode(next, children.map(restore));
       return next;
     };
     out = out.map(restore);
@@ -509,7 +609,10 @@ const restoreRetainedIdentities = ({
       references.set(slotKey(target), restored);
       // Selection follows the actual retained record through a source-ID
       // transfer, rather than resolving an unrelated later use of its old ID.
-      if (target.space === IDENTITY_SPACES.REVISION && resolution.ids.has(target.id))
+      if (
+        target.space === IDENTITY_SPACES.REVISION &&
+        resolution.ids.has(target.id)
+      )
         resolution.ids.add(restored.id);
     }
   }
@@ -522,8 +625,12 @@ const restoreRetainedIdentities = ({
       if (joins.retainedAfter !== undefined) {
         joins.retainedAfter = joins.retainedAfter.map((entry) => ({
           depth: entry.depth,
-          source: entry.source.map((slot) => references.get(slotKey(slot)) ?? slot),
-          target: entry.target.map((slot) => references.get(slotKey(slot)) ?? slot),
+          source: entry.source.map(
+            (slot) => references.get(slotKey(slot)) ?? slot,
+          ),
+          target: entry.target.map(
+            (slot) => references.get(slotKey(slot)) ?? slot,
+          ),
         }));
       }
       if (joins.deferredRemove !== undefined) {
@@ -533,8 +640,12 @@ const restoreRetainedIdentities = ({
             blockers: [
               ...new Set(
                 group.blockers.map((id) => {
-                  const restored = references.get(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
-                  return restored?.space === IDENTITY_SPACES.REVISION ? restored.id : id;
+                  const restored = references.get(
+                    slotKey({ space: IDENTITY_SPACES.REVISION, id }),
+                  );
+                  return restored?.space === IDENTITY_SPACES.REVISION
+                    ? restored.id
+                    : id;
                 }),
               ),
             ],
@@ -544,26 +655,31 @@ const restoreRetainedIdentities = ({
       next = Object.assign({}, node, { resolutionJoins: joins });
     }
     const children = childNodes(next);
-    return children === undefined ? next : rebuildNode(next, children.map(rebase));
+    return children === undefined
+      ? next
+      : rebuildNode(next, children.map(rebase));
   };
   return out.map(rebase);
 };
 
 /** Journal-supplied provenance must name actual source slots at its recorded depth. */
 const validRetainedIdentities = (node: InlineNode): boolean => {
-  if (!isTrackedWrapper(node) || node.resolutionJoins === undefined) return true;
+  if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
+    return true;
   const joins = node.resolutionJoins;
   if (
     typeof joins !== "object" ||
     joins === null ||
     ![joins.before, joins.after, joins.remove].every(
-      (depth) => Number.isInteger(depth) && depth >= 0 && depth <= MAX_REVISION_ID,
+      (depth) =>
+        Number.isInteger(depth) && depth >= 0 && depth <= MAX_REVISION_ID,
     )
   )
     return false;
   if (joins.deferredRemove !== undefined) {
     const groups = joins.deferredRemove;
-    if (!Array.isArray(groups) || groups.length === 0 || !isAddedRevision(node)) return false;
+    if (!Array.isArray(groups) || groups.length === 0 || !isAddedRevision(node))
+      return false;
     const groupKeys = new Set<string>();
     for (const deferred of groups) {
       if (
@@ -576,7 +692,10 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
         deferred.blockers.length === 0 ||
         !deferred.blockers.every(
           (id: unknown) =>
-            typeof id === "number" && Number.isInteger(id) && id >= 0 && id <= MAX_REVISION_ID,
+            typeof id === "number" &&
+            Number.isInteger(id) &&
+            id >= 0 &&
+            id <= MAX_REVISION_ID,
         ) ||
         new Set(deferred.blockers).size !== deferred.blockers.length ||
         !deferred.blockers.includes(node.info.id)
@@ -600,13 +719,21 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
       atDepth({ records: childNodes(record) ?? [], depth: depth - 1, source }),
     );
   };
-  const validSlot = (slot: unknown): slot is RetainedIdentity["source"][number] => {
-    if (typeof slot !== "object" || slot === null || !("space" in slot) || !("id" in slot))
+  const validSlot = (
+    slot: unknown,
+  ): slot is RetainedIdentity["source"][number] => {
+    if (
+      typeof slot !== "object" ||
+      slot === null ||
+      !("space" in slot) ||
+      !("id" in slot)
+    )
       return false;
     // Revision/control ids allow zero; note-record reserved ids do not apply here.
     const retainedId = slot.id;
     return (
-      (slot.space === IDENTITY_SPACES.REVISION || slot.space === IDENTITY_SPACES.CONTROL) &&
+      (slot.space === IDENTITY_SPACES.REVISION ||
+        slot.space === IDENTITY_SPACES.CONTROL) &&
       typeof retainedId === "number" &&
       Number.isInteger(retainedId) &&
       retainedId >= 0 &&
@@ -655,20 +782,33 @@ const prepareDeferredRemovals = (
   const out: InlineNode[] = [];
   for (const node of nodes) {
     let next = node;
-    if (isTrackedWrapper(node) && node.resolutionJoins?.deferredRemove !== undefined) {
+    if (
+      isTrackedWrapper(node) &&
+      node.resolutionJoins?.deferredRemove !== undefined
+    ) {
       const groups = node.resolutionJoins.deferredRemove;
-      if (groups.some((group) => group.blockers.some((id) => resolution.ids.has(id)))) {
+      if (
+        groups.some((group) =>
+          group.blockers.some((id) => resolution.ids.has(id)),
+        )
+      ) {
         const joins = Object.assign({}, node.resolutionJoins);
-        const remainingGroups: NonNullable<typeof joins.deferredRemove>[number][] = [];
+        const remainingGroups: NonNullable<
+          typeof joins.deferredRemove
+        >[number][] = [];
         for (const group of groups) {
           if (!group.blockers.some((id) => resolution.ids.has(id))) {
             remainingGroups.push(group);
             continue;
           }
           if (resolution.decision === REVISION_DECISIONS.ACCEPT) continue;
-          const remaining = group.blockers.filter((id) => !resolution.ids.has(id));
-          if (remaining.length === 0) joins.remove = Math.max(joins.remove, group.depth);
-          else remainingGroups.push({ depth: group.depth, blockers: remaining });
+          const remaining = group.blockers.filter(
+            (id) => !resolution.ids.has(id),
+          );
+          if (remaining.length === 0)
+            joins.remove = Math.max(joins.remove, group.depth);
+          else
+            remainingGroups.push({ depth: group.depth, blockers: remaining });
         }
         delete joins.deferredRemove;
         if (remainingGroups.length > 0)
@@ -678,8 +818,11 @@ const prepareDeferredRemovals = (
     }
     const children = childNodes(next);
     const prepared =
-      children === undefined ? children : prepareDeferredRemovals(children, resolution);
-    if (children !== undefined && prepared !== children) next = rebuildNode(next, prepared ?? []);
+      children === undefined
+        ? children
+        : prepareDeferredRemovals(children, resolution);
+    if (children !== undefined && prepared !== children)
+      next = rebuildNode(next, prepared ?? []);
     changed ||= next !== node;
     out.push(next);
   }
@@ -701,10 +844,14 @@ const retainedCommentAnchors = (
     )
       return [node];
     const children = childNodes(node);
-    return children === undefined ? [] : retainedCommentAnchors(children, rangeIds);
+    return children === undefined
+      ? []
+      : retainedCommentAnchors(children, rangeIds);
   });
 
-const pairedCommentRangeIds = (nodes: readonly InlineNode[]): ReadonlySet<number> => {
+const pairedCommentRangeIds = (
+  nodes: readonly InlineNode[],
+): ReadonlySet<number> => {
   const starts = new Set<number>();
   const ends = new Set<number>();
   const visit = (items: readonly InlineNode[]): void => {
@@ -724,7 +871,10 @@ const removedCommentRangeIds = (
   resolution: Resolution,
 ): ReadonlySet<number> => {
   const ids = new Set<number>();
-  const visit = (items: readonly InlineNode[], removedWithAncestor = false): void => {
+  const visit = (
+    items: readonly InlineNode[],
+    removedWithAncestor = false,
+  ): void => {
     for (const node of items) {
       const removedHere =
         removedWithAncestor ||
@@ -775,7 +925,10 @@ const withoutCommentAnchors = (
  * A list with its tracked changes resolved. Where a change was resolved,
  * the records left meeting are merged as far as they are alike.
  */
-const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): ResolvedList => {
+const resolveList = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): ResolvedList => {
   const out: InlineNode[] = [];
   const seams: number[] = [];
   const plainSeams = new Set<number>();
@@ -783,11 +936,13 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
   const sourceEdges = new Map<number, number>();
   const pending = [...nodes];
   const recordExactSeam = (index: number, depth: number): void => {
-    if (depth > 0) exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
+    if (depth > 0)
+      exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
   };
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
-    if (depth > 0) sourceEdges.set(index, Math.max(sourceEdges.get(index) ?? 0, depth));
+    if (depth > 0)
+      sourceEdges.set(index, Math.max(sourceEdges.get(index) ?? 0, depth));
   };
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
@@ -810,9 +965,15 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           // selected; recompute deferred facts against those actual identities.
           const prepared = prepareDeferredRemovals(restored, resolution);
           out.splice(0, out.length, ...prepared.slice(0, prefixLength));
-          pending.splice(index + 1, pending.length - index - 1, ...prepared.slice(prefixLength));
+          pending.splice(
+            index + 1,
+            pending.length - index - 1,
+            ...prepared.slice(prefixLength),
+          );
         }
-        out.push(...retainedCommentAnchors(node.content, resolution.commentRangeIds));
+        out.push(
+          ...retainedCommentAnchors(node.content, resolution.commentRangeIds),
+        );
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;
@@ -821,7 +982,8 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       else recordSourceSeam(out.length, node.resolutionJoins.before);
       const resolved = resolveList(node.content, resolution);
       const content = resolved.nodes;
-      if (resolved.edges?.first !== undefined) recordSourceSeam(out.length, resolved.edges.first);
+      if (resolved.edges?.first !== undefined)
+        recordSourceSeam(out.length, resolved.edges.first);
       if (
         isAddedRevision(node) &&
         resolution.decision === REVISION_DECISIONS.ACCEPT &&
@@ -836,13 +998,15 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       }
       if (
         resolution.decision === REVISION_DECISIONS.ACCEPT &&
-        node.resolutionJoins?.acceptance === INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS
+        node.resolutionJoins?.acceptance ===
+          INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS
       ) {
         plainSeams.add(out.length);
         plainSeams.add(out.length + content.length);
       }
       out.push(...content);
-      if (resolved.edges?.last !== undefined) recordSourceSeam(out.length, resolved.edges.last);
+      if (resolved.edges?.last !== undefined)
+        recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
       else recordSourceSeam(out.length, node.resolutionJoins.after);
       continue;
@@ -857,14 +1021,16 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
         if (
           selected.some(
             (change) =>
-              change.boundaryJoins === undefined || change.boundaryJoins.includes("before"),
+              change.boundaryJoins === undefined ||
+              change.boundaryJoins.includes("before"),
           )
         )
           seams.push(out.length);
         if (
           selected.some(
             (change) =>
-              change.boundaryJoins === undefined || change.boundaryJoins.includes("after"),
+              change.boundaryJoins === undefined ||
+              change.boundaryJoins.includes("after"),
           )
         )
           seams.push(out.length + 1);
@@ -873,7 +1039,8 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       continue;
     }
     const children = childNodes(node);
-    const inner = children === undefined ? undefined : resolveList(children, resolution);
+    const inner =
+      children === undefined ? undefined : resolveList(children, resolution);
     if (children === undefined || inner === undefined || !inner.changed) {
       out.push(node);
       continue;
@@ -885,7 +1052,8 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     // resolution it was emptied rather than empty before, and would stay where
     // accepting the same changes at once folds it into an alike neighbour.
     if (
-      (isTrackedWrapper(node) || resolution.decision === REVISION_DECISIONS.ACCEPT) &&
+      (isTrackedWrapper(node) ||
+        resolution.decision === REVISION_DECISIONS.ACCEPT) &&
       inner.nodes.length === 0 &&
       children.length > 0
     ) {
@@ -895,23 +1063,34 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       continue;
     }
     let rebuilt = rebuildNode(node, inner.nodes);
-    if (isTrackedWrapper(rebuilt) && rebuilt.resolutionJoins?.retainedAfter !== undefined) {
+    if (
+      isTrackedWrapper(rebuilt) &&
+      rebuilt.resolutionJoins?.retainedAfter !== undefined
+    ) {
       const sourceKeys = new Set(identityKeysIn(inner.nodes));
-      const retainedAfter = rebuilt.resolutionJoins.retainedAfter.flatMap((entry) => {
-        const source: RetainedIdentity["source"][number][] = [];
-        const target: RetainedIdentity["target"][number][] = [];
-        for (const [slotIndex, slot] of entry.source.entries()) {
-          if (!sourceKeys.has(slotKey(slot))) continue;
-          const bound = entry.target.at(slotIndex);
-          if (bound === undefined)
-            panic("Validated cut provenance has paired source and target slots.");
-          source.push(slot);
-          target.push(bound);
-        }
-        return source.length === 0 ? [] : [{ depth: entry.depth, source, target }];
-      });
+      const retainedAfter = rebuilt.resolutionJoins.retainedAfter.flatMap(
+        (entry) => {
+          const source: RetainedIdentity["source"][number][] = [];
+          const target: RetainedIdentity["target"][number][] = [];
+          for (const [slotIndex, slot] of entry.source.entries()) {
+            if (!sourceKeys.has(slotKey(slot))) continue;
+            const bound = entry.target.at(slotIndex);
+            if (bound === undefined)
+              panic(
+                "Validated cut provenance has paired source and target slots.",
+              );
+            source.push(slot);
+            target.push(bound);
+          }
+          return source.length === 0
+            ? []
+            : [{ depth: entry.depth, source, target }];
+        },
+      );
       rebuilt = Object.assign({}, rebuilt, {
-        resolutionJoins: Object.assign({}, rebuilt.resolutionJoins, { retainedAfter }),
+        resolutionJoins: Object.assign({}, rebuilt.resolutionJoins, {
+          retainedAfter,
+        }),
       });
     }
     // A container the resolution emptied, or one with such a container at an
@@ -942,14 +1121,17 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     const left = out.at(index - 1);
     const right = out.at(index + 1);
     const depths = [
-      index > 0 && left !== undefined ? resolution.cutEdges.get(left)?.last : undefined,
+      index > 0 && left !== undefined
+        ? resolution.cutEdges.get(left)?.last
+        : undefined,
       right === undefined ? undefined : resolution.cutEdges.get(right)?.first,
     ];
     const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
     for (const depth of depths) {
       if (depth !== undefined) groups.push({ depth, blockers: [node.info.id] });
     }
-    if (groups.length === (node.resolutionJoins.deferredRemove?.length ?? 0)) continue;
+    if (groups.length === (node.resolutionJoins.deferredRemove?.length ?? 0))
+      continue;
     out[index] = Object.assign({}, node, {
       resolutionJoins: Object.assign({}, node.resolutionJoins, {
         deferredRemove: canonicalDeferredGroups(groups),
@@ -968,13 +1150,18 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
   for (const seam of plainSeams) {
     const left = out.at(seam - 1);
     const right = out.at(seam);
-    if (seam > 0 && left?.type === "run" && right?.type === "run" && runsMergeable(left, right))
+    if (
+      seam > 0 &&
+      left?.type === "run" &&
+      right?.type === "run" &&
+      runsMergeable(left, right)
+    )
       seams.push(seam);
   }
   const merges = new Set(seams);
-  for (const seam of [...new Set([...seams, ...exactSeams.keys(), ...folds])].toSorted(
-    (left, right) => right - left,
-  )) {
+  for (const seam of [
+    ...new Set([...seams, ...exactSeams.keys(), ...folds]),
+  ].toSorted((left, right) => right - left)) {
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
@@ -1002,11 +1189,14 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       if (folded.length === 1) met = folded;
       else {
         const deferred = deferRunReviewSeam({ left, right, depth: exactDepth });
-        const deferredLeft = deferred.at(0) ?? panic("A recorded seam retains its left node.");
-        const deferredRight = deferred.at(1) ?? panic("A recorded seam retains its right node.");
+        const deferredLeft =
+          deferred.at(0) ?? panic("A recorded seam retains its left node.");
+        const deferredRight =
+          deferred.at(1) ?? panic("A recorded seam retains its right node.");
         met =
-          mergeLists([deferredLeft], [deferredRight], exactDepth, { mode: "asFarAsAlike" }) ??
-          panic("An as-far-as-alike merge always returns its records.");
+          mergeLists([deferredLeft], [deferredRight], exactDepth, {
+            mode: "asFarAsAlike",
+          }) ?? panic("An as-far-as-alike merge always returns its records.");
       }
     }
     if (met.length === 1) {
@@ -1022,10 +1212,14 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
   }
   const first = out.at(0);
   const last = out.at(-1);
-  const nestedFirst = first === undefined ? undefined : resolution.cutEdges.get(first)?.first;
-  const nestedLast = last === undefined ? undefined : resolution.cutEdges.get(last)?.last;
-  if (nestedFirst !== undefined) edges.first = Math.max(edges.first ?? 0, nestedFirst);
-  if (nestedLast !== undefined) edges.last = Math.max(edges.last ?? 0, nestedLast);
+  const nestedFirst =
+    first === undefined ? undefined : resolution.cutEdges.get(first)?.first;
+  const nestedLast =
+    last === undefined ? undefined : resolution.cutEdges.get(last)?.last;
+  if (nestedFirst !== undefined)
+    edges.first = Math.max(edges.first ?? 0, nestedFirst);
+  if (nestedLast !== undefined)
+    edges.last = Math.max(edges.last ?? 0, nestedLast);
   return { nodes: out, changed, edges };
 };
 
@@ -1038,7 +1232,8 @@ const resolveParagraphReview = (
   const review = reviewFieldsOf(paragraph);
   let changed = false;
   const changes = paragraph.propertyChanges ?? [];
-  const selected = (change: (typeof changes)[number]): boolean => ids.has(change.info.id);
+  const selected = (change: (typeof changes)[number]): boolean =>
+    ids.has(change.info.id);
   if (changes.some(selected)) {
     changed = true;
     let remaining = changes.filter((change) => !selected(change));
@@ -1049,7 +1244,10 @@ const resolveParagraphReview = (
       }
       if (removed.kind === "restore") {
         // A property change records paragraph properties: the mark's run properties stay.
-        const restored = withMarkFormatting(removed.previous, paragraph.formatting);
+        const restored = withMarkFormatting(
+          removed.previous,
+          paragraph.formatting,
+        );
         if (restored === undefined) {
           delete review.formatting;
         } else {
@@ -1079,7 +1277,8 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
     for (const node of nodes) {
       if (isTrackedWrapper(node)) out.add(node.info.id);
       if (node.type === "run") {
-        for (const change of node.propertyChanges ?? []) out.add(change.info.id);
+        for (const change of node.propertyChanges ?? [])
+          out.add(change.info.id);
       }
       visit(childNodes(node) ?? []);
     }
@@ -1124,7 +1323,10 @@ const edgeRecord = (
 };
 
 /** Which edges of a list end in a record `emptied` holds. */
-const emptiedEndsOf = (nodes: readonly InlineNode[], emptied: Emptied): EmptiedEnds => {
+const emptiedEndsOf = (
+  nodes: readonly InlineNode[],
+  emptied: Emptied,
+): EmptiedEnds => {
   const first = edgeRecord(nodes, "first");
   const last = edgeRecord(nodes, "last");
   return {
@@ -1166,8 +1368,13 @@ const deferSplitSeam = ({
     firstChildren !== undefined &&
     sameOwnFields(last, first)
   ) {
-    const inner = deferSplitSeam({ left: lastChildren, right: firstChildren, depth: depth - 1 });
-    if (inner.left === lastChildren && inner.right === firstChildren) return { left, right };
+    const inner = deferSplitSeam({
+      left: lastChildren,
+      right: firstChildren,
+      depth: depth - 1,
+    });
+    if (inner.left === lastChildren && inner.right === firstChildren)
+      return { left, right };
     return {
       left: [...left.slice(0, -1), rebuildNode(last, inner.left)],
       right: [rebuildNode(first, inner.right), ...right.slice(1)],
@@ -1181,11 +1388,16 @@ const deferSplitSeam = ({
   let leftEnd = left.length - 1;
   let rightStart = 0;
   while (leftEnd >= 0 && blocking(left.at(leftEnd))) leftEnd -= 1;
-  while (rightStart < right.length && blocking(right.at(rightStart))) rightStart += 1;
+  while (rightStart < right.length && blocking(right.at(rightStart)))
+    rightStart += 1;
   // Pending revisions can themselves be the two source fragments. Keep
   // those outside the blocker group; only insertions between them defer it.
   let sourcePair = false;
-  for (let leftIndex = left.length - 1; leftIndex > leftEnd && !sourcePair; leftIndex -= 1) {
+  for (
+    let leftIndex = left.length - 1;
+    leftIndex > leftEnd && !sourcePair;
+    leftIndex -= 1
+  ) {
     const leftSource = left.at(leftIndex);
     if (leftSource === undefined) panic("A scanned source fragment exists.");
     for (let rightIndex = 0; rightIndex < rightStart; rightIndex += 1) {
@@ -1199,12 +1411,15 @@ const deferSplitSeam = ({
     }
   }
   if (leftEnd !== left.length - 1 || rightStart !== 0) {
-    const blockers = [...left.slice(leftEnd + 1), ...right.slice(0, rightStart)].flatMap((node) =>
-      isTrackedWrapper(node) ? [node.info.id] : [],
-    );
+    const blockers = [
+      ...left.slice(leftEnd + 1),
+      ...right.slice(0, rightStart),
+    ].flatMap((node) => (isTrackedWrapper(node) ? [node.info.id] : []));
     const deferred = (node: InlineNode): InlineNode => {
       if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
-        panic("Only a provenance-bearing pending insertion blocks this split seam.");
+        panic(
+          "Only a provenance-bearing pending insertion blocks this split seam.",
+        );
       const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
       if (
         !groups.some(
@@ -1216,12 +1431,18 @@ const deferSplitSeam = ({
       )
         groups.push({ depth, blockers });
       return Object.assign({}, node, {
-        resolutionJoins: Object.assign({}, node.resolutionJoins, { deferredRemove: groups }),
+        resolutionJoins: Object.assign({}, node.resolutionJoins, {
+          deferredRemove: groups,
+        }),
       });
     };
     return {
-      left: left.map((node, index) => (index > leftEnd ? deferred(node) : node)),
-      right: right.map((node, index) => (index < rightStart ? deferred(node) : node)),
+      left: left.map((node, index) =>
+        index > leftEnd ? deferred(node) : node,
+      ),
+      right: right.map((node, index) =>
+        index < rightStart ? deferred(node) : node,
+      ),
     };
   }
   return { left, right };
@@ -1242,12 +1463,17 @@ const joinOps = (
   );
   if (location === undefined) {
     return Result.err(
-      refusal(op, DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, `No paragraph is ${paraId}.`),
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+        `No paragraph is ${paraId}.`,
+      ),
     );
   }
   const { paragraph } = location;
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
+  const previous = blocks[location.index - 1];
   const empty = paragraphLength(paragraph) === 0;
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
@@ -1256,8 +1482,13 @@ const joinOps = (
       markWasAdded: added,
       containerStillEndsWithParagraph: true,
       followingTableCanReceiveRunIn: false,
+      removedSectionProperties:
+        added && paragraph.sectionProperties !== undefined,
+      precedingSectionOwner: precedingSectionOwner(previous, paragraph),
+      followingHasSectionProperties: next.sectionProperties !== undefined,
     });
-    if (outcome.kind !== "join") return panic("A following paragraph always receives a join.");
+    if (outcome.kind !== "join")
+      return panic("A following paragraph always receives a join.");
     // The mark that goes takes the paragraph's properties with it: the next
     // paragraph is left, whole, with the first's content before its own.
     const firstEnds = ends.get(idKey(paraId)) ?? NO_EMPTIED_ENDS;
@@ -1280,7 +1511,11 @@ const joinOps = (
         ? mergedAtSeam(paragraph.content, next.content, emptied)
         : joinParagraphSeam(paragraph.content, next.content);
     } else {
-      const seam = deferSplitSeam({ left: paragraph.content, right: next.content, depth });
+      const seam = deferSplitSeam({
+        left: paragraph.content,
+        right: next.content,
+        depth,
+      });
       const left = seam.left.at(-1);
       const right = seam.right.at(0);
       if (depth > 0 && left !== undefined && right !== undefined) {
@@ -1298,20 +1533,45 @@ const joinOps = (
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));
-    const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
+    const mergedContent = asParagraphContent(merged);
+    const receivesSection = outcome.sectionDestination === "following";
+    // An unchanged follower that receives nothing keeps its identity.
+    const survivor: Paragraph =
+      !receivesSection && structurallyEqual(mergedContent, next.content)
+        ? next
+        : {
+            ...next,
+            content: mergedContent,
+            ...(receivesSection
+              ? { sectionProperties: paragraph.sectionProperties }
+              : {}),
+          };
+    const transfersToPrevious =
+      outcome.sectionDestination === "preceding" &&
+      previous?.type === "paragraph";
     return Result.ok([
       {
         type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
         story,
-        expected: [paragraph, next],
-        blocks: [survivor],
+        expected: transfersToPrevious
+          ? [previous, paragraph, next]
+          : [paragraph, next],
+        blocks: transfersToPrevious
+          ? [
+              { ...previous, sectionProperties: paragraph.sectionProperties },
+              survivor,
+            ]
+          : [survivor],
         ...(paragraph.sectionProperties === undefined
           ? {}
           : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
       },
     ]);
   }
-  if (next !== undefined && (next.type === "bookmarkStart" || next.type === "bookmarkEnd")) {
+  if (
+    next !== undefined &&
+    (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
+  ) {
     return Result.err(
       refusal(
         op,
@@ -1323,7 +1583,8 @@ const joinOps = (
   // No paragraph to join: a table follows, or the paragraph ends its container.
   const containerFinal = endsItsContainer(body, location);
   // A cell-ending mark describes the terminator, not a paragraph to retire.
-  const cellFinal = containerFinal && location.list.some((step) => step.kind === "tableCell");
+  const cellFinal =
+    containerFinal && location.list.some((step) => step.kind === "tableCell");
   const outcome = paragraphMarkOutcome({
     follows: next?.type === "table" ? "table" : "nothing",
     holdsContent: paragraphHoldsContent(paragraph),
@@ -1332,12 +1593,19 @@ const joinOps = (
       next?.type === "table"
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last.
-          containerFinal && !cellFinal && blocks.at(location.index - 1)?.type === "paragraph",
+          containerFinal &&
+          !cellFinal &&
+          blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn:
       next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      (blocks.at(-1)?.type === "paragraph" && tableCanReceiveParagraphRunIn(paragraph, next)),
+      (blocks.at(-1)?.type === "paragraph" &&
+        tableCanReceiveParagraphRunIn(paragraph, next)),
+    removedSectionProperties:
+      added && paragraph.sectionProperties !== undefined,
+    precedingSectionOwner: precedingSectionOwner(previous, paragraph),
+    followingHasSectionProperties: false,
   });
   if (outcome.kind === "refuse") {
     return Result.err(
@@ -1354,7 +1622,8 @@ const joinOps = (
     next?.type === "table"
   ) {
     const anchor = blocks.find(
-      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
+      (block, index): block is Paragraph =>
+        index !== location.index && block.type === "paragraph",
     );
     if (anchor === undefined) {
       return Result.err(
@@ -1365,7 +1634,8 @@ const joinOps = (
         ),
       );
     }
-    const replacement = outcome.kind === "remove" ? next : runParagraphIntoTable(paragraph, next);
+    const replacement =
+      outcome.kind === "remove" ? next : runParagraphIntoTable(paragraph, next);
     if (replacement === undefined) {
       return Result.err(
         refusal(
@@ -1390,16 +1660,30 @@ const joinOps = (
   }
   if (outcome.kind === "remove" && blocks.length > 1) {
     const anchor = blocks.find(
-      (block, index): block is Paragraph => index !== location.index && block.type === "paragraph",
+      (block, index): block is Paragraph =>
+        index !== location.index && block.type === "paragraph",
     );
     if (anchor !== undefined) {
+      const replacementBlocks = blocks.filter(
+        (_, index) => index !== location.index,
+      );
+      if (
+        outcome.sectionDestination === "preceding" &&
+        previous?.type === "paragraph"
+      ) {
+        const previousIndex = replacementBlocks.indexOf(previous);
+        replacementBlocks[previousIndex] = {
+          ...previous,
+          sectionProperties: paragraph.sectionProperties,
+        };
+      }
       return Result.ok([
         {
           type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
           story,
           blockId: anchor.paraId ?? "",
           expected: blocks,
-          blocks: blocks.filter((_, index) => index !== location.index),
+          blocks: replacementBlocks,
         },
       ]);
     }
@@ -1445,7 +1729,10 @@ const acceptedClosedBoundary = ({
       resolution.ids.has(node.info.id) &&
       node.resolutionJoins !== undefined
     ) {
-      const fitting = edge === "first" ? node.resolutionJoins.after : node.resolutionJoins.before;
+      const fitting =
+        edge === "first"
+          ? node.resolutionJoins.after
+          : node.resolutionJoins.before;
       if (fitting === 0) return depth;
     }
     const children = childNodes(node);
@@ -1469,17 +1756,27 @@ export const resolveRevision = (
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
     return Result.err(
-      refusal(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A decision accepts or rejects."),
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A decision accepts or rejects.",
+      ),
     );
   }
   if (!op.revisionIds.every((id) => Number.isInteger(id))) {
     return Result.err(
-      refusal(op, DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID, "A revision id is an integer."),
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+        "A revision id is an integer.",
+      ),
     );
   }
   const present = storyIdentityKeys(document, op.story);
   const ids = new Set(
-    op.revisionIds.filter((id) => present.has(slotKey({ space: IDENTITY_SPACES.REVISION, id }))),
+    op.revisionIds.filter((id) =>
+      present.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+    ),
   );
   if (ids.size === 0) {
     return Result.ok({
@@ -1516,7 +1813,11 @@ export const resolveRevision = (
   const blockerIds = new Set<number>();
   const collectBlockers = (nodes: readonly InlineNode[]): void => {
     for (const node of nodes) {
-      if (isTrackedWrapper(node) && isAddedRevision(node) && node.resolutionJoins !== undefined)
+      if (
+        isTrackedWrapper(node) &&
+        isAddedRevision(node) &&
+        node.resolutionJoins !== undefined
+      )
         blockerIds.add(node.info.id);
       collectBlockers(childNodes(node) ?? []);
     }
@@ -1528,7 +1829,8 @@ export const resolveRevision = (
         validRetainedIdentities(node) &&
         (!isTrackedWrapper(node) ||
           node.resolutionJoins?.acceptance === undefined ||
-          node.resolutionJoins.acceptance === INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS) &&
+          node.resolutionJoins.acceptance ===
+            INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS) &&
         (!isTrackedWrapper(node) ||
           node.resolutionJoins?.deferredRemove === undefined ||
           node.resolutionJoins.deferredRemove.every((group) =>
@@ -1541,7 +1843,8 @@ export const resolveRevision = (
       const depth = paragraph.pPrMark?.resolutionJoin;
       return (
         !validProvenance(paragraph.content) ||
-        (depth !== undefined && (!Number.isInteger(depth) || depth < 0 || depth > MAX_REVISION_ID))
+        (depth !== undefined &&
+          (!Number.isInteger(depth) || depth < 0 || depth > MAX_REVISION_ID))
       );
     })
   ) {
@@ -1573,11 +1876,18 @@ export const resolveRevision = (
   for (const { paragraph, content: prepared } of preparedContents) {
     const paraId = paragraph.paraId ?? "";
     const resolved = resolveList(prepared, resolution);
-    const resolvedNodes = withoutCommentAnchors(resolved.nodes, removedCommentIds);
+    const resolvedNodes = withoutCommentAnchors(
+      resolved.nodes,
+      removedCommentIds,
+    );
     resolvedContents.set(idKey(paraId), resolvedNodes);
-    if (resolved.edges !== undefined) resolvedCutEdges.set(idKey(paraId), resolved.edges);
+    if (resolved.edges !== undefined)
+      resolvedCutEdges.set(idKey(paraId), resolved.edges);
     if (resolved.changed || prepared !== paragraph.content) {
-      emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolvedNodes, resolution.emptied));
+      emptiedEnds.set(
+        idKey(paraId),
+        emptiedEndsOf(resolvedNodes, resolution.emptied),
+      );
       inline.push({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
         story: op.story,
@@ -1592,7 +1902,11 @@ export const resolveRevision = (
   for (const location of paragraphs) {
     const paragraph = location.paragraph;
     const mark = paragraph.pPrMark;
-    if (mark === undefined || !markWasAdded(mark.kind) || mark.resolutionJoin === undefined)
+    if (
+      mark === undefined ||
+      !markWasAdded(mark.kind) ||
+      mark.resolutionJoin === undefined
+    )
       continue;
     const trailing = acceptedClosedBoundary({
       nodes:
@@ -1601,7 +1915,9 @@ export const resolveRevision = (
       edge: "last",
       resolution,
     });
-    const next = blockListAt(body.content, location.list).at(location.index + 1);
+    const next = blockListAt(body.content, location.list).at(
+      location.index + 1,
+    );
     const leading =
       next?.type === "paragraph"
         ? acceptedClosedBoundary({
@@ -1613,7 +1929,9 @@ export const resolveRevision = (
           })
         : undefined;
     let leadingCut =
-      next?.type === "paragraph" ? (resolvedCutEdges.get(idKey(next.paraId ?? ""))?.first ?? 0) : 0;
+      next?.type === "paragraph"
+        ? (resolvedCutEdges.get(idKey(next.paraId ?? ""))?.first ?? 0)
+        : 0;
     const following = blockListAt(body.content, location.list);
     for (let index = location.index + 1; index < following.length; index += 1) {
       const candidate = following.at(index);
@@ -1623,15 +1941,22 @@ export const resolveRevision = (
         resolvedCutEdges.get(idKey(candidate.paraId ?? ""))?.first ?? 0,
       );
       if (
-        (resolvedContents.get(idKey(candidate.paraId ?? ""))?.length ?? 0) !== 0 ||
+        (resolvedContents.get(idKey(candidate.paraId ?? ""))?.length ?? 0) !==
+          0 ||
         candidate.pPrMark === undefined ||
         !markWasAdded(candidate.pPrMark.kind)
       )
         break;
       // An empty inserted paragraph can carry the source cut for a later
       // join. Rejecting its break must carry that cut across the entire chain.
-      if (op.decision === REVISION_DECISIONS.REJECT && ids.has(candidate.pPrMark.info.id))
-        leadingCut = Math.max(leadingCut, candidate.pPrMark.resolutionJoin ?? 0);
+      if (
+        op.decision === REVISION_DECISIONS.REJECT &&
+        ids.has(candidate.pPrMark.info.id)
+      )
+        leadingCut = Math.max(
+          leadingCut,
+          candidate.pPrMark.resolutionJoin ?? 0,
+        );
     }
     let depth = Math.max(
       mark.resolutionJoin,
@@ -1640,7 +1965,8 @@ export const resolveRevision = (
     );
     if (trailing !== undefined) depth = Math.min(depth, trailing);
     if (leading !== undefined) depth = Math.min(depth, leading);
-    if (depth !== mark.resolutionJoin) retiredCutDepths.set(idKey(paragraph.paraId ?? ""), depth);
+    if (depth !== mark.resolutionJoin)
+      retiredCutDepths.set(idKey(paragraph.paraId ?? ""), depth);
   }
   for (const location of paragraphs) {
     const { paragraph } = location;
@@ -1648,11 +1974,18 @@ export const resolveRevision = (
     const mark = paragraph.pPrMark;
     const markResolved = mark !== undefined && ids.has(mark.info.id);
     const added = mark !== undefined && markWasAdded(mark.kind);
-    const keepsBreak = markResolved && added === (op.decision === REVISION_DECISIONS.ACCEPT);
+    const keepsBreak =
+      markResolved && added === (op.decision === REVISION_DECISIONS.ACCEPT);
     if (markResolved && !keepsBreak) {
       let depth = retiredCutDepths.get(idKey(paraId)) ?? mark.resolutionJoin;
-      if (added && depth !== undefined && op.decision === REVISION_DECISIONS.REJECT) {
-        const next = blockListAt(body.content, location.list).at(location.index + 1);
+      if (
+        added &&
+        depth !== undefined &&
+        op.decision === REVISION_DECISIONS.REJECT
+      ) {
+        const next = blockListAt(body.content, location.list).at(
+          location.index + 1,
+        );
         // A deletion can have cut the source run before a later paragraph
         // split. Rejecting its wrapper exposes that source seam at the edge;
         // carry the recorded depth across the removed inserted break.
@@ -1669,10 +2002,13 @@ export const resolveRevision = (
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
     const retiredDepth = retiredCutDepths.get(idKey(paraId));
     if (retiredDepth !== undefined) {
-      const remainingMark = review === undefined ? paragraph.pPrMark : review.pPrMark;
+      const remainingMark =
+        review === undefined ? paragraph.pPrMark : review.pPrMark;
       if (remainingMark !== undefined) {
         review ??= reviewFieldsOf(paragraph);
-        review.pPrMark = Object.assign({}, remainingMark, { resolutionJoin: retiredDepth });
+        review.pPrMark = Object.assign({}, remainingMark, {
+          resolutionJoin: retiredDepth,
+        });
       }
     }
     if (review !== undefined) {
@@ -1690,7 +2026,11 @@ export const resolveRevision = (
   if (staged.isErr()) {
     return Result.err(staged.error);
   }
-  const rows = resolveTableRows({ document: staged.value.document, op, applyOps });
+  const rows = resolveTableRows({
+    document: staged.value.document,
+    op,
+    applyOps,
+  });
   if (rows.isErr()) return Result.err(rows.error);
   const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
   const edits: DocumentEdit[] = [staged.value, rows.value];
@@ -1712,7 +2052,9 @@ export const resolveRevision = (
   // one of them is then exhausted too and retires below.
   let notesRemoved = false;
   if (noteReferences.length > 0) {
-    const orphaned = noteReferences.filter((reference) => !hasNoteReference(current, reference));
+    const orphaned = noteReferences.filter(
+      (reference) => !hasNoteReference(current, reference),
+    );
     if (orphaned.length > 0) {
       const footnotes = new Set(
         orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
@@ -1721,16 +2063,25 @@ export const resolveRevision = (
         orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
       );
       const packageParts = { ...current.package };
-      const removesAddedFootnote = orphaned.some(({ kind, added }) => kind === "footnote" && added);
-      const removesAddedEndnote = orphaned.some(({ kind, added }) => kind === "endnote" && added);
+      const removesAddedFootnote = orphaned.some(
+        ({ kind, added }) => kind === "footnote" && added,
+      );
+      const removesAddedEndnote = orphaned.some(
+        ({ kind, added }) => kind === "endnote" && added,
+      );
       if (footnotes.size > 0 && packageParts.footnotes !== undefined) {
-        packageParts.footnotes = packageParts.footnotes.filter(({ id }) => !footnotes.has(id));
+        packageParts.footnotes = packageParts.footnotes.filter(
+          ({ id }) => !footnotes.has(id),
+        );
         if (packageParts.footnotes.length === 0 && removesAddedFootnote)
           delete packageParts.footnotes;
       }
       if (endnotes.size > 0 && packageParts.endnotes !== undefined) {
-        packageParts.endnotes = packageParts.endnotes.filter(({ id }) => !endnotes.has(id));
-        if (packageParts.endnotes.length === 0 && removesAddedEndnote) delete packageParts.endnotes;
+        packageParts.endnotes = packageParts.endnotes.filter(
+          ({ id }) => !endnotes.has(id),
+        );
+        if (packageParts.endnotes.length === 0 && removesAddedEndnote)
+          delete packageParts.endnotes;
       }
       current = { ...current, package: packageParts };
       notesRemoved = true;

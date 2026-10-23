@@ -42,31 +42,36 @@
     </div>
 
     <!-- Rotation label while rotating -->
-    <div v-if="isRotating" class="image-overlay__dim image-overlay__dim--rotate">
+    <div
+      v-if="isRotating"
+      class="image-overlay__dim image-overlay__dim--rotate"
+    >
       {{ Math.round(currentRotation) }}&deg;
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
-import type { EditorView } from "prosemirror-view";
 import { NodeSelection } from "prosemirror-state";
-import { pixelsToEmu } from "@stll/folio-core/utils/units";
+import type { EditorView } from "prosemirror-view";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+
 import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
-import {
-  isFloatingImage,
-  commitImageResize,
-  commitImageFloatMove,
-  commitImageInlineMove,
-  calculateResizedImageDimensions,
-  type ImageResizeHandle,
-} from "@stll/folio-core/prosemirror/imageCommit";
 import { findBodyPmAnchor } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import { findImageElement } from "@stll/folio-core/layout-painter/imageLayout";
-import { Z_INDEX } from "../styles/zIndex";
+import {
+  calculateResizedImageDimensions,
+  commitImageFloatMove,
+  commitImageInlineMove,
+  commitImageResize,
+  type ImageResizeHandle,
+  isFloatingImage,
+} from "@stll/folio-core/prosemirror/imageCommit";
+import { pixelsToEmu } from "@stll/folio-core/utils/units";
+
 import { computeImageOverlayRect } from "../composables/imageOverlayRect";
 import { useTranslation } from "../i18n";
+import { Z_INDEX } from "../styles/zIndex";
 
 const { t } = useTranslation();
 
@@ -105,7 +110,12 @@ const currentRotation = ref(0);
 
 // Tracked overlay rect (updated from element position). During a resize this is
 // mutated live so the painted border/handles follow the pointer.
-const overlayRect = ref<{ left: number; top: number; width: number; height: number } | null>(null);
+const overlayRect = ref<{
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} | null>(null);
 
 const DRAG_THRESHOLD = 4; // px before a press becomes a move drag — matches React.
 const ROTATION_SNAP_DEG = 15; // snap increments (released by holding Shift) — matches Word.
@@ -117,7 +127,12 @@ let startWidth = 0;
 let startHeight = 0;
 // Immutable snapshot of the overlay rect when a resize starts — west/north
 // handles compute their new left/top from this, never accumulating.
-let resizeStartRect: { left: number; top: number; width: number; height: number } | null = null;
+let resizeStartRect: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} | null = null;
 let rafId: number | null = null;
 
 // drag-to-move's listeners are closures, so hold refs to them so onBeforeUnmount
@@ -138,7 +153,9 @@ function getImageNode(v: EditorView | null, pos: number) {
 }
 
 /** Read the image node's CSS `transform` attr (an untyped PM attr) as a string. */
-function readTransformAttr(node: ReturnType<typeof getImageNode>): string | null {
+function readTransformAttr(
+  node: ReturnType<typeof getImageNode>,
+): string | null {
   if (!node) return null;
   const raw: unknown = node.attrs["transform"];
   return typeof raw === "string" ? raw : null;
@@ -321,8 +338,12 @@ watch(
     // parent `.docx-editor-vue__editor-area` is `overflow: hidden` and never
     // scrolls. `scroll` events don't bubble, so the listener must sit on the
     // viewport or it never fires and the overlay drifts off the image on scroll.
-    const viewport = overlayRootRef.value?.closest(".docx-editor-vue__pages-viewport");
-    viewport?.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    const viewport = overlayRootRef.value?.closest(
+      ".docx-editor-vue__pages-viewport",
+    );
+    viewport?.addEventListener("scroll", handleScrollOrResize, {
+      passive: true,
+    });
     window.addEventListener("resize", handleScrollOrResize, { passive: true });
 
     let transformObserver: MutationObserver | null = null;
@@ -332,7 +353,10 @@ watch(
       const pages = getPagesEl();
       if (!pages) return;
       transformObserver = new MutationObserver(() => scheduleReanchor());
-      transformObserver.observe(pages, { attributes: true, attributeFilter: ["style"] });
+      transformObserver.observe(pages, {
+        attributes: true,
+        attributeFilter: ["style"],
+      });
     });
 
     onCleanup(() => {
@@ -399,7 +423,9 @@ const overlayStyle = computed(() => {
  * midpoint of each side. Cursors match the React overlay
  * (nwse / nesw for corners, ns / ew for edges).
  */
-const handles = computed<Array<{ pos: ResizeHandle; style: Record<string, string> }>>(() => {
+const handles = computed<
+  Array<{ pos: ResizeHandle; style: Record<string, string> }>
+>(() => {
   const half = 5; // half the 10px handle
   const w = currentRectWidth.value;
   const h = currentRectHeight.value;
@@ -463,9 +489,18 @@ function onResizeMove(e: MouseEvent) {
   // the immutable start-rect so repeated moves never drift.
   const base = resizeStartRect;
   if (base) {
-    const nextLeft = resizeHandle.includes("w") ? base.left + (base.width - dims.width) : base.left;
-    const nextTop = resizeHandle.includes("n") ? base.top + (base.height - dims.height) : base.top;
-    overlayRect.value = { left: nextLeft, top: nextTop, width: base.width, height: base.height };
+    const nextLeft = resizeHandle.includes("w")
+      ? base.left + (base.width - dims.width)
+      : base.left;
+    const nextTop = resizeHandle.includes("n")
+      ? base.top + (base.height - dims.height)
+      : base.top;
+    overlayRect.value = {
+      left: nextLeft,
+      top: nextTop,
+      width: base.width,
+      height: base.height,
+    };
   }
 }
 
@@ -486,7 +521,12 @@ function onResizeEnd() {
   // `setNodeMarkup` doesn't reliably keep the NodeSelection on the node, so
   // re-assert it (mirrors React's `setNodeSelection` after resize). Without
   // this the selection collapses to a text caret and the overlay clears.
-  const sel = commitImageResize(v, info.pmPos, currentWidth.value, currentHeight.value);
+  const sel = commitImageResize(
+    v,
+    info.pmPos,
+    currentWidth.value,
+    currentHeight.value,
+  );
   if (sel !== null) reselectImage(sel);
   // Re-derive the rect from the freshly painted element.
   nextTick(() => updatePosition());
@@ -511,7 +551,10 @@ function readRotation(transform: string | null | undefined): number {
 }
 
 /** Re-assemble a transform string keeping any flip terms intact (mirrors DocxEditor's logic). */
-function writeRotation(transform: string | null | undefined, rotation: number): string | null {
+function writeRotation(
+  transform: string | null | undefined,
+  rotation: number,
+): string | null {
   const hasFlipH = /scaleX\(-1\)/.test(transform || "");
   const hasFlipV = /scaleY\(-1\)/.test(transform || "");
   const parts: string[] = [];
@@ -525,7 +568,10 @@ function writeRotation(transform: string | null | undefined, rotation: number): 
 function angleFromCenter(clientX: number, clientY: number): number {
   // Angle of the pointer relative to the box centre, with 0° pointing up
   // (the rotation handle's resting position).
-  return (Math.atan2(clientX - rotateCenterX, -(clientY - rotateCenterY)) * 180) / Math.PI;
+  return (
+    (Math.atan2(clientX - rotateCenterX, -(clientY - rotateCenterY)) * 180) /
+    Math.PI
+  );
 }
 
 function startRotate(e: MouseEvent) {
@@ -559,7 +605,8 @@ function onRotateMove(e: MouseEvent) {
   // container would just clip the still-upright image). Element + base transform
   // were snapshotted in startRotate; this only writes a style.
   if (rotateImgEl) {
-    rotateImgEl.style.transform = writeRotation(rotateBaseTransform, currentRotation.value) || "";
+    rotateImgEl.style.transform =
+      writeRotation(rotateBaseTransform, currentRotation.value) || "";
   }
 }
 
@@ -577,7 +624,10 @@ function onRotateEnd() {
       v.dispatch(
         v.state.tr.setNodeMarkup(info.pmPos, undefined, {
           ...node.attrs,
-          transform: writeRotation(readTransformAttr(node), currentRotation.value),
+          transform: writeRotation(
+            readTransformAttr(node),
+            currentRotation.value,
+          ),
         }),
       );
       // Keep the image node-selected after the markup change (see onResizeEnd).
@@ -671,7 +721,9 @@ function commitDragMove(clientX: number, clientY: number) {
 
   let selectionPos: number | null;
   if (isFloatingImage(node)) {
-    const viewport = overlayRootRef.value?.closest(".docx-editor-vue__pages-viewport");
+    const viewport = overlayRootRef.value?.closest(
+      ".docx-editor-vue__pages-viewport",
+    );
     const pages = viewport?.querySelectorAll<HTMLElement>(".layout-page");
     if (!pages || pages.length === 0) return;
 
@@ -685,7 +737,9 @@ function commitDragMove(clientX: number, clientY: number) {
     }
     if (!contentEl) {
       const lastPage = pages.item(pages.length - 1);
-      contentEl = lastPage ? lastPage.querySelector<HTMLElement>(".layout-page-content") : null;
+      contentEl = lastPage
+        ? lastPage.querySelector<HTMLElement>(".layout-page-content")
+        : null;
     }
     if (!contentEl) return;
 
@@ -724,7 +778,8 @@ onBeforeUnmount(() => {
   document.removeEventListener("mouseup", onResizeEnd);
   document.removeEventListener("mousemove", onRotateMove);
   document.removeEventListener("mouseup", onRotateEnd);
-  if (dragMoveListener) document.removeEventListener("mousemove", dragMoveListener);
+  if (dragMoveListener)
+    document.removeEventListener("mousemove", dragMoveListener);
   if (dragUpListener) document.removeEventListener("mouseup", dragUpListener);
   if (moveGhostEl) {
     moveGhostEl.remove();

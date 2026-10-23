@@ -18,13 +18,15 @@
  * in) to prove the oracle catches each.
  */
 
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { withFakeTextMeasure } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import { buildFontString } from "../../layout-engine/measure/measureHelpers";
 import { readFontSetSignature, watchLayoutFontLoads } from "../fontReadiness";
@@ -40,10 +42,10 @@ import {
 } from "./freshRenderHarness";
 import {
   HOST_UI_FAMILY,
-  SCRIPT_TEXT,
-  SCRIPTS,
   type Script,
+  SCRIPT_TEXT,
   ScriptedFontSet,
+  SCRIPTS,
 } from "./scriptedFontSet";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
@@ -109,9 +111,16 @@ const seedScripts: FreshRenderEvent<FontExt> = {
   apply: (rig) =>
     rig.edit((state) => {
       const tr = state.tr;
-      for (let paragraph = state.doc.childCount - 1; paragraph >= 0; paragraph -= 1) {
+      for (
+        let paragraph = state.doc.childCount - 1;
+        paragraph >= 0;
+        paragraph -= 1
+      ) {
         const script = SCRIPTS[(paragraph + 1) % SCRIPTS.length] ?? "english";
-        tr.insertText(` ${SCRIPT_TEXT[script]}`, paragraphEnd(state.doc, paragraph));
+        tr.insertText(
+          ` ${SCRIPT_TEXT[script]}`,
+          paragraphEnd(state.doc, paragraph),
+        );
       }
       return tr;
     }),
@@ -120,10 +129,16 @@ const seedScripts: FreshRenderEvent<FontExt> = {
 const fontEventKinds = (): fc.Arbitrary<FreshRenderEvent<FontExt>>[] => [
   defineFreshRenderEventKind<{ script: Script; paragraph: number }, FontExt>({
     kind: "typeScript",
-    arbitrary: fc.record({ script: fc.constantFrom(...SCRIPTS), paragraph: fc.nat(20) }),
+    arbitrary: fc.record({
+      script: fc.constantFrom(...SCRIPTS),
+      paragraph: fc.nat(20),
+    }),
     apply: (rig, { script, paragraph }) =>
       rig.edit((state) =>
-        state.tr.insertText(` ${SCRIPT_TEXT[script]}`, paragraphEnd(state.doc, paragraph)),
+        state.tr.insertText(
+          ` ${SCRIPT_TEXT[script]}`,
+          paragraphEnd(state.doc, paragraph),
+        ),
       ),
   }),
   defineFreshRenderEventKind<number, FontExt>({
@@ -157,7 +172,9 @@ const fontEventKinds = (): fc.Arbitrary<FreshRenderEvent<FontExt>>[] => [
     kind: "hostUiFont",
     arbitrary: fc.nat(),
     apply: (rig, pick) => {
-      const hostFaces = rig.ext.fontSet.faces.filter((face) => face.family === HOST_UI_FAMILY);
+      const hostFaces = rig.ext.fontSet.faces.filter(
+        (face) => face.family === HOST_UI_FAMILY,
+      );
       const face = hostFaces.at(pick % hostFaces.length);
       if (face) {
         void rig.ext.fontSet.request(face);
@@ -203,7 +220,10 @@ type RunScenarioOptions = {
   mutant: FontMutant | null;
 };
 
-const runScenario = ({ scenario, mutant }: RunScenarioOptions): FreshRenderVerdict => {
+const runScenario = ({
+  scenario,
+  mutant,
+}: RunScenarioOptions): FreshRenderVerdict => {
   const fontSet = new ScriptedFontSet();
   fontSetHolder.current = fontSet;
   return runFreshRenderScenario({

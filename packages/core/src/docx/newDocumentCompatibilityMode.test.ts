@@ -37,7 +37,9 @@ const packageWithSettings = async (settings: string): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const savedSettings = async (buffer: ArrayBuffer): Promise<string | undefined> =>
+const savedSettings = async (
+  buffer: ArrayBuffer,
+): Promise<string | undefined> =>
   (await JSZip.loadAsync(buffer)).file("word/settings.xml")?.async("string");
 
 describe("new document compatibility mode", () => {
@@ -57,7 +59,9 @@ describe("new document compatibility mode", () => {
     const preset = createStellaStyleDocumentPreset();
     preset.styleSet.settings = { defaultTabStop: 720, compatibilityMode: 14 };
 
-    expect(createEmptyDocument({ preset }).package.settings?.compatibilityMode).toBe(14);
+    expect(
+      createEmptyDocument({ preset }).package.settings?.compatibilityMode,
+    ).toBe(14);
   });
 
   test("a new package writes the mode and reads it back", async () => {
@@ -77,7 +81,9 @@ describe("new document compatibility mode", () => {
   test("a new package in an older mode writes only the mode", async () => {
     const preset = createStellaStyleDocumentPreset();
     preset.styleSet.settings = { defaultTabStop: 720, compatibilityMode: 14 };
-    const settings = await savedSettings(await createDocx(createEmptyDocument({ preset })));
+    const settings = await savedSettings(
+      await createDocx(createEmptyDocument({ preset })),
+    );
 
     expect(settings).toContain(
       `<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="${COMPAT_URI}" w:val="14"/></w:compat>`,
@@ -86,15 +92,21 @@ describe("new document compatibility mode", () => {
 
   test("a loaded package without a compatibility mode saves without one", async () => {
     const source = settingsXml("");
-    const document = await parseDocx(await packageWithSettings(source), { preloadFonts: false });
+    const document = await parseDocx(await packageWithSettings(source), {
+      preloadFonts: false,
+    });
 
     expect(document.package.settings?.compatibilityMode).toBeUndefined();
-    expect(resolveJustificationCompatibility(document.package.settings?.compatibilityMode)).toEqual(
-      { type: "legacy" },
-    );
-    expect(await savedSettings(await repackDocx(document, { updateModifiedDate: false }))).toBe(
-      source,
-    );
+    expect(
+      resolveJustificationCompatibility(
+        document.package.settings?.compatibilityMode,
+      ),
+    ).toEqual({ type: "legacy" });
+    expect(
+      await savedSettings(
+        await repackDocx(document, { updateModifiedDate: false }),
+      ),
+    ).toBe(source);
   });
 
   test("a loaded package keeps its authored compatibility settings", async () => {
@@ -103,11 +115,15 @@ describe("new document compatibility mode", () => {
         `<w:compatSetting w:name="overrideTableStyleFontSizeAndJustification" w:uri="${COMPAT_URI}" w:val="1"/>` +
         "</w:compat>",
     );
-    const document = await parseDocx(await packageWithSettings(source), { preloadFonts: false });
+    const document = await parseDocx(await packageWithSettings(source), {
+      preloadFonts: false,
+    });
 
     expect(document.package.settings?.compatibilityMode).toBe(14);
-    expect(await savedSettings(await repackDocx(document, { updateModifiedDate: false }))).toBe(
-      source,
-    );
+    expect(
+      await savedSettings(
+        await repackDocx(document, { updateModifiedDate: false }),
+      ),
+    ).toBe(source);
   });
 });

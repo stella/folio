@@ -19,13 +19,15 @@ import {
   AddMarkStep,
   AddNodeMarkStep,
   AttrStep,
+  type Mapping,
   RemoveMarkStep,
   RemoveNodeMarkStep,
-  type Mapping,
 } from "prosemirror-transform";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { getTransactionDirtyRange } from "../../paged-layout/transactionDirtyRange";
 import {
   buildRandomBatch,
@@ -39,23 +41,37 @@ import {
   ParagraphChangeTrackerExtension,
   paragraphChangeTrackerKey,
 } from "./features/ParagraphChangeTrackerExtension";
-import { mapParagraphKeepers, ParaIdAllocatorExtension } from "./features/ParaIdAllocatorExtension";
-import { insertedRanges, RunIdentityExtension } from "./marks/RunIdentityExtension";
+import {
+  mapParagraphKeepers,
+  ParaIdAllocatorExtension,
+} from "./features/ParaIdAllocatorExtension";
+import {
+  insertedRanges,
+  RunIdentityExtension,
+} from "./marks/RunIdentityExtension";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
-const pluginsOf = (runtime: { plugins?: Plugin[] }): Plugin[] => runtime.plugins ?? [];
+const pluginsOf = (runtime: { plugins?: Plugin[] }): Plugin[] =>
+  runtime.plugins ?? [];
 const trackerPlugins = pluginsOf(
   ParagraphChangeTrackerExtension().onSchemaReady({ schema: randomSchema }),
 );
 const editorPlugins = [
   ...trackerPlugins,
-  ...pluginsOf(ParaIdAllocatorExtension().onSchemaReady({ schema: randomSchema })),
-  ...pluginsOf(AutoBidiDetectionExtension().onSchemaReady({ schema: randomSchema })),
+  ...pluginsOf(
+    ParaIdAllocatorExtension().onSchemaReady({ schema: randomSchema }),
+  ),
+  ...pluginsOf(
+    AutoBidiDetectionExtension().onSchemaReady({ schema: randomSchema }),
+  ),
   ...pluginsOf(RunIdentityExtension().onSchemaReady({ schema: randomSchema })),
 ];
 
-const randomBatches = fc.array(randomOperations(20), { minLength: 1, maxLength: 3 });
+const randomBatches = fc.array(randomOperations(20), {
+  minLength: 1,
+  maxLength: 3,
+});
 
 const isUsableParaId = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value !== "00000000";
@@ -71,7 +87,11 @@ type TrackerFields = {
   hasUntrackedSource: boolean;
 };
 
-type Affected = { ids: Set<string>; positions: Set<number>; hasUntracked: boolean };
+type Affected = {
+  ids: Set<string>;
+  positions: Set<number>;
+  hasUntracked: boolean;
+};
 
 const referenceCollect = (doc: PMNode, from: number, to: number): Affected => {
   const ids = new Set<string>();
@@ -91,7 +111,11 @@ const referenceCollect = (doc: PMNode, from: number, to: number): Affected => {
   return { ids, positions, hasUntracked };
 };
 
-const referenceCollectMarkLike = (doc: PMNode, from: number, to: number): Affected => {
+const referenceCollectMarkLike = (
+  doc: PMNode,
+  from: number,
+  to: number,
+): Affected => {
   const lo = Math.min(from, to);
   const hi = Math.max(from, to);
   const end = hi > lo ? hi : lo + 1;
@@ -114,7 +138,10 @@ const referenceCollectMarkLike = (doc: PMNode, from: number, to: number): Affect
   return { ids: new Set(), positions: new Set(), hasUntracked: false };
 };
 
-const referenceMapParagraphPosition = (tr: Transaction, position: number): number | null => {
+const referenceMapParagraphPosition = (
+  tr: Transaction,
+  position: number,
+): number | null => {
   const mapped = tr.mapping.mapResult(position + 1, 1);
   if (mapped.deletedAcross) {
     return null;
@@ -128,7 +155,10 @@ const referenceMapParagraphPosition = (tr: Transaction, position: number): numbe
   return null;
 };
 
-const referenceMapAffected = (tr: Transaction, positions: readonly number[]): Set<number> => {
+const referenceMapAffected = (
+  tr: Transaction,
+  positions: readonly number[],
+): Set<number> => {
   const mapped = new Set<number>();
   for (const position of positions) {
     const next = referenceMapParagraphPosition(tr, position);
@@ -163,7 +193,12 @@ const referenceTrackerApply = (
         unresolved = true;
       }
     }
-    return { ...previous, positions: [...positions], ids: [...ids], hasUntracked: unresolved };
+    return {
+      ...previous,
+      positions: [...positions],
+      ids: [...ids],
+      hasUntracked: unresolved,
+    };
   }
 
   const positions = referenceMapAffected(tr, previous.positions);
@@ -181,7 +216,12 @@ const referenceTrackerApply = (
   };
 
   const rangesMeta = tr.getMeta("folioChangedParagraphRanges") as
-    | { batches: { ranges: { from: number; to: number }[]; mappingFrom: number }[] }
+    | {
+        batches: {
+          ranges: { from: number; to: number }[];
+          mappingFrom: number;
+        }[];
+      }
     | undefined;
   for (const batch of rangesMeta?.batches ?? []) {
     const remap = tr.mapping.slice(batch.mappingFrom);
@@ -249,7 +289,12 @@ const referenceTrackerApply = (
     });
   }
 
-  return { positions: [...positions], ids: [...ids], hasUntracked, hasUntrackedSource };
+  return {
+    positions: [...positions],
+    ids: [...ids],
+    hasUntracked,
+    hasUntrackedSource,
+  };
 };
 
 const trackerFields = (state: EditorState): TrackerFields => {
@@ -325,7 +370,10 @@ const referenceKeepers = (
 };
 
 const referenceDirtyRange = (transaction: Transaction) => {
-  const range = { from: Number.POSITIVE_INFINITY, to: Number.NEGATIVE_INFINITY };
+  const range = {
+    from: Number.POSITIVE_INFINITY,
+    to: Number.NEGATIVE_INFINITY,
+  };
   transaction.mapping.maps.forEach((map, stepIndex) => {
     const followingMaps = transaction.mapping.slice(stepIndex + 1);
     const extend = (newStart: number, newEnd: number): void => {
@@ -335,13 +383,17 @@ const referenceDirtyRange = (transaction: Transaction) => {
       range.to = Math.max(range.to, finalStart, finalEnd);
     };
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap API
-    map.forEach((_oldStart, _oldEnd, newStart, newEnd) => extend(newStart, newEnd));
+    map.forEach((_oldStart, _oldEnd, newStart, newEnd) =>
+      extend(newStart, newEnd),
+    );
     const step = transaction.steps[stepIndex];
     if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) {
       extend(step.from, step.to);
     }
   });
-  return Number.isFinite(range.from) && Number.isFinite(range.to) ? range : null;
+  return Number.isFinite(range.from) && Number.isFinite(range.to)
+    ? range
+    : null;
 };
 
 const referenceInsertedRanges = (transactions: readonly Transaction[]) => {
@@ -374,7 +426,10 @@ const referenceInsertedRanges = (transactions: readonly Transaction[]) => {
 describe("multi-step transactions map as the per-step walk did", () => {
   for (const [name, plugins] of [
     ["the change tracker alone", trackerPlugins],
-    ["the change tracker beside the allocator, bidi detection and run identity", editorPlugins],
+    [
+      "the change tracker beside the allocator, bidi detection and run identity",
+      editorPlugins,
+    ],
   ] as const) {
     test(`${name}: identical tracker state and dirty-set order`, () => {
       fc.assert(
@@ -392,8 +447,11 @@ describe("multi-step transactions map as the per-step walk did", () => {
               // position lands mid-text, and both now skip it.)
               const previous = trackerFields(before);
               const structureChanged =
-                blockStructureFingerprint(tr.before) !== blockStructureFingerprint(tr.doc);
-              expect(() => referenceTrackerApply(previous, tr, structureChanged)).toThrow();
+                blockStructureFingerprint(tr.before) !==
+                blockStructureFingerprint(tr.doc);
+              expect(() =>
+                referenceTrackerApply(previous, tr, structureChanged),
+              ).toThrow();
               return;
             }
             const { state: next, transactions } = applied;
@@ -425,7 +483,10 @@ describe("multi-step transactions map as the per-step walk did", () => {
         (doc, batches, seeded) => {
           const transactions = buildRandomBatch(doc, batches);
           const tokens = new Set(seeded);
-          const actual = mapParagraphKeepers(doc, transactions, { contract: null, tokens });
+          const actual = mapParagraphKeepers(doc, transactions, {
+            contract: null,
+            tokens,
+          });
           expect({
             paraIds: [...actual.paraIds],
             sourceTokens: [...actual.sourceTokens],
@@ -439,7 +500,10 @@ describe("multi-step transactions map as the per-step walk did", () => {
   test("bidi detection scans the same dirty range", () => {
     fc.assert(
       fc.property(randomDocument, randomOperations(30), (doc, operations) => {
-        const tr = buildRandomTransaction(EditorState.create({ doc }), operations);
+        const tr = buildRandomTransaction(
+          EditorState.create({ doc }),
+          operations,
+        );
         expect(getTransactionDirtyRange(tr)).toEqual(referenceDirtyRange(tr));
       }),
       propertyConfig({ numRuns: 300 }),
@@ -450,7 +514,9 @@ describe("multi-step transactions map as the per-step walk did", () => {
     fc.assert(
       fc.property(randomDocument, randomBatches, (doc, batches) => {
         const transactions = buildRandomBatch(doc, batches);
-        expect(insertedRanges(transactions)).toEqual(referenceInsertedRanges(transactions));
+        expect(insertedRanges(transactions)).toEqual(
+          referenceInsertedRanges(transactions),
+        );
       }),
       propertyConfig({ numRuns: 300 }),
     );

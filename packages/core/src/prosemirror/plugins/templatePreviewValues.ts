@@ -22,7 +22,6 @@
  * this to its fill inputs.
  */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -30,6 +29,7 @@ import { Decoration, DecorationSet } from "prosemirror-view";
 
 import { isFieldPath } from "@stll/template-conditions";
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { DirectiveRange } from "./templateDirectives";
 import { scanDirectives } from "./templateDirectives";
 
@@ -47,18 +47,27 @@ export type TemplatePreviewSpan = {
 export type TemplatePreviewValue = string | { runs: TemplatePreviewSpan[] };
 
 /** Concatenated plain text of a preview value. */
-export const templatePreviewValueText = (value: TemplatePreviewValue): string =>
-  typeof value === "string" ? value : value.runs.map((run) => run.text).join("");
+export const templatePreviewValueText = (
+  value: TemplatePreviewValue,
+): string =>
+  typeof value === "string"
+    ? value
+    : value.runs.map((run) => run.text).join("");
 
 /** Stable identity of a preview value (text + formatting), for decoration
  *  keys and change detection. Distinguishes a plain string from a rich
  *  value with the same text. */
-export const templatePreviewValueFingerprint = (value: TemplatePreviewValue): string => {
+export const templatePreviewValueFingerprint = (
+  value: TemplatePreviewValue,
+): string => {
   if (typeof value === "string") {
     return value;
   }
   return value.runs
-    .map((run) => `${run.bold === true ? "b" : ""}${run.italic === true ? "i" : ""}:${run.text}`)
+    .map(
+      (run) =>
+        `${run.bold === true ? "b" : ""}${run.italic === true ? "i" : ""}:${run.text}`,
+    )
     .join("\u0000");
 };
 
@@ -202,7 +211,9 @@ const FIELD_PATH_HEAD_RE = /^[\p{L}_]/u;
  * filters (`a and b`, `items|length > 0`, `ai("a|b")`) has none, which is what
  * keeps a real expression on exact matching.
  */
-const filterChainPath = ({ conditionPath }: DirectiveRange): string | undefined =>
+const filterChainPath = ({
+  conditionPath,
+}: DirectiveRange): string | undefined =>
   conditionPath !== undefined &&
   isFieldPath(conditionPath) &&
   FIELD_PATH_HEAD_RE.test(conditionPath)
@@ -215,7 +226,10 @@ const filterChainPath = ({ conditionPath }: DirectiveRange): string | undefined 
  * host's prototype carries) and a value from an untyped host are read as
  * silence rather than as a verdict.
  */
-const ownVerdict = (conditions: Record<string, boolean>, key: string): boolean | undefined => {
+const ownVerdict = (
+  conditions: Record<string, boolean>,
+  key: string,
+): boolean | undefined => {
   if (!Object.hasOwn(conditions, key)) {
     return undefined;
   }
@@ -367,7 +381,9 @@ function collectPreviewEntries(
     // A marker inside a hidden block is not substituted: the value widget
     // sits beside the marker text rather than inside the hiding decoration,
     // so it would otherwise outlive its block.
-    if (hidden.some((block) => range.from >= block.from && range.from < block.to)) {
+    if (
+      hidden.some((block) => range.from >= block.from && range.from < block.to)
+    ) {
       continue;
     }
     entries.push({ from: range.from, to: range.to, expr: range.expr, value });
@@ -384,7 +400,8 @@ function projectPreview(
   }
   const hasValues = Object.keys(preview.values).length > 0;
   const hasConditions =
-    preview.conditions !== undefined && Object.keys(preview.conditions).length > 0;
+    preview.conditions !== undefined &&
+    Object.keys(preview.conditions).length > 0;
   if (!hasValues && !hasConditions) {
     return { entries: [], hidden: [] };
   }
@@ -392,7 +409,9 @@ function projectPreview(
   const ranges = scanDirectives(doc);
   const hidden = collectHiddenRanges(ranges, preview.conditions, preview.mode);
   return {
-    entries: hasValues ? collectPreviewEntries(ranges, preview.values, hidden) : [],
+    entries: hasValues
+      ? collectPreviewEntries(ranges, preview.values, hidden)
+      : [],
     hidden,
   };
 }
@@ -414,7 +433,9 @@ function pushHiddenDecorations(
       return false;
     }
     const nodeEnd = pos + node.nodeSize;
-    if (templatePreviewHidesWholeBlock(range, { pmStart: pos, pmEnd: nodeEnd })) {
+    if (
+      templatePreviewHidesWholeBlock(range, { pmStart: pos, pmEnd: nodeEnd })
+    ) {
       out.push(Decoration.node(pos, nodeEnd, { class: HIDDEN_CLASS }));
       return false;
     }
@@ -485,8 +506,7 @@ export function createTemplatePreviewValuesPlugin(): Plugin<TemplatePreviewState
       },
       apply(tr, prev, _oldState, newState): TemplatePreviewState {
         const meta = tr.getMeta(templatePreviewValuesKey) as
-          | { preview: TemplatePreviewValues | null }
-          | undefined;
+          { preview: TemplatePreviewValues | null } | undefined;
         if (meta !== undefined) {
           const projection = projectPreview(newState.doc, meta.preview);
           return {
@@ -506,7 +526,11 @@ export function createTemplatePreviewValuesPlugin(): Plugin<TemplatePreviewState
             preview: prev.preview,
             entries: projection.entries,
             hidden: projection.hidden,
-            decorationSet: buildDecorationSet(newState.doc, projection, prev.preview.mode),
+            decorationSet: buildDecorationSet(
+              newState.doc,
+              projection,
+              prev.preview.mode,
+            ),
           };
         }
         return prev;

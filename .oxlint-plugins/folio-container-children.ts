@@ -30,12 +30,18 @@ type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
   filename: string;
-  report: (descriptor: { node: unknown; messageId: "handRolledChildSwitch" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "handRolledChildSwitch";
+  }) => void;
 };
 
 type TableRuleContext = {
   filename: string;
-  report: (descriptor: { node: unknown; messageId: "functionLocalTable" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "functionLocalTable";
+  }) => void;
 };
 
 /** Files whose chains predate the dispatcher, by count. The list only shrinks. */
@@ -55,7 +61,11 @@ const isLocalNameCall = (node: unknown): boolean => {
     return false;
   }
   const callee = node.callee;
-  return isAstNode(callee) && callee.type === "Identifier" && callee.name === "getLocalName";
+  return (
+    isAstNode(callee) &&
+    callee.type === "Identifier" &&
+    callee.name === "getLocalName"
+  );
 };
 
 /**
@@ -63,7 +73,11 @@ const isLocalNameCall = (node: unknown): boolean => {
  * `name` is any string in the repository, and matching it turned a
  * property-name guard into a container walk.
  */
-const CHILD_NAME_IDENTIFIERS = new Set(["localName", "childName", "contentName"]);
+const CHILD_NAME_IDENTIFIERS = new Set([
+  "localName",
+  "childName",
+  "contentName",
+]);
 
 /**
  * Whether a `switch` discriminant is a child's local name: the call itself, or
@@ -102,14 +116,17 @@ const TABLE_OPTIONS: ReadonlySet<string> = new Set([
 ]);
 
 const identifierName = (node: unknown): string | undefined =>
-  isAstNode(node) && node.type === "Identifier" && typeof node["name"] === "string"
+  isAstNode(node) &&
+  node.type === "Identifier" &&
+  typeof node["name"] === "string"
     ? node["name"]
     : undefined;
 
 /** The statement an `export` wraps, or the statement itself. */
 const unexported = (statement: unknown): unknown =>
   isAstNode(statement) &&
-  (statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration") &&
+  (statement.type === "ExportNamedDeclaration" ||
+    statement.type === "ExportDefaultDeclaration") &&
   isAstNode(statement["declaration"])
     ? statement["declaration"]
     : statement;
@@ -119,15 +136,25 @@ const namesBoundBy = (statement: unknown): string[] => {
   if (!isAstNode(statement)) {
     return [];
   }
-  if (statement.type === "ImportDeclaration" && Array.isArray(statement["specifiers"])) {
+  if (
+    statement.type === "ImportDeclaration" &&
+    Array.isArray(statement["specifiers"])
+  ) {
     return statement["specifiers"].flatMap((specifier: unknown) => {
-      const name = isAstNode(specifier) ? identifierName(specifier["local"]) : undefined;
+      const name = isAstNode(specifier)
+        ? identifierName(specifier["local"])
+        : undefined;
       return name === undefined ? [] : [name];
     });
   }
-  if (statement.type === "VariableDeclaration" && Array.isArray(statement["declarations"])) {
+  if (
+    statement.type === "VariableDeclaration" &&
+    Array.isArray(statement["declarations"])
+  ) {
     return statement["declarations"].flatMap((declaration: unknown) => {
-      const name = isAstNode(declaration) ? identifierName(declaration["id"]) : undefined;
+      const name = isAstNode(declaration)
+        ? identifierName(declaration["id"])
+        : undefined;
       return name === undefined ? [] : [name];
     });
   }
@@ -150,7 +177,10 @@ const moduleLevelNames = (program: AstNode): Set<string> => {
  * A local of the same name cannot hide a module binding: `no-shadow` rejects
  * it.
  */
-const isModuleLevelTable = (value: unknown, names: ReadonlySet<string>): boolean => {
+const isModuleLevelTable = (
+  value: unknown,
+  names: ReadonlySet<string>,
+): boolean => {
   if (!isAstNode(value)) {
     return false;
   }
@@ -175,7 +205,11 @@ const isModuleLevelTable = (value: unknown, names: ReadonlySet<string>): boolean
 
 /** A key spelled as an identifier or as a string: `handlers` and `"handlers"` alike. */
 const propertyKeyName = (key: unknown): string | undefined => {
-  if (isAstNode(key) && key.type === "Literal" && typeof key["value"] === "string") {
+  if (
+    isAstNode(key) &&
+    key.type === "Literal" &&
+    typeof key["value"] === "string"
+  ) {
     return key["value"];
   }
   return identifierName(key);
@@ -205,7 +239,10 @@ const dispatcherNames = (program: AstNode): Set<string> => {
         continue;
       }
       const local = identifierName(specifier["local"]);
-      if (local !== undefined && DISPATCHERS.has(propertyKeyName(specifier["imported"]) ?? "")) {
+      if (
+        local !== undefined &&
+        DISPATCHERS.has(propertyKeyName(specifier["imported"]) ?? "")
+      ) {
         names.add(local);
       }
     }
@@ -217,7 +254,10 @@ const dispatcherNames = (program: AstNode): Set<string> => {
  * Whether a callee is a dispatcher: a name bound to one, or a member of that
  * name on any object, which covers a namespace import (`children.dispatchChildren`).
  */
-const isDispatcherCallee = (callee: unknown, dispatchers: ReadonlySet<string>): boolean => {
+const isDispatcherCallee = (
+  callee: unknown,
+  dispatchers: ReadonlySet<string>,
+): boolean => {
   if (!isAstNode(callee)) {
     return false;
   }
@@ -242,7 +282,10 @@ type ModuleScope = {
  * exception is the dispatcher's own module, which forwards its caller's
  * options.
  */
-const unprovenTables = (call: AstNode, { names, dispatchers, isOwner }: ModuleScope): AstNode[] => {
+const unprovenTables = (
+  call: AstNode,
+  { names, dispatchers, isOwner }: ModuleScope,
+): AstNode[] => {
   if (!isDispatcherCallee(call["callee"], dispatchers)) {
     return [];
   }
@@ -298,7 +341,10 @@ export default {
 
         return {
           SwitchStatement: (node: unknown) => {
-            if (!isAstNode(node) || !isChildNameDiscriminant(node.discriminant)) {
+            if (
+              !isAstNode(node) ||
+              !isChildNameDiscriminant(node.discriminant)
+            ) {
               return;
             }
             // `default` does not count: it is the branch this rule is about,
@@ -308,7 +354,9 @@ export default {
             if (!Array.isArray(cases)) {
               return;
             }
-            const named = cases.filter((entry) => isAstNode(entry) && entry.test !== null).length;
+            const named = cases.filter(
+              (entry) => isAstNode(entry) && entry.test !== null,
+            ).length;
             if (named < MINIMUM_CASES) {
               return;
             }
@@ -348,7 +396,10 @@ export default {
               return;
             }
             for (const unproven of unprovenTables(node, scope)) {
-              context.report({ node: unproven, messageId: "functionLocalTable" });
+              context.report({
+                node: unproven,
+                messageId: "functionLocalTable",
+              });
             }
           },
         };

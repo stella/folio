@@ -8,7 +8,9 @@
 import type { FolioDocxReviewer } from "@stll/folio-core/server";
 
 type Paragraph = Extract<
-  ReturnType<FolioDocxReviewer["toDocument"]>["package"]["document"]["content"][number],
+  ReturnType<
+    FolioDocxReviewer["toDocument"]
+  >["package"]["document"]["content"][number],
   { type: "paragraph" }
 >;
 type Inline = Paragraph["content"][number];
@@ -130,11 +132,14 @@ export const comparePreservedLinks = ({
     // must not look like a text edit when the reader still shows the old text.
     // An empty paragraph has no character targets, even when a deletion leaves
     // a structural carrier whose model cannot project ordinary inline text.
-    if (expected.text.length === 0 || readerText.get(id) !== expected.text) continue;
+    if (expected.text.length === 0 || readerText.get(id) !== expected.text)
+      continue;
     const actual = after.get(id);
     checked++;
     if (!actual || actual.text !== expected.text) {
-      problems.push(`block ${id} ("${expected.text}") has no matching link projection`);
+      problems.push(
+        `block ${id} ("${expected.text}") has no matching link projection`,
+      );
       continue;
     }
     if (JSON.stringify(actual.targets) !== JSON.stringify(expected.targets)) {

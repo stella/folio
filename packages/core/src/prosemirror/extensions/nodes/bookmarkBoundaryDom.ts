@@ -10,7 +10,10 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { expectBookmarkBoundaryAttrs, isDisplacedByCustomXml } from "../../bookmarkBoundaryAttrs";
+import {
+  expectBookmarkBoundaryAttrs,
+  isDisplacedByCustomXml,
+} from "../../bookmarkBoundaryAttrs";
 
 const readNonnegativeInteger = (value: string | null): number | false => {
   if (value === null || !/^(?:0|[1-9]\d*)$/.test(value)) {
@@ -20,7 +23,10 @@ const readNonnegativeInteger = (value: string | null): number | false => {
   return Number.isSafeInteger(parsed) ? parsed : false;
 };
 
-const readOptionalColumn = (dom: HTMLElement, attribute: string): number | undefined | false => {
+const readOptionalColumn = (
+  dom: HTMLElement,
+  attribute: string,
+): number | undefined | false => {
   const value = dom.getAttribute(attribute);
   return value === null ? undefined : readNonnegativeInteger(value);
 };
@@ -62,7 +68,9 @@ export const parseBookmarkBoundaryDom = (
     ...(name ? { name } : {}),
     ...(colFirst !== undefined ? { colFirst } : {}),
     ...(colLast !== undefined ? { colLast } : {}),
-    ...(isDisplacedByCustomXml(displaced) ? { displacedByCustomXml: displaced } : {}),
+    ...(isDisplacedByCustomXml(displaced)
+      ? { displacedByCustomXml: displaced }
+      : {}),
   };
 };
 
@@ -74,7 +82,9 @@ export const bookmarkBoundaryDomAttributes = (
   return {
     "data-docx-bookmark-boundary": attrs.type,
     "data-docx-bookmark-id": String(attrs.id),
-    ...(attrs.type === "start" ? { "data-docx-bookmark-name": attrs.name } : {}),
+    ...(attrs.type === "start"
+      ? { "data-docx-bookmark-name": attrs.name }
+      : {}),
     ...(attrs.type === "start" && attrs.colFirst !== undefined
       ? { "data-docx-bookmark-col-first": String(attrs.colFirst) }
       : {}),

@@ -13,9 +13,11 @@ import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const NOTE_NAMESPACES = `xmlns:w="${W_NS}" xmlns:r="${R_NS}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"`;
 
 // 1x1 transparent PNG.
@@ -77,12 +79,17 @@ const paragraphImages = (block: BlockContent): Image[] =>
   block.type === "paragraph"
     ? block.content
         .flatMap((item) => (item.type === "run" ? item.content : []))
-        .flatMap((content) => (content.type === "drawing" ? [content.image] : []))
+        .flatMap((content) =>
+          content.type === "drawing" ? [content.image] : [],
+        )
     : [];
 
 const noteImages = (note: Footnote | Endnote | undefined): NoteImage[] => {
   const images: NoteImage[] = [];
-  const collect = (location: NoteImage["location"], blocks: BlockContent[]): void => {
+  const collect = (
+    location: NoteImage["location"],
+    blocks: BlockContent[],
+  ): void => {
     for (const image of blocks.flatMap(paragraphImages)) {
       images.push({ location, image });
     }
@@ -95,7 +102,9 @@ const noteImages = (note: Footnote | Endnote | undefined): NoteImage[] => {
       case "table":
         collect(
           "table",
-          block.rows.flatMap((row) => row.cells).flatMap((cell) => cell.content),
+          block.rows
+            .flatMap((row) => row.cells)
+            .flatMap((cell) => cell.content),
         );
         break;
       case "blockSdt":
@@ -108,7 +117,11 @@ const noteImages = (note: Footnote | Endnote | undefined): NoteImage[] => {
 
 const expectResolvedPictures = (note: Footnote | Endnote | undefined): void => {
   const images = noteImages(note);
-  expect(images.map(({ location }) => location)).toEqual(["paragraph", "table", "sdt"]);
+  expect(images.map(({ location }) => location)).toEqual([
+    "paragraph",
+    "table",
+    "sdt",
+  ]);
   for (const { image } of images) {
     expect(image.rId).toBe(NOTE_IMAGE_RID);
     expect(image.mimeType).toBe("image/png");
@@ -129,13 +142,21 @@ describe("pictures in note parts", () => {
     const zip = await JSZip.loadAsync(await createDocx(doc));
 
     expect(await zip.file(MEDIA_PATH)?.async("uint8array")).toEqual(PNG_BYTES);
-    for (const relsPath of ["word/_rels/footnotes.xml.rels", "word/_rels/endnotes.xml.rels"]) {
-      expect(await zip.file(relsPath)?.async("text")).toContain(`Id="${NOTE_IMAGE_RID}"`);
+    for (const relsPath of [
+      "word/_rels/footnotes.xml.rels",
+      "word/_rels/endnotes.xml.rels",
+    ]) {
+      expect(await zip.file(relsPath)?.async("text")).toContain(
+        `Id="${NOTE_IMAGE_RID}"`,
+      );
     }
 
-    const reparsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      preloadFonts: false,
-    });
+    const reparsed = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        preloadFonts: false,
+      },
+    );
     expectResolvedPictures(reparsed.package.footnotes?.at(0));
     expectResolvedPictures(reparsed.package.endnotes?.at(0));
   });

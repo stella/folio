@@ -30,7 +30,11 @@ describe("retainRemoteSelectionGeometry", () => {
     }
     firstRect.width += 1;
 
-    expect(retainRemoteSelectionGeometry(previous, movedCaret)).toBe(movedCaret);
-    expect(retainRemoteSelectionGeometry(previous, resizedSelection)).toBe(resizedSelection);
+    expect(retainRemoteSelectionGeometry(previous, movedCaret)).toBe(
+      movedCaret,
+    );
+    expect(retainRemoteSelectionGeometry(previous, resizedSelection)).toBe(
+      resizedSelection,
+    );
   });
 });

@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 
 import { buildDocumentPackage, DOCUMENT_CLASSES } from "./documents";
 import { zipPackage } from "./package-xml";
-import { applyVariant, EDIT_VARIANTS } from "./variants";
 import { PACKAGE_VALIDATOR_HINT, resolvePackageValidator } from "./validator";
+import { applyVariant, EDIT_VARIANTS } from "./variants";
 
 const validate = resolvePackageValidator();
 

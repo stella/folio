@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
@@ -8,7 +8,10 @@ import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
 
-const OPTIONS = { author: "compare", timestamp: "2026-09-13T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2026-09-13T00:00:00.000Z",
+} as const;
 const TEXT = "The agreement remains effective for the stated term.";
 
 const indentationDocument = (indentLeft: number): Promise<ArrayBuffer> => {

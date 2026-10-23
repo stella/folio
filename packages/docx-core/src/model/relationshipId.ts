@@ -16,13 +16,16 @@ import { panic } from "better-result";
  * reference read off the source becomes one only through
  * {@link relationshipIdOf}.
  */
-export type RelationshipId = string & { readonly __brand: "folio.relationshipId" };
+export type RelationshipId = string & {
+  readonly __brand: "folio.relationshipId";
+};
 
 /**
  * Whether a string names a relationship. The refinement is a type predicate
  * rather than a cast, so no site that mints an id needs an assertion.
  */
-export const isRelationshipId = (value: string): value is RelationshipId => value.length > 0;
+export const isRelationshipId = (value: string): value is RelationshipId =>
+  value.length > 0;
 
 /**
  * The relationship a reference names, or `undefined` when it names none.
@@ -31,8 +34,12 @@ export const isRelationshipId = (value: string): value is RelationshipId => valu
  * and empty, a reference) and answers in the one spelling the model has for
  * absence.
  */
-export const relationshipIdOf = (value: string | null | undefined): RelationshipId | undefined =>
-  value === undefined || value === null || !isRelationshipId(value) ? undefined : value;
+export const relationshipIdOf = (
+  value: string | null | undefined,
+): RelationshipId | undefined =>
+  value === undefined || value === null || !isRelationshipId(value)
+    ? undefined
+    : value;
 
 /**
  * The id a save gives a part it added, from the ordinal it allocated.
@@ -43,5 +50,7 @@ export const relationshipIdOf = (value: string | null | undefined): Relationship
  */
 export const mintRelationshipId = (ordinal: number): RelationshipId => {
   const id = `rId${ordinal}`;
-  return isRelationshipId(id) ? id : panic("A minted relationship id names nothing.");
+  return isRelationshipId(id)
+    ? id
+    : panic("A minted relationship id names nothing.");
 };

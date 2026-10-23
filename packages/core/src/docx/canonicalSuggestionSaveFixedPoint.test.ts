@@ -1,27 +1,27 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
 import JSZip from "jszip";
+
+import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
   compileEditorIntent,
   createEditorIntentIdAllocator,
+  type DocumentOp,
   documentStories,
+  type EditorIntent,
   OP_STORIES,
+  type OpStory,
   paragraphLogicalText,
   REVISION_DECISIONS,
   storyBody,
-  type DocumentOp,
-  type EditorIntent,
-  type OpStory,
 } from "@stll/docx-core/ops";
 
-import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
-import { parseDocumentBody } from "./documentParser";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
+import { parseDocumentBody } from "./documentParser";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
 import { serializeDocument } from "./serializer/documentSerializer";
@@ -33,7 +33,11 @@ const apply = (document: Document, intent: EditorIntent) => {
     intent,
     mode: {
       type: "suggesting",
-      revision: { id: ids.revisionId, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+      revision: {
+        id: ids.revisionId,
+        author: "Reviewer",
+        date: "2026-02-03T04:05:06Z",
+      },
       newIds: ids.newIds,
     },
   });
@@ -66,7 +70,10 @@ test.each(["absent", "empty", "bold"] as const)(
     );
     for (const [index, paragraph] of seed.package.document.content.entries()) {
       if (paragraph.type !== "paragraph") panic("Expected paragraphs");
-      paragraph.paraId = (index + 17).toString(16).padStart(8, "0").toUpperCase();
+      paragraph.paraId = (index + 17)
+        .toString(16)
+        .padStart(8, "0")
+        .toUpperCase();
     }
     if (markProperties !== "absent") {
       for (const paragraph of seed.package.document.content) {
@@ -78,7 +85,10 @@ test.each(["absent", "empty", "bold"] as const)(
       }
     }
     const source = await createDocx(seed);
-    const original = await parseDocx(source, { preloadFonts: false, detectVariables: false });
+    const original = await parseDocx(source, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
     const first = original.package.document.content.at(0);
     const second = original.package.document.content.at(1);
     if (
@@ -88,7 +98,11 @@ test.each(["absent", "empty", "bold"] as const)(
       !second.paraId
     )
       panic("Expected identified paragraphs");
-    const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+    const at = (blockId: string, offset: number) => ({
+      story: OP_STORIES.MAIN,
+      blockId,
+      offset,
+    });
     const inserted = apply(original, {
       type: "replaceText",
       from: at(first.paraId, 4),
@@ -125,16 +139,22 @@ test.each(["absent", "empty", "bold"] as const)(
       serializedXml: serializeDocument(suggested),
       changedIds: new Set([first.paraId, second.paraId, splitIds.newBlockId]),
     });
-    if (patched === null) panic("Expected structural save to handle the edit sequence");
+    if (patched === null)
+      panic("Expected structural save to handle the edit sequence");
     zip.file("word/document.xml", patched);
     const structuralSave = await zip.generateAsync({ type: "arraybuffer" });
     for (const saved of [fullSave, structuralSave]) {
-      const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+      const reopened = await parseDocx(saved, {
+        preloadFonts: false,
+        detectVariables: false,
+      });
       expect(structuredClone(reopened.package.document.content)).toStrictEqual(
         structuredClone(suggested.package.document.content),
       );
       for (const decision of Object.values(REVISION_DECISIONS)) {
-        const revisionIds = getTrackedChangeStatsFromDoc(toProseDoc(suggested)).ids;
+        const revisionIds = getTrackedChangeStatsFromDoc(
+          toProseDoc(suggested),
+        ).ids;
         expect(revisionIds.length).toBeGreaterThan(0);
         const resolution = {
           type: "resolveRevision",
@@ -146,10 +166,14 @@ test.each(["absent", "empty", "bold"] as const)(
         const after = applyDocumentOps(reopened, [resolution]);
         if (before.isErr()) throw before.error;
         if (after.isErr()) throw after.error;
-        expect(structuredClone(after.value.document.package.document.content)).toStrictEqual(
+        expect(
+          structuredClone(after.value.document.package.document.content),
+        ).toStrictEqual(
           structuredClone(before.value.document.package.document.content),
         );
-        expect(getTrackedChangeStatsFromDoc(toProseDoc(after.value.document)).ids).toEqual([]);
+        expect(
+          getTrackedChangeStatsFromDoc(toProseDoc(after.value.document)).ids,
+        ).toEqual([]);
       }
     }
   },
@@ -159,12 +183,20 @@ test.each(["absent", "empty", "bold"] as const)(
 // Vary authored property presence, run boundaries and insertion positions in every story.
 test.each(
   ["absent", "empty", "bold"].flatMap((runProperties) =>
-    ["absent", "present"].map((runBoundary) => [runProperties, runBoundary] as const),
+    ["absent", "present"].map(
+      (runBoundary) => [runProperties, runBoundary] as const,
+    ),
   ),
 )(
   "text seam edits across every story are save/reopen fixed points and invertible (%s formatting, %s run boundary)",
   async (runProperties, runBoundary) => {
-    const createStoryParagraph = ({ paraId, text }: { paraId: string; text: string }) => ({
+    const createStoryParagraph = ({
+      paraId,
+      text,
+    }: {
+      paraId: string;
+      text: string;
+    }) => ({
       type: "paragraph" as const,
       paraId,
       content: [
@@ -181,14 +213,18 @@ test.each(
       ],
     });
     const seed = createEmptyDocument({ initialText: "main" });
-    seed.package.document.content = [createStoryParagraph({ paraId: "00000011", text: "main" })];
+    seed.package.document.content = [
+      createStoryParagraph({ paraId: "00000011", text: "main" }),
+    ];
     seed.package.headers = new Map([
       [
         "rIdCanonicalHeader",
         {
           type: "header",
           hdrFtrType: "default",
-          content: [createStoryParagraph({ paraId: "00000012", text: "header" })],
+          content: [
+            createStoryParagraph({ paraId: "00000012", text: "header" }),
+          ],
         },
       ],
     ]);
@@ -198,7 +234,9 @@ test.each(
         {
           type: "footer",
           hdrFtrType: "default",
-          content: [createStoryParagraph({ paraId: "00000013", text: "footer" })],
+          content: [
+            createStoryParagraph({ paraId: "00000013", text: "footer" }),
+          ],
         },
       ],
     ]);
@@ -206,14 +244,18 @@ test.each(
       {
         type: "footnote",
         id: 2,
-        content: [createStoryParagraph({ paraId: "00000014", text: "footnote" })],
+        content: [
+          createStoryParagraph({ paraId: "00000014", text: "footnote" }),
+        ],
       },
     ];
     seed.package.endnotes = [
       {
         type: "endnote",
         id: 3,
-        content: [createStoryParagraph({ paraId: "00000015", text: "endnote" })],
+        content: [
+          createStoryParagraph({ paraId: "00000015", text: "endnote" }),
+        ],
       },
     ];
     seed.package.document.finalSectionProperties = {
@@ -223,7 +265,10 @@ test.each(
     };
 
     const source = await createDocx(seed);
-    const original = await parseDocx(source, { preloadFonts: false, detectVariables: false });
+    const original = await parseDocx(source, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
     const stories = documentStories(original).map((story) => {
       const paragraph = storyParagraph(original, story);
       return {
@@ -259,15 +304,20 @@ test.each(
       if (restored.isErr()) throw restored.error;
       for (const { story } of stories) {
         const paragraph = storyParagraph(restored.value.document, story);
-        expect(paragraph.content).toStrictEqual(storyParagraph(original, story).content);
+        expect(paragraph.content).toStrictEqual(
+          storyParagraph(original, story).content,
+        );
       }
     }
   },
 );
 
 const storyParagraph = (document: Document, story: OpStory) => {
-  const paragraph = storyBody(document, story).content.find((block) => block.type === "paragraph");
-  if (!paragraph || paragraph.type !== "paragraph") panic("Expected original story paragraph");
+  const paragraph = storyBody(document, story).content.find(
+    (block) => block.type === "paragraph",
+  );
+  if (!paragraph || paragraph.type !== "paragraph")
+    panic("Expected original story paragraph");
   return paragraph;
 };
 
@@ -285,13 +335,21 @@ test("every paragraph mark kind retains absent, empty and populated formatting",
                   formatting: {
                     styleId: "Normal",
                     ...(runInWithNext === undefined ? {} : { runInWithNext }),
-                    ...(properties === undefined ? {} : { runProperties: properties }),
+                    ...(properties === undefined
+                      ? {}
+                      : { runProperties: properties }),
                   },
                   ...(kind === undefined
                     ? {}
-                    : { pPrMark: { kind, info: { id: 1, author: "Reviewer" } } }),
+                    : {
+                        pPrMark: { kind, info: { id: 1, author: "Reviewer" } },
+                      }),
                   content: [
-                    { type: "run", formatting: {}, content: [{ type: "text", text: "é😀" }] },
+                    {
+                      type: "run",
+                      formatting: {},
+                      content: [{ type: "text", text: "é😀" }],
+                    },
                   ],
                 },
               ],
@@ -310,7 +368,9 @@ test("every paragraph mark kind retains absent, empty and populated formatting",
             structuredClone(original.package.document.content),
           );
           expect(
-            parseDocumentBody(serializeDocument({ package: { document: reopened } })).content,
+            parseDocumentBody(
+              serializeDocument({ package: { document: reopened } }),
+            ).content,
           ).toStrictEqual(reopened.content);
         }
       }
@@ -353,7 +413,12 @@ test.each(["body", "cell"] as const)(
         : ([
             {
               type: "table",
-              rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: paragraphs }] }],
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [{ type: "tableCell", content: paragraphs }],
+                },
+              ],
             },
           ] satisfies BlockContent[]);
     const seed = createEmptyDocument();
@@ -380,7 +445,11 @@ test.each(["body", "cell"] as const)(
         story: OP_STORIES.MAIN,
         blockId: "00000012",
         patch: { styleId: "Heading2" },
-        revision: { id: 101, author: "Second reviewer", date: "2026-02-02T00:00:00Z" },
+        revision: {
+          id: 101,
+          author: "Second reviewer",
+          date: "2026-02-02T00:00:00Z",
+        },
       },
     ]).unwrap();
     const intent = {
@@ -404,10 +473,16 @@ test.each(["body", "cell"] as const)(
     }).unwrap();
     const joined = applyDocumentOps(repeated.document, plan.ops).unwrap();
     expect(
-      applyDocumentOps(joined.document, [...joined.inverse, ...repeated.inverse]).unwrap().document,
+      applyDocumentOps(joined.document, [
+        ...joined.inverse,
+        ...repeated.inverse,
+      ]).unwrap().document,
     ).toStrictEqual(original);
     const saved = await createDocx(joined.document);
-    const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+    const reopened = await parseDocx(saved, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
     const savedAgain = await createDocx(reopened);
     const reopenedAgain = await parseDocx(savedAgain, {
       preloadFonts: false,
@@ -416,26 +491,38 @@ test.each(["body", "cell"] as const)(
     expect(reopened.package.document.content).toStrictEqual(
       joined.document.package.document.content,
     );
-    expect(reopenedAgain.package.document.content).toStrictEqual(reopened.package.document.content);
+    expect(reopenedAgain.package.document.content).toStrictEqual(
+      reopened.package.document.content,
+    );
     const modelParagraphs = (document: Document) =>
       container === "body"
         ? document.package.document.content
         : document.package.document.content.flatMap((block) =>
             block.type === "table"
-              ? block.rows.flatMap((row) => row.cells.flatMap((cell) => cell.content))
+              ? block.rows.flatMap((row) =>
+                  row.cells.flatMap((cell) => cell.content),
+                )
               : [],
           );
     const survivor = modelParagraphs(reopenedAgain).at(1);
-    if (survivor?.type !== "paragraph") panic("Expected the pending join survivor");
+    if (survivor?.type !== "paragraph")
+      panic("Expected the pending join survivor");
     expect(survivor.propertyChanges).toEqual([
       {
         type: "paragraphPropertyChange",
-        info: { id: 8, author: "Latest reviewer", date: "2026-02-03T00:00:00Z" },
+        info: {
+          id: 8,
+          author: "Latest reviewer",
+          date: "2026-02-03T00:00:00Z",
+        },
         previousFormatting: { alignment: "start", styleId: "Normal" },
         currentFormatting: { alignment: "center", styleId: "Heading1" },
       },
     ]);
-    expect(survivor.formatting).toEqual({ alignment: "center", styleId: "Heading1" });
+    expect(survivor.formatting).toEqual({
+      alignment: "center",
+      styleId: "Heading1",
+    });
     for (const decision of Object.values(REVISION_DECISIONS)) {
       const resolution = {
         type: "resolveRevision",
@@ -444,21 +531,24 @@ test.each(["body", "cell"] as const)(
         decision,
       } as const;
       const resolved = applyDocumentOps(reopenedAgain, [resolution]).unwrap();
-      const resolvedBeforeSave = applyDocumentOps(joined.document, [resolution]).unwrap();
+      const resolvedBeforeSave = applyDocumentOps(joined.document, [
+        resolution,
+      ]).unwrap();
       expect(resolved.document.package.document.content).toStrictEqual(
         resolvedBeforeSave.document.package.document.content,
       );
       const reviewed = modelParagraphs(resolved.document).at(1);
-      if (reviewed?.type !== "paragraph") panic("Expected the reviewed survivor");
+      if (reviewed?.type !== "paragraph")
+        panic("Expected the reviewed survivor");
       expect(reviewed.formatting).toEqual(
         decision === REVISION_DECISIONS.ACCEPT
           ? { alignment: "center", styleId: "Heading1" }
           : { alignment: "start", styleId: "Normal" },
       );
       expect(reviewed.propertyChanges).toBeUndefined();
-      expect(applyDocumentOps(resolved.document, resolved.inverse).unwrap().document).toStrictEqual(
-        reopenedAgain,
-      );
+      expect(
+        applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+      ).toStrictEqual(reopenedAgain);
     }
   },
 );

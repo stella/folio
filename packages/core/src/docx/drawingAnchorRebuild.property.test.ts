@@ -26,8 +26,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
@@ -36,13 +38,19 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const A_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const WP_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
-const PIC_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
-const WPS_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const WP_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const PIC_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const WPS_NAMESPACE =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 
 /** A 1×1 PNG, so the drawing has a real picture relationship to resolve. */
 const PNG = Buffer.from(
@@ -87,7 +95,10 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
   }
   zip.file(
     "[Content_Types].xml",
-    types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+    types.replace(
+      "</Types>",
+      '<Default Extension="png" ContentType="image/png"/></Types>',
+    ),
   );
   zip.file(
     "word/_rels/document.xml.rels",
@@ -130,10 +141,18 @@ const resizePictures = (document: Document): void => {
 };
 
 const savedAfterResize = async (body: string): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   resizePictures(parsed);
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
-  return (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  return (
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("text")) ?? ""
+  );
 };
 
 /** `CT_Anchor`'s own attributes, with a value no folio constant would produce. */
@@ -164,11 +183,16 @@ const HLINK_HOVER = `<a:hlinkHover r:id="${LINK_RID}" tooltip="on hover"/>`;
 
 describe("a resized drawing is rebuilt with the anchor it was authored with", () => {
   test("every CT_Anchor attribute comes back as the author stated it", async () => {
-    const saved = await savedAfterResize(anchorXml(ANCHOR_ATTRIBUTE_XML, HLINK_CLICK));
+    const saved = await savedAfterResize(
+      anchorXml(ANCHOR_ATTRIBUTE_XML, HLINK_CLICK),
+    );
     await fc.assert(
       fc.asyncProperty(fc.constantFrom(...ANCHOR_ATTRIBUTE_NAMES), (name) => {
         const written = `${name}="${ANCHOR_ATTRIBUTES[name as keyof typeof ANCHOR_ATTRIBUTES]}"`;
-        expect({ name, present: saved.includes(written) }).toEqual({ name, present: true });
+        expect({ name, present: saved.includes(written) }).toEqual({
+          name,
+          present: true,
+        });
       }),
       propertyConfig({ numRuns: ANCHOR_ATTRIBUTE_NAMES.length }),
     );
@@ -186,7 +210,9 @@ describe("a resized drawing is rebuilt with the anchor it was authored with", ()
     expect(saved).toContain(HLINK_HOVER);
     // The click element still precedes the hover one, which is the order
     // `CT_NonVisualDrawingProps` declares and the only one Word accepts.
-    expect(saved.indexOf("a:hlinkClick")).toBeLessThan(saved.indexOf("a:hlinkHover"));
+    expect(saved.indexOf("a:hlinkClick")).toBeLessThan(
+      saved.indexOf("a:hlinkHover"),
+    );
   });
 
   test("a link folio refuses is not replayed from the source bytes", async () => {
@@ -198,13 +224,18 @@ describe("a resized drawing is rebuilt with the anchor it was authored with", ()
       "word/_rels/document.xml.rels",
       (rels ?? "").replace("https://example.org/", "javascript:alert(1)"),
     );
-    const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        preloadFonts: false,
+      },
+    );
     resizePictures(parsed);
     const saved =
       (await (
-        await JSZip.loadAsync(await repackDocx(parsed, { updateModifiedDate: false }))
+        await JSZip.loadAsync(
+          await repackDocx(parsed, { updateModifiedDate: false }),
+        )
       )
         .file("word/document.xml")
         ?.async("text")) ?? "";
@@ -271,7 +302,9 @@ const AUTHORED_ANCHOR = {
 
 type AuthoredAnchorName = keyof typeof AUTHORED_ANCHOR;
 
-const AUTHORED_ANCHOR_NAMES = Object.keys(AUTHORED_ANCHOR) as AuthoredAnchorName[];
+const AUTHORED_ANCHOR_NAMES = Object.keys(
+  AUTHORED_ANCHOR,
+) as AuthoredAnchorName[];
 
 /**
  * `CT_Anchor` requires all but `@hidden`, so an attribute the property leaves
@@ -287,21 +320,38 @@ const SPEC_DEFAULT_ANCHOR = {
   allowOverlap: "1",
 } as const satisfies Record<AuthoredAnchorName, string | undefined>;
 
-const anchorAttributeXml = (authored: ReadonlySet<AuthoredAnchorName>): string =>
+const anchorAttributeXml = (
+  authored: ReadonlySet<AuthoredAnchorName>,
+): string =>
   AUTHORED_ANCHOR_NAMES.flatMap((name) => {
-    const value = authored.has(name) ? AUTHORED_ANCHOR[name] : SPEC_DEFAULT_ANCHOR[name];
+    const value = authored.has(name)
+      ? AUTHORED_ANCHOR[name]
+      : SPEC_DEFAULT_ANCHOR[name];
     return value === undefined ? [] : [`${name}="${value}"`];
   }).join(" ");
 
-const savedAfterEdit = async (body: string, viaEditor: boolean): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+const savedAfterEdit = async (
+  body: string,
+  viaEditor: boolean,
+): Promise<string> => {
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   // The editor's own leg, which is the path every edited document takes.
   const projected = viaEditor
-    ? fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } })
+    ? fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      })
     : parsed;
   resizePictures(projected);
   const saved = await repackDocx(projected, { updateModifiedDate: false });
-  return (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  return (
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("text")) ?? ""
+  );
 };
 
 describe("every drawing kind is rebuilt with the anchor it was authored with", () => {
@@ -322,7 +372,11 @@ describe("every drawing kind is rebuilt with the anchor it was authored with", (
             const missing = [...authored].filter(
               (name) => !saved.includes(`${name}="${AUTHORED_ANCHOR[name]}"`),
             );
-            expect({ kind, viaEditor, missing }).toEqual({ kind, viaEditor, missing: [] });
+            expect({ kind, viaEditor, missing }).toEqual({
+              kind,
+              viaEditor,
+              missing: [],
+            });
             expect(saved).toContain('<wp:simplePos x="111" y="222"/>');
           },
         ),

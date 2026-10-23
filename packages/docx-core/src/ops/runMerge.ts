@@ -1,11 +1,11 @@
 /** Shared run merge rules for parsing and paragraph joins. */
 import type {
-  Run,
-  RunContent,
-  TextFormatting,
   ExhaustiveFields,
   PreservedAttribute,
   PreservedMarkup,
+  Run,
+  RunContent,
+  TextFormatting,
 } from "../model/document";
 
 /**
@@ -49,7 +49,10 @@ type ComparedTextFormattingField =
   | "cs"
   | "styleId"
   | "preserved";
-type ComparedTextFormatting = ExhaustiveFields<TextFormatting, ComparedTextFormattingField>;
+type ComparedTextFormatting = ExhaustiveFields<
+  TextFormatting,
+  ComparedTextFormattingField
+>;
 
 /**
  * Check if two TextFormatting objects are equivalent
@@ -228,27 +231,40 @@ function preservedAttributesEqual(
 ): boolean {
   const left = canonicalRemainderKeys(a);
   const right = canonicalRemainderKeys(b);
-  return left.length === right.length && left.every((key, index) => key === right[index]);
+  return (
+    left.length === right.length &&
+    left.every((key, index) => key === right[index])
+  );
 }
 
 /** `\u0000` cannot appear in an XML name, namespace URI or attribute value. */
 const REMAINDER_KEY_SEPARATOR = "\u0000";
 
-const canonicalRemainderKeys = (attributes: readonly PreservedAttribute[] | undefined): string[] =>
+const canonicalRemainderKeys = (
+  attributes: readonly PreservedAttribute[] | undefined,
+): string[] =>
   (attributes ?? [])
     .map(({ namespace, name, value }) =>
       [namespace ?? "", name, value].join(REMAINDER_KEY_SEPARATOR),
     )
     .sort();
 
-function languageEquals(a: TextFormatting["language"], b: TextFormatting["language"]): boolean {
-  return a?.val === b?.val && a?.eastAsia === b?.eastAsia && a?.bidi === b?.bidi;
+function languageEquals(
+  a: TextFormatting["language"],
+  b: TextFormatting["language"],
+): boolean {
+  return (
+    a?.val === b?.val && a?.eastAsia === b?.eastAsia && a?.bidi === b?.bidi
+  );
 }
 
 /**
  * Compare underline settings
  */
-function underlineEquals(a: TextFormatting["underline"], b: TextFormatting["underline"]): boolean {
+function underlineEquals(
+  a: TextFormatting["underline"],
+  b: TextFormatting["underline"],
+): boolean {
   if (!a && !b) {
     return true;
   }
@@ -265,7 +281,10 @@ function underlineEquals(a: TextFormatting["underline"], b: TextFormatting["unde
 /**
  * Compare color values
  */
-function colorEquals(a: TextFormatting["color"], b: TextFormatting["color"]): boolean {
+function colorEquals(
+  a: TextFormatting["color"],
+  b: TextFormatting["color"],
+): boolean {
   if (!a && !b) {
     return true;
   }
@@ -285,7 +304,10 @@ function colorEquals(a: TextFormatting["color"], b: TextFormatting["color"]): bo
 /**
  * Compare shading properties
  */
-function shadingEquals(a: TextFormatting["shading"], b: TextFormatting["shading"]): boolean {
+function shadingEquals(
+  a: TextFormatting["shading"],
+  b: TextFormatting["shading"],
+): boolean {
   if (!a && !b) {
     return true;
   }
@@ -338,7 +360,10 @@ function fontFamilyEquals(
  */
 export function isTextOnlyRun(run: Run): boolean {
   return run.content.every(
-    (c) => c.type === "text" || c.type === "softHyphen" || c.type === "noBreakHyphen",
+    (c) =>
+      c.type === "text" ||
+      c.type === "softHyphen" ||
+      c.type === "noBreakHyphen",
   );
 }
 
@@ -347,7 +372,9 @@ export function isTextOnlyRun(run: Run): boolean {
  */
 function isMergeableContent(content: RunContent): boolean {
   return (
-    content.type === "text" || content.type === "softHyphen" || content.type === "noBreakHyphen"
+    content.type === "text" ||
+    content.type === "softHyphen" ||
+    content.type === "noBreakHyphen"
   );
 }
 
@@ -417,7 +444,10 @@ export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean {
 /**
  * Merge the content of two runs into a single content array
  */
-export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[] {
+export function mergeRunContent(
+  content1: RunContent[],
+  content2: RunContent[],
+): RunContent[] {
   // Combine all content
   const result: RunContent[] = [];
 

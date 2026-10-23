@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readdir, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 
-import { buildDocx, CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
-import { startPreviewServer, type PreviewServer } from "./serve";
+import {
+  buildDocx,
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
+import { type PreviewServer, startPreviewServer } from "./serve";
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();
@@ -29,7 +34,10 @@ const start = async (): Promise<PreviewServer> => {
 type Reply = { status: number; body: string; headers: Record<string, unknown> };
 
 /** A raw request, so the test controls the method and the Host header. */
-const send = (url: string, options: { method?: string; host?: string } = {}): Promise<Reply> =>
+const send = (
+  url: string,
+  options: { method?: string; host?: string } = {},
+): Promise<Reply> =>
   new Promise((resolve, reject) => {
     const target = new URL(url);
     const outgoing = request(
@@ -47,7 +55,11 @@ const send = (url: string, options: { method?: string; host?: string } = {}): Pr
           body += chunk;
         });
         response.on("end", () =>
-          resolve({ status: response.statusCode ?? 0, body, headers: response.headers }),
+          resolve({
+            status: response.statusCode ?? 0,
+            body,
+            headers: response.headers,
+          }),
         );
       },
     );
@@ -57,7 +69,9 @@ const send = (url: string, options: { method?: string; host?: string } = {}): Pr
 
 const versionOf = async (url: string): Promise<unknown> => {
   const parsed: unknown = JSON.parse((await send(`${url}version`)).body);
-  return typeof parsed === "object" && parsed !== null && "fileVersion" in parsed
+  return typeof parsed === "object" &&
+    parsed !== null &&
+    "fileVersion" in parsed
     ? parsed.fileVersion
     : undefined;
 };
@@ -73,14 +87,20 @@ describe("folio serve", () => {
       const shell = await send(url);
       const page = await send(`${url}document.html`);
       const withoutToken = await send(url.replace(/\/[^/]+\/$/u, "/"));
-      const wrongToken = await send(url.replace(/\/[^/]+\/$/u, "/not-the-token/"));
+      const wrongToken = await send(
+        url.replace(/\/[^/]+\/$/u, "/not-the-token/"),
+      );
 
       expect(new URL(url).hostname).toBe("127.0.0.1");
       expect(shell.status).toBe(200);
       expect(shell.body).toContain('<iframe id="document" sandbox');
-      expect(String(shell.headers["content-security-policy"])).toContain("script-src 'nonce-");
+      expect(String(shell.headers["content-security-policy"])).toContain(
+        "script-src 'nonce-",
+      );
       expect(page.body).toContain("The buyer pays $50 on signing.");
-      expect(String(page.headers["content-security-policy"])).toContain("default-src 'none'");
+      expect(String(page.headers["content-security-policy"])).toContain(
+        "default-src 'none'",
+      );
       expect(page.headers["referrer-policy"]).toBe("no-referrer");
       expect([withoutToken.status, wrongToken.status]).toEqual([404, 404]);
     },
@@ -95,7 +115,9 @@ describe("folio serve", () => {
       const shell = await send(url);
       const version: unknown = JSON.parse((await send(`${url}version`)).body);
       const pageWidthPx =
-        typeof version === "object" && version !== null && "pageWidthPx" in version
+        typeof version === "object" &&
+        version !== null &&
+        "pageWidthPx" in version
           ? version.pageWidthPx
           : undefined;
 
@@ -105,7 +127,9 @@ describe("folio serve", () => {
       expect(shell.body).toContain(
         "Math.min(1, document.documentElement.clientWidth / pageWidthPx)",
       );
-      expect(shell.body).toContain("frame.style.transform = 'scale(' + scale + ')';");
+      expect(shell.body).toContain(
+        "frame.style.transform = 'scale(' + scale + ')';",
+      );
     },
     SERVE_TIMEOUT_MS,
   );
@@ -115,7 +139,9 @@ describe("folio serve", () => {
     async () => {
       const { url } = await start();
 
-      const rebound = await send(url, { host: `attacker.example:${new URL(url).port}` });
+      const rebound = await send(url, {
+        host: `attacker.example:${new URL(url).port}`,
+      });
       const posted = await send(url, { method: "POST" });
 
       expect(rebound.status).toBe(403);
@@ -131,7 +157,10 @@ describe("folio serve", () => {
       const { url } = await start();
       const before = await versionOf(url);
 
-      await writeFile(file, await buildDocx([{ text: "Rewritten clause.", paraId: "20000001" }]));
+      await writeFile(
+        file,
+        await buildDocx([{ text: "Rewritten clause.", paraId: "20000001" }]),
+      );
       let after = before;
       for (let attempt = 0; attempt < 50 && after === before; attempt++) {
         // oxlint-disable-next-line no-await-in-loop -- polling for the watcher to see the write
@@ -141,7 +170,9 @@ describe("folio serve", () => {
       }
 
       expect(after).not.toBe(before);
-      expect((await send(`${url}document.html`)).body).toContain("Rewritten clause.");
+      expect((await send(`${url}document.html`)).body).toContain(
+        "Rewritten clause.",
+      );
     },
     SERVE_TIMEOUT_MS,
   );

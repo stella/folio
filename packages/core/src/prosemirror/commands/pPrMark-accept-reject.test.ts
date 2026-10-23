@@ -60,7 +60,9 @@ const dispatcher = (state: EditorState) => {
   return view;
 };
 
-const trackerRuntime = ParagraphChangeTrackerExtension().onSchemaReady({ schema });
+const trackerRuntime = ParagraphChangeTrackerExtension().onSchemaReady({
+  schema,
+});
 const trackerPlugin = trackerRuntime.plugins?.at(0);
 if (!trackerPlugin) {
   throw new Error("Expected paragraph change tracker plugin");
@@ -131,8 +133,16 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [
-        schema.node("paragraph", { pPrMark: insMark({ id: 1 }) }, schema.text("p1")),
-        schema.node("paragraph", { pPrMark: insMark({ id: 2 }) }, schema.text("p2")),
+        schema.node(
+          "paragraph",
+          { pPrMark: insMark({ id: 1 }) },
+          schema.text("p1"),
+        ),
+        schema.node(
+          "paragraph",
+          { pPrMark: insMark({ id: 2 }) },
+          schema.text("p2"),
+        ),
         schema.node("paragraph", null, schema.text("p3")),
       ]),
     });
@@ -142,7 +152,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     acceptChange(0, 4)(view.state, view.dispatch);
 
     expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
-    expect(view.state.doc.child(1).attrs["pPrMark"]).toEqual(insMark({ id: 2 }));
+    expect(view.state.doc.child(1).attrs["pPrMark"]).toEqual(
+      insMark({ id: 2 }),
+    );
   });
 
   test("range-scoped acceptChange keeps pPrMark when only inline text is selected", () => {
@@ -188,7 +200,11 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, schema.text("first")),
-        schema.node("paragraph", { pPrMark: delMark({ id: 1 }) }, schema.text("last")),
+        schema.node(
+          "paragraph",
+          { pPrMark: delMark({ id: 1 }) },
+          schema.text("last"),
+        ),
       ]),
     });
     const view = dispatcher(state);
@@ -206,7 +222,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       schema,
       doc: schema.node("doc", null, [
         schema.node("paragraph", { pPrMark: delMark({ id: 1 }) }),
-        schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+        schema.node("table", null, [
+          schema.node("paragraph", null, schema.text("cell")),
+        ]),
         schema.node("paragraph", null, schema.text("last")),
       ]),
     });
@@ -249,7 +267,11 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           "paragraph",
           { pPrMark: insMark({ id: 1 }) },
           schema.text("added", [
-            insertion.create({ revisionId: 1, author: "Alice", date: "2026-05-01" }),
+            insertion.create({
+              revisionId: 1,
+              author: "Alice",
+              date: "2026-05-01",
+            }),
           ]),
         ),
       ]),
@@ -264,7 +286,11 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
   // A zero-width anchor holds a position and shows nothing. Counting one as
   // content left an emptied paragraph standing as a blank line around an
   // invisible node.
-  for (const anchor of ["renderedPageBreak", "bookmarkBoundary", "textBoxAnchor"]) {
+  for (const anchor of [
+    "renderedPageBreak",
+    "bookmarkBoundary",
+    "textBoxAnchor",
+  ]) {
     test(`a ${anchor} does not keep an emptied paragraph alive`, () => {
       const deletion = schema.marks["deletion"]!;
       const revision = { revisionId: 1, author: "Alice", date: "2026-05-01" };
@@ -275,7 +301,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             schema.node(anchor),
             schema.text("gone", [deletion.create(revision)]),
           ]),
-          schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+          schema.node("table", null, [
+            schema.node("paragraph", null, schema.text("cell")),
+          ]),
           schema.node("paragraph", null, schema.text("last")),
         ]),
       });
@@ -301,7 +329,10 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         doc: schema.node("doc", null, [
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
+            {
+              pPrMark: delMark({ id: 2 }),
+              _sectionProperties: { sectionStart: "nextPage" },
+            },
             schema.text("gone", [deletion().create(revision)]),
           ),
           schema.node("paragraph", null, schema.text("next")),
@@ -322,7 +353,10 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         doc: schema.node("doc", null, [
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
+            {
+              pPrMark: delMark({ id: 2 }),
+              _sectionProperties: { sectionStart: "nextPage" },
+            },
             schema.text("first section"),
           ),
           schema.node(
@@ -337,7 +371,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       acceptAllChanges()(view.state, view.dispatch);
 
       expect(view.state.doc.childCount).toBe(1);
-      expect(view.state.doc.child(0).textContent).toBe("first sectionsecond section");
+      expect(view.state.doc.child(0).textContent).toBe(
+        "first sectionsecond section",
+      );
       expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
         sectionStart: "continuous",
       });
@@ -348,7 +384,11 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       const state = EditorState.create({
         schema,
         doc: schema.node("doc", null, [
-          schema.node("paragraph", { pPrMark: delMark({ id: 2 }) }, schema.text("first")),
+          schema.node(
+            "paragraph",
+            { pPrMark: delMark({ id: 2 }) },
+            schema.text("first"),
+          ),
           schema.node(
             "paragraph",
             {
@@ -361,12 +401,19 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       });
       const view = dispatcher(state);
 
-      acceptChange(0, view.state.doc.child(0).nodeSize)(view.state, view.dispatch);
+      acceptChange(0, view.state.doc.child(0).nodeSize)(
+        view.state,
+        view.dispatch,
+      );
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("firstsecond");
-      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
-      expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(insMark({ id: 3 }));
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+        columns: 2,
+      });
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(
+        insMark({ id: 3 }),
+      );
     });
 
     test("keeps the next paragraph's revision and section after emptied content is joined", () => {
@@ -391,12 +438,19 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       });
       const view = dispatcher(state);
 
-      acceptChange(0, view.state.doc.child(0).nodeSize)(view.state, view.dispatch);
+      acceptChange(0, view.state.doc.child(0).nodeSize)(
+        view.state,
+        view.dispatch,
+      );
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("second");
-      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
-      expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(insMark({ id: 3 }));
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+        columns: 2,
+      });
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(
+        insMark({ id: 3 }),
+      );
     });
 
     test("is removed with an emptied paragraph before a nonjoinable sibling", () => {
@@ -406,10 +460,15 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           schema.node("paragraph", null, schema.text("first")),
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
+            {
+              pPrMark: delMark({ id: 2 }),
+              _sectionProperties: { sectionStart: "nextPage" },
+            },
             schema.text("gone", [deletion().create(revision)]),
           ),
-          schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+          schema.node("table", null, [
+            schema.node("paragraph", null, schema.text("cell")),
+          ]),
           schema.node("paragraph", null, schema.text("last")),
         ]),
       });
@@ -433,10 +492,15 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           ),
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
+            {
+              pPrMark: delMark({ id: 2 }),
+              _sectionProperties: { sectionStart: "nextPage" },
+            },
             schema.text("gone", [deletion().create(revision)]),
           ),
-          schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+          schema.node("table", null, [
+            schema.node("paragraph", null, schema.text("cell")),
+          ]),
           schema.node("paragraph", null, schema.text("last")),
         ]),
       });
@@ -472,7 +536,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(2);
       expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
-      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+        columns: 2,
+      });
     });
 
     test("reject removes an inserted endpoint and retains the following paragraph", () => {
@@ -495,8 +561,12 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       rejectAllChanges()(view.state, view.dispatch);
 
       expect(view.state.doc.childCount).toBe(1);
-      expect(view.state.doc.child(0).textContent).toBe("inserted sectionfollowing section");
-      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
+      expect(view.state.doc.child(0).textContent).toBe(
+        "inserted sectionfollowing section",
+      );
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+        columns: 2,
+      });
     });
 
     test("authorizes only the exact endpoint-removal direction", () => {
@@ -514,7 +584,10 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         );
       const followingParagraph = () =>
         schema.node("paragraph", null, schema.text("following section"));
-      const source = schema.node("doc", null, [sectionParagraph(), followingParagraph()]);
+      const source = schema.node("doc", null, [
+        sectionParagraph(),
+        followingParagraph(),
+      ]);
       const accepting = dispatcher(trackedState(source));
       const rejecting = dispatcher(trackedState(source));
 
@@ -526,14 +599,18 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         type: "tracked-section-endpoint-removal",
         sourceParagraphEndpointCount: 1,
         expectedParagraphEndpointCount: 0,
-        removedReferences: [{ part: "header", type: "first", relationshipId: "rId7" }],
+        removedReferences: [
+          { part: "header", type: "first", relationshipId: "rId7" },
+        ],
       });
       expect(authorization?.sourceEndpointFingerprint).not.toBe(
         authorization?.expectedEndpointFingerprint,
       );
       expect(getTrackedSectionEndpointRemoval(rejecting.state)).toBeNull();
 
-      const nonSection = dispatcher(trackedState(twoParagraphs(delMark({ id: 2 })).doc));
+      const nonSection = dispatcher(
+        trackedState(twoParagraphs(delMark({ id: 2 })).doc),
+      );
       acceptAllChanges()(nonSection.state, nonSection.dispatch);
       expect(getTrackedSectionEndpointRemoval(nonSection.state)).toBeNull();
     });
@@ -594,7 +671,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         expectedParagraphEndpointCount: 1,
       });
 
-      view.dispatch(view.state.tr.setNodeAttribute(0, "_sectionProperties", null));
+      view.dispatch(
+        view.state.tr.setNodeAttribute(0, "_sectionProperties", null),
+      );
 
       expect(getTrackedSectionEndpointRemoval(view.state)).toBeNull();
     });
@@ -623,7 +702,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       acceptAllChanges()(view.state, view.dispatch);
       expect(getTrackedSectionEndpointRemoval(view.state)).not.toBeNull();
 
-      view.dispatch(view.state.tr.setNodeAttribute(0, "_sectionProperties", { columns: 4 }));
+      view.dispatch(
+        view.state.tr.setNodeAttribute(0, "_sectionProperties", { columns: 4 }),
+      );
 
       expect(getTrackedSectionEndpointRemoval(view.state)).toBeNull();
     });
@@ -657,7 +738,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       view.dispatch(
         view.state.tr
           .setNodeAttribute(0, "_sectionProperties", null)
-          .setNodeAttribute(firstParagraphSize, "_sectionProperties", { columns: 3 }),
+          .setNodeAttribute(firstParagraphSize, "_sectionProperties", {
+            columns: 3,
+          }),
       );
 
       expect(getTrackedSectionEndpointRemoval(view.state)).toBeNull();
@@ -692,17 +775,28 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       // of it leaves two halves over the one record until save: the package
       // still states exactly the sections the authorization counted.
       view.dispatch(
-        view.state.tr.insert(0, schema.node("paragraph", null, schema.text("inserted"))),
+        view.state.tr.insert(
+          0,
+          schema.node("paragraph", null, schema.text("inserted")),
+        ),
       );
-      expect(getTrackedSectionEndpointRemoval(view.state)).toEqual(authorization);
+      expect(getTrackedSectionEndpointRemoval(view.state)).toEqual(
+        authorization,
+      );
       view.dispatch(view.state.tr.split(view.state.doc.child(0).nodeSize + 4));
-      expect(getTrackedSectionEndpointRemoval(view.state)).toEqual(authorization);
+      expect(getTrackedSectionEndpointRemoval(view.state)).toEqual(
+        authorization,
+      );
 
       // A record that changes is a transition the authorization never saw.
       view.dispatch(
-        view.state.tr.setNodeAttribute(view.state.doc.child(0).nodeSize, "_sectionProperties", {
-          columns: 4,
-        }),
+        view.state.tr.setNodeAttribute(
+          view.state.doc.child(0).nodeSize,
+          "_sectionProperties",
+          {
+            columns: 4,
+          },
+        ),
       );
       expect(getTrackedSectionEndpointRemoval(view.state)).toBeNull();
     });

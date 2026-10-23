@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
-import { diffShape, failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
+import {
+  diffShape,
+  failureMarker,
+} from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   classifyFailureMarkers,
   extractFailureMarkers,
@@ -38,13 +41,17 @@ describe("failure fingerprints", () => {
     const missingComment = marker(1, new Error("step 1: no comment"));
     const changedReader = marker(
       2,
-      new Error("step 1: [readerStability] getChanges reads otherwise after the save"),
+      new Error(
+        "step 1: [readerStability] getChanges reads otherwise after the save",
+      ),
     );
     expect(missingComment.fingerprint).not.toBe(changedReader.fingerprint);
   });
 
   test("a non-error cause does not replace the error message", () => {
-    const failure = new Error("step 1: no comment", { cause: "request context" });
+    const failure = new Error("step 1: no comment", {
+      cause: "request context",
+    });
     expect(marker(1, failure).assertion).toBe("no comment");
   });
 
@@ -56,7 +63,11 @@ describe("failure fingerprints", () => {
       .map((entry) => `job 2026-09-28 FOLIO_FAILURE ${JSON.stringify(entry)}`)
       .join("\n");
     const classified = classifyFailureMarkers(extractFailureMarkers(log), [
-      { fingerprint: first.fingerprint, issueOrPr: "#1191", firstSeen: "2026-09-28" },
+      {
+        fingerprint: first.fingerprint,
+        issueOrPr: "#1191",
+        firstSeen: "2026-09-28",
+      },
     ]);
     expect(classified).toMatchObject([
       { status: "known", seeds: [1, 2], issueOrPr: "#1191" },
@@ -65,9 +76,9 @@ describe("failure fingerprints", () => {
   });
 
   test("rejects malformed known entries", () => {
-    expect(() => parseKnownFailures({ known: [{ fingerprint: "bad" }] })).toThrow(
-      "Invalid known failure fingerprint entry",
-    );
+    expect(() =>
+      parseKnownFailures({ known: [{ fingerprint: "bad" }] }),
+    ).toThrow("Invalid known failure fingerprint entry");
   });
 
   describe("the shape of the differences tells two bugs behind one symptom apart", () => {
@@ -100,7 +111,9 @@ describe("failure fingerprints", () => {
       expect(marker(1, split(1, "payment")).fingerprint).toBe(
         marker(9, split(4, "delivery term")).fingerprint,
       );
-      expect(diffShape(split(1, "payment"))).toBe("[] {insertion}→∅; [].text text→text");
+      expect(diffShape(split(1, "payment"))).toBe(
+        "[] {insertion}→∅; [].text text→text",
+      );
     });
 
     test("different bugs with the same symptom line: two fingerprints", () => {
@@ -108,7 +121,9 @@ describe("failure fingerprints", () => {
       const inline = marker(1, split(1, "payment"));
       expect(column.assertion).toBe(inline.assertion);
       expect(column.fingerprint).not.toBe(inline.fingerprint);
-      expect(column.diff).toBe("[] {tableColumnInsertion}→∅; [].blockId text→text");
+      expect(column.diff).toBe(
+        "[] {tableColumnInsertion}→∅; [].blockId text→text",
+      );
     });
 
     test("a typed entry's type stays in the shape, its position does not", () => {
@@ -121,10 +136,16 @@ describe("failure fingerprints", () => {
       expect(diffShape(typed(2))).toBe(
         "(root) text→text; .blocks[paragraph].runs[].text text→text; [insertion].text text→text",
       );
-      expect(marker(1, typed(2)).fingerprint).toBe(marker(2, typed(5)).fingerprint);
+      expect(marker(1, typed(2)).fingerprint).toBe(
+        marker(2, typed(5)).fingerprint,
+      );
       expect(marker(1, typed(2)).fingerprint).not.toBe(
-        marker(1, readerStability([`[2:deletion].text: "payment" → "payment and more"`]))
-          .fingerprint,
+        marker(
+          1,
+          readerStability([
+            `[2:deletion].text: "payment" → "payment and more"`,
+          ]),
+        ).fingerprint,
       );
     });
 
@@ -132,7 +153,10 @@ describe("failure fingerprints", () => {
       const plain = marker(1, new Error("step 1: no comment"));
       expect(plain.diff).toBeUndefined();
       expect(plain.fingerprint).toBe(
-        createHash("sha256").update("comments / suggested\0no comment").digest("hex").slice(0, 16),
+        createHash("sha256")
+          .update("comments / suggested\0no comment")
+          .digest("hex")
+          .slice(0, 16),
       );
     });
 
@@ -148,7 +172,9 @@ describe("failure fingerprints", () => {
       });
       expect(shrunk.primary).toBe(unshrunk.fingerprint);
       expect(shrunk.fingerprint).not.toBe(unshrunk.fingerprint);
-      const [extracted] = extractFailureMarkers(`FOLIO_FAILURE ${JSON.stringify(shrunk)}`);
+      const [extracted] = extractFailureMarkers(
+        `FOLIO_FAILURE ${JSON.stringify(shrunk)}`,
+      );
       expect(extracted).toEqual(shrunk);
     });
   });

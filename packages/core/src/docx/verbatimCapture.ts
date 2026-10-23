@@ -17,11 +17,10 @@
  */
 
 import { panic, TaggedError } from "better-result";
-import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import type { DocxConformanceClass } from "../types/document";
 
-import { assertXmlResourceLimits } from "./xmlResourceLimits";
-import { getDocxXmlSafetyIssue } from "./xmlSafety";
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+
+import type { DocxConformanceClass } from "../types/document";
 import {
   type SlotEncoding,
   TRANSITIONAL_NAMESPACE_BY_STRICT_URI,
@@ -44,12 +43,14 @@ import {
   getNamespacePrefix,
   NAMESPACES,
   OOXML_NAMESPACE_SCOPE,
-  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
   resolveAttributeNamespaceUri,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
   type XmlNamespaceScope,
 } from "./xmlParser";
+import { assertXmlResourceLimits } from "./xmlResourceLimits";
+import { getDocxXmlSafetyIssue } from "./xmlSafety";
 
 /** A Strict fragment uses a namespace that has no Transitional counterpart. */
 export class UntranslatableStrictNamespaceError extends TaggedError(
@@ -92,7 +93,8 @@ const DRAWING_EXTENSION_MARKERS: readonly string[] = [
 ];
 
 const isUnschemadDrawingNamespace = (uri: string): boolean =>
-  !TRANSITIONAL_URIS.has(uri) && DRAWING_EXTENSION_MARKERS.some((marker) => uri.includes(marker));
+  !TRANSITIONAL_URIS.has(uri) &&
+  DRAWING_EXTENSION_MARKERS.some((marker) => uri.includes(marker));
 
 /** The Transitional spelling of one Strict-produced value, or the value unchanged. */
 const transitionalValue = (
@@ -114,11 +116,15 @@ const transitionalValue = (
   }
   const percentUnit =
     encoding?.percent ??
-    (isUnschemadDrawingNamespace(namespaceUri) ? "thousandthPercent" : undefined);
+    (isUnschemadDrawingNamespace(namespaceUri)
+      ? "thousandthPercent"
+      : undefined);
   if (percentUnit === undefined) {
     return value;
   }
-  return String(roundHalfAwayFromZero(percentage * NUMBERS_PER_PERCENT[percentUnit]));
+  return String(
+    roundHalfAwayFromZero(percentage * NUMBERS_PER_PERCENT[percentUnit]),
+  );
 };
 
 /**
@@ -130,7 +136,10 @@ const transitionalValue = (
  */
 type FragmentOrigin = "strict" | "transitional";
 
-const originOf = (element: XmlElement, inherited: FragmentOrigin): FragmentOrigin => {
+const originOf = (
+  element: XmlElement,
+  inherited: FragmentOrigin,
+): FragmentOrigin => {
   const uri = element.namespaceUri;
   if (uri === undefined) {
     return inherited;
@@ -148,13 +157,17 @@ const originOf = (element: XmlElement, inherited: FragmentOrigin): FragmentOrigi
 };
 
 /** A same-local-name extension attribute is not a slot in the element's vocabulary. */
-const attributeSlotEncoding = (element: XmlElement, name: string): SlotEncoding | undefined => {
+const attributeSlotEncoding = (
+  element: XmlElement,
+  name: string,
+): SlotEncoding | undefined => {
   if (getNamespacePrefix(name) !== null) {
     const attributeUri = resolveAttributeNamespaceUri(element, name);
     if (
       attributeUri === undefined ||
       element.namespaceUri === undefined ||
-      toTransitionalNamespaceUri(attributeUri) !== toTransitionalNamespaceUri(element.namespaceUri)
+      toTransitionalNamespaceUri(attributeUri) !==
+        toTransitionalNamespaceUri(element.namespaceUri)
     )
       return undefined;
   }
@@ -180,7 +193,11 @@ const convertAttributes = (
     if (name === "xmlns" || name.startsWith("xmlns:")) {
       next = toTransitionalNamespaceUri(raw);
     } else if (convertValues) {
-      next = transitionalValue(raw, namespaceUri, attributeSlotEncoding(element, name));
+      next = transitionalValue(
+        raw,
+        namespaceUri,
+        attributeSlotEncoding(element, name),
+      );
     }
     if (next === raw) {
       continue;
@@ -194,16 +211,24 @@ const convertAttributes = (
 const childWithValue = (child: XmlElement, text: string): XmlElement =>
   text === child.text ? child : { ...child, text };
 
-const toTransitional = (element: XmlElement, inherited: FragmentOrigin): XmlElement => {
+const toTransitional = (
+  element: XmlElement,
+  inherited: FragmentOrigin,
+): XmlElement => {
   if (element.type === "text") {
     return element;
   }
 
   const origin = originOf(element, inherited);
   const namespaceUri =
-    element.namespaceUri === undefined ? "" : toTransitionalNamespaceUri(element.namespaceUri);
+    element.namespaceUri === undefined
+      ? ""
+      : toTransitionalNamespaceUri(element.namespaceUri);
   const localName = getLocalName(element.name);
-  const textEncoding = transitionalSlotEncoding(element.namespaceUri, localName);
+  const textEncoding = transitionalSlotEncoding(
+    element.namespaceUri,
+    localName,
+  );
 
   const attributes = element.attributes
     ? convertAttributes(element, namespaceUri, origin === "strict")
@@ -212,8 +237,13 @@ const toTransitional = (element: XmlElement, inherited: FragmentOrigin): XmlElem
   let elements: XmlElement[] | undefined;
   for (const [index, child] of (element.elements ?? []).entries()) {
     const next =
-      origin === "strict" && child.type === "text" && typeof child.text === "string"
-        ? childWithValue(child, transitionalValue(child.text, namespaceUri, textEncoding))
+      origin === "strict" &&
+      child.type === "text" &&
+      typeof child.text === "string"
+        ? childWithValue(
+            child,
+            transitionalValue(child.text, namespaceUri, textEncoding),
+          )
         : toTransitional(child, origin);
     if (next === child) {
       continue;
@@ -268,7 +298,9 @@ const namespaceValueKind = (
   const namespaceUri =
     prefix === null
       ? ""
-      : toTransitionalNamespaceUri(resolveNamespaceBinding(element.namespaceScope, prefix) ?? "");
+      : toTransitionalNamespaceUri(
+          resolveNamespaceBinding(element.namespaceScope, prefix) ?? "",
+        );
   const localName = getLocalName(attributeName);
   if (namespaceUri === XSI_NAMESPACE_URI && localName === "type") {
     return "qname";
@@ -322,7 +354,10 @@ const referencedNamespacePrefixes = (
       return null;
     }
     const prefix = parts.length === 2 ? parts[0]! : "";
-    if (prefix !== "" && resolveNamespaceBinding(element.namespaceScope, prefix) === undefined) {
+    if (
+      prefix !== "" &&
+      resolveNamespaceBinding(element.namespaceScope, prefix) === undefined
+    ) {
       return null;
     }
     prefixes.push(prefix);
@@ -339,7 +374,9 @@ const referencedNamespacePrefixes = (
  * anywhere in scope or in the fragment itself, is serialized once and returned
  * unchanged.
  */
-const materializeInheritedNamespaceBindings = (element: XmlElement): XmlElement => {
+const materializeInheritedNamespaceBindings = (
+  element: XmlElement,
+): XmlElement => {
   const additions: Record<string, string> = {};
   const rootAttributes = element.attributes ?? {};
 
@@ -348,7 +385,10 @@ const materializeInheritedNamespaceBindings = (element: XmlElement): XmlElement 
       return;
     }
     const attributeName = prefix === "" ? "xmlns" : `xmlns:${prefix}`;
-    if (rootAttributes[attributeName] !== undefined || additions[attributeName] !== undefined) {
+    if (
+      rootAttributes[attributeName] !== undefined ||
+      additions[attributeName] !== undefined
+    ) {
       return;
     }
     const namespaceUri = resolveNamespaceBinding(node.namespaceScope, prefix);
@@ -365,7 +405,10 @@ const materializeInheritedNamespaceBindings = (element: XmlElement): XmlElement 
     additions[attributeName] = namespaceUri;
   };
 
-  const visit = (node: XmlElement, inheritedDeclarations: ReadonlySet<string>): void => {
+  const visit = (
+    node: XmlElement,
+    inheritedDeclarations: ReadonlySet<string>,
+  ): void => {
     const declarations = new Set(inheritedDeclarations);
     for (const name of Object.keys(node.attributes ?? {})) {
       if (name === "xmlns") {
@@ -411,13 +454,18 @@ const materializeInheritedNamespaceBindings = (element: XmlElement): XmlElement 
   visit(element, new Set());
   return Object.keys(additions).length === 0
     ? element
-    : cloneElement(element, { attributes: { ...rootAttributes, ...additions } });
+    : cloneElement(element, {
+        attributes: { ...rootAttributes, ...additions },
+      });
 };
 
 export const captureVerbatimXml = (element: XmlElement): string => {
   const replayableElement = materializeInheritedNamespaceBindings(element);
   const xml = elementToXml(replayableElement);
-  if (!xml.includes(STRICT_URI_PREFIX) && !scopeDeclaresStrict(replayableElement.namespaceScope)) {
+  if (
+    !xml.includes(STRICT_URI_PREFIX) &&
+    !scopeDeclaresStrict(replayableElement.namespaceScope)
+  ) {
     return xml;
   }
   return elementToXml(toTransitional(replayableElement, "transitional"));
@@ -441,7 +489,10 @@ const hasRequiredNamespaceBindings = (
   }
   for (const [prefix, namespaceUri] of required) {
     const resolved = resolveNamespaceBinding(element.namespaceScope, prefix);
-    if (resolved === undefined || toTransitionalNamespaceUri(resolved) !== namespaceUri) {
+    if (
+      resolved === undefined ||
+      toTransitionalNamespaceUri(resolved) !== namespaceUri
+    ) {
       return false;
     }
   }
@@ -460,7 +511,9 @@ const validNamespaceDeclaration = (name: string, value: string): boolean => {
   if (prefix === "xml") {
     return value === XML_NAMESPACE_URI;
   }
-  return value !== "" && value !== XML_NAMESPACE_URI && value !== XMLNS_NAMESPACE_URI;
+  return (
+    value !== "" && value !== XML_NAMESPACE_URI && value !== XMLNS_NAMESPACE_URI
+  );
 };
 
 const hasBoundNamespaces = (root: XmlElement): boolean => {
@@ -475,7 +528,8 @@ const hasBoundNamespaces = (root: XmlElement): boolean => {
       elementPrefix === "xmlns" ||
       (elementPrefix !== null &&
         elementPrefix !== "xml" &&
-        resolveNamespaceBinding(element.namespaceScope, elementPrefix) === undefined)
+        resolveNamespaceBinding(element.namespaceScope, elementPrefix) ===
+          undefined)
     ) {
       return false;
     }
@@ -499,11 +553,15 @@ const hasBoundNamespaces = (root: XmlElement): boolean => {
         return false;
       }
       const attributeNamespace =
-        prefix === null ? "" : resolveNamespaceBinding(element.namespaceScope, prefix);
+        prefix === null
+          ? ""
+          : resolveNamespaceBinding(element.namespaceScope, prefix);
       // Strict and Transitional bindings become the same namespace on replay.
       // Detect the resulting duplicate before conversion so two lexical names
       // cannot collapse into one expanded attribute name.
-      const replayNamespace = toTransitionalNamespaceUri(attributeNamespace ?? "");
+      const replayNamespace = toTransitionalNamespaceUri(
+        attributeNamespace ?? "",
+      );
       const expandedName = `${replayNamespace}\u0000${getLocalName(name)}`;
       if (expandedAttributeNames.has(expandedName)) {
         return false;
@@ -566,7 +624,11 @@ const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 /** Validate a complete XML part immediately before package output. */
 export const isSafeCapturedXmlDocument = (xml: string): boolean => {
   const trimmed = xml.trim();
-  if (trimmed === "" || !withinXmlResourceLimits(xml) || getDocxXmlSafetyIssue(xml) !== null) {
+  if (
+    trimmed === "" ||
+    !withinXmlResourceLimits(xml) ||
+    getDocxXmlSafetyIssue(xml) !== null
+  ) {
     return false;
   }
   const root = parsedReplayEnvelope(trimmed, EMPTY_NAMESPACE_SCOPE);
@@ -594,7 +656,9 @@ const captureAllowedElement = (
     element.type !== "element" ||
     !element.name ||
     !allowedLocalNames.has(getLocalName(element.name)) ||
-    !allowedNamespaceUris.has(toTransitionalNamespaceUri(element.namespaceUri ?? "")) ||
+    !allowedNamespaceUris.has(
+      toTransitionalNamespaceUri(element.namespaceUri ?? ""),
+    ) ||
     !hasBoundNamespaces(element) ||
     !hasRequiredNamespaceBindings(element, requiredNamespaceBindings) ||
     !passesDomainValidation
@@ -672,8 +736,13 @@ const CAPTURED_XML_SANITIZER_CACHE_CHARACTERS = 2 * 1024 * 1024;
  */
 const CAPTURED_XML_SANITIZER_ENTRY_OVERHEAD_CHARACTERS = 64;
 
-const capturedXmlCacheCharacters = (xml: string, sanitized: string | null): number =>
-  CAPTURED_XML_SANITIZER_ENTRY_OVERHEAD_CHARACTERS + xml.length + (sanitized?.length ?? 0);
+const capturedXmlCacheCharacters = (
+  xml: string,
+  sanitized: string | null,
+): number =>
+  CAPTURED_XML_SANITIZER_ENTRY_OVERHEAD_CHARACTERS +
+  xml.length +
+  (sanitized?.length ?? 0);
 
 /**
  * {@link sanitizeCapturedXmlElement} over fixed options, memoized by source
@@ -705,11 +774,17 @@ export const createCapturedXmlSanitizer = (
       return sanitized;
     }
     for (const [oldestXml, oldestSanitized] of cache) {
-      if (cachedCharacters + characters <= CAPTURED_XML_SANITIZER_CACHE_CHARACTERS) {
+      if (
+        cachedCharacters + characters <=
+        CAPTURED_XML_SANITIZER_CACHE_CHARACTERS
+      ) {
         break;
       }
       cache.delete(oldestXml);
-      cachedCharacters -= capturedXmlCacheCharacters(oldestXml, oldestSanitized);
+      cachedCharacters -= capturedXmlCacheCharacters(
+        oldestXml,
+        oldestSanitized,
+      );
     }
     cache.set(xml, sanitized);
     cachedCharacters += characters;
@@ -718,11 +793,19 @@ export const createCapturedXmlSanitizer = (
 };
 
 const STRICT_BY_TRANSITIONAL = new Map(
-  [...TRANSITIONAL_NAMESPACE_BY_STRICT_URI].map(([strict, transitional]) => [transitional, strict]),
+  [...TRANSITIONAL_NAMESPACE_BY_STRICT_URI].map(([strict, transitional]) => [
+    transitional,
+    strict,
+  ]),
 );
 
-const strictPercentage = (value: string, unit: keyof typeof NUMBERS_PER_PERCENT): string =>
-  /^-?\d+(?:\.\d+)?$/u.test(value) ? `${Number(value) / NUMBERS_PER_PERCENT[unit]}%` : value;
+const strictPercentage = (
+  value: string,
+  unit: keyof typeof NUMBERS_PER_PERCENT,
+): string =>
+  /^-?\d+(?:\.\d+)?$/u.test(value)
+    ? `${Number(value) / NUMBERS_PER_PERCENT[unit]}%`
+    : value;
 
 /** Translate generated markup by namespace/slot, never by a user-text replacement. */
 const strictElement = (element: XmlElement): void => {
@@ -746,7 +829,11 @@ const strictElement = (element: XmlElement): void => {
     if (
       encoding?.percent &&
       (!encoding.measure ||
-        getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "type") === "pct")
+        getAttributeByNamespaceUri(
+          element,
+          WORDPROCESSINGML_NAMESPACE_URIS,
+          "type",
+        ) === "pct")
     ) {
       element.attributes![name] = strictPercentage(value, encoding.percent);
     }
@@ -754,7 +841,11 @@ const strictElement = (element: XmlElement): void => {
   const encoding = transitionalSlotEncoding(element.namespaceUri, localName);
   for (const child of element.elements ?? []) {
     if (child.type === "element") strictElement(child);
-    else if (child.type === "text" && typeof child.text === "string" && encoding?.percent) {
+    else if (
+      child.type === "text" &&
+      typeof child.text === "string" &&
+      encoding?.percent
+    ) {
       child.text = strictPercentage(child.text, encoding.percent);
     }
   }
@@ -763,7 +854,9 @@ const strictElement = (element: XmlElement): void => {
 /** Serialize a generated, scope-bound block in the source part's profile. */
 const cloneSourceProfileTree = (element: XmlElement): XmlElement =>
   cloneElement(element, {
-    ...(element.attributes === undefined ? {} : { attributes: { ...element.attributes } }),
+    ...(element.attributes === undefined
+      ? {}
+      : { attributes: { ...element.attributes } }),
     ...(element.elements === undefined
       ? {}
       : { elements: element.elements.map(cloneSourceProfileTree) }),
@@ -776,6 +869,7 @@ export const captureSourceProfileXml = (
   const owned = cloneSourceProfileTree(element);
   if (conformance === DOCX_CONFORMANCE_CLASSES.STRICT) strictElement(owned);
   const xml = elementToXml(owned);
-  if (!isSafeCapturedXmlDocument(xml)) panic("Generated source-profile markup is unsafe.");
+  if (!isSafeCapturedXmlDocument(xml))
+    panic("Generated source-profile markup is unsafe.");
   return xml;
 };

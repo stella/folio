@@ -10,32 +10,41 @@
  * the still-in-parent pointer wiring.
  */
 
-import { computed, ref, type ComputedRef, type Ref, type ShallowRef, type VNodeChild } from "vue";
-import { TextSelection, NodeSelection, type Command } from "prosemirror-state";
+import { type Command, NodeSelection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import {
+  computed,
+  type ComputedRef,
+  type Ref,
+  ref,
+  type ShallowRef,
+  type VNodeChild,
+} from "vue";
+
+import type { WrapType } from "@stll/folio-core/docx/wrapTypes";
 import {
   captureInlinePositionEmu,
   findImageElement,
   type ImageLayoutTarget,
 } from "@stll/folio-core/layout-painter/imageLayout";
-import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import {
+  type ListNumberingMenuState,
   listNumberingMenuState,
   NO_LIST_NUMBERING_MENU,
-  type ListNumberingMenuState,
 } from "@stll/folio-core/prosemirror";
-import type { WrapType } from "@stll/folio-core/docx/wrapTypes";
+import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
+
+import type {
+  ImageContextMenuState,
+  ImageContextMenuTextAction,
+} from "../components/imageContextMenuTypes";
+import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
+import { useTranslation } from "../i18n";
 import {
   copyImageToClipboard,
   pasteFromClipboard,
   triggerReplaceImage,
 } from "../utils/imageClipboard";
-import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
-import type {
-  ImageContextMenuState,
-  ImageContextMenuTextAction,
-} from "../components/imageContextMenuTypes";
-import { useTranslation } from "../i18n";
 
 type CommandFactory = (...args: readonly unknown[]) => Command;
 
@@ -60,7 +69,9 @@ function readWrapType(value: unknown): WrapType {
 }
 
 function readCssFloat(value: unknown): CssFloat {
-  return value === "left" || value === "right" || value === "none" ? value : null;
+  return value === "left" || value === "right" || value === "none"
+    ? value
+    : null;
 }
 
 export type TextContextMenuState = {
@@ -105,7 +116,10 @@ export type UseContextMenusOptions = {
    * captured when the menu opened. Right-click can collapse the live PM
    * selection, so the captured range is preferred when non-empty.
    */
-  onCustomContextAction?: (id: string, selectionRange: { from: number; to: number }) => void;
+  onCustomContextAction?: (
+    id: string,
+    selectionRange: { from: number; to: number },
+  ) => void;
   onCopy?: () => void;
   onCut?: () => void;
   onPaste?: () => void;
@@ -123,7 +137,9 @@ export type UseContextMenusReturn = {
   handleContextMenuAction: (action: string) => void;
 };
 
-export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusReturn {
+export function useContextMenus(
+  opts: UseContextMenusOptions,
+): UseContextMenusReturn {
   const { t } = useTranslation();
 
   const contextMenu = ref<TextContextMenuState>({
@@ -144,7 +160,10 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
   // Selection range captured when the text menu opens. Right-click can collapse
   // the live PM selection, so `custom:` actions resolve against this snapshot
   // (preferring it when non-empty) rather than the post-click selection.
-  const capturedSelectionRange = ref<{ from: number; to: number }>({ from: 0, to: 0 });
+  const capturedSelectionRange = ref<{ from: number; to: number }>({
+    from: 0,
+    to: 0,
+  });
 
   // Host menu entries to lead the text menu, filtered by `requiresSelection`
   // against the current selection (mirrors React's DocxEditor menu build).
@@ -157,21 +176,31 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
   // Cut / Copy / Paste / Delete items appended below the layout choices in
   // the image context menu so users don't have to flip menus to do
   // clipboard work on a selected image.
-  const imageContextMenuTextActions = computed<ImageContextMenuTextAction[]>(() => [
-    { action: "cut", label: t("contextMenu.cut"), shortcut: t("contextMenu.cutShortcut") },
-    { action: "copy", label: t("contextMenu.copy"), shortcut: t("contextMenu.copyShortcut") },
-    {
-      action: "paste",
-      label: t("contextMenu.paste"),
-      shortcut: t("contextMenu.pasteShortcut"),
-      dividerAfter: true,
-    },
-    {
-      action: "delete",
-      label: t("contextMenu.delete"),
-      shortcut: t("contextMenu.deleteShortcut"),
-    },
-  ]);
+  const imageContextMenuTextActions = computed<ImageContextMenuTextAction[]>(
+    () => [
+      {
+        action: "cut",
+        label: t("contextMenu.cut"),
+        shortcut: t("contextMenu.cutShortcut"),
+      },
+      {
+        action: "copy",
+        label: t("contextMenu.copy"),
+        shortcut: t("contextMenu.copyShortcut"),
+      },
+      {
+        action: "paste",
+        label: t("contextMenu.paste"),
+        shortcut: t("contextMenu.pasteShortcut"),
+        dividerAfter: true,
+      },
+      {
+        action: "delete",
+        label: t("contextMenu.delete"),
+        shortcut: t("contextMenu.deleteShortcut"),
+      },
+    ],
+  );
 
   function runCommand(view: EditorView, command: Command): void {
     command(view.state, (tr) => view.dispatch(tr), view);
@@ -185,7 +214,9 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
     cssFloat: CssFloat,
   ): ImageContextMenuState {
     const inlinePositionEmu =
-      wrapType === "inline" ? captureInlinePositionEmu(imageEl, opts.zoom.value) : undefined;
+      wrapType === "inline"
+        ? captureInlinePositionEmu(imageEl, opts.zoom.value)
+        : undefined;
     return {
       open: true,
       position,
@@ -383,7 +414,11 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
         break;
       }
       case "selectAll": {
-        const sel = TextSelection.create(view.state.doc, 0, view.state.doc.content.size);
+        const sel = TextSelection.create(
+          view.state.doc,
+          0,
+          view.state.doc.content.size,
+        );
         view.dispatch(view.state.tr.setSelection(sel));
         break;
       }

@@ -8,9 +8,9 @@
  * - Custom drag initiation from mousedown on selected images
  */
 
-import { createPluginKeyOwner } from "../../pluginKeyOwner";
-import { Plugin, NodeSelection } from "prosemirror-state";
+import { NodeSelection, Plugin } from "prosemirror-state";
 
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { createExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
@@ -26,7 +26,10 @@ export const ImageDragExtension = createExtension({
           dragstart(view, event) {
             // Add ghost overlay class during drag
             const { selection } = view.state;
-            if (selection instanceof NodeSelection && selection.node.type.name === "image") {
+            if (
+              selection instanceof NodeSelection &&
+              selection.node.type.name === "image"
+            ) {
               // Add a class to the editor for drag styling
               view.dom.classList.add("pm-image-dragging");
 
@@ -65,7 +68,10 @@ export const ImageDragExtension = createExtension({
           },
           dragover(view, event) {
             const { selection } = view.state;
-            if (selection instanceof NodeSelection && selection.node.type.name === "image") {
+            if (
+              selection instanceof NodeSelection &&
+              selection.node.type.name === "image"
+            ) {
               const dragEvent = event as DragEvent;
               dragEvent.preventDefault();
               if (dragEvent.dataTransfer) {

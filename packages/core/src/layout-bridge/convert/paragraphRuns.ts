@@ -4,9 +4,16 @@
  * inline marks.
  */
 
-import type { Node as PMNode, Mark } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
+
 import { getFontAlternate } from "../../fonts/fontAlternates";
-import type { Run, TextRun, TabRun, FieldRun, RunFormatting } from "../../layout-engine/types";
+import type {
+  FieldRun,
+  Run,
+  RunFormatting,
+  TabRun,
+  TextRun,
+} from "../../layout-engine/types";
 import {
   expectFieldAttrs,
   expectImageAttrs,
@@ -19,18 +26,18 @@ import { decodeOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import type { FlowConversionOptions } from "./flowConversionShared";
 import {
+  buildImageRun,
+  constrainImageToPage,
+  hasPaintableImageSource,
+  hasRelationshipBackedImageBox,
+} from "./imageConversion";
+import {
+  applyCharacterStyleToggleFormatting,
   markDefaultBlackTextColorSource,
   mergeRunFormatting,
-  applyCharacterStyleToggleFormatting,
 } from "./runFormattingMerge";
-import { paragraphRunDefaults } from "./textFormattingConversion";
 import { extractRunFormatting } from "./runMarkFormatting";
-import {
-  constrainImageToPage,
-  buildImageRun,
-  hasRelationshipBackedImageBox,
-  hasPaintableImageSource,
-} from "./imageConversion";
+import { paragraphRunDefaults } from "./textFormattingConversion";
 
 /**
  * In TOC paragraphs, strip the resolved Hyperlink character-style colour and
@@ -87,7 +94,9 @@ const mergeProjectedInlineMarks = (
   const hasOwnTrackedMark = ownMarks.some(isTrackedRunMark);
   return [
     ...inheritedMarks.filter(
-      (mark) => !ownMarkTypes.has(mark.type) && !(hasOwnTrackedMark && isTrackedRunMark(mark)),
+      (mark) =>
+        !ownMarkTypes.has(mark.type) &&
+        !(hasOwnTrackedMark && isTrackedRunMark(mark)),
     ),
     ...ownMarks,
   ];
@@ -109,7 +118,8 @@ export function paragraphToRuns(
   const inTocParagraph =
     pmAttrs._tableOfContentsLevel !== undefined ||
     tableOfContentsStyleLevel({ styleId: paragraphStyleId }) !== undefined;
-  let leadingRenderedPageBreakPending = pmAttrs.renderedPageBreakBefore === true;
+  let leadingRenderedPageBreakPending =
+    pmAttrs.renderedPageBreakBefore === true;
 
   // Single dispatcher for one inline PM child. Recurses on `sdt` so nested
   // content controls keep contributing runs at the right pmStart/pmEnd.
@@ -137,13 +147,20 @@ export function paragraphToRuns(
       });
       return;
     }
-    const projectedMarks = mergeProjectedInlineMarks(inheritedMarks, child.marks);
+    const projectedMarks = mergeProjectedInlineMarks(
+      inheritedMarks,
+      child.marks,
+    );
     const effectiveMarks =
       _options.showCommentHighlights === false
         ? projectedMarks.filter((mark) => mark.type.name !== "comment")
         : projectedMarks;
     if (child.type.name === "pageBreakRun") {
-      const trackedChange = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      const trackedChange = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       if (trackedChange.isDeletion) {
         runs.push({
           kind: "text",
@@ -158,7 +175,9 @@ export function paragraphToRuns(
           ...(trackedChange.changeRevisionId !== undefined
             ? { changeRevisionId: trackedChange.changeRevisionId }
             : {}),
-          ...(trackedChange.isSuggestion === true ? { isSuggestion: true } : {}),
+          ...(trackedChange.isSuggestion === true
+            ? { isSuggestion: true }
+            : {}),
           ...(trackedChange.suggestionId !== undefined
             ? { suggestionId: trackedChange.suggestionId }
             : {}),
@@ -183,7 +202,9 @@ export function paragraphToRuns(
                 ...(trackedChange.changeRevisionId !== undefined
                   ? { changeRevisionId: trackedChange.changeRevisionId }
                   : {}),
-                ...(trackedChange.isSuggestion === true ? { isSuggestion: true } : {}),
+                ...(trackedChange.isSuggestion === true
+                  ? { isSuggestion: true }
+                  : {}),
                 ...(trackedChange.suggestionId !== undefined
                   ? { suggestionId: trackedChange.suggestionId }
                   : {}),
@@ -197,7 +218,11 @@ export function paragraphToRuns(
       leadingRenderedPageBreakPending = false;
     }
     if (child.isText && child.text) {
-      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      const formatting = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       applyCharacterStyleToggleFormatting({
         formatting,
         marks: effectiveMarks,
@@ -223,7 +248,11 @@ export function paragraphToRuns(
       if (text === null) {
         return;
       }
-      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      const formatting = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       applyCharacterStyleToggleFormatting({
         formatting,
         marks: effectiveMarks,
@@ -247,7 +276,10 @@ export function paragraphToRuns(
       });
       return;
     }
-    if (child.type.name === "preservedXml" || child.type.name === "noteMarker") {
+    if (
+      child.type.name === "preservedXml" ||
+      child.type.name === "noteMarker"
+    ) {
       // Typed note markers display the story number at their authored position;
       // opaque atoms display only their captured text.
       const text =
@@ -257,7 +289,11 @@ export function paragraphToRuns(
       if (text === "") {
         return;
       }
-      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      const formatting = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       applyCharacterStyleToggleFormatting({
         formatting,
         marks: effectiveMarks,
@@ -282,7 +318,11 @@ export function paragraphToRuns(
       return;
     }
     if (child.type.name === "tab") {
-      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      const formatting = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       applyCharacterStyleToggleFormatting({
         formatting,
         marks: effectiveMarks,
@@ -300,7 +340,10 @@ export function paragraphToRuns(
     }
     if (child.type.name === "image") {
       const attrs = expectImageAttrs(child);
-      if (!hasPaintableImageSource(attrs) && !hasRelationshipBackedImageBox(attrs)) {
+      if (
+        !hasPaintableImageSource(attrs) &&
+        !hasRelationshipBackedImageBox(attrs)
+      ) {
         // Unsupported DrawingML shapes can survive the parser as image nodes
         // without a relationship target or authored extent. They have no
         // paintable payload; a 100x100 fallback box would incorrectly consume
@@ -316,7 +359,11 @@ export function paragraphToRuns(
       // Lift tracked-change marks off the image node so an inserted/deleted
       // picture paints in the revision colour and resolves with the rest of
       // the change. eigenpal #641.
-      const trackedFmt = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      const trackedFmt = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       const run = buildImageRun(
         attrs,
         constrained,
@@ -341,7 +388,11 @@ export function paragraphToRuns(
         const fieldContentStart = childPos + 1;
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
         child.forEach((fieldChild, fieldChildOffset) => {
-          pushRunsForChild(fieldChild, fieldContentStart + fieldChildOffset, effectiveMarks);
+          pushRunsForChild(
+            fieldChild,
+            fieldContentStart + fieldChildOffset,
+            effectiveMarks,
+          );
         });
         return;
       }
@@ -366,7 +417,11 @@ export function paragraphToRuns(
       } else if (ft === "TIME") {
         mappedType = "TIME";
       }
-      const extractedFieldFormatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      const extractedFieldFormatting = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       applyCharacterStyleToggleFormatting({
         formatting: extractedFieldFormatting,
         marks: effectiveMarks,
@@ -384,7 +439,8 @@ export function paragraphToRuns(
         kind: "field",
         fieldType: mappedType,
         instruction: attrs.instruction,
-        fallback: _options.numberedRefResults?.get(child) ?? attrs.displayText ?? "",
+        fallback:
+          _options.numberedRefResults?.get(child) ?? attrs.displayText ?? "",
         ...(attrs.fldLock ? { fldLock: true } : {}),
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,
@@ -412,7 +468,11 @@ export function paragraphToRuns(
       const sdtInnerOffset = childPos + 1; // +1 for opening tag
       // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
       child.forEach((sdtChild, sdtChildOffset) => {
-        pushRunsForChild(sdtChild, sdtInnerOffset + sdtChildOffset, effectiveMarks);
+        pushRunsForChild(
+          sdtChild,
+          sdtInnerOffset + sdtChildOffset,
+          effectiveMarks,
+        );
       });
     }
   }

@@ -1,6 +1,8 @@
 import { Result, TaggedError } from "better-result";
 
-export class ExactObjectValidationError extends TaggedError("ExactObjectValidationError")<{
+export class ExactObjectValidationError extends TaggedError(
+  "ExactObjectValidationError",
+)<{
   message: string;
   label: string;
   missing: string[];

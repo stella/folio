@@ -11,6 +11,7 @@
  */
 
 import { expect, test } from "bun:test";
+
 import { compareDocx } from "@stll/folio-core";
 
 import { buildDocumentPackage, DOCUMENT_CLASSES } from "./documents";
@@ -19,7 +20,10 @@ import { zipPackage } from "./package-xml";
 import { resolvePackageValidator } from "./validator";
 import { applyVariant, EDIT_VARIANTS } from "./variants";
 
-const OPTIONS = { author: "folio compare benchmark", timestamp: "2000-01-01T00:00:00.000Z" };
+const OPTIONS = {
+  author: "folio compare benchmark",
+  timestamp: "2000-01-01T00:00:00.000Z",
+};
 
 const validate = resolvePackageValidator();
 
@@ -41,7 +45,9 @@ test.each([...DOCUMENT_CLASSES])(
       const target = await zipPackage(targetParts);
       const compared = await compareDocx(base, target, OPTIONS);
       if (compared.isErr()) {
-        failures.push(`${id}: ${compared.error.name}: ${compared.error.message}`);
+        failures.push(
+          `${id}: ${compared.error.name}: ${compared.error.message}`,
+        );
         continue;
       }
       const { outcomes } = await checkInvariants({

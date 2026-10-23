@@ -1,8 +1,8 @@
+import { TaggedError } from "better-result";
 /** External SHA-addressed fixtures; third-party package bytes stay in the cache. */
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { TaggedError } from "better-result";
 
 export const PUBLIC_CORPUS_PREFIX = "public-corpus:";
 export type PublicCorpusFixture = `${typeof PUBLIC_CORPUS_PREFIX}${string}`;
@@ -15,8 +15,9 @@ class PublicCorpusFixtureError extends TaggedError("PublicCorpusFixtureError")<{
   message: string;
 }> {}
 
-export const isPublicCorpusFixture = (fixture: string): fixture is PublicCorpusFixture =>
-  fixture.startsWith(PUBLIC_CORPUS_PREFIX);
+export const isPublicCorpusFixture = (
+  fixture: string,
+): fixture is PublicCorpusFixture => fixture.startsWith(PUBLIC_CORPUS_PREFIX);
 
 const fixtureDirectory = (): string => {
   const directory = process.env[PUBLIC_CORPUS_DIRECTORY_ENV];
@@ -33,9 +34,13 @@ export const loadPublicCorpusFixture = async (
 ): Promise<Uint8Array> => {
   const sha256 = fixture.slice(PUBLIC_CORPUS_PREFIX.length);
   if (!SHA256.test(sha256)) {
-    throw new PublicCorpusFixtureError({ message: "Public corpus fixture requires a SHA-256" });
+    throw new PublicCorpusFixtureError({
+      message: "Public corpus fixture requires a SHA-256",
+    });
   }
-  const bytes = new Uint8Array(await readFile(path.join(fixtureDirectory(), `${sha256}.docx`)));
+  const bytes = new Uint8Array(
+    await readFile(path.join(fixtureDirectory(), `${sha256}.docx`)),
+  );
   if (
     bytes.byteLength > MAX_PUBLIC_CORPUS_BYTES ||
     createHash("sha256").update(bytes).digest("hex") !== sha256
@@ -47,11 +52,17 @@ export const loadPublicCorpusFixture = async (
   return bytes;
 };
 
-export const publicCorpusFixtures = async (): Promise<PublicCorpusFixture[]> => {
+export const publicCorpusFixtures = async (): Promise<
+  PublicCorpusFixture[]
+> => {
   const value: unknown = JSON.parse(
     await readFile(path.join(fixtureDirectory(), "index.json"), "utf8"),
   );
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PUBLIC_CORPUS_FILES) {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_PUBLIC_CORPUS_FILES
+  ) {
     throw new PublicCorpusFixtureError({
       message: "Public corpus index requires 1–8 hashed fixtures",
     });
@@ -67,7 +78,9 @@ export const publicCorpusFixtures = async (): Promise<PublicCorpusFixture[]> => 
     fixtures.push(`${PUBLIC_CORPUS_PREFIX}${hash}`);
   }
   if (new Set(fixtures).size !== fixtures.length) {
-    throw new PublicCorpusFixtureError({ message: "Public corpus index repeats a fixture" });
+    throw new PublicCorpusFixtureError({
+      message: "Public corpus index repeats a fixture",
+    });
   }
   return fixtures;
 };

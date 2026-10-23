@@ -39,12 +39,16 @@ export const contentRank = (
 ): number => {
   if (!target.hasDeletedSplit) return 1;
   if (operation.type === "deleteBlock") return 0;
-  if (operation.type === "insertTable" && operation.position !== "before") return 2;
+  if (operation.type === "insertTable" && operation.position !== "before")
+    return 2;
   return 1;
 };
 
 /** Compare two pre-batch addresses in the documented batch execution order. */
-export const compareBatchOrder = (left: BatchOrderAddress, right: BatchOrderAddress): number => {
+export const compareBatchOrder = (
+  left: BatchOrderAddress,
+  right: BatchOrderAddress,
+): number => {
   if (
     (left.type === "cell" || left.type === "column") &&
     (right.type === "cell" || right.type === "column") &&
@@ -59,7 +63,9 @@ export const compareBatchOrder = (left: BatchOrderAddress, right: BatchOrderAddr
   ) {
     return (
       right.position - left.position ||
-      (left.type === "content" && right.type === "content" ? left.rank - right.rank : 0) ||
+      (left.type === "content" && right.type === "content"
+        ? left.rank - right.rank
+        : 0) ||
       right.inputIndex - left.inputIndex
     );
   }
@@ -73,7 +79,8 @@ export const compareBatchOrder = (left: BatchOrderAddress, right: BatchOrderAddr
   }
   if (left.type === "column" && right.type === "column") {
     let insertionOrder = 0;
-    if (left.insertion !== right.insertion) insertionOrder = left.insertion ? -1 : 1;
+    if (left.insertion !== right.insertion)
+      insertionOrder = left.insertion ? -1 : 1;
     return (
       right.tablePosition - left.tablePosition ||
       right.columnIndex - left.columnIndex ||
@@ -89,7 +96,9 @@ export const orderBatchOperations = <T>(
   operations: readonly T[],
   addressOf: (operation: T) => BatchOrderAddress,
 ): T[] =>
-  operations.toSorted((left, right) => compareBatchOrder(addressOf(left), addressOf(right)));
+  operations.toSorted((left, right) =>
+    compareBatchOrder(addressOf(left), addressOf(right)),
+  );
 
 /**
  * Partition an ordered batch into execution runs. Only consecutive insertions

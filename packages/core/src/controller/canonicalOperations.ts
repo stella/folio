@@ -6,6 +6,7 @@ import type {
   RemoveHeaderFooterOp,
   SetSectionPropsOp,
 } from "@stll/docx-core/ops";
+
 import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 import type {
   BlockContent,
@@ -13,14 +14,24 @@ import type {
   HeaderFooterType,
   SectionProperties,
 } from "../types/document";
-import { generateHexId, isValidHexId, MAX_HEX_ID_EXCLUSIVE } from "../utils/hexId";
+import {
+  generateHexId,
+  isValidHexId,
+  MAX_HEX_ID_EXCLUSIVE,
+} from "../utils/hexId";
 
 export { DOCUMENT_OP_TYPES } from "@stll/docx-core/ops";
-export type { DocumentOp, OpStory, TextPosition, FormattingPatch } from "@stll/docx-core/ops";
+export type {
+  DocumentOp,
+  OpStory,
+  TextPosition,
+  FormattingPatch,
+} from "@stll/docx-core/ops";
 
 export const canonicalFinalSectionIndex = (document: Document): number =>
   document.package.document.content.filter(
-    (block) => block.type === "paragraph" && block.sectionProperties !== undefined,
+    (block) =>
+      block.type === "paragraph" && block.sectionProperties !== undefined,
   ).length;
 
 export const withCanonicalParagraphIds = (
@@ -28,10 +39,19 @@ export const withCanonicalParagraphIds = (
   document: Document,
 ): BlockContent[] => {
   const taken = new Set<string>();
-  const { document: documentBody, headers, footers, footnotes, endnotes } = document.package;
-  visitDocxParagraphs({ documentBody, headers, footers, footnotes, endnotes }, (paragraph) => {
-    if (paragraph.paraId) taken.add(paragraph.paraId.toUpperCase());
-  });
+  const {
+    document: documentBody,
+    headers,
+    footers,
+    footnotes,
+    endnotes,
+  } = document.package;
+  visitDocxParagraphs(
+    { documentBody, headers, footers, footnotes, endnotes },
+    (paragraph) => {
+      if (paragraph.paraId) taken.add(paragraph.paraId.toUpperCase());
+    },
+  );
   const owned = structuredClone(content);
   visitDocxParagraphs({ documentBody: { content: owned } }, (paragraph) => {
     if (
@@ -79,7 +99,10 @@ export const createCanonicalHeaderFooterOperation = ({
     sectionIndex,
     story: { kind: position, rId },
     referenceType,
-    content: withCanonicalParagraphIds([{ type: "paragraph", content: [] }], document),
+    content: withCanonicalParagraphIds(
+      [{ type: "paragraph", content: [] }],
+      document,
+    ),
   };
 };
 
@@ -103,7 +126,10 @@ export const removeCanonicalHeaderFooterOperations = ({
   properties.push(document.package.document.finalSectionProperties ?? {});
   const operations: RemoveHeaderFooterOp[] = [];
   for (const [sectionIndex, section] of properties.entries()) {
-    const references = position === "header" ? section.headerReferences : section.footerReferences;
+    const references =
+      position === "header"
+        ? section.headerReferences
+        : section.footerReferences;
     for (const reference of references ?? []) {
       if (reference.rId !== rId) continue;
       operations.push({

@@ -10,16 +10,25 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { randomDocument } from "./__tests__/randomTransactions";
-import { enclosingParagraphIndexed, nodeAtIndexed, nodesBetweenIndexed } from "./indexedNodeLookup";
+import {
+  enclosingParagraphIndexed,
+  nodeAtIndexed,
+  nodesBetweenIndexed,
+} from "./indexedNodeLookup";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 type Visit = [node: PMNode, pos: number, parent: PMNode | null, index: number];
 
-const resolvedParagraph = (doc: PMNode, pos: number): { node: PMNode; pos: number } | null => {
+const resolvedParagraph = (
+  doc: PMNode,
+  pos: number,
+): { node: PMNode; pos: number } | null => {
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth > 0; depth--) {
     const node = $pos.node(depth);
@@ -42,7 +51,9 @@ describe("indexed node lookups", () => {
           const size = doc.content.size;
           const from = Math.min(left % (size + 1), right % (size + 1));
           const to = Math.max(left % (size + 1), right % (size + 1));
-          const collect = (walk: (visit: (...visit: Visit) => boolean) => void): Visit[] => {
+          const collect = (
+            walk: (visit: (...visit: Visit) => boolean) => void,
+          ): Visit[] => {
             const visits: Visit[] = [];
             walk((node, pos, parent, index) => {
               visits.push([node, pos, parent, index]);
@@ -50,11 +61,19 @@ describe("indexed node lookups", () => {
             });
             return visits;
           };
-          const expected = collect((visit) => doc.nodesBetween(from, to, visit));
-          const actual = collect((visit) => nodesBetweenIndexed(doc, from, to, visit));
+          const expected = collect((visit) =>
+            doc.nodesBetween(from, to, visit),
+          );
+          const actual = collect((visit) =>
+            nodesBetweenIndexed(doc, from, to, visit),
+          );
           expect(actual.length).toBe(expected.length);
-          for (const [index, [node, pos, parent, childIndex]] of expected.entries()) {
-            const [actualNode, actualPos, actualParent, actualIndex] = actual[index] ?? [];
+          for (const [
+            index,
+            [node, pos, parent, childIndex],
+          ] of expected.entries()) {
+            const [actualNode, actualPos, actualParent, actualIndex] =
+              actual[index] ?? [];
             expect(actualNode).toBe(node);
             expect(actualPos).toBe(pos);
             expect(actualParent).toBe(parent);

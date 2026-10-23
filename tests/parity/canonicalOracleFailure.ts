@@ -1,14 +1,21 @@
 import { Result, TaggedError } from "better-result";
+
 import {
-  failureRecord,
   type FailureMarker,
+  failureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
 import type { BrowserInputAction } from "../visual/browserInputTrace";
-import type { CanonicalFuzzError, CanonicalFuzzObservation } from "./canonicalFuzzErrors";
+import type {
+  CanonicalFuzzError,
+  CanonicalFuzzObservation,
+} from "./canonicalFuzzErrors";
 
-type CanonicalErrorCapture = { status: "complete" } | { status: "unavailable"; message: string };
+type CanonicalErrorCapture =
+  { status: "complete" } | { status: "unavailable"; message: string };
 
-export class CanonicalBrowserOracleError extends TaggedError("CanonicalBrowserOracleError")<{
+export class CanonicalBrowserOracleError extends TaggedError(
+  "CanonicalBrowserOracleError",
+)<{
   message: string;
   cause: unknown;
   observations: readonly CanonicalFuzzObservation[];
@@ -27,7 +34,10 @@ export const captureCanonicalOracleFailure = async ({
   observations,
   drainErrors,
 }: CaptureCanonicalOracleFailureOptions) => {
-  const captured = await Result.tryPromise({ try: drainErrors, catch: (error: unknown) => error });
+  const captured = await Result.tryPromise({
+    try: drainErrors,
+    catch: (error: unknown) => error,
+  });
   let errorCapture: CanonicalErrorCapture;
   if (captured.isOk()) {
     const observation = observations.at(-1);
@@ -37,7 +47,10 @@ export const captureCanonicalOracleFailure = async ({
   } else {
     errorCapture = {
       status: "unavailable",
-      message: captured.error instanceof Error ? captured.error.message : String(captured.error),
+      message:
+        captured.error instanceof Error
+          ? captured.error.message
+          : String(captured.error),
     };
   }
   return new CanonicalBrowserOracleError({

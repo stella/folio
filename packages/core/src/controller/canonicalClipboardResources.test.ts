@@ -1,10 +1,15 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "@stll/docx-core/ops";
-import type { Document, Paragraph } from "../types/document";
+
 import { assertExactModel } from "../../../../test/exactModel";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type { Document, Paragraph } from "../types/document";
 import {
   flattenClipboardStyleReferences,
   importClipboardStyles,
@@ -37,7 +42,11 @@ const fixture = () => {
             link: "Char",
             pPr: { numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }) },
           },
-          { styleId: "Foo_clipboard1", type: "paragraph", pPr: { keepNext: true } },
+          {
+            styleId: "Foo_clipboard1",
+            type: "paragraph",
+            pPr: { keepNext: true },
+          },
           { styleId: "Char", type: "character", link: "Foo" },
           { styleId: "NumStyle", type: "numbering" },
           { styleId: "LevelStyle", type: "paragraph" },
@@ -50,7 +59,14 @@ const fixture = () => {
             abstractNumId: 1,
             numStyleLink: "NumStyle",
             styleLink: "Char",
-            levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1.", pStyle: "LevelStyle" }],
+            levels: [
+              {
+                ilvl: 0,
+                numFmt: "decimal",
+                lvlText: "%1.",
+                pStyle: "LevelStyle",
+              },
+            ],
           },
         ],
       },
@@ -82,46 +98,66 @@ const fixture = () => {
 
 test("generated source order preserves deterministic style identities and transitive numbering aliases", () => {
   assertProperty(
-    fc.property(fc.shuffledSubarray([0, 1, 2, 3, 4], { minLength: 5, maxLength: 5 }), (order) => {
-      const { destination, source, paragraphs } = fixture();
-      const snapshot = structuredClone({ destination, source, paragraphs });
-      const baseline = importClipboardStyles({ destination, source, paragraphs }).unwrap();
-      const reordered = structuredClone(source);
-      reordered.package.styles.styles = order.map((index) => {
-        const style = source.package.styles.styles.at(index);
-        if (!style) throw new TypeError("Generated style order lost a definition.");
-        return structuredClone(style);
-      });
-      const imported = importClipboardStyles({
-        destination,
-        source: reordered,
-        paragraphs,
-      }).unwrap();
-      assertExactModel(imported, baseline);
-      assertExactModel({ destination, source, paragraphs }, snapshot);
-      expect([...imported.styleIds.keys()]).toEqual([
-        "Char",
-        "Foo",
-        "Foo_clipboard1",
-        "LevelStyle",
-        "NumStyle",
-      ]);
-      expect(imported.styleIds.get("Foo")).toBe("Foo_clipboard2");
-      expect([...imported.numberingIds]).toEqual([1]);
-      const foo = imported.styles?.styles.find((style) => style.styleId === "Foo_clipboard2");
-      expect(foo?.default).toBeUndefined();
-      expect(foo?.basedOn).toBe("Foo_clipboard1");
-      expect(foo?.next).toBe("Foo_clipboard2");
-      const linked = imported.styles?.styles.find((style) => style.styleId === foo?.link);
-      expect(linked?.link).toBe("Foo_clipboard2");
-      const paragraph = imported.paragraphs.at(0);
-      expect(paragraph?.formatting?.styleId).toBe("Foo_clipboard2");
-      expect(paragraph?.formatting?.keepNext).toBe(true);
-      expect(paragraph?.propertyChanges?.at(0)?.previousFormatting.styleId).toBe("Foo_clipboard1");
-      expect(paragraph).not.toBe(paragraphs.at(0));
-      assertExactModel(imported.styles?.docDefaults, destination.package.styles.docDefaults);
-      assertExactModel(imported.styles?.styles.at(0), destination.package.styles.styles.at(0));
-    }),
+    fc.property(
+      fc.shuffledSubarray([0, 1, 2, 3, 4], { minLength: 5, maxLength: 5 }),
+      (order) => {
+        const { destination, source, paragraphs } = fixture();
+        const snapshot = structuredClone({ destination, source, paragraphs });
+        const baseline = importClipboardStyles({
+          destination,
+          source,
+          paragraphs,
+        }).unwrap();
+        const reordered = structuredClone(source);
+        reordered.package.styles.styles = order.map((index) => {
+          const style = source.package.styles.styles.at(index);
+          if (!style)
+            throw new TypeError("Generated style order lost a definition.");
+          return structuredClone(style);
+        });
+        const imported = importClipboardStyles({
+          destination,
+          source: reordered,
+          paragraphs,
+        }).unwrap();
+        assertExactModel(imported, baseline);
+        assertExactModel({ destination, source, paragraphs }, snapshot);
+        expect([...imported.styleIds.keys()]).toEqual([
+          "Char",
+          "Foo",
+          "Foo_clipboard1",
+          "LevelStyle",
+          "NumStyle",
+        ]);
+        expect(imported.styleIds.get("Foo")).toBe("Foo_clipboard2");
+        expect([...imported.numberingIds]).toEqual([1]);
+        const foo = imported.styles?.styles.find(
+          (style) => style.styleId === "Foo_clipboard2",
+        );
+        expect(foo?.default).toBeUndefined();
+        expect(foo?.basedOn).toBe("Foo_clipboard1");
+        expect(foo?.next).toBe("Foo_clipboard2");
+        const linked = imported.styles?.styles.find(
+          (style) => style.styleId === foo?.link,
+        );
+        expect(linked?.link).toBe("Foo_clipboard2");
+        const paragraph = imported.paragraphs.at(0);
+        expect(paragraph?.formatting?.styleId).toBe("Foo_clipboard2");
+        expect(paragraph?.formatting?.keepNext).toBe(true);
+        expect(
+          paragraph?.propertyChanges?.at(0)?.previousFormatting.styleId,
+        ).toBe("Foo_clipboard1");
+        expect(paragraph).not.toBe(paragraphs.at(0));
+        assertExactModel(
+          imported.styles?.docDefaults,
+          destination.package.styles.docDefaults,
+        );
+        assertExactModel(
+          imported.styles?.styles.at(0),
+          destination.package.styles.styles.at(0),
+        );
+      },
+    ),
     {
       numRuns: 25,
       id: "generated source order preserves deterministic style identities and transitive numbering aliases",
@@ -156,8 +192,11 @@ test("selected basedOn cycles refuse without rewriting the imported source graph
     paragraphs: base.paragraphs,
   });
   expect(imported.isErr()).toBe(true);
-  if (imported.isOk()) throw new TypeError("Cyclic source style graph unexpectedly imported.");
-  expect(imported.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+  if (imported.isOk())
+    throw new TypeError("Cyclic source style graph unexpectedly imported.");
+  expect(imported.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+  );
   assertExactModel(
     { source, destination: base.destination, paragraphs: base.paragraphs },
     snapshot,
@@ -212,13 +251,20 @@ test("imported styles and inline formatting resolve against the source theme bef
       }) satisfies Paragraph,
   );
   const snapshot = structuredClone({ source, destination, paragraphs });
-  const imported = importClipboardStyles({ source, destination, paragraphs }).unwrap();
-  const style = imported.styles?.styles.find((entry) => entry.styleId === "Foo_clipboard2");
+  const imported = importClipboardStyles({
+    source,
+    destination,
+    paragraphs,
+  }).unwrap();
+  const style = imported.styles?.styles.find(
+    (entry) => entry.styleId === "Foo_clipboard2",
+  );
   expect(style?.rPr?.fontFamily?.ascii).toBe("Source Serif");
   expect(style?.rPr?.fontFamily?.asciiTheme).toBeUndefined();
   expect(style?.rPr?.color).toEqual({ rgb: "7F7F7F" });
   const run = imported.paragraphs.at(0)?.content.at(0);
-  if (run?.type !== "run") throw new TypeError("Themed clipboard run disappeared.");
+  if (run?.type !== "run")
+    throw new TypeError("Themed clipboard run disappeared.");
   expect(run.formatting?.fontFamily?.ascii).toBe("Source Serif");
   expect(run.formatting?.fontFamily?.asciiTheme).toBeUndefined();
   expect(run.formatting?.color).toEqual({ rgb: "808080" });
@@ -231,8 +277,14 @@ test("source defaults and style toggles materialize beneath direct formatting in
       document: { content: [] },
       styles: {
         docDefaults: {
-          rPr: { fontFamily: { ascii: "Destination Sans" }, color: { rgb: "FF0000" } },
-          pPr: { spaceBefore: 10, spacingExplicit: { before: true, after: true } },
+          rPr: {
+            fontFamily: { ascii: "Destination Sans" },
+            color: { rgb: "FF0000" },
+          },
+          pPr: {
+            spaceBefore: 10,
+            spacingExplicit: { before: true, after: true },
+          },
         },
         styles: [],
       },
@@ -243,7 +295,11 @@ test("source defaults and style toggles materialize beneath direct formatting in
       document: { content: [] },
       styles: {
         docDefaults: {
-          rPr: { fontFamily: { ascii: "Source Serif" }, color: { rgb: "112233" }, bold: false },
+          rPr: {
+            fontFamily: { ascii: "Source Serif" },
+            color: { rgb: "112233" },
+            bold: false,
+          },
           pPr: { spaceBefore: 240 },
         },
         styles: [
@@ -261,7 +317,12 @@ test("source defaults and style toggles materialize beneath direct formatting in
   for (const kind of ["unstyled", "styled", "direct", "empty"] as const) {
     const directParagraphProps = kind === "direct" ? { spaceBefore: 720 } : {};
     const directRunProps = kind === "direct" ? { bold: true } : {};
-    const expectedSpacing = { unstyled: 240, styled: 480, direct: 720, empty: 240 };
+    const expectedSpacing = {
+      unstyled: 240,
+      styled: 480,
+      direct: 720,
+      empty: 240,
+    };
     const paragraphs = [
       {
         type: "paragraph",
@@ -280,7 +341,9 @@ test("source defaults and style toggles materialize beneath direct formatting in
                     {
                       type: "run",
                       formatting:
-                        kind === "unstyled" ? {} : { styleId: "Character", ...directRunProps },
+                        kind === "unstyled"
+                          ? {}
+                          : { styleId: "Character", ...directRunProps },
                       content: [{ type: "text", text: "nested" }],
                     },
                   ],
@@ -289,57 +352,73 @@ test("source defaults and style toggles materialize beneath direct formatting in
       },
     ] satisfies Paragraph[];
     const snapshot = structuredClone({ source, destination, paragraphs });
-    const imported = importClipboardStyles({ source, destination, paragraphs }).unwrap();
+    const imported = importClipboardStyles({
+      source,
+      destination,
+      paragraphs,
+    }).unwrap();
     const paragraph = imported.paragraphs.at(0);
     expect(paragraph?.formatting?.spaceBefore).toBe(expectedSpacing[kind]);
     expect(paragraph?.formatting?.spacingExplicit).toBeUndefined();
     if (kind === "empty") {
-      expect(paragraph?.formatting?.runProperties?.fontFamily?.ascii).toBe("Source Serif");
+      expect(paragraph?.formatting?.runProperties?.fontFamily?.ascii).toBe(
+        "Source Serif",
+      );
       expect(paragraph?.formatting?.runProperties?.color?.rgb).toBe("112233");
     } else {
       const hyperlink = paragraph?.content.at(0);
       if (hyperlink?.type !== "hyperlink")
         throw new TypeError("Nested default fixture disappeared.");
       const run = hyperlink.children.at(0);
-      if (run?.type !== "run") throw new TypeError("Nested default run disappeared.");
+      if (run?.type !== "run")
+        throw new TypeError("Nested default run disappeared.");
       expect(run.formatting?.fontFamily?.ascii).toBe("Source Serif");
       expect(run.formatting?.color?.rgb).toBe("112233");
       expect(run.formatting?.bold).toBe(kind === "direct");
     }
-    assertExactModel(imported.styles?.docDefaults, destination.package.styles.docDefaults);
+    assertExactModel(
+      imported.styles?.docDefaults,
+      destination.package.styles.docDefaults,
+    );
     assertExactModel({ source, destination, paragraphs }, snapshot);
   }
 });
 
-test.each(["font", "colour"] as const)("unresolved source theme %s refuses atomically", (kind) => {
-  const base = fixture();
-  const paragraphs = base.paragraphs.map(
-    (paragraph) =>
-      ({
-        ...paragraph,
-        content: [
-          {
-            type: "run",
-            formatting:
-              kind === "font"
-                ? { fontFamily: { asciiTheme: "minorHAnsi" } }
-                : { color: { themeColor: "accent1" } },
-            content: [{ type: "text", text: "unresolved" }],
-          },
-        ],
-      }) satisfies Paragraph,
-  );
-  const snapshot = structuredClone({ ...base, paragraphs });
-  const imported = importClipboardStyles({
-    source: base.source,
-    destination: base.destination,
-    paragraphs,
-  });
-  expect(imported.isErr()).toBe(true);
-  if (imported.isOk()) throw new TypeError("Missing source theme unexpectedly imported.");
-  expect(imported.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
-  assertExactModel({ ...base, paragraphs }, snapshot);
-});
+test.each(["font", "colour"] as const)(
+  "unresolved source theme %s refuses atomically",
+  (kind) => {
+    const base = fixture();
+    const paragraphs = base.paragraphs.map(
+      (paragraph) =>
+        ({
+          ...paragraph,
+          content: [
+            {
+              type: "run",
+              formatting:
+                kind === "font"
+                  ? { fontFamily: { asciiTheme: "minorHAnsi" } }
+                  : { color: { themeColor: "accent1" } },
+              content: [{ type: "text", text: "unresolved" }],
+            },
+          ],
+        }) satisfies Paragraph,
+    );
+    const snapshot = structuredClone({ ...base, paragraphs });
+    const imported = importClipboardStyles({
+      source: base.source,
+      destination: base.destination,
+      paragraphs,
+    });
+    expect(imported.isErr()).toBe(true);
+    if (imported.isOk())
+      throw new TypeError("Missing source theme unexpectedly imported.");
+    expect(imported.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
+    assertExactModel({ ...base, paragraphs }, snapshot);
+  },
+);
 
 test.each([
   "missingStyle",
@@ -348,49 +427,58 @@ test.each([
   "missingAbstract",
   "duplicateNum",
   "duplicateAbstract",
-] as const)("%s refuses without mutating either package or clipboard reviews", (failure) => {
-  const { destination, source, paragraphs } = fixture();
-  switch (failure) {
-    case "missingStyle":
-      source.package.styles.styles = source.package.styles.styles.filter(
-        (style) => style.styleId !== "Char",
-      );
-      break;
-    case "duplicateStyle": {
-      const style = source.package.styles.styles.at(0);
-      if (!style) throw new TypeError("Missing style fixture.");
-      source.package.styles.styles.push(structuredClone(style));
-      break;
+] as const)(
+  "%s refuses without mutating either package or clipboard reviews",
+  (failure) => {
+    const { destination, source, paragraphs } = fixture();
+    switch (failure) {
+      case "missingStyle":
+        source.package.styles.styles = source.package.styles.styles.filter(
+          (style) => style.styleId !== "Char",
+        );
+        break;
+      case "duplicateStyle": {
+        const style = source.package.styles.styles.at(0);
+        if (!style) throw new TypeError("Missing style fixture.");
+        source.package.styles.styles.push(structuredClone(style));
+        break;
+      }
+      case "missingNum":
+        source.package.numbering.nums = [];
+        break;
+      case "missingAbstract":
+        source.package.numbering.abstractNums = [];
+        break;
+      case "duplicateNum":
+        source.package.numbering.nums.push({ numId: 1, abstractNumId: 1 });
+        break;
+      case "duplicateAbstract": {
+        const abstract = source.package.numbering.abstractNums.at(0);
+        if (!abstract) throw new TypeError("Missing abstract fixture.");
+        source.package.numbering.abstractNums.push(structuredClone(abstract));
+        break;
+      }
+      default:
+        failure satisfies never;
     }
-    case "missingNum":
-      source.package.numbering.nums = [];
-      break;
-    case "missingAbstract":
-      source.package.numbering.abstractNums = [];
-      break;
-    case "duplicateNum":
-      source.package.numbering.nums.push({ numId: 1, abstractNumId: 1 });
-      break;
-    case "duplicateAbstract": {
-      const abstract = source.package.numbering.abstractNums.at(0);
-      if (!abstract) throw new TypeError("Missing abstract fixture.");
-      source.package.numbering.abstractNums.push(structuredClone(abstract));
-      break;
-    }
-    default:
-      failure satisfies never;
-  }
-  const snapshot = structuredClone({ destination, source, paragraphs });
-  const imported = importClipboardStyles({ destination, source, paragraphs });
-  expect(imported.isErr()).toBe(true);
-  if (imported.isOk()) throw new TypeError("Invalid source package was imported.");
-  expect(imported.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
-  assertExactModel({ destination, source, paragraphs }, snapshot);
-});
+    const snapshot = structuredClone({ destination, source, paragraphs });
+    const imported = importClipboardStyles({ destination, source, paragraphs });
+    expect(imported.isErr()).toBe(true);
+    if (imported.isOk())
+      throw new TypeError("Invalid source package was imported.");
+    expect(imported.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
+    assertExactModel({ destination, source, paragraphs }, snapshot);
+  },
+);
 
 test("normalized foreign style hints flatten every mark and review reference while preserving authored direct formatting", () => {
   const normalized = (styleHint: string | undefined) => {
-    const formatting = { alignment: "right", runProperties: { italic: true } } as const;
+    const formatting = {
+      alignment: "right",
+      runProperties: { italic: true },
+    } as const;
     const previousParagraph = { alignment: "center" } as const;
     const currentParagraph = { alignment: "right" } as const;
     const runFormatting = { bold: true };
@@ -477,7 +565,9 @@ test("every theme modifier byte imports independent grayscale tint and shade val
                 {
                   styleId: "Foreign",
                   type: "paragraph",
-                  rPr: { color: { themeColor: "accent1", themeTint: modifier } },
+                  rPr: {
+                    color: { themeColor: "accent1", themeTint: modifier },
+                  },
                 },
               ],
             },
@@ -498,22 +588,35 @@ test("every theme modifier byte imports independent grayscale tint and shade val
             content: [
               {
                 type: "run",
-                formatting: { color: { themeColor: "accent1", themeShade: modifier } },
+                formatting: {
+                  color: { themeColor: "accent1", themeShade: modifier },
+                },
                 content: [{ type: "text", text: "color" }],
               },
             ],
           },
         ] satisfies Paragraph[];
         const before = structuredClone({ source, destination, paragraphs });
-        const imported = importClipboardStyles({ source, destination, paragraphs }).unwrap();
-        const style = imported.styles?.styles.find((entry) => entry.styleId === "Foreign");
+        const imported = importClipboardStyles({
+          source,
+          destination,
+          paragraphs,
+        }).unwrap();
+        const style = imported.styles?.styles.find(
+          (entry) => entry.styleId === "Foreign",
+        );
         const run = imported.paragraphs.at(0)?.content.at(0);
-        if (run?.type !== "run") throw new TypeError("Imported modifier run disappeared.");
+        if (run?.type !== "run")
+          throw new TypeError("Imported modifier run disappeared.");
         // Grayscale lightness agrees in RGB and HSL; compute without the resolver.
         const tinted = hex(
-          channels.map((channel) => Math.round((channel * byte + 255 * (255 - byte)) / 255)),
+          channels.map((channel) =>
+            Math.round((channel * byte + 255 * (255 - byte)) / 255),
+          ),
         );
-        const shaded = hex(channels.map((channel) => Math.round((channel * byte) / 255)));
+        const shaded = hex(
+          channels.map((channel) => Math.round((channel * byte) / 255)),
+        );
         expect(style?.rPr?.color).toEqual({ rgb: tinted });
         expect(run.formatting?.color).toEqual({ rgb: shaded });
         assertExactModel({ source, destination, paragraphs }, before);

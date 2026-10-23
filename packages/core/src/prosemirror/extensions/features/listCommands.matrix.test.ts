@@ -25,31 +25,48 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { EditorState, TextSelection, type Command, type Transaction } from "prosemirror-state";
+import {
+  type Command,
+  EditorState,
+  TextSelection,
+  type Transaction,
+} from "prosemirror-state";
+
 import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
+import { FolioDocxReviewer } from "../../../ai-edits/headless";
 import { ensureParaIds } from "../../../docx/ensureParaIds";
-import { parseDocx } from "../../../docx/parser";
+import { paragraphNumberingReferenceId } from "../../../docx/numberingReference";
 import { paragraphFormattingWithAuthoredIndentation } from "../../../docx/paragraphPropertySource";
+import { parseDocx } from "../../../docx/parser";
 import { createDocx, repackDocx } from "../../../docx/rezip";
 import { attemptSelectiveSave } from "../../../docx/selectiveSave";
-import { FolioDocxReviewer } from "../../../ai-edits/headless";
 import { fromMarkdown } from "../../../markdown/fromMarkdown";
-import type { BlockContent, Document, Paragraph } from "../../../types/document";
-import { paragraphNumberingReferenceId } from "../../../docx/numberingReference";
-import { paragraphIndentationFromFormatting } from "../../paragraphIndentation";
-import { fromProseDoc } from "../../conversion/fromProseDoc";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+} from "../../../types/document";
 import { expectParagraphAttrs } from "../../attrs";
+import { rejectAllChanges } from "../../commands/comments";
+import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { toProseDoc } from "../../conversion/toProseDoc";
-import { ExtensionManager } from "../ExtensionManager";
-import { createStarterKit } from "../StarterKit";
+import {
+  continueNumbering,
+  restartNumbering,
+  setNumberingValue,
+} from "../../listNumbering";
+import { paragraphIndentationFromFormatting } from "../../paragraphIndentation";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { dispatchEditorTextInput } from "../../textInput";
-import { rejectAllChanges } from "../../commands/comments";
-import { continueNumbering, restartNumbering, setNumberingValue } from "../../listNumbering";
+import { ExtensionManager } from "../ExtensionManager";
+import { createStarterKit } from "../StarterKit";
 import { toggleBulletList, toggleNumberedList } from "./ListExtension";
 import { getChangeTrackerState } from "./ParagraphChangeTrackerExtension";
 
@@ -77,25 +94,47 @@ const styleNumberedHeadings = (): Document => {
         abstractNumId: 5,
         multiLevelType: "multilevel",
         levels: [
-          { ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1.", suffix: "space" },
-          { ilvl: 1, start: 1, numFmt: "decimal", lvlText: "%1.%2.", suffix: "space" },
+          {
+            ilvl: 0,
+            start: 1,
+            numFmt: "decimal",
+            lvlText: "%1.",
+            suffix: "space",
+          },
+          {
+            ilvl: 1,
+            start: 1,
+            numFmt: "decimal",
+            lvlText: "%1.%2.",
+            suffix: "space",
+          },
         ],
       },
     ],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
-  const heading = model.package.styles?.styles.find(({ styleId }) => styleId === "Heading2");
+  const heading = model.package.styles?.styles.find(
+    ({ styleId }) => styleId === "Heading2",
+  );
   if (!heading) {
     throw new Error("the markdown style set must define Heading2");
   }
-  heading.pPr = { ...heading.pPr, numPr: { kind: "reference", numId: 5, ilvl: 0 } };
+  heading.pPr = {
+    ...heading.pPr,
+    numPr: { kind: "reference", numId: 5, ilvl: 0 },
+  };
   return model;
 };
 
 const HOST_DECIMAL_NUM_ID = 901;
 const HOST_BULLET_NUM_ID = 902;
 const TOGGLE_BACK_KINDS = ["bullet", "decimal"] as const;
-const TOGGLE_BACK_FORMATTING = ["absent", "direct-zero", "direct", "styled"] as const;
+const TOGGLE_BACK_FORMATTING = [
+  "absent",
+  "direct-zero",
+  "direct",
+  "styled",
+] as const;
 
 /**
  * A host-prepared package: an unused decimal and an unused bullet instance,
@@ -169,7 +208,12 @@ type Gesture =
 const BULLET: Expected = { kind: "bullet", label: "•" };
 
 const LIST_GESTURES: readonly Gesture[] = [
-  { type: "command", name: "Bullet List", command: toggleBulletList, expected: BULLET },
+  {
+    type: "command",
+    name: "Bullet List",
+    command: toggleBulletList,
+    expected: BULLET,
+  },
   {
     type: "command",
     name: "Numbered List",
@@ -208,7 +252,10 @@ type Editor = {
   state: EditorState;
   composing: false;
   dispatch: (tr: Transaction) => void;
-  someProp: (name: "handleTextInput", f: (handler: never) => unknown) => unknown;
+  someProp: (
+    name: "handleTextInput",
+    f: (handler: never) => unknown,
+  ) => unknown;
 };
 
 /**
@@ -278,7 +325,9 @@ const typeText = (editor: Editor, text: string): void => {
 
 const applyGesture = (editor: Editor, gesture: Gesture): void => {
   const start = paragraphStart(editor.state, TARGET);
-  editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start)));
+  editor.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start)),
+  );
   if (gesture.type === "command") {
     expect(gesture.command(editor.state, editor.dispatch)).toBe(true);
     return;
@@ -296,7 +345,9 @@ const paragraphsOf = (blocks: readonly BlockContent[]): Paragraph[] =>
       case "paragraph":
         return [block];
       case "table":
-        return block.rows.flatMap((row) => row.cells.flatMap((cell) => paragraphsOf(cell.content)));
+        return block.rows.flatMap((row) =>
+          row.cells.flatMap((cell) => paragraphsOf(cell.content)),
+        );
       default:
         return [];
     }
@@ -304,11 +355,15 @@ const paragraphsOf = (blocks: readonly BlockContent[]): Paragraph[] =>
 
 /** Every `w:numPr` in the body, live or recorded as a tracked change's previous state. */
 const expectEveryReferenceDefined = (document: Document): void => {
-  const defined = new Set((document.package.numbering?.nums ?? []).map(({ numId }) => numId));
+  const defined = new Set(
+    (document.package.numbering?.nums ?? []).map(({ numId }) => numId),
+  );
   for (const paragraph of paragraphsOf(document.package.document.content)) {
     const references = [
       paragraph.formatting?.numPr,
-      ...(paragraph.propertyChanges ?? []).map((change) => change.previousFormatting?.numPr),
+      ...(paragraph.propertyChanges ?? []).map(
+        (change) => change.previousFormatting?.numPr,
+      ),
     ];
     for (const numPr of references) {
       const numId = paragraphNumberingReferenceId(numPr ?? undefined);
@@ -327,12 +382,15 @@ const labelsOf = async (bytes: ArrayBuffer): Promise<Label[]> =>
     .map(({ text, displayLabel }) => ({ text, label: displayLabel ?? "" }));
 
 const targetParagraph = (document: Document): Paragraph => {
-  const paragraph = paragraphsOf(document.package.document.content).find((candidate) =>
-    candidate.content.some(
-      (child) =>
-        child.type === "run" &&
-        child.content.some((part) => part.type === "text" && part.text.includes("Target")),
-    ),
+  const paragraph = paragraphsOf(document.package.document.content).find(
+    (candidate) =>
+      candidate.content.some(
+        (child) =>
+          child.type === "run" &&
+          child.content.some(
+            (part) => part.type === "text" && part.text.includes("Target"),
+          ),
+      ),
   );
   if (!paragraph) {
     throw new Error("the saved package lost the target paragraph");
@@ -377,8 +435,13 @@ type ListInvariantsOptions = {
  * Both packages the editor may write: the full repack, and the selective save
  * that patches only the changed parts of the source package when it can.
  */
-const savesOf = async (editor: Editor, document: Document): Promise<ArrayBuffer[]> => {
-  const model = fromProseDoc(editor.state.doc, document, { stylesheetSource: { type: "package" } });
+const savesOf = async (
+  editor: Editor,
+  document: Document,
+): Promise<ArrayBuffer[]> => {
+  const model = fromProseDoc(editor.state.doc, document, {
+    stylesheetSource: { type: "package" },
+  });
   const tracker = getChangeTrackerState(editor.state);
   const { originalBuffer } = document;
   if (!tracker || !originalBuffer) {
@@ -394,15 +457,22 @@ const expectListInvariants = async ({
   gesture,
   mode,
 }: ListInvariantsOptions): Promise<void> => {
-  const reparsed = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+  const reparsed = await parseDocx(saved, {
+    preloadFonts: false,
+    detectVariables: false,
+  });
   expectEveryReferenceDefined(reparsed);
 
   const target = targetParagraph(reparsed);
-  expect(target.listRendering?.isBullet ?? false).toBe(gesture.expected.kind === "bullet");
+  expect(target.listRendering?.isBullet ?? false).toBe(
+    gesture.expected.kind === "bullet",
+  );
 
   const after = await labelsOf(saved);
   expect(after.map(({ text }) => text)).toEqual(before.map(({ text }) => text));
-  expect(after.find(({ text }) => text === TARGET)?.label).toBe(gesture.expected.label);
+  expect(after.find(({ text }) => text === TARGET)?.label).toBe(
+    gesture.expected.label,
+  );
   expect(after.filter(({ text }) => text !== TARGET)).toEqual(
     before.filter(({ text }) => text !== TARGET),
   );
@@ -412,7 +482,8 @@ const expectListInvariants = async ({
   const sharing = paragraphsOf(reparsed.package.document.content).filter(
     (paragraph) =>
       paragraph !== target &&
-      paragraphNumberingReferenceId(paragraph.formatting?.numPr) === targetNumId,
+      paragraphNumberingReferenceId(paragraph.formatting?.numPr) ===
+        targetNumId,
   );
   expect(sharing).toHaveLength(0);
 
@@ -421,7 +492,9 @@ const expectListInvariants = async ({
   const changes = target.propertyChanges ?? [];
   expect(changes).toHaveLength(mode === "suggesting" ? 1 : 0);
   expect(
-    paragraphNumberingReferenceId(changes.at(0)?.previousFormatting?.numPr ?? undefined),
+    paragraphNumberingReferenceId(
+      changes.at(0)?.previousFormatting?.numPr ?? undefined,
+    ),
   ).toBeUndefined();
 };
 
@@ -434,14 +507,19 @@ type Session = {
   editor: Editor;
 };
 
-const sessionOf = async (model: Document, mode: EditingMode = "editing"): Promise<Session> => {
+const sessionOf = async (
+  model: Document,
+  mode: EditingMode = "editing",
+): Promise<Session> => {
   const document = await packageOf(model);
   return { document, editor: editorFor(document, mode) };
 };
 
 const caretAt = (editor: Editor, text: string): void => {
   const start = paragraphStart(editor.state, text);
-  editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start)));
+  editor.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start)),
+  );
 };
 
 const run = (editor: Editor, text: string, command: Command): boolean => {
@@ -455,17 +533,27 @@ const typeAt = (editor: Editor, text: string, marker: string): void => {
 };
 
 /** Save, check every reference is defined, and read the labels back. */
-const savedLabels = async ({ document, editor }: Session): Promise<string[]> => {
+const savedLabels = async ({
+  document,
+  editor,
+}: Session): Promise<string[]> => {
   const saved = await repackDocx(
-    fromProseDoc(editor.state.doc, document, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(editor.state.doc, document, {
+      stylesheetSource: { type: "package" },
+    }),
   );
   expectEveryReferenceDefined(
     await parseDocx(saved, { preloadFonts: false, detectVariables: false }),
   );
-  return (await labelsOf(saved)).map(({ text, label }) => `${label} ${text}`.trim());
+  return (await labelsOf(saved)).map(({ text, label }) =>
+    `${label} ${text}`.trim(),
+  );
 };
 
-const paragraphAttrsOf = (editor: Editor, text: string): Record<string, unknown> => {
+const paragraphAttrsOf = (
+  editor: Editor,
+  text: string,
+): Record<string, unknown> => {
   const node = editor.state.doc.nodeAt(paragraphStart(editor.state, text) - 1);
   if (!node) {
     throw new Error(`no paragraph reads "${text}"`);
@@ -475,7 +563,9 @@ const paragraphAttrsOf = (editor: Editor, text: string): Record<string, unknown>
 
 // The portable schema omits absent distances; the extension schema uses null.
 // Compare only that numeric absence consistently, preserving explicit zero.
-const numericIndentationForComparison = (attrs: Readonly<Record<string, unknown>>) => ({
+const numericIndentationForComparison = (
+  attrs: Readonly<Record<string, unknown>>,
+) => ({
   indentLeft: attrs["indentLeft"] ?? null,
   indentRight: attrs["indentRight"] ?? null,
   indentFirstLine: attrs["indentFirstLine"] ?? null,
@@ -519,14 +609,22 @@ describe("which list a gesture joins", () => {
     const session = await sessionOf(fromMarkdown("1. Alpha\n2. Beta\n\nGamma"));
     run(session.editor, "Gamma", toggleNumberedList);
 
-    expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "3. Gamma"]);
+    expect(await savedLabels(session)).toEqual([
+      "1. Alpha",
+      "2. Beta",
+      "3. Gamma",
+    ]);
   });
 
   test("a paragraph directly under a list of the other kind starts its own", async () => {
     const session = await sessionOf(fromMarkdown("1. Alpha\n2. Beta\n\nGamma"));
     run(session.editor, "Gamma", toggleBulletList);
 
-    expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "• Gamma"]);
+    expect(await savedLabels(session)).toEqual([
+      "1. Alpha",
+      "2. Beta",
+      "• Gamma",
+    ]);
   });
 
   test("a typed value continues the list above when the format matches, else starts one", async () => {
@@ -534,7 +632,11 @@ describe("which list a gesture joins", () => {
     typeAt(session.editor, "Beta", "2. ");
     typeAt(session.editor, "Gamma", "a) ");
 
-    expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "a) Gamma"]);
+    expect(await savedLabels(session)).toEqual([
+      "1. Alpha",
+      "2. Beta",
+      "a) Gamma",
+    ]);
   });
 
   test("an ambiguous letter continues the letters above it", async () => {
@@ -552,12 +654,18 @@ describe("which list a gesture joins", () => {
     typeAt(session.editor, "First", "i. ");
     typeAt(session.editor, "Second", "ii. ");
 
-    expect(await savedLabels(session)).toEqual(["Intro.", "i. First", "ii. Second"]);
+    expect(await savedLabels(session)).toEqual([
+      "Intro.",
+      "i. First",
+      "ii. Second",
+    ]);
   });
 
   test("a first list takes the host's unused instance of its kind; a second list does not join it", async () => {
     const session = await sessionOf(
-      hostPreparedLists("First\n\nProse between.\n\nSecond\n\nPoint\n\nOther prose.\n\nMore"),
+      hostPreparedLists(
+        "First\n\nProse between.\n\nSecond\n\nPoint\n\nOther prose.\n\nMore",
+      ),
     );
     run(session.editor, "First", toggleNumberedList);
     typeAt(session.editor, "Second", "1. ");
@@ -565,8 +673,12 @@ describe("which list a gesture joins", () => {
     typeAt(session.editor, "More", "- ");
 
     const numIdOf = (text: string): number | undefined => {
-      const node = session.editor.state.doc.nodeAt(paragraphStart(session.editor.state, text) - 1);
-      return node ? paragraphNumberingReferenceId(expectParagraphAttrs(node).numPr) : undefined;
+      const node = session.editor.state.doc.nodeAt(
+        paragraphStart(session.editor.state, text) - 1,
+      );
+      return node
+        ? paragraphNumberingReferenceId(expectParagraphAttrs(node).numPr)
+        : undefined;
     };
     expect(numIdOf("First")).toBe(HOST_DECIMAL_NUM_ID);
     expect(numIdOf("Second")).not.toBe(HOST_DECIMAL_NUM_ID);
@@ -607,14 +719,22 @@ describe("restart, continue and set numbering value", () => {
       const session = await sessionOf(fromMarkdown(threeItems), mode);
       expect(run(session.editor, "Beta", restartNumbering)).toBe(true);
 
-      expect(await savedLabels(session)).toEqual(["1. Alpha", "1. Beta", "2. Gamma"]);
+      expect(await savedLabels(session)).toEqual([
+        "1. Alpha",
+        "1. Beta",
+        "2. Gamma",
+      ]);
     });
 
     test(`set numbering value, ${mode}`, async () => {
       const session = await sessionOf(fromMarkdown(threeItems), mode);
       expect(run(session.editor, "Beta", setNumberingValue(5))).toBe(true);
 
-      expect(await savedLabels(session)).toEqual(["1. Alpha", "5. Beta", "6. Gamma"]);
+      expect(await savedLabels(session)).toEqual([
+        "1. Alpha",
+        "5. Beta",
+        "6. Gamma",
+      ]);
     });
   }
 
@@ -624,12 +744,18 @@ describe("restart, continue and set numbering value", () => {
       run(session.editor, "Beta", restartNumbering);
       expect(run(session.editor, "Beta", continueNumbering)).toBe(true);
 
-      expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "3. Gamma"]);
+      expect(await savedLabels(session)).toEqual([
+        "1. Alpha",
+        "2. Beta",
+        "3. Gamma",
+      ]);
     });
   }
 
   test("continue carries a second list on from the first", async () => {
-    const session = await sessionOf(fromMarkdown("1. Alpha\n2. Beta\n\nProse.\n\nGamma\n\nDelta"));
+    const session = await sessionOf(
+      fromMarkdown("1. Alpha\n2. Beta\n\nProse.\n\nGamma\n\nDelta"),
+    );
     run(session.editor, "Gamma", toggleNumberedList);
     run(session.editor, "Delta", toggleNumberedList);
     expect(run(session.editor, "Gamma", continueNumbering)).toBe(true);
@@ -676,7 +802,9 @@ describe("list changes while suggesting", () => {
 
     rejectAllChanges()(editor.state, editor.dispatch);
     expect(paragraphAttrsOf(editor, "Plain one")["numPr"]).toBeNull();
-    expect(paragraphAttrsOf(editor, "Plain one")["_propertyChanges"]).toBeNull();
+    expect(
+      paragraphAttrsOf(editor, "Plain one")["_propertyChanges"],
+    ).toBeNull();
     expect(await savedLabels(session)).toContain("Plain one");
   });
 
@@ -697,15 +825,24 @@ describe("list changes while suggesting", () => {
     run(editor, "Plain one", toggleBulletList);
 
     const changes = paragraphAttrsOf(editor, "Plain one")["_propertyChanges"];
-    expect(Array.isArray(changes) ? changes.map(({ info }) => info.author) : []).toEqual(["Alice"]);
+    expect(
+      Array.isArray(changes) ? changes.map(({ info }) => info.author) : [],
+    ).toEqual(["Alice"]);
   });
 
   test("toggling a list off leaves the plain paragraphs of the selection untouched", async () => {
-    const session = await sessionOf(fromMarkdown("1. Alpha\n\nPlain"), "suggesting");
+    const session = await sessionOf(
+      fromMarkdown("1. Alpha\n\nPlain"),
+      "suggesting",
+    );
     const { editor } = session;
     const from = paragraphStart(editor.state, "Alpha");
     const to = paragraphStart(editor.state, "Plain") + 2;
-    editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)));
+    editor.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, from, to),
+      ),
+    );
     expect(toggleNumberedList(editor.state, editor.dispatch)).toBe(true);
 
     expect(paragraphAttrsOf(editor, "Alpha")["numPr"]).toBeNull();
@@ -737,10 +874,17 @@ describe("list changes while suggesting", () => {
                 ...model.package.styles,
                 styles: [
                   ...(model.package.styles?.styles ?? []),
-                  { styleId: "ToggleBaseline", type: "paragraph", pPr: indentation },
+                  {
+                    styleId: "ToggleBaseline",
+                    type: "paragraph",
+                    pPr: indentation,
+                  },
                 ],
               };
-              paragraph.formatting = { ...paragraph.formatting, styleId: "ToggleBaseline" };
+              paragraph.formatting = {
+                ...paragraph.formatting,
+                styleId: "ToggleBaseline",
+              };
             }
             const session = await sessionOf(model, mode);
             const { editor, document } = session;
@@ -755,21 +899,30 @@ describe("list changes while suggesting", () => {
             const after = paragraphAttrsOf(editor, TARGET);
             expect(after["numPr"]).toBeNull();
             expect(after["_propertyChanges"]).toBeNull();
-            for (const key of ["indentLeft", "indentRight", "indentFirstLine", "hangingIndent"]) {
+            for (const key of [
+              "indentLeft",
+              "indentRight",
+              "indentFirstLine",
+              "hangingIndent",
+            ]) {
               expect(after[key]).toEqual(before[key]);
             }
             const savedModel = fromProseDoc(editor.state.doc, document, {
               stylesheetSource: { type: "package" },
             });
             expect(
-              paragraphIndentationFromFormatting(targetParagraph(savedModel).formatting),
+              paragraphIndentationFromFormatting(
+                targetParagraph(savedModel).formatting,
+              ),
             ).toEqual(originalIndentation);
             const reopened = await parseDocx(await repackDocx(savedModel), {
               preloadFonts: false,
               detectVariables: false,
             });
             expect(
-              paragraphIndentationFromFormatting(targetParagraph(reopened).formatting),
+              paragraphIndentationFromFormatting(
+                targetParagraph(reopened).formatting,
+              ),
             ).toEqual(originalIndentation);
             const reopenedNode = toProseDoc(reopened, {
               styles: reopened.package.styles,
@@ -781,7 +934,9 @@ describe("list changes while suggesting", () => {
             expect(numericIndentationForComparison(reopenedAttrs)).toEqual(
               numericIndentationForComparison(before),
             );
-            expect(reopenedAttrs.hangingIndent).toEqual(before["hangingIndent"]);
+            expect(reopenedAttrs.hangingIndent).toEqual(
+              before["hangingIndent"],
+            );
           });
         }
       }
@@ -792,99 +947,130 @@ describe("list changes while suggesting", () => {
     "toggle-on then toggle-off preserves authored indentation without tracking a net change",
     async () => {
       await assertProperty(
-        fc.asyncProperty(fc.integer({ min: 100, max: 10_000 }), async (base) => {
-          for (const kind of TOGGLE_BACK_KINDS) {
-            for (const formatting of TOGGLE_BACK_FORMATTING) {
-              const model = hostPreparedLists("Intro paragraph.\n\nTarget paragraph\n\nTail.");
-              const numbering = model.package.numbering;
-              if (!numbering) throw new Error("host list definitions must be present");
-              const abstractNumId = kind === "bullet" ? 901 : 900;
-              const abstract = numbering.abstractNums.find(
-                ({ abstractNumId: id }) => id === abstractNumId,
-              );
-              const level = abstract?.levels.find(({ ilvl }) => ilvl === 0);
-              if (!level) throw new Error("host list level zero must be present");
-              level.pPr = {
-                indentLeft: base + 100,
-                indentFirstLine: -(base + 110),
-                hangingIndent: true,
-              };
+        fc.asyncProperty(
+          fc.integer({ min: 100, max: 10_000 }),
+          async (base) => {
+            for (const kind of TOGGLE_BACK_KINDS) {
+              for (const formatting of TOGGLE_BACK_FORMATTING) {
+                const model = hostPreparedLists(
+                  "Intro paragraph.\n\nTarget paragraph\n\nTail.",
+                );
+                const numbering = model.package.numbering;
+                if (!numbering)
+                  throw new Error("host list definitions must be present");
+                const abstractNumId = kind === "bullet" ? 901 : 900;
+                const abstract = numbering.abstractNums.find(
+                  ({ abstractNumId: id }) => id === abstractNumId,
+                );
+                const level = abstract?.levels.find(({ ilvl }) => ilvl === 0);
+                if (!level)
+                  throw new Error("host list level zero must be present");
+                level.pPr = {
+                  indentLeft: base + 100,
+                  indentFirstLine: -(base + 110),
+                  hangingIndent: true,
+                };
 
-              const target = targetParagraph(model);
-              if (formatting === "direct-zero") {
-                target.formatting = {
-                  ...target.formatting,
-                  indentLeft: 0,
-                  indentFirstLine: 0,
-                };
-              } else if (formatting === "direct") {
-                target.formatting = {
-                  ...target.formatting,
-                  indentLeft: base + 200,
-                  indentFirstLine: base + 210,
-                };
-              } else if (formatting === "styled") {
-                const styles = model.package.styles;
-                if (!styles) throw new Error("Markdown styles must be present");
-                model.package.styles = {
-                  ...styles,
-                  styles: [
-                    ...styles.styles,
-                    {
-                      type: "paragraph",
-                      styleId: "ToggleIndent",
-                      pPr: { indentLeft: base + 300, indentFirstLine: base + 310 },
-                    },
+                const target = targetParagraph(model);
+                if (formatting === "direct-zero") {
+                  target.formatting = {
+                    ...target.formatting,
+                    indentLeft: 0,
+                    indentFirstLine: 0,
+                  };
+                } else if (formatting === "direct") {
+                  target.formatting = {
+                    ...target.formatting,
+                    indentLeft: base + 200,
+                    indentFirstLine: base + 210,
+                  };
+                } else if (formatting === "styled") {
+                  const styles = model.package.styles;
+                  if (!styles)
+                    throw new Error("Markdown styles must be present");
+                  model.package.styles = {
+                    ...styles,
+                    styles: [
+                      ...styles.styles,
+                      {
+                        type: "paragraph",
+                        styleId: "ToggleIndent",
+                        pPr: {
+                          indentLeft: base + 300,
+                          indentFirstLine: base + 310,
+                        },
+                      },
+                    ],
+                  };
+                  target.formatting = {
+                    ...target.formatting,
+                    styleId: "ToggleIndent",
+                  };
+                }
+
+                const session = await sessionOf(model, "suggesting");
+                const { editor } = session;
+                const beforeAttrs = paragraphAttrsOf(
+                  editor,
+                  "Target paragraph",
+                );
+                const toggle =
+                  kind === "bullet" ? toggleBulletList : toggleNumberedList;
+                expect(run(editor, "Target paragraph", toggle)).toBe(true);
+                expect(run(editor, "Target paragraph", toggle)).toBe(true);
+
+                expect(
+                  paragraphAttrsOf(editor, "Target paragraph")["numPr"],
+                ).toBeNull();
+                expect(
+                  paragraphAttrsOf(editor, "Target paragraph")[
+                    "_propertyChanges"
                   ],
-                };
-                target.formatting = { ...target.formatting, styleId: "ToggleIndent" };
+                ).toBeNull();
+                expect(
+                  paragraphAttrsOf(editor, "Target paragraph")["indentLeft"],
+                ).toBe(beforeAttrs["indentLeft"]);
+
+                const saved = fromProseDoc(editor.state.doc, session.document, {
+                  stylesheetSource: { type: "package" },
+                });
+                const reopened = await parseDocx(await repackDocx(saved), {
+                  preloadFonts: false,
+                  detectVariables: false,
+                });
+                const paragraph = targetParagraph(reopened);
+                expect(paragraph.propertyChanges).toBeUndefined();
+                expect(
+                  paragraphNumberingReferenceId(paragraph.formatting?.numPr),
+                ).toBeUndefined();
+                const authored =
+                  paragraphFormattingWithAuthoredIndentation(paragraph);
+                expect(authored?.indentLeft).toBe(
+                  target.formatting?.indentLeft,
+                );
+                expect(authored?.indentFirstLine).toBe(
+                  target.formatting?.indentFirstLine,
+                );
+                const reopenedAttrs = expectParagraphAttrs(
+                  toProseDoc(reopened, {
+                    styles: reopened.package.styles,
+                    theme: reopened.package.theme,
+                  }).child(1),
+                );
+                // Node schemas use null or undefined for an absent effective value.
+                expect(reopenedAttrs.indentLeft ?? undefined).toBe(
+                  beforeAttrs["indentLeft"] ?? undefined,
+                );
+                expect(reopenedAttrs.indentFirstLine ?? undefined).toBe(
+                  beforeAttrs["indentFirstLine"] ?? undefined,
+                );
+                expect(reopenedAttrs.hangingIndent ?? false).toBe(
+                  beforeAttrs["hangingIndent"] ?? false,
+                );
               }
-
-              const session = await sessionOf(model, "suggesting");
-              const { editor } = session;
-              const beforeAttrs = paragraphAttrsOf(editor, "Target paragraph");
-              const toggle = kind === "bullet" ? toggleBulletList : toggleNumberedList;
-              expect(run(editor, "Target paragraph", toggle)).toBe(true);
-              expect(run(editor, "Target paragraph", toggle)).toBe(true);
-
-              expect(paragraphAttrsOf(editor, "Target paragraph")["numPr"]).toBeNull();
-              expect(paragraphAttrsOf(editor, "Target paragraph")["_propertyChanges"]).toBeNull();
-              expect(paragraphAttrsOf(editor, "Target paragraph")["indentLeft"]).toBe(
-                beforeAttrs["indentLeft"],
-              );
-
-              const saved = fromProseDoc(editor.state.doc, session.document, {
-                stylesheetSource: { type: "package" },
-              });
-              const reopened = await parseDocx(await repackDocx(saved), {
-                preloadFonts: false,
-                detectVariables: false,
-              });
-              const paragraph = targetParagraph(reopened);
-              expect(paragraph.propertyChanges).toBeUndefined();
-              expect(paragraphNumberingReferenceId(paragraph.formatting?.numPr)).toBeUndefined();
-              const authored = paragraphFormattingWithAuthoredIndentation(paragraph);
-              expect(authored?.indentLeft).toBe(target.formatting?.indentLeft);
-              expect(authored?.indentFirstLine).toBe(target.formatting?.indentFirstLine);
-              const reopenedAttrs = expectParagraphAttrs(
-                toProseDoc(reopened, {
-                  styles: reopened.package.styles,
-                  theme: reopened.package.theme,
-                }).child(1),
-              );
-              // Node schemas use null or undefined for an absent effective value.
-              expect(reopenedAttrs.indentLeft ?? undefined).toBe(
-                beforeAttrs["indentLeft"] ?? undefined,
-              );
-              expect(reopenedAttrs.indentFirstLine ?? undefined).toBe(
-                beforeAttrs["indentFirstLine"] ?? undefined,
-              );
-              expect(reopenedAttrs.hangingIndent ?? false).toBe(
-                beforeAttrs["hangingIndent"] ?? false,
-              );
             }
-          }
-        }),
+          },
+        ),
         {
           numRuns: 8,
           id: "toggle-on then toggle-off preserves authored indentation without tracking a net change",
@@ -955,8 +1141,11 @@ describe("list autoformat", () => {
 
   test("a marker typed mid-paragraph stays text", async () => {
     const { editor } = await sessionOf(fromMarkdown("See clause"));
-    const end = paragraphStart(editor.state, "See clause") + "See clause".length;
-    editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end)));
+    const end =
+      paragraphStart(editor.state, "See clause") + "See clause".length;
+    editor.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end)),
+    );
     typeText(editor, " 1. ");
 
     expect(editor.state.doc.firstChild?.textContent).toBe("See clause 1. ");

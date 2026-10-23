@@ -11,4 +11,6 @@ export const buildFindNotificationBridge = (
   takeNotifications: () => notifications.splice(0),
 });
 
-export type FindNotificationBridge = ReturnType<typeof buildFindNotificationBridge>;
+export type FindNotificationBridge = ReturnType<
+  typeof buildFindNotificationBridge
+>;

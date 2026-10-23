@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 
-import { buildDocx, CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  buildDocx,
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import {
   CLI_READ_BOUNDS,
   executeReadTool,
   type FileToolCall,
-  pageReadDocument,
   type FolioReadBounds,
+  pageReadDocument,
 } from "./execute-read";
 import { findFileTool } from "./registry";
 
@@ -22,14 +27,19 @@ afterEach(async () => {
   await cleanup();
 });
 
-const read = async (toolName: string, call: FileToolCall, bounds = CLI_READ_BOUNDS) => {
+const read = async (
+  toolName: string,
+  call: FileToolCall,
+  bounds = CLI_READ_BOUNDS,
+) => {
   const tool = findFileTool(toolName);
   if (!tool) throw new Error(`${toolName} is not registered`);
   return await executeReadTool(tool, call, bounds);
 };
 
 const resultOf = (value: unknown): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null) throw new Error("expected an object");
+  if (typeof value !== "object" || value === null)
+    throw new Error("expected an object");
   return { ...value };
 };
 
@@ -43,20 +53,37 @@ describe("read_document", () => {
     );
 
     const labelled = await read("read_document", { path: withIds, args: {} });
-    const synthetic = await read("read_document", { path: withoutIds, args: {} });
+    const synthetic = await read("read_document", {
+      path: withoutIds,
+      args: {},
+    });
 
     const sources = (data: typeof labelled) => {
       const blocks = resultOf(data.unwrap().result)["blocks"];
       if (!Array.isArray(blocks)) throw new Error("no blocks");
       return blocks.map((block) => resultOf(block)["blockIdSource"]);
     };
-    expect(sources(labelled)).toEqual(["package", "package", "package", "package"]);
-    expect(sources(synthetic)).toEqual(["synthetic", "synthetic", "synthetic", "synthetic"]);
+    expect(sources(labelled)).toEqual([
+      "package",
+      "package",
+      "package",
+      "package",
+    ]);
+    expect(sources(synthetic)).toEqual([
+      "synthetic",
+      "synthetic",
+      "synthetic",
+      "synthetic",
+    ]);
   });
 
   test("ends a truncated page on a block with an id", () => {
     const page = pageReadDocument({
-      blocks: [{ blockId: "00000001" }, { kind: "table" }, { blockId: "00000003" }],
+      blocks: [
+        { blockId: "00000001" },
+        { kind: "table" },
+        { blockId: "00000003" },
+      ],
       sources: new Map(),
       fileVersion: "v1",
       args: { maxBlocks: 2 },
@@ -72,7 +99,9 @@ describe("read_document", () => {
   test("pages with a cursor bound to the file version", async () => {
     const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
 
-    const first = (await read("read_document", { path: file, args: { maxBlocks: 3 } })).unwrap();
+    const first = (
+      await read("read_document", { path: file, args: { maxBlocks: 3 } })
+    ).unwrap();
     const firstPage = resultOf(first.result);
     const second = await read("read_document", {
       path: file,
@@ -85,11 +114,16 @@ describe("read_document", () => {
     expect(secondPage["nextCursor"]).toBeUndefined();
     const ids = [firstPage, secondPage].flatMap((page) => {
       const blocks = page["blocks"];
-      return Array.isArray(blocks) ? blocks.map((block) => resultOf(block)["blockId"]) : [];
+      return Array.isArray(blocks)
+        ? blocks.map((block) => resultOf(block)["blockId"])
+        : [];
     });
     expect(ids).toEqual(CONTRACT_PARAGRAPHS.map(({ paraId }) => paraId));
 
-    await writeFile(file, await buildDocx([{ text: "Changed.", paraId: "20000001" }]));
+    await writeFile(
+      file,
+      await buildDocx([{ text: "Changed.", paraId: "20000001" }]),
+    );
     const stale = await read("read_document", {
       path: file,
       args: { cursor: firstPage["nextCursor"] },
@@ -99,19 +133,24 @@ describe("read_document", () => {
 
   test("stops a page at the response byte limit", async () => {
     const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
-    const whole = (await read("read_document", { path: file, args: {} })).unwrap();
+    const whole = (
+      await read("read_document", { path: file, args: {} })
+    ).unwrap();
     const bounds: FolioReadBounds = {
       ...CLI_READ_BOUNDS,
       maxResponseBytes: JSON.stringify(whole).length,
     };
 
     const page = resultOf(
-      (await read("read_document", { path: file, args: {} }, bounds)).unwrap().result,
+      (await read("read_document", { path: file, args: {} }, bounds)).unwrap()
+        .result,
     );
 
     const blocks = page["blocks"];
     expect(Array.isArray(blocks) && blocks.length).toBeGreaterThan(0);
-    expect(Array.isArray(blocks) && blocks.length).toBeLessThan(CONTRACT_PARAGRAPHS.length);
+    expect(Array.isArray(blocks) && blocks.length).toBeLessThan(
+      CONTRACT_PARAGRAPHS.length,
+    );
     expect(typeof page["nextCursor"]).toBe("string");
   });
 });
@@ -119,9 +158,15 @@ describe("read_document", () => {
 describe("file envelope", () => {
   test("refuses a stale expected version and reports the current one", async () => {
     const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
-    const current = (await read("read_changes", { path: file, args: {} })).unwrap().fileVersion;
+    const current = (
+      await read("read_changes", { path: file, args: {} })
+    ).unwrap().fileVersion;
 
-    const stale = await read("read_changes", { path: file, fileVersion: "0".repeat(64), args: {} });
+    const stale = await read("read_changes", {
+      path: file,
+      fileVersion: "0".repeat(64),
+      args: {},
+    });
 
     expect(stale.isErr() && stale.error.code).toBe("stale_version");
     expect(stale.isErr() && stale.error.details).toEqual({
@@ -134,7 +179,10 @@ describe("file envelope", () => {
     const text = `${dir}/notes.docx`;
     await writeFile(text, "not a zip");
 
-    const missing = await read("read_document", { path: `${dir}/missing.docx`, args: {} });
+    const missing = await read("read_document", {
+      path: `${dir}/missing.docx`,
+      args: {},
+    });
     const invalid = await read("read_document", { path: text, args: {} });
 
     expect(missing.isErr() && missing.error.code).toBe("not_found");
@@ -146,7 +194,9 @@ describe("file envelope", () => {
     const bounds: FolioReadBounds = { ...CLI_READ_BOUNDS, maxMatches: 1 };
 
     const found = resultOf(
-      (await read("find_text", { path: file, args: { query: "pay" } }, bounds)).unwrap().result,
+      (
+        await read("find_text", { path: file, args: { query: "pay" } }, bounds)
+      ).unwrap().result,
     );
 
     expect(Array.isArray(found["matches"]) && found["matches"].length).toBe(1);

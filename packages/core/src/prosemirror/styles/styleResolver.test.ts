@@ -4,9 +4,9 @@
  * Tests style chain resolution, docDefaults cascade, and edge cases.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-import type { StyleDefinitions, DocDefaults } from "../../types/document";
+import type { DocDefaults, StyleDefinitions } from "../../types/document";
 import { createStyleResolver } from "./styleResolver";
 
 describe("StyleResolver", () => {

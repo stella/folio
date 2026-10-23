@@ -23,7 +23,7 @@
  * editor.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 /**
  * How far a run's painted geometry may sit from its declared geometry.
@@ -66,7 +66,9 @@ const collectRunDrift = (page: Page): Promise<RunDrift[]> =>
     };
 
     const drifts: RunDrift[] = [];
-    for (const run of document.querySelectorAll<HTMLElement>("[data-advance-sum]")) {
+    for (const run of document.querySelectorAll<HTMLElement>(
+      "[data-advance-sum]",
+    )) {
       if (!comparable(run)) {
         continue;
       }
@@ -87,7 +89,9 @@ const collectRunDrift = (page: Page): Promise<RunDrift[]> =>
       // difference is the whole of it, and it scales with the run.
       const letterSpacingPx = Number.parseFloat(style.letterSpacing);
       const scale = new DOMMatrixReadOnly(style.transform).a;
-      const trailingPx = Number.isFinite(letterSpacingPx) ? letterSpacingPx * scale : 0;
+      const trailingPx = Number.isFinite(letterSpacingPx)
+        ? letterSpacingPx * scale
+        : 0;
       const declaredLeft = Number.parseFloat(run.style.left);
       const parent = run.offsetParent;
       const paintedLeft =
@@ -98,14 +102,21 @@ const collectRunDrift = (page: Page): Promise<RunDrift[]> =>
         declaredPx,
         paintedPx,
         extentDeltaPx: Math.abs(paintedPx - (declaredPx + trailingPx)),
-        originDeltaPx: Number.isFinite(declaredLeft) ? Math.abs(paintedLeft - declaredLeft) : 0,
+        originDeltaPx: Number.isFinite(declaredLeft)
+          ? Math.abs(paintedLeft - declaredLeft)
+          : 0,
       });
     }
     return drifts;
   });
 
-const openWithDisplayListRenderer = async (page: Page, fixture: string): Promise<void> => {
-  await page.goto(`/?file=${fixture}&pageRenderer=display-list`, { timeout: 60_000 });
+const openWithDisplayListRenderer = async (
+  page: Page,
+  fixture: string,
+): Promise<void> => {
+  await page.goto(`/?file=${fixture}&pageRenderer=display-list`, {
+    timeout: 60_000,
+  });
   await page.waitForSelector("[data-advance-sum]", { timeout: 30_000 });
   await page.evaluate(async () => {
     await document.fonts.ready;
@@ -114,7 +125,10 @@ const openWithDisplayListRenderer = async (page: Page, fixture: string): Promise
 
 const percentile = (values: readonly number[], fraction: number): number => {
   const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0;
+  return (
+    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ??
+    0
+  );
 };
 
 const report = (label: string, drifts: readonly RunDrift[]): void => {
@@ -129,7 +143,11 @@ const report = (label: string, drifts: readonly RunDrift[]): void => {
   );
 };
 
-const describe = (drift: RunDrift, kind: "origin" | "extent", deltaPx: number) =>
+const describe = (
+  drift: RunDrift,
+  kind: "origin" | "extent",
+  deltaPx: number,
+) =>
   `"${drift.text.slice(0, 40)}": ${kind} off by ${deltaPx.toFixed(4)}px ` +
   `(declared ${drift.declaredPx.toFixed(3)}, painted ${drift.paintedPx.toFixed(3)})`;
 
@@ -148,7 +166,9 @@ const expectGeometryHonoured = (drifts: readonly RunDrift[]): void => {
 };
 
 test.describe("display-list run drift", () => {
-  test("a run is painted where and as wide as the display list declares", async ({ page }) => {
+  test("a run is painted where and as wide as the display list declares", async ({
+    page,
+  }) => {
     await openWithDisplayListRenderer(page, "sample.docx");
     const drifts = await collectRunDrift(page);
 
@@ -156,7 +176,9 @@ test.describe("display-list run drift", () => {
     expectGeometryHonoured(drifts);
   });
 
-  test("a multi-page document honours every run's geometry", async ({ page }) => {
+  test("a multi-page document honours every run's geometry", async ({
+    page,
+  }) => {
     // Past the virtualization threshold, so the incremental path is measured
     // rather than the eager small-document path.
     await openWithDisplayListRenderer(page, "podily-bps.docx");

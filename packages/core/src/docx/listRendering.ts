@@ -1,13 +1,19 @@
-import { computeListRendering, type NumberingMap } from "./numberingParser";
 import type { ListRendering } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
+import { computeListRendering, type NumberingMap } from "./numberingParser";
 
 // Paragraph counters and folded fields do not belong to the numbering definition.
 const RENDERING_FIELDS = {
   marker: { key: "marker", source: "paragraph" },
   foldedMarkerSuffix: { key: "foldedMarkerSuffix", source: "paragraph" },
-  implicitChildLevelAdvances: { key: "implicitChildLevelAdvances", source: "paragraph" },
-  markerSecondSlotOffsetTwips: { key: "markerSecondSlotOffsetTwips", source: "paragraph" },
+  implicitChildLevelAdvances: {
+    key: "implicitChildLevelAdvances",
+    source: "paragraph",
+  },
+  markerSecondSlotOffsetTwips: {
+    key: "markerSecondSlotOffsetTwips",
+    source: "paragraph",
+  },
   markerTemplate: { key: "markerTemplate", source: "definition" },
   level: { key: "level", source: "definition" },
   numId: { key: "numId", source: "definition" },
@@ -25,7 +31,10 @@ const RENDERING_FIELDS = {
   abstractNumId: { key: "abstractNumId", source: "definition" },
   startOverride: { key: "startOverride", source: "definition" },
 } as const satisfies {
-  [Key in keyof ListRendering]-?: { key: Key; source: "paragraph" | "definition" };
+  [Key in keyof ListRendering]-?: {
+    key: Key;
+    source: "paragraph" | "definition";
+  };
 };
 
 const DEFINITION_FIELDS = Object.values(RENDERING_FIELDS).filter(
@@ -59,7 +68,8 @@ export const resolveListRenderingDefinition = (
 ): ListRenderingDefinition => {
   const nextLevel = numbering?.getLevel(numPr.numId, (numPr.ilvl ?? 0) + 1);
   return {
-    rendering: numbering === undefined ? null : computeListRendering(numPr, numbering),
+    rendering:
+      numbering === undefined ? null : computeListRendering(numPr, numbering),
     nextSlotOffset:
       nextLevel?.pPr?.hangingIndent === true &&
       nextLevel.pPr.indentFirstLine !== undefined &&

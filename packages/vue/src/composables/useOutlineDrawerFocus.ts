@@ -17,14 +17,18 @@ export const useOutlineDrawerFocus = ({
   navRef,
   onClose,
 }: UseOutlineDrawerFocusOptions): void => {
-  const isOpen = computed(() => toValue(surface) === "drawer" && toValue(available));
+  const isOpen = computed(
+    () => toValue(surface) === "drawer" && toValue(available),
+  );
 
   watch(
     isOpen,
     async (open, _wasOpen, onCleanup) => {
       if (!open || typeof document === "undefined") return;
       const previous =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
       let active = true;
       const onKeyDown = (event: KeyboardEvent) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;

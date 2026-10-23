@@ -142,15 +142,23 @@ function buildRunWithMarks(
     }
     return mark;
   });
-  return schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text, marks)])]);
+  return schema.node("doc", null, [
+    schema.node("paragraph", null, [schema.text(text, marks)]),
+  ]);
 }
 
-function buildSingleRunDoc(text: string, markName: string, attrs?: Record<string, unknown>) {
+function buildSingleRunDoc(
+  text: string,
+  markName: string,
+  attrs?: Record<string, unknown>,
+) {
   const mark = schema.marks[markName]?.create(attrs);
   if (!mark) {
     throw new Error(`Unknown mark: ${markName}`);
   }
-  return schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text, [mark])])]);
+  return schema.node("doc", null, [
+    schema.node("paragraph", null, [schema.text(text, [mark])]),
+  ]);
 }
 
 function firstRun(blocks: unknown[]): TextRun {
@@ -240,9 +248,11 @@ describe("toFlowBlocks run-level OOXML marks", () => {
 
   test("carries an alternate name through paragraph-default formatting", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { defaultTextFormatting: { fontFamily: { ascii: "Brand Sans" } } }, [
-        schema.text("Default text"),
-      ]),
+      schema.node(
+        "paragraph",
+        { defaultTextFormatting: { fontFamily: { ascii: "Brand Sans" } } },
+        [schema.text("Default text")],
+      ),
     ]);
 
     const run = firstRun(
@@ -336,17 +346,29 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     expect(run.kerningMinPt).toBeUndefined();
   });
 
-  test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+  test.each([
+    -50,
+    601,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])(
     "normalizes malformed character scale %p at the layout boundary",
     (scale) => {
-      const blocks = toFlowBlocks(buildSingleRunDoc("text", "characterSpacing", { scale }), {});
+      const blocks = toFlowBlocks(
+        buildSingleRunDoc("text", "characterSpacing", { scale }),
+        {},
+      );
 
       expect(firstRun(blocks).horizontalScale).toBeUndefined();
     },
   );
 
   test("preserves zero-width character scale", () => {
-    const blocks = toFlowBlocks(buildSingleRunDoc("text", "characterSpacing", { scale: 0 }), {});
+    const blocks = toFlowBlocks(
+      buildSingleRunDoc("text", "characterSpacing", { scale: 0 }),
+      {},
+    );
 
     expect(firstRun(blocks).horizontalScale).toBe(0);
   });
@@ -487,12 +509,16 @@ describe("toFlowBlocks run-level OOXML marks", () => {
 
   test("a double-strike cancellation does not clear a copied single strike", () => {
     const strike = schema.marks.strike?.create({ double: false });
-    const override = schema.marks.runFormattingOverride?.create({ doubleStrike: false });
+    const override = schema.marks.runFormattingOverride?.create({
+      doubleStrike: false,
+    });
     if (!strike || !override) {
       throw new Error("Expected strike formatting marks");
     }
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("single", [strike, override])]),
+      schema.node("paragraph", null, [
+        schema.text("single", [strike, override]),
+      ]),
     ]);
 
     expect(firstRun(toFlowBlocks(doc, {})).strike).toBe(true);
@@ -673,7 +699,10 @@ describe("toFlowBlocks run-level OOXML marks", () => {
 
   test("propagates emphasis mark variants", () => {
     for (const variant of ["dot", "comma", "circle", "underDot"] as const) {
-      const blocks = toFlowBlocks(buildSingleRunDoc("text", "emphasisMark", { type: variant }), {});
+      const blocks = toFlowBlocks(
+        buildSingleRunDoc("text", "emphasisMark", { type: variant }),
+        {},
+      );
       expect(firstRun(blocks).emphasisMark).toBe(variant);
     }
   });

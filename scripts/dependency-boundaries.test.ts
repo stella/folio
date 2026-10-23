@@ -1,13 +1,26 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
-const DEPCRUISE_BINARY = path.join(REPOSITORY_ROOT, "node_modules/.bin/depcruise");
+const DEPCRUISE_BINARY = path.join(
+  REPOSITORY_ROOT,
+  "node_modules/.bin/depcruise",
+);
 const DEPCRUISE_CONFIG = path.join(REPOSITORY_ROOT, ".dependency-cruiser.cjs");
 const REPOSITORY_NODE_MODULES = path.join(REPOSITORY_ROOT, "node_modules");
-const MANIFEST_CHECKER = path.join(REPOSITORY_ROOT, "scripts/check-workspace-manifests.ts");
+const MANIFEST_CHECKER = path.join(
+  REPOSITORY_ROOT,
+  "scripts/check-workspace-manifests.ts",
+);
 const FIXTURE_POLICY = {
   agents: ["core"],
   core: ["docx-core"],
@@ -51,7 +64,9 @@ afterEach(() => {
 });
 
 const createFixture = (): string => {
-  const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-dependency-boundaries-"));
+  const fixtureRoot = mkdtempSync(
+    path.join(tmpdir(), "folio-dependency-boundaries-"),
+  );
   fixtureRoots.push(fixtureRoot);
   mkdirSync(path.join(fixtureRoot, "node_modules/@stll"), { recursive: true });
   writeFileSync(
@@ -116,7 +131,11 @@ const addWorkspace = ({
   );
   symlinkSync(
     path.join("..", "..", "packages", workspace),
-    path.join(fixtureRoot, "node_modules/@stll", WORKSPACE_NAMES[workspace].slice("@stll/".length)),
+    path.join(
+      fixtureRoot,
+      "node_modules/@stll",
+      WORKSPACE_NAMES[workspace].slice("@stll/".length),
+    ),
     "dir",
   );
 };
@@ -127,14 +146,27 @@ const writeSource = (
   relativePath: string,
   source: string,
 ): void => {
-  const sourcePath = path.join(fixtureRoot, "packages", workspace, "src", relativePath);
+  const sourcePath = path.join(
+    fixtureRoot,
+    "packages",
+    workspace,
+    "src",
+    relativePath,
+  );
   mkdirSync(path.dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, source);
 };
 
 const cruise = (fixtureRoot: string): CruiseResult => {
   const result = Bun.spawnSync(
-    [DEPCRUISE_BINARY, "--config", DEPCRUISE_CONFIG, "--output-type", "err-long", "packages"],
+    [
+      DEPCRUISE_BINARY,
+      "--config",
+      DEPCRUISE_CONFIG,
+      "--output-type",
+      "err-long",
+      "packages",
+    ],
     {
       cwd: fixtureRoot,
       env: { ...process.env, NODE_PATH: REPOSITORY_NODE_MODULES },
@@ -149,11 +181,14 @@ const cruise = (fixtureRoot: string): CruiseResult => {
 };
 
 const checkManifests = (fixtureRoot: string): CruiseResult => {
-  const result = Bun.spawnSync([process.execPath, "scripts/check-workspace-manifests.ts"], {
-    cwd: fixtureRoot,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+  const result = Bun.spawnSync(
+    [process.execPath, "scripts/check-workspace-manifests.ts"],
+    {
+      cwd: fixtureRoot,
+      stderr: "pipe",
+      stdout: "pipe",
+    },
+  );
   return {
     exitCode: result.exitCode,
     output: `${result.stdout.toString()}${result.stderr.toString()}`,
@@ -169,8 +204,17 @@ describe("workspace dependency boundaries", () => {
       fixtureRoot,
       workspace: "core",
     });
-    addWorkspace({ dependencies: [{ workspace: "core" }], fixtureRoot, workspace: "agents" });
-    writeSource(fixtureRoot, "docx-core", "index.ts", "export const model = 1;\n");
+    addWorkspace({
+      dependencies: [{ workspace: "core" }],
+      fixtureRoot,
+      workspace: "agents",
+    });
+    writeSource(
+      fixtureRoot,
+      "docx-core",
+      "index.ts",
+      "export const model = 1;\n",
+    );
     writeSource(
       fixtureRoot,
       "core",
@@ -198,7 +242,12 @@ describe("workspace dependency boundaries", () => {
       fixtureRoot,
       workspace: "docx-core",
     });
-    writeSource(fixtureRoot, "docx-core", "index.ts", "export const model = 1;\n");
+    writeSource(
+      fixtureRoot,
+      "docx-core",
+      "index.ts",
+      "export const model = 1;\n",
+    );
     writeSource(
       fixtureRoot,
       "agents",
@@ -238,7 +287,9 @@ describe("workspace dependency boundaries", () => {
     expect(cruiseResult.output).toContain("core-uses-package-contracts");
     expect(cruiseResult.output).toContain("required.cjs");
     expect(cruiseResult.output).toContain("dynamic.mjs");
-    expect(cruiseResult.output.match(/docx-core-workspace-dependencies/gu)).toHaveLength(2);
+    expect(
+      cruiseResult.output.match(/docx-core-workspace-dependencies/gu),
+    ).toHaveLength(2);
   });
 
   test.each(["flat", "nested"] as const)(
@@ -248,7 +299,10 @@ describe("workspace dependency boundaries", () => {
       addWorkspace({ fixtureRoot, workspace: "docx-core" });
       addWorkspace({ fixtureRoot, workspace: "core" });
       addWorkspace({ fixtureRoot, workspace: "agents" });
-      const moduleRoot = path.join(fixtureRoot, "node_modules/prosemirror-model");
+      const moduleRoot = path.join(
+        fixtureRoot,
+        "node_modules/prosemirror-model",
+      );
       const frameworkRoot =
         layout === "flat"
           ? moduleRoot
@@ -266,15 +320,24 @@ describe("workspace dependency boundaries", () => {
           types: "dist/index.d.ts",
         }),
       );
-      writeFileSync(path.join(frameworkRoot, "dist/index.js"), "exports.Node = class Node {};\n");
-      writeFileSync(path.join(frameworkRoot, "dist/index.d.ts"), "export declare class Node {}\n");
+      writeFileSync(
+        path.join(frameworkRoot, "dist/index.js"),
+        "exports.Node = class Node {};\n",
+      );
+      writeFileSync(
+        path.join(frameworkRoot, "dist/index.d.ts"),
+        "export declare class Node {}\n",
+      );
       const forbiddenSources = {
-        "ops/static.ts": 'import { Node } from "prosemirror-model";\nexport const node = Node;\n',
+        "ops/static.ts":
+          'import { Node } from "prosemirror-model";\nexport const node = Node;\n',
         "model/type.ts":
           'import type { Node } from "prosemirror-model";\nexport type EditorNode = Node;\n',
         "serialize/reexport.ts": 'export { Node } from "prosemirror-model";\n',
-        "projection/dynamic.ts": 'export const load = () => import("prosemirror-model");\n',
-        "parse/required.cjs": 'module.exports = require("prosemirror-model");\n',
+        "projection/dynamic.ts":
+          'export const load = () => import("prosemirror-model");\n',
+        "parse/required.cjs":
+          'module.exports = require("prosemirror-model");\n',
       };
       for (const [relativePath, source] of Object.entries(forbiddenSources)) {
         writeSource(fixtureRoot, "docx-core", relativePath, source);
@@ -289,11 +352,13 @@ describe("workspace dependency boundaries", () => {
       const result = cruise(fixtureRoot);
 
       expect(result.exitCode, result.output).not.toBe(0);
-      expect(result.output.match(/docx-core-stays-framework-free/gu)).toHaveLength(
-        Object.keys(forbiddenSources).length,
-      );
+      expect(
+        result.output.match(/docx-core-stays-framework-free/gu),
+      ).toHaveLength(Object.keys(forbiddenSources).length);
       for (const relativePath of Object.keys(forbiddenSources)) {
-        expect(result.output).toContain(`packages/docx-core/src/${relativePath}`);
+        expect(result.output).toContain(
+          `packages/docx-core/src/${relativePath}`,
+        );
       }
       expect(result.output).not.toContain("packages/core/src/editor.ts");
     },
@@ -308,7 +373,11 @@ describe("workspace dependency boundaries", () => {
       fixtureRoot,
       workspace: "core",
     });
-    addWorkspace({ dependencies: [{ workspace: "core" }], fixtureRoot, workspace: "agents" });
+    addWorkspace({
+      dependencies: [{ workspace: "core" }],
+      fixtureRoot,
+      workspace: "agents",
+    });
 
     const result = checkManifests(fixtureRoot);
 

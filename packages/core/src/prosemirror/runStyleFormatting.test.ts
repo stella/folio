@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { schema } from "./schema";
 import { paragraphRunStyleContext } from "./runStyleFormatting";
+import { schema } from "./schema";
 
 describe("paragraphRunStyleContext", () => {
   test("discards a table run base after the paragraph style changes", () => {
@@ -18,7 +18,10 @@ describe("paragraphRunStyleContext", () => {
       resolveParagraphStyle: () => ({ runFormatting: { fontSize: 28 } }),
     };
 
-    expect(paragraphRunStyleContext(paragraph, styleResolver).baseParagraphFormatting).toEqual({
+    expect(
+      paragraphRunStyleContext(paragraph, styleResolver)
+        .baseParagraphFormatting,
+    ).toEqual({
       fontSize: 28,
     });
   });

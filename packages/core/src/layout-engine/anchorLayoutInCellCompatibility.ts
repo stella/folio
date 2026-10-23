@@ -20,4 +20,5 @@ const FIRST_ALWAYS_IN_CELL_COMPATIBILITY_MODE = 15;
 export const resolveAnchorLayoutInCellCompatibility = (
   compatibilityMode: number | undefined,
 ): boolean =>
-  compatibilityMode !== undefined && compatibilityMode >= FIRST_ALWAYS_IN_CELL_COMPATIBILITY_MODE;
+  compatibilityMode !== undefined &&
+  compatibilityMode >= FIRST_ALWAYS_IN_CELL_COMPATIBILITY_MODE;

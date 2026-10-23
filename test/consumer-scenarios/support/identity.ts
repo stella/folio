@@ -11,7 +11,10 @@ type ContentRow = ReturnType<Reviewer["getContent"]>[number];
 type Snapshot = ReturnType<Reviewer["snapshot"]>;
 
 type IdentifiedRow = Pick<ContentRow, "id" | "idStability">;
-type IdentityPairOptions<Left extends IdentifiedRow, Right extends IdentifiedRow> = {
+type IdentityPairOptions<
+  Left extends IdentifiedRow,
+  Right extends IdentifiedRow,
+> = {
   leftRows: readonly Left[];
   rightRows: readonly Right[];
   /** Stable authored ids from the live reviewer, including rows outside a saved baseline. */
@@ -30,7 +33,10 @@ const withoutIdStability = <Row extends IdentifiedRow>(row: Row) => {
   return projected;
 };
 
-const identityAliases = <Left extends IdentifiedRow, Right extends IdentifiedRow>({
+const identityAliases = <
+  Left extends IdentifiedRow,
+  Right extends IdentifiedRow,
+>({
   leftRows,
   rightRows,
   stableIds = new Set(),
@@ -63,7 +69,10 @@ const identityAliases = <Left extends IdentifiedRow, Right extends IdentifiedRow
 };
 
 /** Compare content rows while treating only paired positional identity as ordinal. */
-export const projectContentPair = <Left extends IdentifiedRow, Right extends IdentifiedRow>({
+export const projectContentPair = <
+  Left extends IdentifiedRow,
+  Right extends IdentifiedRow,
+>({
   leftRows,
   rightRows,
   stableIds,
@@ -71,11 +80,17 @@ export const projectContentPair = <Left extends IdentifiedRow, Right extends Ide
   const identity = identityAliases({ leftRows, rightRows, stableIds });
   const left = leftRows.map((row, index) => {
     if (!identity.leftPositional.has(index)) return row;
-    return { ...withoutIdStability(row), id: identity.leftAliases.get(row.id) ?? row.id };
+    return {
+      ...withoutIdStability(row),
+      id: identity.leftAliases.get(row.id) ?? row.id,
+    };
   });
   const right = rightRows.map((row, index) => {
     if (!identity.rightPositional.has(index)) return row;
-    return { ...withoutIdStability(row), id: identity.rightAliases.get(row.id) ?? row.id };
+    return {
+      ...withoutIdStability(row),
+      id: identity.rightAliases.get(row.id) ?? row.id,
+    };
   });
   return { left, right, ...identity };
 };

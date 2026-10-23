@@ -1,25 +1,39 @@
 import type { Transaction } from "prosemirror-state";
 import { AddMarkStep, RemoveMarkStep } from "prosemirror-transform";
 
-import { sweepPositions, type PositionQuery } from "../prosemirror/positionSweep";
+import {
+  type PositionQuery,
+  sweepPositions,
+} from "../prosemirror/positionSweep";
 import type { DirtyRange } from "./incrementalMeasure";
 
-export function getTransactionDirtyRange(transaction: Transaction): DirtyRange | null {
+export function getTransactionDirtyRange(
+  transaction: Transaction,
+): DirtyRange | null {
   // Each step's changed range is carried through the steps after it. The sweep
   // maps them all in one pass; slicing the mapping per step would walk the
   // rest of the transaction once per step.
   const queries: PositionQuery[] = [];
   const extend = (newStart: number, newEnd: number, from: number): void => {
-    queries.push({ pos: newStart, assoc: -1, from }, { pos: newEnd, assoc: 1, from });
+    queries.push(
+      { pos: newStart, assoc: -1, from },
+      { pos: newEnd, assoc: 1, from },
+    );
   };
 
-  for (let stepIndex = 0; stepIndex < transaction.mapping.maps.length; stepIndex += 1) {
+  for (
+    let stepIndex = 0;
+    stepIndex < transaction.mapping.maps.length;
+    stepIndex += 1
+  ) {
     const map = transaction.mapping.maps[stepIndex];
     if (!map) {
       continue;
     }
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap API
-    map.forEach((_oldStart, _oldEnd, newStart, newEnd) => extend(newStart, newEnd, stepIndex + 1));
+    map.forEach((_oldStart, _oldEnd, newStart, newEnd) =>
+      extend(newStart, newEnd, stepIndex + 1),
+    );
 
     // AddMarkStep / RemoveMarkStep produce an empty StepMap (mark changes don't
     // move positions), so the loop above misses them and the incremental

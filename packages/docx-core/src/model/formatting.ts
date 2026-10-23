@@ -5,16 +5,16 @@
  * are formatted in OOXML (w:rPr, w:pPr, w:tblPr, etc.).
  */
 
-import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
+import type { BorderSpec, ColorValue, ShadingProperties } from "./colors";
 import type {
   ParagraphAlignment,
   TableAlignment,
   TabStopAlignment,
   TextDirection,
 } from "./ooxmlEnumerations.gen";
-import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
 import type { OutlineLevel } from "./outlineLevel";
 import type { ParagraphNumberingOverride } from "./paragraphNumbering";
+import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
 
 /** Formatting journals retain an explicitly undefined own field. */
 type OwnFieldPresence<Formatting> = {
@@ -245,7 +245,8 @@ export type { TextDirection };
 /**
  * Tab leader character
  */
-export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
+export type TabLeader =
+  "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
 
 /**
  * Tab stop definition

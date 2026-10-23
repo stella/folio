@@ -22,12 +22,18 @@ const CANDIDATES = [
  */
 describe("selectFailure", () => {
   test("without a selector it takes the file's first failure", () => {
-    expect(selectFailure(CANDIDATES, undefined)).toBe(CANDIDATES[0] as CorpusFailure);
+    expect(selectFailure(CANDIDATES, undefined)).toBe(
+      CANDIDATES[0] as CorpusFailure,
+    );
   });
 
   test("a selector picks the one signature that contains it", () => {
-    expect(selectFailure(CANDIDATES, "italic")).toBe(CANDIDATES[1] as CorpusFailure);
-    expect(selectFailure(CANDIDATES, "length changed")).toBe(CANDIDATES[2] as CorpusFailure);
+    expect(selectFailure(CANDIDATES, "italic")).toBe(
+      CANDIDATES[1] as CorpusFailure,
+    );
+    expect(selectFailure(CANDIDATES, "length changed")).toBe(
+      CANDIDATES[2] as CorpusFailure,
+    );
   });
 
   /**
@@ -35,8 +41,14 @@ describe("selectFailure", () => {
    * of evaluations before it shows, and the candidates are worth reading.
    */
   test("an ambiguous or unmatched selector names the candidates", () => {
-    expect(() => selectFailure(CANDIDATES, "true became false")).toThrow(/matches 2/u);
-    expect(() => selectFailure(CANDIDATES, "underline")).toThrow(/matches none/u);
-    expect(() => selectFailure(CANDIDATES, "underline")).toThrow(/length changed/u);
+    expect(() => selectFailure(CANDIDATES, "true became false")).toThrow(
+      /matches 2/u,
+    );
+    expect(() => selectFailure(CANDIDATES, "underline")).toThrow(
+      /matches none/u,
+    );
+    expect(() => selectFailure(CANDIDATES, "underline")).toThrow(
+      /length changed/u,
+    );
   });
 });

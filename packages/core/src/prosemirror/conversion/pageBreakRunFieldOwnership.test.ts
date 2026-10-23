@@ -10,7 +10,7 @@ import { createEmptyDocument } from "../../utils/createDocument";
 import { schema } from "../schema";
 import { validateProseMirrorDocument } from "../validation";
 import { fromProseDoc } from "./fromProseDoc";
-import { type ToProseDocOptions, toProseDoc } from "./toProseDoc";
+import { toProseDoc, type ToProseDocOptions } from "./toProseDoc";
 
 const REVISION = {
   id: 91,
@@ -86,7 +86,11 @@ describe("page-break run field ownership", () => {
         formatting: { underline: { style: "single" as const } },
         content: [
           { type: "text" as const, text: "A" },
-          { type: "break" as const, breakType: "page" as const, clear: "all" as const },
+          {
+            type: "break" as const,
+            breakType: "page" as const,
+            clear: "all" as const,
+          },
           { type: "text" as const, text: "B" },
         ],
       };
@@ -115,10 +119,14 @@ describe("page-break run field ownership", () => {
       const prose = toProseDoc(source);
       const structuredField = prose.firstChild?.firstChild;
       expect(structuredField?.type.name).toBe("structuredField");
-      expect(structuredField?.marks.some((mark) => mark.type.name === "insertion")).toBe(true);
+      expect(
+        structuredField?.marks.some((mark) => mark.type.name === "insertion"),
+      ).toBe(true);
       expect(structuredField?.child(1).type.name).toBe("pageBreakRun");
 
-      const roundTripped = fromProseDoc(prose, source, { stylesheetSource: { type: "package" } });
+      const roundTripped = fromProseDoc(prose, source, {
+        stylesheetSource: { type: "package" },
+      });
       const paragraph = roundTripped.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") {
         throw new Error("Expected paragraph");
@@ -149,7 +157,13 @@ describe("page-break run field ownership", () => {
       const resultRun = {
         type: "run" as const,
         formatting: { italic: true },
-        content: [{ type: "break" as const, breakType: "page" as const, clear: "left" as const }],
+        content: [
+          {
+            type: "break" as const,
+            breakType: "page" as const,
+            clear: "left" as const,
+          },
+        ],
       };
       const field =
         fieldType === "simpleField"
@@ -166,7 +180,9 @@ describe("page-break run field ownership", () => {
               fieldCode: [],
               fieldResult: [resultRun],
             };
-      source.package.document.content = [{ type: "paragraph", content: [field] }];
+      source.package.document.content = [
+        { type: "paragraph", content: [field] },
+      ];
 
       const firstModel = fromProseDoc(toProseDoc(source), source, {
         stylesheetSource: { type: "package" },
@@ -178,7 +194,9 @@ describe("page-break run field ownership", () => {
       });
       const secondBuffer = await createDocx(secondModel);
 
-      expect(await documentXml(secondBuffer)).toBe(await documentXml(firstBuffer));
+      expect(await documentXml(secondBuffer)).toBe(
+        await documentXml(firstBuffer),
+      );
       const paragraph = secondModel.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") {
         throw new Error("Expected paragraph");
@@ -208,7 +226,10 @@ describe("page-break run field ownership", () => {
             type: "run",
             content: [{ type: "break", breakType: "page" }],
           };
-          const unsupportedRun: Run = { type: "run", content: [unsupportedContent] };
+          const unsupportedRun: Run = {
+            type: "run",
+            content: [unsupportedContent],
+          };
           const field =
             fieldKind === "simpleField"
               ? {
@@ -269,14 +290,19 @@ describe("page-break run field ownership", () => {
       source.package.document.content = [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "break", breakType: "page" }] }, field],
+          content: [
+            { type: "run", content: [{ type: "break", breakType: "page" }] },
+            field,
+          ],
         },
       ];
 
       const details: (string | undefined)[] = [];
       toProseDoc(source, { warn: (report) => details.push(report.detail) });
       expect(details).not.toContain(
-        approximatedFieldResultDetail(APPROXIMATED_FIELD_RESULT_CONTENT.instrText),
+        approximatedFieldResultDetail(
+          APPROXIMATED_FIELD_RESULT_CONTENT.instrText,
+        ),
       );
     },
   );
@@ -331,7 +357,10 @@ describe("page-break run field ownership", () => {
           content: [
             {
               type: "run",
-              content: [{ type: "break", breakType: "page" }, unsupportedContent],
+              content: [
+                { type: "break", breakType: "page" },
+                unsupportedContent,
+              ],
             },
           ],
         },
@@ -340,7 +369,9 @@ describe("page-break run field ownership", () => {
       expectProjectionWarning(
         (options) => toProseDoc(source, options),
         `A page-break-bearing run also holds ${
-          unsupportedContent.type === "shape" ? "a text-box shape" : unsupportedContent.type
+          unsupportedContent.type === "shape"
+            ? "a text-box shape"
+            : unsupportedContent.type
         }`,
       );
     },
@@ -387,12 +418,19 @@ describe("page-break run field ownership", () => {
         _docxHyperlinkIndex: 1,
       });
       const pageBreak = schema.node("pageBreakRun", { clear: null });
-      let children = [pageBreak, schema.node("textBoxAnchor", { anchorId: "field:0" })];
+      let children = [
+        pageBreak,
+        schema.node("textBoxAnchor", { anchorId: "field:0" }),
+      ];
       if (unsupportedChild === "hyperlink") {
         children = [pageBreak.mark([hyperlink])];
       } else if (unsupportedChild === "bookmark") {
         children = [
-          schema.node("bookmarkBoundary", { type: "start", id: 4, name: "field" }),
+          schema.node("bookmarkBoundary", {
+            type: "start",
+            id: 4,
+            name: "field",
+          }),
           pageBreak,
           schema.node("bookmarkBoundary", { type: "end", id: 4 }),
         ];
@@ -407,19 +445,28 @@ describe("page-break run field ownership", () => {
         },
         children,
       );
-      const prose = schema.node("doc", null, [schema.node("paragraph", null, [structuredField])]);
+      const prose = schema.node("doc", null, [
+        schema.node("paragraph", null, [structuredField]),
+      ]);
 
       const validation = validateProseMirrorDocument(prose);
       expect(validation.valid).toBe(false);
-      let expectedMessage = "Complex field results cannot contain text-box anchors.";
+      let expectedMessage =
+        "Complex field results cannot contain text-box anchors.";
       if (unsupportedChild === "hyperlink") {
-        expectedMessage = "Complex field results cannot contain hyperlink content.";
+        expectedMessage =
+          "Complex field results cannot contain hyperlink content.";
       } else if (unsupportedChild === "bookmark") {
-        expectedMessage = "Complex field results cannot contain bookmark boundaries.";
+        expectedMessage =
+          "Complex field results cannot contain bookmark boundaries.";
       }
-      expect(validation.issues.map(({ message }) => message)).toContain(expectedMessage);
+      expect(validation.issues.map(({ message }) => message)).toContain(
+        expectedMessage,
+      );
       expect(() =>
-        fromProseDoc(prose, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(prose, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ).toThrow("Cannot convert invalid ProseMirror document to DOCX model");
     },
   );

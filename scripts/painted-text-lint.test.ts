@@ -28,10 +28,16 @@ const lintFixture = (fixture: string) => {
 
 describe("painted text DOM shape", () => {
   test("rejects direct-child assumptions", () => {
-    expect(lintFixture("painted-text.invalid.ts")).toEqual({ status: 1, violations: 4 });
+    expect(lintFixture("painted-text.invalid.ts")).toEqual({
+      status: 1,
+      violations: 4,
+    });
   });
 
   test("accepts descendant text streams", () => {
-    expect(lintFixture("painted-text.valid.ts")).toEqual({ status: 0, violations: 0 });
+    expect(lintFixture("painted-text.valid.ts")).toEqual({
+      status: 0,
+      violations: 0,
+    });
   });
 });

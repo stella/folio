@@ -1,8 +1,15 @@
-import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import type { ColorValue, Style, StyleDefinitions, TextFormatting, Theme } from "../types/document";
-import { resolveColorToHex } from "../utils/colorResolver";
-import { canonicalJson } from "../utils/canonicalJson";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
+
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import type {
+  ColorValue,
+  Style,
+  StyleDefinitions,
+  TextFormatting,
+  Theme,
+} from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
+import { resolveColorToHex } from "../utils/colorResolver";
 import { resolveThemeFont } from "../utils/fontResolver";
 
 export type ImportReferencedStyleDefinitionsOptions = {
@@ -26,15 +33,23 @@ export type ImportReferencedStyleDefinitionsResult =
     }
   | { status: "unalignable"; detail: string };
 
-const styleDependencies = ({ basedOn, link, next }: StyleDefinitions["styles"][number]) =>
-  [basedOn, link, next].filter((styleId): styleId is string => styleId !== undefined);
+const styleDependencies = ({
+  basedOn,
+  link,
+  next,
+}: StyleDefinitions["styles"][number]) =>
+  [basedOn, link, next].filter(
+    (styleId): styleId is string => styleId !== undefined,
+  );
 
 /** Numbering resources in the same transitive closure the style importer owns. */
 export const styleClosureNumberingReferences = (
   styles: StyleDefinitions | undefined,
   referencedStyleIds: readonly string[],
 ): { numId: number; level: number }[] => {
-  const definitions = new Map(styles?.styles.map((style) => [style.styleId, style]));
+  const definitions = new Map(
+    styles?.styles.map((style) => [style.styleId, style]),
+  );
   const pending = [...referencedStyleIds];
   const seen = new Set<string>();
   const references: { numId: number; level: number }[] = [];
@@ -63,7 +78,8 @@ const hasThemeReference = (value: unknown): boolean => {
   if (Array.isArray(value)) return value.some(hasThemeReference);
   if (typeof value !== "object" || value === null) return false;
   return Object.entries(value).some(
-    ([key, nested]) => key.toLowerCase().includes("theme") || hasThemeReference(nested),
+    ([key, nested]) =>
+      key.toLowerCase().includes("theme") || hasThemeReference(nested),
   );
 };
 
@@ -92,12 +108,16 @@ const languageForThemeFontSlot = ({
   formatting: TextFormatting;
   slot: ThemeFontSlot;
 }): string | undefined => {
-  if (slot === "eastAsia") return formatting.language?.eastAsia ?? formatting.language?.val;
-  if (slot === "cs") return formatting.language?.bidi ?? formatting.language?.val;
+  if (slot === "eastAsia")
+    return formatting.language?.eastAsia ?? formatting.language?.val;
+  if (slot === "cs")
+    return formatting.language?.bidi ?? formatting.language?.val;
   return formatting.language?.val;
 };
 
-const scriptForLanguage = (language: string | undefined): string | undefined => {
+const scriptForLanguage = (
+  language: string | undefined,
+): string | undefined => {
   if (!language || typeof Intl.Locale !== "function") return undefined;
   try {
     return new Intl.Locale(language).maximize().script;
@@ -117,7 +137,9 @@ const resolveThemeFontForFormatting = ({
   theme: Theme | undefined;
   themeRef: string;
 }): string | null => {
-  const script = scriptForLanguage(languageForThemeFontSlot({ formatting, slot }));
+  const script = scriptForLanguage(
+    languageForThemeFontSlot({ formatting, slot }),
+  );
   const themeFont = themeRef.toLowerCase().startsWith("major")
     ? theme?.fontScheme?.majorFont
     : theme?.fontScheme?.minorFont;
@@ -139,7 +161,10 @@ const materializeThemeTextFormatting = (
   if (hasThemeReference(formatting.shading)) return { status: "unalignable" };
   const color = materializeThemeColor(formatting.color, theme);
   if (formatting.color?.themeColor && !color) return { status: "unalignable" };
-  const underlineColor = materializeThemeColor(formatting.underline?.color, theme);
+  const underlineColor = materializeThemeColor(
+    formatting.underline?.color,
+    theme,
+  );
   if (formatting.underline?.color?.themeColor && !underlineColor) {
     return { status: "unalignable" };
   }
@@ -215,7 +240,8 @@ const materializeThemeTextFormatting = (
   };
 };
 
-type MaterializedStyleResult = { status: "ok"; style: Style } | { status: "unalignable" };
+type MaterializedStyleResult =
+  { status: "ok"; style: Style } | { status: "unalignable" };
 
 const materializeEffectiveStyle = ({
   style,
@@ -232,9 +258,15 @@ const materializeEffectiveStyle = ({
   const resolver = createStyleResolver(styles);
   const resolved =
     style.type === "character"
-      ? { paragraphFormatting: undefined, runFormatting: resolver.resolveRunStyle(style.styleId) }
+      ? {
+          paragraphFormatting: undefined,
+          runFormatting: resolver.resolveRunStyle(style.styleId),
+        }
       : resolver.resolveParagraphStyle(style.styleId);
-  if (materializeThemeReferences && hasThemeReference(resolved.paragraphFormatting)) {
+  if (
+    materializeThemeReferences &&
+    hasThemeReference(resolved.paragraphFormatting)
+  ) {
     return { status: "unalignable" };
   }
   const runFormatting = materializeThemeTextFormatting(
@@ -253,10 +285,13 @@ const materializeEffectiveStyle = ({
       theme,
       materializeThemeReferences,
     );
-    if (conditionalRunFormatting.status === "unalignable") return { status: "unalignable" };
+    if (conditionalRunFormatting.status === "unalignable")
+      return { status: "unalignable" };
     conditionalStyles.push({
       ...conditional,
-      ...(conditionalRunFormatting.formatting && { rPr: conditionalRunFormatting.formatting }),
+      ...(conditionalRunFormatting.formatting && {
+        rPr: conditionalRunFormatting.formatting,
+      }),
     });
   }
   const { basedOn: _basedOn, ...independent } = style;
@@ -290,7 +325,10 @@ const materializeEffectiveDefaultParagraphStyle = ({
   const resolved = createStyleResolver(styles).resolveParagraphStyle(undefined);
   const destinationResolved =
     createStyleResolver(destinationStyles).resolveParagraphStyle(undefined);
-  if (materializeThemeReferences && hasThemeReference(resolved.paragraphFormatting)) {
+  if (
+    materializeThemeReferences &&
+    hasThemeReference(resolved.paragraphFormatting)
+  ) {
     return { status: "unalignable" };
   }
   const runFormatting = materializeThemeTextFormatting(
@@ -300,14 +338,21 @@ const materializeEffectiveDefaultParagraphStyle = ({
   );
   if (runFormatting.status === "unalignable") return runFormatting;
   const sourceParagraphFormatting = resolved.paragraphFormatting;
-  const destinationParagraphFormatting = destinationResolved.paragraphFormatting;
+  const destinationParagraphFormatting =
+    destinationResolved.paragraphFormatting;
   const materializedSpacing = {
     ...(sourceParagraphFormatting?.spaceBefore === undefined &&
-      destinationParagraphFormatting?.spaceBefore !== undefined && { spaceBefore: 0 }),
+      destinationParagraphFormatting?.spaceBefore !== undefined && {
+        spaceBefore: 0,
+      }),
     ...(sourceParagraphFormatting?.spaceAfter === undefined &&
-      destinationParagraphFormatting?.spaceAfter !== undefined && { spaceAfter: 0 }),
+      destinationParagraphFormatting?.spaceAfter !== undefined && {
+        spaceAfter: 0,
+      }),
     ...(sourceParagraphFormatting?.lineSpacing === undefined &&
-      destinationParagraphFormatting?.lineSpacing !== undefined && { lineSpacing: 240 }),
+      destinationParagraphFormatting?.lineSpacing !== undefined && {
+        lineSpacing: 240,
+      }),
     ...(sourceParagraphFormatting?.lineSpacingRule === undefined &&
       destinationParagraphFormatting?.lineSpacingRule !== undefined && {
         lineSpacingRule: "auto" as const,
@@ -349,7 +394,8 @@ const effectiveDefaultParagraphFormattingMatches = ({
   destinationTheme: Theme | undefined;
   materializeThemeReferences: boolean;
 }): boolean => {
-  const sourceResolved = createStyleResolver(sourceStyles).resolveParagraphStyle(undefined);
+  const sourceResolved =
+    createStyleResolver(sourceStyles).resolveParagraphStyle(undefined);
   const destinationResolved =
     createStyleResolver(destinationStyles).resolveParagraphStyle(undefined);
   const sourceRunFormatting = materializeThemeTextFormatting(
@@ -365,8 +411,10 @@ const effectiveDefaultParagraphFormattingMatches = ({
   if (
     sourceRunFormatting.status === "unalignable" ||
     destinationRunFormatting.status === "unalignable" ||
-    (materializeThemeReferences && hasThemeReference(sourceResolved.paragraphFormatting)) ||
-    (materializeThemeReferences && hasThemeReference(destinationResolved.paragraphFormatting))
+    (materializeThemeReferences &&
+      hasThemeReference(sourceResolved.paragraphFormatting)) ||
+    (materializeThemeReferences &&
+      hasThemeReference(destinationResolved.paragraphFormatting))
   ) {
     return false;
   }
@@ -411,9 +459,15 @@ const remapImportedStyle = ({
   return {
     ...(isolatedDefaultStyleIds.has(style.styleId) ? withoutDefault : style),
     styleId: styleIdMap.get(style.styleId) ?? style.styleId,
-    ...(style.basedOn !== undefined && { basedOn: styleIdMap.get(style.basedOn) ?? style.basedOn }),
-    ...(style.link !== undefined && { link: styleIdMap.get(style.link) ?? style.link }),
-    ...(style.next !== undefined && { next: styleIdMap.get(style.next) ?? style.next }),
+    ...(style.basedOn !== undefined && {
+      basedOn: styleIdMap.get(style.basedOn) ?? style.basedOn,
+    }),
+    ...(style.link !== undefined && {
+      link: styleIdMap.get(style.link) ?? style.link,
+    }),
+    ...(style.next !== undefined && {
+      next: styleIdMap.get(style.next) ?? style.next,
+    }),
   };
 };
 
@@ -434,7 +488,9 @@ export const importReferencedStyleDefinitions = ({
   numberingReferenceMap,
 }: ImportReferencedStyleDefinitionsOptions): ImportReferencedStyleDefinitionsResult => {
   const sourceStyles =
-    originalSourceStyles && numberingReferenceMap && numberingReferenceMap.size > 0
+    originalSourceStyles &&
+    numberingReferenceMap &&
+    numberingReferenceMap.size > 0
       ? {
           ...originalSourceStyles,
           styles: originalSourceStyles.styles.map((style) => {
@@ -443,7 +499,8 @@ export const importReferencedStyleDefinitions = ({
               numbering?.kind === "reference"
                 ? numberingReferenceMap.get(numbering.numId)
                 : undefined;
-            if (numId === undefined || numbering?.kind !== "reference") return style;
+            if (numId === undefined || numbering?.kind !== "reference")
+              return style;
             return {
               ...style,
               pPr: {
@@ -480,14 +537,24 @@ export const importReferencedStyleDefinitions = ({
     };
   }
   if (!sourceStyles) {
-    return { status: "unalignable", detail: "the target has no style definitions" };
+    return {
+      status: "unalignable",
+      detail: "the target has no style definitions",
+    };
   }
   if (!destinationStyles) {
-    return { status: "unalignable", detail: "the base has no style definitions" };
+    return {
+      status: "unalignable",
+      detail: "the base has no style definitions",
+    };
   }
 
-  const sourceById = new Map(sourceStyles.styles.map((style) => [style.styleId, style]));
-  const destinationById = new Map(destinationStyles.styles.map((style) => [style.styleId, style]));
+  const sourceById = new Map(
+    sourceStyles.styles.map((style) => [style.styleId, style]),
+  );
+  const destinationById = new Map(
+    destinationStyles.styles.map((style) => [style.styleId, style]),
+  );
   const reserved = new Set(reservedStyleIds);
   const required = new Set<string>();
   const pending = [...requested];
@@ -498,14 +565,21 @@ export const importReferencedStyleDefinitions = ({
     }
     const source = sourceById.get(styleId);
     if (!source) {
-      return { status: "unalignable", detail: `referenced target style ${styleId} is missing` };
+      return {
+        status: "unalignable",
+        detail: `referenced target style ${styleId} is missing`,
+      };
     }
     required.add(styleId);
     pending.push(...styleDependencies(source));
   }
 
   const imported = [...required].toSorted();
-  const taken = new Set([...sourceById.keys(), ...destinationById.keys(), ...reserved]);
+  const taken = new Set([
+    ...sourceById.keys(),
+    ...destinationById.keys(),
+    ...reserved,
+  ]);
   const styleIdMap = new Map<string, string>();
   const isolatedDefaultStyleIds = new Set<string>();
   let aliasSequence = 1;
@@ -513,11 +587,18 @@ export const importReferencedStyleDefinitions = ({
     const source = sourceById.get(styleId);
     const destination = destinationById.get(styleId);
     if (!source) {
-      return { status: "unalignable", detail: `referenced target style ${styleId} is missing` };
+      return {
+        status: "unalignable",
+        detail: `referenced target style ${styleId} is missing`,
+      };
     }
     const conflictsWithBase =
-      destination !== undefined && canonicalJson(source) !== canonicalJson(destination);
-    if (conflictsWithBase || (!destination && (reserved.has(styleId) || source.default))) {
+      destination !== undefined &&
+      canonicalJson(source) !== canonicalJson(destination);
+    if (
+      conflictsWithBase ||
+      (!destination && (reserved.has(styleId) || source.default))
+    ) {
       const alias = nextAvailableStyleAlias({ taken, sequence: aliasSequence });
       aliasSequence += 1;
       taken.add(alias);
@@ -529,9 +610,13 @@ export const importReferencedStyleDefinitions = ({
   }
 
   const contextMatches =
-    canonicalJson(sourceStyles.docDefaults) === canonicalJson(destinationStyles.docDefaults) &&
+    canonicalJson(sourceStyles.docDefaults) ===
+      canonicalJson(destinationStyles.docDefaults) &&
     themesMatch(sourceTheme, destinationTheme);
-  const materializeThemeReferences = !themesMatch(sourceTheme, destinationTheme);
+  const materializeThemeReferences = !themesMatch(
+    sourceTheme,
+    destinationTheme,
+  );
   const additions = sourceStyles.styles.filter(
     ({ styleId }) =>
       required.has(styleId) &&
@@ -548,7 +633,12 @@ export const importReferencedStyleDefinitions = ({
     });
   if (contextMatches && !needsDefaultParagraphStyle) {
     if (additions.length === 0) {
-      return { status: "unchanged", styles: destinationStyles, styleIdMap, importedStyleIds: [] };
+      return {
+        status: "unchanged",
+        styles: destinationStyles,
+        styleIdMap,
+        importedStyleIds: [],
+      };
     }
     return {
       status: "imported",
@@ -568,7 +658,9 @@ export const importReferencedStyleDefinitions = ({
   const materializedStyles: Style[] = [];
   for (const style of additions) {
     if (contextMatches) {
-      materializedStyles.push(remapImportedStyle({ style, styleIdMap, isolatedDefaultStyleIds }));
+      materializedStyles.push(
+        remapImportedStyle({ style, styleIdMap, isolatedDefaultStyleIds }),
+      );
       continue;
     }
     const result = materializeEffectiveStyle({
@@ -584,13 +676,20 @@ export const importReferencedStyleDefinitions = ({
       };
     }
     materializedStyles.push(
-      remapImportedStyle({ style: result.style, styleIdMap, isolatedDefaultStyleIds }),
+      remapImportedStyle({
+        style: result.style,
+        styleIdMap,
+        isolatedDefaultStyleIds,
+      }),
     );
   }
   let defaultParagraphStyleId: string | undefined;
   let materializedDefaultParagraphStyle: Style | undefined;
   if (needsDefaultParagraphStyle) {
-    defaultParagraphStyleId = nextAvailableStyleAlias({ taken, sequence: aliasSequence });
+    defaultParagraphStyleId = nextAvailableStyleAlias({
+      taken,
+      sequence: aliasSequence,
+    });
     const result = materializeEffectiveDefaultParagraphStyle({
       styles: sourceStyles,
       destinationStyles,
@@ -601,14 +700,20 @@ export const importReferencedStyleDefinitions = ({
     if (result.status === "unalignable") {
       return {
         status: "unalignable",
-        detail: "default paragraph formatting cannot be isolated from the base formatting context",
+        detail:
+          "default paragraph formatting cannot be isolated from the base formatting context",
       };
     }
     materializedDefaultParagraphStyle = result.style;
     materializedStyles.push(result.style);
   }
   if (materializedStyles.length === 0) {
-    return { status: "unchanged", styles: destinationStyles, styleIdMap, importedStyleIds: [] };
+    return {
+      status: "unchanged",
+      styles: destinationStyles,
+      styleIdMap,
+      importedStyleIds: [],
+    };
   }
   const candidateStyles = {
     ...destinationStyles,
@@ -645,8 +750,10 @@ export const importReferencedStyleDefinitions = ({
     if (
       sourceRunFormatting.status === "unalignable" ||
       candidateRunFormatting.status === "unalignable" ||
-      (materializeThemeReferences && hasThemeReference(sourceResolved.paragraphFormatting)) ||
-      (materializeThemeReferences && hasThemeReference(candidateResolved.paragraphFormatting)) ||
+      (materializeThemeReferences &&
+        hasThemeReference(sourceResolved.paragraphFormatting)) ||
+      (materializeThemeReferences &&
+        hasThemeReference(candidateResolved.paragraphFormatting)) ||
       canonicalJson({
         pPr: sourceResolved.paragraphFormatting,
         rPr: sourceRunFormatting.formatting,
@@ -667,8 +774,13 @@ export const importReferencedStyleDefinitions = ({
       paragraphFormatting: materializedDefaultParagraphStyle?.pPr,
       runFormatting: materializedDefaultParagraphStyle?.rPr,
     };
-    const candidateResolved = candidateResolver.resolveParagraphStyle(defaultParagraphStyleId);
-    const sourceRunFormatting = { status: "ok" as const, formatting: sourceResolved.runFormatting };
+    const candidateResolved = candidateResolver.resolveParagraphStyle(
+      defaultParagraphStyleId,
+    );
+    const sourceRunFormatting = {
+      status: "ok" as const,
+      formatting: sourceResolved.runFormatting,
+    };
     const candidateRunFormatting = materializeThemeTextFormatting(
       candidateResolved.runFormatting,
       destinationTheme,
@@ -676,7 +788,8 @@ export const importReferencedStyleDefinitions = ({
     );
     if (
       candidateRunFormatting.status === "unalignable" ||
-      (materializeThemeReferences && hasThemeReference(candidateResolved.paragraphFormatting)) ||
+      (materializeThemeReferences &&
+        hasThemeReference(candidateResolved.paragraphFormatting)) ||
       canonicalJson({
         pPr: sourceResolved.paragraphFormatting,
         rPr: sourceRunFormatting.formatting,
@@ -688,7 +801,8 @@ export const importReferencedStyleDefinitions = ({
     ) {
       return {
         status: "unalignable",
-        detail: "default paragraph formatting cannot be isolated from the base formatting context",
+        detail:
+          "default paragraph formatting cannot be isolated from the base formatting context",
       };
     }
   }

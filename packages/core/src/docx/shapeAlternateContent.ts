@@ -1,4 +1,8 @@
-import type { Shape, ShapeAlternateContent, ShapeContent } from "../types/content";
+import type {
+  Shape,
+  ShapeAlternateContent,
+  ShapeContent,
+} from "../types/content";
 import { canonicalJson } from "../utils/canonicalJson";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { getChildElements, getLocalName, type XmlElement } from "./xmlParser";
@@ -17,7 +21,10 @@ const shapeFingerprint = (shape: Shape): string => canonicalJson(shape);
  * drawing's shape alone: the siblings are parsed into their own run content,
  * and replaying the whole element would write them twice.
  */
-const isSoleBranchChild = (branch: XmlElement, element: XmlElement): boolean => {
+const isSoleBranchChild = (
+  branch: XmlElement,
+  element: XmlElement,
+): boolean => {
   const children = getChildElements(branch);
   return children.length === 1 && children[0] === element;
 };
@@ -53,7 +60,10 @@ export const captureShapeAlternateContent = ({
 export const refingerprintShapeAlternateContent = (
   shape: Shape,
   verbatimXml: string,
-): ShapeAlternateContent => ({ verbatimXml, verbatimFingerprint: shapeFingerprint(shape) });
+): ShapeAlternateContent => ({
+  verbatimXml,
+  verbatimFingerprint: shapeFingerprint(shape),
+});
 
 /**
  * The captured `mc:AlternateContent` to write in place of the shape's drawing,
@@ -62,7 +72,9 @@ export const refingerprintShapeAlternateContent = (
  * Replay requires the modeled shape to still match the capture. An edited shape
  * is regenerated as a bare `w:drawing` without the stale Fallback.
  */
-export const replayableShapeAlternateContent = (content: ShapeContent): string | undefined => {
+export const replayableShapeAlternateContent = (
+  content: ShapeContent,
+): string | undefined => {
   const captured = content.alternateContent;
   if (captured === undefined) {
     return undefined;

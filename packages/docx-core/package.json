@@ -49,7 +49,6 @@
     "typecheck": "bun check --no-pretty --all --project=tsconfig.build.json",
     "wasm:check": "bun ../../scripts/build-docx-kernel-wasm.ts --check",
     "wasm:generate": "bun ../../scripts/build-docx-kernel-wasm.ts --write",
-    "format": "oxfmt .",
     "prepack": "bun run build"
   },
   "dependencies": {
@@ -62,7 +61,7 @@
     "marked": "^18.1.1"
   },
   "devDependencies": {
-    "bun-types": "1.4.3",
+    "bun-types": "1.4.4",
     "tsdown": "0.23.1"
   }
 }

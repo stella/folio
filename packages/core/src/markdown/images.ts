@@ -64,7 +64,9 @@ export function registerImage(
     mimeType: media.mimeType,
     alt: image?.alt ?? image?.title ?? image?.filename,
   };
-  const virtualPath = ctx.opts.imagePath ? ctx.opts.imagePath(meta) : defaultVirtualPath(meta, ext);
+  const virtualPath = ctx.opts.imagePath
+    ? ctx.opts.imagePath(meta)
+    : defaultVirtualPath(meta, ext);
   const data = toUint8(media.data);
   const base64 = media.base64 ?? bytesToBase64(data);
   const dataUrl = media.dataUrl ?? `data:${media.mimeType};base64,${base64}`;

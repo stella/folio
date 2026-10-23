@@ -9,7 +9,10 @@
       <button
         v-for="preset in presets"
         :key="preset.id"
-        :class="['tsg__item', { 'tsg__item--selected': currentStyleId === preset.id }]"
+        :class="[
+          'tsg__item',
+          { 'tsg__item--selected': currentStyleId === preset.id },
+        ]"
         :title="presetName(preset)"
         @mousedown.prevent="$emit('apply', preset.id)"
       >
@@ -31,8 +34,8 @@
 import { useTranslation } from "../../i18n";
 import {
   BUILTIN_TABLE_STYLES,
-  TABLE_STYLE_NAME_KEYS,
   getPreviewCells,
+  TABLE_STYLE_NAME_KEYS,
   type TableStylePreset,
 } from "../tableStylePresets";
 

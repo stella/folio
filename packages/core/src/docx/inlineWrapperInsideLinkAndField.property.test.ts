@@ -22,13 +22,15 @@
  * own inline content: a wrapper inside `w:fldSimple` comes back inside it.
  */
 
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, ParagraphContent } from "../types/document";
@@ -40,7 +42,9 @@ const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const parseParagraphXml = (body: string): Paragraph => {
-  const root = parseXmlDocument(`<w:p xmlns:w="${W}" xmlns:r="${R}">${body}</w:p>`);
+  const root = parseXmlDocument(
+    `<w:p xmlns:w="${W}" xmlns:r="${R}">${body}</w:p>`,
+  );
   if (!root) {
     throw new Error("Failed to parse the paragraph fixture");
   }
@@ -49,7 +53,9 @@ const parseParagraphXml = (body: string): Paragraph => {
 
 /** The serializer writes a bare `<w:p>`, so re-reading it needs the bindings back. */
 const reparse = (saved: string): Paragraph =>
-  parseParagraphXml(saved.slice(saved.indexOf(">") + 1, saved.lastIndexOf("</w:p>")));
+  parseParagraphXml(
+    saved.slice(saved.indexOf(">") + 1, saved.lastIndexOf("</w:p>")),
+  );
 
 const wrapParagraph = (paragraph: Paragraph): Document => ({
   package: { document: { content: [paragraph] } },
@@ -84,7 +90,9 @@ const shapeOf = (item: ParagraphContent): Shape => {
     case "run":
       return {
         of: "text",
-        text: item.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+        text: item.content
+          .map((part) => (part.type === "text" ? part.text : ""))
+          .join(""),
       };
     case "inlineWrapper":
       return {
@@ -96,15 +104,24 @@ const shapeOf = (item: ParagraphContent): Shape => {
         content: item.content.map(shapeOf),
       };
     case "hyperlink":
-      return { of: "hyperlink", anchor: item.anchor, content: item.children.map(shapeOf) };
+      return {
+        of: "hyperlink",
+        anchor: item.anchor,
+        content: item.children.map(shapeOf),
+      };
     case "simpleField":
-      return { of: "field", instruction: item.instruction, content: item.content.map(shapeOf) };
+      return {
+        of: "field",
+        instruction: item.instruction,
+        content: item.content.map(shapeOf),
+      };
     default:
       return { of: "other", type: item.type };
   }
 };
 
-const shapesOf = (paragraph: Paragraph): Shape[] => paragraph.content.map(shapeOf);
+const shapesOf = (paragraph: Paragraph): Shape[] =>
+  paragraph.content.map(shapeOf);
 
 /** Whether anything in the paragraph came back as opaque bytes. */
 const holdsCapture = (items: readonly ParagraphContent[]): boolean =>
@@ -125,7 +142,10 @@ const holdsCapture = (items: readonly ParagraphContent[]): boolean =>
 
 type Layer = { xml: (inner: string) => string; shape: string };
 
-const bidiLayer = (control: "override" | "embedding", direction?: "ltr" | "rtl"): Layer => {
+const bidiLayer = (
+  control: "override" | "embedding",
+  direction?: "ltr" | "rtl",
+): Layer => {
   const tag = control === "override" ? "bdo" : "dir";
   const value = direction === undefined ? "" : ` w:val="${direction}"`;
   return {
@@ -166,7 +186,9 @@ const layerArbitrary: fc.Arbitrary<Layer> = fc.oneof(
       uri: fc.constantFrom("urn:example:tags", undefined),
       properties: fc.constantFrom("v", undefined),
     })
-    .map(({ kind, element, uri, properties }) => taggedLayer(kind, element, uri, properties)),
+    .map(({ kind, element, uri, properties }) =>
+      taggedLayer(kind, element, uri, properties),
+    ),
 );
 
 /** One or two wrappers, outermost first. */
@@ -191,8 +213,10 @@ const nest = (layers: readonly Layer[], inner: string): string => {
 const linkOverWrappers = (layers: readonly Layer[]): string =>
   `<w:hyperlink w:anchor="${ANCHOR}">${nest(layers, RUN)}</w:hyperlink>`;
 
-const outerWrapperOverLinkOverWrappers = (outer: Layer, layers: readonly Layer[]): string =>
-  outer.xml(linkOverWrappers(layers));
+const outerWrapperOverLinkOverWrappers = (
+  outer: Layer,
+  layers: readonly Layer[],
+): string => outer.xml(linkOverWrappers(layers));
 
 const linkOverEmptyWrappers = (layers: readonly Layer[]): string =>
   `<w:hyperlink w:anchor="${ANCHOR}">${nest(layers, "")}</w:hyperlink>`;
@@ -244,8 +268,12 @@ describe("a transparent wrapper inside a link, through parse and save", () => {
         fc.property(layersArbitrary, (layers) => {
           const authored = parseParagraphXml(linkOverWrappers(layers));
           expect(holdsCapture(authored.content)).toBe(false);
-          expect(shapesOf(authored)).toEqual([linkShape([wrappersAround(layers, textShape)])]);
-          expect(shapesOf(reparse(serializeParagraph(authored)))).toEqual(shapesOf(authored));
+          expect(shapesOf(authored)).toEqual([
+            linkShape([wrappersAround(layers, textShape)]),
+          ]);
+          expect(shapesOf(reparse(serializeParagraph(authored)))).toEqual(
+            shapesOf(authored),
+          );
         }),
         propertyConfig({ numRuns: 200 }),
       );
@@ -258,7 +286,9 @@ describe("a transparent wrapper inside a link, through parse and save", () => {
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const once = serializeParagraph(parseParagraphXml(linkOverWrappers(layers)));
+          const once = serializeParagraph(
+            parseParagraphXml(linkOverWrappers(layers)),
+          );
           expect(serializeParagraph(reparse(once))).toBe(once);
         }),
         propertyConfig({ numRuns: 200 }),
@@ -277,9 +307,15 @@ describe("a transparent wrapper inside a simple field, through parse and save", 
           const authored = parseParagraphXml(fieldOverWrappers(layers));
           expect(holdsCapture(authored.content)).toBe(false);
           expect(shapesOf(authored)).toEqual([
-            { of: "field", instruction: INSTRUCTION, content: [wrappersAround(layers, textShape)] },
+            {
+              of: "field",
+              instruction: INSTRUCTION,
+              content: [wrappersAround(layers, textShape)],
+            },
           ]);
-          expect(shapesOf(reparse(serializeParagraph(authored)))).toEqual(shapesOf(authored));
+          expect(shapesOf(reparse(serializeParagraph(authored)))).toEqual(
+            shapesOf(authored),
+          );
         }),
         propertyConfig({ numRuns: 200 }),
       );
@@ -292,7 +328,9 @@ describe("a transparent wrapper inside a simple field, through parse and save", 
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const once = serializeParagraph(parseParagraphXml(fieldOverWrappers(layers)));
+          const once = serializeParagraph(
+            parseParagraphXml(fieldOverWrappers(layers)),
+          );
           expect(serializeParagraph(reparse(once))).toBe(once);
         }),
         propertyConfig({ numRuns: 200 }),
@@ -308,8 +346,12 @@ describe("a transparent wrapper inside a link, through the editor", () => {
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const once = throughTheEditor(parseParagraphXml(linkOverEmptyWrappers(layers)));
-          expect(shapesOf(once)).toEqual([linkShape([emptyWrappersAround(layers)])]);
+          const once = throughTheEditor(
+            parseParagraphXml(linkOverEmptyWrappers(layers)),
+          );
+          expect(shapesOf(once)).toEqual([
+            linkShape([emptyWrappersAround(layers)]),
+          ]);
           expect(shapesOf(throughTheEditor(once))).toEqual(shapesOf(once));
         }),
         propertyConfig({ numRuns: 200 }),
@@ -323,8 +365,12 @@ describe("a transparent wrapper inside a link, through the editor", () => {
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const reopened = throughTheEditor(parseParagraphXml(linkOverWrappers(layers)));
-          expect(shapesOf(reopened)).toEqual([linkShape([wrappersAround(layers, textShape)])]);
+          const reopened = throughTheEditor(
+            parseParagraphXml(linkOverWrappers(layers)),
+          );
+          expect(shapesOf(reopened)).toEqual([
+            linkShape([wrappersAround(layers, textShape)]),
+          ]);
         }),
         propertyConfig({ numRuns: 200 }),
       );
@@ -342,7 +388,10 @@ describe("a transparent wrapper inside a link, through the editor", () => {
             parseParagraphXml(outerWrapperOverLinkOverWrappers(outer, layers)),
           );
           expect(shapesOf(reopened)).toEqual([
-            wrappersAround([outer], linkShape([wrappersAround(layers, textShape)])),
+            wrappersAround(
+              [outer],
+              linkShape([wrappersAround(layers, textShape)]),
+            ),
           ]);
         }),
         propertyConfig({ numRuns: 200 }),
@@ -356,7 +405,9 @@ describe("a transparent wrapper inside a link, through the editor", () => {
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const once = throughTheEditor(parseParagraphXml(linkOverWrappers(layers)));
+          const once = throughTheEditor(
+            parseParagraphXml(linkOverWrappers(layers)),
+          );
           expect(shapesOf(throughTheEditor(once))).toEqual(shapesOf(once));
         }),
         propertyConfig({ numRuns: 200 }),
@@ -372,9 +423,15 @@ describe("a transparent wrapper inside a simple field, through the editor", () =
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const reopened = throughTheEditor(parseParagraphXml(fieldOverWrappers(layers)));
+          const reopened = throughTheEditor(
+            parseParagraphXml(fieldOverWrappers(layers)),
+          );
           expect(shapesOf(reopened)).toEqual([
-            { of: "field", instruction: INSTRUCTION, content: [wrappersAround(layers, textShape)] },
+            {
+              of: "field",
+              instruction: INSTRUCTION,
+              content: [wrappersAround(layers, textShape)],
+            },
           ]);
         }),
         propertyConfig({ numRuns: 200 }),
@@ -388,7 +445,9 @@ describe("a transparent wrapper inside a simple field, through the editor", () =
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const once = throughTheEditor(parseParagraphXml(fieldOverWrappers(layers)));
+          const once = throughTheEditor(
+            parseParagraphXml(fieldOverWrappers(layers)),
+          );
           expect(shapesOf(throughTheEditor(once))).toEqual(shapesOf(once));
         }),
         propertyConfig({ numRuns: 200 }),
@@ -404,7 +463,9 @@ describe("a wrapped hyperlink inside a simple field, through the editor", () => 
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const reopened = throughTheEditor(parseParagraphXml(fieldOverLinkOverWrappers(layers)));
+          const reopened = throughTheEditor(
+            parseParagraphXml(fieldOverLinkOverWrappers(layers)),
+          );
 
           expect(shapesOf(reopened)).toEqual([
             {
@@ -422,7 +483,10 @@ describe("a wrapped hyperlink inside a simple field, through the editor", () => 
 });
 
 /** The first text node holding `text`, as an editor range. */
-const rangeOfText = (state: EditorState, text: string): { from: number; to: number } => {
+const rangeOfText = (
+  state: EditorState,
+  text: string,
+): { from: number; to: number } => {
   let range: { from: number; to: number } | undefined;
   state.doc.descendants((node, position) => {
     const at = node.isText ? (node.text?.indexOf(text) ?? -1) : -1;
@@ -441,7 +505,9 @@ const editedThroughTheEditor = (paragraph: Paragraph): Paragraph => {
   const state = EditorState.create({ doc: toProseDoc(source) });
   const { from, to } = rangeOfText(state, "b");
   const edited = state.apply(
-    state.tr.setSelection(TextSelection.create(state.doc, from, to)).insertText("EDIT", from, to),
+    state.tr
+      .setSelection(TextSelection.create(state.doc, from, to))
+      .insertText("EDIT", from, to),
   );
   const block = fromProseDoc(edited.doc, source, {
     stylesheetSource: { type: "package" },
@@ -458,7 +524,9 @@ describe("an edit inside a wrapper inside a link", () => {
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
-          const edited = editedThroughTheEditor(parseParagraphXml(linkOverWrappers(layers)));
+          const edited = editedThroughTheEditor(
+            parseParagraphXml(linkOverWrappers(layers)),
+          );
           expect(shapesOf(edited)).toEqual([
             linkShape([wrappersAround(layers, { of: "text", text: "aEDITc" })]),
           ]);

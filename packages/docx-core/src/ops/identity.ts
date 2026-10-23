@@ -12,14 +12,30 @@
 
 import { panic } from "better-result";
 
-import { MAX_REVISION_ID, type Paragraph, type Deletion } from "../model/document";
+import {
+  type Deletion,
+  MAX_REVISION_ID,
+  type Paragraph,
+} from "../model/document";
 import { IDENTITY_SPACES, type IdentitySlot, slotKey } from "./ids";
-import { asParagraphContent, childNodes, type InlineNode, rebuildNode } from "./leaves";
-import { identitySlots, withInlineIdentity, withParagraphIdentity } from "./slots";
-import type { NewIds } from "./types";
+import {
+  asParagraphContent,
+  childNodes,
+  type InlineNode,
+  rebuildNode,
+} from "./leaves";
 import { isAddedRevision, isTrackedWrapper } from "./review";
+import {
+  identitySlots,
+  withInlineIdentity,
+  withParagraphIdentity,
+} from "./slots";
+import type { NewIds } from "./types";
 
-const visitNodes = (nodes: readonly InlineNode[], visit: (node: InlineNode) => void): void => {
+const visitNodes = (
+  nodes: readonly InlineNode[],
+  visit: (node: InlineNode) => void,
+): void => {
   for (const node of nodes) {
     visit(node);
     visitNodes(childNodes(node) ?? [], visit);
@@ -56,24 +72,44 @@ export const canonicalDeferredGroups = (
   return out;
 };
 
-type BindDeferredIdentitiesOptions = { before: readonly Paragraph[]; after: readonly Paragraph[] };
+type BindDeferredIdentitiesOptions = {
+  before: readonly Paragraph[];
+  after: readonly Paragraph[];
+};
 /** Deferred seam references follow the actual source wrapper's freshened fragments. */
-const bindDeferredIdentities = ({ before, after }: BindDeferredIdentitiesOptions): Paragraph[] => {
+const bindDeferredIdentities = ({
+  before,
+  after,
+}: BindDeferredIdentitiesOptions): Paragraph[] => {
   const references = new Map<number, Set<number>>();
-  type CollectOptions = { oldNodes: readonly InlineNode[]; freshNodes: readonly InlineNode[] };
+  type CollectOptions = {
+    oldNodes: readonly InlineNode[];
+    freshNodes: readonly InlineNode[];
+  };
   const collect = ({ oldNodes, freshNodes }: CollectOptions): void => {
     for (const [index, old] of oldNodes.entries()) {
-      const fresh = freshNodes.at(index) ?? panic("Freshening preserves each source position.");
-      if (isTrackedWrapper(old) && isAddedRevision(old) && isTrackedWrapper(fresh)) {
+      const fresh =
+        freshNodes.at(index) ??
+        panic("Freshening preserves each source position.");
+      if (
+        isTrackedWrapper(old) &&
+        isAddedRevision(old) &&
+        isTrackedWrapper(fresh)
+      ) {
         const ids = references.get(old.info.id) ?? new Set<number>();
         ids.add(fresh.info.id);
         references.set(old.info.id, ids);
       }
-      collect({ oldNodes: childNodes(old) ?? [], freshNodes: childNodes(fresh) ?? [] });
+      collect({
+        oldNodes: childNodes(old) ?? [],
+        freshNodes: childNodes(fresh) ?? [],
+      });
     }
   };
   for (const [index, old] of before.entries()) {
-    const fresh = after.at(index) ?? panic("Freshening preserves each source paragraph position.");
+    const fresh =
+      after.at(index) ??
+      panic("Freshening preserves each source paragraph position.");
     collect({ oldNodes: old.content, freshNodes: fresh.content });
   }
   const rewrite = (nodes: readonly InlineNode[]): readonly InlineNode[] => {
@@ -81,29 +117,44 @@ const bindDeferredIdentities = ({ before, after }: BindDeferredIdentitiesOptions
     const out: InlineNode[] = [];
     for (const node of nodes) {
       let own = node;
-      if (isTrackedWrapper(node) && node.resolutionJoins?.deferredRemove !== undefined) {
+      if (
+        isTrackedWrapper(node) &&
+        node.resolutionJoins?.deferredRemove !== undefined
+      ) {
         const groups = node.resolutionJoins.deferredRemove;
         if (
           Array.isArray(groups) &&
           groups.every(
-            (group) => group !== null && typeof group === "object" && Array.isArray(group.blockers),
+            (group) =>
+              group !== null &&
+              typeof group === "object" &&
+              Array.isArray(group.blockers),
           )
         ) {
           const remapGroup = (group: DeferredRemovalGroup) => ({
             depth: group.depth,
             blockers: [
-              ...new Set(group.blockers.flatMap((id) => [...(references.get(id) ?? [id])])),
+              ...new Set(
+                group.blockers.flatMap((id) => [
+                  ...(references.get(id) ?? [id]),
+                ]),
+              ),
             ],
           });
-          const deferredRemove = canonicalDeferredGroups(groups.map(remapGroup));
+          const deferredRemove = canonicalDeferredGroups(
+            groups.map(remapGroup),
+          );
           own = Object.assign({}, node, {
-            resolutionJoins: Object.assign({}, node.resolutionJoins, { deferredRemove }),
+            resolutionJoins: Object.assign({}, node.resolutionJoins, {
+              deferredRemove,
+            }),
           });
         }
       }
       const children = childNodes(own);
       const rewritten = children === undefined ? children : rewrite(children);
-      const result = rewritten === children ? own : rebuildNode(own, rewritten ?? []);
+      const result =
+        rewritten === children ? own : rebuildNode(own, rewritten ?? []);
       changed ||= result !== node;
       out.push(result);
     }
@@ -138,7 +189,8 @@ export type FreshenOutcome =
 
 const recordsOf = (paragraphs: readonly Paragraph[]): Set<object> => {
   const out = new Set<object>(paragraphs);
-  for (const paragraph of paragraphs) visitNodes(paragraph.content, (node) => out.add(node));
+  for (const paragraph of paragraphs)
+    visitNodes(paragraph.content, (node) => out.add(node));
   return out;
 };
 
@@ -146,7 +198,10 @@ type RetainedIdentity = NonNullable<
   NonNullable<Deletion["resolutionJoins"]>["retainedAfter"]
 >[number];
 
-const matchesSlots = (node: InlineNode, expected: RetainedIdentity["target"]): boolean => {
+const matchesSlots = (
+  node: InlineNode,
+  expected: RetainedIdentity["target"],
+): boolean => {
   const slots = identitySlots(node);
   return expected.every((target) =>
     slots.some((slot) => slot.space === target.space && slot.id === target.id),
@@ -186,7 +241,12 @@ const bindRetainedIdentities = (
     for (const [index, child] of oldChildren.entries()) {
       const freshChild = freshChildren.at(index);
       if (freshChild === undefined) continue;
-      const slots = atDepth({ old: child, fresh: freshChild, entry, depth: depth + 1 });
+      const slots = atDepth({
+        old: child,
+        fresh: freshChild,
+        entry,
+        depth: depth + 1,
+      });
       if (slots !== undefined) return slots;
     }
     return undefined;
@@ -199,20 +259,32 @@ const bindRetainedIdentities = (
     const oldRight = before.at(index + 1);
     const freshRight = after.at(index + 1);
     if (oldRight === undefined || freshRight === undefined) return node;
-    const oldOwner = before.at(index) ?? panic("Freshening preserves each source record position.");
+    const oldOwner =
+      before.at(index) ??
+      panic("Freshening preserves each source record position.");
     const bound = retained.map((entry) => {
-      const target = atDepth({ old: oldRight, fresh: freshRight, entry, depth: 0 });
+      const target = atDepth({
+        old: oldRight,
+        fresh: freshRight,
+        entry,
+        depth: 0,
+      });
       let source = entry.source;
       {
         const oldChildren = childNodes(oldOwner) ?? [];
         const freshChildren = childNodes(node) ?? [];
         for (const [childIndex, old] of oldChildren.entries()) {
           const fresh = freshChildren.at(childIndex);
-          if (fresh === undefined) panic("Freshening preserves every source record position.");
+          if (fresh === undefined)
+            panic("Freshening preserves every source record position.");
           const rebound = atDepth({
             old,
             fresh,
-            entry: { depth: entry.depth, source: entry.source, target: entry.source },
+            entry: {
+              depth: entry.depth,
+              source: entry.source,
+              target: entry.source,
+            },
             depth: 0,
           });
           if (rebound !== undefined) {
@@ -241,11 +313,15 @@ export const rebindRetainedIdentities = ({
   after,
 }: RebindRetainedIdentitiesOptions): Paragraph[] => {
   const groups = new Map<NonNullable<Deletion["resolutionJoins"]>, CutPair[]>();
-  type PairedNodesOptions = { oldNodes: readonly InlineNode[]; freshNodes: readonly InlineNode[] };
+  type PairedNodesOptions = {
+    oldNodes: readonly InlineNode[];
+    freshNodes: readonly InlineNode[];
+  };
   const collect = ({ oldNodes, freshNodes }: PairedNodesOptions): void => {
     for (const [index, old] of oldNodes.entries()) {
       const fresh = freshNodes.at(index);
-      if (fresh === undefined) panic("Freshening preserves every source record position.");
+      if (fresh === undefined)
+        panic("Freshening preserves every source record position.");
       if (
         (old.type === "deletion" || old.type === "moveFrom") &&
         old.resolutionJoins?.retainedAfter !== undefined
@@ -254,24 +330,34 @@ export const rebindRetainedIdentities = ({
         pieces.push({ old, fresh });
         groups.set(old.resolutionJoins, pieces);
       }
-      collect({ oldNodes: childNodes(old) ?? [], freshNodes: childNodes(fresh) ?? [] });
+      collect({
+        oldNodes: childNodes(old) ?? [],
+        freshNodes: childNodes(fresh) ?? [],
+      });
     }
   };
   for (const [index, old] of before.entries()) {
     const fresh = after.at(index);
-    if (fresh === undefined) panic("Freshening preserves every source paragraph position.");
+    if (fresh === undefined)
+      panic("Freshening preserves every source paragraph position.");
     collect({ oldNodes: old.content, freshNodes: fresh.content });
   }
-  type PairedSlots = { depth: number; old: IdentitySlot[]; fresh: IdentitySlot[] };
+  type PairedSlots = {
+    depth: number;
+    old: IdentitySlot[];
+    fresh: IdentitySlot[];
+  };
   const slotsIn = (pair: CutPair): PairedSlots[] => {
     const slots: PairedSlots[] = [];
     type VisitOptions = PairedNodesOptions & { depth: number };
     const visit = ({ oldNodes, freshNodes, depth }: VisitOptions): void => {
       for (const [index, old] of oldNodes.entries()) {
         const fresh = freshNodes.at(index);
-        if (fresh === undefined) panic("Freshening preserves every source record position.");
+        if (fresh === undefined)
+          panic("Freshening preserves every source record position.");
         const oldSlots = identitySlots(old);
-        if (oldSlots.length > 0) slots.push({ depth, old: oldSlots, fresh: identitySlots(fresh) });
+        if (oldSlots.length > 0)
+          slots.push({ depth, old: oldSlots, fresh: identitySlots(fresh) });
         visit({
           oldNodes: childNodes(old) ?? [],
           freshNodes: childNodes(fresh) ?? [],
@@ -310,20 +396,30 @@ export const rebindRetainedIdentities = ({
           const sourceIds: IdentitySlot[] = [];
           const targetIds: IdentitySlot[] = [];
           for (const [slotIndex, slot] of source.old.entries()) {
-            const targetIndex = target.old.findIndex((other) => slotKey(slot) === slotKey(other));
+            const targetIndex = target.old.findIndex(
+              (other) => slotKey(slot) === slotKey(other),
+            );
             if (targetIndex < 0) continue;
             const sourceId = source.fresh.at(slotIndex);
             const targetId = target.fresh.at(targetIndex);
             if (sourceId === undefined || targetId === undefined)
-              panic("Freshening preserves the identity slot layout of each source record.");
+              panic(
+                "Freshening preserves the identity slot layout of each source record.",
+              );
             sourceIds.push(sourceId);
             targetIds.push(targetId);
           }
           if (sourceIds.length > 0)
-            retained.push({ depth: source.depth, source: sourceIds, target: targetIds });
+            retained.push({
+              depth: source.depth,
+              source: sourceIds,
+              target: targetIds,
+            });
         }
       } else {
-        for (const entry of fresh.resolutionJoins?.retainedAfter ?? joins.retainedAfter ?? []) {
+        for (const entry of fresh.resolutionJoins?.retainedAfter ??
+          joins.retainedAfter ??
+          []) {
           const source = sources.find(
             (candidate) =>
               candidate.depth === entry.depth &&
@@ -340,11 +436,17 @@ export const rebindRetainedIdentities = ({
                 source.old.findIndex(
                   (own, slotIndex) =>
                     slotKey(own) === slotKey(slot) ||
-                    slotKey(source.fresh.at(slotIndex) ?? own) === slotKey(slot),
+                    slotKey(source.fresh.at(slotIndex) ?? own) ===
+                      slotKey(slot),
                 ),
-              ) ?? panic("Freshening preserves every matched source identity slot."),
+              ) ??
+              panic("Freshening preserves every matched source identity slot."),
           );
-          retained.push({ depth: entry.depth, source: rebound, target: entry.target });
+          retained.push({
+            depth: entry.depth,
+            source: rebound,
+            target: entry.target,
+          });
         }
       }
       replacements.set(
@@ -364,7 +466,8 @@ export const rebindRetainedIdentities = ({
       const own = replacements.get(node) ?? node;
       const children = childNodes(own);
       const rewritten = children === undefined ? children : rewrite(children);
-      const result = rewritten === children ? own : rebuildNode(own, rewritten ?? []);
+      const result =
+        rewritten === children ? own : rebuildNode(own, rewritten ?? []);
       changed ||= result !== node;
       out.push(result);
     }
@@ -455,7 +558,11 @@ export const freshenIdentities = ({
       keepers.set(record, kept);
     }
   }
-  const taken = new Set([...elsewhere, ...identityKeysOf(before), ...identityKeysOf(after)]);
+  const taken = new Set([
+    ...elsewhere,
+    ...identityKeysOf(before),
+    ...identityKeysOf(after),
+  ]);
   const pools = {
     [IDENTITY_SPACES.REVISION]: newIds.revision ?? [],
     [IDENTITY_SPACES.CONTROL]: newIds.control ?? [],
@@ -464,7 +571,10 @@ export const freshenIdentities = ({
   let missing = 0;
   let invalid: number | undefined;
 
-  const idsFor = (record: object, slots: readonly IdentitySlot[]): number[] | undefined => {
+  const idsFor = (
+    record: object,
+    slots: readonly IdentitySlot[],
+  ): number[] | undefined => {
     if (carried.has(record)) return undefined;
     let changed = false;
     const ids = slots.map((slot, index) => {
@@ -499,15 +609,19 @@ export const freshenIdentities = ({
     return changed ? ids : undefined;
   };
 
-  const freshenNodes = (nodes: readonly InlineNode[]): readonly InlineNode[] => {
+  const freshenNodes = (
+    nodes: readonly InlineNode[],
+  ): readonly InlineNode[] => {
     let changed = false;
     const out: InlineNode[] = [];
     for (const node of nodes) {
       const ids = idsFor(node, identitySlots(node));
       const own = ids === undefined ? node : withInlineIdentity(node, ids);
       const children = childNodes(node);
-      const freshened = children === undefined ? children : freshenNodes(children);
-      const result = freshened === children ? own : rebuildNode(own, freshened ?? []);
+      const freshened =
+        children === undefined ? children : freshenNodes(children);
+      const result =
+        freshened === children ? own : rebuildNode(own, freshened ?? []);
       changed ||= result !== node;
       out.push(result);
     }
@@ -517,10 +631,13 @@ export const freshenIdentities = ({
   const paragraphs: Paragraph[] = [];
   for (const paragraph of after) {
     const ids = idsFor(paragraph, identitySlots(paragraph));
-    const own = ids === undefined ? paragraph : withParagraphIdentity(paragraph, ids);
+    const own =
+      ids === undefined ? paragraph : withParagraphIdentity(paragraph, ids);
     const content = freshenNodes(paragraph.content);
     paragraphs.push(
-      content === paragraph.content ? own : { ...own, content: asParagraphContent(content) },
+      content === paragraph.content
+        ? own
+        : { ...own, content: asParagraphContent(content) },
     );
   }
   if (missing > 0) {

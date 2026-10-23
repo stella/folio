@@ -1,9 +1,10 @@
+import { afterEach, describe, test } from "bun:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
-  mkdtempSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
@@ -12,7 +13,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, test } from "bun:test";
 
 import { ensurePlaygroundBuild } from "./playground-build";
 
@@ -26,9 +26,15 @@ const createRepository = (): { repoRoot: string; packageDir: string } => {
   mkdirSync(packageDir, { recursive: true });
   writeFileSync(
     join(packageDir, "package.json"),
-    JSON.stringify({ name: "@stll/playground", scripts: { build: "vite build" } }),
+    JSON.stringify({
+      name: "@stll/playground",
+      scripts: { build: "vite build" },
+    }),
   );
-  writeFileSync(join(repoRoot, ".gitignore"), "dist/\npackages/playground/.env.production.local\n");
+  writeFileSync(
+    join(repoRoot, ".gitignore"),
+    "dist/\npackages/playground/.env.production.local\n",
+  );
   writeFileSync(join(packageDir, "index.html"), "<main>fixture</main>");
   execFileSync("git", ["add", "-A"], { cwd: repoRoot });
   return { repoRoot, packageDir };
@@ -47,7 +53,8 @@ const buildWithOutput =
     writeBuildOutput(packageDir, content);
 
 afterEach(() => {
-  for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of temporaryRoots.splice(0))
+    rmSync(root, { recursive: true, force: true });
 });
 
 describe("incremental playground build cache", () => {
@@ -58,7 +65,8 @@ describe("incremental playground build cache", () => {
       builds += 1;
       writeBuildOutput(packageDir);
     };
-    const ensure = () => ensurePlaygroundBuild({ repoRoot, packageDir, build, log: () => {} });
+    const ensure = () =>
+      ensurePlaygroundBuild({ repoRoot, packageDir, build, log: () => {} });
 
     assert.equal((await ensure()).status, "built");
     assert.equal((await ensure()).status, "skipped");
@@ -84,31 +92,51 @@ describe("incremental playground build cache", () => {
     const { repoRoot, packageDir } = createRepository();
     const envPath = join(packageDir, ".env.production.local");
     writeFileSync(envPath, "VITE_FEATURE=one");
-    execFileSync("git", ["check-ignore", "--quiet", envPath], { cwd: repoRoot, stdio: "ignore" });
+    execFileSync("git", ["check-ignore", "--quiet", envPath], {
+      cwd: repoRoot,
+      stdio: "ignore",
+    });
     const ensureBuild = (build: () => void) =>
       ensurePlaygroundBuild({ repoRoot, packageDir, build, log: () => {} });
 
-    assert.equal((await ensureBuild(buildWithOutput(packageDir))).status, "built");
-    assert.equal((await ensureBuild(buildWithOutput(packageDir))).status, "skipped");
+    assert.equal(
+      (await ensureBuild(buildWithOutput(packageDir))).status,
+      "built",
+    );
+    assert.equal(
+      (await ensureBuild(buildWithOutput(packageDir))).status,
+      "skipped",
+    );
 
     writeFileSync(envPath, "VITE_FEATURE=changed");
     const editedTime = new Date(statSync(envPath).mtimeMs + 2_000);
     utimesSync(envPath, editedTime, editedTime);
-    assert.equal((await ensureBuild(buildWithOutput(packageDir))).status, "built");
+    assert.equal(
+      (await ensureBuild(buildWithOutput(packageDir))).status,
+      "built",
+    );
 
     const output = join(packageDir, "dist", "assets", "index.js");
     rmSync(output);
-    assert.equal((await ensureBuild(buildWithOutput(packageDir))).status, "built");
+    assert.equal(
+      (await ensureBuild(buildWithOutput(packageDir))).status,
+      "built",
+    );
 
     writeFileSync(output, "changed-output-size");
     const outputTime = new Date(statSync(output).mtimeMs + 2_000);
     utimesSync(output, outputTime, outputTime);
-    assert.equal((await ensureBuild(buildWithOutput(packageDir))).status, "built");
+    assert.equal(
+      (await ensureBuild(buildWithOutput(packageDir))).status,
+      "built",
+    );
   });
 
   test("fingerprints NODE_ENV and VITE build variables without storing their values", async () => {
     const { repoRoot, packageDir } = createRepository();
-    const ensureWithEnvironment = (buildEnvironment: Record<string, string | undefined>) =>
+    const ensureWithEnvironment = (
+      buildEnvironment: Record<string, string | undefined>,
+    ) =>
       ensurePlaygroundBuild({
         repoRoot,
         packageDir,
@@ -118,25 +146,44 @@ describe("incremental playground build cache", () => {
       });
 
     assert.equal(
-      (await ensureWithEnvironment({ NODE_ENV: "production", VITE_API_URL: "https://one.test" }))
-        .status,
+      (
+        await ensureWithEnvironment({
+          NODE_ENV: "production",
+          VITE_API_URL: "https://one.test",
+        })
+      ).status,
       "built",
     );
     assert.equal(
-      (await ensureWithEnvironment({ NODE_ENV: "production", VITE_API_URL: "https://one.test" }))
-        .status,
+      (
+        await ensureWithEnvironment({
+          NODE_ENV: "production",
+          VITE_API_URL: "https://one.test",
+        })
+      ).status,
       "skipped",
     );
     assert.equal(
-      (await ensureWithEnvironment({ NODE_ENV: "production", VITE_API_URL: "https://two.test" }))
-        .status,
+      (
+        await ensureWithEnvironment({
+          NODE_ENV: "production",
+          VITE_API_URL: "https://two.test",
+        })
+      ).status,
       "built",
     );
-    const stamp = readFileSync(join(packageDir, "dist", ".playground-build-cache.json"), "utf8");
+    const stamp = readFileSync(
+      join(packageDir, "dist", ".playground-build-cache.json"),
+      "utf8",
+    );
     assert.equal(stamp.includes("https://two.test"), false);
     assert.equal(
-      (await ensureWithEnvironment({ NODE_ENV: "development", VITE_API_URL: "https://two.test" }))
-        .status,
+      (
+        await ensureWithEnvironment({
+          NODE_ENV: "development",
+          VITE_API_URL: "https://two.test",
+        })
+      ).status,
       "built",
     );
   });
@@ -152,7 +199,10 @@ describe("incremental playground build cache", () => {
       });
 
     assert.equal((await ensure()).status, "built");
-    writeFileSync(join(packageDir, "dist", ".playground-build-cache.json"), "{");
+    writeFileSync(
+      join(packageDir, "dist", ".playground-build-cache.json"),
+      "{",
+    );
     assert.equal((await ensure()).status, "built");
 
     rmSync(join(packageDir, "dist", "index.html"));

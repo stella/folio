@@ -1,4 +1,8 @@
-import type { FlushOutcome, PublicFlushRequest, FlushRequest } from "../src/editor-lease";
+import type {
+  FlushOutcome,
+  FlushRequest,
+  PublicFlushRequest,
+} from "../src/editor-lease";
 import type { PublicErrorDetails } from "../src/errors";
 import type { LockHolder, PublicLockHolder } from "../src/lock";
 import type { FailureBody } from "../src/output";
@@ -26,5 +30,7 @@ export type InternalHolderCannotEnterCliOrMcpEnvelope = AssertFalse<
 >;
 
 export type InternalHolderCannotEnterFlushStatus = AssertFalse<
-  LockHolder extends Extract<FlushOutcome, { type: "timedOut" }>["holder"] ? true : false
+  LockHolder extends Extract<FlushOutcome, { type: "timedOut" }>["holder"]
+    ? true
+    : false
 >;

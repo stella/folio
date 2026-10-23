@@ -33,7 +33,11 @@ import {
   type ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
 
-import { findChild, parseNumberingLevelAttribute, parseNumericAttribute } from "./xmlParser";
+import {
+  findChild,
+  parseNumberingLevelAttribute,
+  parseNumericAttribute,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 /**
@@ -53,7 +57,9 @@ export const readParagraphNumbering = (
   const numIdElement = findChild(numPr, "w", "numId");
   const ilvlElement = findChild(numPr, "w", "ilvl");
   return paragraphNumberingFromSlots({
-    numId: numIdElement ? parseNumericAttribute(numIdElement, "w", "val") : undefined,
+    numId: numIdElement
+      ? parseNumericAttribute(numIdElement, "w", "val")
+      : undefined,
     ilvl: ilvlElement ? parseNumberingLevelAttribute(ilvlElement) : undefined,
   });
 };

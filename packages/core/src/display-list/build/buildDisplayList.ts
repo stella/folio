@@ -13,8 +13,8 @@
  */
 
 import { headingLevelOf } from "@stll/docx-core/model";
+
 import type { EmbeddedFont } from "../../fonts/embeddedFonts";
-import type { BlockLookup, BlockLookupEntry } from "../../layout-painter/index";
 import type {
   Fragment,
   ImageRun,
@@ -23,6 +23,8 @@ import type {
   ParagraphBlock,
   ParagraphBorders,
 } from "../../layout-engine/types";
+import type { BlockLookup, BlockLookupEntry } from "../../layout-painter/index";
+import { HIT_REGION_KINDS } from "../primitives";
 import type {
   DisplayColor,
   DisplayCommentAnnotation,
@@ -37,13 +39,12 @@ import type {
   DisplayRect,
   DisplayStoryRef,
 } from "../types";
-import { HIT_REGION_KINDS } from "../primitives";
 import { AuthorColorTable, type BuildContext } from "./buildContext";
-import type { DisplayCommentInput } from "./commentAnnotations";
 import { DOC_CANVAS } from "./colors";
+import type { DisplayCommentInput } from "./commentAnnotations";
 import { collectFloatingImages, pageGeometryOf } from "./floatingImages";
 import { FontTable } from "./fontTable";
-import { paintPageFurniture, type PageFurnitureInputs } from "./furniture";
+import { type PageFurnitureInputs, paintPageFurniture } from "./furniture";
 import { ImageTable, paintImageFragment } from "./imagePrimitives";
 import {
   paintColumnSeparators,
@@ -54,7 +55,7 @@ import { paintParagraphFragment } from "./paragraphPrimitives";
 import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { paintTableFragment } from "./tablePrimitives";
 import { paintTextBoxFragment } from "./textBoxPrimitives";
-import { UnsupportedCollector, UNSUPPORTED_CONSTRUCT } from "./unsupported";
+import { UNSUPPORTED_CONSTRUCT, UnsupportedCollector } from "./unsupported";
 
 /** Document-wide gaps are attributed to the first page, the only one certain to exist. */
 const FIRST_PAGE_INDEX = 0;
@@ -80,7 +81,10 @@ const DOCUMENT_FEATURE_GAPS = [
     "watermark",
     "watermarks reach the painter through render options, not through Layout, and none was supplied to the builder",
   ],
-] as const satisfies readonly (readonly [keyof typeof UNSUPPORTED_CONSTRUCT, string])[];
+] as const satisfies readonly (readonly [
+  keyof typeof UNSUPPORTED_CONSTRUCT,
+  string,
+])[];
 
 /**
  * Which of those features the source document actually has. The builder cannot
@@ -176,7 +180,10 @@ type FirstPass = {
  * `TOC Heading` paragraph carrying it would otherwise become a PDF bookmark
  * nested nine deep.
  */
-const collectDocumentTargets = (layout: Layout, blockLookup: BlockLookup): FirstPass => {
+const collectDocumentTargets = (
+  layout: Layout,
+  blockLookup: BlockLookup,
+): FirstPass => {
   const bookmarkTargets = new Map<string, DisplayLinkTarget>();
   const outline: DisplayOutlineEntry[] = [];
 
@@ -191,7 +198,11 @@ const collectDocumentTargets = (layout: Layout, blockLookup: BlockLookup): First
       }
       for (const name of block.bookmarks ?? []) {
         if (!bookmarkTargets.has(name)) {
-          bookmarkTargets.set(name, { kind: "page", pageIndex, yPx: fragment.y });
+          bookmarkTargets.set(name, {
+            kind: "page",
+            pageIndex,
+            yPx: fragment.y,
+          });
         }
       }
       const level = headingLevelOf(block.attrs?.outlineLevel);
@@ -207,7 +218,9 @@ const collectDocumentTargets = (layout: Layout, blockLookup: BlockLookup): First
   return { bookmarkTargets, outline };
 };
 
-const bordersOfNeighbour = (entry: BlockLookupEntry | undefined): ParagraphBorders | undefined =>
+const bordersOfNeighbour = (
+  entry: BlockLookupEntry | undefined,
+): ParagraphBorders | undefined =>
   entry?.block.kind === "paragraph" ? entry.block.attrs?.borders : undefined;
 
 type PaintFragmentOptions = {
@@ -339,7 +352,9 @@ const buildPage = ({
     totalPages,
   };
 
-  const entries = page.fragments.map((fragment) => blockLookup.get(String(fragment.blockId)));
+  const entries = page.fragments.map((fragment) =>
+    blockLookup.get(String(fragment.blockId)),
+  );
 
   // Floating images are extracted before anything is painted, because
   // `behindDoc` artwork paints under the body and the rest paints over it: the
@@ -360,7 +375,9 @@ const buildPage = ({
       context,
       placed: placedFloats,
     })) {
-      (placement.behindDoc ? behindFloats : frontFloats).push(...placement.primitives);
+      (placement.behindDoc ? behindFloats : frontFloats).push(
+        ...placement.primitives,
+      );
     }
   }
 
@@ -371,7 +388,11 @@ const buildPage = ({
   // `page.fragments` order, front floats, column separators, the footnote band,
   // the header, the footer, and last a `zOrder="front"` page border.
   const composer = createPageComposer();
-  composer.push([paintPageBackground(page, pageBackground), ...behind, ...behindFloats]);
+  composer.push([
+    paintPageBackground(page, pageBackground),
+    ...behind,
+    ...behindFloats,
+  ]);
 
   // The body's own box. A click outside it is in a margin, where the caret
   // belongs to whichever line is nearest rather than to the page.
@@ -422,7 +443,10 @@ const buildPage = ({
         }
         // An endnote flowed with the body is its own story, as a footnote in
         // the band is: a click on it edits that note.
-        const story: DisplayStoryRef = { kind: noteStory.kind, id: noteStory.noteId };
+        const story: DisplayStoryRef = {
+          kind: noteStory.kind,
+          id: noteStory.noteId,
+        };
         composer.region(
           {
             kind: HIT_REGION_KINDS.note,
@@ -451,7 +475,9 @@ const buildPage = ({
     pageNumber: page.number,
     widthPx: page.size.w,
     heightPx: page.size.h,
-    orientation: page.orientation ?? (page.size.w > page.size.h ? "landscape" : "portrait"),
+    orientation:
+      page.orientation ??
+      (page.size.w > page.size.h ? "landscape" : "portrait"),
     primitives: composer.primitives(),
     regions: composer.regions(),
     links,
@@ -469,9 +495,11 @@ const FRAGMENT_REGION_KIND = {
 
 /** Whether the caller handed over the construct this document-wide gap names. */
 const SUPPLIED_BY = {
-  pageBorders: (furniture: PageFurnitureInputs) => furniture.pageBorders !== undefined,
+  pageBorders: (furniture: PageFurnitureInputs) =>
+    furniture.pageBorders !== undefined,
   watermark: (furniture: PageFurnitureInputs) =>
-    furniture.watermark !== undefined || furniture.watermarkByHeaderRId !== undefined,
+    furniture.watermark !== undefined ||
+    furniture.watermarkByHeaderRId !== undefined,
 } as const satisfies Record<
   (typeof DOCUMENT_FEATURE_GAPS)[number][0],
   (furniture: PageFurnitureInputs) => boolean
@@ -517,7 +545,10 @@ export const createDisplayListBuilder = ({
   const images = new ImageTable();
   const unsupported = new UnsupportedCollector();
   const authorColors = new AuthorColorTable();
-  const { bookmarkTargets, outline } = collectDocumentTargets(layout, blockLookup);
+  const { bookmarkTargets, outline } = collectDocumentTargets(
+    layout,
+    blockLookup,
+  );
   const commentsById = new Map<number, DisplayCommentInput>();
   for (const comment of comments ?? []) {
     commentsById.set(comment.id, comment);
@@ -536,7 +567,11 @@ export const createDisplayListBuilder = ({
       if (documentFeatures !== undefined && !documentFeatures[feature]) {
         continue;
       }
-      unsupported.report(UNSUPPORTED_CONSTRUCT[feature], FIRST_PAGE_INDEX, detail);
+      unsupported.report(
+        UNSUPPORTED_CONSTRUCT[feature],
+        FIRST_PAGE_INDEX,
+        detail,
+      );
     }
   }
 
@@ -575,7 +610,9 @@ export const createDisplayListBuilder = ({
     snapshot: () => ({
       // In layout order whichever order they were built in: a page's index is
       // its place in the document, not its place in a paint sequence.
-      pages: [...built.entries()].sort(([left], [right]) => left - right).map(([, page]) => page),
+      pages: [...built.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, page]) => page),
       fonts: fonts.snapshot(),
       images: images.snapshot(),
       outline,
@@ -590,7 +627,9 @@ export const createDisplayListBuilder = ({
  * outline and the gap report are complete; an editor that paints a window of
  * pages uses {@link createDisplayListBuilder} instead.
  */
-export const buildDisplayList = (options: BuildDisplayListOptions): DisplayList => {
+export const buildDisplayList = (
+  options: BuildDisplayListOptions,
+): DisplayList => {
   const builder = createDisplayListBuilder(options);
   for (let pageIndex = 0; pageIndex < builder.pageCount; pageIndex += 1) {
     builder.pageAt(pageIndex);

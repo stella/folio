@@ -46,6 +46,7 @@ export function resolveSelectiveSaveFlags(
   return {
     selectiveSave: flags?.selectiveSave ?? true,
     selectiveSaveTripwire: flags?.selectiveSaveTripwire ?? false,
-    selectiveSaveMaxBytes: flags?.selectiveSaveMaxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES,
+    selectiveSaveMaxBytes:
+      flags?.selectiveSaveMaxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES,
   };
 }

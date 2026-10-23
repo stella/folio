@@ -9,12 +9,19 @@
   <div class="docx-editor-toolbar">
     <slot name="title-bar">
       <div class="docx-editor-toolbar__title-row">
-        <div class="docx-editor-toolbar__title-left"><slot name="title-bar-left" /></div>
+        <div class="docx-editor-toolbar__title-left">
+          <slot name="title-bar-left" />
+        </div>
         <div class="docx-editor-toolbar__title-center">
           <slot name="document-name" />
-          <MenuBar v-if="showMenuBar" @action="(a: string) => $emit('menu-action', a)" />
+          <MenuBar
+            v-if="showMenuBar"
+            @action="(a: string) => $emit('menu-action', a)"
+          />
         </div>
-        <div class="docx-editor-toolbar__title-right"><slot name="title-bar-right" /></div>
+        <div class="docx-editor-toolbar__title-right">
+          <slot name="title-bar-right" />
+        </div>
       </div>
     </slot>
     <slot name="toolbar">
@@ -24,8 +31,8 @@
 </template>
 
 <script setup lang="ts">
-import Toolbar from "./Toolbar.vue";
 import MenuBar from "./MenuBar.vue";
+import Toolbar from "./Toolbar.vue";
 
 defineOptions({ inheritAttrs: false });
 

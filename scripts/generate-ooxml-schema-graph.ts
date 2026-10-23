@@ -1,10 +1,9 @@
-import { createHash } from "node:crypto";
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
-
 import { TaggedError } from "better-result";
 import { XMLParser } from "fast-xml-parser";
 import JSZip from "jszip";
+import { createHash } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 
 import sourceManifest from "../specifications/sources.json";
 
@@ -202,7 +201,9 @@ const compareById = (left: { id: string }, right: { id: string }): number =>
   compareStrings(left.id, right.id);
 
 const nodeTag = (node: XmlNode): string | undefined =>
-  Object.keys(node).find((key) => key !== ":@" && key !== "#text" && !key.startsWith("?"));
+  Object.keys(node).find(
+    (key) => key !== ":@" && key !== "#text" && !key.startsWith("?"),
+  );
 
 const localName = (qualifiedName: string): string =>
   qualifiedName.split(":").at(-1) ?? qualifiedName;
@@ -216,7 +217,9 @@ const nodeChildren = (node: XmlNode): XmlNode[] => {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter((child): child is XmlNode => typeof child === "object" && child !== null);
+  return value.filter(
+    (child): child is XmlNode => typeof child === "object" && child !== null,
+  );
 };
 
 const nodeAttributes = (node: XmlNode): Record<string, string> => {
@@ -235,7 +238,9 @@ const nodeAttributes = (node: XmlNode): Record<string, string> => {
 
 const findSchemaNode = (document: unknown, documentPath: string): XmlNode => {
   if (!Array.isArray(document)) {
-    throw new SchemaGraphError({ message: `Invalid XML document: ${documentPath}` });
+    throw new SchemaGraphError({
+      message: `Invalid XML document: ${documentPath}`,
+    });
   }
   const schema = document.find(
     (node): node is XmlNode =>
@@ -245,12 +250,16 @@ const findSchemaNode = (document: unknown, documentPath: string): XmlNode => {
       localName(nodeTag(node) ?? "") === "schema",
   );
   if (schema === undefined) {
-    throw new SchemaGraphError({ message: `Missing schema root: ${documentPath}` });
+    throw new SchemaGraphError({
+      message: `Missing schema root: ${documentPath}`,
+    });
   }
   return schema;
 };
 
-const extractPrefixes = (attributes: Record<string, string>): ReadonlyMap<string, string> => {
+const extractPrefixes = (
+  attributes: Record<string, string>,
+): ReadonlyMap<string, string> => {
   const prefixes = new Map<string, string>();
   for (const [name, value] of Object.entries(attributes)) {
     if (name === "xmlns") {
@@ -268,7 +277,8 @@ const resolveQName = (value: string, document: SchemaDocument): string => {
   const prefix = separator === -1 ? "" : value.slice(0, separator);
   const name = separator === -1 ? value : value.slice(separator + 1);
   const namespace =
-    document.prefixes.get(prefix) ?? (prefix === "" ? document.targetNamespace : undefined);
+    document.prefixes.get(prefix) ??
+    (prefix === "" ? document.targetNamespace : undefined);
   if (namespace === undefined) {
     throw new SchemaGraphError({
       message: `Unknown namespace prefix "${prefix}" in ${document.path}`,
@@ -277,10 +287,16 @@ const resolveQName = (value: string, document: SchemaDocument): string => {
   return `{${namespace}}${name}`;
 };
 
-const symbolId = (kind: DeclarationKind, namespace: string, name: string): string =>
-  `${kind}:{${namespace}}${name}`;
+const symbolId = (
+  kind: DeclarationKind,
+  namespace: string,
+  name: string,
+): string => `${kind}:{${namespace}}${name}`;
 
-const nextSequence = (sequences: Map<string, number>, owner: string): number => {
+const nextSequence = (
+  sequences: Map<string, number>,
+  owner: string,
+): number => {
   const next = (sequences.get(owner) ?? 0) + 1;
   sequences.set(owner, next);
   return next;
@@ -292,7 +308,8 @@ const nextOrder = (builder: GraphBuilder, parent: string): number => {
   return next;
 };
 
-const occurs = (value: string | undefined, fallback: string): string => value ?? fallback;
+const occurs = (value: string | undefined, fallback: string): string =>
+  value ?? fallback;
 
 const localDeclarationNamespace = (
   attributes: Record<string, string>,
@@ -307,9 +324,13 @@ const localDeclarationNamespace = (
     return "";
   }
   if (declaration === "element") {
-    return document.elementFormDefault === "qualified" ? document.targetNamespace : "";
+    return document.elementFormDefault === "qualified"
+      ? document.targetNamespace
+      : "";
   }
-  return document.attributeFormDefault === "qualified" ? document.targetNamespace : "";
+  return document.attributeFormDefault === "qualified"
+    ? document.targetNamespace
+    : "";
 };
 
 const readCompositorKind = (kind: string): "all" | "choice" | "sequence" => {
@@ -392,7 +413,11 @@ const addInheritance = (
   base: string,
   builder: GraphBuilder,
 ): void => {
-  if (!builder.inheritance.some((edge) => edge.derived === owner && edge.method === method)) {
+  if (
+    !builder.inheritance.some(
+      (edge) => edge.derived === owner && edge.method === method,
+    )
+  ) {
     builder.inheritance.push({ base, derived: owner, method });
   }
 };
@@ -408,7 +433,12 @@ const walkSchemaContent = (node: XmlNode, context: WalkContext): void => {
   if (kind === "extension" || kind === "restriction") {
     const base = attributes["base"];
     if (base !== undefined) {
-      addInheritance(context.owner, kind, resolveQName(base, context.document), context.builder);
+      addInheritance(
+        context.owner,
+        kind,
+        resolveQName(base, context.document),
+        context.builder,
+      );
     }
     for (const child of nodeChildren(node)) {
       walkSchemaContent(child, context);
@@ -417,7 +447,10 @@ const walkSchemaContent = (node: XmlNode, context: WalkContext): void => {
   }
 
   if (COMPOSITOR_KINDS.has(kind)) {
-    const sequence = nextSequence(context.builder.compositorSequence, context.owner);
+    const sequence = nextSequence(
+      context.builder.compositorSequence,
+      context.owner,
+    );
     const id = `${context.owner}/compositor/${sequence}`;
     const parent = context.parentCompositor ?? context.owner;
     context.builder.compositors.push({
@@ -427,7 +460,9 @@ const walkSchemaContent = (node: XmlNode, context: WalkContext): void => {
       minOccurs: occurs(attributes["minOccurs"], "1"),
       order: nextOrder(context.builder, parent),
       owner: context.owner,
-      ...(context.parentCompositor === undefined ? {} : { parent: context.parentCompositor }),
+      ...(context.parentCompositor === undefined
+        ? {}
+        : { parent: context.parentCompositor }),
     });
     for (const child of nodeChildren(node)) {
       walkSchemaContent(child, { ...context, parentCompositor: id });
@@ -448,15 +483,25 @@ const walkSchemaContent = (node: XmlNode, context: WalkContext): void => {
       minOccurs: occurs(attributes["minOccurs"], "1"),
       order: nextOrder(context.builder, parent),
       owner: context.owner,
-      ...(context.parentCompositor === undefined ? {} : { compositor: context.parentCompositor }),
+      ...(context.parentCompositor === undefined
+        ? {}
+        : { compositor: context.parentCompositor }),
       ...(name === undefined ? {} : { name }),
-      ...(ref === undefined ? {} : { ref: resolveQName(ref, context.document) }),
+      ...(ref === undefined
+        ? {}
+        : { ref: resolveQName(ref, context.document) }),
       ...(attributes["type"] === undefined
         ? {}
         : { type: resolveQName(attributes["type"], context.document) }),
       ...(kind !== "element" || name === undefined
         ? {}
-        : { namespace: localDeclarationNamespace(attributes, context.document, "element") }),
+        : {
+            namespace: localDeclarationNamespace(
+              attributes,
+              context.document,
+              "element",
+            ),
+          }),
     };
     const inlineSimpleType = nodeChildren(node).find(
       (childNode) => localName(nodeTag(childNode) ?? "") === "simpleType",
@@ -483,8 +528,15 @@ const walkSchemaContent = (node: XmlNode, context: WalkContext): void => {
     return;
   }
 
-  if (kind === "attribute" || kind === "attributeGroup" || kind === "anyAttribute") {
-    const sequence = nextSequence(context.builder.attributeSequence, context.owner);
+  if (
+    kind === "attribute" ||
+    kind === "attributeGroup" ||
+    kind === "anyAttribute"
+  ) {
+    const sequence = nextSequence(
+      context.builder.attributeSequence,
+      context.owner,
+    );
     const id = `${context.owner}/attribute/${sequence}`;
     const ref = attributes["ref"];
     const name = attributes["name"];
@@ -494,16 +546,28 @@ const walkSchemaContent = (node: XmlNode, context: WalkContext): void => {
       order: sequence - 1,
       owner: context.owner,
       ...(name === undefined ? {} : { name }),
-      ...(ref === undefined ? {} : { ref: resolveQName(ref, context.document) }),
+      ...(ref === undefined
+        ? {}
+        : { ref: resolveQName(ref, context.document) }),
       ...(attributes["type"] === undefined
         ? {}
         : { type: resolveQName(attributes["type"], context.document) }),
       ...(attributes["use"] === undefined ? {} : { use: attributes["use"] }),
-      ...(attributes["default"] === undefined ? {} : { default: attributes["default"] }),
-      ...(attributes["fixed"] === undefined ? {} : { fixed: attributes["fixed"] }),
+      ...(attributes["default"] === undefined
+        ? {}
+        : { default: attributes["default"] }),
+      ...(attributes["fixed"] === undefined
+        ? {}
+        : { fixed: attributes["fixed"] }),
       ...(kind !== "attribute" || name === undefined
         ? {}
-        : { namespace: localDeclarationNamespace(attributes, context.document, "attribute") }),
+        : {
+            namespace: localDeclarationNamespace(
+              attributes,
+              context.document,
+              "attribute",
+            ),
+          }),
     };
     const inlineSimpleType = nodeChildren(node).find(
       (childNode) => localName(nodeTag(childNode) ?? "") === "simpleType",
@@ -541,13 +605,18 @@ const parseDocument = ({
   try {
     parsed = xmlParser.parse(xml);
   } catch (cause) {
-    throw new SchemaGraphError({ message: `Failed to parse ${documentPath}`, cause });
+    throw new SchemaGraphError({
+      message: `Failed to parse ${documentPath}`,
+      cause,
+    });
   }
   const node = findSchemaNode(parsed, documentPath);
   const attributes = nodeAttributes(node);
   const targetNamespace = attributes["targetNamespace"];
   if (targetNamespace === undefined) {
-    throw new SchemaGraphError({ message: `Missing target namespace: ${documentPath}` });
+    throw new SchemaGraphError({
+      message: `Missing target namespace: ${documentPath}`,
+    });
   }
   const readFormDefault = (name: string): "qualified" | "unqualified" =>
     attributes[name] === "qualified" ? "qualified" : "unqualified";
@@ -563,17 +632,28 @@ const parseDocument = ({
   };
 };
 
-const resolveImportTarget = (documentPath: string, schemaLocation: string): string => {
+const resolveImportTarget = (
+  documentPath: string,
+  schemaLocation: string,
+): string => {
   const target = path.posix.normalize(
     path.posix.join(path.posix.dirname(documentPath), schemaLocation),
   );
-  if (target === ".." || target.startsWith("../") || path.posix.isAbsolute(target)) {
-    throw new SchemaGraphError({ message: `Schema import escapes its bundle: ${schemaLocation}` });
+  if (
+    target === ".." ||
+    target.startsWith("../") ||
+    path.posix.isAbsolute(target)
+  ) {
+    throw new SchemaGraphError({
+      message: `Schema import escapes its bundle: ${schemaLocation}`,
+    });
   }
   return target;
 };
 
-const readImports = (document: SchemaDocument): SchemaGraphDocument["imports"] => {
+const readImports = (
+  document: SchemaDocument,
+): SchemaGraphDocument["imports"] => {
   const imports: SchemaGraphDocument["imports"] = [];
   for (const child of nodeChildren(document.node)) {
     const kind = localName(nodeTag(child) ?? "");
@@ -584,7 +664,9 @@ const readImports = (document: SchemaDocument): SchemaGraphDocument["imports"] =
     const schemaLocation = attributes["schemaLocation"];
     imports.push({
       kind,
-      ...(attributes["namespace"] === undefined ? {} : { namespace: attributes["namespace"] }),
+      ...(attributes["namespace"] === undefined
+        ? {}
+        : { namespace: attributes["namespace"] }),
       ...(schemaLocation === undefined ? {} : { schemaLocation }),
       ...(schemaLocation === undefined || URL_SCHEME_RE.test(schemaLocation)
         ? {}
@@ -605,7 +687,9 @@ const loadBundleClosure = (bundle: SchemaBundleInput): SchemaDocument[] => {
     }
     const xml = bundle.documents.get(documentPath);
     if (xml === undefined) {
-      throw new SchemaGraphError({ message: `Missing imported schema: ${documentPath}` });
+      throw new SchemaGraphError({
+        message: `Missing imported schema: ${documentPath}`,
+      });
     }
     const document = parseDocument({
       xml,
@@ -625,7 +709,10 @@ const loadBundleClosure = (bundle: SchemaBundleInput): SchemaDocument[] => {
   return documents;
 };
 
-const addDocumentDeclarations = (document: SchemaDocument, builder: GraphBuilder): void => {
+const addDocumentDeclarations = (
+  document: SchemaDocument,
+  builder: GraphBuilder,
+): void => {
   for (const child of nodeChildren(document.node)) {
     const kind = localName(nodeTag(child) ?? "");
     const declarationKind = readDeclarationKind(kind);
@@ -647,7 +734,9 @@ const addDocumentDeclarations = (document: SchemaDocument, builder: GraphBuilder
       ...(attributes["abstract"] === "true" || attributes["abstract"] === "1"
         ? { abstract: true }
         : {}),
-      ...(attributes["mixed"] === "true" || attributes["mixed"] === "1" ? { mixed: true } : {}),
+      ...(attributes["mixed"] === "true" || attributes["mixed"] === "1"
+        ? { mixed: true }
+        : {}),
       ...(attributes["type"] === undefined
         ? {}
         : { type: resolveQName(attributes["type"], document) }),
@@ -696,11 +785,16 @@ const createBuilder = (): GraphBuilder => ({
   symbols: [],
 });
 
-export const buildOoxmlSchemaGraph = (bundles: readonly SchemaBundleInput[]): OoxmlSchemaGraph => {
+export const buildOoxmlSchemaGraph = (
+  bundles: readonly SchemaBundleInput[],
+): OoxmlSchemaGraph => {
   const documents = bundles
     .flatMap(loadBundleClosure)
     .toSorted((left, right) =>
-      compareStrings(`${left.profile}:${left.path}`, `${right.profile}:${right.path}`),
+      compareStrings(
+        `${left.profile}:${left.path}`,
+        `${right.profile}:${right.path}`,
+      ),
     );
   const builder = createBuilder();
   for (const document of documents) {
@@ -730,7 +824,10 @@ export const buildOoxmlSchemaGraph = (bundles: readonly SchemaBundleInput[]): Oo
       ),
     ),
     namespaces: [...documentsByNamespace.entries()]
-      .map(([uri, paths]) => ({ documents: paths.toSorted(compareStrings), uri }))
+      .map(([uri, paths]) => ({
+        documents: paths.toSorted(compareStrings),
+        uri,
+      }))
       .toSorted((left, right) => compareStrings(left.uri, right.uri)),
     profile: "docx-transitional",
     schemaVersion: 1,
@@ -741,14 +838,17 @@ export const buildOoxmlSchemaGraph = (bundles: readonly SchemaBundleInput[]): Oo
   };
 };
 
-const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array): string =>
+  createHash("sha256").update(bytes).digest("hex");
 
 const readPinnedArtifact = async (
   sourceId: string,
 ): Promise<{ bytes: Uint8Array; sha256: string }> => {
   const source = sourceManifest.sources.find(({ id }) => id === sourceId);
   if (source === undefined || source.sourceType !== "artifact") {
-    throw new SchemaGraphError({ message: `Missing artifact source: ${sourceId}` });
+    throw new SchemaGraphError({
+      message: `Missing artifact source: ${sourceId}`,
+    });
   }
   const cachePath = path.resolve(REPOSITORY_ROOT, source.cachePath);
   const file = Bun.file(cachePath);
@@ -759,7 +859,9 @@ const readPinnedArtifact = async (
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.length !== source.bytes || sha256(bytes) !== source.sha256) {
-    throw new SchemaGraphError({ message: `Cached source does not match manifest: ${sourceId}` });
+    throw new SchemaGraphError({
+      message: `Cached source does not match manifest: ${sourceId}`,
+    });
   }
   return { bytes, sha256: source.sha256 };
 };
@@ -774,7 +876,9 @@ const readNestedXsdBundle = async ({
   const outer = await JSZip.loadAsync(outerBytes);
   const innerEntry = outer.file(innerPath);
   if (innerEntry === null) {
-    throw new SchemaGraphError({ message: `Missing nested schema archive: ${innerPath}` });
+    throw new SchemaGraphError({
+      message: `Missing nested schema archive: ${innerPath}`,
+    });
   }
   const inner = await JSZip.loadAsync(await innerEntry.async("uint8array"));
   const documents = new Map<string, string>();
@@ -823,13 +927,15 @@ const buildPinnedGraph = async (): Promise<OoxmlSchemaGraph> => {
   ]);
 };
 
-const serializeGraph = (graph: OoxmlSchemaGraph): string => `${JSON.stringify(graph, null, 2)}\n`;
+const serializeGraph = (graph: OoxmlSchemaGraph): string =>
+  `${JSON.stringify(graph, null, 2)}\n`;
 
 const main = async (): Promise<void> => {
   const command = process.argv.at(2) ?? "write";
   if (command !== "check" && command !== "write") {
     throw new SchemaGraphError({
-      message: "Usage: bun scripts/generate-ooxml-schema-graph.ts [check|write]",
+      message:
+        "Usage: bun scripts/generate-ooxml-schema-graph.ts [check|write]",
     });
   }
   const generated = serializeGraph(await buildPinnedGraph());
@@ -837,7 +943,8 @@ const main = async (): Promise<void> => {
     const current = await Bun.file(OUTPUT_PATH).text();
     if (current !== generated) {
       throw new SchemaGraphError({
-        message: "Generated schema graph is stale; run bun run specifications:generate",
+        message:
+          "Generated schema graph is stale; run bun run specifications:generate",
       });
     }
     process.stdout.write("Specification schema graph is current\n");
@@ -845,7 +952,9 @@ const main = async (): Promise<void> => {
   }
   await mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
   await Bun.write(OUTPUT_PATH, generated);
-  process.stdout.write(`Wrote ${path.relative(REPOSITORY_ROOT, OUTPUT_PATH)}\n`);
+  process.stdout.write(
+    `Wrote ${path.relative(REPOSITORY_ROOT, OUTPUT_PATH)}\n`,
+  );
 };
 
 if (import.meta.main) {

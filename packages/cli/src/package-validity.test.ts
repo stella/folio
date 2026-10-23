@@ -14,16 +14,23 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { buildDocx, CONTRACT_PARAGRAPHS, makeTempDir } from "./__tests__/fixtures";
+import {
+  buildDocx,
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+} from "./__tests__/fixtures";
 import { captureIo, envelopeOf } from "./__tests__/io";
-import { runFolioCli } from "./cli";
-import { fileVersionOf } from "./document";
 import {
   MALFORMED_PACKAGES,
   TOOL_ARGUMENTS,
   WELL_FORMED_PACKAGES,
 } from "./__tests__/malformed-packages";
-import { checkWordprocessingPackage, INVALID_PACKAGE_REASONS } from "./main-document-part";
+import { runFolioCli } from "./cli";
+import { fileVersionOf } from "./document";
+import {
+  checkWordprocessingPackage,
+  INVALID_PACKAGE_REASONS,
+} from "./main-document-part";
 import { listCommands } from "./registry";
 
 let dir = "";
@@ -42,7 +49,10 @@ afterAll(async () => {
 describe("checkWordprocessingPackage", () => {
   test("names the reason for every malformed shape", async () => {
     for (const { name, reason, build } of MALFORMED_PACKAGES) {
-      const checked = await checkWordprocessingPackage(name, await build(valid));
+      const checked = await checkWordprocessingPackage(
+        name,
+        await build(valid),
+      );
       expect(checked.isErr(), name).toBe(true);
       if (checked.isOk()) continue;
       expect(checked.error.code, name).toBe("invalid_document");
@@ -64,7 +74,10 @@ describe("checkWordprocessingPackage", () => {
 
 /** File commands `runFolioCli` dispatches outside the registry, and how to aim them at a file. */
 const NON_REGISTRY_COMMANDS: Readonly<
-  Record<string, (file: { path: string; version: string }, other: string) => string[]>
+  Record<
+    string,
+    (file: { path: string; version: string }, other: string) => string[]
+  >
 > = {
   save: ({ path: filePath, version }, other) => [
     "save",
@@ -74,7 +87,12 @@ const NON_REGISTRY_COMMANDS: Readonly<
     "--expect-version",
     version,
   ],
-  render: ({ path: filePath }) => ["render", filePath, "-o", `${filePath}.html`],
+  render: ({ path: filePath }) => [
+    "render",
+    filePath,
+    "-o",
+    `${filePath}.html`,
+  ],
   serve: ({ path: filePath }) => ["serve", filePath],
 };
 
@@ -84,7 +102,9 @@ const NO_FILE_COMMANDS = new Set(["mcp"]);
 const helpCommands = async (): Promise<string[]> => {
   const captured = captureIo();
   await runFolioCli(["--help"], captured.io);
-  return [...captured.stdout().matchAll(/^ {2}([a-z]+) {2,}/gmu)].map(([, name]) => name ?? "");
+  return [...captured.stdout().matchAll(/^ {2}([a-z]+) {2,}/gmu)].map(
+    ([, name]) => name ?? "",
+  );
 };
 
 type Invocation = { label: string; argv: string[]; stdin?: string };
@@ -95,8 +115,14 @@ const invocationsFor = (malformed: string, other: string): Invocation[] => {
   for (const { tool, command } of listCommands()) {
     if (tool.type === "compare") {
       invocations.push(
-        { label: `${command.name} (base)`, argv: [command.name, malformed, other] },
-        { label: `${command.name} (revised)`, argv: [command.name, other, malformed] },
+        {
+          label: `${command.name} (base)`,
+          argv: [command.name, malformed, other],
+        },
+        {
+          label: `${command.name} (revised)`,
+          argv: [command.name, other, malformed],
+        },
         {
           label: `${command.name} (redline)`,
           argv: [
@@ -127,7 +153,10 @@ const invocationsFor = (malformed: string, other: string): Invocation[] => {
     });
   }
   for (const [name, argvFor] of Object.entries(NON_REGISTRY_COMMANDS)) {
-    invocations.push({ label: name, argv: argvFor({ path: malformed, version }, other) });
+    invocations.push({
+      label: name,
+      argv: argvFor({ path: malformed, version }, other),
+    });
   }
   const saveOnto = NON_REGISTRY_COMMANDS["save"];
   if (saveOnto !== undefined) {
@@ -146,7 +175,9 @@ describe("every command refuses a malformed package", () => {
     expect(new Set(Object.keys(TOOL_ARGUMENTS))).toEqual(
       new Set([...toolNames].filter((name) => name !== "compare_documents")),
     );
-    const fileCommands = (await helpCommands()).filter((name) => !NO_FILE_COMMANDS.has(name));
+    const fileCommands = (await helpCommands()).filter(
+      (name) => !NO_FILE_COMMANDS.has(name),
+    );
     expect(new Set(fileCommands)).toEqual(
       new Set([
         ...listCommands().map(({ command }) => command.name),
@@ -166,17 +197,27 @@ describe("every command refuses a malformed package", () => {
       await writeFile(other, valid);
       const outcomes: string[] = [];
       for (const { label, argv, stdin } of invocationsFor(malformed, other)) {
-        const captured = captureIo({ ...(stdin !== undefined && { stdin }), cwd: dir });
+        const captured = captureIo({
+          ...(stdin !== undefined && { stdin }),
+          cwd: dir,
+        });
         // `serve` runs until interrupted; one that accepted the file stops at once.
-        const io = { ...captured.io, untilInterrupted: () => Promise.resolve() };
+        const io = {
+          ...captured.io,
+          untilInterrupted: () => Promise.resolve(),
+        };
         const exit = await runFolioCli(argv, io);
         const error = envelopeOf(captured.stdout())["error"];
         const code =
-          typeof error === "object" && error !== null ? Reflect.get(error, "code") : null;
+          typeof error === "object" && error !== null
+            ? Reflect.get(error, "code")
+            : null;
         outcomes.push(`${label}: ${String(exit)} ${String(code)}`);
       }
       expect(outcomes).toEqual(
-        invocationsFor(malformed, other).map(({ label }) => `${label}: 2 invalid_document`),
+        invocationsFor(malformed, other).map(
+          ({ label }) => `${label}: 2 invalid_document`,
+        ),
       );
       // Nothing was written over either file.
       expect(new Uint8Array(await readFile(malformed))).toEqual(bytes);

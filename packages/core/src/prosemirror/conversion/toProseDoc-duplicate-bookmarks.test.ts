@@ -16,8 +16,8 @@ import { describe, expect, test } from "bun:test";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { compareDocx } from "../../compare/compare";
-import { createDocx } from "../../docx/rezip";
 import { parseDocx } from "../../docx/parser";
+import { createDocx } from "../../docx/rezip";
 import type { Paragraph } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { toProseDoc } from "./toProseDoc";
@@ -28,7 +28,9 @@ type ParagraphSpec = {
   content?: Paragraph["content"];
 };
 
-const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuffer> => {
+const buildDocxBuffer = (
+  paragraphs: readonly ParagraphSpec[],
+): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
   return createDocx({
     ...template,
@@ -39,7 +41,10 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
         content: paragraphs.map(({ paraId, text, content }) => ({
           type: "paragraph",
           paraId,
-          content: [...(content ?? []), { type: "run", content: [{ type: "text", text }] }],
+          content: [
+            ...(content ?? []),
+            { type: "run", content: [{ type: "text", text }] },
+          ],
         })),
       },
     },
@@ -74,7 +79,12 @@ const buildUntidyBookmarkDocx = (): Promise<ArrayBuffer> =>
     },
   ]);
 
-const BLOCK_TEXTS = ["First clause.", "Second clause.", "Third clause.", "Fourth clause."] as const;
+const BLOCK_TEXTS = [
+  "First clause.",
+  "Second clause.",
+  "Third clause.",
+  "Fourth clause.",
+] as const;
 
 describe("bookmark boundaries that do not pair", () => {
   test("toProseDoc converts a document with a duplicate bookmark id", async () => {
@@ -90,16 +100,26 @@ describe("bookmark boundaries that do not pair", () => {
   });
 
   test("the reviewer loads it and keeps every block", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildUntidyBookmarkDocx());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildUntidyBookmarkDocx(),
+    );
 
-    expect(reviewer.getContent().map((block) => block.text)).toEqual([...BLOCK_TEXTS]);
+    expect(reviewer.getContent().map((block) => block.text)).toEqual([
+      ...BLOCK_TEXTS,
+    ]);
   });
 
   test("it survives a save and reload", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildUntidyBookmarkDocx());
-    const reloaded = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildUntidyBookmarkDocx(),
+    );
+    const reloaded = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
 
-    expect(reloaded.getContent().map((block) => block.text)).toEqual([...BLOCK_TEXTS]);
+    expect(reloaded.getContent().map((block) => block.text)).toEqual([
+      ...BLOCK_TEXTS,
+    ]);
   });
 
   test("compareDocx reports the edit instead of failing to parse", async () => {
@@ -120,7 +140,11 @@ describe("bookmark boundaries that do not pair", () => {
         text: "Third clause.",
         content: [{ type: "bookmarkStart", id: 7, name: "_Unclosed" }],
       },
-      { paraId: "C0000004", text: "Fourth clause.", content: [{ type: "bookmarkEnd", id: 99 }] },
+      {
+        paraId: "C0000004",
+        text: "Fourth clause.",
+        content: [{ type: "bookmarkEnd", id: 99 }],
+      },
     ]);
 
     const result = await compareDocx(base, target, {
@@ -132,6 +156,8 @@ describe("bookmark boundaries that do not pair", () => {
     if (!result.isOk()) {
       return;
     }
-    expect(result.value.changes.map((change) => change.kind)).toEqual(["replace"]);
+    expect(result.value.changes.map((change) => change.kind)).toEqual([
+      "replace",
+    ]);
   });
 });

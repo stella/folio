@@ -9,11 +9,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
+
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
-import JSZip from "jszip";
 
 import {
   type CorpusInvariantInput,
@@ -32,9 +33,12 @@ import {
 const DOCUMENT_PART = "word/document.xml";
 const HEADER_PART = "word/header1.xml";
 
-const WORDPROCESSING = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const OFFICE_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const MARKUP_COMPATIBILITY = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const WORDPROCESSING =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const OFFICE_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const MARKUP_COMPATIBILITY =
+  "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const WORDML_2010 = "http://schemas.microsoft.com/office/word/2010/wordml";
 
 /** A value `ST_Jc` does not enumerate, as `corpus-schema-validator.test.ts` proves. */
@@ -58,7 +62,9 @@ const packageWithBody = async (body: string): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => ({
+const inputFor = async (
+  buffer: ArrayBuffer,
+): Promise<CorpusInvariantInput> => ({
   bytes: new Uint8Array(buffer),
   buffer,
   parsed: await parseDocx(buffer, { preloadFonts: false }),
@@ -66,7 +72,9 @@ const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => (
   budgetMs: DEFAULT_INVARIANT_BUDGET_MS,
 });
 
-const partsOf = async (buffer: ArrayBuffer): Promise<ReadonlyMap<string, string>> =>
+const partsOf = async (
+  buffer: ArrayBuffer,
+): Promise<ReadonlyMap<string, string>> =>
   (await unzipDocx(buffer, { extractAllXml: true })).allXml;
 
 const graph = await loadSchemaGraph();
@@ -74,8 +82,12 @@ const graph = await loadSchemaGraph();
 describe("generalizePartPath", () => {
   test("erases the ordinal that distinguishes sibling parts", () => {
     expect(generalizePartPath("word/header12.xml")).toBe("word/headerN.xml");
-    expect(generalizePartPath("word/media/image3.png")).toBe("word/media/imageN.png");
-    expect(generalizePartPath("word/theme/theme1.xml")).toBe("word/theme/themeN.xml");
+    expect(generalizePartPath("word/media/image3.png")).toBe(
+      "word/media/imageN.png",
+    );
+    expect(generalizePartPath("word/theme/theme1.xml")).toBe(
+      "word/theme/themeN.xml",
+    );
   });
 
   test("keeps a path that carries no ordinal", () => {
@@ -86,7 +98,9 @@ describe("generalizePartPath", () => {
 describe("a save may not introduce a schema violation", () => {
   test("a clean minimal package reports nothing", async () => {
     const outcome = await runSchemaValidityInvariant(
-      await inputFor(await buildBodySequenceDocx([{ kind: "paragraph", text: "Body." }])),
+      await inputFor(
+        await buildBodySequenceDocx([{ kind: "paragraph", text: "Body." }]),
+      ),
     );
 
     expect(outcome.failures).toEqual([]);
@@ -121,9 +135,12 @@ describe("a save may not introduce a schema violation", () => {
    * all, not that a header defect would be caught.
    */
   test("a header-bearing package reports nothing (smoke)", async () => {
-    const buffer = await buildBodySequenceDocx([{ kind: "paragraph", text: "Body." }], {
-      header: [{ kind: "paragraph", text: "Header paragraph." }],
-    });
+    const buffer = await buildBodySequenceDocx(
+      [{ kind: "paragraph", text: "Body." }],
+      {
+        header: [{ kind: "paragraph", text: "Header paragraph." }],
+      },
+    );
     const input = await inputFor(buffer);
 
     const saved = await repackDocx(input.parsed, { updateModifiedDate: false });

@@ -22,11 +22,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const BASELINE_PATH = path.join(REPO_ROOT, "scripts/identity-attribute-baseline.json");
+const BASELINE_PATH = path.join(
+  REPO_ROOT,
+  "scripts/identity-attribute-baseline.json",
+);
 const BASELINE_RELATIVE_PATH = "scripts/identity-attribute-baseline.json";
 const LINT_CONFIG = "oxlint.identity-attributes.config.ts";
 const RULE_CODE = "folio-identity-attributes(no-prefix-resolved-identity-read)";
-const WRITE_COMMAND = "bun scripts/identity-attribute-baseline.ts --write-baseline";
+const WRITE_COMMAND =
+  "bun scripts/identity-attribute-baseline.ts --write-baseline";
 
 type Diagnostic = { code?: unknown; filename?: unknown };
 
@@ -35,11 +39,22 @@ type Diagnostic = { code?: unknown; filename?: unknown };
  * around 768 KiB and the report is bigger than that when other rules fire.
  */
 const lintReport = (): string => {
-  const directory = mkdtempSync(path.join(tmpdir(), "folio-identity-attributes-"));
+  const directory = mkdtempSync(
+    path.join(tmpdir(), "folio-identity-attributes-"),
+  );
   const reportPath = path.join(directory, "report.json");
   try {
     const result = Bun.spawnSync(
-      ["bun", "--bun", "oxlint", "-c", LINT_CONFIG, "--format", "json", "packages"],
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        LINT_CONFIG,
+        "--format",
+        "json",
+        "packages",
+      ],
       { cwd: REPO_ROOT, stdout: Bun.file(reportPath), stderr: "pipe" },
     );
     const report = readFileSync(reportPath, "utf8");
@@ -53,7 +68,11 @@ const lintReport = (): string => {
 };
 
 const diagnosticsOf = (parsed: unknown): Diagnostic[] => {
-  if (typeof parsed !== "object" || parsed === null || !("diagnostics" in parsed)) {
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("diagnostics" in parsed)
+  ) {
     return [];
   }
   const { diagnostics } = parsed;
@@ -70,10 +89,14 @@ const countsByFile = (report: string): Record<string, number> => {
     if (typeof filename !== "string") {
       continue;
     }
-    const file = path.relative(REPO_ROOT, path.resolve(REPO_ROOT, filename)).replaceAll("\\", "/");
+    const file = path
+      .relative(REPO_ROOT, path.resolve(REPO_ROOT, filename))
+      .replaceAll("\\", "/");
     counts.set(file, (counts.get(file) ?? 0) + 1);
   }
-  return Object.fromEntries([...counts.entries()].toSorted(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(
+    [...counts.entries()].toSorted(([a], [b]) => a.localeCompare(b)),
+  );
 };
 
 const total = (counts: Record<string, number>): number =>
@@ -108,17 +131,24 @@ if (mode === "report") {
   process.exit(0);
 }
 
-const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<string, number>;
+const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<
+  string,
+  number
+>;
 const failures: string[] = [];
 
 for (const [file, count] of Object.entries(current)) {
   const allowed = baseline[file];
   if (allowed === undefined) {
-    failures.push(`${file}: ${count} new prefix-resolved identity read(s) in a clean file`);
+    failures.push(
+      `${file}: ${count} new prefix-resolved identity read(s) in a clean file`,
+    );
     continue;
   }
   if (count > allowed) {
-    failures.push(`${file}: prefix-resolved identity reads rose from ${allowed} to ${count}`);
+    failures.push(
+      `${file}: prefix-resolved identity reads rose from ${allowed} to ${count}`,
+    );
   }
 }
 

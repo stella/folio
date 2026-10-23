@@ -10,16 +10,23 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import {
-  type ParagraphNumberingOverride,
   paragraphNumberingFromSlots,
+  type ParagraphNumberingOverride,
   resolveParagraphNumbering,
 } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { resolveListState } from "../prosemirror/listState";
-import type { Document, NumberFormat, NumberingDefinitions } from "../types/document";
+import type {
+  Document,
+  NumberFormat,
+  NumberingDefinitions,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createNumberingMap } from "./numberingParser";
 import { readParagraphNumbering } from "./numberingReference";
@@ -31,7 +38,9 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /** One authored `<w:pPr>`, as the parser reads it. */
-const statedNumbering = (innerXml: string): ParagraphNumberingOverride | undefined => {
+const statedNumbering = (
+  innerXml: string,
+): ParagraphNumberingOverride | undefined => {
   const pPr = parseXmlDocument(`<w:pPr xmlns:w="${W}">${innerXml}</w:pPr>`);
   if (pPr === null) {
     throw new Error("Expected the fixture to parse");
@@ -43,7 +52,9 @@ const statedNumbering = (innerXml: string): ParagraphNumberingOverride | undefin
 const savedAndReread = (
   numbering: ParagraphNumberingOverride | undefined,
 ): ParagraphNumberingOverride | undefined => {
-  const saved = serializeParagraphFormatting(numbering === undefined ? {} : { numPr: numbering });
+  const saved = serializeParagraphFormatting(
+    numbering === undefined ? {} : { numPr: numbering },
+  );
   const inner = saved.startsWith("<w:pPr>")
     ? saved.slice("<w:pPr>".length, -"</w:pPr>".length)
     : saved;
@@ -63,7 +74,11 @@ const numPrXml = ({ numId, ilvl }: { numId?: number; ilvl?: number }): string =>
 const SPELLINGS = [
   ["no element at all", {}, undefined],
   ["an element stating neither slot", { element: true }, undefined],
-  ["a reference with a level", { numId: 3, ilvl: 2 }, { kind: "reference", numId: 3, ilvl: 2 }],
+  [
+    "a reference with a level",
+    { numId: 3, ilvl: 2 },
+    { kind: "reference", numId: 3, ilvl: 2 },
+  ],
   ["a reference with no level", { numId: 3 }, { kind: "reference", numId: 3 }],
   [
     "a reference stating level zero",
@@ -74,7 +89,11 @@ const SPELLINGS = [
   ["the reserved id alone", { numId: 0 }, { kind: "none" }],
   ["the reserved id with level zero", { numId: 0, ilvl: 0 }, { kind: "none" }],
   ["the reserved id with a level", { numId: 0, ilvl: 4 }, { kind: "none" }],
-  ["the reserved id with a negative level", { numId: 0, ilvl: -1 }, { kind: "none" }],
+  [
+    "the reserved id with a negative level",
+    { numId: 0, ilvl: -1 },
+    { kind: "none" },
+  ],
 ] as const satisfies readonly (readonly [
   string,
   { numId?: number; ilvl?: number; element?: true },
@@ -84,7 +103,9 @@ const SPELLINGS = [
 describe("every `<w:numPr>` spelling parses to one arm and saves back to itself", () => {
   test.each(SPELLINGS)("%s", (_name, authored, expected) => {
     const innerXml =
-      "element" in authored ? "<w:numPr></w:numPr>" : numPrXml(authored as { numId?: number });
+      "element" in authored
+        ? "<w:numPr></w:numPr>"
+        : numPrXml(authored as { numId?: number });
     const parsed = statedNumbering(innerXml);
 
     expect(parsed).toEqual(expected);
@@ -101,7 +122,10 @@ describe("every `<w:numPr>` spelling parses to one arm and saves back to itself"
 });
 
 const overrides: fc.Arbitrary<ParagraphNumberingOverride | undefined> = fc
-  .record({ ilvl: fc.option(fc.nat({ max: 8 }), { nil: undefined }), numId: fc.nat({ max: 9 }) })
+  .record({
+    ilvl: fc.option(fc.nat({ max: 8 }), { nil: undefined }),
+    numId: fc.nat({ max: 9 }),
+  })
   .map(({ numId, ilvl }) => paragraphNumberingFromSlots({ ilvl, numId }));
 
 describe("a stated override is a fixed point of parse → save → parse", () => {
@@ -125,7 +149,9 @@ describe("a cancellation carries no level", () => {
   test("whatever level the package stated beside the reserved id", () => {
     fc.assert(
       fc.property(fc.integer({ min: -2, max: 12 }), (ilvl) => {
-        expect(paragraphNumberingFromSlots({ ilvl, numId: 0 })).toEqual({ kind: "none" });
+        expect(paragraphNumberingFromSlots({ ilvl, numId: 0 })).toEqual({
+          kind: "none",
+        });
       }),
       propertyConfig({ numRuns: 40 }),
     );
@@ -164,7 +190,12 @@ const NUMBERED_STYLES = {
 } as const satisfies Document["package"]["styles"];
 
 const NUMBERING = {
-  abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] }],
+  abstractNums: [
+    {
+      abstractNumId: 5,
+      levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+    },
+  ],
   nums: [{ numId: 5, abstractNumId: 5 }],
 } as const satisfies NumberingDefinitions;
 
@@ -173,17 +204,25 @@ type ParagraphBlock = Extract<
   { type: "paragraph" }
 >;
 
-const documentWith = (paragraph: Omit<ParagraphBlock, "type" | "content">): Document => {
+const documentWith = (
+  paragraph: Omit<ParagraphBlock, "type" | "content">,
+): Document => {
   const document = createEmptyDocument();
   document.package.styles = structuredClone(NUMBERED_STYLES);
   document.package.numbering = structuredClone(NUMBERING);
   document.package.document.content = [
-    { type: "paragraph", ...paragraph, content: [{ type: "run", content: [] }] },
+    {
+      type: "paragraph",
+      ...paragraph,
+      content: [{ type: "run", content: [] }],
+    },
   ];
   return document;
 };
 
-const paragraphNumberingOf = (document: Document): ParagraphNumberingOverride | undefined => {
+const paragraphNumberingOf = (
+  document: Document,
+): ParagraphNumberingOverride | undefined => {
   const block = fromProseDoc(toProseDoc(document), document, {
     stylesheetSource: { type: "package" },
   }).package.document.content.at(0);
@@ -200,12 +239,16 @@ describe("a style that cancels the numbering its base supplies", () => {
     const derived = styles.find((style) => style.styleId === "Unnumbered");
 
     expect(derived?.pPr?.numPr).toEqual({ kind: "none" });
-    expect(resolveParagraphNumbering(derived?.pPr?.numPr)).toEqual({ kind: "none" });
+    expect(resolveParagraphNumbering(derived?.pPr?.numPr)).toEqual({
+      kind: "none",
+    });
   });
 
   test("and a paragraph on the numbered base keeps its numbering through the editor", () => {
     expect(
-      paragraphNumberingOf(documentWith({ formatting: { styleId: "Numbered" } })),
+      paragraphNumberingOf(
+        documentWith({ formatting: { styleId: "Numbered" } }),
+      ),
     ).toBeUndefined();
   });
 });
@@ -237,7 +280,9 @@ describe("the editor round trip keeps what the paragraph stated", () => {
             throw new Error("Expected a paragraph");
           }
           expect(block.formatting?.numPr).toEqual(stated);
-          expect(block.propertyChanges?.at(0)?.previousFormatting?.numPr).toEqual(previous);
+          expect(
+            block.propertyChanges?.at(0)?.previousFormatting?.numPr,
+          ).toEqual(previous);
         }),
         propertyConfig({ numRuns: 60 }),
       );
@@ -266,11 +311,18 @@ describe("bullet detection reads the level, not the instance id", () => {
           fc.constantFrom(...NUMBER_FORMATS),
           (numId, ilvl, numFmt) => {
             const numbering = createNumberingMap({
-              abstractNums: [{ abstractNumId: 1, levels: [{ ilvl, numFmt, lvlText: "%1." }] }],
+              abstractNums: [
+                {
+                  abstractNumId: 1,
+                  levels: [{ ilvl, numFmt, lvlText: "%1." }],
+                },
+              ],
               nums: [{ numId, abstractNumId: 1 }],
             });
 
-            expect(resolveListState(numbering, { kind: "reference", numId, ilvl })).toEqual({
+            expect(
+              resolveListState(numbering, { kind: "reference", numId, ilvl }),
+            ).toEqual({
               type: numFmt === "bullet" ? "bullet" : "numbered",
               level: ilvl,
               numId,

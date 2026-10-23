@@ -7,9 +7,9 @@
  */
 
 import { ExtensionManager } from "../extensions/ExtensionManager";
-import type { FolioCommandName } from "../extensions/types";
 // oxlint-disable-next-line import/no-cycle -- singleton registry; StarterKit pulls in extensions that read back the singleton at runtime
 import { createStarterKit } from "../extensions/StarterKit";
+import type { FolioCommandName } from "../extensions/types";
 
 // Re-export type interfaces (used by toProseDoc, fromProseDoc, and other modules)
 export type {

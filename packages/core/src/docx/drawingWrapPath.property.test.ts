@@ -20,11 +20,18 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Image, ImageWrap, ImageWrapPolygon } from "../types/document";
+import type {
+  Document,
+  Image,
+  ImageWrap,
+  ImageWrapPolygon,
+} from "../types/document";
 import { parseDrawing } from "./imageParser";
 import { serializeRun } from "./serializer/runSerializer";
 import { parseXml, type XmlElement } from "./xmlParser";
@@ -41,7 +48,10 @@ const NS = [
 
 /** The wrap element each kind is written as, and the insets its type declares. */
 const WRAP_KINDS = {
-  square: { element: "wrapSquare", insets: ["distT", "distB", "distL", "distR"] },
+  square: {
+    element: "wrapSquare",
+    insets: ["distT", "distB", "distL", "distR"],
+  },
   tight: { element: "wrapTight", insets: ["distL", "distR"] },
   through: { element: "wrapThrough", insets: ["distL", "distR"] },
   topAndBottom: { element: "wrapTopAndBottom", insets: ["distT", "distB"] },
@@ -61,7 +71,10 @@ type Placement = "none" | "drawing" | "wrapChild" | "both";
 type Authored = {
   kind: WrapKind;
   /** The value each inset is stated with, and the element it is stated on. */
-  insets: Record<InsetKey, { drawing: number; wrapChild: number; placement: Placement }>;
+  insets: Record<
+    InsetKey,
+    { drawing: number; wrapChild: number; placement: Placement }
+  >;
   polygon: ImageWrapPolygon;
 };
 
@@ -78,22 +91,42 @@ const authored = fc.record({
     distT: fc.record({
       drawing: insetValue,
       wrapChild: insetValue,
-      placement: fc.constantFrom<Placement>("none", "drawing", "wrapChild", "both"),
+      placement: fc.constantFrom<Placement>(
+        "none",
+        "drawing",
+        "wrapChild",
+        "both",
+      ),
     }),
     distB: fc.record({
       drawing: insetValue,
       wrapChild: insetValue,
-      placement: fc.constantFrom<Placement>("none", "drawing", "wrapChild", "both"),
+      placement: fc.constantFrom<Placement>(
+        "none",
+        "drawing",
+        "wrapChild",
+        "both",
+      ),
     }),
     distL: fc.record({
       drawing: insetValue,
       wrapChild: insetValue,
-      placement: fc.constantFrom<Placement>("none", "drawing", "wrapChild", "both"),
+      placement: fc.constantFrom<Placement>(
+        "none",
+        "drawing",
+        "wrapChild",
+        "both",
+      ),
     }),
     distR: fc.record({
       drawing: insetValue,
       wrapChild: insetValue,
-      placement: fc.constantFrom<Placement>("none", "drawing", "wrapChild", "both"),
+      placement: fc.constantFrom<Placement>(
+        "none",
+        "drawing",
+        "wrapChild",
+        "both",
+      ),
     }),
   }),
   // 3..40 points: a `wp:start` and the two to thirty-nine `wp:lineTo` that
@@ -138,7 +171,9 @@ const drawingXml = (facts: Authored): string => {
   const { element } = WRAP_KINDS[facts.kind];
   const wrapText = facts.kind === "topAndBottom" ? "" : ' wrapText="bothSides"';
   const body =
-    facts.kind === "tight" || facts.kind === "through" ? polygonXml(facts.polygon) : undefined;
+    facts.kind === "tight" || facts.kind === "through"
+      ? polygonXml(facts.polygon)
+      : undefined;
   const wrapChild =
     body === undefined
       ? `<wp:${element}${wrapText}${insetAttributes(statedOn(facts, "wrapChild"))}/>`
@@ -170,7 +205,9 @@ const runXml = (image: Image): string =>
 
 /** The real serializer, then the parser: the path an edited document takes. */
 const reserialize = (image: Image): Image | null => {
-  const root = (parseXml(`<root ${NS}>${runXml(image)}</root>`).elements as XmlElement[]).at(0);
+  const root = (
+    parseXml(`<root ${NS}>${runXml(image)}</root>`).elements as XmlElement[]
+  ).at(0);
   const drawing = (root?.elements as XmlElement[] | undefined)
     ?.at(0)
     ?.elements?.find((child) => child.type === "element");
@@ -181,7 +218,10 @@ const documentWithImage = (image: Image): Document => ({
   package: {
     document: {
       content: [
-        { type: "paragraph", content: [{ type: "run", content: [{ type: "drawing", image }] }] },
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "drawing", image }] }],
+        },
       ],
     },
   },
@@ -203,7 +243,9 @@ const firstImage = (document: Document): Image | null => {
 const editorRoundTrip = (image: Image): Image | null => {
   const source = documentWithImage(image);
   return firstImage(
-    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    }),
   );
 };
 
@@ -215,7 +257,9 @@ const ROUND_TRIPS = {
   },
 } as const satisfies Record<string, (image: Image) => Image | null>;
 
-const ROUND_TRIP_NAMES = Object.keys(ROUND_TRIPS) as (keyof typeof ROUND_TRIPS)[];
+const ROUND_TRIP_NAMES = Object.keys(
+  ROUND_TRIPS,
+) as (keyof typeof ROUND_TRIPS)[];
 
 /** Everything the wrap says, as the model should hold it. */
 const wrapFacts = (image: Image | null): Partial<ImageWrap> | null =>
@@ -234,19 +278,25 @@ const wrapFacts = (image: Image | null): Partial<ImageWrap> | null =>
 describe("a rebuilt drawing keeps its wrap outline and inset slots", () => {
   test("every authored polygon and inset placement survives both round trips", () => {
     fc.assert(
-      fc.property(authored, fc.constantFrom(...ROUND_TRIP_NAMES), (facts, tripName): undefined => {
-        const parsed = parseDrawingXml(drawingXml(facts));
-        expect(parsed).not.toBeNull();
-        if (parsed === null) {
-          return;
-        }
+      fc.property(
+        authored,
+        fc.constantFrom(...ROUND_TRIP_NAMES),
+        (facts, tripName): undefined => {
+          const parsed = parseDrawingXml(drawingXml(facts));
+          expect(parsed).not.toBeNull();
+          if (parsed === null) {
+            return;
+          }
 
-        if (facts.kind === "tight" || facts.kind === "through") {
-          expect(parsed.wrap.polygon).toEqual(facts.polygon);
-        }
+          if (facts.kind === "tight" || facts.kind === "through") {
+            expect(parsed.wrap.polygon).toEqual(facts.polygon);
+          }
 
-        expect(wrapFacts(ROUND_TRIPS[tripName](parsed))).toEqual(wrapFacts(parsed));
-      }),
+          expect(wrapFacts(ROUND_TRIPS[tripName](parsed))).toEqual(
+            wrapFacts(parsed),
+          );
+        },
+      ),
       propertyConfig({ numRuns: 300 }),
     );
   });
@@ -280,7 +330,9 @@ describe("a rebuilt drawing keeps its wrap outline and inset slots", () => {
         }
 
         const { element } = WRAP_KINDS[facts.kind];
-        const wrapTag = runXml(parsed).match(new RegExp(`<wp:${element}[^>]*`, "u"))?.[0] ?? "";
+        const wrapTag =
+          runXml(parsed).match(new RegExp(`<wp:${element}[^>]*`, "u"))?.[0] ??
+          "";
         for (const [key, value] of Object.entries(stated)) {
           expect(wrapTag).toContain(`${key}="${value}"`);
         }

@@ -2,8 +2,9 @@ import type { Run, RunPropertyChange, TextFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 
 /** The single field mark lists every revision held by its invisible result runs. */
-export const emptyFieldRunPropertyChanges = (runs: readonly Run[]): RunPropertyChange[] =>
-  runs.flatMap((run) => run.propertyChanges ?? []);
+export const emptyFieldRunPropertyChanges = (
+  runs: readonly Run[],
+): RunPropertyChange[] => runs.flatMap((run) => run.propertyChanges ?? []);
 
 const visibleFormatting = (runs: readonly Run[]): TextFormatting | undefined =>
   runs.find((run) => run.formatting !== undefined)?.formatting;
@@ -37,13 +38,16 @@ export const resolveEmptyFieldResultRuns = ({
     const remaining = run.propertyChanges?.filter(
       (change) => revisionIds !== null && !revisionIds.has(change.info.id),
     );
-    const formatting = mode === "reject" ? matches.at(0)?.previousFormatting : run.formatting;
+    const formatting =
+      mode === "reject" ? matches.at(0)?.previousFormatting : run.formatting;
     return {
       type: "run",
       content: run.content,
       ...(formatting !== undefined ? { formatting } : {}),
       ...(remaining?.length ? { propertyChanges: remaining } : {}),
-      ...(run.preservedAttributes ? { preservedAttributes: run.preservedAttributes } : {}),
+      ...(run.preservedAttributes
+        ? { preservedAttributes: run.preservedAttributes }
+        : {}),
     };
   });
   if (!changed) return null;

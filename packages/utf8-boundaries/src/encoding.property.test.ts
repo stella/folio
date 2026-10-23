@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../test/property-testing";
 import {
   base64ToBytes,
   bytesToBase64Url,
@@ -8,9 +12,9 @@ import {
   decodeText,
   encodeBase64Portable,
   encodeBinaryString,
+  encodeUtf8,
   encodeUtf16BE,
   encodeUtf16LE,
-  encodeUtf8,
 } from "./encoding";
 
 const scalar = fc.oneof(
@@ -37,13 +41,17 @@ test(
         fc.nat({ max: 150 }),
         fc.integer({ min: 1, max: 7 }),
         (points, cap, chunkSize) => {
-          const text = points.map((point) => String.fromCodePoint(point)).join("");
+          const text = points
+            .map((point) => String.fromCodePoint(point))
+            .join("");
           const bytes = encodeUtf8(text);
           const prefix = bytes.subarray(0, cap);
           const reader = createTextReader({ fatal: true, ignoreBOM: true });
           const pieces: string[] = [];
           for (let offset = 0; offset < prefix.length; offset += chunkSize)
-            pieces.push(reader.read(prefix.subarray(offset, offset + chunkSize)));
+            pieces.push(
+              reader.read(prefix.subarray(offset, offset + chunkSize)),
+            );
           const actual = pieces.join("") + reader.finishPrefix();
           let used = 0;
           let expected = "";
@@ -53,10 +61,18 @@ test(
           }
           expect(actual).toBe(expected);
           expect(
-            decodeText(encodeUtf16BE(text), { encoding: "utf-16be", ignoreBOM: true, fatal: true }),
+            decodeText(encodeUtf16BE(text), {
+              encoding: "utf-16be",
+              ignoreBOM: true,
+              fatal: true,
+            }),
           ).toBe(text);
           expect(
-            decodeText(encodeUtf16LE(text), { encoding: "utf-16le", ignoreBOM: true, fatal: true }),
+            decodeText(encodeUtf16LE(text), {
+              encoding: "utf-16le",
+              ignoreBOM: true,
+              fatal: true,
+            }),
           ).toBe(text);
         },
       ),
@@ -73,7 +89,9 @@ test(
       fc.property(fc.uint8Array({ maxLength: 4096 }), (bytes) => {
         expect(base64ToBytes(encodeBase64Portable(bytes))).toEqual(bytes);
         expect(base64ToBytes(bytesToBase64Url(bytes))).toEqual(bytes);
-        expect(encodeBinaryString(decodeText(bytes, { encoding: "binary" }))).toEqual(bytes);
+        expect(
+          encodeBinaryString(decodeText(bytes, { encoding: "binary" })),
+        ).toEqual(bytes);
       }),
       { numRuns: 100, id: "encoding owner preserves binary payloads" },
     );

@@ -1,21 +1,25 @@
-import type { CanonicalGap } from "../types/canonicalCapabilities";
 import type {
   FolioContentBlock,
   FolioContentBlockIdentity,
-  FolioContentStatedNumbering,
   FolioContentInlineBooleanProperty,
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
   FolioContentListReference,
   FolioContentParagraphIndentation,
-  FolioContentParagraphSpacing,
   FolioContentParagraphKind,
+  FolioContentParagraphSpacing,
   FolioContentRun,
   FolioContentSnapshot,
+  FolioContentStatedNumbering,
   FolioContentTableLocation,
 } from "../compare/content-types";
 import type { ListKind } from "../docx/listNumberingInstances";
-import type { BreakContent, OutlineLevel, ParagraphAlignment } from "../types/document";
+import type { CanonicalGap } from "../types/canonicalCapabilities";
+import type {
+  BreakContent,
+  OutlineLevel,
+  ParagraphAlignment,
+} from "../types/document";
 
 export type FolioAIBlockKind = FolioContentParagraphKind | "diagnostic";
 
@@ -69,9 +73,10 @@ export type FolioAIBlockStructuralBoundary =
  */
 export type FolioAIBlockTableLocation = FolioContentTableLocation;
 
-export type FolioAIParagraphBlock = FolioContentBlock<FolioContentParagraphKind> & {
-  structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
-};
+export type FolioAIParagraphBlock =
+  FolioContentBlock<FolioContentParagraphKind> & {
+    structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+  };
 
 export type FolioAIDiagnosticBlock = FolioContentBlockIdentity<"diagnostic"> & {
   /** Present on a read-only block that reports preserved content Folio cannot interpret. */
@@ -108,7 +113,8 @@ export type FolioAINewListReference = {
 };
 
 /** An existing numbering instance and level, or a new list. */
-export type FolioAIListNumbering = FolioContentStatedNumbering | FolioAINewListReference;
+export type FolioAIListNumbering =
+  FolioContentStatedNumbering | FolioAINewListReference;
 
 /** Which paragraphs split from one insertion's `text` receive its paragraph formatting. */
 export type FolioAIInsertFormattingScope = "firstParagraph" | "allParagraphs";
@@ -118,20 +124,21 @@ export type FolioAIInsertFormattingScope = "firstParagraph" | "allParagraphs";
  * scope: properties a comparison can see in a block projection and an agent
  * has a reason to change.
  */
-export type FolioAIBlockParagraphProperties<Numbering = FolioAIListNumbering> = {
-  /** `w:pStyle`. `null` clears the style back to the default. */
-  styleId?: string | null;
-  /** Direct `w:outlineLvl`. `null` restores style inheritance. */
-  outlineLevel?: OutlineLevel | null;
-  /** Exact stated numbering: inherit, cancellation, level-only, or an authored reference. */
-  numbering?: Numbering;
-  /** Direct `w:jc`. `null` clears the override and restores style inheritance. */
-  alignment?: ParagraphAlignment | null;
-  /** Direct `w:spacing` attributes. `null` removes the whole direct child. */
-  spacing?: FolioAIParagraphSpacing | null;
-  /** Direct `w:ind` attributes. `null` removes the whole direct child. */
-  indentation?: FolioAIParagraphIndentation | null;
-};
+export type FolioAIBlockParagraphProperties<Numbering = FolioAIListNumbering> =
+  {
+    /** `w:pStyle`. `null` clears the style back to the default. */
+    styleId?: string | null;
+    /** Direct `w:outlineLvl`. `null` restores style inheritance. */
+    outlineLevel?: OutlineLevel | null;
+    /** Exact stated numbering: inherit, cancellation, level-only, or an authored reference. */
+    numbering?: Numbering;
+    /** Direct `w:jc`. `null` clears the override and restores style inheritance. */
+    alignment?: ParagraphAlignment | null;
+    /** Direct `w:spacing` attributes. `null` removes the whole direct child. */
+    spacing?: FolioAIParagraphSpacing | null;
+    /** Direct `w:ind` attributes. `null` removes the whole direct child. */
+    indentation?: FolioAIParagraphIndentation | null;
+  };
 
 /**
  * Every paragraph of one story, blank ones included.
@@ -234,8 +241,7 @@ export type FolioDocumentSectionReadResult =
   | { status: "stale" };
 
 export type FolioDocumentNavigationTarget =
-  | { type: "block"; story: "main"; blockId: string }
-  | FolioAITextRangeHandle;
+  { type: "block"; story: "main"; blockId: string } | FolioAITextRangeHandle;
 
 /**
  * A party in an `insertSignatureTable` op. Mirrors the
@@ -249,359 +255,361 @@ export type FolioAISignatureParty = {
   title?: string;
 };
 
-export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEditReviewMeta & {
-  precondition?: FolioAIEditPrecondition;
-  /**
-   * Groups this operation's produced marks under one logical suggestion so the
-   * host can accept/reject them together. Only consulted in `"suggested"` apply
-   * mode; ignored otherwise. When omitted in suggested mode the applier falls
-   * back to the operation `id`, giving per-operation grouping.
-   */
-  suggestionId?: string;
-} & (
-    | {
-        id: string;
-        type: "replaceInBlock";
-        blockId: string;
-        find: string;
-        replace: string;
-        comment?: FolioAIComment;
-      }
-    | {
-        id: string;
-        type: "replaceRange";
-        range: FolioAITextRangeHandle;
-        replace: string;
-        comment?: FolioAIComment;
-      }
-    | {
-        id: string;
-        type: "commentOnRange";
-        range: FolioAITextRangeHandle;
-        comment: FolioAIComment;
-      }
-    | {
-        id: string;
-        type: "formatRange";
-        range: FolioAITextRangeHandle;
-        formatting: FolioAIInlineFormattingPatch;
-      }
-    | {
-        id: string;
-        type: "insertAfterBlock" | "insertBeforeBlock";
-        blockId: string;
-        /**
-         * The paragraph text to insert. With the default `lineBreakMode:
-         * "paragraph"`, a line break splits `text` into consecutive
-         * paragraphs at the same anchor. `formattingScope` decides which of
-         * them receive this operation's paragraph formatting: by default only
-         * the first, later ones use body formatting. Blank lines are dropped
-         * and reported as a `splitMultilineText` normalization. `"inline"`
-         * retains the control inside one paragraph.
-         *
-         * `""` inserts a BLANK paragraph, and is a real edit: adding an empty
-         * line is a change a reader sees, and a document that has one where
-         * another does not differs. It is applied like any other insertion,
-         * with a tracked paragraph mark, so rejecting closes it away.
-         */
-        text: string;
-        /**
-         * `"paragraph"` (the default) splits newlines into consecutive blocks.
-         * `"inline"` retains tabs and hard breaks inside this inserted block.
-         */
-        lineBreakMode?: "paragraph" | "inline";
-        /**
-         * Which paragraphs split from `text` receive the operation's
-         * paragraph formatting: the inherited anchor formatting plus
-         * `styleId`, `outlineLevel`, `numbering`, `alignment`,
-         * `spacing` and `indentation`. `"firstParagraph"` (the default) formats the first
-         * and leaves the rest as body paragraphs, for a heading followed by
-         * its body. `"allParagraphs"` formats every paragraph alike, for
-         * several list items in one operation. `pageBreakBefore` and
-         * `hardPageBreak` apply to the first paragraph in either scope.
-         */
-        formattingScope?: FolioAIInsertFormattingScope;
-        inheritFormatting?: boolean;
-        /**
-         * Links this insertion to the deletion that carries the same
-         * `moveId`: together they are one relocation, written as `w:moveTo`
-         * and `w:moveFrom`. See `deleteBlock`.
-         */
-        moveId?: string;
-        /**
-         * When true, mark the inserted paragraph with
-         * `pageBreakBefore` so the layout engine starts it on a
-         * new page. Use for explicit page-break inserts.
-         */
-        pageBreakBefore?: boolean;
-        /**
-         * Insert one standalone authored `<w:br w:type="page"/>` carrier.
-         * This differs from `pageBreakBefore`, which is a paragraph property.
-         */
-        hardPageBreak?: {
-          clear?: BreakContent["clear"];
-        };
-        /**
-         * Override the paragraph `styleId` attr of the inserted
-         * block (e.g. `ClauseHeading1`). When omitted the inserted
-         * block inherits the source block's styleId via
-         * `inheritFormatting`; `null` gives it no style at all, which
-         * inheritance alone cannot say.
-         */
-        styleId?: string | null;
-        /**
-         * Direct `w:outlineLvl` for the inserted block. Without it the
-         * inserted paragraph keeps the level the anchor states itself, so a
-         * body paragraph inserted beside a heading that states its level
-         * becomes a heading. `null` clears it and lets the style decide.
-         */
-        outlineLevel?: OutlineLevel | null;
-        /** Exact stated numbering for the inserted paragraph; omission copies the anchor. */
-        numbering?: Numbering;
-        /**
-         * Direct `w:jc` for the inserted block. `null` clears alignment copied
-         * from the anchor and lets the inserted paragraph's style decide.
-         */
-        alignment?: ParagraphAlignment | null;
-        /**
-         * Direct `w:spacing` for the inserted block. `null` clears spacing
-         * copied from the anchor and lets the inserted paragraph's style decide.
-         */
-        spacing?: FolioAIParagraphSpacing | null;
-        /** Direct `w:ind` for the inserted block. `null` clears copied indentation. */
-        indentation?: FolioAIParagraphIndentation | null;
-        comment?: FolioAIComment;
-      }
-    | {
-        id: string;
-        type: "replaceBlock";
-        blockId: string;
-        text: string;
-        preserveFormatting?: boolean;
-        /** Paragraph style to apply; `null` clears the direct style. */
-        styleId?: string | null;
-        comment?: FolioAIComment;
-      }
+export type FolioAIEditOperation<Numbering = FolioAIListNumbering> =
+  FolioAIEditReviewMeta & {
+    precondition?: FolioAIEditPrecondition;
     /**
-     * Delete the whole block. A block with words loses them and its paragraph
-     * mark; a BLANK block has only a paragraph mark to lose, and loses it, so
-     * the empty line goes away rather than the operation doing nothing.
-     *
-     * The block that ENDS its container is the exception, in both modes: a
-     * body, a cell, a header or footer, a note and a text box each end with a
-     * paragraph, and a deleted mark there would say "join with the paragraph
-     * after this one" where there is none. It loses its words and keeps its
-     * place. To remove it, delete the mark of the block BEFORE it, which
-     * merges forward into it.
+     * Groups this operation's produced marks under one logical suggestion so the
+     * host can accept/reject them together. Only consulted in `"suggested"` apply
+     * mode; ignored otherwise. When omitted in suggested mode the applier falls
+     * back to the operation `id`, giving per-operation grouping.
      */
-    | {
-        id: string;
-        type: "deleteBlock";
-        blockId: string;
-        /**
-         * Links this deletion to the insertion that carries the same
-         * `moveId`: together they are one relocation, written as `w:moveFrom`
-         * and `w:moveTo` rather than as an unrelated deletion and insertion.
-         * A `moveId` that does not name exactly one of each is reported as an
-         * `unpairedMove` normalization and both halves apply plainly.
-         */
-        moveId?: string;
-        comment?: FolioAIComment;
-      }
-    /**
-     * Break the block in two at `offset`, moving a paragraph mark and no
-     * words. In tracked-changes mode the first half carries an INSERTED
-     * paragraph mark, so accepting keeps the break and rejecting closes it;
-     * the alternative — rewriting the first half and inserting the second —
-     * claims the tail was newly written when nobody touched it.
-     */
-    | {
-        id: string;
-        type: "splitBlock";
-        /** Offset in the block's text. Must fall strictly inside it. */
-        offset: number;
-        /**
-         * Text at `offset` the break replaces — the space between the two
-         * halves, when the split consumed one. Deleted in `"direct"` mode and
-         * deletion-marked in tracked mode, so rejecting restores it.
-         */
-        separator?: string;
-        blockId: string;
-        /**
-         * Paragraph properties for the first result. Omitted properties keep
-         * the source paragraph's value.
-         */
-        firstParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
-        /**
-         * Paragraph properties for the second result. Omitted properties keep
-         * the source paragraph's value.
-         */
-        secondParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
-      }
-    /**
-     * Add a whole table next to the anchor block, its rows marked inserted in
-     * tracked mode. `insertTableRow` can only grow a table that already
-     * exists; a comparison whose target gained one needs to say so.
-     */
-    | {
-        id: string;
-        type: "insertTable";
-        blockId: string;
-        /** Place the table after the anchor (default) or before it. */
-        position?: "after" | "before";
-        /**
-         * Cell texts row by row. Every row must hold the same number of cells.
-         *
-         * A cell holds paragraphs, not lines: a line break in a cell's text
-         * starts a new paragraph in that cell, and a blank line is a blank
-         * paragraph. That is not the rule `insertAfterBlock` follows for
-         * prose, where a blank line between two model-written clauses is
-         * formatting noise and is dropped — a cell's text describes paragraphs
-         * that exist, so dropping one would lose a block.
-         */
-        rows: readonly (readonly string[])[];
-      }
-    /**
-     * Remove the whole table the block sits in, its rows marked deleted in
-     * tracked mode. The mirror of `insertTable`.
-     */
-    | {
-        id: string;
-        type: "deleteTable";
-        blockId: string;
-      }
-    /**
-     * Replace the block's paragraph properties, recorded as a `w:pPrChange`
-     * in tracked mode so the previous set is restored on reject. The edit
-     * that moves no words: a list item demoted a level, a paragraph restyled
-     * as a heading.
-     */
-    | {
-        id: string;
-        type: "setBlockParagraphProperties";
-        blockId: string;
-        properties: FolioAIBlockParagraphProperties<Numbering>;
-      }
-    /**
-     * Join the block with the one after it, the mirror of `splitBlock`: in
-     * tracked-changes mode the block carries a DELETED paragraph mark, so
-     * accepting closes the break and rejecting keeps it.
-     *
-     * Refused when the block has no joinable sibling — the last paragraph of
-     * a table cell, or of the story — because a deleted mark there would
-     * accept into a join that cannot happen and leave a revision no reader
-     * can resolve.
-     */
-    | {
-        id: string;
-        type: "mergeBlockWithNext";
-        /**
-         * Text the join inserts between the two halves — the space the
-         * paragraph break used to stand in for. Insertion-marked in tracked
-         * mode, so rejecting removes it along with the join.
-         */
-        separator?: string;
-        blockId: string;
-        /**
-         * Paragraph properties for the joined result. Omitted properties keep
-         * the first paragraph's value.
-         */
-        mergedParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
-      }
-    | {
-        id: string;
-        type: "commentOnBlock";
-        blockId: string;
-        quote?: string;
-        comment: FolioAIComment;
-      }
-    | {
-        id: string;
-        type: "insertSignatureTable";
-        blockId: string;
-        /**
-         * Position the table after the anchor block (default) or
-         * before it. Always inserts as a sibling at the document
-         * level — no nested-table support.
-         */
-        position?: "after" | "before";
-        parties: FolioAISignatureParty[];
-        comment?: FolioAIComment;
-      }
-    | {
-        id: string;
-        type: "insertTableRow";
-        /** Stable paragraph anchor inside the row that receives the new sibling. */
-        blockId: string;
-        position?: "after" | "before";
-        /**
-         * Initial text for each cell of the new row, in order — the same order
-         * a block's `table.cellIndex` counts. Cells left unnamed stay empty.
-         *
-         * Sized against the cells the new row really has, which is fewer than
-         * the table's columns where a vertical merge from the row above
-         * reaches through the insertion point (the merge grows through the
-         * new row and keeps its column). More texts than cells is refused as
-         * `payloadDoesNotFit`, naming the texts with no cell, before anything
-         * is written; fewer leaves the remaining cells empty.
-         *
-         * A line break in a cell's text starts a new paragraph in that cell,
-         * as in `insertTable`.
-         */
-        cellTexts?: string[];
-      }
-    | {
-        id: string;
-        type: "deleteTableRow";
-        /** Stable paragraph anchor inside the row to delete. */
-        blockId: string;
-      }
-    | {
-        id: string;
-        type: "insertTableColumn";
-        /** Stable paragraph anchor inside the cell that receives the new sibling column. */
-        blockId: string;
-        position?: "after" | "before";
-        /**
-         * Initial text for newly created physical cells in row order. A
-         * horizontal merge the new column crosses widens instead of taking a
-         * cell, so more texts than new cells is refused as `payloadDoesNotFit`.
-         */
-        cellTexts?: string[];
-      }
-    | {
-        id: string;
-        type: "deleteTableColumn";
-        /** Stable paragraph anchor inside the column to delete. */
-        blockId: string;
-      }
-    | ({
-        id: string;
-        type: "mergeTableCells";
-        /** Stable paragraph anchor inside the first cell. */
-        blockId: string;
-      } & (
-        | {
-            /** Stable paragraph anchor inside the opposite corner cell. */
-            endBlockId: string;
-            rowCount?: never;
-          }
-        | {
-            /** Number of grid rows to merge downward from the anchored cell. */
-            rowCount: number;
-            endBlockId?: never;
-          }
-      ))
-    | {
-        id: string;
-        type: "splitTableCell";
-        /** Stable paragraph anchor inside the cell to split. */
-        blockId: string;
-      }
-  );
+    suggestionId?: string;
+  } & (
+      | {
+          id: string;
+          type: "replaceInBlock";
+          blockId: string;
+          find: string;
+          replace: string;
+          comment?: FolioAIComment;
+        }
+      | {
+          id: string;
+          type: "replaceRange";
+          range: FolioAITextRangeHandle;
+          replace: string;
+          comment?: FolioAIComment;
+        }
+      | {
+          id: string;
+          type: "commentOnRange";
+          range: FolioAITextRangeHandle;
+          comment: FolioAIComment;
+        }
+      | {
+          id: string;
+          type: "formatRange";
+          range: FolioAITextRangeHandle;
+          formatting: FolioAIInlineFormattingPatch;
+        }
+      | {
+          id: string;
+          type: "insertAfterBlock" | "insertBeforeBlock";
+          blockId: string;
+          /**
+           * The paragraph text to insert. With the default `lineBreakMode:
+           * "paragraph"`, a line break splits `text` into consecutive
+           * paragraphs at the same anchor. `formattingScope` decides which of
+           * them receive this operation's paragraph formatting: by default only
+           * the first, later ones use body formatting. Blank lines are dropped
+           * and reported as a `splitMultilineText` normalization. `"inline"`
+           * retains the control inside one paragraph.
+           *
+           * `""` inserts a BLANK paragraph, and is a real edit: adding an empty
+           * line is a change a reader sees, and a document that has one where
+           * another does not differs. It is applied like any other insertion,
+           * with a tracked paragraph mark, so rejecting closes it away.
+           */
+          text: string;
+          /**
+           * `"paragraph"` (the default) splits newlines into consecutive blocks.
+           * `"inline"` retains tabs and hard breaks inside this inserted block.
+           */
+          lineBreakMode?: "paragraph" | "inline";
+          /**
+           * Which paragraphs split from `text` receive the operation's
+           * paragraph formatting: the inherited anchor formatting plus
+           * `styleId`, `outlineLevel`, `numbering`, `alignment`,
+           * `spacing` and `indentation`. `"firstParagraph"` (the default) formats the first
+           * and leaves the rest as body paragraphs, for a heading followed by
+           * its body. `"allParagraphs"` formats every paragraph alike, for
+           * several list items in one operation. `pageBreakBefore` and
+           * `hardPageBreak` apply to the first paragraph in either scope.
+           */
+          formattingScope?: FolioAIInsertFormattingScope;
+          inheritFormatting?: boolean;
+          /**
+           * Links this insertion to the deletion that carries the same
+           * `moveId`: together they are one relocation, written as `w:moveTo`
+           * and `w:moveFrom`. See `deleteBlock`.
+           */
+          moveId?: string;
+          /**
+           * When true, mark the inserted paragraph with
+           * `pageBreakBefore` so the layout engine starts it on a
+           * new page. Use for explicit page-break inserts.
+           */
+          pageBreakBefore?: boolean;
+          /**
+           * Insert one standalone authored `<w:br w:type="page"/>` carrier.
+           * This differs from `pageBreakBefore`, which is a paragraph property.
+           */
+          hardPageBreak?: {
+            clear?: BreakContent["clear"];
+          };
+          /**
+           * Override the paragraph `styleId` attr of the inserted
+           * block (e.g. `ClauseHeading1`). When omitted the inserted
+           * block inherits the source block's styleId via
+           * `inheritFormatting`; `null` gives it no style at all, which
+           * inheritance alone cannot say.
+           */
+          styleId?: string | null;
+          /**
+           * Direct `w:outlineLvl` for the inserted block. Without it the
+           * inserted paragraph keeps the level the anchor states itself, so a
+           * body paragraph inserted beside a heading that states its level
+           * becomes a heading. `null` clears it and lets the style decide.
+           */
+          outlineLevel?: OutlineLevel | null;
+          /** Exact stated numbering for the inserted paragraph; omission copies the anchor. */
+          numbering?: Numbering;
+          /**
+           * Direct `w:jc` for the inserted block. `null` clears alignment copied
+           * from the anchor and lets the inserted paragraph's style decide.
+           */
+          alignment?: ParagraphAlignment | null;
+          /**
+           * Direct `w:spacing` for the inserted block. `null` clears spacing
+           * copied from the anchor and lets the inserted paragraph's style decide.
+           */
+          spacing?: FolioAIParagraphSpacing | null;
+          /** Direct `w:ind` for the inserted block. `null` clears copied indentation. */
+          indentation?: FolioAIParagraphIndentation | null;
+          comment?: FolioAIComment;
+        }
+      | {
+          id: string;
+          type: "replaceBlock";
+          blockId: string;
+          text: string;
+          preserveFormatting?: boolean;
+          /** Paragraph style to apply; `null` clears the direct style. */
+          styleId?: string | null;
+          comment?: FolioAIComment;
+        }
+      /**
+       * Delete the whole block. A block with words loses them and its paragraph
+       * mark; a BLANK block has only a paragraph mark to lose, and loses it, so
+       * the empty line goes away rather than the operation doing nothing.
+       *
+       * The block that ENDS its container is the exception, in both modes: a
+       * body, a cell, a header or footer, a note and a text box each end with a
+       * paragraph, and a deleted mark there would say "join with the paragraph
+       * after this one" where there is none. It loses its words and keeps its
+       * place. To remove it, delete the mark of the block BEFORE it, which
+       * merges forward into it.
+       */
+      | {
+          id: string;
+          type: "deleteBlock";
+          blockId: string;
+          /**
+           * Links this deletion to the insertion that carries the same
+           * `moveId`: together they are one relocation, written as `w:moveFrom`
+           * and `w:moveTo` rather than as an unrelated deletion and insertion.
+           * A `moveId` that does not name exactly one of each is reported as an
+           * `unpairedMove` normalization and both halves apply plainly.
+           */
+          moveId?: string;
+          comment?: FolioAIComment;
+        }
+      /**
+       * Break the block in two at `offset`, moving a paragraph mark and no
+       * words. In tracked-changes mode the first half carries an INSERTED
+       * paragraph mark, so accepting keeps the break and rejecting closes it;
+       * the alternative — rewriting the first half and inserting the second —
+       * claims the tail was newly written when nobody touched it.
+       */
+      | {
+          id: string;
+          type: "splitBlock";
+          /** Offset in the block's text. Must fall strictly inside it. */
+          offset: number;
+          /**
+           * Text at `offset` the break replaces — the space between the two
+           * halves, when the split consumed one. Deleted in `"direct"` mode and
+           * deletion-marked in tracked mode, so rejecting restores it.
+           */
+          separator?: string;
+          blockId: string;
+          /**
+           * Paragraph properties for the first result. Omitted properties keep
+           * the source paragraph's value.
+           */
+          firstParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
+          /**
+           * Paragraph properties for the second result. Omitted properties keep
+           * the source paragraph's value.
+           */
+          secondParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
+        }
+      /**
+       * Add a whole table next to the anchor block, its rows marked inserted in
+       * tracked mode. `insertTableRow` can only grow a table that already
+       * exists; a comparison whose target gained one needs to say so.
+       */
+      | {
+          id: string;
+          type: "insertTable";
+          blockId: string;
+          /** Place the table after the anchor (default) or before it. */
+          position?: "after" | "before";
+          /**
+           * Cell texts row by row. Every row must hold the same number of cells.
+           *
+           * A cell holds paragraphs, not lines: a line break in a cell's text
+           * starts a new paragraph in that cell, and a blank line is a blank
+           * paragraph. That is not the rule `insertAfterBlock` follows for
+           * prose, where a blank line between two model-written clauses is
+           * formatting noise and is dropped — a cell's text describes paragraphs
+           * that exist, so dropping one would lose a block.
+           */
+          rows: readonly (readonly string[])[];
+        }
+      /**
+       * Remove the whole table the block sits in, its rows marked deleted in
+       * tracked mode. The mirror of `insertTable`.
+       */
+      | {
+          id: string;
+          type: "deleteTable";
+          blockId: string;
+        }
+      /**
+       * Replace the block's paragraph properties, recorded as a `w:pPrChange`
+       * in tracked mode so the previous set is restored on reject. The edit
+       * that moves no words: a list item demoted a level, a paragraph restyled
+       * as a heading.
+       */
+      | {
+          id: string;
+          type: "setBlockParagraphProperties";
+          blockId: string;
+          properties: FolioAIBlockParagraphProperties<Numbering>;
+        }
+      /**
+       * Join the block with the one after it, the mirror of `splitBlock`: in
+       * tracked-changes mode the block carries a DELETED paragraph mark, so
+       * accepting closes the break and rejecting keeps it.
+       *
+       * Refused when the block has no joinable sibling — the last paragraph of
+       * a table cell, or of the story — because a deleted mark there would
+       * accept into a join that cannot happen and leave a revision no reader
+       * can resolve.
+       */
+      | {
+          id: string;
+          type: "mergeBlockWithNext";
+          /**
+           * Text the join inserts between the two halves — the space the
+           * paragraph break used to stand in for. Insertion-marked in tracked
+           * mode, so rejecting removes it along with the join.
+           */
+          separator?: string;
+          blockId: string;
+          /**
+           * Paragraph properties for the joined result. Omitted properties keep
+           * the first paragraph's value.
+           */
+          mergedParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
+        }
+      | {
+          id: string;
+          type: "commentOnBlock";
+          blockId: string;
+          quote?: string;
+          comment: FolioAIComment;
+        }
+      | {
+          id: string;
+          type: "insertSignatureTable";
+          blockId: string;
+          /**
+           * Position the table after the anchor block (default) or
+           * before it. Always inserts as a sibling at the document
+           * level — no nested-table support.
+           */
+          position?: "after" | "before";
+          parties: FolioAISignatureParty[];
+          comment?: FolioAIComment;
+        }
+      | {
+          id: string;
+          type: "insertTableRow";
+          /** Stable paragraph anchor inside the row that receives the new sibling. */
+          blockId: string;
+          position?: "after" | "before";
+          /**
+           * Initial text for each cell of the new row, in order — the same order
+           * a block's `table.cellIndex` counts. Cells left unnamed stay empty.
+           *
+           * Sized against the cells the new row really has, which is fewer than
+           * the table's columns where a vertical merge from the row above
+           * reaches through the insertion point (the merge grows through the
+           * new row and keeps its column). More texts than cells is refused as
+           * `payloadDoesNotFit`, naming the texts with no cell, before anything
+           * is written; fewer leaves the remaining cells empty.
+           *
+           * A line break in a cell's text starts a new paragraph in that cell,
+           * as in `insertTable`.
+           */
+          cellTexts?: string[];
+        }
+      | {
+          id: string;
+          type: "deleteTableRow";
+          /** Stable paragraph anchor inside the row to delete. */
+          blockId: string;
+        }
+      | {
+          id: string;
+          type: "insertTableColumn";
+          /** Stable paragraph anchor inside the cell that receives the new sibling column. */
+          blockId: string;
+          position?: "after" | "before";
+          /**
+           * Initial text for newly created physical cells in row order. A
+           * horizontal merge the new column crosses widens instead of taking a
+           * cell, so more texts than new cells is refused as `payloadDoesNotFit`.
+           */
+          cellTexts?: string[];
+        }
+      | {
+          id: string;
+          type: "deleteTableColumn";
+          /** Stable paragraph anchor inside the column to delete. */
+          blockId: string;
+        }
+      | ({
+          id: string;
+          type: "mergeTableCells";
+          /** Stable paragraph anchor inside the first cell. */
+          blockId: string;
+        } & (
+          | {
+              /** Stable paragraph anchor inside the opposite corner cell. */
+              endBlockId: string;
+              rowCount?: never;
+            }
+          | {
+              /** Number of grid rows to merge downward from the anchored cell. */
+              rowCount: number;
+              endBlockId?: never;
+            }
+        ))
+      | {
+          id: string;
+          type: "splitTableCell";
+          /** Stable paragraph anchor inside the cell to split. */
+          blockId: string;
+        }
+    );
 
 /** Operations after the numbering allocator has resolved every request. */
-export type FolioAIResolvedEditOperation = FolioAIEditOperation<FolioContentStatedNumbering>;
+export type FolioAIResolvedEditOperation =
+  FolioAIEditOperation<FolioContentStatedNumbering>;
 
 /**
  * How AI-authored operations are applied:

@@ -22,8 +22,10 @@
  */
 
 /** Equal snapshot coordinates execute in reverse input order. */
-export const compareBatchTieOrder = (leftIndex: number, rightIndex: number): number =>
-  rightIndex - leftIndex;
+export const compareBatchTieOrder = (
+  leftIndex: number,
+  rightIndex: number,
+): number => rightIndex - leftIndex;
 
 type PositionRange = { from: number; to: number };
 
@@ -101,7 +103,9 @@ type BlockRole =
 
 type BlockEntry = { operationId: string; role: BlockRole };
 
-const blockRolesOf = (claim: BatchClaim): { block: number; role: BlockRole }[] => {
+const blockRolesOf = (
+  claim: BatchClaim,
+): { block: number; role: BlockRole }[] => {
   switch (claim.type) {
     case "text":
     case "annotation":
@@ -122,8 +126,14 @@ const blockRolesOf = (claim: BatchClaim): { block: number; role: BlockRole }[] =
       ];
     case "merge":
       return [
-        { block: claim.block, role: { kind: "mergeOwn", joinsNow: claim.joinsNow } },
-        { block: claim.next, role: { kind: "mergeNext", joinsNow: claim.joinsNow } },
+        {
+          block: claim.block,
+          role: { kind: "mergeOwn", joinsNow: claim.joinsNow },
+        },
+        {
+          block: claim.next,
+          role: { kind: "mergeNext", joinsNow: claim.joinsNow },
+        },
       ];
     default:
       return [];
@@ -154,7 +164,10 @@ const isPoint = ({ from, to }: PositionRange): boolean => from === to;
  * find the first one's text where its own range begins. Two insertions at one
  * point are the exception — each writes new text and keeps the other's order.
  */
-const inlineRangesConflict = (left: PositionRange, right: PositionRange): boolean =>
+const inlineRangesConflict = (
+  left: PositionRange,
+  right: PositionRange,
+): boolean =>
   (left.from < right.to && right.from < left.to) ||
   (left.from === right.from && !(isPoint(left) && isPoint(right)));
 
@@ -239,7 +252,11 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
       if (right.kind === "paragraphProperties") {
         return left.kind === "split";
       }
-      if (right.kind !== "split" && right.kind !== "text" && right.kind !== "annotation") {
+      if (
+        right.kind !== "split" &&
+        right.kind !== "text" &&
+        right.kind !== "annotation"
+      ) {
         // Every other kind was turned to the left above.
         return true;
       }
@@ -268,11 +285,15 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
   }
 };
 
-const insideAny = (ranges: readonly PositionRange[], position: number): boolean =>
-  ranges.some(({ from, to }) => from <= position && position < to);
+const insideAny = (
+  ranges: readonly PositionRange[],
+  position: number,
+): boolean => ranges.some(({ from, to }) => from <= position && position < to);
 
-const strictlyInsideAny = (ranges: readonly PositionRange[], position: number): boolean =>
-  ranges.some(({ from, to }) => from < position && position < to);
+const strictlyInsideAny = (
+  ranges: readonly PositionRange[],
+  position: number,
+): boolean => ranges.some(({ from, to }) => from < position && position < to);
 
 type TableRemovalClaim = Extract<BatchClaim, { type: "tableRemoval" }>;
 
@@ -285,14 +306,23 @@ export class BatchClaims {
   private readonly blocks = new Map<number, BlockEntry[]>();
   private readonly insertions = new Map<number, string>();
   private readonly joins = new Map<number, string>();
-  private readonly removals: { operationId: string; claim: TableRemovalClaim }[] = [];
+  private readonly removals: {
+    operationId: string;
+    claim: TableRemovalClaim;
+  }[] = [];
   /** Accepted merges' folded cells; see the `tableStructure` claim. */
-  private readonly folds: { operationId: string; ranges: readonly PositionRange[] }[] = [];
+  private readonly folds: {
+    operationId: string;
+    ranges: readonly PositionRange[];
+  }[] = [];
   private readonly tables = new Map<number, string>();
   private readonly rowInsertions = new Map<number, string>();
   private readonly columnInsertions = new Map<number, string>();
   /** Accepted deletions that keep their paragraph, by where the paragraph starts and ends. */
-  private readonly keptParagraphs = new Map<number, { block: number; operationId: string }>();
+  private readonly keptParagraphs = new Map<
+    number,
+    { block: number; operationId: string }
+  >();
 
   /** `claim`'s roles, given the insertions accepted so far. */
   private rolesOf(claim: BatchClaim): { block: number; role: BlockRole }[] {
@@ -317,7 +347,9 @@ export class BatchClaims {
       return null;
     }
     const entries = this.blocks.get(kept.block) ?? [];
-    const deletion = entries.find(({ operationId }) => operationId === kept.operationId);
+    const deletion = entries.find(
+      ({ operationId }) => operationId === kept.operationId,
+    );
     if (deletion?.role.kind !== "deleteBlock") {
       return null;
     }
@@ -384,7 +416,8 @@ export class BatchClaims {
                 (removed.axis === "row" || removed.axis === "column")),
           )?.operationId ??
           this.removals.find(
-            ({ claim: removed }) => removed.wholeTable && removed.table === claim.table,
+            ({ claim: removed }) =>
+              removed.wholeTable && removed.table === claim.table,
           )?.operationId ??
           null
         );
@@ -408,7 +441,9 @@ export class BatchClaims {
             insideAny(removal.claim.ranges, claim.table) ||
             insideAny(claim.ranges, removal.claim.table) ||
             (removal.claim.table === claim.table &&
-              (removal.claim.wholeTable || claim.wholeTable || removal.claim.axis !== claim.axis))
+              (removal.claim.wholeTable ||
+                claim.wholeTable ||
+                removal.claim.axis !== claim.axis))
           ) {
             return removal.operationId;
           }
@@ -419,7 +454,9 @@ export class BatchClaims {
           }
         }
         for (const [block, entries] of this.blocks) {
-          const editor = entries.find(({ role }) => role.kind !== "deleteBlock");
+          const editor = entries.find(
+            ({ role }) => role.kind !== "deleteBlock",
+          );
           if (editor !== undefined && insideAny(claim.ranges, block)) {
             return editor.operationId;
           }
@@ -438,7 +475,10 @@ export class BatchClaims {
 
   /** The accepted merge whose folded cells hold `position`. */
   private foldAt(position: number): string | null {
-    return this.folds.find(({ ranges }) => insideAny(ranges, position))?.operationId ?? null;
+    return (
+      this.folds.find(({ ranges }) => insideAny(ranges, position))
+        ?.operationId ?? null
+    );
   }
 
   /**
@@ -467,7 +507,11 @@ export class BatchClaims {
       } else {
         this.blocks.set(block, [{ operationId, role }]);
       }
-      if (claim.type === "deleteBlock" && role.kind === "deleteBlock" && role.keepsParagraph) {
+      if (
+        claim.type === "deleteBlock" &&
+        role.kind === "deleteBlock" &&
+        role.keepsParagraph
+      ) {
         this.keptParagraphs.set(claim.end, { block, operationId });
         this.keptParagraphs.set(claim.block, { block, operationId });
       }
@@ -484,7 +528,10 @@ export class BatchClaims {
         if (kept !== undefined) {
           this.keptParagraphs.delete(claim.at);
           for (const entry of this.blocks.get(kept.block) ?? []) {
-            if (entry.operationId === kept.operationId && entry.role.kind === "deleteBlock") {
+            if (
+              entry.operationId === kept.operationId &&
+              entry.role.kind === "deleteBlock"
+            ) {
               entry.role = followedByInsertion(entry.role);
             }
           }
@@ -501,7 +548,10 @@ export class BatchClaims {
         if (claim.axis === "row" && !this.rowInsertions.has(claim.table)) {
           this.rowInsertions.set(claim.table, operationId);
         }
-        if (claim.axis === "column" && !this.columnInsertions.has(claim.table)) {
+        if (
+          claim.axis === "column" &&
+          !this.columnInsertions.has(claim.table)
+        ) {
           this.columnInsertions.set(claim.table, operationId);
         }
         break;

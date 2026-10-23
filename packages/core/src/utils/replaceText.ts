@@ -3,18 +3,19 @@
  * Used by find & replace. Operates immutably.
  */
 
+import { panic } from "better-result";
+
+import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import type {
   BlockContent,
   Document,
   DocumentBody,
   Paragraph,
-  Run,
   ParagraphContent,
+  Run,
   TextFormatting,
 } from "../types/document";
-import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { getFindParagraphText } from "./findReplace";
-import { panic } from "better-result";
 
 type ReplaceRange = {
   start: { paragraphIndex: number; offset: number };
@@ -80,7 +81,10 @@ export function replaceTextInDocument(
 // Helpers (extracted from the former agent/executor)
 // ---------------------------------------------------------------------------
 
-function getTopLevelParagraphBlockIndex(body: DocumentBody, paragraphIndex: number): number {
+function getTopLevelParagraphBlockIndex(
+  body: DocumentBody,
+  paragraphIndex: number,
+): number {
   let pIdx = 0;
   for (let i = 0; i < body.content.length; i++) {
     // SAFETY: i < body.content.length in for loop
@@ -94,7 +98,10 @@ function getTopLevelParagraphBlockIndex(body: DocumentBody, paragraphIndex: numb
   return -1;
 }
 
-function getParagraphByIndex(body: DocumentBody, paragraphIndex: number): Paragraph | null {
+function getParagraphByIndex(
+  body: DocumentBody,
+  paragraphIndex: number,
+): Paragraph | null {
   let currentIndex = 0;
 
   const walkBlocks = (blocks: readonly BlockContent[]): Paragraph | null => {
@@ -194,10 +201,14 @@ const replaceTextInParagraph = ({
               inserted = true;
               if (formatting) splitAtInsertion = true;
               else if (text) output.push({ type: "text", text });
-              if (startOffset === unitStart) (splitAtInsertion ? after : before).push(unit);
+              if (startOffset === unitStart)
+                (splitAtInsertion ? after : before).push(unit);
               continue;
             }
-            const prefix = unitText.slice(0, Math.max(0, startOffset - unitStart));
+            const prefix = unitText.slice(
+              0,
+              Math.max(0, startOffset - unitStart),
+            );
             const suffix = unitText.slice(Math.max(0, endOffset - unitStart));
             if (prefix) output.push({ type: "text", text: prefix });
             if (!inserted) {
@@ -205,7 +216,11 @@ const replaceTextInParagraph = ({
               if (formatting) splitAtInsertion = true;
               else if (text) output.push({ type: "text", text });
             }
-            if (suffix) (splitAtInsertion ? after : before).push({ type: "text", text: suffix });
+            if (suffix)
+              (splitAtInsertion ? after : before).push({
+                type: "text",
+                text: suffix,
+              });
           }
           if (!splitAtInsertion) {
             item.content = before;
@@ -253,13 +268,20 @@ const replaceTextInParagraph = ({
           break;
         default: {
           const unsupported: never = item;
-          panic("Unsupported replacement paragraph content", { content: unsupported });
+          panic("Unsupported replacement paragraph content", {
+            content: unsupported,
+          });
         }
       }
     }
   };
   visit(paragraph.content);
-  if (!inserted && startOffset === endOffset && startOffset === currentOffset && text) {
+  if (
+    !inserted &&
+    startOffset === endOffset &&
+    startOffset === currentOffset &&
+    text
+  ) {
     paragraph.content.push({
       type: "run",
       content: [{ type: "text", text }],

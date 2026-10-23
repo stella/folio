@@ -1,4 +1,3 @@
-import { sliceText } from "@stll/folio-core/utils/sliceText";
 /**
  * Framework-agnostic comment + tracked-change helpers shared by adapters. The
  * data shapes and string-formatting rules here are part of the visible UI
@@ -8,6 +7,7 @@ import { sliceText } from "@stll/folio-core/utils/sliceText";
  * @public
  */
 import type { Paragraph } from "@stll/folio-core/types/content";
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 
 /** Extract plain text from a Comment's paragraph content. */
 export function getCommentText(paragraphs?: Paragraph[]): string {

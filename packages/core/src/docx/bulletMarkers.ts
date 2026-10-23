@@ -41,17 +41,25 @@ const SYMBOL_ENCODED_FONTS: ReadonlySet<string> = new Set([
   "webdings",
 ]);
 
-type MarkerFontFamily = { ascii?: string | undefined; hAnsi?: string | undefined };
+type MarkerFontFamily = {
+  ascii?: string | undefined;
+  hAnsi?: string | undefined;
+};
 
 /** The face a bullet level's `w:rFonts` names for its (Latin-range) marker character. */
 export const bulletMarkerFontName = (
   formatting: { fontFamily?: MarkerFontFamily | undefined } | null | undefined,
-): string | undefined => formatting?.fontFamily?.ascii ?? formatting?.fontFamily?.hAnsi;
+): string | undefined =>
+  formatting?.fontFamily?.ascii ?? formatting?.fontFamily?.hAnsi;
 
 /** A printable Latin-1 character in a named, non-symbol face paints as itself. */
-const isTextFontCharacter = (charCode: number, fontName: string | undefined): boolean =>
+const isTextFontCharacter = (
+  charCode: number,
+  fontName: string | undefined,
+): boolean =>
   fontName !== undefined &&
-  ((charCode >= 0x20 && charCode < 0x7f) || (charCode >= 0xa0 && charCode < 0x01_00)) &&
+  ((charCode >= 0x20 && charCode < 0x7f) ||
+    (charCode >= 0xa0 && charCode < 0x01_00)) &&
   !SYMBOL_ENCODED_FONTS.has(fontName.trim().toLowerCase());
 
 /**
@@ -62,7 +70,10 @@ const isTextFontCharacter = (charCode: number, fontName: string | undefined): bo
  * in a monospace face); without a named face the character is read as a
  * symbol-font code.
  */
-export const convertBulletToUnicode = (bulletChar: string, fontName?: string): string => {
+export const convertBulletToUnicode = (
+  bulletChar: string,
+  fontName?: string,
+): string => {
   if (!bulletChar || bulletChar.trim() === "") {
     return "\u2022";
   }

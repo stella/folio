@@ -1,19 +1,20 @@
 import { expect, type Page } from "@playwright/test";
-import { test, assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
+
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
+import {
+  clearRefusals,
+  expectNoRefusals,
+  loadReady,
+  reactPort,
+  select,
+  snapshot,
+  vuePort,
+} from "../parity/canonicalInteractionAssertions";
 import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 import { CANONICAL_BROWSER_HISTORY_REPLAYS } from "./canonicalBrowserTrace";
 import { runCanonicalHistoryReplay } from "./canonicalHistoryReplay";
-import {
-  reactPort,
-  vuePort,
-  snapshot,
-  select,
-  loadReady,
-  clearRefusals,
-  expectNoRefusals,
-} from "../parity/canonicalInteractionAssertions";
+import { assertCanonicalInputTimersSettled, test } from "./canonicalTimerProbe";
 
 const expectCancelledSelection = async (
   page: Page,
@@ -22,7 +23,9 @@ const expectCancelledSelection = async (
   const after = await snapshot(page);
   expect(after?.document).toEqual(before?.document);
   expect(after?.projectionJSON).toEqual(before?.projectionJSON);
-  expect(after?.canonicalProjectionJSON).toEqual(before?.canonicalProjectionJSON);
+  expect(after?.canonicalProjectionJSON).toEqual(
+    before?.canonicalProjectionJSON,
+  );
   expect(after?.projectionMatchesCanonical).toBe(true);
   expect(after?.selection).toEqual(before?.selection);
   expect(after?.selectionJSON).toEqual(before?.selectionJSON);
@@ -30,7 +33,9 @@ const expectCancelledSelection = async (
   expect(after?.canUndo).toBe(before?.canUndo);
   expect(after?.canRedo).toBe(before?.canRedo);
   expect(after?.textSelection?.selected).toBe("alpha");
-  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("alpha");
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+    "alpha",
+  );
 };
 
 for (const [seed, path] of [
@@ -43,13 +48,18 @@ for (const [seed, path] of [
   const replay = CANONICAL_BROWSER_HISTORY_REPLAYS.find(
     (candidate) => candidate.seed === seed && candidate.path === path,
   );
-  if (replay === undefined) throw new TypeError(`Missing composition replay ${seed}/${path}`);
-  test(`native composition history replay ${seed} ${path}`, async ({ page }) => {
+  if (replay === undefined)
+    throw new TypeError(`Missing composition replay ${seed}/${path}`);
+  test(`native composition history replay ${seed} ${path}`, async ({
+    page,
+  }) => {
     await runCanonicalHistoryReplay(page, replay);
   });
 }
 
-test("native composition cancellation preserves a selection", async ({ page }) => {
+test("native composition cancellation preserves a selection", async ({
+  page,
+}) => {
   const source = await canonicalLoadFixture(
     await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" })),
   );
@@ -67,7 +77,10 @@ test("native composition cancellation preserves a selection", async ({ page }) =
     const before = await snapshot(page);
     expect(before?.textSelection?.selected, adapter).toBe("alpha");
     expect(before?.selection, adapter).toEqual({ from: 1, to: 6 });
-    expect(await page.evaluate(() => window.getSelection()?.toString()), adapter).toBe("alpha");
+    expect(
+      await page.evaluate(() => window.getSelection()?.toString()),
+      adapter,
+    ).toBe("alpha");
     expect(before?.canUndo, adapter).toBe(false);
     expect(before?.canRedo, adapter).toBe(false);
 
@@ -99,8 +112,12 @@ test("native composition cancellation preserves a selection", async ({ page }) =
       if (!page.isClosed()) await cdp.detach();
     }
 
-    await page.waitForFunction(() => globalThis.__folioCanonical?.nativeComposing() === false);
-    await page.waitForFunction(() => globalThis.__folioCanonicalInputTimers?.size === 0);
+    await page.waitForFunction(
+      () => globalThis.__folioCanonical?.nativeComposing() === false,
+    );
+    await page.waitForFunction(
+      () => globalThis.__folioCanonicalInputTimers?.size === 0,
+    );
     await assertCanonicalInputTimersSettled(page);
     await expectNoRefusals(page);
     await expectCancelledSelection(page, before);

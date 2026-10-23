@@ -1,4 +1,8 @@
-import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/canonicalCapabilities";
+import {
+  closeHistory,
+  redo as historyRedo,
+  undo as historyUndo,
+} from "prosemirror-history";
 /**
  * Ref-API assembler for the Vue `DocxEditor` shell.
  *
@@ -23,50 +27,60 @@ import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/cano
  * with the comment-list dirty flag (`useCommentManagement`); see its
  * per-method note. The assembled object `satisfies DocxEditorRef`.
  */
-
-import type { Ref } from "vue";
-import type { UseFindReplaceReturn } from "./useFindReplace";
-
 import { TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { closeHistory, redo as historyRedo, undo as historyUndo } from "prosemirror-history";
+import type { Ref } from "vue";
 
 import {
   applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
-  createPendingSuggestionSourceSnapshot,
   createFolioAIEditSnapshotWithStyleResolver,
+  createPendingSuggestionSourceSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationStatus,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
   FolioPendingSuggestionRegistry,
   getCommentAnchorsFromDoc,
   getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
-  type FolioDocumentOperationStatus,
-  type FolioDocumentOperationUndoHandle,
-  type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import {
+  clampRangeToDocSize,
+  resolveFolioAIBlockRange,
+  resolveFolioAITextRange,
+  resolvePassageRange,
+} from "@stll/folio-core/ai-edits/blockRange";
 import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
-import { getPageScrollTarget } from "@stll/folio-core/paged-layout/scrollNavigation";
+import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
+import {
+  type BlockRect,
+  onPaintedLayoutChange,
+  readBlockRects,
+} from "@stll/folio-core/paged-layout/blockGeometry";
 import {
   getEditorScrollRoot,
   scrollEditorElementIntoView,
 } from "@stll/folio-core/paged-layout/editorScrollRoot";
-import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
+import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 import {
   findParagraphFragmentsByParaId,
   flashParagraphElements,
 } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+import { getPageScrollTarget } from "@stll/folio-core/paged-layout/scrollNavigation";
 import {
-  onPaintedLayoutChange,
-  readBlockRects,
-  type BlockRect,
-} from "@stll/folio-core/paged-layout/blockGeometry";
-import { getDocumentStyleResolver, getSelectedText } from "@stll/folio-core/prosemirror";
+  getDocumentStyleResolver,
+  getSelectedText,
+} from "@stll/folio-core/prosemirror";
 import {
   acceptAIEditRevision,
   acceptSuggestion,
@@ -85,24 +99,18 @@ import {
   setContentControlValueTr,
 } from "@stll/folio-core/prosemirror/commands/contentControls";
 import { setContentControlContentBlocksTr } from "@stll/folio-core/prosemirror/commands/contentControlsBlockFill";
-import type { Document } from "@stll/folio-core/types/document";
-import type { Comment } from "@stll/folio-core/types/content";
-
-import type { DocxEditorRef } from "../components/DocxEditor/types";
-import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
-import {
-  clampRangeToDocSize,
-  resolveFolioAIBlockRange,
-  resolveFolioAITextRange,
-  resolvePassageRange,
-} from "@stll/folio-core/ai-edits/blockRange";
-import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
-import type {
-  DisplayMode,
-  EditorReadOnlyReason,
-} from "@stll/folio-core/managers/EditorModeManager";
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
-import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
+import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
+import type { Comment } from "@stll/folio-core/types/content";
+import type { Document } from "@stll/folio-core/types/document";
+
+import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
+import type { DocxEditorRef } from "../components/DocxEditor/types";
+import type { UseFindReplaceReturn } from "./useFindReplace";
 
 type LiveDocumentOperationUndoEntry = {
   undoHandle: FolioDocumentOperationUndoHandle;
@@ -113,12 +121,13 @@ type LiveDocumentOperationUndoEntry = {
 
 let documentOperationUndoHandleCursor = Date.now();
 
-type StagedOperationCommentsOptions<Result extends { applied: readonly { commentId?: number }[] }> =
-  {
-    createComment: (text: string) => Comment;
-    publishComments: (comments: Comment[]) => void;
-    apply: (createCommentId: (text: string) => number) => Result;
-  };
+type StagedOperationCommentsOptions<
+  Result extends { applied: readonly { commentId?: number }[] },
+> = {
+  createComment: (text: string) => Comment;
+  publishComments: (comments: Comment[]) => void;
+  apply: (createCommentId: (text: string) => number) => Result;
+};
 
 /** Publish only committed operations' comments, after the applier returns. */
 export const applyWithStagedOperationComments = <
@@ -252,7 +261,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     window.print();
   }
 
-  function save(options?: { selective?: boolean }): Promise<ArrayBuffer | null> {
+  function save(options?: {
+    selective?: boolean;
+  }): Promise<ArrayBuffer | null> {
     return saveDocumentForHost(
       {
         clearCommentsDirty: opts.clearCommentsDirty,
@@ -263,7 +274,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     );
   }
 
-  function scrollToParaId(paraId: string, options?: ScrollToParaIdOptions): boolean {
+  function scrollToParaId(
+    paraId: string,
+    options?: ScrollToParaIdOptions,
+  ): boolean {
     const root = opts.pagesRef.value;
     if (!root) {
       return false;
@@ -295,10 +309,19 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function undoActiveView(): boolean {
     const view = opts.getActiveView();
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+    if (
+      usesCanonicalSession(
+        opts.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      )
+    ) {
       const story = opts.getActiveCanonicalStory?.() ?? "main";
       return view && story !== "main"
-        ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "undo" })
+        ? opts.editor.applyCanonicalStoryHistory({
+            view,
+            story,
+            direction: "undo",
+          })
         : opts.editor.undo();
     }
     if (view === opts.editorView.value) return opts.editor.undo();
@@ -307,10 +330,19 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function redoActiveView(): boolean {
     const view = opts.getActiveView();
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+    if (
+      usesCanonicalSession(
+        opts.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      )
+    ) {
       const story = opts.getActiveCanonicalStory?.() ?? "main";
       return view && story !== "main"
-        ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "redo" })
+        ? opts.editor.applyCanonicalStoryHistory({
+            view,
+            story,
+            direction: "redo",
+          })
         : opts.editor.redo();
     }
     if (view === opts.editorView.value) return opts.editor.redo();
@@ -318,7 +350,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   function canUndoActiveView(): boolean {
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting))
+    if (
+      usesCanonicalSession(
+        opts.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      )
+    )
       return opts.editor.canUndo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canUndo();
@@ -326,7 +363,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   function canRedoActiveView(): boolean {
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting))
+    if (
+      usesCanonicalSession(
+        opts.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      )
+    )
       return opts.editor.canRedo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canRedo();
@@ -340,7 +382,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     }
   }
 
-  function getBlockRects(blockIds: readonly string[]): ReadonlyMap<string, BlockRect> {
+  function getBlockRects(
+    blockIds: readonly string[],
+  ): ReadonlyMap<string, BlockRect> {
     const view = opts.editorView.value;
     const pagesContainer = opts.pagesRef.value;
     const scrollRoot = opts.scrollRootRef.value;
@@ -361,7 +405,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function onLayoutChange(listener: () => void): () => void {
     const pagesContainer = opts.pagesRef.value;
-    return pagesContainer ? onPaintedLayoutChange(pagesContainer, listener) : () => {};
+    return pagesContainer
+      ? onPaintedLayoutChange(pagesContainer, listener)
+      : () => {};
   }
 
   function getEditorRef(): PagedEditorRef {
@@ -385,10 +431,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       redo: redoActiveView,
       canUndo: canUndoActiveView,
       canRedo: canRedoActiveView,
-      setSelection: (anchor: number, head?: number) => opts.editor.setSelection(anchor, head),
+      setSelection: (anchor: number, head?: number) =>
+        opts.editor.setSelection(anchor, head),
       getLayout: () => opts.editor.getLayout(),
       relayout: () => opts.editor.relayout(),
-      scrollToPosition: (pmPos: number) => opts.scrollVisiblePositionIntoView(pmPos),
+      scrollToPosition: (pmPos: number) =>
+        opts.scrollVisiblePositionIntoView(pmPos),
       scrollToPage,
       scrollToParaId,
       setPassageHighlight: opts.setPassageHighlight,
@@ -418,7 +466,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     if (!currentLayout || !view) {
       return 0;
     }
-    const pageIndex = findPageIndexContainingPmPos(currentLayout, view.state.selection.from);
+    const pageIndex = findPageIndexContainingPmPos(
+      currentLayout,
+      view.state.selection.from,
+    );
     return pageIndex == null ? 0 : pageIndex + 1;
   }
 
@@ -455,11 +506,17 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     const canonical = opts.editor.applyCanonicalDocumentOperations({
       undefinedReferences,
       snapshot,
-      batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        operations,
+        mode,
+      },
       author: operationAuthor,
     });
     if (canonical) return canonical;
-    const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
+    const activeSuggestionIds = new Set(
+      getSuggestions(view.state).map((s) => s.suggestionId),
+    );
     // Through the document-operation applier, like the batch path, so a
     // result the save-time check refuses never reaches the editor.
     const { applied, skipped } = applyWithStagedOperationComments({
@@ -470,7 +527,11 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           undefinedReferences,
           view,
           snapshot,
-          batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
+          batch: {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            operations,
+            mode,
+          },
           author: operationAuthor,
           createCommentId,
         }),
@@ -599,9 +660,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           operationView.state = view.state;
         },
       };
-      const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
+      const activeSuggestionIds = new Set(
+        getSuggestions(view.state).map((s) => s.suggestionId),
+      );
       const result = applyWithStagedOperationComments({
-        createComment: (text) => opts.createAIEditComment(text, operationAuthor),
+        createComment: (text) =>
+          opts.createAIEditComment(text, operationAuthor),
         publishComments: opts.publishAIEditComments,
         apply: (createCommentId) =>
           applyFolioDocumentOperations({
@@ -642,7 +706,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (canonical) return canonical;
       const entryIndex = documentOperationUndoEntries.findIndex(
         (entry) =>
-          entry.undoHandle.type === undoHandle.type && entry.undoHandle.id === undoHandle.id,
+          entry.undoHandle.type === undoHandle.type &&
+          entry.undoHandle.id === undoHandle.id,
       );
       if (entryIndex === -1) {
         return { status: "rejected", undoHandle, reason: "unknownHandle" };
@@ -656,7 +721,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!entry || !view) {
         return { status: "rejected", undoHandle, reason: "unknownHandle" };
       }
-      if (!view.state.doc.eq(entry.afterState.doc) || opts.getComments() !== entry.commentsAfter) {
+      if (
+        !view.state.doc.eq(entry.afterState.doc) ||
+        opts.getComments() !== entry.commentsAfter
+      ) {
         return { status: "rejected", undoHandle, reason: "documentChanged" };
       }
       if (!opts.editor.undo()) {
@@ -710,10 +778,15 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       // what happens for marks that wrap an entire paragraph.
       // `clampRangeToDocSize` guards against a revision range whose endpoints
       // fell past the doc end after concurrent edits.
-      const { from, to } = clampRangeToDocSize(view.state.doc.content.size, range);
+      const { from, to } = clampRangeToDocSize(
+        view.state.doc.content.size,
+        range,
+      );
       const $from = view.state.doc.resolve(from);
       const $to = view.state.doc.resolve(to);
-      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.between($from, $to)),
+      );
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
     },
@@ -726,14 +799,20 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       // suggestions still navigate correctly after earlier accepts insert or
       // delete paragraphs above them. `seq-*` fallback ids keep using the
       // snapshot the AI saw.
-      const range = resolveFolioAIBlockRange({ blockId, doc: view.state.doc, snapshot });
+      const range = resolveFolioAIBlockRange({
+        blockId,
+        doc: view.state.doc,
+        snapshot,
+      });
       if (range === null) {
         return false;
       }
       const { from, to } = range;
       const $from = view.state.doc.resolve(from);
       const $to = view.state.doc.resolve(to);
-      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.between($from, $to)),
+      );
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
     },
@@ -742,20 +821,31 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return "none";
       }
-      const passageRange = resolvePassageRange({ blockId, text, doc: view.state.doc, snapshot });
+      const passageRange = resolvePassageRange({
+        blockId,
+        text,
+        doc: view.state.doc,
+        snapshot,
+      });
       if (passageRange !== null) {
         // Passage matched: paint the range and scroll to it, but do NOT move the
         // PM selection (unlike scrollToBlock) so the persistent highlight is not
         // confused with a live selection.
         opts.setPassageHighlight(passageRange);
-        requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(passageRange.from));
+        requestAnimationFrame(() =>
+          opts.scrollVisiblePositionIntoView(passageRange.from),
+        );
         return "passage";
       }
       // Text did not match. Drop any prior passage highlight and fall back to the
       // scroll-to-block behavior (scroll + whole-paragraph flash where a paraId
       // exists), matching `scrollToBlock`.
       opts.setPassageHighlight(null);
-      const blockRange = resolveFolioAIBlockRange({ blockId, doc: view.state.doc, snapshot });
+      const blockRange = resolveFolioAIBlockRange({
+        blockId,
+        doc: view.state.doc,
+        snapshot,
+      });
       if (blockRange === null) {
         return "none";
       }
@@ -768,7 +858,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const { from, to } = blockRange;
       const $from = view.state.doc.resolve(from);
       const $to = view.state.doc.resolve(to);
-      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.between($from, $to)),
+      );
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return "block";
     },
@@ -782,7 +874,11 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       const range =
         target.type === "textRange"
-          ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
+          ? resolveFolioAITextRange({
+              range: target,
+              doc: view.state.doc,
+              snapshot,
+            })
           : resolveFolioAIBlockRange({
               blockId: target.blockId,
               doc: view.state.doc,
@@ -794,7 +890,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const { from, to } = range;
       const $from = view.state.doc.resolve(from);
       const $to = view.state.doc.resolve(to);
-      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.between($from, $to)),
+      );
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
     },
@@ -804,7 +902,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     },
     exportPendingSuggestions: () => {
       const view = opts.editorView.value;
-      const activeIds = new Set(view ? getSuggestions(view.state).map((s) => s.suggestionId) : []);
+      const activeIds = new Set(
+        view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
+      );
       return pendingSuggestionRegistry.exportPendingSuggestions({
         activeSuggestionIds: activeIds,
         snapshotForStory: (story, commentIds) =>
@@ -818,7 +918,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         records,
         snapshotForStory: (story) => {
           const view = opts.editorView.value;
-          return story.type === "main" && view ? createFolioAIEditSnapshot(view.state.doc) : null;
+          return story.type === "main" && view
+            ? createFolioAIEditSnapshot(view.state.doc)
+            : null;
         },
         sourceSnapshotForStory: (story, commentIds) => {
           const view = opts.editorView.value;
@@ -836,7 +938,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           }),
         activeSuggestionIds: () => {
           const view = opts.editorView.value;
-          return new Set(view ? getSuggestions(view.state).map((s) => s.suggestionId) : []);
+          return new Set(
+            view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
+          );
         },
       }),
     acceptSuggestion: (suggestionId, options) => {
@@ -847,11 +951,11 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       // Read how the suggestion applies (tracked vs direct) before it is
       // resolved away, so the host can message the outcome.
       const appliedAs =
-        getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)?.appliedAs ?? null;
-      const accepted = acceptSuggestion(suggestionId, { author: options?.author ?? opts.author() })(
-        view.state,
-        view.dispatch,
-      );
+        getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)
+          ?.appliedAs ?? null;
+      const accepted = acceptSuggestion(suggestionId, {
+        author: options?.author ?? opts.author(),
+      })(view.state, view.dispatch);
       return { accepted, appliedAs: accepted ? appliedAs : null };
     },
     rejectSuggestion: (suggestionId) => {
@@ -871,10 +975,15 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         return false;
       }
       // Reuse the revision scroll plumbing (see scrollToAIEditOperation).
-      const { from, to } = clampRangeToDocSize(view.state.doc.content.size, range);
+      const { from, to } = clampRangeToDocSize(
+        view.state.doc.content.size,
+        range,
+      );
       const $from = view.state.doc.resolve(from);
       const $to = view.state.doc.resolve(to);
-      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.between($from, $to)),
+      );
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
     },
@@ -900,7 +1009,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         layout: opts.layout.value,
         doc: view.state.doc,
         page,
-        projection: projectMarkupView(view.state, opts.markupView?.value ?? "all-markup"),
+        projection: projectMarkupView(
+          view.state,
+          opts.markupView?.value ?? "all-markup",
+        ),
       });
     },
     getTargetPage: (target, snapshot) => {
@@ -911,7 +1023,11 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       const range =
         target.type === "textRange"
-          ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
+          ? resolveFolioAITextRange({
+              range: target,
+              doc: view.state.doc,
+              snapshot,
+            })
           : resolveFolioAIBlockRange({
               blockId: target.blockId,
               doc: view.state.doc,
@@ -962,7 +1078,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const tr =
         typeof input === "string"
           ? setContentControlContentTr(view.state, filter, input, options)
-          : setContentControlContentBlocksTr(view.state, filter, input, options);
+          : setContentControlContentBlocksTr(
+              view.state,
+              filter,
+              input,
+              options,
+            );
       if (!tr) {
         return false;
       }

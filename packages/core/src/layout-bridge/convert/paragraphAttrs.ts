@@ -3,37 +3,56 @@
  * alignment, spacing, indentation, borders, tab stops, and list markers.
  */
 
-import { bulletMarkerFontName, convertBulletToUnicode } from "../../docx/bulletMarkers";
-import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternates";
-import type { ParagraphAttrs, TabAlignment, TabStop } from "../../layout-engine/types";
-import { mergeParagraphTabStops } from "../../utils/paragraphFormattingMerge";
+import {
+  bulletMarkerFontName,
+  convertBulletToUnicode,
+} from "../../docx/bulletMarkers";
+import {
+  type FontAlternates,
+  getFontAlternate,
+} from "../../fonts/fontAlternates";
+import type {
+  ParagraphAttrs,
+  TabAlignment,
+  TabStop,
+} from "../../layout-engine/types";
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import {
-  paragraphNumberingSourcesFromBoundary,
+  advanceVisibleListMarker,
+  type ListCounterStreams,
+} from "../../prosemirror/listMarker";
+import {
   effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
 } from "../../prosemirror/numberingAttr";
-import { directionIsRtl, directionToBidi } from "../../prosemirror/paragraphDirection";
+import {
+  directionIsRtl,
+  directionToBidi,
+} from "../../prosemirror/paragraphDirection";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
-import { advanceVisibleListMarker, type ListCounterStreams } from "../../prosemirror/listMarker";
 import type {
   ParagraphAlignment,
   TabStopAlignment,
-  Theme,
   TextFormatting,
+  Theme,
 } from "../../types/document";
+import { mergeParagraphTabStops } from "../../utils/paragraphFormattingMerge";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
+import { convertBorderSpecToLayout } from "./flowBorders";
 import { twipsToPixels } from "./flowConversionShared";
-import { resolveWesternThemeFont, listMarkerFormattingFor } from "./textFormattingConversion";
 import {
-  applyMarkerAllCaps,
-  toListMarkerRevision,
-  isAddedNumberingChange,
-  isRemovedNumberingChange,
-  isChangedNumberingChange,
   applyDeletedListMarkerAttrs,
+  applyMarkerAllCaps,
+  isAddedNumberingChange,
+  isChangedNumberingChange,
+  isRemovedNumberingChange,
+  toListMarkerRevision,
 } from "./listMarkers";
 import type { ListPropertyChange, ListPropertyFormatting } from "./listMarkers";
-import { convertBorderSpecToLayout } from "./flowBorders";
+import {
+  listMarkerFormattingFor,
+  resolveWesternThemeFont,
+} from "./textFormattingConversion";
 
 type ConvertParagraphAttrsOptions = {
   theme: Theme | null | undefined;
@@ -72,7 +91,10 @@ const FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT = {
   highKashida: "justify",
   lowKashida: "justify",
   thaiDistribute: "justify",
-} as const satisfies Record<ParagraphAlignment, FlowAlignment | "start" | "end">;
+} as const satisfies Record<
+  ParagraphAlignment,
+  FlowAlignment | "start" | "end"
+>;
 
 /** Resolve a logical alignment against the direction the paragraph runs in. */
 const resolveFlowAlignment = (
@@ -103,7 +125,10 @@ export function convertParagraphAttrs(
   const attrs: ParagraphAttrs = {};
 
   if (pmAttrs.alignment) {
-    attrs.alignment = resolveFlowAlignment(pmAttrs.alignment, directionIsRtl(pmAttrs.direction));
+    attrs.alignment = resolveFlowAlignment(
+      pmAttrs.alignment,
+      directionIsRtl(pmAttrs.direction),
+    );
   }
 
   if (pmAttrs.outlineLevel !== undefined) {
@@ -122,8 +147,16 @@ export function convertParagraphAttrs(
   if (typeof pmAttrs.snapToGrid === "boolean") {
     attrs.snapToGrid = pmAttrs.snapToGrid;
   }
-  const autoBefore = autospacingMatchesBase(pmAttrs._autospacingBase, "before", spaceBefore);
-  const autoAfter = autospacingMatchesBase(pmAttrs._autospacingBase, "after", spaceAfter);
+  const autoBefore = autospacingMatchesBase(
+    pmAttrs._autospacingBase,
+    "before",
+    spaceBefore,
+  );
+  const autoAfter = autospacingMatchesBase(
+    pmAttrs._autospacingBase,
+    "after",
+    spaceAfter,
+  );
   if (
     autoBefore ||
     autoAfter ||
@@ -153,17 +186,12 @@ export function convertParagraphAttrs(
     // and automatic spacing. Layout consumes the combined provenance;
     // the authored PM attributes remain source-specific for serialization.
     const pmSpacingExplicit = pmAttrs.spacingExplicit as
-      | { before?: boolean; after?: boolean }
-      | null
-      | undefined;
+      { before?: boolean; after?: boolean } | null | undefined;
     const spacingFromDocDefaults = pmAttrs.spacingFromDocDefaults as
-      | { before?: boolean; after?: boolean }
-      | null
-      | undefined;
-    const spacingFromImplicitDefaultStyle = pmAttrs.spacingFromImplicitDefaultStyle as
-      | { before?: boolean; after?: boolean }
-      | null
-      | undefined;
+      { before?: boolean; after?: boolean } | null | undefined;
+    const spacingFromImplicitDefaultStyle =
+      pmAttrs.spacingFromImplicitDefaultStyle as
+        { before?: boolean; after?: boolean } | null | undefined;
     const explicit: { before?: boolean; after?: boolean } = {};
     if (
       autoBefore ||
@@ -186,7 +214,10 @@ export function convertParagraphAttrs(
     }
     if (typeof lineSpacing === "number") {
       // Line spacing in twips - convert to multiplier or exact
-      if (pmAttrs.lineSpacingRule === "exact" || pmAttrs.lineSpacingRule === "atLeast") {
+      if (
+        pmAttrs.lineSpacingRule === "exact" ||
+        pmAttrs.lineSpacingRule === "atLeast"
+      ) {
         attrs.spacing.line = twipsToPixels(lineSpacing);
         attrs.spacing.lineUnit = "px";
         attrs.spacing.lineRule = pmAttrs.lineSpacingRule;
@@ -201,9 +232,12 @@ export function convertParagraphAttrs(
 
   // Indentation - handle list item fallback calculation
   // For list items without explicit indentation, calculate based on level
-  let indentLeft = typeof pmAttrs.indentLeft === "number" ? pmAttrs.indentLeft : undefined;
+  let indentLeft =
+    typeof pmAttrs.indentLeft === "number" ? pmAttrs.indentLeft : undefined;
   let indentFirstLine =
-    typeof pmAttrs.indentFirstLine === "number" ? pmAttrs.indentFirstLine : undefined;
+    typeof pmAttrs.indentFirstLine === "number"
+      ? pmAttrs.indentFirstLine
+      : undefined;
   let hangingIndent = pmAttrs.hangingIndent;
   const numbering = effectiveParagraphNumberingReference(
     paragraphNumberingSourcesFromBoundary({
@@ -211,7 +245,11 @@ export function convertParagraphAttrs(
       numPrFromStyle: pmAttrs.numPrFromStyle,
     }),
   );
-  if (numbering !== undefined && indentLeft === undefined && indentFirstLine === undefined) {
+  if (
+    numbering !== undefined &&
+    indentLeft === undefined &&
+    indentFirstLine === undefined
+  ) {
     // Fallback: calculate indentation based on level
     // An authored first-line or hanging position is already a complete list
     // marker anchor. Adding a synthetic left indent would shift that anchor a
@@ -267,7 +305,9 @@ export function convertParagraphAttrs(
     if (topBorder) {
       attrs.borders.top = topBorder;
     }
-    const bottomBorder = borders.bottom ? convertBorder(borders.bottom) : undefined;
+    const bottomBorder = borders.bottom
+      ? convertBorder(borders.bottom)
+      : undefined;
     if (bottomBorder) {
       attrs.borders.bottom = bottomBorder;
     }
@@ -275,11 +315,15 @@ export function convertParagraphAttrs(
     if (leftBorder) {
       attrs.borders.left = leftBorder;
     }
-    const rightBorder = borders.right ? convertBorder(borders.right) : undefined;
+    const rightBorder = borders.right
+      ? convertBorder(borders.right)
+      : undefined;
     if (rightBorder) {
       attrs.borders.right = rightBorder;
     }
-    const betweenBorder = borders.between ? convertBorder(borders.between) : undefined;
+    const betweenBorder = borders.between
+      ? convertBorder(borders.between)
+      : undefined;
     if (betweenBorder) {
       attrs.borders.between = betweenBorder;
     }
@@ -340,10 +384,16 @@ export function convertParagraphAttrs(
   if (pmAttrs.kinsoku !== undefined && pmAttrs.kinsoku !== null) {
     attrs.kinsoku = pmAttrs.kinsoku;
   }
-  if (pmAttrs.overflowPunctuation !== undefined && pmAttrs.overflowPunctuation !== null) {
+  if (
+    pmAttrs.overflowPunctuation !== undefined &&
+    pmAttrs.overflowPunctuation !== null
+  ) {
     attrs.overflowPunctuation = pmAttrs.overflowPunctuation;
   }
-  if (pmAttrs.suppressAutoHyphens !== undefined && pmAttrs.suppressAutoHyphens !== null) {
+  if (
+    pmAttrs.suppressAutoHyphens !== undefined &&
+    pmAttrs.suppressAutoHyphens !== null
+  ) {
     attrs.suppressAutoHyphens = pmAttrs.suppressAutoHyphens;
   }
   if (pmAttrs.renderedPageBreakBefore) {
@@ -381,9 +431,15 @@ export function convertParagraphAttrs(
     attrs.numPr = pmAttrs.numPr;
 
     if (pmAttrs.pPrMark?.kind === "del") {
-      attrs.listMarkerRevision = toListMarkerRevision("del", pmAttrs.pPrMark.info);
+      attrs.listMarkerRevision = toListMarkerRevision(
+        "del",
+        pmAttrs.pPrMark.info,
+      );
     } else if (pmAttrs.pPrMark?.kind === "ins") {
-      attrs.listMarkerRevision = toListMarkerRevision("ins", pmAttrs.pPrMark.info);
+      attrs.listMarkerRevision = toListMarkerRevision(
+        "ins",
+        pmAttrs.pPrMark.info,
+      );
     } else {
       const numberingAddedChange = propertyChanges.find(isAddedNumberingChange);
       const currentNumPr = pmAttrs.numPr;
@@ -394,14 +450,21 @@ export function convertParagraphAttrs(
           previousFormatting: ListPropertyFormatting;
         } => isChangedNumberingChange(currentNumPr, change),
       );
-      const numberingInsertionChange = numberingAddedChange ?? changedNumberingChange;
+      const numberingInsertionChange =
+        numberingAddedChange ?? changedNumberingChange;
       if (numberingInsertionChange) {
-        attrs.listMarkerRevision = toListMarkerRevision("ins", numberingInsertionChange.info);
+        attrs.listMarkerRevision = toListMarkerRevision(
+          "ins",
+          numberingInsertionChange.info,
+        );
       }
     }
   }
   const visibleMarker = advanceVisibleListMarker(pmAttrs, listCounterStreams);
-  const resolvedMarker = applyMarkerAllCaps(visibleMarker.marker, pmAttrs.listMarkerAllCaps);
+  const resolvedMarker = applyMarkerAllCaps(
+    visibleMarker.marker,
+    pmAttrs.listMarkerAllCaps,
+  );
   if (resolvedMarker !== null) {
     attrs.listMarker = resolvedMarker;
   } else if (pmAttrs.listMarker) {
@@ -436,10 +499,13 @@ export function convertParagraphAttrs(
     attrs.listMarkerSuffix = pmAttrs.listMarkerSuffix;
   }
   if (pmAttrs.listMarkerSecondSlotOffsetTwips !== undefined) {
-    attrs.listMarkerSecondSlotOffsetTwips = pmAttrs.listMarkerSecondSlotOffsetTwips;
+    attrs.listMarkerSecondSlotOffsetTwips =
+      pmAttrs.listMarkerSecondSlotOffsetTwips;
   }
   if (!pmAttrs.numPr) {
-    const numberingRemovedChange = propertyChanges.find(isRemovedNumberingChange);
+    const numberingRemovedChange = propertyChanges.find(
+      isRemovedNumberingChange,
+    );
     if (numberingRemovedChange) {
       // Number removed-numbering deletions off the original stream too (like
       // deleted list items): the struck-through marker must reflect the
@@ -453,7 +519,10 @@ export function convertParagraphAttrs(
       );
       if (resolvedMarker !== null) {
         attrs.listMarker = resolvedMarker;
-        attrs.listMarkerRevision = toListMarkerRevision("del", numberingRemovedChange.info);
+        attrs.listMarkerRevision = toListMarkerRevision(
+          "del",
+          numberingRemovedChange.info,
+        );
       }
     }
   }
@@ -514,10 +583,16 @@ const TAB_ALIGNMENT_BY_TAB_STOP_ALIGNMENT = {
   decimal: "decimal",
   bar: "bar",
   clear: "clear",
-} as const satisfies Record<TabStopAlignment, TabAlignment | "logicalStart" | "logicalEnd">;
+} as const satisfies Record<
+  TabStopAlignment,
+  TabAlignment | "logicalStart" | "logicalEnd"
+>;
 
 /** Resolve a logical tab alignment against the direction the paragraph runs in. */
-const resolveTabAlignment = (alignment: TabStopAlignment, rightToLeft: boolean): TabAlignment => {
+const resolveTabAlignment = (
+  alignment: TabStopAlignment,
+  rightToLeft: boolean,
+): TabAlignment => {
   const mapped = TAB_ALIGNMENT_BY_TAB_STOP_ALIGNMENT[alignment];
   switch (mapped) {
     case "logicalStart":

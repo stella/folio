@@ -10,8 +10,8 @@ import {
   assembleMetafileSvg,
   metafileColorRefToCss,
   metafileNumberText,
-  transformMetafilePoint,
   type MetafilePoint,
+  transformMetafilePoint,
 } from "./metafileSvgShared";
 
 const EMF_SIGNATURE = 0x464d_4520;
@@ -94,13 +94,25 @@ const cloneState = (state: DeviceState): DeviceState => ({
   currentPoint: { ...state.currentPoint },
 });
 
-const int16 = (view: DataView, offset: number, end: number): number | undefined =>
+const int16 = (
+  view: DataView,
+  offset: number,
+  end: number,
+): number | undefined =>
   offset >= 0 && offset + 2 <= end ? view.getInt16(offset, true) : undefined;
 
-const uint32 = (view: DataView, offset: number, end: number): number | undefined =>
+const uint32 = (
+  view: DataView,
+  offset: number,
+  end: number,
+): number | undefined =>
   offset >= 0 && offset + 4 <= end ? view.getUint32(offset, true) : undefined;
 
-const int32 = (view: DataView, offset: number, end: number): number | undefined =>
+const int32 = (
+  view: DataView,
+  offset: number,
+  end: number,
+): number | undefined =>
   offset >= 0 && offset + 4 <= end ? view.getInt32(offset, true) : undefined;
 
 const stockObject = (handle: number): GraphicsObject | undefined => {
@@ -136,9 +148,11 @@ const mappedPoint = (
   return transformMetafilePoint({
     point: { x, y },
     windowOrigin: state.windowOrigin,
-    windowExtent: state.mapMode === MAP_MODE_TEXT ? unitExtent : state.windowExtent,
+    windowExtent:
+      state.mapMode === MAP_MODE_TEXT ? unitExtent : state.windowExtent,
     viewportOrigin: state.viewportOrigin,
-    viewportExtent: state.mapMode === MAP_MODE_TEXT ? unitExtent : state.viewportExtent,
+    viewportExtent:
+      state.mapMode === MAP_MODE_TEXT ? unitExtent : state.viewportExtent,
     outputOrigin: { x: bounds.left, y: bounds.top },
     maxCoordinate: MAX_EMF_DIMENSION * 100,
   });
@@ -152,7 +166,8 @@ const selectGraphicsObject = (
   objects: Map<number, GraphicsObject>,
   handle: number,
 ): boolean => {
-  const object = handle >= STOCK_OBJECT_FLAG ? stockObject(handle) : objects.get(handle);
+  const object =
+    handle >= STOCK_OBJECT_FLAG ? stockObject(handle) : objects.get(handle);
   if (!object) {
     return false;
   }
@@ -200,7 +215,12 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
   }
   const width = right - left;
   const height = bottom - top;
-  if (width <= 0 || height <= 0 || width > MAX_EMF_DIMENSION || height > MAX_EMF_DIMENSION) {
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    width > MAX_EMF_DIMENSION ||
+    height > MAX_EMF_DIMENSION
+  ) {
     return null;
   }
 
@@ -232,14 +252,21 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
 
     switch (type) {
       case EMR.eof:
-        if (size !== 20 || end !== bytes.byteLength || recordCount !== declaredRecords) {
+        if (
+          size !== 20 ||
+          end !== bytes.byteLength ||
+          recordCount !== declaredRecords
+        ) {
           return null;
         }
         sawEof = true;
         break;
       case EMR.setMapMode: {
         const mode = int32(view, offset + 8, end);
-        if (size !== 12 || (mode !== MAP_MODE_TEXT && mode !== MAP_MODE_ANISOTROPIC)) {
+        if (
+          size !== 12 ||
+          (mode !== MAP_MODE_TEXT && mode !== MAP_MODE_ANISOTROPIC)
+        ) {
           return null;
         }
         state.mapMode = mode;
@@ -252,7 +279,10 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         break;
       case EMR.setPolyFillMode: {
         const mode = uint32(view, offset + 8, end);
-        if (size !== 12 || (mode !== POLY_FILL_ALTERNATE && mode !== POLY_FILL_WINDING)) {
+        if (
+          size !== 12 ||
+          (mode !== POLY_FILL_ALTERNATE && mode !== POLY_FILL_WINDING)
+        ) {
           return null;
         }
         state.fillRule = mode === POLY_FILL_ALTERNATE ? "evenodd" : "nonzero";
@@ -294,7 +324,12 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         break;
       case EMR.restoreDc: {
         const relative = int32(view, offset + 8, end);
-        if (size !== 12 || relative === undefined || relative >= 0 || -relative > stack.length) {
+        if (
+          size !== 12 ||
+          relative === undefined ||
+          relative >= 0 ||
+          -relative > stack.length
+        ) {
           return null;
         }
         let restored: DeviceState | undefined;
@@ -354,7 +389,11 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
       }
       case EMR.selectObject: {
         const handle = uint32(view, offset + 8, end);
-        if (size !== 12 || handle === undefined || !selectGraphicsObject(state, objects, handle)) {
+        if (
+          size !== 12 ||
+          handle === undefined ||
+          !selectGraphicsObject(state, objects, handle)
+        ) {
           return null;
         }
         break;
@@ -445,7 +484,12 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         }
         pointCount += count;
         if (commands.length === 0) {
-          const mapped = mappedPoint(state, bounds, state.currentPoint.x, state.currentPoint.y);
+          const mapped = mappedPoint(
+            state,
+            bounds,
+            state.currentPoint.x,
+            state.currentPoint.y,
+          );
           if (!mapped) {
             return null;
           }
@@ -498,9 +542,17 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         pointCount += totalPoints;
         let consumedPoints = 0;
         const polygonPath: string[] = [];
-        for (let polygonIndex = 0; polygonIndex < polygonCount; polygonIndex += 1) {
+        for (
+          let polygonIndex = 0;
+          polygonIndex < polygonCount;
+          polygonIndex += 1
+        ) {
           const count = uint32(view, offset + 32 + polygonIndex * 4, end);
-          if (count === undefined || count < 2 || count > totalPoints - consumedPoints) {
+          if (
+            count === undefined ||
+            count < 2 ||
+            count > totalPoints - consumedPoints
+          ) {
             return null;
           }
           for (let index = 0; index < count; index += 1) {

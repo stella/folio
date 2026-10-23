@@ -17,9 +17,17 @@ import {
   isFailingViolation,
   reportOnlyListChanged,
 } from "./lib/corpus-baseline";
-import { CensusBuilder, type CorpusCensus, type CorpusFileId } from "./lib/corpus-census";
-import { compareFamilyToBaseline, familyBaselineFromCensus } from "./lib/corpus-family-baseline";
-import { CORPUS_EVIDENCE, evidenceOf } from "./lib/corpus-census";
+import {
+  CensusBuilder,
+  CORPUS_EVIDENCE,
+  type CorpusCensus,
+  type CorpusFileId,
+  evidenceOf,
+} from "./lib/corpus-census";
+import {
+  compareFamilyToBaseline,
+  familyBaselineFromCensus,
+} from "./lib/corpus-family-baseline";
 import { FamilyCensusBuilder } from "./lib/corpus-family-census";
 import {
   CORPUS_INVARIANT_FAMILIES,
@@ -27,14 +35,17 @@ import {
 } from "./lib/corpus-invariants/contract";
 import type { CorpusLock } from "./lib/corpus-manifest";
 import {
-  type ReportOnlyFiles,
   deadReportOnlyEntries,
   loadReportOnlyFiles,
   reportOnlyFileIds,
+  type ReportOnlyFiles,
   reportOnlyFilesDigest,
   validateReportOnlyFiles,
 } from "./lib/corpus-report-only";
-import { CORPUS_INVARIANTS, failureFromAssertion } from "./lib/corpus-signature";
+import {
+  CORPUS_INVARIANTS,
+  failureFromAssertion,
+} from "./lib/corpus-signature";
 
 const LOCK_DIGEST = "c".repeat(64);
 const SHA = (seed: string): string => seed.repeat(64).slice(0, 64);
@@ -45,7 +56,10 @@ const file = (name: string): CorpusFileId => ({
   sha256: SHA(name),
 });
 
-const GATING = failureFromAssertion(CORPUS_INVARIANTS.fixedPoint, "visible text changed");
+const GATING = failureFromAssertion(
+  CORPUS_INVARIANTS.fixedPoint,
+  "visible text changed",
+);
 const TIMING = failureFromAssertion(
   EXTENDED_CORPUS_INVARIANTS.performance,
   "reserialize exceeded its per-file time budget",
@@ -71,20 +85,35 @@ const lockOf = (...names: readonly string[]): CorpusLock => ({
       id: "source",
       commit: "0".repeat(40),
       tier: 1,
-      files: names.map((name) => ({ path: `${name}.docx`, sha256: SHA(name), bytes: 1 })),
+      files: names.map((name) => ({
+        path: `${name}.docx`,
+        sha256: SHA(name),
+        bytes: 1,
+      })),
     },
   ],
 });
 
 describe("a listed file is measured and never gated", () => {
   const censusWith = (kind: "complete" | "report-only"): CorpusCensus => {
-    const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
-    builder.add(file("a"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
+    const builder = new CensusBuilder(
+      LOCK_DIGEST,
+      reportOnlyFilesDigest(listOf("b")),
+    );
+    builder.add(file("a"), {
+      kind: "complete",
+      declaredRefusals: [],
+      failures: [GATING],
+    });
     builder.add(
       file("b"),
       kind === "complete"
         ? { kind: "complete", declaredRefusals: [], failures: [GATING, TIMING] }
-        : { kind: "report-only", declaredRefusals: [], failures: [GATING, TIMING] },
+        : {
+            kind: "report-only",
+            declaredRefusals: [],
+            failures: [GATING, TIMING],
+          },
     );
     return builder.build();
   };
@@ -94,7 +123,9 @@ describe("a listed file is measured and never gated", () => {
       (entry) => entry.invariant === CORPUS_INVARIANTS.fixedPoint,
     );
     expect(signature?.files).toBe(1);
-    expect(signature?.examples.map((example) => example.path)).toEqual(["a.docx"]);
+    expect(signature?.examples.map((example) => example.path)).toEqual([
+      "a.docx",
+    ]);
   });
 
   test("the same file would have gated had it not been listed", () => {
@@ -126,7 +157,10 @@ describe("a listed file is measured and never gated", () => {
       declaredRefusals: [],
       failures: [GATING, TIMING],
     };
-    const builder = new FamilyCensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
+    const builder = new FamilyCensusBuilder(
+      LOCK_DIGEST,
+      reportOnlyFilesDigest(listOf("b")),
+    );
     builder.add({
       file: file("b"),
       bytes: 1024,
@@ -135,7 +169,10 @@ describe("a listed file is measured and never gated", () => {
       referenceMs: 1,
       producer: "p1/16",
       failures: [
-        failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, "a serializer difference"),
+        failureFromAssertion(
+          EXTENDED_CORPUS_INVARIANTS.reserialize,
+          "a serializer difference",
+        ),
         TIMING,
       ],
       declaredRefusals: [],
@@ -152,31 +189,65 @@ describe("a listed file is measured and never gated", () => {
 
 describe("a baseline written before a listing is not ratcheted down to it", () => {
   const before = (): CorpusCensus => {
-    const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf()));
-    builder.add(file("a"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
-    builder.add(file("b"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
+    const builder = new CensusBuilder(
+      LOCK_DIGEST,
+      reportOnlyFilesDigest(listOf()),
+    );
+    builder.add(file("a"), {
+      kind: "complete",
+      declaredRefusals: [],
+      failures: [GATING],
+    });
+    builder.add(file("b"), {
+      kind: "complete",
+      declaredRefusals: [],
+      failures: [GATING],
+    });
     return builder.build();
   };
 
   const after = (extra: readonly CorpusFileId[] = []): CorpusCensus => {
-    const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
-    builder.add(file("a"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
-    builder.add(file("b"), { kind: "report-only", declaredRefusals: [], failures: [GATING] });
+    const builder = new CensusBuilder(
+      LOCK_DIGEST,
+      reportOnlyFilesDigest(listOf("b")),
+    );
+    builder.add(file("a"), {
+      kind: "complete",
+      declaredRefusals: [],
+      failures: [GATING],
+    });
+    builder.add(file("b"), {
+      kind: "report-only",
+      declaredRefusals: [],
+      failures: [GATING],
+    });
     for (const id of extra) {
-      builder.add(id, { kind: "complete", declaredRefusals: [], failures: [GATING] });
+      builder.add(id, {
+        kind: "complete",
+        declaredRefusals: [],
+        failures: [GATING],
+      });
     }
     return builder.build();
   };
 
   test("the two runs disagree about the list", () => {
-    expect(reportOnlyListChanged(baselineFromCensus(before()), after())).toBe(true);
-    expect(reportOnlyListChanged(baselineFromCensus(after()), after())).toBe(false);
+    expect(reportOnlyListChanged(baselineFromCensus(before()), after())).toBe(
+      true,
+    );
+    expect(reportOnlyListChanged(baselineFromCensus(after()), after())).toBe(
+      false,
+    );
   });
 
   test("a signature that lost the listed file is kept, not resolved", () => {
     const violations = compareToBaseline(baselineFromCensus(before()), after());
-    expect(violations.map((violation) => violation.kind)).toEqual(["report-only-list-changed"]);
-    expect(violations.every((violation) => !isFailingViolation(violation))).toBe(true);
+    expect(violations.map((violation) => violation.kind)).toEqual([
+      "report-only-list-changed",
+    ]);
+    expect(
+      violations.every((violation) => !isFailingViolation(violation)),
+    ).toBe(true);
   });
 
   test("a listing cannot hide a regression: more files still fails", () => {
@@ -188,17 +259,30 @@ describe("a baseline written before a listing is not ratcheted down to it", () =
   });
 
   test("once re-measured, a real shrink ratchets again", () => {
-    const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
-    builder.add(file("b"), { kind: "report-only", declaredRefusals: [], failures: [GATING] });
-    const violations = compareToBaseline(baselineFromCensus(after()), builder.build());
-    expect(violations.map((violation) => violation.kind)).toEqual(["resolved-signature"]);
+    const builder = new CensusBuilder(
+      LOCK_DIGEST,
+      reportOnlyFilesDigest(listOf("b")),
+    );
+    builder.add(file("b"), {
+      kind: "report-only",
+      declaredRefusals: [],
+      failures: [GATING],
+    });
+    const violations = compareToBaseline(
+      baselineFromCensus(after()),
+      builder.build(),
+    );
+    expect(violations.map((violation) => violation.kind)).toEqual([
+      "resolved-signature",
+    ]);
     expect(violations.every(isFailingViolation)).toBe(true);
   });
 
   test("a family baseline follows the same rule", () => {
     const familyCensus = (
       digest: string,
-      evidence: typeof CORPUS_EVIDENCE.gating | typeof CORPUS_EVIDENCE.reportOnly,
+      evidence:
+        typeof CORPUS_EVIDENCE.gating | typeof CORPUS_EVIDENCE.reportOnly,
     ) => {
       const builder = new FamilyCensusBuilder(LOCK_DIGEST, digest);
       builder.add({
@@ -209,7 +293,10 @@ describe("a baseline written before a listing is not ratcheted down to it", () =
         referenceMs: 1,
         producer: "p1/16",
         failures: [
-          failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, "a serializer difference"),
+          failureFromAssertion(
+            EXTENDED_CORPUS_INVARIANTS.reserialize,
+            "a serializer difference",
+          ),
         ],
         declaredRefusals: [],
         timings: {},
@@ -223,10 +310,17 @@ describe("a baseline written before a listing is not ratcheted down to it", () =
     );
     const violations = compareFamilyToBaseline(
       baseline,
-      familyCensus(reportOnlyFilesDigest(listOf("b")), CORPUS_EVIDENCE.reportOnly),
+      familyCensus(
+        reportOnlyFilesDigest(listOf("b")),
+        CORPUS_EVIDENCE.reportOnly,
+      ),
     );
-    expect(violations.map((violation) => violation.kind)).toEqual(["report-only-list-changed"]);
-    expect(violations.every((violation) => !isFailingViolation(violation))).toBe(true);
+    expect(violations.map((violation) => violation.kind)).toEqual([
+      "report-only-list-changed",
+    ]);
+    expect(
+      violations.every((violation) => !isFailingViolation(violation)),
+    ).toBe(true);
   });
 });
 
@@ -240,7 +334,14 @@ describe("the list may not rot", () => {
   test("an entry whose bytes changed is reported", () => {
     const repinned: ReportOnlyFiles = {
       schemaVersion: 1,
-      files: [{ sourceId: "source", path: "a.docx", sha256: SHA("z"), reason: "still slow" }],
+      files: [
+        {
+          sourceId: "source",
+          path: "a.docx",
+          sha256: SHA("z"),
+          reason: "still slow",
+        },
+      ],
     };
     expect(deadReportOnlyEntries(repinned, lockOf("a"))).toHaveLength(1);
   });
@@ -259,49 +360,70 @@ describe("the list's shape", () => {
   };
 
   test("a valid list has no issues", () => {
-    expect(validateReportOnlyFiles({ schemaVersion: 1, files: [entry] })).toEqual([]);
+    expect(
+      validateReportOnlyFiles({ schemaVersion: 1, files: [entry] }),
+    ).toEqual([]);
   });
 
   test("an entry without a reason is rejected", () => {
     const { reason: _reason, ...withoutReason } = entry;
-    expect(validateReportOnlyFiles({ schemaVersion: 1, files: [withoutReason] })).toContain(
-      "files[0].reason: expected a non-empty string",
-    );
     expect(
-      validateReportOnlyFiles({ schemaVersion: 1, files: [{ ...entry, reason: "" }] }),
+      validateReportOnlyFiles({ schemaVersion: 1, files: [withoutReason] }),
+    ).toContain("files[0].reason: expected a non-empty string");
+    expect(
+      validateReportOnlyFiles({
+        schemaVersion: 1,
+        files: [{ ...entry, reason: "" }],
+      }),
     ).toHaveLength(1);
   });
 
   test("an entry without content identity is rejected", () => {
     expect(
-      validateReportOnlyFiles({ schemaVersion: 1, files: [{ ...entry, sha256: "short" }] }),
+      validateReportOnlyFiles({
+        schemaVersion: 1,
+        files: [{ ...entry, sha256: "short" }],
+      }),
     ).toContain("files[0].sha256: expected a lowercase SHA-256");
   });
 
   test("an unsorted or duplicated list is rejected", () => {
     const second = { ...entry, path: "b.docx", sha256: SHA("b") };
-    expect(validateReportOnlyFiles({ schemaVersion: 1, files: [second, entry] })).toContain(
-      "files: entries must be sorted by source id, then path",
-    );
-    expect(validateReportOnlyFiles({ schemaVersion: 1, files: [entry, entry] })).toContain(
-      "files: the same file is listed twice",
-    );
+    expect(
+      validateReportOnlyFiles({ schemaVersion: 1, files: [second, entry] }),
+    ).toContain("files: entries must be sorted by source id, then path");
+    expect(
+      validateReportOnlyFiles({ schemaVersion: 1, files: [entry, entry] }),
+    ).toContain("files: the same file is listed twice");
   });
 
   test("the digest follows the set, not the prose", () => {
     const reworded: ReportOnlyFiles = {
       schemaVersion: 1,
-      files: [{ sourceId: "source", path: "a.docx", sha256: SHA("a"), reason: "rewritten" }],
+      files: [
+        {
+          sourceId: "source",
+          path: "a.docx",
+          sha256: SHA("a"),
+          reason: "rewritten",
+        },
+      ],
     };
-    expect(reportOnlyFilesDigest(reworded)).toBe(reportOnlyFilesDigest(listOf("a")));
-    expect(reportOnlyFilesDigest(listOf("a", "b"))).not.toBe(reportOnlyFilesDigest(listOf("a")));
+    expect(reportOnlyFilesDigest(reworded)).toBe(
+      reportOnlyFilesDigest(listOf("a")),
+    );
+    expect(reportOnlyFilesDigest(listOf("a", "b"))).not.toBe(
+      reportOnlyFilesDigest(listOf("a")),
+    );
   });
 });
 
 describe("the committed list", () => {
   test("is valid, and every entry names a file the lock carries", async () => {
     const list = await loadReportOnlyFiles();
-    const lock = (await Bun.file("corpus/sources.lock.json").json()) as CorpusLock;
+    const lock = (await Bun.file(
+      "corpus/sources.lock.json",
+    ).json()) as CorpusLock;
     expect(validateReportOnlyFiles(list)).toEqual([]);
     expect(deadReportOnlyEntries(list, lock)).toEqual([]);
     expect(list.files.length).toBeGreaterThan(0);
@@ -316,6 +438,8 @@ describe("the committed list", () => {
 
   test("its ids are the ids a run matches files by", async () => {
     const ids = reportOnlyFileIds(await loadReportOnlyFiles());
-    expect(ids.has("officeparser/test/files/oversized_archive.docx")).toBe(true);
+    expect(ids.has("officeparser/test/files/oversized_archive.docx")).toBe(
+      true,
+    );
   });
 });

@@ -16,21 +16,36 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { resolveTableLook, TABLE_LOOK_FLAGS, type TableLookFlag } from "./tableLook";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { TableFormatting, TableLook } from "../types/document";
 import { serializeTableFormatting } from "./serializer/tableSerializer";
+import {
+  resolveTableLook,
+  TABLE_LOOK_FLAGS,
+  type TableLookFlag,
+} from "./tableLook";
 import { parseTableProperties } from "./tableParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** Every `ST_OnOff` spelling, plus the absence that is neither polarity. */
-const FLAG_STATES = [undefined, "0", "false", "off", "1", "true", "on"] as const;
+const FLAG_STATES = [
+  undefined,
+  "0",
+  "false",
+  "off",
+  "1",
+  "true",
+  "on",
+] as const;
 
 type FlagState = (typeof FLAG_STATES)[number];
 
@@ -86,7 +101,8 @@ const tblPrXml = ({ val, flags }: Authored): string => {
       attrs.push(`w:${flag}="${state}"`);
     }
   }
-  const look = attrs.length > 0 ? `<w:tblLook ${attrs.join(" ")}/>` : "<w:tblLook/>";
+  const look =
+    attrs.length > 0 ? `<w:tblLook ${attrs.join(" ")}/>` : "<w:tblLook/>";
   return `<w:tblPr ${NS}>${look}</w:tblPr>`;
 };
 
@@ -136,7 +152,10 @@ const expectedLook = ({ val, flags }: Authored): TableLook | undefined => {
  * The bits are spelled again here rather than imported, so the property
  * compares the implementation against the format instead of against itself.
  */
-const referenceEffective = ({ val, flags }: Authored): Record<TableLookFlag, boolean> => {
+const referenceEffective = ({
+  val,
+  flags,
+}: Authored): Record<TableLookFlag, boolean> => {
   const bits = val === undefined ? 0 : Number.parseInt(val, 16);
   const bitOf = {
     firstRow: 0x00_20,

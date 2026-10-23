@@ -1,26 +1,36 @@
-import { describe, expect, test, setDefaultTimeout } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
-import { EditorState } from "prosemirror-state";
 import { panic } from "better-result";
+import { EditorState } from "prosemirror-state";
+
 import {
-  hashFolioAIBlockText,
   createFolioAIEditSnapshot,
   createFolioAITextRangeHandle,
+  hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
-import { CANONICAL_PUBLIC_OPERATION_DISPOSITIONS } from "./canonicalPublicOperations";
-import { createDocx } from "../docx/rezip";
+import type {
+  FolioDocumentOperation,
+  FolioDocumentOperationBatch,
+} from "../document-operations";
 import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
-import type { FolioDocumentOperation, FolioDocumentOperationBatch } from "../document-operations";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
+  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
+  CanonicalPublicOperations,
+} from "./canonicalPublicOperations";
+import {
+  type CanonicalCommit,
   createCanonicalSession,
   publishCanonicalProjection,
-  type CanonicalCommit,
 } from "./canonicalSession";
 
 const setup = (source: string | Document = "alpha beta") => {
@@ -33,7 +43,9 @@ const setup = (source: string | Document = "alpha beta") => {
                 {
                   type: "paragraph",
                   paraId: "12345678",
-                  content: [{ type: "run", content: [{ type: "text", text: source }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: source }] },
+                  ],
                 },
                 { type: "paragraph", paraId: "23456789", content: [] },
               ],
@@ -51,7 +63,11 @@ const setup = (source: string | Document = "alpha beta") => {
     state = result.value.state;
     return true;
   };
-  const executor = new CanonicalPublicOperations({ session, getState: () => state, publish });
+  const executor = new CanonicalPublicOperations({
+    session,
+    getState: () => state,
+    publish,
+  });
   const snapshot = () => createFolioAIEditSnapshot(state.doc);
   const apply = (
     operations: readonly FolioDocumentOperation[],
@@ -82,7 +98,12 @@ describe("canonical public operation batches", () => {
                         {
                           type: "paragraph",
                           paraId: "12345678",
-                          content: [{ type: "run", content: [{ type: "text", text: "A" }] }],
+                          content: [
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "A" }],
+                            },
+                          ],
                         },
                       ],
                     },
@@ -92,7 +113,12 @@ describe("canonical public operation batches", () => {
                         {
                           type: "paragraph",
                           paraId: "23456789",
-                          content: [{ type: "run", content: [{ type: "text", text: "B" }] }],
+                          content: [
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "B" }],
+                            },
+                          ],
                         },
                       ],
                     },
@@ -107,9 +133,13 @@ describe("canonical public operation batches", () => {
     } satisfies Document;
     for (const blockId of ["12345678", "23456789"] as const) {
       const editor = setup(document);
-      const result = editor.apply([{ id: "merge", type: "mergeBlockWithNext", blockId }]);
+      const result = editor.apply([
+        { id: "merge", type: "mergeBlockWithNext", blockId },
+      ]);
       expect(result.applied).toEqual([]);
-      expect(result.issues).toMatchObject([{ operationId: "merge", code: "missingBlock" }]);
+      expect(result.issues).toMatchObject([
+        { operationId: "merge", code: "missingBlock" },
+      ]);
       expect(editor.session.version).toBe(0);
     }
   });
@@ -117,14 +147,24 @@ describe("canonical public operation batches", () => {
   test("generated mixed human and public histories undo through one journal", () => {
     assertProperty(
       fc.property(
-        fc.array(fc.stringMatching(/^[a-z]{1,8}$/), { minLength: 1, maxLength: 8 }),
+        fc.array(fc.stringMatching(/^[a-z]{1,8}$/), {
+          minLength: 1,
+          maxLength: 8,
+        }),
         (words) => {
           const editor = setup("seed");
           const initial = editor.session.document;
           for (const word of words) {
-            const before = editor.snapshot().blocks.at(0)?.text ?? panic("Missing paragraph");
+            const before =
+              editor.snapshot().blocks.at(0)?.text ??
+              panic("Missing paragraph");
             const result = editor.apply([
-              { id: word, type: "replaceBlock", blockId: "12345678", text: before + word },
+              {
+                id: word,
+                type: "replaceBlock",
+                blockId: "12345678",
+                text: before + word,
+              },
             ]);
             expect(result.applied).toHaveLength(1);
             const human = editor.session.prepareReplace(editor.state(), {
@@ -135,7 +175,9 @@ describe("canonical public operation batches", () => {
             if (human.isErr()) return panic(human.error.message);
             expect(editor.publish(human.value)).toBe(true);
             expect(
-              editor.executor.undo(result.undoHandle ?? panic("Missing handle")),
+              editor.executor.undo(
+                result.undoHandle ?? panic("Missing handle"),
+              ),
             ).toMatchObject({ status: "rejected", reason: "documentChanged" });
             for (let index = 0; index < 2; index++) {
               const undo = editor.session.prepareUndo(editor.state());
@@ -171,7 +213,8 @@ describe("canonical public operation batches", () => {
     );
     expect(refused.status).toBe("rejected");
     expect(
-      refused.issues.find(({ operationId }) => operationId === "table")?.canonicalRefusal,
+      refused.issues.find(({ operationId }) => operationId === "table")
+        ?.canonicalRefusal,
     ).toEqual({ gap: "publicOps.tableStructure" });
     expect(editor.session.document).toBe(before);
     expect(editor.state()).toBe(state);
@@ -191,16 +234,31 @@ describe("canonical public operation batches", () => {
     const editor = setup();
     const original = editor.session.document;
     const result = editor.apply([
-      { id: "a", type: "replaceInBlock", blockId: "12345678", find: "alpha", replace: "first" },
-      { id: "b", type: "replaceInBlock", blockId: "12345678", find: "beta", replace: "second" },
+      {
+        id: "a",
+        type: "replaceInBlock",
+        blockId: "12345678",
+        find: "alpha",
+        replace: "first",
+      },
+      {
+        id: "b",
+        type: "replaceInBlock",
+        blockId: "12345678",
+        find: "beta",
+        replace: "second",
+      },
     ]);
     expect(result.applied.map(({ id }) => id)).toEqual(["a", "b"]);
-    expect(result.receipts.map(({ operationId }) => operationId)).toEqual(["a", "b"]);
+    expect(result.receipts.map(({ operationId }) => operationId)).toEqual([
+      "a",
+      "b",
+    ]);
     expect(editor.session.version).toBe(1);
     expect(editor.snapshot().blocks.at(0)?.text).toBe("first second");
-    expect(editor.executor.undo(result.undoHandle ?? panic("Missing handle")).status).toBe(
-      "undone",
-    );
+    expect(
+      editor.executor.undo(result.undoHandle ?? panic("Missing handle")).status,
+    ).toBe("undone");
     expect(editor.session.document).toEqual(original);
     expect(editor.session.canUndo).toBe(false);
   });
@@ -233,7 +291,9 @@ describe("canonical public operation batches", () => {
       batch: {
         version: 1,
         mode: "tracked-changes",
-        operations: [{ id: "second", type: "replaceRange", range, replace: "delta" }],
+        operations: [
+          { id: "second", type: "replaceRange", range, replace: "delta" },
+        ],
       },
     });
     expect(second.applied).toHaveLength(1);
@@ -245,7 +305,9 @@ describe("canonical public operation batches", () => {
 type CompiledKind = {
   [
     Kind in keyof typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS
-  ]: (typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS)[Kind] extends "compile" ? Kind : never;
+  ]: (typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS)[Kind] extends "compile"
+    ? Kind
+    : never;
 }[keyof typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS];
 
 test("all supported compiler kinds share direct/tracked undo and typed refusals", () => {
@@ -265,14 +327,24 @@ test("all supported compiler kinds share direct/tracked undo and typed refusals"
       find: "alpha",
       replace: "gamma",
     },
-    replaceRange: { id: "replaceRange", type: "replaceRange", range, replace: "gamma" },
+    replaceRange: {
+      id: "replaceRange",
+      type: "replaceRange",
+      range,
+      replace: "gamma",
+    },
     replaceBlock: {
       id: "replaceBlock",
       type: "replaceBlock",
       blockId: "12345678",
       text: "gamma beta",
     },
-    formatRange: { id: "formatRange", type: "formatRange", range, formatting: { bold: true } },
+    formatRange: {
+      id: "formatRange",
+      type: "formatRange",
+      range,
+      formatting: { bold: true },
+    },
     splitBlock: {
       id: "splitBlock",
       type: "splitBlock",
@@ -308,16 +380,22 @@ test("all supported compiler kinds share direct/tracked undo and typed refusals"
         revisionStamp: { date: "2026-01-01T00:00:00Z", idSeed: 500 },
       });
       expect(result.applied).toHaveLength(1);
-      if (operation.type === "commentOnBlock" || operation.type === "commentOnRange") {
+      if (
+        operation.type === "commentOnBlock" ||
+        operation.type === "commentOnRange"
+      ) {
         expect(result.applied.at(0)?.commentId).toBeDefined();
         expect(result.applied.at(0)?.revisionIds).toBeUndefined();
       } else if (mode === "tracked-changes") {
-        expect(result.applied.at(0)?.revisionIds?.every((id) => id >= 500)).toBe(true);
+        expect(
+          result.applied.at(0)?.revisionIds?.every((id) => id >= 500),
+        ).toBe(true);
         expect(result.nextRevisionId).toBeGreaterThan(500);
       }
-      expect(editor.executor.undo(result.undoHandle ?? panic("Missing handle")).status).toBe(
-        "undone",
-      );
+      expect(
+        editor.executor.undo(result.undoHandle ?? panic("Missing handle"))
+          .status,
+      ).toBe("undone");
       expect(editor.session.document).toEqual(original);
     }
   }
@@ -334,25 +412,42 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
   } as const;
   expect(
     editor
-      .apply([{ ...operation, precondition: { blockTextHash: hashFolioAIBlockText("stale") } }])
+      .apply([
+        {
+          ...operation,
+          precondition: { blockTextHash: hashFolioAIBlockText("stale") },
+        },
+      ])
       .skipped.at(0)?.reason,
   ).toBe("preconditionFailed");
-  expect(editor.apply([operation], { mode: "suggested" }).issues.at(0)?.canonicalRefusal?.gap).toBe(
-    "publicOps.suggestedMode",
-  );
   expect(
-    editor.apply([{ ...operation, replace: "**gamma**" }]).issues.at(0)?.canonicalRefusal?.gap,
+    editor.apply([operation], { mode: "suggested" }).issues.at(0)
+      ?.canonicalRefusal?.gap,
+  ).toBe("publicOps.suggestedMode");
+  expect(
+    editor.apply([{ ...operation, replace: "**gamma**" }]).issues.at(0)
+      ?.canonicalRefusal?.gap,
   ).toBe("publicOps.unsupportedInline");
   expect(
     editor
-      .apply([{ id: "table", type: "insertTable", blockId: "12345678", rows: [["cell"]] }])
+      .apply([
+        {
+          id: "table",
+          type: "insertTable",
+          blockId: "12345678",
+          rows: [["cell"]],
+        },
+      ])
       .issues.at(0)?.canonicalRefusal?.gap,
   ).toBe("publicOps.tableStructure");
   const before = editor.session.document;
   editor.session.beginComposition();
   expect(
     editor.executor
-      .apply({ snapshot: editor.snapshot(), batch: { version: 1, operations: [operation] } })
+      .apply({
+        snapshot: editor.snapshot(),
+        batch: { version: 1, operations: [operation] },
+      })
       .skipped.at(0)?.reason,
   ).toBe("documentNotEditable");
   editor.session.endComposition();
@@ -363,10 +458,14 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
 
 test("save observes one immutable committed batch version", async () => {
   const editor = setup();
-  editor.apply([{ id: "first", type: "replaceBlock", blockId: "12345678", text: "saved" }]);
+  editor.apply([
+    { id: "first", type: "replaceBlock", blockId: "12345678", text: "saved" },
+  ]);
   const capturedVersion = editor.session.version;
   const save = createDocx(editor.session.document);
-  editor.apply([{ id: "second", type: "replaceBlock", blockId: "12345678", text: "later" }]);
+  editor.apply([
+    { id: "second", type: "replaceBlock", blockId: "12345678", text: "later" },
+  ]);
   const reopened = await parseDocx(await save, { preloadFonts: false });
   expect(toProseDoc(reopened).textContent).toBe("saved");
   expect(capturedVersion).toBe(1);
@@ -396,10 +495,13 @@ test("generated attached comments publish and undo atomically in direct and trac
         const result = editor.apply([operation], { mode });
         expect(result.applied).toHaveLength(1);
         expect(result.applied.at(0)?.commentId).toBeDefined();
-        expect(editor.session.document.package.document.comments).toHaveLength(1);
-        expect(editor.executor.undo(result.undoHandle ?? panic("Missing handle")).status).toBe(
-          "undone",
+        expect(editor.session.document.package.document.comments).toHaveLength(
+          1,
         );
+        expect(
+          editor.executor.undo(result.undoHandle ?? panic("Missing handle"))
+            .status,
+        ).toBe("undone");
         expect(editor.session.document).toEqual(initial);
       },
     ),
@@ -423,7 +525,9 @@ test.each(["splitBlock", "mergeBlockWithNext"] as const)(
       comment: { text: "review" },
       ...(type === "splitBlock" ? { offset: 2 } : {}),
     };
-    expect(() => editor.apply([operation])).toThrow("comment: unexpected property");
+    expect(() => editor.apply([operation])).toThrow(
+      "comment: unexpected property",
+    );
     expect(editor.session.document).toBe(initial);
     expect(editor.session.version).toBe(0);
     expect(editor.session.canUndo).toBe(false);

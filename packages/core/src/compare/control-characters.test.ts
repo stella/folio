@@ -5,8 +5,12 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 
-const documentWithParagraphs = async (paragraphs: readonly string[]): Promise<ArrayBuffer> => {
-  const source = await buildBodySequenceDocx([{ kind: "paragraph", text: "placeholder" }]);
+const documentWithParagraphs = async (
+  paragraphs: readonly string[],
+): Promise<ArrayBuffer> => {
+  const source = await buildBodySequenceDocx([
+    { kind: "paragraph", text: "placeholder" },
+  ]);
   const zip = await JSZip.loadAsync(source);
   const document = zip.file("word/document.xml");
   if (!document) {
@@ -106,7 +110,9 @@ describe("comparison control characters", () => {
     const accepted = await accepting.toBuffer();
     expect(await firstBlockText(accepted)).toBe("anchor");
     expect(
-      (await FolioDocxReviewer.fromBuffer(accepted)).getContent().map(({ text }) => text),
+      (await FolioDocxReviewer.fromBuffer(accepted))
+        .getContent()
+        .map(({ text }) => text),
     ).toEqual(["anchor", "inserted\tvalue\nend"]);
     expect(await rawControlElements(accepted)).toEqual(["tab", "br"]);
 
@@ -114,7 +120,9 @@ describe("comparison control characters", () => {
     rejecting.rejectAll();
     const rejected = await rejecting.toBuffer();
     expect(
-      (await FolioDocxReviewer.fromBuffer(rejected)).getContent().map(({ text }) => text),
+      (await FolioDocxReviewer.fromBuffer(rejected))
+        .getContent()
+        .map(({ text }) => text),
     ).toEqual(["anchor"]);
     expect(await rawControlElements(rejected)).toEqual([]);
   });

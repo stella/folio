@@ -16,7 +16,11 @@ const baseContext = (overrides: Partial<FieldContext> = {}): FieldContext => ({
   ...overrides,
 });
 
-const evalInstr = (instruction: string, ctx: FieldContext, instanceId?: number) =>
+const evalInstr = (
+  instruction: string,
+  ctx: FieldContext,
+  instanceId?: number,
+) =>
   evaluateField(parseFieldInstruction(instruction), ctx, {
     fallback: "FB",
     ...(instanceId === undefined ? {} : { instanceId }),
@@ -79,7 +83,9 @@ describe("evaluateField page-number family", () => {
 
     const wideCtx = baseContext({ pageNumber: 234 });
     expect(evalInstr("PAGE \\# 0#", wideCtx)).toBe("234");
-    expect(evalInstr("NUMPAGES \\# #,##0", baseContext({ totalPages: 1234 }))).toBe("1,234");
+    expect(
+      evalInstr("NUMPAGES \\# #,##0", baseContext({ totalPages: 1234 })),
+    ).toBe("1,234");
   });
 });
 
@@ -152,14 +158,18 @@ describe("evaluateField dates and unsupported types", () => {
   test("DATE/TIME pictures do not re-tokenize formatted literals", () => {
     const ctx = baseContext();
     expect(evalInstr('TIME \\@ "h:mm AM/PM"', ctx)).toBe("2:30 PM");
-    expect(evalInstr('DATE \\@ "dddd, MMMM d, yyyy"', ctx)).toBe("Monday, June 8, 2026");
+    expect(evalInstr('DATE \\@ "dddd, MMMM d, yyyy"', ctx)).toBe(
+      "Monday, June 8, 2026",
+    );
   });
 
   test("DATE \\* MERGEFORMAT (no date picture) uses the locale date, not the switch", () => {
     const ctx = baseContext();
     // \* is a general format switch, not a date picture: must fall back to the
     // locale date instead of formatting the literal "MERGEFORMAT".
-    expect(evalInstr("DATE \\* MERGEFORMAT", ctx)).toBe(ctx.now.toLocaleDateString());
+    expect(evalInstr("DATE \\* MERGEFORMAT", ctx)).toBe(
+      ctx.now.toLocaleDateString(),
+    );
   });
 
   test("document metadata date fields preserve cached fallback values", () => {

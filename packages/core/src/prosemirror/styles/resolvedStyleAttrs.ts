@@ -1,30 +1,30 @@
 import { panic } from "better-result";
 
 import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumbering,
-  effectiveParagraphNumberingReference,
-} from "../numberingAttr";
-import {
   computeListRendering,
   numberingLevelHasMarkerSlot,
   type NumberingMap,
 } from "../../docx/numberingParser";
-import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { paragraphNumberingReference } from "../../docx/numberingReference";
+import type { ParagraphFormatting } from "../../types/document";
+import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
-import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
-import { paragraphNumberingAttr } from "../numberingAttr";
 import {
-  paragraphIndentationAttrPatch,
-  directParagraphIndentation,
-  withDirectParagraphIndentation,
-  paragraphIndentationFromFormatting,
+  effectiveParagraphNumbering,
+  effectiveParagraphNumberingReference,
+  paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
+} from "../numberingAttr";
+import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
+import {
   type DirectParagraphIndentation,
+  directParagraphIndentation,
+  paragraphIndentationAttrPatch,
+  paragraphIndentationFromFormatting,
+  withDirectParagraphIndentation,
 } from "../paragraphIndentation";
-import type { ParagraphFormatting } from "../../types/document";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -55,7 +55,8 @@ export function paragraphAttrsFromResolvedStyle(
 ): ParagraphAttrsPatch {
   const ppr = resolved.paragraphFormatting;
   const runFormatting = resolved.runFormatting;
-  const hasRunFormatting = !!runFormatting && Object.keys(runFormatting).length > 0;
+  const hasRunFormatting =
+    !!runFormatting && Object.keys(runFormatting).length > 0;
 
   return {
     alignment: ppr?.alignment ?? null,
@@ -134,8 +135,13 @@ export function listAttrsFromResolvedStyle(
   }
 
   const { numId, ilvl = 0 } = numPr;
-  const attrs = { ...listAttrsFromNumbering({ numId, ilvl }, numbering), numPr: null };
-  attrs.numPrFromStyle = paragraphNumberingAttr(paragraphNumberingReference({ numId, ilvl }));
+  const attrs = {
+    ...listAttrsFromNumbering({ numId, ilvl }, numbering),
+    numPr: null,
+  };
+  attrs.numPrFromStyle = paragraphNumberingAttr(
+    paragraphNumberingReference({ numId, ilvl }),
+  );
   Object.assign(
     attrs,
     listIndentationProvenancePatch({
@@ -164,7 +170,9 @@ export function listAttrsFromNumbering(
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
   const targetNumPr = { numId: numPr.numId, ilvl: numPr.ilvl };
-  const rendering = numbering ? computeListRendering(targetNumPr, numbering) : null;
+  const rendering = numbering
+    ? computeListRendering(targetNumPr, numbering)
+    : null;
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
     numPr: paragraphNumberingAttr(paragraphNumberingReference(targetNumPr)),
@@ -192,7 +200,10 @@ function listLevelIndentAttrPatch(
   if (stated?.indentLeft === undefined && level.pPr.indentLeft !== undefined) {
     patch.indentLeft = level.pPr.indentLeft;
   }
-  if (stated?.indentFirstLine === undefined && numberingLevelHasMarkerSlot(level)) {
+  if (
+    stated?.indentFirstLine === undefined &&
+    numberingLevelHasMarkerSlot(level)
+  ) {
     if (level.pPr.indentFirstLine !== undefined) {
       patch.indentFirstLine = level.pPr.indentFirstLine;
     }
@@ -229,7 +240,9 @@ export function listIndentationProvenancePatch({
     numPr === undefined
       ? {}
       : listLevelIndentAttrPatch(
-          numberingSource === "style" ? paragraphIndentationFromFormatting(style) : undefined,
+          numberingSource === "style"
+            ? paragraphIndentationFromFormatting(style)
+            : undefined,
           numPr,
           numbering,
         );
@@ -248,11 +261,15 @@ export function listIndentationProvenancePatch({
   }
   const resolved = {
     ...style,
-    ...(typeof level.indentLeft === "number" ? { indentLeft: level.indentLeft } : {}),
+    ...(typeof level.indentLeft === "number"
+      ? { indentLeft: level.indentLeft }
+      : {}),
     ...(typeof level.indentFirstLine === "number"
       ? { indentFirstLine: level.indentFirstLine }
       : {}),
-    ...(typeof level.hangingIndent === "boolean" ? { hangingIndent: level.hangingIndent } : {}),
+    ...(typeof level.hangingIndent === "boolean"
+      ? { hangingIndent: level.hangingIndent }
+      : {}),
   };
   return {
     ...paragraphIndentationAttrPatch({
@@ -293,7 +310,8 @@ export function listLevelIndentRemovalPatch(
       numPr: undefined,
       numbering,
     }),
-    _originalFormatting: withDirectParagraphIndentation(attrs._originalFormatting, direct) ?? null,
+    _originalFormatting:
+      withDirectParagraphIndentation(attrs._originalFormatting, direct) ?? null,
   };
 }
 
@@ -328,18 +346,28 @@ export function listLevelAttrPatch(
   const direct = directParagraphIndentation(attrs);
   return {
     ...listAttrsFromNumbering(numPr, numbering),
-    ...(attrs.numPr?.kind !== "reference" && attrs.numPrFromStyle?.kind === "reference"
-      ? { numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: numPr.ilvl }) }
+    ...(attrs.numPr?.kind !== "reference" &&
+    attrs.numPrFromStyle?.kind === "reference"
+      ? {
+          numPr: paragraphNumberingAttr({
+            kind: "levelOnly",
+            ilvl: numPr.ilvl,
+          }),
+        }
       : {}),
-    listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? null,
+    listImplicitChildLevelAdvances:
+      attrs.listImplicitChildLevelAdvances ?? null,
     ...listIndentationProvenancePatch({
       direct,
       styleFormatting: attrs._styleResolvedFormatting,
       numberingSource:
-        attrs.numPr?.kind === "reference" || attrs.numPrFromStyle == null ? "paragraph" : "style",
+        attrs.numPr?.kind === "reference" || attrs.numPrFromStyle == null
+          ? "paragraph"
+          : "style",
       numPr,
       numbering,
     }),
-    _originalFormatting: withDirectParagraphIndentation(attrs._originalFormatting, direct) ?? null,
+    _originalFormatting:
+      withDirectParagraphIndentation(attrs._originalFormatting, direct) ?? null,
   };
 }

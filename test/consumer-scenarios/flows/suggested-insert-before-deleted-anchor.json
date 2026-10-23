@@ -20,6 +20,11 @@
       ]
     }
   ],
-  "swarm": ["replaceInBlock", "insertBeforeBlock", "deleteBlock", "insertTableRow"],
+  "swarm": [
+    "replaceInBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "insertTableRow"
+  ],
   "origin": "Shrunk from random flow seed 877798201 (#2021)"
 }

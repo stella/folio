@@ -1,6 +1,9 @@
-import { BROWSER_PASTE_PAYLOADS, type BrowserInputTrace } from "./browserInputTrace";
 import type { CanonicalSessionError } from "../../packages/core/src/controller/canonicalSession";
 import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
+import {
+  BROWSER_PASTE_PAYLOADS,
+  type BrowserInputTrace,
+} from "./browserInputTrace";
 
 /** Fixed native-input sequences supplement the generated canonical lane. */
 export const canonicalBrowserAcceptances = [
@@ -27,7 +30,9 @@ export const canonicalBrowserAcceptances = [
     seed: 131,
     trace: {
       shape: "header-footer",
-      actions: [{ kind: "imeReplacement", updates: ["alpha"], completion: "cancel" }],
+      actions: [
+        { kind: "imeReplacement", updates: ["alpha"], completion: "cancel" },
+      ],
     },
   },
   {
@@ -83,14 +88,19 @@ export const canonicalBrowserAcceptances = [
   },
 ] satisfies readonly { seed: number; trace: BrowserInputTrace }[];
 
-type AcceptanceSourceShape = (typeof canonicalBrowserAcceptances)[number]["trace"]["shape"];
-type SourceRefusal = Pick<CanonicalSessionError, "name" | "gap" | "reason" | "message">;
+type AcceptanceSourceShape =
+  (typeof canonicalBrowserAcceptances)[number]["trace"]["shape"];
+type SourceRefusal = Pick<
+  CanonicalSessionError,
+  "name" | "gap" | "reason" | "message"
+>;
 
 const unsupportedInlineSource = {
   name: "CanonicalSessionError",
   gap: CANONICAL_GAP.dispatch,
   reason: "refused",
-  message: "Canonical sessions currently require plain paragraphs and supported inline atoms.",
+  message:
+    "Canonical sessions currently require plain paragraphs and supported inline atoms.",
 } as const satisfies SourceRefusal;
 
 const unexpectedTableRefusal = {

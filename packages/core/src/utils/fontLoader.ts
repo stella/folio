@@ -131,7 +131,9 @@ export async function loadFonts(families: string[]): Promise<void> {
  * Load fonts with mapping: maps Office font names to bundled equivalents
  * and marks them as loaded.
  */
-export async function loadFontsWithMapping(families: string[] | undefined): Promise<void> {
+export async function loadFontsWithMapping(
+  families: string[] | undefined,
+): Promise<void> {
   if (!families || families.length === 0) {
     return;
   }
@@ -171,7 +173,10 @@ function notifyCallbacks(fonts: string[]): void {
 /**
  * Check if a font is available using canvas measurement.
  */
-export function canRenderFont(fontFamily: string, fallbackFont = "sans-serif"): boolean {
+export function canRenderFont(
+  fontFamily: string,
+  fallbackFont = "sans-serif",
+): boolean {
   if (typeof document === "undefined") {
     return false;
   }

@@ -7,15 +7,25 @@
 
 import { panic } from "better-result";
 
-import type { Layout, Page, Fragment, FlowBlock, Measure } from "../layout-engine/types";
+import type {
+  FlowBlock,
+  Fragment,
+  Layout,
+  Measure,
+  Page,
+} from "../layout-engine/types";
 import { scrollEditorElementIntoView } from "../paged-layout/editorScrollRoot";
 import type { NoteStoryKey } from "../types/editor-story";
 import { createDefaultRegistry } from "./registry/modules";
 import type { FeatureRegistry } from "./registry/registry";
-import { renderFragment, FRAGMENT_CLASS_NAMES } from "./renderFragment";
-import { renderImageFragment, IMAGE_CLASS_NAMES } from "./renderImage";
+import { FRAGMENT_CLASS_NAMES, renderFragment } from "./renderFragment";
+import { IMAGE_CLASS_NAMES, renderImageFragment } from "./renderImage";
 import { renderPage, renderPages } from "./renderPage";
-import { renderParagraphFragment, sliceRunsForLine, renderLine } from "./renderParagraph";
+import {
+  renderLine,
+  renderParagraphFragment,
+  sliceRunsForLine,
+} from "./renderParagraph";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import { renderTextBoxFragment, TEXTBOX_CLASS_NAMES } from "./renderTextBox";
 import type { RenderContext } from "./renderUtils";
@@ -206,7 +216,10 @@ export class LayoutPainter {
   /**
    * Render a page using block lookup for full fragment rendering
    */
-  private renderPageWithLookup(page: Page, context: RenderContext): HTMLElement {
+  private renderPageWithLookup(
+    page: Page,
+    context: RenderContext,
+  ): HTMLElement {
     const pageEl = this.doc.createElement("div");
     pageEl.className = "layout-page";
     pageEl.dataset["pageNumber"] = String(page.number);
@@ -215,7 +228,8 @@ export class LayoutPainter {
     pageEl.style.position = "relative";
     pageEl.style.width = `${page.size.w}px`;
     pageEl.style.height = `${page.size.h}px`;
-    pageEl.style.backgroundColor = this.options.pageBackground ?? "var(--doc-canvas, #ffffff)";
+    pageEl.style.backgroundColor =
+      this.options.pageBackground ?? "var(--doc-canvas, #ffffff)";
     pageEl.style.color = "var(--doc-canvas-text, #1f2937)";
     pageEl.style.overflow = "hidden";
 
@@ -248,7 +262,10 @@ export class LayoutPainter {
    * without a resolved block/measure or with an unregistered kind fall
    * back to the placeholder renderer (`renderFragment`).
    */
-  private renderFragmentWithLookup(fragment: Fragment, context: RenderContext): HTMLElement {
+  private renderFragmentWithLookup(
+    fragment: Fragment,
+    context: RenderContext,
+  ): HTMLElement {
     const lookup = this.blockLookup.get(String(fragment.blockId));
     return this.registry.render({
       fragment,
@@ -262,7 +279,10 @@ export class LayoutPainter {
   /**
    * Apply positioning styles to a fragment element
    */
-  private applyFragmentPosition(element: HTMLElement, fragment: Fragment): void {
+  private applyFragmentPosition(
+    element: HTMLElement,
+    fragment: Fragment,
+  ): void {
     element.style.position = "absolute";
     element.style.left = `${fragment.x}px`;
     element.style.top = `${fragment.y}px`;

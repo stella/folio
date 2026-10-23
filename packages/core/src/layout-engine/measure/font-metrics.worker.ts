@@ -69,8 +69,13 @@ function measureEntry(entry: MeasureRequestEntry): MeasureResponseEntry | null {
   const context = getCtx();
   context.font = entry.font;
   context.fontKerning = entry.fontKerning;
-  const actualFingerprintWidth = context.measureText(entry.fontFingerprintText).width;
-  if (Math.abs(actualFingerprintWidth - entry.fontFingerprintWidth) > FONT_FINGERPRINT_EPSILON) {
+  const actualFingerprintWidth = context.measureText(
+    entry.fontFingerprintText,
+  ).width;
+  if (
+    Math.abs(actualFingerprintWidth - entry.fontFingerprintWidth) >
+    FONT_FINGERPRINT_EPSILON
+  ) {
     return null;
   }
   const raw = context.measureText(entry.text).width;
@@ -106,7 +111,9 @@ export function __resetWorkerCtxForTests(): void {
  * contract without spawning a real `Worker`. Production code only
  * reaches this via `postMessage`.
  */
-export function handleMeasureRequest(req: MeasureWorkerRequest): MeasureWorkerResponse {
+export function handleMeasureRequest(
+  req: MeasureWorkerRequest,
+): MeasureWorkerResponse {
   try {
     const entries: MeasureResponseEntry[] = [];
     for (const entry of req.entries) {

@@ -8,14 +8,19 @@ import type { EditorView } from "prosemirror-view";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
-import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import type { Comment } from "../types/content";
-import { maxAnnotationIdInDoc, seedRevisionIdsAbove } from "./plugins/revisionIds";
+import {
+  maxAnnotationIdInDoc,
+  seedRevisionIdsAbove,
+} from "./plugins/revisionIds";
+import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 
 /** Sentinel ID for a comment that hasn't been persisted yet (anchored to selection). */
 export const PENDING_COMMENT_ID = -1;
 
-export class CommentIdSpaceExhaustedError extends TaggedError("CommentIdSpaceExhaustedError")<{
+export class CommentIdSpaceExhaustedError extends TaggedError(
+  "CommentIdSpaceExhaustedError",
+)<{
   message: string;
 }> {}
 
@@ -25,7 +30,9 @@ const reservedIds = new Set<number>();
 /** Allocate a valid, unused comment ID in this realm. */
 export function allocateCommentId(): number {
   if (reservedIds.size >= MAX_REVISION_ID) {
-    throw new CommentIdSpaceExhaustedError({ message: "The OOXML comment ID space is exhausted." });
+    throw new CommentIdSpaceExhaustedError({
+      message: "The OOXML comment ID space is exhausted.",
+    });
   }
   while (reservedIds.has(nextId)) {
     nextId = nextId === MAX_REVISION_ID ? 1 : nextId + 1;
@@ -68,7 +75,11 @@ export function seedCommentAllocator(
   let max = 0;
   for (const comment of comments ?? []) {
     allocator.seedAbove(comment.id);
-    if (Number.isInteger(comment.id) && comment.id > max && comment.id <= MAX_REVISION_ID) {
+    if (
+      Number.isInteger(comment.id) &&
+      comment.id > max &&
+      comment.id <= MAX_REVISION_ID
+    ) {
       max = comment.id;
     }
   }

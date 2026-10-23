@@ -16,7 +16,6 @@
  * automatically.
  */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
@@ -25,10 +24,11 @@ import {
   type DirectiveKind,
   isBlockDirectiveKind,
   type MarkerMeta,
-  type ScannedMarker,
   scanMarkers,
+  type ScannedMarker,
 } from "@stll/template-conditions";
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { createDocScanPlugin, getDocScanRanges } from "./createDocScanPlugin";
 import type { DocScanState } from "./createDocScanPlugin";
 import { collectBlockChunks, joinChunks, offsetToDocPos } from "./pmTextScan";
@@ -123,11 +123,17 @@ const BLOCK_CLOSER_KINDS = new Set<DirectiveKind>(["endif", "endfor"]);
  * function of the ranges (no layout), hence unit-testable in isolation; the
  * overlay caps the *visual* indentation separately.
  */
-export const computeBlockDepths = (ranges: readonly DirectiveRange[]): Map<number, number> => {
+export const computeBlockDepths = (
+  ranges: readonly DirectiveRange[],
+): Map<number, number> => {
   const depths = new Map<number, number>();
   const stack: DirectiveKind[] = [];
   const ordered = ranges
-    .filter((r) => r.block && (BLOCK_OPENER_KINDS.has(r.kind) || BLOCK_CLOSER_KINDS.has(r.kind)))
+    .filter(
+      (r) =>
+        r.block &&
+        (BLOCK_OPENER_KINDS.has(r.kind) || BLOCK_CLOSER_KINDS.has(r.kind)),
+    )
     .slice()
     .sort((a, b) => a.from - b.from);
   for (const range of ordered) {
@@ -151,7 +157,9 @@ const directiveAlias = (meta: MarkerMeta): string | undefined =>
 
 /** The path a condition's filter chain configures, or undefined without a chain. */
 const directiveConditionPath = (meta: MarkerMeta): string | undefined =>
-  (meta.kind === "if" || meta.kind === "elif") && meta.filters.length > 0 ? meta.expr : undefined;
+  (meta.kind === "if" || meta.kind === "elif") && meta.filters.length > 0
+    ? meta.expr
+    : undefined;
 
 export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
   const ranges: DirectiveRange[] = [];
@@ -186,7 +194,8 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
     // so they get the marker tint and join the outline, while the gutter-rail
     // bands stay block-only (the overlay checks `block`).
     for (const marker of scanMarkers(joined)) {
-      const clauseVersion = marker.meta.kind === "clause" ? marker.meta.version : undefined;
+      const clauseVersion =
+        marker.meta.kind === "clause" ? marker.meta.version : undefined;
       const alias = directiveAlias(marker.meta);
       const conditionPath = directiveConditionPath(marker.meta);
       ranges.push({
@@ -206,7 +215,9 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
 };
 
 export const templateDirectivesKey =
-  createPluginKeyOwner<DocScanState<undefined, DirectiveRange>>("templateDirectives");
+  createPluginKeyOwner<DocScanState<undefined, DirectiveRange>>(
+    "templateDirectives",
+  );
 
 export type TemplateDirectivesPluginOptions = {
   onRangesChange?: (ranges: readonly DirectiveRange[]) => void;
@@ -222,5 +233,6 @@ export const createTemplateDirectivesPlugin = ({
     ...(onRangesChange ? { onRangesChange } : {}),
   });
 
-export const getTemplateDirectives = (state: EditorState): readonly DirectiveRange[] =>
-  getDocScanRanges(templateDirectivesKey, state);
+export const getTemplateDirectives = (
+  state: EditorState,
+): readonly DirectiveRange[] => getDocScanRanges(templateDirectivesKey, state);

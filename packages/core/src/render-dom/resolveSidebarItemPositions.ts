@@ -11,19 +11,22 @@ export type RenderedSidebarItem = {
   estimatedHeight?: number;
 };
 
-export type ResolvedSidebarItemPosition<T extends RenderedSidebarItem = RenderedSidebarItem> = {
+export type ResolvedSidebarItemPosition<
+  T extends RenderedSidebarItem = RenderedSidebarItem,
+> = {
   item: T;
   y: number;
 };
 
-export type ResolveSidebarItemPositionsOptions<T extends RenderedSidebarItem> = {
-  items: T[];
-  anchorPositions: Map<string, number>;
-  renderedDomContext: RenderedDomContext | null;
-  zoom: number;
-  cardHeights: Map<string, number>;
-  lastKnown: Map<string, number>;
-};
+export type ResolveSidebarItemPositionsOptions<T extends RenderedSidebarItem> =
+  {
+    items: T[];
+    anchorPositions: Map<string, number>;
+    renderedDomContext: RenderedDomContext | null;
+    zoom: number;
+    cardHeights: Map<string, number>;
+    lastKnown: Map<string, number>;
+  };
 
 export const resolveSidebarItemPositions = <T extends RenderedSidebarItem>({
   items,
@@ -51,7 +54,9 @@ export const resolveSidebarItemPositions = <T extends RenderedSidebarItem>({
       }
     }
     if (targetY === undefined && renderedDomContext && containerOffset) {
-      const rect = renderedDomContext.getRectsForRange(item.anchorPos, item.anchorPos + 1).at(0);
+      const rect = renderedDomContext
+        .getRectsForRange(item.anchorPos, item.anchorPos + 1)
+        .at(0);
       if (rect) {
         targetY = (rect.y + containerOffset.y) * zoom;
       }
@@ -77,7 +82,8 @@ export const resolveSidebarItemPositions = <T extends RenderedSidebarItem>({
   const resolved: ResolvedSidebarItemPosition<T>[] = [];
   let previousBottom = 0;
   for (const position of positioned) {
-    const height = cardHeights.get(position.item.id) ?? position.item.estimatedHeight ?? 80;
+    const height =
+      cardHeights.get(position.item.id) ?? position.item.estimatedHeight ?? 80;
     const y = Math.max(position.targetY, previousBottom + MIN_CARD_GAP);
     resolved.push({ item: position.item, y });
     previousBottom = y + height;

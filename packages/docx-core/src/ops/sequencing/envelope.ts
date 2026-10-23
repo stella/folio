@@ -1,25 +1,27 @@
-import { encodeUtf8 } from "@stll/utf8-boundaries";
-import { cloneModel } from "../modelClone";
 import { Result, TaggedError } from "better-result";
+
+import { encodeUtf8 } from "@stll/utf8-boundaries";
+
 import type { ParagraphFormatting, TextFormatting } from "../../model/document";
 import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
-import { isOpStory } from "./address";
-import { captureDocumentOp, restoreDocumentOp } from "../wire";
+import { cloneModel } from "../modelClone";
 import {
+  type DeleteRowOp,
+  type DeleteTableOp,
   DOCUMENT_OP_SCHEMA_VERSION,
   type DocumentOp,
   type DocumentOpType,
-  type TableEditOp,
-  type SetTableOp,
-  type InsertTableOp,
-  type DeleteTableOp,
   type InsertRowOp,
-  type DeleteRowOp,
-  type SetTableRowsOp,
+  type InsertTableOp,
   type SetContainerBlocksOp,
+  type SetTableOp,
+  type SetTableRowsOp,
   type SplitHalf,
+  type TableEditOp,
   type TextPosition,
 } from "../types";
+import { captureDocumentOp, restoreDocumentOp } from "../wire";
+import { isOpStory } from "./address";
 
 /** A batch applies atomically, in array order, against its stated revision. */
 export type DocumentBatch = {
@@ -104,19 +106,25 @@ type Fields = Readonly<Record<string, Validator>>;
 type CommonOperationFields = Pick<DocumentOp, "undefinedFields">;
 type OperationFields<Type extends DocumentOpType> = {
   [
-    Key in Exclude<keyof Extract<DocumentOp, { type: Type }>, keyof CommonOperationFields>
+    Key in Exclude<
+      keyof Extract<DocumentOp, { type: Type }>,
+      keyof CommonOperationFields
+    >
   ]-?: Validator;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const string: Validator = (value) => typeof value === "string";
-const nonemptyString: Validator = (value) => typeof value === "string" && value.length > 0;
+const nonemptyString: Validator = (value) =>
+  typeof value === "string" && value.length > 0;
 const boolean: Validator = (value) => typeof value === "boolean";
-const number: Validator = (value) => typeof value === "number" && Number.isFinite(value);
+const number: Validator = (value) =>
+  typeof value === "number" && Number.isFinite(value);
 const natural: Validator = (value) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-const blockId: Validator = (value) => typeof value === "string" && /^[0-9A-F]{8}$/u.test(value);
+const blockId: Validator = (value) =>
+  typeof value === "string" && /^[0-9A-F]{8}$/u.test(value);
 const absent: Validator = (value) => value === undefined;
 const optional =
   (check: Validator): Validator =>
@@ -178,7 +186,11 @@ const runPropertyFields = {
   kerning: number,
   styleId: string,
   vertAlign: literal("baseline", "superscript", "subscript"),
-  language: object({ val: optional(string), eastAsia: optional(string), bidi: optional(string) }),
+  language: object({
+    val: optional(string),
+    eastAsia: optional(string),
+    bidi: optional(string),
+  }),
 } satisfies Partial<Record<keyof TextFormatting, Validator>>;
 const paragraphPropertyFields = {
   alignment: literal(...PARAGRAPH_ALIGNMENTS),
@@ -211,10 +223,18 @@ const positionFields = {
 } satisfies Record<keyof TextPosition, Validator>;
 const position = object(positionFields);
 const revision = optional(
-  object({ id: natural, author: string, date: string, initials: optional(string) }),
+  object({
+    id: natural,
+    author: string,
+    date: string,
+    initials: optional(string),
+  }),
 );
 const newIds = optional(
-  object({ revision: optional(array(natural)), control: optional(array(natural)) }),
+  object({
+    revision: optional(array(natural)),
+    control: optional(array(natural)),
+  }),
 );
 const half = optional(literal("first", "second"));
 const whenEmpty = optional(literal("omit", "keep"));
@@ -250,7 +270,11 @@ const inline = object({
   formatting: optional(runProps),
   content: array(runContent),
 });
-const slice = object({ content: array(inline), openStart: natural, openEnd: natural });
+const slice = object({
+  content: array(inline),
+  openStart: natural,
+  openEnd: natural,
+});
 const paragraph = object({
   type: literal("paragraph"),
   paraId: blockId,
@@ -261,7 +285,14 @@ const paragraph = object({
 const note = object({
   type: literal("footnote", "endnote"),
   id: natural,
-  noteType: optional(literal("normal", "separator", "continuationSeparator", "continuationNotice")),
+  noteType: optional(
+    literal(
+      "normal",
+      "separator",
+      "continuationSeparator",
+      "continuationNotice",
+    ),
+  ),
   content: array(paragraph),
 });
 const noteStory = object({ kind: literal("footnote", "endnote"), id: natural });
@@ -424,7 +455,9 @@ export const BATCH_WIRE_OP_TYPES = Object.freeze(
 
 const isDocumentOp = (value: unknown): value is DocumentOp => {
   if (!isRecord(value) || typeof value["type"] !== "string") return false;
-  const entry = Object.entries(operationFields).find(([type]) => type === value["type"]);
+  const entry = Object.entries(operationFields).find(
+    ([type]) => type === value["type"],
+  );
   const fields = entry?.at(1);
   return (
     typeof fields === "object" &&
@@ -442,15 +475,26 @@ type JsonDataOptions = {
   depth: number;
   budget: { used: number };
 };
-const isJsonData = ({ value, ancestors, depth, budget }: JsonDataOptions): boolean => {
+const isJsonData = ({
+  value,
+  ancestors,
+  depth,
+  budget,
+}: JsonDataOptions): boolean => {
   budget.used += typeof value === "string" ? value.length + 2 : 1;
   if (depth > 64 || budget.used > MAX_BATCH_WIRE_BYTES) return false;
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value) && !Object.is(value, -0);
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return true;
+  if (typeof value === "number")
+    return Number.isFinite(value) && !Object.is(value, -0);
   if (typeof value !== "object") return false;
   if (ancestors.has(value)) return false;
   const prototype: unknown = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null)
+  if (
+    prototype !== Object.prototype &&
+    prototype !== Array.prototype &&
+    prototype !== null
+  )
     return false;
   if (Object.getOwnPropertySymbols(value).length > 0) return false;
   ancestors.add(value);
@@ -458,8 +502,10 @@ const isJsonData = ({ value, ancestors, depth, budget }: JsonDataOptions): boole
   const valid =
     entries.every(([key, descriptor]) => {
       if (Array.isArray(value) && key === "length") return true;
-      if (!descriptor.enumerable || !Object.hasOwn(descriptor, "value")) return false;
-      if (key === "__proto__" || key === "constructor" || key === "prototype") return false;
+      if (!descriptor.enumerable || !Object.hasOwn(descriptor, "value"))
+        return false;
+      if (key === "__proto__" || key === "constructor" || key === "prototype")
+        return false;
       const child: unknown = descriptor.value;
       if (child === undefined && !Array.isArray(value)) return true;
       budget.used += key.length;
@@ -485,13 +531,20 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
           case NO_SEQUENCED_EFFECT:
             return object({ type: literal(NO_SEQUENCED_EFFECT) })(effect);
           case "splitBlock":
-            return object({ type: literal("splitBlock"), newHalf: literal("first", "second") })(
-              effect,
-            );
+            return object({
+              type: literal("splitBlock"),
+              newHalf: literal("first", "second"),
+            })(effect);
           case "joinBlocks":
-            return object({ type: literal("joinBlocks"), firstLength: natural })(effect);
+            return object({
+              type: literal("joinBlocks"),
+              firstLength: natural,
+            })(effect);
           case "touchedBlocks":
-            return object({ type: literal("touchedBlocks"), blockIds: array(blockId) })(effect);
+            return object({
+              type: literal("touchedBlocks"),
+              blockIds: array(blockId),
+            })(effect);
           default:
             return false;
         }
@@ -500,7 +553,9 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
   })(value);
 
 /** Decode a JSON-shaped batch, refusing unsupported payloads before apply. */
-export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, BatchRejection> => {
+export const validateDocumentBatch = (
+  value: unknown,
+): Result<DocumentBatch, BatchRejection> => {
   const jsonData = Result.try(() =>
     isJsonData({ value, ancestors: new Set(), depth: 0, budget: { used: 0 } }),
   );
@@ -513,7 +568,10 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
     );
   }
   const encoded = Result.try(() => JSON.stringify(value));
-  if (encoded.isErr() || encodeUtf8(encoded.value).byteLength > MAX_BATCH_WIRE_BYTES) {
+  if (
+    encoded.isErr() ||
+    encodeUtf8(encoded.value).byteLength > MAX_BATCH_WIRE_BYTES
+  ) {
     return Result.err(
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.INVALID_BATCH,
@@ -534,7 +592,9 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
   }
   const decoded = decodeDocumentBatch(normalized.value);
   if (decoded.isErr()) return decoded;
-  if (encodeUtf8(JSON.stringify(decoded.value)).byteLength > MAX_BATCH_WIRE_BYTES) {
+  if (
+    encodeUtf8(JSON.stringify(decoded.value)).byteLength > MAX_BATCH_WIRE_BYTES
+  ) {
     return Result.err(
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.INVALID_BATCH,
@@ -641,7 +701,9 @@ const isSequencedBatch = (value: DocumentBatch): value is SequencedBatch =>
   typeof value.revision === "number";
 
 /** Validate an assigned revision and any document-dependent effect metadata. */
-export const validateSequencedBatch = (value: unknown): Result<SequencedBatch, BatchRejection> => {
+export const validateSequencedBatch = (
+  value: unknown,
+): Result<SequencedBatch, BatchRejection> => {
   const batch = validateDocumentBatch(value);
   if (batch.isErr()) return batch;
   if (!isSequencedBatch(batch.value)) {
@@ -656,7 +718,9 @@ export const validateSequencedBatch = (value: unknown): Result<SequencedBatch, B
 };
 
 /** Parse the wire representation without propagating parser exceptions. */
-export const parseDocumentBatch = (json: string): Result<DocumentBatch, BatchRejection> => {
+export const parseDocumentBatch = (
+  json: string,
+): Result<DocumentBatch, BatchRejection> => {
   if (encodeUtf8(json).byteLength > MAX_BATCH_WIRE_BYTES) {
     return Result.err(
       new BatchRejection({

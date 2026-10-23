@@ -15,21 +15,29 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const A_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const WP_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
-const PIC_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
-const WPS_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const WP_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const PIC_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const WPS_NAMESPACE =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 
 const IMAGE_RID = "rIdPicture";
 
@@ -43,7 +51,10 @@ const PNG = Buffer.from(
  * The inner name set, distinct from `wp:docPr`'s so a writer that copies one
  * onto the other cannot pass: `@name` is a caption, `@descr` alt text.
  */
-const INNER = { name: "Company seal", descr: "the seal of the issuing office" } as const;
+const INNER = {
+  name: "Company seal",
+  descr: "the seal of the issuing office",
+} as const;
 
 const NAMES_XML = `name="${INNER.name}" descr="${INNER.descr}"`;
 
@@ -60,14 +71,18 @@ const SHAPE_GRAPHIC =
   '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr>' +
   "<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic>";
 
-const GRAPHIC_BY_KIND = { picture: PICTURE_GRAPHIC, shape: SHAPE_GRAPHIC } as const;
+const GRAPHIC_BY_KIND = {
+  picture: PICTURE_GRAPHIC,
+  shape: SHAPE_GRAPHIC,
+} as const;
 
 type DrawingKind = keyof typeof GRAPHIC_BY_KIND;
 
 const DRAWING_KINDS = Object.keys(GRAPHIC_BY_KIND) as DrawingKind[];
 
 /** The drawing's own names, which the inner ones must not be confused with. */
-const DOC_PR = '<wp:docPr id="1" name="Drawing 1" descr="the drawing, not the picture"/>';
+const DOC_PR =
+  '<wp:docPr id="1" name="Drawing 1" descr="the drawing, not the picture"/>';
 
 const bodyFor = (kind: DrawingKind): string =>
   "<w:p><w:r><w:drawing><wp:inline>" +
@@ -91,7 +106,10 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
   }
   zip.file(
     "[Content_Types].xml",
-    types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+    types.replace(
+      "</Types>",
+      '<Default Extension="png" ContentType="image/png"/></Types>',
+    ),
   );
   zip.file(
     "word/_rels/document.xml.rels",
@@ -132,10 +150,18 @@ const resizeDrawings = (document: Document): void => {
 };
 
 const savedAfterResize = async (kind: DrawingKind): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(bodyFor(kind)), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(bodyFor(kind)), {
+    preloadFonts: false,
+  });
   resizeDrawings(parsed);
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
-  return (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  return (
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("text")) ?? ""
+  );
 };
 
 describe("a rebuilt drawing keeps its authored non-visual names", () => {
@@ -147,7 +173,10 @@ describe("a rebuilt drawing keeps its authored non-visual names", () => {
           kind,
           name: true,
         });
-        expect({ kind, descr: saved.includes(`descr="${INNER.descr}"`) }).toEqual({
+        expect({
+          kind,
+          descr: saved.includes(`descr="${INNER.descr}"`),
+        }).toEqual({
           kind,
           descr: true,
         });

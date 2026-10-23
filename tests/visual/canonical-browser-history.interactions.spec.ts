@@ -1,28 +1,38 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
-import { evaluateCanonicalPage, observeCanonicalPageNavigation } from "./canonicalPageNavigation";
 import { expect } from "@playwright/test";
-import { test } from "./canonicalTimerProbe";
+
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { runBrowserImeLifecycle } from "./browserImeDriver";
 import {
   checkCanonicalBrowserHistory,
   initializeCanonicalBrowserHistory,
 } from "./canonicalBrowserHistoryOracle";
-import { runCanonicalHistoryReplay } from "./canonicalHistoryReplay";
-import { runBrowserImeLifecycle } from "./browserImeDriver";
 import {
   CANONICAL_BROWSER_HISTORY_REPLAYS,
   CANONICAL_BROWSER_SAVE_REPLAYS,
   CANONICAL_EVALUATION_HISTORY_REPLAY,
 } from "./canonicalBrowserTrace";
+import { runCanonicalHistoryReplay } from "./canonicalHistoryReplay";
+import {
+  evaluateCanonicalPage,
+  observeCanonicalPageNavigation,
+} from "./canonicalPageNavigation";
+import { test } from "./canonicalTimerProbe";
 
-test("canonical evaluation waits for a mid-sequence navigation to mount", async ({ page }) => {
+test("canonical evaluation waits for a mid-sequence navigation to mount", async ({
+  page,
+}) => {
   await page.goto("/?session=canonical");
-  const source = await createDocx(createEmptyDocument({ initialText: "alpha" }));
+  const source = await createDocx(
+    createEmptyDocument({ initialText: "alpha" }),
+  );
   await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
   expect(
-    await evaluateCanonicalPage(page, () => page.evaluate(() => globalThis.__folioCanonicalReady)),
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate(() => globalThis.__folioCanonicalReady),
+    ),
   ).toBe(true);
 
   let releaseResponse: () => void = () => {};
@@ -72,7 +82,11 @@ test("canonical evaluation waits for a mid-sequence navigation to mount", async 
     releaseResponse();
   }
   await reloaded;
-  expect(await evaluated).toEqual({ ready: true, documentState: "complete", composing: null });
+  expect(await evaluated).toEqual({
+    ready: true,
+    documentState: "complete",
+    composing: null,
+  });
   expect(callbackInvoked).toBe(true);
   await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
   expect(
@@ -85,9 +99,13 @@ test("canonical evaluation waits for a mid-sequence navigation to mount", async 
   ).toBe(0);
 });
 
-test("canonical evaluation reports a failed mid-sequence navigation", async ({ page }) => {
+test("canonical evaluation reports a failed mid-sequence navigation", async ({
+  page,
+}) => {
   await page.goto("/?session=canonical");
-  await evaluateCanonicalPage(page, () => page.evaluate(() => globalThis.__folioCanonicalReady));
+  await evaluateCanonicalPage(page, () =>
+    page.evaluate(() => globalThis.__folioCanonicalReady),
+  );
   let releaseResponse: () => void = () => {};
   const responseGate = new Promise<void>((resolve) => {
     releaseResponse = resolve;
@@ -111,17 +129,23 @@ test("canonical evaluation reports a failed mid-sequence navigation", async ({ p
     callbackInvoked = true;
     return page.evaluate(() => globalThis.__folioCanonicalReady);
   });
-  const failure = expect(evaluated).rejects.toThrow("Canonical playground navigation failed:");
+  const failure = expect(evaluated).rejects.toThrow(
+    "Canonical playground navigation failed:",
+  );
   releaseResponse();
   await failure;
   expect(await reloaded).toBe("failed");
   expect(callbackInvoked).toBe(false);
 });
 
-test("refused native IME commit ends composition before driver completion", async ({ page }) => {
+test("refused native IME commit ends composition before driver completion", async ({
+  page,
+}) => {
   await page.goto("/?session=canonical");
   await page.waitForSelector(".layout-page");
-  const source = await createDocx(createEmptyDocument({ initialText: "alpha" }));
+  const source = await createDocx(
+    createEmptyDocument({ initialText: "alpha" }),
+  );
   expect(
     await evaluateCanonicalPage(page, () =>
       evaluateCanonicalLoad(page, [...new Uint8Array(source)]),
@@ -138,7 +162,10 @@ test("refused native IME commit ends composition before driver completion", asyn
       const editor = document.querySelector<HTMLElement>(".ProseMirror");
       if (!editor) throw new TypeError("Canonical editor unavailable");
       editor.addEventListener("beforeinput", (event) => {
-        if (event.inputType === "insertText" || event.inputType === "insertReplacementText")
+        if (
+          event.inputType === "insertText" ||
+          event.inputType === "insertReplacementText"
+        )
           editor.dataset["finalPrevented"] = String(event.defaultPrevented);
       });
       editor.addEventListener("compositionend", (event) => {
@@ -161,7 +188,8 @@ test("refused native IME commit ends composition before driver completion", asyn
           // shortcut, which intentionally ignores parsed marks during native typing.
           await page.locator(".ProseMirror").evaluate((editor) => {
             const paragraph = editor.querySelector("p");
-            if (!paragraph) throw new TypeError("Composition paragraph unavailable");
+            if (!paragraph)
+              throw new TypeError("Composition paragraph unavailable");
             editor.dispatchEvent(
               new InputEvent("beforeinput", {
                 bubbles: true,
@@ -188,36 +216,51 @@ test("refused native IME commit ends composition before driver completion", asyn
                 evaluateCanonicalPage(page, () =>
                   page.evaluate(() =>
                     globalThis.__folioCanonicalFuzzErrors?.some((error) =>
-                      error.message.includes("Composition changed unsupported content"),
+                      error.message.includes(
+                        "Composition changed unsupported content",
+                      ),
                     ),
                   ),
                 ),
-              { message: "marked native composition must be refused before the final commit" },
+              {
+                message:
+                  "marked native composition must be refused before the final commit",
+              },
             )
             .toBe(true);
           // A full snapshot is unavailable while canonical composition remains active.
           expect(
             await evaluateCanonicalPage(page, () =>
-              page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+              page.evaluate(() =>
+                globalThis.__folioCanonical?.nativeComposing(),
+              ),
             ),
           ).toBe(true);
-          expect(await page.locator(".ProseMirror").evaluate((editor) => editor.textContent)).toBe(
-            "alpha",
-          );
+          expect(
+            await page
+              .locator(".ProseMirror")
+              .evaluate((editor) => editor.textContent),
+          ).toBe("alpha");
         },
         commit: async (text) => {
           await cdp.send("Input.insertText", { text });
           expect(finished).toBe(false);
-          expect(await page.locator(".ProseMirror").getAttribute("data-final-prevented")).toBe(
-            "true",
-          );
-          expect(await page.locator(".ProseMirror").getAttribute("data-native-end-delivered")).toBe(
-            null,
-          );
+          expect(
+            await page
+              .locator(".ProseMirror")
+              .getAttribute("data-final-prevented"),
+          ).toBe("true");
+          expect(
+            await page
+              .locator(".ProseMirror")
+              .getAttribute("data-native-end-delivered"),
+          ).toBe(null);
           // This assertion precedes driver completion: removing product composition exit makes it fail.
           expect(
             await evaluateCanonicalPage(page, () =>
-              page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+              page.evaluate(() =>
+                globalThis.__folioCanonical?.nativeComposing(),
+              ),
             ),
           ).toBe(false);
           const current = await evaluateCanonicalPage(page, () =>
@@ -238,7 +281,8 @@ test("refused native IME commit ends composition before driver completion", asyn
         finish: async () => {
           finished = true;
           await page.locator(".ProseMirror").evaluate((editor) => {
-            if (!(editor instanceof HTMLElement)) throw new TypeError("Editor unavailable");
+            if (!(editor instanceof HTMLElement))
+              throw new TypeError("Editor unavailable");
             editor.blur();
             editor.focus();
           });
@@ -269,7 +313,9 @@ test("canonical history checks a lazy first view and rejects composition before 
       page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
     ),
   ).toBe(null);
-  const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+  const source = await createDocx(
+    createEmptyDocument({ initialText: "alpha😀café東京" }),
+  );
   await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
   const options = {
     page,
@@ -297,7 +343,10 @@ test("canonical history checks a lazy first view and rejects composition before 
   ).toBe(true);
 });
 
-for (const replay of [...CANONICAL_BROWSER_HISTORY_REPLAYS, ...CANONICAL_BROWSER_SAVE_REPLAYS]) {
+for (const replay of [
+  ...CANONICAL_BROWSER_HISTORY_REPLAYS,
+  ...CANONICAL_BROWSER_SAVE_REPLAYS,
+]) {
   if (replay === CANONICAL_EVALUATION_HISTORY_REPLAY) continue;
   const { seed, path } = replay;
   test(`canonical history replay ${seed} ${path}`, async ({ page }) => {

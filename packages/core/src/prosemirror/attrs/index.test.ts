@@ -1,33 +1,34 @@
-import { describe, expect, test } from "bun:test";
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
+
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
 import {
-  readFieldAttrs,
   expectParagraphAttrs,
-  readHardBreakAttrs,
-  readPageBreakRunAttrs,
-  readRunIdentityMarkAttrs,
-  readCommentMarkAttrs,
+  mergeImageAttrs,
   readCharacterSpacingMarkAttrs,
+  readCommentMarkAttrs,
+  readFieldAttrs,
   readFontSizeMarkAttrs,
   readFootnoteRefMarkAttrs,
+  readHardBreakAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
   readImageAttrs,
   readMathAttrs,
-  mergeImageAttrs,
+  readPageBreakRunAttrs,
   readParagraphAttrs,
   readRunFormattingOverrideMarkAttrs,
+  readRunIdentityMarkAttrs,
   readSdtAttrs,
   readShapeAttrs,
+  readTableAttrs,
+  readTableCellAttrs,
+  readTableRowAttrs,
   readTextBoxAttrs,
   readTextColorMarkAttrs,
   readTrackedChangeMarkAttrs,
   readUnderlineMarkAttrs,
-  readTableAttrs,
-  readTableCellAttrs,
-  readTableRowAttrs,
 } from ".";
 import { schema } from "../schema";
 import {
@@ -57,23 +58,26 @@ describe("ProseMirror attr readers", () => {
 
     expect(RUN_FORMATTING_BOOLEAN_PROPERTIES).toEqual(booleanProperties);
     expect(RUN_FORMATTING_VALUE_PROPERTIES).toEqual(valueProperties);
-    expect(new Set([...booleanProperties, ...valueProperties, "styleId"]).size).toBe(
-      entries.length,
-    );
+    expect(
+      new Set([...booleanProperties, ...valueProperties, "styleId"]).size,
+    ).toBe(entries.length);
   });
 
-  test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    "normalizes out-of-range character scale %p",
-    (scale) => {
-      const mark = schema.marks.characterSpacing.create({ scale });
-      const result = readCharacterSpacingMarkAttrs(mark);
+  test.each([
+    -50,
+    601,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])("normalizes out-of-range character scale %p", (scale) => {
+    const mark = schema.marks.characterSpacing.create({ scale });
+    const result = readCharacterSpacingMarkAttrs(mark);
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value.scale).toBeUndefined();
-      }
-    },
-  );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.scale).toBeUndefined();
+    }
+  });
 
   test("preserves zero-width character scale", () => {
     const mark = schema.marks.characterSpacing.create({ scale: 0 });
@@ -117,15 +121,22 @@ describe("ProseMirror attr readers", () => {
   });
 
   test("shares one frozen paragraph attrs result per node", () => {
-    const valid = schema.nodes.paragraph.create({ paraId: "para-1", alignment: "center" });
+    const valid = schema.nodes.paragraph.create({
+      paraId: "para-1",
+      alignment: "center",
+    });
     const invalid = schema.nodes.paragraph.create({ alignment: "sideways" });
 
     const result = readParagraphAttrs(valid);
     expect(readParagraphAttrs(valid)).toBe(result);
-    expect(expectParagraphAttrs(valid)).toBe(result.ok ? result.value : panic("expected ok"));
+    expect(expectParagraphAttrs(valid)).toBe(
+      result.ok ? result.value : panic("expected ok"),
+    );
     expect(Reflect.set(result, "ok", false)).toBe(false);
     const value = expectParagraphAttrs(valid);
-    expect(() => Object.assign(value, { alignment: "right" })).toThrow(TypeError);
+    expect(() => Object.assign(value, { alignment: "right" })).toThrow(
+      TypeError,
+    );
 
     const failed = readParagraphAttrs(invalid);
     const issues = failed.ok ? panic("expected issues") : failed.issues;
@@ -158,7 +169,10 @@ describe("ProseMirror attr readers", () => {
     const node = schema.nodes.paragraph.create({
       _originalFormatting: {
         preserved: {
-          children: Array.from({ length: 4097 }, () => ({ index: 0, xml: "<w:mirrorIndents/>" })),
+          children: Array.from({ length: 4097 }, () => ({
+            index: 0,
+            xml: "<w:mirrorIndents/>",
+          })),
         },
       },
     });
@@ -240,7 +254,9 @@ describe("ProseMirror attr readers", () => {
       const result = readParagraphAttrs(node);
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.issues.map((issue) => issue.path)).toContain(expectedPath);
+        expect(result.issues.map((issue) => issue.path)).toContain(
+          expectedPath,
+        );
       }
     }
   });
@@ -256,7 +272,13 @@ describe("ProseMirror attr readers", () => {
           offset: -1,
           href: 42,
           _docxEmptyWrapperStacks: [
-            [{ kind: "smartTag", element: "place", propertiesXml: "<w:smartTagPr>" }],
+            [
+              {
+                kind: "smartTag",
+                element: "place",
+                propertiesXml: "<w:smartTagPr>",
+              },
+            ],
           ],
         },
       ],
@@ -275,7 +297,9 @@ describe("ProseMirror attr readers", () => {
         "paragraph.attrs._emptyHyperlinks[0]._docxEmptyWrapperStacks[0][0].propertiesXml",
       ]),
     );
-    expect(() => expectParagraphAttrs(node)).toThrow("Invalid ProseMirror paragraph attrs");
+    expect(() => expectParagraphAttrs(node)).toThrow(
+      "Invalid ProseMirror paragraph attrs",
+    );
   });
 
   test("bounds empty hyperlink wrapper stacks before validating every stack", () => {
@@ -293,7 +317,8 @@ describe("ProseMirror attr readers", () => {
     expect(result.issues).toEqual([
       {
         path: "paragraph.attrs._emptyHyperlinks[0]._docxEmptyWrapperStacks",
-        message: "Empty inline wrapper stacks exceed their aggregate resource budget.",
+        message:
+          "Empty inline wrapper stacks exceed their aggregate resource budget.",
       },
     ]);
   });
@@ -315,7 +340,9 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected paragraph attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toEqual(["paragraph.attrs.numPr"]);
+    expect(result.issues.map((issue) => issue.path)).toEqual([
+      "paragraph.attrs.numPr",
+    ]);
   });
 
   test("rejects malformed paragraph preservation payloads", () => {
@@ -442,7 +469,9 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected table attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toContain("table.attrs.columnWidths[1]");
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "table.attrs.columnWidths[1]",
+    );
   });
 
   test("rejects invalid table row finite attrs", () => {
@@ -456,7 +485,9 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected table row attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toContain("tableRow.attrs.heightRule");
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "tableRow.attrs.heightRule",
+    );
   });
 
   test("rejects malformed UTC metadata on structural table revisions", () => {
@@ -474,12 +505,12 @@ describe("ProseMirror attr readers", () => {
     const rowResult = readTableRowAttrs(row);
     const cellResult = readTableCellAttrs(cell);
 
-    expect(rowResult.ok ? [] : rowResult.issues.map(({ path }) => path)).toContain(
-      "tableRow.attrs.trIns.utcDate",
-    );
-    expect(cellResult.ok ? [] : cellResult.issues.map(({ path }) => path)).toContain(
-      "tableCell.attrs.cellMarker.info.utcDate",
-    );
+    expect(
+      rowResult.ok ? [] : rowResult.issues.map(({ path }) => path),
+    ).toContain("tableRow.attrs.trIns.utcDate");
+    expect(
+      cellResult.ok ? [] : cellResult.issues.map(({ path }) => path),
+    ).toContain("tableCell.attrs.cellMarker.info.utcDate");
   });
 
   test("accepts nullable ProseMirror table cell colwidth", () => {
@@ -507,7 +538,9 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       panic("Expected table cell attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toContain("tableCell.attrs._docxCellId");
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "tableCell.attrs._docxCellId",
+    );
   });
 
   test("accepts unknown OOXML border style strings", () => {
@@ -571,7 +604,9 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected image attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toContain("image.attrs.wrapText");
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "image.attrs.wrapText",
+    );
     expect(result.issues.map((issue) => issue.path)).toContain(
       "image.attrs.position.horizontal.relativeTo",
     );
@@ -613,7 +648,9 @@ describe("ProseMirror attr readers", () => {
       borderStyle: "solid",
     });
 
-    const retainedNode = schema.nodes.image.create(mergeImageAttrs(node, { width: 120 }));
+    const retainedNode = schema.nodes.image.create(
+      mergeImageAttrs(node, { width: 120 }),
+    );
     expect(retainedNode.attrs["transform"]).toBe("rotate(90deg)");
     expect(retainedNode.attrs["alt"]).toBe("Existing alt text");
 
@@ -653,7 +690,9 @@ describe("ProseMirror attr readers", () => {
       _docxRawXml: rawXml,
       _docxRawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
     });
-    expect(mergeImageAttrs(preserveOnly, { width: 120 })._docxRawXml).toBe(rawXml);
+    expect(mergeImageAttrs(preserveOnly, { width: 120 })._docxRawXml).toBe(
+      rawXml,
+    );
   });
 
   test("rejects malformed field and math attrs", () => {
@@ -672,14 +711,24 @@ describe("ProseMirror attr readers", () => {
 
     expect(fieldResult.ok).toBe(false);
     if (!fieldResult.ok) {
-      expect(fieldResult.issues.map((issue) => issue.path)).toContain("field.attrs.fieldType");
-      expect(fieldResult.issues.map((issue) => issue.path)).toContain("field.attrs.fieldKind");
-      expect(fieldResult.issues.map((issue) => issue.path)).toContain("field.attrs.fldLock");
+      expect(fieldResult.issues.map((issue) => issue.path)).toContain(
+        "field.attrs.fieldType",
+      );
+      expect(fieldResult.issues.map((issue) => issue.path)).toContain(
+        "field.attrs.fieldKind",
+      );
+      expect(fieldResult.issues.map((issue) => issue.path)).toContain(
+        "field.attrs.fldLock",
+      );
     }
     expect(mathResult.ok).toBe(false);
     if (!mathResult.ok) {
-      expect(mathResult.issues.map((issue) => issue.path)).toContain("math.attrs.display");
-      expect(mathResult.issues.map((issue) => issue.path)).toContain("math.attrs.ommlXml");
+      expect(mathResult.issues.map((issue) => issue.path)).toContain(
+        "math.attrs.display",
+      );
+      expect(mathResult.issues.map((issue) => issue.path)).toContain(
+        "math.attrs.ommlXml",
+      );
     }
   });
 
@@ -729,7 +778,9 @@ describe("ProseMirror attr readers", () => {
     const result = readFieldAttrs(field);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.map(({ path }) => path)).toContain("field.attrs.formFieldDataXml");
+      expect(result.issues.map(({ path }) => path)).toContain(
+        "field.attrs.formFieldDataXml",
+      );
     }
   });
 
@@ -745,8 +796,12 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected hard break attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toContain("hardBreak.attrs.breakType");
-    expect(result.issues.map((issue) => issue.path)).toContain("hardBreak.attrs.clear");
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "hardBreak.attrs.breakType",
+    );
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "hardBreak.attrs.clear",
+    );
   });
 
   test("rejects break attributes on a carriage-return element", () => {
@@ -775,7 +830,9 @@ describe("ProseMirror attr readers", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.map((issue) => issue.path)).toContain("pageBreakRun.attrs.clear");
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "pageBreakRun.attrs.clear",
+      );
     }
   });
 
@@ -786,7 +843,9 @@ describe("ProseMirror attr readers", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.map((issue) => issue.path)).toContain("runIdentity.attrs.id");
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "runIdentity.attrs.id",
+      );
     }
   });
 
@@ -804,12 +863,18 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected SDT attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toContain("sdt.attrs.sdtType");
-    expect(result.issues.map((issue) => issue.path)).toContain("sdt.attrs.lock");
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "sdt.attrs.sdtType",
+    );
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "sdt.attrs.lock",
+    );
     expect(result.issues.map((issue) => issue.path)).toContain(
       "sdt.attrs.listItems[0].displayText",
     );
-    expect(result.issues.map((issue) => issue.path)).toContain("sdt.attrs.checked");
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      "sdt.attrs.checked",
+    );
   });
 
   test("rejects malformed shape and text box attrs", () => {
@@ -824,7 +889,10 @@ describe("ProseMirror attr readers", () => {
       cssFloat: "center",
       wrapType: "sideways",
       position: { vertical: { relativeTo: "ceiling" } },
-      _docxTrackedChange: { type: "replacement", info: { id: "41", author: 7 } },
+      _docxTrackedChange: {
+        type: "replacement",
+        info: { id: "41", author: 7 },
+      },
       _docxInlineSdts: [{ sdtType: "custom", id: "forty-two" }],
     });
 
@@ -833,11 +901,15 @@ describe("ProseMirror attr readers", () => {
 
     expect(shapeResult.ok).toBe(false);
     if (!shapeResult.ok) {
-      expect(shapeResult.issues.map((issue) => issue.path)).toContain("shape.attrs.fillType");
+      expect(shapeResult.issues.map((issue) => issue.path)).toContain(
+        "shape.attrs.fillType",
+      );
       expect(shapeResult.issues.map((issue) => issue.path)).toContain(
         "shape.attrs.gradientStops[0].position",
       );
-      expect(shapeResult.issues.map((issue) => issue.path)).toContain("shape.attrs.displayMode");
+      expect(shapeResult.issues.map((issue) => issue.path)).toContain(
+        "shape.attrs.displayMode",
+      );
       expect(shapeResult.issues.map((issue) => issue.path)).toContain(
         "shape.attrs.outlineHeadEnd.type",
       );
@@ -847,9 +919,15 @@ describe("ProseMirror attr readers", () => {
     }
     expect(textBoxResult.ok).toBe(false);
     if (!textBoxResult.ok) {
-      expect(textBoxResult.issues.map((issue) => issue.path)).toContain("textBox.attrs.width");
-      expect(textBoxResult.issues.map((issue) => issue.path)).toContain("textBox.attrs.cssFloat");
-      expect(textBoxResult.issues.map((issue) => issue.path)).toContain("textBox.attrs.wrapType");
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs.width",
+      );
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs.cssFloat",
+      );
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs.wrapType",
+      );
       expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
         "textBox.attrs.position.vertical.relativeTo",
       );
@@ -872,7 +950,9 @@ describe("ProseMirror attr readers", () => {
   });
 
   test("accepts the legacy center text-box alignment", () => {
-    const result = readTextBoxAttrs(schema.nodes.textBox.create({ verticalAlign: "center" }));
+    const result = readTextBoxAttrs(
+      schema.nodes.textBox.create({ verticalAlign: "center" }),
+    );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -886,7 +966,9 @@ describe("ProseMirror attr readers", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.map((issue) => issue.path)).toContain("textBoxAnchor.attrs.anchorId");
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "textBoxAnchor.attrs.anchorId",
+      );
     }
   });
 
@@ -896,8 +978,12 @@ describe("ProseMirror attr readers", () => {
     // no-outline sentinel. All must validate rather than panic, and stay
     // unchanged. See OUTLINE_STYLE_ATTR_VALUES. eigenpal #694.
     for (const outlineStyle of ["none", "dashed", "dotted"] as const) {
-      const shapeResult = readShapeAttrs(schema.nodes.shape.create({ outlineStyle }));
-      const textBoxResult = readTextBoxAttrs(schema.nodes.textBox.create({ outlineStyle }));
+      const shapeResult = readShapeAttrs(
+        schema.nodes.shape.create({ outlineStyle }),
+      );
+      const textBoxResult = readTextBoxAttrs(
+        schema.nodes.textBox.create({ outlineStyle }),
+      );
 
       expect(shapeResult.ok).toBe(true);
       if (shapeResult.ok) {
@@ -992,7 +1078,9 @@ describe("ProseMirror attr readers", () => {
 
     expect(underlineResult.ok).toBe(false);
     if (!underlineResult.ok) {
-      expect(underlineResult.issues.map((issue) => issue.path)).toContain("underline.attrs.style");
+      expect(underlineResult.issues.map((issue) => issue.path)).toContain(
+        "underline.attrs.style",
+      );
       expect(underlineResult.issues.map((issue) => issue.path)).toContain(
         "underline.attrs.color.rgb",
       );
@@ -1015,7 +1103,9 @@ describe("ProseMirror attr readers", () => {
     }
     expect(highlightResult.ok).toBe(false);
     if (!highlightResult.ok) {
-      expect(highlightResult.issues.map((issue) => issue.path)).toContain("highlight.attrs.color");
+      expect(highlightResult.issues.map((issue) => issue.path)).toContain(
+        "highlight.attrs.color",
+      );
     }
   });
 
@@ -1043,7 +1133,9 @@ describe("ProseMirror attr readers", () => {
       expect(insertionResult.issues.map((issue) => issue.path)).toContain(
         "insertion.attrs.revisionId",
       );
-      expect(insertionResult.issues.map((issue) => issue.path)).toContain("insertion.attrs.author");
+      expect(insertionResult.issues.map((issue) => issue.path)).toContain(
+        "insertion.attrs.author",
+      );
       expect(insertionResult.issues.map((issue) => issue.path)).toContain(
         "insertion.attrs.moveKind",
       );
@@ -1054,7 +1146,10 @@ describe("ProseMirror attr readers", () => {
   });
 
   test("tracked-change marks round-trip provenance and suggestionId", () => {
-    const userInsertion = schema.marks.insertion.create({ revisionId: 1, author: "A" });
+    const userInsertion = schema.marks.insertion.create({
+      revisionId: 1,
+      author: "A",
+    });
     const userResult = readTrackedChangeMarkAttrs(userInsertion);
     expect(userResult.ok).toBe(true);
     if (userResult.ok) {
@@ -1087,7 +1182,10 @@ describe("ProseMirror attr readers", () => {
     const valid = readRunFormattingOverrideMarkAttrs(
       schema.marks.runFormattingOverride.create({ shading }),
     );
-    expect(valid).toEqual({ ok: true, value: expect.objectContaining({ shading }) });
+    expect(valid).toEqual({
+      ok: true,
+      value: expect.objectContaining({ shading }),
+    });
 
     const invalid = readRunFormattingOverrideMarkAttrs(
       schema.marks.runFormattingOverride.create({
@@ -1127,7 +1225,9 @@ describe("ProseMirror attr readers", () => {
     const result = readTrackedChangeMarkAttrs(insertion);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.map((issue) => issue.path)).toContain("insertion.attrs.provenance");
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "insertion.attrs.provenance",
+      );
     }
   });
 

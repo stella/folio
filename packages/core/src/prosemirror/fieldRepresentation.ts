@@ -1,9 +1,12 @@
 import type { Node as PMNode } from "prosemirror-model";
-import { getInlineDisplayText } from "./inlineDisplayText";
+
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
+import { getInlineDisplayText } from "./inlineDisplayText";
 
 /** Current children alone decide whether a field needs editable structural content. */
-export const fieldRequiresStructuredContent = (children: readonly PMNode[]): boolean =>
+export const fieldRequiresStructuredContent = (
+  children: readonly PMNode[],
+): boolean =>
   children.some(
     (child) =>
       !child.isText ||

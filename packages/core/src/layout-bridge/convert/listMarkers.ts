@@ -4,15 +4,19 @@
  */
 
 import { sameStatedParagraphNumbering } from "@stll/docx-core/model";
-import { bulletMarkerFontName, convertBulletToUnicode } from "../../docx/bulletMarkers";
+
+import {
+  bulletMarkerFontName,
+  convertBulletToUnicode,
+} from "../../docx/bulletMarkers";
 import type { FontAlternates } from "../../fonts/fontAlternates";
 import type { ParagraphAttrs } from "../../layout-engine/types";
 import { isListNumPr } from "../../layout-engine/types";
 import type {
-  ParagraphPropertyChangeAttrs,
   ParagraphAttrs as PMParagraphAttrs,
+  ParagraphPropertyChangeAttrs,
 } from "../../prosemirror/schema/nodes";
-import type { Theme, TextFormatting } from "../../types/document";
+import type { TextFormatting, Theme } from "../../types/document";
 import { listMarkerFormattingFor } from "./textFormattingConversion";
 
 export function applyMarkerAllCaps(
@@ -31,7 +35,9 @@ export function applyMarkerAllCaps(
 type ListMarkerRevision = NonNullable<ParagraphAttrs["listMarkerRevision"]>;
 
 export type ListPropertyChange = ParagraphPropertyChangeAttrs;
-export type ListPropertyFormatting = NonNullable<ListPropertyChange["previousFormatting"]>;
+export type ListPropertyFormatting = NonNullable<
+  ListPropertyChange["previousFormatting"]
+>;
 
 export function toListMarkerRevision(
   kind: ListMarkerRevision["kind"],
@@ -52,7 +58,9 @@ export function toListMarkerRevision(
 
 export function isAddedNumberingChange(
   change: ListPropertyChange,
-): change is ListPropertyChange & { previousFormatting: ListPropertyFormatting } {
+): change is ListPropertyChange & {
+  previousFormatting: ListPropertyFormatting;
+} {
   const previousFormatting = change.previousFormatting;
   return (
     previousFormatting != null &&
@@ -63,7 +71,9 @@ export function isAddedNumberingChange(
 
 export function isRemovedNumberingChange(
   change: ListPropertyChange,
-): change is ListPropertyChange & { previousFormatting: ListPropertyFormatting } {
+): change is ListPropertyChange & {
+  previousFormatting: ListPropertyFormatting;
+} {
   const previousFormatting = change.previousFormatting;
   return (
     previousFormatting != null &&
@@ -75,7 +85,9 @@ export function isRemovedNumberingChange(
 export function isChangedNumberingChange(
   currentNumPr: NonNullable<PMParagraphAttrs["numPr"]>,
   change: ListPropertyChange,
-): change is ListPropertyChange & { previousFormatting: ListPropertyFormatting } {
+): change is ListPropertyChange & {
+  previousFormatting: ListPropertyFormatting;
+} {
   const previousFormatting = change.previousFormatting;
   return (
     previousFormatting != null &&
@@ -85,7 +97,9 @@ export function isChangedNumberingChange(
   );
 }
 
-function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMParagraphAttrs {
+function toPreviousListAttrs(
+  previousFormatting: ListPropertyFormatting,
+): PMParagraphAttrs {
   const attrs: PMParagraphAttrs = {};
   const numPr = previousFormatting.numPr;
   if (isListNumPr(numPr)) {
@@ -162,12 +176,14 @@ function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMPara
     attrs.listMarkerAllCaps = listMarkerAllCaps;
   }
 
-  const listImplicitChildLevelAdvances = previousFormatting.listImplicitChildLevelAdvances;
+  const listImplicitChildLevelAdvances =
+    previousFormatting.listImplicitChildLevelAdvances;
   if (listImplicitChildLevelAdvances !== undefined) {
     attrs.listImplicitChildLevelAdvances = listImplicitChildLevelAdvances;
   }
 
-  const listMarkerSecondSlotOffsetTwips = previousFormatting.listMarkerSecondSlotOffsetTwips;
+  const listMarkerSecondSlotOffsetTwips =
+    previousFormatting.listMarkerSecondSlotOffsetTwips;
   if (listMarkerSecondSlotOffsetTwips !== undefined) {
     attrs.listMarkerSecondSlotOffsetTwips = listMarkerSecondSlotOffsetTwips;
   }
@@ -175,7 +191,9 @@ function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMPara
   return attrs;
 }
 
-function resolveDeletedListMarker(previousListAttrs: PMParagraphAttrs): string | null {
+function resolveDeletedListMarker(
+  previousListAttrs: PMParagraphAttrs,
+): string | null {
   if (previousListAttrs.listMarker) {
     return previousListAttrs.listIsBullet
       ? convertBulletToUnicode(

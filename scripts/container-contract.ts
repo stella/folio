@@ -28,16 +28,18 @@
  *   bun scripts/container-contract.ts check --only tblGridChange
  */
 
-import path from "node:path";
-
 import { TaggedError } from "better-result";
+import path from "node:path";
 
 import type {
   ContainerContract,
   ContractEntry,
   DropReason,
 } from "../specifications/container-contract/dispositions";
-import { DISPOSITIONS, DROP_REASONS } from "../specifications/container-contract/dispositions";
+import {
+  DISPOSITIONS,
+  DROP_REASONS,
+} from "../specifications/container-contract/dispositions";
 import { allSubjects } from "./container-survival-census";
 import {
   LOSS_MECHANISMS,
@@ -51,7 +53,10 @@ import { ownershipViolations } from "./lib/container-survival/ownership";
 import { loadContainerSpace } from "./lib/container-survival/schemaSpace";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
-const CONTRACT_PATH = path.join(REPOSITORY_ROOT, "specifications/container-contract/contract.json");
+const CONTRACT_PATH = path.join(
+  REPOSITORY_ROOT,
+  "specifications/container-contract/contract.json",
+);
 
 class ContainerContractError extends TaggedError("ContainerContractError")<{
   message: string;
@@ -84,7 +89,10 @@ const entryFor = (outcome: PairOutcome): ContractEntry | undefined => {
     return { disposition: DISPOSITIONS.dropped, reason: "parserThrows" };
   }
   if (outcome.mechanism !== null) {
-    return { disposition: DISPOSITIONS.dropped, reason: REASON_FOR_MECHANISM[outcome.mechanism] };
+    return {
+      disposition: DISPOSITIONS.dropped,
+      reason: REASON_FOR_MECHANISM[outcome.mechanism],
+    };
   }
   return outcome.carrier === "capture"
     ? { disposition: DISPOSITIONS.capturedVerbatim }
@@ -110,9 +118,15 @@ const loadContract = async (): Promise<ContainerContract> => {
   return (await file.json()) as ContainerContract;
 };
 
-type Measured = { entries: Record<string, ContractEntry>; unrepresentable: number };
+type Measured = {
+  entries: Record<string, ContractEntry>;
+  unrepresentable: number;
+};
 
-const measure = async (only: string | undefined, concurrency: number): Promise<Measured> => {
+const measure = async (
+  only: string | undefined,
+  concurrency: number,
+): Promise<Measured> => {
   const space = await loadContainerSpace();
   const subjects = allSubjects(space).filter(
     (subject) => only === undefined || subjectKey(subject).includes(only),
@@ -140,16 +154,27 @@ const measure = async (only: string | undefined, concurrency: number): Promise<M
   return { entries, unrepresentable };
 };
 
-const sortEntries = (entries: Record<string, ContractEntry>): Record<string, ContractEntry> =>
-  Object.fromEntries(Object.entries(entries).sort(([left], [right]) => left.localeCompare(right)));
+const sortEntries = (
+  entries: Record<string, ContractEntry>,
+): Record<string, ContractEntry> =>
+  Object.fromEntries(
+    Object.entries(entries).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
 
-const report = (entries: Record<string, ContractEntry>, unrepresentable: number): void => {
+const report = (
+  entries: Record<string, ContractEntry>,
+  unrepresentable: number,
+): void => {
   const counts = new Map<string, number>();
   for (const entry of Object.values(entries)) {
     const label = describe(entry);
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
-  console.log(`${Object.keys(entries).length} pairs decided, ${unrepresentable} unrepresentable`);
+  console.log(
+    `${Object.keys(entries).length} pairs decided, ${unrepresentable} unrepresentable`,
+  );
   for (const [label, count] of [...counts].sort(([, a], [, b]) => b - a)) {
     console.log(`  ${String(count).padStart(5)}  ${label}`);
   }
@@ -158,13 +183,19 @@ const report = (entries: Record<string, ContractEntry>, unrepresentable: number)
 const write = async (concurrency: number): Promise<number> => {
   const { entries, unrepresentable } = await measure(undefined, concurrency);
   report(entries, unrepresentable);
-  const contract: ContainerContract = { schemaVersion: 1, entries: sortEntries(entries) };
+  const contract: ContainerContract = {
+    schemaVersion: 1,
+    entries: sortEntries(entries),
+  };
   await Bun.write(CONTRACT_PATH, `${JSON.stringify(contract, null, 2)}\n`);
   console.log(`wrote ${path.relative(REPOSITORY_ROOT, CONTRACT_PATH)}`);
   return 0;
 };
 
-const check = async (only: string | undefined, concurrency: number): Promise<number> => {
+const check = async (
+  only: string | undefined,
+  concurrency: number,
+): Promise<number> => {
   const contract = await loadContract();
   const { entries, unrepresentable } = await measure(only, concurrency);
   report(entries, unrepresentable);

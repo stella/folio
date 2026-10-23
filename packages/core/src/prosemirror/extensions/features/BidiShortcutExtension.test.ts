@@ -15,13 +15,17 @@ describe("createBidiShortcutController", () => {
   test("Cmd/Ctrl + Left Shift applies LTR on Shift keyup", () => {
     const c = createBidiShortcutController();
     c.handleKeyDown(key({ code: "ShiftLeft", metaKey: true }));
-    expect(c.handleKeyUp(key({ code: "ShiftLeft", metaKey: true }))).toBe("ltr");
+    expect(c.handleKeyUp(key({ code: "ShiftLeft", metaKey: true }))).toBe(
+      "ltr",
+    );
   });
 
   test("Cmd/Ctrl + Right Shift applies RTL on Shift keyup", () => {
     const c = createBidiShortcutController();
     c.handleKeyDown(key({ code: "ShiftRight", ctrlKey: true }));
-    expect(c.handleKeyUp(key({ code: "ShiftRight", ctrlKey: true }))).toBe("rtl");
+    expect(c.handleKeyUp(key({ code: "ShiftRight", ctrlKey: true }))).toBe(
+      "rtl",
+    );
   });
 
   test("a following key cancels the direction change (Ctrl/Cmd+Shift+Z passes through)", () => {
@@ -43,7 +47,9 @@ describe("createBidiShortcutController", () => {
     const c = createBidiShortcutController();
     c.handleKeyDown(key({ code: "ShiftLeft", metaKey: true }));
     // A non-Shift keyup (e.g. releasing Cmd) neither fires nor disarms it.
-    expect(c.handleKeyUp(key({ key: "Meta", code: "MetaLeft", metaKey: false }))).toBeNull();
+    expect(
+      c.handleKeyUp(key({ key: "Meta", code: "MetaLeft", metaKey: false })),
+    ).toBeNull();
     expect(c.handleKeyUp(key({ code: "ShiftLeft" }))).toBe("ltr");
   });
 });

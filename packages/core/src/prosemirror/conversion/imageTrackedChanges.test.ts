@@ -24,7 +24,10 @@ import { toProseDoc } from "./toProseDoc";
 
 const PNG_DATA_URL = "data:image/png;base64,AA==";
 
-function makeMarkedImageDoc(markName: "insertion" | "deletion", revisionId: number): PMNode {
+function makeMarkedImageDoc(
+  markName: "insertion" | "deletion",
+  revisionId: number,
+): PMNode {
   // SAFETY: real editor schema has both insertion and deletion marks.
   const mark = schema.marks[markName]!.create({
     revisionId,
@@ -52,11 +55,15 @@ function firstParagraph(doc: Document): Paragraph | undefined {
 describe("tracked image insertion round-trip", () => {
   test("inserted image serializes inside a <w:ins> wrapper", () => {
     const pmDoc = makeMarkedImageDoc("insertion", 200);
-    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const result = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = firstParagraph(result);
     expect(paragraph).toBeDefined();
 
-    const insertion = paragraph?.content.find((item) => item.type === "insertion");
+    const insertion = paragraph?.content.find(
+      (item) => item.type === "insertion",
+    );
     expect(insertion).toBeDefined();
     if (insertion?.type !== "insertion") {
       return;
@@ -74,12 +81,17 @@ describe("tracked image insertion round-trip", () => {
 
   test("inserted image reloads with the insertion mark re-applied", () => {
     const pmDoc = makeMarkedImageDoc("insertion", 201);
-    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const result = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const reloaded = toProseDoc(result);
 
     let markedImages = 0;
     reloaded.descendants((node) => {
-      if (node.type.name === "image" && node.marks.some((m) => m.type.name === "insertion")) {
+      if (
+        node.type.name === "image" &&
+        node.marks.some((m) => m.type.name === "insertion")
+      ) {
         markedImages += 1;
       }
       return true;
@@ -89,11 +101,15 @@ describe("tracked image insertion round-trip", () => {
 
   test("deleted image serializes inside a <w:del> wrapper", () => {
     const pmDoc = makeMarkedImageDoc("deletion", 300);
-    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const result = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = firstParagraph(result);
     expect(paragraph).toBeDefined();
 
-    const deletion = paragraph?.content.find((item) => item.type === "deletion");
+    const deletion = paragraph?.content.find(
+      (item) => item.type === "deletion",
+    );
     expect(deletion).toBeDefined();
     if (deletion?.type !== "deletion") {
       return;
@@ -110,12 +126,17 @@ describe("tracked image insertion round-trip", () => {
 
   test("deleted image reloads with the deletion mark re-applied", () => {
     const pmDoc = makeMarkedImageDoc("deletion", 301);
-    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const result = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const reloaded = toProseDoc(result);
 
     let markedImages = 0;
     reloaded.descendants((node) => {
-      if (node.type.name === "image" && node.marks.some((m) => m.type.name === "deletion")) {
+      if (
+        node.type.name === "image" &&
+        node.marks.some((m) => m.type.name === "deletion")
+      ) {
         markedImages += 1;
       }
       return true;
@@ -202,7 +223,9 @@ describe("tracked image insertion round-trip", () => {
     ]);
     const pmDoc = schema.nodes["doc"]!.create({}, [paragraph]);
 
-    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const result = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const reloaded = toProseDoc(result);
 
     let markedTextRuns = 0;

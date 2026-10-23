@@ -1,18 +1,23 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
+import { parseStyleDefinitions } from "../../docx/styleParser";
+import { layoutDocument } from "../../layout-engine";
 import type {
   ParagraphBlock,
   TableBlock as LayoutTableBlock,
   TableMeasure,
   TextRun,
 } from "../../layout-engine/types";
-import { layoutDocument } from "../../layout-engine";
-import { parseStyleDefinitions } from "../../docx/styleParser";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
-import type { Document, Paragraph, StyleDefinitions, Table } from "../../types/document";
+import type {
+  Document,
+  Paragraph,
+  StyleDefinitions,
+  Table,
+} from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 function makeDoc(paragraph: Paragraph, styles?: StyleDefinitions): Document {
@@ -60,7 +65,9 @@ function firstTableX(block: LayoutTableBlock): number | undefined {
     margins: { top: 40, right: 40, bottom: 40, left: 40 },
     pageGap: 20,
   });
-  return layout.pages.at(0)?.fragments.find((fragment) => fragment.kind === "table")?.x;
+  return layout.pages
+    .at(0)
+    ?.fragments.find((fragment) => fragment.kind === "table")?.x;
 }
 
 describe("toFlowBlocks style cascade", () => {
@@ -94,7 +101,10 @@ describe("toFlowBlocks style cascade", () => {
       ],
     };
 
-    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+    const blocks = toFlowBlocks(
+      toProseDoc(makeDoc(paragraph, styles), { styles }),
+      {},
+    );
 
     expect(firstRun(blocks).fontFamily).toBe("Arial Narrow");
   });
@@ -123,7 +133,10 @@ describe("toFlowBlocks style cascade", () => {
       ],
     };
 
-    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+    const blocks = toFlowBlocks(
+      toProseDoc(makeDoc(paragraph, styles), { styles }),
+      {},
+    );
 
     expect(firstRun(blocks).fontFamily).toBe("Arial Narrow");
   });
@@ -151,7 +164,9 @@ describe("toFlowBlocks style cascade", () => {
       ],
     };
 
-    const run = firstRun(toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}));
+    const run = firstRun(
+      toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}),
+    );
 
     expect(run.fontFamily).toBe("Arial");
     expect(run.eastAsiaFontFamily).toBe("MS Mincho");
@@ -183,7 +198,9 @@ describe("toFlowBlocks style cascade", () => {
       ],
     };
 
-    const run = firstRun(toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}));
+    const run = firstRun(
+      toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}),
+    );
 
     expect(run.fontFamily).toBe("Calibri");
     expect(run.complexScriptFontFamily).toBe("Traditional Arabic");
@@ -213,7 +230,9 @@ describe("toFlowBlocks style cascade", () => {
       ],
     };
 
-    const run = firstRun(toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}));
+    const run = firstRun(
+      toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}),
+    );
 
     expect(run.eastAsiaFontFamily).toBe("MS Gothic");
   });
@@ -249,7 +268,10 @@ describe("toFlowBlocks style cascade", () => {
       ],
     };
 
-    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+    const blocks = toFlowBlocks(
+      toProseDoc(makeDoc(paragraph, styles), { styles }),
+      {},
+    );
     const run = firstRun(blocks);
 
     expect(run.bold).toBe(false);
@@ -352,7 +374,12 @@ describe("toFlowBlocks style cascade", () => {
             styleId: "CharacterEmphasis",
             type: "character",
             name: "Character Emphasis",
-            rPr: { bold: true, boldCs: character, italic: true, italicCs: character },
+            rPr: {
+              bold: true,
+              boldCs: character,
+              italic: true,
+              italicCs: character,
+            },
           },
         ],
       };
@@ -400,7 +427,10 @@ describe("toFlowBlocks style cascade", () => {
       content: [{ type: "run", content: [{ type: "text", text: "bold" }] }],
     };
 
-    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+    const blocks = toFlowBlocks(
+      toProseDoc(makeDoc(paragraph, styles), { styles }),
+      {},
+    );
 
     expect(firstRun(blocks).bold).toBe(true);
   });
@@ -435,10 +465,14 @@ describe("toFlowBlocks style cascade", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       formatting: { styleId: "Derived" },
-      content: [{ type: "run", content: [{ type: "text", text: "inherited" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "inherited" }] },
+      ],
     };
 
-    const run = firstRun(toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}));
+    const run = firstRun(
+      toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}),
+    );
 
     // ECMA-376 §17.7.3 resolves a single style's basedOn chain by nearest-defined-wins,
     // the same as any other run property: "Derived" declares an explicit off for every
@@ -493,8 +527,13 @@ describe("toFlowBlocks style cascade", () => {
       ],
     };
 
-    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
-    const runs = firstParagraph(blocks).runs.filter((run) => run.kind === "text");
+    const blocks = toFlowBlocks(
+      toProseDoc(makeDoc(paragraph, styles), { styles }),
+      {},
+    );
+    const runs = firstParagraph(blocks).runs.filter(
+      (run) => run.kind === "text",
+    );
 
     expect(runs).toHaveLength(2);
     expect(runs[0]?.bold).toBe(false);
@@ -525,7 +564,10 @@ describe("toFlowBlocks style cascade", () => {
       content: [{ type: "run", content: [{ type: "text", text: "plain" }] }],
     };
 
-    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+    const blocks = toFlowBlocks(
+      toProseDoc(makeDoc(paragraph, styles), { styles }),
+      {},
+    );
 
     expect(firstRun(blocks).fontFamily).toBe("Cambria");
   });
@@ -554,7 +596,10 @@ describe("toFlowBlocks style cascade", () => {
       content: [{ type: "run", content: [{ type: "text", text: "bold" }] }],
     };
 
-    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+    const blocks = toFlowBlocks(
+      toProseDoc(makeDoc(paragraph, styles), { styles }),
+      {},
+    );
 
     expect(firstRun(blocks).bold).toBe(true);
   });
@@ -662,7 +707,10 @@ describe("toFlowBlocks style cascade", () => {
     };
     const table: Table = {
       type: "table",
-      formatting: { styleId: "AccentTable", look: { firstRow: true, firstColumn: true } },
+      formatting: {
+        styleId: "AccentTable",
+        look: { firstRow: true, firstColumn: true },
+      },
       rows: [
         {
           type: "tableRow",
@@ -673,7 +721,9 @@ describe("toFlowBlocks style cascade", () => {
                 {
                   type: "paragraph",
                   formatting: { styleId: "BodyText" },
-                  content: [{ type: "run", content: [{ type: "text", text: "body" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "body" }] },
+                  ],
                 },
               ],
             },
@@ -689,7 +739,9 @@ describe("toFlowBlocks style cascade", () => {
     const blocks = toFlowBlocks(proseDoc, {});
 
     expect(firstTableRun(blocks).color).toBe("#22272B");
-    expect(proseDoc.firstChild?.firstChild?.firstChild?.attrs["backgroundColor"]).toBe("CBEDFD");
+    expect(
+      proseDoc.firstChild?.firstChild?.firstChild?.attrs["backgroundColor"],
+    ).toBe("CBEDFD");
   });
 
   test("table conditional color overrides the implicit default paragraph style", () => {
@@ -722,7 +774,12 @@ describe("toFlowBlocks style cascade", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "header" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "header" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -732,7 +789,10 @@ describe("toFlowBlocks style cascade", () => {
     };
 
     const blocks = toFlowBlocks(
-      toProseDoc({ package: { document: { content: [table] }, styles } }, { styles }),
+      toProseDoc(
+        { package: { document: { content: [table] }, styles } },
+        { styles },
+      ),
       {},
     );
 
@@ -784,7 +844,10 @@ describe("toFlowBlocks style cascade", () => {
     };
 
     const blocks = toFlowBlocks(
-      toProseDoc({ package: { document: { content: [table] }, styles } }, { styles }),
+      toProseDoc(
+        { package: { document: { content: [table] }, styles } },
+        { styles },
+      ),
       {},
     );
 
@@ -880,38 +943,44 @@ describe("toFlowBlocks style cascade", () => {
         ],
       },
     },
-  ])("positions $name zero table indentation at the table edge", ({ formatting, styles }) => {
-    const table: Table = {
-      type: "table",
-      formatting,
-      rows: [
-        {
-          type: "tableRow",
-          cells: [
-            {
-              type: "tableCell",
-              content: [{ type: "paragraph", content: [] }],
-            },
-          ],
+  ])(
+    "positions $name zero table indentation at the table edge",
+    ({ formatting, styles }) => {
+      const table: Table = {
+        type: "table",
+        formatting,
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [{ type: "paragraph", content: [] }],
+              },
+            ],
+          },
+        ],
+      };
+      const document: Document = {
+        package: {
+          document: { content: [table] },
+          ...(styles ? { styles } : {}),
         },
-      ],
-    };
-    const document: Document = {
-      package: {
-        document: { content: [table] },
-        ...(styles ? { styles } : {}),
-      },
-    };
+      };
 
-    const tableBlock = toFlowBlocks(toProseDoc(document, styles ? { styles } : {}), {}).at(0);
+      const tableBlock = toFlowBlocks(
+        toProseDoc(document, styles ? { styles } : {}),
+        {},
+      ).at(0);
 
-    expect(tableBlock?.kind).toBe("table");
-    if (tableBlock?.kind === "table") {
-      expect(tableBlock.indent).toBe(0);
-      const tableX = firstTableX(tableBlock);
-      expect(tableX).toBe(40);
-    }
-  });
+      expect(tableBlock?.kind).toBe("table");
+      if (tableBlock?.kind === "table") {
+        expect(tableBlock.indent).toBe(0);
+        const tableX = firstTableX(tableBlock);
+        expect(tableX).toBe(40);
+      }
+    },
+  );
 
   test("resolves table justification with direct, explicit-style, and default-style precedence", () => {
     const styles: StyleDefinitions = {
@@ -973,8 +1042,8 @@ describe("toFlowBlocks style cascade", () => {
         expect(firstTableX(tableBlock)).toBe(expectedX);
       }
       expect(
-        fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } }).package.document
-          .content[0]?.formatting,
+        fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } })
+          .package.document.content[0]?.formatting,
       ).toEqual(formatting);
     }
 
@@ -1005,7 +1074,9 @@ describe("toFlowBlocks style cascade", () => {
       { ...styledNode.attrs, justification: "right" },
       styledNode.content,
     );
-    const editedPmDoc = styledPmDoc.type.create(styledPmDoc.attrs, [editedNode]);
+    const editedPmDoc = styledPmDoc.type.create(styledPmDoc.attrs, [
+      editedNode,
+    ]);
     const editedBlock = toFlowBlocks(editedPmDoc, {}).at(0);
 
     expect(editedBlock?.kind).toBe("table");
@@ -1072,16 +1143,22 @@ describe("toFlowBlocks style cascade", () => {
 
     expect(tableBlock?.kind).toBe("table");
     if (tableBlock?.kind === "table") {
-      expect(tableBlock.rows.map((row) => row.justification)).toEqual(["right", "left"]);
+      expect(tableBlock.rows.map((row) => row.justification)).toEqual([
+        "right",
+        "left",
+      ]);
     }
     const tableNode = pmDoc.firstChild;
     expect(tableNode?.child(0).attrs["_resolvedJustification"]).toBe("right");
     expect(tableNode?.child(0).attrs["_originalFormatting"]).toBeNull();
     expect(tableNode?.child(1).attrs["_resolvedJustification"]).toBe("right");
-    expect(tableNode?.child(1).attrs["_originalFormatting"]).toEqual({ justification: "left" });
+    expect(tableNode?.child(1).attrs["_originalFormatting"]).toEqual({
+      justification: "left",
+    });
 
-    const savedTable = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } })
-      .package.document.content[0];
+    const savedTable = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0];
     expect(savedTable?.type).toBe("table");
     if (savedTable?.type === "table") {
       expect(savedTable.rows.map((row) => row.formatting)).toEqual([
@@ -1103,16 +1180,26 @@ describe("toFlowBlocks style cascade", () => {
     ({ bidi, placement, expected }) => {
       const table: Table = {
         type: "table",
-        formatting: { justification: placement, ...(bidi ? { bidi: true } : {}) },
+        formatting: {
+          justification: placement,
+          ...(bidi ? { bidi: true } : {}),
+        },
         rows: [
           {
             type: "tableRow",
             formatting: { justification: placement },
-            cells: [{ type: "tableCell", content: [{ type: "paragraph", content: [] }] }],
+            cells: [
+              {
+                type: "tableCell",
+                content: [{ type: "paragraph", content: [] }],
+              },
+            ],
           },
         ],
       };
-      const document: Document = { package: { document: { content: [table] } } };
+      const document: Document = {
+        package: { document: { content: [table] } },
+      };
       const tableBlock = toFlowBlocks(toProseDoc(document), {}).at(0);
 
       expect(tableBlock?.kind).toBe("table");
@@ -1402,7 +1489,12 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "no style" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "no style" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -1414,7 +1506,12 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
                 {
                   type: "paragraph",
                   formatting: { styleId: "CellStyle" },
-                  content: [{ type: "run", content: [{ type: "text", text: "styled" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "styled" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -1426,7 +1523,12 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
                 {
                   type: "paragraph",
                   formatting: { spaceAfter: 50 },
-                  content: [{ type: "run", content: [{ type: "text", text: "direct" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "direct" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -1436,7 +1538,9 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
     };
     const baselineParagraph: Paragraph = {
       type: "paragraph",
-      content: [{ type: "run", content: [{ type: "text", text: "outside the table" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "outside the table" }] },
+      ],
     };
     return {
       package: {
@@ -1455,7 +1559,9 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
     expect(paragraph.attrs["spaceAfter"]).toBe(0);
     expect(paragraph.attrs["lineSpacing"]).toBe(240);
     expect(paragraph.attrs["lineSpacingRule"]).toBe("auto");
-    expect(paragraph.attrs["spacingFromImplicitDefaultStyle"]).toEqual({ after: true });
+    expect(paragraph.attrs["spacingFromImplicitDefaultStyle"]).toEqual({
+      after: true,
+    });
   });
 
   test("an explicit paragraph style still wins over the table overlay", () => {
@@ -1468,7 +1574,9 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
     expect(paragraph.attrs["spaceAfter"]).toBe(100);
     // ...but the table overlay still supplies fields the style leaves unset.
     expect(paragraph.attrs["lineSpacing"]).toBe(240);
-    expect(paragraph.attrs["spacingFromImplicitDefaultStyle"]).toEqual({ after: true });
+    expect(paragraph.attrs["spacingFromImplicitDefaultStyle"]).toEqual({
+      after: true,
+    });
   });
 
   test("direct paragraph formatting wins over both the table overlay and any style", () => {
@@ -1498,7 +1606,9 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
       panic("expected a rebuilt table");
     }
 
-    const paragraphs = rebuiltTable.rows[0]?.cells.map((cell) => cell.content.at(0));
+    const paragraphs = rebuiltTable.rows[0]?.cells.map((cell) =>
+      cell.content.at(0),
+    );
     const inheritedTableParagraph = paragraphs?.at(0);
     const inheritedNamedParagraph = paragraphs?.at(1);
     const directlyFormattedParagraph = paragraphs?.at(2);
@@ -1511,7 +1621,9 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
     }
 
     expect(inheritedTableParagraph.formatting?.spaceAfter).toBeUndefined();
-    expect(inheritedNamedParagraph.formatting).toEqual({ styleId: "CellStyle" });
+    expect(inheritedNamedParagraph.formatting).toEqual({
+      styleId: "CellStyle",
+    });
     expect(directlyFormattedParagraph.formatting?.spaceAfter).toBe(50);
   });
 });

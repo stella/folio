@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { DOMParser, DOMSerializer, type Node as PMNode } from "prosemirror-model";
+import {
+  DOMParser,
+  DOMSerializer,
+  type Node as PMNode,
+} from "prosemirror-model";
 
 import type { Document, Paragraph } from "../../../types/document";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
@@ -63,9 +67,9 @@ describe("FieldExtension", () => {
       "Clause 4.2",
     ]);
     expect(field.textContent).toBe("Clause 4.2");
-    expect(schema.node("paragraph", null, [field]).textBetween(0, field.nodeSize)).toBe(
-      "Clause 4.2",
-    );
+    expect(
+      schema.node("paragraph", null, [field]).textBetween(0, field.nodeSize),
+    ).toBe("Clause 4.2");
   });
 
   test("uses one fallback for an empty complex PAGE field in DOM and text semantics", () => {
@@ -86,7 +90,9 @@ describe("FieldExtension", () => {
       "{page}",
     ]);
     expect(field.textContent).toBe("{page}");
-    expect(schema.node("paragraph", null, [field]).textBetween(0, field.nodeSize)).toBe("{page}");
+    expect(
+      schema.node("paragraph", null, [field]).textBetween(0, field.nodeSize),
+    ).toBe("{page}");
   });
 
   test("carries empty result runs through field DOM attributes", () => {
@@ -99,13 +105,23 @@ describe("FieldExtension", () => {
           fieldType: "PAGE",
           fieldCode: [],
           fieldResult: [
-            { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
-            { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+            {
+              type: "run",
+              formatting: { bold: true },
+              content: [{ type: "text", text: "" }],
+            },
+            {
+              type: "run",
+              formatting: { italic: true },
+              content: [{ type: "text", text: "" }],
+            },
           ],
         },
       ],
     } as const satisfies Paragraph;
-    const source: Document = { package: { document: { content: [paragraph] } } };
+    const source: Document = {
+      package: { document: { content: [paragraph] } },
+    };
     const field = toProseDoc(source).firstChild?.firstChild;
     if (!field) throw new Error("Expected the projected PAGE field");
     const runs = paragraph.content[0].fieldResult;
@@ -113,14 +129,16 @@ describe("FieldExtension", () => {
     const span = host.querySelector("span.docx-field");
     expect(span?.textContent).toBe("{page}");
     expect(span?.getAttribute("data-display-text")).toBe("");
-    expect(span?.getAttribute("data-empty-result-runs")).toBe(JSON.stringify(runs));
+    expect(span?.getAttribute("data-empty-result-runs")).toBe(
+      JSON.stringify(runs),
+    );
     expect(parsed.firstChild?.firstChild?.attrs).toMatchObject({
       displayText: "",
       _docxEmptyResultRuns: runs,
     });
     expect(
-      fromProseDoc(parsed, undefined, { stylesheetSource: { type: "package" } }).package.document
-        .content,
+      fromProseDoc(parsed, undefined, { stylesheetSource: { type: "package" } })
+        .package.document.content,
     ).toEqual([paragraph]);
   });
 
@@ -128,8 +146,14 @@ describe("FieldExtension", () => {
     ["invalid JSON", "{"],
     ["scalar", "42"],
     ["empty array", "[]"],
-    ["visible result", '[{"type":"run","content":[{"type":"text","text":"7"}]}]'],
-    ["invalid formatting", '[{"type":"run","content":[],"formatting":{"bold":"yes"}}]'],
+    [
+      "visible result",
+      '[{"type":"run","content":[{"type":"text","text":"7"}]}]',
+    ],
+    [
+      "invalid formatting",
+      '[{"type":"run","content":[],"formatting":{"bold":"yes"}}]',
+    ],
   ])("discards %s from pasted empty-result metadata", (_name, value) => {
     const window = new Window();
     const document = window.document as unknown as globalThis.Document;
@@ -145,10 +169,14 @@ describe("FieldExtension", () => {
     host.append(field);
 
     const parsed = DOMParser.fromSchema(schema).parse(host);
-    expect(parsed.firstChild?.firstChild?.attrs["_docxEmptyResultRuns"]).toBeNull();
+    expect(
+      parsed.firstChild?.firstChild?.attrs["_docxEmptyResultRuns"],
+    ).toBeNull();
     expect(parsed.firstChild?.firstChild?.attrs["displayText"]).toBe("{page}");
     expect(() =>
-      fromProseDoc(parsed, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(parsed, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).not.toThrow();
   });
 
@@ -166,11 +194,16 @@ describe("FieldExtension", () => {
         fieldKind: "simple",
       },
       [
-        schema.node("bookmarkBoundary", { type: "start", id: 31, name: "target" }, null, [
+        schema.node(
+          "bookmarkBoundary",
+          { type: "start", id: 31, name: "target" },
+          null,
+          [hyperlink],
+        ),
+        schema.text("Target", [hyperlink]),
+        schema.node("bookmarkBoundary", { type: "end", id: 31 }, null, [
           hyperlink,
         ]),
-        schema.text("Target", [hyperlink]),
-        schema.node("bookmarkBoundary", { type: "end", id: 31 }, null, [hyperlink]),
       ],
     );
     const toDOM = field.type.spec.toDOM;
@@ -205,7 +238,9 @@ describe("FieldExtension", () => {
     const leafRule = parseRules.at(0);
     const structuredRule = structuredRules.at(0);
 
-    expect(structuredRule?.tag).toBe('span.docx-field[data-field-structured="true"]');
+    expect(structuredRule?.tag).toBe(
+      'span.docx-field[data-field-structured="true"]',
+    );
     expect(leafRule?.tag).toBe("span.docx-field:not([data-field-structured])");
     expect(schema.nodes.field.isLeaf).toBe(true);
     expect(schema.nodes.structuredField.isLeaf).toBe(false);
@@ -214,14 +249,17 @@ describe("FieldExtension", () => {
   test.each([
     { fieldKind: "complex", hasHyperlink: true },
     { fieldKind: "simple", hasHyperlink: false },
-  ])("rejects malformed structured field DOM ($fieldKind, link=$hasHyperlink)", (input) => {
-    const structuredRule = schema.nodes.structuredField.spec.parseDOM?.at(0);
-    const dom = Object.assign(Object.create(null), {
-      dataset: { fieldKind: input.fieldKind },
-      textContent: "forged",
-      querySelector: () => (input.hasHyperlink ? Object.create(null) : null),
-    });
+  ])(
+    "rejects malformed structured field DOM ($fieldKind, link=$hasHyperlink)",
+    (input) => {
+      const structuredRule = schema.nodes.structuredField.spec.parseDOM?.at(0);
+      const dom = Object.assign(Object.create(null), {
+        dataset: { fieldKind: input.fieldKind },
+        textContent: "forged",
+        querySelector: () => (input.hasHyperlink ? Object.create(null) : null),
+      });
 
-    expect(structuredRule?.getAttrs?.(dom)).toBe(false);
-  });
+      expect(structuredRule?.getAttrs?.(dom)).toBe(false);
+    },
+  );
 });

@@ -4,14 +4,17 @@
 
 import { panic } from "better-result";
 
-import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
 import type { TextFormatting } from "../../../types/document";
 import { HIGHLIGHT_COLOR_VALUES } from "../../../types/documentEnumValues";
 import { resolveHighlightToCss } from "../../../utils/colorResolver";
 import { expectHighlightMarkAttrs } from "../../attrs";
+import {
+  canonicalRunFormatting,
+  withCanonicalCommand,
+} from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { setMark, removeMark } from "./markUtils";
+import { removeMark, setMark } from "./markUtils";
 
 type HighlightColor = NonNullable<TextFormatting["highlight"]>;
 
@@ -85,12 +88,15 @@ export const normalizeCssColorKey = (value: string): string => {
   const hexMatch = /^#(?<hex>[0-9a-f]{3}|[0-9a-f]{6})$/u.exec(compact);
   const hex = hexMatch?.groups?.["hex"];
   if (hex) {
-    return hex.length === 3 ? `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}` : `#${hex}`;
+    return hex.length === 3
+      ? `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
+      : `#${hex}`;
   }
 
-  const rgbMatch = /^rgba?\((?<red>\d{1,3}),(?<green>\d{1,3}),(?<blue>\d{1,3})(?:,[^)]+)?\)$/u.exec(
-    compact,
-  );
+  const rgbMatch =
+    /^rgba?\((?<red>\d{1,3}),(?<green>\d{1,3}),(?<blue>\d{1,3})(?:,[^)]+)?\)$/u.exec(
+      compact,
+    );
   if (!rgbMatch?.groups) {
     return compact;
   }
@@ -107,7 +113,9 @@ const cssColorComponentToHex = (value: string | undefined): string => {
   return Math.min(255, Math.max(0, component)).toString(16).padStart(2, "0");
 };
 
-export const parseDOMHighlightColor = (value: string): HighlightColor | null => {
+export const parseDOMHighlightColor = (
+  value: string,
+): HighlightColor | null => {
   const trimmed = value.trim();
   if (
     trimmed === "" ||
@@ -171,8 +179,9 @@ export const HighlightExtension = createMarkExtension({
             );
           }
           const highlight = parseDOMHighlightColor(color) ?? "yellow";
-          return withCanonicalCommand(setMark(highlightType, { color: highlight }), (state) =>
-            canonicalRunFormatting(state, { highlight }),
+          return withCanonicalCommand(
+            setMark(highlightType, { color: highlight }),
+            (state) => canonicalRunFormatting(state, { highlight }),
           );
         },
         clearHighlight: () =>

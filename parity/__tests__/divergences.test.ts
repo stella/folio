@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 const DIVERGENCES_SCRIPT = path.resolve(import.meta.dir, "../divergences.ts");
 
@@ -28,10 +27,13 @@ const runDivergences = async (report: unknown): Promise<RunResult> => {
   await Bun.write(reportPath, JSON.stringify(report));
 
   try {
-    const proc = Bun.spawn([process.execPath, DIVERGENCES_SCRIPT, "--report", reportPath], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const proc = Bun.spawn(
+      [process.execPath, DIVERGENCES_SCRIPT, "--report", reportPath],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
     const [exitCode, stdout, stderr] = await Promise.all([
       proc.exited,
       new Response(proc.stdout).text(),
@@ -56,7 +58,9 @@ describe("parity divergence report validation", () => {
     const result = await runDivergences(report);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("predates explicit reference-renderer metadata");
+    expect(result.stderr).toContain(
+      "predates explicit reference-renderer metadata",
+    );
   });
 
   test("rejects unknown reference renderer ids", async () => {
@@ -66,6 +70,8 @@ describe("parity divergence report validation", () => {
     });
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("predates explicit reference-renderer metadata");
+    expect(result.stderr).toContain(
+      "predates explicit reference-renderer metadata",
+    );
   });
 });

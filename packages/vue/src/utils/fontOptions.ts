@@ -28,7 +28,9 @@ export function normalizeFontFamilies(
     const seen = new Set<string>();
     for (const f of normalized) {
       if (seen.has(f.name) && !warned.has(f.name)) {
-        console.warn(`[DocxEditor] Duplicate font name in fontFamilies: "${f.name}"`);
+        console.warn(
+          `[DocxEditor] Duplicate font name in fontFamilies: "${f.name}"`,
+        );
         warned.add(f.name);
       }
       seen.add(f.name);
@@ -38,7 +40,9 @@ export function normalizeFontFamilies(
 }
 
 function isDev(): boolean {
-  return typeof process !== "undefined" && process.env?.["NODE_ENV"] !== "production";
+  return (
+    typeof process !== "undefined" && process.env?.["NODE_ENV"] !== "production"
+  );
 }
 
 /**

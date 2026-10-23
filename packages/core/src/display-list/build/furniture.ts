@@ -10,17 +10,21 @@
  * this page gets, and this module only paints what it chose.
  */
 
-import type { FootnoteContent, HeaderFooterContent, Page } from "../../layout-engine/types";
+import type {
+  FootnoteContent,
+  HeaderFooterContent,
+  Page,
+} from "../../layout-engine/types";
 import {
   applySectionHeaderFooterOptions,
-  selectSectionHeaderFooterRIds,
   type RenderPageOptions,
+  selectSectionHeaderFooterRIds,
 } from "../../layout-painter/renderPage";
 import type { Theme, Watermark } from "../../types/document";
 import type { DisplayPrimitive } from "../types";
 import type { BuildContext } from "./buildContext";
 import { paintHeaderFooter } from "./headerFooterPrimitives";
-import { paintPageBorders, type PageBorders } from "./pageBorderPrimitives";
+import { type PageBorders, paintPageBorders } from "./pageBorderPrimitives";
 import { paintFootnoteArea } from "./pageFurniture";
 import type { PageComposer } from "./regions";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
@@ -98,24 +102,34 @@ const suppliesHeaderFooter = (furniture: PageFurnitureInputs): boolean =>
   furniture.firstPageFooterContent !== undefined;
 
 const suppliesWatermark = (furniture: PageFurnitureInputs): boolean =>
-  furniture.watermark !== undefined || furniture.watermarkByHeaderRId !== undefined;
+  furniture.watermark !== undefined ||
+  furniture.watermarkByHeaderRId !== undefined;
 
 /**
  * The header, footer and watermark this page paints, chosen by the painter's
  * own rule (`w:titlePg` first-page swap, `w:evenAndOddHeaders`, section-scoped
  * parts) rather than by a second implementation of it.
  */
-const selectForPage = (page: Page, furniture: PageFurnitureInputs): RenderPageOptions => {
+const selectForPage = (
+  page: Page,
+  furniture: PageFurnitureInputs,
+): RenderPageOptions => {
   const source: RenderPageOptions = {
-    ...(furniture.headerContent === undefined ? {} : { headerContent: furniture.headerContent }),
-    ...(furniture.footerContent === undefined ? {} : { footerContent: furniture.footerContent }),
+    ...(furniture.headerContent === undefined
+      ? {}
+      : { headerContent: furniture.headerContent }),
+    ...(furniture.footerContent === undefined
+      ? {}
+      : { footerContent: furniture.footerContent }),
     ...(furniture.headerContentByRId === undefined
       ? {}
       : { headerContentByRId: furniture.headerContentByRId }),
     ...(furniture.footerContentByRId === undefined
       ? {}
       : { footerContentByRId: furniture.footerContentByRId }),
-    ...(furniture.watermark === undefined ? {} : { watermark: furniture.watermark }),
+    ...(furniture.watermark === undefined
+      ? {}
+      : { watermark: furniture.watermark }),
     ...(furniture.watermarkByHeaderRId === undefined
       ? {}
       : { watermarkByHeaderRId: furniture.watermarkByHeaderRId }),
@@ -175,8 +189,13 @@ const reportMissingStories = (
   // so a header with no story content is that document's normal shape rather
   // than a story that went missing on the way here.
   const headerCarriedAWatermark =
-    headerRId !== undefined && furniture.watermarkByHeaderRId?.has(headerRId) === true;
-  if (namesHeader && !headerCarriedAWatermark && selected.headerContent === undefined) {
+    headerRId !== undefined &&
+    furniture.watermarkByHeaderRId?.has(headerRId) === true;
+  if (
+    namesHeader &&
+    !headerCarriedAWatermark &&
+    selected.headerContent === undefined
+  ) {
     context.unsupported.report(
       UNSUPPORTED_CONSTRUCT.headerFooterContent,
       context.pageIndex,
@@ -284,5 +303,8 @@ export const paintPageFurniture = ({
     }
   };
 
-  return { behind: [...(paintsBorderBehind ? borders : []), ...watermark], above };
+  return {
+    behind: [...(paintsBorderBehind ? borders : []), ...watermark],
+    above,
+  };
 };

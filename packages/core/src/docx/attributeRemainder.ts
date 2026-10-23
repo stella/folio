@@ -33,15 +33,22 @@
  * answer than recording the drop in the container contract.
  */
 
-import type { PreservedAttribute } from "@stll/docx-core/model";
-
-import { escapeXmlAttribute } from "@stll/docx-core";
 import { TaggedError } from "better-result";
 
-import { type ModelledAttributes, modelledAttributeNames } from "./propertyElementAttributes";
+import { escapeXmlAttribute } from "@stll/docx-core";
+import type { PreservedAttribute } from "@stll/docx-core/model";
+
+import {
+  modelledAttributeNames,
+  type ModelledAttributes,
+} from "./propertyElementAttributes";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import { XML_NAMESPACE_URI } from "./xmlNamespaceContext";
-import { getLocalName, resolveAttributeNamespaceUri, type XmlElement } from "./xmlParser";
+import {
+  getLocalName,
+  resolveAttributeNamespaceUri,
+  type XmlElement,
+} from "./xmlParser";
 
 /**
  * Namespace URI to the prefix a rebuilt part binds for it.
@@ -52,13 +59,18 @@ import { getLocalName, resolveAttributeNamespaceUri, type XmlElement } from "./x
  * and `xml:id` back, or the attribute is written unprefixed instead of dropped.
  */
 const CANONICAL_PREFIX: ReadonlyMap<string, string> = new Map([
-  ...Object.entries(OOXML_NAMESPACES).map(([prefix, { uri }]): [string, string] => [uri, prefix]),
+  ...Object.entries(OOXML_NAMESPACES).map(
+    ([prefix, { uri }]): [string, string] => [uri, prefix],
+  ),
   [XML_NAMESPACE_URI, "xml"],
 ]);
 
-const XML_LOCAL_NAME = /^[\p{L}_][\p{L}\p{M}\p{N}._\-\u{00B7}\u{203F}-\u{2040}]*$/u;
+const XML_LOCAL_NAME =
+  /^[\p{L}_][\p{L}\p{M}\p{N}._\-\u{00B7}\u{203F}-\u{2040}]*$/u;
 
-export class InvalidPreservedAttributeError extends TaggedError("InvalidPreservedAttributeError")<{
+export class InvalidPreservedAttributeError extends TaggedError(
+  "InvalidPreservedAttributeError",
+)<{
   message: string;
   name: string;
 }> {}
@@ -93,7 +105,9 @@ export const NO_MODELLED_ATTRIBUTES: ReadonlySet<string> = new Set();
  * the attribute twice. This is the same rule namespace declarations already
  * follow, one attribute further on.
  */
-export const DERIVED_PART_ROOT_ATTRIBUTES: ReadonlySet<string> = new Set(["Ignorable"]);
+export const DERIVED_PART_ROOT_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "Ignorable",
+]);
 
 type AttributeRemainderOptions = {
   /** The element, as the source wrote it. */
@@ -127,7 +141,11 @@ export const attributeRemainder = ({
 
   const remainder: PreservedAttribute[] = [];
   for (const [spelling, value] of Object.entries(attributes)) {
-    if (value === undefined || spelling === "xmlns" || spelling.startsWith("xmlns:")) {
+    if (
+      value === undefined ||
+      spelling === "xmlns" ||
+      spelling.startsWith("xmlns:")
+    ) {
       continue;
     }
     const name = getLocalName(spelling);
@@ -180,7 +198,8 @@ export const readAttributeBag = (
 };
 
 /** The name a fragment such as `w14:paraId="1F2E"` writes. */
-const spelledName = (fragment: string): string => fragment.slice(0, fragment.indexOf("="));
+const spelledName = (fragment: string): string =>
+  fragment.slice(0, fragment.indexOf("="));
 
 /**
  * The element's attributes, modelled first and the remainder after them.
@@ -203,11 +222,13 @@ export const serializePreservedAttributes = (
     const { namespace, name, value } = attribute;
     if (!isSerializablePreservedAttribute(attribute)) {
       throw new InvalidPreservedAttributeError({
-        message: "A preserved attribute must have an XML local name and a bound namespace",
+        message:
+          "A preserved attribute must have an XML local name and a bound namespace",
         name,
       });
     }
-    const prefix = namespace === undefined ? undefined : CANONICAL_PREFIX.get(namespace);
+    const prefix =
+      namespace === undefined ? undefined : CANONICAL_PREFIX.get(namespace);
     const spelling = prefix === undefined ? name : `${prefix}:${name}`;
     if (written.has(spelling)) {
       continue;

@@ -1,9 +1,18 @@
 import { panic } from "better-result";
+
 import { transferParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 
 /** Clone model records while retaining private in-memory bindings. */
-type CopyPrivateBindingsOptions = { source: unknown; target: unknown; seen: WeakSet<object> };
-const copyPrivateBindings = ({ source, target, seen }: CopyPrivateBindingsOptions): void => {
+type CopyPrivateBindingsOptions = {
+  source: unknown;
+  target: unknown;
+  seen: WeakSet<object>;
+};
+const copyPrivateBindings = ({
+  source,
+  target,
+  seen,
+}: CopyPrivateBindingsOptions): void => {
   if (
     typeof source !== "object" ||
     source === null ||

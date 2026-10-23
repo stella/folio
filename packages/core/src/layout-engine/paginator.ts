@@ -9,11 +9,11 @@ import { panic } from "better-result";
 
 import { collapseParagraphSpacing } from "./paragraphSpacing";
 import type {
-  Page,
-  PageMargins,
-  Fragment,
   ColumnLayout,
+  Fragment,
+  Page,
   PageHeaderFooterRefs,
+  PageMargins,
   SectionPageNumbering,
 } from "./types";
 import { FOOTNOTE_SEPARATOR_HEIGHT } from "./types";
@@ -100,16 +100,22 @@ type ForcePageBreakOptions = {
  * page's state and the first column's box; returns the height it placed,
  * which the page's flow then starts below.
  */
-export type PageTopContinuation = (state: PageState, x: number, width: number) => number;
+export type PageTopContinuation = (
+  state: PageState,
+  x: number,
+  width: number,
+) => number;
 
 export const SECTION_START_PLACEMENT = {
   CONTINUOUS: "continuous",
   NEXT_PAGE: "nextPage",
 } as const;
 
-type SectionStartPlacement = (typeof SECTION_START_PLACEMENT)[keyof typeof SECTION_START_PLACEMENT];
+type SectionStartPlacement =
+  (typeof SECTION_START_PLACEMENT)[keyof typeof SECTION_START_PLACEMENT];
 
-type SectionStartState = { type: "pending"; placement: SectionStartPlacement } | { type: "placed" };
+type SectionStartState =
+  { type: "pending"; placement: SectionStartPlacement } | { type: "placed" };
 
 type StartSectionOptions = {
   sectionIndex: number;
@@ -180,7 +186,9 @@ export function resolveColumnLeft({
 }: ResolveColumnLeftOptions): number {
   let x = leftMargin;
   for (let index = 0; index < columnIndex; index++) {
-    x += (columnWidths[index] ?? columnWidths[0] ?? 0) + gapAfterColumn(columns, index);
+    x +=
+      (columnWidths[index] ?? columnWidths[0] ?? 0) +
+      gapAfterColumn(columns, index);
   }
   return x;
 }
@@ -214,10 +222,15 @@ export function createPaginator(options: PaginatorOptions) {
   let pendingMargins: PageMargins | undefined;
   let currentSectionIndex = 0;
   let currentSectionPageNumber = 0;
-  let currentPageNumbering: SectionPageNumbering = options.pageNumbering ?? { type: "continue" };
+  let currentPageNumbering: SectionPageNumbering = options.pageNumbering ?? {
+    type: "continue",
+  };
   let nextLogicalPageNumber =
     currentPageNumbering.type === "restart" ? currentPageNumbering.start : 1;
-  let sectionStart: SectionStartState = { type: "pending", placement: "nextPage" };
+  let sectionStart: SectionStartState = {
+    type: "pending",
+    placement: "nextPage",
+  };
 
   let pageTopContinuation: PageTopContinuation | undefined;
 
@@ -254,10 +267,20 @@ export function createPaginator(options: PaginatorOptions) {
     panic("Paginator: page size and margins yield no content area");
   }
 
-  let columnWidths = calculateColumnWidths(pageSize.w, margins.left, margins.right, columns);
+  let columnWidths = calculateColumnWidths(
+    pageSize.w,
+    margins.left,
+    margins.right,
+    columns,
+  );
 
   function recalculateColumnWidths(): void {
-    columnWidths = calculateColumnWidths(pageSize.w, margins.left, margins.right, columns);
+    columnWidths = calculateColumnWidths(
+      pageSize.w,
+      margins.left,
+      margins.right,
+      columns,
+    );
   }
 
   function applyPendingLayout(): void {
@@ -275,7 +298,10 @@ export function createPaginator(options: PaginatorOptions) {
     recalculateColumnWidths();
   }
 
-  function getPageMargins(pageNumber: number, logicalPageNumber: number): PageMargins {
+  function getPageMargins(
+    pageNumber: number,
+    logicalPageNumber: number,
+  ): PageMargins {
     const evenMargins =
       logicalPageNumber % 2 === 0
         ? options.sectionEvenPageMargins?.[currentSectionIndex]
@@ -295,7 +321,11 @@ export function createPaginator(options: PaginatorOptions) {
       pageMargins = { ...(evenMargins ?? margins) };
     }
     if (options.mirrorMargins === true && pageNumber % 2 === 0) {
-      return { ...pageMargins, left: pageMargins.right, right: pageMargins.left };
+      return {
+        ...pageMargins,
+        left: pageMargins.right,
+        right: pageMargins.left,
+      };
     }
     return pageMargins;
   }
@@ -312,7 +342,8 @@ export function createPaginator(options: PaginatorOptions) {
    */
   function getColumnX(columnIndex: number): number {
     const activeLeftMargin =
-      states.at(-1)?.page.margins.left ?? getPageMargins(1, nextLogicalPageNumber).left;
+      states.at(-1)?.page.margins.left ??
+      getPageMargins(1, nextLogicalPageNumber).left;
     return resolveColumnLeft({
       leftMargin: activeLeftMargin,
       columnWidths,
@@ -379,7 +410,8 @@ export function createPaginator(options: PaginatorOptions) {
     // A multi-column retry may supply a static floor so earlier columns
     // begin inside the shared footnote band. Dynamic demand still starts
     // at zero and grows as reference-bearing lines are placed.
-    const footnoteHeightFloor = options.footnoteReservedHeights?.get(pageNumber) ?? 0;
+    const footnoteHeightFloor =
+      options.footnoteReservedHeights?.get(pageNumber) ?? 0;
     const pageContentBottom = contentBottom - footnoteHeightFloor;
 
     const page: Page = {
@@ -391,7 +423,9 @@ export function createPaginator(options: PaginatorOptions) {
       fragments: [],
       margins: pageMargins,
       size: { ...pageSize },
-      ...(footnoteHeightFloor > 0 ? { footnoteReservedHeight: footnoteHeightFloor } : {}),
+      ...(footnoteHeightFloor > 0
+        ? { footnoteReservedHeight: footnoteHeightFloor }
+        : {}),
       // Set initial columns; may be overwritten by updateColumns() for continuous section breaks
       ...(columns.count > 1 ? { columns: { ...columns } } : {}),
     };
@@ -424,7 +458,11 @@ export function createPaginator(options: PaginatorOptions) {
     // A continued flow opens the page with its continuation content, and the
     // page's own flow (and every "at the top of the page" test) starts below.
     const continuationHeight =
-      pageTopContinuation?.(state, getColumnX(0), columnWidths[0] ?? getContentWidth()) ?? 0;
+      pageTopContinuation?.(
+        state,
+        getColumnX(0),
+        columnWidths[0] ?? getContentWidth(),
+      ) ?? 0;
     if (continuationHeight > 0) {
       state.cursorY += continuationHeight;
       state.topMargin += continuationHeight;
@@ -535,8 +573,11 @@ export function createPaginator(options: PaginatorOptions) {
     // Ensure we have space
     const state = ensureFits(totalHeight);
 
-    const isSameFlowRegion = state === initialState && state.columnIndex === initialColumnIndex;
-    const actualSpaceBefore = isSameFlowRegion ? effectiveSpaceBefore : spaceBefore;
+    const isSameFlowRegion =
+      state === initialState && state.columnIndex === initialColumnIndex;
+    const actualSpaceBefore = isSameFlowRegion
+      ? effectiveSpaceBefore
+      : spaceBefore;
 
     // Calculate position
     const x = getColumnX(state.columnIndex);
@@ -613,14 +654,21 @@ export function createPaginator(options: PaginatorOptions) {
    * advanced to the next page, the engine must check that *before*
    * committing the line + reservation.
    */
-  function addFootnoteHeight(additionalHeight: number, footnoteIds?: number[]): void {
+  function addFootnoteHeight(
+    additionalHeight: number,
+    footnoteIds?: number[],
+  ): void {
     if (!Number.isFinite(additionalHeight) || additionalHeight <= 0) {
       return;
     }
     const state = getCurrentState();
-    const separatorOverhead = state.footnoteDemandHeight === 0 ? FOOTNOTE_SEPARATOR_HEIGHT : 0;
+    const separatorOverhead =
+      state.footnoteDemandHeight === 0 ? FOOTNOTE_SEPARATOR_HEIGHT : 0;
     state.footnoteDemandHeight += additionalHeight + separatorOverhead;
-    state.footnoteHeight = Math.max(state.footnoteHeightFloor, state.footnoteDemandHeight);
+    state.footnoteHeight = Math.max(
+      state.footnoteHeightFloor,
+      state.footnoteDemandHeight,
+    );
     state.contentBottom = state.rawContentBottom - state.footnoteHeight;
     state.page.footnoteReservedHeight = state.footnoteHeight;
     // Record which fn IDs landed on *this* page. Driven by the
@@ -689,7 +737,8 @@ export function createPaginator(options: PaginatorOptions) {
     const yDelta = pageMargins.top - previousMargins.top;
     const paginationState = getPagePaginationState(state.page);
     if (paginationState.visibleFragmentCount === 0) {
-      paginationState.carrierGeometryNeedsMaterialization = state.page.fragments.length > 0;
+      paginationState.carrierGeometryNeedsMaterialization =
+        state.page.fragments.length > 0;
     } else {
       for (const fragment of state.page.fragments) {
         fragment.x += xDelta;
@@ -722,10 +771,14 @@ export function createPaginator(options: PaginatorOptions) {
     }
 
     retargetSectionMetadata(current.page);
-    const pageMargins = getPageMargins(current.page.number, current.page.logicalNumber);
+    const pageMargins = getPageMargins(
+      current.page.number,
+      current.page.logicalNumber,
+    );
     const topMargin = pageMargins.top;
     const rawContentBottom = pageSize.h - pageMargins.bottom;
-    const footnoteHeightFloor = options.footnoteReservedHeights?.get(current.page.number) ?? 0;
+    const footnoteHeightFloor =
+      options.footnoteReservedHeights?.get(current.page.number) ?? 0;
 
     current.page.size = { ...pageSize };
     current.page.margins = pageMargins;
@@ -844,7 +897,10 @@ export function createPaginator(options: PaginatorOptions) {
 
   function retargetSectionMetadata(page: Page): void {
     currentSectionPageNumber = 1;
-    if (sectionStart.type === "pending" && currentPageNumbering.type === "restart") {
+    if (
+      sectionStart.type === "pending" &&
+      currentPageNumbering.type === "restart"
+    ) {
       page.logicalNumber = currentPageNumbering.start;
       nextLogicalPageNumber = currentPageNumbering.start + 1;
     }
@@ -920,7 +976,9 @@ export function createPaginator(options: PaginatorOptions) {
     /** Mark the next created page as the first page of a new section. */
     startSection,
     /** Set (or clear) the content that opens each page a flow continues onto. */
-    setPageTopContinuation: (continuation: PageTopContinuation | undefined): void => {
+    setPageTopContinuation: (
+      continuation: PageTopContinuation | undefined,
+    ): void => {
       pageTopContinuation = continuation;
     },
   };

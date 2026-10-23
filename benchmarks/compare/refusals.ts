@@ -14,7 +14,10 @@
  * one that ships.
  */
 
-import type { CompareDocxError, CompareUnsupportedPart } from "@stll/folio-core/compare/types";
+import type {
+  CompareDocxError,
+  CompareUnsupportedPart,
+} from "@stll/folio-core/compare/types";
 import type {
   CompareVerification,
   CompareVerificationCause,
@@ -26,7 +29,9 @@ import type {
  * the report without a description. The prefix is what tells a reader that the
  * self-check produced the refusal rather than the parser or the serializer.
  */
-type RoundTripBuckets = { [Cause in CompareVerificationCause as `round-trip-${Cause}`]: string };
+type RoundTripBuckets = {
+  [Cause in CompareVerificationCause as `round-trip-${Cause}`]: string;
+};
 
 /**
  * Why one comparison produced nothing under the strict default.
@@ -39,27 +44,36 @@ export const REFUSAL_BUCKETS = Object.freeze({
   "parse-base": "The base package could not be read into an editor model.",
   "parse-target": "The target package could not be read into an editor model.",
   "apply-refused": "The applier refused a derived operation.",
-  "operation-limit": "The difference needs more operations than the engine generates.",
+  "operation-limit":
+    "The difference needs more operations than the engine generates.",
   serialize: "The redlined package could not be written back out.",
   "final-paragraph-mark":
     "A container's final paragraph mark carried a deletion no consumer could resolve.",
   "invalid-options": "The call's options were not usable.",
   "round-trip-invisible-structure":
     "Every block is there, in order, at coordinates the block model cannot reach.",
-  "round-trip-block-count": "The result holds a different number of blocks than expected.",
-  "round-trip-container": "Every block's text matched, but one sits in the wrong container.",
+  "round-trip-block-count":
+    "The result holds a different number of blocks than expected.",
+  "round-trip-container":
+    "Every block's text matched, but one sits in the wrong container.",
   "round-trip-inline-structure":
     "A block's explicit inline structure differs from the expected result.",
   "round-trip-table-geometry":
     "Every block is where it should be, and a table's own properties are not.",
-  "round-trip-section-properties": "The final section properties could not be reproduced safely.",
+  "round-trip-section-properties":
+    "The final section properties could not be reproduced safely.",
   "round-trip-style": "A block kept a paragraph style the other side changed.",
   "round-trip-list-level": "A block kept a list level the other side changed.",
-  "round-trip-numbering-source": "A block kept an authored numbering state the other side changed.",
-  "round-trip-alignment": "A block kept direct paragraph alignment the other side changed.",
-  "round-trip-indentation": "A block kept direct paragraph indentation the other side changed.",
-  "round-trip-spacing": "A block kept direct paragraph spacing the other side changed.",
-  "round-trip-inline-formatting": "A planned formatting change did not round-trip.",
+  "round-trip-numbering-source":
+    "A block kept an authored numbering state the other side changed.",
+  "round-trip-alignment":
+    "A block kept direct paragraph alignment the other side changed.",
+  "round-trip-indentation":
+    "A block kept direct paragraph indentation the other side changed.",
+  "round-trip-spacing":
+    "A block kept direct paragraph spacing the other side changed.",
+  "round-trip-inline-formatting":
+    "A planned formatting change did not round-trip.",
   "round-trip-whitespace": "A block's text differs only in whitespace.",
   "round-trip-text": "A block's text does not match.",
 } as const satisfies Record<string, string> & RoundTripBuckets);
@@ -93,11 +107,14 @@ const messageShape = (message: string): string =>
     .slice(0, 180);
 
 const causeMessage = (cause: unknown): string =>
-  cause instanceof Error ? `${cause.name}: ${messageShape(cause.message)}` : "non-Error cause";
+  cause instanceof Error
+    ? `${cause.name}: ${messageShape(cause.message)}`
+    : "non-Error cause";
 
 /** The bucket one verification cause belongs to. */
-export const bucketOfCause = (cause: CompareVerificationFailure["cause"]): RefusalBucket =>
-  `round-trip-${cause}`;
+export const bucketOfCause = (
+  cause: CompareVerificationFailure["cause"],
+): RefusalBucket => `round-trip-${cause}`;
 
 /** Bucket one refusal. Total over the error union: no default branch. */
 export const classifyRefusal = (error: CompareDocxError): Refusal => {
@@ -108,14 +125,19 @@ export const classifyRefusal = (error: CompareDocxError): Refusal => {
         shape: causeMessage(error.cause),
       };
     case "CompareDocxApplyError": {
-      const reasons = [...new Set(error.skipped.map(({ reason }) => reason))].toSorted();
+      const reasons = [
+        ...new Set(error.skipped.map(({ reason }) => reason)),
+      ].toSorted();
       return {
         bucket: "apply-refused",
         shape: `${String(error.skipped.length)} operation(s) refused: ${reasons.join(", ")}`,
       };
     }
     case "CompareDocxOperationLimitError":
-      return { bucket: "operation-limit", shape: `over ${String(error.limit)} operations` };
+      return {
+        bucket: "operation-limit",
+        shape: `over ${String(error.limit)} operations`,
+      };
     case "CompareDocxSerializeError":
       return { bucket: "serialize", shape: causeMessage(error.cause) };
     case "CompareDocxFinalParagraphMarkError":
@@ -134,7 +156,9 @@ export const classifyRefusal = (error: CompareDocxError): Refusal => {
       return { bucket: "invalid-options", shape: `option ${error.option}` };
     default: {
       const unreachable: never = error;
-      throw new Error(`Unbucketed compare error: ${JSON.stringify(unreachable)}`);
+      throw new Error(
+        `Unbucketed compare error: ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -169,27 +193,44 @@ export const summarizeVerification = (
   }
   return {
     buckets: verification.failures.map(({ cause }) => bucketOfCause(cause)),
-    shapes: verification.failures.map(({ invariant, detail }) => `${invariant}: ${detail}`),
+    shapes: verification.failures.map(
+      ({ invariant, detail }) => `${invariant}: ${detail}`,
+    ),
   };
 };
 
-type BucketRow = { bucket: RefusalBucket; count: number; shapes: Map<string, number> };
+type BucketRow = {
+  bucket: RefusalBucket;
+  count: number;
+  shapes: Map<string, number>;
+};
 
-const tally = (entries: readonly { bucket: RefusalBucket; shape: string }[]) => {
+const tally = (
+  entries: readonly { bucket: RefusalBucket; shape: string }[],
+) => {
   const rows = new Map<RefusalBucket, BucketRow>();
   for (const { bucket, shape } of entries) {
-    const row = rows.get(bucket) ?? { bucket, count: 0, shapes: new Map<string, number>() };
+    const row = rows.get(bucket) ?? {
+      bucket,
+      count: 0,
+      shapes: new Map<string, number>(),
+    };
     row.count += 1;
     row.shapes.set(shape, (row.shapes.get(shape) ?? 0) + 1);
     rows.set(bucket, row);
   }
   return [...rows.values()]
-    .toSorted((left, right) => right.count - left.count || left.bucket.localeCompare(right.bucket))
+    .toSorted(
+      (left, right) =>
+        right.count - left.count || left.bucket.localeCompare(right.bucket),
+    )
     .map(({ bucket, count, shapes }) => ({
       bucket,
       count,
       shape:
-        [...shapes.entries()].toSorted((left, right) => right[1] - left[1])[0]?.[0] ?? "no shape",
+        [...shapes.entries()].toSorted(
+          (left, right) => right[1] - left[1],
+        )[0]?.[0] ?? "no shape",
     }));
 };
 
@@ -197,7 +238,9 @@ const tally = (entries: readonly { bucket: RefusalBucket; shape: string }[]) => 
 export const summarizeRefusals = (outcomes: readonly PairOutcome[]) =>
   tally(
     outcomes.flatMap(({ strict }) =>
-      strict.status === "refused" ? [{ bucket: strict.bucket, shape: strict.shape }] : [],
+      strict.status === "refused"
+        ? [{ bucket: strict.bucket, shape: strict.shape }]
+        : [],
     ),
   );
 

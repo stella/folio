@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { MAX_REVISION_ID } from "@stll/docx-core/model";
 import { EditorState, type Transaction } from "prosemirror-state";
 
-import { schema } from "../prosemirror/schema";
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
+
 import { mintRevisionId } from "../prosemirror/plugins/revisionIds";
+import { schema } from "../prosemirror/schema";
 import { applySuggestions } from "./apply";
 import type { AISuggestion } from "./types";
 
@@ -12,7 +13,9 @@ test("suggestion batches share bounded revision allocation with editor commands"
   const existingId = MAX_REVISION_ID;
   const doc = schema.node("doc", null, [
     schema.node("paragraph", null, [
-      schema.text("old", [insertion.create({ revisionId: existingId, author: "Author" })]),
+      schema.text("old", [
+        insertion.create({ revisionId: existingId, author: "Author" }),
+      ]),
       schema.text(" target"),
     ]),
   ]);

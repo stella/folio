@@ -59,7 +59,10 @@ const XMLNS = "xmlns";
 type Declaration = { prefix: string; uri: string };
 
 const isWhitespace = (character: string | undefined): boolean =>
-  character === " " || character === "\t" || character === "\n" || character === "\r";
+  character === " " ||
+  character === "\t" ||
+  character === "\n" ||
+  character === "\r";
 
 /** End offset (exclusive) of the tag opening at `start`, skipping quoted values. */
 const tagEnd = (xml: string, start: number): number => {
@@ -161,7 +164,11 @@ const slotOf = (uri: string): NamespaceSlot | null => {
   return null;
 };
 
-const CONVENTIONAL_PREFIX: Record<NamespaceSlot, string> = { main: "w", w14: "w14", mc: "mc" };
+const CONVENTIONAL_PREFIX: Record<NamespaceSlot, string> = {
+  main: "w",
+  w14: "w14",
+  mc: "mc",
+};
 
 /**
  * Resolve the prefixes `xml` binds to WordprocessingML, `w14` and `mc`.
@@ -194,7 +201,10 @@ const resolvePrefixes = (
     }
   });
   if (!complete) {
-    return { type: "unsupported", reason: "no root element or unterminated markup" };
+    return {
+      type: "unsupported",
+      reason: "no root element or unterminated markup",
+    };
   }
 
   const declared: Record<NamespaceSlot, boolean> = {
@@ -207,7 +217,10 @@ const resolvePrefixes = (
       if (slot !== "main" && bound[slot].includes("")) {
         // Attributes never take the default namespace; `w14:paraId` and
         // `mc:Ignorable` need a prefix.
-        return { type: "unsupported", reason: `${slot} is bound only as the default namespace` };
+        return {
+          type: "unsupported",
+          reason: `${slot} is bound only as the default namespace`,
+        };
       }
       continue;
     }
@@ -232,9 +245,12 @@ const resolvePrefixes = (
       inUse.set(prefix, slot);
     }
   }
-  for (const { prefix, uri } of nestedBindings === NESTED_BINDINGS.strict ? nested : []) {
+  for (const { prefix, uri } of nestedBindings === NESTED_BINDINGS.strict
+    ? nested
+    : []) {
     const slot = slotOf(uri);
-    const spelling = prefix === "" ? "the default namespace" : `prefix ${prefix}`;
+    const spelling =
+      prefix === "" ? "the default namespace" : `prefix ${prefix}`;
     if (slot !== null) {
       if (!bound[slot].includes(prefix)) {
         return {
@@ -256,7 +272,8 @@ const resolvePrefixes = (
     prefixes.length === 1 && prefixes[0] === prefix;
   // An empty list means the conventional prefix is bound to another
   // namespace, so the serializer's `w14:` / `mc:` would not mean what it says.
-  const canonical = only(bound.main, "w") && only(bound.w14, "w14") && only(bound.mc, "mc");
+  const canonical =
+    only(bound.main, "w") && only(bound.w14, "w14") && only(bound.mc, "mc");
 
   return {
     type: "resolved",
@@ -271,14 +288,19 @@ const resolvePrefixes = (
   };
 };
 
-export const resolveWordprocessingPrefixes = (xml: string): WordprocessingPrefixResolution =>
+export const resolveWordprocessingPrefixes = (
+  xml: string,
+): WordprocessingPrefixResolution =>
   resolvePrefixes(xml, NESTED_BINDINGS.strict);
 
 /** Root spelling for a selective scan whose relevant nested names are checked separately. */
-export const resolveSelectiveScanPrefixes = (xml: string): WordprocessingPrefixResolution =>
+export const resolveSelectiveScanPrefixes = (
+  xml: string,
+): WordprocessingPrefixResolution =>
   resolvePrefixes(xml, NESTED_BINDINGS.scoped);
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 /**
  * Whether a patcher that reads `<w:…>` literally sees every element it looks
@@ -289,9 +311,13 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
  * names the patcher scans under that alias, or binds markup compatibility
  * under another prefix. Relevant nested names are checked in their own scope.
  */
-export const splicesAsCanonical = (xml: string, localNames: readonly string[]): boolean => {
+export const splicesAsCanonical = (
+  xml: string,
+  localNames: readonly string[],
+): boolean => {
   const resolution = resolveWordprocessingPrefixes(xml);
-  if (resolution.type === "resolved" && resolution.prefixes.canonical) return true;
+  if (resolution.type === "resolved" && resolution.prefixes.canonical)
+    return true;
   const relaxed = resolveSelectiveScanPrefixes(xml);
   if (relaxed.type !== "resolved") return false;
   const { prefixes } = relaxed;
@@ -309,7 +335,11 @@ export const splicesAsCanonical = (xml: string, localNames: readonly string[]): 
   const names = localNames.map(escapeRegExp).join("|");
   if (
     !aliases.every(
-      (alias) => !new RegExp(`[<\\s/]${escapeRegExp(alias)}:(?:${names})[\\s/>=]`, "u").test(xml),
+      (alias) =>
+        !new RegExp(
+          `[<\\s/]${escapeRegExp(alias)}:(?:${names})[\\s/>=]`,
+          "u",
+        ).test(xml),
     )
   ) {
     return false;
@@ -319,7 +349,9 @@ export const splicesAsCanonical = (xml: string, localNames: readonly string[]): 
   // scans occurs under it. Resolve those names in their actual XML scope.
   const root = parseXmlDocument(xml);
   if (!root) return false;
-  const mainNames = new Set(localNames.filter((name) => name !== "paraId" && name !== "textId"));
+  const mainNames = new Set(
+    localNames.filter((name) => name !== "paraId" && name !== "textId"),
+  );
   const idNames = new Set(["paraId", "textId"]);
   const mcNames = new Set(["Fallback", "AlternateContent"]);
   const visit = (element: XmlElement): boolean => {
@@ -330,14 +362,18 @@ export const splicesAsCanonical = (xml: string, localNames: readonly string[]): 
     const uri = getNamespaceUri(element) ?? "";
     if (
       (prefix === "mc" && uri !== MC_URI) ||
-      (mainNames.has(local) && WORDPROCESSINGML_NAMESPACE_URIS.has(uri) !== (prefix === "w")) ||
+      (mainNames.has(local) &&
+        WORDPROCESSINGML_NAMESPACE_URIS.has(uri) !== (prefix === "w")) ||
       (mcNames.has(local) && (uri === MC_URI) !== prefixes.mc.includes(prefix))
     ) {
       return false;
     }
     for (const attribute of Object.keys(element.attributes ?? {})) {
       const attributePrefix = getNamespacePrefix(attribute);
-      if (attributePrefix === "mc" && resolveAttributeNamespaceUri(element, attribute) !== MC_URI) {
+      if (
+        attributePrefix === "mc" &&
+        resolveAttributeNamespaceUri(element, attribute) !== MC_URI
+      ) {
         return false;
       }
       if (!idNames.has(getLocalName(attribute))) continue;
@@ -354,7 +390,13 @@ export const splicesAsCanonical = (xml: string, localNames: readonly string[]): 
 };
 
 /** The names the paragraph splices scan for: paragraphs, their containers and ids. */
-export const PARAGRAPH_SCAN_NAMES = ["p", "tc", "txbxContent", "paraId", "textId"] as const;
+export const PARAGRAPH_SCAN_NAMES = [
+  "p",
+  "tc",
+  "txbxContent",
+  "paraId",
+  "textId",
+] as const;
 
 /** Whether `xml` spells WordprocessingML the way folio's serializer does. */
 export const hasCanonicalWordprocessingPrefixes = (xml: string): boolean => {

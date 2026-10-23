@@ -52,8 +52,12 @@
  * reported as nothing rather than as a defect.
  */
 
+import { Result } from "better-result";
 import { readFile } from "node:fs/promises";
 
+import type { BlockContent } from "@stll/folio-core/types/document";
+
+import { outlineLevelStatedValue } from "../../../packages/docx-core/src/model/outlineLevel";
 // By path, not by specifier: the gate's scripts are not a workspace package,
 // and `@stll/docx-core` is reachable only from the packages that depend on it.
 import {
@@ -61,14 +65,14 @@ import {
   initializeDocxProjection,
   projectCompressedDocx,
 } from "../../../packages/docx-core/src/projection";
-import type { BlockContent } from "@stll/folio-core/types/document";
-import { Result } from "better-result";
-import { outlineLevelStatedValue } from "../../../packages/docx-core/src/model/outlineLevel";
-
-import { type CorpusFailure, failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
+  type CorpusFailure,
+  failureFromAssertion,
+  failureFromError,
+} from "../corpus-signature";
+import {
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -122,7 +126,10 @@ type FactAccumulator = {
   tables: TypeScriptTableFacts[];
 };
 
-const collectBlocks = (blocks: readonly BlockContent[], into: FactAccumulator): void => {
+const collectBlocks = (
+  blocks: readonly BlockContent[],
+  into: FactAccumulator,
+): void => {
   for (const block of blocks) {
     switch (block.type) {
       case "paragraph": {
@@ -138,7 +145,9 @@ const collectBlocks = (blocks: readonly BlockContent[], into: FactAccumulator): 
       case "table": {
         // Pushed before its contents, so table ordinals follow `w:tbl` start
         // order, which is how the kernel's counter runs.
-        into.tables.push({ cellsPerRow: block.rows.map((row) => row.cells.length) });
+        into.tables.push({
+          cellsPerRow: block.rows.map((row) => row.cells.length),
+        });
         for (const row of block.rows) {
           for (const cell of row.cells) {
             collectBlocks(cell.content, into);
@@ -191,9 +200,12 @@ const STYLE_ID_TYPESCRIPT_NONE =
 const OUTLINE_LEVEL_DISAGREES = "direct outline level disagrees";
 const OUTLINE_LEVEL_KERNEL_NONE =
   "direct outline level: the kernel reports none where TypeScript reports one";
-const TABLE_MISSING = "table structure: the kernel reports a table the TypeScript model lacks";
-const TABLE_ROW_MISSING = "table structure: the kernel reports a row the TypeScript model lacks";
-const TABLE_CELL_MISSING = "table structure: the kernel reports a cell the TypeScript model lacks";
+const TABLE_MISSING =
+  "table structure: the kernel reports a table the TypeScript model lacks";
+const TABLE_ROW_MISSING =
+  "table structure: the kernel reports a row the TypeScript model lacks";
+const TABLE_CELL_MISSING =
+  "table structure: the kernel reports a cell the TypeScript model lacks";
 const TABLE_ID_SHAPE = "kernel table identifier is not the projected shape";
 
 const TABLE_ID_RE = /^table-(\d+)$/u;
@@ -243,7 +255,9 @@ const compareOutlineLevels = (
   if (family[0] !== "known") {
     return;
   }
-  const kernelLevels = new Map(family[1].map(([ordinal, level]) => [ordinal, level]));
+  const kernelLevels = new Map(
+    family[1].map(([ordinal, level]) => [ordinal, level]),
+  );
   facts.paragraphs.forEach(({ outlineLevel }, ordinal) => {
     if (outlineLevel === null) {
       return;
@@ -321,7 +335,10 @@ export const kernelDifferentialFailures = (
   compareOutlineLevels(projection, facts, found);
   compareTableStructure(projection, facts, found);
   return [...found].map((message) =>
-    failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.kernelDifferential, message),
+    failureFromAssertion(
+      EXTENDED_CORPUS_INVARIANTS.kernelDifferential,
+      message,
+    ),
   );
 };
 
@@ -344,7 +361,12 @@ export const runKernelDifferentialInvariant = async ({
   if (projected.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.kernelDifferential, projected.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.kernelDifferential,
+          projected.error,
+        ),
+      ],
       timings,
     };
   }

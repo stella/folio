@@ -56,6 +56,9 @@ describe("toFlowBlocks paragraph bidi tri-state", () => {
   });
 
   test("leaves an undecided paragraph absent for painter auto-direction", () => {
-    expect(projectBidi("اتفاقية")).toEqual({ direction: undefined, bidi: undefined });
+    expect(projectBidi("اتفاقية")).toEqual({
+      direction: undefined,
+      bidi: undefined,
+    });
   });
 });

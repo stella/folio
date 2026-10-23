@@ -1,4 +1,8 @@
-import type { FlowBlock, Measure, ParagraphBlock } from "../layout-engine/types";
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+} from "../layout-engine/types";
 
 export type DirtyRange = {
   from: number;
@@ -12,7 +16,11 @@ export type IncrementalMeasureInput = {
   nextBlocks: FlowBlock[];
   nextBlockWidths: number[];
   dirtyRange: DirtyRange;
-  measureBlock: (block: FlowBlock, blockWidth: number, blockIndex: number) => Measure;
+  measureBlock: (
+    block: FlowBlock,
+    blockWidth: number,
+    blockIndex: number,
+  ) => Measure;
 };
 
 export type IncrementalMeasureResult = {
@@ -20,7 +28,10 @@ export type IncrementalMeasureResult = {
   measuredBlockIndexes: number[];
 };
 
-export function findDirtyBlockIndexes(blocks: FlowBlock[], dirtyRange: DirtyRange): number[] {
+export function findDirtyBlockIndexes(
+  blocks: FlowBlock[],
+  dirtyRange: DirtyRange,
+): number[] {
   const indexes: number[] = [];
   const dirtyFrom = Math.min(dirtyRange.from, dirtyRange.to);
   const dirtyTo = Math.max(dirtyRange.from, dirtyRange.to);

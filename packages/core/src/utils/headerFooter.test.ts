@@ -98,7 +98,11 @@ describe("resolveHeaderFooterContent", () => {
   });
 
   test("resolves the first-page footer when a section enables titlePg", () => {
-    const firstFooter: HeaderFooter = { type: "footer", hdrFtrType: "first", content: [paragraph] };
+    const firstFooter: HeaderFooter = {
+      type: "footer",
+      hdrFtrType: "first",
+      content: [paragraph],
+    };
     const body: DocumentBody = {
       content: [paragraph],
       sections: [
@@ -112,7 +116,8 @@ describe("resolveHeaderFooterContent", () => {
       ],
     };
     const resolution = resolveHeaderFooterContent(
-      docFromPackage(body, undefined, new Map([["rIdF1", firstFooter]])).package,
+      docFromPackage(body, undefined, new Map([["rIdF1", firstFooter]]))
+        .package,
     );
 
     expect(resolution.hasTitlePg).toBe(true);
@@ -124,7 +129,9 @@ describe("resolveHeaderFooterContent", () => {
 describe("createEmptyHeaderFooter", () => {
   test("returns null when there are no final section properties", () => {
     const body: DocumentBody = { content: [paragraph] };
-    expect(createEmptyHeaderFooter(docFromPackage(body), "header", false)).toBeNull();
+    expect(
+      createEmptyHeaderFooter(docFromPackage(body), "header", false),
+    ).toBeNull();
   });
 
   test("adds an empty header plus a reference into finalSectionProperties", () => {
@@ -141,9 +148,9 @@ describe("createEmptyHeaderFooter", () => {
       hdrFtrType: "default",
       content: [{ type: "paragraph", content: [] }],
     });
-    expect(next?.package.document.finalSectionProperties?.headerReferences).toEqual([
-      { type: "default", rId },
-    ]);
+    expect(
+      next?.package.document.finalSectionProperties?.headerReferences,
+    ).toEqual([{ type: "default", rId }]);
     // The relationship is minted by the save path, which owns the part
     // filename, the `.rels` entry and the content-type override together.
     expect(next?.package.relationships?.has(rId) ?? false).toBe(false);
@@ -157,7 +164,10 @@ describe("createEmptyHeaderFooter", () => {
     const document = docFromPackage(
       body,
       new Map([
-        ["rId_new_header_default", { type: "header", hdrFtrType: "default", content: [paragraph] }],
+        [
+          "rId_new_header_default",
+          { type: "header", hdrFtrType: "default", content: [paragraph] },
+        ],
       ]),
     );
     document.package.relationships = new Map([
@@ -174,8 +184,12 @@ describe("createEmptyHeaderFooter", () => {
     const next = createEmptyHeaderFooter(document, "header", false);
 
     expect(next?.package.headers?.has("rId_new_header_default_2")).toBe(true);
-    expect(next?.package.relationships?.has("rId_new_header_default_2")).toBe(false);
-    expect(next?.package.relationships?.get("rIdExisting")?.target).toBe("header1.xml");
+    expect(next?.package.relationships?.has("rId_new_header_default_2")).toBe(
+      false,
+    );
+    expect(next?.package.relationships?.get("rIdExisting")?.target).toBe(
+      "header1.xml",
+    );
   });
 });
 
@@ -229,6 +243,8 @@ describe("removeHeaderFooter", () => {
     });
 
     expect(next.package.headers?.has("rIdH")).toBe(false);
-    expect(next.package.document.finalSectionProperties?.headerReferences).toEqual([]);
+    expect(
+      next.package.document.finalSectionProperties?.headerReferences,
+    ).toEqual([]);
   });
 });

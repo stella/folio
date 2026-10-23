@@ -38,7 +38,9 @@ type ParsedArgs = {
   revisionFormat: CompareRevisionFormat;
 };
 
-const isCompareRevisionFormat = (value: string): value is CompareRevisionFormat =>
+const isCompareRevisionFormat = (
+  value: string,
+): value is CompareRevisionFormat =>
   COMPARE_REVISION_FORMATS.some((format) => format === value);
 
 const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
@@ -54,7 +56,11 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
       json = true;
       continue;
     }
-    if (arg === "--author" || arg === "--timestamp" || arg === "--revision-format") {
+    if (
+      arg === "--author" ||
+      arg === "--timestamp" ||
+      arg === "--revision-format"
+    ) {
       const value = argv[++index];
       if (value === undefined) {
         return null;
@@ -80,12 +86,23 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
   if (positional.length !== 3 || !basePath || !targetPath || !outPath) {
     return null;
   }
-  return { basePath, targetPath, outPath, json, author, timestamp, revisionFormat };
+  return {
+    basePath,
+    targetPath,
+    outPath,
+    json,
+    author,
+    timestamp,
+    revisionFormat,
+  };
 };
 
 const readDocx = (filePath: string): ArrayBuffer => {
   const bytes = readFileSync(filePath);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 const describeChange = (change: CompareChange): string => {
@@ -140,7 +157,11 @@ const describeChange = (change: CompareChange): string => {
   }
 };
 
-const describeUnsupported = ({ reason, baseStory, targetStory }: CompareUnsupportedPart): string =>
+const describeUnsupported = ({
+  reason,
+  baseStory,
+  targetStory,
+}: CompareUnsupportedPart): string =>
   `unsupported (${reason}): ${JSON.stringify(baseStory ?? targetStory)}`;
 
 const describeError = (value: unknown): string => {
@@ -154,7 +175,9 @@ const describeError = (value: unknown): string => {
 const MAX_CAUSE_DEPTH = 8;
 
 const readCause = (value: unknown): unknown =>
-  typeof value === "object" && value !== null && "cause" in value ? value.cause : undefined;
+  typeof value === "object" && value !== null && "cause" in value
+    ? value.cause
+    : undefined;
 
 /**
  * The error and every cause behind it, outermost first.
@@ -185,11 +208,15 @@ if (!args) {
   process.exit(2);
 }
 
-const result = await compareDocx(readDocx(args.basePath), readDocx(args.targetPath), {
-  author: args.author,
-  timestamp: args.timestamp,
-  revisionFormat: args.revisionFormat,
-});
+const result = await compareDocx(
+  readDocx(args.basePath),
+  readDocx(args.targetPath),
+  {
+    author: args.author,
+    timestamp: args.timestamp,
+    revisionFormat: args.revisionFormat,
+  },
+);
 
 if (result.isErr()) {
   console.error(`${result.error._tag}: ${result.error.message}`);

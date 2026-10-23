@@ -1,4 +1,7 @@
-import { BODY_TEXT_OUTLINE_LEVEL, paragraphNumberingReference } from "@stll/docx-core/model";
+import {
+  BODY_TEXT_OUTLINE_LEVEL,
+  paragraphNumberingReference,
+} from "@stll/docx-core/model";
 
 import {
   BUILT_IN_STYLE_NAME,
@@ -136,7 +139,12 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         basedOn: "BodyText",
         qFormat: true,
         uiPriority: 6,
-        pPr: { numPr: paragraphNumberingReference({ numId: RECITALS_NUMBERING_ID, ilvl: 0 }) },
+        pPr: {
+          numPr: paragraphNumberingReference({
+            numId: RECITALS_NUMBERING_ID,
+            ilvl: 0,
+          }),
+        },
       },
       {
         styleId: "AgreedTerms",
@@ -160,7 +168,12 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         basedOn: "BodyText",
         qFormat: true,
         uiPriority: 30,
-        pPr: { numPr: paragraphNumberingReference({ numId: PARTIES_NUMBERING_ID, ilvl: 0 }) },
+        pPr: {
+          numPr: paragraphNumberingReference({
+            numId: PARTIES_NUMBERING_ID,
+            ilvl: 0,
+          }),
+        },
       },
       {
         styleId: "ListParagraph",
@@ -169,7 +182,12 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         basedOn: "BodyText",
         qFormat: true,
         uiPriority: 31,
-        pPr: { numPr: paragraphNumberingReference({ numId: BULLET_NUMBERING_ID, ilvl: 0 }) },
+        pPr: {
+          numPr: paragraphNumberingReference({
+            numId: BULLET_NUMBERING_ID,
+            ilvl: 0,
+          }),
+        },
       },
       {
         styleId: "TableText",
@@ -366,37 +384,46 @@ const createHeadingStyles = (): DocumentStyleSet["styles"]["styles"] => {
 };
 
 /** `TOCHeading` plus `TOC1`..`TOC3`, the styles a `TOC \o "1-3"` field fills. */
-const createTableOfContentsStyles = (): DocumentStyleSet["styles"]["styles"] => {
-  const levels = [
-    { styleId: "TOC1", name: builtInTableOfContentsStyleName(1), indent: 0 },
-    { styleId: "TOC2", name: builtInTableOfContentsStyleName(2), indent: 220 },
-    { styleId: "TOC3", name: builtInTableOfContentsStyleName(3), indent: 440 },
-  ] as const;
-  return [
-    {
-      styleId: "TOCHeading",
-      type: "paragraph",
-      name: BUILT_IN_STYLE_NAME.tocHeading,
-      basedOn: "Heading1",
-      next: "BodyText",
-      unhideWhenUsed: true,
-      uiPriority: 39,
-      // Based on `Heading1`, so the level has to be reset: this titles the
-      // table of contents, it is not an entry in it.
-      pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
-    },
-    ...levels.map(({ styleId, name, indent }) => ({
-      styleId,
-      type: "paragraph" as const,
-      name,
-      basedOn: "Normal",
-      next: "Normal",
-      unhideWhenUsed: true,
-      uiPriority: 39,
-      pPr: { indentLeft: indent, spaceAfter: 100 },
-    })),
-  ];
-};
+const createTableOfContentsStyles =
+  (): DocumentStyleSet["styles"]["styles"] => {
+    const levels = [
+      { styleId: "TOC1", name: builtInTableOfContentsStyleName(1), indent: 0 },
+      {
+        styleId: "TOC2",
+        name: builtInTableOfContentsStyleName(2),
+        indent: 220,
+      },
+      {
+        styleId: "TOC3",
+        name: builtInTableOfContentsStyleName(3),
+        indent: 440,
+      },
+    ] as const;
+    return [
+      {
+        styleId: "TOCHeading",
+        type: "paragraph",
+        name: BUILT_IN_STYLE_NAME.tocHeading,
+        basedOn: "Heading1",
+        next: "BodyText",
+        unhideWhenUsed: true,
+        uiPriority: 39,
+        // Based on `Heading1`, so the level has to be reset: this titles the
+        // table of contents, it is not an entry in it.
+        pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+      },
+      ...levels.map(({ styleId, name, indent }) => ({
+        styleId,
+        type: "paragraph" as const,
+        name,
+        basedOn: "Normal",
+        next: "Normal",
+        unhideWhenUsed: true,
+        uiPriority: 39,
+        pPr: { indentLeft: indent, spaceAfter: 100 },
+      })),
+    ];
+  };
 
 const createClauseStyles = (): DocumentStyleSet["styles"]["styles"] => {
   const levels = [
@@ -446,13 +473,17 @@ const createClauseStyles = (): DocumentStyleSet["styles"]["styles"] => {
       qFormat: true,
       uiPriority: 10 + level,
       pPr: {
-        numPr: paragraphNumberingReference({ numId: CLAUSE_NUMBERING_ID, ilvl: level }),
+        numPr: paragraphNumberingReference({
+          numId: CLAUSE_NUMBERING_ID,
+          ilvl: level,
+        }),
         keepNext: level < 2,
         spaceBefore: clauseSpaceBefore(level),
         // The top clause style is the document's numbered heading; the deeper
         // ones are body text under it. Without the level, the only thing
         // marking `ClauseHeading1` as a heading was the word in its style id.
-        outlineLevel: level === 0 ? { kind: "heading", level: 0 } : BODY_TEXT_OUTLINE_LEVEL,
+        outlineLevel:
+          level === 0 ? { kind: "heading", level: 0 } : BODY_TEXT_OUTLINE_LEVEL,
       },
     } satisfies DocumentStyleSet["styles"]["styles"][number];
     if (bold) {
@@ -482,11 +513,18 @@ const createDefinitionStyles = (): DocumentStyleSet["styles"]["styles"] => {
     basedOn: "BodyText",
     qFormat: true,
     uiPriority: 20 + level,
-    pPr: { numPr: paragraphNumberingReference({ numId: DEFINITIONS_NUMBERING_ID, ilvl: level }) },
+    pPr: {
+      numPr: paragraphNumberingReference({
+        numId: DEFINITIONS_NUMBERING_ID,
+        ilvl: level,
+      }),
+    },
   }));
 };
 
-const createLegalNumbering = (): NonNullable<DocumentStyleSet["numbering"]> => ({
+const createLegalNumbering = (): NonNullable<
+  DocumentStyleSet["numbering"]
+> => ({
   abstractNums: [
     {
       abstractNumId: CLAUSE_ABSTRACT_NUMBERING_ID,
@@ -521,14 +559,24 @@ const createLegalNumbering = (): NonNullable<DocumentStyleSet["numbering"]> => (
   ],
   nums: [
     { numId: CLAUSE_NUMBERING_ID, abstractNumId: CLAUSE_ABSTRACT_NUMBERING_ID },
-    { numId: DEFINITIONS_NUMBERING_ID, abstractNumId: DEFINITIONS_ABSTRACT_NUMBERING_ID },
-    { numId: RECITALS_NUMBERING_ID, abstractNumId: PARENTHETICAL_ABSTRACT_NUMBERING_ID },
-    { numId: PARTIES_NUMBERING_ID, abstractNumId: PARENTHETICAL_ABSTRACT_NUMBERING_ID },
+    {
+      numId: DEFINITIONS_NUMBERING_ID,
+      abstractNumId: DEFINITIONS_ABSTRACT_NUMBERING_ID,
+    },
+    {
+      numId: RECITALS_NUMBERING_ID,
+      abstractNumId: PARENTHETICAL_ABSTRACT_NUMBERING_ID,
+    },
+    {
+      numId: PARTIES_NUMBERING_ID,
+      abstractNumId: PARENTHETICAL_ABSTRACT_NUMBERING_ID,
+    },
     { numId: BULLET_NUMBERING_ID, abstractNumId: BULLET_ABSTRACT_NUMBERING_ID },
   ],
 });
 
-type LegalNumberFormat = "bullet" | "decimal" | "lowerLetter" | "lowerRoman" | "upperLetter";
+type LegalNumberFormat =
+  "bullet" | "decimal" | "lowerLetter" | "lowerRoman" | "upperLetter";
 
 const legalLevel = (
   ilvl: number,

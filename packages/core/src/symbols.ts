@@ -188,8 +188,9 @@ export const SYMBOL_CATEGORIES: SymbolCategory[] = [
 ];
 
 /** Every catalog symbol, flattened and tagged with its category. */
-export const ALL_SYMBOLS: SymbolSearchEntry[] = SYMBOL_CATEGORIES.flatMap((category) =>
-  category.symbols.map((symbol) => ({ ...symbol, category: category.name })),
+export const ALL_SYMBOLS: SymbolSearchEntry[] = SYMBOL_CATEGORIES.flatMap(
+  (category) =>
+    category.symbols.map((symbol) => ({ ...symbol, category: category.name })),
 );
 
 /**
@@ -202,5 +203,7 @@ export function filterSymbols(query: string): SymbolSearchEntry[] {
   if (!q) {
     return [];
   }
-  return ALL_SYMBOLS.filter((symbol) => symbol.name.toLowerCase().includes(q) || symbol.char === q);
+  return ALL_SYMBOLS.filter(
+    (symbol) => symbol.name.toLowerCase().includes(q) || symbol.char === q,
+  );
 }

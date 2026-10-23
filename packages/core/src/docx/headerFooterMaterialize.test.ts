@@ -17,6 +17,7 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import type { HeaderFooter } from "../types/document";
+import { createEmptyHeaderFooter } from "../utils/headerFooter";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
@@ -27,7 +28,6 @@ import {
   validateDocx,
 } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
-import { createEmptyHeaderFooter } from "../utils/headerFooter";
 import { unzipDocx } from "./unzip";
 
 const headerWithInlineImage = (rId: string): HeaderFooter => ({
@@ -67,7 +67,9 @@ const firstPageHeader: HeaderFooter = {
   content: [
     {
       type: "paragraph",
-      content: [{ type: "run", content: [{ type: "text", text: "TOP SECRET" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "TOP SECRET" }] },
+      ],
     },
   ],
 };
@@ -90,7 +92,9 @@ describe("header/footer part materialization on save", () => {
     expect((await validateDocx(out)).valid).toBe(true);
 
     const zip = await JSZip.loadAsync(out);
-    const headerFiles = Object.keys(zip.files).filter((p) => /^word\/header\d+\.xml$/u.test(p));
+    const headerFiles = Object.keys(zip.files).filter((p) =>
+      /^word\/header\d+\.xml$/u.test(p),
+    );
     expect(headerFiles).toHaveLength(1);
     const headerPath = headerFiles[0]!;
     expect(await zip.file(headerPath)!.async("text")).toContain("TOP SECRET");
@@ -126,7 +130,9 @@ describe("header/footer part materialization on save", () => {
     const doc = await parseDocx(base, { preloadFonts: false });
 
     const synthRId = "rId_new_default";
-    doc.package.headers = new Map([[synthRId, headerWithInlineImage("rId_img_1")]]);
+    doc.package.headers = new Map([
+      [synthRId, headerWithInlineImage("rId_img_1")],
+    ]);
     doc.package.document.finalSectionProperties = {
       ...doc.package.document.finalSectionProperties,
       headerReferences: [{ type: "default", rId: synthRId }],
@@ -136,7 +142,9 @@ describe("header/footer part materialization on save", () => {
     expect((await validateDocx(out)).valid).toBe(true);
 
     const zip = await JSZip.loadAsync(out);
-    const headerPath = Object.keys(zip.files).find((p) => /^word\/header\d+\.xml$/u.test(p));
+    const headerPath = Object.keys(zip.files).find((p) =>
+      /^word\/header\d+\.xml$/u.test(p),
+    );
     expect(headerPath).toBeDefined();
     const headerRels = await zip
       .file(`word/_rels/${headerPath!.replace(/^word\//u, "")}.rels`)!
@@ -144,7 +152,9 @@ describe("header/footer part materialization on save", () => {
     // The inserted image got a media part + an image relationship in the new
     // header's own rels.
     expect(headerRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
-    expect(Object.keys(zip.files).some((p) => /^word\/media\/image\d+\./u.test(p))).toBe(true);
+    expect(
+      Object.keys(zip.files).some((p) => /^word\/media\/image\d+\./u.test(p)),
+    ).toBe(true);
   });
 
   test("materializes new header parts on the raw repack path too", async () => {
@@ -154,7 +164,9 @@ describe("header/footer part materialization on save", () => {
     const raw = await unzipDocx(base);
     const doc = await parseDocx(base, { preloadFonts: false });
 
-    doc.package.headers = new Map([["rId_new_default", headerWithInlineImage("rId_img_1")]]);
+    doc.package.headers = new Map([
+      ["rId_new_default", headerWithInlineImage("rId_img_1")],
+    ]);
     doc.package.document.finalSectionProperties = {
       ...doc.package.document.finalSectionProperties,
       headerReferences: [{ type: "default", rId: "rId_new_default" }],
@@ -166,13 +178,17 @@ describe("header/footer part materialization on save", () => {
     expect((await validateDocx(out)).valid).toBe(true);
 
     const zip = await JSZip.loadAsync(out);
-    const headerPath = Object.keys(zip.files).find((p) => /^word\/header\d+\.xml$/u.test(p));
+    const headerPath = Object.keys(zip.files).find((p) =>
+      /^word\/header\d+\.xml$/u.test(p),
+    );
     expect(headerPath).toBeDefined();
     const headerRels = await zip
       .file(`word/_rels/${headerPath!.replace(/^word\//u, "")}.rels`)!
       .async("text");
     expect(headerRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
-    expect(Object.keys(zip.files).some((p) => /^word\/media\/image\d+\./u.test(p))).toBe(true);
+    expect(
+      Object.keys(zip.files).some((p) => /^word\/media\/image\d+\./u.test(p)),
+    ).toBe(true);
   });
 
   test("re-keys a materialized header whose rId collides with an existing relationship", async () => {
@@ -187,7 +203,10 @@ describe("header/footer part materialization on save", () => {
       target: "media/decoration.png",
     });
     doc.package.headers = new Map([
-      ["rId_new_default", { type: "header", hdrFtrType: "default", content: [] }],
+      [
+        "rId_new_default",
+        { type: "header", hdrFtrType: "default", content: [] },
+      ],
     ]);
     doc.package.document.finalSectionProperties = {
       ...doc.package.document.finalSectionProperties,
@@ -199,19 +218,24 @@ describe("header/footer part materialization on save", () => {
 
     const zip = await JSZip.loadAsync(out);
     const docXml = await zip.file("word/document.xml")!.async("text");
-    const refRId = /<w:headerReference[^>]*\br:id="(?<rid>[^"]+)"/u.exec(docXml)?.groups?.["rid"];
+    const refRId = /<w:headerReference[^>]*\br:id="(?<rid>[^"]+)"/u.exec(docXml)
+      ?.groups?.["rid"];
     expect(refRId).toBeDefined();
     // The section reference was re-pointed off the taken id to a fresh one...
     expect(refRId).not.toBe("rId_new_default");
     // ...and that fresh id maps to a header part.
     const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
-    expect(rels).toMatch(new RegExp(`Id="${refRId}"[^>]*Target="header\\d+\\.xml"`, "u"));
+    expect(rels).toMatch(
+      new RegExp(`Id="${refRId}"[^>]*Target="header\\d+\\.xml"`, "u"),
+    );
   });
 
   test("selective save bails to full repack when a header is unmaterialized", async () => {
     const base = await createEmptyDocx();
     const doc = await parseDocx(base, { preloadFonts: false });
-    doc.package.headers = new Map([["rId_new_default", { ...firstPageHeader }]]);
+    doc.package.headers = new Map([
+      ["rId_new_default", { ...firstPageHeader }],
+    ]);
 
     const result = await attemptSelectiveSave(doc, base, {
       changedParaIds: new Set(),
@@ -240,7 +264,10 @@ describe("header/footer part materialization on save", () => {
           content: [para("HEADER-ONE")],
         },
       ],
-      ["rId2", { type: "header", hdrFtrType: "first", content: [para("HEADER-TWO")] }],
+      [
+        "rId2",
+        { type: "header", hdrFtrType: "first", content: [para("HEADER-TWO")] },
+      ],
     ]);
     doc.package.document.finalSectionProperties = {
       ...doc.package.document.finalSectionProperties,
@@ -255,7 +282,9 @@ describe("header/footer part materialization on save", () => {
     expect((await validateDocx(out)).valid).toBe(true);
 
     const zip = await JSZip.loadAsync(out);
-    const headerFiles = Object.keys(zip.files).filter((p) => /^word\/header\d+\.xml$/u.test(p));
+    const headerFiles = Object.keys(zip.files).filter((p) =>
+      /^word\/header\d+\.xml$/u.test(p),
+    );
     // Two distinct header parts; neither header was overwritten/dropped.
     expect(headerFiles).toHaveLength(2);
     const allHeaderXml = (
@@ -287,7 +316,9 @@ describe("header/footer part materialization on save", () => {
     expect((await validateDocx(out)).valid).toBe(true);
 
     const zip = await JSZip.loadAsync(out);
-    const headerPath = Object.keys(zip.files).find((p) => /^word\/header\d+\.xml$/u.test(p));
+    const headerPath = Object.keys(zip.files).find((p) =>
+      /^word\/header\d+\.xml$/u.test(p),
+    );
     expect(headerPath).toBeDefined();
 
     const documentXml = await zip.file("word/document.xml")!.async("text");

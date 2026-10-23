@@ -1,10 +1,11 @@
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import path from "node:path";
-import { createRequire } from "node:module";
-import ts from "typescript";
 import { TaggedError } from "better-result";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import ts from "typescript";
 
-const SINGLETON = /^(?:prosemirror-[a-z-]+|yjs|y-prosemirror|y-protocols|react|react-dom)(?:\/|$)/u;
+const SINGLETON =
+  /^(?:prosemirror-[a-z-]+|yjs|y-prosemirror|y-protocols|react|react-dom)(?:\/|$)/u;
 const TEST_SOURCE =
   /(?:^|\/)(?:__tests__|test|tests|fixtures|__fixtures__|__snapshots__)(?:\/|$)|\.(?:test|spec)\./u;
 const BUNDLED_SENTINELS = [
@@ -40,12 +41,18 @@ const walk = (directory: string): string[] => {
   return files;
 };
 
-export const discoverPublishedPackages = (repositoryDirectory: string): string[] =>
-  readdirSync(path.join(repositoryDirectory, "packages"), { withFileTypes: true })
+export const discoverPublishedPackages = (
+  repositoryDirectory: string,
+): string[] =>
+  readdirSync(path.join(repositoryDirectory, "packages"), {
+    withFileTypes: true,
+  })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(repositoryDirectory, "packages", entry.name))
     .filter((directory) => {
-      const manifest = JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8"));
+      const manifest = JSON.parse(
+        readFileSync(path.join(directory, "package.json"), "utf8"),
+      );
       return manifest.private !== true;
     })
     .sort();
@@ -59,7 +66,10 @@ const singletonImports = (source: string): string[] =>
 const sourceFiles = (packageDirectory: string): string[] =>
   walk(path.join(packageDirectory, "src"))
     .filter((filename) => /\.(?:ts|tsx|js|jsx|vue)$/u.test(filename))
-    .filter((filename) => !TEST_SOURCE.test(path.relative(packageDirectory, filename)));
+    .filter(
+      (filename) =>
+        !TEST_SOURCE.test(path.relative(packageDirectory, filename)),
+    );
 
 const scriptSource = (filename: string): string => {
   const source = readFileSync(filename, "utf8");
@@ -70,16 +80,22 @@ const scriptSource = (filename: string): string => {
 };
 
 export const assertHostPeerManifest = (packageDirectory: string): void => {
-  const manifest = JSON.parse(readFileSync(path.join(packageDirectory, "package.json"), "utf8"));
+  const manifest = JSON.parse(
+    readFileSync(path.join(packageDirectory, "package.json"), "utf8"),
+  );
   const violations: string[] = [];
   for (const name of Object.keys(manifest.peerDependencies ?? {})) {
-    if (SINGLETON.test(name) && manifest.peerDependenciesMeta?.[name]?.optional === true) {
+    if (
+      SINGLETON.test(name) &&
+      manifest.peerDependenciesMeta?.[name]?.optional === true
+    ) {
       violations.push(`${name} must be a required peer`);
     }
   }
   for (const kind of ["dependencies", "optionalDependencies"]) {
     for (const name of Object.keys(manifest[kind] ?? {})) {
-      if (SINGLETON.test(name)) violations.push(`${name} must be a required peer, not ${kind}`);
+      if (SINGLETON.test(name))
+        violations.push(`${name} must be a required peer, not ${kind}`);
     }
   }
   for (const filename of sourceFiles(packageDirectory)) {
@@ -94,7 +110,8 @@ export const assertHostPeerManifest = (packageDirectory: string): void => {
       }
     }
   }
-  if (violations.length) throw new HostPeerPolicyError(packageDirectory, violations);
+  if (violations.length)
+    throw new HostPeerPolicyError(packageDirectory, violations);
 };
 
 export const assertHostPeersExternal = (packageDirectory: string): void => {
@@ -104,7 +121,10 @@ export const assertHostPeersExternal = (packageDirectory: string): void => {
     if (filename.endsWith(".d.ts")) continue;
     const { outputText } = ts.transpileModule(scriptSource(filename), {
       fileName: filename.endsWith(".vue") ? `${filename}.ts` : filename,
-      compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.Preserve },
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        jsx: ts.JsxEmit.Preserve,
+      },
     });
     for (const specifier of singletonImports(outputText)) {
       if (!specifier.endsWith(".css")) expected.add(specifier);
@@ -123,7 +143,9 @@ export const assertHostPeersExternal = (packageDirectory: string): void => {
             origin,
           )
         ) {
-          violations.push(`${filename} includes bundled singleton source ${origin}`);
+          violations.push(
+            `${filename} includes bundled singleton source ${origin}`,
+          );
         }
       }
       continue;
@@ -131,18 +153,25 @@ export const assertHostPeersExternal = (packageDirectory: string): void => {
     for (const specifier of singletonImports(source)) observed.add(specifier);
     for (const sentinel of BUNDLED_SENTINELS) {
       if (source.includes(sentinel))
-        violations.push(`${filename} includes bundled singleton code (${sentinel})`);
+        violations.push(
+          `${filename} includes bundled singleton code (${sentinel})`,
+        );
     }
   }
   for (const specifier of expected) {
     if (!observed.has(specifier))
-      violations.push(`Runtime import ${specifier} is missing from built externals`);
+      violations.push(
+        `Runtime import ${specifier} is missing from built externals`,
+      );
   }
-  if (violations.length) throw new HostPeerPolicyError(packageDirectory, violations);
+  if (violations.length)
+    throw new HostPeerPolicyError(packageDirectory, violations);
 };
 
 export const assertHostPeerResolution = (consumerDirectory: string): void => {
-  const hostRequire = createRequire(path.join(consumerDirectory, "package.json"));
+  const hostRequire = createRequire(
+    path.join(consumerDirectory, "package.json"),
+  );
   const scopeDirectory = path.join(consumerDirectory, "node_modules", "@stll");
   const violations: string[] = [];
   let inspected = 0;
@@ -165,6 +194,8 @@ export const assertHostPeerResolution = (consumerDirectory: string): void => {
       }
     }
   }
-  if (!inspected) violations.push("No installed singleton peers were inspected");
-  if (violations.length) throw new HostPeerPolicyError(consumerDirectory, violations);
+  if (!inspected)
+    violations.push("No installed singleton peers were inspected");
+  if (violations.length)
+    throw new HostPeerPolicyError(consumerDirectory, violations);
 };

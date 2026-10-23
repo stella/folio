@@ -10,8 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
-    "test": "bun test test",
-    "format": "oxfmt ."
+    "test": "bun test test"
   },
   "dependencies": {
     "@stll/folio-vue": "workspace:*",

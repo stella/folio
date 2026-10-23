@@ -8,9 +8,9 @@
  * Ported from eigenpal/docx-editor `layout-painter/imageLayout.ts`.
  */
 
-import type { WrapType } from "../types/wrap";
 import type { FlowBlock, Measure } from "../layout-engine/types";
 import type { ImageAttrs } from "../prosemirror/schema/nodes";
+import type { WrapType } from "../types/wrap";
 import { pixelsToEmu } from "../utils/units";
 import type { BlockLookup } from "./index";
 
@@ -27,7 +27,8 @@ export type AnchorWrapType = Exclude<WrapType, "inline">;
  * right; `inline` flows it as a glyph; the remaining targets are 1:1 with
  * their OOXML wrap types.
  */
-export type ImageLayoutTarget = AnchorWrapType | "squareLeft" | "squareRight" | "inline";
+export type ImageLayoutTarget =
+  AnchorWrapType | "squareLeft" | "squareRight" | "inline";
 
 // ============================================================================
 // Class names emitted by the layout painter — single source of truth so hosts
@@ -66,14 +67,19 @@ const IMAGE_HIT_SELECTOR = [
  * inline `<img.layout-run-image>` OR inside one of the container classes
  * registered in `LAYOUT_IMAGE_CLASSES`.
  */
-export function findImageElement(target: EventTarget | null): HTMLElement | null {
+export function findImageElement(
+  target: EventTarget | null,
+): HTMLElement | null {
   if (!(target instanceof HTMLElement)) {
     return null;
   }
   // Direct hit on an inline `<img class="layout-run-image">` — return it as-is
   // since the inline image carries its own `data-pm-start` and behaves as the
   // selection target.
-  if (target.tagName === "IMG" && target.classList.contains(LAYOUT_IMAGE_CLASSES.runImage)) {
+  if (
+    target.tagName === "IMG" &&
+    target.classList.contains(LAYOUT_IMAGE_CLASSES.runImage)
+  ) {
     return target;
   }
   // Otherwise walk up to the nearest image container with `data-pm-start`.
@@ -108,8 +114,12 @@ export function captureInlinePositionEmu(
   if (!imageEl.classList.contains(LAYOUT_IMAGE_CLASSES.runImage)) {
     return undefined;
   }
-  const pageContent = imageEl.closest<HTMLElement>(`.${LAYOUT_IMAGE_CLASSES.pageContent}`);
-  const paragraph = imageEl.closest<HTMLElement>(`.${LAYOUT_IMAGE_CLASSES.paragraph}`);
+  const pageContent = imageEl.closest<HTMLElement>(
+    `.${LAYOUT_IMAGE_CLASSES.pageContent}`,
+  );
+  const paragraph = imageEl.closest<HTMLElement>(
+    `.${LAYOUT_IMAGE_CLASSES.paragraph}`,
+  );
   if (!pageContent || !paragraph) {
     return undefined;
   }
@@ -118,8 +128,12 @@ export function captureInlinePositionEmu(
   const paraRect = paragraph.getBoundingClientRect();
   const safeZoom = zoom > 0 ? zoom : 1;
   return {
-    horizontalEmu: Math.round(pixelsToEmu((imgRect.left - pageRect.left) / safeZoom)),
-    verticalEmu: Math.round(pixelsToEmu((imgRect.top - paraRect.top) / safeZoom)),
+    horizontalEmu: Math.round(
+      pixelsToEmu((imgRect.left - pageRect.left) / safeZoom),
+    ),
+    verticalEmu: Math.round(
+      pixelsToEmu((imgRect.top - paraRect.top) / safeZoom),
+    ),
   };
 }
 
@@ -163,7 +177,8 @@ export function deriveLayoutChoice(
  * equivalent — to render alongside each option. Bindings own the icon
  * component itself.
  */
-export type ImageLayoutIconHint = "inline" | "squareLeft" | "squareRight" | "behind" | "inFront";
+export type ImageLayoutIconHint =
+  "inline" | "squareLeft" | "squareRight" | "behind" | "inFront";
 
 export type ImageLayoutOptionDef = {
   /** Choice value — what gets dispatched on click. */
@@ -237,7 +252,9 @@ export function isImageLayoutOptionEnabled(
  * Returns `undefined` for unknown values; callers should treat that as
  * "no-op".
  */
-export function toolbarValueToLayoutTarget(value: string): ImageLayoutTarget | undefined {
+export function toolbarValueToLayoutTarget(
+  value: string,
+): ImageLayoutTarget | undefined {
   switch (value) {
     case "inline":
       return "inline";
@@ -268,7 +285,10 @@ export function toolbarValueToLayoutTarget(value: string): ImageLayoutTarget | u
  * Build the painter's `block.id → { block, measure }` lookup from the parallel
  * blocks/measures arrays. Shared by both adapters' paint step.
  */
-export function buildBlockLookup(blocks: FlowBlock[], measures: Measure[]): BlockLookup {
+export function buildBlockLookup(
+  blocks: FlowBlock[],
+  measures: Measure[],
+): BlockLookup {
   const lookup: BlockLookup = new Map();
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];

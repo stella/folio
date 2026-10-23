@@ -11,8 +11,11 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseSdtProperties } from "./sdtProperties";
 import { serializeSdtProperties } from "./serializer/sdtPropertiesSerializer";
@@ -50,7 +53,8 @@ const AUTHORED = {
   tag: '<w:tag w:val="client"/>',
   id: '<w:id w:val="1734"/>',
   lock: '<w:lock w:val="sdtContentLocked"/>',
-  placeholder: '<w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder>',
+  placeholder:
+    '<w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder>',
   temporary: "<w:temporary/>",
   showingPlcHdr: "<w:showingPlcHdr/>",
   // The three attributes of `CT_DataBinding`. `w:prefixMappings` carries
@@ -102,12 +106,16 @@ const SEQUENCE = CONTAINER_CHILDREN["content-control-properties"];
 /** A property set: any subset of the declared children, in schema order. */
 const propertySet = fc
   .record({
-    subset: fc.subarray(SEQUENCE.filter((name) => !KIND_CHILDREN.some((kind) => kind === name))),
+    subset: fc.subarray(
+      SEQUENCE.filter((name) => !KIND_CHILDREN.some((kind) => kind === name)),
+    ),
     kind: fc.option(fc.constantFrom(...KIND_CHILDREN), { nil: undefined }),
   })
   .map(({ subset, kind }) =>
     [...subset, ...(kind === undefined ? [] : [kind])]
-      .toSorted((left, right) => SEQUENCE.indexOf(left) - SEQUENCE.indexOf(right))
+      .toSorted(
+        (left, right) => SEQUENCE.indexOf(left) - SEQUENCE.indexOf(right),
+      )
       .map((name) => AUTHORED[name])
       .join(""),
   );
@@ -127,9 +135,11 @@ describe("w:sdtPr survives a rebuild", () => {
   test("parse(save(parse(x))) = parse(x)", () => {
     fc.assert(
       fc.property(propertySet, (body) => {
-        expect(parse(roundTrip(body).slice("<w:sdtPr>".length, -"</w:sdtPr>".length))).toEqual(
-          parse(body),
-        );
+        expect(
+          parse(
+            roundTrip(body).slice("<w:sdtPr>".length, -"</w:sdtPr>".length),
+          ),
+        ).toEqual(parse(body));
       }),
       propertyConfig({ numRuns: 300 }),
     );
@@ -168,7 +178,9 @@ describe("w:sdtPr survives a rebuild", () => {
   test("showingPlcHdr is tri-state: absent, on, off", () => {
     expect(parse("").showingPlaceholder).toBeUndefined();
     expect(parse("<w:showingPlcHdr/>").showingPlaceholder).toBe(true);
-    expect(parse('<w:showingPlcHdr w:val="0"/>').showingPlaceholder).toBe(false);
+    expect(parse('<w:showingPlcHdr w:val="0"/>').showingPlaceholder).toBe(
+      false,
+    );
     expect(roundTrip('<w:showingPlcHdr w:val="0"/>')).toBe(
       '<w:sdtPr><w:showingPlcHdr w:val="0"/></w:sdtPr>',
     );

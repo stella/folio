@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+
 import type { BlockView } from "./readers.ts";
 
 const HTML_CELL_INLINE_TAGS = new Set([
@@ -24,7 +25,8 @@ const htmlCellText = (nodes: readonly unknown[]): string => {
     for (const [tag, children] of Object.entries(node)) {
       if (tag === ":@") continue;
       if (tag === "#text") {
-        if (typeof children !== "string") throw new Error("Malformed HTML table text");
+        if (typeof children !== "string")
+          throw new Error("Malformed HTML table text");
         rendered.push(children);
         continue;
       }
@@ -36,7 +38,8 @@ const htmlCellText = (nodes: readonly unknown[]): string => {
       if (!HTML_CELL_INLINE_TAGS.has(tag)) {
         throw new Error(`Unsupported HTML table cell tag: ${tag}`);
       }
-      if (!Array.isArray(children)) throw new Error(`Malformed HTML table ${tag}`);
+      if (!Array.isArray(children))
+        throw new Error(`Malformed HTML table ${tag}`);
       rendered.push(htmlCellText(children));
     }
   }
@@ -66,14 +69,21 @@ export const htmlTableViews = (html: string): BlockView[] => {
           }
           continue;
         }
-        if (tag === "table" || tag === "thead" || tag === "tbody" || tag === "tr") {
-          if (!Array.isArray(children)) throw new Error(`Malformed HTML table ${tag}`);
+        if (
+          tag === "table" ||
+          tag === "thead" ||
+          tag === "tbody" ||
+          tag === "tr"
+        ) {
+          if (!Array.isArray(children))
+            throw new Error(`Malformed HTML table ${tag}`);
           if (tag === "table") sawTable = true;
           walk(children);
           continue;
         }
         if (tag === "th" || tag === "td") {
-          if (!Array.isArray(children)) throw new Error(`Malformed HTML table ${tag}`);
+          if (!Array.isArray(children))
+            throw new Error(`Malformed HTML table ${tag}`);
           const text = htmlCellText(children).trim();
           if (text.length > 0) views.push({ text, kind: "paragraph" });
           continue;

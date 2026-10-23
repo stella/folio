@@ -16,45 +16,50 @@ type TextBoxAnchorOptions = {
 /** The node name, for callers asking whether a paragraph holds any content. */
 export const TEXT_BOX_ANCHOR_NODE_NAME = "textBoxAnchor";
 
-export const TextBoxAnchorExtension = createNodeExtension<TextBoxAnchorOptions>({
-  name: TEXT_BOX_ANCHOR_NODE_NAME,
-  schemaNodeName: TEXT_BOX_ANCHOR_NODE_NAME,
-  nodeSpec: (options) => ({
-    inline: true,
-    group: "inline",
-    marks: "_",
-    atom: true,
-    selectable: false,
-    attrs: {
-      anchorId: {},
-    },
-    parseDOM: [
-      {
-        tag: "span[data-docx-textbox-anchor]",
-        getAttrs(dom): { anchorId: string } | false {
-          if (!(dom instanceof HTMLElement)) {
-            return false;
-          }
-          const anchorId = dom.dataset["docxTextboxAnchor"];
-          return anchorId ? { anchorId } : false;
-        },
+export const TextBoxAnchorExtension = createNodeExtension<TextBoxAnchorOptions>(
+  {
+    name: TEXT_BOX_ANCHOR_NODE_NAME,
+    schemaNodeName: TEXT_BOX_ANCHOR_NODE_NAME,
+    nodeSpec: (options) => ({
+      inline: true,
+      group: "inline",
+      marks: "_",
+      atom: true,
+      selectable: false,
+      attrs: {
+        anchorId: {},
       },
-    ],
-    toDOM(node) {
-      const { anchorId } = expectTextBoxAnchorAttrs(node);
-      return [
-        "span",
+      parseDOM: [
         {
-          "data-docx-textbox-anchor": anchorId,
-          "aria-hidden": "true",
-          contenteditable: "false",
-          style:
-            "display: inline-block; width: 0; height: 0; overflow: hidden; pointer-events: none;",
-          ...(options.getInternalClipboardToken
-            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
-            : {}),
+          tag: "span[data-docx-textbox-anchor]",
+          getAttrs(dom): { anchorId: string } | false {
+            if (!(dom instanceof HTMLElement)) {
+              return false;
+            }
+            const anchorId = dom.dataset["docxTextboxAnchor"];
+            return anchorId ? { anchorId } : false;
+          },
         },
-      ];
-    },
-  }),
-});
+      ],
+      toDOM(node) {
+        const { anchorId } = expectTextBoxAnchorAttrs(node);
+        return [
+          "span",
+          {
+            "data-docx-textbox-anchor": anchorId,
+            "aria-hidden": "true",
+            contenteditable: "false",
+            style:
+              "display: inline-block; width: 0; height: 0; overflow: hidden; pointer-events: none;",
+            ...(options.getInternalClipboardToken
+              ? {
+                  "data-docx-internal-clipboard":
+                    options.getInternalClipboardToken(),
+                }
+              : {}),
+          },
+        ];
+      },
+    }),
+  },
+);

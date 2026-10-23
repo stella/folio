@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ParagraphBlock } from "../types";
-import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
-import { DEFAULT_TAB_STOP_TWIPS, getListMarkerInlineWidth } from "./listMarkerWidth";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
+import {
+  DEFAULT_TAB_STOP_TWIPS,
+  getListMarkerInlineWidth,
+} from "./listMarkerWidth";
 import { measureParagraph } from "./measureParagraph";
 
 const DEFAULT_TAB_STOP_PX = (DEFAULT_TAB_STOP_TWIPS / 1440) * 96;
@@ -15,7 +21,14 @@ describe("measureParagraph reserves the marker's tab-stop footprint", () => {
       const block: ParagraphBlock = {
         kind: "paragraph",
         id: "p",
-        runs: [{ kind: "text", text: "aaaa aaaa", fontFamily: "Aptos", fontSize: 10.5 }],
+        runs: [
+          {
+            kind: "text",
+            text: "aaaa aaaa",
+            fontFamily: "Aptos",
+            fontSize: 10.5,
+          },
+        ],
         attrs: {
           defaultFontSize: 10.5,
           defaultFontFamily: "Aptos",
@@ -29,8 +42,14 @@ describe("measureParagraph reserves the marker's tab-stop footprint", () => {
       const measure = measureParagraph(block, 60);
 
       expect(measure.lines).toHaveLength(2);
-      expect(measure.lines.at(0)?.lineHeight).toBeCloseTo(10.5 * (96 / 72) * 1.2207 * 1.15, 3);
-      expect(measure.lines.at(1)?.lineHeight).toBeCloseTo(11 * (96 / 72) * 1.2207 * 1.15, 3);
+      expect(measure.lines.at(0)?.lineHeight).toBeCloseTo(
+        10.5 * (96 / 72) * 1.2207 * 1.15,
+        3,
+      );
+      expect(measure.lines.at(1)?.lineHeight).toBeCloseTo(
+        11 * (96 / 72) * 1.2207 * 1.15,
+        3,
+      );
     }, fakeMeasure);
   });
 

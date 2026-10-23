@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { XMLValidator } from "fast-xml-parser";
+
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 import { getChildElements, parseXmlDocument } from "./xmlParser";
 
@@ -10,13 +11,19 @@ const paragraph = (id: number, text = `Paragraph ${id}`, prefix = "w") =>
 const ids = (xml: string) => {
   const root = parseXmlDocument(xml);
   const body = getChildElements(root).at(0);
-  return getChildElements(body).map((element) => element.attributes?.["id:paraId"]);
+  return getChildElements(body).map(
+    (element) => element.attributes?.["id:paraId"],
+  );
 };
 
 test("all deletion subsets and insertion gaps retain surviving source bytes and ordering", () => {
-  const original = wrap([1, 2, 3, 4].map((id) => paragraph(id)).join("\n<!-- untouched gap -->\n"));
+  const original = wrap(
+    [1, 2, 3, 4].map((id) => paragraph(id)).join("\n<!-- untouched gap -->\n"),
+  );
   for (let mask = 0; mask < 16; mask++) {
-    const survivors = [1, 2, 3, 4].filter((id) => (mask & (1 << (id - 1))) !== 0);
+    const survivors = [1, 2, 3, 4].filter(
+      (id) => (mask & (1 << (id - 1))) !== 0,
+    );
     for (let gap = 0; gap <= survivors.length; gap++) {
       const desired = survivors.toSpliced(gap, 0, 5, 6, 7);
       const result = buildStructuralDocumentPatch({
@@ -27,7 +34,9 @@ test("all deletion subsets and insertion gaps retain surviving source bytes and 
       expect(result).not.toBeNull();
       if (result === null) continue;
       expect(XMLValidator.validate(result)).toBe(true);
-      expect(ids(result)).toEqual(desired.map((id) => id.toString(16).padStart(8, "0")));
+      expect(ids(result)).toEqual(
+        desired.map((id) => id.toString(16).padStart(8, "0")),
+      );
       for (const id of survivors) expect(result).toContain(paragraph(id));
       expect(result.match(/<!-- untouched gap -->/gu)?.length).toBe(3);
     }
@@ -41,7 +50,9 @@ test("resolves aliased source elements and quoted delimiters without touching so
   );
   const result = buildStructuralDocumentPatch({
     originalXml: original,
-    serializedXml: wrap(paragraph(1, "edited &gt; one") + paragraph(3) + paragraph(2)),
+    serializedXml: wrap(
+      paragraph(1, "edited &gt; one") + paragraph(3) + paragraph(2),
+    ),
     changedIds: new Set(["00000001"]),
   });
   expect(result).toContain(paragraph(2, "two", "doc"));
@@ -80,9 +91,13 @@ test("retains identical tables as barriers but refuses crossing or editing them"
       serializedXml: wrap(body),
       changedIds: new Set(),
     });
-  expect(patch(paragraph(1) + paragraph(3) + table + paragraph(2))).toContain(table);
+  expect(patch(paragraph(1) + paragraph(3) + table + paragraph(2))).toContain(
+    table,
+  );
   expect(patch(paragraph(2) + table + paragraph(1))).toBeNull();
-  expect(patch(paragraph(1) + table.replace("Paragraph 9", "edited") + paragraph(2))).toBeNull();
+  expect(
+    patch(paragraph(1) + table.replace("Paragraph 9", "edited") + paragraph(2)),
+  ).toBeNull();
   expect(patch(paragraph(1) + table + paragraph(9))).toBeNull();
 });
 
@@ -94,7 +109,9 @@ test("refuses range markers, relationship payloads, section endpoints and Strict
     "drawing",
     "footnoteReference",
   ]) {
-    const original = wrap(paragraph(1).replace("</w:p>", `<w:${element}/></w:p>`));
+    const original = wrap(
+      paragraph(1).replace("</w:p>", `<w:${element}/></w:p>`),
+    );
     expect(
       buildStructuralDocumentPatch({
         originalXml: original,
@@ -146,7 +163,9 @@ test("structural splices preserve valid locally bound replay paragraphs at every
   const namespace = "http://schemas.microsoft.com/office/word/2010/wordml";
   const mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
   const word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-  const original = wrap([1, 2, 3].map((id) => paragraph(id)).join("<!-- gap -->"));
+  const original = wrap(
+    [1, 2, 3].map((id) => paragraph(id)).join("<!-- gap -->"),
+  );
   for (const alias of ["mc", "compat"]) {
     for (let gap = 0; gap <= 3; gap++) {
       const desired = [1, 2, 3].toSpliced(gap, 0, 4);
@@ -165,7 +184,9 @@ test("structural splices preserve valid locally bound replay paragraphs at every
       expect(result).not.toBeNull();
       if (result === null) continue;
       expect(XMLValidator.validate(result)).toBe(true);
-      expect(ids(result)).toEqual(desired.map((id) => id.toString(16).padStart(8, "0")));
+      expect(ids(result)).toEqual(
+        desired.map((id) => id.toString(16).padStart(8, "0")),
+      );
       expect(result).toContain(paragraph(1));
       expect(result).toContain(paragraph(3));
       expect(result).toContain(`${alias}:Ignorable="id"`);

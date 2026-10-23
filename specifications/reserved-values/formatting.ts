@@ -236,7 +236,9 @@ export type ExhaustiveParagraphFormattingReserved = ExhaustiveFields<
 >;
 
 type ParagraphNumbering = NonNullable<ParagraphFormatting["numPr"]>;
-type StyleParagraphNumbering = NonNullable<ParagraphFormatting["numPrFromStyle"]>;
+type StyleParagraphNumbering = NonNullable<
+  ParagraphFormatting["numPrFromStyle"]
+>;
 
 /**
  * `w:numPr` on a paragraph and on its style state the same thing, so one
@@ -331,7 +333,10 @@ export const TAB_STOP_RESERVED = {
   preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof TabStop, ReservedValueDisposition>;
 
-export type ExhaustiveTabStopReserved = ExhaustiveFields<TabStop, keyof typeof TAB_STOP_RESERVED>;
+export type ExhaustiveTabStopReserved = ExhaustiveFields<
+  TabStop,
+  keyof typeof TAB_STOP_RESERVED
+>;
 
 // ============================================================================
 // TABLE PROPERTIES (w:tblPr, w:trPr, w:tcPr)

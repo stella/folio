@@ -1,12 +1,22 @@
-import { base64ToBytes, encodeUtf8, decodeText } from "../utils/textEncoding";
+import { panic, Result, TaggedError } from "better-result";
+import JSZip from "jszip";
+
+import {
+  assertValidOoxmlNumericIds,
+  escapeXmlAttribute,
+  escapeXmlText,
+  validateDocxPackage,
+} from "@stll/docx-core";
+import { mintRelationshipId } from "@stll/docx-core/model";
 import { writeZipPart } from "@stll/docx-core/zip";
-import { getXmlSourceRange, parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
-import type { SaveDiagnosticOptions } from "./saveDiagnostics";
-import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
-import { registerContentTypeParts } from "./contentTypeRegistry";
-import { removeResolvedHeaderFooterParts } from "./removeHeaderFooterParts";
-import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
+
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
+import {
+  consumeTrackedSectionEndpointRemoval,
+  type TrackedSectionEndpointRemoval,
+} from "../internal/sectionEndpointResolution";
+import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 /**
  * DOCX Repacker - Repack modified document into valid DOCX
  *
@@ -37,24 +47,6 @@ import type { RemovedSectionReference } from "../internal/sectionEndpointResolut
  * - word/_rels/document.xml.rels - Document relationships (preserved)
  * - docProps/* - Document properties (preserved)
  */
-
-import {
-  assertValidOoxmlNumericIds,
-  escapeXmlAttribute,
-  escapeXmlText,
-  validateDocxPackage,
-} from "@stll/docx-core";
-import { mintRelationshipId } from "@stll/docx-core/model";
-import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
-import { canonicalJson } from "../utils/canonicalJson";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { panic, Result, TaggedError } from "better-result";
-import JSZip from "jszip";
-
-import {
-  consumeTrackedSectionEndpointRemoval,
-  type TrackedSectionEndpointRemoval,
-} from "../internal/sectionEndpointResolution";
 import type {
   BlockContent,
   DrawingContent,
@@ -67,28 +59,68 @@ import type {
   Run,
   SectionProperties,
 } from "../types/content";
-import type { Document, Relationship, Style, StyleDefinitions, Watermark } from "../types/document";
+import type {
+  Document,
+  Relationship,
+  Style,
+  StyleDefinitions,
+  Watermark,
+} from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
+import { base64ToBytes, decodeText, encodeUtf8 } from "../utils/textEncoding";
+import { isAllowedExternalWatermarkImageUrl } from "../watermark";
+import {
+  appVersionInSchemaForm,
+  normalizeAppVersionInExtendedProperties,
+} from "./appVersionNormalization";
+import {
+  withoutExhaustedComments,
+  withoutOrphanCommentRanges,
+} from "./commentRangeIntegrity";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
+import { registerContentTypeParts } from "./contentTypeRegistry";
+import {
+  type DocumentSectionFacts,
+  type HeaderFooterReference,
+  readDocumentSectionFacts,
+} from "./documentSectionFacts";
+import { normalizeDrawingIds } from "./drawingIdNormalization";
+import { rebindDrawingImageRelationship } from "./drawingRelationships";
+import { parseEndnotes, parseFootnotes } from "./footnoteParser";
+import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
+import { assertValidFolioDocumentModel } from "./modelValidation";
+import { isNewDataUrlDrawing } from "./newImage";
+import {
+  missingNoteReferenceStyles,
+  noteReferenceNeeds,
+} from "./noteReferenceStyles";
+import { parseNumbering } from "./numberingParser";
+import { paragraphNumberingReferenceId } from "./numberingReference";
+import {
+  isUnsafePackagePath,
+  reconcilePackageReferences,
+  removeUnsafeEntries,
+} from "./packageParts";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  cloneParagraphWithPropertySource,
+  copyDocumentParagraphPropertySourceContract,
+} from "./paragraphPropertySource";
 import {
   BLOCK_TREE_DESCENT,
   visitBlockTreeRecords,
   visitInlineContentSlots,
   visitParagraphRuns,
 } from "./paragraphTraversal";
-import { withoutExhaustedComments, withoutOrphanCommentRanges } from "./commentRangeIntegrity";
+import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
 import {
-  type DocumentSectionFacts,
-  type HeaderFooterReference,
-  readDocumentSectionFacts,
-} from "./documentSectionFacts";
-import { parseEndnotes, parseFootnotes } from "./footnoteParser";
-import { assertValidFolioDocumentModel } from "./modelValidation";
-import { isNewDataUrlDrawing } from "./newImage";
-import { normalizeDrawingIds } from "./drawingIdNormalization";
-import { rebindDrawingImageRelationship } from "./drawingRelationships";
-import { parseNumbering } from "./numberingParser";
-import { paragraphNumberingReferenceId } from "./numberingReference";
-import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
+  parseRelationships,
+  RELATIONSHIP_TYPES,
+  resolveRelativePath,
+} from "./relsParser";
+import { removeResolvedHeaderFooterParts } from "./removeHeaderFooterParts";
+import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
+import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 import {
   buildPatchedNotePartXml,
   collectChangedNoteParaIds,
@@ -98,17 +130,18 @@ import {
   spliceXml,
 } from "./selectiveXmlPatch";
 import {
-  type CommentPartPlan,
-  planCommentParts,
-  hasOwnedCommentsPart,
   canReplayCommentsPart,
+  type CommentPartPlan,
+  hasOwnedCommentsPart,
+  planCommentParts,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
 import {
-  serializeDocument,
   type DocumentBodyAuthorityOptions,
+  serializeDocument,
 } from "./serializer/documentSerializer";
+import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 import {
   serializeEndnotes,
@@ -117,26 +150,27 @@ import {
   serializeNewFootnotesPart,
 } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
-import { readRootNamespaceBindings, serializePartElement } from "./serializer/partNamespaces";
-import { serializeFontTableXml } from "./serializer/fontTableSerializer";
-import { serializeSettingsXml } from "./serializer/settingsSerializer";
-import { parseSettings } from "./settingsParser";
-import { updateEvenAndOddHeaders } from "./settingsHeaderFooterUpdate";
-import { missingNoteReferenceStyles, noteReferenceNeeds } from "./noteReferenceStyles";
-import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
-import { hasCanonicalWordprocessingPrefixes } from "./wordprocessingPrefixes";
-import { serializeThemeXml } from "./serializer/themeSerializer";
 import {
-  isUnsafePackagePath,
-  reconcilePackageReferences,
-  removeUnsafeEntries,
-} from "./packageParts";
+  readRootNamespaceBindings,
+  serializePartElement,
+} from "./serializer/partNamespaces";
+import { serializeSettingsXml } from "./serializer/settingsSerializer";
+import {
+  serializeStyle,
+  serializeStylesXml,
+} from "./serializer/stylesSerializer";
+import { serializeThemeXml } from "./serializer/themeSerializer";
+import { updateEvenAndOddHeaders } from "./settingsHeaderFooterUpdate";
+import { parseSettings } from "./settingsParser";
+import {
+  getXmlSourceRange,
+  parseStreamingXmlWithSourceRanges,
+} from "./streamingXmlParser";
 import type { RawDocxContent } from "./unzip";
+import { captureVerbatimXml } from "./verbatimCapture";
+import { hasCanonicalWordprocessingPrefixes } from "./wordprocessingPrefixes";
 import {
   findAttributeByNamespaceUri,
-  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
-  OOXML_NAMESPACE_SCOPE,
-  type XmlElement,
   findChild,
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,
@@ -146,24 +180,17 @@ import {
   getLocalName,
   getNamespaceUri,
   matchesName,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+  OOXML_NAMESPACE_SCOPE,
   parseXml,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
 } from "./xmlParser";
-import {
-  appVersionInSchemaForm,
-  normalizeAppVersionInExtendedProperties,
-} from "./appVersionNormalization";
-import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
-import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
-import { isAllowedExternalWatermarkImageUrl } from "../watermark";
-import { captureVerbatimXml } from "./verbatimCapture";
-import {
-  cloneDocumentWithParagraphPropertySources,
-  copyDocumentParagraphPropertySourceContract,
-} from "./paragraphPropertySource";
 
-export class DocxPackageFidelityError extends TaggedError("DocxPackageFidelityError")<{
+export class DocxPackageFidelityError extends TaggedError(
+  "DocxPackageFidelityError",
+)<{
   message: string;
 }> {
   constructor(message: string) {
@@ -221,19 +248,34 @@ export function findMaxRId(relsXml: string): number {
   return maxId;
 }
 
-const hasParsedHeaderFooterPart = (doc: Document, ref: HeaderFooterReference): boolean => {
-  const map = ref.element === "headerReference" ? doc.package.headers : doc.package.footers;
+const hasParsedHeaderFooterPart = (
+  doc: Document,
+  ref: HeaderFooterReference,
+): boolean => {
+  const map =
+    ref.element === "headerReference"
+      ? doc.package.headers
+      : doc.package.footers;
   return map?.has(ref.rId) ?? false;
 };
 
-const headerFooterReferenceKey = ({ element, type, rId }: HeaderFooterReference): string =>
-  `${element}:${type}:${rId}`;
+const headerFooterReferenceKey = ({
+  element,
+  type,
+  rId,
+}: HeaderFooterReference): string => `${element}:${type}:${rId}`;
 
-const incrementReferenceCount = (counts: Map<string, number>, key: string): void => {
+const incrementReferenceCount = (
+  counts: Map<string, number>,
+  key: string,
+): void => {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 };
 
-const consumeReferenceCount = (counts: Map<string, number>, key: string): boolean => {
+const consumeReferenceCount = (
+  counts: Map<string, number>,
+  key: string,
+): boolean => {
   const count = counts.get(key) ?? 0;
   if (count === 0) {
     return false;
@@ -290,13 +332,17 @@ export const assertSectionCarriersMatchModel = ({
   }
 
   const finalSectionProperties = doc.package.document.finalSectionProperties;
-  if (finalSectionProperties !== undefined && firstHolder.has(finalSectionProperties)) {
+  if (
+    finalSectionProperties !== undefined &&
+    firstHolder.has(finalSectionProperties)
+  ) {
     throw new DocxPackageFidelityError(
       "Full DOCX repack would write the final section record from a paragraph carrier twice.",
     );
   }
 
-  const modelSectionCount = carriers.length + (finalSectionProperties === undefined ? 0 : 1);
+  const modelSectionCount =
+    carriers.length + (finalSectionProperties === undefined ? 0 : 1);
   if (serializedSectionCount !== modelSectionCount) {
     throw new DocxPackageFidelityError(
       `Full DOCX repack would write ${serializedSectionCount} sections where the editor holds ${modelSectionCount}.`,
@@ -319,7 +365,9 @@ function assertDocumentPackageFidelity({
   sectionEndpointRemoval,
   sectionReferenceRemovals = [],
 }: AssertDocumentPackageFidelityOptions): void {
-  const serializedDocumentFacts = readDocumentSectionFacts(serializedDocumentXml);
+  const serializedDocumentFacts = readDocumentSectionFacts(
+    serializedDocumentXml,
+  );
   const originalSectionCount = originalDocumentFacts.sectionCount;
   const serializedSectionCount = serializedDocumentFacts.sectionCount;
   const trackedRemovedSectionCount = sectionEndpointRemoval
@@ -328,9 +376,13 @@ function assertDocumentPackageFidelity({
     : 0;
   const exactTrackedSectionRemoval =
     trackedRemovedSectionCount > 0 &&
-    originalSectionCount - trackedRemovedSectionCount === serializedSectionCount &&
+    originalSectionCount - trackedRemovedSectionCount ===
+      serializedSectionCount &&
     serializedSectionCount < originalSectionCount;
-  if (serializedSectionCount < originalSectionCount && !exactTrackedSectionRemoval) {
+  if (
+    serializedSectionCount < originalSectionCount &&
+    !exactTrackedSectionRemoval
+  ) {
     throw new DocxPackageFidelityError(
       "Full DOCX repack would drop section properties. Use selective patching instead.",
     );
@@ -339,20 +391,36 @@ function assertDocumentPackageFidelity({
 
   const serializedReferenceCounts = new Map<string, number>();
   for (const reference of serializedDocumentFacts.headerFooterReferences) {
-    incrementReferenceCount(serializedReferenceCounts, headerFooterReferenceKey(reference));
+    incrementReferenceCount(
+      serializedReferenceCounts,
+      headerFooterReferenceKey(reference),
+    );
   }
   const removedReferenceCounts = new Map<string, number>();
   if (exactTrackedSectionRemoval && sectionEndpointRemoval) {
-    for (const { part, type, relationshipId } of sectionEndpointRemoval.removedReferences) {
-      incrementReferenceCount(removedReferenceCounts, `${part}Reference:${type}:${relationshipId}`);
+    for (const {
+      part,
+      type,
+      relationshipId,
+    } of sectionEndpointRemoval.removedReferences) {
+      incrementReferenceCount(
+        removedReferenceCounts,
+        `${part}Reference:${type}:${relationshipId}`,
+      );
     }
   }
   const resolvedReferenceCounts = new Map<string, number>();
   for (const { part, type, relationshipId } of sectionReferenceRemovals) {
-    incrementReferenceCount(resolvedReferenceCounts, `${part}Reference:${type}:${relationshipId}`);
+    incrementReferenceCount(
+      resolvedReferenceCounts,
+      `${part}Reference:${type}:${relationshipId}`,
+    );
   }
   for (const [key, count] of resolvedReferenceCounts) {
-    removedReferenceCounts.set(key, Math.max(count, removedReferenceCounts.get(key) ?? 0));
+    removedReferenceCounts.set(
+      key,
+      Math.max(count, removedReferenceCounts.get(key) ?? 0),
+    );
   }
   const missingRefs: HeaderFooterReference[] = [];
   for (const reference of originalDocumentFacts.headerFooterReferences) {
@@ -385,13 +453,20 @@ async function serializeCommentsToZip(
   compressionLevel: number,
 ): Promise<void> {
   const comments = doc.package.document.comments ?? [];
-  const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
+  const sourceCommentsFile = findZipEntryCaseInsensitive(
+    zip,
+    "word/comments.xml",
+  );
   const sourceCommentsXml = sourceCommentsFile
     ? await sourceCommentsFile
         .async("uint8array")
         .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
     : undefined;
-  if (sourceCommentsXml !== undefined && canReplayCommentsPart(doc, sourceCommentsXml)) return;
+  if (
+    sourceCommentsXml !== undefined &&
+    canReplayCommentsPart(doc, sourceCommentsXml)
+  )
+    return;
   if (comments.length === 0) {
     // An empty source part is already a fixed point. Preserve it and its
     // packaging verbatim: adding a missing relationship or pruning an empty
@@ -402,7 +477,9 @@ async function serializeCommentsToZip(
     // prevent the old thread from reappearing.
     const ownsCommentsPart = hasOwnedCommentsPart(doc);
     if (
-      sourceCommentsXml === undefined ? !ownsCommentsPart : !hasCommentEntries(sourceCommentsXml)
+      sourceCommentsXml === undefined
+        ? !ownsCommentsPart
+        : !hasCommentEntries(sourceCommentsXml)
     ) {
       return;
     }
@@ -414,7 +491,9 @@ async function serializeCommentsToZip(
 
   const commentsXml = serializeComments(
     plan,
-    sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
+    sourceCommentsXml === undefined
+      ? undefined
+      : readRootNamespaceBindings(sourceCommentsXml),
   );
   writeZipPart({
     zip,
@@ -437,7 +516,9 @@ async function serializeCommentsToZip(
 const hasCommentEntries = (xml: string): boolean => {
   const root = parseXml(xml);
   const comments = findChild(root, "w", "comments") ?? root;
-  return getChildElements(comments).some((element) => matchesName(element, "w", "comment"));
+  return getChildElements(comments).some((element) =>
+    matchesName(element, "w", "comment"),
+  );
 };
 
 /**
@@ -455,7 +536,10 @@ async function syncCommentsExtendedPart(
   compressionLevel: number,
 ): Promise<void> {
   const xml = serializeCommentsExtended(plan);
-  const existing = findZipEntryCaseInsensitive(zip, COMMENTS_EXTENDED_PART_LOWER);
+  const existing = findZipEntryCaseInsensitive(
+    zip,
+    COMMENTS_EXTENDED_PART_LOWER,
+  );
 
   if (!xml) {
     // No thread/resolved state to record. Drop the part with its override and
@@ -530,7 +614,10 @@ async function transformPackagingFile(
   }
 }
 
-function findZipEntryCaseInsensitive(zip: JSZip, lowerPath: string): JSZip.JSZipObject | null {
+function findZipEntryCaseInsensitive(
+  zip: JSZip,
+  lowerPath: string,
+): JSZip.JSZipObject | null {
   const direct = zip.file(lowerPath);
   if (direct) {
     return direct;
@@ -581,12 +668,20 @@ function headerFooterRelsPath(target: string): string {
  * `word/headers/header2.xml` -> `../media/image1.png` (and `media/image1.png`
  * for a part at the `word/` root). The inverse of `resolveRelativePath`.
  */
-function relativeTargetForPart(partPath: string, absoluteTarget: string): string {
+function relativeTargetForPart(
+  partPath: string,
+  absoluteTarget: string,
+): string {
   const lastSlash = partPath.lastIndexOf("/");
-  const fromDir = lastSlash === -1 ? [] : partPath.slice(0, lastSlash).split("/");
+  const fromDir =
+    lastSlash === -1 ? [] : partPath.slice(0, lastSlash).split("/");
   const to = absoluteTarget.split("/");
   let shared = 0;
-  while (shared < fromDir.length && shared < to.length - 1 && fromDir[shared] === to[shared]) {
+  while (
+    shared < fromDir.length &&
+    shared < to.length - 1 &&
+    fromDir[shared] === to[shared]
+  ) {
     shared += 1;
   }
   return `${"../".repeat(fromDir.length - shared)}${to.slice(shared).join("/")}`;
@@ -609,7 +704,10 @@ function collectDocxParts(doc: Document, zip: JSZip): DocxPart[] {
   ];
 
   const rels = doc.package.relationships;
-  const addHeaderFooterParts = (map: Map<string, HeaderFooter> | undefined, type: string) => {
+  const addHeaderFooterParts = (
+    map: Map<string, HeaderFooter> | undefined,
+    type: string,
+  ) => {
     if (!map || !rels) {
       return;
     }
@@ -634,7 +732,9 @@ function collectDocxParts(doc: Document, zip: JSZip): DocxPart[] {
     if (!notes || notes.length === 0) {
       return;
     }
-    const partPath = findNotePartEntry(zip, conventionalLowerPath)?.name ?? conventionalLowerPath;
+    const partPath =
+      findNotePartEntry(zip, conventionalLowerPath)?.name ??
+      conventionalLowerPath;
     parts.push({
       relsPath: notePartRelsPath(partPath),
       blocks: notes.flatMap((note) => note.content),
@@ -649,7 +749,9 @@ function collectDocxParts(doc: Document, zip: JSZip): DocxPart[] {
 async function readRelsOrStub(zip: JSZip, relsPath: string): Promise<string> {
   const file = zip.file(relsPath);
   const xml = file
-    ? await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+    ? await file
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
     : EMPTY_RELS_XML;
   return xml.replace(
     /<Relationships(?<attrs>[^>]*)\/>/u,
@@ -779,7 +881,10 @@ function decodeDataUrl(dataUrl: string): {
   data: ArrayBuffer;
   extension: string;
 } {
-  const match = /^data:(?<mime>[^;,]+)(?<parameters>(?:;[^,]*)?),(?<data>[\s\S]*)$/u.exec(dataUrl);
+  const match =
+    /^data:(?<mime>[^;,]+)(?<parameters>(?:;[^,]*)?),(?<data>[\s\S]*)$/u.exec(
+      dataUrl,
+    );
   if (!match) {
     panic("Invalid data URL");
   }
@@ -788,7 +893,9 @@ function decodeDataUrl(dataUrl: string): {
   const payload = match.groups!["data"]!;
   const parameters = match.groups!["parameters"]!;
   let bytes: Uint8Array;
-  const isBase64 = parameters.split(";").some((parameter) => parameter.toLowerCase() === "base64");
+  const isBase64 = parameters
+    .split(";")
+    .some((parameter) => parameter.toLowerCase() === "base64");
   if (isBase64) {
     bytes = base64ToBytes(payload);
   } else {
@@ -869,7 +976,8 @@ async function processNewImages(
             xml: drawing.rawXml,
             previousId: image.rId ?? "",
             nextId: newRId,
-          }) ?? panic("A detached drawing lost its embedded image relationship");
+          }) ??
+          panic("A detached drawing lost its embedded image relationship");
       }
       image.rId = newRId;
     }
@@ -909,7 +1017,10 @@ const materializeEmbeddedMedia = async ({
   const extensions = new Set<string>();
   for (const media of document.package.media?.values() ?? []) {
     if (findZipEntryCaseInsensitive(zip, media.path.toLowerCase())) continue;
-    if (isUnsafePackagePath(media.path) || !media.path.startsWith("word/media/"))
+    if (
+      isUnsafePackagePath(media.path) ||
+      !media.path.startsWith("word/media/")
+    )
       panic("Detached media has an invalid package path");
     const extension = media.path.split(".").at(-1)?.toLowerCase();
     if (!extension || !/^[a-z0-9]+$/u.test(extension))
@@ -989,9 +1100,13 @@ export const publishCanonicalImageResources = async ({
       // Newly allocated root resources can be published into any story. Existing
       // secondary bindings retain their own identity when root ids happen to repeat.
       const allocatedMediaPath =
-        allocated?.targetMode === "External" || allocated?.type !== RELATIONSHIP_TYPES.image
+        allocated?.targetMode === "External" ||
+        allocated?.type !== RELATIONSHIP_TYPES.image
           ? undefined
-          : resolveRelativePath("word/_rels/document.xml.rels", allocated.target);
+          : resolveRelativePath(
+              "word/_rels/document.xml.rels",
+              allocated.target,
+            );
       const allocatedMedia =
         allocatedMediaPath === undefined
           ? undefined
@@ -999,7 +1114,8 @@ export const publishCanonicalImageResources = async ({
       const newlyAllocated =
         allocated?.type === RELATIONSHIP_TYPES.image &&
         (baseline.type !== "captured" ||
-          canonicalJson(allocated) !== canonicalJson(baseline.resourceRelationships?.get(id)));
+          canonicalJson(allocated) !==
+            canonicalJson(baseline.resourceRelationships?.get(id)));
       const identifiesAllocated =
         relsPath === "word/_rels/document.xml.rels" ||
         newlyAllocated ||
@@ -1010,16 +1126,29 @@ export const publishCanonicalImageResources = async ({
             : image.src === allocatedMedia?.dataUrl));
       const desired = identifiesAllocated ? allocated : source;
       if (desired?.type !== RELATIONSHIP_TYPES.image)
-        return refuse("unresolved", "A canonical inline picture has no owning image relationship.");
-      const desiredRelsPath = desired === allocated ? "word/_rels/document.xml.rels" : relsPath;
+        return refuse(
+          "unresolved",
+          "A canonical inline picture has no owning image relationship.",
+        );
+      const desiredRelsPath =
+        desired === allocated ? "word/_rels/document.xml.rels" : relsPath;
       const absolute =
         desired.targetMode === "External"
           ? undefined
           : resolveRelativePath(desiredRelsPath, desired.target);
-      if (desired.targetMode === "External" && !isAllowedExternalWatermarkImageUrl(desired.target))
-        return refuse("unsafeTarget", "A canonical inline picture has an unsafe external target.");
+      if (
+        desired.targetMode === "External" &&
+        !isAllowedExternalWatermarkImageUrl(desired.target)
+      )
+        return refuse(
+          "unsafeTarget",
+          "A canonical inline picture has an unsafe external target.",
+        );
       if (absolute !== undefined && isUnsafePackagePath(absolute))
-        return refuse("unsafeTarget", "A canonical inline picture has an unsafe media target.");
+        return refuse(
+          "unsafeTarget",
+          "A canonical inline picture has an unsafe media target.",
+        );
       if (source) {
         const sourceAbsolute =
           source.targetMode === "External"
@@ -1027,18 +1156,27 @@ export const publishCanonicalImageResources = async ({
             : resolveRelativePath(relsPath, source.target);
         if (
           source.type !== RELATIONSHIP_TYPES.image ||
-          (source.targetMode === "External") !== (desired.targetMode === "External") ||
-          (absolute === undefined ? source.target !== desired.target : sourceAbsolute !== absolute)
+          (source.targetMode === "External") !==
+            (desired.targetMode === "External") ||
+          (absolute === undefined
+            ? source.target !== desired.target
+            : sourceAbsolute !== absolute)
         )
           return refuse(
             "conflict",
             "A canonical inline picture relationship conflicts with its owning source binding.",
           );
       }
-      if (absolute !== undefined && !findZipEntryCaseInsensitive(zip, absolute.toLowerCase())) {
+      if (
+        absolute !== undefined &&
+        !findZipEntryCaseInsensitive(zip, absolute.toLowerCase())
+      ) {
         const media = document.package.media?.get(absolute);
         if (!media)
-          return refuse("missingMedia", "A canonical inline picture is missing its media bytes.");
+          return refuse(
+            "missingMedia",
+            "A canonical inline picture is missing its media bytes.",
+          );
         if (isUnsafePackagePath(media.path) || media.path !== absolute)
           return refuse(
             "unsafeTarget",
@@ -1055,9 +1193,16 @@ export const publishCanonicalImageResources = async ({
         });
         const extension = absolute.split(".").at(-1)?.toLowerCase();
         if (!extension || !/^[a-z0-9]+$/u.test(extension))
-          return refuse("unsafeTarget", "A canonical inline picture media extension is invalid.");
+          return refuse(
+            "unsafeTarget",
+            "A canonical inline picture media extension is invalid.",
+          );
         // oxlint-disable-next-line no-await-in-loop -- shared content types advance with each materialized picture
-        await registerImageExtensions(zip, new Set([extension]), compressionLevel);
+        await registerImageExtensions(
+          zip,
+          new Set([extension]),
+          compressionLevel,
+        );
       }
       if (source) continue;
       const root = parseXmlDocument(xml);
@@ -1072,7 +1217,9 @@ export const publishCanonicalImageResources = async ({
         ? "http://purl.oclc.org/ooxml/officeDocument/relationships/image"
         : RELATIONSHIP_TYPES.image;
       const target =
-        absolute === undefined ? desired.target : relativeTargetForPart(partPath, absolute);
+        absolute === undefined
+          ? desired.target
+          : relativeTargetForPart(partPath, absolute);
       xml = appendCanonicalRelationship({
         xml,
         partPath: relsPath,
@@ -1082,7 +1229,9 @@ export const publishCanonicalImageResources = async ({
         id,
         type: RELATIONSHIP_TYPES.image,
         target,
-        ...(desired.targetMode === "External" ? { targetMode: "External" } : {}),
+        ...(desired.targetMode === "External"
+          ? { targetMode: "External" }
+          : {}),
       });
       changed = true;
     }
@@ -1105,9 +1254,15 @@ export const publishCanonicalImageResources = async ({
 
 type ExternalHyperlinkResource =
   | { type: "text"; hyperlink: Hyperlink }
-  | { type: "drawing"; image: Image; drawing: Extract<DrawingContent, { rawXmlMode?: never }> };
+  | {
+      type: "drawing";
+      image: Image;
+      drawing: Extract<DrawingContent, { rawXmlMode?: never }>;
+    };
 
-const collectExternalHyperlinkResources = (blocks: BlockContent[]): ExternalHyperlinkResource[] => {
+const collectExternalHyperlinkResources = (
+  blocks: BlockContent[],
+): ExternalHyperlinkResource[] => {
   const resources: ExternalHyperlinkResource[] = [];
   visitBlockTreeRecords(blocks, (record) => {
     if (record.type !== "paragraph") return BLOCK_TREE_DESCENT.descend;
@@ -1146,20 +1301,29 @@ const externalHyperlinkTarget = (resource: ExternalHyperlinkResource) => {
 };
 
 /** Newly authored text links; the census shares the complete owning-part traversal. */
-export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
+export function collectHyperlinksWithoutRId(
+  blocks: BlockContent[],
+): Hyperlink[] {
   return collectExternalHyperlinkResources(blocks).flatMap((resource) =>
-    resource.type === "text" && !resource.hyperlink.rId ? [resource.hyperlink] : [],
+    resource.type === "text" && !resource.hyperlink.rId
+      ? [resource.hyperlink]
+      : [],
   );
 }
 
 /** The selective save boundary must use the same resource census as full repack. */
-export const hasUnmaterializedInlineResources = (blocks: BlockContent[]): boolean =>
+export const hasUnmaterializedInlineResources = (
+  blocks: BlockContent[],
+): boolean =>
   collectNewImages(blocks).length > 0 ||
   collectExternalHyperlinkResources(blocks).some(
     (resource) => externalHyperlinkTarget(resource).id === undefined,
   );
 
-const matchesExternalHyperlink = (relation: Relationship | undefined, href: string): boolean =>
+const matchesExternalHyperlink = (
+  relation: Relationship | undefined,
+  href: string,
+): boolean =>
   relation?.type === RELATIONSHIP_TYPES.hyperlink &&
   relation.targetMode === "External" &&
   relation.target === href;
@@ -1173,17 +1337,27 @@ export const hasUnmaterializedHyperlinkBindings = async (
     const resources = collectExternalHyperlinkResources(blocks);
     if (resources.length === 0) continue;
     // oxlint-disable-next-line no-await-in-loop -- each owning part has a distinct relationship table
-    const relationships = parseRelationships(await readRelsOrStub(zip, relsPath));
+    const relationships = parseRelationships(
+      await readRelsOrStub(zip, relsPath),
+    );
     for (const resource of resources) {
       const { id, href } = externalHyperlinkTarget(resource);
-      if (href && (id === undefined || !matchesExternalHyperlink(relationships.get(id), href)))
+      if (
+        href &&
+        (id === undefined ||
+          !matchesExternalHyperlink(relationships.get(id), href))
+      )
         return true;
     }
   }
   return false;
 };
 
-type RebindCapturedDrawingLinkOptions = { xml: string; previousId: string; nextId: string };
+type RebindCapturedDrawingLinkOptions = {
+  xml: string;
+  previousId: string;
+  nextId: string;
+};
 const rebindCapturedDrawingLink = ({
   xml,
   previousId,
@@ -1192,7 +1366,9 @@ const rebindCapturedDrawingLink = ({
   const parsed = Result.try({
     try: () => parseXml(xml, OOXML_NAMESPACE_SCOPE),
     catch: () =>
-      new DocxPackageFidelityError("Cannot rebind invalid captured drawing hyperlink XML."),
+      new DocxPackageFidelityError(
+        "Cannot rebind invalid captured drawing hyperlink XML.",
+      ),
   });
   if (parsed.isErr()) throw parsed.error;
   let rebound = 0;
@@ -1238,9 +1414,12 @@ async function processNewHyperlinks(
         "Cannot materialize hyperlinks into an invalid relationship part.",
       );
     }
-    const strictRelationshipNamespace = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+    const strictRelationshipNamespace =
+      "http://purl.oclc.org/ooxml/officeDocument/relationships";
     const relationshipType = getChildElements(root).some((child) =>
-      getAttribute(child, null, "Type")?.startsWith(`${strictRelationshipNamespace}/`),
+      getAttribute(child, null, "Type")?.startsWith(
+        `${strictRelationshipNamespace}/`,
+      ),
     )
       ? `${strictRelationshipNamespace}/hyperlink`
       : RELATIONSHIP_TYPES.hyperlink;
@@ -1258,7 +1437,11 @@ async function processNewHyperlinks(
     const relEntries: XmlElement[] = [];
     for (const resource of resources) {
       const { id, href } = externalHyperlinkTarget(resource);
-      if (!href || (id !== undefined && matchesExternalHyperlink(relationships.get(id), href)))
+      if (
+        !href ||
+        (id !== undefined &&
+          matchesExternalHyperlink(relationships.get(id), href))
+      )
         continue;
       let nextId = byTarget.get(href);
       if (nextId === undefined) {
@@ -1279,7 +1462,12 @@ async function processNewHyperlinks(
         relEntries.push({
           type: "element",
           name: `${root.name.slice(0, -"Relationships".length)}Relationship`,
-          attributes: { Id: nextId, Type: relationshipType, Target: href, TargetMode: "External" },
+          attributes: {
+            Id: nextId,
+            Type: relationshipType,
+            Target: href,
+            TargetMode: "External",
+          },
         });
       }
       switch (resource.type) {
@@ -1290,7 +1478,11 @@ async function processNewHyperlinks(
           const source = resource.image.hlinkClickSource;
           if (source !== undefined && source.rId === id && id !== undefined) {
             resource.image.hlinkClickSource = {
-              xml: rebindCapturedDrawingLink({ xml: source.xml, previousId: id, nextId }),
+              xml: rebindCapturedDrawingLink({
+                xml: source.xml,
+                previousId: id,
+                nextId,
+              }),
               rId: nextId,
             };
           }
@@ -1301,7 +1493,9 @@ async function processNewHyperlinks(
         }
         default: {
           const unreachable: never = resource;
-          panic(`Unsupported hyperlink resource ${JSON.stringify(unreachable)}`);
+          panic(
+            `Unsupported hyperlink resource ${JSON.stringify(unreachable)}`,
+          );
         }
       }
     }
@@ -1351,7 +1545,10 @@ export type RepackOptions = SaveDiagnosticOptions &
  * from parts other than the one it lives in. So the passes run at the exits,
  * over every `word/*.xml` part including the ones a save left untouched.
  */
-const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): Promise<void> => {
+const normalizePackageIdsInZip = async (
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> => {
   const xmlParts = new Map<string, string>();
   for (const [path, file] of Object.entries(zip.files)) {
     if (!file.dir && path.startsWith("word/") && path.endsWith(".xml")) {
@@ -1363,7 +1560,9 @@ const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): P
       xmlParts.set(path, xml);
     }
   }
-  const normalizedParts = normalizeParaIdRangeInXmlParts(normalizeRevisionIdsInXmlParts(xmlParts));
+  const normalizedParts = normalizeParaIdRangeInXmlParts(
+    normalizeRevisionIdsInXmlParts(xmlParts),
+  );
   for (const [path, xml] of normalizedParts) {
     if (xml !== xmlParts.get(path)) {
       assertValidOoxmlNumericIds(xml, path);
@@ -1387,7 +1586,10 @@ const EXTENDED_PROPERTIES_PATH = "docProps/app.xml";
  * the schema gives it. A package that holds no extended properties keeps
  * holding none.
  */
-const normalizeAppVersionInZip = async (zip: JSZip, compressionLevel: number): Promise<void> => {
+const normalizeAppVersionInZip = async (
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> => {
   const extendedProperties = zip.file(EXTENDED_PROPERTIES_PATH);
   if (!extendedProperties) {
     return;
@@ -1413,7 +1615,10 @@ const normalizeAppVersionInZip = async (zip: JSZip, compressionLevel: number): P
  * Every pass a save owes the package as a whole, in one function so that the
  * full repack and the selective save cannot drift into running different ones.
  */
-const normalizePackageOnSave = async (zip: JSZip, compressionLevel: number): Promise<void> => {
+const normalizePackageOnSave = async (
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> => {
   await normalizePackageIdsInZip(zip, compressionLevel);
   await normalizeAppVersionInZip(zip, compressionLevel);
 };
@@ -1423,7 +1628,10 @@ const normalizePackageOnSave = async (zip: JSZip, compressionLevel: number): Pro
  * at each caller so no save path can emit a package whose relationships or
  * content types name a part it does not hold.
  */
-const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
+const generateDocxZip = async (
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<ArrayBuffer> => {
   await reconcilePackageReferences(zip, compressionLevel);
   await normalizePackageOnSave(zip, compressionLevel);
   return zip.generateAsync({
@@ -1533,13 +1741,23 @@ type FinishRepackOptions = SaveDiagnosticOptions &
     sectionReferenceRemovals?: readonly RemovedSectionReference[];
   };
 
-const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => {
+const normalizeExportDrawingIds = ({
+  package: docxPackage,
+}: Document): void => {
   normalizeDrawingIds({
     documentBody: docxPackage.document,
-    ...(docxPackage.headers !== undefined ? { headers: docxPackage.headers } : {}),
-    ...(docxPackage.footers !== undefined ? { footers: docxPackage.footers } : {}),
-    ...(docxPackage.footnotes !== undefined ? { footnotes: docxPackage.footnotes } : {}),
-    ...(docxPackage.endnotes !== undefined ? { endnotes: docxPackage.endnotes } : {}),
+    ...(docxPackage.headers !== undefined
+      ? { headers: docxPackage.headers }
+      : {}),
+    ...(docxPackage.footers !== undefined
+      ? { footers: docxPackage.footers }
+      : {}),
+    ...(docxPackage.footnotes !== undefined
+      ? { footnotes: docxPackage.footnotes }
+      : {}),
+    ...(docxPackage.endnotes !== undefined
+      ? { endnotes: docxPackage.endnotes }
+      : {}),
   });
 };
 
@@ -1572,22 +1790,35 @@ const finishRepack = async ({
     outputZip,
     compressionLevel,
   );
-  await materializeEmbeddedMedia({ document, zip: outputZip, compressionLevel });
+  await materializeEmbeddedMedia({
+    document,
+    zip: outputZip,
+    compressionLevel,
+  });
 
   if (bodyAuthority === "canonical")
-    await publishCanonicalImageResources({ document, zip: outputZip, compressionLevel });
+    await publishCanonicalImageResources({
+      document,
+      zip: outputZip,
+      compressionLevel,
+    });
   const parts = collectDocxParts(document, outputZip);
   normalizeExportDrawingIds(document);
   await processNewImages(parts, outputZip, compressionLevel);
   await processNewHyperlinks(parts, outputZip, compressionLevel);
 
-  assertValidFolioDocumentModel(document, "Cannot repack invalid DOCX document model");
+  assertValidFolioDocumentModel(
+    document,
+    "Cannot repack invalid DOCX document model",
+  );
 
   applyReplyThreadMarkers(document);
 
   const documentXml = serializeDocument(
     document,
-    originalDocument === undefined ? undefined : readRootNamespaceBindings(originalDocument.xml),
+    originalDocument === undefined
+      ? undefined
+      : readRootNamespaceBindings(originalDocument.xml),
     { xml: originalDocument?.xml, onDiagnostic, bodyAuthority },
   );
   if (originalDocument?.xml) {
@@ -1596,7 +1827,9 @@ const finishRepack = async ({
       serializedDocumentXml: documentXml,
       doc: document,
       ...(sectionEndpointRemoval !== undefined && { sectionEndpointRemoval }),
-      ...(sectionReferenceRemovals !== undefined && { sectionReferenceRemovals }),
+      ...(sectionReferenceRemovals !== undefined && {
+        sectionReferenceRemovals,
+      }),
     });
   }
   await removeResolvedHeaderFooterParts({
@@ -1618,7 +1851,12 @@ const finishRepack = async ({
     },
   });
 
-  await rebindWatermarkRelIds({ document, zip: outputZip, compressionLevel, bodyAuthority });
+  await rebindWatermarkRelIds({
+    document,
+    zip: outputZip,
+    compressionLevel,
+    bodyAuthority,
+  });
 
   await serializeHeadersFootersToZip({
     doc: document,
@@ -1635,19 +1873,36 @@ const finishRepack = async ({
     changedNoteParaIds,
   });
 
-  await serializeNumberingIntoZip(document, originalZip, outputZip, compressionLevel);
-  await serializeAddedStylesIntoZip(document, originalZip, outputZip, compressionLevel);
-  await serializeHeaderFooterSettingsIntoZip(document, outputZip, compressionLevel);
+  await serializeNumberingIntoZip(
+    document,
+    originalZip,
+    outputZip,
+    compressionLevel,
+  );
+  await serializeAddedStylesIntoZip(
+    document,
+    originalZip,
+    outputZip,
+    compressionLevel,
+  );
+  await serializeHeaderFooterSettingsIntoZip(
+    document,
+    outputZip,
+    compressionLevel,
+  );
 
   await serializeCommentsToZip(document, outputZip, compressionLevel);
 
   await dropAttachedTemplateReference(outputZip, compressionLevel);
 
   if (updateModifiedDate && originalCorePropertiesXml) {
-    const updatedCoreProperties = updateCoreProperties(originalCorePropertiesXml, {
-      updateModifiedDate,
-      ...(modifiedBy !== undefined ? { modifiedBy } : {}),
-    });
+    const updatedCoreProperties = updateCoreProperties(
+      originalCorePropertiesXml,
+      {
+        updateModifiedDate,
+        ...(modifiedBy !== undefined ? { modifiedBy } : {}),
+      },
+    );
 
     writeZipPart({
       zip: outputZip,
@@ -1698,7 +1953,9 @@ async function repackDocxWithSectionEndpointRemoval({
     modifiedBy,
     changedNoteParaIds,
   } = options;
-  const exportDocument = withoutExhaustedComments(withoutOrphanCommentRanges(doc));
+  const exportDocument = withoutExhaustedComments(
+    withoutOrphanCommentRanges(doc),
+  );
 
   // Load the original ZIP
   const originalZip = await JSZip.loadAsync(doc.originalBuffer);
@@ -1720,7 +1977,10 @@ async function repackDocxWithSectionEndpointRemoval({
     document: exportDocument,
     originalZip,
     outputZip: newZip,
-    originalDocument: originalDocumentPart(doc.originalBuffer, originalDocumentXml),
+    originalDocument: originalDocumentPart(
+      doc.originalBuffer,
+      originalDocumentXml,
+    ),
     originalCorePropertiesXml,
     compressionLevel,
     updateModifiedDate,
@@ -1729,11 +1989,16 @@ async function repackDocxWithSectionEndpointRemoval({
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
     ...(sectionEndpointRemoval !== undefined ? { sectionEndpointRemoval } : {}),
-    ...(sectionReferenceRemovals !== undefined ? { sectionReferenceRemovals } : {}),
+    ...(sectionReferenceRemovals !== undefined
+      ? { sectionReferenceRemovals }
+      : {}),
   });
 }
 
-export function repackDocx(doc: Document, options: RepackOptions = {}): Promise<ArrayBuffer> {
+export function repackDocx(
+  doc: Document,
+  options: RepackOptions = {},
+): Promise<ArrayBuffer> {
   const sectionEndpointRemoval = consumeTrackedSectionEndpointRemoval(doc);
   const sectionReferenceRemovals = consumeSectionReferenceResolution(doc);
   return repackDocxWithSectionEndpointRemoval({
@@ -1806,8 +2071,16 @@ export async function repackDocxFromRaw(
   // Promote in-memory header/footer parts to real parts/relationships first, so
   // collectDocxParts sees them and processNewImages can write image relations
   // into a newly created header/footer's own rels.
-  exportDocument = await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
-  await materializeEmbeddedMedia({ document: exportDocument, zip: newZip, compressionLevel });
+  exportDocument = await materializeNewHeaderFooterParts(
+    exportDocument,
+    newZip,
+    compressionLevel,
+  );
+  await materializeEmbeddedMedia({
+    document: exportDocument,
+    zip: newZip,
+    compressionLevel,
+  });
 
   if (options.bodyAuthority === "canonical")
     await publishCanonicalImageResources({
@@ -1820,7 +2093,10 @@ export async function repackDocxFromRaw(
   await processNewImages(parts, newZip, compressionLevel);
   await processNewHyperlinks(parts, newZip, compressionLevel);
 
-  assertValidFolioDocumentModel(exportDocument, "Cannot repack invalid DOCX document model");
+  assertValidFolioDocumentModel(
+    exportDocument,
+    "Cannot repack invalid DOCX document model",
+  );
 
   // Give every reply comment its parent's anchor before serializing, so the
   // reply round-trips with matching commentRange markers + reference.
@@ -1828,7 +2104,9 @@ export async function repackDocxFromRaw(
 
   const documentXml = serializeDocument(
     exportDocument,
-    rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
+    rawContent.documentXml
+      ? readRootNamespaceBindings(rawContent.documentXml)
+      : undefined,
     {
       xml: rawContent.documentXml ?? undefined,
       onDiagnostic: options.onDiagnostic,
@@ -1869,7 +2147,11 @@ export async function repackDocxFromRaw(
     compressionLevel,
     onDiagnostic: options.onDiagnostic,
   });
-  await serializeHeaderFooterSettingsIntoZip(exportDocument, newZip, compressionLevel);
+  await serializeHeaderFooterSettingsIntoZip(
+    exportDocument,
+    newZip,
+    compressionLevel,
+  );
 
   // Splice edited footnote/endnote bodies back into their parts (separators and
   // unedited notes stay byte-exact).
@@ -1883,7 +2165,12 @@ export async function repackDocxFromRaw(
 
   // Splice edited numbering definitions back into word/numbering.xml (untouched
   // definitions and the parts the model omits stay byte-exact).
-  await serializeNumberingIntoZip(exportDocument, rawContent.originalZip, newZip, compressionLevel);
+  await serializeNumberingIntoZip(
+    exportDocument,
+    rawContent.originalZip,
+    newZip,
+    compressionLevel,
+  );
   await serializeAddedStylesIntoZip(
     exportDocument,
     rawContent.originalZip,
@@ -1944,8 +2231,13 @@ export function addCommentsExtendedOverride(contentTypesXml: string): string {
   );
 }
 
-export function removeCommentsExtendedOverride(contentTypesXml: string): string {
-  return contentTypesXml.replace(/<Override\b[^>]*commentsExtended\.xml[^>]*\/>/giu, "");
+export function removeCommentsExtendedOverride(
+  contentTypesXml: string,
+): string {
+  return contentTypesXml.replace(
+    /<Override\b[^>]*commentsExtended\.xml[^>]*\/>/giu,
+    "",
+  );
 }
 
 export function addCommentsExtendedRelationship(relsXml: string): string {
@@ -1960,7 +2252,10 @@ export function addCommentsExtendedRelationship(relsXml: string): string {
 }
 
 export function removeCommentsExtendedRelationship(relsXml: string): string {
-  return relsXml.replace(/<Relationship\b[^>]*commentsExtended\.xml[^>]*\/>/giu, "");
+  return relsXml.replace(
+    /<Relationship\b[^>]*commentsExtended\.xml[^>]*\/>/giu,
+    "",
+  );
 }
 
 // ============================================================================
@@ -1977,10 +2272,12 @@ const ATTACHED_TEMPLATE_LOCAL_NAME = "attachedTemplate";
 const ATTACHED_TEMPLATE_ELEMENT =
   /<(?<prefix>[\w.-]+:)?attachedTemplate\b[^>]*?(?:\/>|>\s*<\/(?:[\w.-]+:)?attachedTemplate>)/giu;
 
-const RELATIONSHIP_ELEMENT = /<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship>)/giu;
+const RELATIONSHIP_ELEMENT =
+  /<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship>)/giu;
 
 // `Id` is spelled exactly that way in the package relationships schema.
-const RELATIONSHIP_ID_ATTRIBUTE = /\bId\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
+const RELATIONSHIP_ID_ATTRIBUTE =
+  /\bId\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
 
 /** Result of filtering the settings part; `undefined` means "leave as it is". */
 type SettingsWithoutAttachedTemplate = {
@@ -2037,17 +2334,25 @@ export function withoutAttachedTemplate(
 
   const filteredSettings = settingsXml.replace(
     ATTACHED_TEMPLATE_ELEMENT,
-    (match, prefix: string | undefined) => (prefixes.has(prefix?.slice(0, -1) ?? "") ? "" : match),
+    (match, prefix: string | undefined) =>
+      prefixes.has(prefix?.slice(0, -1) ?? "") ? "" : match,
   );
 
   return {
-    settingsXml: filteredSettings === settingsXml ? undefined : filteredSettings,
-    relsXml: relsXml === undefined ? undefined : withoutRelationships(relsXml, referencedRIds),
+    settingsXml:
+      filteredSettings === settingsXml ? undefined : filteredSettings,
+    relsXml:
+      relsXml === undefined
+        ? undefined
+        : withoutRelationships(relsXml, referencedRIds),
   };
 }
 
 /** Drop the named relationships from a `.rels` payload; `undefined` when unchanged. */
-function withoutRelationships(relsXml: string, ids: ReadonlySet<string>): string | undefined {
+function withoutRelationships(
+  relsXml: string,
+  ids: ReadonlySet<string>,
+): string | undefined {
   if (ids.size === 0) {
     return undefined;
   }
@@ -2065,15 +2370,22 @@ function withoutRelationships(relsXml: string, ids: ReadonlySet<string>): string
  * model has no field for it, so a preserved copy would carry a reference folio
  * can neither read nor rewrite. Both sides are filtered on save.
  */
-async function dropAttachedTemplateReference(zip: JSZip, compressionLevel: number): Promise<void> {
+async function dropAttachedTemplateReference(
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
   const settingsFile = zip.file(SETTINGS_PART);
   if (!settingsFile) {
     return;
   }
   const relsFile = zip.file(SETTINGS_RELS_PART);
   const filtered = withoutAttachedTemplate(
-    await settingsFile.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
-    await relsFile?.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    await settingsFile
+      .async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    await relsFile
+      ?.async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
   );
 
   if (filtered.settingsXml !== undefined) {
@@ -2104,7 +2416,10 @@ async function dropAttachedTemplateReference(zip: JSZip, compressionLevel: numbe
  * Ensure [Content_Types].xml contains an Override for word/comments.xml.
  * If the document already had comments, this is a no-op.
  */
-async function ensureCommentsContentType(zip: JSZip, compressionLevel: number): Promise<void> {
+async function ensureCommentsContentType(
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
   const ctFile = zip.file("[Content_Types].xml");
   if (!ctFile) {
     return;
@@ -2118,7 +2433,8 @@ async function ensureCommentsContentType(zip: JSZip, compressionLevel: number): 
   }
 
   const commentsPartPath =
-    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ?? "word/comments.xml";
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ??
+    "word/comments.xml";
   // Insert before closing </Types>
   ctXml = ctXml.replace(
     "</Types>",
@@ -2139,7 +2455,10 @@ async function ensureCommentsContentType(zip: JSZip, compressionLevel: number): 
  * Ensure word/_rels/document.xml.rels contains a Relationship for comments.xml.
  * If the document already had comments, this is a no-op.
  */
-async function ensureCommentsRelationship(zip: JSZip, compressionLevel: number): Promise<void> {
+async function ensureCommentsRelationship(
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
   const relsPath = "word/_rels/document.xml.rels";
   const relsFile = zip.file(relsPath);
   if (!relsFile) {
@@ -2154,7 +2473,8 @@ async function ensureCommentsRelationship(zip: JSZip, compressionLevel: number):
   }
 
   const commentsPartPath =
-    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ?? "word/comments.xml";
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ??
+    "word/comments.xml";
   // Generate a unique rId
   const newRId = `rId${findMaxRId(relsXml) + 1}`;
 
@@ -2288,7 +2608,10 @@ export async function applyUpdatesToZip(
     writeZipPart({
       zip,
       path,
-      data: typeof content === "string" ? encodeUtf8(content) : new Uint8Array(content),
+      data:
+        typeof content === "string"
+          ? encodeUtf8(content)
+          : new Uint8Array(content),
       options: {
         compression: "DEFLATE",
         compressionOptions: { level: compressionLevel },
@@ -2342,12 +2665,16 @@ export async function addRelationship(
   const newRId = `rId${findMaxRId(relsXml) + 1}`;
 
   // Build new relationship element
-  const targetModeAttr = relationship.targetMode === "External" ? ' TargetMode="External"' : "";
+  const targetModeAttr =
+    relationship.targetMode === "External" ? ' TargetMode="External"' : "";
 
   const newRelElement = `<Relationship Id="${newRId}" Type="${relationship.type}" Target="${escapeXmlAttribute(relationship.target)}"${targetModeAttr}/>`;
 
   // Insert before closing tag
-  const updatedRelsXml = relsXml.replace("</Relationships>", `${newRelElement}</Relationships>`);
+  const updatedRelsXml = relsXml.replace(
+    "</Relationships>",
+    `${newRelElement}</Relationships>`,
+  );
 
   // Update the ZIP
   writeZipPart({ zip, path: relsPath, data: encodeUtf8(updatedRelsXml) });
@@ -2385,10 +2712,13 @@ export async function addMedia(
   writeZipPart({ zip, path: mediaPath, data: new Uint8Array(data) });
 
   // Add relationship
-  const relResult = await addRelationship(await zip.generateAsync({ type: "arraybuffer" }), {
-    type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
-    target: `media/${filename}`,
-  });
+  const relResult = await addRelationship(
+    await zip.generateAsync({ type: "arraybuffer" }),
+    {
+      type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      target: `media/${filename}`,
+    },
+  );
 
   // Update content types if needed
   const contentTypesFile = zip.file("[Content_Types].xml");
@@ -2460,7 +2790,10 @@ const FOOTER_CONTENT_TYPE =
  */
 export function hasUnmaterializedHeaderFooter(doc: Document): boolean {
   const rels = doc.package.relationships;
-  const hasNew = (map: Map<string, HeaderFooter> | undefined, type: string): boolean => {
+  const hasNew = (
+    map: Map<string, HeaderFooter> | undefined,
+    type: string,
+  ): boolean => {
     if (!map) {
       return false;
     }
@@ -2478,7 +2811,10 @@ export function hasUnmaterializedHeaderFooter(doc: Document): boolean {
   );
 }
 
-function findMaxHeaderFooterNum(zip: JSZip, prefix: "header" | "footer"): number {
+function findMaxHeaderFooterNum(
+  zip: JSZip,
+  prefix: "header" | "footer",
+): number {
   let max = 0;
   const pattern = new RegExp(`^word/${prefix}(\\d+)\\.xml$`, "u");
   zip.forEach((relativePath) => {
@@ -2515,11 +2851,16 @@ async function materializeNewHeaderFooterParts(
     package: {
       ...doc.package,
       relationships: new Map(doc.package.relationships),
-      ...(doc.package.headers === undefined ? {} : { headers: new Map(doc.package.headers) }),
-      ...(doc.package.footers === undefined ? {} : { footers: new Map(doc.package.footers) }),
+      ...(doc.package.headers === undefined
+        ? {}
+        : { headers: new Map(doc.package.headers) }),
+      ...(doc.package.footers === undefined
+        ? {}
+        : { footers: new Map(doc.package.footers) }),
     },
   };
-  const rels = doc.package.relationships ?? panic("The export owns its relationship map.");
+  const rels =
+    doc.package.relationships ?? panic("The export owns its relationship map.");
 
   const relEntries: string[] = [];
   const contentTypeParts: { partName: string; contentType: string }[] = [];
@@ -2556,7 +2897,11 @@ async function materializeNewHeaderFooterParts(
     considerNumericRId(id);
   }
 
-  const remapRefs = (refs: { rId: string }[] | undefined, oldRId: string, newRId: string): void => {
+  const remapRefs = (
+    refs: { rId: string }[] | undefined,
+    oldRId: string,
+    newRId: string,
+  ): void => {
     for (const ref of refs ?? []) {
       if (ref.rId === oldRId) {
         ref.rId = newRId;
@@ -2611,7 +2956,9 @@ async function materializeNewHeaderFooterParts(
           ...(body.finalSectionProperties === undefined
             ? {}
             : {
-                finalSectionProperties: structuredClone(body.finalSectionProperties),
+                finalSectionProperties: structuredClone(
+                  body.finalSectionProperties,
+                ),
               }),
         };
         for (const block of doc.package.document.content) {
@@ -2627,7 +2974,9 @@ async function materializeNewHeaderFooterParts(
         }
         const finalProps = doc.package.document.finalSectionProperties;
         remapRefs(
-          isHeader ? finalProps?.headerReferences : finalProps?.footerReferences,
+          isHeader
+            ? finalProps?.headerReferences
+            : finalProps?.footerReferences,
           rId,
           effectiveRId,
         );
@@ -2646,8 +2995,20 @@ async function materializeNewHeaderFooterParts(
     }
   };
 
-  materialize(doc.package.headers, RELATIONSHIP_TYPES.header, "header", HEADER_CONTENT_TYPE, true);
-  materialize(doc.package.footers, RELATIONSHIP_TYPES.footer, "footer", FOOTER_CONTENT_TYPE, false);
+  materialize(
+    doc.package.headers,
+    RELATIONSHIP_TYPES.header,
+    "header",
+    HEADER_CONTENT_TYPE,
+    true,
+  );
+  materialize(
+    doc.package.footers,
+    RELATIONSHIP_TYPES.footer,
+    "footer",
+    FOOTER_CONTENT_TYPE,
+    false,
+  );
 
   const compressionOptions = { level: compressionLevel };
   if (relEntries.length > 0)
@@ -2655,7 +3016,10 @@ async function materializeNewHeaderFooterParts(
       zip,
       path: relsPath,
       data: encodeUtf8(
-        relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),
+        relsXml.replace(
+          "</Relationships>",
+          `${relEntries.join("")}</Relationships>`,
+        ),
       ),
       options: { compression: "DEFLATE", compressionOptions },
     });
@@ -2719,7 +3083,9 @@ const appendCanonicalRelationship = ({
 }: AppendCanonicalRelationshipOptions): string => {
   const parsed = parseStreamingXmlWithSourceRanges(xml);
   if (parsed.status !== "parsed")
-    throw new DocxPackageFidelityError(`Cannot read canonical relationships in ${partPath}`);
+    throw new DocxPackageFidelityError(
+      `Cannot read canonical relationships in ${partPath}`,
+    );
   const root = getChildElements(parsed.value).find(
     (element) =>
       getLocalName(element.name ?? "") === "Relationships" &&
@@ -2727,7 +3093,9 @@ const appendCanonicalRelationship = ({
   );
   const range = root ? getXmlSourceRange(root) : undefined;
   if (!root?.name || !range)
-    throw new DocxPackageFidelityError(`Cannot find canonical relationship root in ${partPath}`);
+    throw new DocxPackageFidelityError(
+      `Cannot find canonical relationship root in ${partPath}`,
+    );
   const sourceRoot = xml.slice(range.start, range.end);
   const bound = relationshipXml.replace(
     "<Relationship ",
@@ -2736,14 +3104,22 @@ const appendCanonicalRelationship = ({
   const selfClosing = sourceRoot.endsWith("/>");
   const close = xml.lastIndexOf("</", range.end);
   if (!selfClosing && close < range.start)
-    throw new DocxPackageFidelityError(`Cannot extend canonical relationships in ${partPath}`);
+    throw new DocxPackageFidelityError(
+      `Cannot extend canonical relationships in ${partPath}`,
+    );
   const result = spliceXml(xml, [
     selfClosing
-      ? { start: range.end - 2, end: range.end, newXml: ">" + bound + `</${root.name}>` }
+      ? {
+          start: range.end - 2,
+          end: range.end,
+          newXml: ">" + bound + `</${root.name}>`,
+        }
       : { start: close, end: close, newXml: bound },
   ]);
   if (result === null)
-    throw new DocxPackageFidelityError(`Cannot splice canonical relationships in ${partPath}`);
+    throw new DocxPackageFidelityError(
+      `Cannot splice canonical relationships in ${partPath}`,
+    );
   return result;
 };
 
@@ -2765,7 +3141,9 @@ async function rebindWatermarkRelIds({
   if (!rels) {
     if (
       bodyAuthority === "canonical" &&
-      [...headers.values()].some(({ watermark }) => watermark?.kind === "picture")
+      [...headers.values()].some(
+        ({ watermark }) => watermark?.kind === "picture",
+      )
     )
       throw new DocxPackageFidelityError(
         "A canonical picture watermark has no header relationship map",
@@ -2823,7 +3201,8 @@ async function rebindWatermarkRelIds({
 
   // The canonical image a watermark points at: an embedded media part (as a
   // package-absolute path) or an external (linked) URL.
-  type CanonicalImage = { mode: "internal"; absolute: string } | { mode: "external"; url: string };
+  type CanonicalImage =
+    { mode: "internal"; absolute: string } | { mode: "external"; url: string };
 
   const relImage = (
     rel: { type: string; target?: string; targetMode?: string } | undefined,
@@ -2848,7 +3227,10 @@ async function rebindWatermarkRelIds({
   // The source header is the one whose own rels maps the rId to an image.
   const resolveCanonical = (imageRId: string): CanonicalImage | undefined => {
     for (const [relsPath, xml] of relsXmlByPath) {
-      const canonical = relImage(parseRelationships(xml).get(imageRId), relsPath);
+      const canonical = relImage(
+        parseRelationships(xml).get(imageRId),
+        relsPath,
+      );
       if (canonical) {
         return canonical;
       }
@@ -2898,7 +3280,9 @@ async function rebindWatermarkRelIds({
       canonical.mode === "internal" &&
       !zip.file(canonical.absolute)
     )
-      throw new DocxPackageFidelityError("A canonical picture watermark image part is missing");
+      throw new DocxPackageFidelityError(
+        "A canonical picture watermark image part is missing",
+      );
 
     const relsXml = relsXmlByPath.get(relsPath) ?? EMPTY_RELS_XML;
     const localRels = parseRelationships(relsXml);
@@ -2947,7 +3331,10 @@ async function rebindWatermarkRelIds({
         canonical.mode === "external"
           ? `<Relationship Id="${resolvedRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(canonical.url)}" TargetMode="External"/>`
           : `<Relationship Id="${resolvedRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(relativeTargetForPart(partPath, canonical.absolute))}"/>`;
-      relsXmlByPath.set(relsPath, relsXml.replace("</Relationships>", `${relXml}</Relationships>`));
+      relsXmlByPath.set(
+        relsPath,
+        relsXml.replace("</Relationships>", `${relXml}</Relationships>`),
+      );
       changedPaths.add(relsPath);
     }
     if (header.rawWatermarkXml && watermark.imageRId !== resolvedRId) {
@@ -2981,7 +3368,9 @@ async function rebindWatermarkRelIds({
  * `sourceZip` supplies each part as it stands before the save so the rebuilt
  * root can keep any prefix binding only the source document declared.
  */
-type CollectHeaderFooterUpdatesOptions = SaveDiagnosticOptions & { sourceZip: JSZip };
+type CollectHeaderFooterUpdatesOptions = SaveDiagnosticOptions & {
+  sourceZip: JSZip;
+};
 
 export async function collectHeaderFooterUpdates(
   doc: Document,
@@ -3010,7 +3399,10 @@ export async function collectHeaderFooterUpdates(
       const rel = rels.get(rId);
       if (rel && rel.type === type && rel.target) {
         const path = resolveRelativePath(documentRelsPath, rel.target);
-        const sourceFile = findZipEntryCaseInsensitive(sourceZip, path.toLowerCase());
+        const sourceFile = findZipEntryCaseInsensitive(
+          sourceZip,
+          path.toLowerCase(),
+        );
         const bindings = sourceFile
           ? readRootNamespaceBindings(
               await sourceFile
@@ -3107,7 +3499,8 @@ async function serializeNotesToZip({
         conventionalLowerPath: "word/footnotes.xml",
         currentXml: serializeFootnotes(footnotes),
         replacementXml: serializeNewFootnotesPart(footnotes, doc),
-        baselineFrom: (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
+        baselineFrom: (xml) =>
+          serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
         elementName: "footnote",
         changedNoteParaIds,
         originalZip,
@@ -3116,7 +3509,8 @@ async function serializeNotesToZip({
       });
     } else {
       await materializeNewNotePart({
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
         newZip,
         partPath: "word/footnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.footnotes,
@@ -3128,14 +3522,17 @@ async function serializeNotesToZip({
   const endnotes = doc.package.endnotes ?? [];
   // A part the model emptied is patched too: its notes went with their references.
   const originalEndnotes =
-    doc.package.endnotes === undefined ? null : findNotePartEntry(originalZip, "word/endnotes.xml");
+    doc.package.endnotes === undefined
+      ? null
+      : findNotePartEntry(originalZip, "word/endnotes.xml");
   if (endnotes.length > 0 || originalEndnotes) {
     if (originalEndnotes) {
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/endnotes.xml",
         currentXml: serializeEndnotes(endnotes),
         replacementXml: serializeNewEndnotesPart(endnotes, doc),
-        baselineFrom: (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
+        baselineFrom: (xml) =>
+          serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
         elementName: "endnote",
         changedNoteParaIds,
         originalZip,
@@ -3144,7 +3541,8 @@ async function serializeNotesToZip({
       });
     } else {
       await materializeNewNotePart({
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
         newZip,
         partPath: "word/endnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.endnotes,
@@ -3178,7 +3576,10 @@ async function materializeNewNotePart({
   compressionLevel,
 }: MaterializeNewNotePartOptions): Promise<void> {
   const contentTypesFile = findNotePartEntry(newZip, "[content_types].xml");
-  const relationshipsFile = findNotePartEntry(newZip, "word/_rels/document.xml.rels");
+  const relationshipsFile = findNotePartEntry(
+    newZip,
+    "word/_rels/document.xml.rels",
+  );
   if (!contentTypesFile || !relationshipsFile) {
     throw new DocxPackageFidelityError(
       `Cannot create ${partPath}: the DOCX package is missing content types or document relationships`,
@@ -3197,7 +3598,8 @@ async function materializeNewNotePart({
       data: encodeUtf8(
         contentTypesXml.replace(
           "</Types>",
-          () => `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
+          () =>
+            `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
         ),
       ),
       options: { compression: "DEFLATE", compressionOptions },
@@ -3247,7 +3649,8 @@ async function serializeHeaderFooterSettingsIntoZip(
   if (!file) {
     if (enabled === undefined) return;
     await materializeNewNotePart({
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
       newZip: zip,
       partPath: "word/settings.xml",
       relationshipType: RELATIONSHIP_TYPES.settings,
@@ -3262,7 +3665,9 @@ async function serializeHeaderFooterSettingsIntoZip(
   if (parseSettings(xml).evenAndOddHeaders === enabled) return;
   const patched = updateEvenAndOddHeaders(xml, enabled);
   if (patched === null)
-    throw new DocxPackageFidelityError("Cannot update malformed header/footer settings");
+    throw new DocxPackageFidelityError(
+      "Cannot update malformed header/footer settings",
+    );
   writeZipPart({
     zip,
     path: file.name,
@@ -3304,13 +3709,17 @@ async function serializeNumberingIntoZip(
   compressionLevel: number,
 ): Promise<void> {
   const numbering = doc.package.numbering;
-  if (!numbering || (numbering.abstractNums.length === 0 && numbering.nums.length === 0)) {
+  if (
+    !numbering ||
+    (numbering.abstractNums.length === 0 && numbering.nums.length === 0)
+  ) {
     return;
   }
   const file = findNotePartEntry(originalZip, "word/numbering.xml");
   if (!file) {
     await materializeNewNotePart({
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
       newZip,
       partPath: "word/numbering.xml",
       relationshipType: RELATIONSHIP_TYPES.numbering,
@@ -3327,7 +3736,9 @@ async function serializeNumberingIntoZip(
     baseline = {
       originalBuffer: doc.originalBuffer,
       originalXml,
-      serializedXml: serializeNumberingXml(parseNumbering(originalXml).definitions),
+      serializedXml: serializeNumberingXml(
+        parseNumbering(originalXml).definitions,
+      ),
     };
     if (doc.originalBuffer) {
       numberingBaselines.set(doc, baseline);
@@ -3366,15 +3777,21 @@ const selfBoundFragment = (fragment: string, partPath: string): string => {
   const selfClosing = fragment[openEnd - 1] === "/";
   const rootName = /^<(?<name>[^\s/>]+)/u.exec(fragment)?.groups?.["name"];
   if (openEnd === -1 || rootName === undefined) {
-    throw new DocxPackageFidelityError(`Cannot splice a malformed element into ${partPath}`);
+    throw new DocxPackageFidelityError(
+      `Cannot splice a malformed element into ${partPath}`,
+    );
   }
   return serializePartElement({
     partPath,
     rootName,
-    rootAttributes: fragment.slice(rootName.length + 1, selfClosing ? openEnd - 1 : openEnd).trim(),
+    rootAttributes: fragment
+      .slice(rootName.length + 1, selfClosing ? openEnd - 1 : openEnd)
+      .trim(),
     baselinePrefixes: [],
     sourceBindings: undefined,
-    body: selfClosing ? "" : fragment.slice(openEnd + 1, fragment.lastIndexOf("</")),
+    body: selfClosing
+      ? ""
+      : fragment.slice(openEnd + 1, fragment.lastIndexOf("</")),
   });
 };
 
@@ -3433,7 +3850,9 @@ const seedStylesXmlWith = (missing: readonly Style[]): string => {
  */
 const definedStyleIds = (stylesXml: string): ReadonlySet<string> => {
   const root = parseXml(stylesXml);
-  const styles = findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, "styles") ?? root;
+  const styles =
+    findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, "styles") ??
+    root;
   const ids = new Set<string>();
   for (const style of findChildrenByNamespaceUri(
     styles,
@@ -3441,8 +3860,11 @@ const definedStyleIds = (stylesXml: string): ReadonlySet<string> => {
     "style",
   )) {
     const id =
-      getAttributeByNamespaceUri(style, WORDPROCESSINGML_NAMESPACE_URIS, "styleId") ??
-      style.attributes?.["w:styleId"];
+      getAttributeByNamespaceUri(
+        style,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "styleId",
+      ) ?? style.attributes?.["w:styleId"];
     if (id !== undefined && id !== null && id !== "") {
       ids.add(String(id));
     }
@@ -3469,13 +3891,20 @@ const definedStyleIds = (stylesXml: string): ReadonlySet<string> => {
  * definition there would rewrite a part the user never edited: their document,
  * their style table, missing reference style included.
  */
-const styleDefinitionsToSerialize = (doc: Document): StyleDefinitions | undefined => {
+const styleDefinitionsToSerialize = (
+  doc: Document,
+): StyleDefinitions | undefined => {
   const styles = doc.package.styles;
   if (!styles) {
     return undefined;
   }
-  const missing = missingNoteReferenceStyles(styles, noteReferenceNeeds(doc.package));
-  return missing.length === 0 ? styles : { ...styles, styles: [...styles.styles, ...missing] };
+  const missing = missingNoteReferenceStyles(
+    styles,
+    noteReferenceNeeds(doc.package),
+  );
+  return missing.length === 0
+    ? styles
+    : { ...styles, styles: [...styles.styles, ...missing] };
 };
 
 type AddedStylesPlan =
@@ -3484,14 +3913,19 @@ type AddedStylesPlan =
   | { type: "patch"; path: string; xml: string };
 
 /** One append-only style owner for full repack and selective overlays. */
-export async function planAddedStyles(doc: Document, originalZip: JSZip): Promise<AddedStylesPlan> {
+export async function planAddedStyles(
+  doc: Document,
+  originalZip: JSZip,
+): Promise<AddedStylesPlan> {
   const styles = doc.package.styles;
   if (!styles || styles.styles.length === 0) {
     return { type: "unchanged" };
   }
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
   const originalXml = file
-    ? await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+    ? await file
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
     : null;
   // The root closes under whatever prefix the part binds WordprocessingML
   // to. Reading only `</w:styles>` took an `x:styles` part for "no usable
@@ -3501,7 +3935,9 @@ export async function planAddedStyles(doc: Document, originalZip: JSZip): Promis
       ? undefined
       : /<(?![?!])(?<name>[^\s/>]+)/u.exec(originalXml)?.groups?.["name"];
   const rootClose =
-    originalXml !== null && rootName !== undefined && getLocalName(rootName) === "styles"
+    originalXml !== null &&
+    rootName !== undefined &&
+    getLocalName(rootName) === "styles"
       ? originalXml.lastIndexOf(`</${rootName}>`)
       : -1;
   if (file === null || originalXml === null || rootClose < 0) {
@@ -3529,7 +3965,9 @@ export async function planAddedStyles(doc: Document, originalZip: JSZip): Promis
     originalXml.slice(0, rootClose) +
     added
       .map((style) =>
-        canonical ? serializeStyle(style) : selfBoundFragment(serializeStyle(style), file.name),
+        canonical
+          ? serializeStyle(style)
+          : selfBoundFragment(serializeStyle(style), file.name),
       )
       .join("") +
     originalXml.slice(rootClose);
@@ -3548,7 +3986,8 @@ async function serializeAddedStylesIntoZip(
       return;
     case "materialize":
       await materializeNewNotePart({
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
         newZip,
         partPath: STYLES_PART_PATH,
         relationshipType: RELATIONSHIP_TYPES.styles,
@@ -3639,7 +4078,9 @@ const notePartXmlFor = ({
           return keepOriginal();
         default: {
           const unreachable: never = patch.reason;
-          return panic("Unhandled note-part patch refusal", { reason: unreachable });
+          return panic("Unhandled note-part patch refusal", {
+            reason: unreachable,
+          });
         }
       }
     default: {
@@ -3712,7 +4153,10 @@ export function notePartRelsPath(partPath: string): string {
  * Locate a note part in the ZIP, matching case-insensitively so a producer that
  * cased the entry differently still resolves to the existing part.
  */
-function findNotePartEntry(zip: JSZip, conventionalLowerPath: string): JSZip.JSZipObject | null {
+function findNotePartEntry(
+  zip: JSZip,
+  conventionalLowerPath: string,
+): JSZip.JSZipObject | null {
   const direct = zip.file(conventionalLowerPath);
   if (direct) {
     return direct;
@@ -3732,7 +4176,10 @@ function findNotePartEntry(zip: JSZip, conventionalLowerPath: string): JSZip.JSZ
 /** Update existing core-property values without synthesizing absent metadata. */
 export function updateCoreProperties(
   corePropsXml: string,
-  { updateModifiedDate, modifiedBy }: { updateModifiedDate?: boolean; modifiedBy?: string },
+  {
+    updateModifiedDate,
+    modifiedBy,
+  }: { updateModifiedDate?: boolean; modifiedBy?: string },
 ): string {
   let result = corePropsXml;
 
@@ -3764,7 +4211,10 @@ export function updateCoreProperties(
 /**
  * Get content type for a file extension
  */
-function getContentTypeForExtension(extension: string, mimeType: string): string {
+function getContentTypeForExtension(
+  extension: string,
+  mimeType: string,
+): string {
   // Use provided mime type or fall back to common types
   if (mimeType) {
     return mimeType;
@@ -3863,11 +4313,16 @@ const CREATED_APP_VERSION = appVersionInSchemaForm("1");
  * @param properties - Document properties the package states about itself
  * @returns Promise resolving to minimal DOCX as ArrayBuffer
  */
-export function createEmptyDocx(properties: DocumentPropertiesOptions = {}): Promise<ArrayBuffer> {
+export function createEmptyDocx(
+  properties: DocumentPropertiesOptions = {},
+): Promise<ArrayBuffer> {
   return generateDocxZip(createEmptyDocxZip(properties), 6);
 }
 
-const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions): JSZip => {
+const createEmptyDocxZip = ({
+  creator,
+  application,
+}: DocumentPropertiesOptions): JSZip => {
   const zip = new JSZip();
 
   // Content Types
@@ -3928,12 +4383,18 @@ const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions)
   });
 
   // Minimal styles
-  writeZipPart({ zip, path: STYLES_PART_PATH, data: encodeUtf8(SEED_STYLES_XML) });
+  writeZipPart({
+    zip,
+    path: STYLES_PART_PATH,
+    data: encodeUtf8(SEED_STYLES_XML),
+  });
 
   // Core properties
   const now = new Date().toISOString();
   const creatorElement =
-    creator === undefined ? "" : `\n  <dc:creator>${escapeXmlText(creator)}</dc:creator>`;
+    creator === undefined
+      ? ""
+      : `\n  <dc:creator>${escapeXmlText(creator)}</dc:creator>`;
   writeZipPart({
     zip,
     path: "docProps/core.xml",
@@ -4028,19 +4489,29 @@ const createDocumentSeedZip = async (
       zip,
       path: STYLES_PART_PATH,
       data: encodeUtf8(
-        seedStylesXmlWith(missingNoteReferenceStyles(undefined, noteReferenceNeeds(doc.package))),
+        seedStylesXmlWith(
+          missingNoteReferenceStyles(
+            undefined,
+            noteReferenceNeeds(doc.package),
+          ),
+        ),
       ),
     });
   }
 
   const numbering = doc.package.numbering;
-  if (numbering && (numbering.abstractNums.length > 0 || numbering.nums.length > 0)) {
+  if (
+    numbering &&
+    (numbering.abstractNums.length > 0 || numbering.nums.length > 0)
+  ) {
     writeZipPart({
       zip,
       path: "word/numbering.xml",
       data: encodeUtf8(serializeNumberingXml(numbering)),
     });
-    relationships.push(relationshipXml(nextRelationshipId, "numbering", "numbering.xml"));
+    relationships.push(
+      relationshipXml(nextRelationshipId, "numbering", "numbering.xml"),
+    );
     overrides.push(
       overrideXml(
         "/word/numbering.xml",
@@ -4056,7 +4527,9 @@ const createDocumentSeedZip = async (
       path: "word/theme/theme1.xml",
       data: encodeUtf8(serializeThemeXml(doc.package.theme)),
     });
-    relationships.push(relationshipXml(nextRelationshipId, "theme", "theme/theme1.xml"));
+    relationships.push(
+      relationshipXml(nextRelationshipId, "theme", "theme/theme1.xml"),
+    );
     overrides.push(
       overrideXml(
         "/word/theme/theme1.xml",
@@ -4072,7 +4545,9 @@ const createDocumentSeedZip = async (
       path: "word/fontTable.xml",
       data: encodeUtf8(serializeFontTableXml(doc.package.fontTable)),
     });
-    relationships.push(relationshipXml(nextRelationshipId, "fontTable", "fontTable.xml"));
+    relationships.push(
+      relationshipXml(nextRelationshipId, "fontTable", "fontTable.xml"),
+    );
     overrides.push(
       overrideXml(
         "/word/fontTable.xml",
@@ -4088,7 +4563,9 @@ const createDocumentSeedZip = async (
       path: "word/settings.xml",
       data: encodeUtf8(serializeSettingsXml(doc.package.settings)),
     });
-    relationships.push(relationshipXml(nextRelationshipId, "settings", "settings.xml"));
+    relationships.push(
+      relationshipXml(nextRelationshipId, "settings", "settings.xml"),
+    );
     overrides.push(
       overrideXml(
         "/word/settings.xml",
@@ -4115,7 +4592,9 @@ const createDocumentSeedZip = async (
     writeZipPart({
       zip,
       path: "[Content_Types].xml",
-      data: encodeUtf8(contentTypes.replace("</Types>", `${overrides.join("")}\n</Types>`)),
+      data: encodeUtf8(
+        contentTypes.replace("</Types>", `${overrides.join("")}\n</Types>`),
+      ),
     });
   }
 
@@ -4152,10 +4631,15 @@ const assertStyleNumberingReferences = (doc: Document): void => {
     return;
   }
   const available = new Map(
-    doc.package.numbering?.nums.map((numbering) => [numbering.numId, numbering]) ?? [],
+    doc.package.numbering?.nums.map((numbering) => [
+      numbering.numId,
+      numbering,
+    ]) ?? [],
   );
   const availableAbstract = new Set(
-    doc.package.numbering?.abstractNums.map((numbering) => numbering.abstractNumId) ?? [],
+    doc.package.numbering?.abstractNums.map(
+      (numbering) => numbering.abstractNumId,
+    ) ?? [],
   );
   // Only what a style names: an unreferenced `w:num` numbers nothing, and the
   // model carries the source's numbering part as it found it.
@@ -4165,7 +4649,9 @@ const assertStyleNumberingReferences = (doc: Document): void => {
       panic(`Style references missing numbering definition ${numId}`);
     }
     if (!availableAbstract.has(numbering.abstractNumId)) {
-      panic(`Numbering definition ${numbering.numId} references missing abstract numbering`);
+      panic(
+        `Numbering definition ${numbering.numId} references missing abstract numbering`,
+      );
     }
   }
 };

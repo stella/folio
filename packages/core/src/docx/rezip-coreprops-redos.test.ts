@@ -13,13 +13,15 @@ describe("updateCoreProperties dcterms:modified", () => {
   });
 
   test("does not synthesize a missing modified date", () => {
-    const xml = "<cp:coreProperties><cp:revision>7</cp:revision></cp:coreProperties>";
+    const xml =
+      "<cp:coreProperties><cp:revision>7</cp:revision></cp:coreProperties>";
 
     expect(updateCoreProperties(xml, { updateModifiedDate: true })).toBe(xml);
   });
 
   test("does not synthesize a missing modifier", () => {
-    const xml = "<cp:coreProperties><cp:revision>7</cp:revision></cp:coreProperties>";
+    const xml =
+      "<cp:coreProperties><cp:revision>7</cp:revision></cp:coreProperties>";
 
     expect(updateCoreProperties(xml, { modifiedBy: "Reviewer" })).toBe(xml);
   });

@@ -9,9 +9,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { buildDisplayList } from "../../display-list/build/buildDisplayList";
-import type { DisplayHitRegion, DisplayPrimitive } from "../../display-list/types";
+import type {
+  DisplayHitRegion,
+  DisplayPrimitive,
+} from "../../display-list/types";
 import { createDocx } from "../../docx/rezip";
-import { layoutDocxHeadless, type HeadlessLayoutResult } from "../../headless-layout";
+import {
+  type HeadlessLayoutResult,
+  layoutDocxHeadless,
+} from "../../headless-layout";
 import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import {
   getMeasureProvider,
@@ -23,7 +29,12 @@ import {
   type Page,
   type ParagraphBlock,
 } from "../../layout-engine/types";
-import type { BlockContent, Document, Endnote, Paragraph } from "../../types/document";
+import type {
+  BlockContent,
+  Document,
+  Endnote,
+  Paragraph,
+} from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 
 let installedProvider = getMeasureProvider();
@@ -69,7 +80,9 @@ function installFixedWidthProvider(): void {
     },
     measureRun: (text, style) => {
       const per = ptToPx(style.fontSize ?? 11) * FIXED_ADVANCE_RATIO;
-      const charWidths = [...text].flatMap((char) => (char.length === 2 ? [per, 0] : [per]));
+      const charWidths = [...text].flatMap((char) =>
+        char.length === 2 ? [per, 0] : [per],
+      );
       return {
         width: charWidths.reduce((total, width) => total + width, 0),
         charWidths,
@@ -100,7 +113,9 @@ const endnote = (id: number, content: BlockContent[]): Endnote => ({
 });
 
 const layOut = async (document: Document): Promise<HeadlessLayoutResult> => {
-  const result = await layoutDocxHeadless(await createDocx(document), { pageGap: 0 });
+  const result = await layoutDocxHeadless(await createDocx(document), {
+    pageGap: 0,
+  });
   if (result.isErr()) {
     throw result.error;
   }
@@ -110,7 +125,9 @@ const layOut = async (document: Document): Promise<HeadlessLayoutResult> => {
     const ids = [
       ...new Set(
         page.fragments.flatMap((fragment) => {
-          const story = result.value.blockLookup.get(String(fragment.blockId))?.noteStory;
+          const story = result.value.blockLookup.get(
+            String(fragment.blockId),
+          )?.noteStory;
           return story?.kind === "endnote" ? [story.noteId] : [];
         }),
       ),
@@ -133,7 +150,10 @@ type PlacedBlock = {
 };
 
 /** Every paragraph fragment in page order, with the text its block holds. */
-const placedParagraphs = ({ layout, blockLookup }: HeadlessLayoutResult): PlacedBlock[] =>
+const placedParagraphs = ({
+  layout,
+  blockLookup,
+}: HeadlessLayoutResult): PlacedBlock[] =>
   layout.pages.flatMap((page) =>
     page.fragments.flatMap((fragment) => {
       const entry = blockLookup.get(String(fragment.blockId));
@@ -153,7 +173,8 @@ const placedParagraphs = ({ layout, blockLookup }: HeadlessLayoutResult): Placed
     }),
   );
 
-const LONG_TEXT = "Endnote words that wrap across several lines of the note area. ".repeat(4);
+const LONG_TEXT =
+  "Endnote words that wrap across several lines of the note area. ".repeat(4);
 
 describe("endnote areas", () => {
   test("docEnd: the area follows the last body block, opened by the separator", async () => {
@@ -162,15 +183,21 @@ describe("endnote areas", () => {
       referencingParagraph("Body with a reference", 7),
       textParagraph("Last body paragraph"),
     ];
-    document.package.endnotes = [endnote(7, [textParagraph("The endnote text.")])];
+    document.package.endnotes = [
+      endnote(7, [textParagraph("The endnote text.")]),
+    ];
 
     const laidOut = await layOut(document);
     const placed = placedParagraphs(laidOut);
 
     expect(laidOut.unsupported).toEqual([]);
     expect(laidOut.layout.pages).toHaveLength(1);
-    const lastBody = placed.findIndex(({ text }) => text === "Last body paragraph");
-    const separatorIndex = placed.findIndex(({ blockId }) => blockId.includes("separator"));
+    const lastBody = placed.findIndex(
+      ({ text }) => text === "Last body paragraph",
+    );
+    const separatorIndex = placed.findIndex(({ blockId }) =>
+      blockId.includes("separator"),
+    );
     const noteIndex = placed.findIndex(({ noteId }) => noteId === 7);
     expect(lastBody).toBeGreaterThanOrEqual(0);
     expect(separatorIndex).toBe(lastBody + 1);
@@ -184,8 +211,12 @@ describe("endnote areas", () => {
     expect(page?.noteSeparators).toHaveLength(1);
     expect(rule?.x).toBe(page?.margins.left);
     const columnWidth =
-      (page?.size.w ?? 0) - (page?.margins.left ?? 0) - (page?.margins.right ?? 0);
-    expect(rule?.width).toBeCloseTo(columnWidth * NOTE_SEPARATOR_WIDTH_FRACTION);
+      (page?.size.w ?? 0) -
+      (page?.margins.left ?? 0) -
+      (page?.margins.right ?? 0);
+    expect(rule?.width).toBeCloseTo(
+      columnWidth * NOTE_SEPARATOR_WIDTH_FRACTION,
+    );
     expect(rule?.y).toBeGreaterThan(separator?.y ?? Number.POSITIVE_INFINITY);
     expect(rule?.y).toBeLessThan(placed[noteIndex]?.y ?? 0);
   });
@@ -206,11 +237,15 @@ describe("endnote areas", () => {
     const markerTexts = blocks.flatMap((block) =>
       block.kind === "paragraph"
         ? block.runs.flatMap((run) =>
-            run.kind === "text" && run.endnoteRefId !== undefined ? [run.text] : [],
+            run.kind === "text" && run.endnoteRefId !== undefined
+              ? [run.text]
+              : [],
           )
         : [],
     );
-    const notes = placedParagraphs(laidOut).filter(({ noteId }) => noteId !== undefined);
+    const notes = placedParagraphs(laidOut).filter(
+      ({ noteId }) => noteId !== undefined,
+    );
 
     // Endnotes number by first reference, in `w:numFmt` (lowerRoman by default).
     expect(markerTexts).toEqual(["i", "ii"]);
@@ -227,7 +262,9 @@ describe("endnote areas", () => {
     document.package.endnotes = [
       endnote(
         1,
-        Array.from({ length: 30 }, (_, index) => textParagraph(`${String(index)} ${LONG_TEXT}`)),
+        Array.from({ length: 30 }, (_, index) =>
+          textParagraph(`${String(index)} ${LONG_TEXT}`),
+        ),
       ),
     ];
 
@@ -243,16 +280,25 @@ describe("endnote areas", () => {
       // A `w:continuationSeparator` rule spans the whole column.
       const rule = page.noteSeparators?.at(0);
       expect(page.noteSeparators).toHaveLength(1);
-      expect(rule?.width).toBeCloseTo(page.size.w - page.margins.left - page.margins.right);
+      expect(rule?.width).toBeCloseTo(
+        page.size.w - page.margins.left - page.margins.right,
+      );
       // Note content resumes below the continuation separator.
-      const resumed = placed.find((entry) => entry.page === page && entry.noteId === 1);
-      expect(resumed?.y).toBeGreaterThan((rule?.y ?? 0) + NOTE_SEPARATOR_RULE_THICKNESS);
+      const resumed = placed.find(
+        (entry) => entry.page === page && entry.noteId === 1,
+      );
+      expect(resumed?.y).toBeGreaterThan(
+        (rule?.y ?? 0) + NOTE_SEPARATOR_RULE_THICKNESS,
+      );
     }
     // The opening separator is on the first page only.
-    expect(placed.filter(({ blockId }) => blockId === "endnote-area-0-separator")).toHaveLength(1);
-    expect(placed.find(({ blockId }) => blockId === "endnote-area-0-separator")?.page).toBe(
-      pages[0],
-    );
+    expect(
+      placed.filter(({ blockId }) => blockId === "endnote-area-0-separator"),
+    ).toHaveLength(1);
+    expect(
+      placed.find(({ blockId }) => blockId === "endnote-area-0-separator")
+        ?.page,
+    ).toBe(pages[0]);
   });
 
   test("sectEnd: each section's endnotes close that section", async () => {
@@ -275,8 +321,9 @@ describe("endnote areas", () => {
       endnote(2, [textParagraph("Note for section two.")]),
     ];
 
-    const placed = placedParagraphs(await layOut(document)).map(({ text, noteId }) =>
-      noteId === undefined ? text : `note ${String(noteId)}`,
+    const placed = placedParagraphs(await layOut(document)).map(
+      ({ text, noteId }) =>
+        noteId === undefined ? text : `note ${String(noteId)}`,
     );
 
     const order = [
@@ -300,7 +347,11 @@ describe("endnote areas", () => {
       referencingParagraph("Section one", 1),
       {
         ...textParagraph("End of section one"),
-        sectionProperties: { ...finalSection, sectionStart: "continuous", noEndnote: true },
+        sectionProperties: {
+          ...finalSection,
+          sectionStart: "continuous",
+          noEndnote: true,
+        },
       },
       referencingParagraph("Section two", 2),
     ];
@@ -309,11 +360,14 @@ describe("endnote areas", () => {
       endnote(2, [textParagraph("Note for section two.")]),
     ];
 
-    const placed = placedParagraphs(await layOut(document)).map(({ text, noteId }) =>
-      noteId === undefined ? text : `note ${String(noteId)}`,
+    const placed = placedParagraphs(await layOut(document)).map(
+      ({ text, noteId }) =>
+        noteId === undefined ? text : `note ${String(noteId)}`,
     );
 
-    const sectionTwo = placed.findIndex((text) => text.startsWith("Section two"));
+    const sectionTwo = placed.findIndex((text) =>
+      text.startsWith("Section two"),
+    );
     expect(sectionTwo).toBeGreaterThanOrEqual(0);
     expect(placed.indexOf("note 1")).toBeGreaterThan(sectionTwo);
     expect(placed.indexOf("note 2")).toBeGreaterThan(placed.indexOf("note 1"));
@@ -341,13 +395,20 @@ describe("endnote areas", () => {
       return document;
     };
 
-    const finalParagraphHeight = async (withEndnote: boolean): Promise<number | undefined> => {
+    const finalParagraphHeight = async (
+      withEndnote: boolean,
+    ): Promise<number | undefined> => {
       const { layout, blockLookup } = await layOut(buildDocument(withEndnote));
       const fragments = layout.pages.flatMap((page) => page.fragments);
       const tableIndex = fragments.findIndex(({ kind }) => kind === "table");
       const final = fragments[tableIndex + 1];
-      const entry = final === undefined ? undefined : blockLookup.get(String(final.blockId));
-      return entry?.measure.kind === "paragraph" ? entry.measure.totalHeight : undefined;
+      const entry =
+        final === undefined
+          ? undefined
+          : blockLookup.get(String(final.blockId));
+      return entry?.measure.kind === "paragraph"
+        ? entry.measure.totalHeight
+        : undefined;
     };
 
     // The terminal anchor collapses only when it is the document's last block.
@@ -363,33 +424,46 @@ describe("endnote areas", () => {
         textParagraph(LONG_TEXT),
       ];
       if (withEndnotes) {
-        document.package.endnotes = [endnote(1, [textParagraph("Unreferenced.")])];
+        document.package.endnotes = [
+          endnote(1, [textParagraph("Unreferenced.")]),
+        ];
       }
       return document;
     };
     const geometry = ({ layout }: HeadlessLayoutResult) =>
       layout.pages.map((page) => ({
         separators: page.noteSeparators,
-        fragments: page.fragments.map(({ kind, x, y, width }) => ({ kind, x, y, width })),
+        fragments: page.fragments.map(({ kind, x, y, width }) => ({
+          kind,
+          x,
+          y,
+          width,
+        })),
       }));
 
     const without = await layOut(buildDocument(false));
     const withPart = await layOut(buildDocument(true));
 
     expect(geometry(withPart)).toEqual(geometry(without));
-    expect(withPart.layout.pages.every((page) => page.noteSeparators === undefined)).toBe(true);
+    expect(
+      withPart.layout.pages.every((page) => page.noteSeparators === undefined),
+    ).toBe(true);
   });
 
   test("painted endnote text is addressed by its note story, not by body positions", async () => {
     const document = createEmptyDocument();
     document.package.document.content = [referencingParagraph("Body", 4)];
-    document.package.endnotes = [endnote(4, [textParagraph("Painted endnote.")])];
+    document.package.endnotes = [
+      endnote(4, [textParagraph("Painted endnote.")]),
+    ];
 
     const laidOut = await layOut(document);
     const noteFragments = laidOut.layout.pages
       .flatMap((page) => page.fragments)
       .filter(
-        (fragment) => laidOut.blockLookup.get(String(fragment.blockId))?.noteStory !== undefined,
+        (fragment) =>
+          laidOut.blockLookup.get(String(fragment.blockId))?.noteStory !==
+          undefined,
       );
     expect(noteFragments.length).toBeGreaterThan(0);
     for (const fragment of noteFragments) {

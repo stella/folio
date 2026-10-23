@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import { pairFolioDocumentStories } from "./document-stories";
 
-const header = (relationshipId: string) => ({ type: "header", relationshipId }) as const;
-const footer = (relationshipId: string) => ({ type: "footer", relationshipId }) as const;
+const header = (relationshipId: string) =>
+  ({ type: "header", relationshipId }) as const;
+const footer = (relationshipId: string) =>
+  ({ type: "footer", relationshipId }) as const;
 
 describe("pairFolioDocumentStories", () => {
   test("returns the exact input handles after pairing", () => {
@@ -12,7 +14,10 @@ describe("pairFolioDocumentStories", () => {
     const revisedMain = { type: "main" } as const;
     const revisedHeader = header("rId8");
 
-    const pairs = pairFolioDocumentStories([baseMain, baseHeader], [revisedMain, revisedHeader]);
+    const pairs = pairFolioDocumentStories(
+      [baseMain, baseHeader],
+      [revisedMain, revisedHeader],
+    );
 
     expect(pairs[0]?.baseStory).toBe(baseMain);
     expect(pairs[0]?.revisedStory).toBe(revisedMain);
@@ -40,7 +45,10 @@ describe("pairFolioDocumentStories", () => {
     // authored documents never agree on one, and pairing on it alone left
     // every header of such a comparison reported as present on one side only.
     expect(
-      pairFolioDocumentStories([header("rId3"), footer("rId4")], [header("rId8"), footer("rId9")]),
+      pairFolioDocumentStories(
+        [header("rId3"), footer("rId4")],
+        [header("rId8"), footer("rId9")],
+      ),
     ).toEqual([
       { baseStory: header("rId3"), revisedStory: header("rId8") },
       { baseStory: footer("rId4"), revisedStory: footer("rId9") },
@@ -48,14 +56,21 @@ describe("pairFolioDocumentStories", () => {
   });
 
   test("a header pairs with a header, never with a footer", () => {
-    expect(pairFolioDocumentStories([header("rId3")], [footer("rId9")])).toEqual([
+    expect(
+      pairFolioDocumentStories([header("rId3")], [footer("rId9")]),
+    ).toEqual([
       { baseStory: header("rId3"), revisedStory: null },
       { baseStory: null, revisedStory: footer("rId9") },
     ]);
   });
 
   test("the surplus stays unpaired when one side has more", () => {
-    expect(pairFolioDocumentStories([header("rId3")], [header("rId8"), header("rId9")])).toEqual([
+    expect(
+      pairFolioDocumentStories(
+        [header("rId3")],
+        [header("rId8"), header("rId9")],
+      ),
+    ).toEqual([
       { baseStory: header("rId3"), revisedStory: header("rId8") },
       { baseStory: null, revisedStory: header("rId9") },
     ]);
@@ -66,7 +81,10 @@ describe("pairFolioDocumentStories", () => {
     // first base header against it by order would leave the exact match
     // unpaired and put two unrelated headers opposite each other.
     expect(
-      pairFolioDocumentStories([header("rId3"), header("rId8")], [header("rId8"), header("rId9")]),
+      pairFolioDocumentStories(
+        [header("rId3"), header("rId8")],
+        [header("rId8"), header("rId9")],
+      ),
     ).toEqual([
       { baseStory: header("rId3"), revisedStory: header("rId9") },
       { baseStory: header("rId8"), revisedStory: header("rId8") },

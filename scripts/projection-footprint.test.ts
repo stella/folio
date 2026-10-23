@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
 import binaryen from "binaryen";
+import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +10,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const namedFixture = (source: string) => {
   const module = binaryen.parseText(source);
   try {
-    if (!module.validate()) throw new TypeError("Footprint fixture must be valid WebAssembly.");
+    if (!module.validate())
+      throw new TypeError("Footprint fixture must be valid WebAssembly.");
     binaryen.setDebugInfo(true);
     return module.emitBinary();
   } finally {
@@ -38,7 +39,13 @@ test("attribution normalizes Rust hashes and measures emitted function-body grow
           (i32.add (local.get 0) (i32.const 1))))`),
     );
     const result = Bun.spawnSync(
-      [process.execPath, join(import.meta.dir, "projection-footprint.ts"), base, head, output],
+      [
+        process.execPath,
+        join(import.meta.dir, "projection-footprint.ts"),
+        base,
+        head,
+        output,
+      ],
       { stdout: "pipe", stderr: "pipe" },
     );
     expect(result.exitCode, result.stderr.toString()).toBe(0);
@@ -50,7 +57,9 @@ test("attribution normalizes Rust hashes and measures emitted function-body grow
       !Array.isArray(report["functions"])
     )
       throw new TypeError("Footprint analyzer must emit a structured report.");
-    expect(report["functions"]).toEqual([{ name: "probe", baseBytes: 4, headBytes: 7, delta: 3 }]);
+    expect(report["functions"]).toEqual([
+      { name: "probe", baseBytes: 4, headBytes: 7, delta: 3 },
+    ]);
     expect(report["base"]["codeBytes"]).toBe(4);
     expect(report["head"]["codeBytes"]).toBe(7);
     const baseBytes = report["base"]["codeBytes"];

@@ -14,7 +14,11 @@ describe("dependency boundary baseline", () => {
     const baseline: unknown = JSON.parse(await readFile(BASELINE_PATH, "utf8"));
     const packageBoundaryExceptions = Array.isArray(baseline)
       ? baseline.filter((entry) => {
-          if (typeof entry !== "object" || entry === null || !("rule" in entry)) {
+          if (
+            typeof entry !== "object" ||
+            entry === null ||
+            !("rule" in entry)
+          ) {
             return true;
           }
           const { rule } = entry;

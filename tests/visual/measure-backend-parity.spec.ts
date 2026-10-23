@@ -47,7 +47,7 @@
  * parser whose advances it is checking would prove nothing about that parser.
  */
 
-import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page, test, type TestInfo } from "@playwright/test";
 
 /**
  * On a platform whose canvas returns fractional advances, how far the two
@@ -214,7 +214,8 @@ type AdvanceMode = {
   witness: AdvanceSample;
 };
 
-const deltaOf = ({ canvasPx, headlessPx }: AdvanceSample): number => canvasPx - headlessPx;
+const deltaOf = ({ canvasPx, headlessPx }: AdvanceSample): number =>
+  canvasPx - headlessPx;
 
 const ratioOf = (sample: AdvanceSample): number =>
   sample.canvasPx <= 0 ? 0 : Math.abs(deltaOf(sample)) / sample.canvasPx;
@@ -246,12 +247,18 @@ const isProvablyFractional = (value: number): boolean => {
  * characterised, so it fails rather than picking a branch.
  */
 const detectAdvanceMode = (samples: readonly AdvanceSample[]): AdvanceMode => {
-  const fractional = samples.filter((sample) => isProvablyFractional(sample.headlessPx));
+  const fractional = samples.filter((sample) =>
+    isProvablyFractional(sample.headlessPx),
+  );
   const witness = fractional.at(0);
   if (witness === undefined) {
-    throw new Error("no corpus string has a mid-pixel hmtx width, so the mode cannot be read");
+    throw new Error(
+      "no corpus string has a mid-pixel hmtx width, so the mode cannot be read",
+    );
   }
-  const whole = fractional.filter((sample) => Number.isInteger(sample.canvasPx));
+  const whole = fractional.filter((sample) =>
+    Number.isInteger(sample.canvasPx),
+  );
   if (whole.length === fractional.length) return { mode: "quantized", witness };
   if (whole.length === 0) return { mode: "linear", witness };
   throw new Error(
@@ -301,8 +308,12 @@ const collectAdvanceSamples = async (
     // WOFF 1.0 is a repackaging, not a transform: every table is stored raw or
     // zlib-deflated and is recovered by inflating it in place. `deflate` in the
     // Compression Streams API is the zlib-wrapped form, which is what WOFF uses.
-    const inflate = async (bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> => {
-      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+    const inflate = async (
+      bytes: Uint8Array<ArrayBuffer>,
+    ): Promise<Uint8Array<ArrayBuffer>> => {
+      const stream = new Blob([bytes])
+        .stream()
+        .pipeThrough(new DecompressionStream("deflate"));
       return new Uint8Array(await new Response(stream).arrayBuffer());
     };
 
@@ -319,7 +330,9 @@ const collectAdvanceSamples = async (
         view.getUint8(offset + 3),
       );
 
-    const readWoffTables = async (buffer: ArrayBuffer): Promise<Map<string, DataView>> => {
+    const readWoffTables = async (
+      buffer: ArrayBuffer,
+    ): Promise<Map<string, DataView>> => {
       const view = new DataView(buffer);
       if (tagAt(view, 0) !== WOFF_SIGNATURE) {
         throw new Error(`not a WOFF container: ${tagAt(view, 0)}`);
@@ -333,12 +346,19 @@ const collectAdvanceSamples = async (
         const origLength = view.getUint32(entry + 12);
         const stored = new Uint8Array(buffer, offset, compLength);
         const data = compLength === origLength ? stored : await inflate(stored);
-        tables.set(tagAt(view, entry), new DataView(data.buffer, data.byteOffset, data.byteLength));
+        tables.set(
+          tagAt(view, entry),
+          new DataView(data.buffer, data.byteOffset, data.byteLength),
+        );
       }
       return tables;
     };
 
-    const tableOrThrow = (tables: Map<string, DataView>, tag: string, url: string): DataView => {
+    const tableOrThrow = (
+      tables: Map<string, DataView>,
+      tag: string,
+      url: string,
+    ): DataView => {
       const table = tables.get(tag);
       if (table === undefined) throw new Error(`${url} has no ${tag} table`);
       return table;
@@ -357,7 +377,8 @@ const collectAdvanceSamples = async (
         const platform = cmap.getUint16(record);
         const encoding = cmap.getUint16(record + 2);
         const offset = cmap.getUint32(record + 4);
-        const isUnicodeBmp = (platform === 3 && encoding === 1) || platform === 0;
+        const isUnicodeBmp =
+          (platform === 3 && encoding === 1) || platform === 0;
         if (isUnicodeBmp && cmap.getUint16(offset) === 4) subtable = offset;
       }
       if (subtable < 0) throw new Error(`${url} has no format 4 cmap subtable`);
@@ -378,7 +399,10 @@ const collectAdvanceSamples = async (
           const rangeOffset = cmap.getUint16(rangeOffsetBase + segment * 2);
           if (rangeOffset === 0) return (codePoint + delta) & 0xffff;
           const glyphAddress =
-            rangeOffsetBase + segment * 2 + rangeOffset + (codePoint - start) * 2;
+            rangeOffsetBase +
+            segment * 2 +
+            rangeOffset +
+            (codePoint - start) * 2;
           const glyph = cmap.getUint16(glyphAddress);
           return glyph === 0 ? 0 : (glyph + delta) & 0xffff;
         }
@@ -401,7 +425,10 @@ const collectAdvanceSamples = async (
       const unitsPerEm = tableOrThrow(tables, "head", url).getUint16(18);
       const numberOfHMetrics = tableOrThrow(tables, "hhea", url).getUint16(34);
       const hmtx = tableOrThrow(tables, "hmtx", url);
-      const toGlyph = buildCodePointToGlyph(tableOrThrow(tables, "cmap", url), url);
+      const toGlyph = buildCodePointToGlyph(
+        tableOrThrow(tables, "cmap", url),
+        url,
+      );
 
       // Glyphs past `numberOfHMetrics` share the last recorded advance; that is
       // how a monospaced tail is stored, not a missing metric.
@@ -415,7 +442,9 @@ const collectAdvanceSamples = async (
       return { url, ranges, advanceEm };
     };
 
-    const parseUnicodeRange = (spec: string): readonly (readonly [number, number])[] =>
+    const parseUnicodeRange = (
+      spec: string,
+    ): readonly (readonly [number, number])[] =>
       spec
         .split(",")
         .flatMap<readonly [number, number]>((token) => {
@@ -423,11 +452,19 @@ const collectAdvanceSamples = async (
           if (text.length === 0) return [];
           if (text.includes("-")) {
             const bounds = text.split("-");
-            return [[parseInt(bounds.at(0) ?? "", 16), parseInt(bounds.at(1) ?? "", 16)]];
+            return [
+              [
+                parseInt(bounds.at(0) ?? "", 16),
+                parseInt(bounds.at(1) ?? "", 16),
+              ],
+            ];
           }
           if (text.includes("?")) {
             return [
-              [parseInt(text.replaceAll("?", "0"), 16), parseInt(text.replaceAll("?", "F"), 16)],
+              [
+                parseInt(text.replaceAll("?", "0"), 16),
+                parseInt(text.replaceAll("?", "F"), 16),
+              ],
             ];
           }
           const single = parseInt(text, 16);
@@ -435,17 +472,23 @@ const collectAdvanceSamples = async (
         })
         .filter(([low, high]) => Number.isFinite(low) && Number.isFinite(high));
 
-    const unquote = (value: string): string => value.trim().replace(/^["']|["']$/gu, "");
+    const unquote = (value: string): string =>
+      value.trim().replace(/^["']|["']$/gu, "");
 
     // Folio's own `@font-face` rules are the resolution table: family, weight,
     // subset range and file name all come from them. A cross-origin sheet
     // exposes no rules, and folio's are same-document anyway.
     const fontFaceRules = (): CSSFontFaceRule[] => {
       const rules: CSSFontFaceRule[] = [];
-      for (let sheetIndex = 0; sheetIndex < document.styleSheets.length; sheetIndex++) {
+      for (
+        let sheetIndex = 0;
+        sheetIndex < document.styleSheets.length;
+        sheetIndex++
+      ) {
         const sheet = document.styleSheets[sheetIndex];
         if (sheet === undefined) continue;
-        if (sheet.href !== null && !sheet.href.startsWith(location.origin)) continue;
+        if (sheet.href !== null && !sheet.href.startsWith(location.origin))
+          continue;
         const list = sheet.cssRules;
         for (let ruleIndex = 0; ruleIndex < list.length; ruleIndex++) {
           const rule = list.item(ruleIndex);
@@ -466,7 +509,10 @@ const collectAdvanceSamples = async (
     }
     const wantedCodePoints = [...wanted];
 
-    const covers = (ranges: readonly (readonly [number, number])[], codePoint: number): boolean =>
+    const covers = (
+      ranges: readonly (readonly [number, number])[],
+      codePoint: number,
+    ): boolean =>
       ranges.some(([low, high]) => codePoint >= low && codePoint <= high);
 
     const rules = fontFaceRules();
@@ -488,13 +534,18 @@ const collectAdvanceSamples = async (
         const faces: ParsedFace[] = [];
         for (const rule of rules) {
           if (
-            unquote(rule.style.getPropertyValue("font-family")).toLowerCase() !==
-            family.toLowerCase()
+            unquote(
+              rule.style.getPropertyValue("font-family"),
+            ).toLowerCase() !== family.toLowerCase()
           ) {
             continue;
           }
-          if (rule.style.getPropertyValue("font-style").trim() !== "normal") continue;
-          if (rule.style.getPropertyValue("font-weight").trim() !== String(weight)) continue;
+          if (rule.style.getPropertyValue("font-style").trim() !== "normal")
+            continue;
+          if (
+            rule.style.getPropertyValue("font-weight").trim() !== String(weight)
+          )
+            continue;
           const source = /url\((["']?)([^"')]+\.woff)\1\)/u.exec(
             rule.style.getPropertyValue("src"),
           );
@@ -504,14 +555,16 @@ const collectAdvanceSamples = async (
           // A face with no `unicode-range` covers everything; a subset face is
           // fetched only when the corpus reaches into its range.
           const needed =
-            ranges.length === 0 || wantedCodePoints.some((codePoint) => covers(ranges, codePoint));
+            ranges.length === 0 ||
+            wantedCodePoints.some((codePoint) => covers(ranges, codePoint));
           if (!needed) continue;
 
           // Fetch the emitted CSS asset URL, which works in both dev and preview.
           // SAFETY: group 2 is mandatory in a regex that matched.
           const url = source[2]!;
           const response = await fetch(url);
-          if (!response.ok) throw new Error(`${url} responded ${String(response.status)}`);
+          if (!response.ok)
+            throw new Error(`${url} responded ${String(response.status)}`);
           const buffer = await response.arrayBuffer();
 
           // Parse before registering: an SPA fallback can return 200 for a missing
@@ -523,17 +576,25 @@ const collectAdvanceSamples = async (
           // The same bytes on both sides: the canvas shapes this face, and the
           // reader below reads its `hmtx`. Anything else and the harness would
           // be measuring its own font plumbing.
-          const face = new FontFace(`${family} ${PARITY_FAMILY_SUFFIX}`, buffer, {
-            weight: String(weight),
-            style: "normal",
-            ...(rangeSpec.trim().length > 0 ? { unicodeRange: rangeSpec } : {}),
-          });
+          const face = new FontFace(
+            `${family} ${PARITY_FAMILY_SUFFIX}`,
+            buffer,
+            {
+              weight: String(weight),
+              style: "normal",
+              ...(rangeSpec.trim().length > 0
+                ? { unicodeRange: rangeSpec }
+                : {}),
+            },
+          );
           document.fonts.add(await face.load());
 
           faces.push(parseFace(url, ranges, tables));
         }
         if (faces.length === 0) {
-          throw new Error(`no bundled .woff face for ${family} ${String(weight)}`);
+          throw new Error(
+            `no bundled .woff face for ${family} ${String(weight)}`,
+          );
         }
 
         // Nothing probes for a silent fallback here, because in these families
@@ -558,11 +619,15 @@ const collectAdvanceSamples = async (
             // measuring `.notdef` as if it were a width.
             const owner =
               faces.find(
-                (face) => covers(face.ranges, codePoint) && face.advanceEm(codePoint) !== null,
+                (face) =>
+                  covers(face.ranges, codePoint) &&
+                  face.advanceEm(codePoint) !== null,
               ) ?? faces.find((face) => face.advanceEm(codePoint) !== null);
             if (owner === undefined) {
               const hex = codePoint.toString(16).toUpperCase().padStart(4, "0");
-              throw new Error(`${family} ${String(weight)} has no glyph for U+${hex}`);
+              throw new Error(
+                `${family} ${String(weight)} has no glyph for U+${hex}`,
+              );
             }
             total += owner.advanceEm(codePoint) ?? 0;
           }
@@ -638,7 +703,10 @@ const describeMode = ({ mode, witness }: AdvanceMode): string =>
   `advance mode: ${mode} — the canvas returned ${mode === "quantized" ? "a whole number" : "a fractional width"} ` +
   `for every mid-pixel hmtx width, e.g. ${witness.family} ${String(witness.weight)} ${describeSample(witness)}`;
 
-const reportLines = (residues: readonly FaceResidue[], advanceMode: AdvanceMode): string[] => [
+const reportLines = (
+  residues: readonly FaceResidue[],
+  advanceMode: AdvanceMode,
+): string[] => [
   describeMode(advanceMode),
   ...residues.map(
     (residue) =>
@@ -660,7 +728,10 @@ const openPlayground = async (page: Page): Promise<void> => {
   });
 };
 
-const attachReport = async (testInfo: TestInfo, lines: readonly string[]): Promise<void> => {
+const attachReport = async (
+  testInfo: TestInfo,
+  lines: readonly string[],
+): Promise<void> => {
   for (const line of lines) console.log(line);
   await testInfo.attach("measure-backend-parity.txt", {
     body: lines.join("\n"),
@@ -687,7 +758,10 @@ test.describe("measure-backend parity", () => {
     // Exact, not `> 0`: if face resolution ever silently drops a family or a
     // size, this spec must fail rather than compare whatever is left.
     expect(samples.length).toBe(
-      SUBSTITUTED_FAMILIES.length * WEIGHTS.length * SIZES_PT.length * CORPUS.length,
+      SUBSTITUTED_FAMILIES.length *
+        WEIGHTS.length *
+        SIZES_PT.length *
+        CORPUS.length,
     );
 
     const advanceMode = detectAdvanceMode(samples);
@@ -698,12 +772,15 @@ test.describe("measure-backend parity", () => {
     );
     expect(
       offenders.map(
-        (sample) => `${sample.family} ${String(sample.weight)} ${describeSample(sample)}`,
+        (sample) =>
+          `${sample.family} ${String(sample.weight)} ${describeSample(sample)}`,
       ),
     ).toEqual([]);
   });
 
-  test("an unshaped run isolates the residue that is not shaping", async ({ page }, testInfo) => {
+  test("an unshaped run isolates the residue that is not shaping", async ({
+    page,
+  }, testInfo) => {
     // A run of spaces forms no ligature and takes no pair adjustment, so the
     // whole shaping argument drops out and what is left is the floor neither
     // backend can get below. Separating that from the ligature residue is what
@@ -761,11 +838,16 @@ test.describe("measure-backend parity", () => {
     expect(
       samples
         .filter(overFloor)
-        .map((sample) => `${sample.family} ${String(sample.weight)} ${describeSample(sample)}`),
+        .map(
+          (sample) =>
+            `${sample.family} ${String(sample.weight)} ${describeSample(sample)}`,
+        ),
     ).toEqual([]);
   });
 
-  test("ligature substitution is the whole of the shaping residue", async ({ page }, testInfo) => {
+  test("ligature substitution is the whole of the shaping residue", async ({
+    page,
+  }, testInfo) => {
     // Which bundled families ligate is a fact about the font files folio ships,
     // and it decides where the headless backend mismeasures: `hmtx` cannot see
     // a `liga` substitution, so a family that ligates is a family whose width

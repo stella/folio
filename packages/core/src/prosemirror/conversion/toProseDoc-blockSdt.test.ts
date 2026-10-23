@@ -10,7 +10,11 @@ import { describe, expect, test } from "bun:test";
 
 import { parseBlockContent } from "../../docx/blockContentParser";
 import { parseXml } from "../../docx/xmlParser";
-import type { BlockContent, BlockSdt, DocumentBody } from "../../types/document";
+import type {
+  BlockContent,
+  BlockSdt,
+  DocumentBody,
+} from "../../types/document";
 import { schema } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -68,14 +72,18 @@ describe("toProseDoc/fromProseDoc — blockSdt round-trip", () => {
     expect(pmDoc.firstChild?.attrs["alias"]).toBe("Effective Date");
     expect(pmDoc.firstChild?.attrs["_preserved"]).toBeDefined();
 
-    const recovered = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const recovered = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const recoveredSdt = expectBlockSdt(recovered.package.document.content[0]);
     expect(recoveredSdt.properties.tag).toBe("effective-date");
     expect(recoveredSdt.properties.alias).toBe("Effective Date");
     // The unmodelled `w:dataBinding` survives because the property sink
     // rides along on the node's attrs.
     expect(
-      recoveredSdt.properties.preserved?.children?.some(({ xml }) => xml.includes("dataBinding")),
+      recoveredSdt.properties.preserved?.children?.some(({ xml }) =>
+        xml.includes("dataBinding"),
+      ),
     ).toBe(true);
   });
 
@@ -92,7 +100,9 @@ describe("toProseDoc/fromProseDoc — blockSdt round-trip", () => {
       [schema.node("paragraph", {}, [schema.text("Real value")])],
     );
     const pmDoc = schema.node("doc", null, [sdt]);
-    const recovered = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const recovered = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const ctrl = expectBlockSdt(recovered.package.document.content[0]);
     expect(ctrl.properties.showingPlaceholder).toBe(false);
   });
@@ -118,7 +128,9 @@ describe("toProseDoc/fromProseDoc — blockSdt round-trip", () => {
 
     // Round-trip is now lossless: the recovered model has exactly one
     // top-level block (the SDT), and a second toProseDoc keeps that shape.
-    const recovered = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const recovered = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     expect(recovered.package.document.content).toHaveLength(1);
     const pmDoc2 = toProseDoc(recovered);
     expect(pmDoc2.childCount).toBe(1);
@@ -138,7 +150,9 @@ describe("toProseDoc/fromProseDoc — blockSdt round-trip", () => {
       </w:sdt>
     </w:body>`);
     const pmDoc = toProseDoc(asDocument(content));
-    const recovered = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const recovered = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const sdt = recovered.package.document.content[0];
     if (!sdt || sdt.type !== "blockSdt") {
       throw new TypeError("expected blockSdt");
@@ -171,7 +185,9 @@ describe("toProseDoc/fromProseDoc — blockSdt round-trip", () => {
 
     // Round-trip: recovered model has content: [] again, and a second
     // toProseDoc gives the same PM shape (idempotent).
-    const recovered = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const recovered = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const recoveredSdt = recovered.package.document.content[0];
     if (!recoveredSdt || recoveredSdt.type !== "blockSdt") {
       throw new TypeError("expected blockSdt");
@@ -198,7 +214,9 @@ describe("toProseDoc/fromProseDoc — blockSdt round-trip", () => {
     </w:body>`);
 
     const pmDoc = toProseDoc(asDocument(content));
-    const recovered = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const recovered = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const outer = expectBlockSdt(recovered.package.document.content[0]);
     expect(outer.properties.tag).toBe("outer");
     const inner = expectBlockSdt(outer.content[0]);

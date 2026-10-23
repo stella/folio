@@ -11,7 +11,11 @@ import { buildBookmarkText } from "./bookmarkText";
 
 const text = (value: string): TextRun => ({ kind: "text", text: value });
 
-const para = (id: string, runs: (TextRun | FieldRun)[], bookmarks?: string[]): ParagraphBlock => ({
+const para = (
+  id: string,
+  runs: (TextRun | FieldRun)[],
+  bookmarks?: string[],
+): ParagraphBlock => ({
   kind: "paragraph",
   id,
   runs,
@@ -41,7 +45,9 @@ describe("buildBookmarkText", () => {
       instruction: "SEQ Figure",
       fallback: "1",
     };
-    const blocks: FlowBlock[] = [para("h", [text("Figure "), field, text(": Caption")], ["_Ref1"])];
+    const blocks: FlowBlock[] = [
+      para("h", [text("Figure "), field, text(": Caption")], ["_Ref1"]),
+    ];
 
     expect(buildBookmarkText(blocks).get("_Ref1")).toBe("Figure 1: Caption");
   });
@@ -54,11 +60,13 @@ describe("buildBookmarkText", () => {
       fallback: "I",
       pmStart: 12,
     };
-    const blocks: FlowBlock[] = [para("h", [text("Figure "), field, text(": Caption")], ["_Ref1"])];
+    const blocks: FlowBlock[] = [
+      para("h", [text("Figure "), field, text(": Caption")], ["_Ref1"]),
+    ];
 
-    expect(buildBookmarkText(blocks, { seqValues: new Map([[12, 4]]) }).get("_Ref1")).toBe(
-      "Figure IV: Caption",
-    );
+    expect(
+      buildBookmarkText(blocks, { seqValues: new Map([[12, 4]]) }).get("_Ref1"),
+    ).toBe("Figure IV: Caption");
     expect(
       buildBookmarkText(blocks, {
         fieldValues: new Map([[12, "V"]]),

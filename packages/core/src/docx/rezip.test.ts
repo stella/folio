@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+
 import {
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
@@ -16,9 +18,9 @@ import {
   repackDocx,
 } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
-import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const ONE_PIXEL_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
@@ -330,11 +332,13 @@ describe("repackDocx", () => {
         '<foreign:sectPr xmlns:foreign="urn:example:foreign"/></w:body>',
       ),
     );
-    parsed.originalBuffer = await sourceZip.generateAsync({ type: "arraybuffer" });
+    parsed.originalBuffer = await sourceZip.generateAsync({
+      type: "arraybuffer",
+    });
 
-    await expect(repackDocx(parsed, { updateModifiedDate: false })).resolves.toBeInstanceOf(
-      ArrayBuffer,
-    );
+    await expect(
+      repackDocx(parsed, { updateModifiedDate: false }),
+    ).resolves.toBeInstanceOf(ArrayBuffer);
   });
 
   test("counts Strict WordprocessingML section elements in fidelity checks", async () => {
@@ -353,11 +357,13 @@ describe("repackDocx", () => {
         '<strict:sectPr xmlns:strict="http://purl.oclc.org/ooxml/wordprocessingml/main"/></w:body>',
       ),
     );
-    parsed.originalBuffer = await sourceZip.generateAsync({ type: "arraybuffer" });
+    parsed.originalBuffer = await sourceZip.generateAsync({
+      type: "arraybuffer",
+    });
 
-    await expect(repackDocx(parsed, { updateModifiedDate: false })).rejects.toBeInstanceOf(
-      DocxPackageFidelityError,
-    );
+    await expect(
+      repackDocx(parsed, { updateModifiedDate: false }),
+    ).rejects.toBeInstanceOf(DocxPackageFidelityError);
   });
 
   test("preserves an explicit false final-section bidi setting across save and reopen", async () => {
@@ -367,20 +373,28 @@ describe("repackDocx", () => {
       throw new Error("expected word/document.xml");
     }
     const documentXml = await documentFile.async("text");
-    const explicitLtrXml = documentXml.replace("</w:sectPr>", '<w:bidi w:val="0"/></w:sectPr>');
+    const explicitLtrXml = documentXml.replace(
+      "</w:sectPr>",
+      '<w:bidi w:val="0"/></w:sectPr>',
+    );
     expect(explicitLtrXml).not.toBe(documentXml);
     sourceZip.file("word/document.xml", explicitLtrXml);
 
-    const parsed = await parseDocx(await sourceZip.generateAsync({ type: "arraybuffer" }), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await sourceZip.generateAsync({ type: "arraybuffer" }),
+      {
+        preloadFonts: false,
+      },
+    );
     expect(parsed.package.document.finalSectionProperties?.bidi).toBe(false);
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const reopened = await parseDocx(saved, { preloadFonts: false });
 
     expect(reopened.package.document.finalSectionProperties?.bidi).toBe(false);
-    expect(reopened.package.document.sections?.at(-1)?.properties.bidi).toBe(false);
+    expect(reopened.package.document.sections?.at(-1)?.properties.bidi).toBe(
+      false,
+    );
   });
 
   test("preserves clickable image hyperlinks across full save and reopen", async () => {
@@ -403,7 +417,9 @@ describe("repackDocx", () => {
       hlinkHref: "https://example.test/guide",
       hlinkRId: "rId6",
     });
-    expect(reopened.package.document.content).toEqual(parsed.package.document.content);
+    expect(reopened.package.document.content).toEqual(
+      parsed.package.document.content,
+    );
   });
 
   test("writes URI-encoded SVG data URLs as image parts", async () => {
@@ -440,8 +456,12 @@ describe("repackDocx", () => {
     const result = await createDocx(document);
     const zip = await JSZip.loadAsync(result);
 
-    expect(await zip.file("word/media/image1.svg")?.async("text")).toBe(URI_ENCODED_SVG);
-    expect(await zip.file("word/document.xml")?.async("text")).toContain('r:embed="rId2"');
+    expect(await zip.file("word/media/image1.svg")?.async("text")).toBe(
+      URI_ENCODED_SVG,
+    );
+    expect(await zip.file("word/document.xml")?.async("text")).toContain(
+      'r:embed="rId2"',
+    );
     expect(await zip.file("[Content_Types].xml")?.async("text")).toContain(
       'Extension="svg" ContentType="image/svg+xml"',
     );
@@ -455,7 +475,11 @@ describe("repackDocx", () => {
 
     const firstSave = await createDocx(document);
     expect(
-      await (await JSZip.loadAsync(firstSave)).file("word/vbaProject.bin")?.async("uint8array"),
+      await (
+        await JSZip.loadAsync(firstSave)
+      )
+        .file("word/vbaProject.bin")
+        ?.async("uint8array"),
     ).toEqual(new Uint8Array([1, 2, 3]));
 
     const body = document.package.document.content.at(0);
@@ -478,9 +502,9 @@ describe("repackDocx", () => {
     expect(await secondZip.file("word/document.xml")?.async("text")).toContain(
       "Edited after first save",
     );
-    expect(await secondZip.file("word/vbaProject.bin")?.async("uint8array")).toEqual(
-      new Uint8Array([1, 2, 3]),
-    );
+    expect(
+      await secondZip.file("word/vbaProject.bin")?.async("uint8array"),
+    ).toEqual(new Uint8Array([1, 2, 3]));
   });
 
   test("drops orphan comment references before full repack validation", async () => {
@@ -534,7 +558,9 @@ describe("repackDocx", () => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Body" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Body" }] },
+              ],
             },
           ],
         },
@@ -586,7 +612,9 @@ describe("repackDocx", () => {
 
     const result = await repackDocx(document, { updateModifiedDate: false });
     const zip = await JSZip.loadAsync(result);
-    const headerRels = await zip.file("word/_rels/header1.xml.rels")?.async("text");
+    const headerRels = await zip
+      .file("word/_rels/header1.xml.rels")
+      ?.async("text");
     const headerXml = await zip.file("word/header1.xml")?.async("text");
 
     expect(headerRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
@@ -619,7 +647,9 @@ describe("repackDocx", () => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Body" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Body" }] },
+              ],
             },
           ],
         },
@@ -670,7 +700,9 @@ describe("repackDocx", () => {
 
     const result = await repackDocx(document, { updateModifiedDate: false });
     const zip = await JSZip.loadAsync(result);
-    const headerRels = await zip.file("word/_rels/header1.xml.rels")?.async("text");
+    const headerRels = await zip
+      .file("word/_rels/header1.xml.rels")
+      ?.async("text");
     const headerXml = await zip.file("word/header1.xml")?.async("text");
     const mediaFiles = Object.entries(zip.files)
       .filter(([path, file]) => path.startsWith("word/media/") && !file.dir)
@@ -702,9 +734,13 @@ describe("repackDocx", () => {
     const result = await repackDocx(doc, { updateModifiedDate: false });
     const zip = await JSZip.loadAsync(result);
     const documentXml = await zip.file("word/document.xml")?.async("text");
-    const headerRelsXml = await zip.file("word/_rels/header1.xml.rels")?.async("text");
+    const headerRelsXml = await zip
+      .file("word/_rels/header1.xml.rels")
+      ?.async("text");
 
-    expect(documentXml).toContain('<w:headerReference w:type="first" r:id="rId11"/>');
+    expect(documentXml).toContain(
+      '<w:headerReference w:type="first" r:id="rId11"/>',
+    );
     expect(documentXml).toContain("<w:titlePg/>");
     expect(headerRelsXml).toContain('Target="media/image1.png"');
     expect(zip.file("word/media/image1.png")).not.toBeNull();
@@ -717,19 +753,29 @@ describe("repackDocx", () => {
   test("keeps a header reference whose w:type is outside ST_HdrFtr", async () => {
     const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
     const sourceZip = await JSZip.loadAsync(originalBuffer);
-    const documentXml = await sourceZip.file("word/document.xml")?.async("text");
+    const documentXml = await sourceZip
+      .file("word/document.xml")
+      ?.async("text");
     if (documentXml === undefined) {
       throw new Error("expected word/document.xml");
     }
     sourceZip.file(
       "word/document.xml",
-      documentXml.replace('w:type="default" r:id="rId12"', 'w:type="odd" r:id="rId12"'),
+      documentXml.replace(
+        'w:type="default" r:id="rId12"',
+        'w:type="odd" r:id="rId12"',
+      ),
     );
-    const doc = await parseDocx(await sourceZip.generateAsync({ type: "arraybuffer" }), {
-      preloadFonts: false,
-    });
+    const doc = await parseDocx(
+      await sourceZip.generateAsync({ type: "arraybuffer" }),
+      {
+        preloadFonts: false,
+      },
+    );
 
-    const zip = await JSZip.loadAsync(await repackDocx(doc, { updateModifiedDate: false }));
+    const zip = await JSZip.loadAsync(
+      await repackDocx(doc, { updateModifiedDate: false }),
+    );
 
     expect(await zip.file("word/document.xml")?.async("text")).toContain(
       '<w:headerReference w:type="default" r:id="rId12"/>',
@@ -759,9 +805,12 @@ describe("repackDocx", () => {
   });
 
   test("checks every save of a cached source against the source sections", async () => {
-    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
-      preloadFonts: false,
-    });
+    const doc = await parseDocx(
+      await createMultiSectionFirstHeaderImageFixture(),
+      {
+        preloadFonts: false,
+      },
+    );
     await expect(createDocx(doc)).resolves.toBeInstanceOf(ArrayBuffer);
 
     const firstParagraph = doc.package.document.content.find(
@@ -772,7 +821,9 @@ describe("repackDocx", () => {
     }
     delete firstParagraph.sectionProperties;
 
-    await expect(createDocx(doc)).rejects.toBeInstanceOf(DocxPackageFidelityError);
+    await expect(createDocx(doc)).rejects.toBeInstanceOf(
+      DocxPackageFidelityError,
+    );
   });
 
   test("checks every save against a shared baseline buffer's own sections", async () => {
@@ -780,7 +831,10 @@ describe("repackDocx", () => {
     const doc = await parseDocx(baseline, { preloadFonts: false });
     // Hosts save a fresh document over one baseline buffer each time.
     await expect(
-      repackDocx({ ...doc, originalBuffer: baseline }, { updateModifiedDate: false }),
+      repackDocx(
+        { ...doc, originalBuffer: baseline },
+        { updateModifiedDate: false },
+      ),
     ).resolves.toBeInstanceOf(ArrayBuffer);
 
     const content = doc.package.document.content.map((block) => {
@@ -794,17 +848,22 @@ describe("repackDocx", () => {
     const dropped = {
       ...doc,
       originalBuffer: baseline,
-      package: { ...doc.package, document: { ...doc.package.document, content } },
+      package: {
+        ...doc.package,
+        document: { ...doc.package.document, content },
+      },
     };
-    await expect(repackDocx(dropped, { updateModifiedDate: false })).rejects.toBeInstanceOf(
-      DocxPackageFidelityError,
-    );
+    await expect(
+      repackDocx(dropped, { updateModifiedDate: false }),
+    ).rejects.toBeInstanceOf(DocxPackageFidelityError);
   });
 
   test.each(["transitional", "strict"])(
     "reference loss guard resolves alternate prefixes in %s XML",
     async (profile) => {
-      const zip = await JSZip.loadAsync(await createMultiSectionFirstHeaderImageFixture());
+      const zip = await JSZip.loadAsync(
+        await createMultiSectionFirstHeaderImageFixture(),
+      );
       const originalXml = await zip.file("word/document.xml")!.async("text");
       let xml = originalXml
         .replaceAll("xmlns:w=", "xmlns:word=")
@@ -823,19 +882,28 @@ describe("repackDocx", () => {
           );
       }
       zip.file("word/document.xml", xml);
-      const doc = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-        preloadFonts: false,
-      });
+      const doc = await parseDocx(
+        await zip.generateAsync({ type: "arraybuffer" }),
+        {
+          preloadFonts: false,
+        },
+      );
       const section = doc.package.document.content.find(
         (block) => block.type === "paragraph" && block.sectionProperties,
       );
-      if (!section || section.type !== "paragraph" || !section.sectionProperties)
+      if (
+        !section ||
+        section.type !== "paragraph" ||
+        !section.sectionProperties
+      )
         throw new Error("Expected section properties");
-      expect(section.sectionProperties.headerReferences?.length).toBeGreaterThan(0);
+      expect(
+        section.sectionProperties.headerReferences?.length,
+      ).toBeGreaterThan(0);
       delete section.sectionProperties.headerReferences;
-      await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toBeInstanceOf(
-        DocxPackageFidelityError,
-      );
+      await expect(
+        repackDocx(doc, { updateModifiedDate: false }),
+      ).rejects.toBeInstanceOf(DocxPackageFidelityError);
     },
   );
 
@@ -856,7 +924,9 @@ describe("repackDocx", () => {
       expectedParagraphEndpointCount: 0,
       sourceEndpointFingerprint: "source-endpoints",
       expectedEndpointFingerprint: "resolved-endpoints",
-      removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+      removedReferences: [
+        { part: "header", type: "first", relationshipId: "rId11" },
+      ],
     } as const satisfies TrackedSectionEndpointRemoval;
     const saved = await repackAfterTrackedSectionEndpointRemoval({
       document: doc,
@@ -889,7 +959,9 @@ describe("repackDocx", () => {
           expectedParagraphEndpointCount: 0,
           sourceEndpointFingerprint: "source-endpoints",
           expectedEndpointFingerprint: "resolved-endpoints",
-          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+          removedReferences: [
+            { part: "header", type: "first", relationshipId: "rId11" },
+          ],
         },
         repack: async () => {
           await repackDocx(doc, { updateModifiedDate: false });
@@ -900,9 +972,9 @@ describe("repackDocx", () => {
 
     // The failed scope must not leave an allowance behind for an ordinary
     // public repack of the same document object.
-    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toBeInstanceOf(
-      DocxPackageFidelityError,
-    );
+    await expect(
+      repackDocx(doc, { updateModifiedDate: false }),
+    ).rejects.toBeInstanceOf(DocxPackageFidelityError);
 
     // Stable tracker evidence may authorize a later save, but that save gets a
     // fresh one-call scope rather than reusing state from the failed call.
@@ -915,7 +987,9 @@ describe("repackDocx", () => {
           expectedParagraphEndpointCount: 0,
           sourceEndpointFingerprint: "source-endpoints",
           expectedEndpointFingerprint: "resolved-endpoints",
-          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+          removedReferences: [
+            { part: "header", type: "first", relationshipId: "rId11" },
+          ],
         },
       }),
     ).resolves.toBeInstanceOf(ArrayBuffer);
@@ -942,7 +1016,9 @@ describe("repackDocx", () => {
           expectedParagraphEndpointCount: 0,
           sourceEndpointFingerprint: "source-endpoints",
           expectedEndpointFingerprint: "resolved-endpoints",
-          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+          removedReferences: [
+            { part: "header", type: "first", relationshipId: "rId11" },
+          ],
         },
       }),
     ).rejects.toBeInstanceOf(DocxPackageFidelityError);
@@ -951,7 +1027,9 @@ describe("repackDocx", () => {
   test("does not let one removed endpoint excuse a shared reference on a surviving endpoint", async () => {
     const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
     const originalZip = await JSZip.loadAsync(originalBuffer);
-    const originalXml = await originalZip.file("word/document.xml")?.async("text");
+    const originalXml = await originalZip
+      .file("word/document.xml")
+      ?.async("text");
     if (!originalXml) {
       throw new Error("Expected document XML");
     }
@@ -962,7 +1040,9 @@ describe("repackDocx", () => {
         '<w:headerReference w:type="first" r:id="rId11"/>',
       ),
     );
-    const sharedReferenceBuffer = await originalZip.generateAsync({ type: "arraybuffer" });
+    const sharedReferenceBuffer = await originalZip.generateAsync({
+      type: "arraybuffer",
+    });
     const doc = await parseDocx(sharedReferenceBuffer, { preloadFonts: false });
     const firstParagraph = doc.package.document.content.find(
       (block) => block.type === "paragraph" && block.sectionProperties,
@@ -985,7 +1065,9 @@ describe("repackDocx", () => {
           expectedParagraphEndpointCount: 0,
           sourceEndpointFingerprint: "source-endpoints",
           expectedEndpointFingerprint: "resolved-endpoints",
-          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+          removedReferences: [
+            { part: "header", type: "first", relationshipId: "rId11" },
+          ],
         },
       }),
     ).rejects.toBeInstanceOf(DocxPackageFidelityError);
@@ -1007,9 +1089,13 @@ describe("repackDocx", () => {
 
     const zip = await JSZip.loadAsync(result);
     const documentXml = await zip.file("word/document.xml")?.async("text");
-    const headerRelsXml = await zip.file("word/_rels/header1.xml.rels")?.async("text");
+    const headerRelsXml = await zip
+      .file("word/_rels/header1.xml.rels")
+      ?.async("text");
 
-    expect(documentXml).toContain('<w:headerReference w:type="first" r:id="rId11"/>');
+    expect(documentXml).toContain(
+      '<w:headerReference w:type="first" r:id="rId11"/>',
+    );
     expect(documentXml).toContain("<w:titlePg/>");
     expect(headerRelsXml).toContain('Target="media/image1.png"');
     expect(zip.file("word/media/image1.png")).not.toBeNull();
@@ -1040,7 +1126,10 @@ describe("createDocx style numbering references", () => {
       },
       numbering: {
         abstractNums: [
-          { abstractNumId: 0, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+          {
+            abstractNumId: 0,
+            levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+          },
         ],
         nums: [{ numId: 1, abstractNumId: 0 }],
       },
@@ -1048,7 +1137,9 @@ describe("createDocx style numbering references", () => {
   });
 
   test("keeps the numId 0 sentinel that switches inherited numbering off", async () => {
-    const zip = await JSZip.loadAsync(await createDocx(styleNumberingDocument(0)));
+    const zip = await JSZip.loadAsync(
+      await createDocx(styleNumberingDocument(0)),
+    );
     const stylesXml = await zip.file("word/styles.xml")?.async("text");
 
     // Dropping the <w:numPr> would hand the style its parent's numbering back.
@@ -1082,7 +1173,9 @@ describe("createDocx style numbering references", () => {
 
     const zip = await JSZip.loadAsync(await createDocx(document));
 
-    expect(await zip.file("word/numbering.xml")?.async("text")).toContain('<w:num w:numId="7">');
+    expect(await zip.file("word/numbering.xml")?.async("text")).toContain(
+      '<w:num w:numId="7">',
+    );
   });
 });
 
@@ -1101,9 +1194,12 @@ describe("the section count a repack may write", () => {
     doc.package.document.content.filter((block) => block.type === "paragraph");
 
   const sectionCarriers = (doc: Document) =>
-    bodyParagraphs(doc).filter((paragraph) => paragraph.sectionProperties !== undefined);
+    bodyParagraphs(doc).filter(
+      (paragraph) => paragraph.sectionProperties !== undefined,
+    );
 
-  const countSectPr = (xml: string) => [...xml.matchAll(/<w:sectPr[\s/>]/gu)].length;
+  const countSectPr = (xml: string) =>
+    [...xml.matchAll(/<w:sectPr[\s/>]/gu)].length;
 
   const documentXmlOf = async (buffer: ArrayBuffer) => {
     const zip = await JSZip.loadAsync(buffer);
@@ -1115,13 +1211,18 @@ describe("the section count a repack may write", () => {
   };
 
   test("refuses a save whose second carrier is the first one's split half", async () => {
-    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
-      preloadFonts: false,
-    });
+    const doc = await parseDocx(
+      await createMultiSectionFirstHeaderImageFixture(),
+      {
+        preloadFonts: false,
+      },
+    );
     const paragraphs = bodyParagraphs(doc);
     const [carrier, follower] = paragraphs;
     if (!carrier || !follower || carrier.sectionProperties === undefined) {
-      throw new Error("Expected a section-ending paragraph followed by an ordinary one");
+      throw new Error(
+        "Expected a section-ending paragraph followed by an ordinary one",
+      );
     }
     // Exactly the model the save leg built before the split fix: ProseMirror
     // copied the node's attrs, so both halves came back holding one record, and
@@ -1140,29 +1241,39 @@ describe("the section count a repack may write", () => {
       return;
     }
 
-    throw new Error("Expected repackDocx to refuse a duplicated section carrier");
+    throw new Error(
+      "Expected repackDocx to refuse a duplicated section carrier",
+    );
   });
 
   test("refuses a duplicate even when a separate deletion keeps the count equal", async () => {
-    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
-      preloadFonts: false,
-    });
+    const doc = await parseDocx(
+      await createMultiSectionFirstHeaderImageFixture(),
+      {
+        preloadFonts: false,
+      },
+    );
     const [carrier, follower] = bodyParagraphs(doc);
     if (!carrier || !follower || carrier.sectionProperties === undefined) {
-      throw new Error("Expected a section-ending paragraph followed by an ordinary one");
+      throw new Error(
+        "Expected a section-ending paragraph followed by an ordinary one",
+      );
     }
     follower.sectionProperties = carrier.sectionProperties;
     doc.package.document.finalSectionProperties = undefined;
 
-    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toBeInstanceOf(
-      DocxDuplicateSectionCarrierError,
-    );
+    await expect(
+      repackDocx(doc, { updateModifiedDate: false }),
+    ).rejects.toBeInstanceOf(DocxDuplicateSectionCarrierError);
   });
 
   test("refuses a final section record reused by a paragraph carrier", async () => {
-    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
-      preloadFonts: false,
-    });
+    const doc = await parseDocx(
+      await createMultiSectionFirstHeaderImageFixture(),
+      {
+        preloadFonts: false,
+      },
+    );
     const carrier = bodyParagraphs(doc).at(0);
     const finalSectionProperties = doc.package.document.finalSectionProperties;
     if (!carrier || finalSectionProperties === undefined) {
@@ -1170,9 +1281,9 @@ describe("the section count a repack may write", () => {
     }
     carrier.sectionProperties = finalSectionProperties;
 
-    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toThrow(
-      /final section record from a paragraph carrier twice/u,
-    );
+    await expect(
+      repackDocx(doc, { updateModifiedDate: false }),
+    ).rejects.toThrow(/final section record from a paragraph carrier twice/u);
   });
 
   test("writes a section the editor actually added", async () => {
@@ -1211,8 +1322,8 @@ describe("the section count a repack may write", () => {
       sectionProperties: { endnotePr: {} },
     });
 
-    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toThrow(
-      /would write 3 sections where the editor holds 4/u,
-    );
+    await expect(
+      repackDocx(doc, { updateModifiedDate: false }),
+    ).rejects.toThrow(/would write 3 sections where the editor holds 4/u);
   });
 });

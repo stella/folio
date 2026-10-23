@@ -59,7 +59,9 @@ export function collectLineParity(page: Page): Promise<LineParity[]> {
       // by other means and is not in that number, so a Range over the whole
       // element would read the marker's width as a measurement error. Content
       // is exactly what carries pm positions.
-      const content = [...lineEl.querySelectorAll<HTMLElement>("[data-pm-start]")];
+      const content = [
+        ...lineEl.querySelectorAll<HTMLElement>("[data-pm-start]"),
+      ];
       if (content.length === 0) return;
       const text = content.map((el) => el.textContent ?? "").join("");
       if (text.trim().length === 0) return;

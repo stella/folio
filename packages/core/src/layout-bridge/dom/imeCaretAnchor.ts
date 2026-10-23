@@ -28,7 +28,9 @@ type SyncImeCaretAnchorOptions = {
   visibleCaret: VisibleCaretViewportRect | null | undefined;
 };
 
-const resetHostTransform = (hiddenHost: ImeCaretHost | null | undefined): void => {
+const resetHostTransform = (
+  hiddenHost: ImeCaretHost | null | undefined,
+): void => {
   if (hiddenHost) {
     hiddenHost.style.transform = "";
   }
@@ -86,7 +88,11 @@ export const syncImeCaretAnchor = ({
     return false;
   }
 
-  if (!visibleCaret || !editorView.hasFocus() || !editorView.state.selection.empty) {
+  if (
+    !visibleCaret ||
+    !editorView.hasFocus() ||
+    !editorView.state.selection.empty
+  ) {
     resetHostTransform(hiddenHost);
     return false;
   }
@@ -122,6 +128,8 @@ export const syncImeCaretAnchor = ({
   return true;
 };
 
-export const resetImeCaretAnchor = (hiddenHost: ImeCaretHost | null | undefined): void => {
+export const resetImeCaretAnchor = (
+  hiddenHost: ImeCaretHost | null | undefined,
+): void => {
   resetHostTransform(hiddenHost);
 };

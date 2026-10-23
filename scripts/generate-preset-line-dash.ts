@@ -17,17 +17,20 @@
  *   bun scripts/generate-preset-line-dash.ts check
  */
 
+import { TaggedError } from "better-result";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 
 import { loadSchemaGraph } from "./lib/ooxml-schema-graph";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/docx-core/src/model/presetLineDash.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/docx-core/src/model/presetLineDash.gen.ts",
+);
 
-const DRAWINGML_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const DRAWINGML_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/main";
 const PRESET_DASH_SIMPLE_TYPE = `simpleType:{${DRAWINGML_NAMESPACE}}ST_PresetLineDashVal`;
 
 /**
@@ -40,7 +43,9 @@ const PRESET_DASH_SIMPLE_TYPE = `simpleType:{${DRAWINGML_NAMESPACE}}ST_PresetLin
  */
 const REQUIRED_MEMBERS = ["solid", "dot", "dash", "sysDashDotDot"] as const;
 
-class GeneratePresetLineDashError extends TaggedError("GeneratePresetLineDashError")<{
+class GeneratePresetLineDashError extends TaggedError(
+  "GeneratePresetLineDashError",
+)<{
   message: string;
 }> {}
 
@@ -76,7 +81,9 @@ const main = async (): Promise<void> => {
   }
 
   const graph = await loadSchemaGraph();
-  const members = graph.symbols.find((symbol) => symbol.id === PRESET_DASH_SIMPLE_TYPE)?.enumValues;
+  const members = graph.symbols.find(
+    (symbol) => symbol.id === PRESET_DASH_SIMPLE_TYPE,
+  )?.enumValues;
   if (members === undefined || members.length === 0) {
     throw new GeneratePresetLineDashError({
       message: `${PRESET_DASH_SIMPLE_TYPE} enumerates nothing in the committed schema graph.`,
@@ -89,7 +96,9 @@ const main = async (): Promise<void> => {
       });
     }
   }
-  const duplicate = members.find((member, index) => members.indexOf(member) !== index);
+  const duplicate = members.find(
+    (member, index) => members.indexOf(member) !== index,
+  );
   if (duplicate !== undefined) {
     throw new GeneratePresetLineDashError({
       message: `ST_PresetLineDashVal enumerates \`${duplicate}\` twice; the union would carry a duplicate member.`,
@@ -99,14 +108,17 @@ const main = async (): Promise<void> => {
   const rendered = renderModule(members);
   if (mode === "write") {
     await writeFile(OUTPUT_PATH, rendered, "utf8");
-    process.stdout.write(`presetLineDash.gen.ts written (${String(members.length)} members)\n`);
+    process.stdout.write(
+      `presetLineDash.gen.ts written (${String(members.length)} members)\n`,
+    );
     return;
   }
 
   const existing = await readFile(OUTPUT_PATH, "utf8").catch(() => null);
   if (existing !== rendered) {
     throw new GeneratePresetLineDashError({
-      message: "presetLineDash.gen.ts is stale. Run `bun run generate:preset-line-dash`.",
+      message:
+        "presetLineDash.gen.ts is stale. Run `bun run generate:preset-line-dash`.",
     });
   }
   process.stdout.write("presetLineDash.gen.ts is up to date\n");

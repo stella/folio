@@ -1,11 +1,10 @@
 import { captureVerbatimXml } from "./verbatimCapture";
-
 import {
   findAttributeByNamespaceUri,
   getLocalName,
   getNamespaceUri,
-  OOXML_NAMESPACE_SCOPE,
   OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+  OOXML_NAMESPACE_SCOPE,
   parseXml,
   type XmlElement,
 } from "./xmlParser";

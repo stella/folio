@@ -9,9 +9,18 @@
   @stll/folio-core/utils/colorResolver so React and Vue stay in lockstep.
 -->
 <template>
-  <div ref="containerRef" class="docx-color-picker" :class="className" :style="style">
+  <div
+    ref="containerRef"
+    class="docx-color-picker"
+    :class="className"
+    :style="style"
+  >
     <!-- Split button: [apply | arrow] -->
-    <div v-if="splitButton" class="docx-color-picker__split" :class="{ 'is-disabled': disabled }">
+    <div
+      v-if="splitButton"
+      class="docx-color-picker__split"
+      :class="{ 'is-disabled': disabled }"
+    >
       <button
         type="button"
         class="docx-color-picker__apply"
@@ -24,8 +33,13 @@
         <MaterialSymbol :name="resolvedIcon" :size="18" />
         <span
           class="docx-color-picker__bar"
-          :class="{ 'is-light': swatchColor === 'transparent' || isLightColor(swatchColor) }"
-          :style="{ background: swatchColor === 'transparent' ? '#fff' : swatchColor }"
+          :class="{
+            'is-light':
+              swatchColor === 'transparent' || isLightColor(swatchColor),
+          }"
+          :style="{
+            background: swatchColor === 'transparent' ? '#fff' : swatchColor,
+          }"
         />
       </button>
       <button
@@ -62,8 +76,14 @@
         <MaterialSymbol :name="resolvedIcon" :size="18" />
         <span
           class="docx-color-picker__bar"
-          :class="{ 'is-light': resolvedColor === 'transparent' || isLightColor(resolvedColor) }"
-          :style="{ background: resolvedColor === 'transparent' ? '#fff' : resolvedColor }"
+          :class="{
+            'is-light':
+              resolvedColor === 'transparent' || isLightColor(resolvedColor),
+          }"
+          :style="{
+            background:
+              resolvedColor === 'transparent' ? '#fff' : resolvedColor,
+          }"
         />
       </span>
       <MaterialSymbol name="arrow_drop_down" :size="14" />
@@ -91,15 +111,22 @@
         >
           <span class="docx-color-picker__auto-slash" />
         </span>
-        <span v-else class="docx-color-picker__auto-icon docx-color-picker__auto-icon--auto" />
+        <span
+          v-else
+          class="docx-color-picker__auto-icon docx-color-picker__auto-icon--auto"
+        />
         {{
           autoLabel ??
-          (mode === "highlight" ? t("colorPicker.noColor") : t("colorPicker.automatic"))
+          (mode === "highlight"
+            ? t("colorPicker.noColor")
+            : t("colorPicker.automatic"))
         }}
       </button>
 
       <div class="docx-color-picker__divider" />
-      <div class="docx-color-picker__section-label">{{ t("colorPicker.themeColors") }}</div>
+      <div class="docx-color-picker__section-label">
+        {{ t("colorPicker.themeColors") }}
+      </div>
       <div class="docx-color-picker__grid">
         <button
           v-for="cell in flatMatrix"
@@ -117,7 +144,9 @@
       </div>
 
       <div class="docx-color-picker__divider" />
-      <div class="docx-color-picker__section-label">{{ t("colorPicker.standardColors") }}</div>
+      <div class="docx-color-picker__section-label">
+        {{ t("colorPicker.standardColors") }}
+      </div>
       <div class="docx-color-picker__grid">
         <button
           v-for="c in STANDARD_COLORS"
@@ -135,7 +164,9 @@
       </div>
 
       <div class="docx-color-picker__divider" />
-      <div class="docx-color-picker__section-label">{{ t("colorPicker.customColor") }}</div>
+      <div class="docx-color-picker__section-label">
+        {{ t("colorPicker.customColor") }}
+      </div>
       <div class="docx-color-picker__custom">
         <span class="docx-color-picker__hash">#</span>
         <input
@@ -145,7 +176,9 @@
           placeholder="FF0000"
           maxlength="6"
           aria-label="Custom hex color"
-          @input="customHex = customHex.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6)"
+          @input="
+            customHex = customHex.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6)
+          "
           @keydown.enter.prevent="applyCustom"
           @mousedown.stop
         />
@@ -164,7 +197,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
+import {
+  computed,
+  type CSSProperties,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
+
 import type { ColorValue, Theme } from "@stll/folio-core/types/document";
 import {
   generateThemeTintShadeMatrix,
@@ -173,8 +214,9 @@ import {
   resolveHighlightColor,
   type ThemeMatrixCell,
 } from "@stll/folio-core/utils/colorResolver";
-import MaterialSymbol from "./MaterialSymbol.vue";
+
 import { useTranslation } from "../../i18n";
+import MaterialSymbol from "./MaterialSymbol.vue";
 
 export type ColorPickerMode = "text" | "highlight" | "border";
 
@@ -224,7 +266,9 @@ const STANDARD_COLORS: Array<{ nameKey: string; hex: string }> = [
 
 function resolveCurrentColor(value: ColorValue | string | undefined): string {
   if (!value) {
-    return props.mode === "text" || props.mode === "border" ? "#000000" : "transparent";
+    return props.mode === "text" || props.mode === "border"
+      ? "#000000"
+      : "transparent";
   }
   if (typeof value === "string") {
     if (props.mode === "highlight") {
@@ -251,7 +295,10 @@ function isLightColor(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 > 230;
 }
 
-function isSelectedCell(value: ColorValue | string | undefined, cellHex: string): boolean {
+function isSelectedCell(
+  value: ColorValue | string | undefined,
+  cellHex: string,
+): boolean {
   if (!value) return false;
   const resolved =
     typeof value === "string"
@@ -287,11 +334,17 @@ const panelRef = ref<HTMLElement | null>(null);
 
 // Word-style "last picked" color used by the apply half — red for text,
 // yellow for highlight, black for border until the user picks something.
-const pickedColor = ref<ColorValue | string>(props.defaultColor ?? defaultPickedColor(props.mode));
+const pickedColor = ref<ColorValue | string>(
+  props.defaultColor ?? defaultPickedColor(props.mode),
+);
 
-const matrix = computed(() => generateThemeTintShadeMatrix(props.theme?.colorScheme ?? null));
+const matrix = computed(() =>
+  generateThemeTintShadeMatrix(props.theme?.colorScheme ?? null),
+);
 const flatMatrix = computed(() =>
-  matrix.value.flatMap((row, ri) => row.map((cell, ci) => ({ ...cell, key: `${ri}-${ci}` }))),
+  matrix.value.flatMap((row, ri) =>
+    row.map((cell, ci) => ({ ...cell, key: `${ri}-${ci}` })),
+  ),
 );
 
 const resolvedColor = computed(() => resolveCurrentColor(props.value));
@@ -299,7 +352,9 @@ const swatchColor = computed(() => resolveCurrentColor(pickedColor.value));
 
 const defaultTitle = computed(() => defaultTitleForMode(props.mode));
 
-const resolvedIcon = computed(() => props.icon ?? defaultIconForMode(props.mode));
+const resolvedIcon = computed(
+  () => props.icon ?? defaultIconForMode(props.mode),
+);
 
 // Keep the custom-hex input in sync with the current value.
 watch(
@@ -383,7 +438,9 @@ function onClickOutside(e: MouseEvent) {
   isOpen.value = false;
 }
 onMounted(() => document.addEventListener("mousedown", onClickOutside));
-onBeforeUnmount(() => document.removeEventListener("mousedown", onClickOutside));
+onBeforeUnmount(() =>
+  document.removeEventListener("mousedown", onClickOutside),
+);
 </script>
 
 <style scoped>

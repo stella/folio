@@ -20,7 +20,8 @@ const DISCARDED = "Reverted away";
 const log = (line: string) => console.log(`[smoke] ${line}`);
 
 const describeInput = (input: unknown): string => {
-  if (input instanceof vscode.TabInputCustom) return `custom ${input.viewType} ${input.uri.fsPath}`;
+  if (input instanceof vscode.TabInputCustom)
+    return `custom ${input.viewType} ${input.uri.fsPath}`;
   if (input instanceof vscode.TabInputText) return `text ${input.uri.fsPath}`;
   return "other";
 };
@@ -30,7 +31,8 @@ const describeTabs = (): string =>
   vscode.window.tabGroups.all
     .flatMap((group) =>
       group.tabs.map(
-        (tab) => `"${tab.label}" (${describeInput(tab.input)}${tab.isActive ? ", active" : ""})`,
+        (tab) =>
+          `"${tab.label}" (${describeInput(tab.input)}${tab.isActive ? ", active" : ""})`,
       ),
     )
     .join("; ");
@@ -38,7 +40,11 @@ const describeTabs = (): string =>
 /** What the webview sent so far, for a failure message. */
 let describeReceived = (): string => "nothing yet";
 
-const waitFor = async (what: string, probe: () => boolean, timeoutMs = 60_000): Promise<void> => {
+const waitFor = async (
+  what: string,
+  probe: () => boolean,
+  timeoutMs = 60_000,
+): Promise<void> => {
   const deadline = Date.now() + timeoutMs;
   while (!probe()) {
     if (Date.now() > deadline) {
@@ -51,7 +57,8 @@ const waitFor = async (what: string, probe: () => boolean, timeoutMs = 60_000): 
   log(what);
 };
 
-const sha = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
+const sha = (file: string) =>
+  createHash("sha256").update(readFileSync(file)).digest("hex");
 
 /** The tab showing `uri` in folio's editor, in any group. */
 const editorTab = (uri: vscode.Uri): vscode.Tab | undefined =>
@@ -65,20 +72,34 @@ const editorTab = (uri: vscode.Uri): vscode.Tab | undefined =>
     );
 
 const field = (value: unknown, key: string): unknown =>
-  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+  typeof value === "object" && value !== null
+    ? Reflect.get(value, key)
+    : undefined;
 
-const isType = (message: unknown, type: string) => field(message, "type") === type;
+const isType = (message: unknown, type: string) =>
+  field(message, "type") === type;
 
 /** The document's text as the bundled CLI reads it from disk. */
 const textOnDisk = (cliEntry: string, file: string): string => {
-  const result = spawnSync(process.execPath, [cliEntry, "read", file, "--output", "json"], {
-    encoding: "utf8",
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-  });
-  const envelope: unknown = JSON.parse(result.stdout.trim().split("\n").at(-1) ?? "null");
+  const result = spawnSync(
+    process.execPath,
+    [cliEntry, "read", file, "--output", "json"],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    },
+  );
+  const envelope: unknown = JSON.parse(
+    result.stdout.trim().split("\n").at(-1) ?? "null",
+  );
   const blocks = field(field(field(envelope, "data"), "result"), "blocks");
-  assert.ok(Array.isArray(blocks), `folio read failed: ${result.stdout}${result.stderr}`);
-  return blocks.map((block: unknown) => String(field(block, "text"))).join("\n");
+  assert.ok(
+    Array.isArray(blocks),
+    `folio read failed: ${result.stdout}${result.stderr}`,
+  );
+  return blocks
+    .map((block: unknown) => String(field(block, "text")))
+    .join("\n");
 };
 
 export const run = async (): Promise<void> => {
@@ -88,13 +109,24 @@ export const run = async (): Promise<void> => {
   const directory = path.dirname(documentPath);
   const name = path.basename(documentPath);
   const lockPath = path.join(directory, `.${name}.folio-lock`);
-  const extension = vscode.extensions.getExtension<ExtensionTestHooks | undefined>(EXTENSION_ID);
+  const extension = vscode.extensions.getExtension<
+    ExtensionTestHooks | undefined
+  >(EXTENSION_ID);
   assert.ok(extension !== undefined, `${EXTENSION_ID} is loaded`);
-  const cliEntry = path.join(extension.extensionPath, "dist", "cli", "folio.mjs");
+  const cliEntry = path.join(
+    extension.extensionPath,
+    "dist",
+    "cli",
+    "folio.mjs",
+  );
   // A modal would hang the test; this test's edits are text-only anyway.
   await vscode.workspace
     .getConfiguration()
-    .update("folio.editor.confirmRewrite", false, vscode.ConfigurationTarget.Global);
+    .update(
+      "folio.editor.confirmRewrite",
+      false,
+      vscode.ConfigurationTarget.Global,
+    );
 
   const hooks = await extension.activate();
   assert.ok(hooks !== undefined, "the extension exports its test hooks");
@@ -116,7 +148,10 @@ export const run = async (): Promise<void> => {
 
   // Opening a .docx lands in folio's editor, and the webview loads it.
   await vscode.commands.executeCommand("vscode.open", uri);
-  await waitFor("the document opens in folio's editor", () => editorTab(uri) !== undefined);
+  await waitFor(
+    "the document opens in folio's editor",
+    () => editorTab(uri) !== undefined,
+  );
   const activeTab = () => editorTab(uri);
   describeReceived = () =>
     JSON.stringify(
@@ -136,7 +171,9 @@ export const run = async (): Promise<void> => {
 
   // Type: one edit, a dirty tab, and the editor lease on disk.
   const original = sha(documentPath);
-  assert.ok(await hooks.post(uri, { type: "folio-test-type", text: ` ${TYPED}.` }));
+  assert.ok(
+    await hooks.post(uri, { type: "folio-test-type", text: ` ${TYPED}.` }),
+  );
   await waitFor("an edit", () => count("edit") > 0);
   await waitFor("the tab is dirty", () => activeTab()?.isDirty === true);
   await waitFor("the editor holds the lease", () => existsSync(lockPath));
@@ -148,9 +185,17 @@ export const run = async (): Promise<void> => {
   await waitFor("the tab is clean", () => activeTab()?.isDirty === false);
   const savedVersion = sha(documentPath);
   assert.notEqual(savedVersion, original, "the file on disk changed");
-  assert.ok(textOnDisk(cliEntry, documentPath).includes(TYPED), "the typed text is on disk");
-  assert.ok(readdirSync(path.join(directory, ".folio", "backups", name)).length > 0);
-  const lastLine = readFileSync(path.join(directory, ".folio", "journal.jsonl"), "utf8")
+  assert.ok(
+    textOnDisk(cliEntry, documentPath).includes(TYPED),
+    "the typed text is on disk",
+  );
+  assert.ok(
+    readdirSync(path.join(directory, ".folio", "backups", name)).length > 0,
+  );
+  const lastLine = readFileSync(
+    path.join(directory, ".folio", "journal.jsonl"),
+    "utf8",
+  )
     .trim()
     .split("\n")
     .at(-1);
@@ -161,15 +206,23 @@ export const run = async (): Promise<void> => {
   // Revert: type again, revert, and the webview reloads the saved file.
   const loads = count("loaded");
   const edits = count("edit");
-  assert.ok(await hooks.post(uri, { type: "folio-test-type", text: ` ${DISCARDED}.` }));
+  assert.ok(
+    await hooks.post(uri, { type: "folio-test-type", text: ` ${DISCARDED}.` }),
+  );
   await waitFor("a second edit", () => count("edit") > edits);
   await waitFor("the tab is dirty again", () => activeTab()?.isDirty === true);
   await vscode.commands.executeCommand("workbench.action.files.revert");
-  await waitFor("the tab is clean after revert", () => activeTab()?.isDirty === false);
+  await waitFor(
+    "the tab is clean after revert",
+    () => activeTab()?.isDirty === false,
+  );
   await waitFor("the webview reloaded", () => count("loaded") > loads);
   assert.equal(sha(documentPath), savedVersion, "revert leaves the file alone");
   assert.ok(!textOnDisk(cliEntry, documentPath).includes(DISCARDED));
-  await waitFor("the lease is released after revert", () => !existsSync(lockPath));
+  await waitFor(
+    "the lease is released after revert",
+    () => !existsSync(lockPath),
+  );
 
   await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   log("passed");

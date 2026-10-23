@@ -12,7 +12,10 @@ import { sanitizeXmlCharacters } from "@stll/docx-core";
 
 import { formatDate } from "../docx/fieldParser";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
-import { preservedSdtChild, withoutPreservedSdtChild } from "../docx/sdtProperties";
+import {
+  preservedSdtChild,
+  withoutPreservedSdtChild,
+} from "../docx/sdtProperties";
 import type {
   BlockContent,
   BlockSdt,
@@ -23,12 +26,12 @@ import type {
   PreservedMarkup,
   SdtProperties,
 } from "../types/document";
+import { checkboxDisplayContent } from "./checkboxDisplay";
 import {
   ContentControlBoundError,
   ContentControlLockedError,
   ContentControlTypeError,
 } from "./errors";
-import { checkboxDisplayContent } from "./checkboxDisplay";
 import type { ContentControlFilter } from "./findContentControls";
 
 /**
@@ -41,7 +44,10 @@ import type { ContentControlFilter } from "./findContentControls";
  * the format is missing — degrading gracefully is better than corrupting
  * the body.
  */
-function formatDateForSdtBody(isoDate: string, dateFormat: string | undefined): string {
+function formatDateForSdtBody(
+  isoDate: string,
+  dateFormat: string | undefined,
+): string {
   if (!dateFormat) {
     return isoDate;
   }
@@ -119,12 +125,19 @@ export type SetContentControlValueInput =
   | { kind: "checkbox"; checked: boolean }
   | { kind: "date"; date: string };
 
-function throwLocked(control: BlockSdt, lock: NonNullable<typeof control.properties.lock>): never {
+function throwLocked(
+  control: BlockSdt,
+  lock: NonNullable<typeof control.properties.lock>,
+): never {
   throw new ContentControlLockedError({
     message: `Control "${control.properties.tag ?? control.properties.alias ?? "(unnamed)"}" has w:lock=${lock}.`,
     lock,
-    ...(control.properties.tag !== undefined ? { tag: control.properties.tag } : {}),
-    ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
+    ...(control.properties.tag !== undefined
+      ? { tag: control.properties.tag }
+      : {}),
+    ...(control.properties.alias !== undefined
+      ? { alias: control.properties.alias }
+      : {}),
   });
 }
 
@@ -138,7 +151,10 @@ function throwLocked(control: BlockSdt, lock: NonNullable<typeof control.propert
  * - `sdtContentLocked` blocks both.
  * - `sdtLocked` blocks only container removal, NOT content edits.
  */
-function ensureContentNotLocked(control: BlockSdt, force: boolean | undefined): void {
+function ensureContentNotLocked(
+  control: BlockSdt,
+  force: boolean | undefined,
+): void {
   if (force) {
     return;
   }
@@ -155,7 +171,10 @@ function ensureContentNotLocked(control: BlockSdt, force: boolean | undefined): 
  * - `sdtContentLocked` blocks both.
  * - `contentLocked` blocks only content edits, NOT container removal.
  */
-function ensureSdtNotLocked(control: BlockSdt, force: boolean | undefined): void {
+function ensureSdtNotLocked(
+  control: BlockSdt,
+  force: boolean | undefined,
+): void {
   if (force) {
     return;
   }
@@ -172,7 +191,10 @@ function isRepeatingSection(control: BlockSdt): boolean {
   // what recognises a producer that bound the Word 2012 namespace to another
   // prefix; without it, `removeContentControl(…, { keepContent: true })` would
   // unwrap a repeating section and orphan its row items.
-  return preservedSdtChild(control.properties.preserved, "repeatingSection") !== undefined;
+  return (
+    preservedSdtChild(control.properties.preserved, "repeatingSection") !==
+    undefined
+  );
 }
 
 /**
@@ -180,7 +202,9 @@ function isRepeatingSection(control: BlockSdt): boolean {
  *
  * Returns null when the control carries no binding.
  */
-function readDataBinding(control: BlockSdt): { xpath: string; storeItemID?: string } | null {
+function readDataBinding(
+  control: BlockSdt,
+): { xpath: string; storeItemID?: string } | null {
   const attrs = preservedSdtChild(control.properties.preserved, "dataBinding");
   if (attrs === undefined) {
     return null;
@@ -214,7 +238,10 @@ type BindingRemoval =
  * `<w:dataBinding>` child so the caller's write actually sticks on next Word
  * open. See `ContentControlBoundError` for the rationale.
  */
-function ensureContentNotBound(control: BlockSdt, force: boolean | undefined): BindingRemoval {
+function ensureContentNotBound(
+  control: BlockSdt,
+  force: boolean | undefined,
+): BindingRemoval {
   const binding = readDataBinding(control);
   if (!binding) {
     return { wasBound: false };
@@ -223,19 +250,31 @@ function ensureContentNotBound(control: BlockSdt, force: boolean | undefined): B
     throw new ContentControlBoundError({
       message: `Control "${control.properties.tag ?? control.properties.alias ?? "(unnamed)"}" is bound to ${binding.xpath}. Word regenerates the body from the bound XML on open; pass { force: true } to strip the binding inline, or remove it explicitly before writing.`,
       xpath: binding.xpath,
-      ...(binding.storeItemID !== undefined ? { storeItemID: binding.storeItemID } : {}),
-      ...(control.properties.tag !== undefined ? { tag: control.properties.tag } : {}),
-      ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
+      ...(binding.storeItemID !== undefined
+        ? { storeItemID: binding.storeItemID }
+        : {}),
+      ...(control.properties.tag !== undefined
+        ? { tag: control.properties.tag }
+        : {}),
+      ...(control.properties.alias !== undefined
+        ? { alias: control.properties.alias }
+        : {}),
     });
   }
   return {
     wasBound: true,
-    unbound: withoutPreservedSdtChild(control.properties.preserved, "dataBinding"),
+    unbound: withoutPreservedSdtChild(
+      control.properties.preserved,
+      "dataBinding",
+    ),
   };
 }
 
 /** Write a {@link BindingRemoval} onto a copy of a control's properties. */
-function applyBindingRemoval(properties: SdtProperties, removal: BindingRemoval): void {
+function applyBindingRemoval(
+  properties: SdtProperties,
+  removal: BindingRemoval,
+): void {
   if (!removal.wasBound) {
     return;
   }
@@ -355,7 +394,10 @@ function withUpdatedBodyAndNotes(
   };
 }
 
-function controlMatchesFilter(control: BlockSdt, filter: ContentControlFilter): boolean {
+function controlMatchesFilter(
+  control: BlockSdt,
+  filter: ContentControlFilter,
+): boolean {
   // Headless `BlockSdt` model has no PM positions; refuse a pmPos-only
   // filter so a stray pm-side address never accidentally targets every
   // control (see `matches` in `findContentControls`).
@@ -371,7 +413,10 @@ function controlMatchesFilter(control: BlockSdt, filter: ContentControlFilter): 
   if (filter.id !== undefined && control.properties.id !== filter.id) {
     return false;
   }
-  if (filter.sdtType !== undefined && control.properties.sdtType !== filter.sdtType) {
+  if (
+    filter.sdtType !== undefined &&
+    control.properties.sdtType !== filter.sdtType
+  ) {
     return false;
   }
   return true;
@@ -384,7 +429,10 @@ function makeParagraphFromText(rawText: string): Paragraph {
   const text = sanitizeXmlCharacters(rawText);
   return {
     type: "paragraph",
-    content: text.length === 0 ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+    content:
+      text.length === 0
+        ? []
+        : [{ type: "run", content: [{ type: "text", text }] }],
   };
 }
 
@@ -447,7 +495,9 @@ export function setContentControlContent(
     ensureContentNotLocked(control, options.force);
     const removal = ensureContentNotBound(control, options.force);
     const blocks: BlockContent[] =
-      typeof input === "string" ? [makeParagraphFromText(input)] : input.map(cloneBlock);
+      typeof input === "string"
+        ? [makeParagraphFromText(input)]
+        : input.map(cloneBlock);
     const properties = { ...control.properties };
     properties.showingPlaceholder = false;
     applyBindingRemoval(properties, removal);
@@ -494,8 +544,12 @@ export function setContentControlValue(
           message: `Cannot set dropdown value on a ${sdtType} control.`,
           sdtType,
           reason: "kind=dropdown requires sdtType=dropdown|comboBox",
-          ...(control.properties.tag !== undefined ? { tag: control.properties.tag } : {}),
-          ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
+          ...(control.properties.tag !== undefined
+            ? { tag: control.properties.tag }
+            : {}),
+          ...(control.properties.alias !== undefined
+            ? { alias: control.properties.alias }
+            : {}),
         });
       }
       const items = control.properties.listItems ?? [];
@@ -505,14 +559,20 @@ export function setContentControlValue(
           message: `Value "${input.value}" not in the control's list items.`,
           sdtType,
           reason: "value not in listItems",
-          ...(control.properties.tag !== undefined ? { tag: control.properties.tag } : {}),
-          ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
+          ...(control.properties.tag !== undefined
+            ? { tag: control.properties.tag }
+            : {}),
+          ...(control.properties.alias !== undefined
+            ? { alias: control.properties.alias }
+            : {}),
         });
       }
       const display = item?.displayText ?? input.value;
       return {
         ...control,
-        properties: nextProperties({ dropdownLastValue: sanitizeXmlCharacters(input.value) }),
+        properties: nextProperties({
+          dropdownLastValue: sanitizeXmlCharacters(input.value),
+        }),
         content: [makeParagraphFromText(display)],
       };
     }
@@ -522,8 +582,12 @@ export function setContentControlValue(
           message: `Cannot toggle checkbox on a ${sdtType} control.`,
           sdtType,
           reason: "kind=checkbox requires sdtType=checkbox",
-          ...(control.properties.tag !== undefined ? { tag: control.properties.tag } : {}),
-          ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
+          ...(control.properties.tag !== undefined
+            ? { tag: control.properties.tag }
+            : {}),
+          ...(control.properties.alias !== undefined
+            ? { alias: control.properties.alias }
+            : {}),
         });
       }
       return {
@@ -538,14 +602,21 @@ export function setContentControlValue(
         message: `Cannot set date on a ${sdtType} control.`,
         sdtType,
         reason: "kind=date requires sdtType=date",
-        ...(control.properties.tag !== undefined ? { tag: control.properties.tag } : {}),
-        ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
+        ...(control.properties.tag !== undefined
+          ? { tag: control.properties.tag }
+          : {}),
+        ...(control.properties.alias !== undefined
+          ? { alias: control.properties.alias }
+          : {}),
       });
     }
     // Keep the ISO value on the model and write the format-aware display
     // string into the body so the on-screen text and the OOXML
     // `w:fullDate` round-trip independently.
-    const display = formatDateForSdtBody(input.date, control.properties.dateFormat);
+    const display = formatDateForSdtBody(
+      input.date,
+      control.properties.dateFormat,
+    );
     return {
       ...control,
       properties: nextProperties({ dateValueISO: input.date }),
@@ -575,11 +646,16 @@ export function removeContentControl(
     if (options.keepContent) {
       if (isRepeatingSection(control) && !options.force) {
         throw new ContentControlTypeError({
-          message: "Refusing to unwrap a w15:repeatingSection — would orphan its w15 row items.",
+          message:
+            "Refusing to unwrap a w15:repeatingSection — would orphan its w15 row items.",
           sdtType: control.properties.sdtType,
           reason: "repeatingSection unwrap orphans items",
-          ...(control.properties.tag !== undefined ? { tag: control.properties.tag } : {}),
-          ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
+          ...(control.properties.tag !== undefined
+            ? { tag: control.properties.tag }
+            : {}),
+          ...(control.properties.alias !== undefined
+            ? { alias: control.properties.alias }
+            : {}),
         });
       }
       return control.content;

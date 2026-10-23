@@ -29,7 +29,15 @@ type RuleContext = {
   sourceCode?: { text?: unknown };
 };
 
-const DEFAULT_IGNORED_ELEMENT_NAMES = ["code", "kbd", "pre", "samp", "script", "style", "var"];
+const DEFAULT_IGNORED_ELEMENT_NAMES = [
+  "code",
+  "kbd",
+  "pre",
+  "samp",
+  "script",
+  "style",
+  "var",
+];
 
 const DEFAULT_ALLOWED_TEXT = [
   "AI",
@@ -58,7 +66,10 @@ const PACKAGE_IDENTIFIER = /^@[\w.-]+\/[\w.-]+$/u;
 const PAGE_ABBREVIATION = /^p{1,2}\.$/iu;
 
 const isAstNode = (node: unknown): node is AstNode =>
-  typeof node === "object" && node !== null && "type" in node && typeof node.type === "string";
+  typeof node === "object" &&
+  node !== null &&
+  "type" in node &&
+  typeof node.type === "string";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -133,7 +144,10 @@ const getElementName = (element: unknown): string | null => {
   return getJsxName(openingElement.name);
 };
 
-const hasIgnoredAncestor = (node: unknown, ignoredElementNames: ReadonlySet<string>): boolean => {
+const hasIgnoredAncestor = (
+  node: unknown,
+  ignoredElementNames: ReadonlySet<string>,
+): boolean => {
   let current = isAstNode(node) ? node.parent : null;
   while (isAstNode(current)) {
     if (current.type === "JSXElement") {
@@ -152,7 +166,10 @@ const isJsxChildExpression = (node: unknown): boolean => {
     return false;
   }
   const parent = node.parent;
-  return isAstNode(parent) && (parent.type === "JSXElement" || parent.type === "JSXFragment");
+  return (
+    isAstNode(parent) &&
+    (parent.type === "JSXElement" || parent.type === "JSXFragment")
+  );
 };
 
 const stringArrayOption = (options: Record<string, unknown>, key: string) => {
@@ -162,7 +179,10 @@ const stringArrayOption = (options: Record<string, unknown>, key: string) => {
     : [];
 };
 
-const regexArrayOption = (options: Record<string, unknown>, key: string): RegExp[] =>
+const regexArrayOption = (
+  options: Record<string, unknown>,
+  key: string,
+): RegExp[] =>
   stringArrayOption(options, key).flatMap((pattern) => {
     try {
       return [new RegExp(pattern, "u")];
@@ -216,8 +236,13 @@ export default {
         ],
       },
       create(context: RuleContext) {
-        const options = isRecord(context.options?.[0]) ? context.options[0] : {};
-        const configuredMarkers = stringArrayOption(options, "translationMarkers");
+        const options = isRecord(context.options?.[0])
+          ? context.options[0]
+          : {};
+        const configuredMarkers = stringArrayOption(
+          options,
+          "translationMarkers",
+        );
         const translationMarkers =
           configuredMarkers.length > 0
             ? configuredMarkers
@@ -225,7 +250,9 @@ export default {
 
         if (options.requireTranslationUsage === true) {
           const sourceText = sourceTextForContext(context);
-          if (!translationMarkers.some((marker) => sourceText.includes(marker))) {
+          if (
+            !translationMarkers.some((marker) => sourceText.includes(marker))
+          ) {
             return {};
           }
         }
@@ -238,7 +265,10 @@ export default {
           ...DEFAULT_ALLOWED_TEXT,
           ...stringArrayOption(options, "allowedText"),
         ]);
-        const allowedTextPatterns = regexArrayOption(options, "allowedTextPatterns");
+        const allowedTextPatterns = regexArrayOption(
+          options,
+          "allowedTextPatterns",
+        );
 
         const shouldIgnoreText = (text: string): boolean => {
           if (text.length <= 1) {

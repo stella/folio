@@ -1,4 +1,4 @@
-import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/canonicalCapabilities";
+import type { Node as PMNode } from "prosemirror-model";
 /**
  * Pages-area pointer composable — owns every mousedown / mousemove /
  * click / dblclick / scroll handler on the pages viewport, plus the
@@ -10,26 +10,42 @@ import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/cano
  * selection-overlay (caret + text-rect) primitive `clearOverlay`
  * still lives in the parent — passed in as a callback.
  */
-
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref, type ShallowRef } from "vue";
-import type { Node as PMNode } from "prosemirror-model";
-import { TextSelection, NodeSelection, type Command } from "prosemirror-state";
+import { type Command, NodeSelection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import type { Document } from "@stll/folio-core/types/document";
+import {
+  onBeforeUnmount,
+  onMounted,
+  type Ref,
+  ref,
+  type ShallowRef,
+  shallowRef,
+  watch,
+} from "vue";
+
+import {
+  createCanonicalHeaderFooterOperation,
+  type DocumentOp,
+  removeCanonicalHeaderFooterOperations,
+} from "@stll/folio-core/controller/canonicalOperations";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
-import type { Layout } from "@stll/folio-core/layout-engine";
-import { findImageElement } from "@stll/folio-core/layout-painter/imageLayout";
 import { clickToPositionInHfSlot } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
-import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   detectTableInsertHover,
   TABLE_INSERT_HIDE_DELAY_MS,
 } from "@stll/folio-core/layout-bridge/tableInsertHover";
+import type { Layout } from "@stll/folio-core/layout-engine";
+import { findImageElement } from "@stll/folio-core/layout-painter/imageLayout";
 import {
   createCellDragTracker,
   findCellPosFromPmPos,
 } from "@stll/folio-core/prosemirror/cellDragSelection";
+import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
+import type { Document } from "@stll/folio-core/types/document";
 import {
   createEmptyHeaderFooter,
   pickActiveHeaderFooterRId,
@@ -37,21 +53,17 @@ import {
   resolveHeaderFooterContent,
   saveHeaderFooterContent,
 } from "@stll/folio-core/utils/headerFooter";
-import {
-  scrollVisiblePositionIntoView as scrollVisiblePositionIntoViewImpl,
-  resolvePos as resolvePosImpl,
-  selectWord as selectWordImpl,
-  selectParagraph as selectParagraphImpl,
-} from "../utils/domQueries";
+
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 import type { HyperlinkPopupData } from "../components/ui/hyperlinkPopupTypes";
-import { useDragAutoScroll } from "./useDragAutoScroll";
 import {
-  createCanonicalHeaderFooterOperation,
-  removeCanonicalHeaderFooterOperations,
-  type DocumentOp,
-} from "@stll/folio-core/controller/canonicalOperations";
+  resolvePos as resolvePosImpl,
+  scrollVisiblePositionIntoView as scrollVisiblePositionIntoViewImpl,
+  selectParagraph as selectParagraphImpl,
+  selectWord as selectWordImpl,
+} from "../utils/domQueries";
 import { viewportPosition } from "../utils/viewportPosition";
+import { useDragAutoScroll } from "./useDragAutoScroll";
 
 type CommandFactory = (...args: readonly unknown[]) => Command;
 type Commands = Record<string, CommandFactory>;
@@ -73,7 +85,12 @@ export type HfEditState = {
   pageNumber: number;
   position: "header" | "footer";
   rId: string | null;
-  targetRect: { top: number; left: number; width: number; height: number } | null;
+  targetRect: {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null;
 };
 
 export type ScrollPageInfo = {
@@ -141,7 +158,9 @@ export type UsePagesPointerReturn = {
 type SaveAndCloseHeaderFooterEditOptions = {
   editState: ShallowRef<HfEditState | null>;
   getDocument: () => Document | null;
-  getHfPmView: (rId: string) => { readonly state: { readonly doc: PMNode } } | null;
+  getHfPmView: (
+    rId: string,
+  ) => { readonly state: { readonly doc: PMNode } } | null;
   onDocumentChange: (document: Document) => void;
   reLayout: () => void;
   setDocument: (document: Document) => void;
@@ -193,7 +212,9 @@ export const saveAndCloseHeaderFooterEdit = ({
   onDocumentChange(updated);
 };
 
-export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerReturn {
+export function usePagesPointer(
+  opts: UsePagesPointerOptions,
+): UsePagesPointerReturn {
   // ─── Table quick-action "+" button ──────────────────────────────────────
   const tableInsertButton = ref<TableInsertButton | null>(null);
   let tableInsertHideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -228,11 +249,20 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   });
 
   // ─── Page-indicator overlay ─────────────────────────────────────────────
-  const scrollPageInfo = ref<ScrollPageInfo>({ currentPage: 1, totalPages: 1, visible: false });
+  const scrollPageInfo = ref<ScrollPageInfo>({
+    currentPage: 1,
+    totalPages: 1,
+    visible: false,
+  });
   let scrollFadeTimer: ReturnType<typeof setTimeout> | null = null;
 
   function resolvePos(clientX: number, clientY: number): number | null {
-    return resolvePosImpl(opts.pagesRef.value, opts.editorView.value, clientX, clientY);
+    return resolvePosImpl(
+      opts.pagesRef.value,
+      opts.editorView.value,
+      clientX,
+      clientY,
+    );
   }
 
   /**
@@ -254,7 +284,13 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     const pages = opts.pagesRef.value;
     const view = activeView();
     if (edit?.rId && pages && view !== opts.editorView.value) {
-      const position = clickToPositionInHfSlot(pages, edit.position, edit.rId, clientX, clientY);
+      const position = clickToPositionInHfSlot(
+        pages,
+        edit.position,
+        edit.rId,
+        clientX,
+        clientY,
+      );
       if (position === null || position < 0) {
         return null;
       }
@@ -281,11 +317,21 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function selectWord(pos: number) {
-    selectWordImpl(opts.pagesRef.value, pos, setPmSelection, hfEdit.value?.position);
+    selectWordImpl(
+      opts.pagesRef.value,
+      pos,
+      setPmSelection,
+      hfEdit.value?.position,
+    );
   }
 
   function selectParagraph(pos: number) {
-    selectParagraphImpl(opts.pagesRef.value, pos, setPmSelection, hfEdit.value?.position);
+    selectParagraphImpl(
+      opts.pagesRef.value,
+      pos,
+      setPmSelection,
+      hfEdit.value?.position,
+    );
   }
 
   function navigateToBookmark(bookmarkName: string) {
@@ -298,7 +344,12 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       if (Array.isArray(raw)) {
         const bookmarks: readonly unknown[] = raw;
         for (const b of bookmarks) {
-          if (b !== null && typeof b === "object" && "name" in b && b.name === bookmarkName) {
+          if (
+            b !== null &&
+            typeof b === "object" &&
+            "name" in b &&
+            b.name === bookmarkName
+          ) {
             targetPos = pos;
             return false;
           }
@@ -378,10 +429,13 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     const btn = tableInsertButton.value;
     const view = opts.editorView.value;
     if (!btn || !view) return;
-    const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, btn.cellPmPos + 1));
+    const tr = view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, btn.cellPmPos + 1),
+    );
     view.dispatch(tr);
     const cmds = opts.getCommands();
-    const factory = btn.type === "row" ? cmds["addRowBelow"] : cmds["addColumnRight"];
+    const factory =
+      btn.type === "row" ? cmds["addRowBelow"] : cmds["addColumnRight"];
     if (!factory) return;
     factory()(view.state, (t) => view.dispatch(t), view);
     tableInsertButton.value = null;
@@ -395,8 +449,15 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
    */
   function handlePagesClick(event: MouseEvent) {
     const el = event.target;
-    if (el instanceof HTMLElement && el.closest(".docx-editor-vue__note-editor")) return;
-    const anchor = el instanceof HTMLElement ? el.closest<HTMLAnchorElement>("a[href]") : null;
+    if (
+      el instanceof HTMLElement &&
+      el.closest(".docx-editor-vue__note-editor")
+    )
+      return;
+    const anchor =
+      el instanceof HTMLElement
+        ? el.closest<HTMLAnchorElement>("a[href]")
+        : null;
     if (!anchor) return;
     event.preventDefault();
     const href = anchor.getAttribute("href") ?? "";
@@ -409,7 +470,8 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     // not the body PM. Empty hrefs still surface the popup (so the user can
     // add/edit a URL), matching React.
     const view = activeView();
-    const hasRangeSelection = view && view.state.selection.from !== view.state.selection.to;
+    const hasRangeSelection =
+      view && view.state.selection.from !== view.state.selection.to;
     if (hasRangeSelection) return;
     // Compute popup position relative to the pages viewport so the popup
     // can render inside the scroll context — the browser then repositions
@@ -462,15 +524,25 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     if (!doc?.package) return;
 
     const pageElement = hfEl.closest<HTMLElement>("[data-page-number]");
-    const pageNumber = Number.parseInt(pageElement?.dataset["pageNumber"] ?? "1", 10);
+    const pageNumber = Number.parseInt(
+      pageElement?.dataset["pageNumber"] ?? "1",
+      10,
+    );
     let resolution = resolveHeaderFooterContent(doc.package);
     const isFirstPage = resolution.hasTitlePg && pageNumber === 1;
     let rId = pickActiveHeaderFooterRId(resolution, position, isFirstPage);
 
     if (!rId) {
       let materialized: Document | null;
-      if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
-        const sectionIndex = opts.layout.value?.pages.at(pageNumber - 1)?.sectionIndex;
+      if (
+        usesCanonicalSession(
+          opts.getExperimentalSession?.(),
+          CANONICAL_GAP.authorityRouting,
+        )
+      ) {
+        const sectionIndex = opts.layout.value?.pages.at(
+          pageNumber - 1,
+        )?.sectionIndex;
         const operation = createCanonicalHeaderFooterOperation({
           document: doc,
           position,
@@ -489,7 +561,12 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       if (!materialized) return;
       opts.syncHfPMs();
       opts.reLayout();
-      if (!usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting))
+      if (
+        !usesCanonicalSession(
+          opts.getExperimentalSession?.(),
+          CANONICAL_GAP.authorityRouting,
+        )
+      )
         opts.onDocumentChange(materialized);
       resolution = resolveHeaderFooterContent(materialized.package);
       rId ??= pickActiveHeaderFooterRId(resolution, position, isFirstPage);
@@ -509,7 +586,11 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       position,
       rId: activeRId,
       targetRect: {
-        ...viewportPosition({ clientX: elRect.left, clientY: elRect.top, viewport: vpRect }),
+        ...viewportPosition({
+          clientX: elRect.left,
+          clientY: elRect.top,
+          viewport: vpRect,
+        }),
         width: elRect.width,
         height: elRect.height,
       },
@@ -526,14 +607,23 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       );
       if (pos !== null) {
         const clamped = Math.max(0, Math.min(pos, view.state.doc.content.size));
-        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, clamped)));
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, clamped),
+          ),
+        );
       }
       view.focus();
     });
   }
 
   function handleHfSave() {
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+    if (
+      usesCanonicalSession(
+        opts.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      )
+    ) {
       hfEdit.value = null;
       opts.syncHfPMs();
       return;
@@ -564,7 +654,12 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       hfEdit.value = null;
       return;
     }
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+    if (
+      usesCanonicalSession(
+        opts.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      )
+    ) {
       const operations = removeCanonicalHeaderFooterOperations({
         document: doc,
         position: edit.position,
@@ -599,7 +694,8 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       // navigation on an <a> before any click-time sanitization runs. Block
       // navigation for those; everything else in this handler is left-click
       // only.
-      const auxTarget = event.target instanceof HTMLElement ? event.target : null;
+      const auxTarget =
+        event.target instanceof HTMLElement ? event.target : null;
       if (auxTarget?.closest<HTMLAnchorElement>("a[href]")) {
         event.preventDefault();
       }
@@ -632,11 +728,16 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
         // Fall through — body-selection path resolves cursor at click coord.
       } else {
         const edit = hfEdit.value;
-        const slot = targetEl.closest<HTMLElement>(`.layout-page-${edit.position}`);
+        const slot = targetEl.closest<HTMLElement>(
+          `.layout-page-${edit.position}`,
+        );
         const page = slot?.closest<HTMLElement>("[data-page-number]");
         const viewport = opts.pagesViewportRef.value;
         if (slot && page && viewport) {
-          const pageNumber = Number.parseInt(page.dataset["pageNumber"] ?? "1", 10);
+          const pageNumber = Number.parseInt(
+            page.dataset["pageNumber"] ?? "1",
+            10,
+          );
           const slotRect = slot.getBoundingClientRect();
           const viewportRect = viewport.getBoundingClientRect();
           hfEdit.value = {
@@ -674,7 +775,11 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       const pmStart = Number(imageEl.dataset["pmStart"]);
       if (!Number.isNaN(pmStart)) {
         try {
-          view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pmStart)));
+          view.dispatch(
+            view.state.tr.setSelection(
+              NodeSelection.create(view.state.doc, pmStart),
+            ),
+          );
         } catch {
           // Position may not be a valid node anchor.
         }
@@ -803,7 +908,10 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     clearTableInsertTimer();
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
-    opts.scrollRootRef.value?.removeEventListener("scroll", handleViewportScroll);
+    opts.scrollRootRef.value?.removeEventListener(
+      "scroll",
+      handleViewportScroll,
+    );
     if (scrollFadeTimer) clearTimeout(scrollFadeTimer);
   });
 

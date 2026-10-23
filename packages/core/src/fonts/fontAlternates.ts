@@ -5,7 +5,9 @@ export type FontAlternates = ReadonlyMap<string, string>;
 const normalizeFontName = (name: string): string => name.trim().toLowerCase();
 
 /** Build a document-scoped primary-name → OOXML alternate-name lookup. */
-export const buildFontAlternates = (fontTable: FontTable | null | undefined): FontAlternates => {
+export const buildFontAlternates = (
+  fontTable: FontTable | null | undefined,
+): FontAlternates => {
   const alternates = new Map<string, string>();
   for (const font of fontTable?.fonts ?? []) {
     const primary = normalizeFontName(font.name);

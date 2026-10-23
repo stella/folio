@@ -20,12 +20,19 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { findParagraphOffsets } from "../docx/selectiveXmlPatch";
-import type { Comment, Document, Paragraph, ParagraphContent } from "../types/document";
+import type {
+  Comment,
+  Document,
+  Paragraph,
+  ParagraphContent,
+} from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditOperation } from "./types";
 
@@ -34,7 +41,11 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 const PARAGRAPH_COUNT = 5;
 const AUTHORS = ["Dana Lindqvist", "Ravi Mehrotra", "Sofia Achebe"] as const;
 const EDIT_MODES = ["direct", "tracked-changes"] as const;
-const OPERATION_KINDS = ["replaceInBlock", "insertAfterBlock", "deleteBlock"] as const;
+const OPERATION_KINDS = [
+  "replaceInBlock",
+  "insertAfterBlock",
+  "deleteBlock",
+] as const;
 
 const FOOTNOTE_ID = 2;
 
@@ -58,7 +69,10 @@ const paragraphIndex = fc.nat({ max: PARAGRAPH_COUNT - 1 });
 
 const spanArbitrary = fc
   .tuple(paragraphIndex, paragraphIndex)
-  .map(([one, other]) => ({ first: Math.min(one, other), last: Math.max(one, other) }));
+  .map(([one, other]) => ({
+    first: Math.min(one, other),
+    last: Math.max(one, other),
+  }));
 
 const generatedCase = fc.record({
   comments: fc.array(
@@ -85,15 +99,23 @@ const generatedCase = fc.record({
 const toCase = ({
   comments,
   ...rest
-}: typeof generatedCase extends fc.Arbitrary<infer T> ? T : never): GeneratedCase => ({
+}: typeof generatedCase extends fc.Arbitrary<infer T>
+  ? T
+  : never): GeneratedCase => ({
   ...rest,
-  comments: comments.map(({ span, author, text }) => ({ ...span, author, text })),
+  comments: comments.map(({ span, author, text }) => ({
+    ...span,
+    author,
+    text,
+  })),
 });
 
 const PARA_ID_PREFIX = "2000000";
 const paraId = (index: number): string => `${PARA_ID_PREFIX}${index}`;
-const paragraphText = (index: number): string => `Paragraph ${index} of the agreement.`;
-const linkTarget = (index: number): string => `https://example.invalid/clause-${index}`;
+const paragraphText = (index: number): string =>
+  `Paragraph ${index} of the agreement.`;
+const linkTarget = (index: number): string =>
+  `https://example.invalid/clause-${index}`;
 
 const run = (text: string): ParagraphContent => ({
   type: "run",
@@ -124,12 +146,20 @@ const buildDocument = ({
         ? {
             type: "hyperlink",
             href: linkTarget(index),
-            children: [{ type: "run", content: [{ type: "text", text: paragraphText(index) }] }],
+            children: [
+              {
+                type: "run",
+                content: [{ type: "text", text: paragraphText(index) }],
+              },
+            ],
           }
         : run(paragraphText(index)),
     );
     if (noteRefParagraph === index) {
-      items.push({ type: "run", content: [{ type: "footnoteRef", id: FOOTNOTE_ID }] });
+      items.push({
+        type: "run",
+        content: [{ type: "footnoteRef", id: FOOTNOTE_ID }],
+      });
     }
     for (const [id, { last }] of bookmarks.entries()) {
       if (last === index) {
@@ -138,7 +168,10 @@ const buildDocument = ({
     }
     for (const [id, { last }] of comments.entries()) {
       if (last === index) {
-        items.push({ type: "commentRangeEnd", id }, { type: "commentReference", id });
+        items.push(
+          { type: "commentRangeEnd", id },
+          { type: "commentReference", id },
+        );
       }
     }
     content.push({ type: "paragraph", paraId: paraId(index), content: items });
@@ -162,7 +195,9 @@ const buildDocument = ({
               {
                 type: "footnote" as const,
                 id: FOOTNOTE_ID,
-                content: [{ type: "paragraph" as const, content: [run("A note.")] }],
+                content: [
+                  { type: "paragraph" as const, content: [run("A note.")] },
+                ],
               },
             ],
           }),
@@ -184,7 +219,12 @@ const operationFor = (
         replace: "Superseded wording throughout.",
       };
     case "insertAfterBlock":
-      return { id: "edit", type: "insertAfterBlock", blockId, text: "An inserted paragraph." };
+      return {
+        id: "edit",
+        type: "insertAfterBlock",
+        blockId,
+        text: "An inserted paragraph.",
+      };
     case "deleteBlock":
       return { id: "edit", type: "deleteBlock", blockId };
     default: {
@@ -197,29 +237,45 @@ const operationFor = (
 type MarkerOccurrence = { id: number; index: number };
 
 const markers = (xml: string, marker: string): MarkerOccurrence[] =>
-  [...xml.matchAll(new RegExp(`<w:${marker}\\s[^>]*w:id="(\\d+)"`, "gu"))].map((match) => ({
-    id: Number(match[1]),
-    index: match.index,
-  }));
+  [...xml.matchAll(new RegExp(`<w:${marker}\\s[^>]*w:id="(\\d+)"`, "gu"))].map(
+    (match) => ({
+      id: Number(match[1]),
+      index: match.index,
+    }),
+  );
 
 /**
  * Every id present as one half of a range is present as the other, start
  * first. Returns each balanced id's outermost span in the XML.
  */
-const assertBalancedRanges = (xml: string, prefix: string): Map<number, GeneratedSpan> => {
+const assertBalancedRanges = (
+  xml: string,
+  prefix: string,
+): Map<number, GeneratedSpan> => {
   const starts = markers(xml, `${prefix}Start`);
   const ends = markers(xml, `${prefix}End`);
   const spans = new Map<number, GeneratedSpan>();
   for (const id of new Set([...starts, ...ends].map((marker) => marker.id))) {
-    const idStarts = starts.filter((marker) => marker.id === id).map(({ index }) => index);
-    const idEnds = ends.filter((marker) => marker.id === id).map(({ index }) => index);
+    const idStarts = starts
+      .filter((marker) => marker.id === id)
+      .map(({ index }) => index);
+    const idEnds = ends
+      .filter((marker) => marker.id === id)
+      .map(({ index }) => index);
     expect({
       marker: prefix,
       id,
       opens: idStarts.length > 0,
       closes: idEnds.length > 0,
-      opensFirst: (idStarts.at(0) ?? Number.POSITIVE_INFINITY) < (idEnds.at(-1) ?? -1),
-    }).toEqual({ marker: prefix, id, opens: true, closes: true, opensFirst: true });
+      opensFirst:
+        (idStarts.at(0) ?? Number.POSITIVE_INFINITY) < (idEnds.at(-1) ?? -1),
+    }).toEqual({
+      marker: prefix,
+      id,
+      opens: true,
+      closes: true,
+      opensFirst: true,
+    });
     // SAFETY: the assertion above fails the test when either half is missing.
     spans.set(id, { first: idStarts[0]!, last: idEnds.at(-1)! });
   }
@@ -241,7 +297,9 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
         fc.asyncProperty(generatedCase, async (raw) => {
           const generated = toCase(raw);
           const source = await createDocx(buildDocument(generated));
-          const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Editor" });
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            author: "Editor",
+          });
           const target = reviewer.snapshot().blocks[generated.edit.blockIndex];
           expect(target).toBeDefined();
           if (!target) {
@@ -254,15 +312,21 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
 
           const saved = await reviewer.toBuffer();
           const zip = await JSZip.loadAsync(saved);
-          const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
-          const rels = (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? "";
+          const xml =
+            (await zip.file("word/document.xml")?.async("text")) ?? "";
+          const rels =
+            (await zip.file("word/_rels/document.xml.rels")?.async("text")) ??
+            "";
 
           const commentSpans = assertBalancedRanges(xml, "commentRange");
           assertBalancedRanges(xml, "bookmark");
 
           const survivingParagraphs = new Map(
             Array.from({ length: PARAGRAPH_COUNT }, (_, index) => index)
-              .map((index) => [index, findParagraphOffsets(xml, paraId(index))] as const)
+              .map(
+                (index) =>
+                  [index, findParagraphOffsets(xml, paraId(index))] as const,
+              )
               .filter(([, offsets]) => offsets !== null),
           );
 
@@ -275,15 +339,21 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
               continue;
             }
             const paragraph = xml.slice(offsets.start, offsets.end);
-            const visible = [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
-              .map(([, part]) => part ?? "")
-              .join("");
-            const inside = [
-              ...paragraph.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu),
+            const visible = [
+              ...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu),
             ]
               .map(([, part]) => part ?? "")
               .join("");
-            const insideVisible = [...inside.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
+            const inside = [
+              ...paragraph.matchAll(
+                /<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu,
+              ),
+            ]
+              .map(([, part]) => part ?? "")
+              .join("");
+            const insideVisible = [
+              ...inside.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu),
+            ]
               .map(([, part]) => part ?? "")
               .join("");
             expect({
@@ -310,18 +380,31 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
 
           const reparsed = await parseDocx(saved, { preloadFonts: false });
           const authored = new Map(
-            (reparsed.package.document.comments ?? []).map((entry) => [entry.id, entry]),
+            (reparsed.package.document.comments ?? []).map((entry) => [
+              entry.id,
+              entry,
+            ]),
           );
 
-          for (const [id, { author, text, first, last }] of generated.comments.entries()) {
-            const covered = Array.from({ length: last - first + 1 }, (_, offset) => first + offset)
+          for (const [
+            id,
+            { author, text, first, last },
+          ] of generated.comments.entries()) {
+            const covered = Array.from(
+              { length: last - first + 1 },
+              (_, offset) => first + offset,
+            )
               .map((index) => survivingParagraphs.get(index))
               .filter((offsets) => offsets !== undefined && offsets !== null);
             if (covered.length === 0) {
               // Every character the comment covered is gone, and the comment
               // with it: no definition, no marker; its reference run went with
               // that content.
-              expect({ id, kept: authored.has(id), anchored: commentSpans.has(id) }).toEqual({
+              expect({
+                id,
+                kept: authored.has(id),
+                anchored: commentSpans.has(id),
+              }).toEqual({
                 id,
                 kept: false,
                 anchored: false,
@@ -329,7 +412,11 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
               continue;
             }
 
-            expect({ id, kept: authored.has(id), anchored: commentSpans.has(id) }).toEqual({
+            expect({
+              id,
+              kept: authored.has(id),
+              anchored: commentSpans.has(id),
+            }).toEqual({
               id,
               kept: true,
               anchored: true,
@@ -341,9 +428,12 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             const span = commentSpans.get(id);
             expect({
               id,
-              opensInTime: (span?.first ?? Number.POSITIVE_INFINITY) < (covered.at(0)?.end ?? -1),
+              opensInTime:
+                (span?.first ?? Number.POSITIVE_INFINITY) <
+                (covered.at(0)?.end ?? -1),
               closesInTime:
-                (span?.last ?? -1) > (covered.at(-1)?.start ?? Number.POSITIVE_INFINITY),
+                (span?.last ?? -1) >
+                (covered.at(-1)?.start ?? Number.POSITIVE_INFINITY),
             }).toEqual({ id, opensInTime: true, closesInTime: true });
           }
         }),

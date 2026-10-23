@@ -1,16 +1,22 @@
-import { describe, expect, test } from "bun:test";
-
-import { FindReplaceManager, getAdjacentFindIndex } from "./FindReplaceManager";
-import type { OpStory } from "@stll/docx-core/ops";
-import type { Document } from "../types/document";
-import type { ComplexField, Paragraph, Run, SimpleField } from "../types/content";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
+import { EditorState } from "prosemirror-state";
+
+import type { OpStory } from "@stll/docx-core/ops";
+
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { findInProseMirrorDocument } from "../prosemirror/findReplaceSelection";
+import type {
+  ComplexField,
+  Paragraph,
+  Run,
+  SimpleField,
+} from "../types/content";
+import type { Document } from "../types/document";
 import { resolveDocumentFindRanges } from "../utils/findMatchView";
-import { EditorState } from "prosemirror-state";
 import { createDefaultFindOptions, findInDocument } from "../utils/findReplace";
 import type { ReplaceEligibility } from "../utils/findReplace";
+import { FindReplaceManager, getAdjacentFindIndex } from "./FindReplaceManager";
 
 type TestMatch = {
   paragraphIndex: number;
@@ -20,7 +26,11 @@ type TestMatch = {
   replacement: ReplaceEligibility;
 };
 
-const match = (id: string, paragraphIndex: number, startOffset: number): TestMatch => ({
+const match = (
+  id: string,
+  paragraphIndex: number,
+  startOffset: number,
+): TestMatch => ({
   id,
   paragraphIndex,
   startOffset,
@@ -53,28 +63,40 @@ describe("FindReplaceManager replacement story boundaries", () => {
             content: [
               {
                 type: "paragraph",
-                content: [{ type: "run", content: [{ type: "text", text: "body" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "body" }] },
+                ],
               },
             ],
           },
         },
       };
       const before = structuredClone(document);
-      const body = { ...match("body", 0, 0), story: "main" } as const satisfies StoryTestMatch;
+      const body = {
+        ...match("body", 0, 0),
+        story: "main",
+      } as const satisfies StoryTestMatch;
       const manager = new FindReplaceManager<StoryTestMatch>();
       manager.setMatches([body, secondary]);
       expect(manager.goTo(1)?.match).toEqual(secondary);
       expect(manager.replaceCurrent(document, "changed")).toBeNull();
       expect(manager.navigate("previous")?.match).toEqual(body);
       expect(manager.replaceCurrent(document, "B")).not.toBeNull();
-      const replaced = manager.replaceAll(document, [body, secondary], "changed");
+      const replaced = manager.replaceAll(
+        document,
+        [body, secondary],
+        "changed",
+      );
       expect(replaced).toMatchObject({ replacedCount: 1, skippedCount: 1 });
       expect(document).toEqual(before);
     },
   );
 });
 
-const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const textRun = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
 const makeField = (kind: "simple" | "complex"): SimpleField | ComplexField => {
   if (kind === "simple")
@@ -89,7 +111,12 @@ const makeField = (kind: "simple" | "complex"): SimpleField | ComplexField => {
     type: "complexField",
     fieldType: "DOCVARIABLE",
     instruction: "DOCVARIABLE value",
-    fieldCode: [{ type: "run", content: [{ type: "instrText", text: "DOCVARIABLE value" }] }],
+    fieldCode: [
+      {
+        type: "run",
+        content: [{ type: "instrText", text: "DOCVARIABLE value" }],
+      },
+    ],
     fieldResult: [textRun("hit hit")],
     fldLock: true,
   };
@@ -134,7 +161,10 @@ describe("FindReplaceManager real search replacement eligibility", () => {
       const beforePm = toProseDoc(source).toJSON();
       const matches = findInDocument(source, "AB", createDefaultFindOptions());
       expect(matches).toHaveLength(1);
-      expect(matches.at(0)?.replacement).toEqual({ status: "blocked", reason: "atomic-content" });
+      expect(matches.at(0)?.replacement).toEqual({
+        status: "blocked",
+        reason: "atomic-content",
+      });
       const manager = new FindReplaceManager<(typeof matches)[number]>();
       manager.setMatches(matches);
       expect(manager.replaceCurrent(source, "value")).toBeNull();
@@ -178,7 +208,8 @@ describe("FindReplaceManager real search replacement eligibility", () => {
       const manager = new FindReplaceManager<(typeof matches)[number]>();
       manager.setMatches(matches);
       const replaced = manager.replaceCurrent(source, "value");
-      if (!replaced) panic("Ordinary text replacement after note anchor failed");
+      if (!replaced)
+        panic("Ordinary text replacement after note anchor failed");
       expect(findInDocument(replaced, "value", options)).toHaveLength(1);
       expect(documentParagraph(replaced).content.at(0)).toMatchObject({
         content: [
@@ -190,7 +221,11 @@ describe("FindReplaceManager real search replacement eligibility", () => {
       const pmDoc = toProseDoc(source);
       const pmMatches = findInProseMirrorDocument(pmDoc, "hit", options);
       expect(pmMatches).toHaveLength(1);
-      const range = resolveDocumentFindRanges({ document: source, bodyDoc: pmDoc, matches }).at(0);
+      const range = resolveDocumentFindRanges({
+        document: source,
+        bodyDoc: pmDoc,
+        matches,
+      }).at(0);
       if (!range) panic("Ordinary PM range after note anchor missing");
       expect(pmDoc.textBetween(range.from, range.to)).toBe("hit");
       expect(pmMatches.at(0)?.from).toBe(range.from);
@@ -200,11 +235,21 @@ describe("FindReplaceManager real search replacement eligibility", () => {
         range.from,
         range.to,
       ).doc;
-      expect(updatedPm.child(0).child(0).toJSON()).toEqual(pmDoc.child(0).child(0).toJSON());
-      expect(findInProseMirrorDocument(updatedPm, "hit", options)).toHaveLength(0);
-      const updatedMatch = findInProseMirrorDocument(updatedPm, "value", options).at(0);
+      expect(updatedPm.child(0).child(0).toJSON()).toEqual(
+        pmDoc.child(0).child(0).toJSON(),
+      );
+      expect(findInProseMirrorDocument(updatedPm, "hit", options)).toHaveLength(
+        0,
+      );
+      const updatedMatch = findInProseMirrorDocument(
+        updatedPm,
+        "value",
+        options,
+      ).at(0);
       if (!updatedMatch) panic("PM replacement after note anchor missing");
-      expect(updatedPm.textBetween(updatedMatch.from, updatedMatch.to)).toBe("value");
+      expect(updatedPm.textBetween(updatedMatch.from, updatedMatch.to)).toBe(
+        "value",
+      );
     },
   );
 
@@ -213,7 +258,9 @@ describe("FindReplaceManager real search replacement eligibility", () => {
     (kind) => {
       const field = makeField(kind);
       const source: Document = {
-        package: { document: { content: [{ type: "paragraph", content: [field] }] } },
+        package: {
+          document: { content: [{ type: "paragraph", content: [field] }] },
+        },
       };
       const before = structuredClone(source);
       const beforePm = toProseDoc(source).toJSON();
@@ -246,7 +293,9 @@ describe("FindReplaceManager real search replacement eligibility", () => {
       const field = makeField(kind);
       const source: Document = {
         package: {
-          document: { content: [{ type: "paragraph", content: [field, textRun(" hit")] }] },
+          document: {
+            content: [{ type: "paragraph", content: [field, textRun(" hit")] }],
+          },
         },
       };
       const matches = findInDocument(source, "it", createDefaultFindOptions());
@@ -257,12 +306,16 @@ describe("FindReplaceManager real search replacement eligibility", () => {
       if (!result) panic("Replacement outcome missing");
       expect(result).toMatchObject({ replacedCount: 1, skippedCount: 2 });
       expect(documentParagraph(result.document).content.at(0)).toEqual(field);
-      expect(findInDocument(result.document, "hit hit", createDefaultFindOptions())).toHaveLength(
-        1,
-      );
-      expect(findInDocument(result.document, "hXX", createDefaultFindOptions())).toHaveLength(1);
+      expect(
+        findInDocument(result.document, "hit hit", createDefaultFindOptions()),
+      ).toHaveLength(1);
+      expect(
+        findInDocument(result.document, "hXX", createDefaultFindOptions()),
+      ).toHaveLength(1);
       const beforeFieldPm = toProseDoc(source).child(0).child(0).toJSON();
-      expect(toProseDoc(result.document).child(0).child(0).toJSON()).toEqual(beforeFieldPm);
+      expect(toProseDoc(result.document).child(0).child(0).toJSON()).toEqual(
+        beforeFieldPm,
+      );
     },
   );
 
@@ -277,7 +330,11 @@ describe("FindReplaceManager real search replacement eligibility", () => {
                 textRun("A"),
                 {
                   type: "deletion",
-                  info: { id: 17, author: "Author", date: "2026-01-01T00:00:00Z" },
+                  info: {
+                    id: 17,
+                    author: "Author",
+                    date: "2026-01-01T00:00:00Z",
+                  },
                   content: [textRun("X")],
                 },
                 textRun("B"),
@@ -294,8 +351,15 @@ describe("FindReplaceManager real search replacement eligibility", () => {
       displayMode: "no-markup",
     });
     expect(matches).toHaveLength(1);
-    expect(matches.at(0)).toMatchObject({ startOffset: 0, endOffset: 3, text: "AB" });
-    expect(matches.at(0)?.replacement).toEqual({ status: "blocked", reason: "hidden-content" });
+    expect(matches.at(0)).toMatchObject({
+      startOffset: 0,
+      endOffset: 3,
+      text: "AB",
+    });
+    expect(matches.at(0)?.replacement).toEqual({
+      status: "blocked",
+      reason: "hidden-content",
+    });
     const manager = new FindReplaceManager<(typeof matches)[number]>();
     manager.setMatches(matches);
     expect(manager.replaceCurrent(source, "replacement")).toBeNull();
@@ -310,7 +374,11 @@ describe("FindReplaceManager real search replacement eligibility", () => {
 
   test("ordinary body matches remain replaceable individually and together", () => {
     const source: Document = {
-      package: { document: { content: [{ type: "paragraph", content: [textRun("hit hit")] }] } },
+      package: {
+        document: {
+          content: [{ type: "paragraph", content: [textRun("hit hit")] }],
+        },
+      },
     };
     const matches = findInDocument(source, "hit", createDefaultFindOptions());
     expect(matches.map(({ replacement }) => replacement)).toEqual([
@@ -321,12 +389,18 @@ describe("FindReplaceManager real search replacement eligibility", () => {
     manager.setMatches(matches);
     const current = manager.replaceCurrent(source, "value");
     if (!current) panic("Current body replacement failed");
-    expect(findInDocument(current, "value hit", createDefaultFindOptions())).toHaveLength(1);
+    expect(
+      findInDocument(current, "value hit", createDefaultFindOptions()),
+    ).toHaveLength(1);
     const all = manager.replaceAll(source, matches, "value");
     if (!all) panic("Body replacement outcome missing");
     expect(all).toMatchObject({ replacedCount: 2, skippedCount: 0 });
-    expect(findInDocument(all.document, "value value", createDefaultFindOptions())).toHaveLength(1);
-    expect(findInDocument(source, "hit hit", createDefaultFindOptions())).toHaveLength(1);
+    expect(
+      findInDocument(all.document, "value value", createDefaultFindOptions()),
+    ).toHaveLength(1);
+    expect(
+      findInDocument(source, "hit hit", createDefaultFindOptions()),
+    ).toHaveLength(1);
   });
 });
 
@@ -355,9 +429,17 @@ describe("FindReplaceManager cursor", () => {
     const manager = new FindReplaceManager<TestMatch>();
     const matches = [match("a", 0, 0), match("b", 0, 4)];
 
-    expect(manager.setMatches(matches)).toEqual({ matches, totalCount: 2, currentIndex: 0 });
+    expect(manager.setMatches(matches)).toEqual({
+      matches,
+      totalCount: 2,
+      currentIndex: 0,
+    });
 
-    expect(manager.setMatches([])).toEqual({ matches: [], totalCount: 0, currentIndex: 0 });
+    expect(manager.setMatches([])).toEqual({
+      matches: [],
+      totalCount: 0,
+      currentIndex: 0,
+    });
   });
 
   test("navigate wraps the cursor and reports the now-current match", () => {
@@ -367,7 +449,10 @@ describe("FindReplaceManager cursor", () => {
 
     expect(manager.navigate("next")).toEqual({ match: matches[1]!, index: 1 });
     expect(manager.navigate("next")).toEqual({ match: matches[0]!, index: 0 });
-    expect(manager.navigate("previous")).toEqual({ match: matches[1]!, index: 1 });
+    expect(manager.navigate("previous")).toEqual({
+      match: matches[1]!,
+      index: 1,
+    });
     expect(manager.getResult()?.currentIndex).toBe(1);
   });
 
@@ -399,8 +484,12 @@ test("result refresh preserves or clamps the cursor", () => {
   const matches = [match("a", 0, 0), match("b", 1, 0), match("c", 2, 0)];
   for (const index of [-1, 0, 1, 2, 3, 20]) {
     const result = manager.setMatches(matches, index);
-    expect(result.currentIndex).toBe(Math.max(0, Math.min(index, matches.length - 1)));
-    expect(manager.navigate("next")?.index).toBe((result.currentIndex + 1) % matches.length);
+    expect(result.currentIndex).toBe(
+      Math.max(0, Math.min(index, matches.length - 1)),
+    );
+    expect(manager.navigate("next")?.index).toBe(
+      (result.currentIndex + 1) % matches.length,
+    );
   }
   expect(manager.setMatches([], 4).currentIndex).toBe(0);
   expect(manager.navigate("next")).toBeNull();

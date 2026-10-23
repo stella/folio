@@ -47,23 +47,34 @@ const referencelessDocument = (): Document => ({
             { type: "commentRangeEnd", id: COMMENT_ID },
           ],
         },
-        { type: "paragraph", paraId: "61000001", content: [run("Second body paragraph.")] },
+        {
+          type: "paragraph",
+          paraId: "61000001",
+          content: [run("Second body paragraph.")],
+        },
       ],
     },
   },
 });
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
-const referenceCount = (xml: string): number => xml.split("<w:commentReference").length - 1;
+const referenceCount = (xml: string): number =>
+  xml.split("<w:commentReference").length - 1;
 
 describe("completing a missing comment reference", () => {
   test("a headless edit gives the comment its mark back", async () => {
     const source = await createDocx(referencelessDocument());
     expect(referenceCount(await documentXml(source))).toBe(0);
 
-    const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Editor" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+      author: "Editor",
+    });
     const target = reviewer.snapshot().blocks[1];
     expect(target?.text).toBe("Second body paragraph.");
     reviewer.applyOperations(

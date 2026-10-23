@@ -16,7 +16,9 @@
        approach React's DocxEditor.tsx:5029-5044 takes. Injected as
        a sibling so the !important overrides win against the base
        editor.css highlight rules without touching DOM nodes. -->
-  <component v-if="expandedHighlightCss" :is="'style'">{{ expandedHighlightCss }}</component>
+  <component v-if="expandedHighlightCss" :is="'style'">{{
+    expandedHighlightCss
+  }}</component>
   <aside
     v-if="isOpen"
     ref="rootRef"
@@ -55,7 +57,11 @@
                useCommentSidebarItems.tsx:96-98). Click expands into
                the full card. -->
           <ResolvedCommentMarker
-            v-else-if="item.kind === 'comment' && item.comment!.done && expandedId !== item.id"
+            v-else-if="
+              item.kind === 'comment' &&
+              item.comment!.done &&
+              expandedId !== item.id
+            "
             :comment="item.comment!"
             @toggle-expand="toggleExpanded(item.id)"
           />
@@ -65,7 +71,9 @@
             :replies="item.replies!"
             :expanded="expandedId === item.id"
             @click="toggleExpanded(item.id)"
-            @reply="(id: number, text: string) => $emit('comment-reply', id, text)"
+            @reply="
+              (id: number, text: string) => $emit('comment-reply', id, text)
+            "
             @resolve="(id: number) => $emit('comment-resolve', id)"
             @unresolve="(id: number) => $emit('comment-unresolve', id)"
             @delete="(id: number) => $emit('comment-delete', id)"
@@ -76,11 +84,18 @@
             :replies="item.replies ?? []"
             :expanded="expandedId === item.id"
             @click="toggleExpanded(item.id)"
-            @accept="(from: number, to: number) => $emit('accept-change', from, to)"
-            @reject="(from: number, to: number) => $emit('reject-change', from, to)"
+            @accept="
+              (from: number, to: number) => $emit('accept-change', from, to)
+            "
+            @reject="
+              (from: number, to: number) => $emit('reject-change', from, to)
+            "
             @accept-by-id="(rev: number) => $emit('accept-change-by-id', rev)"
             @reject-by-id="(rev: number) => $emit('reject-change-by-id', rev)"
-            @reply="(rev: number, text: string) => $emit('tracked-change-reply', rev, text)"
+            @reply="
+              (rev: number, text: string) =>
+                $emit('tracked-change-reply', rev, text)
+            "
           />
         </div>
       </template>
@@ -89,21 +104,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, toRef, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
+import {
+  computed,
+  type CSSProperties,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  toRef,
+  watch,
+} from "vue";
+
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 import {
   commentAnchorSelector,
   indexCommentAnchors,
 } from "@stll/folio-core/render-dom/commentAnchorAttributes";
-import type { Comment } from "@stll/folio-core/types/content";
-import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 import { resolveSidebarItemPositions } from "@stll/folio-core/render-dom/resolveSidebarItemPositions";
-import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
+import type { Comment } from "@stll/folio-core/types/content";
+
+import { useCommentSidebarItems } from "../composables/useCommentSidebarItems";
+import AddCommentCard from "./sidebar/AddCommentCard.vue";
 import CommentCard from "./sidebar/CommentCard.vue";
 import ResolvedCommentMarker from "./sidebar/ResolvedCommentMarker.vue";
+import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import TrackedChangeCard from "./sidebar/TrackedChangeCard.vue";
-import AddCommentCard from "./sidebar/AddCommentCard.vue";
-import { useCommentSidebarItems } from "../composables/useCommentSidebarItems";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -162,7 +187,11 @@ function toggleExpanded(id: string) {
 function onSidebarMouseDown(e: MouseEvent) {
   e.stopPropagation();
   const target = e.target;
-  if (target instanceof HTMLElement && target.closest(".unified-sidebar__card-slot")) return;
+  if (
+    target instanceof HTMLElement &&
+    target.closest(".unified-sidebar__card-slot")
+  )
+    return;
   if (expandedId.value !== null) {
     emit("update:activeItemId", null);
   }
@@ -206,7 +235,10 @@ function syncCardObservers() {
   const root = rootRef.value;
   if (!root || !cardResizeObserver) return;
   const slots = new Set(root.querySelectorAll<HTMLElement>("[data-card-id]"));
-  if (slots.size === observedSlots.size && [...slots].every((el) => observedSlots.has(el))) {
+  if (
+    slots.size === observedSlots.size &&
+    [...slots].every((el) => observedSlots.has(el))
+  ) {
     return;
   }
   cardResizeObserver.disconnect();
@@ -234,12 +266,16 @@ function computePositions() {
   // A run inside overlapping ranges is indexed under every comment it is in.
   const commentEls = indexCommentAnchors(container);
   const insertionEls = new Map<string, HTMLElement>();
-  for (const el of container.querySelectorAll<HTMLElement>(".docx-insertion[data-revision-id]")) {
+  for (const el of container.querySelectorAll<HTMLElement>(
+    ".docx-insertion[data-revision-id]",
+  )) {
     const id = el.dataset["revisionId"];
     if (id && !insertionEls.has(id)) insertionEls.set(id, el);
   }
   const deletionEls = new Map<string, HTMLElement>();
-  for (const el of container.querySelectorAll<HTMLElement>(".docx-deletion[data-revision-id]")) {
+  for (const el of container.querySelectorAll<HTMLElement>(
+    ".docx-deletion[data-revision-id]",
+  )) {
     const id = el.dataset["revisionId"];
     if (id && !deletionEls.has(id)) deletionEls.set(id, el);
   }
@@ -259,7 +295,8 @@ function computePositions() {
     const id = el.dataset["revisionId"];
     if (!id) continue;
     const isIns =
-      el.classList.contains("ep-revision-ins") || el.classList.contains("layout-revision-ins");
+      el.classList.contains("ep-revision-ins") ||
+      el.classList.contains("layout-revision-ins");
     const map = isIns ? insertionEls : deletionEls;
     if (!map.has(id)) map.set(id, el);
   }
@@ -283,7 +320,9 @@ function computePositions() {
       anchor =
         change.type === "deletion"
           ? deletionEls.get(String(change.revisionId))
-          : insertionEls.get(String(change.insertionRevisionId ?? change.revisionId));
+          : insertionEls.get(
+              String(change.insertionRevisionId ?? change.revisionId),
+            );
     }
     if (anchor) anchorPositions.set(item.anchorKey, anchorY(anchor));
   }
@@ -342,13 +381,17 @@ function updatePanelGeometry() {
   const parentRect = parent.getBoundingClientRect();
   const scrollRect = scroll.getBoundingClientRect();
   if (isDrawer.value) {
-    const width = Math.max(0, Math.min(PANEL_METRICS.drawerWidth, scroll.clientWidth - 16));
+    const width = Math.max(
+      0,
+      Math.min(PANEL_METRICS.drawerWidth, scroll.clientWidth - 16),
+    );
     drawerBox.value = {
       top: scrollRect.top - parentRect.top,
       width,
       height: scroll.clientHeight,
     };
-    measuredLeft.value = scrollRect.left + scroll.clientWidth - parentRect.left - width;
+    measuredLeft.value =
+      scrollRect.left + scroll.clientWidth - parentRect.left - width;
     return;
   }
 
@@ -357,8 +400,14 @@ function updatePanelGeometry() {
     measuredLeft.value = null;
     return;
   }
-  const rawLeft = page.getBoundingClientRect().right - parentRect.left + PANEL_METRICS.commentsGap;
-  const maxVisibleLeft = Math.max(8, parent.clientWidth - PANEL_METRICS.commentsWidth - 8);
+  const rawLeft =
+    page.getBoundingClientRect().right -
+    parentRect.left +
+    PANEL_METRICS.commentsGap;
+  const maxVisibleLeft = Math.max(
+    8,
+    parent.clientWidth - PANEL_METRICS.commentsWidth - 8,
+  );
   measuredLeft.value = Math.max(8, Math.min(rawLeft, maxVisibleLeft));
 }
 
@@ -408,7 +457,8 @@ const asideStyle = computed<CSSProperties>(() => {
       measuredLeft.value === null
         ? `calc(50% + ${props.pageWidthPx / 2 + PANEL_METRICS.commentsGap}px)`
         : measuredLeft.value + "px",
-    width: (drawer ? drawerBox.value.width : PANEL_METRICS.commentsWidth) + "px",
+    width:
+      (drawer ? drawerBox.value.width : PANEL_METRICS.commentsWidth) + "px",
     paddingInline: drawer ? PANEL_METRICS.commentsGap + "px" : undefined,
     bottom: drawer ? undefined : 0,
     opacity: hasPositions ? 1 : 0,
@@ -533,7 +583,9 @@ watch(
   (active, _previous, onCleanup) => {
     if (!active || typeof document === "undefined") return;
     const previousFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     rootRef.value?.focus({ preventScroll: true });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -543,7 +595,8 @@ watch(
     document.addEventListener("keydown", onKeyDown);
     onCleanup(() => {
       document.removeEventListener("keydown", onKeyDown);
-      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+      if (previousFocus?.isConnected)
+        previousFocus.focus({ preventScroll: true });
     });
   },
   { immediate: true, flush: "post" },

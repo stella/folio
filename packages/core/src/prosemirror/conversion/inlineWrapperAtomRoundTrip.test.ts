@@ -75,14 +75,17 @@ const ATOMS = {
   oMathPara: (): MathEquation => ({
     type: "mathEquation",
     display: "block",
-    ommlXml: "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>",
+    ommlXml:
+      "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>",
     plainText: "x",
   }),
 } as const;
 
 const documentWith = (content: InlineWrapper): Document => {
   const document = createEmptyDocument();
-  document.package.document.content = [{ type: "paragraph", content: [content] }];
+  document.package.document.content = [
+    { type: "paragraph", content: [content] },
+  ];
   return document;
 };
 
@@ -109,7 +112,9 @@ const OOXML_NAMESPACES =
   'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 
 const parseParagraphXml = (xml: string): Paragraph => {
-  const root = parseXmlDocument(xml.replace(/^<w:p(?=[\s>])/u, `<w:p ${OOXML_NAMESPACES}`));
+  const root = parseXmlDocument(
+    xml.replace(/^<w:p(?=[\s>])/u, `<w:p ${OOXML_NAMESPACES}`),
+  );
   if (!root) {
     throw new Error("Expected the wrapper fixture to parse");
   }
@@ -120,21 +125,29 @@ const saveThroughEditor = (paragraph: Paragraph): Paragraph => {
   const source = createEmptyDocument();
   source.package.document.content = [paragraph];
   return firstParagraph(
-    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    }),
   );
 };
 
 describe("transparent wrappers around atomic inline content", () => {
   test("the fixture covers every transparent wrapper the parser declares", () => {
-    expect(Object.keys(WRAPPERS).toSorted()).toEqual([...INLINE_WRAPPER_ELEMENTS].toSorted());
-    expect(Object.keys(wrapperBounds).toSorted()).toEqual([...INLINE_WRAPPER_ELEMENTS].toSorted());
+    expect(Object.keys(WRAPPERS).toSorted()).toEqual(
+      [...INLINE_WRAPPER_ELEMENTS].toSorted(),
+    );
+    expect(Object.keys(wrapperBounds).toSorted()).toEqual(
+      [...INLINE_WRAPPER_ELEMENTS].toSorted(),
+    );
   });
 
   test("inline leaves carry their parent's wrapper mark", () => {
     const wrapperMark = schema.marks["inlineWrapper"];
     const paragraphType = schema.nodes["paragraph"];
     if (!wrapperMark || !paragraphType) {
-      throw new Error("Expected the paragraph and inline-wrapper schema members");
+      throw new Error(
+        "Expected the paragraph and inline-wrapper schema members",
+      );
     }
     expect(paragraphType.allowsMarkType(wrapperMark)).toBe(true);
 
@@ -143,7 +156,9 @@ describe("transparent wrappers around atomic inline content", () => {
       const projectedParagraph = toProseDoc(source).firstChild;
       const leaf = projectedParagraph?.firstChild;
       if (!leaf) {
-        throw new Error("Expected the wrapper projection to keep its atomic leaf");
+        throw new Error(
+          "Expected the wrapper projection to keep its atomic leaf",
+        );
       }
       expect(leaf.isInline).toBe(true);
       expect(leaf.isLeaf).toBe(true);
@@ -163,7 +178,9 @@ describe("transparent wrappers around atomic inline content", () => {
         "</w:smartTag></w:bdo></w:p>",
     );
     const once = serializeParagraph(saveThroughEditor(source));
-    const twice = serializeParagraph(saveThroughEditor(parseParagraphXml(once)));
+    const twice = serializeParagraph(
+      saveThroughEditor(parseParagraphXml(once)),
+    );
 
     expect(twice).toBe(once);
     expect([...once.matchAll(/<w:bdo(?=[ >])/gu)]).toHaveLength(1);
@@ -171,8 +188,12 @@ describe("transparent wrappers around atomic inline content", () => {
     expect([...once.matchAll(/<w:fldSimple(?=[ >])/gu)]).toHaveLength(1);
     expect([...once.matchAll(/<m:oMath(?=[ >])/gu)]).toHaveLength(2);
     expect([...once.matchAll(/<m:oMathPara(?=[ >])/gu)]).toHaveLength(1);
-    expect(once).toContain('<w:bdo w:val="rtl"><w:smartTag w:element="place"><w:fldSimple');
-    expect(once.indexOf("</w:smartTag>")).toBeLessThan(once.indexOf("</w:bdo>"));
+    expect(once).toContain(
+      '<w:bdo w:val="rtl"><w:smartTag w:element="place"><w:fldSimple',
+    );
+    expect(once.indexOf("</w:smartTag>")).toBeLessThan(
+      once.indexOf("</w:bdo>"),
+    );
   });
 
   for (const element of INLINE_WRAPPER_ELEMENTS) {
@@ -187,7 +208,9 @@ describe("transparent wrappers around atomic inline content", () => {
 
         expect(wrapper?.type).toBe("inlineWrapper");
         if (wrapper?.type !== "inlineWrapper") {
-          throw new Error("Expected the atomic content to remain in its wrapper");
+          throw new Error(
+            "Expected the atomic content to remain in its wrapper",
+          );
         }
         expect(wrapper.content.at(0)?.type).toBe(atom().type);
 

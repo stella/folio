@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { deflateSync } from "node:zlib";
+
 import type { DisplayImageSource } from "../display-list/types";
 import { decodeImage } from "./images";
 
@@ -70,7 +71,8 @@ const applyFilter = (
     const raw = row[index] ?? 0;
     const left = index >= bytesPerPixel ? (row[index - bytesPerPixel] ?? 0) : 0;
     const above = previous?.[index] ?? 0;
-    const upperLeft = index >= bytesPerPixel ? (previous?.[index - bytesPerPixel] ?? 0) : 0;
+    const upperLeft =
+      index >= bytesPerPixel ? (previous?.[index - bytesPerPixel] ?? 0) : 0;
     switch (filterType) {
       case 1:
         out[index] = (raw - left) & 0xff;
@@ -104,7 +106,10 @@ type BuildPngOptions = {
   readonly interlace?: number;
 };
 
-type BuildPngFromScanlinesOptions = Omit<BuildPngOptions, "rows" | "filters" | "bytesPerPixel"> & {
+type BuildPngFromScanlinesOptions = Omit<
+  BuildPngOptions,
+  "rows" | "filters" | "bytesPerPixel"
+> & {
   readonly scanlines: Uint8Array;
 };
 
@@ -132,7 +137,10 @@ const buildPngFromScanlines = ({
     chunk("IHDR", header),
     ...(palette === undefined ? [] : [chunk("PLTE", palette)]),
     ...(transparency === undefined ? [] : [chunk("tRNS", transparency)]),
-    chunk("IDAT", new Uint8Array(deflated.buffer, deflated.byteOffset, deflated.byteLength)),
+    chunk(
+      "IDAT",
+      new Uint8Array(deflated.buffer, deflated.byteOffset, deflated.byteLength),
+    ),
     chunk("IEND", new Uint8Array(0)),
   ]);
 };
@@ -150,18 +158,29 @@ const encodeRowGroup = (
   for (const [index, row] of rows.entries()) {
     const filterType = filters[index] ?? 0;
     out.push(new Uint8Array([filterType]));
-    out.push(applyFilter(filterType, row, rows[index - 1] ?? null, bytesPerPixel));
+    out.push(
+      applyFilter(filterType, row, rows[index - 1] ?? null, bytesPerPixel),
+    );
   }
   return out;
 };
 
-const buildPng = ({ rows, filters, bytesPerPixel, ...header }: BuildPngOptions): Uint8Array =>
+const buildPng = ({
+  rows,
+  filters,
+  bytesPerPixel,
+  ...header
+}: BuildPngOptions): Uint8Array =>
   buildPngFromScanlines({
     ...header,
     scanlines: concat(encodeRowGroup(rows, filters, bytesPerPixel)),
   });
 
-const asSource = (bytes: Uint8Array, width: number, height: number): DisplayImageSource => ({
+const asSource = (
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+): DisplayImageSource => ({
   format: "png",
   bytes,
   pixelWidth: width,
@@ -173,7 +192,10 @@ describe("PNG filter reversal", () => {
   const height = 5;
   const bytesPerRow = width * 3;
   const rows = Array.from({ length: height }, (_, row) =>
-    Uint8Array.from({ length: bytesPerRow }, (__, index) => (row * 37 + index * 11 + 3) & 0xff),
+    Uint8Array.from(
+      { length: bytesPerRow },
+      (__, index) => (row * 37 + index * 11 + 3) & 0xff,
+    ),
   );
 
   test("reverses all five filter types", () => {
@@ -200,7 +222,10 @@ describe("PNG filter reversal", () => {
 
   test("splits an alpha channel into a soft mask", () => {
     const rgbaRows = Array.from({ length: 2 }, (_, row) =>
-      Uint8Array.from({ length: 2 * 4 }, (__, index) => (row * 5 + index * 9 + 1) & 0xff),
+      Uint8Array.from(
+        { length: 2 * 4 },
+        (__, index) => (row * 5 + index * 9 + 1) & 0xff,
+      ),
     );
     const png = buildPng({
       width: 2,
@@ -246,7 +271,9 @@ describe("PNG filter reversal", () => {
     }
     expect(decoded.value.bitsPerComponent).toBe(4);
     expect([...decoded.value.data]).toEqual([0x01, 0x23, 0x32, 0x10]);
-    expect([...(decoded.value.alpha?.data ?? [])]).toEqual([0, 128, 255, 255, 255, 255, 128, 0]);
+    expect([...(decoded.value.alpha?.data ?? [])]).toEqual([
+      0, 128, 255, 255, 255, 255, 128, 0,
+    ]);
   });
 });
 
@@ -312,17 +339,32 @@ describe("Adam7 interlacing", () => {
   };
 
   /** A deterministic image: every pixel differs from its neighbours. */
-  const sampleAt = (raster: Raster, x: number, y: number, channel: number): number =>
-    (x * 7 + y * 13 + channel * 29 + 5) % (raster.maxSample + 1);
+  const sampleAt = (
+    raster: Raster,
+    x: number,
+    y: number,
+    channel: number,
+  ): number => (x * 7 + y * 13 + channel * 29 + 5) % (raster.maxSample + 1);
 
   /** One packed scanline over the given source columns of one source row. */
-  const packRow = (raster: Raster, y: number, columns: readonly number[]): Uint8Array => {
+  const packRow = (
+    raster: Raster,
+    y: number,
+    columns: readonly number[],
+  ): Uint8Array => {
     const bitsPerPixel = raster.bitDepth * raster.channels;
-    const bytes = new Uint8Array(Math.ceil((bitsPerPixel * columns.length) / 8));
+    const bytes = new Uint8Array(
+      Math.ceil((bitsPerPixel * columns.length) / 8),
+    );
     if (raster.bitDepth === 8) {
       for (const [index, x] of columns.entries()) {
         for (let channel = 0; channel < raster.channels; channel += 1) {
-          bytes[index * raster.channels + channel] = sampleAt(raster, x, y, channel);
+          bytes[index * raster.channels + channel] = sampleAt(
+            raster,
+            x,
+            y,
+            channel,
+          );
         }
       }
       return bytes;
@@ -365,7 +407,9 @@ describe("Adam7 interlacing", () => {
     let filterCursor = 0;
     for (const [xOffset, yOffset, xStep, yStep] of ADAM7_PASSES) {
       const columns = series(xOffset, xStep, raster.width);
-      const rows = series(yOffset, yStep, raster.height).map((y) => packRow(raster, y, columns));
+      const rows = series(yOffset, yStep, raster.height).map((y) =>
+        packRow(raster, y, columns),
+      );
       if (columns.length === 0 || rows.length === 0) {
         continue;
       }
@@ -405,17 +449,29 @@ describe("Adam7 interlacing", () => {
       for (const { width, height } of SIZES) {
         test(`${name} at ${String(bitDepth)}-bit, ${String(width)}x${String(height)}, decodes as its progressive twin`, () => {
           const maxSample = (1 << bitDepth) - 1;
-          const raster: Raster = { width, height, channels, bitDepth, maxSample };
+          const raster: Raster = {
+            width,
+            height,
+            channels,
+            bitDepth,
+            maxSample,
+          };
           const entries = Math.min(256, maxSample + 1);
           const palette =
             colorType === 3
-              ? Uint8Array.from({ length: entries * 3 }, (_, index) => (index * 11 + 3) & 0xff)
+              ? Uint8Array.from(
+                  { length: entries * 3 },
+                  (_, index) => (index * 11 + 3) & 0xff,
+                )
               : undefined;
           const header = { width, height, bitDepth, colorType, palette };
 
           const progressive = decodeImage(
             asSource(
-              buildPngFromScanlines({ ...header, scanlines: progressiveScanlines(raster) }),
+              buildPngFromScanlines({
+                ...header,
+                scanlines: progressiveScanlines(raster),
+              }),
               width,
               height,
             ),
@@ -478,11 +534,18 @@ describe("JPEG", () => {
   test("passes the bytes through and reads the frame header", () => {
     const jpeg = concat([
       new Uint8Array([0xff, 0xd8]),
-      new Uint8Array([0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x40, 0x00, 0x60, 0x03]),
+      new Uint8Array([
+        0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x40, 0x00, 0x60, 0x03,
+      ]),
       new Uint8Array(9),
       new Uint8Array([0xff, 0xda, 0x00, 0x02]),
     ]);
-    const decoded = decodeImage({ format: "jpeg", bytes: jpeg, pixelWidth: 96, pixelHeight: 64 });
+    const decoded = decodeImage({
+      format: "jpeg",
+      bytes: jpeg,
+      pixelWidth: 96,
+      pixelHeight: 64,
+    });
     if (decoded.isErr()) {
       throw decoded.error;
     }
@@ -524,7 +587,9 @@ describe("PNG streams that lie about their size", () => {
   };
 
   test("reports a corrupt IDAT stream instead of throwing", () => {
-    const decoded = decodeImage(asSource(withIdat(new Uint8Array([0x78, 0x9c, 0xff, 0xff])), 1, 1));
+    const decoded = decodeImage(
+      asSource(withIdat(new Uint8Array([0x78, 0x9c, 0xff, 0xff])), 1, 1),
+    );
     expect(decoded.isErr()).toBe(true);
     if (decoded.isErr()) {
       expect(decoded.error.message).toContain("IDAT");
@@ -536,7 +601,11 @@ describe("PNG streams that lie about their size", () => {
     // allocated before any check looks at how big the image claims to be.
     const bomb = deflateSync(new Uint8Array(8 << 20));
     const decoded = decodeImage(
-      asSource(withIdat(new Uint8Array(bomb.buffer, bomb.byteOffset, bomb.byteLength)), 1, 1),
+      asSource(
+        withIdat(new Uint8Array(bomb.buffer, bomb.byteOffset, bomb.byteLength)),
+        1,
+        1,
+      ),
     );
     expect(decoded.isErr()).toBe(true);
     if (decoded.isErr()) {
@@ -552,7 +621,18 @@ describe("JPEG frame modes /DCTDecode cannot represent", () => {
       format: "jpeg",
       bytes: concat([
         new Uint8Array([0xff, 0xd8]),
-        new Uint8Array([0xff, marker, 0x00, 0x11, 0x08, 0x00, 0x40, 0x00, 0x60, 0x03]),
+        new Uint8Array([
+          0xff,
+          marker,
+          0x00,
+          0x11,
+          0x08,
+          0x00,
+          0x40,
+          0x00,
+          0x60,
+          0x03,
+        ]),
         new Uint8Array(9),
         new Uint8Array([0xff, 0xda, 0x00, 0x02]),
       ]),
@@ -573,7 +653,9 @@ describe("JPEG frame modes /DCTDecode cannot represent", () => {
   });
 
   test("names every lossless, arithmetic and hierarchical frame it refuses", () => {
-    for (const marker of [0xc3, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]) {
+    for (const marker of [
+      0xc3, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
+    ]) {
       const decoded = decodeFrame(marker);
       expect(decoded.isErr()).toBe(true);
       if (decoded.isErr()) {

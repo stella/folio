@@ -2,27 +2,34 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
+
+import { afterAll, expect, test } from "bun:test";
 import { IntlProvider } from "use-intl";
+
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import { resetCanvasContext } from "@stll/folio-core/layout-engine/measure/measureContainer";
 import {
   getMeasureProvider,
   setMeasureProvider,
 } from "@stll/folio-core/layout-engine/measure/measureProvider";
-import { resetCanvasContext } from "@stll/folio-core/layout-engine/measure/measureContainer";
+
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
   GlobalRegistrator.unregister();
 });
 
-const createErrorRecorder = (errors: Error[]) => (error: Error) => errors.push(error);
+const createErrorRecorder = (errors: Error[]) => (error: Error) =>
+  errors.push(error);
 
 test("read-only import repairs duplicate bookmarks and renders their first reference target", async () => {
   const bytes = await Bun.file(
@@ -67,7 +74,11 @@ test("read-only import repairs duplicate bookmarks and renders their first refer
   try {
     await act(async () => {
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <DocxEditor
             ref={editor}
             documentBuffer={bytes}
@@ -83,10 +94,14 @@ test("read-only import repairs duplicate bookmarks and renders their first refer
     for (
       let attempt = 0;
       attempt < 400 &&
-      !container.querySelector(".layout-page")?.textContent?.includes("Later target");
+      !container
+        .querySelector(".layout-page")
+        ?.textContent?.includes("Later target");
       attempt++
     ) {
-      await act(async () => await new Promise((resolve) => setTimeout(resolve, 10)));
+      await act(
+        async () => await new Promise((resolve) => setTimeout(resolve, 10)),
+      );
     }
     expect(errors).toEqual([]);
     expect(layoutErrors).toEqual([]);
@@ -102,7 +117,11 @@ test("read-only import repairs duplicate bookmarks and renders their first refer
     container.remove();
     setMeasureProvider(installedProvider);
     if (canvasDescriptor)
-      Object.defineProperty(HTMLCanvasElement.prototype, "getContext", canvasDescriptor);
+      Object.defineProperty(
+        HTMLCanvasElement.prototype,
+        "getContext",
+        canvasDescriptor,
+      );
     resetCanvasContext();
     globalThis.__folioLayoutInstrumentation = installedInstrumentation;
   }

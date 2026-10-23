@@ -1,7 +1,7 @@
+import JSZip from "jszip";
 import path from "node:path";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
-import JSZip from "jszip";
 
 export const ZIP_MUTATIONS = [
   "drop-part",
@@ -15,7 +15,8 @@ export const ZIP_MUTATIONS = [
 
 export type ZipMutation = (typeof ZIP_MUTATIONS)[number];
 
-const decodeUtf8 = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+const decodeUtf8 = (bytes: Uint8Array): string =>
+  new TextDecoder().decode(bytes);
 
 const requirePart = (zip: JSZip, part: string): JSZip.JSZipObject => {
   const file = zip.file(part);
@@ -46,10 +47,15 @@ const packagePathForRelationship = (
   return path.posix.normalize(path.posix.join(ownerDirectory, target));
 };
 
-const wrongContentType = async (source: Uint8Array, targetPart: string): Promise<Uint8Array> => {
+const wrongContentType = async (
+  source: Uint8Array,
+  targetPart: string,
+): Promise<Uint8Array> => {
   const zip = await JSZip.loadAsync(source);
   requirePart(zip, targetPart);
-  const contentTypes = await requirePart(zip, "[Content_Types].xml").async("string");
+  const contentTypes = await requirePart(zip, "[Content_Types].xml").async(
+    "string",
+  );
   const partName = `/${targetPart.replace(/^\/+/, "")}`;
   const overridePattern = /<Override\b[^>]*>/gu;
   let matched = false;
@@ -60,13 +66,18 @@ const wrongContentType = async (source: Uint8Array, targetPart: string): Promise
     }
     matched = true;
     return /\bContentType\s*=\s*(["']).*?\1/u.test(tag)
-      ? tag.replace(/\bContentType\s*=\s*(["']).*?\1/u, 'ContentType="application/x-folio-fuzz"')
+      ? tag.replace(
+          /\bContentType\s*=\s*(["']).*?\1/u,
+          'ContentType="application/x-folio-fuzz"',
+        )
       : tag.replace(/\s*\/?>$/u, ' ContentType="application/x-folio-fuzz"/>');
   });
   if (!matched) {
     const closing = "</Types>";
     if (!updated.includes(closing)) {
-      throw new Error("ZIP mutation could not find the [Content_Types].xml closing tag");
+      throw new Error(
+        "ZIP mutation could not find the [Content_Types].xml closing tag",
+      );
     }
     zip.file(
       "[Content_Types].xml",
@@ -95,7 +106,10 @@ const missingRelationshipTarget = async (
     let changed = false;
     const updated = xml.replace(/<Relationship\b[^>]*>/gu, (tag) => {
       const target = tag.match(/\bTarget\s*=\s*(["'])(.*?)\1/u)?.[2];
-      if (target === undefined || packagePathForRelationship(relationshipFile, target) !== wanted) {
+      if (
+        target === undefined ||
+        packagePathForRelationship(relationshipFile, target) !== wanted
+      ) {
         return tag;
       }
       changed = true;
@@ -110,10 +124,15 @@ const missingRelationshipTarget = async (
       return generated(zip);
     }
   }
-  throw new Error(`ZIP mutation found no relationship targeting part: ${targetPart}`);
+  throw new Error(
+    `ZIP mutation found no relationship targeting part: ${targetPart}`,
+  );
 };
 
-const badCentralDirectoryCrc = (source: Uint8Array, targetPart: string): Uint8Array => {
+const badCentralDirectoryCrc = (
+  source: Uint8Array,
+  targetPart: string,
+): Uint8Array => {
   const bytes = source.slice();
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 0;
@@ -129,22 +148,37 @@ const badCentralDirectoryCrc = (source: Uint8Array, targetPart: string): Uint8Ar
     if (end > bytes.length) {
       break;
     }
-    const name = decodeUtf8(bytes.subarray(offset + 46, offset + 46 + nameLength));
+    const name = decodeUtf8(
+      bytes.subarray(offset + 46, offset + 46 + nameLength),
+    );
     if (name === targetPart) {
       view.setUint32(offset + 16, view.getUint32(offset + 16, true) ^ 1, true);
       return bytes;
     }
     offset = end;
   }
-  throw new Error(`ZIP mutation could not find central directory entry for: ${targetPart}`);
+  throw new Error(
+    `ZIP mutation could not find central directory entry for: ${targetPart}`,
+  );
 };
 
-const duplicateCentralDirectoryEntry = (source: Uint8Array, targetPart: string): Uint8Array => {
-  const view = new DataView(source.buffer, source.byteOffset, source.byteLength);
+const duplicateCentralDirectoryEntry = (
+  source: Uint8Array,
+  targetPart: string,
+): Uint8Array => {
+  const view = new DataView(
+    source.buffer,
+    source.byteOffset,
+    source.byteLength,
+  );
   const minimumEocd = 22;
   const eocdSearchStart = Math.max(0, source.byteLength - minimumEocd - 0xffff);
   let eocdOffset = -1;
-  for (let offset = source.byteLength - minimumEocd; offset >= eocdSearchStart; offset -= 1) {
+  for (
+    let offset = source.byteLength - minimumEocd;
+    offset >= eocdSearchStart;
+    offset -= 1
+  ) {
     if (view.getUint32(offset, true) === 0x06054b50) {
       const commentLength = view.getUint16(offset + 20, true);
       if (offset + minimumEocd + commentLength === source.byteLength) {
@@ -154,7 +188,9 @@ const duplicateCentralDirectoryEntry = (source: Uint8Array, targetPart: string):
     }
   }
   if (eocdOffset < 0) {
-    throw new Error("ZIP mutation could not find the end-of-central-directory record");
+    throw new Error(
+      "ZIP mutation could not find the end-of-central-directory record",
+    );
   }
 
   const entriesOnDisk = view.getUint16(eocdOffset + 8, true);
@@ -189,15 +225,22 @@ const duplicateCentralDirectoryEntry = (source: Uint8Array, targetPart: string):
     const recordLength = 46 + nameLength + extraLength + commentLength;
     const next = offset + recordLength;
     if (next > centralDirectoryEnd) {
-      throw new Error("ZIP mutation found a truncated central-directory record");
+      throw new Error(
+        "ZIP mutation found a truncated central-directory record",
+      );
     }
-    const name = decodeUtf8(source.subarray(offset + 46, offset + 46 + nameLength));
+    const name = decodeUtf8(
+      source.subarray(offset + 46, offset + 46 + nameLength),
+    );
     if (name === targetPart) {
       const duplicate = source.slice(offset, next);
       const result = new Uint8Array(source.byteLength + duplicate.byteLength);
       result.set(source.subarray(0, centralDirectoryEnd), 0);
       result.set(duplicate, centralDirectoryEnd);
-      result.set(source.subarray(centralDirectoryEnd), centralDirectoryEnd + duplicate.byteLength);
+      result.set(
+        source.subarray(centralDirectoryEnd),
+        centralDirectoryEnd + duplicate.byteLength,
+      );
       const resultView = new DataView(result.buffer);
       const updatedEocdOffset = eocdOffset + duplicate.byteLength;
       resultView.setUint16(updatedEocdOffset + 8, entriesOnDisk + 1, true);
@@ -211,7 +254,9 @@ const duplicateCentralDirectoryEntry = (source: Uint8Array, targetPart: string):
     }
     offset = next;
   }
-  throw new Error(`ZIP mutation could not find central directory entry for: ${targetPart}`);
+  throw new Error(
+    `ZIP mutation could not find central directory entry for: ${targetPart}`,
+  );
 };
 
 /** Apply one deterministic malformed-package mutation to a DOCX ZIP. */

@@ -25,7 +25,11 @@
     data-folio-toolbar="true"
   >
     <!-- Undo / Redo -->
-    <span class="docx-formatting-bar__group" role="group" :aria-label="t('historyGroup')">
+    <span
+      class="docx-formatting-bar__group"
+      role="group"
+      :aria-label="t('historyGroup')"
+    >
       <button
         type="button"
         class="docx-formatting-bar__btn"
@@ -59,13 +63,20 @@
         :value="currentFormatting.styleId ?? 'Normal'"
         v-bind="stylePickerStyles"
         :disabled="disabled"
-        @change="(styleId: string) => emit('format', { type: 'applyStyle', value: styleId })"
+        @change="
+          (styleId: string) =>
+            emit('format', { type: 'applyStyle', value: styleId })
+        "
       />
       <span class="docx-formatting-bar__divider" role="separator" />
     </template>
 
     <!-- Bold / Italic / Underline -->
-    <span class="docx-formatting-bar__group" role="group" :aria-label="t('textFormattingGroup')">
+    <span
+      class="docx-formatting-bar__group"
+      role="group"
+      :aria-label="t('textFormattingGroup')"
+    >
       <button
         type="button"
         class="docx-formatting-bar__btn"
@@ -81,7 +92,9 @@
       <button
         type="button"
         class="docx-formatting-bar__btn"
-        :class="{ 'docx-formatting-bar__btn--active': currentFormatting.italic }"
+        :class="{
+          'docx-formatting-bar__btn--active': currentFormatting.italic,
+        }"
         :disabled="disabled"
         :title="t('italicShortcut')"
         :aria-label="t('italic')"
@@ -93,7 +106,9 @@
       <button
         type="button"
         class="docx-formatting-bar__btn"
-        :class="{ 'docx-formatting-bar__btn--active': currentFormatting.underline }"
+        :class="{
+          'docx-formatting-bar__btn--active': currentFormatting.underline,
+        }"
         :disabled="disabled"
         :title="t('underlineShortcut')"
         :aria-label="t('underline')"
@@ -124,7 +139,8 @@
       :value="currentFormatting.alignment ?? 'left'"
       :disabled="disabled"
       @change="
-        (alignment: ParagraphAlignment) => emit('format', { type: 'alignment', value: alignment })
+        (alignment: ParagraphAlignment) =>
+          emit('format', { type: 'alignment', value: alignment })
       "
     />
 
@@ -144,28 +160,31 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import MaterialSymbol from "./ui/MaterialSymbol.vue";
-import StylePicker from "./ui/StylePicker.vue";
-import AlignmentButtons from "./ui/AlignmentButtons.vue";
-import ListButtons from "./ui/ListButtons.vue";
+
 import { listStateLevel } from "@stll/folio-core/prosemirror";
-import { createDefaultListState } from "../utils/listState";
+
 import { useTranslation } from "../i18n";
 import { useFolioUI } from "../ui/folio-ui";
+import { createDefaultListState } from "../utils/listState";
+import AlignmentButtons from "./ui/AlignmentButtons.vue";
+import ListButtons from "./ui/ListButtons.vue";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
+import StylePicker from "./ui/StylePicker.vue";
 
 // Resolve ColorPicker from the FolioUI injection provider so a host
 // `components.ColorPicker` override renders here; falls back to the package
 // default (ui/ColorPicker.vue) when rendered outside a provider.
 const { ColorPicker } = useFolioUI();
 import type { ColorValue } from "@stll/folio-core/types/document";
+
 import type { ListState } from "../utils/listState";
-import type { ParagraphAlignment } from "./ui/AlignmentButtons.types";
-import type { StyleOption } from "./ui/StylePicker.types";
 import type {
   FormattingAction,
   FormattingBarProps,
   SelectionFormatting,
 } from "./FormattingBar.types";
+import type { ParagraphAlignment } from "./ui/AlignmentButtons.types";
+import type { StyleOption } from "./ui/StylePicker.types";
 
 const props = withDefaults(defineProps<FormattingBarProps>(), {
   disabled: false,
@@ -185,13 +204,15 @@ const emit = defineEmits<{
 
 const { t } = useTranslation();
 
-const currentFormatting = computed<SelectionFormatting>(() => props.currentFormatting ?? {});
+const currentFormatting = computed<SelectionFormatting>(
+  () => props.currentFormatting ?? {},
+);
 
 // Omit `styles` entirely when the host passes none, so StylePicker falls back
 // to its built-in presets instead of receiving `undefined`.
-const stylePickerStyles = computed<{ styles: StyleOption[] } | Record<string, never>>(() =>
-  props.documentStyles ? { styles: props.documentStyles } : {},
-);
+const stylePickerStyles = computed<
+  { styles: StyleOption[] } | Record<string, never>
+>(() => (props.documentStyles ? { styles: props.documentStyles } : {}));
 
 // ListButtons requires a concrete ListState (its prop is non-`undefined` under
 // exactOptionalPropertyTypes); fall back to the empty default like React does.

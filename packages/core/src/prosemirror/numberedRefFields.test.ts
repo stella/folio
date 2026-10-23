@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import type {
   ComplexField,
   Document,
@@ -9,10 +10,12 @@ import type {
   ParagraphContent,
   SimpleField,
 } from "../types/document";
-import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { fromProseDoc } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
-import { parseNumberedRefInstruction, resolveNumberedRefFields } from "./numberedRefFields";
+import {
+  parseNumberedRefInstruction,
+  resolveNumberedRefFields,
+} from "./numberedRefFields";
 
 const textRun = (text: string) => ({
   type: "run" as const,
@@ -32,14 +35,24 @@ function numberedParagraph(options: {
 }): Paragraph {
   const bookmarkContent: ParagraphContent[] = options.bookmark
     ? [
-        { type: "bookmarkStart", id: options.level + 1, name: options.bookmark },
+        {
+          type: "bookmarkStart",
+          id: options.level + 1,
+          name: options.bookmark,
+        },
         textRun(options.text),
         { type: "bookmarkEnd", id: options.level + 1 },
       ]
     : [textRun(options.text)];
   return {
     type: "paragraph",
-    formatting: { numPr: { kind: "reference", numId: options.numId ?? 5, ilvl: options.level } },
+    formatting: {
+      numPr: {
+        kind: "reference",
+        numId: options.numId ?? 5,
+        ilvl: options.level,
+      },
+    },
     content: bookmarkContent,
     listRendering: {
       marker: options.marker,
@@ -47,12 +60,17 @@ function numberedParagraph(options: {
       numId: options.numId ?? 5,
       abstractNumId: options.abstractNumId ?? 7,
       isBullet: false,
-      numFmt: options.decimalLevels || options.level !== 2 ? "decimal" : "lowerLetter",
+      numFmt:
+        options.decimalLevels || options.level !== 2
+          ? "decimal"
+          : "lowerLetter",
       levelNumFmts: options.decimalLevels
         ? ["decimal", "decimal", "decimal"]
         : ["decimal", "decimal", "lowerLetter"],
       levelStarts: [1, 1, 1],
-      ...(options.startOverride === undefined ? {} : { startOverride: options.startOverride }),
+      ...(options.startOverride === undefined
+        ? {}
+        : { startOverride: options.startOverride }),
     },
     ...(options.pPrMark ? { pPrMark: options.pPrMark } : {}),
   };
@@ -87,13 +105,17 @@ function documentOf(content: Paragraph[]): Document {
 function fieldFallbacks(pmDoc: PMNode): string[] {
   return toFlowBlocks(pmDoc).flatMap((block) =>
     block.kind === "paragraph"
-      ? block.runs.flatMap((run) => (run.kind === "field" ? [run.fallback ?? ""] : []))
+      ? block.runs.flatMap((run) =>
+          run.kind === "field" ? [run.fallback ?? ""] : [],
+        )
       : [],
   );
 }
 
 function savedFieldTexts(pmDoc: PMNode): string[] {
-  const model = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+  const model = fromProseDoc(pmDoc, undefined, {
+    stylesheetSource: { type: "package" },
+  });
   return model.package.document.content.flatMap((block) => {
     if (block.type !== "paragraph") {
       return [];
@@ -107,7 +129,9 @@ function savedFieldTexts(pmDoc: PMNode): string[] {
       }
       return runs.flatMap((run) =>
         run.type === "run"
-          ? run.content.flatMap((item) => (item.type === "text" ? [item.text] : []))
+          ? run.content.flatMap((item) =>
+              item.type === "text" ? [item.text] : [],
+            )
           : [],
       );
     });
@@ -129,18 +153,26 @@ function resolvedFieldValues(pmDoc: PMNode): (string | undefined)[] {
 
 describe("numbered REF instructions", () => {
   test("accepts one numbered switch and inert hyperlink/format switches", () => {
-    expect(parseNumberedRefInstruction(' ref "clause-a" \\w \\h \\* MERGEFORMAT ')).toEqual({
+    expect(
+      parseNumberedRefInstruction(' ref "clause-a" \\w \\h \\* MERGEFORMAT '),
+    ).toEqual({
       bookmark: "clause-a",
       numberSwitch: "w",
     });
-    expect(parseNumberedRefInstruction("REF clause-a \\n")?.numberSwitch).toBe("n");
-    expect(parseNumberedRefInstruction("REF clause-a \\r")?.numberSwitch).toBe("r");
+    expect(parseNumberedRefInstruction("REF clause-a \\n")?.numberSwitch).toBe(
+      "n",
+    );
+    expect(parseNumberedRefInstruction("REF clause-a \\r")?.numberSwitch).toBe(
+      "r",
+    );
   });
 
   test("fails closed for ambiguous or unsupported instructions", () => {
     expect(parseNumberedRefInstruction("REF clause-a \\n \\w")).toBeNull();
     expect(parseNumberedRefInstruction("REF clause-a \\t \\w")).toBeNull();
-    expect(parseNumberedRefInstruction(`REF ${"a".repeat(257)} \\w`)).toBeNull();
+    expect(
+      parseNumberedRefInstruction(`REF ${"a".repeat(257)} \\w`),
+    ).toBeNull();
   });
 });
 
@@ -156,8 +188,18 @@ describe("numbered REF projection", () => {
     } as const;
     const pmDoc = toProseDoc(
       documentOf([
-        numberedParagraph({ text: "Inserted one", level: 0, marker: "%1.", pPrMark: inserted }),
-        numberedParagraph({ text: "Inserted two", level: 0, marker: "%1.", pPrMark: inserted }),
+        numberedParagraph({
+          text: "Inserted one",
+          level: 0,
+          marker: "%1.",
+          pPrMark: inserted,
+        }),
+        numberedParagraph({
+          text: "Inserted two",
+          level: 0,
+          marker: "%1.",
+          pPrMark: inserted,
+        }),
         numberedParagraph({
           text: "Deleted target",
           level: 0,
@@ -165,13 +207,18 @@ describe("numbered REF projection", () => {
           bookmark: "deleted-target",
           pPrMark: deleted,
         }),
-        { type: "paragraph", content: [refField(" REF deleted-target \\n ", "1")] },
+        {
+          type: "paragraph",
+          content: [refField(" REF deleted-target \\n ", "1")],
+        },
       ]),
     );
 
     const blocks = toFlowBlocks(pmDoc);
     const markers = blocks.flatMap((block) =>
-      block.kind === "paragraph" && block.attrs?.listMarker ? [block.attrs.listMarker] : [],
+      block.kind === "paragraph" && block.attrs?.listMarker
+        ? [block.attrs.listMarker]
+        : [],
     );
 
     expect(markers).toEqual(["1.", "2.", "1."]);
@@ -190,8 +237,18 @@ describe("numbered REF projection", () => {
     } as const;
     const pmDoc = toProseDoc(
       documentOf([
-        numberedParagraph({ text: "Original parent", level: 0, marker: "%1.", startOverride: 5 }),
-        numberedParagraph({ text: "Inserted parent", level: 0, marker: "%1.", pPrMark: inserted }),
+        numberedParagraph({
+          text: "Original parent",
+          level: 0,
+          marker: "%1.",
+          startOverride: 5,
+        }),
+        numberedParagraph({
+          text: "Inserted parent",
+          level: 0,
+          marker: "%1.",
+          pPrMark: inserted,
+        }),
         numberedParagraph({
           text: "Deleted child",
           level: 1,
@@ -199,13 +256,18 @@ describe("numbered REF projection", () => {
           bookmark: "deleted-child",
           pPrMark: deleted,
         }),
-        { type: "paragraph", content: [refField(" REF deleted-child \\w ", "5.1")] },
+        {
+          type: "paragraph",
+          content: [refField(" REF deleted-child \\w ", "5.1")],
+        },
       ]),
     );
 
     const blocks = toFlowBlocks(pmDoc);
     const markers = blocks.flatMap((block) =>
-      block.kind === "paragraph" && block.attrs?.listMarker ? [block.attrs.listMarker] : [],
+      block.kind === "paragraph" && block.attrs?.listMarker
+        ? [block.attrs.listMarker]
+        : [],
     );
 
     expect(markers).toEqual(["5.", "6.", "1."]);
@@ -218,7 +280,12 @@ describe("numbered REF projection", () => {
       documentOf([
         numberedParagraph({ text: "Article", level: 0, marker: "%1." }),
         numberedParagraph({ text: "Section", level: 1, marker: "%1.%2" }),
-        numberedParagraph({ text: "Clause", level: 2, marker: "(%3)", bookmark: "clause" }),
+        numberedParagraph({
+          text: "Clause",
+          level: 2,
+          marker: "(%3)",
+          bookmark: "clause",
+        }),
         {
           type: "paragraph",
           content: [
@@ -399,14 +466,23 @@ describe("numbered REF projection", () => {
   });
 
   test("keeps current-level spelling around a same-parent relative number", () => {
-    const source = numberedParagraph({ text: "Source", level: 2, marker: "(%3)" });
+    const source = numberedParagraph({
+      text: "Source",
+      level: 2,
+      marker: "(%3)",
+    });
     source.content.push(refField(" REF target \\r ", "(b)"));
     const pmDoc = toProseDoc(
       documentOf([
         numberedParagraph({ text: "Root", level: 0, marker: "%1." }),
         numberedParagraph({ text: "Parent", level: 1, marker: "%1.%2." }),
         source,
-        numberedParagraph({ text: "Target", level: 2, marker: "(%3)", bookmark: "target" }),
+        numberedParagraph({
+          text: "Target",
+          level: 2,
+          marker: "(%3)",
+          bookmark: "target",
+        }),
       ]),
     );
 
@@ -416,26 +492,39 @@ describe("numbered REF projection", () => {
   test("uses the layout caller's preseeded continuation state", () => {
     const pmDoc = toProseDoc(
       documentOf([
-        numberedParagraph({ text: "Target", level: 0, marker: "%1.", bookmark: "target" }),
+        numberedParagraph({
+          text: "Target",
+          level: 0,
+          marker: "%1.",
+          bookmark: "target",
+        }),
         { type: "paragraph", content: [refField(" REF target \\w ", "8")] },
       ]),
     );
-    const listCounters = new Map([[5, [7, ...Array.from({ length: 8 }, () => Number.NaN)]]]);
+    const listCounters = new Map([
+      [5, [7, ...Array.from({ length: 8 }, () => Number.NaN)]],
+    ]);
     const blocks = toFlowBlocks(pmDoc, {
       listCounters,
-      listAbstractCounters: new Map([[7, [7, ...Array.from({ length: 8 }, () => Number.NaN)]]]),
+      listAbstractCounters: new Map([
+        [7, [7, ...Array.from({ length: 8 }, () => Number.NaN)]],
+      ]),
       listSeenNumIds: new Set(["5:0"]),
     });
 
     expect(
       blocks.flatMap((block) =>
-        block.kind === "paragraph" && block.attrs?.listMarker ? [block.attrs.listMarker] : [],
+        block.kind === "paragraph" && block.attrs?.listMarker
+          ? [block.attrs.listMarker]
+          : [],
       ),
     ).toEqual(["8."]);
     expect(
       blocks.flatMap((block) =>
         block.kind === "paragraph"
-          ? block.runs.flatMap((run) => (run.kind === "field" ? [run.fallback] : []))
+          ? block.runs.flatMap((run) =>
+              run.kind === "field" ? [run.fallback] : [],
+            )
           : [],
       ),
     ).toEqual(["8"]);
@@ -448,18 +537,31 @@ describe("numbered REF projection", () => {
       href: "https://example.test",
       children: [
         textRun("before"),
-        { type: "bookmarkStart", id: 41, name: "linked-target", colFirst: 2, colLast: 3 },
+        {
+          type: "bookmarkStart",
+          id: 41,
+          name: "linked-target",
+          colFirst: 2,
+          colLast: 3,
+        },
         textRun("inside"),
         { type: "bookmarkEnd", id: 41 },
         textRun("after"),
       ],
     } as const satisfies Hyperlink;
-    const target = numberedParagraph({ text: "unused", level: 0, marker: "%1." });
+    const target = numberedParagraph({
+      text: "unused",
+      level: 0,
+      marker: "%1.",
+    });
     target.content = [hyperlink];
     const pmDoc = toProseDoc(
       documentOf([
         target,
-        { type: "paragraph", content: [refField(" REF linked-target \\w ", "1")] },
+        {
+          type: "paragraph",
+          content: [refField(" REF linked-target \\w ", "1")],
+        },
       ]),
     );
 
@@ -478,9 +580,13 @@ describe("numbered REF projection", () => {
     ).toBe(true);
     const cloned = pmDoc.type.schema.nodeFromJSON(pmDoc.toJSON());
     expect(fieldFallbacks(cloned)).toEqual(["1"]);
-    const saved = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(cloned, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const savedTarget = saved.package.document.content.at(0);
-    expect(savedTarget?.type === "paragraph" ? savedTarget.content : null).toEqual([hyperlink]);
+    expect(
+      savedTarget?.type === "paragraph" ? savedTarget.content : null,
+    ).toEqual([hyperlink]);
     expect(fieldFallbacks(toProseDoc(saved))).toEqual(["1"]);
   });
 
@@ -501,27 +607,43 @@ describe("numbered REF projection", () => {
         },
       ],
     } as const satisfies SimpleField;
-    const target = numberedParagraph({ text: "unused", level: 0, marker: "%1." });
+    const target = numberedParagraph({
+      text: "unused",
+      level: 0,
+      marker: "%1.",
+    });
     target.content = [field];
     const pmDoc = toProseDoc(
       documentOf([
         target,
-        { type: "paragraph", content: [refField(" REF field-target \\w ", "1")] },
+        {
+          type: "paragraph",
+          content: [refField(" REF field-target \\w ", "1")],
+        },
       ]),
     );
 
     expect(resolvedFieldValues(pmDoc)).toEqual([undefined, "1"]);
-    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+    const cloned = pmDoc.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(pmDoc.toJSON())),
+    );
     const savedTarget = fromProseDoc(cloned, undefined, {
       stylesheetSource: { type: "package" },
     }).package.document.content.at(0);
-    expect(savedTarget?.type === "paragraph" ? savedTarget.content : null).toEqual([field]);
+    expect(
+      savedTarget?.type === "paragraph" ? savedTarget.content : null,
+    ).toEqual([field]);
   });
 
   test("keeps authored caches when a target or calibration is unavailable", () => {
     const pmDoc = toProseDoc(
       documentOf([
-        numberedParagraph({ text: "Target", level: 0, marker: "%1.", bookmark: "target" }),
+        numberedParagraph({
+          text: "Target",
+          level: 0,
+          marker: "%1.",
+          bookmark: "target",
+        }),
         {
           type: "paragraph",
           content: [
@@ -533,8 +655,16 @@ describe("numbered REF projection", () => {
       ]),
     );
 
-    expect(fieldFallbacks(pmDoc)).toEqual(["Section 1", "missing-cache", "unsupported-cache"]);
-    expect(savedFieldTexts(pmDoc)).toEqual(["Section 1", "missing-cache", "unsupported-cache"]);
+    expect(fieldFallbacks(pmDoc)).toEqual([
+      "Section 1",
+      "missing-cache",
+      "unsupported-cache",
+    ]);
+    expect(savedFieldTexts(pmDoc)).toEqual([
+      "Section 1",
+      "missing-cache",
+      "unsupported-cache",
+    ]);
   });
 
   test("the first bookmark declaration wins even when it is not numbered", () => {
@@ -554,7 +684,10 @@ describe("numbered REF projection", () => {
           marker: "%1.",
           bookmark: "duplicate",
         }),
-        { type: "paragraph", content: [refField(" REF duplicate \\w ", "kept")] },
+        {
+          type: "paragraph",
+          content: [refField(" REF duplicate \\w ", "kept")],
+        },
       ]),
     );
 
@@ -566,13 +699,20 @@ describe("numbered REF projection", () => {
     const initial = toProseDoc(
       documentOf([
         numberedParagraph({ text: "Before", level: 0, marker: "%1." }),
-        numberedParagraph({ text: "Target", level: 0, marker: "%1.", bookmark: "target" }),
+        numberedParagraph({
+          text: "Target",
+          level: 0,
+          marker: "%1.",
+          bookmark: "target",
+        }),
         { type: "paragraph", content: [refField(" REF target \\w ", "2")] },
       ]),
     );
     expect(fieldFallbacks(initial)).toEqual(["2"]);
 
-    const cloned = initial.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(initial.toJSON())));
+    const cloned = initial.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(initial.toJSON())),
+    );
     expect(fieldFallbacks(cloned)).toEqual(fieldFallbacks(initial));
     const target = cloned.child(1);
     const reference = cloned.child(2);

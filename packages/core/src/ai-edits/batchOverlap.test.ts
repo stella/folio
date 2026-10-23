@@ -14,14 +14,17 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   blockTexts,
-  OperationSession,
   openReviewer,
+  OperationSession,
   paragraphsDocx,
   reopened,
   reopenedAccepted,
@@ -32,19 +35,21 @@ import {
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
 } from "../document-operations";
-import type { ParagraphFormatting } from "../types/document";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
-import type { FolioDocxReviewer } from "./headless";
-import { createFolioAITextRangeHandle } from "./snapshot";
-import { compareBatchTieOrder } from "./batch-claims";
-import type { FolioAIBlockParagraphProperties, FolioAIEditSnapshot } from "./types";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
-import type { Node as PMNode } from "prosemirror-model";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { ParagraphFormatting } from "../types/document";
+import { compareBatchTieOrder } from "./batch-claims";
+import type { FolioDocxReviewer } from "./headless";
+import { createFolioAITextRangeHandle } from "./snapshot";
+import type {
+  FolioAIBlockParagraphProperties,
+  FolioAIEditSnapshot,
+} from "./types";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
@@ -52,10 +57,16 @@ type Mode = "direct" | "tracked-changes";
 const MODES: readonly Mode[] = ["direct", "tracked-changes"];
 
 const paragraphProjection = (doc: PMNode) => {
-  const rows: { text: string; properties: ReturnType<typeof paragraphPropertiesSnapshot> }[] = [];
+  const rows: {
+    text: string;
+    properties: ReturnType<typeof paragraphPropertiesSnapshot>;
+  }[] = [];
   doc.descendants((node) => {
     if (node.type.name === "paragraph")
-      rows.push({ text: node.textContent, properties: paragraphPropertiesSnapshot(node) });
+      rows.push({
+        text: node.textContent,
+        properties: paragraphPropertiesSnapshot(node),
+      });
   });
   return rows;
 };
@@ -84,13 +95,31 @@ test.each(MODES)(
     expect(blockId).toBeDefined();
     if (blockId === undefined) return;
     const result = apply(reviewer, mode, [
-      { id: "first", type: "insertAfterBlock", blockId, text: "First inserted." },
-      { id: "second", type: "insertAfterBlock", blockId, text: "Second inserted." },
+      {
+        id: "first",
+        type: "insertAfterBlock",
+        blockId,
+        text: "First inserted.",
+      },
+      {
+        id: "second",
+        type: "insertAfterBlock",
+        blockId,
+        text: "Second inserted.",
+      },
     ]);
     expect(result.skipped).toEqual([]);
-    const expected = ["Anchor.", "First inserted.", "Second inserted.", "Following."];
+    const expected = [
+      "Anchor.",
+      "First inserted.",
+      "Second inserted.",
+      "Following.",
+    ];
     expect(blockTexts(reviewer)).toEqual(expected);
-    const saved = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
+    const saved =
+      mode === "direct"
+        ? await reopened(reviewer)
+        : await reopenedAccepted(reviewer);
     expect(blockTexts(saved)).toEqual(expected);
   },
 );
@@ -109,13 +138,22 @@ describe("an operation inside a block another operation of the batch deletes", (
       const reviewer = await openReviewer(await threeClauses());
       const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
       const result = apply(reviewer, mode, [
-        { id: "replace", type: "replaceInBlock", blockId, find: "Alpha", replace: "First" },
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId,
+          find: "Alpha",
+          replace: "First",
+        },
         { id: "delete", type: "deleteBlock", blockId },
       ]);
 
       expect(result.applied.map(({ id }) => id)).toEqual(["replace"]);
-      const message = 'operation "replace", earlier in this batch, already claims its target.';
-      expect(result.skipped).toEqual([{ id: "delete", reason: "overlappingOperation", message }]);
+      const message =
+        'operation "replace", earlier in this batch, already claims its target.';
+      expect(result.skipped).toEqual([
+        { id: "delete", reason: "overlappingOperation", message },
+      ]);
       expect(result.issues).toEqual([
         {
           operationId: "delete",
@@ -127,83 +165,124 @@ describe("an operation inside a block another operation of the batch deletes", (
           message,
         },
       ]);
-      const final = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
-      expect(blockTexts(final)).toEqual(["First beta gamma.", "Second clause.", "Third clause."]);
+      const final =
+        mode === "direct"
+          ? await reopened(reviewer)
+          : await reopenedAccepted(reviewer);
+      expect(blockTexts(final)).toEqual([
+        "First beta gamma.",
+        "Second clause.",
+        "Third clause.",
+      ]);
     },
   );
 
-  test.each(MODES)("refuses the later one whichever comes first (%s)", async (mode) => {
-    const reviewer = await openReviewer(await threeClauses());
-    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-    const result = apply(reviewer, mode, [
-      { id: "delete", type: "deleteBlock", blockId },
-      { id: "replace", type: "replaceInBlock", blockId, find: "Alpha", replace: "First" },
-    ]);
+  test.each(MODES)(
+    "refuses the later one whichever comes first (%s)",
+    async (mode) => {
+      const reviewer = await openReviewer(await threeClauses());
+      const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+      const result = apply(reviewer, mode, [
+        { id: "delete", type: "deleteBlock", blockId },
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId,
+          find: "Alpha",
+          replace: "First",
+        },
+      ]);
 
-    expect(result.skipped).toEqual([
-      {
-        id: "replace",
-        reason: "overlappingOperation",
-        message: 'operation "delete", earlier in this batch, already claims its target.',
-      },
-    ]);
-    const final = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
-    expect(blockTexts(final)).toEqual(["Second clause.", "Third clause."]);
-  });
+      expect(result.skipped).toEqual([
+        {
+          id: "replace",
+          reason: "overlappingOperation",
+          message:
+            'operation "delete", earlier in this batch, already claims its target.',
+        },
+      ]);
+      const final =
+        mode === "direct"
+          ? await reopened(reviewer)
+          : await reopenedAccepted(reviewer);
+      expect(blockTexts(final)).toEqual(["Second clause.", "Third clause."]);
+    },
+  );
 });
 
 describe("a row inserted in a batch that changes blocks around its table", () => {
-  test.each(MODES)("lands where it was resolved (%s, saved and reopened)", async (mode) => {
-    const source = [
-      "Lead paragraph.",
-      "",
-      "| A1 | B1 |",
-      "| --- | --- |",
-      "| A2 | B2 |",
-      "| A3 | B3 |",
-      "",
-      "Tail paragraph.",
-    ].join("\n");
-    const reviewer = await openReviewer(
-      (await ensureParaIds(new Uint8Array(await createDocx(fromMarkdown(source))))).docx.slice()
-        .buffer,
-    );
-    const idOf = (text: string) =>
-      reviewer.snapshot().blocks.find((block) => block.text === text)?.id ?? "";
-    const result = apply(reviewer, mode, [
-      { id: "row", type: "insertTableRow", blockId: idOf("A2"), cellTexts: ["X", "Y"] },
-      {
-        id: "lead",
-        type: "insertAfterBlock",
-        blockId: idOf("Lead paragraph."),
-        text: "Inserted before the table.",
-      },
-      { id: "delete", type: "deleteBlock", blockId: idOf("Lead paragraph.") },
-      { id: "cell", type: "replaceInBlock", blockId: idOf("A1"), find: "A1", replace: "A one" },
-      {
-        id: "tail",
-        type: "splitBlock",
-        blockId: idOf("Tail paragraph."),
-        offset: 4,
-        separator: " ",
-      },
-    ]);
-    expect(result.skipped).toEqual([]);
-    const final = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
-    expect(blockTexts(final)).toEqual([
-      "Inserted before the table.",
-      "A one",
-      "B1",
-      "A2",
-      "B2",
-      "X",
-      "Y",
-      "A3",
-      "B3",
-      "Tail",
-      "paragraph.",
-    ]);
-  });
+  test.each(MODES)(
+    "lands where it was resolved (%s, saved and reopened)",
+    async (mode) => {
+      const source = [
+        "Lead paragraph.",
+        "",
+        "| A1 | B1 |",
+        "| --- | --- |",
+        "| A2 | B2 |",
+        "| A3 | B3 |",
+        "",
+        "Tail paragraph.",
+      ].join("\n");
+      const reviewer = await openReviewer(
+        (
+          await ensureParaIds(
+            new Uint8Array(await createDocx(fromMarkdown(source))),
+          )
+        ).docx.slice().buffer,
+      );
+      const idOf = (text: string) =>
+        reviewer.snapshot().blocks.find((block) => block.text === text)?.id ??
+        "";
+      const result = apply(reviewer, mode, [
+        {
+          id: "row",
+          type: "insertTableRow",
+          blockId: idOf("A2"),
+          cellTexts: ["X", "Y"],
+        },
+        {
+          id: "lead",
+          type: "insertAfterBlock",
+          blockId: idOf("Lead paragraph."),
+          text: "Inserted before the table.",
+        },
+        { id: "delete", type: "deleteBlock", blockId: idOf("Lead paragraph.") },
+        {
+          id: "cell",
+          type: "replaceInBlock",
+          blockId: idOf("A1"),
+          find: "A1",
+          replace: "A one",
+        },
+        {
+          id: "tail",
+          type: "splitBlock",
+          blockId: idOf("Tail paragraph."),
+          offset: 4,
+          separator: " ",
+        },
+      ]);
+      expect(result.skipped).toEqual([]);
+      const final =
+        mode === "direct"
+          ? await reopened(reviewer)
+          : await reopenedAccepted(reviewer);
+      expect(blockTexts(final)).toEqual([
+        "Inserted before the table.",
+        "A one",
+        "B1",
+        "A2",
+        "B2",
+        "X",
+        "Y",
+        "A3",
+        "B3",
+        "Tail",
+        "paragraph.",
+      ]);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -213,14 +292,20 @@ describe("a row inserted in a batch that changes blocks around its table", () =>
 const BLOCK_COUNT = 4;
 const TOKEN_COUNT = 4;
 
-const token = (block: number, index: number): string => `t${String(block)}${String(index)}x`;
+const token = (block: number, index: number): string =>
+  `t${String(block)}${String(index)}x`;
 const blockText = (block: number): string =>
-  Array.from({ length: TOKEN_COUNT }, (_, index) => token(block, index)).join(" ");
+  Array.from({ length: TOKEN_COUNT }, (_, index) => token(block, index)).join(
+    " ",
+  );
 
 type Span = { block: number; first: number; last: number };
 
 type GeneratedOperation =
-  | ({ kind: "replaceInBlock" | "replaceRange" | "formatRange" | "commentOnRange" } & Span)
+  | ({
+      kind:
+        "replaceInBlock" | "replaceRange" | "formatRange" | "commentOnRange";
+    } & Span)
   | { kind: "splitBlock"; block: number; before: number }
   | { kind: "mergeBlockWithNext"; block: number; separator?: string }
   | {
@@ -249,7 +334,9 @@ const ANNOTATIONS: ReadonlySet<GeneratedOperation["kind"]> = new Set([
 ]);
 
 const spanText = ({ block, first, last }: Span): string =>
-  Array.from({ length: last - first + 1 }, (_, offset) => token(block, first + offset)).join(" ");
+  Array.from({ length: last - first + 1 }, (_, offset) =>
+    token(block, first + offset),
+  ).join(" ");
 
 /**
  * Where the batch places an operation, in the coordinates it resolved against:
@@ -263,9 +350,17 @@ const placement = (operation: GeneratedOperation): [number, number, number] => {
     case "replaceRange":
     case "formatRange":
     case "commentOnRange":
-      return [operation.block, 1, text.indexOf(token(operation.block, operation.first))];
+      return [
+        operation.block,
+        1,
+        text.indexOf(token(operation.block, operation.first)),
+      ];
     case "splitBlock":
-      return [operation.block, 1, text.indexOf(token(operation.block, operation.before)) - 1];
+      return [
+        operation.block,
+        1,
+        text.indexOf(token(operation.block, operation.before)) - 1,
+      ];
     case "mergeBlockWithNext":
     case "insertAfterBlock":
       return [operation.block + 1, 0, 0];
@@ -295,7 +390,9 @@ const materialize = (
 ): FolioDocumentOperation | null => {
   const id = `op${String(index)}`;
   const blockId = blockIds[generated.block] ?? "";
-  const current = reviewer.snapshot().blocks.find((block) => block.id === blockId);
+  const current = reviewer
+    .snapshot()
+    .blocks.find((block) => block.id === blockId);
   if (!current) {
     return null;
   }
@@ -315,23 +412,50 @@ const materialize = (
     case "replaceInBlock": {
       const find = spanText(generated);
       return current.text.includes(find)
-        ? { id, type: "replaceInBlock", blockId, find, replace: `new${String(index)}` }
+        ? {
+            id,
+            type: "replaceInBlock",
+            blockId,
+            find,
+            replace: `new${String(index)}`,
+          }
         : null;
     }
     case "replaceRange": {
       const range = rangeOf(generated);
-      return range && { id, type: "replaceRange", range, replace: `rng${String(index)}` };
+      return (
+        range && {
+          id,
+          type: "replaceRange",
+          range,
+          replace: `rng${String(index)}`,
+        }
+      );
     }
     case "formatRange": {
       const range = rangeOf(generated);
-      return range && { id, type: "formatRange", range, formatting: { bold: true } };
+      return (
+        range && { id, type: "formatRange", range, formatting: { bold: true } }
+      );
     }
     case "commentOnRange": {
       const range = rangeOf(generated);
-      return range && { id, type: "commentOnRange", range, comment: { text: `c${String(index)}` } };
+      return (
+        range && {
+          id,
+          type: "commentOnRange",
+          range,
+          comment: { text: `c${String(index)}` },
+        }
+      );
     }
     case "commentOnBlock":
-      return { id, type: "commentOnBlock", blockId, comment: { text: `c${String(index)}` } };
+      return {
+        id,
+        type: "commentOnBlock",
+        blockId,
+        comment: { text: `c${String(index)}` },
+      };
     case "splitBlock": {
       // After the token before the break, which an edit of the text after
       // the break leaves where it is.
@@ -339,19 +463,32 @@ const materialize = (
       const at = current.text.indexOf(previous);
       return at < 0
         ? null
-        : { id, type: "splitBlock", blockId, offset: at + previous.length, separator: " " };
+        : {
+            id,
+            type: "splitBlock",
+            blockId,
+            offset: at + previous.length,
+            separator: " ",
+          };
     }
     case "mergeBlockWithNext":
       return {
         id,
         type: generated.kind,
         blockId,
-        ...(generated.separator !== undefined && { separator: generated.separator }),
+        ...(generated.separator !== undefined && {
+          separator: generated.separator,
+        }),
       };
     case "deleteBlock":
       return { id, type: generated.kind, blockId };
     case "replaceBlock":
-      return { id, type: "replaceBlock", blockId, text: `whole${String(index)}` };
+      return {
+        id,
+        type: "replaceBlock",
+        blockId,
+        text: `whole${String(index)}`,
+      };
     case "setBlockParagraphProperties":
       return {
         id,
@@ -377,7 +514,9 @@ let tokenDocument: Promise<EditorState> | undefined;
 /** The token paragraphs, parsed once; every batch starts from the same state. */
 const freshSession = async (): Promise<OperationSession> => {
   tokenDocument ??= paragraphsDocx(
-    Array.from({ length: BLOCK_COUNT }, (_, block) => [textRun(blockText(block))]),
+    Array.from({ length: BLOCK_COUNT }, (_, block) => [
+      textRun(blockText(block)),
+    ]),
   )
     .then(openReviewer)
     .then((reviewer) => reviewer.state);
@@ -431,14 +570,16 @@ const batchAgainstOneAtATime = async ({
     return materialized === null ? [] : [materialized];
   });
   if (operations.length !== generated.length) {
-    report("a generated operation did not resolve against the document it was made for");
+    report(
+      "a generated operation did not resolve against the document it was made for",
+    );
     return problems;
   }
   const result = batch.apply(mode, operations);
   if (mode === "tracked-changes") {
-    expect(paragraphProjection(resolveStateStory(batch.state, "reject").resolved)).toEqual(
-      originalParagraphs,
-    );
+    expect(
+      paragraphProjection(resolveStateStory(batch.state, "reject").resolved),
+    ).toEqual(originalParagraphs);
   }
   for (const skipped of result.skipped) {
     const { id, reason } = skipped;
@@ -448,12 +589,15 @@ const batchAgainstOneAtATime = async ({
       if (operation?.type !== "setBlockParagraphProperties") continue;
       const anchor = batch.snapshot().anchors[operation.blockId];
       expect(anchor).toBeDefined();
-      const mark: unknown = anchor && batch.state.doc.nodeAt(anchor.from)?.attrs["pPrMark"];
+      const mark: unknown =
+        anchor && batch.state.doc.nodeAt(anchor.from)?.attrs["pPrMark"];
       expect(mark).toMatchObject({ kind: "del" });
       expect(skipped.canonicalRefusal).toEqual({
         gap: CANONICAL_GAP.publicPendingParagraphMarkProperties,
       });
-      expect(result.issues.find((issue) => issue.operationId === id)).toMatchObject({
+      expect(
+        result.issues.find((issue) => issue.operationId === id),
+      ).toMatchObject({
         code: reason,
         retryable: false,
         recovery: "resolveTrackedChange",
@@ -470,7 +614,9 @@ const batchAgainstOneAtATime = async ({
   );
 
   const oracle = await initializedSession();
-  const materializeAll = (entries: readonly { operation: GeneratedOperation; index: number }[]) =>
+  const materializeAll = (
+    entries: readonly { operation: GeneratedOperation; index: number }[],
+  ) =>
     entries.flatMap(({ operation, index }) => {
       const materialized = materialize(oracle, blockIds, operation, index);
       if (materialized === null) {
@@ -485,7 +631,8 @@ const batchAgainstOneAtATime = async ({
     }
     // An operation the ones before it already carried out has nothing left
     // to do; the documents are compared below either way.
-    for (const { id, reason } of oracle.apply(mode, operationsToApply).skipped) {
+    for (const { id, reason } of oracle.apply(mode, operationsToApply)
+      .skipped) {
       if (reason !== "noopOperation") {
         report(`${id} skipped one at a time as ${reason}`);
       }
@@ -493,7 +640,11 @@ const batchAgainstOneAtATime = async ({
   };
   // Insertions sharing a gap keep their input order: that order is the
   // batch's own contract, so the oracle states them together the same way.
-  applyAlone(materializeAll(applied.filter(({ operation }) => INSERTIONS.has(operation.kind))));
+  applyAlone(
+    materializeAll(
+      applied.filter(({ operation }) => INSERTIONS.has(operation.kind)),
+    ),
+  );
   // Retiring the story's final break happens at batch completion, after the
   // predecessor's admissible property edit. A separate delete call retires
   // that mark immediately; replay those properties before completing deletion.
@@ -503,15 +654,23 @@ const batchAgainstOneAtATime = async ({
       .map(({ operation }) => operation.block),
   );
   let finalBreakCarrier = BLOCK_COUNT - 1;
-  while (finalBreakCarrier > 0 && deletedBlocks.has(finalBreakCarrier)) finalBreakCarrier--;
+  while (finalBreakCarrier > 0 && deletedBlocks.has(finalBreakCarrier))
+    finalBreakCarrier--;
   const insertsAfterLast = applied.some(
-    ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === BLOCK_COUNT - 1,
+    ({ operation }) =>
+      operation.kind === "insertAfterBlock" &&
+      operation.block === BLOCK_COUNT - 1,
   );
   const editsFinalBreakCarrier = applied.some(
     ({ operation }) =>
-      operation.kind === "setBlockParagraphProperties" && operation.block === finalBreakCarrier,
+      operation.kind === "setBlockParagraphProperties" &&
+      operation.block === finalBreakCarrier,
   );
-  const beforeFinalBreakRetirement = ({ operation }: { operation: GeneratedOperation }) =>
+  const beforeFinalBreakRetirement = ({
+    operation,
+  }: {
+    operation: GeneratedOperation;
+  }) =>
     mode === "tracked-changes" &&
     editsFinalBreakCarrier &&
     !insertsAfterLast &&
@@ -548,10 +707,16 @@ const batchAgainstOneAtATime = async ({
   // comment on the same text may or may not cover it depending on which came
   // first; anchors are left out, the comments' ranges are compared.
   const compareDocuments = (stage: string) => {
-    const batchDocument = JSON.stringify(batch.presentation({ withAnchors: false }));
-    const oracleDocument = JSON.stringify(oracle.presentation({ withAnchors: false }));
+    const batchDocument = JSON.stringify(
+      batch.presentation({ withAnchors: false }),
+    );
+    const oracleDocument = JSON.stringify(
+      oracle.presentation({ withAnchors: false }),
+    );
     if (batchDocument !== oracleDocument) {
-      report(`${stage}, the batch left ${batchDocument}, one at a time left ${oracleDocument}`);
+      report(
+        `${stage}, the batch left ${batchDocument}, one at a time left ${oracleDocument}`,
+      );
     }
   };
   // A tracked batch that adds a paragraph after the story's last one gives it
@@ -563,10 +728,12 @@ const batchAgainstOneAtATime = async ({
   const rotatesFinalBreak =
     mode !== "direct" &&
     applied.some(
-      ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === lastBlock,
+      ({ operation }) =>
+        operation.kind === "insertAfterBlock" && operation.block === lastBlock,
     ) &&
     applied.some(
-      ({ operation }) => operation.kind === "deleteBlock" && operation.block === lastBlock,
+      ({ operation }) =>
+        operation.kind === "deleteBlock" && operation.block === lastBlock,
     );
   // The redline itself first: the same revisions on the same text.
   if (!rotatesFinalBreak) {
@@ -584,7 +751,10 @@ const batchAgainstOneAtATime = async ({
   // after it — and across every deleted block that follows, to the first one
   // the batch keeps — in either mode, as one at a time.
   const deletes = (block: number) =>
-    applied.some(({ operation }) => operation.kind === "deleteBlock" && operation.block === block);
+    applied.some(
+      ({ operation }) =>
+        operation.kind === "deleteBlock" && operation.block === block,
+    );
   for (const { operation } of applied) {
     if (operation.kind !== "mergeBlockWithNext") {
       continue;
@@ -604,14 +774,18 @@ const batchAgainstOneAtATime = async ({
     if (kept >= 0) named.add(kept);
   }
   if (mode !== "direct") {
-    const acceptedPreview = paragraphProjection(resolveStateStory(batch.state, "accept").resolved);
+    const acceptedPreview = paragraphProjection(
+      resolveStateStory(batch.state, "accept").resolved,
+    );
     // Both redlines accept, and to the same document.
     const accepts = (session: OperationSession, whose: string): boolean => {
       try {
         session.acceptAll();
         return true;
       } catch (error) {
-        report(`${whose} redline cannot be accepted: ${String(error).slice(0, 120)}`);
+        report(
+          `${whose} redline cannot be accepted: ${String(error).slice(0, 120)}`,
+        );
         return false;
       }
     };
@@ -622,9 +796,13 @@ const batchAgainstOneAtATime = async ({
   }
   const finalBlocks = batch.snapshot().blocks;
   for (const [block, blockId] of blockIds.entries()) {
-    const text = finalBlocks.find((candidate) => candidate.id === blockId)?.text;
+    const text = finalBlocks.find(
+      (candidate) => candidate.id === blockId,
+    )?.text;
     if (!named.has(block) && text !== blockText(block)) {
-      report(`block ${String(block)}, which no operation names, now reads ${String(text)}`);
+      report(
+        `block ${String(block)}, which no operation names, now reads ${String(text)}`,
+      );
     }
   }
   return problems;
@@ -641,7 +819,11 @@ const KIND_SAMPLES: readonly GeneratedOperation[] = [
   { kind: "mergeBlockWithNext", block: 1 },
   { kind: "deleteBlock", block: 1 },
   { kind: "replaceBlock", block: 1 },
-  { kind: "setBlockParagraphProperties", block: 1, properties: { alignment: "center" } },
+  {
+    kind: "setBlockParagraphProperties",
+    block: 1,
+    properties: { alignment: "center" },
+  },
   { kind: "insertAfterBlock", block: 1 },
   { kind: "insertBeforeBlock", block: 1 },
 ];
@@ -654,7 +836,11 @@ const NEIGHBOUR_SAMPLES: readonly GeneratedOperation[] = [
   { kind: "splitBlock", block: 1, before: 3 },
   { kind: "replaceInBlock", block: 2, first: 0, last: 0 },
   { kind: "deleteBlock", block: 2 },
-  { kind: "setBlockParagraphProperties", block: 2, properties: { alignment: "center" } },
+  {
+    kind: "setBlockParagraphProperties",
+    block: 2,
+    properties: { alignment: "center" },
+  },
   { kind: "insertBeforeBlock", block: 2 },
   { kind: "mergeBlockWithNext", block: 0 },
   { kind: "mergeBlockWithNext", block: 2 },
@@ -667,8 +853,18 @@ describe("a batch of two operations on one block or its neighbours", () => {
       const problems: string[] = [];
       for (const first of KIND_SAMPLES) {
         for (const second of [...KIND_SAMPLES, ...NEIGHBOUR_SAMPLES]) {
-          problems.push(...(await batchAgainstOneAtATime({ generated: [first, second], mode })));
-          problems.push(...(await batchAgainstOneAtATime({ generated: [second, first], mode })));
+          problems.push(
+            ...(await batchAgainstOneAtATime({
+              generated: [first, second],
+              mode,
+            })),
+          );
+          problems.push(
+            ...(await batchAgainstOneAtATime({
+              generated: [second, first],
+              mode,
+            })),
+          );
         }
       }
       expect(problems).toEqual([]);
@@ -685,7 +881,11 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
   const trio: readonly GeneratedOperation[] = [
     { kind: "deleteBlock", block: last },
     { kind: "insertAfterBlock", block: last },
-    { kind: "setBlockParagraphProperties", block: last, properties: { alignment: "center" } },
+    {
+      kind: "setBlockParagraphProperties",
+      block: last,
+      properties: { alignment: "center" },
+    },
   ];
   const orders = [
     [0, 1, 2],
@@ -704,19 +904,32 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
         { kind: "deleteBlock", block: last },
         { kind: "insertAfterBlock", block: last },
         { kind: "splitBlock", block: 0, before: 1 },
-        { kind: "setBlockParagraphProperties", block: last, properties: { alignment: "center" } },
+        {
+          kind: "setBlockParagraphProperties",
+          block: last,
+          properties: { alignment: "center" },
+        },
       ];
       // Found once the paragraph a removed break leaves became the one after it.
       const insertedBefore: GeneratedOperation[] = [
         { kind: "insertBeforeBlock", block: last },
-        { kind: "setBlockParagraphProperties", block: last, properties: { alignment: "center" } },
+        {
+          kind: "setBlockParagraphProperties",
+          block: last,
+          properties: { alignment: "center" },
+        },
         { kind: "deleteBlock", block: last },
       ];
       const deletedWithEarlierEdit: GeneratedOperation[] = [
         { kind: "deleteBlock", block: last },
         { kind: "replaceInBlock", block: 0, first: 0, last: 0 },
       ];
-      for (const generated of [...orders, found, insertedBefore, deletedWithEarlierEdit]) {
+      for (const generated of [
+        ...orders,
+        found,
+        insertedBefore,
+        deletedWithEarlierEdit,
+      ]) {
         problems.push(...(await batchAgainstOneAtATime({ generated, mode })));
       }
       expect(problems).toEqual([]);
@@ -740,7 +953,8 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
       {
         id: "center",
         reason: "overlappingOperation",
-        message: 'operation "delete", earlier in this batch, already claims its target.',
+        message:
+          'operation "delete", earlier in this batch, already claims its target.',
       },
     ]);
   });
@@ -812,11 +1026,17 @@ describe("a merge into blocks the batch deletes", () => {
 
   test("deleting the last block carries its predecessor's admissible batch properties", async () => {
     const generated: GeneratedOperation[] = [
-      { kind: "setBlockParagraphProperties", block: 2, properties: { alignment: "center" } },
+      {
+        kind: "setBlockParagraphProperties",
+        block: 2,
+        properties: { alignment: "center" },
+      },
       { kind: "deleteBlock", block: 3 },
       { kind: "mergeBlockWithNext", block: 0 },
     ];
-    expect(await batchAgainstOneAtATime({ generated, mode: "tracked-changes" })).toEqual([]);
+    expect(
+      await batchAgainstOneAtATime({ generated, mode: "tracked-changes" }),
+    ).toEqual([]);
   });
 });
 
@@ -838,29 +1058,42 @@ describe("a merge past a break retired by the same batch", () => {
     [2, 0, 1],
     [2, 1, 0],
   ];
-  test.each(MODES)("matches one-at-a-time property ownership (%s)", async (mode) => {
-    const problems: string[] = [];
-    for (const initial of alignments) {
-      for (const merge of [0, 1]) {
-        for (const block of [0, 1, 2]) {
-          for (const separator of ["", " · "]) {
-            const trio = [
-              { kind: "mergeBlockWithNext", block: merge, separator },
-              { kind: "setBlockParagraphProperties", block, properties: { alignment: "center" } },
-              { kind: "deleteBlock", block: BLOCK_COUNT - 1 },
-            ] as const satisfies readonly GeneratedOperation[];
-            for (const order of orders) {
-              const generated = order.flatMap((index) => trio.at(index) ?? []);
-              problems.push(
-                ...(await batchAgainstOneAtATime({ generated, mode, alignments: initial })),
-              );
+  test.each(MODES)(
+    "matches one-at-a-time property ownership (%s)",
+    async (mode) => {
+      const problems: string[] = [];
+      for (const initial of alignments) {
+        for (const merge of [0, 1]) {
+          for (const block of [0, 1, 2]) {
+            for (const separator of ["", " · "]) {
+              const trio = [
+                { kind: "mergeBlockWithNext", block: merge, separator },
+                {
+                  kind: "setBlockParagraphProperties",
+                  block,
+                  properties: { alignment: "center" },
+                },
+                { kind: "deleteBlock", block: BLOCK_COUNT - 1 },
+              ] as const satisfies readonly GeneratedOperation[];
+              for (const order of orders) {
+                const generated = order.flatMap(
+                  (index) => trio.at(index) ?? [],
+                );
+                problems.push(
+                  ...(await batchAgainstOneAtATime({
+                    generated,
+                    mode,
+                    alignments: initial,
+                  })),
+                );
+              }
             }
           }
         }
       }
-    }
-    expect(problems).toEqual([]);
-  });
+      expect(problems).toEqual([]);
+    },
+  );
 });
 
 describe("deleting the last paragraph right after a paragraph added before it", () => {
@@ -869,7 +1102,11 @@ describe("deleting the last paragraph right after a paragraph added before it", 
   // keeps the added paragraph and its properties; rejected, as nothing done.
   const last = BLOCK_COUNT - 1;
   type Centred = "never" | "before the edits" | "tracked, in an earlier batch";
-  const CENTRED: readonly Centred[] = ["never", "before the edits", "tracked, in an earlier batch"];
+  const CENTRED: readonly Centred[] = [
+    "never",
+    "before the edits",
+    "tracked, in an earlier batch",
+  ];
   const centre = (session: OperationSession, mode: Mode, blockId: string) =>
     session.apply(mode, [
       {
@@ -890,12 +1127,19 @@ describe("deleting the last paragraph right after a paragraph added before it", 
     const session = await start(centred);
     const lastId = session.snapshot().blocks[last]?.id ?? "";
     session.apply(mode, [
-      { id: "insert", type: "insertBeforeBlock", blockId: lastId, text: "Added." },
+      {
+        id: "insert",
+        type: "insertBeforeBlock",
+        blockId: lastId,
+        text: "Added.",
+      },
     ]);
     if (centred === "tracked, in an earlier batch") {
       centre(session, mode, lastId);
     }
-    const result = session.apply(mode, [{ id: "delete", type: "deleteBlock", blockId: lastId }]);
+    const result = session.apply(mode, [
+      { id: "delete", type: "deleteBlock", blockId: lastId },
+    ]);
     expect(result.skipped).toEqual([]);
     return session;
   };
@@ -941,8 +1185,12 @@ const paragraphPatchArbitrary = fc.oneof(
   fc
     .constantFrom("left" as const, "center" as const, "right" as const)
     .map((alignment) => ({ alignment })),
-  fc.integer({ min: 0, max: 720 }).map((spaceBefore) => ({ spacing: { spaceBefore } })),
-  fc.integer({ min: 0, max: 720 }).map((indentLeft) => ({ indentation: { indentLeft } })),
+  fc
+    .integer({ min: 0, max: 720 })
+    .map((spaceBefore) => ({ spacing: { spaceBefore } })),
+  fc
+    .integer({ min: 0, max: 720 })
+    .map((indentLeft) => ({ indentation: { indentLeft } })),
 );
 
 const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
@@ -962,7 +1210,11 @@ const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
       block: fc.nat({ max: BLOCK_COUNT - 1 }),
       before: fc.integer({ min: 1, max: TOKEN_COUNT - 1 }),
     })
-    .map(({ block, before }) => ({ kind: "splitBlock" as const, block, before })),
+    .map(({ block, before }) => ({
+      kind: "splitBlock" as const,
+      block,
+      before,
+    })),
   fc
     .tuple(
       fc.constantFrom(
@@ -980,30 +1232,42 @@ const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
         ? { kind, block, properties: { alignment: "center" as const } }
         : { kind, block },
     ),
-  fc.nat({ max: BLOCK_COUNT - 2 }).map((block) => ({ kind: "mergeBlockWithNext" as const, block })),
+  fc
+    .nat({ max: BLOCK_COUNT - 2 })
+    .map((block) => ({ kind: "mergeBlockWithNext" as const, block })),
 );
 
 describe("two paragraph-property operations on one block", () => {
-  test.each(MODES)("refuse the later one and keep the earlier one's values (%s)", async (mode) => {
-    const session = await freshSession();
-    const blockId = session.snapshot().blocks[1]?.id ?? "";
-    const align = (id: string, alignment: "center" | "right"): FolioDocumentOperation => ({
-      id,
-      type: "setBlockParagraphProperties",
-      blockId,
-      properties: { alignment },
-    });
-    const result = session.apply(mode, [align("center", "center"), align("right", "right")]);
-    expect(result.applied.map(({ id }) => id)).toEqual(["center"]);
-    expect(result.skipped).toEqual([
-      {
-        id: "right",
-        reason: "overlappingOperation",
-        message: 'operation "center", earlier in this batch, already claims its target.',
-      },
-    ]);
-    expect(session.state.doc.child(1).attrs["alignment"]).toBe("center");
-  });
+  test.each(MODES)(
+    "refuse the later one and keep the earlier one's values (%s)",
+    async (mode) => {
+      const session = await freshSession();
+      const blockId = session.snapshot().blocks[1]?.id ?? "";
+      const align = (
+        id: string,
+        alignment: "center" | "right",
+      ): FolioDocumentOperation => ({
+        id,
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: { alignment },
+      });
+      const result = session.apply(mode, [
+        align("center", "center"),
+        align("right", "right"),
+      ]);
+      expect(result.applied.map(({ id }) => id)).toEqual(["center"]);
+      expect(result.skipped).toEqual([
+        {
+          id: "right",
+          reason: "overlappingOperation",
+          message:
+            'operation "center", earlier in this batch, already claims its target.',
+        },
+      ]);
+      expect(session.state.doc.child(1).attrs["alignment"]).toBe("center");
+    },
+  );
 });
 
 describe("a random batch with overlapping, nested and duplicate targets", () => {
@@ -1015,10 +1279,15 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
           fc.array(operationArbitrary, { minLength: 2, maxLength: 7 }),
           fc.constantFrom(...MODES),
           async (generated, mode) => {
-            expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
+            expect(await batchAgainstOneAtATime({ generated, mode })).toEqual(
+              [],
+            );
           },
         ),
-        { numRuns: 150, id: "refuses each conflict and applies the rest as one at a time would" },
+        {
+          numRuns: 150,
+          id: "refuses each conflict and applies the rest as one at a time would",
+        },
       );
     },
     propertyTestTimeout(300_000),
@@ -1050,13 +1319,17 @@ describe("a random batch with distinct paragraph-property patches", () => {
                 ? { ...operation, properties }
                 : operation,
             );
-            expect(await batchAgainstOneAtATime({ generated: varied, mode })).toEqual([]);
+            expect(
+              await batchAgainstOneAtATime({ generated: varied, mode }),
+            ).toEqual([]);
             const ties = sameBlock.properties.map((properties) => ({
               kind: "setBlockParagraphProperties" as const,
               block: sameBlock.block,
               properties,
             }));
-            expect(await batchAgainstOneAtATime({ generated: ties, mode })).toEqual([]);
+            expect(
+              await batchAgainstOneAtATime({ generated: ties, mode }),
+            ).toEqual([]);
             const batch = await freshSession();
             const blocks = batch.snapshot().blocks.map(({ id }) => id);
             const operations = ties.flatMap((operation, index) => {
@@ -1066,12 +1339,13 @@ describe("a random batch with distinct paragraph-property patches", () => {
             expect(operations).toHaveLength(2);
             const result = batch.apply(mode, operations);
             expect(result.applied.map(({ id }) => id)).toEqual(["op0"]);
-            expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
-              { id: "op1", reason: "overlappingOperation" },
-            ]);
+            expect(
+              result.skipped.map(({ id, reason }) => ({ id, reason })),
+            ).toEqual([{ id: "op1", reason: "overlappingOperation" }]);
             const expected = await freshSession();
             const first = ties.at(0);
-            if (first === undefined) throw new TypeError("Generated tie requires its first patch");
+            if (first === undefined)
+              throw new TypeError("Generated tie requires its first patch");
             const expectedOperation = materialize(
               expected,
               expected.snapshot().blocks.map(({ id }) => id),
@@ -1081,9 +1355,11 @@ describe("a random batch with distinct paragraph-property patches", () => {
             if (expectedOperation === null)
               throw new TypeError("Generated first patch must resolve");
             expected.apply("direct", [expectedOperation]);
-            expect(paragraphProjection(resolveStateStory(batch.state, "accept").resolved)).toEqual(
-              paragraphProjection(expected.state.doc),
-            );
+            expect(
+              paragraphProjection(
+                resolveStateStory(batch.state, "accept").resolved,
+              ),
+            ).toEqual(paragraphProjection(expected.state.doc));
           },
         ),
         {
@@ -1108,7 +1384,11 @@ describe("a merge retracting an inserted break before the last paragraph the bat
   type AlignedA = "direct" | "tracked";
   type Alignment = NonNullable<ParagraphFormatting["alignment"]>;
   const ORIGINS: readonly Origin[] = ["split", "inserted"];
-  const EXTRAS: readonly Extra[] = ["none", "mergedProperties", "propertiesOnB"];
+  const EXTRAS: readonly Extra[] = [
+    "none",
+    "mergedProperties",
+    "propertiesOnB",
+  ];
   const ALIGNED_A: readonly AlignedA[] = ["direct", "tracked"];
   const ALIGNMENTS: readonly (readonly Alignment[])[] = [
     ["left", "right", "center", "both"],
@@ -1140,11 +1420,17 @@ describe("a merge retracting an inserted break before the last paragraph the bat
       })),
     );
     const blockId = initial[lastIndex - 1]?.id ?? "";
-    const offset = `${token(lastIndex - 1, 0)} ${token(lastIndex - 1, 1)}`.length;
+    const offset = `${token(lastIndex - 1, 0)} ${token(lastIndex - 1, 1)}`
+      .length;
     const prior = session.apply(mode, [
       origin === "split"
         ? { id: "split", type: "splitBlock", blockId, offset, separator: " " }
-        : { id: "insert", type: "insertBeforeBlock", blockId, text: "Added words." },
+        : {
+            id: "insert",
+            type: "insertBeforeBlock",
+            blockId,
+            text: "Added words.",
+          },
     ]);
     expect(prior.skipped).toEqual([]);
     const blocks = session.snapshot().blocks;
@@ -1158,16 +1444,26 @@ describe("a merge retracting an inserted break before the last paragraph the bat
       },
     ]);
     expect(aligned.skipped).toEqual([]);
-    return { session, a, b: blocks[lastIndex]?.id ?? "", c: blocks[lastIndex + 1]?.id ?? "" };
+    return {
+      session,
+      a,
+      b: blocks[lastIndex]?.id ?? "",
+      c: blocks[lastIndex + 1]?.id ?? "",
+    };
   };
 
-  const batchOf = (extra: Extra, { a, b, c }: Setup): FolioDocumentOperation[] => [
+  const batchOf = (
+    extra: Extra,
+    { a, b, c }: Setup,
+  ): FolioDocumentOperation[] => [
     {
       id: "merge",
       type: "mergeBlockWithNext",
       blockId: a,
       separator: " ",
-      ...(extra === "mergedProperties" && { mergedParagraphProperties: { alignment: "right" } }),
+      ...(extra === "mergedProperties" && {
+        mergedParagraphProperties: { alignment: "right" },
+      }),
     },
     { id: "delete", type: "deleteBlock", blockId: c },
     ...(extra === "propertiesOnB"
@@ -1190,7 +1486,11 @@ describe("a merge retracting an inserted break before the last paragraph the bat
       )
       .join(" / ");
   const rejectedView = (session: OperationSession) =>
-    view(new OperationSession(resolveAllChangesInHeadlessState(session.state, "reject")));
+    view(
+      new OperationSession(
+        resolveAllChangesInHeadlessState(session.state, "reject"),
+      ),
+    );
 
   for (const origin of ORIGINS) {
     for (const alignedA of ALIGNED_A) {
@@ -1199,16 +1499,34 @@ describe("a merge retracting an inserted break before the last paragraph the bat
           const problems: string[] = [];
           for (const alignments of ALIGNMENTS) {
             const label = `${JSON.stringify(alignments)}`;
-            const batch = await prepare("tracked-changes", origin, alignedA, alignments);
+            const batch = await prepare(
+              "tracked-changes",
+              origin,
+              alignedA,
+              alignments,
+            );
             const before = rejectedView(batch.session);
             const originalParagraphs = paragraphProjection(
               resolveStateStory(batch.session.state, "reject").resolved,
             );
-            const result = batch.session.apply("tracked-changes", batchOf(extra, batch));
+            const result = batch.session.apply(
+              "tracked-changes",
+              batchOf(extra, batch),
+            );
             const appliedIds = new Set(result.applied.map(({ id }) => id));
             // One at a time, from the end of the document backwards, tracked and direct.
-            const oracle = await prepare("tracked-changes", origin, alignedA, alignments);
-            const direct = await prepare("direct", origin, alignedA, alignments);
+            const oracle = await prepare(
+              "tracked-changes",
+              origin,
+              alignedA,
+              alignments,
+            );
+            const direct = await prepare(
+              "direct",
+              origin,
+              alignedA,
+              alignments,
+            );
             for (const [mode, setup] of [
               ["tracked-changes", oracle],
               ["direct", direct],
@@ -1217,7 +1535,9 @@ describe("a merge retracting an inserted break before the last paragraph the bat
               // The tracked merge preserves B's identity; replay only the
               // operations the batch accepted.
               for (const id of ["b", "delete", "merge"]) {
-                const operation = operations.find((candidate) => candidate.id === id);
+                const operation = operations.find(
+                  (candidate) => candidate.id === id,
+                );
                 if (!operation || !appliedIds.has(id)) continue;
                 const alone = setup.session.apply(mode, [operation]);
                 if (alone.skipped.length > 0) {
@@ -1231,19 +1551,34 @@ describe("a merge retracting an inserted break before the last paragraph the bat
             // carry is deferred until batch finalization. Different B/C
             // alignments occupy C's slot; the old standalone merge appended a
             // second receipt there. Equal B/C alignments allocate no receipt.
-            const deletionOccupiesSurvivor = alignments.at(-2) !== alignments.at(-1);
+            const deletionOccupiesSurvivor =
+              alignments.at(-2) !== alignments.at(-1);
             const refused =
-              extra === "mergedProperties" && (alignedA === "tracked" || deletionOccupiesSurvivor)
+              extra === "mergedProperties" &&
+              (alignedA === "tracked" || deletionOccupiesSurvivor)
                 ? ["merge"]
                 : [];
-            if (extra === "mergedProperties" && alignedA === "direct" && deletionOccupiesSurvivor) {
-              const sequential = await prepare("tracked-changes", origin, alignedA, alignments);
+            if (
+              extra === "mergedProperties" &&
+              alignedA === "direct" &&
+              deletionOccupiesSurvivor
+            ) {
+              const sequential = await prepare(
+                "tracked-changes",
+                origin,
+                alignedA,
+                alignments,
+              );
               const operations = batchOf(extra, sequential);
               const deletion = operations.find(({ id }) => id === "delete");
               const merge = operations.find(({ id }) => id === "merge");
               if (!deletion || !merge)
-                throw new TypeError("The merge-capacity fixture lost its operations.");
-              expect(sequential.session.apply("tracked-changes", [deletion]).skipped).toEqual([]);
+                throw new TypeError(
+                  "The merge-capacity fixture lost its operations.",
+                );
+              expect(
+                sequential.session.apply("tracked-changes", [deletion]).skipped,
+              ).toEqual([]);
               let survivorReceipts = 0;
               sequential.session.state.doc.descendants((node) => {
                 if (node.attrs["paraId"] !== sequential.c) return;
@@ -1254,31 +1589,45 @@ describe("a merge retracting an inserted break before the last paragraph the bat
               // differing alignment that the retirement never actually carries.
               expect(survivorReceipts).toBe(1);
               const beforeMerge = sequential.session.state.doc.toJSON();
-              expect(sequential.session.apply("tracked-changes", [merge]).skipped).toEqual([
+              expect(
+                sequential.session.apply("tracked-changes", [merge]).skipped,
+              ).toEqual([
                 { id: "merge", reason: "pendingParagraphPropertyChange" },
               ]);
-              expect(sequential.session.state.doc.toJSON()).toEqual(beforeMerge);
+              expect(sequential.session.state.doc.toJSON()).toEqual(
+                beforeMerge,
+              );
             }
-            expect(result.skipped.map(({ id }) => id).toSorted()).toEqual(refused);
+            expect(result.skipped.map(({ id }) => id).toSorted()).toEqual(
+              refused,
+            );
             if (view(batch.session) !== view(oracle.session)) {
               problems.push(
                 `${label}: as applied ${view(batch.session)} vs ${view(oracle.session)}`,
               );
             }
             if (rejectedView(batch.session) !== before) {
-              problems.push(`${label}: rejected ${rejectedView(batch.session)} vs ${before}`);
+              problems.push(
+                `${label}: rejected ${rejectedView(batch.session)} vs ${before}`,
+              );
             }
             expect(
-              paragraphProjection(resolveStateStory(batch.session.state, "reject").resolved),
+              paragraphProjection(
+                resolveStateStory(batch.session.state, "reject").resolved,
+              ),
             ).toEqual(originalParagraphs);
             const acceptedPreview = paragraphProjection(
               resolveStateStory(batch.session.state, "accept").resolved,
             );
             batch.session.acceptAll();
-            expect(paragraphProjection(batch.session.state.doc)).toEqual(acceptedPreview);
+            expect(paragraphProjection(batch.session.state.doc)).toEqual(
+              acceptedPreview,
+            );
             oracle.session.acceptAll();
             if (view(batch.session) !== view(oracle.session)) {
-              problems.push(`${label}: accepted ${view(batch.session)} vs ${view(oracle.session)}`);
+              problems.push(
+                `${label}: accepted ${view(batch.session)} vs ${view(oracle.session)}`,
+              );
             }
             if (view(batch.session) !== view(direct.session)) {
               problems.push(

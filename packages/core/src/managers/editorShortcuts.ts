@@ -65,7 +65,8 @@ export type HostShortcut = "history" | "print";
 /** Who answers the undo and redo keys when the host owns `hostShortcuts`. */
 export const historyShortcutOwner = (
   hostShortcuts: readonly HostShortcut[],
-): HistoryShortcutOwner => (hostShortcuts.includes("history") ? "host" : "editor");
+): HistoryShortcutOwner =>
+  hostShortcuts.includes("history") ? "host" : "editor";
 
 export type ClassifyEditorKeydownOptions = {
   /** Whether the platform uses Cmd (Mac) rather than Ctrl as the primary modifier. */
@@ -83,7 +84,10 @@ export type ClassifyEditorKeydownOptions = {
  *  - Delete/Backspace (no modifiers, focus not in an input) → delete selected table
  */
 export function classifyEditorKeydown(
-  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "repeat">,
+  e: Pick<
+    KeyboardEvent,
+    "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "repeat"
+  >,
   { isMac, isInputLike, hostShortcuts }: ClassifyEditorKeydownOptions,
 ): EditorKeydownIntent {
   const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
@@ -177,8 +181,12 @@ export function deleteSelectedTable(
   state: EditorState,
   dispatch: (tr: Transaction) => void,
 ): boolean {
-  const sel = state.selection as { $anchorCell?: unknown; forEachCell?: unknown };
-  const isCellSel = "$anchorCell" in sel && typeof sel.forEachCell === "function";
+  const sel = state.selection as {
+    $anchorCell?: unknown;
+    forEachCell?: unknown;
+  };
+  const isCellSel =
+    "$anchorCell" in sel && typeof sel.forEachCell === "function";
   if (!isCellSel) {
     return false;
   }

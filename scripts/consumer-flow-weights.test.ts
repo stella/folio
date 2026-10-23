@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import {
   featureOperationHits,
@@ -7,7 +7,11 @@ import {
   parseFeatureCoverage,
   weightedChoice,
 } from "../test/consumer-scenarios/support/feature-coverage";
-import { type FlowFile, flowId, parseFlowFile } from "../test/consumer-scenarios/support/flow-file";
+import {
+  type FlowFile,
+  flowId,
+  parseFlowFile,
+} from "../test/consumer-scenarios/support/flow-file";
 import { mutateFlow } from "../test/consumer-scenarios/support/flow-mutate";
 import { createRandom } from "../test/consumer-scenarios/support/random";
 import { shrinkFlow } from "../test/consumer-scenarios/support/shrink";
@@ -26,7 +30,10 @@ const parent = {
 } satisfies FlowFile;
 const input = {
   version: 1,
-  cells: { "replaceInBlock | heading | none": 200, "deleteBlock | none | none": 0 },
+  cells: {
+    "replaceInBlock | heading | none": 200,
+    "deleteBlock | none | none": 0,
+  },
   operations: ["replaceInBlock", "deleteBlock"],
   emptyCells: ["a derived field that must stay out of the flow"],
 };
@@ -72,13 +79,18 @@ test("recorded seed generation remains identical after the external feedback cha
   const replay = parseFlowFile(JSON.parse(JSON.stringify(file)));
   const changed = parseFeatureCoverage({
     ...input,
-    cells: { "replaceInBlock | heading | none": 0, "deleteBlock | none | none": 200 },
+    cells: {
+      "replaceInBlock | heading | none": 0,
+      "deleteBlock | none | none": 200,
+    },
   });
   const draw = (weights: NonNullable<FlowFile["weights"]>, seed: number) => {
     const random = createRandom(seed);
     const hits = featureOperationHits(weights);
     return Array.from({ length: 30 }, () => [
-      weightedChoice(weights.operations, random, (type) => gapWeight(hits[type] ?? 0)),
+      weightedChoice(weights.operations, random, (type) =>
+        gapWeight(hits[type] ?? 0),
+      ),
       random.chance(0.5),
     ]);
   };
@@ -87,7 +99,9 @@ test("recorded seed generation remains identical after the external feedback cha
       replay.weights && draw(replay.weights, seed),
     );
   }
-  expect(file.weights && draw(file.weights, file.seed)).not.toEqual(draw(changed, file.seed));
+  expect(file.weights && draw(file.weights, file.seed)).not.toEqual(
+    draw(changed, file.seed),
+  );
 });
 
 test("operation hit counts combine every feature and selection in the recorded input", () => {
@@ -95,18 +109,26 @@ test("operation hit counts combine every feature and selection in the recorded i
     ...input,
     cells: { ...input.cells, "replaceInBlock | footnote | paragraph-range": 7 },
   });
-  expect(featureOperationHits(weights)).toEqual({ replaceInBlock: 207, deleteBlock: 0 });
+  expect(featureOperationHits(weights)).toEqual({
+    replaceInBlock: 207,
+    deleteBlock: 0,
+  });
 });
 
 test("mutation and shrinking retain feedback and swarm together", async () => {
-  const file = parseFlowFile({ ...parent, weights: input, swarm: ["replaceInBlock"] });
+  const file = parseFlowFile({
+    ...parent,
+    weights: input,
+    swarm: ["replaceInBlock"],
+  });
   for (let seed = 0; seed < 100; seed += 1) {
     const mutated = mutateFlow(file, createRandom(seed)).flow;
     expect(mutated.weights).toEqual(file.weights);
     expect(mutated.swarm).toEqual(file.swarm);
   }
   const shrunk = await shrinkFlow(file, {
-    holds: (candidate) => Promise.resolve(candidate.steps.some(({ seed }) => seed === 1)),
+    holds: (candidate) =>
+      Promise.resolve(candidate.steps.some(({ seed }) => seed === 1)),
     materialize: (candidate) => Promise.resolve(candidate),
     budget: { maxAttempts: 20, deadline: Date.now() + 10_000 },
   });

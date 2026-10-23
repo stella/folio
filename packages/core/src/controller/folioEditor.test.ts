@@ -3,8 +3,8 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { Layout } from "../layout-engine/types";
-import type { Document } from "../types/document";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { Document } from "../types/document";
 import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
 import { createFolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -26,7 +26,10 @@ const sentinelBuffer = sentinelDocx.buffer;
 
 type Call = { method: string; args: unknown[] };
 
-const createFakeDocumentIO = (): { documentIO: FolioEditorDocumentIO; calls: Call[] } => {
+const createFakeDocumentIO = (): {
+  documentIO: FolioEditorDocumentIO;
+  calls: Call[];
+} => {
   const calls: Call[] = [];
   return {
     calls,
@@ -145,9 +148,18 @@ describe("createFolioEditor", () => {
     expect(editor.redo()).toBe(true);
     expect(editor.canUndo()).toBe(true);
     expect(editor.canRedo()).toBe(true);
-    for (const action of ["beginComposition", "endComposition", "breakUndoGroup"] as const) {
-      expect(editor.updateCanonicalInputLifecycle(action)).toBe(action === "beginComposition");
-      expect(calls).toContainEqual({ method: "updateCanonicalInputLifecycle", args: [action] });
+    for (const action of [
+      "beginComposition",
+      "endComposition",
+      "breakUndoGroup",
+    ] as const) {
+      expect(editor.updateCanonicalInputLifecycle(action)).toBe(
+        action === "beginComposition",
+      );
+      expect(calls).toContainEqual({
+        method: "updateCanonicalInputLifecycle",
+        args: [action],
+      });
     }
 
     editor.ensureView();
@@ -182,17 +194,23 @@ describe("createFolioEditor", () => {
     });
 
     expect(editor.getState()).toBeNull();
-    expect(editor.updateCanonicalInputLifecycle("beginComposition")).toBe(false);
-    expect(editor.applyCanonicalSectionProperties({ marginLeft: 900 })).toEqual({
-      status: "refused",
-      gap: CANONICAL_GAP.sectionProperties,
-      message: "The editor is not ready for section changes.",
-    });
+    expect(editor.updateCanonicalInputLifecycle("beginComposition")).toBe(
+      false,
+    );
+    expect(editor.applyCanonicalSectionProperties({ marginLeft: 900 })).toEqual(
+      {
+        status: "refused",
+        gap: CANONICAL_GAP.sectionProperties,
+        message: "The editor is not ready for section changes.",
+      },
+    );
 
     const { api } = createFakeApi();
     current = api;
     expect(editor.getState()).toBe(sentinelState);
-    expect(editor.applyCanonicalSectionProperties({ marginLeft: 900 })).toBeNull();
+    expect(
+      editor.applyCanonicalSectionProperties({ marginLeft: 900 }),
+    ).toBeNull();
   });
 
   test("getters yield documented defaults when there is no view", () => {

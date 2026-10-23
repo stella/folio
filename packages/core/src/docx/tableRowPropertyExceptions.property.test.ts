@@ -21,12 +21,17 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Table } from "../types/document";
-import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+} from "./containerChildren.gen";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
@@ -115,7 +120,10 @@ const withoutReplay = (table: Table): Table => ({
 });
 
 const rebuild = (exceptions: string, rowProperties = ""): string =>
-  serializeTable(withoutReplay(parsed(tableXml(exceptions, rowProperties))), serializeParagraph);
+  serializeTable(
+    withoutReplay(parsed(tableXml(exceptions, rowProperties))),
+    serializeParagraph,
+  );
 
 /** The same table after a no-op pass through the editor's document model. */
 const throughEditor = (exceptions: string): string => {
@@ -173,7 +181,9 @@ describe("a row's table property exceptions survive a rebuild", () => {
     );
 
     const positions = DECLARED.map((name) => saved.indexOf(`<w:${name}`));
-    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
     expect(positions.every((at) => at > -1)).toBe(true);
   });
 
@@ -182,17 +192,26 @@ describe("a row's table property exceptions survive a rebuild", () => {
       '<w:tblW w:w="4000" w:type="pct"/><w:tblCellMar/><w:tblLook w:val="04A0"/>',
     );
 
-    expect(saved.indexOf("<w:tblW")).toBeLessThan(saved.indexOf("<w:tblCellMar/>"));
-    expect(saved.indexOf("<w:tblCellMar/>")).toBeLessThan(saved.indexOf("<w:tblLook "));
+    expect(saved.indexOf("<w:tblW")).toBeLessThan(
+      saved.indexOf("<w:tblCellMar/>"),
+    );
+    expect(saved.indexOf("<w:tblCellMar/>")).toBeLessThan(
+      saved.indexOf("<w:tblLook "),
+    );
   });
 
   test("the exceptions precede the row's own properties", () => {
     // `CT_Row` is `w:tblPrEx, w:trPr, (cells)*`, and the row's sink counts
     // cells, so a serializer that wrote the exceptions after `w:trPr` — or
     // among the cells — would produce a row nothing opens.
-    const saved = rebuild('<w:jc w:val="center"/>', "<w:trPr><w:tblHeader/></w:trPr>");
+    const saved = rebuild(
+      '<w:jc w:val="center"/>',
+      "<w:trPr><w:tblHeader/></w:trPr>",
+    );
 
-    expect(saved.indexOf("<w:tblPrEx>")).toBeLessThan(saved.indexOf("<w:trPr>"));
+    expect(saved.indexOf("<w:tblPrEx>")).toBeLessThan(
+      saved.indexOf("<w:trPr>"),
+    );
     expect(saved.indexOf("<w:trPr>")).toBeLessThan(saved.indexOf("<w:tc>"));
   });
 

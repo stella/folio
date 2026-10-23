@@ -13,7 +13,10 @@
 import type { EditorState } from "prosemirror-state";
 
 import { isInTable } from "../prosemirror/commands/table";
-import { listNumberingMenuState, NO_LIST_NUMBERING_MENU } from "../prosemirror/listNumbering";
+import {
+  listNumberingMenuState,
+  NO_LIST_NUMBERING_MENU,
+} from "../prosemirror/listNumbering";
 import { Subscribable } from "./Subscribable";
 import type { ContextMenuAnchor, ContextMenuSnapshot } from "./types";
 
@@ -48,10 +51,15 @@ export class ContextMenuManager extends Subscribable<ContextMenuSnapshot> {
   /** Open the menu at `anchor`, deriving menu flags from the editor state. */
   openMenu(
     anchor: ContextMenuAnchor,
-    { state, hasSelectionOverride, cursorInTrackedChange }: OpenContextMenuOptions,
+    {
+      state,
+      hasSelectionOverride,
+      cursorInTrackedChange,
+    }: OpenContextMenuOptions,
   ): void {
     const selection = state?.selection ?? { from: 0, to: 0 };
-    const hasSelection = hasSelectionOverride ?? selection.from !== selection.to;
+    const hasSelection =
+      hasSelectionOverride ?? selection.from !== selection.to;
     const cursorInTable = state ? isInTable(state) : false;
 
     this.setSnapshot({
@@ -61,7 +69,9 @@ export class ContextMenuManager extends Subscribable<ContextMenuSnapshot> {
       selectionRange: { from: selection.from, to: selection.to },
       cursorInTable,
       cursorInTrackedChange,
-      listNumbering: state ? listNumberingMenuState(state) : NO_LIST_NUMBERING_MENU,
+      listNumbering: state
+        ? listNumberingMenuState(state)
+        : NO_LIST_NUMBERING_MENU,
     });
   }
 

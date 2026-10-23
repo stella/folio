@@ -28,24 +28,36 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  type BuildTree,
   firstBuildTreeMismatch,
   renderBuildTreeMismatch,
-  type BuildTree,
 } from "./lib/build-tree-diff";
-import { PUBLISHED_PACKAGES, type PublishedPackage } from "./lib/published-packages";
+import {
+  PUBLISHED_PACKAGES,
+  type PublishedPackage,
+} from "./lib/published-packages";
 
 const MAX_DIFF_LINES = 200;
 
 // Declarations and JavaScript across every module-specific extension the six
 // build tools emit: nuxt-module-build writes `.mjs`/`.d.mts`, Vite adds `.cjs`.
 // Matching only `.js`/`.d.ts` would make the nuxt run vacuous.
-const COMPARED_EXTENSIONS = [".d.ts", ".d.mts", ".d.cts", ".js", ".mjs", ".cjs"] as const;
+const COMPARED_EXTENSIONS = [
+  ".d.ts",
+  ".d.mts",
+  ".d.cts",
+  ".js",
+  ".mjs",
+  ".cjs",
+] as const;
 
 const isCompared = (file: string): boolean =>
   COMPARED_EXTENSIONS.some((extension) => file.endsWith(extension));
 
 const readTree = async (directory: string): Promise<BuildTree> => {
-  const files = Array.from(new Bun.Glob("**/*").scanSync({ cwd: directory, onlyFiles: true }))
+  const files = Array.from(
+    new Bun.Glob("**/*").scanSync({ cwd: directory, onlyFiles: true }),
+  )
     .filter(isCompared)
     .toSorted();
   const tree = new Map<string, string>();
@@ -66,8 +78,14 @@ const runBuild = async (
   logDirectory: string,
   attempt: number,
 ): Promise<BuildFailure | null> => {
-  const stdoutPath = path.join(logDirectory, `${pkg.slug}-${attempt}-stdout.log`);
-  const stderrPath = path.join(logDirectory, `${pkg.slug}-${attempt}-stderr.log`);
+  const stdoutPath = path.join(
+    logDirectory,
+    `${pkg.slug}-${attempt}-stdout.log`,
+  );
+  const stderrPath = path.join(
+    logDirectory,
+    `${pkg.slug}-${attempt}-stderr.log`,
+  );
   // Piped stdout truncates around 768 KiB in Bun.spawnSync; a file sink does
   // not, and a truncated build log is worthless when the build is what failed.
   const { exitCode } = Bun.spawnSync(["bun", "run", "build"], {
@@ -76,16 +94,25 @@ const runBuild = async (
     stderr: Bun.file(stderrPath),
   });
   if (exitCode === 0) return null;
-  return { exitCode, output: `${await readLog(stdoutPath)}${await readLog(stderrPath)}` };
+  return {
+    exitCode,
+    output: `${await readLog(stdoutPath)}${await readLog(stderrPath)}`,
+  };
 };
 
-const reportBuildFailure = (pkg: PublishedPackage, failure: BuildFailure): void => {
+const reportBuildFailure = (
+  pkg: PublishedPackage,
+  failure: BuildFailure,
+): void => {
   console.error(`\n${pkg.name}: \`bun run build\` exited ${failure.exitCode}.`);
   console.error(failure.output);
 };
 
 /** True when the package's two builds agreed. */
-const checkPackage = async (pkg: PublishedPackage, tempRoot: string): Promise<boolean> => {
+const checkPackage = async (
+  pkg: PublishedPackage,
+  tempRoot: string,
+): Promise<boolean> => {
   const distDirectory = path.join(pkg.root, "dist");
   const baselineDirectory = path.join(tempRoot, `${pkg.slug}-baseline`);
   const startedNs = Bun.nanoseconds();
@@ -123,13 +150,19 @@ const checkPackage = async (pkg: PublishedPackage, tempRoot: string): Promise<bo
 
   const mismatch = firstBuildTreeMismatch({ baseline, candidate });
   if (mismatch) {
-    console.error(`\n${pkg.name} is not reproducible; first file that differs:\n`);
-    console.error(renderBuildTreeMismatch({ mismatch, maxDiffLines: MAX_DIFF_LINES }));
+    console.error(
+      `\n${pkg.name} is not reproducible; first file that differs:\n`,
+    );
+    console.error(
+      renderBuildTreeMismatch({ mismatch, maxDiffLines: MAX_DIFF_LINES }),
+    );
     return false;
   }
 
   const seconds = ((Bun.nanoseconds() - startedNs) / 1e9).toFixed(1);
-  console.log(`${pkg.name}: ${baseline.size} files identical across two builds (${seconds}s)`);
+  console.log(
+    `${pkg.name}: ${baseline.size} files identical across two builds (${seconds}s)`,
+  );
   return true;
 };
 
@@ -166,7 +199,9 @@ const targets = requestedSlugs
   ? PUBLISHED_PACKAGES.filter(({ slug }) => requestedSlugs.includes(slug))
   : PUBLISHED_PACKAGES;
 
-const tempRoot = await mkdtemp(path.join(tmpdir(), "folio-reproducible-build-"));
+const tempRoot = await mkdtemp(
+  path.join(tmpdir(), "folio-reproducible-build-"),
+);
 const startedNs = Bun.nanoseconds();
 let failed = 0;
 try {
@@ -185,4 +220,6 @@ if (failed > 0) {
   );
   process.exit(1);
 }
-console.log(`\n${targets.length} package(s) build reproducibly (${totalSeconds}s).`);
+console.log(
+  `\n${targets.length} package(s) build reproducibly (${totalSeconds}s).`,
+);

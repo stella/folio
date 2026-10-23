@@ -11,8 +11,9 @@ import {
   sanitizeExternalUrl,
   windowFeaturesFor,
 } from "@stll/folio-core/utils/urlSecurity";
-import type { HyperlinkPopupData } from "../ui/HyperlinkPopup";
+
 import { toast } from "../toast";
+import type { HyperlinkPopupData } from "../ui/HyperlinkPopup";
 
 // ============================================================================
 // TYPES
@@ -52,7 +53,8 @@ export const useHyperlinkHandlers = ({
   getActiveEditorView,
   focusActiveEditor,
 }: UseHyperlinkHandlersDeps): UseHyperlinkHandlersReturn => {
-  const [hyperlinkPopupData, setHyperlinkPopupData] = useState<HyperlinkPopupData | null>(null);
+  const [hyperlinkPopupData, setHyperlinkPopupData] =
+    useState<HyperlinkPopupData | null>(null);
 
   // Handle hyperlink click — show popup
   const handleHyperlinkClick = useCallback(
@@ -95,7 +97,9 @@ export const useHyperlinkHandlers = ({
       return;
     }
 
-    if (!removeHyperlinkAtCursor(view, { popupHref: hyperlinkPopupData?.href })) {
+    if (
+      !removeHyperlinkAtCursor(view, { popupHref: hyperlinkPopupData?.href })
+    ) {
       return;
     }
 

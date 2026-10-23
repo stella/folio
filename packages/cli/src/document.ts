@@ -6,10 +6,22 @@ import path from "node:path";
 import { ensureParaIds, FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
-import { errnoCode, fileVersionOf, NO_FOLLOW, sameFile, type FileIdentity } from "./file-system";
+import {
+  errnoCode,
+  type FileIdentity,
+  fileVersionOf,
+  NO_FOLLOW,
+  sameFile,
+} from "./file-system";
 import { checkWordprocessingPackage } from "./main-document-part";
 
-export { errnoCode, fileVersionOf, NO_FOLLOW, sameFile, type FileIdentity } from "./file-system";
+export {
+  errnoCode,
+  fileVersionOf,
+  NO_FOLLOW,
+  sameFile,
+  type FileIdentity,
+} from "./file-system";
 
 /** Largest `.docx` the CLI opens; larger inputs are refused before reading. */
 export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
@@ -44,14 +56,20 @@ const fileSystemError = (filePath: string, error: unknown): FolioCliError =>
         message: `Cannot read ${filePath}: ${describeError(error)}`,
       });
 
-type OpenedFile = { bytes: Uint8Array<ArrayBuffer>; identity: FileIdentity; links: number };
+type OpenedFile = {
+  bytes: Uint8Array<ArrayBuffer>;
+  identity: FileIdentity;
+  links: number;
+};
 
 /**
  * Read through one handle: the path is resolved, stat'ed, opened without
  * following a final symlink, and the handle must be the same file the stat
  * saw, so a swap between the check and the read is refused.
  */
-const readThroughHandle = async (real: string): Promise<Result<OpenedFile, FolioCliError>> => {
+const readThroughHandle = async (
+  real: string,
+): Promise<Result<OpenedFile, FolioCliError>> => {
   const checked = await Result.tryPromise({
     try: () => stat(real),
     catch: (error) => fileSystemError(real, error),
@@ -59,7 +77,10 @@ const readThroughHandle = async (real: string): Promise<Result<OpenedFile, Folio
   if (checked.isErr()) return Result.err(checked.error);
   if (!checked.value.isFile()) {
     return Result.err(
-      cliError({ code: FOLIO_CLI_ERROR_CODES.invalidInput, message: `${real} is not a file.` }),
+      cliError({
+        code: FOLIO_CLI_ERROR_CODES.invalidInput,
+        message: `${real} is not a file.`,
+      }),
     );
   }
   const read = await Result.tryPromise({
@@ -68,7 +89,8 @@ const readThroughHandle = async (real: string): Promise<Result<OpenedFile, Folio
       try {
         const opened = await handle.stat();
         const identity = { dev: opened.dev, ino: opened.ino };
-        if (!opened.isFile() || !sameFile(identity, checked.value)) return "swapped";
+        if (!opened.isFile() || !sameFile(identity, checked.value))
+          return "swapped";
         if (opened.size > MAX_DOCUMENT_BYTES) return "tooLarge";
         const bytes = new Uint8Array(await handle.readFile());
         return { bytes, identity, links: opened.nlink };
@@ -156,7 +178,10 @@ const withParagraphIds = async (
 ): Promise<{ bytes: Uint8Array; mintedIds: ReadonlySet<string> | null }> => {
   const normalized = await Result.tryPromise(() => ensureParaIds(bytes));
   return normalized.isOk()
-    ? { bytes: normalized.value.docx, mintedIds: new Set(normalized.value.mintedParaIds) }
+    ? {
+        bytes: normalized.value.docx,
+        mintedIds: new Set(normalized.value.mintedParaIds),
+      }
     : { bytes, mintedIds: null };
 };
 

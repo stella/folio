@@ -17,8 +17,10 @@ import fc from "fast-check";
 import JSZip from "jszip";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
@@ -29,7 +31,8 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const NAMESPACES = {
   w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
   wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
@@ -103,16 +106,26 @@ const documentXml = (runContent: string): string =>
 const open = async (xml: string): Promise<Document> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file("word/document.xml", xml);
-  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), { preloadFonts: false });
+  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+    preloadFonts: false,
+  });
 };
 
 const savedDocumentPart = async (document: Document): Promise<string> => {
   const saved = await repackDocx(document, { updateModifiedDate: false });
-  return (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  return (
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("text")) ?? ""
+  );
 };
 
 const throughEditor = (document: Document): Document =>
-  fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } });
+  fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  });
 
 const shapesOf = (document: Document): ShapeContent[] =>
   document.package.document.content
@@ -122,29 +135,39 @@ const shapesOf = (document: Document): ShapeContent[] =>
     .filter((content): content is ShapeContent => content.type === "shape");
 
 const textOf = (xml: string): string =>
-  [...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)].map((match) => match[1]).join("");
+  [...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
+    .map((match) => match[1])
+    .join("");
 
-const branchText = (alternateContent: string, branch: "Choice" | "Fallback"): string =>
+const branchText = (
+  alternateContent: string,
+  branch: "Choice" | "Fallback",
+): string =>
   textOf(
-    new RegExp(`<mc:${branch}\\b[\\s\\S]*?</mc:${branch}>`, "u").exec(alternateContent)?.[0] ?? "",
+    new RegExp(`<mc:${branch}\\b[\\s\\S]*?</mc:${branch}>`, "u").exec(
+      alternateContent,
+    )?.[0] ?? "",
   );
 
 const alternateContentsOf = (xml: string): string[] =>
-  [...xml.matchAll(/<mc:AlternateContent\b[\s\S]*?<\/mc:AlternateContent>/gu)].map(
-    (match) => match[0],
-  );
+  [
+    ...xml.matchAll(/<mc:AlternateContent\b[\s\S]*?<\/mc:AlternateContent>/gu),
+  ].map((match) => match[0]);
 
 /** A Fallback that says something else than its Choice misleads every consumer that reads it. */
 const expectFallbacksAgree = (xml: string): void => {
   for (const alternateContent of alternateContentsOf(xml)) {
-    expect(branchText(alternateContent, "Fallback")).toBe(branchText(alternateContent, "Choice"));
+    expect(branchText(alternateContent, "Fallback")).toBe(
+      branchText(alternateContent, "Choice"),
+    );
   }
 };
 
 /** Replace the text of the first text box's first run, the way an edit to the model would. */
 const editTextBoxInModel = (document: Document, text: string): void => {
   const paragraph = shapesOf(document).at(0)?.shape.textBody?.content.at(0);
-  const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+  const run =
+    paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
   const content = run?.type === "run" ? run.content.at(0) : undefined;
   if (content?.type !== "text") {
     throw new Error("expected text in the text box");
@@ -157,13 +180,20 @@ const editorStateOf = (document: Document): EditorState => {
   const manager = new ExtensionManager(createStarterKit());
   manager.buildSchema();
   manager.initializeRuntime();
-  return EditorState.create({ doc: toProseDoc(document), plugins: manager.getPlugins() });
+  return EditorState.create({
+    doc: toProseDoc(document),
+    plugins: manager.getPlugins(),
+  });
 };
 
 type EditTarget = "textBox" | "host";
 
 /** Type at the start of the text box or of its host paragraph, the way a user would. */
-const typeInEditor = (document: Document, target: EditTarget, text: string): Document => {
+const typeInEditor = (
+  document: Document,
+  target: EditTarget,
+  text: string,
+): Document => {
   const state = editorStateOf(document);
   let textPosition: number | undefined;
   state.doc.descendants((node, position) => {
@@ -180,9 +210,13 @@ const typeInEditor = (document: Document, target: EditTarget, text: string): Doc
     throw new Error(`expected a ${target} node`);
   }
   const edited = state.apply(
-    state.tr.setSelection(TextSelection.create(state.doc, textPosition)).insertText(text),
+    state.tr
+      .setSelection(TextSelection.create(state.doc, textPosition))
+      .insertText(text),
   );
-  return fromProseDoc(edited.doc, document, { stylesheetSource: { type: "package" } });
+  return fromProseDoc(edited.doc, document, {
+    stylesheetSource: { type: "package" },
+  });
 };
 
 const safeText = fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9 ]{0,24}$/u);
@@ -197,7 +231,9 @@ describe("a shape read from mc:AlternateContent", () => {
           const parsed = await open(documentXml(alternateContent));
 
           expect(await savedDocumentPart(parsed)).toContain(alternateContent);
-          expect(await savedDocumentPart(throughEditor(parsed))).toContain(alternateContent);
+          expect(await savedDocumentPart(throughEditor(parsed))).toContain(
+            alternateContent,
+          );
         }),
         propertyConfig({ numRuns: 20 }),
       );
@@ -211,7 +247,9 @@ describe("a shape read from mc:AlternateContent", () => {
       await fc.assert(
         fc.asyncProperty(safeText, safeText, async (original, replacement) => {
           fc.pre(original !== replacement);
-          const parsed = await open(documentXml(textBoxAlternateContent(original)));
+          const parsed = await open(
+            documentXml(textBoxAlternateContent(original)),
+          );
           editTextBoxInModel(parsed, replacement);
           const saved = await savedDocumentPart(parsed);
 
@@ -230,8 +268,12 @@ describe("a shape read from mc:AlternateContent", () => {
     async () => {
       await fc.assert(
         fc.asyncProperty(safeText, safeText, async (original, typed) => {
-          const parsed = await open(documentXml(textBoxAlternateContent(original)));
-          const saved = await savedDocumentPart(typeInEditor(parsed, "textBox", typed));
+          const parsed = await open(
+            documentXml(textBoxAlternateContent(original)),
+          );
+          const saved = await savedDocumentPart(
+            typeInEditor(parsed, "textBox", typed),
+          );
 
           expect(saved).not.toContain("mc:Fallback");
           expect(textOf(saved)).toBe(`Host${typed}${original}`);
@@ -250,7 +292,9 @@ describe("a shape read from mc:AlternateContent", () => {
         fc.asyncProperty(safeText, safeText, async (text, typed) => {
           const alternateContent = textBoxAlternateContent(text);
           const parsed = await open(documentXml(alternateContent));
-          const saved = await savedDocumentPart(typeInEditor(parsed, "host", typed));
+          const saved = await savedDocumentPart(
+            typeInEditor(parsed, "host", typed),
+          );
 
           expect(saved).toContain(alternateContent);
           expect(textOf(saved)).toBe(`${typed}Host${text}${text}`);
@@ -263,14 +307,21 @@ describe("a shape read from mc:AlternateContent", () => {
 
   test("a shape without a text body keeps its Fallback until it is edited", async () => {
     const parsed = await open(documentXml(CONNECTOR_ALTERNATE_CONTENT));
-    expect(await savedDocumentPart(parsed)).toContain(CONNECTOR_ALTERNATE_CONTENT);
-    expect(await savedDocumentPart(throughEditor(parsed))).toContain(CONNECTOR_ALTERNATE_CONTENT);
+    expect(await savedDocumentPart(parsed)).toContain(
+      CONNECTOR_ALTERNATE_CONTENT,
+    );
+    expect(await savedDocumentPart(throughEditor(parsed))).toContain(
+      CONNECTOR_ALTERNATE_CONTENT,
+    );
 
     const connector = shapesOf(parsed).at(0);
     if (!connector) {
       throw new Error("expected the connector shape");
     }
-    connector.shape.size = { ...connector.shape.size, width: connector.shape.size.width * 2 };
+    connector.shape.size = {
+      ...connector.shape.size,
+      width: connector.shape.size.width * 2,
+    };
     const saved = await savedDocumentPart(parsed);
     expect(saved).not.toContain("mc:AlternateContent");
     expect(saved).toContain('<wp:extent cx="3657600"');
@@ -285,10 +336,9 @@ describe("a shape read from mc:AlternateContent", () => {
     );
     const parsed = await open(documentXml(choice));
 
-    expect(shapesOf(parsed).map((content) => content.alternateContent)).toEqual([
-      undefined,
-      undefined,
-    ]);
+    expect(shapesOf(parsed).map((content) => content.alternateContent)).toEqual(
+      [undefined, undefined],
+    );
     const saved = await savedDocumentPart(parsed);
     expect(textOf(saved)).toBe("Hostfirstsecond");
   });

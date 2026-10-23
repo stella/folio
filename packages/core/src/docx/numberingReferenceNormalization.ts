@@ -16,9 +16,18 @@
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
-import type { DocumentBody, Endnote, Footnote, HeaderFooter, Style } from "../types/document";
+import type {
+  DocumentBody,
+  Endnote,
+  Footnote,
+  HeaderFooter,
+  Style,
+} from "../types/document";
 import type { NumberingMap } from "./numberingParser";
-import { NO_PARAGRAPH_NUMBERING, paragraphNumberingReferenceId } from "./numberingReference";
+import {
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingReferenceId,
+} from "./numberingReference";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 /**
@@ -26,16 +35,22 @@ import { visitDocxParagraphs } from "./paragraphTraversal";
  * `w:abstractNum` the numbering part defines. Both hops can dangle, and a
  * `w:num` with no `w:abstractNum` numbers nothing just as a missing one does.
  */
-const resolvesNumbering = (numId: number, numbering: NumberingMap | undefined): boolean => {
+const resolvesNumbering = (
+  numId: number,
+  numbering: NumberingMap | undefined,
+): boolean => {
   if (!numbering) {
     return false;
   }
   const abstractNumId = numbering.getAbstractNumId(numId);
-  return abstractNumId !== null && numbering.getAbstract(abstractNumId) !== null;
+  return (
+    abstractNumId !== null && numbering.getAbstract(abstractNumId) !== null
+  );
 };
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const UNNUMBERED_PARAGRAPH_WARNING = PARSE_WARNING_CODES.unnumberedParagraph;
+export const UNNUMBERED_PARAGRAPH_WARNING =
+  PARSE_WARNING_CODES.unnumberedParagraph;
 export const UNNUMBERED_STYLE_WARNING = PARSE_WARNING_CODES.unnumberedStyle;
 
 type NormalizeNumberingReferencesInput = {
@@ -61,18 +76,25 @@ export const normalizeNumberingReferences = ({
 }: NormalizeNumberingReferencesInput): NormalizeNumberingReferencesResult => {
   let unnumberedDanglingReferences = 0;
 
-  visitDocxParagraphs({ documentBody, headers, footers, footnotes, endnotes }, (paragraph) => {
-    const formatting = paragraph.formatting;
-    const numId = paragraphNumberingReferenceId(formatting?.numPr);
-    if (!formatting || numId === undefined || resolvesNumbering(numId, numbering)) {
-      return;
-    }
-    formatting.numPr = NO_PARAGRAPH_NUMBERING;
-    // The reference is the paragraph's own now, whatever tier stated it.
-    delete formatting.numPrFromStyle;
-    delete paragraph.listRendering;
-    unnumberedDanglingReferences += 1;
-  });
+  visitDocxParagraphs(
+    { documentBody, headers, footers, footnotes, endnotes },
+    (paragraph) => {
+      const formatting = paragraph.formatting;
+      const numId = paragraphNumberingReferenceId(formatting?.numPr);
+      if (
+        !formatting ||
+        numId === undefined ||
+        resolvesNumbering(numId, numbering)
+      ) {
+        return;
+      }
+      formatting.numPr = NO_PARAGRAPH_NUMBERING;
+      // The reference is the paragraph's own now, whatever tier stated it.
+      delete formatting.numPrFromStyle;
+      delete paragraph.listRendering;
+      unnumberedDanglingReferences += 1;
+    },
+  );
 
   return { unnumberedDanglingReferences };
 };

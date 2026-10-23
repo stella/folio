@@ -58,9 +58,14 @@ const ANCHOR_REL = "noopener noreferrer";
 
 export type AnchorTargetAttrs = { target: string; rel: string };
 
-export function anchorTargetAttrs(authoredFrame: string | undefined): AnchorTargetAttrs {
+export function anchorTargetAttrs(
+  authoredFrame: string | undefined,
+): AnchorTargetAttrs {
   return {
-    target: authoredFrame && ALLOWED_TARGETS.has(authoredFrame) ? authoredFrame : "_blank",
+    target:
+      authoredFrame && ALLOWED_TARGETS.has(authoredFrame)
+        ? authoredFrame
+        : "_blank",
     rel: ANCHOR_REL,
   };
 }

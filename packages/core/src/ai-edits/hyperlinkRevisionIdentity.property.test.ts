@@ -1,18 +1,26 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
 import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
-import { createEmptyDocument } from "../utils/createDocument";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
-import { FolioDocxReviewer } from "./headless";
 import type { Document, Hyperlink } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
+import { FolioDocxReviewer } from "./headless";
 
 const linksOf = (document: Document) => {
   const first = document.package.document.content.at(0);
-  if (first?.type !== "paragraph") throw new Error("Expected hyperlink paragraph");
+  if (first?.type !== "paragraph")
+    throw new Error("Expected hyperlink paragraph");
   return first.content.filter((node) => node.type === "hyperlink");
 };
-const link = (text: string, href = "https://example.com/notices"): Hyperlink => ({
+const link = (
+  text: string,
+  href = "https://example.com/notices",
+): Hyperlink => ({
   type: "hyperlink",
   href,
   children: [{ type: "run", content: [{ type: "text", text }] }],
@@ -42,7 +50,9 @@ test(
               ],
             },
           ];
-          const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+          const reviewer = await FolioDocxReviewer.fromBuffer(
+            await createDocx(document),
+          );
           const block = reviewer.snapshot().blocks.at(0);
           if (!block) throw new Error("Expected hyperlink block");
           const result = reviewer.applyDocumentOperations(
@@ -63,12 +73,16 @@ test(
           );
           expect(result.skipped).toEqual([]);
           expect(result.applied).toHaveLength(1);
-          const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+          const reopened = await FolioDocxReviewer.fromBuffer(
+            await reviewer.toBuffer(),
+          );
           const live = reviewer.toResolvedDocument("reject");
           const saved = reopened.toResolvedDocument("reject");
           expect(linksOf(live)).toHaveLength(1);
           expect(linksOf(saved)).toHaveLength(1);
-          expect(canonicalReviewModel(saved)).toEqual(canonicalReviewModel(live));
+          expect(canonicalReviewModel(saved)).toEqual(
+            canonicalReviewModel(live),
+          );
         },
       ),
       {
@@ -84,11 +98,19 @@ test(
 test("adjacent identical imported hyperlinks stay distinct through save and reopen", async () => {
   const document = createEmptyDocument();
   document.package.document.content = [
-    { type: "paragraph", paraId: "A1000012", content: [link("first"), link("second")] },
+    {
+      type: "paragraph",
+      paraId: "A1000012",
+      content: [link("first"), link("second")],
+    },
   ];
-  const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await createDocx(document),
+  );
   expect(linksOf(reviewer.toDocument())).toHaveLength(2);
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   expect(linksOf(reopened.toDocument())).toHaveLength(2);
 });
 
@@ -109,10 +131,16 @@ test("accepting a changed hyperlink target keeps different targets split", async
       ],
     },
   ];
-  const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await createDocx(document),
+  );
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   for (const current of [reviewer, reopened]) {
-    expect(linksOf(current.toResolvedDocument("accept")).map(({ href }) => href)).toEqual([
+    expect(
+      linksOf(current.toResolvedDocument("accept")).map(({ href }) => href),
+    ).toEqual([
       "https://example.com/notices",
       "https://example.com/other",
       "https://example.com/notices",

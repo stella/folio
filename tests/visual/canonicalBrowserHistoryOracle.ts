@@ -1,8 +1,6 @@
-import { evaluateCanonicalPage, waitForCanonicalPageReady } from "./canonicalPageNavigation";
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, type Page } from "@playwright/test";
 import { Result } from "better-result";
-import { captureCanonicalOracleFailure } from "../parity/canonicalOracleFailure";
+
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
@@ -11,15 +9,24 @@ import {
   matchCanonicalRefusalRow,
   validateHarnessRefusalRows,
 } from "../../test/canonical-refusal-rows";
-import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
-import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
-import { assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
 import type {} from "../parity/canonicalBridge";
 import {
-  isCanonicalSaveFallback,
   type CanonicalFuzzObservation,
   type CanonicalFuzzPhase,
+  isCanonicalSaveFallback,
 } from "../parity/canonicalFuzzErrors";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { captureCanonicalOracleFailure } from "../parity/canonicalOracleFailure";
+import {
+  BROWSER_INPUT_ACTION_DISPOSITIONS,
+  type BrowserInputAction,
+} from "./browserInputTrace";
+import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
+import {
+  evaluateCanonicalPage,
+  waitForCanonicalPageReady,
+} from "./canonicalPageNavigation";
+import { assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
@@ -31,7 +38,10 @@ const snapshot = async (page: Page) => {
     page.evaluate(() => globalThis.__folioCanonical?.snapshot()),
   );
   expect(current?.active).toBe(true);
-  expect(current?.composing, "native composition must end before canonical snapshots").toBe(false);
+  expect(
+    current?.composing,
+    "native composition must end before canonical snapshots",
+  ).toBe(false);
   expect(current?.projectionMatchesCanonical).toBe(true);
   expect(current?.projectionJSON).toEqual(current?.canonicalProjectionJSON);
   if (!current?.document) throw new TypeError("Canonical document unavailable");
@@ -58,13 +68,20 @@ type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
 };
 
 /** Establish the first loaded owner once, outside the per-case reset barrier. */
-export const initializeCanonicalBrowserHistory = async (page: Page, source: number[]) => {
+export const initializeCanonicalBrowserHistory = async (
+  page: Page,
+  source: number[],
+) => {
   await evaluateCanonicalPage(page, () =>
     page.evaluate(() => {
       globalThis.__folioCanonicalFuzzErrors ??= [];
     }),
   );
-  expect(await evaluateCanonicalPage(page, () => evaluateCanonicalLoad(page, source))).toBe(true);
+  expect(
+    await evaluateCanonicalPage(page, () =>
+      evaluateCanonicalLoad(page, source),
+    ),
+  ).toBe(true);
   await expect
     .poll(
       async () =>
@@ -83,7 +100,10 @@ const runCanonicalBrowserHistory = async ({
   missing,
   observations,
 }: CanonicalBrowserHistoryRunOptions): Promise<number> => {
-  let observation: CanonicalFuzzObservation = { phase: { type: "load" }, errors: [] };
+  let observation: CanonicalFuzzObservation = {
+    phase: { type: "load" },
+    errors: [],
+  };
   const beginPhase = async (phase: CanonicalFuzzPhase) => {
     observation = { phase, errors: [] };
     observations.push(observation);
@@ -121,7 +141,11 @@ const runCanonicalBrowserHistory = async ({
     ),
     "case must start outside native composition",
   ).toBe(false);
-  expect(await evaluateCanonicalPage(page, () => evaluateCanonicalLoad(page, source))).toBe(true);
+  expect(
+    await evaluateCanonicalPage(page, () =>
+      evaluateCanonicalLoad(page, source),
+    ),
+  ).toBe(true);
   expect(await collectErrors()).toEqual([]);
   expect(
     await evaluateCanonicalPage(page, () =>
@@ -149,7 +173,9 @@ const runCanonicalBrowserHistory = async ({
       const matchedRow = matchCanonicalRefusalRow({ rows, refusal: error });
       expect(matchedRow).toBeDefined();
       if (!matchedRow)
-        throw new TypeError("Canonical browser refusal did not match a declared row.");
+        throw new TypeError(
+          "Canonical browser refusal did not match a declared row.",
+        );
       missing.record(matchedRow.gap);
     }
     if (action.kind === "imeReplacement" && action.completion === "cancel") {
@@ -197,14 +223,27 @@ const runCanonicalBrowserHistory = async ({
     const saved = await evaluateCanonicalPage(page, () =>
       page.evaluate(() => globalThis.__folioCanonical?.save()),
     );
-    expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
+    expect(
+      (await collectErrors()).filter(
+        (error) => !isCanonicalSaveFallback(error),
+      ),
+    ).toEqual([]);
     if (!saved) throw new TypeError("Canonical save unavailable");
-    expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
+    expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({
+      valid: true,
+    });
     const reopened = structuredClone(
-      await parseDocx(new Uint8Array(saved), { preloadFonts: false, detectVariables: false }),
+      await parseDocx(new Uint8Array(saved), {
+        preloadFonts: false,
+        detectVariables: false,
+      }),
     );
-    expect(reopened.package.document.content).toEqual(after.document.package.document.content);
-    expect(reopened.package.numbering).toEqual(after.document.package.numbering);
+    expect(reopened.package.document.content).toEqual(
+      after.document.package.document.content,
+    );
+    expect(reopened.package.numbering).toEqual(
+      after.document.package.numbering,
+    );
   }
   const final = await snapshot(page);
   await assertCanonicalInputTimersSettled(page);
@@ -212,24 +251,34 @@ const runCanonicalBrowserHistory = async ({
   const saved = await evaluateCanonicalPage(page, () =>
     page.evaluate(() => globalThis.__folioCanonical?.save()),
   );
-  expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
+  expect(
+    (await collectErrors()).filter((error) => !isCanonicalSaveFallback(error)),
+  ).toEqual([]);
   if (!saved) throw new TypeError("Canonical save unavailable");
-  expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
+  expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({
+    valid: true,
+  });
   await beginPhase({ type: "reload" });
-  expect(await evaluateCanonicalPage(page, () => evaluateCanonicalLoad(page, saved))).toBe(true);
+  expect(
+    await evaluateCanonicalPage(page, () => evaluateCanonicalLoad(page, saved)),
+  ).toBe(true);
   const reloaded = await snapshot(page);
   expect(await collectErrors()).toEqual([]);
   expect(reloaded.document.package.document.content).toEqual(
     final.document.package.document.content,
   );
-  expect(reloaded.document.package.numbering).toEqual(final.document.package.numbering);
+  expect(reloaded.document.package.numbering).toEqual(
+    final.document.package.numbering,
+  );
   expect(reloaded.canUndo).toBe(false);
   await assertCanonicalInputTimersSettled(page);
   return applied;
 };
 
 /** One history oracle for nightly properties and deterministic interaction replays. */
-export const checkCanonicalBrowserHistory = async (options: CanonicalBrowserHistoryOptions) => {
+export const checkCanonicalBrowserHistory = async (
+  options: CanonicalBrowserHistoryOptions,
+) => {
   const observations: CanonicalFuzzObservation[] = [];
   const result = await Result.tryPromise({
     try: () => runCanonicalBrowserHistory({ ...options, observations }),

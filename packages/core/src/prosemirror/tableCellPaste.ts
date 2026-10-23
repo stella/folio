@@ -20,9 +20,20 @@
  * through is split directly, as the structural table commands do.
  */
 
-import { Fragment, Slice, type Node as PMNode, type Schema } from "prosemirror-model";
+import {
+  Fragment,
+  type Node as PMNode,
+  type Schema,
+  Slice,
+} from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { CellSelection, TableMap, cellAround, tableNodeTypes, type Rect } from "prosemirror-tables";
+import {
+  cellAround,
+  CellSelection,
+  type Rect,
+  TableMap,
+  tableNodeTypes,
+} from "prosemirror-tables";
 import { Transform } from "prosemirror-transform";
 
 import {
@@ -60,7 +71,11 @@ export type TableCellPasteHooks = {
   replaceCellContent?: CellContentReplacer;
 };
 
-export type CellContentReplacer = (tr: Transaction, cellPos: number, slice: Slice) => void;
+export type CellContentReplacer = (
+  tr: Transaction,
+  cellPos: number,
+  slice: Slice,
+) => void;
 
 const fitSlice = (nodeType: PMNode["type"], slice: Slice): PMNode => {
   const node = nodeType.createAndFill();
@@ -74,9 +89,15 @@ const fitSlice = (nodeType: PMNode["type"], slice: Slice): PMNode => {
  * A cell's attributes with `count` of its columns, from the `from`th on, taken
  * out of its span and its column widths.
  */
-const withoutColumns = (attrs: PMNode["attrs"], from: number, count: number): PMNode["attrs"] => {
+const withoutColumns = (
+  attrs: PMNode["attrs"],
+  from: number,
+  count: number,
+): PMNode["attrs"] => {
   const colwidth: unknown = attrs["colwidth"];
-  const widths = Array.isArray(colwidth) ? colwidth.toSpliced(from, count) : null;
+  const widths = Array.isArray(colwidth)
+    ? colwidth.toSpliced(from, count)
+    : null;
   return {
     ...attrs,
     colspan: Math.max(1, Number(attrs["colspan"]) || 1) - count,
@@ -93,7 +114,11 @@ const ensureRectangular = (schema: Schema, rows: Fragment[]): PastedCells => {
   for (const [index, row] of rows.entries()) {
     for (let child = row.childCount - 1; child >= 0; child--) {
       const cell = row.child(child);
-      for (let covered = index; covered < index + spanOf(cell, "rowspan"); covered++) {
+      for (
+        let covered = index;
+        covered < index + spanOf(cell, "rowspan");
+        covered++
+      ) {
         widths[covered] = (widths[covered] ?? 0) + spanOf(cell, "colspan");
       }
     }
@@ -112,7 +137,9 @@ const ensureRectangular = (schema: Schema, rows: Fragment[]): PastedCells => {
           cells.push(empty);
         }
       }
-      rows[index] = (rows[index] ?? Fragment.empty).append(Fragment.from(cells));
+      rows[index] = (rows[index] ?? Fragment.empty).append(
+        Fragment.from(cells),
+      );
     }
   }
   return { height: rows.length, width, rows };
@@ -142,7 +169,11 @@ const withNewTableCells = (node: PMNode): PMNode => {
   const isCell = role === "cell" || role === "header_cell";
   return content === node.content && !isCell
     ? node
-    : node.type.create(isCell ? newCellAttrs(node.attrs) : node.attrs, content, node.marks);
+    : node.type.create(
+        isCell ? newCellAttrs(node.attrs) : node.attrs,
+        content,
+        node.marks,
+      );
 };
 
 const withNewTableCellsIn = (fragment: Fragment): Fragment => {
@@ -164,7 +195,9 @@ const withNewTableCellsIn = (fragment: Fragment): Fragment => {
  */
 export const pastedSliceWithNewTableCells = (slice: Slice): Slice => {
   const content = withNewTableCellsIn(slice.content);
-  return content === slice.content ? slice : new Slice(content, slice.openStart, slice.openEnd);
+  return content === slice.content
+    ? slice
+    : new Slice(content, slice.openStart, slice.openEnd);
 };
 
 /** The cells a slice holds, or null when it holds none (it is not table content). */
@@ -175,7 +208,8 @@ export const pastedCells = (slice: Slice): PastedCells | null => {
   let { content, openStart, openEnd } = slice;
   while (
     content.childCount === 1 &&
-    ((openStart > 0 && openEnd > 0) || content.child(0).type.spec["tableRole"] === "table")
+    ((openStart > 0 && openEnd > 0) ||
+      content.child(0).type.spec["tableRole"] === "table")
   ) {
     openStart--;
     openEnd--;
@@ -192,16 +226,23 @@ export const pastedCells = (slice: Slice): PastedCells | null => {
     for (let index = 0; index < content.childCount; index++) {
       let cells = content.child(index).content;
       const left = index ? 0 : Math.max(0, openStart - 1);
-      const right = index < content.childCount - 1 ? 0 : Math.max(0, openEnd - 1);
+      const right =
+        index < content.childCount - 1 ? 0 : Math.max(0, openEnd - 1);
       if (left || right) {
-        cells = fitSlice(tableNodeTypes(schema).row, new Slice(cells, left, right)).content;
+        cells = fitSlice(
+          tableNodeTypes(schema).row,
+          new Slice(cells, left, right),
+        ).content;
       }
       rows.push(cells);
     }
   } else if (role === "cell" || role === "header_cell") {
     rows.push(
       openStart || openEnd
-        ? fitSlice(tableNodeTypes(schema).row, new Slice(content, openStart, openEnd)).content
+        ? fitSlice(
+            tableNodeTypes(schema).row,
+            new Slice(content, openStart, openEnd),
+          ).content
         : content,
     );
   } else {
@@ -211,7 +252,9 @@ export const pastedCells = (slice: Slice): PastedCells | null => {
     const cells: PMNode[] = [];
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Fragment.forEach
     row.forEach((cell) => {
-      cells.push(cell.type.create(newCellAttrs(cell.attrs), cell.content, cell.marks));
+      cells.push(
+        cell.type.create(newCellAttrs(cell.attrs), cell.content, cell.marks),
+      );
     });
     return Fragment.from(cells);
   });
@@ -232,16 +275,25 @@ const readTable = (tr: Transaction, tableStart: number): TableContext => {
   if (!table || table.type.spec["tableRole"] !== "table") {
     throw new RangeError("The pasted-into table is gone");
   }
-  return { table, map: TableMap.get(table), tableStart, mapFrom: tr.mapping.maps.length };
+  return {
+    table,
+    map: TableMap.get(table),
+    tableStart,
+    mapFrom: tr.mapping.maps.length,
+  };
 };
 
-const mapPosition = (tr: Transaction, context: TableContext, pos: number): number =>
-  tr.mapping.slice(context.mapFrom).map(pos);
+const mapPosition = (
+  tr: Transaction,
+  context: TableContext,
+  pos: number,
+): number => tr.mapping.slice(context.mapFrom).map(pos);
 
 /** A new, empty cell of the same kind as `like`, with nothing that names another cell. */
 const emptyCellLike = (like: PMNode | null, schema: Schema): PMNode => {
   const types = tableNodeTypes(schema);
-  const type = like?.type === types.header_cell ? types.header_cell : types.cell;
+  const type =
+    like?.type === types.header_cell ? types.header_cell : types.cell;
   const cell = type.createAndFill();
   if (!cell) {
     throw new RangeError("Cannot create an empty table cell");
@@ -249,7 +301,8 @@ const emptyCellLike = (like: PMNode | null, schema: Schema): PMNode => {
   return cell;
 };
 
-const isOmittedGridSlot = (cell: PMNode): boolean => cell.attrs["_omittedGridSlot"] != null;
+const isOmittedGridSlot = (cell: PMNode): boolean =>
+  cell.attrs["_omittedGridSlot"] != null;
 
 const hasOmittedGridSlots = (table: PMNode): boolean => {
   let found = false;
@@ -285,7 +338,9 @@ const continuationCells = (cell: PMNode, rowspan: number): TableCell[] => {
 
 /** Stored continuation cells to carry, or null for none. */
 const continuationAttr = (cells: TableCell[]) =>
-  cells.length > 0 ? transportTableCellsWithParagraphPropertySources(cells) : null;
+  cells.length > 0
+    ? transportTableCellsWithParagraphPropertySources(cells)
+    : null;
 
 /** Add columns and rows so the table reaches `width` × `height`. */
 const growTable = (
@@ -309,7 +364,10 @@ const growTable = (
         cells.push(
           revision
             ? cell.type.create(
-                { ...cell.attrs, cellMarker: { kind: "ins", info: { ...revision } } },
+                {
+                  ...cell.attrs,
+                  cellMarker: { kind: "ins", info: { ...revision } },
+                },
                 cell.content,
               )
             : cell,
@@ -325,7 +383,10 @@ const growTable = (
       mergeTableAttrs(table, {
         columnWidths:
           widths?.length === map.width && lastWidth !== undefined
-            ? [...widths, ...Array.from({ length: width - map.width }, () => lastWidth)]
+            ? [
+                ...widths,
+                ...Array.from({ length: width - map.width }, () => lastWidth),
+              ]
             : undefined,
       }),
     );
@@ -335,13 +396,18 @@ const growTable = (
     const lastRowStart = (map.height - 1) * map.width;
     const cells: PMNode[] = [];
     for (let column = 0; column < Math.max(map.width, width); column++) {
-      const above = column < map.width ? table.nodeAt(map.map[lastRowStart + column] ?? -1) : null;
+      const above =
+        column < map.width
+          ? table.nodeAt(map.map[lastRowStart + column] ?? -1)
+          : null;
       cells.push(emptyCellLike(above ?? null, schema));
     }
     const rowType = tableNodeTypes(schema).row;
     const rows: PMNode[] = [];
     for (let row = map.height; row < height; row++) {
-      rows.push(rowType.create(revision ? { trIns: { ...revision } } : null, cells));
+      rows.push(
+        rowType.create(revision ? { trIns: { ...revision } } : null, cells),
+      );
     }
     tr.insert(mapPosition(tr, context, tableStart + table.nodeSize - 2), rows);
     grown = true;
@@ -382,12 +448,16 @@ const isolateHorizontal = (
     tr.setNodeMarkup(mapPosition(tr, context, tableStart + pos), null, {
       ...cell.attrs,
       rowspan: upperRows,
-      _docxVMergeContinuationCells: continuationAttr(continuations.slice(0, upperRows - 1)),
+      _docxVMergeContinuationCells: continuationAttr(
+        continuations.slice(0, upperRows - 1),
+      ),
     });
     const lower = cell.type.createAndFill({
       ...newCellAttrs(cell.attrs),
       rowspan: lowerRows,
-      _docxVMergeContinuationCells: continuationAttr(continuations.slice(upperRows)),
+      _docxVMergeContinuationCells: continuationAttr(
+        continuations.slice(upperRows),
+      ),
       cellMarker: revision
         ? {
             kind: "merge",
@@ -399,7 +469,14 @@ const isolateHorizontal = (
     if (!lower) {
       throw new RangeError("Cannot split a merged table cell");
     }
-    tr.insert(mapPosition(tr, context, tableStart + map.positionAt(top, cellLeft, table)), lower);
+    tr.insert(
+      mapPosition(
+        tr,
+        context,
+        tableStart + map.positionAt(top, cellLeft, table),
+      ),
+      lower,
+    );
     column += spanOf(cell, "colspan") - 1;
   }
   return found;
@@ -463,7 +540,11 @@ export const cellPasteRange = (
 ): { from: number; to: number } => {
   const from = cellPos + 1;
   const to = cellPos + cell.nodeSize - 1;
-  if (slice.openStart === 0 && slice.openEnd === 0 && slice.content.firstChild?.isBlock) {
+  if (
+    slice.openStart === 0 &&
+    slice.openEnd === 0 &&
+    slice.content.firstChild?.isBlock
+  ) {
     return { from, to };
   }
   return {
@@ -473,7 +554,11 @@ export const cellPasteRange = (
 };
 
 /** Replace a cell's content outright. */
-const replaceCellContentDirectly = (tr: Transaction, cellPos: number, slice: Slice): void => {
+const replaceCellContentDirectly = (
+  tr: Transaction,
+  cellPos: number,
+  slice: Slice,
+): void => {
   const cell = tr.doc.nodeAt(cellPos);
   if (!cell) {
     throw new RangeError("The pasted-into table cell is gone");
@@ -511,7 +596,8 @@ const verticalPasteTargets = ({
       for (let nextRow = row; nextRow < bottom;) {
         const pos = map.map[nextRow * map.width + column];
         const cell = pos === undefined ? null : table.nodeAt(pos);
-        if (pos === undefined || !cell || cell.attrs["cellMarker"] != null) return null;
+        if (pos === undefined || !cell || cell.attrs["cellMarker"] != null)
+          return null;
         const rect = map.findCell(pos);
         if (
           rect.top !== nextRow ||
@@ -525,7 +611,11 @@ const verticalPasteTargets = ({
           pos: tableStart + pos,
           slice: anchor
             ? new Slice(pasted.content, 0, 0)
-            : new Slice(Fragment.from(table.type.schema.node("paragraph")), 0, 0),
+            : new Slice(
+                Fragment.from(table.type.schema.node("paragraph")),
+                0,
+                0,
+              ),
           merge: anchor ? "anchor" : "continuation",
         });
         nextRow = rect.bottom;
@@ -577,7 +667,10 @@ const matchingCells = (
           covered.add(r * map.width + c);
         }
       }
-      matches.push({ pos: tableStart + pos, slice: new Slice(pasted.content, 0, 0) });
+      matches.push({
+        pos: tableStart + pos,
+        slice: new Slice(pasted.content, 0, 0),
+      });
       column = rect.right;
     }
   }
@@ -585,7 +678,11 @@ const matchingCells = (
 };
 
 /** The pasted cell covering (`row`, `column`) of the block, repeating the block past its edge. */
-const pastedCellAt = (cells: PastedCells, row: number, column: number): PMNode | null => {
+const pastedCellAt = (
+  cells: PastedCells,
+  row: number,
+  column: number,
+): PMNode | null => {
   const wantedRow = row % cells.height;
   const wantedColumn = column % cells.width;
   const covered: number[][] = [];
@@ -660,7 +757,9 @@ const selectBlock = (tr: Transaction, tableStart: number, rect: Rect): void => {
   tr.setSelection(
     new CellSelection(
       tr.doc.resolve(tableStart + map.positionAt(rect.top, rect.left, table)),
-      tr.doc.resolve(tableStart + map.positionAt(rect.bottom - 1, rect.right - 1, table)),
+      tr.doc.resolve(
+        tableStart + map.positionAt(rect.bottom - 1, rect.right - 1, table),
+      ),
     ),
   );
 };
@@ -679,9 +778,17 @@ export const insertTableCells = (
   tableStart: number,
   { top, left }: Pick<Rect, "top" | "left">,
   cells: PastedCells,
-  { revision, replaceCellContent = replaceCellContentDirectly }: TableCellPasteHooks = {},
+  {
+    revision,
+    replaceCellContent = replaceCellContentDirectly,
+  }: TableCellPasteHooks = {},
 ): Transaction => {
-  let rect = { top, left, right: left + cells.width, bottom: top + cells.height };
+  let rect = {
+    top,
+    left,
+    right: left + cells.width,
+    bottom: top + cells.height,
+  };
   let context = readTable(tr, tableStart);
   if (hasOmittedGridSlots(context.table)) {
     // Absent grid positions (`w:gridBefore`, `w:gridAfter`) hold no cell to
@@ -692,7 +799,11 @@ export const insertTableCells = (
       right: Math.min(rect.right, context.map.width),
       bottom: Math.min(rect.bottom, context.map.height),
     };
-    replaceTargets(tr, fillTargets(context, rect, cells, Slice.empty), replaceCellContent);
+    replaceTargets(
+      tr,
+      fillTargets(context, rect, cells, Slice.empty),
+      replaceCellContent,
+    );
     selectBlock(tr, tableStart, rect);
     return tr;
   }
@@ -702,8 +813,19 @@ export const insertTableCells = (
     }
   };
   recompute(growTable(tr, context, rect.right, rect.bottom, revision));
-  recompute(isolateHorizontal(tr, context, rect.left, rect.right, rect.top, revision));
-  recompute(isolateHorizontal(tr, context, rect.left, rect.right, rect.bottom, revision));
+  recompute(
+    isolateHorizontal(tr, context, rect.left, rect.right, rect.top, revision),
+  );
+  recompute(
+    isolateHorizontal(
+      tr,
+      context,
+      rect.left,
+      rect.right,
+      rect.bottom,
+      revision,
+    ),
+  );
   recompute(isolateVertical(tr, context, rect.top, rect.bottom, rect.left));
   recompute(isolateVertical(tr, context, rect.top, rect.bottom, rect.right));
 
@@ -713,7 +835,9 @@ export const insertTableCells = (
   } else if (revision) {
     const vertical = verticalPasteTargets({ context, cells, placement: rect });
     if (vertical) {
-      for (const { pos, slice, merge } of vertical.toSorted((a, b) => b.pos - a.pos)) {
+      for (const { pos, slice, merge } of vertical.toSorted(
+        (a, b) => b.pos - a.pos,
+      )) {
         replaceCellContent(tr, pos, slice);
         if (merge === "continuation") {
           tr.setNodeAttribute(pos, "cellMarker", {
@@ -725,7 +849,11 @@ export const insertTableCells = (
         }
       }
     } else {
-      replaceTargets(tr, fillTargets(context, rect, cells, Slice.empty), replaceCellContent);
+      replaceTargets(
+        tr,
+        fillTargets(context, rect, cells, Slice.empty),
+        replaceCellContent,
+      );
     }
   } else {
     for (let row = rect.top; row < rect.bottom; row++) {
@@ -759,13 +887,20 @@ export const fillSelectedCells = (
     selection.$anchorCell.pos - tableStart,
     selection.$headCell.pos - tableStart,
   );
-  replaceTargets(tr, fillTargets(context, rect, pastedCells(slice), slice), replaceCellContent);
+  replaceTargets(
+    tr,
+    fillTargets(context, rect, pastedCells(slice), slice),
+    replaceCellContent,
+  );
   const after = readTable(tr, tableStart);
   tr.setSelection(
     new CellSelection(
-      tr.doc.resolve(tableStart + after.map.positionAt(rect.top, rect.left, after.table)),
       tr.doc.resolve(
-        tableStart + after.map.positionAt(rect.bottom - 1, rect.right - 1, after.table),
+        tableStart + after.map.positionAt(rect.top, rect.left, after.table),
+      ),
+      tr.doc.resolve(
+        tableStart +
+          after.map.positionAt(rect.bottom - 1, rect.right - 1, after.table),
       ),
     ),
   );
@@ -793,7 +928,9 @@ export const pasteTableCells = (
     const $cell = cells ? cellAround(selection.$head) : null;
     if (cells && $cell) {
       const tableStart = $cell.start(-1);
-      const rect = TableMap.get($cell.node(-1)).findCell($cell.pos - tableStart);
+      const rect = TableMap.get($cell.node(-1)).findCell(
+        $cell.pos - tableStart,
+      );
       run = (tr) => insertTableCells(tr, tableStart, rect, cells, hooks);
     }
   }
@@ -802,7 +939,9 @@ export const pasteTableCells = (
   }
   if (dispatch) {
     const tr = run(state.tr);
-    dispatch(tr.scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"));
+    dispatch(
+      tr.scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"),
+    );
   }
   return true;
 };

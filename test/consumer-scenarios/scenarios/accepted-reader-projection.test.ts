@@ -6,9 +6,9 @@ import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   docxToMarkdown,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  parseFolioDocumentOperationBatch,
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
+  parseFolioDocumentOperationBatch,
 } from "@stll/folio-core/server";
 
 import {
@@ -20,8 +20,8 @@ import {
 } from "../support/documents.ts";
 import { parseFlowFile } from "../support/flow-file.ts";
 import { assertReadersAgree } from "../support/invariants.ts";
-import { MARKDOWN_READ_OPTIONS, readAll } from "../support/readers.ts";
 import { capture } from "../support/oracle.ts";
+import { MARKDOWN_READ_OPTIONS, readAll } from "../support/readers.ts";
 
 /** Markup readers retain structural revisions; clean Markdown must match actual acceptance. */
 const assertAcceptedReaders = async (bytes: Uint8Array, label: string) => {
@@ -59,8 +59,18 @@ type InsertionBinding =
 const INSERTION_BINDINGS = {
   "17340089": { type: "paragraph", operationId: "op-insertBeforeBlock" },
   "425BB368": { type: "paragraph", operationId: "op-insertAfterBlock" },
-  "7956AFCA": { type: "tableCell", operationId: "op-insertTable", row: 0, cell: 0 },
-  "5B7407EF": { type: "tableCell", operationId: "op-insertTable", row: 1, cell: 1 },
+  "7956AFCA": {
+    type: "tableCell",
+    operationId: "op-insertTable",
+    row: 0,
+    cell: 0,
+  },
+  "5B7407EF": {
+    type: "tableCell",
+    operationId: "op-insertTable",
+    row: 1,
+    cell: 1,
+  },
 } as const satisfies Record<string, InsertionBinding>;
 type RecordedInsertionId = keyof typeof INSERTION_BINDINGS;
 const isRecordedInsertionId = (id: string): id is RecordedInsertionId =>
@@ -78,7 +88,10 @@ const rebindOperation = ({
 }: RebindOperationOptions): FolioDocumentOperation => {
   const blockId = (recorded: string): string => {
     if (!isRecordedInsertionId(recorded)) {
-      assert.ok(fixtureIds.has(recorded), `Unbound recorded paragraph ID ${recorded}`);
+      assert.ok(
+        fixtureIds.has(recorded),
+        `Unbound recorded paragraph ID ${recorded}`,
+      );
       return recorded;
     }
     const actual = inserted.get(recorded);
@@ -91,7 +104,10 @@ const rebindOperation = ({
     case "formatRange":
       return {
         ...operation,
-        range: { ...operation.range, blockId: blockId(operation.range.blockId) },
+        range: {
+          ...operation.range,
+          blockId: blockId(operation.range.blockId),
+        },
       };
     case "mergeTableCells":
       if (operation.endBlockId !== undefined) {
@@ -122,7 +138,9 @@ const rebindOperation = ({
       return { ...operation, blockId: blockId(operation.blockId) };
     default: {
       const unhandled: never = operation;
-      throw new Error(`Unmapped reader flow operation: ${JSON.stringify(unhandled)}`);
+      throw new Error(
+        `Unmapped reader flow operation: ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };
@@ -138,7 +156,10 @@ const expectedNoop = [
 test("recorded operation matrix seed 201 keeps clean readers consistent through table deletion", async () => {
   const input: unknown = JSON.parse(
     readFileSync(
-      new URL("../support/reader-flows/table-deletion-seed201.json", import.meta.url),
+      new URL(
+        "../support/reader-flows/table-deletion-seed201.json",
+        import.meta.url,
+      ),
       "utf8",
     ),
   );
@@ -166,10 +187,14 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
     // Preserve the original matrix's pre-operation accepted/rejected copies;
     // revision allocation influences the inserted identities later steps name.
     await capture(reviewer, "tracked-changes");
-    const result = reviewer.applyDocumentOperations(rebound, { undefinedReferences: "refuse" });
+    const result = reviewer.applyDocumentOperations(rebound, {
+      undefinedReferences: "refuse",
+    });
     assert.deepEqual(
       result.applied.map(({ id }) => id),
-      index === NOOP_PROPERTIES_STEP ? [] : batch.operations.map(({ id }) => id),
+      index === NOOP_PROPERTIES_STEP
+        ? []
+        : batch.operations.map(({ id }) => id),
       `seed 201 step ${index}: applied operation ids; ${JSON.stringify(result.issues)}`,
     );
     assert.deepEqual(
@@ -178,7 +203,9 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
       `seed 201 step ${index}: recorded refusals`,
     );
     for (const operation of rebound.operations) {
-      const created = reviewer.getContent().filter(({ id }) => !beforeIds.has(id));
+      const created = reviewer
+        .getContent()
+        .filter(({ id }) => !beforeIds.has(id));
       for (const recordedId of Object.keys(INSERTION_BINDINGS)) {
         assert.ok(isRecordedInsertionId(recordedId));
         const binding = INSERTION_BINDINGS[recordedId];
@@ -186,7 +213,8 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
         switch (binding.type) {
           case "paragraph": {
             assert.ok(
-              operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock",
+              operation.type === "insertAfterBlock" ||
+                operation.type === "insertBeforeBlock",
             );
             assert.equal(created.length, 1);
             const paragraph = created.at(0);
@@ -202,26 +230,39 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
               created.length,
               operation.rows.reduce((total, row) => total + row.length, 0),
             );
-            assert.equal(new Set(created.map(({ table }) => table?.tableIndex)).size, 1);
+            assert.equal(
+              new Set(created.map(({ table }) => table?.tableIndex)).size,
+              1,
+            );
             const cells = created.filter(
-              ({ table }) => table?.rowIndex === binding.row && table.cellIndex === binding.cell,
+              ({ table }) =>
+                table?.rowIndex === binding.row &&
+                table.cellIndex === binding.cell,
             );
             assert.equal(cells.length, 1);
             const cell = cells.at(0);
             assert.ok(cell);
-            assert.equal(cell.text, operation.rows.at(binding.row)?.at(binding.cell));
+            assert.equal(
+              cell.text,
+              operation.rows.at(binding.row)?.at(binding.cell),
+            );
             inserted.set(recordedId, cell.id);
             break;
           }
           default: {
             const unhandled: never = binding;
-            throw new Error(`Unknown insertion binding ${JSON.stringify(unhandled)}`);
+            throw new Error(
+              `Unknown insertion binding ${JSON.stringify(unhandled)}`,
+            );
           }
         }
       }
     }
   }
-  await assertAcceptedReaders(new Uint8Array(await reviewer.toBuffer()), "recorded seed 201");
+  await assertAcceptedReaders(
+    new Uint8Array(await reviewer.toBuffer()),
+    "recorded seed 201",
+  );
 });
 
 test("clean readers equal accept-all over paragraph deletion and join positions and style directions", async () => {
@@ -229,7 +270,8 @@ test("clean readers equal accept-all over paragraph deletion and join positions 
     for (const headingPosition of [0, count - 1, -1]) {
       const paragraphs = Array.from(
         { length: count },
-        (_, index) => `${index === headingPosition ? "# " : ""}Clause ${index}.`,
+        (_, index) =>
+          `${index === headingPosition ? "# " : ""}Clause ${index}.`,
       );
       const fixture = await packDocument(fromMarkdown(paragraphs.join("\n\n")));
       for (const type of ["deleteBlock", "mergeBlockWithNext"] as const) {
@@ -275,7 +317,11 @@ test("clean readers resolve table, row, and column deletions in every source pos
     const fixture = await packDocument(
       fromMarkdown(`Before table.\n\n${tableMarkdown}\n\nAfter table.`),
     );
-    for (const type of ["deleteTable", "deleteTableRow", "deleteTableColumn"] as const) {
+    for (const type of [
+      "deleteTable",
+      "deleteTableRow",
+      "deleteTableColumn",
+    ] as const) {
       const probe = await openReviewer(fixture);
       const anchors = probe.getContent().filter(({ table }) => {
         if (!table) return false;
@@ -318,7 +364,9 @@ test("clean readers resolve table, row, and column deletions in every source pos
     for (const order of ["paragraph-first", "table-first"] as const) {
       const reviewer = await openReviewer(fixture);
       const before = reviewer.getContent().at(0);
-      const cell = reviewer.getContent().find(({ table }) => table !== undefined);
+      const cell = reviewer
+        .getContent()
+        .find(({ table }) => table !== undefined);
       assert.ok(before && cell);
       const paragraphDeletion = {
         id: "paragraph",
@@ -361,7 +409,9 @@ test("clean Markdown keeps referenced footnote and endnote trailers through body
       const blocks = reviewer.getContent();
       const position = blocks.findIndex(({ text }) => text.startsWith(prefix));
       assert.ok(position > 0);
-      const block = blocks.at(type === "mergeBlockWithNext" ? position - 1 : position);
+      const block = blocks.at(
+        type === "mergeBlockWithNext" ? position - 1 : position,
+      );
       assert.ok(block);
       const result = reviewer.applyDocumentOperations(
         {
@@ -399,7 +449,11 @@ test("referenced footnote and endnote trailers resolve paragraph joins and table
     { type: "footnote", noteId: 1 },
     { type: "endnote", noteId: 1 },
   ] as const) {
-    for (const type of ["deleteBlock", "mergeBlockWithNext", "deleteTable"] as const) {
+    for (const type of [
+      "deleteBlock",
+      "mergeBlockWithNext",
+      "deleteTable",
+    ] as const) {
       const reviewer = await openReviewer(fixture);
       const snapshot = reviewer.snapshotStory(story);
       assert.ok(snapshot);

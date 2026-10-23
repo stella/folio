@@ -8,7 +8,10 @@
 
 import type { EditorState, Transaction } from "prosemirror-state";
 
-import type { BorderPreset, TableBorderPreset } from "../extensions/nodes/TableExtension";
+import type {
+  BorderPreset,
+  TableBorderPreset,
+} from "../extensions/nodes/TableExtension";
 import type {
   TableBorderCommandSpec,
   TableCellBorderCommandSpec,
@@ -42,48 +45,84 @@ export function insertTable(
 }
 
 // Row operations
-export function addRowAbove(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function addRowAbove(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("addRowAbove")()(state, dispatch);
 }
-export function addRowBelow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function addRowBelow(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("addRowBelow")()(state, dispatch);
 }
-export function deleteRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function deleteRow(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("deleteRow")()(state, dispatch);
 }
 
 // Column operations
-export function addColumnLeft(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function addColumnLeft(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("addColumnLeft")()(state, dispatch);
 }
-export function addColumnRight(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function addColumnRight(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("addColumnRight")()(state, dispatch);
 }
-export function deleteColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function deleteColumn(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("deleteColumn")()(state, dispatch);
 }
 
 // Table deletion
-export function deleteTable(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function deleteTable(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("deleteTable")()(state, dispatch);
 }
 
 // Table selection
-export function selectTable(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function selectTable(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("selectTable")()(state, dispatch);
 }
-export function selectRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function selectRow(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("selectRow")()(state, dispatch);
 }
-export function selectColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function selectColumn(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("selectColumn")()(state, dispatch);
 }
 
 // Merge/Split — delegated to prosemirror-tables via singleton extension manager
-export function mergeCells(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function mergeCells(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("mergeCells")()(state, dispatch);
 }
-export function splitCell(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+export function splitCell(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
   return cmds.requireCommand("splitCell")()(state, dispatch);
 }
 
@@ -128,14 +167,20 @@ export function setOutsideTableBorders(
   dispatch?: (tr: Transaction) => void,
   borderSpec?: TableBorderCommandSpec,
 ): boolean {
-  return cmds.requireCommand("setOutsideTableBorders")(borderSpec)(state, dispatch);
+  return cmds.requireCommand("setOutsideTableBorders")(borderSpec)(
+    state,
+    dispatch,
+  );
 }
 export function setInsideTableBorders(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
   borderSpec?: TableBorderCommandSpec,
 ): boolean {
-  return cmds.requireCommand("setInsideTableBorders")(borderSpec)(state, dispatch);
+  return cmds.requireCommand("setInsideTableBorders")(borderSpec)(
+    state,
+    dispatch,
+  );
 }
 
 // Vertical alignment

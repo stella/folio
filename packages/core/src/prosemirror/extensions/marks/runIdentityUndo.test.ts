@@ -33,8 +33,14 @@ const runIdentityIds = (state: EditorState): unknown[] => {
 
 describe("run identity through undo", () => {
   test("undoing a deletion restores the deleted text's run identity", async () => {
-    const document = await parseShapeDocument(await documentShape("plain-markdown").build());
-    const before = placeSelection(createHarnessState(document, "editing"), "First item", "word");
+    const document = await parseShapeDocument(
+      await documentShape("plain-markdown").build(),
+    );
+    const before = placeSelection(
+      createHarnessState(document, "editing"),
+      "First item",
+      "word",
+    );
     if (!before) {
       throw new Error("the shape has no focus paragraph");
     }
@@ -48,7 +54,9 @@ describe("run identity through undo", () => {
   });
 
   test("redoing typed text does not give it the run it was typed into", async () => {
-    const document = await parseShapeDocument(await documentShape("plain-markdown").build());
+    const document = await parseShapeDocument(
+      await documentShape("plain-markdown").build(),
+    );
     const before = placeSelection(
       createHarnessState(document, "editing"),
       "First item",

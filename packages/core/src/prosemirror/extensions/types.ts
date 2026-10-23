@@ -8,20 +8,24 @@
  * - MarkExtension: adds a mark spec to the schema
  */
 
-import type { Schema, NodeSpec, MarkSpec } from "prosemirror-model";
-import type { Plugin as PMPlugin, Command } from "prosemirror-state";
-import type { TextColorAttrs } from "../schema";
+import type { MarkSpec, NodeSpec, Schema } from "prosemirror-model";
+import type { Command, Plugin as PMPlugin } from "prosemirror-state";
+
 import type {
   BorderStyleValue,
-  ParagraphAlignment,
   LineSpacingRule,
-  TabStop,
+  ParagraphAlignment,
   TabLeader,
+  TabStop,
   TabStopAlignment,
 } from "../../types/document";
 import type { TablePropertiesCommand } from "../../utils/tableOperations";
+import type { TextColorAttrs } from "../schema";
 import type { SectionBreakType } from "../sectionCarrier";
-import type { GenerateTableOfContentsOptions, ResolvedStyleAttrs } from "./core/ParagraphExtension";
+import type {
+  GenerateTableOfContentsOptions,
+  ResolvedStyleAttrs,
+} from "./core/ParagraphExtension";
 import type { BorderPreset, TableBorderPreset } from "./nodes/TableExtension";
 
 /**
@@ -56,14 +60,20 @@ export type { TablePropertiesCommand } from "../../utils/tableOperations";
 export type TableStyleCommand = {
   styleId: string;
   tableBorders?: Partial<
-    Record<"top" | "bottom" | "left" | "right" | "insideH" | "insideV", TableCellBorderCommandSpec>
+    Record<
+      "top" | "bottom" | "left" | "right" | "insideH" | "insideV",
+      TableCellBorderCommandSpec
+    >
   >;
   conditionals?: Record<
     string,
     {
       backgroundColor?: string;
       borders?: Partial<
-        Record<"top" | "bottom" | "left" | "right", TableCellBorderCommandSpec | null>
+        Record<
+          "top" | "bottom" | "left" | "right",
+          TableCellBorderCommandSpec | null
+        >
       >;
       bold?: boolean;
       color?: string;
@@ -155,7 +165,11 @@ export type FolioCommandArguments = {
   clearStyle: [];
   insertSectionBreak: [breakType: SectionBreakType];
   removeSectionBreak: [];
-  addTabStop: [position: number, alignment?: TabStopAlignment, leader?: TabLeader];
+  addTabStop: [
+    position: number,
+    alignment?: TabStopAlignment,
+    leader?: TabLeader,
+  ];
   removeTabStop: [position: number];
   toggleBidi: [];
   setRtl: [];
@@ -202,9 +216,9 @@ export type FolioCommandArguments = {
 };
 
 export type FolioCommandName = keyof FolioCommandArguments;
-export type CommandFactory<Args extends readonly unknown[] = readonly unknown[]> = (
-  ...args: Args
-) => Command;
+export type CommandFactory<
+  Args extends readonly unknown[] = readonly unknown[],
+> = (...args: Args) => Command;
 export type FolioCommandMap = Partial<{
   [Name in FolioCommandName]: CommandFactory<FolioCommandArguments[Name]>;
 }>;
@@ -277,14 +291,21 @@ type ExtensionDefinitionWithDefaults<TOptions extends ExtensionOptions> = {
   onSchemaReady: (ctx: ExtensionContext, options: TOptions) => ExtensionRuntime;
 };
 
-type ExtensionDefinitionWithoutDefaults<TOptions extends ExtensionOptions = ExtensionOptions> = {
+type ExtensionDefinitionWithoutDefaults<
+  TOptions extends ExtensionOptions = ExtensionOptions,
+> = {
   name: string;
   priority?: ExtensionPriority;
   defaultOptions?: undefined;
-  onSchemaReady: (ctx: ExtensionContext, options: Partial<TOptions>) => ExtensionRuntime;
+  onSchemaReady: (
+    ctx: ExtensionContext,
+    options: Partial<TOptions>,
+  ) => ExtensionRuntime;
 };
 
-export type ExtensionDefinition<TOptions extends ExtensionOptions = ExtensionOptions> =
+export type ExtensionDefinition<
+  TOptions extends ExtensionOptions = ExtensionOptions,
+> =
   | ExtensionDefinitionWithDefaults<TOptions>
   | ExtensionDefinitionWithoutDefaults<TOptions>;
 
@@ -294,20 +315,29 @@ type NodeExtensionDefinitionWithDefaults<TOptions extends ExtensionOptions> = {
   defaultOptions: TOptions;
   schemaNodeName: string;
   nodeSpec: NodeSpec | ((options: TOptions) => NodeSpec);
-  onSchemaReady?: (ctx: ExtensionContext, options: TOptions) => ExtensionRuntime;
+  onSchemaReady?: (
+    ctx: ExtensionContext,
+    options: TOptions,
+  ) => ExtensionRuntime;
 };
 
-type NodeExtensionDefinitionWithoutDefaults<TOptions extends ExtensionOptions = ExtensionOptions> =
-  {
-    name: string;
-    priority?: ExtensionPriority;
-    defaultOptions?: undefined;
-    schemaNodeName: string;
-    nodeSpec: NodeSpec | ((options: Partial<TOptions>) => NodeSpec);
-    onSchemaReady?: (ctx: ExtensionContext, options: Partial<TOptions>) => ExtensionRuntime;
-  };
+type NodeExtensionDefinitionWithoutDefaults<
+  TOptions extends ExtensionOptions = ExtensionOptions,
+> = {
+  name: string;
+  priority?: ExtensionPriority;
+  defaultOptions?: undefined;
+  schemaNodeName: string;
+  nodeSpec: NodeSpec | ((options: Partial<TOptions>) => NodeSpec);
+  onSchemaReady?: (
+    ctx: ExtensionContext,
+    options: Partial<TOptions>,
+  ) => ExtensionRuntime;
+};
 
-export type NodeExtensionDefinition<TOptions extends ExtensionOptions = ExtensionOptions> =
+export type NodeExtensionDefinition<
+  TOptions extends ExtensionOptions = ExtensionOptions,
+> =
   | NodeExtensionDefinitionWithDefaults<TOptions>
   | NodeExtensionDefinitionWithoutDefaults<TOptions>;
 
@@ -317,19 +347,28 @@ type MarkExtensionDefinitionWithDefaults<TOptions extends ExtensionOptions> = {
   defaultOptions: TOptions;
   schemaMarkName: string;
   markSpec: MarkSpec | ((options: TOptions) => MarkSpec);
-  onSchemaReady?: (ctx: ExtensionContext, options: TOptions) => ExtensionRuntime;
+  onSchemaReady?: (
+    ctx: ExtensionContext,
+    options: TOptions,
+  ) => ExtensionRuntime;
 };
 
-type MarkExtensionDefinitionWithoutDefaults<TOptions extends ExtensionOptions = ExtensionOptions> =
-  {
-    name: string;
-    priority?: ExtensionPriority;
-    defaultOptions?: undefined;
-    schemaMarkName: string;
-    markSpec: MarkSpec | ((options: Partial<TOptions>) => MarkSpec);
-    onSchemaReady?: (ctx: ExtensionContext, options: Partial<TOptions>) => ExtensionRuntime;
-  };
+type MarkExtensionDefinitionWithoutDefaults<
+  TOptions extends ExtensionOptions = ExtensionOptions,
+> = {
+  name: string;
+  priority?: ExtensionPriority;
+  defaultOptions?: undefined;
+  schemaMarkName: string;
+  markSpec: MarkSpec | ((options: Partial<TOptions>) => MarkSpec);
+  onSchemaReady?: (
+    ctx: ExtensionContext,
+    options: Partial<TOptions>,
+  ) => ExtensionRuntime;
+};
 
-export type MarkExtensionDefinition<TOptions extends ExtensionOptions = ExtensionOptions> =
+export type MarkExtensionDefinition<
+  TOptions extends ExtensionOptions = ExtensionOptions,
+> =
   | MarkExtensionDefinitionWithDefaults<TOptions>
   | MarkExtensionDefinitionWithoutDefaults<TOptions>;

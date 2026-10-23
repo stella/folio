@@ -44,8 +44,14 @@
       "test": "consumer flow trackedChanges / direct",
       "message": "\"Fees\": kind is \"paragraph\", expected \"heading\""
     },
-    { "test": "consumer flow lists / suggested", "message": "step 5: no comment" },
-    { "test": "consumer flow styleNumbered / direct", "message": "step 11: no comment" },
+    {
+      "test": "consumer flow lists / suggested",
+      "message": "step 5: no comment"
+    },
+    {
+      "test": "consumer flow styleNumbered / direct",
+      "message": "step 11: no comment"
+    },
     {
       "test": "consumer flow tables / tracked-changes",
       "message": "docxToMarkdown vs getContent()"
@@ -115,7 +121,12 @@
     {
       "number": 1452,
       "title": "Consumer flow: docxToMarkdown vs getContent()",
-      "signature": ["consumer-flow", "tables", "tracked-changes", "docxToMarkdown vs getContent()"]
+      "signature": [
+        "consumer-flow",
+        "tables",
+        "tracked-changes",
+        "docxToMarkdown vs getContent()"
+      ]
     },
     {
       "number": 1453,
@@ -220,7 +231,12 @@
     {
       "number": 1464,
       "title": "Consumer flow: Numbering provenance missing for <id>",
-      "signature": ["consumer-flow", "tables", "suggested", "Numbering provenance missing for <id>"]
+      "signature": [
+        "consumer-flow",
+        "tables",
+        "suggested",
+        "Numbering provenance missing for <id>"
+      ]
     },
     {
       "number": 1465,

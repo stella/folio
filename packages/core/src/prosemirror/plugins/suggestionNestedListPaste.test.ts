@@ -1,10 +1,13 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import fc from "fast-check";
 import { DOMParser } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { shapeArrayBuffer } from "../../__tests__/documentShapes";
 import {
   createHarnessPlugins,
@@ -33,7 +36,12 @@ type PasteAndJoinOptions = {
   direction: "backward" | "forward";
 };
 
-const pasteAndJoin = ({ state, caret, html, direction }: PasteAndJoinOptions) => {
+const pasteAndJoin = ({
+  state,
+  caret,
+  html,
+  direction,
+}: PasteAndJoinOptions) => {
   const view = new HeadlessEditorView(
     state.apply(state.tr.setSelection(TextSelection.create(state.doc, caret))),
   );
@@ -56,7 +64,9 @@ const pasteAndJoin = ({ state, caret, html, direction }: PasteAndJoinOptions) =>
 test(
   "retracting pasted list breaks preserves acceptance and rejection for paragraph properties",
   async () => {
-    const base = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("mixed-lists")));
+    const base = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer("mixed-lists")),
+    );
     const initial = createHarnessState(base, "editing");
     const initialAttrs = expectParagraphAttrs(initial.doc.child(0));
     await assertProperty(
@@ -92,12 +102,16 @@ test(
               ...initialAttrs._originalFormatting,
               alignment,
               indentLeft,
-              indentFirstLine: hangingIndent ? -indentFirstLine : indentFirstLine,
+              indentFirstLine: hangingIndent
+                ? -indentFirstLine
+                : indentFirstLine,
               hangingIndent,
               spaceAfter,
             },
           } as const satisfies ParagraphAttrs;
-          const before = initial.apply(initial.tr.setNodeMarkup(0, undefined, paragraphAttrs));
+          const before = initial.apply(
+            initial.tr.setNodeMarkup(0, undefined, paragraphAttrs),
+          );
           const options = { caret, html: nestedListHtml(kind), direction };
           const edited = pasteAndJoin({ state: before, ...options });
           const tracked = pasteAndJoin({
@@ -126,11 +140,20 @@ test(
 );
 
 test("nested list paste and backspace rejects to the original paragraph after DOCX reopen", async () => {
-  const base = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("mixed-lists")));
+  const base = await parseShapeDocument(
+    new Uint8Array(await shapeArrayBuffer("mixed-lists")),
+  );
   const baseline = createHarnessState(base, "editing");
-  const options = { caret: 1, html: nestedListHtml("ul"), direction: "backward" } as const;
+  const options = {
+    caret: 1,
+    html: nestedListHtml("ul"),
+    direction: "backward",
+  } as const;
   const edited = pasteAndJoin({ state: baseline, ...options });
-  const tracked = pasteAndJoin({ state: createHarnessState(base, "suggesting"), ...options });
+  const tracked = pasteAndJoin({
+    state: createHarnessState(base, "suggesting"),
+    ...options,
+  });
   const { bytes } = await saveHarnessState(tracked, base);
   const accepting = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
   accepting.acceptAll();
@@ -149,13 +172,17 @@ test("nested list paste and backspace rejects to the original paragraph after DO
 });
 
 test("retracting a pasted break preserves the following paragraph's independent closing revision", async () => {
-  const base = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("mixed-lists")));
+  const base = await parseShapeDocument(
+    new Uint8Array(await shapeArrayBuffer("mixed-lists")),
+  );
   const initial = createHarnessState(base, "suggesting");
   const originalMark = {
     kind: "del",
     info: { id: 901, author: "Previous", date: "2026-01-01T00:00:00Z" },
   } as const;
-  const before = initial.apply(initial.tr.setNodeAttribute(0, "pPrMark", originalMark));
+  const before = initial.apply(
+    initial.tr.setNodeAttribute(0, "pPrMark", originalMark),
+  );
   const after = pasteAndJoin({
     state: before,
     caret: 1,

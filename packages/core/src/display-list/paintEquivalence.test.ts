@@ -15,9 +15,8 @@
  * not import from `scripts/`, and does not.
  */
 
-import { inflateSync } from "node:zlib";
-
 import { describe, expect, test } from "bun:test";
+import { inflateSync } from "node:zlib";
 
 import { layoutDocument } from "../layout-engine/index";
 import {
@@ -25,7 +24,11 @@ import {
   withFakeTextMeasure,
 } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import { measureBlocks } from "../layout-engine/measure/measureBlocks";
-import type { FlowBlock, LayoutOptions, PageMargins } from "../layout-engine/types";
+import type {
+  FlowBlock,
+  LayoutOptions,
+  PageMargins,
+} from "../layout-engine/types";
 import type { BlockLookup } from "../layout-painter/index";
 import { POINTS_PER_PIXEL } from "../pdf/pageSpace";
 import type { PdfFontSource } from "../pdf/writePdf";
@@ -99,7 +102,8 @@ const createStubElement = (tagName: string): StubElement => {
 
 // SAFETY: the backend calls `createElement` and then touches only the
 // properties StubElement declares; nothing here reaches the rest of the DOM.
-const stubDocument = () => ({ createElement: createStubElement }) as unknown as Document;
+const stubDocument = () =>
+  ({ createElement: createStubElement }) as unknown as Document;
 
 // SAFETY: every element compared here came from `stubDocument()`.
 const asStub = (element: HTMLElement) => element as unknown as StubElement;
@@ -111,7 +115,8 @@ const renderToStubs = (list: DisplayList): StubElement[] =>
 // Reading the PDF back
 // ---------------------------------------------------------------------------
 
-const latin1 = (bytes: Uint8Array): string => new TextDecoder("latin1").decode(bytes);
+const latin1 = (bytes: Uint8Array): string =>
+  new TextDecoder("latin1").decode(bytes);
 
 /**
  * Every text stream in the file, decompressed. An image or font-program
@@ -128,8 +133,14 @@ const textStreams = (bytes: Uint8Array): readonly string[] => {
   while (match !== null) {
     const [, dict = "", length = "0"] = match;
     const start = match.index + match[0].length;
-    if (dict.includes("/FlateDecode") && !dict.includes("/Subtype") && !dict.includes("/Length1")) {
-      out.push(latin1(inflateSync(bytes.subarray(start, start + Number(length)))));
+    if (
+      dict.includes("/FlateDecode") &&
+      !dict.includes("/Subtype") &&
+      !dict.includes("/Length1")
+    ) {
+      out.push(
+        latin1(inflateSync(bytes.subarray(start, start + Number(length)))),
+      );
     }
     match = pattern.exec(text);
   }
@@ -145,10 +156,12 @@ type PageBoxPt = { readonly widthPt: number; readonly heightPt: number };
 
 const mediaBoxes = (bytes: Uint8Array): readonly PageBoxPt[] => {
   const pattern = /\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g;
-  return [...latin1(bytes).matchAll(pattern)].map(([, width = "0", height = "0"]) => ({
-    widthPt: Number(width),
-    heightPt: Number(height),
-  }));
+  return [...latin1(bytes).matchAll(pattern)].map(
+    ([, width = "0", height = "0"]) => ({
+      widthPt: Number(width),
+      heightPt: Number(height),
+    }),
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -278,7 +291,10 @@ const listOf = (pages: readonly DisplayPage[]): DisplayList => ({
 });
 
 const write = async (list: DisplayList) => {
-  const result = await writePdf(list, { fonts: NO_FONTS, timestamp: TIMESTAMP });
+  const result = await writePdf(list, {
+    fonts: NO_FONTS,
+    timestamp: TIMESTAMP,
+  });
   if (result.isErr()) {
     throw result.error;
   }
@@ -286,9 +302,9 @@ const write = async (list: DisplayList) => {
 };
 
 describe("both backends cover every primitive kind", async () => {
-  const emptyPageStreamLength = contentStreams((await write(listOf([pageWith([])]))).bytes).at(
-    0,
-  )?.length;
+  const emptyPageStreamLength = contentStreams(
+    (await write(listOf([pageWith([])]))).bytes,
+  ).at(0)?.length;
 
   test("the empty page establishes a floor for the coverage comparison", () => {
     expect(emptyPageStreamLength).toBeGreaterThan(0);
@@ -309,9 +325,10 @@ describe("both backends cover every primitive kind", async () => {
         stream.length,
         `the PDF backend emitted no content stream for ${kind}`,
       ).toBeGreaterThan(0);
-      expect(stream.length, `the PDF backend added no marks for ${kind}`).toBeGreaterThan(
-        emptyPageStreamLength ?? 0,
-      );
+      expect(
+        stream.length,
+        `the PDF backend added no marks for ${kind}`,
+      ).toBeGreaterThan(emptyPageStreamLength ?? 0);
     });
   }
 });
@@ -333,7 +350,9 @@ describe("one display list, two backends", () => {
 
   test("both backends emit one page per display page", async () => {
     expect(renderToStubs(list)).toHaveLength(list.pages.length);
-    expect(mediaBoxes((await write(list)).bytes)).toHaveLength(list.pages.length);
+    expect(mediaBoxes((await write(list)).bytes)).toHaveLength(
+      list.pages.length,
+    );
   });
 
   test("both backends give each page the box the display list states", async () => {
@@ -345,15 +364,23 @@ describe("one display list, two backends", () => {
       expect(dom?.style["width"]).toBe(`${page.widthPx}px`);
       expect(dom?.style["height"]).toBe(`${page.heightPx}px`);
       // PDF's unit is the point, so the same box arrives scaled, not different.
-      expect(boxes.at(index)?.widthPt).toBeCloseTo(page.widthPx * POINTS_PER_PIXEL, 6);
-      expect(boxes.at(index)?.heightPt).toBeCloseTo(page.heightPx * POINTS_PER_PIXEL, 6);
+      expect(boxes.at(index)?.widthPt).toBeCloseTo(
+        page.widthPx * POINTS_PER_PIXEL,
+        6,
+      );
+      expect(boxes.at(index)?.heightPt).toBeCloseTo(
+        page.heightPx * POINTS_PER_PIXEL,
+        6,
+      );
     }
   });
 });
 
 describe("determinism", () => {
   test("writePdf twice over one list and timestamp is byte-identical", async () => {
-    const list = listOf([pageWith(DISPLAY_PRIMITIVE_KINDS.map((kind) => PRIMITIVE_SAMPLES[kind]))]);
+    const list = listOf([
+      pageWith(DISPLAY_PRIMITIVE_KINDS.map((kind) => PRIMITIVE_SAMPLES[kind])),
+    ]);
 
     const first = (await write(list)).bytes;
     const second = (await write(list)).bytes;
@@ -365,7 +392,10 @@ describe("determinism", () => {
   const CHAR_WIDTH_PX = 5;
   const PAGE_SIZE = { w: PAGE_WIDTH_PX, h: PAGE_HEIGHT_PX };
   const MARGINS: PageMargins = { top: 96, right: 96, bottom: 96, left: 96 };
-  const LAYOUT_OPTIONS: LayoutOptions = { pageSize: PAGE_SIZE, margins: MARGINS };
+  const LAYOUT_OPTIONS: LayoutOptions = {
+    pageSize: PAGE_SIZE,
+    margins: MARGINS,
+  };
 
   const paragraph = (id: string, text: string): FlowBlock => ({
     kind: "paragraph",
@@ -376,18 +406,34 @@ describe("determinism", () => {
   test("buildDisplayList twice over one layout is deeply equal", () => {
     withFakeTextMeasure(
       () => {
-        const blocks = [paragraph("a", "Hello display list"), paragraph("b", "Second paragraph")];
-        const measures = measureBlocks(blocks, PAGE_SIZE.w - MARGINS.left - MARGINS.right);
+        const blocks = [
+          paragraph("a", "Hello display list"),
+          paragraph("b", "Second paragraph"),
+        ];
+        const measures = measureBlocks(
+          blocks,
+          PAGE_SIZE.w - MARGINS.left - MARGINS.right,
+        );
         const blockLookup: BlockLookup = new Map(
           blocks.flatMap((block, index) => {
             const measure = measures.at(index);
-            return measure === undefined ? [] : [[String(block.id), { block, measure }] as const];
+            return measure === undefined
+              ? []
+              : [[String(block.id), { block, measure }] as const];
           }),
         );
         const layout = layoutDocument(blocks, measures, LAYOUT_OPTIONS);
 
-        const first = buildDisplayList({ layout, blockLookup, pageBackground: WHITE });
-        const second = buildDisplayList({ layout, blockLookup, pageBackground: WHITE });
+        const first = buildDisplayList({
+          layout,
+          blockLookup,
+          pageBackground: WHITE,
+        });
+        const second = buildDisplayList({
+          layout,
+          blockLookup,
+          pageBackground: WHITE,
+        });
 
         expect(first).toEqual(second);
       },

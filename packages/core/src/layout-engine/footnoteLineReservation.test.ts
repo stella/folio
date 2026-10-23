@@ -6,12 +6,12 @@ import type {
   FlowBlock,
   LayoutOptions,
   Measure,
+  PageMargins,
   ParagraphBlock,
   ParagraphMeasure,
-  PageMargins,
-  TextRun,
   TableBlock,
   TableMeasure,
+  TextRun,
 } from "./types";
 
 // Each body line carrying a footnote ref reserves space for that fn's
@@ -26,7 +26,10 @@ function makePara(
   lineCount: number,
   lineHeight: number,
   fromRunPerLine: number[] = Array.from({ length: lineCount }, () => 0),
-  toRunPerLine: number[] = Array.from({ length: lineCount }, () => runs.length - 1),
+  toRunPerLine: number[] = Array.from(
+    { length: lineCount },
+    () => runs.length - 1,
+  ),
 ): { block: ParagraphBlock; measure: ParagraphMeasure } {
   const block: ParagraphBlock = {
     kind: "paragraph",
@@ -54,7 +57,11 @@ function makePara(
   return { block, measure };
 }
 
-function textRun(pmStart: number, text: string, footnoteRefId?: number): TextRun {
+function textRun(
+  pmStart: number,
+  text: string,
+  footnoteRefId?: number,
+): TextRun {
   const run: TextRun = {
     kind: "text",
     text,
@@ -107,7 +114,13 @@ describe("footnote line-level reservation", () => {
     const table: TableBlock = {
       kind: "table",
       id: "table",
-      rows: [{ id: "row", hidden: true, cells: [{ id: "cell", blocks: [paragraph] }] }],
+      rows: [
+        {
+          id: "row",
+          hidden: true,
+          cells: [{ id: "cell", blocks: [paragraph] }],
+        },
+      ],
     };
     const tableMeasure: TableMeasure = {
       kind: "table",
@@ -153,16 +166,24 @@ describe("footnote line-level reservation", () => {
       totalHeight: 20,
     };
 
-    const layout = layoutDocument([paragraph, table], [paragraphMeasure, tableMeasure], {
-      pageSize: { w: 600, h: 60 },
-      margins: MARGINS,
-      pageGap: 0,
-      footnoteHeightById: new Map([[9, 30]]),
-    });
+    const layout = layoutDocument(
+      [paragraph, table],
+      [paragraphMeasure, tableMeasure],
+      {
+        pageSize: { w: 600, h: 60 },
+        margins: MARGINS,
+        pageGap: 0,
+        footnoteHeightById: new Map([[9, 30]]),
+      },
+    );
 
     expect(layout.pages[0]!.footnoteIds).toBeUndefined();
     expect(layout.pages[1]!.footnoteIds).toEqual([9]);
-    expect(layout.pages[1]!.fragments.some((fragment) => fragment.blockId === "table")).toBe(true);
+    expect(
+      layout.pages[1]!.fragments.some(
+        (fragment) => fragment.blockId === "table",
+      ),
+    ).toBe(true);
   });
 
   test("page reserves fn-content space for each line carrying a fn ref", () => {
@@ -193,7 +214,9 @@ describe("footnote line-level reservation", () => {
 
     // All 5 lines must be on page 1 (50 px body + 30 px fn = 80 px ≤ 100).
     const page1 = layout.pages[0]!;
-    const para = page1.fragments.find((f) => f.kind === "paragraph" && f.blockId === 0);
+    const para = page1.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 0,
+    );
     expect(para).toBeDefined();
     expect(page1.footnoteReservedHeight).toBeGreaterThanOrEqual(30);
   });
@@ -256,7 +279,8 @@ describe("footnote line-level reservation", () => {
     );
 
     const page = layout.pages[0]!;
-    const bodyBottom = page.size.h - page.margins.bottom - (page.footnoteReservedHeight ?? 0);
+    const bodyBottom =
+      page.size.h - page.margins.bottom - (page.footnoteReservedHeight ?? 0);
     expect(page.footnoteIds).toEqual([7]);
     expect(page.footnoteReservedHeight).toBe(10 + FOOTNOTE_SEPARATOR_HEIGHT);
     for (const fragment of page.fragments) {
@@ -265,7 +289,12 @@ describe("footnote line-level reservation", () => {
   });
 
   test("drops a retry floor when its footnote moves to a later page", () => {
-    const { block: body, measure: bodyMeasure } = makePara(0, [textRun(1, "body")], 15, 10);
+    const { block: body, measure: bodyMeasure } = makePara(
+      0,
+      [textRun(1, "body")],
+      15,
+      10,
+    );
     const { block: reference, measure: referenceMeasure } = makePara(
       1,
       [textRun(20, "1", 7)],
@@ -273,13 +302,17 @@ describe("footnote line-level reservation", () => {
       10,
     );
 
-    const layout = layoutDocument([body, reference], [bodyMeasure, referenceMeasure], {
-      pageSize: { w: 600, h: 100 },
-      margins: MARGINS,
-      pageGap: 0,
-      columns: { count: 2, gap: 20 },
-      footnoteHeightById: new Map([[7, 10]]),
-    });
+    const layout = layoutDocument(
+      [body, reference],
+      [bodyMeasure, referenceMeasure],
+      {
+        pageSize: { w: 600, h: 100 },
+        margins: MARGINS,
+        pageGap: 0,
+        columns: { count: 2, gap: 20 },
+        footnoteHeightById: new Map([[7, 10]]),
+      },
+    );
 
     expect(layout.pages[0]!.footnoteIds ?? []).toEqual([]);
     expect(layout.pages[0]!.footnoteReservedHeight).toBeUndefined();

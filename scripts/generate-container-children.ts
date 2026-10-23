@@ -23,10 +23,9 @@
  *   bun scripts/generate-container-children.ts check
  */
 
+import { TaggedError } from "better-result";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 
 import { DISPATCHED_CONTAINERS } from "./lib/container-survival/dispatchedContainers";
 import {
@@ -39,7 +38,10 @@ import {
 } from "./lib/container-survival/schemaSpace";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/core/src/docx/containerChildren.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/core/src/docx/containerChildren.gen.ts",
+);
 /**
  * Sequence rows live in the lower package because both packages write
  * `w:rPr`, while `@stll/docx-core` cannot import `@stll/folio-core`.
@@ -49,7 +51,9 @@ const SEQUENCE_OUTPUT_PATH = path.join(
   "packages/docx-core/src/schema/sequenceChildren.gen.ts",
 );
 
-class GenerateContainerChildrenError extends TaggedError("GenerateContainerChildrenError")<{
+class GenerateContainerChildrenError extends TaggedError(
+  "GenerateContainerChildrenError",
+)<{
   message: string;
 }> {}
 
@@ -93,7 +97,11 @@ const sequenceHeader = `/**
  * the sequence is the list itself; the check the generator makes is that two
  * members never disagree about it.
  */
-const declaredChildren = (space: ContainerSpace, element: string, type: string): string[] => {
+const declaredChildren = (
+  space: ContainerSpace,
+  element: string,
+  type: string,
+): string[] => {
   const memberKey = containerKey({
     element: { namespace: WML_NAMESPACE, name: element },
     typeQName: qualify({ namespace: WML_NAMESPACE, name: type }),
@@ -116,7 +124,11 @@ const declaredChildren = (space: ContainerSpace, element: string, type: string):
  * sequence contains a nested choice. Binding the two derivations here keeps a
  * writer's ordinal table total over exactly the same children as the census.
  */
-const sequencedChildren = (space: ContainerSpace, element: string, type: string): string[] => {
+const sequencedChildren = (
+  space: ContainerSpace,
+  element: string,
+  type: string,
+): string[] => {
   const ordered = declaredSequence(
     space.index,
     `complexType:${qualify({ namespace: WML_NAMESPACE, name: type })}`,
@@ -125,7 +137,10 @@ const sequencedChildren = (space: ContainerSpace, element: string, type: string)
     .map(({ child }) => child.name);
   const declared = declaredChildren(space, element, type);
   const orderedSet = new Set(ordered);
-  if (ordered.length !== declared.length || declared.some((name) => !orderedSet.has(name))) {
+  if (
+    ordered.length !== declared.length ||
+    declared.some((name) => !orderedSet.has(name))
+  ) {
     throw new GenerateContainerChildrenError({
       message:
         `container w:${element}|${type} sequences a different child set than the census reads ` +
@@ -146,7 +161,10 @@ const sequencedChildren = (space: ContainerSpace, element: string, type: string)
  * merged one would write markup a consumer refuses; that is a generator
  * failure rather than a choice to make here.
  */
-const mergedSequence = (key: string, sequences: readonly (readonly string[])[]): string[] => {
+const mergedSequence = (
+  key: string,
+  sequences: readonly (readonly string[])[],
+): string[] => {
   const merged = [...(sequences.at(0) ?? [])];
   for (const sequence of sequences.slice(1)) {
     let at = 0;
@@ -181,7 +199,9 @@ const render = async (): Promise<GeneratedFile[]> => {
 
   for (const { key, members, sequence } of DISPATCHED_CONTAINERS) {
     const read = sequence ? sequencedChildren : declaredChildren;
-    const perMember = members.map(([element, type]) => read(space, element, type));
+    const perMember = members.map(([element, type]) =>
+      read(space, element, type),
+    );
     const names = sequence
       ? mergedSequence(key, perMember)
       : [...new Set(perMember.flat())].toSorted();

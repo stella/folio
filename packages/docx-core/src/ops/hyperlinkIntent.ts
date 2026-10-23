@@ -1,20 +1,37 @@
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
+
 import { sanitizeExternalUrl } from "../markdown/href";
-import type { Document, Hyperlink, ParagraphContent, Run } from "../model/document";
+import type {
+  Document,
+  Hyperlink,
+  ParagraphContent,
+  Run,
+} from "../model/document";
 import { applyDocumentOps } from "./apply";
 import type { EditorIntentMode } from "./editorIntent";
+import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
+import { idKey } from "./ids";
 import { asParagraphContent, partitionContent } from "./leaves";
 import { paragraphLength } from "./offsets";
-import { idKey } from "./ids";
 import { selectedParagraphRuns } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type TextPosition } from "./types";
 
 export type HyperlinkEditorIntent =
-  | { type: "setHyperlink"; from: TextPosition; to: TextPosition; href: string; tooltip?: string }
-  | { type: "removeHyperlink"; from: TextPosition; to: TextPosition; hyperlinkStyleId?: string }
+  | {
+      type: "setHyperlink";
+      from: TextPosition;
+      to: TextPosition;
+      href: string;
+      tooltip?: string;
+    }
+  | {
+      type: "removeHyperlink";
+      from: TextPosition;
+      to: TextPosition;
+      hyperlinkStyleId?: string;
+    }
   | {
       type: "insertHyperlink";
       from: TextPosition;
@@ -28,7 +45,13 @@ const refuse = (
   message: string,
   reason: DocumentOpRefusal["reason"] = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
 ) =>
-  Result.err(new DocumentOpRefusal({ message, reason, opType: DOCUMENT_OP_TYPES.REPLACE_INLINE }));
+  Result.err(
+    new DocumentOpRefusal({
+      message,
+      reason,
+      opType: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+    }),
+  );
 
 /** Cutting these records cannot duplicate review identities or unmodeled wrappers. */
 const editable = (items: readonly ParagraphContent[]): boolean =>
@@ -57,7 +80,8 @@ const styledRun = (
   if (intent.type === "setHyperlink") delete formatting.color;
   else if (
     formatting.styleId === HYPERLINK_STYLE_ID ||
-    (intent.hyperlinkStyleId !== undefined && formatting.styleId === intent.hyperlinkStyleId)
+    (intent.hyperlinkStyleId !== undefined &&
+      formatting.styleId === intent.hyperlinkStyleId)
   )
     delete formatting.styleId;
   if (structurallyEqual(formatting, run.formatting)) return run;
@@ -76,7 +100,9 @@ const linkedChildren = (
   for (const item of items) {
     switch (item.type) {
       case "run":
-        children.push(intent.type === "setHyperlink" ? styledRun(item, intent) : item);
+        children.push(
+          intent.type === "setHyperlink" ? styledRun(item, intent) : item,
+        );
         break;
       case "bookmarkStart":
       case "bookmarkEnd":
@@ -93,7 +119,9 @@ const linkedChildren = (
         }
         break;
       default:
-        return panic("Validated hyperlink edit contains an unsupported inline node.");
+        return panic(
+          "Validated hyperlink edit contains an unsupported inline node.",
+        );
     }
   }
   return children;
@@ -138,16 +166,30 @@ type CompileHyperlinkIntentOptions = {
   compileEmptyReplacement: (
     document: Document,
     range: Pick<HyperlinkEditorIntent, "from" | "to">,
-  ) => Result<{ ops: DocumentOp[]; selection: TextPosition }, DocumentOpRefusal>;
+  ) => Result<
+    { ops: DocumentOp[]; selection: TextPosition },
+    DocumentOpRefusal
+  >;
 };
 
 /** Wrapper edits compile to exact-inverse content ops, never to a projection snapshot. */
 export const compileHyperlinkIntent = (
   document: Document,
-  { intent: sourceIntent, mode, compileEmptyReplacement }: CompileHyperlinkIntentOptions,
-): Result<{ ops: DocumentOp[]; selection: TextPosition }, DocumentOpRefusal> => {
+  {
+    intent: sourceIntent,
+    mode,
+    compileEmptyReplacement,
+  }: CompileHyperlinkIntentOptions,
+): Result<
+  { ops: DocumentOp[]; selection: TextPosition },
+  DocumentOpRefusal
+> => {
   let intent = sourceIntent;
-  if (intent.type !== "removeHyperlink" && intent.href !== "" && !intent.href.startsWith("#")) {
+  if (
+    intent.type !== "removeHyperlink" &&
+    intent.href !== "" &&
+    !intent.href.startsWith("#")
+  ) {
     const href = sanitizeExternalUrl(intent.href);
     if (href === undefined)
       return refuse(
@@ -173,23 +215,34 @@ export const compileHyperlinkIntent = (
     const to =
       idKey(blockId) === idKey(intent.to.blockId)
         ? intent.to
-        : { story: intent.to.story, blockId, offset: paragraphLength(paragraph) };
-    const start = resolveGap({ paragraph, position: from, fallback: "insertion" });
-    if (typeof start !== "object") return refuse("Invalid hyperlink range start.", start);
+        : {
+            story: intent.to.story,
+            blockId,
+            offset: paragraphLength(paragraph),
+          };
+    const start = resolveGap({
+      paragraph,
+      position: from,
+      fallback: "insertion",
+    });
+    if (typeof start !== "object")
+      return refuse("Invalid hyperlink range start.", start);
     const end = resolveGap({ paragraph, position: to, fallback: "insertion" });
-    if (typeof end !== "object") return refuse("Invalid hyperlink range end.", end);
+    if (typeof end !== "object")
+      return refuse("Invalid hyperlink range end.", end);
     if (
       start.offset > end.offset ||
-      (start.offset === end.offset && start.zeroWidthBefore > end.zeroWidthBefore)
+      (start.offset === end.offset &&
+        start.zeroWidthBefore > end.zeroWidthBefore)
     )
       return refuse(
         "Hyperlink range endpoints are reversed.",
         DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET,
       );
-    const [before = [], middle = [], after = []] = partitionContent(paragraph.content, [
-      start,
-      end,
-    ]);
+    const [before = [], middle = [], after = []] = partitionContent(
+      paragraph.content,
+      [start, end],
+    );
     pieces.push({
       paragraph,
       from,
@@ -202,14 +255,24 @@ export const compileHyperlinkIntent = (
   // The serializer rejects resolutionJoins repartitioned across hyperlink wrappers.
   // Preserve exact review provenance by refusing before any operation is published.
   if (mode.type === "suggesting")
-    return refuse("Hyperlink suggestions require serializable wrapper review provenance.");
+    return refuse(
+      "Hyperlink suggestions require serializable wrapper review provenance.",
+    );
   if (intent.type === "insertHyperlink") {
     if (intent.text === "")
-      return refuse("A hyperlink insertion needs text.", DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT);
+      return refuse(
+        "A hyperlink insertion needs text.",
+        DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
+      );
     const content = [
-      hyperlink(intent, [{ type: "run", content: [{ type: "text", text: intent.text }] }]),
+      hyperlink(intent, [
+        { type: "run", content: [{ type: "text", text: intent.text }] },
+      ]),
     ];
-    const deletion = compileEmptyReplacement(document, { from: intent.from, to: intent.to });
+    const deletion = compileEmptyReplacement(document, {
+      from: intent.from,
+      to: intent.to,
+    });
     if (deletion.isErr()) return deletion;
     const applied = applyDocumentOps(document, deletion.value.ops);
     if (applied.isErr()) return Result.err(applied.error);
@@ -219,9 +282,15 @@ export const compileHyperlinkIntent = (
     const paragraph = target.value.at(0)?.at(0)?.paragraph;
     if (!paragraph) return refuse("Hyperlink insertion lost its paragraph.");
     const gap = resolveGap({ paragraph, position: at, fallback: "insertion" });
-    if (typeof gap !== "object") return refuse("Invalid hyperlink insertion gap.", gap);
-    const [before = [], after = []] = partitionContent(paragraph.content, [gap]);
-    const replacement = asParagraphContent(before).concat(content, asParagraphContent(after));
+    if (typeof gap !== "object")
+      return refuse("Invalid hyperlink insertion gap.", gap);
+    const [before = [], after = []] = partitionContent(paragraph.content, [
+      gap,
+    ]);
+    const replacement = asParagraphContent(before).concat(
+      content,
+      asParagraphContent(after),
+    );
     return Result.ok({
       ops: deletion.value.ops.concat([
         {
@@ -232,7 +301,11 @@ export const compileHyperlinkIntent = (
           content: replacement,
         },
       ]),
-      selection: { ...at, offset: at.offset + intent.text.length, zeroWidthBefore: 0 },
+      selection: {
+        ...at,
+        offset: at.offset + intent.text.length,
+        zeroWidthBefore: 0,
+      },
     });
   }
   const ops: DocumentOp[] = [];
@@ -240,7 +313,9 @@ export const compileHyperlinkIntent = (
     if (piece.from.offset === piece.to.offset) continue;
     const children = linkedChildren(piece.middle, intent);
     const replacement: ParagraphContent[] =
-      intent.type === "setHyperlink" ? wrapLinkedChildren(intent, children) : children;
+      intent.type === "setHyperlink"
+        ? wrapLinkedChildren(intent, children)
+        : children;
     if (structurallyEqual(piece.middle, replacement)) continue;
     ops.push({
       type: DOCUMENT_OP_TYPES.REPLACE_INLINE,

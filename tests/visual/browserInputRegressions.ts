@@ -1,4 +1,7 @@
-import { BROWSER_PASTE_PAYLOADS, type BrowserInputTrace } from "./browserInputTrace";
+import {
+  BROWSER_PASTE_PAYLOADS,
+  type BrowserInputTrace,
+} from "./browserInputTrace";
 
 export const PINNED_BROWSER_INPUT_TAG = "@pinned-browser-input";
 
@@ -18,7 +21,12 @@ export const BROWSER_NOTES_SEED_197 = {
       { kind: "selectionDrag", target: "note" },
     ],
   },
-} satisfies { seed: number; path: string; fingerprint: string; trace: BrowserInputTrace };
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
 
 export const BROWSER_LIST_SEED_47 = {
   seed: 47,
@@ -29,12 +37,24 @@ export const BROWSER_LIST_SEED_47 = {
     actions: [
       { kind: "pastePlain", plain: "shall", html: "" },
       { kind: "cut" },
-      { kind: "pasteMultiBlock", plain: "Title\nBody", html: "<p>Title</p><p>Body</p>" },
+      {
+        kind: "pasteMultiBlock",
+        plain: "Title\nBody",
+        html: "<p>Title</p><p>Body</p>",
+      },
       { kind: "selectionDrag", target: "list" },
       { kind: "typing", text: "👩🏽‍⚖️ café" },
       { kind: "backspace" },
     ],
   },
-} satisfies { seed: number; path: string; fingerprint: string; trace: BrowserInputTrace };
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
 
-export const BROWSER_INPUT_REGRESSIONS = [BROWSER_NOTES_SEED_197, BROWSER_LIST_SEED_47];
+export const BROWSER_INPUT_REGRESSIONS = [
+  BROWSER_NOTES_SEED_197,
+  BROWSER_LIST_SEED_47,
+];

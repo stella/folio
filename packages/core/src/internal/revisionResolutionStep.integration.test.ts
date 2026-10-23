@@ -4,17 +4,28 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { acceptAllChanges, rejectAllChanges, rejectChange } from "../prosemirror/commands/comments";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createHarnessState } from "../__tests__/editorHarness";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+  rejectChange,
+} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { schema } from "../prosemirror/schema";
 import type { Run } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { schema } from "../prosemirror/schema";
 import { RevisionResolutionStep } from "./revisionResolutionStep";
 
-const revision = (id: number) => ({ revisionId: id, author: "Reviewer", date: "2026-09-09" });
+const revision = (id: number) => ({
+  revisionId: id,
+  author: "Reviewer",
+  date: "2026-09-09",
+});
 
 test(
   "restored historical runs preserve authorship through bulk and individual rejection",
@@ -36,7 +47,9 @@ test(
           }),
           { nil: undefined },
         ),
-        fc.string({ minLength: 1, maxLength: 12 }).filter((text) => text.trim().length > 0),
+        fc
+          .string({ minLength: 1, maxLength: 12 })
+          .filter((text) => text.trim().length > 0),
         (paragraphMark, direct, text) => {
           const source = createEmptyDocument();
           const run = {
@@ -50,7 +63,11 @@ test(
               paraId: "1A000001",
               formatting: { runProperties: paragraphMark },
               content: [
-                { type: "deletion", info: { id: 101, author: "Reviewer" }, content: [run] },
+                {
+                  type: "deletion",
+                  info: { id: 101, author: "Reviewer" },
+                  content: [run],
+                },
               ],
             },
           ];
@@ -80,8 +97,9 @@ test(
               }),
             ).toBe(true);
             expect(
-              fromProseDoc(resolved.doc, source, { stylesheetSource: { type: "package" } }).package
-                .document.content,
+              fromProseDoc(resolved.doc, source, {
+                stylesheetSource: { type: "package" },
+              }).package.document.content,
             ).toEqual(expectedContent);
             const expectedDoc = createHarnessState(expected, "editing").doc;
             expect(resolved.doc.eq(expectedDoc)).toBe(true);
@@ -106,15 +124,19 @@ const paragraph = (
   // A paragraph holding only a revision empties when it is resolved away, so
   // the paragraph marks either side of it join with nothing between them.
   if (inline === "ins-only" || inline === "del-only") {
-    const type = inline === "ins-only" ? schema.marks.insertion : schema.marks.deletion;
+    const type =
+      inline === "ins-only" ? schema.marks.insertion : schema.marks.deletion;
     return paragraphNode(index, mark, [
       schema.text(`change${index}`, [type.create(revision(index * 10 + 1))]),
     ]);
   }
   const content = [schema.text(`start${index}`)];
   if (inline === "ins" || inline === "del") {
-    const type = inline === "ins" ? schema.marks.insertion : schema.marks.deletion;
-    content.push(schema.text(`change${index}`, [type.create(revision(index * 10 + 1))]));
+    const type =
+      inline === "ins" ? schema.marks.insertion : schema.marks.deletion;
+    content.push(
+      schema.text(`change${index}`, [type.create(revision(index * 10 + 1))]),
+    );
   }
   if (inline === "format") {
     content.push(
@@ -124,7 +146,11 @@ const paragraph = (
           changes: [
             {
               type: "runPropertyChange",
-              info: { id: index * 10 + 2, author: "Reviewer", date: "2026-09-09" },
+              info: {
+                id: index * 10 + 2,
+                author: "Reviewer",
+                date: "2026-09-09",
+              },
               previousFormatting: { italic: true },
               currentFormatting: { bold: true },
             },
@@ -136,7 +162,11 @@ const paragraph = (
   return paragraphNode(index, mark, content);
 };
 
-const paragraphNode = (index: number, mark: "none" | "ins" | "del", content: PMNode[]) =>
+const paragraphNode = (
+  index: number,
+  mark: "none" | "ins" | "del",
+  content: PMNode[],
+) =>
   schema.node(
     "paragraph",
     {
@@ -146,7 +176,11 @@ const paragraphNode = (index: number, mark: "none" | "ins" | "del", content: PMN
         : {
             pPrMark: {
               kind: mark,
-              info: { id: index * 10 + 3, author: "Reviewer", date: "2026-09-09" },
+              info: {
+                id: index * 10 + 3,
+                author: "Reviewer",
+                date: "2026-09-09",
+              },
             },
           }),
       ...(index % 2 === 0
@@ -156,7 +190,11 @@ const paragraphNode = (index: number, mark: "none" | "ins" | "del", content: PMN
             _propertyChanges: [
               {
                 type: "paragraphPropertyChange",
-                info: { id: index * 10 + 4, author: "Reviewer", date: "2026-09-09" },
+                info: {
+                  id: index * 10 + 4,
+                  author: "Reviewer",
+                  date: "2026-09-09",
+                },
                 previousFormatting: { alignment: "left" },
               },
             ],
@@ -166,18 +204,25 @@ const paragraphNode = (index: number, mark: "none" | "ins" | "del", content: PMN
     content,
   );
 
-const table = (rowMarker: "none" | "trIns" | "trDel", cellMarker: "none" | "ins" | "del") =>
+const table = (
+  rowMarker: "none" | "trIns" | "trDel",
+  cellMarker: "none" | "ins" | "del",
+) =>
   schema.node("table", null, [
     schema.node("tableRow", null, [
       schema.node(
         "tableCell",
-        cellMarker === "none" ? null : { cellMarker: { kind: cellMarker, info: revision(902) } },
+        cellMarker === "none"
+          ? null
+          : { cellMarker: { kind: cellMarker, info: revision(902) } },
         [paragraph(90, "none", "plain")],
       ),
     ]),
-    schema.node("tableRow", rowMarker === "none" ? null : { [rowMarker]: revision(901) }, [
-      schema.node("tableCell", null, [paragraph(91, "none", "del")]),
-    ]),
+    schema.node(
+      "tableRow",
+      rowMarker === "none" ? null : { [rowMarker]: revision(901) },
+      [schema.node("tableCell", null, [paragraph(91, "none", "del")])],
+    ),
   ]);
 
 test(
@@ -188,7 +233,14 @@ test(
         fc.array(
           fc.record({
             mark: fc.constantFrom("none", "ins", "del"),
-            inline: fc.constantFrom("plain", "ins", "del", "format", "ins-only", "del-only"),
+            inline: fc.constantFrom(
+              "plain",
+              "ins",
+              "del",
+              "format",
+              "ins-only",
+              "del-only",
+            ),
           }),
           { minLength: 2, maxLength: 5 },
         ),
@@ -196,20 +248,29 @@ test(
         fc.constantFrom("none", "ins", "del"),
         fc.boolean(),
         (items, rowMarker, cellMarker, withBookmarks) => {
-          const blocks = items.map(({ mark, inline }, index) => paragraph(index + 1, mark, inline));
+          const blocks = items.map(({ mark, inline }, index) =>
+            paragraph(index + 1, mark, inline),
+          );
           const between = [table(rowMarker, cellMarker)];
           if (withBookmarks) {
             between.unshift(
-              schema.node("blockBookmarkBoundary", { type: "start", id: 1, name: "range" }),
+              schema.node("blockBookmarkBoundary", {
+                type: "start",
+                id: 1,
+                name: "range",
+              }),
             );
-            between.push(schema.node("blockBookmarkBoundary", { type: "end", id: 1 }));
+            between.push(
+              schema.node("blockBookmarkBoundary", { type: "end", id: 1 }),
+            );
           }
           blocks.splice(1, 0, ...between);
           const doc = schema.node("doc", null, blocks);
           const state = EditorState.create({ schema, doc });
           for (const mode of ["accept", "reject"] as const) {
             let transaction: Transaction | null = null;
-            const command = mode === "accept" ? acceptAllChanges() : rejectAllChanges();
+            const command =
+              mode === "accept" ? acceptAllChanges() : rejectAllChanges();
             expect(
               command(state, (dispatched) => {
                 transaction = dispatched;
@@ -226,7 +287,9 @@ test(
             }
             const resolved = transaction.doc;
             expect(step.getMap().map(0, -1)).toBe(0);
-            expect(step.getMap().map(doc.content.size, 1)).toBe(resolved.content.size);
+            expect(step.getMap().map(doc.content.size, 1)).toBe(
+              resolved.content.size,
+            );
             step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
               expect(oldStart).toBeGreaterThanOrEqual(0);
               expect(oldEnd).toBeLessThanOrEqual(doc.content.size);
@@ -236,8 +299,12 @@ test(
               // removals left adjacent in one map break this: the map reads
               // their shared boundary against the first only.
               if (oldEnd > oldStart) {
-                const removedAfter = step.getMap().mapResult(oldStart, 1).deletedAfter;
-                const removedBefore = step.getMap().mapResult(oldEnd, -1).deletedBefore;
+                const removedAfter = step
+                  .getMap()
+                  .mapResult(oldStart, 1).deletedAfter;
+                const removedBefore = step
+                  .getMap()
+                  .mapResult(oldEnd, -1).deletedBefore;
                 if (!removedAfter || !removedBefore) {
                   throw new Error(
                     `Invalid ${mode} map: ${JSON.stringify({ oldStart, oldEnd, removedAfter, removedBefore, mapRanges: step.toJSON().mapRanges })}`,
@@ -258,7 +325,9 @@ test(
                 `${mode} cached undo failed: ${undone.failed ?? JSON.stringify(undone.doc?.toJSON())}`,
               );
             }
-            const replayedUndo = Step.fromJSON(schema, inverse.toJSON()).apply(resolved);
+            const replayedUndo = Step.fromJSON(schema, inverse.toJSON()).apply(
+              resolved,
+            );
             if (!replayedUndo.doc?.eq(doc)) {
               throw new Error(
                 `${mode} undo replay failed: ${replayedUndo.failed ?? JSON.stringify(replayedUndo.doc?.toJSON())}`,
@@ -309,12 +378,18 @@ test("comment point resolution has replayable maps and exact inverses", () => {
       );
       const first = paragraphNode(1, "none", [
         ...(prefix ? [schema.text(prefix)] : []),
-        schema.text("Removed", [schema.marks.deletion.create(revision(1)), ...marks]),
+        schema.text("Removed", [
+          schema.marks.deletion.create(revision(1)),
+          ...marks,
+        ]),
         ...Array.from({ length: count }, (_, commentId) =>
           schema.node("commentReference", { commentId }),
         ),
       ]);
-      const doc = schema.node("doc", null, [first, paragraph(2, "none", "plain")]);
+      const doc = schema.node("doc", null, [
+        first,
+        paragraph(2, "none", "plain"),
+      ]);
       const state = EditorState.create({ schema, doc });
       let transaction: Transaction | null = null;
       expect(
@@ -325,7 +400,8 @@ test("comment point resolution has replayable maps and exact inverses", () => {
       if (!transaction) throw new Error("Missing resolution transaction");
       const pointIds: number[] = [];
       transaction.doc.descendants((node) => {
-        if (node.type.name === "rangeAnchor") pointIds.push(node.attrs["start"].id);
+        if (node.type.name === "rangeAnchor")
+          pointIds.push(node.attrs["start"].id);
       });
       expect(pointIds).toEqual([]);
       expect(transaction.mapping.map(first.nodeSize + 1)).toBe(
@@ -333,7 +409,11 @@ test("comment point resolution has replayable maps and exact inverses", () => {
       );
       const step = transaction.steps.at(0);
       if (!step) throw new Error("Missing resolution step");
-      expect(Step.fromJSON(schema, step.toJSON()).apply(doc).doc?.eq(transaction.doc)).toBe(true);
+      expect(
+        Step.fromJSON(schema, step.toJSON())
+          .apply(doc)
+          .doc?.eq(transaction.doc),
+      ).toBe(true);
       const inverse = Step.fromJSON(schema, step.invert(doc).toJSON());
       expect(inverse.apply(transaction.doc).doc?.eq(doc)).toBe(true);
     }

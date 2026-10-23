@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolveFloatingTablePageX, resolveFloatingTableX } from "./floatingTablePosition";
+import {
+  resolveFloatingTablePageX,
+  resolveFloatingTableX,
+} from "./floatingTablePosition";
 
 const CONTENT = 624;
 const TABLE = 333;
@@ -9,12 +12,19 @@ const OVERWIDE_TABLE = 700;
 describe("resolveFloatingTableX", () => {
   test('tblpXSpec supersedes tblpX (§17.4.57: "that value is ignored")', () => {
     expect(
-      resolveFloatingTableX({ tblpX: 40, tblpXSpec: "center" }, undefined, TABLE, CONTENT),
+      resolveFloatingTableX(
+        { tblpX: 40, tblpXSpec: "center" },
+        undefined,
+        TABLE,
+        CONTENT,
+      ),
     ).toBe((CONTENT - TABLE) / 2);
   });
 
   test("tblpX applies when no tblpXSpec is authored", () => {
-    expect(resolveFloatingTableX({ tblpX: 40 }, undefined, TABLE, CONTENT)).toBe(40);
+    expect(
+      resolveFloatingTableX({ tblpX: 40 }, undefined, TABLE, CONTENT),
+    ).toBe(40);
   });
 
   test.each([
@@ -24,12 +34,18 @@ describe("resolveFloatingTableX", () => {
     ["right", CONTENT - TABLE],
     ["outside", CONTENT - TABLE],
   ] as const)("tblpXSpec=%s", (spec, expected) => {
-    expect(resolveFloatingTableX({ tblpXSpec: spec }, undefined, TABLE, CONTENT)).toBe(expected);
+    expect(
+      resolveFloatingTableX({ tblpXSpec: spec }, undefined, TABLE, CONTENT),
+    ).toBe(expected);
   });
 
   test("falls back to w:jc justification, then to the left margin", () => {
-    expect(resolveFloatingTableX({}, "center", TABLE, CONTENT)).toBe((CONTENT - TABLE) / 2);
-    expect(resolveFloatingTableX({}, "right", TABLE, CONTENT)).toBe(CONTENT - TABLE);
+    expect(resolveFloatingTableX({}, "center", TABLE, CONTENT)).toBe(
+      (CONTENT - TABLE) / 2,
+    );
+    expect(resolveFloatingTableX({}, "right", TABLE, CONTENT)).toBe(
+      CONTENT - TABLE,
+    );
     expect(resolveFloatingTableX({}, undefined, TABLE, CONTENT)).toBe(0);
   });
 
@@ -40,9 +56,14 @@ describe("resolveFloatingTableX", () => {
   ] as const)(
     "preserves the signed offset for an over-wide tblpXSpec=%s table",
     (spec, expected) => {
-      expect(resolveFloatingTableX({ tblpXSpec: spec }, undefined, OVERWIDE_TABLE, CONTENT)).toBe(
-        expected,
-      );
+      expect(
+        resolveFloatingTableX(
+          { tblpXSpec: spec },
+          undefined,
+          OVERWIDE_TABLE,
+          CONTENT,
+        ),
+      ).toBe(expected);
     },
   );
 
@@ -61,20 +82,23 @@ describe("resolveFloatingTablePageX", () => {
     ["center", 300],
     ["right", 600],
     ["outside", 600],
-  ] as const)("resolves page-anchored tblpXSpec=%s against the page width", (spec, expected) => {
-    expect(
-      resolveFloatingTablePageX({
-        anchor: { horzAnchor: "page", tblpXSpec: spec },
-        justification: undefined,
-        tableWidth: 200,
-        marginWidth: 600,
-        pageWidth: 800,
-        marginLeft: 40,
-        textFrameWidth: 600,
-        textFrameLeft: 40,
-      }),
-    ).toBe(expected);
-  });
+  ] as const)(
+    "resolves page-anchored tblpXSpec=%s against the page width",
+    (spec, expected) => {
+      expect(
+        resolveFloatingTablePageX({
+          anchor: { horzAnchor: "page", tblpXSpec: spec },
+          justification: undefined,
+          tableWidth: 200,
+          marginWidth: 600,
+          pageWidth: 800,
+          marginLeft: 40,
+          textFrameWidth: 600,
+          textFrameLeft: 40,
+        }),
+      ).toBe(expected);
+    },
+  );
 
   test("clamps the final rectangle to the physical page", () => {
     expect(

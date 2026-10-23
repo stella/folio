@@ -1,7 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 
+import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import {
   buildForbiddenRules,
   emptyGlossary,
@@ -20,7 +20,9 @@ setDefaultTimeout(propertyTestTimeout(5_000));
 
 describe("findPlaceholderMismatch", () => {
   test("returns null when the variable sets match (order is irrelevant)", () => {
-    expect(findPlaceholderMismatch("Hi {name}, {count}", "{count} – {name}")).toBeNull();
+    expect(
+      findPlaceholderMismatch("Hi {name}, {count}", "{count} – {name}"),
+    ).toBeNull();
   });
 
   test("flags a dropped variable", () => {
@@ -38,7 +40,9 @@ describe("findPlaceholderMismatch", () => {
   });
 
   test("tracks rich-text tag names (t.rich), not just their children", () => {
-    expect(findPlaceholderMismatch("<terms>Terms</terms>", "<link>Podmínky</link>")).toEqual({
+    expect(
+      findPlaceholderMismatch("<terms>Terms</terms>", "<link>Podmínky</link>"),
+    ).toEqual({
       missing: ["<terms>"],
       extra: ["<link>"],
     });
@@ -66,41 +70,55 @@ describe("findIcuError", () => {
 
 describe("findMissingPluralCategories", () => {
   test("flags Polish missing few/many for an English-shaped plural", () => {
-    expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", "pl")).toEqual(
-      expect.arrayContaining(["n#few", "n#many"]),
-    );
+    expect(
+      findMissingPluralCategories("{n, plural, one {#} other {#}}", "pl"),
+    ).toEqual(expect.arrayContaining(["n#few", "n#many"]));
   });
 
   test("passes when the locale needs only the present categories", () => {
-    expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", "de")).toEqual([]);
+    expect(
+      findMissingPluralCategories("{n, plural, one {#} other {#}}", "de"),
+    ).toEqual([]);
   });
 
   test("does not require cs/sk fractional-only `many` for integer UI counts", () => {
-    expect(findMissingPluralCategories("{n, plural, one {#} few {#} other {#}}", "cs")).toEqual([]);
+    expect(
+      findMissingPluralCategories(
+        "{n, plural, one {#} few {#} other {#}}",
+        "cs",
+      ),
+    ).toEqual([]);
   });
 
   test("does not require the dormant es/fr/pt-BR `many` (exact millions)", () => {
     for (const locale of ["es", "fr", "pt-BR"]) {
-      expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", locale)).toEqual([]);
+      expect(
+        findMissingPluralCategories("{n, plural, one {#} other {#}}", locale),
+      ).toEqual([]);
     }
   });
 
   test("does not count exact selectors like =0 toward CLDR categories", () => {
-    expect(findMissingPluralCategories("{n, plural, =0 {none} one {#} other {#}}", "en")).toEqual(
-      [],
-    );
+    expect(
+      findMissingPluralCategories(
+        "{n, plural, =0 {none} one {#} other {#}}",
+        "en",
+      ),
+    ).toEqual([]);
   });
 
   test("degrades to [] for an invalid locale code instead of throwing", () => {
-    expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", "!")).toEqual([]);
+    expect(
+      findMissingPluralCategories("{n, plural, one {#} other {#}}", "!"),
+    ).toEqual([]);
   });
 });
 
 describe("findDroppedPlurals", () => {
   test("flags a source plural flattened to plain interpolation", () => {
-    expect(findDroppedPlurals("{count, plural, one {#} other {#}}", "{count} items")).toEqual([
-      "count",
-    ]);
+    expect(
+      findDroppedPlurals("{count, plural, one {#} other {#}}", "{count} items"),
+    ).toEqual(["count"]);
   });
 
   test("passes when the target keeps the plural", () => {
@@ -220,7 +238,11 @@ describe("parseGlossary", () => {
 
   test("rejects a term with a non-array forbidden entry", () => {
     expect(() =>
-      parseGlossary(JSON.stringify({ nouns: [{ id: "x", en: "X", forbidden: { de: "Wort" } }] })),
+      parseGlossary(
+        JSON.stringify({
+          nouns: [{ id: "x", en: "X", forbidden: { de: "Wort" } }],
+        }),
+      ),
     ).toThrow();
   });
 });
@@ -229,46 +251,63 @@ describe("terminology", () => {
   const rules = buildForbiddenRules(
     parseGlossary(
       JSON.stringify({
-        legalConcepts: [{ id: "matter", en: "Matter", forbidden: { de: ["Sache"] } }],
+        legalConcepts: [
+          { id: "matter", en: "Matter", forbidden: { de: ["Sache"] } },
+        ],
       }),
     ),
   );
 
   test("flags a forbidden rendering when the source is about the concept", () => {
-    expect(findForbiddenTerms("Open this matter", "Diese Sache öffnen", "de", rules)).toEqual([
-      "Sache",
-    ]);
+    expect(
+      findForbiddenTerms("Open this matter", "Diese Sache öffnen", "de", rules),
+    ).toEqual(["Sache"]);
   });
 
   test("does not fire when the source is unrelated to the concept", () => {
-    expect(findForbiddenTerms("A factual question", "Eine reine Sache", "de", rules)).toEqual([]);
+    expect(
+      findForbiddenTerms("A factual question", "Eine reine Sache", "de", rules),
+    ).toEqual([]);
   });
 
   test("matches whole words only (no substring false positives)", () => {
-    expect(findForbiddenTerms("Open this matter", "Sachenrecht gilt", "de", rules)).toEqual([]);
+    expect(
+      findForbiddenTerms("Open this matter", "Sachenrecht gilt", "de", rules),
+    ).toEqual([]);
   });
 
   test("detects the concept when the source uses the plural trigger", () => {
     // "matters" (plural) still triggers the "Matter" concept.
-    expect(findForbiddenTerms("Manage your matters", "Diese Sache öffnen", "de", rules)).toEqual([
-      "Sache",
-    ]);
+    expect(
+      findForbiddenTerms(
+        "Manage your matters",
+        "Diese Sache öffnen",
+        "de",
+        rules,
+      ),
+    ).toEqual(["Sache"]);
   });
 
   test("matches an Arabic forbidden term carrying proclitics (ال/و prefixes)", () => {
     const arRules = buildForbiddenRules(
       parseGlossary(
         JSON.stringify({
-          legalConcepts: [{ id: "matter", en: "Matter", forbidden: { ar: ["قضية"] } }],
+          legalConcepts: [
+            { id: "matter", en: "Matter", forbidden: { ar: ["قضية"] } },
+          ],
         }),
       ),
     );
     // bare, ال-prefixed, and و+ال-prefixed forms all count.
-    expect(findForbiddenTerms("Open this matter", "افتح قضية", "ar", arRules)).toEqual(["قضية"]);
-    expect(findForbiddenTerms("Open this matter", "افتح القضية", "ar", arRules)).toEqual(["قضية"]);
-    expect(findForbiddenTerms("Open this matter", "والقضية مفتوحة", "ar", arRules)).toEqual([
-      "قضية",
-    ]);
+    expect(
+      findForbiddenTerms("Open this matter", "افتح قضية", "ar", arRules),
+    ).toEqual(["قضية"]);
+    expect(
+      findForbiddenTerms("Open this matter", "افتح القضية", "ar", arRules),
+    ).toEqual(["قضية"]);
+    expect(
+      findForbiddenTerms("Open this matter", "والقضية مفتوحة", "ar", arRules),
+    ).toEqual(["قضية"]);
   });
 });
 
@@ -409,14 +448,26 @@ describe("terminology search semantics", () => {
 
   test("retains letter-only boundaries, accents, exact Czech inflections and literal punctuation", () => {
     const rules = makeRules("Žaneta");
-    for (const target of ["ŽANETA", "(Žaneta)", "1Žaneta_", "😀Žaneta", "Žaneta\u0301"]) {
-      expect(findForbiddenTerms("Matters", target, "cs", rules)).toEqual(["Žaneta"]);
+    for (const target of [
+      "ŽANETA",
+      "(Žaneta)",
+      "1Žaneta_",
+      "😀Žaneta",
+      "Žaneta\u0301",
+    ]) {
+      expect(findForbiddenTerms("Matters", target, "cs", rules)).toEqual([
+        "Žaneta",
+      ]);
     }
     for (const target of ["Zaneta", "Žanety", "aŽaneta", "Žanetaa"]) {
       expect(findForbiddenTerms("Matters", target, "cs", rules)).toEqual([]);
     }
-    expect(findForbiddenTerms("Matter", "a+b", "cs", makeRules("a+b"))).toEqual(["a+b"]);
-    expect(findForbiddenTerms("Matter", "aaab", "cs", makeRules("a+b"))).toEqual([]);
+    expect(findForbiddenTerms("Matter", "a+b", "cs", makeRules("a+b"))).toEqual(
+      ["a+b"],
+    );
+    expect(
+      findForbiddenTerms("Matter", "aaab", "cs", makeRules("a+b")),
+    ).toEqual([]);
   });
 
   test("keeps listed hit order and duplicates across overlapping terms", () => {
@@ -433,13 +484,23 @@ describe("terminology search semantics", () => {
         }),
       ),
     );
-    expect(findForbiddenTerms("Matter", "a-b a-b", "cs", rules)).toEqual(["a-b", "b", "a-b"]);
+    expect(findForbiddenTerms("Matter", "a-b a-b", "cs", rules)).toEqual([
+      "a-b",
+      "b",
+      "a-b",
+    ]);
     expect(findForbiddenTerms("Matter", "anything", "cs", [])).toEqual([]);
   });
 
   test("preserves empty literal triggers, key case and source lowercase exemptions", () => {
     expect(
-      findForbiddenTerms("Other", "banned", "cs", makeRules("banned", { keyTriggers: [""] }), ""),
+      findForbiddenTerms(
+        "Other",
+        "banned",
+        "cs",
+        makeRules("banned", { keyTriggers: [""] }),
+        "",
+      ),
     ).toEqual(["banned"]);
     expect(
       findForbiddenTerms(
@@ -459,22 +520,27 @@ describe("terminology search semantics", () => {
       ),
     ).toEqual([]);
     expect(
-      findForbiddenTerms("Matter", "restricted", "cs", makeRules("banned", { sourceExempt: [""] })),
+      findForbiddenTerms(
+        "Matter",
+        "restricted",
+        "cs",
+        makeRules("banned", { sourceExempt: [""] }),
+      ),
     ).toEqual([]);
-    expect(findForbiddenTerms("Matter", "restricted", "cs", makeRules("banned"))).toEqual([
-      "restricted",
-    ]);
+    expect(
+      findForbiddenTerms("Matter", "restricted", "cs", makeRules("banned")),
+    ).toEqual(["restricted"]);
   });
 
   test("matches malformed patterns and text as normalized scalars while returning original terms", () => {
     for (const malformed of ["\ud800", "\udc00", "a\ud800-b", "a\udc00-b"]) {
       const normalized = malformed.toWellFormed();
-      expect(findForbiddenTerms("Matter", normalized, "cs", makeRules(malformed))).toEqual([
-        malformed,
-      ]);
-      expect(findForbiddenTerms("Matter", malformed, "cs", makeRules(normalized))).toEqual([
-        normalized,
-      ]);
+      expect(
+        findForbiddenTerms("Matter", normalized, "cs", makeRules(malformed)),
+      ).toEqual([malformed]);
+      expect(
+        findForbiddenTerms("Matter", malformed, "cs", makeRules(normalized)),
+      ).toEqual([normalized]);
       expect(
         findForbiddenTerms(
           "Other",
@@ -503,7 +569,13 @@ describe("terminology search semantics", () => {
       ),
     ).toEqual([]);
     expect(
-      findForbiddenTerms("Other", "banned", "cs", makeRules("banned", { keyTriggers: [""] }), "😀"),
+      findForbiddenTerms(
+        "Other",
+        "banned",
+        "cs",
+        makeRules("banned", { keyTriggers: [""] }),
+        "😀",
+      ),
     ).toEqual(["banned"]);
     expect(
       findForbiddenTerms(
@@ -543,7 +615,10 @@ describe("terminology search semantics", () => {
             key.toWellFormed().includes(trigger.toWellFormed()),
           );
           const isExempt = sourceExempt.some((exempt) =>
-            source.toLowerCase().toWellFormed().includes(exempt.toLowerCase().toWellFormed()),
+            source
+              .toLowerCase()
+              .toWellFormed()
+              .includes(exempt.toLowerCase().toWellFormed()),
           );
           const expected = keyFires || !isExempt ? ["restricted"] : [];
           expect(
@@ -570,24 +645,43 @@ describe("terminology search semantics", () => {
     if (!rule) {
       return;
     }
-    expect(findForbiddenTerms("Other", "banned", "cs", rules, "first")).toEqual(["banned"]);
+    expect(findForbiddenTerms("Other", "banned", "cs", rules, "first")).toEqual(
+      ["banned"],
+    );
     rule.keyTriggers.splice(0, 1, "second");
-    expect(findForbiddenTerms("Other", "banned", "cs", rules, "first")).toEqual([]);
-    expect(findForbiddenTerms("Other", "banned", "cs", rules, "second")).toEqual(["banned"]);
-    expect(findForbiddenTerms("Matter organ", "restricted", "cs", rules)).toEqual([]);
+    expect(findForbiddenTerms("Other", "banned", "cs", rules, "first")).toEqual(
+      [],
+    );
+    expect(
+      findForbiddenTerms("Other", "banned", "cs", rules, "second"),
+    ).toEqual(["banned"]);
+    expect(
+      findForbiddenTerms("Matter organ", "restricted", "cs", rules),
+    ).toEqual([]);
     rule.sourceExempt.splice(0, 1, "else");
-    expect(findForbiddenTerms("Matter organ", "restricted", "cs", rules)).toEqual(["restricted"]);
+    expect(
+      findForbiddenTerms("Matter organ", "restricted", "cs", rules),
+    ).toEqual(["restricted"]);
   });
 
   test("preserves Unicode case folding for long s and Kelvin sign", () => {
-    expect(findForbiddenTerms("Matter", "ſ", "cs", makeRules("s"))).toEqual(["s"]);
-    expect(findForbiddenTerms("Matter", "K", "cs", makeRules("k"))).toEqual(["k"]);
-    expect(findForbiddenTerms("Matter", "S", "cs", makeRules("ſ"))).toEqual(["ſ"]);
-    expect(findForbiddenTerms("Matter", "K", "cs", makeRules("K"))).toEqual(["K"]);
+    expect(findForbiddenTerms("Matter", "ſ", "cs", makeRules("s"))).toEqual([
+      "s",
+    ]);
+    expect(findForbiddenTerms("Matter", "K", "cs", makeRules("k"))).toEqual([
+      "k",
+    ]);
+    expect(findForbiddenTerms("Matter", "S", "cs", makeRules("ſ"))).toEqual([
+      "ſ",
+    ]);
+    expect(findForbiddenTerms("Matter", "K", "cs", makeRules("K"))).toEqual([
+      "K",
+    ]);
   });
 
   test("matches the normalized Unicode regex oracle over generated boundaries and locales", () => {
-    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const escape = (value: string) =>
+      value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     fc.assert(
       fc.property(
         fc.constantFrom("cs", "ar", "en"),
@@ -646,7 +740,9 @@ describe("terminology search semantics", () => {
           ).test(target.toWellFormed())
             ? [needle]
             : [];
-          expect(findForbiddenTerms("Matter", target, locale, makeRules(needle))).toEqual(expected);
+          expect(
+            findForbiddenTerms("Matter", target, locale, makeRules(needle)),
+          ).toEqual(expected);
         },
       ),
       propertyConfig({ seed: 27017, numRuns: 300 }),

@@ -14,11 +14,18 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
-import type { Table, TableCell, TableRow, TrackedChangeInfo } from "../types/document";
+import type {
+  Table,
+  TableCell,
+  TableRow,
+  TrackedChangeInfo,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
@@ -40,7 +47,9 @@ const cell = (text: string, revision: RowSpec["revision"]): TableCell => {
     content: [
       {
         type: "paragraph",
-        content: revision ? [{ type: revision, info: REVISION, content: [run] }] : [run],
+        content: revision
+          ? [{ type: revision, info: REVISION, content: [run] }]
+          : [run],
       },
     ],
   };
@@ -78,7 +87,10 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
 };
 
 const tableRows = async (buffer: ArrayBuffer): Promise<TableRow[]> => {
-  const parsed = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
+  const parsed = await parseDocx(buffer, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   const table = parsed.package.document.content.at(0);
   if (table?.type !== "table") {
     throw new Error("expected a table");
@@ -102,7 +114,11 @@ const blockText = (paragraph: { content?: unknown[] }): string => {
       if (typeof item !== "object" || item === null) {
         continue;
       }
-      const node = item as { type?: string; text?: string; content?: unknown[] };
+      const node = item as {
+        type?: string;
+        text?: string;
+        content?: unknown[];
+      };
       if (node.type === "text" && typeof node.text === "string") {
         text += node.text;
         continue;
@@ -151,7 +167,10 @@ describe("a Word-style tracked row carries its cell content with it", () => {
     const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
     rejecting.rejectAll();
     const rejected = await rejecting.toBuffer();
-    expect(rowTexts(await tableRows(rejected))).toEqual([["Kept"], ["Removed"]]);
+    expect(rowTexts(await tableRows(rejected))).toEqual([
+      ["Kept"],
+      ["Removed"],
+    ]);
     const rejectedXml = await documentXml(rejected);
     expect(rejectedXml).not.toContain("<w:del ");
     expect(rejectedXml).not.toContain("<w:delText");
@@ -160,7 +179,10 @@ describe("a Word-style tracked row carries its cell content with it", () => {
   test("the row marker and its run marks are one change, not two", async () => {
     for (const revision of ["insertion", "deletion"] as const) {
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await buildTableDocx([{ texts: ["Kept"] }, { texts: ["Moved"], revision }]),
+        await buildTableDocx([
+          { texts: ["Kept"] },
+          { texts: ["Moved"], revision },
+        ]),
       );
       expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
         revision === "insertion" ? "rowInserted" : "rowDeleted",
@@ -170,8 +192,13 @@ describe("a Word-style tracked row carries its cell content with it", () => {
 
   test("serializing a tracked row is a byte fixed point", async () => {
     for (const revision of ["insertion", "deletion"] as const) {
-      const source = await buildTableDocx([{ texts: ["Kept"] }, { texts: ["Marked"], revision }]);
-      const once = await (await FolioDocxReviewer.fromBuffer(source)).toBuffer();
+      const source = await buildTableDocx([
+        { texts: ["Kept"] },
+        { texts: ["Marked"], revision },
+      ]);
+      const once = await (
+        await FolioDocxReviewer.fromBuffer(source)
+      ).toBuffer();
       const twice = await (await FolioDocxReviewer.fromBuffer(once)).toBuffer();
       expect(await documentXml(twice)).toBe(await documentXml(once));
     }
@@ -179,8 +206,13 @@ describe("a Word-style tracked row carries its cell content with it", () => {
 });
 
 describe("folio writes both halves of a row revision", () => {
-  const findRowBlock = async (reviewer: FolioDocxReviewer, text: string): Promise<string> => {
-    const block = reviewer.snapshot().blocks.find((candidate) => candidate.text === text);
+  const findRowBlock = async (
+    reviewer: FolioDocxReviewer,
+    text: string,
+  ): Promise<string> => {
+    const block = reviewer
+      .snapshot()
+      .blocks.find((candidate) => candidate.text === text);
     if (!block) {
       throw new Error(`expected a block reading "${text}"`);
     }
@@ -193,7 +225,13 @@ describe("folio writes both halves of a row revision", () => {
       { author: "Reviewer" },
     );
     reviewer.applyOperations(
-      [{ id: "delete-row", type: "deleteTableRow", blockId: await findRowBlock(reviewer, "Beta") }],
+      [
+        {
+          id: "delete-row",
+          type: "deleteTableRow",
+          blockId: await findRowBlock(reviewer, "Beta"),
+        },
+      ],
       { undefinedReferences: "refuse" },
     );
 
@@ -228,31 +266,59 @@ describe("folio writes both halves of a row revision", () => {
 
   test("a tracked table deletion over a pending inserted row is refused, and the table saves", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"], revision: "insertion" }]),
+      await buildTableDocx([
+        { texts: ["Alpha"] },
+        { texts: ["Beta"], revision: "insertion" },
+      ]),
       { author: "Reviewer" },
     );
     const result = reviewer.applyOperations(
-      [{ id: "delete-table", type: "deleteTable", blockId: await findRowBlock(reviewer, "Alpha") }],
+      [
+        {
+          id: "delete-table",
+          type: "deleteTable",
+          blockId: await findRowBlock(reviewer, "Alpha"),
+        },
+      ],
       { undefinedReferences: "refuse" },
     );
 
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "delete-table", reason: "unsupportedBlock" }]);
-    expect(rowTexts(await tableRows(await reviewer.toBuffer()))).toEqual([["Alpha"], ["Beta"]]);
+    expect(result.skipped).toEqual([
+      { id: "delete-table", reason: "unsupportedBlock" },
+    ]);
+    expect(rowTexts(await tableRows(await reviewer.toBuffer()))).toEqual([
+      ["Alpha"],
+      ["Beta"],
+    ]);
   });
 
   for (const mode of ["tracked-changes", "suggested"] as const) {
     test(`a row deletion over a pending insertion reads, accepts and rejects as one (${mode})`, async () => {
-      const source = await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]);
+      const source = await buildTableDocx([
+        { texts: ["Alpha"] },
+        { texts: ["Beta"] },
+      ]);
       const edited = async () => {
-        const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+          author: "Reviewer",
+        });
         const blockId = await findRowBlock(reviewer, "Beta");
         for (const operation of [
-          { id: "word", type: "replaceInBlock", blockId, find: "Beta", replace: "Gamma" },
+          {
+            id: "word",
+            type: "replaceInBlock",
+            blockId,
+            find: "Beta",
+            replace: "Gamma",
+          },
           { id: "row", type: "deleteTableRow", blockId },
         ] as const) {
           expect(
-            reviewer.applyOperations([operation], { undefinedReferences: "refuse", mode }).applied,
+            reviewer.applyOperations([operation], {
+              undefinedReferences: "refuse",
+              mode,
+            }).applied,
           ).toHaveLength(1);
         }
         return reviewer;
@@ -261,16 +327,25 @@ describe("folio writes both halves of a row revision", () => {
       // The row reads as a paragraph pending deletion does: blank, the
       // inserted word with it.
       const reading = await edited();
-      expect(reading.getContent().map(({ text }) => text)).toEqual(["Alpha", ""]);
+      expect(reading.getContent().map(({ text }) => text)).toEqual([
+        "Alpha",
+        "",
+      ]);
       expect(reading.getContentAsText()).not.toContain("Gamma");
 
       const accepting = await edited();
-      if (mode === "suggested") expect(accepting.acceptSuggestion("row")).toBe(true);
+      if (mode === "suggested")
+        expect(accepting.acceptSuggestion("row")).toBe(true);
       accepting.acceptAll();
-      expect(rowTexts(await tableRows(await accepting.toBuffer()))).toEqual([["Alpha"]]);
+      expect(rowTexts(await tableRows(await accepting.toBuffer()))).toEqual([
+        ["Alpha"],
+      ]);
       const rejecting = await edited();
       rejecting.rejectAll();
-      expect(rowTexts(await tableRows(await rejecting.toBuffer()))).toEqual([["Alpha"], ["Beta"]]);
+      expect(rowTexts(await tableRows(await rejecting.toBuffer()))).toEqual([
+        ["Alpha"],
+        ["Beta"],
+      ]);
     });
   }
 
@@ -280,7 +355,13 @@ describe("folio writes both halves of a row revision", () => {
       { author: "Reviewer" },
     );
     reviewer.applyOperations(
-      [{ id: "delete-row", type: "deleteTableRow", blockId: await findRowBlock(reviewer, "Beta") }],
+      [
+        {
+          id: "delete-row",
+          type: "deleteTableRow",
+          blockId: await findRowBlock(reviewer, "Beta"),
+        },
+      ],
       { undefinedReferences: "refuse" },
     );
     const change = reviewer.getChanges().at(0);
@@ -304,7 +385,10 @@ describe("row insert/delete round trips through the reviewed views", () => {
    * from content and position and so differs between two reviewers holding the
    * same text. The comparison is about the text the views resolve to.
    */
-  const storyText = (reviewer: FolioDocxReviewer, view: "original" | "final"): string => {
+  const storyText = (
+    reviewer: FolioDocxReviewer,
+    view: "original" | "final",
+  ): string => {
     const story = reviewer.readReviewedStory({ view });
     if (!story) {
       throw new Error("expected the main story");
@@ -329,11 +413,16 @@ describe("row insert/delete round trips through the reviewed views", () => {
             // row to the widest one so the fixture is a real rectangle.
             const width = Math.max(...grid.map((cells) => cells.length));
             const rows = grid.map((cells) => ({
-              texts: [...cells, ...Array.from({ length: width - cells.length }, () => "pad")],
+              texts: [
+                ...cells,
+                ...Array.from({ length: width - cells.length }, () => "pad"),
+              ],
             }));
             const buffer = await buildTableDocx(rows);
 
-            const base = await FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
+            const base = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "Reviewer",
+            });
             const blocks = base.snapshot().blocks;
             if (blocks.length === 0) {
               return;
@@ -344,24 +433,35 @@ describe("row insert/delete round trips through the reviewed views", () => {
                 ? { id: "row", type, blockId, cellTexts }
                 : { id: "row", type, blockId };
 
-            const direct = await FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
+            const direct = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "Reviewer",
+            });
             if (
-              direct.applyOperations([operation], { undefinedReferences: "refuse", mode: "direct" })
-                .applied.length === 0
+              direct.applyOperations([operation], {
+                undefinedReferences: "refuse",
+                mode: "direct",
+              }).applied.length === 0
             ) {
               return;
             }
 
-            const tracked = await FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
+            const tracked = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "Reviewer",
+            });
             if (
-              tracked.applyOperations([operation], { undefinedReferences: "refuse" }).applied
-                .length === 0
+              tracked.applyOperations([operation], {
+                undefinedReferences: "refuse",
+              }).applied.length === 0
             ) {
               return;
             }
 
-            expect(storyText(tracked, "final")).toBe(storyText(direct, "final"));
-            expect(storyText(tracked, "original")).toBe(storyText(base, "final"));
+            expect(storyText(tracked, "final")).toBe(
+              storyText(direct, "final"),
+            );
+            expect(storyText(tracked, "original")).toBe(
+              storyText(base, "final"),
+            );
           },
         ),
         propertyConfig({ numRuns: 40 }),

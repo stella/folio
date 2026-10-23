@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { createEmptyDocument } from "../utils/createDocument";
-
 import { createDocx } from "./rezip";
 
 const CORE_PROPERTIES_PATH = "docProps/core.xml";
@@ -21,7 +20,10 @@ const partsOf = async (
   ]);
   expect(coreProperties).toBeString();
   expect(extendedProperties).toBeString();
-  return { coreProperties: coreProperties ?? "", extendedProperties: extendedProperties ?? "" };
+  return {
+    coreProperties: coreProperties ?? "",
+    extendedProperties: extendedProperties ?? "",
+  };
 };
 
 const elementValue = (xml: string, name: string): string | undefined =>
@@ -50,7 +52,9 @@ describe("the document properties a newly created package states", () => {
     );
 
     expect(elementValue(coreProperties, "creator")).toBe("Marie Nováková");
-    expect(elementValue(extendedProperties, "Application")).toBe("Example Host 3.2");
+    expect(elementValue(extendedProperties, "Application")).toBe(
+      "Example Host 3.2",
+    );
   });
 
   test("states an application version of the schema form alongside an application", async () => {
@@ -58,7 +62,9 @@ describe("the document properties a newly created package states", () => {
       await createDocx(createEmptyDocument(), { application: "Example Host" }),
     );
 
-    expect(elementValue(extendedProperties, "AppVersion")).toMatch(APP_VERSION_SCHEMA_FORM);
+    expect(elementValue(extendedProperties, "AppVersion")).toMatch(
+      APP_VERSION_SCHEMA_FORM,
+    );
   });
 
   test("escapes a supplied value rather than letting it close its element", async () => {
@@ -70,7 +76,9 @@ describe("the document properties a newly created package states", () => {
     );
 
     expect(elementValue(coreProperties, "title")).toBeUndefined();
-    expect(elementValue(extendedProperties, "Application")).toBe("Smith &amp; Co &lt;Legal&gt;");
+    expect(elementValue(extendedProperties, "Application")).toBe(
+      "Smith &amp; Co &lt;Legal&gt;",
+    );
   });
 });
 
@@ -89,6 +97,8 @@ describe("the document properties a package carrying a source states", () => {
     );
 
     expect(elementValue(coreProperties, "creator")).toBe("Source Author");
-    expect(elementValue(extendedProperties, "Application")).toBe("Source Application");
+    expect(elementValue(extendedProperties, "Application")).toBe(
+      "Source Application",
+    );
   });
 });

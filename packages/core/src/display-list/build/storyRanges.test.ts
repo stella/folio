@@ -13,14 +13,14 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { buildDisplayList } from "./buildDisplayList";
-import type { DisplayGlyphRun, DisplayList, DisplayPrimitive } from "../types";
 import { layoutDocxHeadless } from "../../headless-layout";
 import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import {
   getMeasureProvider,
   setMeasureProvider,
 } from "../../layout-engine/measure/measureProvider";
+import type { DisplayGlyphRun, DisplayList, DisplayPrimitive } from "../types";
+import { buildDisplayList } from "./buildDisplayList";
 
 const fixtureUrl = (name: string) =>
   new URL(`../../docx/__tests__/__fixtures__/corpus/${name}`, import.meta.url);
@@ -57,7 +57,9 @@ const installFixedWidthProvider = (): void => {
     },
     measureRun: (text, style) => {
       const per = ptToPx(style.fontSize ?? 11) * FIXED_ADVANCE_RATIO;
-      const charWidths = [...text].flatMap((char) => (char.length === 2 ? [per, 0] : [per]));
+      const charWidths = [...text].flatMap((char) =>
+        char.length === 2 ? [per, 0] : [per],
+      );
       return {
         width: charWidths.reduce((total, width) => total + width, 0),
         charWidths,
@@ -73,7 +75,8 @@ const listFor = async (name: string): Promise<DisplayList> => {
   if (laidOut.isErr()) {
     throw laidOut.error;
   }
-  const { layout, blockLookup, documentFeatures, furniture, embeddedFonts } = laidOut.value;
+  const { layout, blockLookup, documentFeatures, furniture, embeddedFonts } =
+    laidOut.value;
   return buildDisplayList({
     layout,
     blockLookup,
@@ -83,7 +86,9 @@ const listFor = async (name: string): Promise<DisplayList> => {
   });
 };
 
-const flatten = (primitives: readonly DisplayPrimitive[]): readonly DisplayPrimitive[] =>
+const flatten = (
+  primitives: readonly DisplayPrimitive[],
+): readonly DisplayPrimitive[] =>
   primitives.flatMap((primitive) =>
     primitive.kind === "clipGroup" ||
     primitive.kind === "rotateGroup" ||
@@ -92,7 +97,10 @@ const flatten = (primitives: readonly DisplayPrimitive[]): readonly DisplayPrimi
       : [primitive],
   );
 
-const runsOn = (list: DisplayList, pageIndex: number): readonly DisplayGlyphRun[] =>
+const runsOn = (
+  list: DisplayList,
+  pageIndex: number,
+): readonly DisplayGlyphRun[] =>
   flatten(list.pages[pageIndex]?.primitives ?? []).flatMap((primitive) =>
     primitive.kind === "glyphRun" ? [primitive] : [],
   );
@@ -140,7 +148,9 @@ describe("a run's model range names the story it belongs to", () => {
 
     // The literal text around the header's fields is addressable, so a run
     // going unaddressed is a property of the field, not of the story.
-    expect(runContaining(runs, "Share transfer agreement")?.pmRange).toBeDefined();
+    expect(
+      runContaining(runs, "Share transfer agreement")?.pmRange,
+    ).toBeDefined();
   });
 
   test("a footnote body addresses its own note, by id", async () => {

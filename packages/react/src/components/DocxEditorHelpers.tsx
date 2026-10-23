@@ -32,11 +32,17 @@ export function ParseError({ message }: { message: string }) {
 
   return (
     <div className="flex h-full flex-col items-center justify-center p-5 text-center">
-      <AlertCircleIcon size={48} strokeWidth={1.5} className="text-[var(--doc-error)]" />
+      <AlertCircleIcon
+        size={48}
+        strokeWidth={1.5}
+        className="text-[var(--doc-error)]"
+      />
       <h3 className="mt-4 text-base font-semibold text-[var(--doc-error)]">
         {t("loadDocumentFailedTitle")}
       </h3>
-      <p className="mt-2 max-w-[400px] text-sm text-[var(--doc-text-muted)]">{message}</p>
+      <p className="mt-2 max-w-[400px] text-sm text-[var(--doc-text-muted)]">
+        {message}
+      </p>
     </div>
   );
 }

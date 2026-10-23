@@ -29,7 +29,9 @@ describe("trailingSpaceStart", () => {
   test("scans text with long interior space runs in linear time", () => {
     const text = `a${" ".repeat(LARGE)}b`;
     let start = -1;
-    expect(elapsedMs(() => (start = trailingSpaceStart(text)))).toBeLessThan(GENEROUS_BOUND_MS);
+    expect(elapsedMs(() => (start = trailingSpaceStart(text)))).toBeLessThan(
+      GENEROUS_BOUND_MS,
+    );
     expect(start).toBe(text.length);
   });
 });
@@ -50,14 +52,18 @@ describe("splitTrailingToken", () => {
   test("scans a long final token in linear time", () => {
     const text = `${"x".repeat(LARGE)} y`;
     let result: ReturnType<typeof splitTrailingToken>;
-    expect(elapsedMs(() => (result = splitTrailingToken(text)))).toBeLessThan(GENEROUS_BOUND_MS);
+    expect(elapsedMs(() => (result = splitTrailingToken(text)))).toBeLessThan(
+      GENEROUS_BOUND_MS,
+    );
     expect(result).toEqual({ token: "y", separator: "" });
   });
 
   test("scans a long token followed by a long whitespace run in linear time", () => {
     const text = `${"x".repeat(LARGE)}${" ".repeat(LARGE)}`;
     let result: ReturnType<typeof splitTrailingToken>;
-    expect(elapsedMs(() => (result = splitTrailingToken(text)))).toBeLessThan(GENEROUS_BOUND_MS);
+    expect(elapsedMs(() => (result = splitTrailingToken(text)))).toBeLessThan(
+      GENEROUS_BOUND_MS,
+    );
     expect(result?.token.length).toBe(LARGE);
     expect(result?.separator.length).toBe(LARGE);
   });

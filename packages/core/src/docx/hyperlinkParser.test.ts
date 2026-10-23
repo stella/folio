@@ -45,7 +45,9 @@ describe("hyperlink parsing", () => {
       ],
     ]);
 
-    expect(resolveHyperlinkUrl(hyperlink, rels)).toBe("https://example.com/matter");
+    expect(resolveHyperlinkUrl(hyperlink, rels)).toBe(
+      "https://example.com/matter",
+    );
     expect(hyperlink.href).toBe("https://example.com/matter");
   });
 });

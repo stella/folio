@@ -1,8 +1,11 @@
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../../model/document";
 import { storyParagraphs } from "../blocks";
 import {
@@ -10,7 +13,12 @@ import {
   compileEditorIntent,
   createEditorIntentIdAllocator,
 } from "../editorIntent";
-import { IDENTITY_SPACES, idKey, packageIdentityKeys, packageParagraphIds } from "../ids";
+import {
+  IDENTITY_SPACES,
+  idKey,
+  packageIdentityKeys,
+  packageParagraphIds,
+} from "../ids";
 import { paragraphLength } from "../offsets";
 import { filterNewIds } from "../plan";
 import { DOCUMENT_OP_TYPES, OP_STORIES } from "../types";
@@ -24,14 +32,19 @@ const paragraph = (index: number): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
 });
 
-const replaceMainParagraph = (document: Document, replacement: Paragraph): Document => ({
+const replaceMainParagraph = (
+  document: Document,
+  replacement: Paragraph,
+): Document => ({
   ...document,
   package: {
     ...document.package,
     document: {
       ...document.package.document,
       content: document.package.document.content.map((block) =>
-        block.type === "paragraph" && block.paraId === replacement.paraId ? replacement : block,
+        block.type === "paragraph" && block.paraId === replacement.paraId
+          ? replacement
+          : block,
       ),
     },
   },
@@ -58,7 +71,12 @@ const replaceHeaderIdentities = (
                 {
                   type: "insertion",
                   info: { id: candidate.revisionId, author: "Header" },
-                  content: [{ type: "run", content: [{ type: "text", text: "header" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "header" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -89,13 +107,23 @@ describe("editor intent identity allocation", () => {
             },
             (_, id) => id % 2 === 0,
           );
-          if (!("newIds" in filtered)) panic("Filtering lost the operation's identity pools.");
-          expect(Object.keys(filtered.newIds ?? {})).toEqual(Object.keys(newIds));
-          expect(filtered.newIds?.revision).toEqual(revision?.filter((id) => id % 2 === 0));
-          expect(filtered.newIds?.control).toEqual(control?.filter((id) => id % 2 === 0));
+          if (!("newIds" in filtered))
+            panic("Filtering lost the operation's identity pools.");
+          expect(Object.keys(filtered.newIds ?? {})).toEqual(
+            Object.keys(newIds),
+          );
+          expect(filtered.newIds?.revision).toEqual(
+            revision?.filter((id) => id % 2 === 0),
+          );
+          expect(filtered.newIds?.control).toEqual(
+            control?.filter((id) => id % 2 === 0),
+          );
         },
       ),
-      { numRuns: 100, id: "filtering pools preserves supplied spaces and ordered identities" },
+      {
+        numRuns: 100,
+        id: "filtering pools preserves supplied spaces and ordered identities",
+      },
     );
   });
 
@@ -114,7 +142,9 @@ describe("editor intent identity allocation", () => {
       });
       return value;
     });
-    const document: Document = { package: { document: { content: paragraphs } } };
+    const document: Document = {
+      package: { document: { content: paragraphs } },
+    };
     const allocate = createEditorIntentIdAllocator();
     const intent = {
       type: "replaceText",
@@ -203,9 +233,21 @@ describe("editor intent identity allocation", () => {
           const source = generated.package.document.content.find(
             (block) => block.type === "paragraph",
           );
-          if (!source) panic("Generated immutable census document has no top-level paragraph.");
-          const at = { story: OP_STORIES.MAIN, blockId: source.paraId ?? "", offset: 0 };
-          const intent = { type: "replaceText", from: at, to: at, text: "x" } as const;
+          if (!source)
+            panic(
+              "Generated immutable census document has no top-level paragraph.",
+            );
+          const at = {
+            story: OP_STORIES.MAIN,
+            blockId: source.paraId ?? "",
+            offset: 0,
+          };
+          const intent = {
+            type: "replaceText",
+            from: at,
+            to: at,
+            text: "x",
+          } as const;
           const allocate = createEditorIntentIdAllocator();
           let current = generated;
           expect(allocate(current, intent)).toEqual(
@@ -222,7 +264,9 @@ describe("editor intent identity allocation", () => {
                     {
                       type: "inlineSdt",
                       properties: { sdtType: "richText", id: change.control },
-                      content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+                      content: [
+                        { type: "run", content: [{ type: "text", text: "x" }] },
+                      ],
                     },
                   ],
                 },
@@ -251,93 +295,117 @@ describe("editor intent identity allocation", () => {
     const kinds = ["replaceText", "splitParagraph", "joinParagraphs"] as const;
     const exercised = new Set<string>();
     assertProperty(
-      fc.property(documentArbitrary, fc.nat(), fc.nat(), (generated, paragraphPick, offsetPick) => {
-        const occupied = new Set(packageIdentityKeys(generated.package));
-        const firstFree = (space: string) => {
-          let id = 1;
-          while (occupied.has(`${space}:${id}`)) id += 1;
-          return id;
-        };
-        const outsideRevision = firstFree(IDENTITY_SPACES.REVISION);
-        const outsideControl = firstFree(IDENTITY_SPACES.CONTROL);
-        const existingParagraphs = new Set(packageParagraphIds(generated.package).map(idKey));
-        let outsideParagraph = 1;
-        while (existingParagraphs.has(paragraph(outsideParagraph - 1).paraId ?? ""))
-          outsideParagraph += 1;
-        const document: Document = {
-          ...generated,
-          package: {
-            ...generated.package,
-            headers: new Map([
-              [
-                "rIdHeader",
-                {
-                  type: "header",
-                  hdrFtrType: "default",
-                  content: [
-                    {
-                      type: "paragraph",
-                      paraId: paragraph(outsideParagraph - 1).paraId,
-                      content: [
-                        {
-                          type: "insertion",
-                          info: { id: outsideRevision, author: "Header" },
-                          content: [
-                            {
-                              type: "inlineSdt",
-                              properties: { sdtType: "richText", id: outsideControl },
-                              content: [
-                                { type: "run", content: [{ type: "text", text: "header" }] },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            ]),
-          },
-        };
-        const paragraphs = storyParagraphs(document.package.document).map(
-          ({ paragraph: value }) => value,
-        );
-        const source = paragraphs.at(paragraphPick % paragraphs.length);
-        if (!source) panic("Generated allocation document has no paragraph.");
-        const next = paragraphs.at((paragraphPick + 1) % paragraphs.length);
-        const at = {
-          story: OP_STORIES.MAIN,
-          blockId: source.paraId ?? "",
-          offset: offsetPick % (paragraphLength(source) + 1),
-        };
-        const intents = [
-          { type: "replaceText", from: at, to: at, text: "x" },
-          { type: "splitParagraph", at },
-          {
-            type: "joinParagraphs",
+      fc.property(
+        documentArbitrary,
+        fc.nat(),
+        fc.nat(),
+        (generated, paragraphPick, offsetPick) => {
+          const occupied = new Set(packageIdentityKeys(generated.package));
+          const firstFree = (space: string) => {
+            let id = 1;
+            while (occupied.has(`${space}:${id}`)) id += 1;
+            return id;
+          };
+          const outsideRevision = firstFree(IDENTITY_SPACES.REVISION);
+          const outsideControl = firstFree(IDENTITY_SPACES.CONTROL);
+          const existingParagraphs = new Set(
+            packageParagraphIds(generated.package).map(idKey),
+          );
+          let outsideParagraph = 1;
+          while (
+            existingParagraphs.has(paragraph(outsideParagraph - 1).paraId ?? "")
+          )
+            outsideParagraph += 1;
+          const document: Document = {
+            ...generated,
+            package: {
+              ...generated.package,
+              headers: new Map([
+                [
+                  "rIdHeader",
+                  {
+                    type: "header",
+                    hdrFtrType: "default",
+                    content: [
+                      {
+                        type: "paragraph",
+                        paraId: paragraph(outsideParagraph - 1).paraId,
+                        content: [
+                          {
+                            type: "insertion",
+                            info: { id: outsideRevision, author: "Header" },
+                            content: [
+                              {
+                                type: "inlineSdt",
+                                properties: {
+                                  sdtType: "richText",
+                                  id: outsideControl,
+                                },
+                                content: [
+                                  {
+                                    type: "run",
+                                    content: [{ type: "text", text: "header" }],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              ]),
+            },
+          };
+          const paragraphs = storyParagraphs(document.package.document).map(
+            ({ paragraph: value }) => value,
+          );
+          const source = paragraphs.at(paragraphPick % paragraphs.length);
+          if (!source) panic("Generated allocation document has no paragraph.");
+          const next = paragraphs.at((paragraphPick + 1) % paragraphs.length);
+          const at = {
             story: OP_STORIES.MAIN,
-            blockId: at.blockId,
-            nextBlockId: next?.paraId ?? at.blockId,
-          },
-        ] as const;
-        const identities = new Set(packageIdentityKeys(document.package));
-        const paragraphIds = new Set(packageParagraphIds(document.package).map(idKey));
-        for (const intent of intents) {
-          const ids = allocateEditorIntentIds(document, intent);
-          expect(paragraphIds.has(idKey(ids.newBlockId))).toBe(false);
-          const revision = [ids.revisionId, ...(ids.newIds.revision ?? [])];
-          const control = ids.newIds.control ?? [];
-          expect(new Set(revision).size).toBe(revision.length);
-          expect(new Set(control).size).toBe(control.length);
-          for (const id of revision)
-            expect(identities.has(`${IDENTITY_SPACES.REVISION}:${id}`)).toBe(false);
-          for (const id of control)
-            expect(identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)).toBe(false);
-          exercised.add(intent.type);
-        }
-      }),
-      { numRuns: 100, id: "generated intent allocations avoid every package identity space" },
+            blockId: source.paraId ?? "",
+            offset: offsetPick % (paragraphLength(source) + 1),
+          };
+          const intents = [
+            { type: "replaceText", from: at, to: at, text: "x" },
+            { type: "splitParagraph", at },
+            {
+              type: "joinParagraphs",
+              story: OP_STORIES.MAIN,
+              blockId: at.blockId,
+              nextBlockId: next?.paraId ?? at.blockId,
+            },
+          ] as const;
+          const identities = new Set(packageIdentityKeys(document.package));
+          const paragraphIds = new Set(
+            packageParagraphIds(document.package).map(idKey),
+          );
+          for (const intent of intents) {
+            const ids = allocateEditorIntentIds(document, intent);
+            expect(paragraphIds.has(idKey(ids.newBlockId))).toBe(false);
+            const revision = [ids.revisionId, ...(ids.newIds.revision ?? [])];
+            const control = ids.newIds.control ?? [];
+            expect(new Set(revision).size).toBe(revision.length);
+            expect(new Set(control).size).toBe(control.length);
+            for (const id of revision)
+              expect(identities.has(`${IDENTITY_SPACES.REVISION}:${id}`)).toBe(
+                false,
+              );
+            for (const id of control)
+              expect(identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)).toBe(
+                false,
+              );
+            exercised.add(intent.type);
+          }
+        },
+      ),
+      {
+        numRuns: 100,
+        id: "generated intent allocations avoid every package identity space",
+      },
     );
     expect([...exercised].sort()).toEqual([...kinds].sort());
   });
