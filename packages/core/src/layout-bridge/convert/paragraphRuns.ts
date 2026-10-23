@@ -376,15 +376,18 @@ export function paragraphToRuns(
       return;
     }
     if (child.type.name === "structuredField") {
-      let containsPageBreak = false;
+      let containsLayoutBreak = false;
       child.descendants((descendant) => {
-        if (descendant.type.name === "pageBreakRun") {
-          containsPageBreak = true;
+        if (
+          descendant.type.name === "pageBreakRun" ||
+          descendant.type.name === "hardBreak"
+        ) {
+          containsLayoutBreak = true;
           return false;
         }
         return true;
       });
-      if (containsPageBreak) {
+      if (containsLayoutBreak) {
         const fieldContentStart = childPos + 1;
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
         child.forEach((fieldChild, fieldChildOffset) => {
