@@ -67,7 +67,7 @@ const isContentLockedControl = (node: {
   isContentLocked(node.attrs["lock"]);
 
 const selectionTouchesContentLockedControl = (state: EditorState): boolean => {
-  const { from, to, $from, $to } = state.selection;
+  const { $from, $to } = state.selection;
   const hasLockedAncestor = (position: typeof $from): boolean => {
     for (let depth = 1; depth <= position.depth; depth += 1) {
       if (isContentLockedControl(position.node(depth))) return true;
@@ -78,12 +78,14 @@ const selectionTouchesContentLockedControl = (state: EditorState): boolean => {
   if (state.selection.empty) return false;
 
   let touchesLockedControl = false;
-  state.doc.nodesBetween(from, to, (node) => {
-    if (isContentLockedControl(node)) {
-      touchesLockedControl = true;
-      return false;
-    }
-    return true;
+  canonicalSelectionRanges(state).forEach(({ from, to }) => {
+    state.doc.nodesBetween(from, to, (node) => {
+      if (isContentLockedControl(node)) {
+        touchesLockedControl = true;
+        return false;
+      }
+      return true;
+    });
   });
   return touchesLockedControl;
 };
@@ -446,7 +448,7 @@ export const canonicalSetMarkFormatting = ({
 export function setMark(type: MarkType, attrs: MarkAttrs): Command {
   const command: Command = (state, dispatch) => {
     const markType = documentMarkType(state, type);
-    const { from, to, empty } = state.selection;
+    const { empty } = state.selection;
 
     if (empty) {
       if (dispatch) {
@@ -464,23 +466,27 @@ export function setMark(type: MarkType, attrs: MarkAttrs): Command {
 
     if (dispatch) {
       if (!markRequiresAttrMerge(markType)) {
-        dispatch(
-          state.tr.addMark(from, to, markType.create(attrs)).scrollIntoView(),
-        );
+        let tr = state.tr;
+        canonicalSelectionRanges(state).forEach(({ from, to }) => {
+          tr = tr.addMark(from, to, markType.create(attrs));
+        });
+        dispatch(tr.scrollIntoView());
         return true;
       }
 
       let tr = state.tr;
-      state.doc.nodesBetween(from, to, (node, pos) => {
-        if (!node.isText) {
-          return;
-        }
+      canonicalSelectionRanges(state).forEach(({ from, to }) => {
+        state.doc.nodesBetween(from, to, (node, pos) => {
+          if (!node.isText) {
+            return;
+          }
 
-        const start = Math.max(from, pos);
-        const end = Math.min(to, pos + node.nodeSize);
-        const currentMark = markType.isInSet(node.marks);
-        const mark = createMarkWithMergedAttrs(markType, currentMark, attrs);
-        tr = tr.addMark(start, end, mark);
+          const start = Math.max(from, pos);
+          const end = Math.min(to, pos + node.nodeSize);
+          const currentMark = markType.isInSet(node.marks);
+          const mark = createMarkWithMergedAttrs(markType, currentMark, attrs);
+          tr = tr.addMark(start, end, mark);
+        });
       });
 
       dispatch(tr.scrollIntoView());
@@ -581,7 +587,7 @@ const updateRunFormattingOverride = (
   if (!overrideType) {
     return tr;
   }
-  const { from, to, empty } = state.selection;
+  const { empty } = state.selection;
   if (empty) {
     const marks = updateRunFormattingOverrideMarks(
       tr.storedMarks ?? state.storedMarks ?? state.selection.$from.marks(),
@@ -593,11 +599,10 @@ const updateRunFormattingOverride = (
     return tr;
   }
 
-  const representations = selectRunFormattingCarrierRepresentations({
-    doc: tr.doc,
-    from,
-    to,
-  });
+  const representations = canonicalSelectionRanges(state).flatMap(
+    ({ from, to }) =>
+      selectRunFormattingCarrierRepresentations({ doc: tr.doc, from, to }),
+  );
   for (const representation of representations) {
     const { node, position } = representation;
     const nextMarks = updateRunFormattingOverrideMarks(
@@ -706,7 +711,7 @@ function selectionHasVisibleUnderline(
   state: EditorState,
   markType: MarkType,
 ): boolean {
-  const { from, to, empty, $from } = state.selection;
+  const { empty, $from } = state.selection;
 
   if (empty) {
     const mark = markType.isInSet(state.storedMarks ?? $from.marks());
@@ -714,18 +719,20 @@ function selectionHasVisibleUnderline(
   }
 
   let hasVisibleUnderline = false;
-  state.doc.nodesBetween(from, to, (node) => {
-    if (!node.isText) {
+  canonicalSelectionRanges(state).forEach(({ from, to }) => {
+    state.doc.nodesBetween(from, to, (node) => {
+      if (!node.isText) {
+        return true;
+      }
+
+      const mark = markType.isInSet(node.marks);
+      if (mark && mark.attrs["style"] !== "none") {
+        hasVisibleUnderline = true;
+        return false;
+      }
+
       return true;
-    }
-
-    const mark = markType.isInSet(node.marks);
-    if (mark && mark.attrs["style"] !== "none") {
-      hasVisibleUnderline = true;
-      return false;
-    }
-
-    return true;
+    });
   });
 
   return hasVisibleUnderline;
@@ -761,7 +768,7 @@ export function toggleUnderlineMark(markType: MarkType): Command {
 export function removeMark(type: MarkType): Command {
   const command: Command = (state, dispatch) => {
     const markType = documentMarkType(state, type);
-    const { from, to, empty } = state.selection;
+    const { empty } = state.selection;
 
     if (empty) {
       if (dispatch) {
@@ -774,7 +781,11 @@ export function removeMark(type: MarkType): Command {
     }
 
     if (dispatch) {
-      dispatch(state.tr.removeMark(from, to, markType).scrollIntoView());
+      let tr = state.tr;
+      canonicalSelectionRanges(state).forEach(({ from, to }) => {
+        tr = tr.removeMark(from, to, markType);
+      });
+      dispatch(tr.scrollIntoView());
     }
 
     return true;
@@ -800,7 +811,7 @@ export function isMarkActive(
   attrs?: Record<string, unknown>,
 ): boolean {
   const markType = documentMarkType(state, type);
-  const { from, to, empty } = state.selection;
+  const { empty } = state.selection;
 
   if (empty) {
     const marks = state.storedMarks ?? state.selection.$from.marks();
@@ -818,30 +829,32 @@ export function isMarkActive(
   }
 
   let hasMark = false;
-  state.doc.nodesBetween(from, to, (node) => {
-    if (
-      node.isText &&
-      !(
-        RUN_FORMATTING_MARK_NAMES.has(markType.name) &&
-        node.marks.some((mark) => mark.type.name === "footnoteRef")
-      )
-    ) {
-      const mark = markType.isInSet(node.marks);
-      if (mark) {
-        if (!attrs) {
-          hasMark = true;
-          return false;
-        }
-        const attrsMatch = Object.entries(attrs).every(
-          ([key, value]) => mark.attrs[key] === value,
-        );
-        if (attrsMatch) {
-          hasMark = true;
-          return false;
+  canonicalSelectionRanges(state).forEach(({ from, to }) => {
+    state.doc.nodesBetween(from, to, (node) => {
+      if (
+        node.isText &&
+        !(
+          RUN_FORMATTING_MARK_NAMES.has(markType.name) &&
+          node.marks.some((mark) => mark.type.name === "footnoteRef")
+        )
+      ) {
+        const mark = markType.isInSet(node.marks);
+        if (mark) {
+          if (!attrs) {
+            hasMark = true;
+            return false;
+          }
+          const attrsMatch = Object.entries(attrs).every(
+            ([key, value]) => mark.attrs[key] === value,
+          );
+          if (attrsMatch) {
+            hasMark = true;
+            return false;
+          }
         }
       }
-    }
-    return true;
+      return true;
+    });
   });
 
   return hasMark;
@@ -856,7 +869,7 @@ export function getMarkAttr(
   attr: string,
 ): unknown {
   const markType = documentMarkType(state, type);
-  const { empty, $from, from, to } = state.selection;
+  const { empty, $from } = state.selection;
 
   if (empty) {
     const marks = state.storedMarks ?? $from.marks();
@@ -869,15 +882,17 @@ export function getMarkAttr(
   }
 
   let value: unknown = null;
-  state.doc.nodesBetween(from, to, (node) => {
-    if (node.isText && value === null) {
-      const mark = markType.isInSet(node.marks);
-      if (mark) {
-        value = mark.attrs[attr];
-        return false;
+  canonicalSelectionRanges(state).forEach(({ from, to }) => {
+    state.doc.nodesBetween(from, to, (node) => {
+      if (node.isText && value === null) {
+        const mark = markType.isInSet(node.marks);
+        if (mark) {
+          value = mark.attrs[attr];
+          return false;
+        }
       }
-    }
-    return true;
+      return value === null;
+    });
   });
 
   return value;
