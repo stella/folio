@@ -284,42 +284,53 @@ describe("field result run metadata round-trip", () => {
     });
   });
 
-  test("keeps a complex field inside its comment range", () => {
-    const source: Document = {
-      package: {
-        document: {
-          content: [
-            {
-              type: "paragraph",
-              content: [
-                { type: "commentRangeStart", id: 17 },
-                {
-                  type: "complexField",
-                  instruction: " REF target ",
-                  fieldType: "REF",
-                  fieldCode,
-                  fieldResult: resultRuns,
-                },
-                { type: "commentRangeEnd", id: 17 },
-              ],
-            },
-          ],
+  test.each(["field", "field-and-text"] as const)(
+    "keeps a complex field inside its comment range: %s",
+    (coverage) => {
+      const followingContent: Run[] =
+        coverage === "field"
+          ? []
+          : [
+              {
+                type: "run",
+                content: [{ type: "text", text: "Following text" }],
+              },
+            ];
+      const expectedContent = [
+        { type: "commentRangeStart", id: 17 },
+        {
+          type: "complexField",
+          instruction: " REF target ",
+          fieldType: "REF",
+          fieldCode,
+          fieldResult: resultRuns,
         },
-      },
-    };
+        ...followingContent,
+        { type: "commentRangeEnd", id: 17 },
+        { type: "run", content: [{ type: "text", text: "Outside range" }] },
+      ] satisfies ParagraphContent[];
+      const source: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: expectedContent,
+              },
+            ],
+          },
+        },
+      };
 
-    const paragraph = fromProseDoc(toProseDoc(source), source, {
-      stylesheetSource: { type: "package" },
-    }).package.document.content.at(0);
+      const paragraph = fromProseDoc(toProseDoc(source), source, {
+        stylesheetSource: { type: "package" },
+      }).package.document.content.at(0);
 
-    expect(paragraph?.type).toBe("paragraph");
-    if (paragraph?.type !== "paragraph") {
-      throw new Error("Expected a paragraph containing the field");
-    }
-    expect(paragraph.content).toMatchObject([
-      { type: "commentRangeStart", id: 17 },
-      { type: "complexField", fieldResult: resultRuns },
-      { type: "commentRangeEnd", id: 17 },
-    ]);
-  });
+      expect(paragraph?.type).toBe("paragraph");
+      if (paragraph?.type !== "paragraph") {
+        throw new Error("Expected a paragraph containing the field");
+      }
+      expect(paragraph.content).toMatchObject(expectedContent);
+    },
+  );
 });

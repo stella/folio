@@ -3,6 +3,16 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 import { getInlineDisplayText } from "./inlineDisplayText";
 import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
+import type { FieldAttrs } from "./schema/nodes";
+
+const FIELD_COMMENT_COVERAGE = {
+  simple: "children",
+  complex: "field",
+} as const satisfies Record<FieldAttrs["fieldKind"], "children" | "field">;
+
+export const fieldCommentCoverage = (
+  fieldKind: FieldAttrs["fieldKind"],
+): "children" | "field" => FIELD_COMMENT_COVERAGE[fieldKind];
 
 /** Current children alone decide whether a field needs editable structural content. */
 export const fieldRequiresStructuredContent = (
