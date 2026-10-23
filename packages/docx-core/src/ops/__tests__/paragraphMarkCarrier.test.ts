@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { paragraphMarkOutcome } from "../blockDeletion";
-import { paragraphHoldsContent } from "../offsets";
+import { paragraphContentVerdict, paragraphHoldsContent } from "../offsets";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const resolveAccepted = (document: Document, revisionIds = [7]): Document => {
@@ -133,7 +133,7 @@ test("rejecting an empty inserted final paragraph in a cell keeps the cell termi
   ]);
 });
 
-test("accepting a mark deletion before a table keeps a bookmark the paragraph holds", () => {
+test("accepting a mark deletion before a table leaves the bookmark the paragraph held where it was", () => {
   const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -148,14 +148,15 @@ test("accepting a mark deletion before a table keeps a bookmark the paragraph ho
     package: { document: { content: [paragraph, table, finalParagraph] } },
   };
 
-  const content = JSON.stringify(
-    resolveAccepted(document).package.document.content,
-  );
-  expect(content).toContain('"bookmarkStart"');
-  expect(content).toContain('"bookmarkEnd"');
+  expect(resolveAccepted(document).package.document.content).toEqual([
+    { type: "bookmarkStart", id: 1, name: "kept" },
+    { type: "bookmarkEnd", id: 1 },
+    table,
+    finalParagraph,
+  ]);
 });
 
-test("accepting a mark deletion before a table runs a comment anchor into the first cell and touches only those paragraphs", () => {
+test("accepting a mark deletion before a table keeps a paragraph whose comment anchor has no paragraph before it to go to", () => {
   const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -166,8 +167,9 @@ test("accepting a mark deletion before a table runs a comment anchor into the fi
   const document: Document = {
     package: { document: { content: [paragraph, table, finalParagraph] } },
   };
-  // A range boundary is content to keep, so the paragraph runs on into the table.
-  expect(paragraphHoldsContent(paragraph)).toBe(true);
+  // A range boundary is no content: the paragraph would go, but its comment
+  // anchor only a paragraph can hold, and none comes before it.
+  expect(paragraphHoldsContent(paragraph)).toBe(false);
 
   const applied = applyDocumentOp(document, {
     type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -176,15 +178,50 @@ test("accepting a mark deletion before a table runs a comment anchor into the fi
     decision: REVISION_DECISIONS.ACCEPT,
   });
   if (applied.isErr()) throw applied.error;
-  expect(applied.value.touched).toEqual({
-    modified: ["00000002"],
-    inserted: [],
-    removed: ["00000001"],
-  });
-  const [first, ...rest] = applied.value.document.package.document.content;
-  expect(first?.type).toBe("table");
-  expect(JSON.stringify(first)).toContain('"commentRangeEnd"');
-  expect(rest).toEqual([finalParagraph]);
+  const { pPrMark: _accepted, ...kept } = paragraph;
+  expect(applied.value.document.package.document.content).toEqual([
+    kept,
+    table,
+    finalParagraph,
+  ]);
+});
+
+test("accepting a mark deletion before a table moves a comment anchor to the paragraph before", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const before: Paragraph = {
+    type: "paragraph",
+    paraId: "00000005",
+    content: [
+      { type: "commentRangeStart", id: 1 },
+      { type: "run", content: [{ type: "text", text: "said" }] },
+    ],
+  };
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [
+      { type: "commentRangeEnd", id: 1 },
+      { type: "bookmarkStart", id: 3, name: "kept" },
+      { type: "bookmarkEnd", id: 3 },
+    ],
+    pPrMark: { kind: "del", info },
+  };
+  const document: Document = {
+    package: {
+      document: { content: [before, paragraph, table, finalParagraph] },
+    },
+  };
+
+  expect(resolveAccepted(document).package.document.content).toEqual([
+    {
+      ...before,
+      content: [...before.content, { type: "commentRangeEnd", id: 1 }],
+    },
+    { type: "bookmarkStart", id: 3, name: "kept" },
+    { type: "bookmarkEnd", id: 3 },
+    table,
+    finalParagraph,
+  ]);
 });
 
 test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
@@ -279,7 +316,9 @@ test("rejecting a marker-only inline content control does not touch the followin
   });
   if (result.isErr()) throw result.error;
 
+  // The bookmark the control's link held stays where the paragraph was.
   expect(result.value.document.package.document.content).toEqual([
+    { type: "bookmarkStart", id: 1, name: "_Link" },
     followingTable,
     finalParagraph,
   ]);
@@ -322,6 +361,34 @@ test("only atomic fields make marker-only inline containers paragraph content", 
       ],
     }),
   ).toBe(true);
+});
+
+test("the one paragraph-content rule counts width, not positions or layout caches", () => {
+  expect(
+    paragraphContentVerdict({ width: 0, zeroWidthItems: ["commentRangeEnd"] }),
+  ).toBe(false);
+  expect(
+    paragraphContentVerdict({ width: 0, zeroWidthItems: ["bookmarkStart"] }),
+  ).toBe(false);
+  expect(
+    paragraphContentVerdict({
+      width: 0,
+      zeroWidthItems: ["renderedPageBreak", "noteMarker"],
+    }),
+  ).toBe(false);
+  expect(paragraphContentVerdict({ width: 1, zeroWidthItems: [] })).toBe(true);
+  expect(
+    paragraphHoldsContent({
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+    }),
+  ).toBe(false);
+  expect(
+    paragraphHoldsContent({
+      type: "paragraph",
+      content: [{ type: "commentRangeEnd", id: 1 }],
+    }),
+  ).toBe(false);
 });
 
 test("refuses one owned reason when an empty mark precedes a section-ending table cell", () => {
@@ -435,7 +502,94 @@ describe("paragraphMarkOutcome", () => {
       followingTableCanReceiveRunIn: false,
       expected: "keep",
     },
-  ] as const)("returns $expected for $follows", ({ expected, ...input }) => {
-    expect(paragraphMarkOutcome(input).kind).toBe(expected);
+  ] as const)(
+    "returns $expected for $follows",
+    ({ expected, holdsContent, ...input }) => {
+      const verdict = paragraphContentVerdict({
+        width: holdsContent ? 1 : 0,
+        zeroWidthItems: [],
+      });
+      expect(
+        paragraphMarkOutcome({ ...input, holdsContent: verdict }).kind,
+      ).toBe(expected);
+    },
+  );
+});
+
+test("deleting a bookmark-only paragraph directly before a table is refused and keeps the bookmark", () => {
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [
+      { type: "bookmarkStart", id: 1, name: "kept" },
+      { type: "bookmarkEnd", id: 1 },
+    ],
+  };
+  const document: Document = {
+    package: { document: { content: [paragraph, table, finalParagraph] } },
+  };
+
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds: ["00000001"],
   });
+
+  expect(result.isErr()).toBe(true);
+  expect(document.package.document.content[0]).toBe(paragraph);
+});
+
+test("resolving a mark across a range boundary standing before a table is refused, the document unchanged", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [{ type: "run", content: [{ type: "text", text: "outside" }] }],
+    pPrMark: { kind: "del", info },
+  };
+  const ranged = {
+    ...table,
+    rows: [
+      {
+        ...table.rows[0],
+        cells: [
+          {
+            ...table.rows[0].cells[0],
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000002",
+                content: [
+                  { type: "run", content: [{ type: "text", text: "inside" }] },
+                  { type: "bookmarkEnd", id: 1 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  } as const;
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph,
+          { type: "bookmarkStart", id: 1, name: "kept" },
+          ranged,
+          finalParagraph,
+        ],
+      },
+    },
+  };
+
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.ACCEPT,
+  });
+  expect(result.isErr()).toBe(true);
+  expect(document.package.document.content[0]).toBe(paragraph);
+  expect(document.package.document.content[2]).toBe(ranged);
 });

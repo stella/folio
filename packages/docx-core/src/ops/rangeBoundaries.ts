@@ -14,8 +14,14 @@
  *
  * A comment whose whole range was removed is the comment owner's to retire
  * (see `isCommentExhausted`); its boundaries go with it.
+ *
+ * A paragraph that goes whole takes none of its boundaries with it
+ * ({@link paragraphRemains}): bookmarks and move ranges stand between blocks
+ * where it was, and comment anchors, which only a paragraph holds, go to the
+ * nearest paragraph that stays.
  */
 
+import type { BlockContent } from "../model/document";
 import {
   childNodes,
   type InlineNode,
@@ -44,8 +50,12 @@ const isBoundary = (node: InlineNode): node is Boundary =>
 const rangeKey = (boundary: Boundary): string =>
   `${BOUNDARY_SIDES[boundary.type].family}:${boundary.id}`;
 
-const isCommentAnchor = (node: InlineNode): node is Boundary =>
-  node.type === "commentRangeStart" || node.type === "commentRangeEnd";
+const isCommentAnchor = (
+  node: InlineNode,
+): node is Extract<
+  Boundary,
+  { type: "commentRangeStart" | "commentRangeEnd" }
+> => node.type === "commentRangeStart" || node.type === "commentRangeEnd";
 
 /** Comment ids with both a start and an end among `nodes`. */
 export const pairedCommentRanges = (
@@ -106,6 +116,101 @@ export const removedContentBoundaries = ({
       relocated,
     });
   });
+
+type CommentAnchor = Extract<
+  Boundary,
+  { type: "commentRangeStart" | "commentRangeEnd" }
+>;
+
+/** A boundary a block list holds between its blocks. */
+export type BlockBoundary = Exclude<Boundary, CommentAnchor>;
+
+// A block list holds no comment anchor, so every boundary in it is one of these.
+export const isBlockBoundary = (block: BlockContent): block is BlockBoundary =>
+  Object.hasOwn(BOUNDARY_SIDES, block.type);
+
+/** Every range boundary in `content`, at any depth, in document order. */
+export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
+  content.flatMap((node) =>
+    isBoundary(node) ? [node] : rangeBoundariesIn(childNodes(node) ?? []),
+  );
+
+/**
+ * What a paragraph that goes whole leaves where it was: every bookmark and
+ * move range boundary it holds, at any depth, as blocks in its place, and its
+ * comment anchors, in document order, for the nearest paragraph that stays to
+ * take. A comment with both anchors there becomes a point there, so the
+ * comment and its anchor survive the paragraph.
+ */
+export const paragraphRemains = (
+  content: readonly InlineNode[],
+): { blocks: BlockBoundary[]; comments: CommentAnchor[] } => {
+  const boundaries = rangeBoundariesIn(content);
+  return {
+    blocks: boundaries.filter(
+      (boundary): boundary is BlockBoundary => !isCommentAnchor(boundary),
+    ),
+    comments: boundaries.filter(isCommentAnchor),
+  };
+};
+
+/**
+ * `nodes` with every deletion `created` names split around the range
+ * boundaries directly in it, so they stand outside it, and those
+ * boundaries, in document order. Deleting a paragraph takes its content,
+ * not a position a user placed in it: accepting the deletion leaves these
+ * boundaries where they were, as deleting directly does, and rejecting it
+ * gives every piece back in place. A piece takes its deletion's own
+ * resolution joins only at the deletion's outer edges.
+ */
+export const withBoundariesOutsideDeletion = (
+  nodes: readonly InlineNode[],
+  created: (node: InlineNode) => boolean,
+): { nodes: InlineNode[]; standing: Boundary[] } => {
+  const standing: Boundary[] = [];
+  const visit = (items: readonly InlineNode[]): InlineNode[] =>
+    items.flatMap((node) => {
+      const children = childNodes(node);
+      if (children === undefined) return [node];
+      if (!created(node) || node.type !== "deletion") {
+        const next = visit(children);
+        return next.every((child, index) => child === children[index]) &&
+          next.length === children.length
+          ? [node]
+          : [rebuildNode(node, next)];
+      }
+      const groups: InlineNode[][] = [[]];
+      const between: Boundary[] = [];
+      for (const child of children) {
+        if (isBoundary(child)) {
+          between.push(child);
+          groups.push([]);
+        } else groups.at(-1)?.push(child);
+      }
+      if (between.length === 0) return [node];
+      standing.push(...between);
+      const joins = node.resolutionJoins;
+      const last = groups.length - 1;
+      const out: InlineNode[] = [];
+      for (const [index, group] of groups.entries()) {
+        if (group.length > 0) {
+          // SAFETY: rebuilding a deletion with other children keeps its type.
+          const piece = rebuildNode(node, group) as typeof node;
+          if (joins !== undefined)
+            piece.resolutionJoins = {
+              ...joins,
+              before: index === 0 ? joins.before : 0,
+              after: index === last ? joins.after : 0,
+            };
+          out.push(piece);
+        }
+        const boundary = between[index];
+        if (boundary !== undefined) out.push(boundary);
+      }
+      return out;
+    });
+  return { nodes: visit(nodes), standing };
+};
 
 /** Which kept boundaries each container may hold, as its model declares. */
 const HOLDS: Partial<

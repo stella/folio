@@ -11,11 +11,12 @@
  * kept boundary is always one the repair sees.
  */
 
-import type { Mark, Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import {
   type BoundaryOccurrence,
+  paragraphRemains,
   planWellFormedRanges,
 } from "@stll/docx-core/ops";
 
@@ -194,6 +195,92 @@ const pointRangeHalf = (
   );
 };
 
+/** One boundary as a node of its own, inline or between blocks. */
+const boundaryNode = (
+  item: BoundaryItem,
+  schema: Schema,
+  inline: boolean,
+): PMNode | undefined => {
+  if (item.type === "bookmarkStart" || item.type === "bookmarkEnd") {
+    const attrs =
+      item.type === "bookmarkStart"
+        ? { type: "start", id: item.id, name: item.name }
+        : { type: "end", id: item.id };
+    return schema.nodes[
+      inline ? BOOKMARK_BOUNDARY_NODE_NAME : BLOCK_BOOKMARK_BOUNDARY_NODE_NAME
+    ]?.create(attrs);
+  }
+  if (isComment(item)) return undefined;
+  return schema.nodes[
+    inline ? MOVE_RANGE_BOUNDARY_NODE_NAME : BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME
+  ]?.create({ marker: item satisfies MoveRangeMarker });
+};
+
+/** Range boundary nodes, as the nodes that stand for them between blocks. */
+export const blockBoundariesOf = (nodes: readonly PMNode[]): PMNode[] =>
+  nodes.flatMap((node) =>
+    rangeBoundaryItemsOf(node).flatMap((item) => {
+      const block = boundaryNode(item, node.type.schema, false);
+      return block === undefined ? [] : [block];
+    }),
+  );
+
+/** Whether `node` holds a comment's anchor, which only a paragraph holds. */
+export const carriesCommentAnchor = (node: PMNode): boolean =>
+  rangeBoundaryItemsOf(node).some(isComment);
+
+/** Whether `node` is a range boundary standing between blocks. */
+export const isBlockBoundaryNode = (node: PMNode | null | undefined): boolean =>
+  node != null && !node.isInline && rangeBoundaryItemsOf(node).length > 0;
+
+/**
+ * The inline form of range boundaries between blocks whose paragraph break
+ * goes, so they stand between the joined paragraphs' content; `null` when
+ * one of `blocks` is not such a boundary.
+ */
+export const inlineBoundariesOf = (
+  blocks: readonly PMNode[],
+): PMNode[] | null => {
+  const inline: PMNode[] = [];
+  for (const block of blocks) {
+    if (!isBlockBoundaryNode(block)) return null;
+    for (const item of rangeBoundaryItemsOf(block)) {
+      const node = boundaryNode(item, block.type.schema, true);
+      if (node === undefined) return null;
+      inline.push(node);
+    }
+  }
+  return inline;
+};
+
+/**
+ * What `paragraph` leaves where it was when it goes whole, by the engine's
+ * own rule (`paragraphRemains`): before a table, its bookmark and move range
+ * boundaries as block nodes in its place (`blocks`) and the nodes holding its
+ * comment anchors (`comments`) for the paragraph before it; ending its
+ * container, every node carrying a boundary (`inline`), for the paragraph
+ * before it.
+ */
+export const paragraphRemainsOf = (
+  paragraph: PMNode,
+): { blocks: PMNode[]; comments: PMNode[]; inline: PMNode[] } => {
+  const items: BoundaryItem[] = [];
+  const comments: PMNode[] = [];
+  const inline: PMNode[] = [];
+  paragraph.descendants((node) => {
+    const carried = rangeBoundaryItemsOf(node);
+    if (carried.length > 0) inline.push(node);
+    if (carriesCommentAnchor(node)) comments.push(node);
+    items.push(...carried);
+    return true;
+  });
+  const blocks = paragraphRemains(items).blocks.flatMap((item) => {
+    const block = boundaryNode(item, paragraph.type.schema, false);
+    return block === undefined ? [] : [block];
+  });
+  return { blocks, comments, inline };
+};
+
 /** The revision marks of `anchor`, with the other marks of `node`. */
 const marksBeside = (node: PMNode, anchor: PMNode): Mark[] => [
   ...node.marks.filter((mark) => !REVISION_MARK_NAMES.has(mark.type.name)),
@@ -354,6 +441,13 @@ const landingMarks = (removed: PMNode, selection: RevisionSelection): Mark[] =>
   });
 
 /**
+ * Marks that say which content a range covers. A kept boundary is no content,
+ * so it carries none: a comment whose content went goes with it, as in the
+ * engine, whose comment anchors are boundaries of their own.
+ */
+const COVERAGE_MARK_NAMES: ReadonlySet<string> = new Set(["comment"]);
+
+/**
  * Remove `node` and everything in it. Rejecting keeps every range boundary
  * within it, at any depth, as the engine's `removedContentBoundaries` does;
  * accepting keeps none, as a direct deletion does. A kept boundary keeps its
@@ -373,7 +467,9 @@ export const removeResolvedSubtree = (
       kept.push(
         candidate.type.create(candidate.attrs, null, [
           ...candidate.marks.filter(
-            (mark) => !REVISION_MARK_NAMES.has(mark.type.name),
+            (mark) =>
+              !REVISION_MARK_NAMES.has(mark.type.name) &&
+              !COVERAGE_MARK_NAMES.has(mark.type.name),
           ),
           ...landing,
         ]),
