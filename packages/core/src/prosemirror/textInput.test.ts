@@ -28,9 +28,17 @@ const schema = new Schema({
     doc: { content: "block+" },
     paragraph: { content: "inline*", group: "block", toDOM: () => ["p", 0] },
     text: { group: "inline" },
+    sdt: {
+      inline: true,
+      group: "inline",
+      content: "inline*",
+      attrs: { lock: { default: null } },
+      toDOM: () => ["span", 0],
+    },
   },
   marks: {
-    strong: { toDOM: () => ["strong", 0] },
+    bold: { toDOM: () => ["strong", 0] },
+    italic: { toDOM: () => ["em", 0] },
     insertion: {
       attrs: {
         revisionId: { default: 0 },
@@ -241,6 +249,74 @@ describe("text input routing", () => {
 
     expect(view.state.doc.textContent).toBe("A新");
     expect(markedText(view, "insertion")).toBe("新");
+  });
+
+  test.each([
+    { edge: "before", content: "control then text", from: 1 },
+    { edge: "after", content: "text then control", from: 5 },
+  ])(
+    "typing $content beside a content-locked control uses outside formatting in both modes",
+    ({ edge, from }) => {
+      for (const lock of ["contentLocked", "sdtContentLocked"]) {
+        for (const suggesting of [false, true]) {
+          const control = schema.node("sdt", { lock }, [
+            schema.text("B", [schema.mark("bold")]),
+          ]);
+          const content =
+            edge === "before"
+              ? [control, schema.text("A", [schema.mark("italic")])]
+              : [schema.text("A", [schema.mark("italic")]), control];
+          const view = createView(content, {
+            plugins: suggesting
+              ? [createSuggestionModePlugin(true, "Reviewer")]
+              : [],
+            selection: { from },
+          });
+
+          dispatchBeforeInput(view, { data: "X" });
+
+          let typedMarks: readonly string[] = [];
+          view.state.doc.descendants((node) => {
+            if (node.isText && node.text === "X") {
+              typedMarks = node.marks.map((mark) => mark.type.name);
+            }
+          });
+          expect(typedMarks).toContain("italic");
+          expect(typedMarks).not.toContain("bold");
+          expect(typedMarks.includes("insertion")).toBe(suggesting);
+        }
+      }
+    },
+  );
+
+  test("explicit toolbar marks take precedence beside a locked control", () => {
+    for (const suggesting of [false, true]) {
+      const control = schema.node("sdt", { lock: "contentLocked" }, [
+        schema.text("B", [schema.mark("bold")]),
+      ]);
+      const view = createView(
+        [control, schema.text("A", [schema.mark("italic")])],
+        {
+          plugins: suggesting
+            ? [createSuggestionModePlugin(true, "Reviewer")]
+            : [],
+          selection: { from: 1 },
+        },
+      );
+      view.dispatch(view.state.tr.setStoredMarks([schema.mark("bold")]));
+
+      dispatchBeforeInput(view, { data: "X" });
+
+      let typedMarks: readonly string[] = [];
+      view.state.doc.descendants((node) => {
+        if (node.isText && node.text === "X") {
+          typedMarks = node.marks.map((mark) => mark.type.name);
+        }
+      });
+      expect(typedMarks).toContain("bold");
+      expect(typedMarks).not.toContain("italic");
+      expect(typedMarks.includes("insertion")).toBe(suggesting);
+    }
   });
 
   test("preserves beforeinput tracking for standalone suggestion views", () => {

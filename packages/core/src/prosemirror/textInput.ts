@@ -1,3 +1,4 @@
+import type { Node as ProseMirrorNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
   AllSelection,
@@ -6,6 +7,8 @@ import {
   TextSelection,
 } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+
+import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 
 type TextInputHandler<TView> = (
   view: TView,
@@ -26,6 +29,46 @@ type TextInputDispatchTarget<TView> = {
 
 type TextInput = { text: string; from: number; to: number };
 
+type FormattingMarksBesideLockedControlOptions = {
+  state: EditorState;
+  from: number;
+  to: number;
+};
+
+const LOCKED_CONTROL_LOCKS = new Set(["contentLocked", "sdtContentLocked"]);
+
+const isLockedControl = (node: ProseMirrorNode | null) =>
+  node?.type.name === "sdt" && LOCKED_CONTROL_LOCKS.has(node.attrs["lock"]);
+
+export const formattingMarksBesideLockedControl = ({
+  state,
+  from,
+  to,
+}: FormattingMarksBesideLockedControlOptions) => {
+  if (from !== to || state.storedMarks !== null) return undefined;
+  const $from = state.doc.resolve(from);
+  const { parent } = $from;
+  if (!parent.isTextblock) return undefined;
+  const before = $from.nodeBefore;
+  const after = $from.nodeAfter;
+  const control = [before, after].find(isLockedControl);
+  if (!control) return undefined;
+  const afterControl = before === control;
+  const controlIndex = afterControl ? $from.index() - 1 : $from.index();
+  const adjacent = parent.maybeChild(controlIndex + (afterControl ? 1 : -1));
+  if (
+    !adjacent?.isText ||
+    adjacent.marks.some(
+      (mark) => mark.type.name === "deletion" || mark.type.name === "moveFrom",
+    )
+  ) {
+    return [];
+  }
+  return adjacent.marks.filter((mark) =>
+    RUN_FORMATTING_MARK_NAMES.has(mark.type.name),
+  );
+};
+
 export const dispatchEditorTextInput = <
   TView extends TextInputDispatchTarget<TView>,
 >(
@@ -37,7 +80,16 @@ export const dispatchEditorTextInput = <
   const defaultTransaction = () => {
     const { selection } = view.state;
     if (!(selection instanceof AllSelection)) {
-      const tr = view.state.tr.insertText(text, from, to);
+      const formattingMarks = formattingMarksBesideLockedControl({
+        state: view.state,
+        from,
+        to,
+      });
+      const tr = view.state.tr;
+      if (formattingMarks !== undefined) {
+        tr.setStoredMarks(formattingMarks);
+      }
+      tr.insertText(text, from, to);
       // Typing over a selection leaves the caret after the typed text;
       // `insertText` puts it at the selection's mapped end, which for a node
       // selection (an image, a field) is before the text.
