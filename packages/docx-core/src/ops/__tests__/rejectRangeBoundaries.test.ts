@@ -134,6 +134,35 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     ]);
   });
 
+  test("dropping a kept copy leaves the content control that held it, emptied", () => {
+    const control = {
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id: 41, tag: "clause" },
+    } as const;
+    const document = documentWith([
+      { type: "bookmarkStart", id: 5, name: "_Ref5" },
+      { type: "run", content: [{ type: "text", text: "a" }] },
+      { type: "bookmarkEnd", id: 5 },
+      {
+        ...control,
+        content: [
+          {
+            type: "insertion",
+            info: { id: 2, author: "A" },
+            content: [{ type: "bookmarkStart", id: 5, name: "_Ref5" }],
+          },
+        ],
+      },
+    ]);
+
+    expect(firstParagraph(rejectAll(document, [2]))).toEqual([
+      { type: "bookmarkStart", id: 5, name: "_Ref5" },
+      { type: "run", content: [{ type: "text", text: "a" }] },
+      { type: "bookmarkEnd", id: 5 },
+      { ...control, content: [] },
+    ]);
+  });
+
   test("a bookmark inside a rejected insertion stays where the insertion was", () => {
     const base = documentWith([
       { type: "run", content: [{ type: "text", text: "ab" }] },

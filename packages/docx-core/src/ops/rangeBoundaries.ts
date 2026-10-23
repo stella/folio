@@ -16,7 +16,12 @@
  * (see `isCommentExhausted`); its boundaries go with it.
  */
 
-import { childNodes, type InlineNode, rebuildNode } from "./leaves";
+import {
+  childNodes,
+  type InlineNode,
+  isEmptyRecord,
+  rebuildNode,
+} from "./leaves";
 
 const BOUNDARY_SIDES = {
   bookmarkStart: { family: "bookmark", side: "start" },
@@ -161,8 +166,9 @@ export const withBoundariesAtEdge = (
 type Occurrence = { paragraph: string; node: Boundary };
 
 /**
- * `nodes` without `target`. A container `target` was all of goes with it:
- * the model holds no empty link or revision wrapper.
+ * `nodes` without `target`. A run or revision wrapper `target` was all of
+ * goes with it, since the model holds no empty one; any other container, a
+ * content control or a link, stays, emptied, with its own properties.
  */
 const withoutNode = (
   nodes: readonly InlineNode[],
@@ -176,8 +182,8 @@ const withoutNode = (
       !children.some((child) => holds(child, target))
     )
       return [node];
-    const next = withoutNode(children, target);
-    return next.length === 0 ? [] : [rebuildNode(node, next)];
+    const rebuilt = rebuildNode(node, withoutNode(children, target));
+    return isEmptyRecord(rebuilt) ? [] : [rebuilt];
   });
 
 const holds = (node: InlineNode, target: InlineNode): boolean =>
