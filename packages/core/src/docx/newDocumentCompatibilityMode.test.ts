@@ -97,8 +97,8 @@ describe("new document compatibility mode", () => {
       noColumnBalance: true,
     };
     const enabled = await createDocx(createEmptyDocument({ preset }));
-    expect(await savedSettings(enabled)).toContain(
-      "<w:compat><w:noColumnBalance/></w:compat>",
+    expect(await savedSettings(enabled)).toMatch(
+      /<w:compat>[^]*<w:noColumnBalance\/>[^]*<\/w:compat>/,
     );
     expect(
       (await parseDocx(enabled, { preloadFonts: false })).package.settings,
@@ -106,8 +106,8 @@ describe("new document compatibility mode", () => {
 
     preset.styleSet.settings.noColumnBalance = false;
     const disabled = await createDocx(createEmptyDocument({ preset }));
-    expect(await savedSettings(disabled)).toContain(
-      '<w:compat><w:noColumnBalance w:val="0"/></w:compat>',
+    expect(await savedSettings(disabled)).toMatch(
+      /<w:compat>[^]*<w:noColumnBalance w:val="0"\/>[^]*<\/w:compat>/,
     );
   });
 
