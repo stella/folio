@@ -2833,20 +2833,26 @@ const holdsOnlyInsertedContent = (
 };
 
 /**
- * Take back the wholly pending paragraph between `from` and `to`, as
- * rejecting it would: the range boundaries it holds stay where it was. With
- * a paragraph after it they open that paragraph, where the joined break
- * leaves them, with any standing between the two; before a table they stand
- * between blocks; ending its container, they close the paragraph before it.
+ * Remove the paragraph between `from` and `to`, its content with it but not
+ * the range boundaries it holds: those stay where it was, as rejecting a
+ * pending paragraph or accepting a deleted one leaves them. With a paragraph
+ * after it they open that paragraph, where the joined break leaves them,
+ * with any standing between the two; before a table they stand between
+ * blocks; ending its container, they close the paragraph before it.
  */
-const retractParagraph = (
+const removeParagraph = (
   tr: Transaction,
   from: number,
   to: number,
 ): Transaction => {
   const paragraph = tr.doc.nodeAt(from);
   const kept =
-    paragraph === null ? [] : removeResolvedSubtree(paragraph, "reject").kept;
+    paragraph === null
+      ? []
+      : removeResolvedSubtree(paragraph, {
+          mode: "reject",
+          resolves: () => true,
+        }).kept;
   if (kept.length === 0) return tr.delete(from, to);
   const at = tr.doc.resolve(from);
   let followingIndex = at.index() + 1;
@@ -2867,6 +2873,28 @@ const retractParagraph = (
   if (following !== null)
     return tr.replaceWith(from, to, blockBoundariesOf(kept));
   return tr.delete(from, to).insert(from - 1, kept);
+};
+
+/**
+ * Empty the paragraph between `from` and `to`, which ends its container and
+ * so stays: its content goes, the range boundaries it holds stay in it.
+ */
+const emptyParagraph = (
+  tr: Transaction,
+  from: number,
+  to: number,
+): Transaction => {
+  const paragraph = tr.doc.nodeAt(from);
+  const kept =
+    paragraph === null
+      ? []
+      : removeResolvedSubtree(paragraph, {
+          mode: "reject",
+          resolves: () => true,
+        }).kept;
+  return kept.length === 0
+    ? tr.delete(from + 1, to - 1)
+    : tr.replaceWith(from + 1, to - 1, kept);
 };
 
 /**
@@ -5894,8 +5922,8 @@ const applyFolioAIEditOperationsInternal = ({
             !endsItsContainer ||
             at.nodeBefore?.type.name === item.blockNode.type.name;
           tr = leavesAParagraph
-            ? tr.delete(item.blockFrom, item.blockTo)
-            : tr.delete(item.blockFrom + 1, item.blockTo - 1);
+            ? removeParagraph(tr, item.blockFrom, item.blockTo)
+            : emptyParagraph(tr, item.blockFrom, item.blockTo);
           break;
         }
 
@@ -5916,7 +5944,7 @@ const applyFolioAIEditOperationsInternal = ({
           // paragraph mark cannot say: accepting kept a blank paragraph, and
           // a suggested one failed to accept at all.
           const retracted = tr.doc.nodeAt(item.blockFrom);
-          tr = retractParagraph(tr, item.blockFrom, item.blockTo);
+          tr = removeParagraph(tr, item.blockFrom, item.blockTo);
           if (retraction.clearBreakAt !== null) {
             tr = tr.setNodeAttribute(retraction.clearBreakAt, "pPrMark", null);
             // The paragraph before now ends the container with the retracted

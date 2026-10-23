@@ -1,7 +1,7 @@
 /** Whole-paragraph deletion within one block list, including its final paragraph. */
 import { Result } from "better-result";
 
-import type { Document, Paragraph } from "../model/document";
+import type { Document, Paragraph, ParagraphContent } from "../model/document";
 import {
   blockListAt,
   sameBlockList,
@@ -12,11 +12,14 @@ import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
+import { asParagraphContent, type InlineNode } from "./leaves";
 import {
+  isRangeBoundary,
   type ParagraphContentVerdict,
   paragraphHoldsContent,
   paragraphLength,
 } from "./offsets";
+import { withBoundariesOutsideDeletion } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
@@ -30,7 +33,57 @@ import {
   WRAP_KINDS,
   wrapTracked,
 } from "./review";
-import { type DeleteBlocksOp, DOCUMENT_OP_TYPES } from "./types";
+import {
+  type DeleteBlocksOp,
+  DOCUMENT_OP_TYPES,
+  type RevisionStamp,
+} from "./types";
+
+/**
+ * One paragraph's content as its tracked deletion leaves it: every leaf
+ * wrapped in a deletion stamped `stamp`, split around the range boundaries
+ * directly in it ({@link withBoundariesOutsideDeletion}), with the boundaries
+ * that stand outside. Deleting directly keeps exactly those, so accepting the
+ * tracked deletion and deleting directly leave the same document.
+ */
+const deletedContent = (
+  paragraph: Paragraph,
+  stamp: RevisionStamp,
+):
+  | { kind: "deleted"; content: ParagraphContent[]; standing: InlineNode[] }
+  | { kind: "unchanged"; standing: InlineNode[] }
+  | { kind: "refused"; reason: DocumentOpRefusal["reason"] } => {
+  const wrapped = wrapTracked({
+    items: paragraph.content,
+    from: { offset: 0, zeroWidthBefore: 0 },
+    to: {
+      offset: paragraphLength(paragraph),
+      zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+    },
+    kind: WRAP_KINDS.DELETION,
+    stamp,
+  });
+  if (wrapped.kind !== "wrapped")
+    return wrapped.kind === "refused"
+      ? wrapped
+      : { kind: "unchanged", standing: [] };
+  const { nodes, standing } = withBoundariesOutsideDeletion(
+    wrapped.content,
+    (node) => node.type === "deletion" && node.info.id === stamp.id,
+  );
+  return {
+    kind: "deleted",
+    content: asParagraphContent(nodes),
+    standing,
+  };
+};
+
+/** Only what a direct deletion leaves is read off its tracked form. */
+const DIRECT_DELETION_STAMP: RevisionStamp = {
+  id: Number.MAX_SAFE_INTEGER,
+  author: "",
+  date: "",
+};
 
 type BlockDeletionOptions = {
   document: Document;
@@ -200,8 +253,30 @@ export const deleteBlocks = ({
     delete finalReview.formatting;
     if (formatting !== undefined) finalReview.formatting = formatting;
   }
+  // Deleting a paragraph takes its content, never a position a user placed
+  // in it: the boundaries its tracked deletion leaves outside stay, where the
+  // deleted paragraphs joined what follows.
+  const kept: ParagraphContent[] = [];
+  for (const paragraph of selected) {
+    const form = deletedContent(
+      paragraph,
+      op.revision ?? DIRECT_DELETION_STAMP,
+    );
+    if (form.kind === "refused" && op.revision !== undefined)
+      return refuse(
+        form.reason,
+        "The selected paragraph content cannot be tracked.",
+      );
+    // Content no tracked deletion can hold still goes directly; the
+    // boundaries standing in the paragraph itself stay.
+    kept.push(
+      ...(form.kind === "refused"
+        ? paragraph.content.filter(isRangeBoundary)
+        : asParagraphContent(form.standing)),
+    );
+  }
   const survivor = withReviewFields(
-    { ...last.paragraph, content: previous?.content ?? [] },
+    { ...last.paragraph, content: [...(previous?.content ?? []), ...kept] },
     finalReview,
   );
   let follows: "paragraph" | "table" | "nothing" = "nothing";
@@ -216,7 +291,11 @@ export const deleteBlocks = ({
   });
   let directBlocks: Paragraph[] = [];
   if (outcome.kind === "join" && following?.type === "paragraph")
-    directBlocks = [following];
+    directBlocks = [
+      kept.length === 0
+        ? following
+        : { ...following, content: [...kept, ...following.content] },
+    ];
   if (outcome.kind === "keep") directBlocks = [survivor];
   const direct = applyOps(document, [replacement(directBlocks)]);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
@@ -288,23 +367,14 @@ export const deleteBlocks = ({
   for (const paragraph of affected) {
     let next = paragraph;
     if (selectedSet.has(paragraph)) {
-      const wrapped = wrapTracked({
-        items: paragraph.content,
-        from: { offset: 0, zeroWidthBefore: 0 },
-        to: {
-          offset: paragraphLength(paragraph),
-          zeroWidthBefore: Number.MAX_SAFE_INTEGER,
-        },
-        kind: WRAP_KINDS.DELETION,
-        stamp: op.revision,
-      });
-      if (wrapped.kind === "refused")
+      const form = deletedContent(paragraph, op.revision);
+      if (form.kind === "refused")
         return refuse(
-          wrapped.reason,
+          form.reason,
           "The selected paragraph content cannot be tracked.",
         );
-      if (wrapped.kind === "wrapped")
-        next = { ...paragraph, content: wrapped.content };
+      if (form.kind === "deleted")
+        next = { ...paragraph, content: form.content };
     }
     if (!terminal || paragraph !== last.paragraph) {
       next = {

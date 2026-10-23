@@ -154,6 +154,59 @@ export const paragraphRemains = (
   };
 };
 
+/**
+ * `nodes` with every deletion `created` names split around the range
+ * boundaries directly in it, so they stand outside it, and those
+ * boundaries, in document order. Deleting a paragraph takes its content,
+ * not a position a user placed in it: accepting the deletion leaves these
+ * boundaries where they were, as deleting directly does, and rejecting it
+ * gives every piece back in place. A piece takes its deletion's own
+ * resolution joins only at the deletion's outer edges.
+ */
+export const withBoundariesOutsideDeletion = (
+  nodes: readonly InlineNode[],
+  created: (node: InlineNode) => boolean,
+): { nodes: InlineNode[]; standing: Boundary[] } => {
+  const standing: Boundary[] = [];
+  const visit = (items: readonly InlineNode[]): InlineNode[] =>
+    items.flatMap((node) => {
+      const children = childNodes(node);
+      if (children === undefined) return [node];
+      if (!created(node) || node.type !== "deletion")
+        return [rebuildNode(node, visit(children))];
+      const groups: InlineNode[][] = [[]];
+      const between: Boundary[] = [];
+      for (const child of children) {
+        if (isBoundary(child)) {
+          between.push(child);
+          groups.push([]);
+        } else groups.at(-1)?.push(child);
+      }
+      if (between.length === 0) return [node];
+      standing.push(...between);
+      const joins = node.resolutionJoins;
+      const last = groups.length - 1;
+      const out: InlineNode[] = [];
+      for (const [index, group] of groups.entries()) {
+        if (group.length > 0) {
+          // SAFETY: rebuilding a deletion with other children keeps its type.
+          const piece = rebuildNode(node, group) as typeof node;
+          if (joins !== undefined)
+            piece.resolutionJoins = {
+              ...joins,
+              before: index === 0 ? joins.before : 0,
+              after: index === last ? joins.after : 0,
+            };
+          out.push(piece);
+        }
+        const boundary = between[index];
+        if (boundary !== undefined) out.push(boundary);
+      }
+      return out;
+    });
+  return { nodes: visit(nodes), standing };
+};
+
 /** Which kept boundaries each container may hold, as its model declares. */
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
