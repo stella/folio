@@ -28,7 +28,7 @@ test("document-default East Asian face reaches punctuation layout without mutati
               content: [
                 {
                   type: "paragraph",
-                  formatting: { alignment: "justify" },
+                  formatting: { alignment: "both" },
                   content: [
                     {
                       type: "run",
