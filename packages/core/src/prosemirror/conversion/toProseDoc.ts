@@ -4555,6 +4555,7 @@ function convertRunContent({
           withAlternateContent(
             convertShape(shp, carriedRunFormatting(authoredFormatting)),
             replayableShapeAlternateContent(content),
+            content.alternateContent,
           ),
           marks,
         ),
@@ -5351,7 +5352,7 @@ function convertParagraphWithTextBoxes(
   const standalone = isEmptyAfterExtraction && !keepWrapperParagraph;
   for (const [
     index,
-    { textBox, alternateContentXml, anchorId, trackedChange, inlineSdts },
+    { textBox, alternateContent, anchorId, trackedChange, inlineSdts },
   ] of textBoxes.entries()) {
     const textBoxNode = convertTextBox(textBox, styleResolver, {
       placement: standalone ? "standalone" : "inlineWithPrevious",
@@ -5373,7 +5374,13 @@ function convertParagraphWithTextBoxes(
         ? { hostParagraph: hostParagraphAttrs(pmParagraph.attrs) }
         : {}),
     });
-    nodes.push(withAlternateContent(textBoxNode, alternateContentXml));
+    nodes.push(
+      withAlternateContent(
+        textBoxNode,
+        alternateContent?.verbatimXml,
+        alternateContent,
+      ),
+    );
   }
   return nodes;
 }
@@ -5434,8 +5441,7 @@ function hasParagraphBoundaryPayload(
  */
 type ExtractedTextBox = {
   textBox: TextBox;
-  /** The shape's `mc:AlternateContent`, when the model still matches it. */
-  alternateContentXml: string | undefined;
+  alternateContent: ShapeContent["alternateContent"];
   anchorId: string;
   trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
   inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
@@ -5577,7 +5583,10 @@ function extractTextBoxes(
             runContent.shape,
             runContent.shape.textBody,
           ),
-          alternateContentXml: replayableShapeAlternateContent(runContent),
+          alternateContent:
+            replayableShapeAlternateContent(runContent) === undefined
+              ? undefined
+              : runContent.alternateContent,
           anchorId,
           trackedChange: context.trackedChange,
           inlineSdts: context.inlineSdts,
