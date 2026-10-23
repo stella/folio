@@ -30,6 +30,11 @@ import {
   type MoveRangeMarker,
 } from "./moveRangeBoundaryAttrs";
 import { expectRangeAnchorAttrs } from "./rangeAnchorAttrs";
+import type { TrackedRevisionAncestor } from "./schema/marks";
+import {
+  retainedTrackedRevisionMark,
+  trackedRevisionPathOf,
+} from "./trackedRevisionPath";
 
 /** A range boundary, as the engine's model writes it. */
 type BoundaryItem = Extract<
@@ -290,39 +295,81 @@ export type RemovedSubtree = {
   readonly [removedSubtreeBrand]: true;
 };
 
+/** What a resolution resolves: the mode, and which revisions it selects. */
+export type RevisionSelection = {
+  mode: "accept" | "reject";
+  resolves: (revisionId: number) => boolean;
+};
+
+/** Whether resolving `layer` by `mode` takes its content out. */
+export const revisionLayerRemovesContent = (
+  layer: TrackedRevisionAncestor,
+  mode: "accept" | "reject",
+): boolean =>
+  mode === "accept"
+    ? layer.type === "deletion" || layer.type === "moveFrom"
+    : layer.type === "insertion" || layer.type === "moveTo";
+
+const layerKey = (layer: TrackedRevisionAncestor): string =>
+  `${layer.type}:${layer.revisionId}`;
+
+/**
+ * The revision marks a boundary carries where `removed` stood: of each of
+ * its revision marks, the layers outside the outermost one this resolution
+ * takes content out by, less those it resolves. A revision nested inside
+ * removed content goes with that content, as the engine's wrappers do.
+ */
+const landingMarks = (removed: PMNode, selection: RevisionSelection): Mark[] =>
+  removed.marks.flatMap((mark) => {
+    if (!REVISION_MARK_NAMES.has(mark.type.name)) return [];
+    const path = trackedRevisionPathOf(mark);
+    const cut = path.findIndex(
+      (layer) =>
+        selection.resolves(layer.revisionId) &&
+        revisionLayerRemovesContent(layer, selection.mode),
+    );
+    const standing = new Set(
+      (cut === -1 ? path : path.slice(0, cut))
+        .filter((layer) => !selection.resolves(layer.revisionId))
+        .map(layerKey),
+    );
+    if (standing.size === path.length) return [mark];
+    const landing = retainedTrackedRevisionMark(mark, (layer) =>
+      standing.has(layerKey(layer)),
+    );
+    return landing === null ? [] : [landing];
+  });
+
 /**
  * Remove `node` and everything in it. Rejecting keeps every range boundary
  * within it, at any depth, as the engine's `removedContentBoundaries` does;
- * accepting keeps none, as a direct deletion does. A kept boundary carries
- * of each revision mark only what `unresolved` returns: the layers this
- * resolution leaves, which the engine leaves the boundary inside, and none
- * when every revision resolves. Each kept node is a new node, so the range
- * repair can tell it from a boundary that was already standing.
+ * accepting keeps none, as a direct deletion does. A kept boundary keeps its
+ * own other marks and carries the revisions of where `node` stood
+ * ({@link landingMarks}), never one from inside the removed content. Each
+ * kept node is a new node, so the range repair can tell it from a boundary
+ * that was already standing.
  */
 export const removeResolvedSubtree = (
   node: PMNode,
-  mode: "accept" | "reject",
-  unresolved: (mark: Mark) => Mark | null = () => null,
+  selection: RevisionSelection,
 ): RemovedSubtree => {
   const kept: PMNode[] = [];
+  const landing = landingMarks(node, selection);
   const visit = (candidate: PMNode): void => {
     if (keepsRangeBoundary(candidate)) {
       kept.push(
-        candidate.type.create(
-          candidate.attrs,
-          null,
-          candidate.marks.flatMap((mark) => {
-            if (!REVISION_MARK_NAMES.has(mark.type.name)) return [mark];
-            const left = unresolved(mark);
-            return left === null ? [] : [left];
-          }),
-        ),
+        candidate.type.create(candidate.attrs, null, [
+          ...candidate.marks.filter(
+            (mark) => !REVISION_MARK_NAMES.has(mark.type.name),
+          ),
+          ...landing,
+        ]),
       );
       return;
     }
     candidate.forEach(visit);
   };
-  if (mode === "reject") visit(node);
+  if (selection.mode === "reject") visit(node);
   // SAFETY: this is the brand's only constructor.
   return { kept } as unknown as RemovedSubtree;
 };

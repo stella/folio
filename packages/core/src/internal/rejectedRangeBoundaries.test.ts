@@ -334,7 +334,15 @@ describe("rejecting an insertion keeps its range boundaries", () => {
       // Where inline content controls stand: none, one holding what the
       // insertion holds (the rejection removes it whole), two nested so, or
       // one around the insertion (it stays, emptied).
-      const controls = fc.constantFrom("none", "inside", "nested", "around");
+      // Or a deletion inside the insertion holding what it holds: rejecting
+      // the insertion takes that deletion with it.
+      const controls = fc.constantFrom(
+        "none",
+        "inside",
+        "nested",
+        "around",
+        "deletionInside",
+      );
       // Whether the insertion, and the boundaries after it, sit inside a
       // deletion that stays: only the insertion is rejected then.
       const inDeletion = fc.boolean();
@@ -375,6 +383,14 @@ describe("rejecting an insertion keeps its range boundaries", () => {
             if (wrapping === "inside") inserted = [control(41, held)];
             if (wrapping === "nested")
               inserted = [control(41, [control(42, held)])];
+            if (wrapping === "deletionInside")
+              inserted = [
+                {
+                  type: "deletion",
+                  info: { ...deletion, id: 21 },
+                  content: [run("r"), ...held],
+                },
+              ];
             const insertionNode: Paragraph["content"][number] = {
               type: "insertion",
               info: insertion,
@@ -428,7 +444,9 @@ describe("rejecting an insertion keeps its range boundaries", () => {
             const editor = rejectInState(
               state,
               document,
-              deleted ? rejectAIEditRevision(insertion.id) : undefined,
+              deleted || wrapping === "deletionInside"
+                ? rejectAIEditRevision(insertion.id)
+                : undefined,
             );
             // The editor writes a content control in an insertion nested in a
             // deletion back as one record per piece, which the engine reads

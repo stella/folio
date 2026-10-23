@@ -25,6 +25,7 @@ import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import {
   type RemovedSubtree,
   removeResolvedSubtree,
+  type RevisionSelection,
 } from "../prosemirror/keptRangeBoundaries";
 import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
@@ -198,7 +199,7 @@ const resolveInlineNode = ({
     (context.removeType &&
       node.marks.some((mark) => mark.type === context.removeType))
   ) {
-    return removeResolvedSubtree(node, context.mode);
+    return removeResolvedSubtree(node, everyRevision(context.mode));
   }
   if (context.keepType) {
     marks = marks.filter((mark) => mark.type !== context.keepType);
@@ -254,6 +255,12 @@ const rejoinResolvedRuns = ({
   }
 };
 
+/** The whole-story pass resolves every revision. */
+const everyRevision = (mode: RevisionResolutionMode): RevisionSelection => ({
+  mode,
+  resolves: () => true,
+});
+
 const isRemoved = (
   resolved: PMNode | RemovedSubtree,
 ): resolved is RemovedSubtree => !("type" in resolved);
@@ -304,7 +311,7 @@ const resolveInlineContent = ({
         context,
         position,
         node,
-        removed: removeResolvedSubtree(node, context.mode),
+        removed: removeResolvedSubtree(node, everyRevision(context.mode)),
       });
     }
   }
@@ -349,7 +356,7 @@ const resolveInlineContent = ({
       context,
       position,
       node,
-      removed: removeResolvedSubtree(node, context.mode),
+      removed: removeResolvedSubtree(node, everyRevision(context.mode)),
     });
   }
 
@@ -435,7 +442,7 @@ const resolveInlineContent = ({
         context,
         position,
         node,
-        removed: removeResolvedSubtree(node, context.mode),
+        removed: removeResolvedSubtree(node, everyRevision(context.mode)),
       });
     }
     // The fitted content is larger than the deletion-only reconstruction.

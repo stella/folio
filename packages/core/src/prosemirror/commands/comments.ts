@@ -61,6 +61,8 @@ import {
   normalizeKeptRangeBoundaries,
   type RemovedSubtree,
   removeResolvedSubtree,
+  revisionLayerRemovesContent,
+  type RevisionSelection,
 } from "../keptRangeBoundaries";
 import { resolveStateStory } from "../markupViewProjection";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
@@ -171,14 +173,6 @@ export function removeCommentMark(commentId: number): Command {
 
 type ResolveMode = "accept" | "reject";
 
-const revisionLayerRemovesContent = (
-  layer: TrackedRevisionAncestor,
-  mode: ResolveMode,
-): boolean =>
-  mode === "accept"
-    ? layer.type === "deletion" || layer.type === "moveFrom"
-    : layer.type === "insertion" || layer.type === "moveTo";
-
 /**
  * Resolve a tracked change: accept or reject.
  * - Accept: keep insertions (remove mark), delete deletions (remove text)
@@ -280,23 +274,11 @@ function resolveChange(
       const deleteRanges: RemovedRange[] = [];
       /** The boundaries removed content left standing, for the range repair. */
       const keptBoundaries = new Set<PMNode>();
-      /**
-       * What a kept boundary still carries of `mark` once the selected
-       * revisions resolve: the layers left unselected, which the engine
-       * leaves the boundary inside.
-       */
-      const unresolvedLayers = (mark: Mark): Mark | null => {
-        if (revisionSet === null) return null;
-        if (
-          !trackedRevisionPathOf(mark).some((layer) =>
-            revisionSet.has(layer.revisionId),
-          )
-        )
-          return mark;
-        return retainedTrackedRevisionMark(
-          mark,
-          (layer) => !revisionSet.has(layer.revisionId),
-        );
+      /** What this resolution resolves, for what removed content keeps. */
+      const selection: RevisionSelection = {
+        mode,
+        resolves: (revisionId) =>
+          revisionSet === null || revisionSet.has(revisionId),
       };
       const removeRange = (
         rangeFrom: number,
@@ -464,11 +446,7 @@ function resolveChange(
               resolves: resolvesRevision,
             })
           ) {
-            removeRange(
-              pos,
-              nodeEnd,
-              removeResolvedSubtree(node, mode, unresolvedLayers),
-            );
+            removeRange(pos, nodeEnd, removeResolvedSubtree(node, selection));
             return false;
           }
           const released = withoutResolvedEnclosures(node, resolvesRevision);
@@ -563,7 +541,7 @@ function resolveChange(
               removeRange(
                 rangeFrom,
                 rangeTo,
-                removeResolvedSubtree(node, mode, unresolvedLayers),
+                removeResolvedSubtree(node, selection),
               );
               // The removal answers for everything inside the node.
               if (!node.isLeaf) return false;
@@ -588,7 +566,7 @@ function resolveChange(
           removeRange(
             rangeFrom,
             rangeTo,
-            removeResolvedSubtree(node, mode, unresolvedLayers),
+            removeResolvedSubtree(node, selection),
           );
           // The removal answers for everything inside the node.
           if (!node.isLeaf) return false;
