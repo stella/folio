@@ -6600,10 +6600,12 @@ const applyFolioAIEditOperationsInternal = ({
             // pending removed mark hands its properties on to the paragraph
             // accepting leaves, as the same merge tracked and accepted does.
             if (item.operation.mergedParagraphProperties) {
+              // Read again: the joined node now carries the second's mark.
+              const ending = tr.doc.nodeAt(blockFrom) ?? joined;
               tr = applyBlockParagraphProperties({
                 tr,
                 position: blockFrom,
-                node: joined,
+                node: ending,
                 properties: item.operation.mergedParagraphProperties,
                 styleResolver,
                 numbering,
