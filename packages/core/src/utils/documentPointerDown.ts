@@ -15,7 +15,9 @@ export const onDocumentPointerDown = (
   if (!existing) {
     const listeners = new Set<PointerDownListener>();
     const handle = (event: PointerEvent): void => {
-      for (const callback of Array.from(listeners)) callback(event);
+      for (const callback of Array.from(listeners)) {
+        if (listeners.has(callback)) callback(event);
+      }
     };
     ownerDocument.addEventListener("pointerdown", handle, true);
     existing = {

@@ -52,3 +52,31 @@ test("shares one listener and releases it after the last subscription", () => {
   add.mockRestore();
   remove.mockRestore();
 });
+
+test("honors listener membership while dispatching a snapshot", () => {
+  const ownerDocument = document.implementation.createHTMLDocument();
+  const calls: string[] = [];
+  let disposeSecond = () => {};
+  let disposeAdded = () => {};
+  let added = false;
+  const disposeFirst = onDocumentPointerDown(ownerDocument, () => {
+    calls.push("first");
+    disposeSecond();
+    if (added) return;
+    added = true;
+    disposeAdded = onDocumentPointerDown(ownerDocument, () => {
+      calls.push("added");
+    });
+  });
+  disposeSecond = onDocumentPointerDown(ownerDocument, () => {
+    calls.push("second");
+  });
+
+  ownerDocument.dispatchEvent(new PointerEvent("pointerdown"));
+  expect(calls).toEqual(["first"]);
+  ownerDocument.dispatchEvent(new PointerEvent("pointerdown"));
+  expect(calls).toEqual(["first", "first", "added"]);
+
+  disposeFirst();
+  disposeAdded();
+});
