@@ -80,6 +80,8 @@ ignorePatterns = [
   "api-reports/**",
   "packages/docx-core/src/generated/**",
   "packages/core/src/generated/**",
+  "packages/react/src/i18n/messages/**",
+  "packages/vue/src/i18n/messages/**",
 ]
 
 [fmt.sortImports]
