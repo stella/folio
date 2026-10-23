@@ -1604,6 +1604,9 @@ function extractBlocks(
     } else if (node.type.name === "blockBookmarkBoundary") {
       blocks.push(blockBookmarkMarker(node));
       previousStandaloneTextBox = null;
+    } else if (node.type.name === "blockMoveRangeBoundary") {
+      blocks.push({ ...expectMoveRangeBoundaryAttrs(node) });
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -6500,6 +6503,9 @@ function convertPMTableCell(
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "blockBookmarkBoundary") {
       content.push(blockBookmarkMarker(contentNode));
+      previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "blockMoveRangeBoundary") {
+      content.push({ ...expectMoveRangeBoundaryAttrs(contentNode) });
       previousStandaloneTextBox = null;
     }
   });

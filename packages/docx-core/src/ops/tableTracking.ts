@@ -79,6 +79,10 @@ const mapParagraphs = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return block;
       default: {
         const unreachable: never = block;
@@ -133,6 +137,10 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return false;
       default: {
         const unreachable: never = block;
@@ -461,6 +469,10 @@ export const stampedTableRevisionIds = ({
         case "preservedBlock":
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
         default: {
           const unreachable: never = block;

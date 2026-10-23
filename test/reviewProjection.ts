@@ -221,6 +221,10 @@ export const canonicalReviewBlocks = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return block;
       default:
         return block satisfies never;

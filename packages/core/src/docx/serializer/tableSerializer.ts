@@ -65,7 +65,10 @@ import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBorder } from "./borderSerializer";
-import { serializeBookmarkMarker } from "./markupRangeAttributes";
+import {
+  serializeBookmarkMarker,
+  serializeMoveRangeMarker,
+} from "./markupRangeAttributes";
 import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
@@ -1231,6 +1234,11 @@ function serializeCellContent(
       case "bookmarkStart":
       case "bookmarkEnd":
         return serializeBookmarkMarker(block);
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        return serializeMoveRangeMarker(block);
       default: {
         const unreachable: never = block;
         return unreachable;
