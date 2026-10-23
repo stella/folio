@@ -671,6 +671,24 @@ const fieldsOf = (row: Row): Fields => {
   return fields;
 };
 
+/**
+ * The fields a new paragraph copies from the block it is inserted beside. It
+ * copies that block's current properties: a list marker the block shows only
+ * through a pending property change (what rejecting restores) numbers
+ * nothing it copies.
+ */
+const inheritedListFields = (model: Model, row: Row): Fields => {
+  const fields = fieldsOf(row);
+  if (row.kind !== "listItem" || !model.numberingFacts) return fields;
+  const numbering = requestedStyleNumbering(model, row.styleId ?? null, row);
+  if (
+    numbering === UNKNOWN_NUMBERING ||
+    numberingKind(model, numbering) === "listItem"
+  )
+    return fields;
+  return { ...fields, kind: "paragraph", listLevel: undefined };
+};
+
 const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => ({
   ...(pre ? { pre } : {}),
   text,
@@ -1353,7 +1371,10 @@ const insertBlock =
       undefined,
       inherited,
     );
-    const fields = { ...(inherited ? fieldsOf(inherited) : {}), ...requested };
+    const fields = {
+      ...(inherited ? inheritedListFields(model, inherited) : {}),
+      ...requested,
+    };
     const scope = operation["formattingScope"] ?? "firstParagraph";
     const texts =
       operation["lineBreakMode"] === "inline"
@@ -2461,6 +2482,8 @@ export const assertRequestedOutcome = async (
   if (
     outcome.applied.some(
       (operation) =>
+        operation.type === "insertAfterBlock" ||
+        operation.type === "insertBeforeBlock" ||
         "styleId" in operation ||
         "numbering" in operation ||
         [

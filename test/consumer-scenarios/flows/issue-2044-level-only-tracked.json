@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 1119825915,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2319556058,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "1BF99289",
+          "properties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "levelOnly",
+              "ilvl": 0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTable"
+  ],
+  "origin": "shrunk from random flow seed 1119825915",
+  "title": "PINNED #2044, reported seed 1119825915: a level-only override with no style numbering reads as no list in Markdown and content"
+}

@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 1119826459,
+  "steps": [
+    {
+      "action": "accept all",
+      "seed": 3199580760
+    },
+    {
+      "action": "story batch",
+      "seed": 2056215514,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "1BF99289",
+          "properties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "inherit"
+            }
+          }
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 1119826459",
+  "title": "PINNED #2044, reported seed 1119826459: clean Markdown reads a pending numbering removal as accepted"
+}

@@ -99,7 +99,10 @@ export function renderParagraphBlock(
   }
   if (para.pPrMark) counterAttrs.pPrMark = para.pPrMark;
   let originalList: ListRendering | undefined;
-  if (para.propertyChanges) {
+  // Clean output is the document with every change accepted: a pending
+  // property change's earlier numbering is what rejecting restores, and it
+  // neither numbers nor counts this paragraph there.
+  if (para.propertyChanges && ctx.opts.trackedChanges !== "clean") {
     counterAttrs._propertyChanges = para.propertyChanges.map(
       ({ previousFormatting, ...change }) => {
         if (!previousFormatting) return change;

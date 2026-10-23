@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "suggested",
+  "seed": 293416776,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "3CEFFC83",
+          "text": "Party written supplier agreement party delivery."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Invoice written invoice.",
+          "alignment": "right"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 2,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Goods term goods term term buyer agreement.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Written delivery written."
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 293416776",
+  "title": "PINNED #1738, reported seed 293416776: a paragraph inserted beside one whose numbering a pending change removed copies its current properties"
+}

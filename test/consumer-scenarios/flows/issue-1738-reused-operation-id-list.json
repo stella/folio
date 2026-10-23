@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "suggested",
+  "seed": 787497594,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "0C0A0460",
+          "text": "Notice invoice payment supplier.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 2,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "483CD5EB",
+          "text": "Buyer goods warranty agreement delivery invoice delivery goods."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 3,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "7B806329",
+          "text": "Buyer agreement term party written notice agreement delivery.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 1,
+            "ilvl": 0
+          }
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "shrunk from random flow seed 787497594",
+  "title": "PINNED #1738, reported seed 787497594: a suggested batch reusing an operation id keeps an earlier suggested list its own suggestion"
+}
