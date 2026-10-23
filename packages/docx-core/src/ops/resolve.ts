@@ -52,6 +52,14 @@ import {
   sameOwnFields,
 } from "./leaves";
 import { paragraphHoldsContent, paragraphLength } from "./offsets";
+import {
+  noRelocatedBoundaries,
+  pairedCommentRanges,
+  type RelocatedBoundaries,
+  removedContentBoundaries,
+  wellFormedRanges,
+  withBoundariesAtEdge,
+} from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import {
@@ -324,8 +332,10 @@ type Resolution = {
   acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
   /** Unconsumed source-cut edges on the actual rebuilt container. */
   cutEdges: WeakMap<InlineNode, CutEdges>;
-  /** Comment ranges whose other boundary survives outside a removed wrapper. */
-  commentRangeIds: ReadonlySet<number>;
+  /** Comment ranges with a start and an end in the paragraphs resolved. */
+  pairedComments: ReadonlySet<number>;
+  /** Boundaries this resolution kept from removed content. */
+  relocated: RelocatedBoundaries;
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -832,39 +842,6 @@ const prepareDeferredRemovals = (
 type CutEdges = { first?: number; last?: number };
 type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
 
-/** Comment range boundaries are positions, not revision payload, so removing a wrapper retains them. */
-const retainedCommentAnchors = (
-  nodes: readonly InlineNode[],
-  rangeIds: ReadonlySet<number>,
-): InlineNode[] =>
-  nodes.flatMap((node) => {
-    if (
-      (node.type === "commentRangeStart" || node.type === "commentRangeEnd") &&
-      rangeIds.has(node.id)
-    )
-      return [node];
-    const children = childNodes(node);
-    return children === undefined
-      ? []
-      : retainedCommentAnchors(children, rangeIds);
-  });
-
-const pairedCommentRangeIds = (
-  nodes: readonly InlineNode[],
-): ReadonlySet<number> => {
-  const starts = new Set<number>();
-  const ends = new Set<number>();
-  const visit = (items: readonly InlineNode[]): void => {
-    for (const node of items) {
-      if (node.type === "commentRangeStart") starts.add(node.id);
-      if (node.type === "commentRangeEnd") ends.add(node.id);
-      visit(childNodes(node) ?? []);
-    }
-  };
-  visit(nodes);
-  return new Set([...starts].filter((id) => ends.has(id)));
-};
-
 /** Comment ids whose complete range belongs to selected content being removed. */
 const removedCommentRangeIds = (
   nodes: readonly InlineNode[],
@@ -925,6 +902,21 @@ const withoutCommentAnchors = (
  * A list with its tracked changes resolved. Where a change was resolved,
  * the records left meeting are merged as far as they are alike.
  */
+/** What a resolution knows about `from`, now about `to`, its rebuilt copy. */
+const carryResolutionState = (
+  resolution: Resolution,
+  from: InlineNode,
+  to: InlineNode,
+): void => {
+  const edges = resolution.cutEdges.get(from);
+  if (edges !== undefined) resolution.cutEdges.set(to, edges);
+  if (resolution.emptied.has(from)) resolution.emptied.add(to);
+  if (resolution.acceptedClosed.first.has(from))
+    resolution.acceptedClosed.first.add(to);
+  if (resolution.acceptedClosed.last.has(from))
+    resolution.acceptedClosed.last.add(to);
+};
+
 const resolveList = (
   nodes: readonly InlineNode[],
   resolution: Resolution,
@@ -946,6 +938,8 @@ const resolveList = (
   };
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
+  /** Boundaries kept from removed content just before a seam, and its depth. */
+  const floating = new Map<number, { count: number; depth: number }>();
   let changed = false;
   for (const [index, node] of pending.entries()) {
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
@@ -971,9 +965,24 @@ const resolveList = (
             ...prepared.slice(prefixLength),
           );
         }
-        out.push(
-          ...retainedCommentAnchors(node.content, resolution.commentRangeIds),
-        );
+        const kept = removedContentBoundaries({
+          nodes: node.content,
+          rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
+          pairedComments: resolution.pairedComments,
+          relocated: resolution.relocated,
+        });
+        out.push(...kept);
+        // Kept boundaries float at the seam until the pieces either side are
+        // resolved; the join then places them inside the piece it joins.
+        if (
+          kept.length > 0 &&
+          resolution.decision === REVISION_DECISIONS.REJECT &&
+          (node.resolutionJoins?.remove ?? 0) > 0
+        )
+          floating.set(out.length, {
+            count: kept.length,
+            depth: node.resolutionJoins?.remove ?? 0,
+          });
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;
@@ -1159,13 +1168,39 @@ const resolveList = (
       seams.push(seam);
   }
   const merges = new Set(seams);
-  for (const seam of [
+  for (const recorded of [
     ...new Set([...seams, ...exactSeams.keys(), ...folds]),
   ].toSorted((left, right) => right - left)) {
+    // Boundaries kept just before this seam go inside the resolved piece it
+    // joins (after it, else before it), so the pieces still meet.
+    let seam = recorded;
+    const kept = floating.get(recorded);
+    if (kept !== undefined) {
+      const boundaries = out.slice(seam - kept.count, seam);
+      const before = out[seam - kept.count - 1];
+      const after = out[seam];
+      const intoAfter =
+        after === undefined
+          ? undefined
+          : withBoundariesAtEdge(after, boundaries, kept.depth, "start");
+      const intoBefore =
+        intoAfter !== undefined || before === undefined
+          ? undefined
+          : withBoundariesAtEdge(before, boundaries, kept.depth, "end");
+      if (intoAfter !== undefined && after !== undefined) {
+        carryResolutionState(resolution, after, intoAfter);
+        out.splice(seam - kept.count, kept.count + 1, intoAfter);
+        seam -= kept.count;
+      } else if (intoBefore !== undefined && before !== undefined) {
+        carryResolutionState(resolution, before, intoBefore);
+        out.splice(seam - kept.count - 1, kept.count + 1, intoBefore);
+        seam -= kept.count;
+      }
+    }
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
-    let exactDepth = exactSeams.get(seam);
+    let exactDepth = exactSeams.get(recorded);
     if (exactDepth !== undefined) {
       // Extend only an already recorded outer cut with an unconsumed inner
       // source cut. Equal authored containers alone never establish a seam.
@@ -1178,7 +1213,7 @@ const resolveList = (
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
     let met: InlineNode[];
-    if (merges.has(seam)) {
+    if (merges.has(recorded)) {
       met = mergeAtSeam(left, right, resolution.emptied);
     } else if (exactDepth === undefined) {
       met = foldAtSeam(left, right, resolution.emptied);
@@ -1791,7 +1826,8 @@ export const resolveRevision = (
     emptied: new WeakSet(),
     acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
     cutEdges: new WeakMap(),
-    commentRangeIds: new Set(),
+    pairedComments: new Set(),
+    relocated: noRelocatedBoundaries(),
   };
   const noteReferences = removedNoteReferences(document, op, ids);
   const paragraphs = storyParagraphs(storyBody(document, op.story));
@@ -1866,24 +1902,43 @@ export const resolveRevision = (
     paragraph,
     content: prepareDeferredRemovals(paragraph.content, resolution),
   }));
-  resolution.commentRangeIds = pairedCommentRangeIds(
+  resolution.pairedComments = pairedCommentRanges(
     preparedContents.flatMap(({ content }) => content),
   );
   const removedCommentIds = removedCommentRangeIds(
     preparedContents.flatMap(({ content }) => content),
     resolution,
   );
+  const resolvedChanged = new Set<string>();
   for (const { paragraph, content: prepared } of preparedContents) {
     const paraId = paragraph.paraId ?? "";
     const resolved = resolveList(prepared, resolution);
-    const resolvedNodes = withoutCommentAnchors(
-      resolved.nodes,
-      removedCommentIds,
+    resolvedContents.set(
+      idKey(paraId),
+      withoutCommentAnchors(resolved.nodes, removedCommentIds),
     );
-    resolvedContents.set(idKey(paraId), resolvedNodes);
     if (resolved.edges !== undefined)
       resolvedCutEdges.set(idKey(paraId), resolved.edges);
-    if (resolved.changed || prepared !== paragraph.content) {
+    if (resolved.changed || prepared !== paragraph.content)
+      resolvedChanged.add(idKey(paraId));
+  }
+  // Boundaries kept from removed content can leave a range ending before it starts.
+  for (const [key, content] of wellFormedRanges({
+    contents: resolvedContents,
+    order: preparedContents.map(({ paragraph }) =>
+      idKey(paragraph.paraId ?? ""),
+    ),
+    relocated: resolution.relocated,
+  })) {
+    resolvedContents.set(key, content);
+    resolvedChanged.add(key);
+  }
+  for (const { paragraph } of preparedContents) {
+    const paraId = paragraph.paraId ?? "";
+    const resolvedNodes =
+      resolvedContents.get(idKey(paraId)) ??
+      panic("Every source paragraph has a resolved content result.");
+    if (resolvedChanged.has(idKey(paraId))) {
       emptiedEnds.set(
         idKey(paraId),
         emptiedEndsOf(resolvedNodes, resolution.emptied),

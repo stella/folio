@@ -6,16 +6,16 @@
     "declarationLines": 107
   },
   "docx-core": {
-    "reportBytes": 137360,
-    "reportLines": 4264,
-    "declarationBytes": 322529,
-    "declarationLines": 7010
+    "reportBytes": 137791,
+    "reportLines": 4285,
+    "declarationBytes": 324421,
+    "declarationLines": 7070
   },
   "core": {
     "reportBytes": 351935,
     "reportLines": 11057,
-    "declarationBytes": 2628110,
-    "declarationLines": 53285
+    "declarationBytes": 2631221,
+    "declarationLines": 53348
   },
   "react": {
     "reportBytes": 57073,
