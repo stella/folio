@@ -61,6 +61,7 @@ export type FloatingExclusionRect = {
 
 // @public
 export type FloatingImageZone = {
+    source?: "floatingTable";
     leftMargin: number;
     rightMargin: number;
     topY: number;
