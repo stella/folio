@@ -158,6 +158,54 @@ test("page lifecycle callers import the shared owner directly", () => {
   }
 });
 
+test("framework adapters release page resources through the public owner", () => {
+  const adapterCases = [
+    ["../../react/src/paged-editor/PagedEditor.tsx", "pagesContainer"],
+    ["../../vue/src/composables/useDocxEditor.ts", "pagesContainer.value"],
+  ] as const;
+  for (const [relativePath, receiver] of adapterCases) {
+    const sourcePath = path.resolve(CORE_SRC, relativePath);
+    const source = readFileSync(sourcePath, "utf8");
+    const parsed = ts.createSourceFile(
+      sourcePath,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const hasPublicOwnerImport = parsed.statements.some(
+      (statement) =>
+        ts.isImportDeclaration(statement) &&
+        ts.isStringLiteral(statement.moduleSpecifier) &&
+        statement.moduleSpecifier.text === "@stll/folio-core/layout-painter" &&
+        statement.importClause?.namedBindings !== undefined &&
+        ts.isNamedImports(statement.importClause.namedBindings) &&
+        statement.importClause.namedBindings.elements.some(
+          (binding) =>
+            (binding.propertyName ?? binding.name).text ===
+            "releaseDisplayPageResources",
+        ),
+    );
+    const hasMatchingReleaseCall = parsed.statements.some((statement) => {
+      let found = false;
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === "releaseDisplayPageResources" &&
+          node.arguments.at(0)?.getText(parsed) === receiver
+        ) {
+          found = true;
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(statement);
+      return found;
+    });
+    expect(hasPublicOwnerImport, relativePath).toBe(true);
+    expect(hasMatchingReleaseCall, relativePath).toBe(true);
+  }
+});
+
 test("page disposal releases resources from the exact receiver first", () => {
   for (const relativePath of [
     "layout-painter/index.ts",
