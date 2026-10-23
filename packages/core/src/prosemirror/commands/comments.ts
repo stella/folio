@@ -57,7 +57,11 @@ import {
 import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../fieldRepresentation";
-import { keepsRangeBoundary } from "../keptRangeBoundaries";
+import {
+  boundariesRejectionKeeps,
+  keepsRangeBoundary,
+  normalizeKeptRangeBoundaries,
+} from "../keptRangeBoundaries";
 import { resolveStateStory } from "../markupViewProjection";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
@@ -262,11 +266,14 @@ function resolveChange(
       const deleteRanges: { from: number; to: number }[] = [];
       // A range boundary is a position, not revision payload: resolving away
       // the content around it keeps it there, carrying no revision of its own.
+      /** Kept boundaries, as positions in `state.doc`, for the range repair. */
+      const keptBoundaries: number[] = [];
       const keepBoundary = (
         boundaryFrom: number,
         boundaryTo: number,
         boundary: PMNode,
       ): void => {
+        keptBoundaries.push(boundaryFrom);
         for (const mark of boundary.marks) {
           if (mark.type === insertionType || mark.type === deletionType)
             tr.removeMark(boundaryFrom, boundaryTo, mark);
@@ -972,6 +979,10 @@ function resolveChange(
           tr.delete(carrier.position, carrier.position + carrier.size);
         }
       }
+      normalizeKeptRangeBoundaries(
+        tr,
+        new Set(keptBoundaries.map((position) => tr.mapping.map(position))),
+      );
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -1672,6 +1683,18 @@ export function rejectChange(from: number, to: number): Command {
   return resolveChange(from, to, "reject");
 }
 
+/** Whether rejecting every change removes the content `node` sits in. */
+const removedByRejection = (node: PMNode): boolean =>
+  node.marks.some(
+    (mark) =>
+      mark.type.name === "insertion" ||
+      (mark.type.name === "deletion" &&
+        (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some(
+          (layer) => layer.type === "insertion" || layer.type === "moveTo",
+        ) ??
+          false)),
+  );
+
 const resolveAllChanges =
   (mode: ResolveMode): Command =>
   (state, dispatch) => {
@@ -1687,6 +1710,16 @@ const resolveAllChanges =
         positionMap: result.positionMap,
       }),
     );
+    if (mode === "reject") {
+      normalizeKeptRangeBoundaries(
+        tr,
+        new Set(
+          boundariesRejectionKeeps(state.doc, removedByRejection).map(
+            (position) => tr.mapping.map(position),
+          ),
+        ),
+      );
+    }
     // Resolution is a reproducible projection. Schema fillers, including cells
     // a table-repair plugin adds, need the same identities on every reading.
     requestDeterministicParaIds(tr, `resolve-all:${mode}`);

@@ -27,10 +27,22 @@ const documentWith = (content: Paragraph["content"]): Document => {
 };
 
 /** The paragraph as its text and the range boundaries between it, in order. */
-const outline = (content: readonly unknown[]): string[] =>
-  JSON.stringify(content)
-    .match(/"type":"(?:bookmarkStart|bookmarkEnd)"|"text":"[^"]*"/gu)
-    ?.map((token) => token.replace(/^"type":|^"text":/u, "")) ?? [];
+const outline = (content: readonly unknown[]): string[] => {
+  const tokens: string[] = [];
+  for (const token of JSON.stringify(content).match(
+    /"type":"(?:bookmarkStart|bookmarkEnd|moveToRangeStart|moveToRangeEnd)","id":\d+|"text":"[^"]*"/gu,
+  ) ?? []) {
+    const text = /^"text":"([^"]*)"$/u.exec(token)?.[1];
+    const previous = tokens.at(-1);
+    if (text !== undefined && previous?.startsWith("text:") === true)
+      tokens[tokens.length - 1] = `${previous}${text}`;
+    else
+      tokens.push(
+        text === undefined ? token.replaceAll('"', "") : `text:${text}`,
+      );
+  }
+  return tokens;
+};
 
 const firstParagraphContent = (document: Document) => {
   const first = document.package.document.content[0];
@@ -81,6 +93,55 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     ]);
     const editor = outline(rejectInEditor(document));
     expect(editor).toEqual(outline(rejectInEngine(document)));
-    expect(editor).toEqual(['"a"', '"bookmarkStart"', '"bookmarkEnd"', '"b"']);
+    expect(editor).toEqual([
+      "text:a",
+      "type:bookmarkStart,id:5",
+      "type:bookmarkEnd,id:5",
+      "text:b",
+    ]);
+  });
+
+  test("an inserted move range end before its existing start moves after it, in both", () => {
+    const document = documentWith([
+      { type: "run", content: [{ type: "text", text: "one " }] },
+      {
+        type: "insertion",
+        info: insertion,
+        content: [{ type: "moveToRangeEnd", id: 6 }],
+      },
+      { type: "run", content: [{ type: "text", text: "two " }] },
+      { type: "moveToRangeStart", id: 6, name: "move6", author: "A" },
+      { type: "run", content: [{ type: "text", text: "three" }] },
+    ]);
+    const editor = outline(rejectInEditor(document));
+    expect(editor).toEqual(outline(rejectInEngine(document)));
+    expect(editor).toEqual([
+      "text:one two ",
+      "type:moveToRangeStart,id:6",
+      "type:moveToRangeEnd,id:6",
+      "text:three",
+    ]);
+  });
+
+  test("an inserted copy of an existing move range start goes, in both", () => {
+    const document = documentWith([
+      {
+        type: "insertion",
+        info: insertion,
+        content: [
+          { type: "moveToRangeStart", id: 7, name: "move7", author: "A" },
+        ],
+      },
+      { type: "moveToRangeStart", id: 7, name: "move7", author: "A" },
+      { type: "run", content: [{ type: "text", text: "two" }] },
+      { type: "moveToRangeEnd", id: 7 },
+    ]);
+    const editor = outline(rejectInEditor(document));
+    expect(editor).toEqual(outline(rejectInEngine(document)));
+    expect(editor).toEqual([
+      "type:moveToRangeStart,id:7",
+      "text:two",
+      "type:moveToRangeEnd,id:7",
+    ]);
   });
 });

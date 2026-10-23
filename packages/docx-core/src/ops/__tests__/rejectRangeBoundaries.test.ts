@@ -36,6 +36,8 @@ const insertAt = (
     type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
     at: { ...at, offset },
     slice: { content, openStart: 0, openEnd: 0 },
+    // Ids for the pieces of a record the insertion cuts, such as a control.
+    newIds: { revision: [900, 901], control: [910, 911] },
     revision: { id: 3, author: "A", date: "2026-03-04T05:00:03Z" },
   });
   if (applied.isErr()) throw applied.error;

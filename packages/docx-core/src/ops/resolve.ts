@@ -938,6 +938,8 @@ const resolveList = (
   };
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
+  /** Boundaries kept from removed content just before a seam, and its depth. */
+  const floating = new Map<number, { count: number; depth: number }>();
   let changed = false;
   for (const [index, node] of pending.entries()) {
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
@@ -969,33 +971,18 @@ const resolveList = (
           pairedComments: resolution.pairedComments,
           relocated: resolution.relocated,
         });
-        // Where the removed content cut containers, its boundaries go inside
-        // the piece after it (or before it) at that depth, so the pieces it
-        // separated still join around them.
-        // Accepting removes what a direct deletion would, where it would.
-        const depth =
-          resolution.decision === REVISION_DECISIONS.REJECT
-            ? (node.resolutionJoins?.remove ?? 0)
-            : 0;
-        const next = pending[index + 1];
-        const intoNext =
-          next === undefined
-            ? undefined
-            : withBoundariesAtEdge(next, kept, depth, "start");
-        const previous = out.at(-1);
-        const intoPrevious =
-          intoNext !== undefined || previous === undefined
-            ? undefined
-            : withBoundariesAtEdge(previous, kept, depth, "end");
-        if (intoNext !== undefined && next !== undefined) {
-          carryResolutionState(resolution, next, intoNext);
-          pending[index + 1] = intoNext;
-        } else if (intoPrevious !== undefined && previous !== undefined) {
-          carryResolutionState(resolution, previous, intoPrevious);
-          out[out.length - 1] = intoPrevious;
-        } else {
-          out.push(...kept);
-        }
+        out.push(...kept);
+        // Kept boundaries float at the seam until the pieces either side are
+        // resolved; the join then places them inside the piece it joins.
+        if (
+          kept.length > 0 &&
+          resolution.decision === REVISION_DECISIONS.REJECT &&
+          (node.resolutionJoins?.remove ?? 0) > 0
+        )
+          floating.set(out.length, {
+            count: kept.length,
+            depth: node.resolutionJoins?.remove ?? 0,
+          });
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;
@@ -1181,13 +1168,39 @@ const resolveList = (
       seams.push(seam);
   }
   const merges = new Set(seams);
-  for (const seam of [
+  for (const recorded of [
     ...new Set([...seams, ...exactSeams.keys(), ...folds]),
   ].toSorted((left, right) => right - left)) {
+    // Boundaries kept just before this seam go inside the resolved piece it
+    // joins (after it, else before it), so the pieces still meet.
+    let seam = recorded;
+    const kept = floating.get(recorded);
+    if (kept !== undefined) {
+      const boundaries = out.slice(seam - kept.count, seam);
+      const before = out[seam - kept.count - 1];
+      const after = out[seam];
+      const intoAfter =
+        after === undefined
+          ? undefined
+          : withBoundariesAtEdge(after, boundaries, kept.depth, "start");
+      const intoBefore =
+        intoAfter !== undefined || before === undefined
+          ? undefined
+          : withBoundariesAtEdge(before, boundaries, kept.depth, "end");
+      if (intoAfter !== undefined && after !== undefined) {
+        carryResolutionState(resolution, after, intoAfter);
+        out.splice(seam - kept.count, kept.count + 1, intoAfter);
+        seam -= kept.count;
+      } else if (intoBefore !== undefined && before !== undefined) {
+        carryResolutionState(resolution, before, intoBefore);
+        out.splice(seam - kept.count - 1, kept.count + 1, intoBefore);
+        seam -= kept.count;
+      }
+    }
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
-    let exactDepth = exactSeams.get(seam);
+    let exactDepth = exactSeams.get(recorded);
     if (exactDepth !== undefined) {
       // Extend only an already recorded outer cut with an unconsumed inner
       // source cut. Equal authored containers alone never establish a seam.
@@ -1200,7 +1213,7 @@ const resolveList = (
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
     let met: InlineNode[];
-    if (merges.has(seam)) {
+    if (merges.has(recorded)) {
       met = mergeAtSeam(left, right, resolution.emptied);
     } else if (exactDepth === undefined) {
       met = foldAtSeam(left, right, resolution.emptied);

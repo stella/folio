@@ -185,14 +185,78 @@ const withAfter = (
     return [next === children ? node : rebuildNode(node, next)];
   });
 
+/** One range boundary in document order, as {@link planWellFormedRanges} reads it. */
+export type BoundaryOccurrence = {
+  /** The marker's element and id: what two copies of one boundary share. */
+  boundary: string;
+  /** The range it belongs to: its family and id. */
+  range: string;
+  side: "start" | "end";
+  /** Whether a rejection kept it from removed content. */
+  kept: boolean;
+};
+
+/** What makes kept boundaries' ranges well-formed, by index into the occurrences. */
+export type WellFormedRangePlan = {
+  dropped: number[];
+  /** Each end that moves to just after its range's start. */
+  moved: { end: number; start: number }[];
+};
+
+/**
+ * The one rule that makes every range a rejection kept boundaries of
+ * well-formed, for the engine's model and the editor's document alike. A
+ * kept copy of a boundary the story still holds is no boundary of its own and
+ * goes (of several kept copies, the first stays); then, where such a range's
+ * end comes before its start, the end moves to just after the start. A range
+ * still with more than one start or end is left as it is.
+ */
+export const planWellFormedRanges = (
+  occurrences: readonly BoundaryOccurrence[],
+): WellFormedRangePlan => {
+  const ranges = new Set(
+    occurrences.filter(({ kept }) => kept).map(({ range }) => range),
+  );
+  const copies = new Map<string, number[]>();
+  for (const [index, { boundary, range }] of occurrences.entries()) {
+    if (ranges.has(range))
+      copies.set(boundary, [...(copies.get(boundary) ?? []), index]);
+  }
+  const dropped = new Set<number>();
+  for (const group of copies.values()) {
+    if (group.length < 2) continue;
+    const held = group.some((member) => occurrences[member]?.kept === false);
+    for (const member of held
+      ? group.filter((candidate) => occurrences[candidate]?.kept === true)
+      : group.slice(1))
+      dropped.add(member);
+  }
+  const moved: WellFormedRangePlan["moved"] = [];
+  for (const range of ranges) {
+    const sides = (wanted: "start" | "end") =>
+      occurrences.flatMap((occurrence, index) =>
+        occurrence.range === range &&
+        occurrence.side === wanted &&
+        !dropped.has(index)
+          ? [index]
+          : [],
+      );
+    const [start, ...moreStarts] = sides("start");
+    const [end, ...moreEnds] = sides("end");
+    if (start === undefined || end === undefined) continue;
+    if (moreStarts.length > 0 || moreEnds.length > 0 || end > start) continue;
+    moved.push({ end, start });
+  }
+  return {
+    dropped: [...dropped].toSorted((left, right) => left - right),
+    moved,
+  };
+};
+
 /**
  * The paragraphs' contents with every range a rejection kept boundaries of
- * well-formed. A kept copy of a boundary the story still holds is no boundary
- * of its own and goes (of several kept copies, the first stays); then, where
- * a range's end comes before its start, the end moves to just after the
- * start. `order` lists the story's paragraph keys in document order; a range
- * still with more than one start or end is left as it is. Returns only the
- * paragraphs it changed.
+ * well-formed, by {@link planWellFormedRanges}. `order` lists the story's
+ * paragraph keys in document order. Returns only the paragraphs it changed.
  */
 export const wellFormedRanges = ({
   contents,
@@ -205,52 +269,41 @@ export const wellFormedRanges = ({
 }): Map<string, readonly InlineNode[]> => {
   const changed = new Map<string, readonly InlineNode[]>();
   if (relocated.ranges.size === 0) return changed;
+  const found: Occurrence[] = [];
+  const visit = (paragraph: string, nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (isBoundary(node)) {
+        if (relocated.ranges.has(rangeKey(node)))
+          found.push({ paragraph, node });
+        continue;
+      }
+      visit(paragraph, childNodes(node) ?? []);
+    }
+  };
+  for (const paragraph of order)
+    visit(paragraph, contents.get(paragraph) ?? []);
+  const plan = planWellFormedRanges(
+    found.map(({ node }) => ({
+      boundary: `${node.type}:${node.id}`,
+      range: rangeKey(node),
+      side: BOUNDARY_SIDES[node.type].side,
+      kept: relocated.nodes.has(node),
+    })),
+  );
   const current = (paragraph: string) =>
     changed.get(paragraph) ?? contents.get(paragraph) ?? [];
-  const occurrences = (): Occurrence[] => {
-    const found: Occurrence[] = [];
-    const visit = (paragraph: string, nodes: readonly InlineNode[]): void => {
-      for (const node of nodes) {
-        if (isBoundary(node)) {
-          if (relocated.ranges.has(rangeKey(node)))
-            found.push({ paragraph, node });
-          continue;
-        }
-        visit(paragraph, childNodes(node) ?? []);
-      }
-    };
-    for (const paragraph of order) visit(paragraph, current(paragraph));
-    return found;
-  };
-  const copies = new Map<string, Occurrence[]>();
-  for (const occurrence of occurrences()) {
-    const key = `${occurrence.node.type}:${occurrence.node.id}`;
-    copies.set(key, [...(copies.get(key) ?? []), occurrence]);
+  for (const index of plan.dropped) {
+    const occurrence = found[index];
+    if (occurrence !== undefined)
+      changed.set(
+        occurrence.paragraph,
+        withoutNode(current(occurrence.paragraph), occurrence.node),
+      );
   }
-  for (const group of copies.values()) {
-    if (group.length < 2) continue;
-    const held = group.some(({ node }) => !relocated.nodes.has(node));
-    const dropped = held
-      ? group.filter(({ node }) => relocated.nodes.has(node))
-      : group.slice(1);
-    for (const { paragraph, node } of dropped)
-      changed.set(paragraph, withoutNode(current(paragraph), node));
-  }
-  const remaining = occurrences();
-  const side = (key: string, wanted: "start" | "end") =>
-    remaining.flatMap((occurrence, rank) =>
-      rangeKey(occurrence.node) === key &&
-      BOUNDARY_SIDES[occurrence.node.type].side === wanted
-        ? [{ paragraph: occurrence.paragraph, node: occurrence.node, rank }]
-        : [],
-    );
-  for (const key of relocated.ranges) {
-    const starts = side(key, "start");
-    const ends = side(key, "end");
-    const [start] = starts;
-    const [end] = ends;
-    if (start === undefined || end === undefined) continue;
-    if (starts.length > 1 || ends.length > 1 || end.rank > start.rank) continue;
+  for (const { end: endIndex, start: startIndex } of plan.moved) {
+    const end = found[endIndex];
+    const start = found[startIndex];
+    if (end === undefined || start === undefined) continue;
     changed.set(end.paragraph, withoutNode(current(end.paragraph), end.node));
     changed.set(
       start.paragraph,
