@@ -90,7 +90,7 @@
   },
   "dependencies": {
     "@stll/docx-core": "workspace:^",
-    "@stll/docx-utils": "^0.1.5",
+    "@stll/docx-utils": "^0.2.0",
     "@stll/template-conditions": "^0.6.2",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
