@@ -29,7 +29,10 @@ import {
 } from "./paragraphMarkFormatting";
 import { paragraphToRuns } from "./paragraphRuns";
 import type { PageBreakRunProjection } from "./paragraphRuns";
-import { resolveWesternThemeFont } from "./textFormattingConversion";
+import {
+  resolveEastAsiaThemeFont,
+  resolveWesternThemeFont,
+} from "./textFormattingConversion";
 
 const DETACHED_WATERMARK_HOST_ATTR = "_detachedWatermarkHost";
 
@@ -122,6 +125,13 @@ export function convertParagraph(
   }
   if (options.defaultFont !== undefined) {
     attrs.defaultFontFamily ??= options.defaultFont;
+  }
+  const defaultFonts = options.styles?.docDefaults?.rPr?.fontFamily;
+  const defaultEastAsiaFont = defaultFonts
+    ? resolveEastAsiaThemeFont(defaultFonts, options.theme)
+    : undefined;
+  if (defaultEastAsiaFont !== undefined) {
+    attrs.defaultEastAsiaFontFamily = defaultEastAsiaFont;
   }
   if (options.defaultSize !== undefined) {
     attrs.defaultFontSize ??= options.defaultSize;
