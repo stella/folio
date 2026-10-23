@@ -11,15 +11,15 @@
 
 import type {
   BlockContent,
+  BlockSdt,
+  InlineSdt,
   Paragraph,
+  ParagraphContent,
+  SdtProperties,
+  SdtType,
   Table,
   TableCell,
   TableRow,
-  ParagraphContent,
-  BlockSdt,
-  InlineSdt,
-  SdtProperties,
-  SdtType,
 } from "../../src/types/content";
 import type { Document } from "../../src/types/document";
 
@@ -102,14 +102,18 @@ export function projectFolioDocument(doc: Document): StructuralProjection {
         return;
       default: {
         const unreachable: never = block;
-        throw new Error(`unhandled block content: ${JSON.stringify(unreachable)}`);
+        throw new Error(
+          `unhandled block content: ${JSON.stringify(unreachable)}`,
+        );
       }
     }
   };
 
   /** The children the reference projectors count: `w:p`, `w:tbl`, `w:sdt`. */
   const isTopLevelBlock = (block: BlockContent): boolean =>
-    block.type === "paragraph" || block.type === "table" || block.type === "blockSdt";
+    block.type === "paragraph" ||
+    block.type === "table" ||
+    block.type === "blockSdt";
 
   const visitParagraph = (p: Paragraph): void => {
     totalParagraphs += 1;
@@ -231,7 +235,9 @@ export function projectFolioDocument(doc: Document): StructuralProjection {
   };
 }
 
-const summariseSdts = (sdts: readonly SdtProjection[]): StructuralProjection["sdtCountsByType"] => {
+const summariseSdts = (
+  sdts: readonly SdtProjection[],
+): StructuralProjection["sdtCountsByType"] => {
   const out: StructuralProjection["sdtCountsByType"] = {};
   for (const s of sdts) {
     out[s.sdtType] = (out[s.sdtType] ?? 0) + 1;
@@ -257,13 +263,21 @@ export type Divergence = {
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-export function diffProjections(folio: StructuralProjection, reference: unknown): Divergence[] {
+export function diffProjections(
+  folio: StructuralProjection,
+  reference: unknown,
+): Divergence[] {
   const out: Divergence[] = [];
   walk("", folio, reference, out);
   return out;
 }
 
-const walk = (path: string, folio: unknown, reference: unknown, out: Divergence[]): void => {
+const walk = (
+  path: string,
+  folio: unknown,
+  reference: unknown,
+  out: Divergence[],
+): void => {
   if (Array.isArray(folio)) {
     if (!Array.isArray(reference) || folio.length !== reference.length) {
       out.push({ path: path || "$", folio, reference });

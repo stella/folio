@@ -4,7 +4,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MeasuredLine, ParagraphBlock, TextRun } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TextRun,
+} from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
@@ -98,7 +102,9 @@ function backgroundOf(run: TextRun): string | undefined {
 /* eslint-disable no-inline-style-colors/no-inline-style-colors -- literal colors are painter test inputs/expectations, not rendered UI styling */
 describe("renderLine run shading", () => {
   test("paints a shaded run's background", () => {
-    expect(backgroundOf({ kind: "text", text: "Shaded", shading: "#FFFF00" })).toBe("#FFFF00");
+    expect(
+      backgroundOf({ kind: "text", text: "Shaded", shading: "#FFFF00" }),
+    ).toBe("#FFFF00");
   });
 
   test("an explicit highlight wins over shading on the same run", () => {

@@ -6,14 +6,15 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { Paragraph } from "../../types/document";
 import { parseParagraph } from "../../docx/paragraphParser";
 import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
 import { parseXmlDocument } from "../../docx/xmlParser";
+import type { Paragraph } from "../../types/document";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
-const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORDPROCESSINGML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 type WrapperFixture = {
   name: "bdo" | "dir" | "smartTag" | "customXml";
@@ -86,7 +87,9 @@ const expectExactFixedPoint = (authored: string): void => {
   const expected = serializeParagraph(parseParagraphXml(authored));
   const once = saveThroughEditor(authored);
   expect(once).toBe(expected);
-  expect(saveThroughEditor(paragraph(once.slice(once.indexOf(">") + 1, -6)))).toBe(once);
+  expect(
+    saveThroughEditor(paragraph(once.slice(once.indexOf(">") + 1, -6))),
+  ).toBe(once);
 };
 
 describe("transparent-wrapper ownership around tracked revisions", () => {
@@ -113,8 +116,12 @@ describe("transparent-wrapper ownership around tracked revisions", () => {
     }
 
     const wrapperNames = WRAPPERS.map(({ name }) => name);
-    expect([...exercisedOuterWrappers].toSorted()).toEqual([...wrapperNames].toSorted());
-    expect([...exercisedInnerWrappers].toSorted()).toEqual([...wrapperNames].toSorted());
+    expect([...exercisedOuterWrappers].toSorted()).toEqual(
+      [...wrapperNames].toSorted(),
+    );
+    expect([...exercisedInnerWrappers].toSorted()).toEqual(
+      [...wrapperNames].toSorted(),
+    );
     expect([...exercisedRevisions].toSorted()).toEqual(
       REVISIONS.map(({ name }) => name).toSorted(),
     );
@@ -124,7 +131,9 @@ describe("transparent-wrapper ownership around tracked revisions", () => {
     const insertion = REVISIONS.at(0);
     const deletion = REVISIONS.at(1);
     if (insertion === undefined || deletion === undefined) {
-      throw new Error("The revision matrix did not provide two distinct revisions");
+      throw new Error(
+        "The revision matrix did not provide two distinct revisions",
+      );
     }
     const authored = paragraph(
       WRAPPERS[0].wrap(

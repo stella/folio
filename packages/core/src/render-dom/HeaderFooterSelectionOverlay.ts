@@ -53,12 +53,18 @@ export const resolveHeaderFooterSelectionGeometry = (
   const containerRect = pagesContainer.getBoundingClientRect();
   const zoomDivisor = zoom === 0 ? 1 : zoom;
   const pageScope: ParentNode = selection.pageNumber
-    ? (pagesContainer.querySelector(`.layout-page[data-page-number="${selection.pageNumber}"]`) ??
-      pagesContainer)
+    ? (pagesContainer.querySelector(
+        `.layout-page[data-page-number="${selection.pageNumber}"]`,
+      ) ?? pagesContainer)
     : pagesContainer;
 
   if (selection.from === selection.to) {
-    const hit = findHfCaretSpan(pageScope, selection.kind, selection.rId, selection.from);
+    const hit = findHfCaretSpan(
+      pageScope,
+      selection.kind,
+      selection.rId,
+      selection.from,
+    );
     if (!hit) {
       return { caret: null, ranges: [] };
     }
@@ -69,8 +75,15 @@ export const resolveHeaderFooterSelectionGeometry = (
     const pmStart = Number.parseInt(hit.element.dataset["pmStart"] ?? "", 10);
     const pmEnd = Number.parseInt(hit.element.dataset["pmEnd"] ?? "", 10);
     const textNodes = descendantTextNodes(hit.element);
-    if (textNodes.length > 0 && Number.isFinite(pmStart) && Number.isFinite(pmEnd)) {
-      const offset = Math.min(Math.max(0, selection.from - pmStart), totalTextLength(textNodes));
+    if (
+      textNodes.length > 0 &&
+      Number.isFinite(pmStart) &&
+      Number.isFinite(pmEnd)
+    ) {
+      const offset = Math.min(
+        Math.max(0, selection.from - pmStart),
+        totalTextLength(textNodes),
+      );
       const range = createTextStreamRange(hit.element, offset, offset);
       if (range) {
         const rangeRect = range.getBoundingClientRect();
@@ -115,12 +128,17 @@ export const resolveHeaderFooterSelectionGeometry = (
         }
       }
     }
-    ranges.push(relativeRect(span.getBoundingClientRect(), containerRect, zoomDivisor));
+    ranges.push(
+      relativeRect(span.getBoundingClientRect(), containerRect, zoomDivisor),
+    );
   }
   return { caret: null, ranges };
 };
 
-const createOverlayElement = (pagesContainer: HTMLElement, className: string): HTMLDivElement => {
+const createOverlayElement = (
+  pagesContainer: HTMLElement,
+  className: string,
+): HTMLDivElement => {
   const element = pagesContainer.ownerDocument.createElement("div");
   element.className = className;
   element.style.position = "absolute";
@@ -135,10 +153,18 @@ export class HeaderFooterSelectionOverlay {
     }
   }
 
-  sync(pagesContainer: HTMLElement, selection: HeaderFooterSelection | null, zoom: number): void {
+  sync(
+    pagesContainer: HTMLElement,
+    selection: HeaderFooterSelection | null,
+    zoom: number,
+  ): void {
     this.clear(pagesContainer);
     if (!selection) return;
-    const geometry = resolveHeaderFooterSelectionGeometry(pagesContainer, selection, zoom);
+    const geometry = resolveHeaderFooterSelectionGeometry(
+      pagesContainer,
+      selection,
+      zoom,
+    );
     for (const rect of geometry.ranges) {
       const element = createOverlayElement(pagesContainer, RANGE_CLASS);
       element.dataset["testid"] = "hf-selection-rect";
@@ -146,7 +172,8 @@ export class HeaderFooterSelectionOverlay {
       element.style.top = `${rect.y}px`;
       element.style.width = `${rect.width}px`;
       element.style.height = `${rect.height}px`;
-      element.style.background = "var(--doc-selection, rgba(66, 133, 244, 0.3))";
+      element.style.background =
+        "var(--doc-selection, rgba(66, 133, 244, 0.3))";
       element.style.opacity = "0.35";
       element.style.zIndex = "10";
       pagesContainer.append(element);

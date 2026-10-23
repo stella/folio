@@ -20,14 +20,22 @@
  * describes the table itself travels.
  */
 
-import { Fragment, type Mark, type Node as PMNode, type Schema } from "prosemirror-model";
+import {
+  Fragment,
+  type Mark,
+  type Node as PMNode,
+  type Schema,
+} from "prosemirror-model";
 
 import {
   cloneTableCellsWithParagraphPropertyCaptures,
   decodeTableCellParagraphSourcePayload,
   recreateProseNodeWithDetachedParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
-import { expectHyperlinkMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
+import {
+  expectHyperlinkMarkAttrs,
+  expectTableCellAttrs,
+} from "../prosemirror/attrs";
 import type { TrackedChangeProvenance } from "../prosemirror/schema/marks";
 import { stripBlockIdentityAttrs } from "./block-identity";
 
@@ -68,7 +76,10 @@ const canRebindExternalHyperlink = (mark: Mark): boolean => {
   if (mark.type.name !== "hyperlink") return false;
   const { href, rId } = expectHyperlinkMarkAttrs(mark);
   const hasRelationshipId = typeof rId === "string" && rId.length > 0;
-  return (href.length > 0 && !href.startsWith("#")) || (href.length === 0 && !hasRelationshipId);
+  return (
+    (href.length > 0 && !href.startsWith("#")) ||
+    (href.length === 0 && !hasRelationshipId)
+  );
 };
 
 /**
@@ -90,11 +101,21 @@ const CLEARED_PARAGRAPH_ATTRS = [
 
 /** Table, row and cell attrs that record the other document's revisions. */
 const CLEARED_TABLE_ATTRS = ["tblPrChange", "_suggestedInsert"] as const;
-const CLEARED_ROW_ATTRS = ["trIns", "trDel", "trPrChange", "tblPrExChange"] as const;
+const CLEARED_ROW_ATTRS = [
+  "trIns",
+  "trDel",
+  "trPrChange",
+  "tblPrExChange",
+] as const;
 const CLEARED_CELL_ATTRS = ["cellMarker", "tcPrChange"] as const;
 
 const hasAuthoredValue = (value: unknown): boolean => {
-  if (value === null || value === undefined || value === false || value === "") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === false ||
+    value === ""
+  ) {
     return false;
   }
   return !Array.isArray(value) || value.length > 0;
@@ -137,7 +158,10 @@ export const tableTemplateCanCrossPackageLosslessly = (
       node.marks.some(
         (mark) =>
           PACKAGE_BOUND_MARK_NAMES.has(mark.type.name) &&
-          !(hyperlinkPortability === "rebind-external" && canRebindExternalHyperlink(mark)),
+          !(
+            hyperlinkPortability === "rebind-external" &&
+            canRebindExternalHyperlink(mark)
+          ),
       ) ||
       losesAuthoredAttrs(node)
     ) {
@@ -199,12 +223,16 @@ type TemplateContext = {
   clampRowSpan: boolean;
 };
 
-const insertionMarkOf = (schema: Schema, revision: TableStructureRevision | null): Mark | null => {
+const insertionMarkOf = (
+  schema: Schema,
+  revision: TableStructureRevision | null,
+): Mark | null => {
   const markType = schema.marks["insertion"];
   if (!revision || !markType) {
     return null;
   }
-  const { revisionId, author, date, initials, provenance, suggestionId } = revision;
+  const { revisionId, author, date, initials, provenance, suggestionId } =
+    revision;
   return markType.create({
     revisionId,
     author,
@@ -215,8 +243,13 @@ const insertionMarkOf = (schema: Schema, revision: TableStructureRevision | null
   });
 };
 
-const copiedAttrs = (node: PMNode, context: TemplateContext): Record<string, unknown> => {
-  const sourceAttrs = node.isTextblock ? stripBlockIdentityAttrs(node.attrs) : node.attrs;
+const copiedAttrs = (
+  node: PMNode,
+  context: TemplateContext,
+): Record<string, unknown> => {
+  const sourceAttrs = node.isTextblock
+    ? stripBlockIdentityAttrs(node.attrs)
+    : node.attrs;
   const attrs = withoutAttrs(sourceAttrs, clearedAttrsOf(node));
   switch (node.type.spec["tableRole"]) {
     case "table":
@@ -232,13 +265,15 @@ const copiedAttrs = (node: PMNode, context: TemplateContext): Record<string, unk
           _docxVMergeContinuationCells: null,
         };
       }
-      const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
+      const continuationCells =
+        expectTableCellAttrs(node)._docxVMergeContinuationCells;
       return continuationCells !== undefined && continuationCells !== null
         ? {
             ...attrs,
-            _docxVMergeContinuationCells: cloneTableCellsWithParagraphPropertyCaptures(
-              decodeTableCellParagraphSourcePayload(continuationCells),
-            ),
+            _docxVMergeContinuationCells:
+              cloneTableCellsWithParagraphPropertyCaptures(
+                decodeTableCellParagraphSourcePayload(continuationCells),
+              ),
           }
         : attrs;
     }
@@ -256,17 +291,25 @@ const copyNode = (node: PMNode, context: TemplateContext): PMNode | null => {
   if (PACKAGE_BOUND_NODE_NAMES.has(node.type.name)) {
     return null;
   }
-  const marks = node.marks.filter(({ type }) => !PACKAGE_BOUND_MARK_NAMES.has(type.name));
+  const marks = node.marks.filter(
+    ({ type }) => !PACKAGE_BOUND_MARK_NAMES.has(type.name),
+  );
   if (node.isLeaf) {
     // A revision belongs on the run, which is a leaf. Putting one on an inline
     // container as well would mark the same characters twice, and resolving
     // the revision would then delete the container's range and its children's.
-    return node.mark(node.isInline && context.insertion ? [...marks, context.insertion] : marks);
+    return node.mark(
+      node.isInline && context.insertion
+        ? [...marks, context.insertion]
+        : marks,
+    );
   }
   // A cell's rowspan is only clamped on the row being placed. A nested table's
   // rows are its own, and their merges reach rows that travel with them.
   const inner =
-    node.type.spec["tableRole"] === "table" ? { ...context, clampRowSpan: false } : context;
+    node.type.spec["tableRole"] === "table"
+      ? { ...context, clampRowSpan: false }
+      : context;
   const content: PMNode[] = [];
   node.forEach((child) => {
     const copied = copyNode(child, inner);
@@ -302,7 +345,10 @@ export const tableFromTemplate = ({
   template,
   revision,
 }: TableFromTemplateOptions): PMNode | null => {
-  if (template.type.spec["tableRole"] !== "table" || template.childCount === 0) {
+  if (
+    template.type.spec["tableRole"] !== "table" ||
+    template.childCount === 0
+  ) {
     return null;
   }
   return copyNode(template, {
@@ -344,5 +390,9 @@ export const tableRowFromTemplate = ({
   }
   // The caller stamps the row's own insertion and marks its runs, so the copy
   // carries neither.
-  return copyNode(template, { revision: null, insertion: null, clampRowSpan: true });
+  return copyNode(template, {
+    revision: null,
+    insertion: null,
+    clampRowSpan: true,
+  });
 };

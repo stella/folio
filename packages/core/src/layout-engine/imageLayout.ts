@@ -3,7 +3,7 @@
  */
 
 import { createPaginator } from "./paginator";
-import type { ImageBlock, ImageMeasure, ImageFragment } from "./types";
+import type { ImageBlock, ImageFragment, ImageMeasure } from "./types";
 
 /**
  * Layout an image block onto pages.

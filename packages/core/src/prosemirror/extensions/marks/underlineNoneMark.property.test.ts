@@ -15,10 +15,12 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
 import { UNDERLINE_STYLE_VALUES } from "../../../types/documentEnumValues";
-import { singletonManager, schema } from "../../schema";
+import { schema, singletonManager } from "../../schema";
 import { textFormattingToMarks } from "./markUtils";
 
 const underlineStyleArbitrary = fc.constantFrom(...UNDERLINE_STYLE_VALUES);
@@ -32,15 +34,25 @@ const underlineMarkOf = (marks: readonly { type: { name: string } }[] | null) =>
  * token through a second, unguarded copy of `textFormattingToMarks`.
  */
 const storedMarksForEmptyParagraph = (defaultTextFormatting: object) => {
-  const doc = schema.node("doc", null, [schema.node("paragraph", { defaultTextFormatting })]);
-  const state = EditorState.create({ doc, schema, plugins: singletonManager.getPlugins() });
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", { defaultTextFormatting }),
+  ]);
+  const state = EditorState.create({
+    doc,
+    schema,
+    plugins: singletonManager.getPlugins(),
+  });
 
-  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1))).storedMarks;
+  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)))
+    .storedMarks;
 };
 
 describe("the underline mark reader honours the `none` token", () => {
   test("an explicit `none` produces no underline mark", () => {
-    const marks = textFormattingToMarks({ underline: { style: "none" } }, schema);
+    const marks = textFormattingToMarks(
+      { underline: { style: "none" } },
+      schema,
+    );
 
     expect(underlineMarkOf(marks)).toBeUndefined();
   });
@@ -50,7 +62,9 @@ describe("the underline mark reader honours the `none` token", () => {
     () => {
       fc.assert(
         fc.property(underlineStyleArbitrary, (style) => {
-          const mark = underlineMarkOf(textFormattingToMarks({ underline: { style } }, schema));
+          const mark = underlineMarkOf(
+            textFormattingToMarks({ underline: { style } }, schema),
+          );
 
           if (style === "none") {
             expect(mark).toBeUndefined();
@@ -65,7 +79,10 @@ describe("the underline mark reader honours the `none` token", () => {
   );
 
   test("typing in a paragraph whose defaults cancel the underline stays un-underlined", () => {
-    const stored = storedMarksForEmptyParagraph({ bold: true, underline: { style: "none" } });
+    const stored = storedMarksForEmptyParagraph({
+      bold: true,
+      underline: { style: "none" },
+    });
 
     expect(underlineMarkOf(stored)).toBeUndefined();
   });
@@ -74,16 +91,27 @@ describe("the underline mark reader honours the `none` token", () => {
     "the stored-mark path agrees with document conversion over the whole enum",
     () => {
       fc.assert(
-        fc.property(underlineStyleArbitrary, fc.boolean(), (style, withColor) => {
-          const formatting = {
-            underline: { style, ...(withColor ? { color: { rgb: "FF0000" } } : {}) },
-          };
+        fc.property(
+          underlineStyleArbitrary,
+          fc.boolean(),
+          (style, withColor) => {
+            const formatting = {
+              underline: {
+                style,
+                ...(withColor ? { color: { rgb: "FF0000" } } : {}),
+              },
+            };
 
-          const viaConversion = underlineMarkOf(textFormattingToMarks(formatting, schema));
-          const viaStoredMarks = underlineMarkOf(storedMarksForEmptyParagraph(formatting));
+            const viaConversion = underlineMarkOf(
+              textFormattingToMarks(formatting, schema),
+            );
+            const viaStoredMarks = underlineMarkOf(
+              storedMarksForEmptyParagraph(formatting),
+            );
 
-          expect(viaStoredMarks?.attrs).toEqual(viaConversion?.attrs);
-        }),
+            expect(viaStoredMarks?.attrs).toEqual(viaConversion?.attrs);
+          },
+        ),
         propertyConfig(),
       );
     },

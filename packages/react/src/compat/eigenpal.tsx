@@ -1,7 +1,8 @@
 import { forwardRef, type ReactNode } from "react";
-import { DEFAULT_KEYBOARD_SHORTCUT_SCOPE } from "@stll/folio-core/managers/editorShortcuts";
+
 import { IntlProvider, useTranslations } from "use-intl";
 
+import { DEFAULT_KEYBOARD_SHORTCUT_SCOPE } from "@stll/folio-core/managers/editorShortcuts";
 import {
   createDocumentWithText,
   createEmptyDocument,
@@ -9,7 +10,10 @@ import {
 } from "@stll/folio-core/utils/createDocument";
 
 import { DocxEditor as FolioDocxEditor } from "../components/DocxEditor";
-import type { DocxEditorProps, DocxEditorRef } from "../components/DocxEditor.props";
+import type {
+  DocxEditorProps,
+  DocxEditorRef,
+} from "../components/DocxEditor.props";
 import { getFolioMessages } from "../i18n/messages";
 
 export {
@@ -25,7 +29,8 @@ type LegacyTranslations = {
   _lang?: string;
 };
 
-export type LocaleCode = "en" | "de" | "fr" | "he" | "hi" | "pl" | "pt-BR" | "tr" | "zh-CN";
+export type LocaleCode =
+  "en" | "de" | "fr" | "he" | "hi" | "pl" | "pt-BR" | "tr" | "zh-CN";
 
 export type LocaleProviderProps = {
   children?: ReactNode | undefined;
@@ -33,7 +38,10 @@ export type LocaleProviderProps = {
   locale?: string | undefined;
 };
 
-export type TFunction = (key: string, vars?: Record<string, string | number>) => string;
+export type TFunction = (
+  key: string,
+  vars?: Record<string, string | number>,
+) => string;
 
 export type LegacyDocxEditorProps = DocxEditorProps & {
   agentPanel?: unknown;
@@ -90,10 +98,17 @@ export const locales: Record<LocaleCode, LegacyTranslations> = {
   "zh-CN": zhCN,
 };
 
-export const LocaleProvider = ({ children, i18n, locale }: LocaleProviderProps) => {
+export const LocaleProvider = ({
+  children,
+  i18n,
+  locale,
+}: LocaleProviderProps) => {
   const resolvedLocale = resolveLocale(locale, i18n);
   return (
-    <IntlProvider locale={resolvedLocale} messages={getFolioMessages(resolvedLocale)}>
+    <IntlProvider
+      locale={resolvedLocale}
+      messages={getFolioMessages(resolvedLocale)}
+    >
       {children}
     </IntlProvider>
   );
@@ -147,7 +162,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, LegacyDocxEditorProps>(
         // scope from a migrated call site is the finer statement and wins.
         keyboardShortcuts={
           keyboardShortcuts ??
-          (disableFindReplaceShortcuts === true ? "none" : DEFAULT_KEYBOARD_SHORTCUT_SCOPE)
+          (disableFindReplaceShortcuts === true
+            ? "none"
+            : DEFAULT_KEYBOARD_SHORTCUT_SCOPE)
         }
         ref={ref}
       />
@@ -157,5 +174,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, LegacyDocxEditorProps>(
 
 DocxEditor.displayName = "EigenpalCompatDocxEditor";
 
-const resolveLocale = (locale: string | undefined, i18n: LegacyTranslations | undefined): string =>
-  locale ?? i18n?._lang ?? "en";
+const resolveLocale = (
+  locale: string | undefined,
+  i18n: LegacyTranslations | undefined,
+): string => locale ?? i18n?._lang ?? "en";

@@ -1,12 +1,12 @@
-import { expect, test } from "bun:test";
-import { EditorState, TextSelection } from "prosemirror-state";
-import { Fragment, Slice } from "prosemirror-model";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
+import { Fragment, Slice } from "prosemirror-model";
+import { EditorState, TextSelection } from "prosemirror-state";
 
 import { DOCUMENT_SHAPES } from "../../__tests__/documentShapes";
 import {
-  HeadlessEditorView,
   createHarnessState,
+  HeadlessEditorView,
   parseShapeDocument,
   saveHarnessState,
   textblocks,
@@ -15,9 +15,13 @@ import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { schema } from "../schema";
-import { createSuggestionModePlugin, suggestionModeKey } from "./suggestionMode";
+import {
+  createSuggestionModePlugin,
+  suggestionModeKey,
+} from "./suggestionMode";
 
-const paragraph = (text: string) => schema.node("paragraph", null, schema.text(text));
+const paragraph = (text: string) =>
+  schema.node("paragraph", null, schema.text(text));
 
 // Exercise the real composition lifecycle, including the browser-owned native
 // replacement between its start and deferred end handlers.
@@ -25,8 +29,16 @@ test.each(["beforeEnd", "nativeEndFlush"] as const)(
   "%s: IME replacement preserves open paragraph edges across every text range",
   async (commitTiming) => {
     const baseline = schema.node("doc", null, [
-      schema.node("paragraph", { alignment: "center", indentLeft: 240 }, schema.text("First")),
-      schema.node("paragraph", { alignment: "right", indentLeft: 480 }, schema.text("Second")),
+      schema.node(
+        "paragraph",
+        { alignment: "center", indentLeft: 240 },
+        schema.text("First"),
+      ),
+      schema.node(
+        "paragraph",
+        { alignment: "right", indentLeft: 480 },
+        schema.text("Second"),
+      ),
     ]);
     const properties = (doc: typeof baseline) =>
       textblocks(doc).map(({ node }) => paragraphPropertiesSnapshot(node));
@@ -36,15 +48,22 @@ test.each(["beforeEnd", "nativeEndFlush"] as const)(
     }
     for (const { from, to } of ranges) {
       const plugin = createSuggestionModePlugin(true, "Reviewer");
-      const view = new HeadlessEditorView(EditorState.create({ doc: baseline, plugins: [plugin] }));
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+      const view = new HeadlessEditorView(
+        EditorState.create({ doc: baseline, plugins: [plugin] }),
+      );
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, from, to),
+        ),
+      );
       plugin.props.handleDOMEvents?.["compositionstart"]?.call(
         plugin,
         view as never,
         new Event("compositionstart"),
       );
       const direct = view.state.tr.insertText("alpha").doc;
-      if (commitTiming === "beforeEnd") view.dispatch(view.state.tr.insertText("alpha"));
+      if (commitTiming === "beforeEnd")
+        view.dispatch(view.state.tr.insertText("alpha"));
       plugin.props.handleDOMEvents?.["compositionend"]?.call(
         plugin,
         view as never,
@@ -76,7 +95,11 @@ test.each(["beforeEnd", "nativeEndFlush"] as const)(
 const project = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map((block) => {
     if (block.kind === "diagnostic") {
-      return { kind: block.kind, text: block.text, diagnostic: block.diagnostic };
+      return {
+        kind: block.kind,
+        text: block.text,
+        diagnostic: block.diagnostic,
+      };
     }
     return {
       kind: block.kind,
@@ -91,10 +114,14 @@ const project = (reviewer: FolioDocxReviewer) =>
 test.each(["mixed-lists", "image", "notes"])(
   "replacement traces preserve reader accept/reject projections in %s",
   async (shapeId) => {
-    const shape = DOCUMENT_SHAPES.find(({ id }) => id === shapeId) ?? panic("Missing shape");
+    const shape =
+      DOCUMENT_SHAPES.find(({ id }) => id === shapeId) ??
+      panic("Missing shape");
     const bytes = await shape.build();
     const base = await parseShapeDocument(bytes);
-    const baseline = project(await FolioDocxReviewer.fromBuffer(bytes.slice().buffer));
+    const baseline = project(
+      await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+    );
     const outputs = [];
     for (const mode of ["editing", "suggesting"] as const) {
       const view = new HeadlessEditorView(createHarnessState(base, mode));
@@ -117,14 +144,18 @@ test.each(["mixed-lists", "image", "notes"])(
         view.paste(new Slice(Fragment.from(schema.text("alpha")), 0, 0));
       } else {
         const blocks = textblocks(view.state.doc);
-        const first = blocks.at(1) ?? panic("Missing first replacement paragraph");
-        const last = blocks.at(2) ?? panic("Missing last replacement paragraph");
+        const first =
+          blocks.at(1) ?? panic("Missing first replacement paragraph");
+        const last =
+          blocks.at(2) ?? panic("Missing last replacement paragraph");
         view.dispatch(
           view.state.tr.setSelection(
             TextSelection.create(view.state.doc, first.pos + 1, last.pos + 2),
           ),
         );
-        const plugin = suggestionModeKey.get(view.state) ?? panic("Missing suggestion plugin");
+        const plugin =
+          suggestionModeKey.get(view.state) ??
+          panic("Missing suggestion plugin");
         plugin.props.handleDOMEvents?.["compositionstart"]?.call(
           plugin,
           view as never,
@@ -144,16 +175,22 @@ test.each(["mixed-lists", "image", "notes"])(
     }
     const edited = outputs.at(0) ?? panic("Missing direct output");
     const suggested = outputs.at(1) ?? panic("Missing tracked output");
-    const accepted = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
+    const accepted = await FolioDocxReviewer.fromBuffer(
+      suggested.bytes.slice().buffer,
+    );
     accepted.acceptAll();
-    expect(project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer()))).toEqual(
+    expect(
+      project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer())),
+    ).toEqual(
       project(await FolioDocxReviewer.fromBuffer(edited.bytes.slice().buffer)),
     );
-    const rejected = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
-    rejected.rejectAll();
-    expect(project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()))).toEqual(
-      baseline,
+    const rejected = await FolioDocxReviewer.fromBuffer(
+      suggested.bytes.slice().buffer,
     );
+    rejected.rejectAll();
+    expect(
+      project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer())),
+    ).toEqual(baseline);
   },
 );
 
@@ -163,7 +200,9 @@ test("plain paste followed by backward and forward deletion preserves bookmark r
     panic("Missing bookmarked shape");
   const bytes = await shape.build();
   const base = await parseShapeDocument(bytes);
-  const baseline = project(await FolioDocxReviewer.fromBuffer(bytes.slice().buffer));
+  const baseline = project(
+    await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+  );
   const saved = [];
   for (const mode of ["editing", "suggesting"] as const) {
     const view = new HeadlessEditorView(createHarnessState(base, mode));
@@ -175,23 +214,34 @@ test("plain paste followed by backward and forward deletion preserves bookmark r
 
   const edited = saved.at(0) ?? panic("Missing direct output");
   const suggested = saved.at(1) ?? panic("Missing tracked output");
-  const accepted = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
-  accepted.acceptAll();
-  const direct = await FolioDocxReviewer.fromBuffer(edited.bytes.slice().buffer);
-  expect(project(direct).at(0)?.text).toBe("alphookmarked heading text");
-  expect(project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer()))).toEqual(
-    project(direct),
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    suggested.bytes.slice().buffer,
   );
+  accepted.acceptAll();
+  const direct = await FolioDocxReviewer.fromBuffer(
+    edited.bytes.slice().buffer,
+  );
+  expect(project(direct).at(0)?.text).toBe("alphookmarked heading text");
+  expect(
+    project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer())),
+  ).toEqual(project(direct));
 
-  const rejected = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
+  const rejected = await FolioDocxReviewer.fromBuffer(
+    suggested.bytes.slice().buffer,
+  );
   rejected.rejectAll();
-  expect(project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()))).toEqual(baseline);
+  expect(
+    project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer())),
+  ).toEqual(baseline);
 });
 
 test.each([1, 2, 3, 4, 5])(
   "table paste after %s tracked deletions removes the same leading break as direct paste",
   (count) => {
-    const baseline = schema.node("doc", null, [paragraph("Intro"), paragraph("Tail")]);
+    const baseline = schema.node("doc", null, [
+      paragraph("Intro"),
+      paragraph("Tail"),
+    ]);
     const pastedTable = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [paragraph("Left")]),
@@ -220,7 +270,9 @@ test.each([1, 2, 3, 4, 5])(
     });
     const blocks = (state: EditorState) => {
       const result: { kind: string; text: string }[] = [];
-      state.doc.forEach((node) => result.push({ kind: node.type.name, text: node.textContent }));
+      state.doc.forEach((node) =>
+        result.push({ kind: node.type.name, text: node.textContent }),
+      );
       return result;
     };
     expect(blocks(accepted)).toEqual(blocks(edited.state));
@@ -228,7 +280,9 @@ test.each([1, 2, 3, 4, 5])(
     rejectAllChanges()(rejected, (tr) => {
       rejected = rejected.apply(tr);
     });
-    expect(blocks(rejected)).toEqual(blocks(EditorState.create({ doc: baseline })));
+    expect(blocks(rejected)).toEqual(
+      blocks(EditorState.create({ doc: baseline })),
+    );
   },
 );
 
@@ -236,7 +290,11 @@ test.each([1, 2, 3, 4, 5])(
 test.each(["del", "ins", "moveFrom", "moveTo"])(
   "table paste preserves an existing %s paragraph revision",
   (kind) => {
-    const info = { id: 987, author: "Previous reviewer", date: "2026-01-01T00:00:00Z" };
+    const info = {
+      id: 987,
+      author: "Previous reviewer",
+      date: "2026-01-01T00:00:00Z",
+    };
     const pPrMark = { kind, info };
     const baseline = schema.node("doc", null, [
       schema.node(
@@ -258,12 +316,18 @@ test.each(["del", "ins", "moveFrom", "moveTo"])(
         plugins: [createSuggestionModePlugin(true, "Reviewer")],
       }),
     );
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)),
+    );
     const table = schema.node("table", null, [
-      schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph("Pasted")])]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [paragraph("Pasted")]),
+      ]),
     ]);
     view.paste(new Slice(Fragment.from(table), 0, 0));
-    const restored = textblocks(view.state.doc).find(({ node }) => node.textContent === "Intro");
+    const restored = textblocks(view.state.doc).find(
+      ({ node }) => node.textContent === "Intro",
+    );
     expect(restored?.node.attrs["pPrMark"]).toEqual(pPrMark);
   },
 );
@@ -278,7 +342,9 @@ test.each(["followed", "final"])(
       ...(placement === "followed" ? [paragraph("Tail")] : []),
     ]);
     const table = schema.node("table", null, [
-      schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph("Pasted")])]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [paragraph("Pasted")]),
+      ]),
     ]);
     for (let count = 1; count <= 5; count++) {
       for (let caret = 2; caret <= count + 1; caret++) {
@@ -294,7 +360,11 @@ test.each(["followed", "final"])(
         for (const view of views) {
           for (let index = 0; index < count; index++) view.pressKey("Delete");
           if (suggestionModeKey.getState(view.state)?.active) {
-            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, caret)));
+            view.dispatch(
+              view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, caret),
+              ),
+            );
           }
           view.paste(new Slice(Fragment.from(table), 0, 0));
         }

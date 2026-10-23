@@ -187,7 +187,9 @@ describe('splitTextRunsByEastAsia under w:hint="eastAsia"', () => {
 
     const result = splitTextRunsByEastAsia([run]) as TextRun[];
 
-    expect(result.map((r) => [r.text, r.fontFamily, r.pmStart, r.pmEnd])).toEqual([
+    expect(
+      result.map((r) => [r.text, r.fontFamily, r.pmStart, r.pmEnd]),
+    ).toEqual([
       ["\u201c", "Mincho", 0, 1],
       ["A", "Latin", 1, 2],
       ["\u201d", "Mincho", 2, 3],
@@ -204,7 +206,9 @@ describe('splitTextRunsByEastAsia under w:hint="eastAsia"', () => {
     };
     expect(splitTextRunsByEastAsia([textRun(base)])).toHaveLength(1);
     expect(
-      splitTextRunsByEastAsia([textRun({ ...base, eastAsiaHint: true, rtl: true })]),
+      splitTextRunsByEastAsia([
+        textRun({ ...base, eastAsiaHint: true, rtl: true }),
+      ]),
     ).toHaveLength(1);
   });
 });

@@ -22,10 +22,15 @@ export const isValidPmScrollPosition = (pmPos: number): boolean =>
  * helper everywhere we'd otherwise hard-code `"smooth"`.
  */
 export const prefersReducedMotionBehavior = (): ScrollBehavior => {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return "smooth";
   }
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
 };
 
 export const getPageScrollTarget = (
@@ -43,7 +48,11 @@ export const getPageScrollTarget = (
   }
 
   const pmStart = page.fragments.at(0)?.pmStart;
-  if (typeof pmStart === "number" && Number.isInteger(pmStart) && pmStart >= 0) {
+  if (
+    typeof pmStart === "number" &&
+    Number.isInteger(pmStart) &&
+    pmStart >= 0
+  ) {
     return { type: "position", pmPos: pmStart };
   }
 

@@ -82,7 +82,13 @@ function paintedText(runs: TestRun[]): string {
   for (const item of runs) {
     const runEl = doc.createElement("span");
     (runEl as unknown as FakeElement).textContent = item.text ?? "";
-    for (const el of withCursiveJoiners(runEl, item, joinerPlan, applyRunStyles, doc)) {
+    for (const el of withCursiveJoiners(
+      runEl,
+      item,
+      joinerPlan,
+      applyRunStyles,
+      doc,
+    )) {
       out += (el as unknown as FakeElement).textContent;
     }
   }
@@ -93,8 +99,14 @@ describe("planCursiveJoiners", () => {
   test("repairs a bold split inside a cursive word", () => {
     const runs = [run(MEEM + KAF), run(TEH + BEH, { bold: true })];
     const joinerPlan = plan(runs);
-    expect(joinerPlan.get(runs[0]!)).toEqual({ leading: false, trailing: true });
-    expect(joinerPlan.get(runs[1]!)).toEqual({ leading: true, trailing: false });
+    expect(joinerPlan.get(runs[0]!)).toEqual({
+      leading: false,
+      trailing: true,
+    });
+    expect(joinerPlan.get(runs[1]!)).toEqual({
+      leading: true,
+      trailing: false,
+    });
     // One joiner each side, so both halves shape into a joined form.
     expect(paintedText(runs)).toBe(MEEM + KAF + ZWJ + ZWJ + TEH + BEH);
   });
@@ -124,7 +136,8 @@ describe("planCursiveJoiners", () => {
     const applyWithUnknown = (element: HTMLElement, item: TestRun): void => {
       applyRunStyles(element, item);
       if (item.bold) {
-        (element.style as unknown as Record<string, string>)["fontStretch"] = "condensed";
+        (element.style as unknown as Record<string, string>)["fontStretch"] =
+          "condensed";
       }
     };
     const runs = [run(MEEM + KAF), run(TEH + BEH, { bold: true })];
@@ -140,11 +153,15 @@ describe("planCursiveJoiners", () => {
   test("does not join where the letters were never connected", () => {
     // A right-joining letter before the cut connects backwards only, so a bold
     // change after alef needs no joiner even though the face changes.
-    expect(plan([run(KAF + ALEF), run(TEH + BEH, { bold: true })]).size).toBe(0);
+    expect(plan([run(KAF + ALEF), run(TEH + BEH, { bold: true })]).size).toBe(
+      0,
+    );
   });
 
   test("does not join across a word boundary", () => {
-    expect(plan([run(MEEM + KAF + " "), run(TEH + BEH, { bold: true })]).size).toBe(0);
+    expect(
+      plan([run(MEEM + KAF + " "), run(TEH + BEH, { bold: true })]).size,
+    ).toBe(0);
   });
 
   test("does not join across a run that paints no text", () => {
@@ -154,19 +171,30 @@ describe("planCursiveJoiners", () => {
   });
 
   test("never touches a Latin line, however it is styled", () => {
-    const runs = [run("smlouva "), run("o dílo", { bold: true }), run(" 2026", { fontSize: 12 })];
+    const runs = [
+      run("smlouva "),
+      run("o dílo", { bold: true }),
+      run(" 2026", { fontSize: 12 }),
+    ];
     expect(plan(runs).size).toBe(0);
     expect(paintedText(runs)).toBe("smlouva o dílo 2026");
   });
 
   test("repairs every affected boundary on a line with several", () => {
-    const runs = [run(MEEM), run(KAF, { bold: true }), run(TEH), run(BEH, { bold: true })];
+    const runs = [
+      run(MEEM),
+      run(KAF, { bold: true }),
+      run(TEH),
+      run(BEH, { bold: true }),
+    ];
     const joinerPlan = plan(runs);
     expect(joinerPlan.size).toBe(4);
     // The middle runs need a joiner on BOTH sides.
     expect(joinerPlan.get(runs[1]!)).toEqual({ leading: true, trailing: true });
     expect(joinerPlan.get(runs[2]!)).toEqual({ leading: true, trailing: true });
-    expect(paintedText(runs)).toBe(MEEM + ZWJ + ZWJ + KAF + ZWJ + ZWJ + TEH + ZWJ + ZWJ + BEH);
+    expect(paintedText(runs)).toBe(
+      MEEM + ZWJ + ZWJ + KAF + ZWJ + ZWJ + TEH + ZWJ + ZWJ + BEH,
+    );
   });
 
   test("a single run, or none, is left alone", () => {
@@ -225,9 +253,13 @@ describe("planCursiveJoiners", () => {
       });
 
     // Colour only: same face, so the browser already joins and no joiner belongs.
-    expect(planWith([run(MEEM + KAF), run(TEH + BEH, { color: "#c00" })]).size).toBe(0);
+    expect(
+      planWith([run(MEEM + KAF), run(TEH + BEH, { color: "#c00" })]).size,
+    ).toBe(0);
     // Bold: a genuine face change, still repaired.
-    expect(planWith([run(MEEM + KAF), run(TEH + BEH, { bold: true })]).size).toBe(2);
+    expect(
+      planWith([run(MEEM + KAF), run(TEH + BEH, { bold: true })]).size,
+    ).toBe(2);
   });
 });
 
@@ -235,10 +267,18 @@ describe("createJoinerSpan", () => {
   test("wears the run's own painted styles", () => {
     // Without the matching face, shaping would not cross into the joiner and
     // the repair would be a no-op that still looked applied.
-    const bold = createJoinerSpan(run(TEH, { bold: true }), applyRunStyles, doc);
+    const bold = createJoinerSpan(
+      run(TEH, { bold: true }),
+      applyRunStyles,
+      doc,
+    );
     const regular = createJoinerSpan(run(KAF), applyRunStyles, doc);
-    expect((bold.style as unknown as Record<string, string>)["fontWeight"]).toBe("700");
-    expect((regular.style as unknown as Record<string, string>)["fontWeight"]).toBeUndefined();
+    expect(
+      (bold.style as unknown as Record<string, string>)["fontWeight"],
+    ).toBe("700");
+    expect(
+      (regular.style as unknown as Record<string, string>)["fontWeight"],
+    ).toBeUndefined();
   });
 
   test("is furniture: joiner flag set, no pm positions", () => {
@@ -254,6 +294,8 @@ describe("withCursiveJoiners", () => {
   test("returns the element alone when nothing needs repair", () => {
     const runs = [run("plain"), run("text", { bold: true })];
     const runEl = doc.createElement("span");
-    expect(withCursiveJoiners(runEl, runs[0]!, plan(runs), applyRunStyles, doc)).toEqual([runEl]);
+    expect(
+      withCursiveJoiners(runEl, runs[0]!, plan(runs), applyRunStyles, doc),
+    ).toEqual([runEl]);
   });
 });

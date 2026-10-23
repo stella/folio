@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 
@@ -26,7 +25,9 @@ describe("extractMetafileRaster", () => {
     expect(raster!.bytes[0]).toBe(0x89);
     expect(raster!.bytes[1]).toBe(0x50);
     const tail = raster!.bytes.slice(-8);
-    expect(String.fromCharCode(tail[0]!, tail[1]!, tail[2]!, tail[3]!)).toBe("IEND");
+    expect(String.fromCharCode(tail[0]!, tail[1]!, tail[2]!, tail[3]!)).toBe(
+      "IEND",
+    );
   });
 
   test("returns null for non-metafile bytes", () => {

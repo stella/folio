@@ -1,4 +1,4 @@
-import { decodeText } from "../utils/textEncoding";
+import { bytesToDataUrl } from "../utils/base64";
 /**
  * Faces from the `@fontsource` packages, for a caller that measures and paints
  * without a browser's font stack: a PDF export, a server-rendered preview, a
@@ -15,16 +15,21 @@ import { decodeText } from "../utils/textEncoding";
  * {@link FontsourceFiles.read}, so it runs wherever the bytes can be found (a
  * package's `node_modules`, a repository checkout, a fetch in a browser).
  */
-
-import type { HeadlessFontRequest, HeadlessFontSource } from "./headlessMeasure";
-import { bytesToDataUrl } from "../utils/base64";
 import { FONT_MAPPING } from "../utils/fontLoader";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
+import { decodeText } from "../utils/textEncoding";
+import type {
+  HeadlessFontRequest,
+  HeadlessFontSource,
+} from "./headlessMeasure";
 
 /** Where `@fontsource` files come from: `null` when the package or file is absent. */
 export type FontsourceFiles = {
   /** Bytes of `@fontsource/<packageName>/<relativePath>`. */
-  readonly read: (packageName: string, relativePath: string) => Uint8Array | null;
+  readonly read: (
+    packageName: string,
+    relativePath: string,
+  ) => Uint8Array | null;
 };
 
 /**
@@ -67,7 +72,10 @@ const isGenericFamily = (name: string): name is keyof typeof GENERIC_FAMILIES =>
   Object.hasOwn(GENERIC_FAMILIES, name);
 
 /** Every name a bundled family answers to: its own, and the authored names mapped to it. */
-const familyIndexEntries = (): readonly (readonly [string, BundledFamily])[] => {
+const familyIndexEntries = (): readonly (readonly [
+  string,
+  BundledFamily,
+])[] => {
   const entries: (readonly [string, BundledFamily])[] = [];
   for (const family of Object.keys(FONTSOURCE_PACKAGES)) {
     if (isBundledFamily(family)) {
@@ -89,13 +97,17 @@ const familyIndexEntries = (): readonly (readonly [string, BundledFamily])[] => 
   return entries;
 };
 
-const FAMILY_INDEX: ReadonlyMap<string, BundledFamily> = new Map(familyIndexEntries());
+const FAMILY_INDEX: ReadonlyMap<string, BundledFamily> = new Map(
+  familyIndexEntries(),
+);
 
 /** Every family name the faces answer to, in a stable order for the CSS. */
 const bundledFamilyAliases = (): readonly string[] =>
   [
     ...Object.keys(FONTSOURCE_PACKAGES),
-    ...Object.keys(FONT_MAPPING).filter((authored) => FAMILY_INDEX.has(authored.toLowerCase())),
+    ...Object.keys(FONT_MAPPING).filter((authored) =>
+      FAMILY_INDEX.has(authored.toLowerCase()),
+    ),
   ].sort((a, b) => a.localeCompare(b, "en"));
 
 /**
@@ -107,7 +119,9 @@ const resolveBundledFamily = (family: string): BundledFamily | null => {
   if (direct !== undefined) {
     return direct;
   }
-  for (const candidate of parseFontFamilyList(resolveFontFamily(family).cssFallback)) {
+  for (const candidate of parseFontFamilyList(
+    resolveFontFamily(family).cssFallback,
+  )) {
     const resolved = FAMILY_INDEX.get(candidate.trim().toLowerCase());
     if (resolved !== undefined) {
       return resolved;
@@ -128,7 +142,8 @@ type FaceBinary = {
   readonly bytes: Uint8Array;
 };
 
-const weightOf = (bold: boolean): number => (bold ? BOLD_WEIGHT : REGULAR_WEIGHT);
+const weightOf = (bold: boolean): number =>
+  bold ? BOLD_WEIGHT : REGULAR_WEIGHT;
 
 /** An inclusive `[first, last]` span of code points. */
 type CodePointRange = readonly [number, number];
@@ -151,7 +166,9 @@ const parseRangeToken = (token: string): readonly CodePointRange[] => {
 const parseRangeList = (declared: string): readonly CodePointRange[] =>
   declared.split(",").flatMap(parseRangeToken);
 
-const parseDeclaredRanges = (bytes: Uint8Array): ReadonlyMap<string, readonly CodePointRange[]> => {
+const parseDeclaredRanges = (
+  bytes: Uint8Array,
+): ReadonlyMap<string, readonly CodePointRange[]> => {
   const ranges = new Map<string, readonly CodePointRange[]>();
   const parsed: unknown = JSON.parse(decodeText(bytes));
   if (typeof parsed !== "object" || parsed === null) return ranges;
@@ -163,7 +180,10 @@ const parseDeclaredRanges = (bytes: Uint8Array): ReadonlyMap<string, readonly Co
   return ranges;
 };
 
-const withoutRange = (range: CodePointRange, [start, end]: CodePointRange): CodePointRange[] => {
+const withoutRange = (
+  range: CodePointRange,
+  [start, end]: CodePointRange,
+): CodePointRange[] => {
   const [first, last] = range;
   if (end < first || start > last) return [range];
   const remainder: CodePointRange[] = [];
@@ -184,16 +204,21 @@ const subtractRanges = (
 ): readonly CodePointRange[] => {
   let remaining = subject;
   for (const range of taken) {
-    remaining = remaining.flatMap((candidate) => withoutRange(candidate, range));
+    remaining = remaining.flatMap((candidate) =>
+      withoutRange(candidate, range),
+    );
   }
   return remaining;
 };
 
-const hex = (codePoint: number): string => codePoint.toString(16).toUpperCase().padStart(4, "0");
+const hex = (codePoint: number): string =>
+  codePoint.toString(16).toUpperCase().padStart(4, "0");
 
 const formatRangeList = (ranges: readonly CodePointRange[]): string =>
   ranges
-    .map(([first, last]) => (first === last ? `U+${hex(first)}` : `U+${hex(first)}-${hex(last)}`))
+    .map(([first, last]) =>
+      first === last ? `U+${hex(first)}` : `U+${hex(first)}-${hex(last)}`,
+    )
     .join(",");
 
 /**
@@ -228,7 +253,13 @@ type FontFaceRuleOptions = {
   readonly unicodeRange: readonly CodePointRange[];
 };
 
-const fontFaceRule = ({ family, dataUrl, weight, italic, unicodeRange }: FontFaceRuleOptions) =>
+const fontFaceRule = ({
+  family,
+  dataUrl,
+  weight,
+  italic,
+  unicodeRange,
+}: FontFaceRuleOptions) =>
   [
     "@font-face {",
     `  font-family: ${cssString(family)};`,
@@ -261,12 +292,21 @@ export type FontsourceFaces = {
 };
 
 /** The `@fontsource` faces, read through `files` and cached per face. */
-export const createFontsourceFaces = (files: FontsourceFiles): FontsourceFaces => {
+export const createFontsourceFaces = (
+  files: FontsourceFiles,
+): FontsourceFaces => {
   const faceCache = new Map<string, readonly FaceBinary[]>();
-  const rangeCache = new Map<string, ReadonlyMap<string, readonly CodePointRange[]>>();
+  const rangeCache = new Map<
+    string,
+    ReadonlyMap<string, readonly CodePointRange[]>
+  >();
   const dataUrlCache = new Map<Uint8Array, string>();
 
-  const faceBinaries = ({ family, weight, italic }: FaceOptions): readonly FaceBinary[] => {
+  const faceBinaries = ({
+    family,
+    weight,
+    italic,
+  }: FaceOptions): readonly FaceBinary[] => {
     const bundled = resolveBundledFamily(family);
     if (bundled === null) return [];
     const packageName = FONTSOURCE_PACKAGES[bundled];
@@ -290,7 +330,9 @@ export const createFontsourceFaces = (files: FontsourceFiles): FontsourceFaces =
     if (cached !== undefined) return cached;
     const bytes = files.read(packageName, UNICODE_RANGE_FILE);
     const ranges =
-      bytes === null ? new Map<string, readonly CodePointRange[]>() : parseDeclaredRanges(bytes);
+      bytes === null
+        ? new Map<string, readonly CodePointRange[]>()
+        : parseDeclaredRanges(bytes);
     rangeCache.set(packageName, ranges);
     return ranges;
   };
@@ -309,17 +351,30 @@ export const createFontsourceFaces = (files: FontsourceFiles): FontsourceFaces =
    * describe, is not declared: a rule with no `unicode-range` would cover
    * every code point.
    */
-  const variantRules = ({ family, weight, italic }: FaceOptions): readonly string[] => {
+  const variantRules = ({
+    family,
+    weight,
+    italic,
+  }: FaceOptions): readonly string[] => {
     const bundled = resolveBundledFamily(family);
     if (bundled === null) return [];
     const ranges = declaredRanges(FONTSOURCE_PACKAGES[bundled]);
     const rules: string[] = [];
     const taken: CodePointRange[] = [];
     for (const binary of faceBinaries({ family, weight, italic })) {
-      const unicodeRange = subtractRanges(ranges.get(binary.subset) ?? [], taken);
+      const unicodeRange = subtractRanges(
+        ranges.get(binary.subset) ?? [],
+        taken,
+      );
       if (unicodeRange.length === 0) continue;
       rules.push(
-        fontFaceRule({ family, dataUrl: dataUrlOf(binary.bytes), weight, italic, unicodeRange }),
+        fontFaceRule({
+          family,
+          dataUrl: dataUrlOf(binary.bytes),
+          weight,
+          italic,
+          unicodeRange,
+        }),
       );
       taken.push(...unicodeRange);
     }
@@ -331,16 +386,23 @@ export const createFontsourceFaces = (files: FontsourceFiles): FontsourceFaces =
     // measurer records the substitution and the caller reports it.
     source: {
       load: ({ family, bold, italic }: HeadlessFontRequest) =>
-        faceBinaries({ family, weight: weightOf(bold), italic }).map(({ bytes }) => bytes),
+        faceBinaries({ family, weight: weightOf(bold), italic }).map(
+          ({ bytes }) => bytes,
+        ),
     },
     fontFaceCss: (options = {}) => {
       const declared = new Map<string, string>();
-      for (const family of [...bundledFamilyAliases(), ...(options.families ?? [])]) {
+      for (const family of [
+        ...bundledFamilyAliases(),
+        ...(options.families ?? []),
+      ]) {
         declared.set(family.trim().toLowerCase(), family.trim());
       }
       return [...declared.values()]
         .flatMap((family) =>
-          FACE_VARIANTS.flatMap(({ weight, italic }) => variantRules({ family, weight, italic })),
+          FACE_VARIANTS.flatMap(({ weight, italic }) =>
+            variantRules({ family, weight, italic }),
+          ),
         )
         .join("\n");
     },

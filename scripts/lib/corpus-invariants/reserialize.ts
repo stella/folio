@@ -21,15 +21,16 @@
  * serialization.
  */
 
+import { Result } from "better-result";
+
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import type { Document } from "@stll/folio-core/types/document";
-import { Result } from "better-result";
 
 import { failureFromError } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -150,7 +151,9 @@ const save = (document: Document): Promise<ArrayBuffer> =>
  * outline only to the forced path, and prefixing both the same way would send
  * a reader to the wrong module for one of them.
  */
-const differencesSurvivingPlainRepack = async (parsed: Document): Promise<ReadonlySet<string>> => {
+const differencesSurvivingPlainRepack = async (
+  parsed: Document,
+): Promise<ReadonlySet<string>> => {
   const control = await Result.tryPromise({
     try: async () => parseBuffer(await save(parsed)),
     catch: (cause: unknown) => cause,
@@ -172,35 +175,55 @@ export const runReserializeInvariant = async ({
   if (stripped.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.reserialize, stripped.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.reserialize,
+          stripped.error,
+        ),
+      ],
       timings,
     };
   }
 
   const forced = await timeStage(timings, "forced-save", () =>
-    Result.tryPromise({ try: () => save(stripped.value), catch: (cause: unknown) => cause }),
+    Result.tryPromise({
+      try: () => save(stripped.value),
+      catch: (cause: unknown) => cause,
+    }),
   );
   if (forced.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.reserialize, forced.error)],
+      failures: [
+        failureFromError(EXTENDED_CORPUS_INVARIANTS.reserialize, forced.error),
+      ],
       timings,
     };
   }
 
   const reparsed = await timeStage(timings, "forced-parse", () =>
-    Result.tryPromise({ try: () => parseBuffer(forced.value), catch: (cause: unknown) => cause }),
+    Result.tryPromise({
+      try: () => parseBuffer(forced.value),
+      catch: (cause: unknown) => cause,
+    }),
   );
   if (reparsed.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.reserialize, reparsed.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.reserialize,
+          reparsed.error,
+        ),
+      ],
       timings,
     };
   }
 
-  const differences: PackageDifferences = await timeStage(timings, "compare", () =>
-    describePackageDifferences(parsed, reparsed.value),
+  const differences: PackageDifferences = await timeStage(
+    timings,
+    "compare",
+    () => describePackageDifferences(parsed, reparsed.value),
   );
   if (differences.messages.length === 0 && differences.omitted === 0) {
     return { status: "evaluated", failures: [], timings };

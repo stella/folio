@@ -1,6 +1,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-const stableId = (ids: Map<string, number>, value: unknown, family: string): unknown => {
+const stableId = (
+  ids: Map<string, number>,
+  value: unknown,
+  family: string,
+): unknown => {
   if (typeof value !== "string") {
     return value;
   }

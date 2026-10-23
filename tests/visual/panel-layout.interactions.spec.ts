@@ -20,7 +20,8 @@ import {
 } from "../support/panelLayoutDocument";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
 }
 
 const VIEWPORT_HEIGHT = 900;
@@ -44,7 +45,9 @@ const loadDocument = async (
     await page.goto("/?file=panel-layout.docx");
   } else {
     await page.goto("/");
-    await page.waitForFunction(() => globalThis.__folioPlayground?.getEditorRef() != null);
+    await page.waitForFunction(
+      () => globalThis.__folioPlayground?.getEditorRef() != null,
+    );
     await page.evaluate(
       async (array) => {
         await globalThis.__folioPlayground
@@ -54,12 +57,16 @@ const loadDocument = async (
       [...bytes],
     );
   }
-  await page.waitForFunction(() => document.querySelectorAll(".layout-page").length >= 1);
+  await page.waitForFunction(
+    () => document.querySelectorAll(".layout-page").length >= 1,
+  );
   await page.evaluate(() => document.fonts.ready);
   // The outline reads headings from the body view, created lazily; a host
   // (the VS Code webview does) creates it up front.
   await page.evaluate(() =>
-    globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView({ focus: false }),
+    globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.ensureEditorView({ focus: false }),
   );
   await waitForPanels(page, review);
 };
@@ -83,11 +90,19 @@ test.describe("side panel layout", () => {
           page
             .locator(".layout-page")
             .evaluateAll((pages) =>
-              Math.max(...pages.map((element) => element.getBoundingClientRect().width)),
+              Math.max(
+                ...pages.map(
+                  (element) => element.getBoundingClientRect().width,
+                ),
+              ),
             ),
         )
         .toBeGreaterThan(1000);
-      const expected = { tier: "narrow", outline: "rail", comments: "drawer" } as const;
+      const expected = {
+        tier: "narrow",
+        outline: "rail",
+        comments: "drawer",
+      } as const;
       await expect.poll(() => readPanelState(page)).toEqual(expected);
       await expectPanelsDoNotOverlap(page, expected);
     });
@@ -106,11 +121,17 @@ test.describe("side panel layout", () => {
     // Keep focus in the outline while a document edit removes its last entries.
     await page.evaluate(
       (removedHeadings) => {
-        const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+        const view = globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.getEditorRef()
+          ?.getView();
         if (!view) throw new Error("Missing editor view");
         const transaction = view.state.tr;
         view.state.doc.descendants((node, pos) => {
-          if (node.isTextblock && removedHeadings.some((heading) => heading === node.textContent)) {
+          if (
+            node.isTextblock &&
+            removedHeadings.some((heading) => heading === node.textContent)
+          ) {
             transaction.delete(
               transaction.mapping.map(pos),
               transaction.mapping.map(pos + node.nodeSize),

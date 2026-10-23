@@ -1,8 +1,17 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 
-import type { BlockContent, Document, Paragraph, ParagraphContent } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  ParagraphContent,
+} from "../../model/document";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
 import { endsItsContainer, storyParagraphs } from "../blocks";
 import {
   allocateEditorIntentIds,
@@ -13,13 +22,16 @@ import {
 import { identityKeysIn } from "../ids";
 import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion } from "../plan";
-import { planTrackedReplace, type PlanTrackedReplaceOptions } from "../rangeReplacement";
+import {
+  planTrackedReplace,
+  type PlanTrackedReplaceOptions,
+} from "../rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
-  type DocumentOp,
   type RevisionDecision,
 } from "../types";
 
@@ -32,14 +44,30 @@ const paragraph = (paraId: string, text: string): Paragraph => ({
   paraId,
   content: text === "" ? [] : [run(text)],
 });
-const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+const at = (blockId: string, offset: number) => ({
+  story: OP_STORIES.MAIN,
+  blockId,
+  offset,
+});
 const revision = { id: 100, author: "Reviewer", date: "2026-02-03T04:05:06Z" };
-const newIds = { revision: Array.from({ length: 64 }, (_, index) => 101 + index) };
-const documentOf = (content: BlockContent[]): Document => ({ package: { document: { content } } });
-const wrap = (content: BlockContent[], container: "body" | "cell"): BlockContent[] =>
+const newIds = {
+  revision: Array.from({ length: 64 }, (_, index) => 101 + index),
+};
+const documentOf = (content: BlockContent[]): Document => ({
+  package: { document: { content } },
+});
+const wrap = (
+  content: BlockContent[],
+  container: "body" | "cell",
+): BlockContent[] =>
   container === "body"
     ? content
-    : [{ type: "table", rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }] }];
+    : [
+        {
+          type: "table",
+          rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }],
+        },
+      ];
 const apply = (document: Document, ops: readonly DocumentOp[]) => {
   const applied = applyDocumentOps(document, ops);
   if (applied.isErr()) throw applied.error;
@@ -56,9 +84,13 @@ const resolve = (applied: AppliedDocumentOp, decision: RevisionDecision) => {
   return result.value;
 };
 const paragraphs = (document: Document) =>
-  storyParagraphs(document.package.document).map(({ paragraph: block }) => block);
+  storyParagraphs(document.package.document).map(
+    ({ paragraph: block }) => block,
+  );
 const expectUndo = (applied: AppliedDocumentOp, original: Document) =>
-  expect(apply(applied.document, applied.inverse).document).toStrictEqual(original);
+  expect(apply(applied.document, applied.inverse).document).toStrictEqual(
+    original,
+  );
 
 test.each(["body", "cell"] as const)(
   "cross-paragraph deletion retains endpoint identity and authored formatting in a %s",
@@ -92,7 +124,9 @@ test.each(["body", "cell"] as const)(
       ]);
       expect(paragraphs(accepted.document).at(0)?.paraId).toBe(final.paraId);
       expect(paragraphs(accepted.document).at(0)?.formatting).toEqual(
-        start === 0 ? final.formatting : { alignment: "center", runProperties: { bold: true } },
+        start === 0
+          ? final.formatting
+          : { alignment: "center", runProperties: { bold: true } },
       );
       expect(rejected.document).toStrictEqual(document);
       expectUndo(tracked, document);
@@ -130,12 +164,18 @@ test.each(["body", "cell"] as const)(
         newIds,
         replacement: {
           paragraphs: [
-            { ...paragraph("00000003", "first new"), formatting: { alignment: "start" } },
+            {
+              ...paragraph("00000003", "first new"),
+              formatting: { alignment: "start" },
+            },
           ],
           tail: { content: [run("last new")], openStart: 0, openEnd: 0 },
         },
       } satisfies PlanTrackedReplaceOptions;
-      const planned = planTrackedReplace(document, { ...options, sourceContainerPolicy: "join" });
+      const planned = planTrackedReplace(document, {
+        ...options,
+        sourceContainerPolicy: "join",
+      });
       if (planned.isErr()) throw planned.error;
       const tracked = apply(document, planned.value);
       const accepted = resolve(tracked, REVISION_DECISIONS.ACCEPT);
@@ -144,15 +184,18 @@ test.each(["body", "cell"] as const)(
         "first new",
         "last new",
       ]);
-      expect(paragraphs(accepted.document).map(({ paraId }) => paraId)).toEqual([
-        "00000003",
-        "00000002",
-      ]);
-      expect(paragraphs(accepted.document).at(-1)?.formatting).toEqual(final.formatting);
+      expect(paragraphs(accepted.document).map(({ paraId }) => paraId)).toEqual(
+        ["00000003", "00000002"],
+      );
+      expect(paragraphs(accepted.document).at(-1)?.formatting).toEqual(
+        final.formatting,
+      );
       for (const source of paragraphs(tracked.document).filter(
         ({ paraId }) => paraId !== "00000003",
       )) {
-        const selected = source.content.filter((node) => node.type === "deletion");
+        const selected = source.content.filter(
+          (node) => node.type === "deletion",
+        );
         expect(
           selected
             .flatMap((node) => (node.type === "deletion" ? node.content : []))
@@ -196,12 +239,22 @@ test("cross-block planning retracts own insertions and preserves comment anchors
   });
   if (planned.isErr()) throw planned.error;
   const tracked = apply(document, planned.value);
-  expect(paragraphs(tracked.document).map(paragraphLogicalText)).toEqual(["ab", "end"]);
+  expect(paragraphs(tracked.document).map(paragraphLogicalText)).toEqual([
+    "ab",
+    "end",
+  ]);
   expect(identityKeysIn(tracked.document).includes("revision:9")).toBe(false);
   const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
-  expect(paragraphs(rejected.document).map(paragraphLogicalText)).toEqual(["ab", "end"]);
-  expect(paragraphs(rejected.document).at(0)?.content.at(-1)?.type).toBe("commentRangeStart");
-  expect(paragraphs(rejected.document).at(-1)?.content.at(-1)?.type).toBe("commentRangeEnd");
+  expect(paragraphs(rejected.document).map(paragraphLogicalText)).toEqual([
+    "ab",
+    "end",
+  ]);
+  expect(paragraphs(rejected.document).at(0)?.content.at(-1)?.type).toBe(
+    "commentRangeStart",
+  );
+  expect(paragraphs(rejected.document).at(-1)?.content.at(-1)?.type).toBe(
+    "commentRangeEnd",
+  );
   expectUndo(tracked, document);
 });
 
@@ -222,7 +275,12 @@ test("planner refuses unordered ranges", () => {
     reason: string;
   }[];
   for (const { document, from, to, reason } of cases) {
-    const planned = planTrackedDeletion(document, { from, to, revision, newIds });
+    const planned = planTrackedDeletion(document, {
+      from,
+      to,
+      revision,
+      newIds,
+    });
     expect(planned.isErr() && planned.error.reason).toBe(reason);
   }
 });
@@ -269,7 +327,11 @@ test.each(["body", "cell"] as const)(
             from: at("00000001", start),
             to: at("00000001", 5),
           },
-          { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at("00000002", 0), to: at("00000002", 3) },
+          {
+            type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+            from: at("00000002", 0),
+            to: at("00000002", 3),
+          },
           {
             type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
             story: OP_STORIES.MAIN,
@@ -289,7 +351,9 @@ test.each(["body", "cell"] as const)(
           (block.propertyChanges ?? [])
             .filter(
               ({ info }) =>
-                info.id === 8 && info.author === revision.author && info.date === revision.date,
+                info.id === 8 &&
+                info.author === revision.author &&
+                info.date === revision.date,
             )
             .map(({ info }) => info.id),
         );
@@ -315,22 +379,29 @@ test.each(["body", "cell"] as const)(
           ids: [...tracked.revisions, ...foldedIds],
         });
         expect(accepted.document).toStrictEqual(
-          resolveAffected(direct.document, { decision: REVISION_DECISIONS.ACCEPT, ids: foldedIds })
-            .document,
+          resolveAffected(direct.document, {
+            decision: REVISION_DECISIONS.ACCEPT,
+            ids: foldedIds,
+          }).document,
         );
         expect(rejected.document).toStrictEqual(
-          resolveAffected(document, { decision: REVISION_DECISIONS.REJECT, ids: foldedIds })
-            .document,
+          resolveAffected(document, {
+            decision: REVISION_DECISIONS.REJECT,
+            ids: foldedIds,
+          }).document,
         );
         for (const block of paragraphs(tracked.document)) {
           expect(block.propertyChanges?.length ?? 0).toBeLessThanOrEqual(1);
           for (const change of block.propertyChanges ?? []) {
             expect(change.previousFormatting).toEqual({
-              alignment: change.info.id === 7 || change.info.id === 8 ? "start" : "end",
+              alignment:
+                change.info.id === 7 || change.info.id === 8 ? "start" : "end",
             });
           }
         }
-        expect(tracked.revisions.every((id) => id !== 7 && id !== 8)).toBe(true);
+        expect(tracked.revisions.every((id) => id !== 7 && id !== 8)).toBe(
+          true,
+        );
         expectUndo(tracked, document);
         expectUndo(accepted, tracked.document);
         expectUndo(rejected, tracked.document);
@@ -352,9 +423,21 @@ test("tracked range deletion across section boundaries preserves section facts a
     const final = paragraph("00000003", "omega");
     const document = documentOf([first, middle, final]);
     const direct = apply(document, [
-      { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at("00000001", start), to: at("00000001", 5) },
-      { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at("00000002", 0), to: at("00000002", 6) },
-      { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at("00000003", 0), to: at("00000003", 3) },
+      {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at("00000001", start),
+        to: at("00000001", 5),
+      },
+      {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at("00000002", 0),
+        to: at("00000002", 6),
+      },
+      {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at("00000003", 0),
+        to: at("00000003", 3),
+      },
       {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
         story: OP_STORIES.MAIN,
@@ -382,11 +465,11 @@ test("tracked range deletion across section boundaries preserves section facts a
     const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
     expect(accepted.document).toStrictEqual(direct.document);
     expect(rejected.document).toStrictEqual(document);
-    expect(paragraphs(tracked.document).map(({ sectionProperties }) => sectionProperties)).toEqual([
-      first.sectionProperties,
-      middle.sectionProperties,
-      undefined,
-    ]);
+    expect(
+      paragraphs(tracked.document).map(
+        ({ sectionProperties }) => sectionProperties,
+      ),
+    ).toEqual([first.sectionProperties, middle.sectionProperties, undefined]);
     expectUndo(direct, document);
     expectUndo(tracked, document);
     expectUndo(accepted, tracked.document);
@@ -399,69 +482,83 @@ test.each([
   ["00000002", "00000004"],
   ["00000003", "00000005"],
   ["00000001", "00000005"],
-] as const)("cross-list text range %s to %s preserves container geometry", (fromId, toId) => {
-  for (const start of [0, 1]) {
-    for (const end of [1, 3]) {
-      for (const text of ["", "replacement"]) {
-        const document = documentOf([
-          paragraph("00000001", "before"),
-          {
-            type: "table",
-            rows: [
-              {
-                type: "tableRow",
-                cells: [
-                  {
-                    type: "tableCell",
-                    content: [paragraph("00000002", "left"), paragraph("00000003", "second")],
-                  },
-                  { type: "tableCell", content: [paragraph("00000004", "right")] },
-                ],
-              },
-            ],
-          },
-          paragraph("00000005", "after"),
-        ]);
-        const intent = {
-          type: "replaceText",
-          from: at(fromId, start),
-          to: at(toId, end),
-          text,
-        } as const;
-        const direct = compileEditorIntent(document, { intent, mode: { type: "editing" } });
-        if (direct.isErr()) throw direct.error;
-        const ids = allocateEditorIntentIds(document, intent);
-        const planned = compileEditorIntent(document, {
-          intent,
-          mode: {
-            type: "suggesting",
-            revision: { ...revision, id: ids.revisionId },
-            newIds: ids.newIds,
-          },
-        });
-        if (planned.isErr()) throw planned.error;
-        const edited = apply(document, direct.value.ops);
-        const tracked = apply(document, planned.value.ops);
-        const accepted = resolve(tracked, REVISION_DECISIONS.ACCEPT);
-        const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
-        expect(accepted.document).toStrictEqual(edited.document);
-        expect(rejected.document).toStrictEqual(document);
-        const table = accepted.document.package.document.content.find(
-          (block) => block.type === "table",
-        );
-        expect(table?.rows).toHaveLength(1);
-        expect(table?.rows.at(0)?.cells).toHaveLength(2);
-        expect(editorParagraphGroups(tracked.document, OP_STORIES.MAIN).length).toBe(
-          editorParagraphGroups(edited.document, OP_STORIES.MAIN).length,
-        );
-        expectUndo(edited, document);
-        expectUndo(tracked, document);
-        expectUndo(accepted, tracked.document);
-        expectUndo(rejected, tracked.document);
+] as const)(
+  "cross-list text range %s to %s preserves container geometry",
+  (fromId, toId) => {
+    for (const start of [0, 1]) {
+      for (const end of [1, 3]) {
+        for (const text of ["", "replacement"]) {
+          const document = documentOf([
+            paragraph("00000001", "before"),
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [
+                        paragraph("00000002", "left"),
+                        paragraph("00000003", "second"),
+                      ],
+                    },
+                    {
+                      type: "tableCell",
+                      content: [paragraph("00000004", "right")],
+                    },
+                  ],
+                },
+              ],
+            },
+            paragraph("00000005", "after"),
+          ]);
+          const intent = {
+            type: "replaceText",
+            from: at(fromId, start),
+            to: at(toId, end),
+            text,
+          } as const;
+          const direct = compileEditorIntent(document, {
+            intent,
+            mode: { type: "editing" },
+          });
+          if (direct.isErr()) throw direct.error;
+          const ids = allocateEditorIntentIds(document, intent);
+          const planned = compileEditorIntent(document, {
+            intent,
+            mode: {
+              type: "suggesting",
+              revision: { ...revision, id: ids.revisionId },
+              newIds: ids.newIds,
+            },
+          });
+          if (planned.isErr()) throw planned.error;
+          const edited = apply(document, direct.value.ops);
+          const tracked = apply(document, planned.value.ops);
+          const accepted = resolve(tracked, REVISION_DECISIONS.ACCEPT);
+          const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
+          expect(accepted.document).toStrictEqual(edited.document);
+          expect(rejected.document).toStrictEqual(document);
+          const table = accepted.document.package.document.content.find(
+            (block) => block.type === "table",
+          );
+          expect(table?.rows).toHaveLength(1);
+          expect(table?.rows.at(0)?.cells).toHaveLength(2);
+          expect(
+            editorParagraphGroups(tracked.document, OP_STORIES.MAIN).length,
+          ).toBe(
+            editorParagraphGroups(edited.document, OP_STORIES.MAIN).length,
+          );
+          expectUndo(edited, document);
+          expectUndo(tracked, document);
+          expectUndo(accepted, tracked.document);
+          expectUndo(rejected, tracked.document);
+        }
       }
     }
-  }
-});
+  },
+);
 
 test.each(["splitGrouped", "joinGrouped"] as const)(
   "grouped intent %s preserves survivor formatting and exact rejection",
@@ -529,11 +626,16 @@ test.each(["splitGrouped", "joinGrouped"] as const)(
     }
     if (scenario === "splitGrouped") {
       const directGroup = editorParagraphGroups(direct, OP_STORIES.MAIN).at(0);
-      const trackedGroup = editorParagraphGroups(tracked, OP_STORIES.MAIN).at(0);
+      const trackedGroup = editorParagraphGroups(tracked, OP_STORIES.MAIN).at(
+        0,
+      );
       if (!directGroup || !trackedGroup) panic("Expected split fixture group");
       const ids = allocateEditorIntentIds(tracked, {
         type: "splitParagraph",
-        at: physicalPositionAtEditorOffset(tracked, at(trackedGroup.blockId, 1)),
+        at: physicalPositionAtEditorOffset(
+          tracked,
+          at(trackedGroup.blockId, 1),
+        ),
       });
       const directPlan = compileEditorIntent(direct, {
         intent: {
@@ -546,7 +648,10 @@ test.each(["splitGrouped", "joinGrouped"] as const)(
       const trackedPlan = compileEditorIntent(tracked, {
         intent: {
           type: "splitParagraph",
-          at: physicalPositionAtEditorOffset(tracked, at(trackedGroup.blockId, 1)),
+          at: physicalPositionAtEditorOffset(
+            tracked,
+            at(trackedGroup.blockId, 1),
+          ),
           newBlockId: ids.newBlockId,
         },
         mode: {
@@ -579,11 +684,18 @@ test.each(["body", "cell"] as const)(
         [
           {
             ...paragraph("00000001", "first"),
-            formatting: { alignment: "center", runProperties: { italic: true } },
+            formatting: {
+              alignment: "center",
+              runProperties: { italic: true },
+            },
           },
           {
             ...paragraph("00000002", "last"),
-            formatting: { alignment: "end", keepNext: true, runProperties: { bold: true } },
+            formatting: {
+              alignment: "end",
+              keepNext: true,
+              runProperties: { bold: true },
+            },
           },
         ],
         container,
@@ -595,12 +707,18 @@ test.each(["body", "cell"] as const)(
       to: at("00000002", 2),
       newBlockId: "00000003",
     } as const;
-    const planned = compileEditorIntent(document, { intent, mode: { type: "editing" } });
+    const planned = compileEditorIntent(document, {
+      intent,
+      mode: { type: "editing" },
+    });
     if (planned.isErr()) throw planned.error;
     const edited = apply(document, planned.value.ops);
     for (const item of paragraphs(edited.document)) {
       // A join carries leading paragraph properties with trailing mark properties.
-      expect(item.formatting).toStrictEqual({ alignment: "center", runProperties: { bold: true } });
+      expect(item.formatting).toStrictEqual({
+        alignment: "center",
+        runProperties: { bold: true },
+      });
     }
     expectUndo(edited, document);
   },
@@ -612,9 +730,16 @@ test("intent identity demand excludes unrelated paragraph leaves", () => {
     ...paragraph("00000002", ""),
     content: Array.from({ length: 100 }, () => run("other")),
   };
-  const intent = { type: "splitParagraph", at: at("00000001", 2), newBlockId: "00000003" } as const;
+  const intent = {
+    type: "splitParagraph",
+    at: at("00000001", 2),
+    newBlockId: "00000003",
+  } as const;
   const small = allocateEditorIntentIds(documentOf([target]), intent);
-  const large = allocateEditorIntentIds(documentOf([target, unrelated]), intent);
+  const large = allocateEditorIntentIds(
+    documentOf([target, unrelated]),
+    intent,
+  );
   expect(large.newIds.revision?.length).toBe(small.newIds.revision?.length);
   expect(large.newIds.control?.length).toBe(small.newIds.control?.length);
 });

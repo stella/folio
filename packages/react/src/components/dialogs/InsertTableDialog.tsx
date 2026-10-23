@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -114,7 +115,9 @@ function InsertTableDialogForm({
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>{t("dialogs.insertTable.title")}</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>
+            {t("dialogs.insertTable.title")}
+          </DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <div
@@ -133,7 +136,9 @@ function InsertTableDialogForm({
                     <button
                       aria-label={`${row} by ${column} table`}
                       className={`h-5 w-5 rounded-sm border ${
-                        active ? "border-primary bg-primary/20" : "border-input bg-background"
+                        active
+                          ? "border-primary bg-primary/20"
+                          : "border-input bg-background"
                       }`}
                       key={`${row}-${column}`}
                       onClick={() => {
@@ -158,7 +163,9 @@ function InsertTableDialogForm({
 
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1" htmlFor={fieldIds.rows}>
-                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.rowsLabel")}</span>
+                <span className={DIALOG_LABEL_CLASS}>
+                  {t("dialogs.insertTable.rowsLabel")}
+                </span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.rows}
@@ -170,39 +177,52 @@ function InsertTableDialogForm({
                 />
               </label>
               <label className="flex flex-col gap-1" htmlFor={fieldIds.columns}>
-                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.columnsLabel")}</span>
+                <span className={DIALOG_LABEL_CLASS}>
+                  {t("dialogs.insertTable.columnsLabel")}
+                </span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.columns}
                   max={MAX_COLUMNS}
                   min={MIN_COLUMNS}
-                  onChange={(e) => setColumns(Number(e.target.value) || MIN_COLUMNS)}
+                  onChange={(e) =>
+                    setColumns(Number(e.target.value) || MIN_COLUMNS)
+                  }
                   type="number"
                   value={columns}
                 />
               </label>
             </div>
 
-            <label className="flex items-center gap-2" htmlFor={fieldIds.autofit}>
+            <label
+              className="flex items-center gap-2"
+              htmlFor={fieldIds.autofit}
+            >
               <input
                 checked={autofit}
                 id={fieldIds.autofit}
                 onChange={(e) => setAutofit(e.target.checked)}
                 type="checkbox"
               />
-              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.autofit")}</span>
+              <span className={DIALOG_LABEL_CLASS}>
+                {t("dialogs.insertTable.autofit")}
+              </span>
             </label>
 
             {styleOptions.length > 0 && (
               <label className="flex flex-col gap-1" htmlFor={fieldIds.style}>
-                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.style")}</span>
+                <span className={DIALOG_LABEL_CLASS}>
+                  {t("dialogs.insertTable.style")}
+                </span>
                 <select
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.style}
                   onChange={(e) => setStyleId(e.target.value)}
                   value={styleId}
                 >
-                  <option value="">{t("dialogs.insertTable.plainTable")}</option>
+                  <option value="">
+                    {t("dialogs.insertTable.plainTable")}
+                  </option>
                   {styleOptions.map((style) => (
                     <option key={style.id} value={style.id}>
                       {style.name}

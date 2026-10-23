@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import {
   type CorpusCostModel,
-  type PerformanceObservation,
-  MAX_REFERENCE_MS,
   fitCorpusCost,
+  MAX_REFERENCE_MS,
   normalizeForLoad,
   performanceFailures,
+  type PerformanceObservation,
 } from "./lib/corpus-invariants/performance";
 
 const MEGABYTE = 1_048_576;
@@ -34,7 +34,9 @@ const linearCorpus = (
 
 const SIZES = [0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16] as const;
 
-const fitOrThrow = (observations: readonly PerformanceObservation[]): CorpusCostModel => {
+const fitOrThrow = (
+  observations: readonly PerformanceObservation[],
+): CorpusCostModel => {
   const model = fitCorpusCost(observations);
   if (!model) {
     throw new Error("the corpus was expected to admit a fit");
@@ -79,35 +81,60 @@ describe("fitCorpusCost", () => {
   test("declines a fit when no two files differ in size", () => {
     expect(
       fitCorpusCost([
-        { bytes: MEGABYTE, parseMs: 300, peakRssBytes: 0, referenceMs: IDLE_REFERENCE_MS },
+        {
+          bytes: MEGABYTE,
+          parseMs: 300,
+          peakRssBytes: 0,
+          referenceMs: IDLE_REFERENCE_MS,
+        },
       ]),
     ).toBeNull();
     expect(
       fitCorpusCost([
-        { bytes: MEGABYTE, parseMs: 300, peakRssBytes: 0, referenceMs: IDLE_REFERENCE_MS },
-        { bytes: MEGABYTE, parseMs: 900, peakRssBytes: 0, referenceMs: IDLE_REFERENCE_MS },
+        {
+          bytes: MEGABYTE,
+          parseMs: 300,
+          peakRssBytes: 0,
+          referenceMs: IDLE_REFERENCE_MS,
+        },
+        {
+          bytes: MEGABYTE,
+          parseMs: 900,
+          peakRssBytes: 0,
+          referenceMs: IDLE_REFERENCE_MS,
+        },
       ]),
     ).toBeNull();
   });
 
   test("ignores zero-byte files, which say nothing about how cost grows", () => {
     const withEmpty = [
-      { bytes: 0, parseMs: 9000, peakRssBytes: 4000 * MEGABYTE, referenceMs: IDLE_REFERENCE_MS },
+      {
+        bytes: 0,
+        parseMs: 9000,
+        peakRssBytes: 4000 * MEGABYTE,
+        referenceMs: IDLE_REFERENCE_MS,
+      },
       ...linearCorpus(40, 300, SIZES),
     ];
     expect(fitOrThrow(withEmpty).parseMs.slope * MEGABYTE).toBeCloseTo(300, 6);
   });
 });
 
-const TEN_TIMES_MESSAGE = "parse cost exceeds ten times the corpus baseline for its size";
+const TEN_TIMES_MESSAGE =
+  "parse cost exceeds ten times the corpus baseline for its size";
 const HUNDRED_TIMES_MESSAGE =
   "parse cost exceeds one hundred times the corpus baseline for its size";
-const RSS_MESSAGE = "peak resident set exceeds ten times the corpus baseline for its size";
+const RSS_MESSAGE =
+  "peak resident set exceeds ten times the corpus baseline for its size";
 
 const MODEL = fitOrThrow(linearCorpus(40, 300, SIZES));
 
 /** A file of `megabytes` whose parse took `times` its predicted cost. */
-const atTimesPredicted = (megabytes: number, times: number): PerformanceObservation => ({
+const atTimesPredicted = (
+  megabytes: number,
+  times: number,
+): PerformanceObservation => ({
   bytes: megabytes * MEGABYTE,
   parseMs: (40 + 300 * megabytes) * times,
   peakRssBytes: 64 * MEGABYTE + 8 * megabytes * MEGABYTE,
@@ -117,7 +144,8 @@ const atTimesPredicted = (megabytes: number, times: number): PerformanceObservat
 const messages = (
   observation: PerformanceObservation,
   model: CorpusCostModel | null = MODEL,
-): string[] => performanceFailures(observation, model).map(({ message }) => message);
+): string[] =>
+  performanceFailures(observation, model).map(({ message }) => message);
 
 describe("performanceFailures", () => {
   test("says nothing about a file that costs what the corpus costs at its size", () => {
@@ -214,7 +242,9 @@ describe("performanceFailures", () => {
   });
 
   test("declines a verdict on a file that was never priced against the machine", () => {
-    expect(messages({ ...atTimesPredicted(4, 500), referenceMs: 0 })).toEqual([]);
+    expect(messages({ ...atTimesPredicted(4, 500), referenceMs: 0 })).toEqual(
+      [],
+    );
   });
 });
 
@@ -236,7 +266,11 @@ const underUniformLoad = (
   slowdown: number,
 ): PerformanceObservation[] =>
   observations.map((observation) =>
-    retimed(observation, observation.parseMs * slowdown, observation.referenceMs * slowdown),
+    retimed(
+      observation,
+      observation.parseMs * slowdown,
+      observation.referenceMs * slowdown,
+    ),
   );
 
 const measuredOrThrow = (
@@ -261,12 +295,17 @@ describe("normalizeForLoad", () => {
     const idle = linearCorpus(40, 300, SIZES);
     const loaded = measuredOrThrow(underUniformLoad(idle, 8));
     loaded.forEach((observation, index) => {
-      expect(observation.parseMs / (idle[index]?.parseMs ?? 1)).toBeCloseTo(8, 6);
+      expect(observation.parseMs / (idle[index]?.parseMs ?? 1)).toBeCloseTo(
+        8,
+        6,
+      );
     });
 
     const withCliff = (observations: readonly PerformanceObservation[]) =>
       observations.flatMap((observation) =>
-        performanceFailures(observation, fitOrThrow(observations)).map(({ message }) => message),
+        performanceFailures(observation, fitOrThrow(observations)).map(
+          ({ message }) => message,
+        ),
       );
     expect(withCliff(loaded)).toEqual(withCliff(idle));
   });
@@ -295,16 +334,20 @@ describe("normalizeForLoad", () => {
 
     // Unnormalised, the spike is indistinguishable from a slow parse path.
     const rawModel = fitOrThrow(spiky);
-    expect(spiky.flatMap((observation) => performanceFailures(observation, rawModel))).not.toEqual(
-      [],
-    );
+    expect(
+      spiky.flatMap((observation) =>
+        performanceFailures(observation, rawModel),
+      ),
+    ).not.toEqual([]);
 
     // Normalised, every file is back at what the corpus costs at its size.
     const normalized = measuredOrThrow(spiky);
     const model = fitOrThrow(normalized);
-    expect(normalized.flatMap((observation) => performanceFailures(observation, model))).toEqual(
-      [],
-    );
+    expect(
+      normalized.flatMap((observation) =>
+        performanceFailures(observation, model),
+      ),
+    ).toEqual([]);
   });
 
   /** And the guard must not hide a real cliff while it removes the load. */
@@ -328,9 +371,13 @@ describe("normalizeForLoad", () => {
   });
 
   test("declines the run when the reference blew its own budget", () => {
-    const load = normalizeForLoad(underUniformLoad(linearCorpus(40, 300, SIZES), 200));
+    const load = normalizeForLoad(
+      underUniformLoad(linearCorpus(40, 300, SIZES), 200),
+    );
     expect(load.status).toBe("degraded");
-    expect(load.status === "degraded" && load.reason).toContain("reference package");
+    expect(load.status === "degraded" && load.reason).toContain(
+      "reference package",
+    );
   });
 
   test("accepts a run whose reference sits at the budget", () => {
@@ -347,7 +394,9 @@ describe("normalizeForLoad", () => {
       ),
     );
     expect(load.status).toBe("degraded");
-    expect(load.status === "degraded" && load.reason).toContain("no reference timing");
+    expect(load.status === "degraded" && load.reason).toContain(
+      "no reference timing",
+    );
   });
 
   /**
@@ -355,16 +404,24 @@ describe("normalizeForLoad", () => {
    * silence a family that is otherwise measuring a healthy machine.
    */
   test("a few spikes do not degrade an otherwise quiet run", () => {
-    const observations = linearCorpus(40, 300, SIZES).map((observation, index) =>
-      index < 2 ? retimed(observation, observation.parseMs, 5_000) : observation,
+    const observations = linearCorpus(40, 300, SIZES).map(
+      (observation, index) =>
+        index < 2
+          ? retimed(observation, observation.parseMs, 5_000)
+          : observation,
     );
     expect(normalizeForLoad(observations).status).toBe("measured");
   });
 
   test("passes a file with no reading through unscaled, for the verdict to decline", () => {
-    const observations = linearCorpus(40, 300, SIZES).map((observation, index) =>
-      index === 0 ? retimed(observation, observation.parseMs, 0) : observation,
+    const observations = linearCorpus(40, 300, SIZES).map(
+      (observation, index) =>
+        index === 0
+          ? retimed(observation, observation.parseMs, 0)
+          : observation,
     );
-    expect(measuredOrThrow(observations).at(0)?.parseMs).toBe(observations[0]?.parseMs);
+    expect(measuredOrThrow(observations).at(0)?.parseMs).toBe(
+      observations[0]?.parseMs,
+    );
   });
 });

@@ -12,13 +12,17 @@ import { describe, expect, test } from "bun:test";
 import { allSubjects, explainedOutcome } from "./container-survival-census";
 import type { Subject } from "./lib/container-survival/fixture";
 import { runSurvivalLaws, subjectKey } from "./lib/container-survival/laws";
-import { loadContainerSpace, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
+import {
+  loadContainerSpace,
+  WML_NAMESPACE,
+} from "./lib/container-survival/schemaSpace";
 
 const space = await loadContainerSpace();
 
 const subjectAt = (key: string): Subject => {
   const found = allSubjects(space).find(
-    (subject) => subjectKey(subject).replaceAll(`{${WML_NAMESPACE}}`, "w:") === key,
+    (subject) =>
+      subjectKey(subject).replaceAll(`{${WML_NAMESPACE}}`, "w:") === key,
   );
   if (found === undefined) {
     throw new Error(`no pair in the census space is keyed ${key}`);
@@ -38,11 +42,15 @@ describe("the outcome line separates unmeasured from unharmed", () => {
   }, 60_000);
 
   test("a pair in a part the law rebuilds is measured rather than skipped", async () => {
-    expect(await outcomeLineOf("w:font|w:CT_Font/w:notTrueType")).toBe("mechanism: survives");
+    expect(await outcomeLineOf("w:font|w:CT_Font/w:notTrueType")).toBe(
+      "mechanism: survives",
+    );
   }, 60_000);
 
   test("a pair that came back still prints that it survives", async () => {
-    expect(await outcomeLineOf("w:tblBorders|w:CT_TblBorders/w:top")).toBe("mechanism: survives");
+    expect(await outcomeLineOf("w:tblBorders|w:CT_TblBorders/w:top")).toBe(
+      "mechanism: survives",
+    );
   }, 60_000);
 
   test("a pair that was lost still prints its mechanism", async () => {

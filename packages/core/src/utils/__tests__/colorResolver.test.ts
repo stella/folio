@@ -1,7 +1,11 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import type { ThemeColorScheme } from "../../types/document";
-import { generateThemeTintShadeMatrix, getThemeTintShadeHex, resolveColor } from "../colorResolver";
+import {
+  generateThemeTintShadeMatrix,
+  getThemeTintShadeHex,
+  resolveColor,
+} from "../colorResolver";
 
 const OFFICE_2016_DEFAULTS: ThemeColorScheme = {
   dk1: "000000",
@@ -156,16 +160,23 @@ describe("getThemeTintShadeHex", () => {
 
 describe("resolveColor", () => {
   test('themeTint "FF" keeps the original theme color', () => {
-    expect(resolveColor({ themeColor: "accent1", themeTint: "FF" }, OFFICE_THEME)).toBe("#4472C4");
+    expect(
+      resolveColor({ themeColor: "accent1", themeTint: "FF" }, OFFICE_THEME),
+    ).toBe("#4472C4");
   });
 
   test('themeTint "33" produces the Word-compatible light variant', () => {
-    expect(resolveColor({ themeColor: "accent1", themeTint: "33" }, OFFICE_THEME)).toBe("#DAE3F3");
+    expect(
+      resolveColor({ themeColor: "accent1", themeTint: "33" }, OFFICE_THEME),
+    ).toBe("#DAE3F3");
   });
 
   test('themeShade "F2" produces the Word-compatible dark variant', () => {
-    expect(resolveColor({ themeColor: "background1", themeShade: "F2" }, OFFICE_THEME)).toBe(
-      "#F2F2F2",
-    );
+    expect(
+      resolveColor(
+        { themeColor: "background1", themeShade: "F2" },
+        OFFICE_THEME,
+      ),
+    ).toBe("#F2F2F2");
   });
 });

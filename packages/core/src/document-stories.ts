@@ -35,9 +35,14 @@ export const pairFolioDocumentStories = (
   baseStories: readonly FolioDocumentStoryHandle[],
   revisedStories: readonly FolioDocumentStoryHandle[],
 ): FolioDocumentStoryPair[] => {
-  const revisedByKey = new Map(revisedStories.map((story) => [documentStoryKey(story), story]));
+  const revisedByKey = new Map(
+    revisedStories.map((story) => [documentStoryKey(story), story]),
+  );
   const pairedKeys = new Set<string>();
-  const pairedByIdentity = new Map<FolioDocumentStoryHandle, FolioDocumentStoryHandle>();
+  const pairedByIdentity = new Map<
+    FolioDocumentStoryHandle,
+    FolioDocumentStoryHandle
+  >();
   for (const baseStory of baseStories) {
     const key = documentStoryKey(baseStory);
     const revisedStory = revisedByKey.get(key);
@@ -47,9 +52,12 @@ export const pairFolioDocumentStories = (
     }
   }
 
-  const unpairedRevisedOfKind = (kind: "header" | "footer"): FolioDocumentStoryHandle[] =>
+  const unpairedRevisedOfKind = (
+    kind: "header" | "footer",
+  ): FolioDocumentStoryHandle[] =>
     revisedStories.filter(
-      (story) => story.type === kind && !pairedKeys.has(documentStoryKey(story)),
+      (story) =>
+        story.type === kind && !pairedKeys.has(documentStoryKey(story)),
     );
   const remaining = {
     header: unpairedRevisedOfKind("header"),

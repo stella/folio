@@ -20,12 +20,18 @@ import { Subscribable } from "./Subscribable";
 export type EditorMode = "editing" | "suggesting" | "viewing";
 
 /** How tracked changes render. Drives the display mode dropdown. */
-export const DISPLAY_MODES = ["all-markup", "simple-markup", "no-markup", "original"] as const;
+export const DISPLAY_MODES = [
+  "all-markup",
+  "simple-markup",
+  "no-markup",
+  "original",
+] as const;
 
 export type DisplayMode = (typeof DISPLAY_MODES)[number];
 
 /** Why a user action cannot edit the displayed document. */
-export type EditorReadOnlyReason = "host-read-only" | "viewing-mode" | "review-display-mode";
+export type EditorReadOnlyReason =
+  "host-read-only" | "viewing-mode" | "review-display-mode";
 
 const REVIEW_VIEW_ACCESS = {
   "all-markup": "editable",
@@ -37,7 +43,9 @@ const REVIEW_VIEW_ACCESS = {
 export const getReviewViewReadOnlyReason = (
   displayMode: DisplayMode,
 ): EditorReadOnlyReason | null =>
-  REVIEW_VIEW_ACCESS[displayMode] === "read-only" ? "review-display-mode" : null;
+  REVIEW_VIEW_ACCESS[displayMode] === "read-only"
+    ? "review-display-mode"
+    : null;
 
 type EditorReadOnlyReasonOptions = {
   editingMode: EditorMode;
@@ -70,8 +78,10 @@ export type EditorModeSnapshot = {
 // ============================================================================
 
 /** True when the host opts into read-only OR the mode is `"viewing"`. */
-export const isReadOnlyMode = (editingMode: EditorMode, readOnlyProp: boolean): boolean =>
-  readOnlyProp || editingMode === "viewing";
+export const isReadOnlyMode = (
+  editingMode: EditorMode,
+  readOnlyProp: boolean,
+): boolean => readOnlyProp || editingMode === "viewing";
 
 /** True when the mode is `"suggesting"`. */
 export const isTrackChangesMode = (editingMode: EditorMode): boolean =>

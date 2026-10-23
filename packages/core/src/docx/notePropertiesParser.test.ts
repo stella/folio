@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseEndnoteProperties, parseFootnoteProperties } from "./notePropertiesParser";
+import {
+  parseEndnoteProperties,
+  parseFootnoteProperties,
+} from "./notePropertiesParser";
 import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
 import { findChild, parseXmlDocument } from "./xmlParser";
 
@@ -14,7 +17,9 @@ describe("note properties number formats", () => {
       </w:sectPr>`,
     );
 
-    const properties = parseFootnoteProperties(findChild(root, "w", "footnotePr"));
+    const properties = parseFootnoteProperties(
+      findChild(root, "w", "footnotePr"),
+    );
 
     expect(properties.numFmt).toBe("hindiCounting");
     expect(properties.numFmtFormat).toBe("authored-format");
@@ -32,7 +37,9 @@ describe("note properties number formats", () => {
       </w:sectPr>`,
     );
 
-    const properties = parseEndnoteProperties(findChild(root, "w", "endnotePr"));
+    const properties = parseEndnoteProperties(
+      findChild(root, "w", "endnotePr"),
+    );
 
     expect(properties.numFmtFormat).toBe('chapter&"number');
     expect(serializeSectionProperties({ endnotePr: properties })).toContain(

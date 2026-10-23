@@ -1,11 +1,13 @@
-import { evaluateCanonicalPage } from "./canonicalPageNavigation";
 import { expect } from "@playwright/test";
-import { test } from "./canonicalTimerProbe";
 import fc from "fast-check";
 import { appendFileSync } from "node:fs";
 
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
+import {
+  BROWSER_FUZZ_BUDGET,
+  checkWithBoundedShrink,
+} from "../../test/bounded-async-fuzz";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import {
   failureMarker,
@@ -13,16 +15,17 @@ import {
   shellQuote,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
+import type {} from "../parity/canonicalBridge";
+import type {} from "../parity/canonicalFuzzErrors";
+import { canonicalOracleFailureRecord } from "../parity/canonicalOracleFailure";
 import { parseBrowserInputTraceConfig } from "./browserInputTrace";
-import { BROWSER_FUZZ_BUDGET, checkWithBoundedShrink } from "../../test/bounded-async-fuzz";
-import { canonicalBrowserTraceArbitrary } from "./canonicalBrowserTrace";
 import {
   checkCanonicalBrowserHistory,
   initializeCanonicalBrowserHistory,
 } from "./canonicalBrowserHistoryOracle";
-import { canonicalOracleFailureRecord } from "../parity/canonicalOracleFailure";
-import type {} from "../parity/canonicalBridge";
-import type {} from "../parity/canonicalFuzzErrors";
+import { canonicalBrowserTraceArbitrary } from "./canonicalBrowserTrace";
+import { evaluateCanonicalPage } from "./canonicalPageNavigation";
+import { test } from "./canonicalTimerProbe";
 
 const config = parseBrowserInputTraceConfig(
   process.env,
@@ -43,7 +46,9 @@ for (const seed of config.seeds) {
         globalThis.__folioCanonicalFuzzErrors = [];
       }),
     );
-    const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+    const source = await createDocx(
+      createEmptyDocument({ initialText: "alpha😀café東京" }),
+    );
     await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
     const { verdict } = await checkWithBoundedShrink({
       arbitrary: canonicalBrowserTraceArbitrary,
@@ -63,7 +68,12 @@ for (const seed of config.seeds) {
       ...(process.env["FOLIO_FUZZ_PATH"] === undefined
         ? {}
         : { path: process.env["FOLIO_FUZZ_PATH"] }),
-      onFirstFailure: async ({ seed: originalSeed, path, value: flow, error: failure }) => {
+      onFirstFailure: async ({
+        seed: originalSeed,
+        path,
+        value: flow,
+        error: failure,
+      }) => {
         const repro = `FOLIO_FUZZ_SEEDS=${originalSeed} FOLIO_FUZZ_RUNS=${config.runs} FOLIO_FUZZ_PATH=${shellQuote(path)} bunx playwright test --project=browser-fuzzer tests/visual/canonical-browser-input-fuzz.interactions.spec.ts --workers=1`;
         const marker = failureMarker({
           test: "canonical browser input: projection, exact history and save/reopen",
@@ -107,7 +117,9 @@ for (const seed of config.seeds) {
       const flow = verdict.counterexample?.at(0);
       const failure = verdict.errorInstance;
       const detail =
-        failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
+        failure instanceof Error
+          ? (failure.stack ?? failure.message)
+          : fc.stringify(failure);
       const message = failure instanceof Error ? failure.message : detail;
       if (
         flow !== undefined &&
@@ -128,7 +140,8 @@ for (const seed of config.seeds) {
         logFailureMarker(marker);
         const record = canonicalOracleFailureRecord({ marker, failure, flow });
         const artifact = writeFailureRecord(
-          process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "fuzz-artifacts/canonical/findings",
+          process.env["FOLIO_FUZZ_FAILURES_DIR"] ??
+            "fuzz-artifacts/canonical/findings",
           record,
         );
         await info.attach("canonical-failure-record", {

@@ -1,5 +1,6 @@
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { useCallback, useMemo } from "react";
+
+import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { useTranslations } from "use-intl";
 
 import { cn } from "../../lib/utils";
@@ -14,9 +15,11 @@ import type { ColorPreset, FolioColorPickerProps } from "../folio-ui";
  * the design-system ColorPicker contract. Consumers inject a polished picker
  * via `DocxEditor`'s `components` prop.
  */
-const swatchColor = (preset: ColorPreset): string => preset.color ?? `#${preset.value}`;
+const swatchColor = (preset: ColorPreset): string =>
+  preset.color ?? `#${preset.value}`;
 
-const normalizeHex = (hex: string): string => hex.replace(/^#/u, "").toUpperCase();
+const normalizeHex = (hex: string): string =>
+  hex.replace(/^#/u, "").toUpperCase();
 
 const EMPTY_PRESETS: ColorPreset[] = [];
 
@@ -29,7 +32,10 @@ export function DefaultColorPicker({
   children,
 }: FolioColorPickerProps) {
   const t = useTranslations("folio");
-  const trigger = useMemo(() => <div className="folio-default-color-picker-trigger" />, []);
+  const trigger = useMemo(
+    () => <div className="folio-default-color-picker-trigger" />,
+    [],
+  );
 
   return (
     <PopoverPrimitive.Root>
@@ -72,7 +78,9 @@ export function DefaultColorPicker({
               {t("colorPicker.custom")}
               <input
                 aria-label={t("colorPicker.customColor")}
-                onChange={(event) => onSelect?.(normalizeHex(event.target.value))}
+                onChange={(event) =>
+                  onSelect?.(normalizeHex(event.target.value))
+                }
                 type="color"
                 value={value ? `#${normalizeHex(value)}` : "#000000"}
               />
@@ -91,8 +99,14 @@ type ColorSwatchProps = {
 };
 
 function ColorSwatch({ onSelect, preset, selected }: ColorSwatchProps) {
-  const handleClick = useCallback(() => onSelect?.(preset.value), [onSelect, preset.value]);
-  const style = useMemo(() => ({ backgroundColor: swatchColor(preset) }), [preset]);
+  const handleClick = useCallback(
+    () => onSelect?.(preset.value),
+    [onSelect, preset.value],
+  );
+  const style = useMemo(
+    () => ({ backgroundColor: swatchColor(preset) }),
+    [preset],
+  );
 
   return (
     <PopoverPrimitive.Close

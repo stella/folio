@@ -12,8 +12,8 @@
  * style table cannot disagree about the id.
  */
 
-import { BUILT_IN_STYLE_NAME } from "./builtInStyles";
 import type { Style, StyleDefinitions } from "../types/document";
+import { BUILT_IN_STYLE_NAME } from "./builtInStyles";
 
 /** The id `commentSerializer` and `paragraphSerializer` write. */
 export const COMMENT_REFERENCE_STYLE_ID = "CommentReference";
@@ -31,7 +31,11 @@ export type NoteReferenceNeeds = {
 /** The default character style Word bases these on, when the package has one. */
 const DEFAULT_CHARACTER_STYLE_ID = "DefaultParagraphFont";
 
-const referenceStyle = (styleId: string, name: string, superscript: boolean): Style => ({
+const referenceStyle = (
+  styleId: string,
+  name: string,
+  superscript: boolean,
+): Style => ({
   styleId,
   type: "character",
   name,
@@ -48,11 +52,23 @@ const referenceStyle = (styleId: string, name: string, superscript: boolean): St
  */
 const REFERENCE_STYLES: Record<keyof NoteReferenceNeeds, () => Style> = {
   comments: () =>
-    referenceStyle(COMMENT_REFERENCE_STYLE_ID, BUILT_IN_STYLE_NAME.commentReference, false),
+    referenceStyle(
+      COMMENT_REFERENCE_STYLE_ID,
+      BUILT_IN_STYLE_NAME.commentReference,
+      false,
+    ),
   footnotes: () =>
-    referenceStyle(FOOTNOTE_REFERENCE_STYLE_ID, BUILT_IN_STYLE_NAME.footnoteReference, true),
+    referenceStyle(
+      FOOTNOTE_REFERENCE_STYLE_ID,
+      BUILT_IN_STYLE_NAME.footnoteReference,
+      true,
+    ),
   endnotes: () =>
-    referenceStyle(ENDNOTE_REFERENCE_STYLE_ID, BUILT_IN_STYLE_NAME.endnoteReference, true),
+    referenceStyle(
+      ENDNOTE_REFERENCE_STYLE_ID,
+      BUILT_IN_STYLE_NAME.endnoteReference,
+      true,
+    ),
 };
 
 /** What a package's content requires, read off the model rather than guessed. */
@@ -81,7 +97,9 @@ export const missingNoteReferenceStyles = (
   // Only chain to the default character style when this package declares one:
   // a `w:basedOn` naming a style that does not exist is the same defect this
   // function exists to remove.
-  const basedOn = defined.has(DEFAULT_CHARACTER_STYLE_ID) ? DEFAULT_CHARACTER_STYLE_ID : undefined;
+  const basedOn = defined.has(DEFAULT_CHARACTER_STYLE_ID)
+    ? DEFAULT_CHARACTER_STYLE_ID
+    : undefined;
   const missing: Style[] = [];
   for (const [need, create] of Object.entries(REFERENCE_STYLES)) {
     if (!needs[need as keyof NoteReferenceNeeds]) {

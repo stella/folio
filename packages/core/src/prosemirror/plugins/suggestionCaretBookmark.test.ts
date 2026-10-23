@@ -42,13 +42,17 @@ for (const direction of ["Backspace", "Delete"] as const) {
           ?.child(direction === "Backspace" ? 0 : count + 1)
           .marks.some(({ type }) => type.name === "deletion"),
       ).toBe(true);
-      expect(paragraph?.child(1).marks.some(({ type }) => type.name === "deletion")).toBe(false);
+      expect(
+        paragraph?.child(1).marks.some(({ type }) => type.name === "deletion"),
+      ).toBe(false);
 
       let accepted = view.state;
       acceptAllChanges()(accepted, (tr) => {
         accepted = accepted.apply(tr);
       });
-      expect(accepted.doc.firstChild?.textContent).toBe(direction === "Backspace" ? "bc" : "ac");
+      expect(accepted.doc.firstChild?.textContent).toBe(
+        direction === "Backspace" ? "bc" : "ac",
+      );
       expect(
         accepted.doc.firstChild?.content.content.filter(
           ({ type }) => type.name === "bookmarkBoundary",
@@ -65,16 +69,22 @@ for (const direction of ["Backspace", "Delete"] as const) {
       const first = schema.node(
         "paragraph",
         null,
-        direction === "Delete" ? [schema.text("first"), ...pair] : [schema.text("first")],
+        direction === "Delete"
+          ? [schema.text("first"), ...pair]
+          : [schema.text("first")],
       );
       const second = schema.node(
         "paragraph",
         null,
-        direction === "Backspace" ? [...pair, schema.text("second")] : [schema.text("second")],
+        direction === "Backspace"
+          ? [...pair, schema.text("second")]
+          : [schema.text("second")],
       );
       const doc = schema.node("doc", null, [first, second]);
       const caret =
-        direction === "Backspace" ? first.nodeSize + 1 + count * 2 : first.nodeSize - 1 - count * 2;
+        direction === "Backspace"
+          ? first.nodeSize + 1 + count * 2
+          : first.nodeSize - 1 - count * 2;
       const state = EditorState.create({ doc, plugins: [plugin] });
       const view = new HeadlessEditorView(
         state.apply(state.tr.setSelection(TextSelection.create(doc, caret))),
@@ -102,11 +112,15 @@ for (const direction of ["Backspace", "Delete"] as const) {
       const paragraph = schema.node(
         "paragraph",
         null,
-        direction === "Backspace" ? [...pair, schema.text("tail")] : [schema.text("head"), ...pair],
+        direction === "Backspace"
+          ? [...pair, schema.text("tail")]
+          : [schema.text("head"), ...pair],
       );
       const table = schema.node("table", null, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", null, [schema.node("paragraph", null, schema.text("cell"))]),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, schema.text("cell")),
+          ]),
         ]),
       ]);
       const doc = schema.node(
@@ -129,7 +143,9 @@ for (const direction of ["Backspace", "Delete"] as const) {
       expect(view.state.selection.from).toBe(tablePos);
       expect(view.state.selection.to).toBe(tablePos + table.nodeSize);
       expect(view.state.doc.eq(doc)).toBe(true);
-      expect(view.state.doc.textContent).toBe(direction === "Backspace" ? "celltail" : "headcell");
+      expect(view.state.doc.textContent).toBe(
+        direction === "Backspace" ? "celltail" : "headcell",
+      );
       let markerCount = 0;
       view.state.doc.descendants((node) => {
         if (node.type.name === "bookmarkBoundary") markerCount += 1;

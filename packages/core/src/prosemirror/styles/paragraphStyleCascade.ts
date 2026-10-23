@@ -10,9 +10,16 @@
  * reopened. Both paths project the cascade through {@link paragraphStyleCascadeAttrs}.
  */
 
-import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
-import type { Paragraph, ParagraphFormatting, TextFormatting } from "../../types/document";
 import { paragraphNumberingReferenceId } from "../../docx/numberingReference";
+import type {
+  StyleEngine,
+  TableCellParagraphSpacingOverlay,
+} from "../../style-engine";
+import type {
+  Paragraph,
+  ParagraphFormatting,
+  TextFormatting,
+} from "../../types/document";
 import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
@@ -77,7 +84,8 @@ export function resolveParagraphDefaultTextFormatting(
   options: { includeParagraphMarkRunProperties?: boolean } = {},
 ): TextFormatting | undefined {
   const style = styleId
-    ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
+    ? (styleResolver.getStyle(styleId) ??
+      styleResolver.getDefaultParagraphStyle())
     : styleResolver.getDefaultParagraphStyle();
   const paragraphStyleRpr = style?.type === "paragraph" ? style.rPr : undefined;
   // The pPr/rPr block describes the paragraph mark only — see the comment on
@@ -87,10 +95,15 @@ export function resolveParagraphDefaultTextFormatting(
   // (e.g. FootnoteText's Times New Roman) with the docDefault Calibri when
   // merged into the cascade below.
   const rawParagraphMarkRpr =
-    options.includeParagraphMarkRunProperties === false ? undefined : formatting?.runProperties;
+    options.includeParagraphMarkRunProperties === false
+      ? undefined
+      : formatting?.runProperties;
   const paragraphRunProperties = rawParagraphMarkRpr
     ? stripParagraphMarkOnlyFormatting(
-        resolveRunFormattingWithoutDefaults(rawParagraphMarkRpr, styleResolver) ?? {},
+        resolveRunFormattingWithoutDefaults(
+          rawParagraphMarkRpr,
+          styleResolver,
+        ) ?? {},
       )
     : undefined;
 
@@ -98,7 +111,10 @@ export function resolveParagraphDefaultTextFormatting(
     [
       { formatting: styleResolver.getDocDefaults()?.rPr, type: "defaults" },
       { formatting: paragraphStyleRpr, type: "style" },
-      { formatting: styleResolver.getDefaultCharacterStyle()?.rPr, type: "style" },
+      {
+        formatting: styleResolver.getDefaultCharacterStyle()?.rPr,
+        type: "style",
+      },
     ],
     {
       ordinaryFormatting: mergeTextFormatting(
@@ -117,7 +133,10 @@ export function resolveParagraphDefaultTextFormatting(
       { formatting: paragraphRunProperties, type: "direct" },
     ],
     {
-      ordinaryFormatting: mergeTextFormatting(bodyRunDefaults, paragraphRunProperties),
+      ordinaryFormatting: mergeTextFormatting(
+        bodyRunDefaults,
+        paragraphRunProperties,
+      ),
     },
   ).formatting;
 }
@@ -165,7 +184,10 @@ export function paragraphStyleCascadeAttrs({
     }
   };
 
-  const resolved = styleResolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
+  const resolved = styleResolver.resolveParagraphStyleInTable(
+    styleId,
+    tableParagraphOverlay,
+  );
   const stylePpr = resolved.paragraphFormatting;
   // What the paragraph would render as if it stated nothing of its own,
   // narrowed to the fields a save could otherwise materialise (see
@@ -182,28 +204,42 @@ export function paragraphStyleCascadeAttrs({
   set("spaceBefore", formatting?.spaceBefore ?? stylePpr?.spaceBefore);
   set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
   set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
-  set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
+  set(
+    "lineSpacingRule",
+    formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule,
+  );
   set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
   set("snapToGrid", formatting?.snapToGrid ?? stylePpr?.snapToGrid);
   set("spacingExplicit", formatting?.spacingExplicit);
   const paragraphStyle = styleId
-    ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
+    ? (styleResolver.getStyle(styleId) ??
+      styleResolver.getDefaultParagraphStyle())
     : styleResolver.getDefaultParagraphStyle();
   const docDefaultSpacing = styleResolver.getDocDefaults()?.pPr;
   // This existing provenance attribute covers every resolved style layer:
   // default, named paragraph, and enclosing table styles. The direct
   // `formatting` object still wins per field.
-  const spacingFromStyle: NonNullable<ParagraphAttrs["spacingFromImplicitDefaultStyle"]> = {};
-  if (formatting?.spaceBefore === undefined && stylePpr?.spaceBefore !== undefined) {
+  const spacingFromStyle: NonNullable<
+    ParagraphAttrs["spacingFromImplicitDefaultStyle"]
+  > = {};
+  if (
+    formatting?.spaceBefore === undefined &&
+    stylePpr?.spaceBefore !== undefined
+  ) {
     spacingFromStyle.before = true;
   }
-  if (formatting?.spaceAfter === undefined && stylePpr?.spaceAfter !== undefined) {
+  if (
+    formatting?.spaceAfter === undefined &&
+    stylePpr?.spaceAfter !== undefined
+  ) {
     spacingFromStyle.after = true;
   }
   if (spacingFromStyle.before || spacingFromStyle.after) {
     attrs.spacingFromImplicitDefaultStyle = spacingFromStyle;
   }
-  const spacingFromDocDefaults: NonNullable<ParagraphAttrs["spacingFromDocDefaults"]> = {};
+  const spacingFromDocDefaults: NonNullable<
+    ParagraphAttrs["spacingFromDocDefaults"]
+  > = {};
   if (
     formatting?.spaceBefore === undefined &&
     tableParagraphOverlay?.spaceBefore === undefined &&
@@ -234,7 +270,10 @@ export function paragraphStyleCascadeAttrs({
     formatting?.numPr?.kind === "none" &&
     paragraphNumberingReferenceId(stylePpr?.numPr) !== undefined;
   const numberingStyleIndent = numberingRemoved ? undefined : stylePpr;
-  const effectiveIndent = mergeParagraphFormatting(numberingStyleIndent, formatting);
+  const effectiveIndent = mergeParagraphFormatting(
+    numberingStyleIndent,
+    formatting,
+  );
   set("indentLeft", effectiveIndent?.indentLeft);
   set("indentRight", formatting?.indentRight ?? stylePpr?.indentRight);
   set("indentFirstLine", effectiveIndent?.indentFirstLine);
@@ -243,15 +282,27 @@ export function paragraphStyleCascadeAttrs({
   set("shading", formatting?.shading ?? stylePpr?.shading);
   set("tabs", mergeParagraphTabStops(stylePpr?.tabs, formatting?.tabs));
   set("kinsoku", formatting?.kinsoku ?? stylePpr?.kinsoku);
-  set("overflowPunctuation", formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation);
-  set("suppressAutoHyphens", formatting?.suppressAutoHyphens ?? stylePpr?.suppressAutoHyphens);
+  set(
+    "overflowPunctuation",
+    formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation,
+  );
+  set(
+    "suppressAutoHyphens",
+    formatting?.suppressAutoHyphens ?? stylePpr?.suppressAutoHyphens,
+  );
 
   // Page break control
-  set("pageBreakBefore", formatting?.pageBreakBefore ?? stylePpr?.pageBreakBefore);
+  set(
+    "pageBreakBefore",
+    formatting?.pageBreakBefore ?? stylePpr?.pageBreakBefore,
+  );
   set("keepNext", formatting?.keepNext ?? stylePpr?.keepNext);
   set("keepLines", formatting?.keepLines ?? stylePpr?.keepLines);
   set("widowControl", formatting?.widowControl ?? stylePpr?.widowControl);
-  set("contextualSpacing", formatting?.contextualSpacing ?? stylePpr?.contextualSpacing);
+  set(
+    "contextualSpacing",
+    formatting?.contextualSpacing ?? stylePpr?.contextualSpacing,
+  );
   // Run-in heading (`<w:specVanish/>` on the paragraph mark) — see
   // ParagraphAttrs.runInWithNext.
   set("runInWithNext", formatting?.runInWithNext ?? stylePpr?.runInWithNext);
@@ -333,10 +384,15 @@ export function tableCellParagraphOverlay(
   if (!style) {
     return undefined;
   }
-  let overlay: ParagraphFormatting | undefined = extractTableParagraphOverlay(style.pPr);
+  let overlay: ParagraphFormatting | undefined = extractTableParagraphOverlay(
+    style.pPr,
+  );
   for (const region of regions) {
     const conditional = style.tblStylePr?.find(({ type }) => type === region);
-    overlay = mergeParagraphFormatting(overlay, extractTableParagraphOverlay(conditional?.pPr));
+    overlay = mergeParagraphFormatting(
+      overlay,
+      extractTableParagraphOverlay(conditional?.pPr),
+    );
   }
   return overlay;
 }

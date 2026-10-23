@@ -53,7 +53,7 @@
       "if": null
     },
     {
-      "run": "bun run format:check",
+      "run": "bun fmt --check",
       "if": null
     },
     {

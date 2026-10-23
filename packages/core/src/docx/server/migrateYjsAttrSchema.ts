@@ -2,11 +2,11 @@ import { Result, TaggedError } from "better-result";
 import * as Y from "yjs";
 
 import {
+  applyAttrSchemaMigrations,
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
+  type FolioYjsAttrSchemaVersion,
   FolioYjsNoteReferenceSchemaError,
   FolioYjsNumberingSourceSchemaError,
-  applyAttrSchemaMigrations,
-  type FolioYjsAttrSchemaVersion,
   readYjsAttrSchemaVersion,
 } from "../../prosemirror/yjsDocumentMetadata";
 import {
@@ -26,7 +26,9 @@ export type FolioYjsSnapshotMigrationErrorCode =
   (typeof FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES)[number];
 
 /** Typed failure raised when a collaboration snapshot cannot be migrated. */
-export class FolioYjsSnapshotMigrationError extends TaggedError("FolioYjsSnapshotMigrationError")<{
+export class FolioYjsSnapshotMigrationError extends TaggedError(
+  "FolioYjsSnapshotMigrationError",
+)<{
   code: FolioYjsSnapshotMigrationErrorCode;
   message: string;
   cause?: unknown;

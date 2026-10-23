@@ -20,6 +20,7 @@
 import { panic } from "better-result";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+
 import { syncWorkspaceVersions } from "./lib/bun-lock-workspace-versions";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -37,7 +38,10 @@ const workspaceDirs = entries
 const lockText = await Bun.file(join(ROOT, "bun.lock")).text();
 
 const args = process.argv.slice(2);
-if (args.some((arg) => arg !== "--write") || args.filter((arg) => arg === "--write").length > 1) {
+if (
+  args.some((arg) => arg !== "--write") ||
+  args.filter((arg) => arg === "--write").length > 1
+) {
   panic("Usage: bun scripts/check-lockfile-workspace-versions.ts [--write]");
 }
 const write = args[0] === "--write";
@@ -48,7 +52,9 @@ for (const workspaceDir of workspaceDirs) {
   // A directory under packages/ is not necessarily a real workspace: skip
   // it (rather than crash the guard) if its package.json is missing or
   // fails to parse.
-  const pkg = await readJson(join(ROOT, workspaceDir, "package.json")).catch(() => null);
+  const pkg = await readJson(join(ROOT, workspaceDir, "package.json")).catch(
+    () => null,
+  );
   if (pkg === null) continue;
   const name = pkg.name;
   const version = pkg.version;
@@ -63,7 +69,9 @@ const unrepairable = result.mismatches.filter(({ actual }) => actual === null);
 
 if (write && unrepairable.length === 0 && result.text !== lockText) {
   await Bun.write(join(ROOT, "bun.lock"), result.text);
-  console.log(`bun.lock workspace-version sync: updated ${result.mismatches.length} workspace(s).`);
+  console.log(
+    `bun.lock workspace-version sync: updated ${result.mismatches.length} workspace(s).`,
+  );
   process.exit(0);
 }
 

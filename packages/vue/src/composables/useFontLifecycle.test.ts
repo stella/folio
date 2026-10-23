@@ -1,7 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import { effectScope, nextTick, ref } from "vue";
 
-import { useFontLifecycle, type FontLifecycleDependencies } from "./useFontLifecycle";
+import {
+  type FontLifecycleDependencies,
+  useFontLifecycle,
+} from "./useFontLifecycle";
 
 function deferred<T>() {
   return Promise.withResolvers<T>();
@@ -13,8 +16,14 @@ function createFontFace(): FontFace {
 
 describe("useFontLifecycle", () => {
   test("loading, replacing and unmounting one editor leaves the other map intact", async () => {
-    const firstResult = deferred<{ faces: FontFace[]; familyMap: Map<string, string> }>();
-    const secondResult = deferred<{ faces: FontFace[]; familyMap: Map<string, string> }>();
+    const firstResult = deferred<{
+      faces: FontFace[];
+      familyMap: Map<string, string>;
+    }>();
+    const secondResult = deferred<{
+      faces: FontFace[];
+      familyMap: Map<string, string>;
+    }>();
     let firstMap: ReadonlyMap<string, string> | null = null;
     let secondMap: ReadonlyMap<string, string> | null = null;
     const firstScope = effectScope();
@@ -22,7 +31,9 @@ describe("useFontLifecycle", () => {
     const mount = (
       scope: ReturnType<typeof effectScope>,
       result: typeof firstResult,
-      setEmbeddedFontFamilies: (map: ReadonlyMap<string, string> | null) => void,
+      setEmbeddedFontFamilies: (
+        map: ReadonlyMap<string, string> | null,
+      ) => void,
     ) => {
       scope.run(() =>
         useFontLifecycle(
@@ -57,11 +68,17 @@ describe("useFontLifecycle", () => {
       familyMap: new Map([["Calibri", "folio-embedded-second-Calibri"]]),
     });
     await Promise.resolve();
-    expect(firstMap).toEqual(new Map([["Calibri", "folio-embedded-first-Calibri"]]));
-    expect(secondMap).toEqual(new Map([["Calibri", "folio-embedded-second-Calibri"]]));
+    expect(firstMap).toEqual(
+      new Map([["Calibri", "folio-embedded-first-Calibri"]]),
+    );
+    expect(secondMap).toEqual(
+      new Map([["Calibri", "folio-embedded-second-Calibri"]]),
+    );
     firstScope.stop();
     expect(firstMap).toBeNull();
-    expect(secondMap).toEqual(new Map([["Calibri", "folio-embedded-second-Calibri"]]));
+    expect(secondMap).toEqual(
+      new Map([["Calibri", "folio-embedded-second-Calibri"]]),
+    );
     secondScope.stop();
     expect(secondMap).toBeNull();
   });
@@ -80,7 +97,9 @@ describe("useFontLifecycle", () => {
       const loadEmbedded = mock((_buffer: ArrayBuffer) =>
         Promise.resolve({
           faces: [face],
-          familyMap: new Map([["Document Sans", "folio-embedded-test-nonce-Document Sans"]]),
+          familyMap: new Map([
+            ["Document Sans", "folio-embedded-test-nonce-Document Sans"],
+          ]),
         }),
       );
       const remove = mock((_faces: readonly FontFace[]) => {});
@@ -141,7 +160,10 @@ describe("useFontLifecycle", () => {
 
     try {
       const face = createFontFace();
-      const pending = deferred<{ faces: FontFace[]; familyMap: ReadonlyMap<string, string> }>();
+      const pending = deferred<{
+        faces: FontFace[];
+        familyMap: ReadonlyMap<string, string>;
+      }>();
       const remove = mock((_faces: readonly FontFace[]) => {});
       const remeasure = mock(() => {});
       const ready = ref(false);
@@ -213,7 +235,8 @@ describe("useFontLifecycle", () => {
             setEmbeddedFontFamilies: mock(() => {}),
           },
           {
-            loadEmbedded: () => Promise.resolve({ faces: [], familyMap: new Map() }),
+            loadEmbedded: () =>
+              Promise.resolve({ faces: [], familyMap: new Map() }),
             loadHost,
             remove,
           },

@@ -8,8 +8,10 @@ const suppliedSource = {
 } as const satisfies FromProseDocOptions;
 // @ts-expect-error Saving requires an explicit stylesheet authority.
 const missingSource = {} satisfies FromProseDocOptions;
-// @ts-expect-error A supplied stylesheet authority must include its stylesheet.
-const missingStyles = { stylesheetSource: { type: "supplied" } } satisfies FromProseDocOptions;
+const missingStyles = {
+  // @ts-expect-error A supplied stylesheet authority must include its stylesheet.
+  stylesheetSource: { type: "supplied" },
+} satisfies FromProseDocOptions;
 void packageSource;
 void suppliedSource;
 void missingSource;

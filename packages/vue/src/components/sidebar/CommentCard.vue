@@ -20,14 +20,20 @@
     <div class="comment-card__head">
       <Avatar :name="comment.author" :size="32" />
       <div class="comment-card__author-block">
-        <div class="comment-card__author">{{ comment.author || "Unknown" }}</div>
+        <div class="comment-card__author">
+          {{ comment.author || "Unknown" }}
+        </div>
         <div class="comment-card__date">{{ formatDate(comment.date) }}</div>
       </div>
       <div v-if="expanded" class="comment-card__actions">
         <button
           class="comment-card__icon-btn"
           :title="comment.done ? 'Reopen' : 'Resolve'"
-          @click.stop="comment.done ? $emit('unresolve', comment.id) : $emit('resolve', comment.id)"
+          @click.stop="
+            comment.done
+              ? $emit('unresolve', comment.id)
+              : $emit('resolve', comment.id)
+          "
         >
           <MaterialSymbol :name="comment.done ? 'undo' : 'check'" :size="20" />
         </button>
@@ -38,17 +44,28 @@
         >
           <MaterialSymbol name="more_vert" :size="20" />
         </button>
-        <div v-if="menuOpen" class="comment-card__menu" @click.stop @mousedown.stop>
-          <button class="comment-card__menu-item" @click="onDelete">Delete</button>
+        <div
+          v-if="menuOpen"
+          class="comment-card__menu"
+          @click.stop
+          @mousedown.stop
+        >
+          <button class="comment-card__menu-item" @click="onDelete">
+            Delete
+          </button>
         </div>
       </div>
     </div>
 
     <div class="comment-card__body">
-      <template v-for="(paragraph, paragraphIndex) in comment.content" :key="paragraphIndex">
-        <span :data-find-comment-id="comment.id" :data-find-comment-paragraph="paragraphIndex">{{
-          getFindParagraphText(paragraph)
-        }}</span
+      <template
+        v-for="(paragraph, paragraphIndex) in comment.content"
+        :key="paragraphIndex"
+      >
+        <span
+          :data-find-comment-id="comment.id"
+          :data-find-comment-paragraph="paragraphIndex"
+          >{{ getFindParagraphText(paragraph) }}</span
         >{{ " " }}
       </template>
     </div>
@@ -64,13 +81,15 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
+
 import type { Comment } from "@stll/folio-core/types/content";
 import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
-import { formatDate } from "./sidebarUtils";
+
 import MaterialSymbol from "../ui/MaterialSymbol.vue";
 import Avatar from "./Avatar.vue";
-import ReplyThread from "./ReplyThread.vue";
 import ReplyInput from "./ReplyInput.vue";
+import ReplyThread from "./ReplyThread.vue";
+import { formatDate } from "./sidebarUtils";
 
 const props = defineProps<{
   comment: Comment;

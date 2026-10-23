@@ -29,7 +29,9 @@ const deletion = (attrs: Record<string, unknown>): Mark =>
 
 const paragraphOf = (nodes: PMNode[]): PMNode =>
   // SAFETY: the editor schema always defines paragraph + doc nodes.
-  schema.nodes["doc"]!.create({}, [schema.nodes["paragraph"]!.create({}, nodes)]);
+  schema.nodes["doc"]!.create({}, [
+    schema.nodes["paragraph"]!.create({}, nodes),
+  ]);
 
 const firstParagraph = (doc: Document): Paragraph => {
   const block = doc.package.document.content.at(0);
@@ -44,7 +46,9 @@ const paragraphPlainText = (paragraph: Paragraph): string => {
     content
       .map((item) => {
         if (item.type === "run") {
-          return item.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+          return item.content
+            .map((c) => (c.type === "text" ? c.text : ""))
+            .join("");
         }
         if (
           item.type === "insertion" ||
@@ -68,7 +72,11 @@ describe("suggestion serialization strip", () => {
     const doc = paragraphOf([
       schema.text("Keep this "),
       schema.text("suggested add", [
-        insertion({ revisionId: 900, provenance: "suggested", suggestionId: "s1" }),
+        insertion({
+          revisionId: 900,
+          provenance: "suggested",
+          suggestionId: "s1",
+        }),
       ]),
       schema.text(" tail"),
     ]);
@@ -77,7 +85,9 @@ describe("suggestion serialization strip", () => {
       fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } }),
     );
     expect(paragraphPlainText(paragraph)).toBe("Keep this  tail");
-    expect(paragraph.content.some((item) => item.type === "insertion")).toBe(false);
+    expect(paragraph.content.some((item) => item.type === "insertion")).toBe(
+      false,
+    );
 
     const xml = serializeParagraph(paragraph);
     expect(xml).not.toContain("suggested add");
@@ -88,7 +98,11 @@ describe("suggestion serialization strip", () => {
     const doc = paragraphOf([
       schema.text("Keep "),
       schema.text("proposed removal", [
-        deletion({ revisionId: 901, provenance: "suggested", suggestionId: "s2" }),
+        deletion({
+          revisionId: 901,
+          provenance: "suggested",
+          suggestionId: "s2",
+        }),
       ]),
       schema.text(" here"),
     ]);
@@ -97,7 +111,9 @@ describe("suggestion serialization strip", () => {
       fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } }),
     );
     expect(paragraphPlainText(paragraph)).toBe("Keep proposed removal here");
-    expect(paragraph.content.some((item) => item.type === "deletion")).toBe(false);
+    expect(paragraph.content.some((item) => item.type === "deletion")).toBe(
+      false,
+    );
 
     const xml = serializeParagraph(paragraph);
     expect(xml).toContain("proposed removal");
@@ -108,11 +124,19 @@ describe("suggestion serialization strip", () => {
     const doc = paragraphOf([
       schema.text("real ins", [insertion({ revisionId: 10 })]),
       schema.text("suggested ins", [
-        insertion({ revisionId: 11, provenance: "suggested", suggestionId: "s3" }),
+        insertion({
+          revisionId: 11,
+          provenance: "suggested",
+          suggestionId: "s3",
+        }),
       ]),
       schema.text("real del", [deletion({ revisionId: 12 })]),
       schema.text("suggested del", [
-        deletion({ revisionId: 13, provenance: "suggested", suggestionId: "s3" }),
+        deletion({
+          revisionId: 13,
+          provenance: "suggested",
+          suggestionId: "s3",
+        }),
       ]),
     ]);
 
@@ -138,7 +162,9 @@ describe("suggestion serialization strip", () => {
 
   test("suggested marks never leak even when they carry no suggestionId", () => {
     const doc = paragraphOf([
-      schema.text("orphan suggested", [insertion({ revisionId: 950, provenance: "suggested" })]),
+      schema.text("orphan suggested", [
+        insertion({ revisionId: 950, provenance: "suggested" }),
+      ]),
       schema.text(" survivor"),
     ]);
 

@@ -8,7 +8,9 @@ const docOf = (...paragraphs: string[]) =>
   schema.node(
     "doc",
     null,
-    paragraphs.map((text) => schema.node("paragraph", null, text ? [schema.text(text)] : null)),
+    paragraphs.map((text) =>
+      schema.node("paragraph", null, text ? [schema.text(text)] : null),
+    ),
   );
 
 describe("scanDirectives", () => {
@@ -28,7 +30,9 @@ describe("scanDirectives", () => {
   });
 
   test("still recognizes clause slots and plain fields alongside them", () => {
-    const doc = docOf('Party {{ tenant.name }} acts under {{ clause("Indemnity") }}.');
+    const doc = docOf(
+      'Party {{ tenant.name }} acts under {{ clause("Indemnity") }}.',
+    );
     const tokens = scanDirectives(doc)
       .map((r) => `${r.kind}:${r.expr}`)
       .sort();
@@ -40,9 +44,15 @@ describe("scanDirectives", () => {
     const doc = docOf(
       "the Buyer{% if hasSpouse %} and their spouse{% else %} alone{% endif %} hereby agrees.",
     );
-    const tokens = scanDirectives(doc).map((r) => `${r.kind}:${r.expr}:${String(r.block)}`);
+    const tokens = scanDirectives(doc).map(
+      (r) => `${r.kind}:${r.expr}:${String(r.block)}`,
+    );
 
-    expect(tokens).toEqual(["if:hasSpouse:false", "else::false", "endif::false"]);
+    expect(tokens).toEqual([
+      "if:hasSpouse:false",
+      "else::false",
+      "endif::false",
+    ]);
   });
 
   test("inline range positions cover the markers in document order", () => {
@@ -53,8 +63,12 @@ describe("scanDirectives", () => {
     const [opener, closer] = ranges;
     expect(opener?.kind).toBe("if");
     expect(closer?.kind).toBe("endif");
-    expect(doc.textBetween(opener?.from ?? 0, opener?.to ?? 0)).toBe("{% if x %}");
-    expect(doc.textBetween(closer?.from ?? 0, closer?.to ?? 0)).toBe("{% endif %}");
+    expect(doc.textBetween(opener?.from ?? 0, opener?.to ?? 0)).toBe(
+      "{% if x %}",
+    );
+    expect(doc.textBetween(closer?.from ?? 0, closer?.to ?? 0)).toBe(
+      "{% endif %}",
+    );
   });
 
   test("whole-paragraph directives keep block:true", () => {
@@ -73,19 +87,27 @@ describe("scanDirectives", () => {
       displayText: "{% if hasSpouse %}",
       fieldKind: "simple",
     });
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [field]),
+    ]);
 
     const [range] = scanDirectives(doc);
 
     expect(range?.block).toBe(true);
     expect(range?.from).toBe(1);
     expect(range?.to).toBe(1 + field.nodeSize);
-    expect(doc.textBetween(range?.from ?? 0, range?.to ?? 0)).toBe("{% if hasSpouse %}");
+    expect(doc.textBetween(range?.from ?? 0, range?.to ?? 0)).toBe(
+      "{% if hasSpouse %}",
+    );
   });
 
   test("emits mid-line for markers as inline (block:false) ranges", () => {
-    const doc = docOf("Items: {% for item in items %}{{ item.name }}{% endfor %} end.");
-    const tokens = scanDirectives(doc).map((r) => `${r.kind}:${r.expr}:${String(r.block)}`);
+    const doc = docOf(
+      "Items: {% for item in items %}{{ item.name }}{% endfor %} end.",
+    );
+    const tokens = scanDirectives(doc).map(
+      (r) => `${r.kind}:${r.expr}:${String(r.block)}`,
+    );
 
     expect(tokens).toContain("for:items:false");
     expect(tokens).toContain("endfor::false");
@@ -97,11 +119,19 @@ describe("scanDirectives", () => {
     // Hosts read `expr` as the array the loop walks and `alias` as the name its
     // body binds each element to; splitting them is what lets a host resolve
     // `{{ item.name }}` back to `items`.
-    const doc = docOf("{% for item in contracts.risks %}", "Risk.", "{% endfor %}");
+    const doc = docOf(
+      "{% for item in contracts.risks %}",
+      "Risk.",
+      "{% endfor %}",
+    );
 
     const opener = scanDirectives(doc).find((r) => r.kind === "for");
 
-    expect(opener).toMatchObject({ expr: "contracts.risks", alias: "item", block: true });
+    expect(opener).toMatchObject({
+      expr: "contracts.risks",
+      alias: "item",
+      block: true,
+    });
   });
 
   test("only a for range carries an alias", () => {
@@ -122,11 +152,21 @@ describe("scanDirectives", () => {
     );
     const conditions = scanDirectives(doc)
       .filter((r) => r.kind === "if" || r.kind === "elif")
-      .map(({ kind, expr, conditionPath, block }) => ({ kind, expr, conditionPath, block }));
+      .map(({ kind, expr, conditionPath, block }) => ({
+        kind,
+        expr,
+        conditionPath,
+        block,
+      }));
 
     expect(conditions).toEqual([
       { kind: "if", expr: chain, conditionPath: "consent_given", block: true },
-      { kind: "elif", expr: "items|length > 0", conditionPath: undefined, block: true },
+      {
+        kind: "elif",
+        expr: "items|length > 0",
+        conditionPath: undefined,
+        block: true,
+      },
       { kind: "if", expr: chain, conditionPath: "consent_given", block: false },
     ]);
   });
@@ -135,7 +175,10 @@ describe("scanDirectives", () => {
 describe("computeBlockDepths", () => {
   // Builds a block opener/closer range at a given position. Only `from`, `kind`,
   // and `block` drive the depth math, so the rest is filler.
-  const blockRange = (from: number, kind: DirectiveRange["kind"]): DirectiveRange => ({
+  const blockRange = (
+    from: number,
+    kind: DirectiveRange["kind"],
+  ): DirectiveRange => ({
     from,
     to: from + 1,
     kind,

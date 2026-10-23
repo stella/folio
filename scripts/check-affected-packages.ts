@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
-import { affectedPackagePlan, changedWorkingTreePaths, publishedPackagePaths } from "./ci-api-plan";
+import {
+  affectedPackagePlan,
+  changedWorkingTreePaths,
+  publishedPackagePaths,
+} from "./ci-api-plan";
 import { runTypecheckPlan, typecheckPlanForPaths } from "./ci-plan";
 
 export const affectedTypecheckPlanForPaths = typecheckPlanForPaths;
@@ -7,7 +11,8 @@ export const affectedTypecheckPlanForPaths = typecheckPlanForPaths;
 const usage = "Usage: bun run check:affected-packages --base <rev>";
 
 const parseBase = (args: readonly string[]) => {
-  if (args.length !== 2 || args.at(0) !== "--base" || !args.at(1)) throw new TypeError(usage);
+  if (args.length !== 2 || args.at(0) !== "--base" || !args.at(1))
+    throw new TypeError(usage);
   return args[1];
 };
 
@@ -31,7 +36,9 @@ const main = () => {
     stderr: "pipe",
   });
   if (root.exitCode !== 0)
-    throw new TypeError(`Cannot locate repository: ${root.stderr.toString().trim()}`);
+    throw new TypeError(
+      `Cannot locate repository: ${root.stderr.toString().trim()}`,
+    );
   const repoRoot = root.stdout.toString().trim();
   process.chdir(repoRoot);
   const changedPaths = changedWorkingTreePaths({ repoRoot, base });
@@ -60,11 +67,15 @@ const main = () => {
       const exitCode = run(command);
       if (exitCode === 0) continue;
       if (command.at(-1) === "api:check")
-        process.stderr.write("run `bun run api:update` and commit api-reports\n");
+        process.stderr.write(
+          "run `bun run api:update` and commit api-reports\n",
+        );
       return exitCode;
     }
   } else {
-    process.stdout.write("Skipped API checks: no published package API inputs changed.\n");
+    process.stdout.write(
+      "Skipped API checks: no published package API inputs changed.\n",
+    );
   }
 
   if (plan.packagedConsumerRequired) {
@@ -90,7 +101,9 @@ if (import.meta.main) {
   try {
     process.exitCode = main();
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
     process.exitCode = 1;
   }
 }

@@ -38,4 +38,8 @@ const UNKNOWN_ATTR: ParagraphAttrsPatch = {
   numbering: stated,
 };
 
-export type ParagraphAttrsPatchProof = [typeof RAW_MODEL_VALUE, typeof MINTED, typeof UNKNOWN_ATTR];
+export type ParagraphAttrsPatchProof = [
+  typeof RAW_MODEL_VALUE,
+  typeof MINTED,
+  typeof UNKNOWN_ATTR,
+];

@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -14,7 +15,8 @@ import {
   useCloseOnDialogOpenChange,
 } from "./dialogChrome";
 
-export type PasteSpecialMode = "keepFormatting" | "mergeFormatting" | "plainText";
+export type PasteSpecialMode =
+  "keepFormatting" | "mergeFormatting" | "plainText";
 
 export type PasteSpecialDialogProps = {
   isOpen: boolean;
@@ -23,16 +25,22 @@ export type PasteSpecialDialogProps = {
   defaultMode?: PasteSpecialMode;
 };
 
-const PASTE_MODES: Array<{ value: PasteSpecialMode; label: string; description: string }> = [
+const PASTE_MODES: Array<{
+  value: PasteSpecialMode;
+  label: string;
+  description: string;
+}> = [
   {
     value: "keepFormatting",
     label: "Keep source formatting",
-    description: "Preserve styles, links, and inline formatting from the clipboard.",
+    description:
+      "Preserve styles, links, and inline formatting from the clipboard.",
   },
   {
     value: "mergeFormatting",
     label: "Merge formatting",
-    description: "Keep useful inline formatting while matching the destination paragraph.",
+    description:
+      "Keep useful inline formatting while matching the destination paragraph.",
   },
   {
     value: "plainText",
@@ -45,7 +53,12 @@ export function PasteSpecialDialog(props: PasteSpecialDialogProps) {
   if (!props.isOpen) {
     return null;
   }
-  return <PasteSpecialDialogForm key={JSON.stringify(props.defaultMode)} {...props} />;
+  return (
+    <PasteSpecialDialogForm
+      key={JSON.stringify(props.defaultMode)}
+      {...props}
+    />
+  );
 }
 
 function PasteSpecialDialogForm({
@@ -83,11 +96,17 @@ function PasteSpecialDialogForm({
 
           <div className={DIALOG_BODY_CLASS}>
             <fieldset className="flex flex-col gap-3">
-              <legend className={DIALOG_LABEL_CLASS}>{t("dialogs.pasteSpecial.pasteMode")}</legend>
+              <legend className={DIALOG_LABEL_CLASS}>
+                {t("dialogs.pasteSpecial.pasteMode")}
+              </legend>
               {PASTE_MODES.map((option) => {
                 const optionId = `${id}-paste-special-${option.value}`;
                 return (
-                  <label className="flex items-start gap-3" htmlFor={optionId} key={option.value}>
+                  <label
+                    className="flex items-start gap-3"
+                    htmlFor={optionId}
+                    key={option.value}
+                  >
                     <input
                       checked={mode === option.value}
                       id={optionId}
@@ -98,7 +117,9 @@ function PasteSpecialDialogForm({
                       <span className="text-foreground text-[13px] font-medium">
                         {option.label}
                       </span>
-                      <span className="text-muted-foreground text-xs">{option.description}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {option.description}
+                      </span>
                     </span>
                   </label>
                 );
@@ -110,7 +131,11 @@ function PasteSpecialDialogForm({
             <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
               {t("common.cancel")}
             </DialogClose>
-            <button className={DIALOG_PRIMARY_BUTTON_CLASS} onClick={handlePaste} type="button">
+            <button
+              className={DIALOG_PRIMARY_BUTTON_CLASS}
+              onClick={handlePaste}
+              type="button"
+            >
               {t("paste")}
             </button>
           </div>

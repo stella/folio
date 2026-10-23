@@ -16,8 +16,11 @@
  * - Table column bookmarks have colFirst/colLast for column ranges
  */
 
-import type { BookmarkStart, BookmarkEnd } from "../types/document";
-import { parseBookmarkRangeMarker, parseMarkupRangeMarker } from "./markupRangeMarker";
+import type { BookmarkEnd, BookmarkStart } from "../types/document";
+import {
+  parseBookmarkRangeMarker,
+  parseMarkupRangeMarker,
+} from "./markupRangeMarker";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -82,7 +85,10 @@ export function addBookmark(map: BookmarkMap, bookmark: BookmarkStart): void {
  * @param name - Bookmark name to find
  * @returns The BookmarkStart or undefined if not found
  */
-export function getBookmarkByName(map: BookmarkMap, name: string): BookmarkStart | undefined {
+export function getBookmarkByName(
+  map: BookmarkMap,
+  name: string,
+): BookmarkStart | undefined {
   return map.byName.get(name);
 }
 
@@ -93,7 +99,10 @@ export function getBookmarkByName(map: BookmarkMap, name: string): BookmarkStart
  * @param id - Bookmark ID to find
  * @returns The BookmarkStart or undefined if not found
  */
-export function getBookmarkById(map: BookmarkMap, id: number): BookmarkStart | undefined {
+export function getBookmarkById(
+  map: BookmarkMap,
+  id: number,
+): BookmarkStart | undefined {
   return map.byId.get(id);
 }
 
@@ -230,7 +239,9 @@ export function isRefBookmark(name: string): boolean {
  * @param name - Bookmark name
  * @returns Bookmark type
  */
-export function getBookmarkType(name: string): "user" | "toc" | "ref" | "goBack" | "internal" {
+export function getBookmarkType(
+  name: string,
+): "user" | "toc" | "ref" | "goBack" | "internal" {
   if (name === "_GoBack") {
     return "goBack";
   }

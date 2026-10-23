@@ -2,12 +2,15 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createDocx } from "../docx/rezip";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
-import { expectTrackedChangeMarkAttrs } from "./attrs";
 import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
+import { expectTrackedChangeMarkAttrs } from "./attrs";
 import { resolveAllChangesInHeadlessState } from "./commands/comments";
 import { fromProseDoc } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
@@ -32,24 +35,40 @@ test(
             author: "Earlier Reviewer",
             _docxRevisionAncestors: ancestors,
           });
-          const existing = schema.mark("deletion", { revisionId: 300, author: "Other Reviewer" });
+          const existing = schema.mark("deletion", {
+            revisionId: 300,
+            author: "Other Reviewer",
+          });
           const field = schema.node("structuredField", null, [
             schema.text("x".repeat(length), [insertion]),
             schema.text("hidden", [existing]),
           ]);
-          const doc = schema.node("doc", null, schema.node("paragraph", null, [field]));
-          for (const insertionPolicy of ["preserve-pending", "retract-own"] as const) {
+          const doc = schema.node(
+            "doc",
+            null,
+            schema.node("paragraph", null, [field]),
+          );
+          for (const insertionPolicy of [
+            "preserve-pending",
+            "retract-own",
+          ] as const) {
             const tr = EditorState.create({ doc }).tr;
             addTrackedDeletionMark({
               tr,
               from: 1,
               to: 1 + field.nodeSize,
-              mark: schema.mark("deletion", { revisionId: 400, author: "New Reviewer" }),
+              mark: schema.mark("deletion", {
+                revisionId: 400,
+                author: "New Reviewer",
+              }),
               insertionPolicy,
             });
             const inserted = tr.doc.nodeAt(2);
-            const deleted = inserted?.marks.find(({ type }) => type.name === "deletion");
-            if (!deleted) throw new TypeError("Nested inserted child requires a deletion");
+            const deleted = inserted?.marks.find(
+              ({ type }) => type.name === "deletion",
+            );
+            if (!deleted)
+              throw new TypeError("Nested inserted child requires a deletion");
             expect(
               expectTrackedChangeMarkAttrs(deleted)._docxRevisionAncestors?.map(
                 ({ revisionId }) => revisionId,
@@ -62,14 +81,20 @@ test(
               tr,
               from: 1,
               to: 1 + field.nodeSize,
-              mark: schema.mark("deletion", { revisionId: 500, author: "Another Reviewer" }),
+              mark: schema.mark("deletion", {
+                revisionId: 500,
+                author: "Another Reviewer",
+              }),
               insertionPolicy,
             });
             expect(tr.doc.toJSON()).toEqual(first);
           }
         },
       ),
-      { numRuns: 30, id: "whole-field deletion retains nested child insertion paths" },
+      {
+        numRuns: 30,
+        id: "whole-field deletion retains nested child insertion paths",
+      },
     );
   },
   propertyTestTimeout(5_000),
@@ -124,26 +149,45 @@ test(
             schema.node(
               "paragraph",
               null,
-              container !== "none" ? schema.node(container, null, content) : content,
+              container !== "none"
+                ? schema.node(container, null, content)
+                : content,
             ),
           );
           const tr = EditorState.create({ doc }).tr;
           const base = container !== "none" ? 2 : 1;
           const from = base + (start % content.length);
           const to = from + (length % (base + content.length + 1 - from));
-          const mark = schema.mark("deletion", { revisionId: 999, author: "New Reviewer" });
-          addTrackedDeletionMark({ insertionPolicy: "preserve-pending", tr, from, to, mark });
+          const mark = schema.mark("deletion", {
+            revisionId: 999,
+            author: "New Reviewer",
+          });
+          addTrackedDeletionMark({
+            insertionPolicy: "preserve-pending",
+            tr,
+            from,
+            to,
+            mark,
+          });
           for (let index = 0; index < content.length; index++) {
             const original = content[index];
             const current = tr.doc.nodeAt(index + base);
             if (!original || !current) throw new Error("fixture run missing");
-            const prior = original.marks.find(({ type }) => type.name === "deletion");
-            const deleted = current.marks.find(({ type }) => type.name === "deletion");
+            const prior = original.marks.find(
+              ({ type }) => type.name === "deletion",
+            );
+            const deleted = current.marks.find(
+              ({ type }) => type.name === "deletion",
+            );
             expect(deleted?.toJSON()).toEqual(
               prior?.toJSON() ??
-                (index + base >= from && index + base < to ? mark.toJSON() : undefined),
+                (index + base >= from && index + base < to
+                  ? mark.toJSON()
+                  : undefined),
             );
-            expect(current.marks.filter(({ type }) => type.name !== "deletion")).toEqual(
+            expect(
+              current.marks.filter(({ type }) => type.name !== "deletion"),
+            ).toEqual(
               original.marks.filter(({ type }) => type.name !== "deletion"),
             );
           }
@@ -153,12 +197,18 @@ test(
             tr,
             from,
             to,
-            mark: schema.mark("deletion", { revisionId: 1000, author: "Another Reviewer" }),
+            mark: schema.mark("deletion", {
+              revisionId: 1000,
+              author: "Another Reviewer",
+            }),
           });
           expect(tr.doc.toJSON()).toEqual(first);
         },
       ),
-      { numRuns: 100, id: "range deletion preserves every existing deletion and is idempotent" },
+      {
+        numRuns: 100,
+        id: "range deletion preserves every existing deletion and is idempotent",
+      },
     );
   },
   propertyTestTimeout(5_000),
@@ -172,7 +222,10 @@ test(
         fc.integer({ min: 1, max: 12 }),
         fc.constantFrom("insertion", "deletion"),
         async (length, ancestor) => {
-          for (const insertionPolicy of ["preserve-pending", "retract-own"] as const) {
+          for (const insertionPolicy of [
+            "preserve-pending",
+            "retract-own",
+          ] as const) {
             const insertion = (author: string, revisionId: number) =>
               schema.mark("insertion", {
                 author,
@@ -186,12 +239,20 @@ test(
                   },
                 ],
               });
-            const mine = schema.mark("deletion", { revisionId: 3, author: "Reviewer" });
+            const mine = schema.mark("deletion", {
+              revisionId: 3,
+              author: "Reviewer",
+            });
             const theirs = schema.mark("deletion", {
               revisionId: 4,
               author: "Other Reviewer",
               _docxRevisionAncestors: [
-                { type: ancestor, revisionId: 5, author: "First Reviewer", outerWrapperCount: 0 },
+                {
+                  type: ancestor,
+                  revisionId: 5,
+                  author: "First Reviewer",
+                  outerWrapperCount: 0,
+                },
               ],
             });
             const nodes = [
@@ -202,14 +263,21 @@ test(
               schema.text("n".repeat(length), [theirs]),
             ];
             const state = EditorState.create({
-              doc: schema.node("doc", null, schema.node("paragraph", null, nodes)),
+              doc: schema.node(
+                "doc",
+                null,
+                schema.node("paragraph", null, nodes),
+              ),
             });
             const tr = state.tr;
             addTrackedDeletionMark({
               tr,
               from: 1,
               to: state.doc.content.size - 1,
-              mark: schema.mark("deletion", { revisionId: 6, author: "Reviewer" }),
+              mark: schema.mark("deletion", {
+                revisionId: 6,
+                author: "Reviewer",
+              }),
               insertionPolicy,
             });
             const live = state.apply(tr);
@@ -223,7 +291,9 @@ test(
             );
             const source = createEmptyDocument();
             const saved = await createDocx(
-              fromProseDoc(live.doc, source, { stylesheetSource: { type: "package" } }),
+              fromProseDoc(live.doc, source, {
+                stylesheetSource: { type: "package" },
+              }),
             );
             const reopened = EditorState.create({
               doc: toProseDoc(await parseDocx(saved, { preloadFonts: false })),
@@ -231,12 +301,15 @@ test(
             for (const current of [live, reopened]) {
               current.doc.descendants((node) => {
                 if (node.text !== "o".repeat(length)) return;
-                const deletion = node.marks.find(({ type }) => type.name === "deletion");
-                if (!deletion) throw new Error("inserted fixture run lost its deletion");
+                const deletion = node.marks.find(
+                  ({ type }) => type.name === "deletion",
+                );
+                if (!deletion)
+                  throw new Error("inserted fixture run lost its deletion");
                 expect(
-                  expectTrackedChangeMarkAttrs(deletion)._docxRevisionAncestors?.map(
-                    ({ revisionId }) => revisionId,
-                  ),
+                  expectTrackedChangeMarkAttrs(
+                    deletion,
+                  )._docxRevisionAncestors?.map(({ revisionId }) => revisionId),
                 ).toEqual([12, 2]);
               });
             }
@@ -247,15 +320,21 @@ test(
                   : "p".repeat(length) +
                     "d".repeat(length) +
                     (ancestor === "deletion" ? "n".repeat(length) : "");
-              expect(resolveAllChangesInHeadlessState(live, mode).doc.textContent).toBe(expected);
-              expect(resolveAllChangesInHeadlessState(reopened, mode).doc.textContent).toBe(
-                expected,
-              );
+              expect(
+                resolveAllChangesInHeadlessState(live, mode).doc.textContent,
+              ).toBe(expected);
+              expect(
+                resolveAllChangesInHeadlessState(reopened, mode).doc
+                  .textContent,
+              ).toBe(expected);
             }
           }
         },
       ),
-      { numRuns: 30, id: "deletion ownership matrix resolves alike live and after saving" },
+      {
+        numRuns: 30,
+        id: "deletion ownership matrix resolves alike live and after saving",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -266,7 +345,10 @@ test(
   async () => {
     await assertProperty(
       fc.property(
-        fc.array(fc.constantFrom("text", "hardBreak"), { minLength: 1, maxLength: 12 }),
+        fc.array(fc.constantFrom("text", "hardBreak"), {
+          minLength: 1,
+          maxLength: 12,
+        }),
         fc.constantFrom("Reviewer", "Other Reviewer"),
         fc.constantFrom("none", "sdt"),
         (kinds, author, wrapper) => {
@@ -276,7 +358,12 @@ test(
             date: "2026-01-02T03:04:05Z",
             initials: "OR",
             _docxRevisionAncestors: [
-              { type: "insertion", revisionId: 36, author: "First Reviewer", outerWrapperCount: 0 },
+              {
+                type: "insertion",
+                revisionId: 36,
+                author: "First Reviewer",
+                outerWrapperCount: 0,
+              },
             ],
           });
           const content = kinds.map((kind) =>
@@ -299,31 +386,45 @@ test(
               wrapper === "sdt" ? schema.node("sdt", null, field) : field,
             ),
           );
-          for (const insertionPolicy of ["preserve-pending", "retract-own"] as const) {
+          for (const insertionPolicy of [
+            "preserve-pending",
+            "retract-own",
+          ] as const) {
             const state = EditorState.create({ doc });
             const tr = state.tr;
             addTrackedDeletionMark({
               tr,
               from: 1,
               to: doc.content.size - 1,
-              mark: schema.mark("deletion", { revisionId: 38, author: "Reviewer" }),
+              mark: schema.mark("deletion", {
+                revisionId: 38,
+                author: "Reviewer",
+              }),
               insertionPolicy,
             });
             const live = state.apply(tr);
             const protectedNodes = [];
             live.doc.descendants((node) => {
-              const deletion = node.marks.find(({ type }) => type.name === "deletion");
-              if (deletion?.attrs["revisionId"] === 37) protectedNodes.push(deletion.toJSON());
+              const deletion = node.marks.find(
+                ({ type }) => type.name === "deletion",
+              );
+              if (deletion?.attrs["revisionId"] === 37)
+                protectedNodes.push(deletion.toJSON());
             });
             const originalNodes = [];
             doc.descendants((node) => {
-              const deletion = node.marks.find(({ type }) => type.name === "deletion");
-              if (deletion?.attrs["revisionId"] === 37) originalNodes.push(deletion.toJSON());
+              const deletion = node.marks.find(
+                ({ type }) => type.name === "deletion",
+              );
+              if (deletion?.attrs["revisionId"] === 37)
+                originalNodes.push(deletion.toJSON());
             });
             expect(protectedNodes).toEqual(originalNodes);
             expect(live.doc.textContent).toBe(doc.textContent);
             for (const mode of ["accept", "reject"] as const) {
-              expect(resolveAllChangesInHeadlessState(live, mode).doc.textContent).toBe("");
+              expect(
+                resolveAllChangesInHeadlessState(live, mode).doc.textContent,
+              ).toBe("");
             }
           }
         },

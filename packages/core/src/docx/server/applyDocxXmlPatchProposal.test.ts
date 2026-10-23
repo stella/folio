@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { createHash } from "node:crypto";
 
 import { createEmptyDocx } from "../rezip";
 import {
@@ -116,10 +115,16 @@ describe("applyDocxXmlPatchProposal", () => {
     });
 
     const outputZip = await JSZip.loadAsync(result.bytes);
-    expect(await outputZip.file(DOCUMENT_PATH)?.async("text")).toBe(REPLACEMENT_XML);
-    expect(await outputZip.file(STYLES_PATH)?.async("text")).toBe(replacementStylesXml);
+    expect(await outputZip.file(DOCUMENT_PATH)?.async("text")).toBe(
+      REPLACEMENT_XML,
+    );
+    expect(await outputZip.file(STYLES_PATH)?.async("text")).toBe(
+      replacementStylesXml,
+    );
     const inputZip = await JSZip.loadAsync(fixture.bytes);
-    expect(await inputZip.file(DOCUMENT_PATH)?.async("text")).toBe(fixture.documentXml);
+    expect(await inputZip.file(DOCUMENT_PATH)?.async("text")).toBe(
+      fixture.documentXml,
+    );
   });
 
   test("returns no output when proposal preconditions fail", async () => {
@@ -169,6 +174,8 @@ describe("applyDocxXmlPatchProposal", () => {
           validationProfile: "unavailable-profile",
         },
       ]),
-    ).rejects.toBeInstanceOf(UnsupportedFolioDocxXmlPatchApplicationProfileError);
+    ).rejects.toBeInstanceOf(
+      UnsupportedFolioDocxXmlPatchApplicationProfileError,
+    );
   });
 });

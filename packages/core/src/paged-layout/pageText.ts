@@ -1,7 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { MarkupViewProjection } from "../prosemirror/markupViewProjection";
 import type { Layout } from "../layout-engine";
+import type { MarkupViewProjection } from "../prosemirror/markupViewProjection";
 
 type PageTextOptions = {
   layout: Layout | null;
@@ -35,13 +35,20 @@ export const getPageTextFromLayout = ({
   const viewDoc = projection?.type === "resolved" ? projection.doc : doc;
   const fragmentTexts: string[] = [];
   for (const fragment of layoutPage.fragments) {
-    if (typeof fragment.pmStart !== "number" || typeof fragment.pmEnd !== "number") {
+    if (
+      typeof fragment.pmStart !== "number" ||
+      typeof fragment.pmEnd !== "number"
+    ) {
       continue;
     }
     const from =
-      projection?.type === "resolved" ? projection.toView(fragment.pmStart, 1) : fragment.pmStart;
+      projection?.type === "resolved"
+        ? projection.toView(fragment.pmStart, 1)
+        : fragment.pmStart;
     const to =
-      projection?.type === "resolved" ? projection.toView(fragment.pmEnd, -1) : fragment.pmEnd;
+      projection?.type === "resolved"
+        ? projection.toView(fragment.pmEnd, -1)
+        : fragment.pmEnd;
     fragmentTexts.push(viewDoc.textBetween(from, to, "\n"));
   }
   return fragmentTexts.join("\n");

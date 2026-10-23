@@ -34,9 +34,17 @@ export const SELECTION_TYPES = [
 ] as const;
 export type SelectionType = (typeof SELECTION_TYPES)[number];
 
-export type FeatureCell = { operation: string; feature: DocumentFeature; selection: SelectionType };
+export type FeatureCell = {
+  operation: string;
+  feature: DocumentFeature;
+  selection: SelectionType;
+};
 export type FeatureCounts = Record<string, number>;
-export type FeatureCoverage = { version: 1; cells: FeatureCounts; operations: string[] };
+export type FeatureCoverage = {
+  version: 1;
+  cells: FeatureCounts;
+  operations: string[];
+};
 
 const DELIMITER = " | ";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -50,16 +58,21 @@ export const parseFeatureCoverage = (value: unknown): FeatureCoverage => {
     !isRecord(value["cells"]) ||
     !Array.isArray(value["operations"])
   ) {
-    throw new TypeError("feature coverage needs version 1, cells, and operations");
+    throw new TypeError(
+      "feature coverage needs version 1, cells, and operations",
+    );
   }
   const operations = value["operations"].filter(
-    (operation): operation is string => typeof operation === "string" && operation.length > 0,
+    (operation): operation is string =>
+      typeof operation === "string" && operation.length > 0,
   );
   if (
     operations.length !== value["operations"].length ||
     new Set(operations).size !== operations.length
   ) {
-    throw new TypeError("feature coverage operations must be distinct nonempty strings");
+    throw new TypeError(
+      "feature coverage operations must be distinct nonempty strings",
+    );
   }
   const cells: FeatureCounts = {};
   for (const [key, count] of Object.entries(value["cells"])) {
@@ -82,23 +95,33 @@ export const parseFeatureCoverage = (value: unknown): FeatureCoverage => {
 };
 
 /** Generation's operation weights must derive from the flow's recorded input. */
-export const featureOperationHits = (report: FeatureCoverage): FeatureCounts => {
+export const featureOperationHits = (
+  report: FeatureCoverage,
+): FeatureCounts => {
   const hits: FeatureCounts = {};
   for (const [key, count] of Object.entries(report.cells)) {
     const operation = key.split(DELIMITER).at(0);
-    if (!operation) throw new TypeError("feature coverage cell has no operation");
+    if (!operation)
+      throw new TypeError("feature coverage cell has no operation");
     hits[operation] = (hits[operation] ?? 0) + count;
   }
   return hits;
 };
 
-export const featureCellKey = ({ operation, feature, selection }: FeatureCell): string =>
-  [operation, feature, selection].join(DELIMITER);
+export const featureCellKey = ({
+  operation,
+  feature,
+  selection,
+}: FeatureCell): string => [operation, feature, selection].join(DELIMITER);
 
-export const addFeatureHit = (report: FeatureCoverage, cell: FeatureCell): void => {
+export const addFeatureHit = (
+  report: FeatureCoverage,
+  cell: FeatureCell,
+): void => {
   const key = featureCellKey(cell);
   report.cells[key] = (report.cells[key] ?? 0) + 1;
-  if (!report.operations.includes(cell.operation)) report.operations.push(cell.operation);
+  if (!report.operations.includes(cell.operation))
+    report.operations.push(cell.operation);
 };
 
 export const emptyFeatureCoverage = (): FeatureCoverage => ({
@@ -107,11 +130,14 @@ export const emptyFeatureCoverage = (): FeatureCoverage => ({
   operations: [],
 });
 
-export const mergeFeatureCoverage = (reports: readonly FeatureCoverage[]): FeatureCoverage => {
+export const mergeFeatureCoverage = (
+  reports: readonly FeatureCoverage[],
+): FeatureCoverage => {
   const merged = emptyFeatureCoverage();
   for (const report of reports) {
     for (const operation of report.operations) {
-      if (!merged.operations.includes(operation)) merged.operations.push(operation);
+      if (!merged.operations.includes(operation))
+        merged.operations.push(operation);
     }
     for (const [key, count] of Object.entries(report.cells)) {
       merged.cells[key] = (merged.cells[key] ?? 0) + count;
@@ -152,7 +178,8 @@ export const weightedChoice = <T>(
   return items.at(-1)!;
 };
 
-export const gapWeight = (hits: number): number => 1 + Math.floor(8 / (1 + hits));
+export const gapWeight = (hits: number): number =>
+  1 + Math.floor(8 / (1 + hits));
 
 const SHAPE_FEATURES: Readonly<Record<string, DocumentFeature>> = {
   table: "plain-table",
@@ -171,7 +198,9 @@ const SHAPE_FEATURES: Readonly<Record<string, DocumentFeature>> = {
 };
 
 /** Shape metadata is document-wide; ambiguous combinations are not attributed to its focus. */
-export const shapeFeatureSignature = (features: readonly string[]): DocumentFeature[] => {
+export const shapeFeatureSignature = (
+  features: readonly string[],
+): DocumentFeature[] => {
   const found = new Set<DocumentFeature>();
   for (const feature of features) {
     const mapped = SHAPE_FEATURES[feature];
@@ -180,20 +209,29 @@ export const shapeFeatureSignature = (features: readonly string[]): DocumentFeat
   return found.size === 1 ? [...found] : ["none"];
 };
 
-export const placementSelection = (placement: string, isCellSelection = false): SelectionType => {
+export const placementSelection = (
+  placement: string,
+  isCellSelection = false,
+): SelectionType => {
   if (isCellSelection) return "cell-selection";
   if (placement === "node") return "node-selection";
   if (placement.startsWith("caret-")) return "caret";
-  if (placement === "word" || placement === "paragraph") return "paragraph-range";
+  if (placement === "word" || placement === "paragraph")
+    return "paragraph-range";
   if (placement === "cross-paragraph") return "cross-paragraph";
   if (placement === "document") return "whole-document";
   return "none";
 };
 
-export const operationSelection = (operation: Record<string, unknown>): SelectionType => {
+export const operationSelection = (
+  operation: Record<string, unknown>,
+): SelectionType => {
   const range = operation["range"];
   if (typeof range === "object" && range !== null) return "paragraph-range";
-  if (typeof operation["find"] === "string" || typeof operation["quote"] === "string") {
+  if (
+    typeof operation["find"] === "string" ||
+    typeof operation["quote"] === "string"
+  ) {
     return "paragraph-range";
   }
   if (typeof operation["offset"] === "number") return "caret";
@@ -202,9 +240,13 @@ export const operationSelection = (operation: Record<string, unknown>): Selectio
 
 export const generatedSelection = (type: string): SelectionType => {
   if (
-    ["replaceRange", "formatRange", "commentOnRange", "replaceInBlock", "commentOnBlock"].includes(
-      type,
-    )
+    [
+      "replaceRange",
+      "formatRange",
+      "commentOnRange",
+      "replaceInBlock",
+      "commentOnBlock",
+    ].includes(type)
   ) {
     return "paragraph-range";
   }
@@ -232,8 +274,12 @@ export const targetFeatureSignature = (
   if (typeof table === "object" && table !== null) {
     found.add("plain-table");
     if (
-      ("columnSpan" in table && typeof table.columnSpan === "number" && table.columnSpan > 1) ||
-      ("rowSpan" in table && typeof table.rowSpan === "number" && table.rowSpan > 1)
+      ("columnSpan" in table &&
+        typeof table.columnSpan === "number" &&
+        table.columnSpan > 1) ||
+      ("rowSpan" in table &&
+        typeof table.rowSpan === "number" &&
+        table.rowSpan > 1)
     )
       found.add("merged-cells");
     if (
@@ -247,10 +293,13 @@ export const targetFeatureSignature = (
   }
   if (target !== undefined && target.kind !== "diagnostic") {
     if (target.kind === "listItem" || target.listReference !== undefined) {
-      found.add(target.displayLabel?.match(/^\d/u) ? "numbered-list" : "bullet-list");
+      found.add(
+        target.displayLabel?.match(/^\d/u) ? "numbered-list" : "bullet-list",
+      );
       if ((target.listReference?.level ?? 0) > 0) found.add("multi-level-list");
     }
-    if (target.kind === "heading" || target.headingLevel !== undefined) found.add("heading");
+    if (target.kind === "heading" || target.headingLevel !== undefined)
+      found.add("heading");
   }
   if (known.has("field")) found.add("field");
   if (known.has("contentControl")) found.add("content-control");

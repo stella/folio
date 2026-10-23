@@ -51,14 +51,22 @@ type Candidate = {
   target: TableMutationPlanTarget;
 };
 
-const rectangle = (left: number, top: number, right: number, bottom: number): TableRectangle => ({
+const rectangle = (
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+): TableRectangle => ({
   left,
   top,
   right,
   bottom,
 });
 
-const candidate = (item: string, target: TableMutationPlanTarget): Candidate => ({
+const candidate = (
+  item: string,
+  target: TableMutationPlanTarget,
+): Candidate => ({
   item,
   operationId: item,
   target,
@@ -79,7 +87,10 @@ describe("table mutation planning", () => {
           tablePosition: otherTablePosition,
           rectangle: rectangle(0, 0, 1, 2),
         }),
-        candidate("delete-column", { type: "tableStructure", tablePosition: otherTablePosition }),
+        candidate("delete-column", {
+          type: "tableStructure",
+          tablePosition: otherTablePosition,
+        }),
       ],
       doc,
     );
@@ -148,7 +159,12 @@ describe("table mutation planning", () => {
       doc,
     );
 
-    expect(plan.executable).toEqual(["first", "disjoint", "other-table", "ordinary-edit"]);
+    expect(plan.executable).toEqual([
+      "first",
+      "disjoint",
+      "other-table",
+      "ordinary-edit",
+    ]);
     expect(plan.skipped).toEqual([
       { id: "duplicate", reason: "noopOperation" },
       { id: "overlap", reason: "unsupportedBlock" },
@@ -187,7 +203,9 @@ describe("table mutation planning", () => {
             }),
           );
           const plan = planTableMutations(merges, nested);
-          expect(plan.executable).toEqual(merges.slice(0, -1).map(({ item }) => item));
+          expect(plan.executable).toEqual(
+            merges.slice(0, -1).map(({ item }) => item),
+          );
           expect(plan.skipped).toEqual([
             { id: merges.at(-1)!.operationId, reason: "unsupportedBlock" },
           ]);
@@ -221,7 +239,11 @@ describe("table mutation planning", () => {
     const cell = (attrs: { colspan?: number; rowspan?: number }) =>
       schema.node("cell", attrs, [schema.node("paragraph")]);
     const table = schema.node("table", null, [
-      schema.node("row", null, [cell({ rowspan: 2 }), cell({ colspan: 2 }), cell({})]),
+      schema.node("row", null, [
+        cell({ rowspan: 2 }),
+        cell({ colspan: 2 }),
+        cell({}),
+      ]),
       schema.node("row", null, [cell({ colspan: 2 }), cell({})]),
     ]);
     const plan = planTableMutations(
@@ -240,6 +262,8 @@ describe("table mutation planning", () => {
       schema.node("doc", null, [table]),
     );
     expect(plan.executable).toEqual(["wide"]);
-    expect(plan.skipped).toEqual([{ id: "narrow", reason: "unsupportedBlock" }]);
+    expect(plan.skipped).toEqual([
+      { id: "narrow", reason: "unsupportedBlock" },
+    ]);
   });
 });

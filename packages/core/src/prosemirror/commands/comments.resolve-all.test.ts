@@ -2,25 +2,47 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { history, undoDepth } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState, TextSelection, type Command, type Transaction } from "prosemirror-state";
+import {
+  type Command,
+  EditorState,
+  TextSelection,
+  type Transaction,
+} from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { schema } from "../schema";
-import { acceptAllChanges, acceptChange, rejectAllChanges, rejectChange } from "./comments";
+import {
+  acceptAllChanges,
+  acceptChange,
+  rejectAllChanges,
+  rejectChange,
+} from "./comments";
 
 const AUTHOR = "Reviewer";
 const DATE = "2026-09-09T00:00:00.000Z";
-const trackerPlugin = ParagraphChangeTrackerExtension().onSchemaReady({ schema }).plugins?.at(0);
+const trackerPlugin = ParagraphChangeTrackerExtension()
+  .onSchemaReady({ schema })
+  .plugins?.at(0);
 if (!trackerPlugin) {
   throw new Error("Expected the paragraph change tracker plugin.");
 }
 
-const revision = (revisionId: number) => ({ revisionId, author: AUTHOR, date: DATE });
-const paragraphMark = (kind: "ins" | "del" | "moveTo" | "moveFrom", id: number) => ({
+const revision = (revisionId: number) => ({
+  revisionId,
+  author: AUTHOR,
+  date: DATE,
+});
+const paragraphMark = (
+  kind: "ins" | "del" | "moveTo" | "moveFrom",
+  id: number,
+) => ({
   kind,
   info: { id, author: AUTHOR, date: DATE },
 });
@@ -34,7 +56,13 @@ type ParagraphCase = {
 
 const paragraphCase = fc.record({
   mark: fc.constantFrom("none", "ins", "del", "moveTo", "moveFrom"),
-  inline: fc.constantFrom("plain", "insertion", "deletion", "mixed", "property"),
+  inline: fc.constantFrom(
+    "plain",
+    "insertion",
+    "deletion",
+    "mixed",
+    "property",
+  ),
   paragraphProperty: fc.boolean(),
   sectionProperty: fc.boolean(),
 }) satisfies fc.Arbitrary<ParagraphCase>;
@@ -64,17 +92,24 @@ const paragraph = (item: ParagraphCase, index: number): PMNode => {
       content.push(schema.text(" old", [deleted]));
       break;
     case "mixed":
-      content.push(schema.text(" old", [deleted]), schema.text(" new", [inserted]));
+      content.push(
+        schema.text(" old", [deleted]),
+        schema.text(" new", [inserted]),
+      );
       break;
     case "property":
-      content.push(schema.text(" format", [schema.marks.bold.create(), formatting]));
+      content.push(
+        schema.text(" format", [schema.marks.bold.create(), formatting]),
+      );
       break;
     default:
       item.inline satisfies never;
   }
   const attrs = {
     paraId: `${(index + 1).toString(16).padStart(8, "0")}`,
-    ...(item.mark === "none" ? {} : { pPrMark: paragraphMark(item.mark, id + 3) }),
+    ...(item.mark === "none"
+      ? {}
+      : { pPrMark: paragraphMark(item.mark, id + 3) }),
     ...(item.paragraphProperty
       ? {
           alignment: "right",
@@ -106,13 +141,21 @@ const paragraph = (item: ParagraphCase, index: number): PMNode => {
   return schema.node("paragraph", attrs, content);
 };
 
-const table = (rowMarker: "none" | "trIns" | "trDel", cellMarker: "none" | "ins" | "del") => {
+const table = (
+  rowMarker: "none" | "trIns" | "trDel",
+  cellMarker: "none" | "ins" | "del",
+) => {
   const cell = (text: string, marker: "none" | "ins" | "del") =>
     schema.node(
       "tableCell",
       marker === "none"
         ? null
-        : { cellMarker: { kind: marker, info: revision(text === "changed" ? 904 : 905) } },
+        : {
+            cellMarker: {
+              kind: marker,
+              info: revision(text === "changed" ? 904 : 905),
+            },
+          },
       [
         schema.node(
           "paragraph",
@@ -122,14 +165,18 @@ const table = (rowMarker: "none" | "trIns" | "trDel", cellMarker: "none" | "ins"
       ],
     );
   const row = (text: string, marker: "none" | "trIns" | "trDel") =>
-    schema.node("tableRow", marker === "none" ? null : { [marker]: revision(901) }, [
-      cell(text, "none"),
-      cell(`${text}-second`, "none"),
-    ]);
+    schema.node(
+      "tableRow",
+      marker === "none" ? null : { [marker]: revision(901) },
+      [cell(text, "none"), cell(`${text}-second`, "none")],
+    );
   return schema.node("table", null, [
     row("stable", "none"),
     row("changed", rowMarker),
-    schema.node("tableRow", null, [cell("changed", cellMarker), cell("stable", "none")]),
+    schema.node("tableRow", null, [
+      cell("changed", cellMarker),
+      cell("stable", "none"),
+    ]),
   ]);
 };
 
@@ -161,7 +208,10 @@ const run = (state: EditorState, command: Command) => {
 
 const expectEquivalent = (state: EditorState) => {
   for (const mode of ["accept", "reject"] as const) {
-    const bulk = run(state, mode === "accept" ? acceptAllChanges() : rejectAllChanges());
+    const bulk = run(
+      state,
+      mode === "accept" ? acceptAllChanges() : rejectAllChanges(),
+    );
     const legacy = run(
       state,
       mode === "accept"
@@ -215,7 +265,11 @@ describe("resolve-all command equivalence", () => {
         { paraId: "000000a1", pPrMark: paragraphMark("del", 101) },
         schema.text("gone", [schema.marks.deletion.create(revision(102))]),
       ),
-      schema.node("paragraph", { paraId: "000000a2" }, schema.text("following")),
+      schema.node(
+        "paragraph",
+        { paraId: "000000a2" },
+        schema.text("following"),
+      ),
       schema.node(
         "paragraph",
         {
@@ -228,7 +282,9 @@ describe("resolve-all command equivalence", () => {
       table("trIns", "del"),
       schema.node("paragraph", { paraId: "000000a4" }, schema.text("tail")),
     ]);
-    expectEquivalent(EditorState.create({ schema, doc, plugins: [trackerPlugin, history()] }));
+    expectEquivalent(
+      EditorState.create({ schema, doc, plugins: [trackerPlugin, history()] }),
+    );
   });
 
   test("matches a pending vertical split and a row revision in the same table", () => {
@@ -264,11 +320,15 @@ describe("resolve-all command equivalence", () => {
                   },
                 }),
               ]),
-              schema.node("tableRow", { [rowMarker]: revision(202) }, [cell("new row")]),
+              schema.node("tableRow", { [rowMarker]: revision(202) }, [
+                cell("new row"),
+              ]),
             ]),
             schema.node("paragraph", null, schema.text("trailing")),
           ]);
-          expectEquivalent(EditorState.create({ schema, doc, plugins: [trackerPlugin] }));
+          expectEquivalent(
+            EditorState.create({ schema, doc, plugins: [trackerPlugin] }),
+          );
         }
       }
     }
@@ -295,18 +355,24 @@ describe("resolve-all command equivalence", () => {
       schema.node("paragraph", null, schema.text("before")),
       schema.node("table", null, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", { rowspan: 2, _docxVMergeContinuationCells: [continuation] }, [
-            schema.node("paragraph", null, schema.text("top")),
-          ]),
+          schema.node(
+            "tableCell",
+            { rowspan: 2, _docxVMergeContinuationCells: [continuation] },
+            [schema.node("paragraph", null, schema.text("top"))],
+          ),
         ]),
         schema.node("tableRow"),
         schema.node("tableRow", { trDel: revision(302) }, [
-          schema.node("tableCell", null, [schema.node("paragraph", null, schema.text("old row"))]),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, schema.text("old row")),
+          ]),
         ]),
       ]),
       schema.node("paragraph", null, schema.text("after")),
     ]);
-    expectEquivalent(EditorState.create({ schema, doc, plugins: [trackerPlugin] }));
+    expectEquivalent(
+      EditorState.create({ schema, doc, plugins: [trackerPlugin] }),
+    );
   });
 
   test("matches table, row, and cell property-only revisions", () => {
@@ -315,7 +381,12 @@ describe("resolve-all command equivalence", () => {
       "tableCell",
       {
         backgroundColor: "99CCFF",
-        tcPrChange: [{ info: info(403), previousFormatting: { backgroundColor: "FFFFFF" } }],
+        tcPrChange: [
+          {
+            info: info(403),
+            previousFormatting: { backgroundColor: "FFFFFF" },
+          },
+        ],
       },
       [schema.node("paragraph", { paraId: "00000403" }, schema.text("cell"))],
     );
@@ -325,19 +396,27 @@ describe("resolve-all command equivalence", () => {
         "table",
         {
           width: 7200,
-          tblPrChange: [{ info: info(401), previousFormatting: { width: 6400 } }],
+          tblPrChange: [
+            { info: info(401), previousFormatting: { width: 6400 } },
+          ],
         },
         [
           schema.node(
             "tableRow",
             {
               height: 480,
-              trPrChange: [{ info: info(402), previousFormatting: { height: 240 } }],
+              trPrChange: [
+                { info: info(402), previousFormatting: { height: 240 } },
+              ],
             },
             [
               changedCell,
               schema.node("tableCell", null, [
-                schema.node("paragraph", { paraId: "00000404" }, schema.text("peer")),
+                schema.node(
+                  "paragraph",
+                  { paraId: "00000404" },
+                  schema.text("peer"),
+                ),
               ]),
             ],
           ),
@@ -345,11 +424,17 @@ describe("resolve-all command equivalence", () => {
       ),
       schema.node("paragraph", { paraId: "00000405" }, schema.text("after")),
     ]);
-    expectEquivalent(EditorState.create({ schema, doc, plugins: [trackerPlugin] }));
+    expectEquivalent(
+      EditorState.create({ schema, doc, plugins: [trackerPlugin] }),
+    );
   });
 
   test("matches the no-revision dispatch contract", () => {
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, schema.text("plain"))]);
-    expectEquivalent(EditorState.create({ schema, doc, plugins: [trackerPlugin] }));
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, schema.text("plain")),
+    ]);
+    expectEquivalent(
+      EditorState.create({ schema, doc, plugins: [trackerPlugin] }),
+    );
   });
 });

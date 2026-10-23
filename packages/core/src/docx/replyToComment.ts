@@ -9,11 +9,15 @@
  * {@link applyReplyThreadMarkers}, so no anchor work is needed here.
  */
 
-import { commentTextParagraph } from "./commentTextParagraph";
 import { setDocumentBodyComments } from "@stll/docx-core/model";
-import { allocateCommentId, seedCommentIdAbove } from "../prosemirror/commentIdAllocator";
+
+import {
+  allocateCommentId,
+  seedCommentIdAbove,
+} from "../prosemirror/commentIdAllocator";
 import type { Comment, Document } from "../types/document";
 import { generateHexId } from "../utils/hexId";
+import { commentTextParagraph } from "./commentTextParagraph";
 
 export type CreateCommentReplyInput = {
   author: string;
@@ -70,7 +74,8 @@ export const createReply = (
   // The root's last paragraph is the thread key; a comment with no paragraphs
   // (malformed / empty) cannot anchor a reply, so refuse rather than index into
   // an empty array.
-  const threadRoot = comments.find((comment) => comment.id === threadRootId) ?? parent;
+  const threadRoot =
+    comments.find((comment) => comment.id === threadRootId) ?? parent;
   const rootLastParagraph = (threadRoot.content ?? []).at(-1);
   if (!rootLastParagraph) {
     return null;

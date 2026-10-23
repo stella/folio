@@ -7,9 +7,12 @@ import { parseParagraph } from "../../docx/paragraphParser";
 import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
 import { parseXmlDocument } from "../../docx/xmlParser";
 import type { Paragraph } from "../../types/document";
-import { acceptAIEditRevision, rejectAIEditRevision } from "../commands/comments";
-import { extractTrackedChanges } from "../utils/extractTrackedChanges";
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "../commands/comments";
 import { schema } from "../schema";
+import { extractTrackedChanges } from "../utils/extractTrackedChanges";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -47,7 +50,12 @@ const throughEditor = (paragraph: Paragraph): Paragraph => {
   return saved;
 };
 
-const revisionXml = (revision: Revision, id: number, author: string, content: string): string =>
+const revisionXml = (
+  revision: Revision,
+  id: number,
+  author: string,
+  content: string,
+): string =>
   `<w:${revision.tag} w:id="${id}" w:author="${author}" w:date="2026-09-22T10:00:00Z">` +
   `${content}</w:${revision.tag}>`;
 
@@ -86,7 +94,12 @@ const rebindWordprocessingNamespace = (xml: string): string =>
   xml.replace("<w:p", `<w:p xmlns:w="${W}"`);
 
 const CASES = REVISIONS.flatMap((outer, outerIndex) =>
-  REVISIONS.map((inner, innerIndex) => ({ outer, inner, outerIndex, innerIndex })),
+  REVISIONS.map((inner, innerIndex) => ({
+    outer,
+    inner,
+    outerIndex,
+    innerIndex,
+  })),
 );
 
 describe("nested tracked revision editor round trip", () => {
@@ -173,7 +186,8 @@ const resolvedXml = (
       view.state = view.state.apply(transaction);
     },
   };
-  const command = mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
+  const command =
+    mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
   expect(command(revisionId)(view.state, view.dispatch)).toBe(true);
   const saved = fromProseDoc(view.state.doc, source, {
     stylesheetSource: { type: "package" },
@@ -208,7 +222,8 @@ describe("selectively resolving nested tracked revisions", () => {
     const host = document.createElement("div");
     host.append(
       DOMSerializer.fromSchema(schema).serializeFragment(
-        schema.node("paragraph", null, [schema.text("inner", [original])]).content,
+        schema.node("paragraph", null, [schema.text("inner", [original])])
+          .content,
         { document },
       ),
     );
@@ -234,11 +249,15 @@ describe("selectively resolving nested tracked revisions", () => {
   });
 
   test("keeps same-author nested revisions as separate review cards", () => {
-    const sameAuthor = SIMPLE_NESTING.replace('w:author="Inner author"', 'w:author="Outer author"');
+    const sameAuthor = SIMPLE_NESTING.replace(
+      'w:author="Inner author"',
+      'w:author="Outer author"',
+    );
     const source = documentWith(parseParagraphXml(sameAuthor));
     const state = EditorState.create({ doc: toProseDoc(source) });
     const entries = extractTrackedChanges(state).entries.filter(
-      ({ type }) => type === "insertion" || type === "deletion" || type === "replacement",
+      ({ type }) =>
+        type === "insertion" || type === "deletion" || type === "replacement",
     );
     expect(entries.map(({ type, revisionId }) => [type, revisionId])).toEqual([
       ["insertion", SIMPLE_OUTER_ID],
@@ -286,7 +305,12 @@ describe("selectively resolving nested tracked revisions", () => {
         REVISIONS[1],
         SIMPLE_OUTER_ID,
         "Outer",
-        revisionXml(REVISIONS[0], SIMPLE_INNER_ID, "Inner", runXml("t", "inner")),
+        revisionXml(
+          REVISIONS[0],
+          SIMPLE_INNER_ID,
+          "Inner",
+          runXml("t", "inner"),
+        ),
       ) +
       "</w:p>";
     const saved = resolvedXml("reject", SIMPLE_OUTER_ID, xml);

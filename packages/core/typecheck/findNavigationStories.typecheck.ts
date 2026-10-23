@@ -8,4 +8,7 @@ export const navigationStories = {
   footer: { kind: "footer", rId: "f-default" },
   footnote: { kind: "footnote", id: 1 },
   endnote: { kind: "endnote", id: 2 },
-} as const satisfies Record<typeof OP_STORIES.MAIN | Exclude<OpStory, string>["kind"], OpStory>;
+} as const satisfies Record<
+  typeof OP_STORIES.MAIN | Exclude<OpStory, string>["kind"],
+  OpStory
+>;

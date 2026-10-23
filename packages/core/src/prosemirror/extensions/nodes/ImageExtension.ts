@@ -2,10 +2,13 @@
  * Image Extension — inline/floating image node
  */
 
-import { expectImageAttrs } from "../../attrs";
-import type { ImageAttrs } from "../../schema/nodes";
 import { imageLuminanceFilter } from "../../../utils/imageLuminance";
-import { pictureNamesFromDom, pictureNamesDomAttrs } from "../../imagePictureNames";
+import { expectImageAttrs } from "../../attrs";
+import {
+  pictureNamesDomAttrs,
+  pictureNamesFromDom,
+} from "../../imagePictureNames";
+import type { ImageAttrs } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
 
 export const ImageExtension = createNodeExtension({
@@ -84,15 +87,17 @@ export const ImageExtension = createNodeExtension({
           const alt = element.getAttribute("alt");
           const title = element.getAttribute("title");
           const cssFloat = element.dataset["cssFloat"] as
-            | NonNullable<ImageAttrs["cssFloat"]>
-            | undefined;
+            NonNullable<ImageAttrs["cssFloat"]> | undefined;
           const borderWidthRaw = element.dataset["borderWidth"];
           const opacityRaw = element.dataset["opacity"];
-          const opacityParsed = opacityRaw === undefined ? Number.NaN : Number(opacityRaw);
+          const opacityParsed =
+            opacityRaw === undefined ? Number.NaN : Number(opacityRaw);
           const brightnessRaw = element.dataset["brightness"];
-          const brightness = brightnessRaw === undefined ? Number.NaN : Number(brightnessRaw);
+          const brightness =
+            brightnessRaw === undefined ? Number.NaN : Number(brightnessRaw);
           const contrastRaw = element.dataset["contrast"];
-          const contrast = contrastRaw === undefined ? Number.NaN : Number(contrastRaw);
+          const contrast =
+            contrastRaw === undefined ? Number.NaN : Number(contrastRaw);
           return {
             src: element.getAttribute("src") || "",
             ...(element.dataset["docPrName"] === undefined
@@ -104,11 +109,19 @@ export const ImageExtension = createNodeExtension({
             ...(element.width ? { width: element.width } : {}),
             ...(element.height ? { height: element.height } : {}),
             ...(element.dataset["rid"] ? { rId: element.dataset["rid"] } : {}),
-            wrapType: (element.dataset["wrapType"] as ImageAttrs["wrapType"]) || "inline",
-            displayMode: (element.dataset["displayMode"] as ImageAttrs["displayMode"]) || "inline",
+            wrapType:
+              (element.dataset["wrapType"] as ImageAttrs["wrapType"]) ||
+              "inline",
+            displayMode:
+              (element.dataset["displayMode"] as ImageAttrs["displayMode"]) ||
+              "inline",
             ...(cssFloat ? { cssFloat } : {}),
-            ...(element.dataset["transform"] ? { transform: element.dataset["transform"] } : {}),
-            ...(Number.isFinite(opacityParsed) ? { opacity: opacityParsed } : {}),
+            ...(element.dataset["transform"]
+              ? { transform: element.dataset["transform"] }
+              : {}),
+            ...(Number.isFinite(opacityParsed)
+              ? { opacity: opacityParsed }
+              : {}),
             ...(Number.isFinite(brightness) ? { brightness } : {}),
             ...(Number.isFinite(contrast) ? { contrast } : {}),
             ...(borderWidthRaw ? { borderWidth: Number(borderWidthRaw) } : {}),
@@ -130,7 +143,8 @@ export const ImageExtension = createNodeExtension({
         ...pictureNamesDomAttrs(attrs.pictureNames),
       };
 
-      if (attrs.docPrName != null) domAttrs["data-doc-pr-name"] = attrs.docPrName;
+      if (attrs.docPrName != null)
+        domAttrs["data-doc-pr-name"] = attrs.docPrName;
       if (attrs.alt) {
         domAttrs["alt"] = attrs.alt;
       }
@@ -193,9 +207,14 @@ export const ImageExtension = createNodeExtension({
         styles.push("height: auto");
       }
 
-      if (attrs.displayMode === "float" && attrs.cssFloat && attrs.cssFloat !== "none") {
+      if (
+        attrs.displayMode === "float" &&
+        attrs.cssFloat &&
+        attrs.cssFloat !== "none"
+      ) {
         styles.push(`float: ${attrs.cssFloat}`);
-        domAttrs["class"] += ` docx-image-float docx-image-float-${attrs.cssFloat}`;
+        domAttrs["class"] +=
+          ` docx-image-float docx-image-float-${attrs.cssFloat}`;
 
         const marginTop = attrs.distTop ?? 0;
         const marginBottom = attrs.distBottom ?? 0;

@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import { EditorState, type Transaction } from "prosemirror-state";
 
+import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
 import { parseDocx } from "../docx/parser";
 import { createDocx, repackDocx } from "../docx/rezip";
-import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
 import type {
@@ -17,7 +21,6 @@ import type {
 import { createEmptyDocument } from "../utils/createDocument";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { FolioDocxReviewer } from "./headless";
-import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIBlockPreviewRun, FolioAIInlineFormatting } from "./types";
@@ -46,61 +49,63 @@ const createFormattingBaseline = async ({
   return createDocx(document);
 };
 
-const createSameValuedDirectFormattingDocument = async (): Promise<ArrayBuffer> => {
-  const document = createEmptyDocument();
-  const formatting: TextFormatting = {
-    fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
-    fontSize: 21,
-    color: { rgb: "C00000" },
-  };
-  document.package.styles = {
-    ...document.package.styles,
-    docDefaults: { ...document.package.styles?.docDefaults, rPr: formatting },
-    styles: document.package.styles?.styles.map((style) =>
-      style.styleId === "Normal" ? { ...style, rPr: formatting } : style,
-    ),
-  };
-  document.package.document.content = [
-    {
-      type: "paragraph",
-      paraId: "A1000003",
-      content: [
-        { type: "run", content: [{ type: "text", text: "Inherited" }] },
-        {
-          type: "run",
-          formatting,
-          content: [{ type: "text", text: "Direct" }],
-        },
-      ],
-    },
-  ];
-  return createDocx(document);
-};
-
-const createParagraphFontWithDirectBoldDocument = async (): Promise<ArrayBuffer> => {
-  const document = createEmptyDocument();
-  document.package.document.content = [
-    {
-      type: "paragraph",
-      paraId: "A1000004",
-      formatting: {
-        runProperties: {
-          fontFamily: { ascii: "Arial", hAnsi: "Arial" },
-          fontSize: 21,
-          color: { rgb: "C00000" },
-        },
+const createSameValuedDirectFormattingDocument =
+  async (): Promise<ArrayBuffer> => {
+    const document = createEmptyDocument();
+    const formatting: TextFormatting = {
+      fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+      fontSize: 21,
+      color: { rgb: "C00000" },
+    };
+    document.package.styles = {
+      ...document.package.styles,
+      docDefaults: { ...document.package.styles?.docDefaults, rPr: formatting },
+      styles: document.package.styles?.styles.map((style) =>
+        style.styleId === "Normal" ? { ...style, rPr: formatting } : style,
+      ),
+    };
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        paraId: "A1000003",
+        content: [
+          { type: "run", content: [{ type: "text", text: "Inherited" }] },
+          {
+            type: "run",
+            formatting,
+            content: [{ type: "text", text: "Direct" }],
+          },
+        ],
       },
-      content: [
-        {
-          type: "run",
-          formatting: { bold: true },
-          content: [{ type: "text", text: "Direct bold" }],
+    ];
+    return createDocx(document);
+  };
+
+const createParagraphFontWithDirectBoldDocument =
+  async (): Promise<ArrayBuffer> => {
+    const document = createEmptyDocument();
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        paraId: "A1000004",
+        formatting: {
+          runProperties: {
+            fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+            fontSize: 21,
+            color: { rgb: "C00000" },
+          },
         },
-      ],
-    },
-  ];
-  return createDocx(document);
-};
+        content: [
+          {
+            type: "run",
+            formatting: { bold: true },
+            content: [{ type: "text", text: "Direct bold" }],
+          },
+        ],
+      },
+    ];
+    return createDocx(document);
+  };
 
 type SnapshotFormattingProvenanceCase = {
   label: string;
@@ -241,7 +246,11 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
   },
   {
     label: "character style double strike survives single strike reset",
-    formatting: { styleId: "SnapshotCharacter", strike: false, doubleStrike: true },
+    formatting: {
+      styleId: "SnapshotCharacter",
+      strike: false,
+      doubleStrike: true,
+    },
     expected: {
       italic: true,
       underline: true,
@@ -254,43 +263,47 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
   },
 ] as const satisfies readonly SnapshotFormattingProvenanceCase[];
 
-const createSnapshotFormattingProvenanceDocument = async (): Promise<ArrayBuffer> => {
-  const document = createEmptyDocument();
-  document.package.styles = {
-    ...document.package.styles,
-    styles: [
-      ...(document.package.styles?.styles ?? []),
-      {
-        styleId: "SnapshotCharacter",
-        type: "character",
-        name: "Snapshot Character",
-        rPr: {
-          italic: true,
-          underline: { style: "single" },
-          strike: true,
-          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
-          fontSize: 26,
-          color: { rgb: "C00000" },
-        },
-      },
-    ],
-  };
-  document.package.document.content = SNAPSHOT_FORMATTING_PROVENANCE_CASES.map(
-    ({ label, paragraphStyleId, formatting }, index): Paragraph => ({
-      type: "paragraph",
-      paraId: `B200${String(index).padStart(4, "0")}`,
-      ...(paragraphStyleId !== undefined && { formatting: { styleId: paragraphStyleId } }),
-      content: [
+const createSnapshotFormattingProvenanceDocument =
+  async (): Promise<ArrayBuffer> => {
+    const document = createEmptyDocument();
+    document.package.styles = {
+      ...document.package.styles,
+      styles: [
+        ...(document.package.styles?.styles ?? []),
         {
-          type: "run",
-          ...(formatting !== undefined && { formatting }),
-          content: [{ type: "text", text: label }],
+          styleId: "SnapshotCharacter",
+          type: "character",
+          name: "Snapshot Character",
+          rPr: {
+            italic: true,
+            underline: { style: "single" },
+            strike: true,
+            fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+            fontSize: 26,
+            color: { rgb: "C00000" },
+          },
         },
       ],
-    }),
-  );
-  return createDocx(document);
-};
+    };
+    document.package.document.content =
+      SNAPSHOT_FORMATTING_PROVENANCE_CASES.map(
+        ({ label, paragraphStyleId, formatting }, index): Paragraph => ({
+          type: "paragraph",
+          paraId: `B200${String(index).padStart(4, "0")}`,
+          ...(paragraphStyleId !== undefined && {
+            formatting: { styleId: paragraphStyleId },
+          }),
+          content: [
+            {
+              type: "run",
+              ...(formatting !== undefined && { formatting }),
+              content: [{ type: "text", text: label }],
+            },
+          ],
+        }),
+      );
+    return createDocx(document);
+  };
 
 const expectSnapshotFormattingProvenance = (
   snapshot: ReturnType<FolioDocxReviewer["snapshot"]>,
@@ -298,7 +311,10 @@ const expectSnapshotFormattingProvenance = (
   expect(snapshot.blocks.map(({ text }) => text)).toEqual(
     SNAPSHOT_FORMATTING_PROVENANCE_CASES.map(({ label }) => label),
   );
-  for (const [index, { label, expected }] of SNAPSHOT_FORMATTING_PROVENANCE_CASES.entries()) {
+  for (const [
+    index,
+    { label, expected },
+  ] of SNAPSHOT_FORMATTING_PROVENANCE_CASES.entries()) {
     expect({
       label,
       previewRuns: snapshot.blocks.at(index)?.previewRuns,
@@ -348,7 +364,10 @@ const HEADER_RELATIONSHIP_ID = "rIdFormattingHeader";
 
 const createHeaderFormattingBaseline = async (): Promise<ArrayBuffer> => {
   const seed = await createDocx(createEmptyDocument());
-  const document = await parseDocx(seed, { detectVariables: false, preloadFonts: false });
+  const document = await parseDocx(seed, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   document.package.headers = new Map([
     [
       HEADER_RELATIONSHIP_ID,
@@ -378,7 +397,10 @@ const createHeaderFormattingBaseline = async (): Promise<ArrayBuffer> => {
   return repackDocx(document, { updateModifiedDate: false });
 };
 
-const packagePart = async (buffer: ArrayBuffer, path: string): Promise<string | null> => {
+const packagePart = async (
+  buffer: ArrayBuffer,
+  path: string,
+): Promise<string | null> => {
   const zip = await JSZip.loadAsync(buffer);
   return zip.file(path)?.async("text") ?? null;
 };
@@ -428,7 +450,10 @@ const createMixedInlineCarrierFormattingDocument = (): Document => {
         changedInlineRun({ type: "text", text: "A" }, 93),
         changedInlineRun({ type: "tab" }, 94),
         changedInlineRun({ type: "break", breakType: "textWrapping" }, 95),
-        changedInlineRun({ type: "symbol", font: "Wingdings", char: "F06F" }, 96),
+        changedInlineRun(
+          { type: "symbol", font: "Wingdings", char: "F06F" },
+          96,
+        ),
         {
           type: "simpleField",
           instruction: " PAGE ",
@@ -462,7 +487,10 @@ const createUnformattedMixedInlineCarrierDocument = (): Document => {
       content: [
         { type: "run", content: [{ type: "text", text: "A" }] },
         { type: "run", content: [{ type: "tab" }] },
-        { type: "run", content: [{ type: "break", breakType: "textWrapping" }] },
+        {
+          type: "run",
+          content: [{ type: "break", breakType: "textWrapping" }],
+        },
         {
           type: "run",
           content: [{ type: "symbol", font: "Wingdings", char: "F06F" }],
@@ -481,7 +509,9 @@ const createUnformattedMixedInlineCarrierDocument = (): Document => {
             {
               type: "hyperlink",
               anchor: "carrier",
-              children: [{ type: "run", content: [{ type: "text", text: "field" }] }],
+              children: [
+                { type: "run", content: [{ type: "text", text: "field" }] },
+              ],
             },
           ],
         },
@@ -494,7 +524,8 @@ const createUnformattedMixedInlineCarrierDocument = (): Document => {
 const createMixedInlineCarrierDocumentWithPendingTab = (): Document => {
   const document = createUnformattedMixedInlineCarrierDocument();
   const paragraph = document.package.document.content.at(0);
-  const tabRun = paragraph?.type === "paragraph" ? paragraph.content.at(1) : undefined;
+  const tabRun =
+    paragraph?.type === "paragraph" ? paragraph.content.at(1) : undefined;
   if (tabRun?.type !== "run") {
     throw new Error("expected a tab run fixture");
   }
@@ -504,7 +535,9 @@ const createMixedInlineCarrierDocumentWithPendingTab = (): Document => {
 };
 
 const createSameIdInlineCarrierState = (): EditorState => {
-  const change = schema.mark("runPropertyChange", { changes: [INLINE_CARRIER_CHANGE] });
+  const change = schema.mark("runPropertyChange", {
+    changes: [INLINE_CARRIER_CHANGE],
+  });
   const marks = [schema.mark("bold"), change];
   const hyperlink = schema.mark("hyperlink", {
     href: "#carrier",
@@ -543,7 +576,10 @@ const createSameIdInlineCarrierState = (): EditorState => {
   });
 };
 
-const applyRevisionDecision = (state: EditorState, mode: "accept" | "reject"): EditorState => {
+const applyRevisionDecision = (
+  state: EditorState,
+  mode: "accept" | "reject",
+): EditorState => {
   let next = state;
   const command =
     mode === "accept"
@@ -560,10 +596,13 @@ const applyRevisionDecision = (state: EditorState, mode: "accept" | "reject"): E
 const countXmlElements = (xml: string, localName: string): number =>
   xml.match(new RegExp(`<w:${localName}(?:[\\s/>])`, "gu"))?.length ?? 0;
 
-const assertSingularRunPropertyChanges = (xml: string, expectedRunCount: number): void => {
-  const changedRuns = [...xml.matchAll(/<w:r(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/gu)].filter(
-    ([, content]) => content?.includes("<w:rPrChange "),
-  );
+const assertSingularRunPropertyChanges = (
+  xml: string,
+  expectedRunCount: number,
+): void => {
+  const changedRuns = [
+    ...xml.matchAll(/<w:r(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/gu),
+  ].filter(([, content]) => content?.includes("<w:rPrChange "));
   expect(changedRuns).toHaveLength(expectedRunCount);
   for (const [, content] of changedRuns) {
     expect(countXmlElements(content ?? "", "rPrChange")).toBe(1);
@@ -583,7 +622,9 @@ describe("tracked run formatting", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSnapshotFormattingProvenanceDocument(),
     );
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
 
     expectSnapshotFormattingProvenance(reopened.snapshot());
   });
@@ -612,7 +653,14 @@ describe("tracked run formatting", () => {
       {
         version: 1,
         mode: "direct",
-        operations: [{ id: "bold-off", type: "formatRange", range, formatting: { bold: false } }],
+        operations: [
+          {
+            id: "bold-off",
+            type: "formatRange",
+            range,
+            formatting: { bold: false },
+          },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -622,7 +670,9 @@ describe("tracked run formatting", () => {
     const offBlock = reopenedOff
       .snapshot()
       .blocks.find(({ text }) => text === "paragraph style inherited");
-    expect(offBlock?.previewRuns?.at(0)).toMatchObject({ directFormatting: { bold: false } });
+    expect(offBlock?.previewRuns?.at(0)).toMatchObject({
+      directFormatting: { bold: false },
+    });
     expect(offBlock?.previewRuns?.at(0)?.bold).toBeUndefined();
 
     if (!offBlock) {
@@ -653,7 +703,9 @@ describe("tracked run formatting", () => {
       { undefinedReferences: "refuse" },
     );
     expect(cleared.skipped).toEqual([]);
-    const reopenedCleared = await FolioDocxReviewer.fromBuffer(await reopenedOff.toBuffer());
+    const reopenedCleared = await FolioDocxReviewer.fromBuffer(
+      await reopenedOff.toBuffer(),
+    );
     const clearedRun = reopenedCleared
       .snapshot()
       .blocks.find(({ text }) => text === "paragraph style inherited")
@@ -693,7 +745,9 @@ describe("tracked run formatting", () => {
       await createParagraphFontWithDirectBoldDocument(),
     );
 
-    expect(reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0)?.directFormatting).toEqual({
+    expect(
+      reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0)?.directFormatting,
+    ).toEqual({
       bold: true,
     });
   });
@@ -722,19 +776,27 @@ describe("tracked run formatting", () => {
           id: "format-inherited",
           type: "formatRange",
           range,
-          formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+          formatting: {
+            fontFamily: "Georgia",
+            fontSizePt: 10.5,
+            color: "C00000",
+          },
         },
       ],
       { undefinedReferences: "refuse" },
     );
 
     expect(result.skipped).toEqual([]);
-    expect(reviewer.readReviewedStory({ view: "current-markup" })?.changes).toEqual([
+    expect(
+      reviewer.readReviewedStory({ view: "current-markup" })?.changes,
+    ).toEqual([
       expect.objectContaining({ type: "formatting", text: "Inherited" }),
     ]);
     expect(
-      reviewer.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+      reviewer
+        .readReviewedStory({ view: "final" })
+        ?.snapshot.blocks.at(0)
+        ?.previewRuns?.at(0)?.directFormatting,
     ).toEqual({ fontFamily: "Georgia", fontSizePt: 10.5, color: "#C00000" });
   });
 
@@ -769,11 +831,14 @@ describe("tracked run formatting", () => {
     );
 
     expect(result.skipped).toEqual([]);
-    expect(reviewer.readReviewedStory({ view: "current-markup" })?.changes).toEqual([
+    expect(
+      reviewer.readReviewedStory({ view: "current-markup" })?.changes,
+    ).toEqual([
       expect.objectContaining({ type: "formatting", text: "Direct" }),
     ]);
     expect(
-      reviewer.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns,
+      reviewer.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)
+        ?.previewRuns,
     ).toEqual([
       {
         text: "InheritedDirect",
@@ -791,7 +856,9 @@ describe("tracked run formatting", () => {
     expect(trackedXml).toContain("<w:b/>");
 
     const accepting = await FolioDocxReviewer.fromBuffer(tracked);
-    const acceptedChange = accepting.getChanges().find(({ type }) => type === "formatting");
+    const acceptedChange = accepting
+      .getChanges()
+      .find(({ type }) => type === "formatting");
     if (!acceptedChange) {
       throw new Error("expected a formatting change after reopen");
     }
@@ -801,7 +868,9 @@ describe("tracked run formatting", () => {
     expect(acceptedXml).toContain("<w:b/>");
 
     const rejecting = await FolioDocxReviewer.fromBuffer(tracked);
-    const rejectedChange = rejecting.getChanges().find(({ type }) => type === "formatting");
+    const rejectedChange = rejecting
+      .getChanges()
+      .find(({ type }) => type === "formatting");
     if (!rejectedChange) {
       throw new Error("expected a formatting change after reopen");
     }
@@ -812,9 +881,12 @@ describe("tracked run formatting", () => {
   });
 
   test("never serializes two unresolved formatting revisions on one run", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createFormattingBaseline(), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createFormattingBaseline(),
+      {
+        author: "Reviewer",
+      },
+    );
     const block = reviewer.snapshot().blocks.at(0);
     const range = block
       ? createFolioAITextRangeHandle({
@@ -831,12 +903,19 @@ describe("tracked run formatting", () => {
     const result = reviewer.applyOperations(
       [
         { id: "bold", type: "formatRange", range, formatting: { bold: true } },
-        { id: "italic", type: "formatRange", range, formatting: { italic: true } },
+        {
+          id: "italic",
+          type: "formatRange",
+          range,
+          formatting: { italic: true },
+        },
       ],
       { undefinedReferences: "refuse" },
     );
     expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
-    expect(result.skipped).toEqual([{ id: "bold", reason: "pendingRunPropertyChange" }]);
+    expect(result.skipped).toEqual([
+      { id: "bold", reason: "pendingRunPropertyChange" },
+    ]);
 
     const tracked = await reviewer.toBuffer();
     const trackedXml = await documentXml(tracked);
@@ -858,8 +937,12 @@ describe("tracked run formatting", () => {
   });
 
   test("a reopened formatting owner refuses replacement without side effects", async () => {
-    const baseline = await createFormattingBaseline({ formatting: { highlight: "yellow" } });
-    const first = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const baseline = await createFormattingBaseline({
+      formatting: { highlight: "yellow" },
+    });
+    const first = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const firstBlock = first.snapshot().blocks.at(0);
     const firstRange = firstBlock
       ? createFolioAITextRangeHandle({
@@ -877,7 +960,12 @@ describe("tracked run formatting", () => {
         version: 1,
         mode: "tracked-changes",
         operations: [
-          { id: "bold", type: "formatRange", range: firstRange, formatting: { bold: true } },
+          {
+            id: "bold",
+            type: "formatRange",
+            range: firstRange,
+            formatting: { bold: true },
+          },
         ],
       },
       {
@@ -888,7 +976,9 @@ describe("tracked run formatting", () => {
     expect(firstResult.nextRevisionId).toBe(701);
 
     const tracked = await first.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(tracked, { author: "Reviewer" });
+    const reopened = await FolioDocxReviewer.fromBuffer(tracked, {
+      author: "Reviewer",
+    });
     const beforeRefusal = await reopened.toBuffer();
     const snapshotBeforeRefusal = reopened.snapshot();
     const reopenedBlock = reopened.snapshot().blocks.at(0);
@@ -927,7 +1017,9 @@ describe("tracked run formatting", () => {
     expect(reopened.getComments()).toEqual([]);
     expect(reopened.snapshot()).toEqual(snapshotBeforeRefusal);
     const afterRefusal = await reopened.toBuffer();
-    expect(await documentXml(afterRefusal)).toBe(await documentXml(beforeRefusal));
+    expect(await documentXml(afterRefusal)).toBe(
+      await documentXml(beforeRefusal),
+    );
     expect(await packagePart(afterRefusal, "word/comments.xml")).toBe(
       await packagePart(beforeRefusal, "word/comments.xml"),
     );
@@ -965,7 +1057,9 @@ describe("tracked run formatting", () => {
     expect(followupResult.applied.at(0)?.revisionIds).toEqual([701]);
     expect(followupResult.nextRevisionId).toBe(702);
 
-    const accepting = await FolioDocxReviewer.fromBuffer(await reopened.toBuffer());
+    const accepting = await FolioDocxReviewer.fromBuffer(
+      await reopened.toBuffer(),
+    );
     accepting.acceptAll();
     const acceptedBuffer = await accepting.toBuffer();
     const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
@@ -975,7 +1069,9 @@ describe("tracked run formatting", () => {
     expect(acceptedXml).not.toContain("<w:rPrChange ");
     expect(accepted.getChanges()).toEqual([]);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(await reopened.toBuffer());
+    const rejecting = await FolioDocxReviewer.fromBuffer(
+      await reopened.toBuffer(),
+    );
     rejecting.rejectAll();
     const rejectedBuffer = await rejecting.toBuffer();
     const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
@@ -987,7 +1083,9 @@ describe("tracked run formatting", () => {
   });
 
   test("enumerates and resolves formatting revisions across mixed inline carriers", async () => {
-    const source = await createDocx(createMixedInlineCarrierFormattingDocument());
+    const source = await createDocx(
+      createMixedInlineCarrierFormattingDocument(),
+    );
     const reviewer = await FolioDocxReviewer.fromBuffer(source);
     const symbol = decodeOoxmlSymbolCharacter("F06F");
     if (!symbol) {
@@ -1001,17 +1099,23 @@ describe("tracked run formatting", () => {
 
     const saved = await reviewer.toBuffer();
     assertSingularRunPropertyChanges(await documentXml(saved), 6);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getChanges()).toEqual(reviewer.getChanges());
+    expect((await FolioDocxReviewer.fromBuffer(saved)).getChanges()).toEqual(
+      reviewer.getChanges(),
+    );
 
     for (const mode of ["accept", "reject"] as const) {
       const resolving = await FolioDocxReviewer.fromBuffer(saved);
       for (const { id } of resolving.getChanges()) {
-        expect(mode === "accept" ? resolving.acceptChange(id) : resolving.rejectChange(id)).toBe(
-          true,
-        );
+        expect(
+          mode === "accept"
+            ? resolving.acceptChange(id)
+            : resolving.rejectChange(id),
+        ).toBe(true);
       }
       const resolved = await resolving.toBuffer();
-      expect((await FolioDocxReviewer.fromBuffer(resolved)).getChanges()).toEqual([]);
+      expect(
+        (await FolioDocxReviewer.fromBuffer(resolved)).getChanges(),
+      ).toEqual([]);
       const xml = await documentXml(resolved);
       expect(xml).not.toContain("<w:rPrChange ");
       expect(countXmlElements(xml, "b")).toBe(mode === "accept" ? 6 : 0);
@@ -1033,14 +1137,21 @@ describe("tracked run formatting", () => {
     ]);
 
     for (const mode of ["accept", "reject"] as const) {
-      const resolvedState = applyRevisionDecision(createSameIdInlineCarrierState(), mode);
+      const resolvedState = applyRevisionDecision(
+        createSameIdInlineCarrierState(),
+        mode,
+      );
       expect(getTrackedChangesFromDoc(resolvedState.doc)).toEqual([]);
       const resolved = await createDocx(
-        fromProseDoc(resolvedState.doc, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(resolvedState.doc, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       );
       const reopened = await FolioDocxReviewer.fromBuffer(resolved);
       expect(reopened.getChanges()).toEqual([]);
-      expect(countXmlElements(await documentXml(resolved), "b")).toBe(mode === "accept" ? 6 : 0);
+      expect(countXmlElements(await documentXml(resolved), "b")).toBe(
+        mode === "accept" ? 6 : 0,
+      );
     }
   });
 
@@ -1089,7 +1200,9 @@ describe("tracked run formatting", () => {
       );
       expect(result.skipped).toEqual([]);
       if (mode === "tracked-changes") {
-        expect(result.applied.at(0)?.revisionIds).toEqual([900, 901, 902, 903, 904, 905]);
+        expect(result.applied.at(0)?.revisionIds).toEqual([
+          900, 901, 902, 903, 904, 905,
+        ]);
         expect(result.nextRevisionId).toBe(906);
       }
       const formatted = await reviewer.toBuffer();
@@ -1101,7 +1214,9 @@ describe("tracked run formatting", () => {
 
       if (mode === "direct") {
         expect(formattedXml).not.toContain("<w:rPrChange ");
-        expect((await FolioDocxReviewer.fromBuffer(formatted)).getChanges()).toEqual([]);
+        expect(
+          (await FolioDocxReviewer.fromBuffer(formatted)).getChanges(),
+        ).toEqual([]);
         return;
       }
 
@@ -1110,9 +1225,15 @@ describe("tracked run formatting", () => {
       if (!symbol) {
         throw new Error("expected a decodable symbol fixture");
       }
-      expect((await FolioDocxReviewer.fromBuffer(formatted)).getChanges()).toEqual(
+      expect(
+        (await FolioDocxReviewer.fromBuffer(formatted)).getChanges(),
+      ).toEqual(
         ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
-          expect.objectContaining({ id: 900 + index, type: "formatting", text }),
+          expect.objectContaining({
+            id: 900 + index,
+            type: "formatting",
+            text,
+          }),
         ),
       );
       for (const decision of ["accept", "reject"] as const) {
@@ -1125,18 +1246,32 @@ describe("tracked run formatting", () => {
         const resolved = await resolving.toBuffer();
         const resolvedXml = await documentXml(resolved);
         expect(resolvedXml).not.toContain("<w:rPrChange ");
-        expect(countXmlElements(resolvedXml, "b")).toBe(decision === "accept" ? 6 : 0);
-        expect(countXmlElements(resolvedXml, "rFonts")).toBe(decision === "accept" ? 6 : 0);
-        expect(countXmlElements(resolvedXml, "sz")).toBe(decision === "accept" ? 6 : 0);
-        expect(countXmlElements(resolvedXml, "color")).toBe(decision === "accept" ? 6 : 0);
-        expect((await FolioDocxReviewer.fromBuffer(resolved)).getChanges()).toEqual([]);
+        expect(countXmlElements(resolvedXml, "b")).toBe(
+          decision === "accept" ? 6 : 0,
+        );
+        expect(countXmlElements(resolvedXml, "rFonts")).toBe(
+          decision === "accept" ? 6 : 0,
+        );
+        expect(countXmlElements(resolvedXml, "sz")).toBe(
+          decision === "accept" ? 6 : 0,
+        );
+        expect(countXmlElements(resolvedXml, "color")).toBe(
+          decision === "accept" ? 6 : 0,
+        );
+        expect(
+          (await FolioDocxReviewer.fromBuffer(resolved)).getChanges(),
+        ).toEqual([]);
       }
     },
   );
 
   test("a pending owner on one inline carrier refuses the whole formatting transaction", async () => {
-    const baseline = await createDocx(createMixedInlineCarrierDocumentWithPendingTab());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const baseline = await createDocx(
+      createMixedInlineCarrierDocumentWithPendingTab(),
+    );
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      author: "Reviewer",
+    });
     const before = await reviewer.toBuffer();
     const snapshot = reviewer.snapshot();
     const block = snapshot.blocks.at(0);
@@ -1157,7 +1292,12 @@ describe("tracked run formatting", () => {
         version: 1,
         mode: "tracked-changes",
         operations: [
-          { id: "format-carriers", type: "formatRange", range, formatting: { italic: true } },
+          {
+            id: "format-carriers",
+            type: "formatRange",
+            range,
+            formatting: { italic: true },
+          },
         ],
       },
       {
@@ -1167,20 +1307,30 @@ describe("tracked run formatting", () => {
     );
 
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "format-carriers", reason: "pendingRunPropertyChange" }]);
+    expect(result.skipped).toEqual([
+      { id: "format-carriers", reason: "pendingRunPropertyChange" },
+    ]);
     expect(result.nextRevisionId).toBe(900);
     expect(reviewer.snapshot()).toEqual(snapshot);
-    expect(await documentXml(await reviewer.toBuffer())).toBe(await documentXml(before));
+    expect(await documentXml(await reviewer.toBuffer())).toBe(
+      await documentXml(before),
+    );
     expect(reviewer.getChanges()).toEqual([
       expect.objectContaining({ id: 899, type: "formatting", text: "\t" }),
     ]);
   });
 
   test("uses the same operation in a secondary document story", async () => {
-    const story = { type: "header" as const, relationshipId: HEADER_RELATIONSHIP_ID };
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createHeaderFormattingBaseline(), {
-      author: "Reviewer",
-    });
+    const story = {
+      type: "header" as const,
+      relationshipId: HEADER_RELATIONSHIP_ID,
+    };
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createHeaderFormattingBaseline(),
+      {
+        author: "Reviewer",
+      },
+    );
     const snapshot = reviewer.snapshotStory(story);
     const block = snapshot?.blocks.at(0);
     const range = block
@@ -1210,14 +1360,21 @@ describe("tracked run formatting", () => {
         version: 1,
         mode: "tracked-changes",
         operations: [
-          { id: "format-header", type: "formatRange", range, formatting: { italic: true } },
+          {
+            id: "format-header",
+            type: "formatRange",
+            range,
+            formatting: { italic: true },
+          },
         ],
       },
       snapshot,
     });
     expect(result.skipped).toEqual([]);
     expect(
-      reviewer.readReviewedStory({ story, view: "final" })?.snapshot.blocks.at(0)?.previewRuns,
+      reviewer
+        .readReviewedStory({ story, view: "final" })
+        ?.snapshot.blocks.at(0)?.previewRuns,
     ).toEqual([
       {
         text: "Header",
@@ -1235,8 +1392,12 @@ describe("tracked run formatting", () => {
       },
     ]);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
-    expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
+    expect(
+      reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
+    ).toEqual([
       expect.objectContaining({ type: "formatting", text: "Header" }),
     ]);
   });
@@ -1247,13 +1408,18 @@ describe("tracked run formatting", () => {
     });
     const trackedXml = await documentXml(tracked);
     expect(trackedXml).toContain("<w:rPrChange ");
-    expect(trackedXml).toContain('<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"');
+    expect(trackedXml).toContain(
+      '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"',
+    );
     expect(trackedXml).toContain('<w:color w:val="C00000"');
     expect(trackedXml).toContain('<w:sz w:val="21"');
 
     const reopened = await FolioDocxReviewer.fromBuffer(tracked);
     expect(
-      reopened.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
+      reopened
+        .readReviewedStory({ view: "final" })
+        ?.snapshot.blocks.at(0)
+        ?.previewRuns?.at(0),
     ).toMatchObject({
       fontFamily: "Georgia",
       fontSizePt: 10.5,
@@ -1265,11 +1431,16 @@ describe("tracked run formatting", () => {
       },
     });
     expect(
-      reopened.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
+      reopened
+        .readReviewedStory({ view: "original" })
+        ?.snapshot.blocks.at(0)
+        ?.previewRuns?.at(0),
     ).toMatchObject({ fontFamily: "Arial", fontSizePt: 11 });
     expect(
-      reopened.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+      reopened
+        .readReviewedStory({ view: "original" })
+        ?.snapshot.blocks.at(0)
+        ?.previewRuns?.at(0)?.directFormatting,
     ).toBeUndefined();
   });
 
@@ -1284,14 +1455,22 @@ describe("tracked run formatting", () => {
     });
     const reopened = await FolioDocxReviewer.fromBuffer(tracked);
     expect(
-      reopened.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
+      reopened
+        .readReviewedStory({ view: "final" })
+        ?.snapshot.blocks.at(0)
+        ?.previewRuns?.at(0),
     ).toMatchObject({ fontFamily: "Arial", fontSizePt: 11 });
     expect(
-      reopened.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+      reopened
+        .readReviewedStory({ view: "final" })
+        ?.snapshot.blocks.at(0)
+        ?.previewRuns?.at(0)?.directFormatting,
     ).toBeUndefined();
     expect(
-      reopened.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
+      reopened
+        .readReviewedStory({ view: "original" })
+        ?.snapshot.blocks.at(0)
+        ?.previewRuns?.at(0),
     ).toMatchObject({
       fontFamily: "Georgia",
       fontSizePt: 10.5,
@@ -1306,7 +1485,9 @@ describe("tracked run formatting", () => {
 });
 
 // Earlier formatting fixtures did not pair property-set presence with partial replacements.
-test.each([undefined, {}, { italic: true }] satisfies (TextFormatting | undefined)[])(
+test.each([undefined, {}, { italic: true }] satisfies (
+  TextFormatting | undefined
+)[])(
   "formatting snapshots preserve property-set presence through resolution: %j",
   async (formatting) => {
     for (const patch of [
@@ -1333,7 +1514,14 @@ test.each([undefined, {}, { italic: true }] satisfies (TextFormatting | undefine
             operations: [
               { id: "format", type: "formatRange", range, formatting: patch },
               ...(replace
-                ? [{ id: "replace", type: "replaceRange" as const, range, replace: "updated" }]
+                ? [
+                    {
+                      id: "replace",
+                      type: "replaceRange" as const,
+                      range,
+                      replace: "updated",
+                    },
+                  ]
                 : []),
             ],
           },
@@ -1341,24 +1529,33 @@ test.each([undefined, {}, { italic: true }] satisfies (TextFormatting | undefine
         );
         expect(result.skipped).toEqual([]);
         expect(result.applied).toHaveLength(replace ? 2 : 1);
-        for (const phase of ["pending", ...(replace ? ["restored-deletion"] : [])]) {
+        for (const phase of [
+          "pending",
+          ...(replace ? ["restored-deletion"] : []),
+        ]) {
           if (phase === "restored-deletion") {
-            const deletion = reviewer.getChanges().find(({ type }) => type === "deletion");
+            const deletion = reviewer
+              .getChanges()
+              .find(({ type }) => type === "deletion");
             if (!deletion) throw new Error("Expected replacement deletion");
             expect(reviewer.rejectChange(deletion.id)).toBe(true);
           }
-          const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+          const reopened = await FolioDocxReviewer.fromBuffer(
+            await reviewer.toBuffer(),
+          );
           for (const decision of ["accept", "reject"] as const) {
             const live = reviewer.toResolvedDocument(decision);
             const saved = reopened.toResolvedDocument(decision);
-            expect(canonicalReviewModel(saved.package.document.content)).toEqual(
-              canonicalReviewModel(live.package.document.content),
-            );
+            expect(
+              canonicalReviewModel(saved.package.document.content),
+            ).toEqual(canonicalReviewModel(live.package.document.content));
             if (decision === "reject") {
               const paragraph = saved.package.document.content.at(0);
-              if (paragraph?.type !== "paragraph") throw new Error("Expected resolved paragraph");
+              if (paragraph?.type !== "paragraph")
+                throw new Error("Expected resolved paragraph");
               for (const run of paragraph.content) {
-                if (run.type === "run") expect(run.formatting).toEqual(formatting);
+                if (run.type === "run")
+                  expect(run.formatting).toEqual(formatting);
               }
             }
           }

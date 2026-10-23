@@ -60,7 +60,11 @@ const graph = await loadSchemaGraph();
  * is a violation of a different kind at a different path, and one this test has
  * no opinion about.
  */
-const partWithChildren = (element: string, type: string, children: readonly string[]): string => {
+const partWithChildren = (
+  element: string,
+  type: string,
+  children: readonly string[],
+): string => {
   const container = space.containers.get(
     containerKey({
       element: { namespace: WML_NAMESPACE, name: element },
@@ -73,7 +77,9 @@ const partWithChildren = (element: string, type: string, children: readonly stri
   const chain = container.path.map(({ element: { name } }) => name);
   const inner = children.map((name) => `<w:${name}/>`).join("");
   const open = chain
-    .map((name, index) => (index === 0 ? `<w:${name} xmlns:w="${WML_NAMESPACE}">` : `<w:${name}>`))
+    .map((name, index) =>
+      index === 0 ? `<w:${name} xmlns:w="${WML_NAMESPACE}">` : `<w:${name}>`,
+    )
     .join("");
   const close = [...chain]
     .reverse()
@@ -82,13 +88,21 @@ const partWithChildren = (element: string, type: string, children: readonly stri
   return `<?xml version="1.0"?>${open}${inner}${close}`;
 };
 
-const outOfOrderChildren = (element: string, type: string, children: readonly string[]): string[] =>
+const outOfOrderChildren = (
+  element: string,
+  type: string,
+  children: readonly string[],
+): string[] =>
   validateOoxmlPart({ graph, xml: partWithChildren(element, type, children) })
     .filter(({ kind }) => kind === SCHEMA_VIOLATION_KINDS.outOfOrderChild)
     .map(({ name }) => name);
 
 /** Only the names the member itself declares; `CT_TblPrBase` has no change. */
-const declaredByMember = (element: string, type: string, names: readonly string[]): string[] => {
+const declaredByMember = (
+  element: string,
+  type: string,
+  names: readonly string[],
+): string[] => {
   const container = space.containers.get(
     containerKey({
       element: { namespace: WML_NAMESPACE, name: element },
@@ -103,7 +117,9 @@ const declaredByMember = (element: string, type: string, names: readonly string[
   return names.filter((name) => own.has(name));
 };
 
-const sequenceRows = DISPATCHED_CONTAINERS.filter(({ sequence }) => sequence === true);
+const sequenceRows = DISPATCHED_CONTAINERS.filter(
+  ({ sequence }) => sequence === true,
+);
 
 describe("a generated sequence is the order the corpus validator scores against", () => {
   test.each(sequenceRows)("$key", ({ key, members }) => {
@@ -119,7 +135,12 @@ describe("a generated sequence is the order the corpus validator scores against"
       // member to the one it owes is what keeps the assertion above from
       // passing vacuously.
       const reversed = outOfOrderChildren(element, type, [...names].reverse());
-      if (ordersChildrenOf(graph, qualify({ namespace: WML_NAMESPACE, name: type }))) {
+      if (
+        ordersChildrenOf(
+          graph,
+          qualify({ namespace: WML_NAMESPACE, name: type }),
+        )
+      ) {
         expect(reversed.length).toBeGreaterThan(0);
         continue;
       }

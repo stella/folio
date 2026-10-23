@@ -5,7 +5,8 @@ import type { ImagePosition } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const IMAGE_RELATIONSHIP_TYPE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 
@@ -47,7 +48,10 @@ const documentXml = (runContent: string): string => `${XML_DECLARATION}
   <w:body><w:p><w:r>${runContent}</w:r></w:p><w:sectPr/></w:body>
 </w:document>`;
 
-const buildDocx = async (runContent: string, includeImage = false): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  runContent: string,
+  includeImage = false,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file("word/document.xml", documentXml(runContent));
 
@@ -61,7 +65,10 @@ const buildDocx = async (runContent: string, includeImage = false): Promise<Arra
         `<Relationship Id="rIdImage" Type="${IMAGE_RELATIONSHIP_TYPE}" Target="media/preview.png"/></Relationships>`,
       ),
     );
-    zip.file("word/media/preview.png", new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]));
+    zip.file(
+      "word/media/preview.png",
+      new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
   }
 
   return zip.generateAsync({ type: "arraybuffer" });
@@ -78,7 +85,9 @@ const bodyDrawingTypes = ({ package: { document } }: ParsedDocx): string[] =>
       : [],
   );
 
-const bodyShapeWrapTypes = ({ package: { document } }: ParsedDocx): string[] => {
+const bodyShapeWrapTypes = ({
+  package: { document },
+}: ParsedDocx): string[] => {
   const wrapTypes: string[] = [];
   for (const block of document.content) {
     if (block.type !== "paragraph") {
@@ -98,7 +107,9 @@ const bodyShapeWrapTypes = ({ package: { document } }: ParsedDocx): string[] => 
   return wrapTypes;
 };
 
-const bodyShapePositions = ({ package: { document } }: ParsedDocx): ImagePosition[] => {
+const bodyShapePositions = ({
+  package: { document },
+}: ParsedDocx): ImagePosition[] => {
   const positions: ImagePosition[] = [];
   for (const block of document.content) {
     if (block.type !== "paragraph") {
@@ -143,7 +154,9 @@ describe("text-box drawing ownership", () => {
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const reopened = await parseDocx(saved, { preloadFonts: false });
     expect(bodyDrawingTypes(reopened)).toEqual(["shape"]);
-    expect((await savedDocumentXml(saved)).match(/<w:drawing(?:\s|>)/gu)).toHaveLength(1);
+    expect(
+      (await savedDocumentXml(saved)).match(/<w:drawing(?:\s|>)/gu),
+    ).toHaveLength(1);
   });
 
   test("an image-backed VML text-box container stays one raw drawing", async () => {

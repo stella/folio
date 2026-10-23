@@ -14,10 +14,12 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
 import { compileLegalSourceToDocument } from "@stll/docx-core";
 
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
 import type { Document } from "../types/document";
@@ -25,8 +27,8 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { createDocx } from "./rezip";
 import {
   createTableOfContentsField,
-  HEADING_LEVELS,
   heading,
+  HEADING_LEVELS,
   paragraph,
   table,
 } from "./server/build";
@@ -55,7 +57,9 @@ describe("a document folio authors resolves every style it references", () => {
   test("an empty document, from each built-in style set", async () => {
     expect(await danglingIn(createEmptyDocument())).toEqual([]);
     expect(
-      await danglingIn(createEmptyDocument({ preset: createStellaStyleDocumentPreset() })),
+      await danglingIn(
+        createEmptyDocument({ preset: createStellaStyleDocumentPreset() }),
+      ),
     ).toEqual([]);
   });
 
@@ -64,23 +68,41 @@ describe("a document folio authors resolves every style it references", () => {
     // built-in style id, so the generator has to be able to produce all three.
     const block = fc.oneof(
       fc
-        .tuple(fc.integer({ min: 1, max: 6 }), fc.constantFrom("Alpha", "Beta", "Gamma"))
+        .tuple(
+          fc.integer({ min: 1, max: 6 }),
+          fc.constantFrom("Alpha", "Beta", "Gamma"),
+        )
         .map(([depth, text]) => `${"#".repeat(depth)} ${text}`),
-      fc.constantFrom("> quoted", "- item\n- item", "1. one\n2. two", "plain text", "`code`"),
+      fc.constantFrom(
+        "> quoted",
+        "- item\n- item",
+        "1. one\n2. two",
+        "plain text",
+        "`code`",
+      ),
     );
     await fc.assert(
-      fc.asyncProperty(fc.array(block, { minLength: 1, maxLength: 8 }), async (blocks) => {
-        expect(await danglingIn(fromMarkdown(blocks.join("\n\n")))).toEqual([]);
-      }),
+      fc.asyncProperty(
+        fc.array(block, { minLength: 1, maxLength: 8 }),
+        async (blocks) => {
+          expect(await danglingIn(fromMarkdown(blocks.join("\n\n")))).toEqual(
+            [],
+          );
+        },
+      ),
       propertyConfig({ numRuns: 40 }),
     );
   });
 
   test("the report builder, for every heading level it accepts", async () => {
-    const document = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const document = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
     document.package.document.content = [
       createTableOfContentsField(),
-      ...HEADING_LEVELS.map((level) => heading({ text: `Level ${level}`, level })),
+      ...HEADING_LEVELS.map((level) =>
+        heading({ text: `Level ${level}`, level }),
+      ),
       paragraph("Body."),
       table({ header: ["A", "B"], rows: [["a", "b"]] }),
     ];
@@ -112,7 +134,9 @@ describe("a document folio authors resolves every style it references", () => {
     const document = createEmptyDocument();
     document.package.document.content = [
       createTableOfContentsField(),
-      ...HEADING_LEVELS.map((level) => heading({ text: `Level ${level}`, level })),
+      ...HEADING_LEVELS.map((level) =>
+        heading({ text: `Level ${level}`, level }),
+      ),
       paragraph("Body."),
       table({ header: ["A", "B"], rows: [["a", "b"]] }),
     ];
@@ -131,7 +155,9 @@ describe("a document folio authors resolves every style it references", () => {
         content: [paragraph("A remark.")],
       },
     ];
-    document.package.footnotes = [{ type: "footnote", id: 1, content: [paragraph("A note.")] }];
+    document.package.footnotes = [
+      { type: "footnote", id: 1, content: [paragraph("A note.")] },
+    ];
     expect(await danglingIn(document)).toEqual([]);
   });
 
@@ -150,7 +176,9 @@ describe("a document folio authors resolves every style it references", () => {
         content: [paragraph("A remark.")],
       },
     ];
-    document.package.footnotes = [{ type: "footnote", id: 1, content: [paragraph("A note.")] }];
+    document.package.footnotes = [
+      { type: "footnote", id: 1, content: [paragraph("A note.")] },
+    ];
     expect(await danglingIn(document)).toEqual([]);
   });
 });

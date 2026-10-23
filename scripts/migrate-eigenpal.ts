@@ -57,7 +57,10 @@ const IGNORED_FILES = new Set([
 
 const SAFE_SPECIFIER_REPLACEMENTS = new Map([
   ["@eigenpal/docx-editor-react", "@stll/folio-react/compat/eigenpal"],
-  ["@eigenpal/docx-editor-react/styles.css", "@stll/folio-react/standalone.css"],
+  [
+    "@eigenpal/docx-editor-react/styles.css",
+    "@stll/folio-react/standalone.css",
+  ],
   ["@eigenpal/docx-editor-vue", "@stll/folio-vue"],
   ["@eigenpal/docx-editor-vue/styles.css", "@stll/folio-vue/editor.css"],
   ["@eigenpal/docx-editor-vue/ui", "@stll/folio-vue/ui"],
@@ -65,14 +68,35 @@ const SAFE_SPECIFIER_REPLACEMENTS = new Map([
   ["@eigenpal/docx-editor-vue/dialogs", "@stll/folio-vue/dialogs"],
   ["@eigenpal/docx-editor-vue/styles", "@stll/folio-vue/styles"],
   ["@eigenpal/docx-editor-core", "@stll/folio-core/compat/eigenpal"],
-  ["@eigenpal/docx-editor-core/types/document", "@stll/folio-core/types/document"],
-  ["@eigenpal/docx-editor-core/types/content", "@stll/folio-core/types/content"],
-  ["@eigenpal/docx-editor-core/layout-engine", "@stll/folio-core/layout-engine"],
-  ["@eigenpal/docx-editor-core/layout-painter", "@stll/folio-core/layout-painter"],
+  [
+    "@eigenpal/docx-editor-core/types/document",
+    "@stll/folio-core/types/document",
+  ],
+  [
+    "@eigenpal/docx-editor-core/types/content",
+    "@stll/folio-core/types/content",
+  ],
+  [
+    "@eigenpal/docx-editor-core/layout-engine",
+    "@stll/folio-core/layout-engine",
+  ],
+  [
+    "@eigenpal/docx-editor-core/layout-painter",
+    "@stll/folio-core/layout-painter",
+  ],
   ["@eigenpal/docx-editor-core/prosemirror", "@stll/folio-core/prosemirror"],
-  ["@eigenpal/docx-editor-core/prosemirror/conversion", "@stll/folio-core/prosemirror/conversion"],
-  ["@eigenpal/docx-editor-core/prosemirror/extensions", "@stll/folio-core/prosemirror/extensions"],
-  ["@eigenpal/docx-editor-core/prosemirror/schema", "@stll/folio-core/prosemirror/schema"],
+  [
+    "@eigenpal/docx-editor-core/prosemirror/conversion",
+    "@stll/folio-core/prosemirror/conversion",
+  ],
+  [
+    "@eigenpal/docx-editor-core/prosemirror/extensions",
+    "@stll/folio-core/prosemirror/extensions",
+  ],
+  [
+    "@eigenpal/docx-editor-core/prosemirror/schema",
+    "@stll/folio-core/prosemirror/schema",
+  ],
   [
     "@eigenpal/docx-editor-core/prosemirror/utils/extractTrackedChanges",
     "@stll/folio-core/prosemirror/utils/extractTrackedChanges",
@@ -85,13 +109,31 @@ const SAFE_SPECIFIER_REPLACEMENTS = new Map([
   ["@eigenpal/nuxt-docx-editor", "@stll/folio-nuxt"],
 ]);
 
-const PACKAGE_JSON_REPLACEMENTS = new Map<string, { name: string; version: string }>([
-  ["@eigenpal/docx-editor-react", { name: "@stll/folio-react", version: "latest" }],
+const PACKAGE_JSON_REPLACEMENTS = new Map<
+  string,
+  { name: string; version: string }
+>([
+  [
+    "@eigenpal/docx-editor-react",
+    { name: "@stll/folio-react", version: "latest" },
+  ],
   ["@eigenpal/docx-editor-vue", { name: "@stll/folio-vue", version: "latest" }],
-  ["@eigenpal/nuxt-docx-editor", { name: "@stll/folio-nuxt", version: "latest" }],
-  ["@eigenpal/docx-editor-core", { name: "@stll/folio-core", version: "latest" }],
-  ["@eigenpal/docx-editor-agents", { name: "@stll/folio-agents", version: "latest" }],
-  ["@eigenpal/docx-editor-i18n", { name: "@stll/folio-react", version: "latest" }],
+  [
+    "@eigenpal/nuxt-docx-editor",
+    { name: "@stll/folio-nuxt", version: "latest" },
+  ],
+  [
+    "@eigenpal/docx-editor-core",
+    { name: "@stll/folio-core", version: "latest" },
+  ],
+  [
+    "@eigenpal/docx-editor-agents",
+    { name: "@stll/folio-agents", version: "latest" },
+  ],
+  [
+    "@eigenpal/docx-editor-i18n",
+    { name: "@stll/folio-react", version: "latest" },
+  ],
 ]);
 
 const MANUAL_SPECIFIER_MESSAGES: Array<[RegExp, string]> = [
@@ -126,7 +168,13 @@ export function transformSource(file: string, input: string): TransformResult {
   let changed = false;
   const text = input.replace(
     /(?<quote>["'])(?<specifier>@eigenpal\/(?:docx-editor-(?:react|vue|core|agents|i18n)|nuxt-docx-editor)(?:\/[^"']*)?)(\k<quote>)/gu,
-    (match, quote: string, specifier: string, _closingQuote: string, offset: number) => {
+    (
+      match,
+      quote: string,
+      specifier: string,
+      _closingQuote: string,
+      offset: number,
+    ) => {
       const replacement = SAFE_SPECIFIER_REPLACEMENTS.get(specifier);
       if (replacement) {
         changed = true;
@@ -230,7 +278,11 @@ function addManualFinding(
 }
 
 function isSameFinding(left: Finding, right: Finding): boolean {
-  return left.file === right.file && left.line === right.line && left.message === right.message;
+  return (
+    left.file === right.file &&
+    left.line === right.line &&
+    left.message === right.message
+  );
 }
 
 function lineOf(input: string, needle: string, offset?: number): number {
@@ -283,7 +335,10 @@ function shouldScanFile(file: string): boolean {
     return false;
   }
 
-  return path.basename(file) === "package.json" || TEXT_EXTENSIONS.has(path.extname(file));
+  return (
+    path.basename(file) === "package.json" ||
+    TEXT_EXTENSIONS.has(path.extname(file))
+  );
 }
 
 function parseArgs(argv: string[]): Options {
@@ -323,7 +378,9 @@ Examples:
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const files = (
-    await Promise.all(options.paths.map((inputPath) => collectFiles(path.resolve(inputPath))))
+    await Promise.all(
+      options.paths.map((inputPath) => collectFiles(path.resolve(inputPath))),
+    )
   )
     .flat()
     .sort();

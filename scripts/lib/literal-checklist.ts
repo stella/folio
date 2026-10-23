@@ -7,7 +7,9 @@ export const createLiteralChecklist = (patterns: readonly string[]) => {
   const matcher = new AhoCorasick(nonempty);
   return (text: string) => {
     const found = new Set(
-      matcher.findOverlappingIter(text).map(({ text: matchedText }) => matchedText),
+      matcher
+        .findOverlappingIter(text)
+        .map(({ text: matchedText }) => matchedText),
     );
     found.add("");
     return {

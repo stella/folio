@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { setHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
 import type {
   FieldRun,
   ParagraphAttrs,
@@ -16,7 +17,6 @@ import type {
   ParagraphMeasure,
   TextRun,
 } from "../layout-engine/types";
-import { setHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
 import { renderParagraphFragment } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
@@ -85,9 +85,15 @@ const fakeDocument = {
   },
 } as unknown as Document;
 
-function render(runs: (TextRun | FieldRun)[], attrs?: ParagraphAttrs): HTMLElement {
+function render(
+  runs: (TextRun | FieldRun)[],
+  attrs?: ParagraphAttrs,
+): HTMLElement {
   const block: ParagraphBlock = { kind: "paragraph", id: "p1", runs, attrs };
-  const totalChars = runs.reduce((n, r) => n + ("text" in r ? r.text.length : 0), 0);
+  const totalChars = runs.reduce(
+    (n, r) => n + ("text" in r ? r.text.length : 0),
+    0,
+  );
   const measure: ParagraphMeasure = {
     kind: "paragraph",
     lines: [
@@ -123,7 +129,10 @@ function render(runs: (TextRun | FieldRun)[], attrs?: ParagraphAttrs): HTMLEleme
   );
 }
 
-function findByTag(element: FakeElement, tagName: string): FakeElement | undefined {
+function findByTag(
+  element: FakeElement,
+  tagName: string,
+): FakeElement | undefined {
   if (element.tagName === tagName) {
     return element;
   }
@@ -181,8 +190,12 @@ describe("Issue #719 — RTL base direction detection", () => {
   });
 
   test("mirrors explicit bidi justification onto the physical page", () => {
-    expect(render([text("13")], { alignment: "right", bidi: true }).style.textAlign).toBe("left");
-    expect(render([text("13")], { alignment: "left", bidi: true }).style.textAlign).toBe("right");
+    expect(
+      render([text("13")], { alignment: "right", bidi: true }).style.textAlign,
+    ).toBe("left");
+    expect(
+      render([text("13")], { alignment: "left", bidi: true }).style.textAlign,
+    ).toBe("right");
   });
 
   test("does not mirror explicit alignment or indents for inferred RTL", () => {
@@ -286,12 +299,20 @@ describe("Issue #719 — RTL base direction detection", () => {
     const paragraph = render(
       [
         { kind: "text", text: "https://www.jobaccess.", hyperlink: { href } },
-        { kind: "text", text: "gov.au/find-a-provider", bold: true, hyperlink: { href } },
+        {
+          kind: "text",
+          text: "gov.au/find-a-provider",
+          bold: true,
+          hyperlink: { href },
+        },
       ],
       { bidi: true },
     ) as unknown as FakeElement;
 
-    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual(["ltr", "ltr"]);
+    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual([
+      "ltr",
+      "ltr",
+    ]);
   });
 
   test("does not merge adjacent same-target hyperlink instances", () => {
@@ -308,7 +329,10 @@ describe("Issue #719 — RTL base direction detection", () => {
       { bidi: true },
     ) as unknown as FakeElement;
 
-    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual(["ltr", ""]);
+    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual([
+      "ltr",
+      "",
+    ]);
   });
 
   test("does not force a link label or Arabic link text left-to-right", () => {
@@ -338,6 +362,9 @@ describe("Issue #719 — RTL base direction detection", () => {
       { bidi: true },
     ) as unknown as FakeElement;
 
-    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual(["", ""]);
+    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual([
+      "",
+      "",
+    ]);
   });
 });

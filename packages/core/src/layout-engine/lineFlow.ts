@@ -26,5 +26,8 @@ export function measuredLineContentOffset(
   lineIndex: number,
 ): number {
   const line = lines.at(lineIndex);
-  return measuredLineRangeHeight(lines, fromLine, lineIndex) + (line?.floatSkipBefore ?? 0);
+  return (
+    measuredLineRangeHeight(lines, fromLine, lineIndex) +
+    (line?.floatSkipBefore ?? 0)
+  );
 }

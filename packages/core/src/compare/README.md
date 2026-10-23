@@ -250,7 +250,8 @@ const result = await compareDocx(base, target, {
   onUnverified: "emit",
 });
 if (result.isOk() && result.value.verification.status === "unverified") {
-  for (const { invariant, cause, story, detail } of result.value.verification.failures) {
+  for (const { invariant, cause, story, detail } of result.value.verification
+    .failures) {
     // invariant: "accept-reproduces-target" | "reject-reproduces-base"
     // cause: which field of the block projection diverged
   }
@@ -357,8 +358,8 @@ carries the current numbers and the failing cases.
   (2026-09-27). References added to or removed from kept text are redlined,
   but the note part is saved by patching the notes it already holds, so a new
   note cannot be written yet. The comparison names the cause
-  (`a note reference names a footnote or endnote the base document does not
-  have`) rather than writing the reference as text.
+  (`a note reference names a footnote or endnote the base document does not have`)
+  rather than writing the reference as text.
 - **A text box is compared as body text** (2026-09-05). Its paragraphs are part
   of the main story, so their text is compared, but the round-trip self-check
   tags only the enclosing table cell — an insertion that landed inside a box

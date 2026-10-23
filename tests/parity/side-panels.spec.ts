@@ -9,14 +9,13 @@
  */
 
 import { expect } from "@playwright/test";
-import { ensureLiveView, forEachAdapter, openEditor, type AdapterFixture } from "./parity-fixture";
 import type { Page } from "@playwright/test";
 
 import {
-  PANEL_LAYOUT_CASES,
   afterPanelDrawersDismissed,
   expectPanelDrawers,
   expectPanelsDoNotOverlap,
+  PANEL_LAYOUT_CASES,
   readPanelState,
   waitForPanels,
 } from "../support/panelLayoutAssertions";
@@ -25,6 +24,12 @@ import {
   type PanelLayoutReview,
   type PanelLayoutSections,
 } from "../support/panelLayoutDocument";
+import {
+  type AdapterFixture,
+  ensureLiveView,
+  forEachAdapter,
+  openEditor,
+} from "./parity-fixture";
 
 const VIEWPORT_HEIGHT = 900;
 
@@ -37,7 +42,8 @@ const loadDocument = async (
   const bytes = await buildPanelLayoutDocument(review, sections);
   await page.route("**/fixtures/panel-layout.docx", (route) =>
     route.fulfill({
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       body: Buffer.from(bytes),
     }),
   );
@@ -57,7 +63,9 @@ for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
       expect(await readPanelState(page)).toEqual(expected);
       await expectPanelsDoNotOverlap(page, expected);
       if (review !== "none") {
-        await expect(page.getByTestId("toolbar-comments-count")).toHaveText("1");
+        await expect(page.getByTestId("toolbar-comments-count")).toHaveText(
+          "1",
+        );
       }
 
       await expectPanelDrawers(page, expected);
@@ -68,37 +76,51 @@ for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
   );
 }
 
-forEachAdapter("tracked changes alone leave comments closed", async (adapter, { page }) => {
-  await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
-  await loadDocument(page, adapter, "changes-only");
-  await expect(page.getByTestId("toolbar-comments-toggle")).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
-  await expect(page.getByTestId("toolbar-comments-count")).toHaveCount(0);
-  expect(await readPanelState(page)).toEqual({
-    tier: "wide",
-    outline: "column",
-    comments: "hidden",
-  });
-});
+forEachAdapter(
+  "tracked changes alone leave comments closed",
+  async (adapter, { page }) => {
+    await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
+    await loadDocument(page, adapter, "changes-only");
+    await expect(page.getByTestId("toolbar-comments-toggle")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(page.getByTestId("toolbar-comments-count")).toHaveCount(0);
+    expect(await readPanelState(page)).toEqual({
+      tier: "wide",
+      outline: "column",
+      comments: "hidden",
+    });
+  },
+);
 
 forEachAdapter(
   "the widest page in mixed sections controls panel room",
   async (adapter, { page }) => {
     await page.setViewportSize({ width: 1400, height: VIEWPORT_HEIGHT });
-    await loadDocument(page, adapter, "comment-and-changes", "landscape-then-portrait");
+    await loadDocument(
+      page,
+      adapter,
+      "comment-and-changes",
+      "landscape-then-portrait",
+    );
 
     await expect
       .poll(() =>
         page
           .locator(".layout-page")
           .evaluateAll((pages) =>
-            Math.max(...pages.map((element) => element.getBoundingClientRect().width)),
+            Math.max(
+              ...pages.map((element) => element.getBoundingClientRect().width),
+            ),
           ),
       )
       .toBeGreaterThan(1000);
-    const expected = { tier: "narrow", outline: "column", comments: "drawer" } as const;
+    const expected = {
+      tier: "narrow",
+      outline: "column",
+      comments: "drawer",
+    } as const;
     await expect.poll(() => readPanelState(page)).toEqual(expected);
     await expectPanelsDoNotOverlap(page, expected);
   },
@@ -111,52 +133,80 @@ forEachAdapter(
     await loadDocument(page, adapter, "comment-and-changes");
     const toggle = page.getByTestId("toolbar-comments-toggle");
     await toggle.click();
-    await expect(page.locator('[data-folio-comments-surface="drawer"]')).toBeVisible();
+    await expect(
+      page.locator('[data-folio-comments-surface="drawer"]'),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.locator('[data-folio-comments-surface="drawer"]')).toBeHidden();
+    await expect(
+      page.locator('[data-folio-comments-surface="drawer"]'),
+    ).toBeHidden();
     await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
-    const expected = { tier: "wide", outline: "column", comments: "hidden" } as const;
+    const expected = {
+      tier: "wide",
+      outline: "column",
+      comments: "hidden",
+    } as const;
     await expect.poll(() => readPanelState(page)).toEqual(expected);
     await expectPanelsDoNotOverlap(page, expected);
   },
 );
 
-forEachAdapter("the outline column is keyboard navigable", async (adapter, { page }) => {
-  await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
-  await loadDocument(page, adapter, "none");
-  const items = page.locator('[data-folio-outline-surface="column"] .folio-outline-item');
-  await expect(items).toHaveCount(4);
-  // One tab stop for the whole list.
-  await expect(items.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+forEachAdapter(
+  "the outline column is keyboard navigable",
+  async (adapter, { page }) => {
+    await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
+    await loadDocument(page, adapter, "none");
+    const items = page.locator(
+      '[data-folio-outline-surface="column"] .folio-outline-item',
+    );
+    await expect(items).toHaveCount(4);
+    // One tab stop for the whole list.
+    await expect(items.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
 
-  await items.first().focus();
-  await page.keyboard.press("ArrowDown");
-  await expect(items.nth(1)).toBeFocused();
-  await page.keyboard.press("End");
-  await expect(items.nth(3)).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(items.nth(3)).toHaveAttribute("aria-current", "true");
-  // The jump scrolled the document to the heading.
-  await expect
-    .poll(() => page.locator("[data-folio-scroll]").evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(0);
-});
+    await items.first().focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(items.nth(1)).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(items.nth(3)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(items.nth(3)).toHaveAttribute("aria-current", "true");
+    // The jump scrolled the document to the heading.
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-folio-scroll]")
+          .evaluate((element) => element.scrollTop),
+      )
+      .toBeGreaterThan(0);
+  },
+);
 
-forEachAdapter("toggling the comments column re-centres the page", async (adapter, { page }) => {
-  await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
-  await loadDocument(page, adapter, "comment-and-changes");
-  const toggle = page.getByTestId("toolbar-comments-toggle");
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+forEachAdapter(
+  "toggling the comments column re-centres the page",
+  async (adapter, { page }) => {
+    await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
+    await loadDocument(page, adapter, "comment-and-changes");
+    const toggle = page.getByTestId("toolbar-comments-toggle");
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
 
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  const closed = { tier: "wide", outline: "column", comments: "hidden" } as const;
-  expect(await readPanelState(page)).toEqual(closed);
-  await expectPanelsDoNotOverlap(page, closed);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    const closed = {
+      tier: "wide",
+      outline: "column",
+      comments: "hidden",
+    } as const;
+    expect(await readPanelState(page)).toEqual(closed);
+    await expectPanelsDoNotOverlap(page, closed);
 
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  const reopened = { tier: "wide", outline: "column", comments: "column" } as const;
-  expect(await readPanelState(page)).toEqual(reopened);
-  await expectPanelsDoNotOverlap(page, reopened);
-});
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    const reopened = {
+      tier: "wide",
+      outline: "column",
+      comments: "column",
+    } as const;
+    expect(await readPanelState(page)).toEqual(reopened);
+    await expectPanelsDoNotOverlap(page, reopened);
+  },
+);

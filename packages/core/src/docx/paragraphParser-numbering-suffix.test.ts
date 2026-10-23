@@ -36,7 +36,10 @@ const NUMBERING_WITH_SUFFIXES = `<?xml version="1.0" encoding="UTF-8" standalone
   <w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num>
 </w:numbering>`;
 
-function parseParagraphXml(xml: string, numbering: ReturnType<typeof parseNumbering>) {
+function parseParagraphXml(
+  xml: string,
+  numbering: ReturnType<typeof parseNumbering>,
+) {
   const root = parseXmlDocument(xml) as XmlElement | null;
   if (!root) {
     throw new Error("Failed to parse paragraph XML");

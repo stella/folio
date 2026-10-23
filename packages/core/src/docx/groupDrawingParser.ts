@@ -1,7 +1,7 @@
-import { sliceText } from "../utils/sliceText";
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 import type { Image, MediaFile, RelationshipMap } from "../types/document";
+import { sliceText } from "../utils/sliceText";
 import { emuToPixels } from "../utils/units";
 import { collectGroupTextBoxes, readTransform } from "./drawingGroupChildren";
 import type { GroupTextBoxFrame } from "./drawingGroupChildren";
@@ -11,8 +11,8 @@ import {
   findAllDeep,
   findChildByLocalName,
   findChildrenByLocalName,
-  getChildElements,
   getAttribute,
+  getChildElements,
   getLocalName,
   getTextContent,
   parseNumericAttribute,
@@ -30,7 +30,11 @@ const CROP_SCALE = 100_000;
 const MAX_PATH_COMMANDS = 10_000;
 const MAX_TEXT_CHARACTERS = 20_000;
 const MAX_SVG_CHARACTERS = 1_000_000;
-const NON_RENDERING_GROUP_CHILDREN = new Set(["cNvGrpSpPr", "grpSpPr", "extLst"]);
+const NON_RENDERING_GROUP_CHILDREN = new Set([
+  "cNvGrpSpPr",
+  "grpSpPr",
+  "extLst",
+]);
 
 const numericAttr = (element: XmlElement | null, name: string): number => {
   const direct = parseNumericAttribute(element, null, name);
@@ -60,7 +64,10 @@ const childTransform = (
   };
 };
 
-const colorFrom = (parent: XmlElement | null, fallback?: string): string | undefined => {
+const colorFrom = (
+  parent: XmlElement | null,
+  fallback?: string,
+): string | undefined => {
   if (parent && getLocalName(parent.name ?? "") === "color") {
     const value = getAttribute(parent, "w", "val");
     if (value && HEX_COLOR.test(value)) {
@@ -188,17 +195,28 @@ const renderGeometry = (wsp: XmlElement, unitScale: number): string => {
   const line = findChildByLocalName(spPr, "ln");
   const stroke = colorFrom(line, styleStroke);
   const strokeWidth =
-    (line ? (parseNumericAttribute(line, null, "w") ?? DEFAULT_LINE_WIDTH_EMU) : 0) / unitScale;
+    (line
+      ? (parseNumericAttribute(line, null, "w") ?? DEFAULT_LINE_WIDTH_EMU)
+      : 0) / unitScale;
   const strokeColor = stroke === "none" ? "none" : `#${stroke}`;
   if (width <= 0 || height <= 0) {
     // A straight line or connector is a frame with no width or no height; the
     // line runs corner to corner of it, so a zero extent still draws.
-    if (width < 0 || height < 0 || (width === 0 && height === 0) || strokeColor === "none") {
+    if (
+      width < 0 ||
+      height < 0 ||
+      (width === 0 && height === 0) ||
+      strokeColor === "none"
+    ) {
       return "";
     }
     return `<line x1="${x}" y1="${y}" x2="${x + width}" y2="${y + height}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>`;
   }
-  const paths = findAllDeep(findChildByLocalName(spPr, "custGeom"), "a", "path");
+  const paths = findAllDeep(
+    findChildByLocalName(spPr, "custGeom"),
+    "a",
+    "path",
+  );
   if (paths.length === 0) {
     return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill === "none" ? "none" : `#${fill}`}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>`;
   }
@@ -227,8 +245,12 @@ const renderTextBox = (wsp: XmlElement, unitScale: number): string => {
   }
   const paragraphs = findAllDeep(wsp, "w", "p");
   const firstSize = findAllDeep(wsp, "w", "sz").at(0);
-  const halfPoints = numericAttr(firstSize ?? null, "val") || DEFAULT_FONT_HALF_POINTS;
-  const color = colorFrom(findAllDeep(wsp, "w", "color").at(0) ?? null, DEFAULT_TEXT_COLOR);
+  const halfPoints =
+    numericAttr(firstSize ?? null, "val") || DEFAULT_FONT_HALF_POINTS;
+  const color = colorFrom(
+    findAllDeep(wsp, "w", "color").at(0) ?? null,
+    DEFAULT_TEXT_COLOR,
+  );
   const fontSize = (halfPoints * HALF_POINT_TO_EMU) / unitScale;
   const maxCharacters = Math.max(1, Math.floor(width / (fontSize * 0.38)));
   const lines = paragraphs
@@ -251,7 +273,10 @@ const renderTextBox = (wsp: XmlElement, unitScale: number): string => {
   const scale = fontSize / svgFontSize;
   const lineStep = (lineHeight / fontSize) * svgFontSize;
   const tspans = lines
-    .map((line, index) => `<tspan x="0" dy="${index === 0 ? 0 : lineStep}">${line}</tspan>`)
+    .map(
+      (line, index) =>
+        `<tspan x="0" dy="${index === 0 ? 0 : lineStep}">${line}</tspan>`,
+    )
     .join("");
   return `<text x="0" y="${svgFontSize}" transform="translate(${x} ${y}) scale(${scale})" font-family="Arial, sans-serif" font-size="${svgFontSize}" fill="#${color}">${tspans}</text>`;
 };
@@ -268,7 +293,10 @@ const renderPicture = (
   }
   const blipFill = findChildByLocalName(picture, "blipFill");
   const blip = findChildByLocalName(blipFill, "blip");
-  const rId = getAttribute(blip, "r", "embed") ?? getAttribute(blip, "r", "link") ?? undefined;
+  const rId =
+    getAttribute(blip, "r", "embed") ??
+    getAttribute(blip, "r", "link") ??
+    undefined;
   const { src } = resolveImageData(rId, rels, media);
   if (!src) {
     return "";
@@ -318,9 +346,13 @@ const effectiveRootTransform = (
  * A nested group's child space drawn inside its frame in the parent's space,
  * then turned by the group's own rotation and flips.
  */
-const nestedGroupTransform = (transform: ReturnType<typeof readTransform>): string => {
-  const scaleX = transform.childWidth > 0 ? transform.width / transform.childWidth : 1;
-  const scaleY = transform.childHeight > 0 ? transform.height / transform.childHeight : 1;
+const nestedGroupTransform = (
+  transform: ReturnType<typeof readTransform>,
+): string => {
+  const scaleX =
+    transform.childWidth > 0 ? transform.width / transform.childWidth : 1;
+  const scaleY =
+    transform.childHeight > 0 ? transform.height / transform.childHeight : 1;
   return `translate(${transform.x} ${transform.y}) scale(${scaleX} ${scaleY}) translate(${-transform.childX} ${-transform.childY})`;
 };
 
@@ -346,7 +378,11 @@ const createSvg = (
   let shapes = 0;
   let serial = 0;
   /** One container's markup, or null once the budget is spent. */
-  const render = (container: XmlElement, scale: UnitScale, depth: number): string | null => {
+  const render = (
+    container: XmlElement,
+    scale: UnitScale,
+    depth: number,
+  ): string | null => {
     let content = "";
     for (const child of getChildElements(container)) {
       const index = serial;
@@ -358,7 +394,10 @@ const createSvg = (
       let piece: string;
       if (localName === "pic") {
         shapes += 1;
-        piece = withChildTransform(child, renderPicture(child, index, rels, media));
+        piece = withChildTransform(
+          child,
+          renderPicture(child, index, rels, media),
+        );
       } else if (localName === "wsp") {
         shapes += 1;
         if (hostedTextBoxes.has(child)) {
@@ -376,9 +415,17 @@ const createSvg = (
         const transform = readTransform(
           findChildByLocalName(findChildByLocalName(child, "grpSpPr"), "xfrm"),
         );
-        const scaleX = transform.childWidth > 0 ? transform.width / transform.childWidth : 1;
-        const scaleY = transform.childHeight > 0 ? transform.height / transform.childHeight : 1;
-        const nested = render(child, { x: scale.x * scaleX, y: scale.y * scaleY }, depth + 1);
+        const scaleX =
+          transform.childWidth > 0 ? transform.width / transform.childWidth : 1;
+        const scaleY =
+          transform.childHeight > 0
+            ? transform.height / transform.childHeight
+            : 1;
+        const nested = render(
+          child,
+          { x: scale.x * scaleX, y: scale.y * scaleY },
+          depth + 1,
+        );
         if (nested === null) {
           return null;
         }
@@ -413,7 +460,10 @@ const createSvg = (
     return null;
   }
   const transformed = content
-    ? wrapTransformed(root, `<g transform="${nestedGroupTransform(root)}">${content}</g>`)
+    ? wrapTransformed(
+        root,
+        `<g transform="${nestedGroupTransform(root)}">${content}</g>`,
+      )
     : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" data-folio-preview="wpGroup" viewBox="0 0 ${width} ${height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${transformed}</svg>`;
 };
@@ -449,15 +499,17 @@ const hostedTextBoxFrames = new WeakMap<Image, readonly GroupTextBoxFrame[]>();
  * The text boxes a group preview does not draw, which the paragraph parser
  * lifts out as text boxes of their own. Undefined for any other image.
  */
-export const groupPreviewTextBoxes = (image: Image): readonly GroupTextBoxFrame[] | undefined =>
-  hostedTextBoxFrames.get(image);
+export const groupPreviewTextBoxes = (
+  image: Image,
+): readonly GroupTextBoxFrame[] | undefined => hostedTextBoxFrames.get(image);
 
 /**
  * Whether a `w:drawing` carries a WordprocessingGroup payload. A group this
  * module declines to rasterize has no editable projection either — the shape
  * model holds one shape, not a group — so the caller must preserve it raw.
  */
-export const isGroupDrawing = (drawing: XmlElement): boolean => groupElement(drawing) !== null;
+export const isGroupDrawing = (drawing: XmlElement): boolean =>
+  groupElement(drawing) !== null;
 
 /** Parse a WordprocessingGroup drawing into a safe SVG-backed image preview. */
 export const parseGroupDrawing = (
@@ -474,7 +526,11 @@ export const parseGroupDrawing = (
   if (!image || image.size.width <= 0 || image.size.height <= 0) {
     return null;
   }
-  const rootTransform = effectiveRootTransform(group, image.size.width, image.size.height);
+  const rootTransform = effectiveRootTransform(
+    group,
+    image.size.width,
+    image.size.height,
+  );
   const rootTurnsChildren =
     rootTransform.rotation !== 0 || rootTransform.flipH || rootTransform.flipV;
   const hosted =
@@ -494,7 +550,13 @@ export const parseGroupDrawing = (
   }
   // The anchor is read without relationships, so it names no picture: it is
   // the frame the preview is drawn over.
-  const { rId: _rId, src: _src, mimeType: _mimeType, filename: _filename, ...frame } = image;
+  const {
+    rId: _rId,
+    src: _src,
+    mimeType: _mimeType,
+    filename: _filename,
+    ...frame
+  } = image;
   const preview = previews.svgImage("wpGroup", svg, frame);
   if (hosted.length > 0) {
     hostedTextBoxFrames.set(preview, hosted);

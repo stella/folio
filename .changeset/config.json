@@ -6,7 +6,11 @@
   "linked": [],
   "access": "public",
   "baseBranch": "main",
-  "format": "oxfmt",
+  "format": false,
   "updateInternalDependencies": "patch",
-  "ignore": ["@stll/folio-editor-web", "@stll/playground", "@stll/playground-vue"]
+  "ignore": [
+    "@stll/folio-editor-web",
+    "@stll/playground",
+    "@stll/playground-vue"
+  ]
 }

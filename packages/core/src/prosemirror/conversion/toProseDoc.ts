@@ -1,7 +1,4 @@
-import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumbering,
-} from "../numberingAttr";
+import { panic } from "better-result";
 /**
  * Document to ProseMirror Conversion
  *
@@ -15,117 +12,153 @@ import {
  * - Style chain (basedOn inheritance)
  * - Inline properties (highest priority)
  */
-
-import { listRenderingFor } from "../listRendering";
-
-import { fieldRequiresStructuredContent } from "../fieldRepresentation";
-import { getInlineDisplayText } from "../inlineDisplayText";
-
 import type { Mark, Node as PMNode } from "prosemirror-model";
-import { panic } from "better-result";
-import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import {
+  DRAWING_RAW_XML_MODES,
+  PARSE_WARNING_CODES,
+} from "@stll/docx-core/model";
+
+import { rangedCommentIds } from "../../docx/commentAnchorIndex";
+import { resolveColorValueToHex } from "../../docx/drawingUtils";
+import {
+  isInlineSdtContent,
+  isTrackedChangeWrapperChild,
+} from "../../docx/inlineWrapperContent";
+import {
+  type ListRenderingDefinition,
+  listRenderingDefinitionsMatch,
+  resolveListRenderingDefinition,
+} from "../../docx/listRendering";
+import {
+  getCachedNumberingMap,
+  type NumberingMap,
+} from "../../docx/numberingParser";
+import {
+  createProseParagraphWithPropertySource,
+  getDocumentParagraphPropertySourceContract,
+  paragraphFormattingWithAuthoredIndentation,
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  proseParagraphAttrsWithoutPropertySource,
+  recreateProseNodeWithParagraphPropertySource,
+  transportTableCellsWithParagraphPropertySources,
+} from "../../docx/paragraphPropertySource";
 import type { ParseContext } from "../../docx/parseContext";
+import { isBaselineVertAlign } from "../../docx/runParser";
+import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
+import { type ResolvedTableLook, resolveTableLook } from "../../docx/tableLook";
+import { isCellMergeContinuation } from "../../docx/tableParser";
+import {
+  calculateRowSpans,
+  type RowSpanInfo,
+} from "../../docx/verticalMergeProjection";
+import { copiedWrapPolygon } from "../../docx/wrapPolygon";
+import {
+  buildPageBreakRunSourceDescendantIndex,
+  type PageBreakRunSourceDescendantIndex,
+} from "../../internal/pageBreakRunSourceDescendantIndex";
 import { createStyleEngine } from "../../style-engine";
-import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
 import type {
-  InlineWrapper,
+  StyleEngine,
+  TableCellParagraphSpacingOverlay,
+} from "../../style-engine";
+import type {
   BlockContent,
-  BlockSdt,
   BlockCustomXml,
+  BlockSdt,
   BookmarkEnd,
   BookmarkStart,
+  ComplexField,
+  Deletion,
   Document,
+  DrawingAnchor,
+  DrawingContent,
+  EffectExtentSlots,
+  Hyperlink,
+  Image,
+  InlineSdt,
+  InlineWrapper,
+  Insertion,
+  MathEquation,
+  MoveFrom,
+  MoveTo,
+  NumberingDefinitions,
   Paragraph,
+  ParagraphContent,
   ParagraphFormatting,
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,
   Run,
-  RunPropertyChange,
-  TextFormatting,
   RunContent,
-  Hyperlink,
-  Image,
-  TextBox,
+  RunPropertyChange,
   Shape,
   ShapeFill,
+  ShapeTextBody,
+  SimpleField,
   StyleDefinitions,
-  NumberingDefinitions,
   Table,
-  TableRow,
-  TableRowFormatting,
+  TableBorders,
   TableCell,
   TableCellFormatting,
-  TableBorders,
-  SimpleField,
-  ComplexField,
-  InlineSdt,
-  Insertion,
-  Deletion,
-  DrawingAnchor,
-  EffectExtentSlots,
-  WrapDistanceSlots,
-  DrawingContent,
-  MoveFrom,
-  MoveTo,
-  MathEquation,
-  ParagraphContent,
-  ShapeTextBody,
+  TableRow,
+  TableRowFormatting,
+  TextBox,
+  TextFormatting,
   Theme,
+  WrapDistanceSlots,
 } from "../../types/document";
-import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
-import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
-import {
-  resolveListRenderingDefinition,
-  listRenderingDefinitionsMatch,
-  type ListRenderingDefinition,
-} from "../../docx/listRendering";
-import { rangedCommentIds } from "../../docx/commentAnchorIndex";
-import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
-import { resolveColorValueToHex } from "../../docx/drawingUtils";
-import { copiedWrapPolygon } from "../../docx/wrapPolygon";
-import { paragraphNumberingAttr } from "../numberingAttr";
-import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
-import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
-import { emptyFieldRunPropertyChanges } from "../emptyFieldResultRuns";
-import { calculateRowSpans, type RowSpanInfo } from "../../docx/verticalMergeProjection";
-import { isCellMergeContinuation } from "../../docx/tableParser";
-import { isBaselineVertAlign } from "../../docx/runParser";
-import {
-  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
-  createProseParagraphWithPropertySource,
-  proseParagraphAttrsWithoutPropertySource,
-  getDocumentParagraphPropertySourceContract,
-  recreateProseNodeWithParagraphPropertySource,
-  transportTableCellsWithParagraphPropertySources,
-  paragraphFormattingWithAuthoredIndentation,
-} from "../../docx/paragraphPropertySource";
-import {
-  buildPageBreakRunSourceDescendantIndex,
-  type PageBreakRunSourceDescendantIndex,
-} from "../../internal/pageBreakRunSourceDescendantIndex";
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { outlineAttrForDash } from "../../types/documentEnumValues";
 import { cssBorderStyleForDash } from "../../utils/borderCss";
-import { mergeTextFormatting } from "../../utils/textFormattingMerge";
-import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
-import { emuToPixels, emuToStrokePixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
+import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
+import { mergeTextFormatting } from "../../utils/textFormattingMerge";
+import { emuToPixels, emuToStrokePixels } from "../../utils/units";
+import { withAlternateContent } from "../alternateContentAttrs";
+import {
+  expectInlineWrapperMarkAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../attrs";
 import { authoredTransformAttrs } from "../authoredTransformAttrs";
-import { expectInlineWrapperMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import {
-  textFormattingToMarks,
+  type TrackedCommentBoundary,
+  trackedCommentBoundaryOwner,
+} from "../commentBoundaryOwnership";
+import { withEnclosingRevision } from "../contentControlRevisions";
+import { emptyFieldRunPropertyChanges } from "../emptyFieldResultRuns";
+import { planEmptyRanges } from "../emptyRangeAnchor";
+import {
   type AuthoredRunFormattingCarrier,
   type MarkFactory,
+  textFormattingToMarks,
 } from "../extensions/marks/markUtils";
+import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
+import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
+import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
+import { fieldRequiresStructuredContent } from "../fieldRepresentation";
+import { getInlineDisplayText } from "../inlineDisplayText";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
-import { RUN_IDENTITY_MARK_NAME, hasRunIdentityPayload, runIdentityAttrs } from "../runIdentity";
-import { directionFromBidi } from "../paragraphDirection";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { listRenderingFor } from "../listRendering";
+import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
+import {
+  effectiveParagraphNumbering,
+  paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
+} from "../numberingAttr";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
+import { directionFromBidi } from "../paragraphDirection";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
+import {
+  hasRunIdentityPayload,
+  RUN_IDENTITY_MARK_NAME,
+  runIdentityAttrs,
+} from "../runIdentity";
+import { continueSourceCarrierIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
@@ -136,47 +169,42 @@ import {
   suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
 import { schema } from "../schema";
-import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
-import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
-import { tableCellStyleRegions, tableRowBand } from "../styles/tableStyleRegions";
-import {
-  extractTableParagraphOverlay,
-  paragraphStyleCascadeAttrs,
-  resolveRunFormattingWithoutDefaults,
-} from "../styles/paragraphStyleCascade";
+import type {
+  InlineWrapperLayer,
+  TrackedRevisionAncestor,
+} from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   ImagePositionAttrs,
   ParagraphAttrs,
   TableAttrs,
-  TableRowAttrs,
   TableCellAttrs,
+  TableRowAttrs,
   TextBoxAttrs,
 } from "../schema/nodes";
-import { assertValidProseMirrorDocument } from "../validation";
-import { getCachedNumberingMap, type NumberingMap } from "../../docx/numberingParser";
-import { listRenderingAttrPatch } from "../listRenderingAttrs";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
-import { planEmptyRanges } from "../emptyRangeAnchor";
-import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
-import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
-import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
-import { continueSourceCarrierIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
-import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
-import { withEnclosingRevision } from "../contentControlRevisions";
-import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
 import {
-  trackedCommentBoundaryOwner,
-  type TrackedCommentBoundary,
-} from "../commentBoundaryOwnership";
+  extractTableParagraphOverlay,
+  paragraphStyleCascadeAttrs,
+  resolveRunFormattingWithoutDefaults,
+} from "../styles/paragraphStyleCascade";
+import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
+import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
+import {
+  tableCellStyleRegions,
+  tableRowBand,
+} from "../styles/tableStyleRegions";
+import {
+  canCarryTrackedRunMark,
+  trackedRunInlineAtomDisposition,
+} from "../trackedRunInlineAtoms";
+import { assertValidProseMirrorDocument } from "../validation";
 import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
+import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
 import { createMarkInterner } from "./markInterner";
-import { withAlternateContent } from "../alternateContentAttrs";
-import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
@@ -210,7 +238,10 @@ const pageBreakProjectionWarn = (
   warn === undefined
     ? noPageBreakProjectionWarning
     : (detail) => {
-        warn({ code: PARSE_WARNING_CODES.pageBreakProjectionApproximated, detail });
+        warn({
+          code: PARSE_WARNING_CODES.pageBreakProjectionApproximated,
+          detail,
+        });
       };
 
 type ResolvedRunFormatting = {
@@ -269,26 +300,39 @@ type RunConversionScope = {
  * an inline atom (the leaves have to be rejoined into one `w:r` on save), an
  * attribute remainder, a `w:rPr` sink, or an authored empty `w:rPr`.
  */
-const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark | null => {
+const runIdentityMark = (
+  run: Run,
+  nextRunIdentityId: RunIdentityIdAllocator,
+): Mark | null => {
   const payload = {
     preservedAttributes: run.preservedAttributes,
     preserved: run.formatting?.preserved,
     // The parser distinguishes authored empty properties from a revision-only
     // carrier; pending review does not erase the authored current presence.
     emptyFormatting:
-      run.formatting !== undefined && Object.keys(run.formatting).length === 0 ? true : undefined,
+      run.formatting !== undefined && Object.keys(run.formatting).length === 0
+        ? true
+        : undefined,
   };
-  if (!runHasPageBreakContent(run) && !runHasMixedContent(run) && !hasRunIdentityPayload(payload)) {
+  if (
+    !runHasPageBreakContent(run) &&
+    !runHasMixedContent(run) &&
+    !hasRunIdentityPayload(payload)
+  ) {
     return null;
   }
-  return schema.mark(RUN_IDENTITY_MARK_NAME, runIdentityAttrs(nextRunIdentityId(), payload));
+  return schema.mark(
+    RUN_IDENTITY_MARK_NAME,
+    runIdentityAttrs(nextRunIdentityId(), payload),
+  );
 };
 
 /** Keep imported hyperlink identity unique across every nested conversion scope. */
-const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocator => {
-  let index = 0;
-  return () => index++;
-};
+const createHyperlinkInstanceIndexAllocator =
+  (): HyperlinkInstanceIndexAllocator => {
+    let index = 0;
+    return () => index++;
+  };
 
 /** Imported occurrences belong to the projection walk, not to the referenced note. */
 const createNoteReferenceOccurrenceAllocator = () => {
@@ -308,7 +352,9 @@ type BookmarkBoundaryCount = {
  * Each endpoint is converted at its own structural position, so a range may
  * start outside a hyperlink and end inside it (or the inverse).
  */
-export const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
+export const collectPairedBookmarkIds = (
+  blocks: readonly BlockContent[],
+): ReadonlySet<number> => {
   const counts = new Map<number, BookmarkBoundaryCount>();
   let position = 0;
   const countBoundary = (id: number, type: "start" | "end"): void => {
@@ -362,7 +408,9 @@ export const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): Reado
     }
   };
 
-  const visitParagraphContent = (content: Paragraph["content"][number]): void => {
+  const visitParagraphContent = (
+    content: Paragraph["content"][number],
+  ): void => {
     switch (content.type) {
       case "bookmarkStart":
         countBoundary(content.id, "start");
@@ -382,7 +430,10 @@ export const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): Reado
         }
         return;
       case "complexField":
-        for (const run of [...(content.fieldCode ?? []), ...content.fieldResult]) {
+        for (const run of [
+          ...(content.fieldCode ?? []),
+          ...content.fieldResult,
+        ]) {
           visitRun(run);
         }
         return;
@@ -432,11 +483,17 @@ export const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): Reado
           // that selects whole rows as a child of `w:tr`, and closes it inside
           // a cell's paragraph as often as it closes it on the row.
           for (const { marker } of block.bookmarks ?? []) {
-            countBoundary(marker.id, marker.type === "bookmarkStart" ? "start" : "end");
+            countBoundary(
+              marker.id,
+              marker.type === "bookmarkStart" ? "start" : "end",
+            );
           }
           for (const row of block.rows) {
             for (const { marker } of row.bookmarks ?? []) {
-              countBoundary(marker.id, marker.type === "bookmarkStart" ? "start" : "end");
+              countBoundary(
+                marker.id,
+                marker.type === "bookmarkStart" ? "start" : "end",
+              );
             }
             for (const cell of row.cells) {
               visitBlocks(cell.content);
@@ -486,7 +543,10 @@ export const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): Reado
  * @param document - The Document to convert
  * @param options - Conversion options including style definitions
  */
-export function toProseDoc(document: Document, options?: ToProseDocOptions): PMNode {
+export function toProseDoc(
+  document: Document,
+  options?: ToProseDocOptions,
+): PMNode {
   const paragraphs = document.package.document.content;
   const nodes: PMNode[] = [];
 
@@ -495,11 +555,14 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   // The save-side `w:rStyle` reconciliation relies on this: without it, an
   // unexpanded run would look like the user stripped the style's formatting
   // (eigenpal/docx-editor#833).
-  const styleResolver = createStyleEngine(options?.styles ?? document.package.styles);
+  const styleResolver = createStyleEngine(
+    options?.styles ?? document.package.styles,
+  );
   const theme = options?.theme ?? document.package.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
+  const nextNoteReferenceOccurrenceId =
+    createNoteReferenceOccurrenceAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
   const conversionContext = {
     listRenderings: new Map<string, ResolvedListRendering>(),
@@ -512,7 +575,8 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     nextHyperlinkInstanceIndex,
     nextNoteReferenceOccurrenceId,
     pairedBookmarkIds,
-    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
+    pageBreakRunSourceDescendants:
+      buildPageBreakRunSourceDescendantIndex(paragraphs),
     storyRangedCommentIds: rangedCommentIds(paragraphs),
     openCommentIds: new Set<number>(),
     warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
@@ -572,7 +636,8 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
 
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
-  const adjustLineHeightInTable = document.package.settings?.adjustLineHeightInTable === true;
+  const adjustLineHeightInTable =
+    document.package.settings?.adjustLineHeightInTable === true;
   const doNotUseIndentAsNumberingTabStop =
     document.package.settings?.doNotUseIndentAsNumberingTabStop === true;
   const pmDoc = stampNumberedRefFieldBaselines(
@@ -617,7 +682,9 @@ function convertPreservedBlock(block: PreservedBlock): PMNode {
  * to prevent, and the integrity pass removes a boundary whose partner really
  * has gone.
  */
-function convertBlockBookmarkBoundary(block: BookmarkStart | BookmarkEnd): PMNode {
+function convertBlockBookmarkBoundary(
+  block: BookmarkStart | BookmarkEnd,
+): PMNode {
   return schema.node(
     "blockBookmarkBoundary",
     block.type === "bookmarkStart"
@@ -629,7 +696,11 @@ function convertBlockBookmarkBoundary(block: BookmarkStart | BookmarkEnd): PMNod
           colLast: block.colLast,
           displacedByCustomXml: block.displacedByCustomXml,
         }
-      : { type: "end", id: block.id, displacedByCustomXml: block.displacedByCustomXml },
+      : {
+          type: "end",
+          id: block.id,
+          displacedByCustomXml: block.displacedByCustomXml,
+        },
   );
 }
 
@@ -649,7 +720,9 @@ function preservedInlineNode(content: PreservedInline): PMNode {
     // What a folded list-number capture stands for goes along as it is, so
     // that the conversion back can put it on the line where the fold's rule
     // no longer hides it.
-    ...(content.foldedListNumber ? { foldedListNumber: content.foldedListNumber } : {}),
+    ...(content.foldedListNumber
+      ? { foldedListNumber: content.foldedListNumber }
+      : {}),
   });
 }
 
@@ -758,13 +831,15 @@ function convertParagraph(
     nextNoteReferenceOccurrenceId: context.nextNoteReferenceOccurrenceId,
     createMark: context.createMark,
   };
-  const directFormatting = paragraphFormattingWithAuthoredIndentation(paragraph);
+  const directFormatting =
+    paragraphFormattingWithAuthoredIndentation(paragraph);
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
     tableParagraphOverlay,
   );
-  if (directFormatting === undefined) Reflect.deleteProperty(attrs, "_originalFormatting");
+  if (directFormatting === undefined)
+    Reflect.deleteProperty(attrs, "_originalFormatting");
   else attrs._originalFormatting = directFormatting;
   const numPr = effectiveParagraphNumbering(
     paragraphNumberingSourcesFromBoundary({
@@ -775,7 +850,8 @@ function convertParagraph(
   if (
     numPr.kind === "none" &&
     (paragraph.formatting?.numPr?.kind === "none" ||
-      (paragraph.listRendering !== undefined && context.numbering !== undefined))
+      (paragraph.listRendering !== undefined &&
+        context.numbering !== undefined))
   )
     Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
@@ -802,15 +878,20 @@ function convertParagraph(
           cached.markerSecondSlotOffsetTwips === nextSlotOffset);
       // Matching cached attrs were already projected by paragraphFormattingToAttrs.
       if (!cacheMatches)
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS, listRenderingAttrPatch(rendering));
+        Object.assign(
+          attrs,
+          CLEARED_LIST_RENDERING_ATTRS,
+          listRenderingAttrPatch(rendering),
+        );
     } else Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   }
   if (attrs._propertyChanges) {
     attrs._propertyChanges = attrs._propertyChanges.map((change) => {
       const previous = change.previousFormatting;
       if (!previous) return change;
-      const inherited = styleResolver?.resolveParagraphStyle(previous.styleId ?? undefined)
-        .paragraphFormatting?.numPr;
+      const inherited = styleResolver?.resolveParagraphStyle(
+        previous.styleId ?? undefined,
+      ).paragraphFormatting?.numPr;
       const sources = paragraphNumberingSourcesFromBoundary({
         numPr: previous.numPr,
         numPrFromStyle: inherited ?? previous.numPrFromStyle,
@@ -844,13 +925,17 @@ function convertParagraph(
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
   let bookmarksArr: { id: number; name: string }[] | undefined;
-  let emptyHyperlinks: NonNullable<ParagraphAttrs["_emptyHyperlinks"]> | undefined;
+  let emptyHyperlinks:
+    NonNullable<ParagraphAttrs["_emptyHyperlinks"]> | undefined;
 
   // The wrappers the item now being converted sat inside. The loop over the
   // paragraph's content is the only writer, and it sets this before entering
   // the switch, so every node the switch emits gets the item's own stack.
   let wrapperStack: readonly InlineWrapperLayer[] = [];
-  const emitInlineNodes = (nodes: PMNode[], commentsAlreadyApplied = false): void => {
+  const emitInlineNodes = (
+    nodes: PMNode[],
+    commentsAlreadyApplied = false,
+  ): void => {
     if (nodes.length === 0) {
       return;
     }
@@ -877,9 +962,14 @@ function convertParagraph(
   // Paragraph-mark-only visual decorations (highlight, shading) paint the
   // paragraph glyph alone. Strip them from the body-run inheritance path.
   let inheritableParagraphRunFormatting: TextFormatting | undefined;
-  if (paragraphRunFormatting && !isTocParagraph && paragraph.formatting?.styleId === undefined) {
-    inheritableParagraphRunFormatting =
-      stripParagraphMarkFormattingForBodyRuns(paragraphRunFormatting);
+  if (
+    paragraphRunFormatting &&
+    !isTocParagraph &&
+    paragraph.formatting?.styleId === undefined
+  ) {
+    inheritableParagraphRunFormatting = stripParagraphMarkFormattingForBodyRuns(
+      paragraphRunFormatting,
+    );
   }
   const {
     baseFormatting: baseRunFormatting,
@@ -1030,7 +1120,9 @@ function convertParagraph(
         // the range ends around it survives the edit. Emitting it through the
         // shared path gives it the marks of the ranges still open over it,
         // which is what tells `fromProseDoc` which ends precede it.
-        emitInlineNode(schema.node("commentReference", { commentId: content.id }));
+        emitInlineNode(
+          schema.node("commentReference", { commentId: content.id }),
+        );
         break;
       case "run":
         emitInlineNodes(
@@ -1059,11 +1151,17 @@ function convertParagraph(
             offset: inlineOffset,
             ...(content.href !== undefined ? { href: content.href } : {}),
             ...(content.anchor !== undefined ? { anchor: content.anchor } : {}),
-            ...(content.tooltip !== undefined ? { tooltip: content.tooltip } : {}),
+            ...(content.tooltip !== undefined
+              ? { tooltip: content.tooltip }
+              : {}),
             ...(content.rId !== undefined ? { rId: content.rId } : {}),
             ...(content.target !== undefined ? { target: content.target } : {}),
-            ...(content.history !== undefined ? { history: content.history } : {}),
-            ...(content.docLocation !== undefined ? { docLocation: content.docLocation } : {}),
+            ...(content.history !== undefined
+              ? { history: content.history }
+              : {}),
+            ...(content.docLocation !== undefined
+              ? { docLocation: content.docLocation }
+              : {}),
             ...(emptyWrapperStacks.length === 0
               ? {}
               : { _docxEmptyWrapperStacks: emptyWrapperStacks }),
@@ -1109,11 +1207,19 @@ function convertParagraph(
         break;
       case "insertion":
       case "moveTo":
-        emitTrackedChange(content, "insertion", content.type === "moveTo" ? "moveTo" : null);
+        emitTrackedChange(
+          content,
+          "insertion",
+          content.type === "moveTo" ? "moveTo" : null,
+        );
         break;
       case "deletion":
       case "moveFrom":
-        emitTrackedChange(content, "deletion", content.type === "moveFrom" ? "moveFrom" : null);
+        emitTrackedChange(
+          content,
+          "deletion",
+          content.type === "moveFrom" ? "moveFrom" : null,
+        );
         break;
       case "mathEquation":
         emitInlineNode(convertMathEquation(content));
@@ -1160,7 +1266,9 @@ function convertParagraph(
       case "moveFromRangeEnd":
       case "moveToRangeStart":
       case "moveToRangeEnd":
-        emitInlineNode(schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: content }));
+        emitInlineNode(
+          schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: content }),
+        );
         break;
       case "preservedInline":
         emitInlineNode(preservedInlineNode(content));
@@ -1179,10 +1287,14 @@ function convertParagraph(
     attrs._emptyHyperlinks = emptyHyperlinks;
   }
 
-  return createProseParagraphWithPropertySource(schema.nodes["paragraph"], paragraph, {
-    attrs,
-    content: continueSourceCarrierIdentitiesAcrossRevisions(inlineNodes),
-  });
+  return createProseParagraphWithPropertySource(
+    schema.nodes["paragraph"],
+    paragraph,
+    {
+      attrs,
+      content: continueSourceCarrierIdentitiesAcrossRevisions(inlineNodes),
+    },
+  );
 }
 
 /**
@@ -1261,12 +1373,17 @@ const withTrackedRunMark = (
     const nestedAttrs = expectTrackedChangeMarkAttrs(nestedMark);
     const updatedMark = schema.mark(nestedMark.type.name, {
       ...nestedMark.attrs,
-      _docxRevisionAncestors: [ancestor, ...(nestedAttrs._docxRevisionAncestors ?? [])],
+      _docxRevisionAncestors: [
+        ancestor,
+        ...(nestedAttrs._docxRevisionAncestors ?? []),
+      ],
     });
     return node.mark(updatedMark.addToSet(node.marks));
   }
   if (trackedRunInlineAtomDisposition(node) === "outside-wrapper") {
-    panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
+    panic(
+      `Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`,
+    );
   }
   if (canCarryTrackedRunMark(node)) {
     return node.mark(mark.addToSet(node.marks));
@@ -1311,7 +1428,9 @@ function convertTrackedChange(
     });
   };
   const getTrackedRunFormatting =
-    markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
+    markType === "deletion"
+      ? runFormattingResolvers.historical
+      : runFormattingResolvers.current;
   // A wrapper or move-range boundary the revision holds stays inside it:
   // lifting either out changes what accepting or rejecting the revision owns.
   // Comment boundaries remain marks over the projected content.
@@ -1386,8 +1505,11 @@ function convertTrackedChange(
       item.type === "moveTo"
     ) {
       const nestedMarkType =
-        item.type === "insertion" || item.type === "moveTo" ? "insertion" : "deletion";
-      const nestedMoveKind = item.type === "moveFrom" || item.type === "moveTo" ? item.type : null;
+        item.type === "insertion" || item.type === "moveTo"
+          ? "insertion"
+          : "deletion";
+      const nestedMoveKind =
+        item.type === "moveFrom" || item.type === "moveTo" ? item.type : null;
       itemNodes.push(
         ...convertTrackedChange(
           item,
@@ -1451,7 +1573,9 @@ function convertTrackedChange(
       item.type === "moveToRangeStart" ||
       item.type === "moveToRangeEnd"
     ) {
-      itemNodes.push(schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: item }));
+      itemNodes.push(
+        schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: item }),
+      );
     } else if (item.type === "preservedInline") {
       itemNodes.push(preservedInlineNode(item));
     } else {
@@ -1460,7 +1584,9 @@ function convertTrackedChange(
     }
     const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
     nodes.push(
-      ...(commentsAlreadyApplied ? wrappedNodes : applyCommentMarks(wrappedNodes, openCommentIds)),
+      ...(commentsAlreadyApplied
+        ? wrappedNodes
+        : applyCommentMarks(wrappedNodes, openCommentIds)),
     );
   }
 
@@ -1473,7 +1599,9 @@ function convertTrackedChange(
       recordCommentBoundary("start", commentId, "parent");
     }
   }
-  const boundaryCommentIds = new Set(commentRangeBoundaries.map(({ commentId }) => commentId));
+  const boundaryCommentIds = new Set(
+    commentRangeBoundaries.map(({ commentId }) => commentId),
+  );
   for (const commentId of boundaryCommentIds) {
     if (openCommentIds.has(commentId)) {
       recordCommentBoundary("end", commentId, "parent");
@@ -1503,7 +1631,9 @@ function convertTrackedChange(
     ...(change.info.utcDate ? { utcDate: change.info.utcDate.value } : {}),
     ...(change.info.initials ? { initials: change.info.initials } : {}),
     outerWrapperCount: wrappedBy.length,
-    ...(change.resolutionJoins === undefined ? {} : { resolutionJoins: change.resolutionJoins }),
+    ...(change.resolutionJoins === undefined
+      ? {}
+      : { resolutionJoins: change.resolutionJoins }),
   };
   return nodes.map((node) => withTrackedRunMark(node, mark, ancestor));
 }
@@ -1526,7 +1656,9 @@ function paragraphFormattingToAttrs(
 ): ParagraphFormattingProjection {
   const formatting = paragraphFormattingWithAuthoredIndentation(paragraph);
   const styleId = formatting?.styleId;
-  const styleName = styleId ? styleResolver?.getStyle(styleId)?.name : undefined;
+  const styleName = styleId
+    ? styleResolver?.getStyle(styleId)?.name
+    : undefined;
   const tableOfContentsLevel = tableOfContentsStyleLevel({
     styleId,
     ...(styleName ? { styleName } : {}),
@@ -1575,31 +1707,38 @@ function paragraphFormattingToAttrs(
   // reference — mutating the Folio document later must not poke
   // through into PM attrs.
   if (paragraph.propertyChanges && paragraph.propertyChanges.length > 0) {
-    attrs._propertyChanges = paragraph.propertyChanges.map(({ previousFormatting, ...change }) => {
-      // Attr and model carry the same union now; the numbering still crosses
-      // through the codec, which is what keeps the two slots from trading
-      // shapes the next time one of them moves.
-      if (previousFormatting === undefined) {
-        return change;
-      }
-      const { numPr, numPrFromStyle, ...rest } = previousFormatting;
-      return {
-        ...change,
-        previousFormatting: {
-          ...rest,
-          ...(numPr === undefined ? {} : { numPr: paragraphNumberingAttr(numPr) }),
-          ...(numPrFromStyle === undefined
-            ? {}
-            : { numPrFromStyle: paragraphNumberingAttr(numPrFromStyle) }),
-        },
-      };
-    });
+    attrs._propertyChanges = paragraph.propertyChanges.map(
+      ({ previousFormatting, ...change }) => {
+        // Attr and model carry the same union now; the numbering still crosses
+        // through the codec, which is what keeps the two slots from trading
+        // shapes the next time one of them moves.
+        if (previousFormatting === undefined) {
+          return change;
+        }
+        const { numPr, numPrFromStyle, ...rest } = previousFormatting;
+        return {
+          ...change,
+          previousFormatting: {
+            ...rest,
+            ...(numPr === undefined
+              ? {}
+              : { numPr: paragraphNumberingAttr(numPr) }),
+            ...(numPrFromStyle === undefined
+              ? {}
+              : { numPrFromStyle: paragraphNumberingAttr(numPrFromStyle) }),
+          },
+        };
+      },
+    );
   }
   // The attributes the authored `w:p` carried and the model has no field for.
   // The array instance is what `fromProseDoc` recognises on the way back: PM
   // copies attrs to both halves of a split, so the second half is holding this
   // very array and is told apart from a paragraph that authored its own.
-  if (paragraph.preservedAttributes && paragraph.preservedAttributes.length > 0) {
+  if (
+    paragraph.preservedAttributes &&
+    paragraph.preservedAttributes.length > 0
+  ) {
     attrs._preservedAttributes = paragraph.preservedAttributes;
   }
   if (paragraph.pPrMark) {
@@ -1685,8 +1824,10 @@ function paragraphFormattingToAttrs(
     attrs.renderedPageBreakBefore = true;
   }
 
-  const beforeAutospacing = formatting?.beforeAutospacing ?? stylePpr?.beforeAutospacing;
-  const afterAutospacing = formatting?.afterAutospacing ?? stylePpr?.afterAutospacing;
+  const beforeAutospacing =
+    formatting?.beforeAutospacing ?? stylePpr?.beforeAutospacing;
+  const afterAutospacing =
+    formatting?.afterAutospacing ?? stylePpr?.afterAutospacing;
   if (beforeAutospacing || afterAutospacing) {
     const base: NonNullable<ParagraphAttrs["_autospacingBase"]> = {};
     if (beforeAutospacing) {
@@ -1745,7 +1886,10 @@ function resolveTableStyleConditional(
   }
 
   const runPropsFromPpr = conditional.pPr?.runProperties
-    ? resolveRunFormattingWithoutDefaults(conditional.pPr.runProperties, styleResolver)
+    ? resolveRunFormattingWithoutDefaults(
+        conditional.pPr.runProperties,
+        styleResolver,
+      )
     : undefined;
   const resolvedRpr = conditional.rPr
     ? resolveRunFormattingWithoutDefaults(conditional.rPr, styleResolver)
@@ -1780,7 +1924,10 @@ function resolveTableBaseStyle(
   }
 
   const runPropsFromPpr = style.pPr?.runProperties
-    ? resolveRunFormattingWithoutDefaults(style.pPr.runProperties, styleResolver)
+    ? resolveRunFormattingWithoutDefaults(
+        style.pPr.runProperties,
+        styleResolver,
+      )
     : undefined;
   const resolvedRpr = style.rPr
     ? resolveRunFormattingWithoutDefaults(style.rPr, styleResolver)
@@ -1956,11 +2103,18 @@ function convertTable(
   // Resolve table borders through inline style, table style, then default table style.
   // A `w:tblStyle` naming a style the part does not define is treated as
   // absent, so the default table style applies (ECMA-376 §17.7.6).
-  const tableStyle = tableStyleId ? styleResolver?.getStyle(tableStyleId) : undefined;
-  const fallbackTableStyle = tableStyle ? undefined : styleResolver?.getDefaultTableStyle();
-  const conditionalTableStyleId = tableStyle?.styleId ?? fallbackTableStyle?.styleId;
+  const tableStyle = tableStyleId
+    ? styleResolver?.getStyle(tableStyleId)
+    : undefined;
+  const fallbackTableStyle = tableStyle
+    ? undefined
+    : styleResolver?.getDefaultTableStyle();
+  const conditionalTableStyleId =
+    tableStyle?.styleId ?? fallbackTableStyle?.styleId;
   const resolvedTableBorders =
-    table.formatting?.borders ?? tableStyle?.tblPr?.borders ?? fallbackTableStyle?.tblPr?.borders;
+    table.formatting?.borders ??
+    tableStyle?.tblPr?.borders ??
+    fallbackTableStyle?.tblPr?.borders;
   const fallbackTableIndent = fallbackTableStyle?.tblPr?.indent;
   // TableNormal's zero is Word's unindented default: keep it absent so a save
   // does not turn an inherited default into direct formatting. Direct and
@@ -1970,9 +2124,12 @@ function convertTable(
     tableStyle?.tblPr?.indent ??
     (fallbackTableIndent?.value === 0 ? undefined : fallbackTableIndent);
   const resolvedTableJustification =
-    tableStyle?.tblPr?.justification ?? fallbackTableStyle?.tblPr?.justification;
+    tableStyle?.tblPr?.justification ??
+    fallbackTableStyle?.tblPr?.justification;
   const resolvedTableBidi =
-    table.formatting?.bidi ?? tableStyle?.tblPr?.bidi ?? fallbackTableStyle?.tblPr?.bidi;
+    table.formatting?.bidi ??
+    tableStyle?.tblPr?.bidi ??
+    fallbackTableStyle?.tblPr?.bidi;
 
   // Resolve default cell margins through the same table-style cascade.
   const tableCellMargins =
@@ -2076,7 +2233,11 @@ function convertTable(
     seCell?: TableConditionalStyle;
   } = {};
   const setCS = (key: keyof typeof conditionalStyles, type: string): void => {
-    const val = resolveTableStyleConditional(styleResolver, conditionalTableStyleId, type);
+    const val = resolveTableStyleConditional(
+      styleResolver,
+      conditionalTableStyleId,
+      type,
+    );
     if (val) {
       conditionalStyles[key] = val;
     }
@@ -2104,12 +2265,14 @@ function convertTable(
 
   const totalRows = table.rows.length;
   const gridColumnCount = columnWidths?.length ?? 0;
-  const totalColumns = gridColumnCount > 0 ? gridColumnCount : countTableColumns(table.rows);
+  const totalColumns =
+    gridColumnCount > 0 ? gridColumnCount : countTableColumns(table.rows);
   const rows = table.rows.map((row, rowIndex) => {
     // Conditional formatting flag: firstRow in tblLook means "apply first-row styling"
     const isFirstRowStyled = rowIndex === 0 && look.firstRow;
     const resolvedRowJustification =
-      tableStyle?.trPr?.justification ?? fallbackTableStyle?.trPr?.justification;
+      tableStyle?.trPr?.justification ??
+      fallbackTableStyle?.trPr?.justification;
 
     return convertTableRow(
       row,
@@ -2232,10 +2395,16 @@ function convertTableRow(
   // The table properties the row overrides, and their revision: the editor
   // surfaces neither, so both ride the row node whole.
   if (row.tablePropertyExceptions) {
-    attrsWithoutStructuralChange._tablePropertyExceptions = row.tablePropertyExceptions;
+    attrsWithoutStructuralChange._tablePropertyExceptions =
+      row.tablePropertyExceptions;
   }
-  if (row.tablePropertyExceptionChanges && row.tablePropertyExceptionChanges.length > 0) {
-    attrsWithoutStructuralChange.tblPrExChange = [...row.tablePropertyExceptionChanges];
+  if (
+    row.tablePropertyExceptionChanges &&
+    row.tablePropertyExceptionChanges.length > 0
+  ) {
+    attrsWithoutStructuralChange.tblPrExChange = [
+      ...row.tablePropertyExceptionChanges,
+    ];
   }
   // Carry `w:trPrChange` opaquely through PM for round-trip + accept/reject.
   if (row.propertyChanges && row.propertyChanges.length > 0) {
@@ -2257,7 +2426,8 @@ function convertTableRow(
   if (row.contentControls && row.contentControls.length > 0) {
     attrsWithoutStructuralChange.contentControls = row.contentControls;
   }
-  if (row.carrierStack?.length) attrsWithoutStructuralChange.carrierStack = row.carrierStack;
+  if (row.carrierStack?.length)
+    attrsWithoutStructuralChange.carrierStack = row.carrierStack;
   // The row's child sink, carried by identity for the reason the table's is.
   if (hasSinkChildren(row.preserved)) {
     attrsWithoutStructuralChange._preserved = row.preserved;
@@ -2272,7 +2442,9 @@ function convertTableRow(
       ...(rowStructuralChange.info.utcDate
         ? { utcDate: rowStructuralChange.info.utcDate.value }
         : {}),
-      ...(rowStructuralChange.info.initials ? { initials: rowStructuralChange.info.initials } : {}),
+      ...(rowStructuralChange.info.initials
+        ? { initials: rowStructuralChange.info.initials }
+        : {}),
     };
     switch (rowStructuralChange.type) {
       case "tableRowInsertion":
@@ -2288,7 +2460,9 @@ function convertTableRow(
         break;
       default: {
         const unsupported: never = rowStructuralChange;
-        panic(`Unsupported table row structural change: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported table row structural change: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   }
@@ -2299,7 +2473,10 @@ function convertTableRow(
   const isFirstRow = rowIndex === 0;
   const isLastRow = rowIndex === (totalRows ?? 1) - 1;
   const rowCnf = row.formatting?.conditionalFormat;
-  const totalCols = totalColumns != null && totalColumns > 0 ? totalColumns : Math.max(numCells, 1);
+  const totalCols =
+    totalColumns != null && totalColumns > 0
+      ? totalColumns
+      : Math.max(numCells, 1);
 
   // A literal `<w:tr/>` from a non-Word producer parses with zero cells. PM's
   // tableRow content is `(tableCell | tableHeader)+`, so emit one placeholder
@@ -2395,7 +2572,12 @@ function convertTableRow(
         gridWidthPercent: gridWidth,
         conditionalStyle: cellConditionalStyle,
         tableBorders,
-        position: { isFirstRow, isLastRow, isFirstColumn: isFirstCol, isLastColumn: isLastCol },
+        position: {
+          isFirstRow,
+          isLastRow,
+          isFirstColumn: isFirstCol,
+          isLastColumn: isLastCol,
+        },
         calculatedRowSpan,
         preserveVMergeRestart,
         vMergeContinuationCells: rowSpanInfo?.continuationCells,
@@ -2551,7 +2733,10 @@ function convertTableCell({
             ? { verticalMerge: cellStructuralChange.verticalMerge }
             : {}),
           ...(cellStructuralChange.verticalMergeOriginal !== undefined
-            ? { verticalMergeOriginal: cellStructuralChange.verticalMergeOriginal }
+            ? {
+                verticalMergeOriginal:
+                  cellStructuralChange.verticalMergeOriginal,
+              }
             : {}),
         };
         break;
@@ -2561,7 +2746,9 @@ function convertTableCell({
         break;
       default: {
         const unsupported: never = cellStructuralChange;
-        panic(`Unsupported table cell structural change: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported table cell structural change: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   }
@@ -2609,7 +2796,9 @@ function convertTableCell({
           break;
         default: {
           const unsupported: never = block;
-          panic(`Unsupported table cell content: ${JSON.stringify(unsupported)}`);
+          panic(
+            `Unsupported table cell content: ${JSON.stringify(unsupported)}`,
+          );
         }
       }
     }
@@ -2635,8 +2824,11 @@ export function standaloneTableCellToProseMirror(
 ): PMNode {
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
-  const pageBreakRunSourceDescendants = buildPageBreakRunSourceDescendantIndex(cell.content);
+  const nextNoteReferenceOccurrenceId =
+    createNoteReferenceOccurrenceAllocator();
+  const pageBreakRunSourceDescendants = buildPageBreakRunSourceDescendantIndex(
+    cell.content,
+  );
   reportSourceContainerPageBreakRun(
     cell.content,
     "table-cell",
@@ -2707,7 +2899,9 @@ function convertField(
   const resultRuns =
     field.type === "complexField"
       ? field.fieldResult
-      : field.content.flatMap((content) => (content.type === "run" ? [content] : []));
+      : field.content.flatMap((content) =>
+          content.type === "run" ? [content] : [],
+        );
   const appendRun = (run: Run, into: PMNode[]): void => {
     // Use formatting from the first run that has it.
     fieldFormatting ??= run.formatting;
@@ -2761,7 +2955,9 @@ function convertField(
           break;
         default: {
           const unsupported: never = item;
-          panic(`Unsupported field display content: ${JSON.stringify(unsupported)}`);
+          panic(
+            `Unsupported field display content: ${JSON.stringify(unsupported)}`,
+          );
         }
       }
     }
@@ -2780,7 +2976,9 @@ function convertField(
           itemNodes.push(preservedInlineNode(content));
           break;
         case "hyperlink":
-          for (const { content: child } of withInlineWrapperStacks(content.children)) {
+          for (const { content: child } of withInlineWrapperStacks(
+            content.children,
+          )) {
             if (child.type === "run") {
               fieldFormatting ??= child.formatting;
               fieldPropertyChanges ??= child.propertyChanges;
@@ -2805,12 +3003,19 @@ function convertField(
           itemNodes.push(
             ...convertTrackedChange(
               content,
-              content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
+              content.type === "insertion" || content.type === "moveTo"
+                ? "insertion"
+                : "deletion",
               nextHyperlinkInstanceIndex,
               runScope,
-              { current: getInheritedRunFormatting, historical: getInheritedRunFormatting },
+              {
+                current: getInheritedRunFormatting,
+                historical: getInheritedRunFormatting,
+              },
               styleResolver,
-              content.type === "moveFrom" || content.type === "moveTo" ? content.type : null,
+              content.type === "moveFrom" || content.type === "moveTo"
+                ? content.type
+                : null,
               textBoxAnchors,
               [],
               openCommentIds,
@@ -2852,7 +3057,11 @@ function convertField(
   // of rendering at the default (eigenpal/docx-editor#909). Only when the result
   // is genuinely empty: a present-but-unformatted result run intentionally
   // inherits paragraph defaults and must not adopt the field code's formatting.
-  if (!fieldFormatting && field.type === "complexField" && field.fieldResult.length === 0) {
+  if (
+    !fieldFormatting &&
+    field.type === "complexField" &&
+    field.fieldResult.length === 0
+  ) {
     fieldFormatting = field.formatting;
   }
 
@@ -2862,7 +3071,10 @@ function convertField(
   // styled only by a `w:rStyle` (e.g. a PAGE/REF field) keeps its style-derived
   // marks, so the save-side `w:rStyle` reconciliation does not treat the field
   // as diverging and strip the link (eigenpal/docx-editor#833).
-  const inheritedFormatting = getInheritedRunFormatting(fieldFormatting, field.fieldType);
+  const inheritedFormatting = getInheritedRunFormatting(
+    fieldFormatting,
+    field.fieldType,
+  );
   const { marks } = buildRunMarks({
     runFormatting: fieldFormatting,
     inherited: inheritedFormatting,
@@ -2873,19 +3085,30 @@ function convertField(
   const createStructuredField =
     (field.type === "simpleField" || hasPageBreakContent) &&
     fieldRequiresStructuredContent(inlineNodes);
-  const displayText = getInlineDisplayText(schema.node("paragraph", null, inlineNodes));
+  const displayText = getInlineDisplayText(
+    schema.node("paragraph", null, inlineNodes),
+  );
   const emptyResultRuns =
     displayText === "" &&
     resultRuns.length > 0 &&
-    (field.type === "complexField" || field.content.length === resultRuns.length) &&
-    resultRuns.every((run) => run.content.every((item) => item.type === "text" && item.text === ""))
+    (field.type === "complexField" ||
+      field.content.length === resultRuns.length) &&
+    resultRuns.every((run) =>
+      run.content.every((item) => item.type === "text" && item.text === ""),
+    )
       ? resultRuns
       : undefined;
   const resultPropertyChanges = emptyResultRuns
     ? emptyFieldRunPropertyChanges(emptyResultRuns)
     : fieldPropertyChanges;
-  if (!createStructuredField && resultPropertyChanges && resultPropertyChanges.length > 0) {
-    marks.push(schema.mark("runPropertyChange", { changes: [...resultPropertyChanges] }));
+  if (
+    !createStructuredField &&
+    resultPropertyChanges &&
+    resultPropertyChanges.length > 0
+  ) {
+    marks.push(
+      schema.mark("runPropertyChange", { changes: [...resultPropertyChanges] }),
+    );
   }
   const fieldNode = schema.node(
     createStructuredField ? "structuredField" : "field",
@@ -2897,8 +3120,11 @@ function convertField(
       fldLock: field.fldLock ?? null,
       dirty: field.dirty ?? null,
       fieldResultIsFallback:
-        field.type === "complexField" ? (field.fieldResultIsFallback ?? null) : null,
-      formFieldDataXml: field.type === "complexField" ? (field.formFieldDataXml ?? null) : null,
+        field.type === "complexField"
+          ? (field.fieldResultIsFallback ?? null)
+          : null,
+      formFieldDataXml:
+        field.type === "complexField" ? (field.formFieldDataXml ?? null) : null,
       _docxEmptyResultRuns: emptyResultRuns ?? null,
       _docxFieldCode:
         field.type === "complexField" && field.fieldCode.length > 0
@@ -2910,7 +3136,8 @@ function convertField(
   );
   return createStructuredField
     ? fieldNode
-    : (applyCommentMarks([fieldNode], commentsOpenBeforeField).at(0) ?? fieldNode);
+    : (applyCommentMarks([fieldNode], commentsOpenBeforeField).at(0) ??
+        fieldNode);
 }
 
 /** An inline item the wrappers have been lifted off, and which ones they were. */
@@ -2941,7 +3168,10 @@ const withInlineWrapperStacks = (
 ): StackedContent[] =>
   content.flatMap((item) =>
     item.type === "inlineWrapper"
-      ? withInlineWrapperStacks(item.content, [...stack, inlineWrapperLayer(item)])
+      ? withInlineWrapperStacks(item.content, [
+          ...stack,
+          inlineWrapperLayer(item),
+        ])
       : [{ content: item, stack }],
   );
 
@@ -2955,7 +3185,9 @@ const emptyInlineWrapperStacks = (
       return [];
     }
     const nested = [...stack, inlineWrapperLayer(item)];
-    return item.content.length === 0 ? [nested] : emptyInlineWrapperStacks(item.content, nested);
+    return item.content.length === 0
+      ? [nested]
+      : emptyInlineWrapperStacks(item.content, nested);
   });
 
 /**
@@ -2993,15 +3225,18 @@ const withInlineWrapperMark = (
       return node;
     }
     const inner = node.marks.find((mark) => mark.type === markType);
-    const innerAttrs = inner === undefined ? undefined : expectInlineWrapperMarkAttrs(inner);
-    const layers = innerAttrs === undefined ? stack : [...stack, ...innerAttrs.stack];
+    const innerAttrs =
+      inner === undefined ? undefined : expectInlineWrapperMarkAttrs(inner);
+    const layers =
+      innerAttrs === undefined ? stack : [...stack, ...innerAttrs.stack];
     const inheritedOrigin =
       typeof innerAttrs?._docxHyperlinkIndex !== "number" ||
       typeof innerAttrs._docxInsideHyperlinkStackStart !== "number"
         ? undefined
         : {
             hyperlinkIndex: innerAttrs._docxHyperlinkIndex,
-            stackStart: stack.length + innerAttrs._docxInsideHyperlinkStackStart,
+            stackStart:
+              stack.length + innerAttrs._docxInsideHyperlinkStackStart,
           };
     const provenance = origin ?? inheritedOrigin;
     return node.mark(
@@ -3066,7 +3301,10 @@ function convertInlineSdt(
     const anchored = emptyRanges.anchorAt.get(index);
     if (anchored) {
       inlineNodes.push(
-        ...withInlineWrapperMark([schema.node(RANGE_ANCHOR_NODE_NAME, anchored)], stack),
+        ...withInlineWrapperMark(
+          [schema.node(RANGE_ANCHOR_NODE_NAME, anchored)],
+          stack,
+        ),
       );
       continue;
     }
@@ -3139,12 +3377,16 @@ function convertInlineSdt(
         itemNodes.push(
           ...convertTrackedChange(
             content,
-            content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
+            content.type === "insertion" || content.type === "moveTo"
+              ? "insertion"
+              : "deletion",
             nextHyperlinkInstanceIndex,
             runScope,
             trackedRunFormattingResolvers,
             styleResolver,
-            content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
+            content.type === "moveTo" || content.type === "moveFrom"
+              ? content.type
+              : null,
             textBoxAnchors,
             stack,
             openCommentIds,
@@ -3191,7 +3433,9 @@ function convertInlineSdt(
       case "moveFromRangeEnd":
       case "moveToRangeStart":
       case "moveToRangeEnd":
-        itemNodes.push(schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: content }));
+        itemNodes.push(
+          schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: content }),
+        );
         break;
       case "preservedInline":
         itemNodes.push(preservedInlineNode(content));
@@ -3203,7 +3447,9 @@ function convertInlineSdt(
     }
     const wrappedNodes = withInlineWrapperMark(itemNodes, stack);
     inlineNodes.push(
-      ...(commentsAlreadyApplied ? wrappedNodes : applyCommentMarks(wrappedNodes, openCommentIds)),
+      ...(commentsAlreadyApplied
+        ? wrappedNodes
+        : applyCommentMarks(wrappedNodes, openCommentIds)),
     );
   }
 
@@ -3238,7 +3484,9 @@ function convertRun(
     createMark: runScope.createMark,
   });
   if (run.propertyChanges && run.propertyChanges.length > 0) {
-    marks.push(schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }));
+    marks.push(
+      schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }),
+    );
   }
   const identity = runIdentityMark(run, runScope.nextRunIdentityId);
   if (identity) {
@@ -3261,10 +3509,13 @@ function convertRun(
 }
 
 const runHasPageBreakContent = (run: Run): boolean =>
-  run.content.some((content) => content.type === "break" && content.breakType === "page");
+  run.content.some(
+    (content) => content.type === "break" && content.breakType === "page",
+  );
 
 const runHasMixedContent = (run: Run): boolean =>
-  run.content.length > 1 && run.content.some((content) => content.type !== "text");
+  run.content.length > 1 &&
+  run.content.some((content) => content.type !== "text");
 
 /**
  * Whether a field's result holds an explicit page break.
@@ -3274,7 +3525,9 @@ const runHasMixedContent = (run: Run): boolean =>
  * predicate for the two, because a reporter that disagreed with the converter
  * would name a loss nobody suffered.
  */
-const inlineHasPageBreakContent = (items: readonly ParagraphContent[]): boolean =>
+const inlineHasPageBreakContent = (
+  items: readonly ParagraphContent[],
+): boolean =>
   items.some((content) => {
     switch (content.type) {
       case "run":
@@ -3290,12 +3543,17 @@ const inlineHasPageBreakContent = (items: readonly ParagraphContent[]): boolean 
     }
   });
 
-const fieldResultHasPageBreakContent = (field: SimpleField | ComplexField): boolean =>
+const fieldResultHasPageBreakContent = (
+  field: SimpleField | ComplexField,
+): boolean =>
   field.type === "simpleField"
     ? inlineHasPageBreakContent(field.content)
     : field.fieldResult.some(runHasPageBreakContent);
 
-function reportPageBreakSourceRunContent(run: Run, warn: PageBreakProjectionWarn): void {
+function reportPageBreakSourceRunContent(
+  run: Run,
+  warn: PageBreakProjectionWarn,
+): void {
   if (!runHasPageBreakContent(run)) {
     return;
   }
@@ -3320,7 +3578,10 @@ function reportSourceContainerPageBreakRun(
   if (!sourceDescendants.containsPageBreakRun(content)) {
     return;
   }
-  if (owner === "table-cell" && hasSingleLeadingTableCellPageBreak(content, sourceDescendants)) {
+  if (
+    owner === "table-cell" &&
+    hasSingleLeadingTableCellPageBreak(content, sourceDescendants)
+  ) {
     return;
   }
   warn(PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]);
@@ -3341,10 +3602,15 @@ function hasSingleLeadingTableCellPageBreak(
   sourceDescendants: PageBreakRunSourceDescendantIndex,
 ): boolean {
   const first = content.at(0);
-  if (first?.type !== "paragraph" || !hasSingleLeadingParagraphPageBreak(first)) {
+  if (
+    first?.type !== "paragraph" ||
+    !hasSingleLeadingParagraphPageBreak(first)
+  ) {
     return false;
   }
-  return !content.slice(1).some((block) => sourceDescendants.blockContainsPageBreakRun(block));
+  return !content
+    .slice(1)
+    .some((block) => sourceDescendants.blockContainsPageBreakRun(block));
 }
 
 type LeadingPageBreakScan = {
@@ -3353,7 +3619,10 @@ type LeadingPageBreakScan = {
   textBoxShapeAfterBreak: boolean;
 };
 
-const scanLeadingPageBreakRun = (run: Run, scan: LeadingPageBreakScan): void => {
+const scanLeadingPageBreakRun = (
+  run: Run,
+  scan: LeadingPageBreakScan,
+): void => {
   for (const content of run.content) {
     if (content.type === "renderedPageBreak") {
       continue;
@@ -3364,7 +3633,11 @@ const scanLeadingPageBreakRun = (run: Run, scan: LeadingPageBreakScan): void => 
     }
     // Only a shape with a text body anchors content: a plain shape after the
     // break loses no host, so it must not read as a text-box anchor.
-    if (content.type === "shape" && content.shape.textBody && scan.pageBreaks > 0) {
+    if (
+      content.type === "shape" &&
+      content.shape.textBody &&
+      scan.pageBreaks > 0
+    ) {
       scan.textBoxShapeAfterBreak = true;
     }
     if (scan.pageBreaks === 0) {
@@ -3382,7 +3655,8 @@ const scanLeadingPageBreakContent = (
       scanLeadingPageBreakRun(content, scan);
       return;
     case "hyperlink":
-      for (const child of content.children) scanLeadingPageBreakContent(child, scan);
+      for (const child of content.children)
+        scanLeadingPageBreakContent(child, scan);
       return;
     case "insertion":
     case "deletion":
@@ -3392,13 +3666,16 @@ const scanLeadingPageBreakContent = (
     // Transparent: the scan is looking for a page break, and a wrapper says
     // how its content is laid out rather than where a page ends.
     case "inlineWrapper":
-      for (const child of content.content) scanLeadingPageBreakContent(child, scan);
+      for (const child of content.content)
+        scanLeadingPageBreakContent(child, scan);
       return;
     case "simpleField":
-      for (const child of content.content) scanLeadingPageBreakContent(child, scan);
+      for (const child of content.content)
+        scanLeadingPageBreakContent(child, scan);
       return;
     case "complexField":
-      for (const child of content.fieldResult) scanLeadingPageBreakRun(child, scan);
+      for (const child of content.fieldResult)
+        scanLeadingPageBreakRun(child, scan);
       return;
     case "bookmarkStart":
     case "bookmarkEnd":
@@ -3421,13 +3698,16 @@ const scanLeadingPageBreakContent = (
   }
 };
 
-const scanParagraphPageBreaks = (paragraph: Paragraph): LeadingPageBreakScan => {
+const scanParagraphPageBreaks = (
+  paragraph: Paragraph,
+): LeadingPageBreakScan => {
   const scan: LeadingPageBreakScan = {
     contentBeforeBreak: false,
     pageBreaks: 0,
     textBoxShapeAfterBreak: false,
   };
-  for (const content of paragraph.content) scanLeadingPageBreakContent(content, scan);
+  for (const content of paragraph.content)
+    scanLeadingPageBreakContent(content, scan);
   return scan;
 };
 
@@ -3468,7 +3748,10 @@ function reportParagraphPageBreakProjection({
   if (disposition.status === "exact") {
     return;
   }
-  if (disposition.reason !== "textBoxAnchor" && hasSingleLeadingParagraphPageBreak(paragraph)) {
+  if (
+    disposition.reason !== "textBoxAnchor" &&
+    hasSingleLeadingParagraphPageBreak(paragraph)
+  ) {
     return;
   }
   warn(disposition.message);
@@ -3589,18 +3872,24 @@ function reportRunContentBesidePageBreak(
         continue;
       case "shape":
         if (content.shape.textBody) {
-          warn(`${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} also holds a text-box shape`);
+          warn(
+            `${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} also holds a text-box shape`,
+          );
         }
         continue;
       case "fieldChar":
       case "instrText":
       case "noBreakHyphen":
       case "softHyphen":
-        warn(`${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} also holds ${content.type}`);
+        warn(
+          `${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} also holds ${content.type}`,
+        );
         continue;
       default: {
         const unsupported: never = content;
-        panic(`Unsupported page-break-bearing run content: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported page-break-bearing run content: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   }
@@ -3689,27 +3978,46 @@ const sameFormattingValue = (left: unknown, right: unknown): boolean => {
   if (left === right) {
     return true;
   }
-  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
+  if (
+    typeof left !== "object" ||
+    left === null ||
+    typeof right !== "object" ||
+    right === null
+  ) {
     return false;
   }
   if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    if (
+      !Array.isArray(left) ||
+      !Array.isArray(right) ||
+      left.length !== right.length
+    ) {
       return false;
     }
-    return left.every((value, index) => sameFormattingValue(value, right.at(index)));
+    return left.every((value, index) =>
+      sameFormattingValue(value, right.at(index)),
+    );
   }
-  const leftEntries = Object.entries(left).filter(([, value]) => value !== undefined);
-  const rightEntries = Object.entries(right).filter(([, value]) => value !== undefined);
+  const leftEntries = Object.entries(left).filter(
+    ([, value]) => value !== undefined,
+  );
+  const rightEntries = Object.entries(right).filter(
+    ([, value]) => value !== undefined,
+  );
   if (leftEntries.length !== rightEntries.length) {
     return false;
   }
   return leftEntries.every(
     ([property, value]) =>
-      Object.hasOwn(right, property) && sameFormattingValue(value, Reflect.get(right, property)),
+      Object.hasOwn(right, property) &&
+      sameFormattingValue(value, Reflect.get(right, property)),
   );
 };
 
-const isReconstructibleFontFamily = (directValue: unknown, effectiveValue: unknown): boolean => {
+const isReconstructibleFontFamily = (
+  directValue: unknown,
+  effectiveValue: unknown,
+): boolean => {
   if (
     typeof directValue !== "object" ||
     directValue === null ||
@@ -3745,7 +4053,9 @@ const canReconstructAuthoredRunFormatting = ({
   if (paragraphMarkOverrides !== undefined) {
     return false;
   }
-  for (const property of Object.keys(directFormatting ?? {}) as (keyof TextFormatting)[]) {
+  for (const property of Object.keys(
+    directFormatting ?? {},
+  ) as (keyof TextFormatting)[]) {
     const directValue = directFormatting?.[property];
     if (directValue === undefined || property === "styleId") {
       continue;
@@ -3761,12 +4071,19 @@ const canReconstructAuthoredRunFormatting = ({
         }
         return false;
       case "visible-boolean":
-        if (directValue === false || (directValue === true && inheritedValue !== true)) {
+        if (
+          directValue === false ||
+          (directValue === true && inheritedValue !== true)
+        ) {
           continue;
         }
         return false;
       case "font-size":
-        if (typeof directValue === "number" && Number.isFinite(directValue) && directValue > 0) {
+        if (
+          typeof directValue === "number" &&
+          Number.isFinite(directValue) &&
+          directValue > 0
+        ) {
           continue;
         }
         return false;
@@ -3880,7 +4197,9 @@ function buildRunMarks({
   } else if (!inherited.implicitCharacterStyleApplied) {
     characterStyleFormatting = styleResolver?.getDefaultCharacterStyle()?.rPr;
   }
-  let ordinaryRunStyleFormatting = inherited.formatting ? { ...inherited.formatting } : {};
+  let ordinaryRunStyleFormatting = inherited.formatting
+    ? { ...inherited.formatting }
+    : {};
   if (styleId) {
     ordinaryRunStyleFormatting =
       mergeTextFormatting(inherited.formatting, characterStyleFormatting) ?? {};
@@ -3898,17 +4217,23 @@ function buildRunMarks({
       { cascade: cascadedStyleFormatting, type: "carried" },
       { formatting: runFormatting, type: "direct" },
     ],
-    { ordinaryFormatting: mergeTextFormatting(runStyleFormatting, runFormatting) },
+    {
+      ordinaryFormatting: mergeTextFormatting(
+        runStyleFormatting,
+        runFormatting,
+      ),
+    },
   );
   const mergedFormatting = finalToggleFormatting.formatting;
-  const authoredCarrier: AuthoredRunFormattingCarrier = canReconstructAuthoredRunFormatting({
-    directFormatting: runFormatting,
-    effectiveFormatting: mergedFormatting,
-    inheritedFormatting: runStyleFormatting,
-    paragraphMarkOverrides: inherited.paragraphMarkOverrides,
-  })
-    ? "reconstruct"
-    : "preserve";
+  const authoredCarrier: AuthoredRunFormattingCarrier =
+    canReconstructAuthoredRunFormatting({
+      directFormatting: runFormatting,
+      effectiveFormatting: mergedFormatting,
+      inheritedFormatting: runStyleFormatting,
+      paragraphMarkOverrides: inherited.paragraphMarkOverrides,
+    })
+      ? "reconstruct"
+      : "preserve";
   const overrideFormatting = getRunFormattingOverrides({
     directFormatting: runFormatting,
     effectiveStyleFormatting: runStyleFormatting,
@@ -3961,7 +4286,10 @@ function getRunFormattingOverrides({
   hasCharacterStyle,
   paragraphMarkOverrides,
 }: GetRunFormattingOverridesOptions): TextFormatting | undefined {
-  const overrides = mergeTextFormatting(paragraphMarkOverrides, directFormatting);
+  const overrides = mergeTextFormatting(
+    paragraphMarkOverrides,
+    directFormatting,
+  );
   if (!overrides || !directFormatting) {
     return overrides;
   }
@@ -4053,8 +4381,12 @@ function convertRunContent({
     case "break":
       if (content.breakType === "textWrapping" || !content.breakType) {
         const attrs = {
-          ...(content.sourceElement !== undefined ? { sourceElement: content.sourceElement } : {}),
-          ...(content.breakType !== undefined ? { breakType: content.breakType } : {}),
+          ...(content.sourceElement !== undefined
+            ? { sourceElement: content.sourceElement }
+            : {}),
+          ...(content.breakType !== undefined
+            ? { breakType: content.breakType }
+            : {}),
           ...(content.clear !== undefined ? { clear: content.clear } : {}),
         };
         return [schema.node("hardBreak", attrs).mark(marks)];
@@ -4071,7 +4403,10 @@ function convertRunContent({
       }
       return [
         schema
-          .node("pageBreakRun", content.clear === undefined ? undefined : { clear: content.clear })
+          .node(
+            "pageBreakRun",
+            content.clear === undefined ? undefined : { clear: content.clear },
+          )
           .mark(marks),
       ];
 
@@ -4083,7 +4418,10 @@ function convertRunContent({
       // Word commonly represents signature blanks as underlined tab runs.
       return [
         schema
-          .node("tab", content.positional ? { positional: content.positional } : undefined)
+          .node(
+            "tab",
+            content.positional ? { positional: content.positional } : undefined,
+          )
           .mark(marks),
       ];
 
@@ -4110,7 +4448,9 @@ function convertRunContent({
       const shp = content.shape;
       if (shp.textBody) {
         const anchorId = textBoxAnchors?.get(shp);
-        return anchorId ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)] : [];
+        return anchorId
+          ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)]
+          : [];
       }
       return [
         withRunBoundaryMarks(
@@ -4173,7 +4513,11 @@ function convertRunContent({
       return [schema.text(HYPHEN_TEXT_CARRIERS.softHyphen, marks)];
 
     case "symbol":
-      return [schema.node("symbol", { font: content.font, char: content.char }).mark(marks)];
+      return [
+        schema
+          .node("symbol", { font: content.font, char: content.char })
+          .mark(marks),
+      ];
   }
 }
 
@@ -4182,10 +4526,18 @@ function convertRunContent({
  * and the authored `w:r` itself. A leaf that carries one has to hold the whole
  * mark set, because the save leg rebuilds those elements around it.
  */
-const RUN_BOUNDARY_MARK_NAMES = new Set<string>(["hyperlink", RUN_IDENTITY_MARK_NAME]);
+const RUN_BOUNDARY_MARK_NAMES = new Set<string>([
+  "hyperlink",
+  RUN_IDENTITY_MARK_NAME,
+]);
 
-function withRunBoundaryMarks(node: PMNode, marks: ReturnType<typeof schema.mark>[]): PMNode {
-  const ownsWrapperOrSourceRun = marks.some(({ type }) => RUN_BOUNDARY_MARK_NAMES.has(type.name));
+function withRunBoundaryMarks(
+  node: PMNode,
+  marks: ReturnType<typeof schema.mark>[],
+): PMNode {
+  const ownsWrapperOrSourceRun = marks.some(({ type }) =>
+    RUN_BOUNDARY_MARK_NAMES.has(type.name),
+  );
   if (!ownsWrapperOrSourceRun) {
     return node;
   }
@@ -4229,22 +4581,30 @@ type ConvertImageOptions = {
 const authoredEmuAttrs = <Values extends Record<string, number | undefined>>(
   values: Values,
 ): Values | undefined =>
-  Object.values(values).some((value) => value !== undefined) ? values : undefined;
+  Object.values(values).some((value) => value !== undefined)
+    ? values
+    : undefined;
 
 /**
  * A text box's gradient fill, copied for the reason {@link copiedDrawingAnchor}
  * is: ProseMirror keeps object-valued attrs by reference. Any other fill is
  * stated by `fillColor`, or not at all.
  */
-const copiedGradientFill = (fill: ShapeFill | undefined): ShapeFill | undefined =>
-  fill?.type === "gradient" && fill.gradient !== undefined ? structuredClone(fill) : undefined;
+const copiedGradientFill = (
+  fill: ShapeFill | undefined,
+): ShapeFill | undefined =>
+  fill?.type === "gradient" && fill.gradient !== undefined
+    ? structuredClone(fill)
+    : undefined;
 
 /**
  * A copy of the anchor record: ProseMirror keeps object-valued attrs by
  * reference, so sharing it with the source would let a mutation of either reach
  * the other outside a transaction.
  */
-const copiedDrawingAnchor = (anchor: DrawingAnchor | undefined): DrawingAnchor | undefined =>
+const copiedDrawingAnchor = (
+  anchor: DrawingAnchor | undefined,
+): DrawingAnchor | undefined =>
   anchor === undefined
     ? undefined
     : {
@@ -4264,8 +4624,12 @@ const copiedWrapDistanceSlots = (
   slots === undefined
     ? undefined
     : {
-        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
-        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+        ...(slots.drawing === undefined
+          ? {}
+          : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined
+          ? {}
+          : { wrapChild: { ...slots.wrapChild } }),
       };
 
 /** A copy of the effect-extent slots, for {@link copiedWrapDistanceSlots}'s reason. */
@@ -4275,14 +4639,21 @@ const copiedEffectExtentSlots = (
   slots === undefined
     ? undefined
     : {
-        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
-        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+        ...(slots.drawing === undefined
+          ? {}
+          : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined
+          ? {}
+          : { wrapChild: { ...slots.wrapChild } }),
       };
 
 /** The wrap insets of a drawing, keyed by the pixel attribute each becomes. */
 const wrapDistanceEmu = (
   wrap: Image["wrap"] | undefined,
-): Record<"distTop" | "distBottom" | "distLeft" | "distRight", number | undefined> => ({
+): Record<
+  "distTop" | "distBottom" | "distLeft" | "distRight",
+  number | undefined
+> => ({
   distTop: wrap?.distT,
   distBottom: wrap?.distB,
   distLeft: wrap?.distL,
@@ -4300,7 +4671,9 @@ function convertImage({
   const imageData: { size?: PartialImageSize } = image;
   const imageSize = imageData.size;
   const widthPx = imageSize?.width ? emuToPixels(imageSize.width) : undefined;
-  const heightPx = imageSize?.height ? emuToPixels(imageSize.height) : undefined;
+  const heightPx = imageSize?.height
+    ? emuToPixels(imageSize.height)
+    : undefined;
 
   // Determine wrap type and float direction
   const wrapType = image.wrap.type;
@@ -4317,7 +4690,11 @@ function convertImage({
     cssFloat = "none"; // Inline images don't float
   } else if (wrapType === "topAndBottom") {
     cssFloat = "none"; // Block images don't float
-  } else if (wrapType === "square" || wrapType === "tight" || wrapType === "through") {
+  } else if (
+    wrapType === "square" ||
+    wrapType === "tight" ||
+    wrapType === "through"
+  ) {
     // These wrap types support text wrapping around the image
     if (wrapText === "left") {
       cssFloat = "right"; // Text on left → image floats right
@@ -4364,10 +4741,14 @@ function convertImage({
   const transformAttrs = authoredTransformAttrs(image.transform);
 
   // Convert wrap distances from EMU to pixels for margins
-  const distTop = image.wrap.distT != null ? emuToPixels(image.wrap.distT) : undefined;
-  const distBottom = image.wrap.distB != null ? emuToPixels(image.wrap.distB) : undefined;
-  const distLeft = image.wrap.distL != null ? emuToPixels(image.wrap.distL) : undefined;
-  const distRight = image.wrap.distR != null ? emuToPixels(image.wrap.distR) : undefined;
+  const distTop =
+    image.wrap.distT != null ? emuToPixels(image.wrap.distT) : undefined;
+  const distBottom =
+    image.wrap.distB != null ? emuToPixels(image.wrap.distB) : undefined;
+  const distLeft =
+    image.wrap.distL != null ? emuToPixels(image.wrap.distL) : undefined;
+  const distRight =
+    image.wrap.distR != null ? emuToPixels(image.wrap.distR) : undefined;
 
   // Build position data for floating images
   let position:
@@ -4428,7 +4809,8 @@ function convertImage({
     // diagram beyond the shapes the parse already read.
     preview: image.preview,
     docPrName: image.docPrName,
-    pictureNames: image.pictureNames === undefined ? undefined : { ...image.pictureNames },
+    pictureNames:
+      image.pictureNames === undefined ? undefined : { ...image.pictureNames },
     alt: image.alt,
     title: image.title,
     width: widthPx,
@@ -4461,14 +4843,18 @@ function convertImage({
     position,
     anchor: copiedDrawingAnchor(image.anchor),
     wrapDistanceSlots: copiedWrapDistanceSlots(image.wrap.distanceSlots),
-    wrapEffectExtentSlots: copiedEffectExtentSlots(image.wrap.effectExtentSlots),
+    wrapEffectExtentSlots: copiedEffectExtentSlots(
+      image.wrap.effectExtentSlots,
+    ),
     wrapPolygon: copiedWrapPolygon(image.wrap.polygon),
     // Two facts, carried separately: a decorative image is displayed and
     // skipped by assistive technology, a hidden one is not displayed.
     decorative: image.decorative,
     hidden: image.hidden,
     // Copy: ProseMirror keeps array-valued attrs by reference.
-    docPrExtensions: image.docPrExtensions ? [...image.docPrExtensions] : undefined,
+    docPrExtensions: image.docPrExtensions
+      ? [...image.docPrExtensions]
+      : undefined,
     // Copy: ProseMirror keeps object-valued attrs by reference, so sharing this
     // with the source Image would let a mutation of either reach the other
     // outside a transaction. `position` below is already built fresh.
@@ -4488,14 +4874,17 @@ function convertImage({
     hlinkHref: image.hlinkHref,
     hlinkRId: image.hlinkRId,
     // Copy: ProseMirror keeps object-valued attrs by reference.
-    hlinkClickSource: image.hlinkClickSource ? { ...image.hlinkClickSource } : undefined,
+    hlinkClickSource: image.hlinkClickSource
+      ? { ...image.hlinkClickSource }
+      : undefined,
     hlinkHoverXml: image.hlinkHoverXml,
     docPrId: image.id,
     _docxRawXml: rawXml,
     _docxRawXmlMode: rawXmlMode,
     _docxRawImageFingerprint: rawImageFingerprint,
     _docxObjectPreview:
-      rawXml !== undefined && /<(?:[A-Za-z_][\w.-]*:)?object(?:\s|>)/u.test(rawXml),
+      rawXml !== undefined &&
+      /<(?:[A-Za-z_][\w.-]*:)?object(?:\s|>)/u.test(rawXml),
     _docxRunFormatting: runFormatting,
   });
 }
@@ -4527,7 +4916,8 @@ function convertHyperlink(
   const nodes: PMNode[] = [];
 
   // Create link mark — internal anchors use #bookmarkName format
-  const href = hyperlink.href || (hyperlink.anchor ? `#${hyperlink.anchor}` : "");
+  const href =
+    hyperlink.href || (hyperlink.anchor ? `#${hyperlink.anchor}` : "");
   const linkMark = schema.mark("hyperlink", {
     href,
     tooltip: hyperlink.tooltip,
@@ -4542,7 +4932,9 @@ function convertHyperlink(
   // mark. Its provenance says which suffix of the wrapper stack belongs below
   // this link, so a wrapper around a link remains distinct from a link around
   // a wrapper when the save leg rebuilds the model.
-  for (const { content: child, stack } of withInlineWrapperStacks(hyperlink.children)) {
+  for (const { content: child, stack } of withInlineWrapperStacks(
+    hyperlink.children,
+  )) {
     const childNodes: PMNode[] = [];
     switch (child.type) {
       case "bookmarkStart":
@@ -4592,7 +4984,11 @@ function convertHyperlink(
           createMark: runScope.createMark,
         });
         if (child.propertyChanges && child.propertyChanges.length > 0) {
-          runMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
+          runMarks.push(
+            schema.mark("runPropertyChange", {
+              changes: [...child.propertyChanges],
+            }),
+          );
         }
         const identity = runIdentityMark(child, runScope.nextRunIdentityId);
         if (identity) {
@@ -4613,7 +5009,8 @@ function convertHyperlink(
               formatting: mergedFormatting,
               textBoxAnchors,
               authoredFormatting: child.formatting,
-              nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
+              nextNoteReferenceOccurrenceId:
+                runScope.nextNoteReferenceOccurrenceId,
             }),
           );
         }
@@ -4730,7 +5127,9 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
         ...(shape.position.vertical.posOffset !== undefined
           ? { posOffset: shape.position.vertical.posOffset }
           : {}),
-        ...(shape.position.vertical.alignment ? { align: shape.position.vertical.alignment } : {}),
+        ...(shape.position.vertical.alignment
+          ? { align: shape.position.vertical.alignment }
+          : {}),
       },
     };
   }
@@ -4746,7 +5145,9 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     shapeName: shape.name,
     anchor: copiedDrawingAnchor(shape.anchor),
     wrapDistanceSlots: copiedWrapDistanceSlots(shape.wrap?.distanceSlots),
-    wrapEffectExtentSlots: copiedEffectExtentSlots(shape.wrap?.effectExtentSlots),
+    wrapEffectExtentSlots: copiedEffectExtentSlots(
+      shape.wrap?.effectExtentSlots,
+    ),
     wrapPolygon: copiedWrapPolygon(shape.wrap?.polygon),
     alt: shape.alt,
     title: shape.title,
@@ -4779,10 +5180,22 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     cssFloat,
     wrapType,
     wrapText: shape.wrap?.wrapText,
-    distTop: shape.wrap?.distT !== undefined ? emuToPixels(shape.wrap.distT) : undefined,
-    distBottom: shape.wrap?.distB !== undefined ? emuToPixels(shape.wrap.distB) : undefined,
-    distLeft: shape.wrap?.distL !== undefined ? emuToPixels(shape.wrap.distL) : undefined,
-    distRight: shape.wrap?.distR !== undefined ? emuToPixels(shape.wrap.distR) : undefined,
+    distTop:
+      shape.wrap?.distT !== undefined
+        ? emuToPixels(shape.wrap.distT)
+        : undefined,
+    distBottom:
+      shape.wrap?.distB !== undefined
+        ? emuToPixels(shape.wrap.distB)
+        : undefined,
+    distLeft:
+      shape.wrap?.distL !== undefined
+        ? emuToPixels(shape.wrap.distL)
+        : undefined,
+    distRight:
+      shape.wrap?.distR !== undefined
+        ? emuToPixels(shape.wrap.distR)
+        : undefined,
     position,
   });
 }
@@ -4814,7 +5227,10 @@ function convertParagraphWithTextBoxes(
     tableParagraphOverlay,
   }: ConvertParagraphWithTextBoxesOptions,
 ): PMNode[] {
-  const { textBoxes, textBoxAnchors } = extractTextBoxesFromParagraph(block, textBoxGroupId);
+  const { textBoxes, textBoxAnchors } = extractTextBoxesFromParagraph(
+    block,
+    textBoxGroupId,
+  );
   const pmParagraph = convertParagraph(
     block,
     styleResolver,
@@ -4828,7 +5244,8 @@ function convertParagraphWithTextBoxes(
     textBoxes.length > 0 && !hasContentBesidesTextBoxAnchors(pmParagraph);
   const keepWrapperParagraph =
     isEmptyAfterExtraction &&
-    (preserveEmptyWrapper === true || hasParagraphBoundaryPayload(block, pmParagraph));
+    (preserveEmptyWrapper === true ||
+      hasParagraphBoundaryPayload(block, pmParagraph));
   if (!isEmptyAfterExtraction || keepWrapperParagraph) {
     nodes.push(pmParagraph);
   }
@@ -4898,7 +5315,10 @@ function hasContentBesidesTextBoxAnchors(paragraph: PMNode): boolean {
   return hasContent;
 }
 
-function hasParagraphBoundaryPayload(block: Paragraph, pmParagraph: PMNode): boolean {
+function hasParagraphBoundaryPayload(
+  block: Paragraph,
+  pmParagraph: PMNode,
+): boolean {
   const bookmarks = pmParagraph.attrs["bookmarks"];
   const emptyHyperlinks = pmParagraph.attrs["_emptyHyperlinks"];
   return Boolean(
@@ -4973,7 +5393,10 @@ function mayContainTextBox(paragraph: Paragraph): boolean {
   return false;
 }
 
-function extractTextBoxes(paragraph: Paragraph, textBoxGroupId: string): ExtractTextBoxesResult {
+function extractTextBoxes(
+  paragraph: Paragraph,
+  textBoxGroupId: string,
+): ExtractTextBoxesResult {
   const textBoxes: ExtractedTextBox[] = [];
   const textBoxAnchors = new Map<Shape, string>();
   const visitRun = (run: Run, context: TextBoxExtractionContext): void => {
@@ -4993,7 +5416,10 @@ function extractTextBoxes(paragraph: Paragraph, textBoxGroupId: string): Extract
     }
   };
 
-  const visitHyperlink = (hyperlink: Hyperlink, context: TextBoxExtractionContext): void => {
+  const visitHyperlink = (
+    hyperlink: Hyperlink,
+    context: TextBoxExtractionContext,
+  ): void => {
     for (const child of hyperlink.children) {
       if (child.type === "run") {
         visitRun(child, context);
@@ -5005,9 +5431,10 @@ function extractTextBoxes(paragraph: Paragraph, textBoxGroupId: string): Extract
     change: Insertion | Deletion | MoveFrom | MoveTo,
     context: TextBoxExtractionContext,
   ): void => {
-    const trackedChange = { type: change.type, info: change.info } as const satisfies NonNullable<
-      TextBoxAttrs["_docxTrackedChange"]
-    >;
+    const trackedChange = {
+      type: change.type,
+      info: change.info,
+    } as const satisfies NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
     for (const item of change.content) {
       if (item.type === "run") {
         visitRun(item, { ...context, trackedChange });
@@ -5019,8 +5446,14 @@ function extractTextBoxes(paragraph: Paragraph, textBoxGroupId: string): Extract
     }
   };
 
-  const visitInlineSdt = (sdt: InlineSdt, context: TextBoxExtractionContext): void => {
-    const inlineSdts = [...context.inlineSdts, sdtAttrsFromProperties(sdt.properties)];
+  const visitInlineSdt = (
+    sdt: InlineSdt,
+    context: TextBoxExtractionContext,
+  ): void => {
+    const inlineSdts = [
+      ...context.inlineSdts,
+      sdtAttrsFromProperties(sdt.properties),
+    ];
     const nestedContext = { ...context, inlineSdts };
 
     for (const item of sdt.content) {
@@ -5164,7 +5597,9 @@ function convertTextBox(
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
   const textBoxSize = textBoxData.size;
   const widthPx = textBoxSize?.width ? emuToPixels(textBoxSize.width) : 200;
-  const heightPx = textBoxSize?.height ? emuToPixels(textBoxSize.height) : undefined;
+  const heightPx = textBoxSize?.height
+    ? emuToPixels(textBoxSize.height)
+    : undefined;
 
   // Convert fill color
   let fillColor: string | undefined;
@@ -5192,13 +5627,21 @@ function convertTextBox(
   // (`shape.textBody.margins.top: absent became N`), and every consumer of the
   // attr already resolves absence against `DEFAULT_TEXTBOX_MARGINS`.
   const marginTop =
-    textBox.margins?.top !== undefined ? emuToPixels(textBox.margins.top) : undefined;
+    textBox.margins?.top !== undefined
+      ? emuToPixels(textBox.margins.top)
+      : undefined;
   const marginBottom =
-    textBox.margins?.bottom !== undefined ? emuToPixels(textBox.margins.bottom) : undefined;
+    textBox.margins?.bottom !== undefined
+      ? emuToPixels(textBox.margins.bottom)
+      : undefined;
   const marginLeft =
-    textBox.margins?.left !== undefined ? emuToPixels(textBox.margins.left) : undefined;
+    textBox.margins?.left !== undefined
+      ? emuToPixels(textBox.margins.left)
+      : undefined;
   const marginRight =
-    textBox.margins?.right !== undefined ? emuToPixels(textBox.margins.right) : undefined;
+    textBox.margins?.right !== undefined
+      ? emuToPixels(textBox.margins.right)
+      : undefined;
 
   // Convert text box content to PM nodes.
   //
@@ -5207,7 +5650,10 @@ function convertTextBox(
   // close it. Carrying the body's open set in would mark the box's text, and
   // the save would then write a second range for that comment id inside the
   // box; carrying the box's markers out would close a body range at the box.
-  const textBoxContext = { ...options.context, openCommentIds: new Set<number>() };
+  const textBoxContext = {
+    ...options.context,
+    openCommentIds: new Set<number>(),
+  };
   const contentNodes: PMNode[] = [];
   for (const block of textBox.content) {
     if (block.type === "paragraph") {
@@ -5262,7 +5708,11 @@ function convertTextBox(
     cssFloat = "none";
   } else if (wrapType === "topAndBottom") {
     cssFloat = "none";
-  } else if (wrapType === "square" || wrapType === "tight" || wrapType === "through") {
+  } else if (
+    wrapType === "square" ||
+    wrapType === "tight" ||
+    wrapType === "through"
+  ) {
     if (wrapText === "left") {
       cssFloat = "right";
     } else if (wrapText === "right") {
@@ -5293,11 +5743,22 @@ function convertTextBox(
 
   // Presence, not truthiness: an authored inset of 0 is a value, and testing
   // it for truth dropped it on save (`shape.wrap.distB: N became absent`).
-  const distTop = textBox.wrap?.distT !== undefined ? emuToPixels(textBox.wrap.distT) : undefined;
+  const distTop =
+    textBox.wrap?.distT !== undefined
+      ? emuToPixels(textBox.wrap.distT)
+      : undefined;
   const distBottom =
-    textBox.wrap?.distB !== undefined ? emuToPixels(textBox.wrap.distB) : undefined;
-  const distLeft = textBox.wrap?.distL !== undefined ? emuToPixels(textBox.wrap.distL) : undefined;
-  const distRight = textBox.wrap?.distR !== undefined ? emuToPixels(textBox.wrap.distR) : undefined;
+    textBox.wrap?.distB !== undefined
+      ? emuToPixels(textBox.wrap.distB)
+      : undefined;
+  const distLeft =
+    textBox.wrap?.distL !== undefined
+      ? emuToPixels(textBox.wrap.distL)
+      : undefined;
+  const distRight =
+    textBox.wrap?.distR !== undefined
+      ? emuToPixels(textBox.wrap.distR)
+      : undefined;
 
   return schema.node(
     "textBox",
@@ -5318,7 +5779,9 @@ function convertTextBox(
       }),
       anchor: copiedDrawingAnchor(textBox.anchor),
       wrapDistanceSlots: copiedWrapDistanceSlots(textBox.wrap?.distanceSlots),
-      wrapEffectExtentSlots: copiedEffectExtentSlots(textBox.wrap?.effectExtentSlots),
+      wrapEffectExtentSlots: copiedEffectExtentSlots(
+        textBox.wrap?.effectExtentSlots,
+      ),
       wrapPolygon: copiedWrapPolygon(textBox.wrap?.polygon),
       autoFit: textBox.autoFit,
       wordArt: textBox.wordArt,
@@ -5352,9 +5815,12 @@ function convertTextBox(
       _docxAnchorId: options.anchorId,
       _docxGroupChild: textBox.groupChild,
       _docxTextBodyContentState:
-        textBox.content.length === 0 ? { type: "source-empty" } : { type: "authored" },
+        textBox.content.length === 0
+          ? { type: "source-empty" }
+          : { type: "authored" },
       _docxTrackedChange: options.trackedChange,
-      _docxInlineSdts: options.inlineSdts.length > 0 ? options.inlineSdts : undefined,
+      _docxInlineSdts:
+        options.inlineSdts.length > 0 ? options.inlineSdts : undefined,
       _preservedAttributes: options.hostPreservedAttributes,
       _docxHostParagraph: options.hostParagraph,
     },
@@ -5374,22 +5840,28 @@ export function headerFooterToProseDoc(
   options?: ToProseDocOptions,
 ): PMNode {
   const nodes: PMNode[] = [];
-  const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
+  const styleResolver = options?.styles
+    ? createStyleEngine(options.styles)
+    : null;
   const theme = options?.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
+  const nextNoteReferenceOccurrenceId =
+    createNoteReferenceOccurrenceAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const conversionContext = {
     listRenderings: new Map<string, ResolvedListRendering>(),
     theme,
     numbering:
-      options?.numbering === undefined ? undefined : getCachedNumberingMap(options.numbering),
+      options?.numbering === undefined
+        ? undefined
+        : getCachedNumberingMap(options.numbering),
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     nextNoteReferenceOccurrenceId,
     pairedBookmarkIds,
-    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
+    pageBreakRunSourceDescendants:
+      buildPageBreakRunSourceDescendantIndex(content),
     storyRangedCommentIds: rangedCommentIds(content),
     openCommentIds: new Set<number>(),
     warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
@@ -5401,22 +5873,30 @@ export function headerFooterToProseDoc(
     for (const block of blocks) {
       switch (block.type) {
         case "paragraph": {
-          const isDetachedWatermarkHost = Reflect.get(block, DETACHED_WATERMARK_HOST) === true;
-          const paragraphNodes = convertParagraphWithTextBoxes(block, styleResolver, {
-            textBoxGroupId: nextTextBoxGroupId(),
-            context: conversionContext,
-            preserveEmptyWrapper: isDetachedWatermarkHost,
-          });
+          const isDetachedWatermarkHost =
+            Reflect.get(block, DETACHED_WATERMARK_HOST) === true;
+          const paragraphNodes = convertParagraphWithTextBoxes(
+            block,
+            styleResolver,
+            {
+              textBoxGroupId: nextTextBoxGroupId(),
+              context: conversionContext,
+              preserveEmptyWrapper: isDetachedWatermarkHost,
+            },
+          );
           if (isDetachedWatermarkHost) {
             const paragraphNodeIndex = paragraphNodes.findIndex(
               ({ type }) => type.name === "paragraph",
             );
             const paragraphNode = paragraphNodes[paragraphNodeIndex];
             if (paragraphNode) {
-              paragraphNodes[paragraphNodeIndex] = recreateProseNodeWithParagraphPropertySource(
-                paragraphNode,
-                { attrs: { ...paragraphNode.attrs, _detachedWatermarkHost: true } },
-              );
+              paragraphNodes[paragraphNodeIndex] =
+                recreateProseNodeWithParagraphPropertySource(paragraphNode, {
+                  attrs: {
+                    ...paragraphNode.attrs,
+                    _detachedWatermarkHost: true,
+                  },
+                });
             }
           }
           out.push(...paragraphNodes);
@@ -5467,7 +5947,10 @@ export function headerFooterToProseDoc(
   return pmDoc;
 }
 
-export function footnoteToProseDoc(content: BlockContent[], options?: ToProseDocOptions): PMNode {
+export function footnoteToProseDoc(
+  content: BlockContent[],
+  options?: ToProseDocOptions,
+): PMNode {
   return headerFooterToProseDoc(content, options);
 }
 

@@ -3,17 +3,23 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
+
 import { UNDERLINE_STROKES } from "../display-list/build/strokes";
 import { underlineThicknessPx } from "../display-list/build/textDecorations";
 import { BLACK, DISPLAY_PRIMITIVE_KINDS } from "../display-list/primitives";
-import type { DisplayFontFace, DisplayList, DisplayPrimitive } from "../display-list/types";
+import type {
+  DisplayFontFace,
+  DisplayList,
+  DisplayPrimitive,
+} from "../display-list/types";
 import { formatNumber } from "./objects";
 import { displayPointToPdf } from "./pageSpace";
-import { writePdf, type PdfFontSource } from "./writePdf";
+import { type PdfFontSource, writePdf } from "./writePdf";
 
 const TIMESTAMP = "2026-01-02T03:04:05Z";
 
-const latin1 = (bytes: Uint8Array): string => new TextDecoder("latin1").decode(bytes);
+const latin1 = (bytes: Uint8Array): string =>
+  new TextDecoder("latin1").decode(bytes);
 
 const FACE: DisplayFontFace = {
   family: "Helvetica",
@@ -79,7 +85,11 @@ const textRun = (text: string): DisplayPrimitive => ({
 });
 
 const FIXTURE = listWith([
-  { kind: "rect", rect: { xPx: 10, yPx: 20, widthPx: 100, heightPx: 30 }, fill: BLACK },
+  {
+    kind: "rect",
+    rect: { xPx: 10, yPx: 20, widthPx: 100, heightPx: 30 },
+    fill: BLACK,
+  },
   {
     kind: "line",
     x1Px: 10,
@@ -113,8 +123,14 @@ const textStreams = (bytes: Uint8Array): readonly string[] => {
   while (match !== null) {
     const [, dict = "", length = "0"] = match;
     const start = match.index + match[0].length;
-    if (dict.includes("/FlateDecode") && !dict.includes("/Subtype") && !dict.includes("/Length1")) {
-      out.push(latin1(inflateSync(bytes.subarray(start, start + Number(length)))));
+    if (
+      dict.includes("/FlateDecode") &&
+      !dict.includes("/Subtype") &&
+      !dict.includes("/Length1")
+    ) {
+      out.push(
+        latin1(inflateSync(bytes.subarray(start, start + Number(length)))),
+      );
     }
     match = pattern.exec(text);
   }
@@ -130,13 +146,17 @@ describe("determinism", () => {
     const first = await write(FIXTURE);
     const second = await write(FIXTURE);
     expect(first.bytes.length).toBe(second.bytes.length);
-    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true);
+    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(
+      true,
+    );
   });
 
   test("a different timestamp changes the bytes", async () => {
     const first = await write(FIXTURE);
     const second = await write(FIXTURE, "2026-01-02T03:04:06Z");
-    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(false);
+    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(
+      false,
+    );
   });
 
   test("stamps the timestamp as a PDF date in UTC", async () => {
@@ -148,11 +168,16 @@ describe("determinism", () => {
   test("an offset timestamp and the same instant in Z agree byte for byte", async () => {
     const zulu = await write(FIXTURE, "2026-01-02T03:04:05Z");
     const offset = await write(FIXTURE, "2026-01-02T05:04:05+02:00");
-    expect(Buffer.from(zulu.bytes).equals(Buffer.from(offset.bytes))).toBe(true);
+    expect(Buffer.from(zulu.bytes).equals(Buffer.from(offset.bytes))).toBe(
+      true,
+    );
   });
 
   test("refuses a timestamp that is not an instant", async () => {
-    const result = await writePdf(FIXTURE, { fonts: NO_FONTS, timestamp: "not a date" });
+    const result = await writePdf(FIXTURE, {
+      fonts: NO_FONTS,
+      timestamp: "not a date",
+    });
     expect(result.isErr()).toBe(true);
   });
 });
@@ -173,7 +198,10 @@ describe("file structure", async () => {
   test("every xref offset resolves to the object it numbers", () => {
     const startxrefAt = text.lastIndexOf("startxref\n");
     expect(startxrefAt).toBeGreaterThan(0);
-    const xrefOffset = Number.parseInt(text.slice(startxrefAt + "startxref\n".length), 10);
+    const xrefOffset = Number.parseInt(
+      text.slice(startxrefAt + "startxref\n".length),
+      10,
+    );
     expect(text.slice(xrefOffset, xrefOffset + 4)).toBe("xref");
 
     const headerAt = xrefOffset + "xref\n".length;
@@ -191,9 +219,13 @@ describe("file structure", async () => {
       );
       expect(entry.endsWith(" n \n")).toBe(true);
       const offset = Number.parseInt(entry.slice(0, 10), 10);
-      expect(text.slice(offset, offset + `${id} 0 obj`.length)).toBe(`${id} 0 obj`);
+      expect(text.slice(offset, offset + `${id} 0 obj`.length)).toBe(
+        `${id} 0 obj`,
+      );
     }
-    expect(text.slice(entriesStart, entriesStart + ENTRY_BYTES)).toBe("0000000000 65535 f \n");
+    expect(text.slice(entriesStart, entriesStart + ENTRY_BYTES)).toBe(
+      "0000000000 65535 f \n",
+    );
   });
 
   test("the trailer names the catalog, the info dictionary and an /ID", () => {
@@ -204,7 +236,9 @@ describe("file structure", async () => {
   });
 
   test("writes the page box in points", () => {
-    expect(text).toContain(`/MediaBox [0 0 ${PAGE_WIDTH_PX * 0.75} ${PAGE_HEIGHT_PX * 0.75}]`);
+    expect(text).toContain(
+      `/MediaBox [0 0 ${PAGE_WIDTH_PX * 0.75} ${PAGE_HEIGHT_PX * 0.75}]`,
+    );
   });
 });
 
@@ -218,7 +252,9 @@ describe("the y flip", () => {
 
   test("opens the content stream with the one base matrix and paints in px", async () => {
     const content = contentStreamOf((await write(FIXTURE)).bytes);
-    expect(content.startsWith(`0.75 0 0 -0.75 0 ${PAGE_HEIGHT_PX * 0.75} cm\n`)).toBe(true);
+    expect(
+      content.startsWith(`0.75 0 0 -0.75 0 ${PAGE_HEIGHT_PX * 0.75} cm\n`),
+    ).toBe(true);
     // The rect keeps its display-list coordinates: nothing below the base
     // matrix does arithmetic on the page height.
     expect(content).toContain("10 20 100 30 re");
@@ -304,7 +340,9 @@ describe("substitution", () => {
       throw result.error;
     }
     expect(result.value.substitutions).toHaveLength(1);
-    expect(result.value.substitutions[0]?.reason).toContain("font parsing failed");
+    expect(result.value.substitutions[0]?.reason).toContain(
+      "font parsing failed",
+    );
   });
 
   test("does not report a face nothing paints", async () => {
@@ -320,7 +358,9 @@ describe("substitution", () => {
       ...FIXTURE,
       fonts: [{ ...FACE, generic: "serif", weight: 700, italic: true }],
     };
-    expect(latin1((await write(serif)).bytes)).toContain("/BaseFont /Times-BoldItalic");
+    expect(latin1((await write(serif)).bytes)).toContain(
+      "/BaseFont /Times-BoldItalic",
+    );
   });
 });
 
@@ -341,18 +381,29 @@ describe("malformed display lists", () => {
         smallCaps: false,
       },
     ]);
-    expect((await writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP })).isErr()).toBe(true);
+    expect(
+      (
+        await writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP })
+      ).isErr(),
+    ).toBe(true);
   });
 
   test("refuses a run that names a font outside the table", async () => {
     const broken = listWith([{ ...textRun("x"), font: 7 }]);
-    expect((await writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP })).isErr()).toBe(true);
+    expect(
+      (
+        await writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP })
+      ).isErr(),
+    ).toBe(true);
   });
 
   test("refuses a document with no pages", async () => {
     expect(
       (
-        await writePdf({ ...FIXTURE, pages: [] }, { fonts: NO_FONTS, timestamp: TIMESTAMP })
+        await writePdf(
+          { ...FIXTURE, pages: [] },
+          { fonts: NO_FONTS, timestamp: TIMESTAMP },
+        )
       ).isErr(),
     ).toBe(true);
   });
@@ -400,9 +451,13 @@ describe("graphics state", () => {
       stroke: { color: BLACK, thicknessPx, pattern: "solid" },
     });
 
-    const heavy = contentStreamOf((await write(listWith([underline(heavyPx)]))).bytes);
+    const heavy = contentStreamOf(
+      (await write(listWith([underline(heavyPx)]))).bytes,
+    );
     expect(heavy).toContain(`${formatNumber(heavyPx)} w`);
-    const plain = contentStreamOf((await write(listWith([underline(plainPx)]))).bytes);
+    const plain = contentStreamOf(
+      (await write(listWith([underline(plainPx)]))).bytes,
+    );
     expect(plain).toContain(`${formatNumber(plainPx)} w`);
     expect(plain).not.toContain(`${formatNumber(heavyPx)} w`);
   });
@@ -436,13 +491,17 @@ describe("right-to-left runs", () => {
 
 /** SOI, a baseline frame header for a 96x64 RGB image, then a scan marker. */
 const TINY_JPEG = Uint8Array.from([
-  0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x40, 0x00, 0x60, 0x03, 0x01, 0x11, 0x00, 0x02,
-  0x11, 0x01, 0x03, 0x11, 0x01, 0xff, 0xda, 0x00, 0x02,
+  0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x40, 0x00, 0x60, 0x03, 0x01,
+  0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01, 0xff, 0xda, 0x00, 0x02,
 ]);
 
 const SAMPLE_BY_KIND = {
   glyphRun: textRun("a"),
-  rect: { kind: "rect", rect: { xPx: 1, yPx: 2, widthPx: 3, heightPx: 4 }, fill: BLACK },
+  rect: {
+    kind: "rect",
+    rect: { xPx: 1, yPx: 2, widthPx: 3, heightPx: 4 },
+    fill: BLACK,
+  },
   line: {
     kind: "line",
     x1Px: 0,
@@ -462,19 +521,37 @@ const SAMPLE_BY_KIND = {
     kind: "clipGroup",
     rect: { xPx: 0, yPx: 0, widthPx: 10, heightPx: 10 },
     regions: [],
-    children: [{ kind: "rect", rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 }, fill: BLACK }],
+    children: [
+      {
+        kind: "rect",
+        rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 },
+        fill: BLACK,
+      },
+    ],
   },
   rotateGroup: {
     kind: "rotateGroup",
     degrees: 90,
     originXPx: 10,
     originYPx: 20,
-    children: [{ kind: "rect", rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 }, fill: BLACK }],
+    children: [
+      {
+        kind: "rect",
+        rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 },
+        fill: BLACK,
+      },
+    ],
   },
   opacityGroup: {
     kind: "opacityGroup",
     opacity: 0.5,
-    children: [{ kind: "rect", rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 }, fill: BLACK }],
+    children: [
+      {
+        kind: "rect",
+        rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 },
+        fill: BLACK,
+      },
+    ],
   },
   polygon: {
     kind: "polygon",
@@ -502,7 +579,9 @@ describe("primitive coverage", () => {
   test.each(DISPLAY_PRIMITIVE_KINDS)("paints a %s", async (kind) => {
     const list: DisplayList = {
       ...listWith([SAMPLE_BY_KIND[kind]]),
-      images: [{ format: "jpeg", bytes: TINY_JPEG, pixelWidth: 96, pixelHeight: 64 }],
+      images: [
+        { format: "jpeg", bytes: TINY_JPEG, pixelWidth: 96, pixelHeight: 64 },
+      ],
     };
     const content = contentStreamOf((await write(list)).bytes);
     const operators = content.trimEnd().split("\n");
@@ -511,7 +590,9 @@ describe("primitive coverage", () => {
   });
 
   test("rotates about the given origin", async () => {
-    const content = contentStreamOf((await write(listWith([SAMPLE_BY_KIND.rotateGroup]))).bytes);
+    const content = contentStreamOf(
+      (await write(listWith([SAMPLE_BY_KIND.rotateGroup]))).bytes,
+    );
     expect(content).toContain("0 1 -1 0 30 10 cm");
   });
 
@@ -535,7 +616,9 @@ describe("primitive coverage", () => {
   test("clips a cropped image and scales it past the destination box", async () => {
     const list: DisplayList = {
       ...listWith([SAMPLE_BY_KIND.image]),
-      images: [{ format: "jpeg", bytes: TINY_JPEG, pixelWidth: 96, pixelHeight: 64 }],
+      images: [
+        { format: "jpeg", bytes: TINY_JPEG, pixelWidth: 96, pixelHeight: 64 },
+      ],
     };
     const content = contentStreamOf((await write(list)).bytes);
     expect(content).toContain("5 6 20 10 re\nW n");
@@ -554,7 +637,15 @@ describe.skipIf(mutool === null)("mutool", () => {
     const file = join(directory, "out.pdf");
     await Bun.write(file, (await write(FIXTURE)).bytes);
     const process = Bun.spawn({
-      cmd: [mutool ?? "mutool", "draw", "-F", "stext", "-o", join(directory, "out.xml"), file],
+      cmd: [
+        mutool ?? "mutool",
+        "draw",
+        "-F",
+        "stext",
+        "-o",
+        join(directory, "out.xml"),
+        file,
+      ],
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -562,7 +653,9 @@ describe.skipIf(mutool === null)("mutool", () => {
     expect(await process.exited).toBe(0);
     expect(stderr).not.toContain("error");
     const extracted = await Bun.file(join(directory, "out.xml")).text();
-    const characters = [...extracted.matchAll(/<char c="(.)"/gu)].map(([, character]) => character);
+    const characters = [...extracted.matchAll(/<char c="(.)"/gu)].map(
+      ([, character]) => character,
+    );
     // A base-14 stand-in is positioned per code point, so the extractor
     // inserts synthetic spaces where the measurer's advances are wider than
     // the stand-in's: the characters and their order are what survive.

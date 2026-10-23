@@ -11,7 +11,9 @@
 import { emuToPixels } from "../utils/units";
 import type { ImageRunPosition } from "./types";
 
-type VerticalRelativeTo = NonNullable<ImageRunPosition["vertical"]>["relativeTo"];
+type VerticalRelativeTo = NonNullable<
+  ImageRunPosition["vertical"]
+>["relativeTo"];
 type VerticalAlign = NonNullable<ImageRunPosition["vertical"]>["align"];
 
 /**
@@ -22,7 +24,9 @@ type VerticalAlign = NonNullable<ImageRunPosition["vertical"]>["align"];
  * over the OOXML `ST_RelFromV` set so a new relativeFrom value forces a decision
  * here instead of silently falling through. eigenpal #694.
  */
-export function isPageFrameRelativeAnchor(relativeTo: VerticalRelativeTo): boolean {
+export function isPageFrameRelativeAnchor(
+  relativeTo: VerticalRelativeTo,
+): boolean {
   switch (relativeTo) {
     case "page":
     case "margin":
@@ -135,7 +139,9 @@ export type BandHorizontalGeometry = {
   boxWidth: number;
 };
 
-type HorizontalRelativeTo = NonNullable<ImageRunPosition["horizontal"]>["relativeTo"];
+type HorizontalRelativeTo = NonNullable<
+  ImageRunPosition["horizontal"]
+>["relativeTo"];
 type HorizontalAlign = NonNullable<ImageRunPosition["horizontal"]>["align"];
 
 /**
@@ -149,7 +155,13 @@ function bandHorizontalFrame(
   relativeTo: HorizontalRelativeTo,
   geometry: BandHorizontalGeometry,
 ): { left: number; right: number } {
-  const { pageWidth, marginLeft, marginRight, activeColumnLeft, activeColumnWidth } = geometry;
+  const {
+    pageWidth,
+    marginLeft,
+    marginRight,
+    activeColumnLeft,
+    activeColumnWidth,
+  } = geometry;
   switch (relativeTo) {
     case "page":
       return { left: 0, right: pageWidth };
@@ -161,7 +173,10 @@ function bandHorizontalFrame(
       return { left: pageWidth - marginRight, right: pageWidth };
     case "column":
     case undefined:
-      return { left: activeColumnLeft, right: activeColumnLeft + activeColumnWidth };
+      return {
+        left: activeColumnLeft,
+        right: activeColumnLeft + activeColumnWidth,
+      };
     case "margin":
     case "character":
       return { left: marginLeft, right: pageWidth - marginRight };

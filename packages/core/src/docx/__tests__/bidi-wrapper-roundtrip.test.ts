@@ -27,25 +27,32 @@ const NS =
   'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 
 const paragraphFrom = (inner: string) => {
-  const node = parseXmlDocument(`<w:p ${NS}>${inner}</w:p>`) as XmlElement | null;
+  const node = parseXmlDocument(
+    `<w:p ${NS}>${inner}</w:p>`,
+  ) as XmlElement | null;
   if (!node) {
     throw new Error("the fixture did not parse");
   }
   return parseParagraph(node, new Map(), null, null);
 };
 
-const roundTrip = (inner: string): string => serializeParagraph(paragraphFrom(inner));
+const roundTrip = (inner: string): string =>
+  serializeParagraph(paragraphFrom(inner));
 
 describe("a bidirectional wrapper survives a rebuild", () => {
   test("an override keeps its direction and its runs", () => {
     const xml = roundTrip(
       '<w:r><w:t>abc</w:t></w:r><w:bdo w:val="rtl"><w:r><w:t>def</w:t></w:r></w:bdo>',
     );
-    expect(xml).toContain('<w:bdo w:val="rtl"><w:r><w:t>def</w:t></w:r></w:bdo>');
+    expect(xml).toContain(
+      '<w:bdo w:val="rtl"><w:r><w:t>def</w:t></w:r></w:bdo>',
+    );
   });
 
   test("an embedding is written as w:dir, not as an override", () => {
-    const xml = roundTrip('<w:dir w:val="ltr"><w:r><w:t>abc</w:t></w:r></w:dir>');
+    const xml = roundTrip(
+      '<w:dir w:val="ltr"><w:r><w:t>abc</w:t></w:r></w:dir>',
+    );
     expect(xml).toContain('<w:dir w:val="ltr">');
     expect(xml).not.toContain("<w:bdo");
   });

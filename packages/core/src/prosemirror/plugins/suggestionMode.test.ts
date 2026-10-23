@@ -2,7 +2,7 @@
  * Unit tests for Suggestion Mode Plugin
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { history, undo } from "prosemirror-history";
 import { Fragment, Schema, Slice } from "prosemirror-model";
 import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
@@ -11,10 +11,10 @@ import type { EditorView } from "prosemirror-view";
 
 import {
   createSuggestionModePlugin,
-  suggestionModeKey,
-  setSuggestionMode,
   handleSuggestionEnter,
   handleSuggestionPaste,
+  setSuggestionMode,
+  suggestionModeKey,
 } from "./suggestionMode";
 
 // Minimal schema with insertion/deletion marks
@@ -46,7 +46,9 @@ const schema = new Schema({
 
 function createState(text: string, active = false): EditorState {
   const plugin = createSuggestionModePlugin(active, "TestUser");
-  const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [schema.text(text)]),
+  ]);
   return EditorState.create({ doc, plugins: [plugin] });
 }
 
@@ -265,7 +267,9 @@ describe("SuggestionMode Plugin", () => {
         doc,
         plugins: [createSuggestionModePlugin(true, "TestUser")],
       });
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5, 9)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 5, 9)),
+      );
 
       const { view, get } = mockView(state);
       const slice = new Slice(Fragment.from(schema.text("quick")), 0, 0);
@@ -277,7 +281,8 @@ describe("SuggestionMode Plugin", () => {
         if (node.text !== "lazy") {
           return;
         }
-        struck.value = node.marks.find((m) => m.type.name === "deletion")?.attrs ?? null;
+        struck.value =
+          node.marks.find((m) => m.type.name === "deletion")?.attrs ?? null;
       });
       expect(struck.value).toMatchObject({
         revisionId: 77,
@@ -291,7 +296,9 @@ describe("SuggestionMode Plugin", () => {
       // `replace` at the inline point would fail or drop structure; the
       // slice-fitting `replaceRange` places the blocks and tracks them.
       let state = createState("The lazy dog", true);
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5, 9)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 5, 9)),
+      );
 
       const { view, get } = mockView(state);
       const blockSlice = new Slice(
@@ -313,8 +320,12 @@ describe("SuggestionMode Plugin", () => {
       // The replaced original is struck through, not destroyed.
       expect(text).toContain("lazy");
       const marks = getMarks(get());
-      expect(marks.find((m) => m.text.includes("one"))?.marks).toContain("insertion");
-      expect(marks.find((m) => m.text.includes("lazy"))?.marks).toContain("deletion");
+      expect(marks.find((m) => m.text.includes("one"))?.marks).toContain(
+        "insertion",
+      );
+      expect(marks.find((m) => m.text.includes("lazy"))?.marks).toContain(
+        "deletion",
+      );
     });
 
     test("pasting over select-all strikes the whole document instead of destroying it", () => {
@@ -348,7 +359,9 @@ describe("SuggestionMode Plugin", () => {
 
     test("pasting at a collapsed cursor is declined (default paste handles it)", () => {
       let state = createState("abc", true);
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, 2)),
+      );
       const { view } = mockView(state);
       const slice = new Slice(Fragment.from(schema.text("X")), 0, 0);
       const pluginState = suggestionModeKey.getState(state)!;
@@ -410,7 +423,9 @@ describe("SuggestionMode Plugin", () => {
 
       // Verify no insertion marks exist before undo
       const marksBeforeUndo = getMarks(state);
-      expect(marksBeforeUndo.filter((m) => m.marks.includes("insertion")).length).toBe(0);
+      expect(
+        marksBeforeUndo.filter((m) => m.marks.includes("insertion")).length,
+      ).toBe(0);
 
       // Helper function to perform undo and capture state update without function-in-loop warning
       function performUndo() {
@@ -430,7 +445,9 @@ describe("SuggestionMode Plugin", () => {
       // The text should still be intact and NOT carry any insertion marks
       expect(getText(state)).toBe("abcdef");
       const marksAfterUndo = getMarks(state);
-      const insertedText = marksAfterUndo.filter((m) => m.marks.includes("insertion"));
+      const insertedText = marksAfterUndo.filter((m) =>
+        m.marks.includes("insertion"),
+      );
       expect(insertedText.length).toBe(0);
     });
   });

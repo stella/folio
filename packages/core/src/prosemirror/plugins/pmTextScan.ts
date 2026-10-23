@@ -50,12 +50,20 @@ export const collectBlockChunks = (doc: PMNode): TextChunk[][] => {
           // textblock's opening token, +offset is the position of
           // this text node inside the textblock.
           const start = pos + 1 + offset;
-          chunks.push({ text: child.text, start, end: start + child.text.length });
+          chunks.push({
+            text: child.text,
+            start,
+            end: start + child.text.length,
+          });
           return false;
         }
         if (child.isLeaf && child.textContent) {
           const start = pos + 1 + offset;
-          chunks.push({ text: child.textContent, start, end: start + child.nodeSize });
+          chunks.push({
+            text: child.textContent,
+            start,
+            end: start + child.nodeSize,
+          });
           return false;
         }
         return true;
@@ -98,4 +106,5 @@ export const offsetToDocPos = (
 };
 
 /** Join a block's chunks into the single string callers scan. */
-export const joinChunks = (chunks: TextChunk[]): string => chunks.map((c) => c.text).join("");
+export const joinChunks = (chunks: TextChunk[]): string =>
+  chunks.map((c) => c.text).join("");

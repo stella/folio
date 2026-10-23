@@ -13,45 +13,51 @@
 import { panic, TaggedError } from "better-result";
 
 import {
+  type FolioDocumentStoryHandle,
   FolioDocxReviewer,
+  type FolioResolvedReviewedView,
   getFolioDocxComparisonAccess,
   isFolioResolvedReviewedView,
-  type FolioDocumentStoryHandle,
-  type FolioResolvedReviewedView,
 } from "./ai-edits/headless";
-import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/snapshot";
+import { classifyResourceReference } from "./ai-edits/referenceClassification";
+import {
+  createFolioAITextRangeHandle,
+  trailingBodyBlockId,
+} from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
-  FolioAIParagraphBlock,
   FolioAIEditAppliedOperation,
   FolioAIEditOperation,
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
+  FolioAIParagraphBlock,
 } from "./ai-edits/types";
 import { createScopedWordDiffOptions } from "./ai-edits/word-diff";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "./document-operations";
-import { pairFolioDocumentStories } from "./document-stories";
-import {
-  resolveFolioDocumentPrivacyTransforms,
-  rewriteDocxMetadataPrivacy,
-  type FolioDocumentPrivacyOptions,
-  type FolioDocumentPrivacyReport,
-} from "./docx/metadataPrivacy";
 import { FolioContentInlinePresentationProjectionError } from "./compare/content";
+import { inlineFormattingSegments } from "./compare/formatting";
 import { importStyleClosureWithNumbering } from "./compare/import-style-closure";
 import {
   createInsertedResourceProjection,
   rebindInsertedResourceBlocks,
 } from "./compare/inserted-resource-snapshot";
-import { inlineFormattingSegments } from "./compare/formatting";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "./document-operations";
+import { pairFolioDocumentStories } from "./document-stories";
+import {
+  type FolioDocumentPrivacyOptions,
+  type FolioDocumentPrivacyReport,
+  resolveFolioDocumentPrivacyTransforms,
+  rewriteDocxMetadataPrivacy,
+} from "./docx/metadataPrivacy";
 import {
   GenerateRedlineDocxOperationLimitError,
   MAX_GENERATED_REDLINE_OPERATIONS,
 } from "./redlineOperationLimit";
 import type { NumberingDefinitions } from "./types/document";
-import { alignFolioBlocks, type FolioAlignedBlockEvent } from "./version-comparison";
-import { classifyResourceReference } from "./ai-edits/referenceClassification";
+import {
+  alignFolioBlocks,
+  type FolioAlignedBlockEvent,
+} from "./version-comparison";
 
 /** Options for {@link generateRedlineDocx}. */
 export type GenerateRedlineDocxOptions = {
@@ -117,7 +123,9 @@ export type GenerateRedlineDocxResult = {
   privacyReport: FolioDocumentPrivacyReport;
 };
 
-const nextBaseBlockIdByIndex = (events: readonly FolioAlignedBlockEvent[]): (string | null)[] => {
+const nextBaseBlockIdByIndex = (
+  events: readonly FolioAlignedBlockEvent[],
+): (string | null)[] => {
   const nextIds = Array.from<string | null>({ length: events.length });
   let nextId: string | null = null;
   for (let index = events.length - 1; index >= 0; index--) {
@@ -160,18 +168,22 @@ const buildFormattingRedlineOperations = ({
         return formattingComparison.segments;
       case "budget-exceeded":
         throw new GenerateRedlineDocxOperationLimitError({
-          message: "The document comparison exceeds the generated operation limit.",
+          message:
+            "The document comparison exceeds the generated operation limit.",
         });
       case "unalignable":
         throw new FolioContentInlinePresentationProjectionError({
-          message: "The inline formatting runs could not be aligned for redline generation.",
+          message:
+            "The inline formatting runs could not be aligned for redline generation.",
           side: formattingComparison.side,
           baseBlockId: baseBlock.id,
           revisedBlockId: revisedBlock.id,
         });
       default: {
         const unreachable: never = formattingComparison;
-        return panic("Unhandled inline formatting comparison result", { result: unreachable });
+        return panic("Unhandled inline formatting comparison result", {
+          result: unreachable,
+        });
       }
     }
   })();
@@ -211,7 +223,9 @@ const buildRedlineOperations = ({
   // anchored there escapes to the table's boundary with no mark able to
   // express the break it added.
   const lastBaseBlockId = trailingBodyBlockId(baseSnapshot);
-  const baseBlocksById = new Map(baseSnapshot.blocks.map((block) => [block.id, block]));
+  const baseBlocksById = new Map(
+    baseSnapshot.blocks.map((block) => [block.id, block]),
+  );
 
   events.forEach((event, eventIndex) => {
     if (event.type === "pair") {
@@ -266,7 +280,9 @@ const buildRedlineOperations = ({
       text: addition.text,
       ...insertedParagraphProperties(
         addition,
-        lastBaseBlockId === null ? undefined : baseBlocksById.get(lastBaseBlockId),
+        lastBaseBlockId === null
+          ? undefined
+          : baseBlocksById.get(lastBaseBlockId),
       ),
     });
   }
@@ -281,7 +297,8 @@ const buildRedlineOperations = ({
 const statedOrCleared = <Value>(
   revised: Value | undefined,
   anchor: Value | undefined,
-): Value | null | undefined => revised ?? (anchor === undefined ? undefined : null);
+): Value | null | undefined =>
+  revised ?? (anchor === undefined ? undefined : null);
 
 /**
  * The paragraph properties an inserted block states. An insertion that says
@@ -298,13 +315,20 @@ const insertedParagraphProperties = (
   if (paragraph === undefined) {
     return {};
   }
-  const anchorParagraph = anchor === undefined ? undefined : paragraphBlockOf(anchor);
+  const anchorParagraph =
+    anchor === undefined ? undefined : paragraphBlockOf(anchor);
   const properties: FolioAIBlockParagraphProperties = {};
   const styleId = statedOrCleared(paragraph.styleId, anchorParagraph?.styleId);
   if (styleId !== undefined) properties.styleId = styleId;
-  const alignment = statedOrCleared(paragraph.directAlignment, anchorParagraph?.directAlignment);
+  const alignment = statedOrCleared(
+    paragraph.directAlignment,
+    anchorParagraph?.directAlignment,
+  );
   if (alignment !== undefined) properties.alignment = alignment;
-  const spacing = statedOrCleared(paragraph.directSpacing, anchorParagraph?.directSpacing);
+  const spacing = statedOrCleared(
+    paragraph.directSpacing,
+    anchorParagraph?.directSpacing,
+  );
   if (spacing !== undefined) properties.spacing = spacing;
   const indentation = statedOrCleared(
     paragraph.directIndentation,
@@ -315,7 +339,9 @@ const insertedParagraphProperties = (
   return properties;
 };
 
-const paragraphBlockOf = (block: FolioAIBlock): FolioAIParagraphBlock | undefined => {
+const paragraphBlockOf = (
+  block: FolioAIBlock,
+): FolioAIParagraphBlock | undefined => {
   switch (block.kind) {
     case "paragraph":
     case "heading":
@@ -331,8 +357,12 @@ const paragraphBlockOf = (block: FolioAIBlock): FolioAIParagraphBlock | undefine
 };
 
 /** The `w:numId`s whose `w:num` and abstract definition both exist. */
-const definedNumIds = (numbering: NumberingDefinitions | null | undefined): Set<number> => {
-  const abstractIds = new Set(numbering?.abstractNums.map((entry) => entry.abstractNumId));
+const definedNumIds = (
+  numbering: NumberingDefinitions | null | undefined,
+): Set<number> => {
+  const abstractIds = new Set(
+    numbering?.abstractNums.map((entry) => entry.abstractNumId),
+  );
   return new Set(
     (numbering?.nums ?? [])
       .filter((entry) => abstractIds.has(entry.abstractNumId))
@@ -345,7 +375,8 @@ const insertedNumberingReferences = (
   revisedReviewer: FolioDocxReviewer,
   snapshots: readonly FolioAIEditSnapshot[],
 ) => {
-  const revisedNumbering = getFolioDocxComparisonAccess(revisedReviewer).numberingDefinitions();
+  const revisedNumbering =
+    getFolioDocxComparisonAccess(revisedReviewer).numberingDefinitions();
   const resolvable = definedNumIds(revisedNumbering);
   return snapshots.flatMap((snapshot) =>
     snapshot.blocks.flatMap((block) => {
@@ -376,7 +407,8 @@ const prepareInsertedReferences = ({
   const source = paragraphBlockOf(original);
   const imported = paragraphBlockOf(rebound);
   const warnings: GenerateRedlineReferenceWarning[] = [];
-  if (source === undefined || imported === undefined) return { block: rebound, warnings };
+  if (source === undefined || imported === undefined)
+    return { block: rebound, warnings };
   let block = { ...imported };
   if (source.styleId !== undefined) {
     const disposition = classifyResourceReference({
@@ -392,7 +424,12 @@ const prepareInsertedReferences = ({
     }
     if (disposition === "destinationCollision") {
       delete block.styleId;
-      warnings.push({ kind: "style", id: source.styleId, paragraphPosition, story });
+      warnings.push({
+        kind: "style",
+        id: source.styleId,
+        paragraphPosition,
+        story,
+      });
     } else if (disposition === "unknown") {
       block.styleId = source.styleId;
     }
@@ -438,11 +475,15 @@ export const generateRedlineDocx = async (
     options.privacy?.transforms ?? [],
   );
   const [baseReviewer, revisedReviewer] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(base, { author: options.author ?? "folio compare" }),
+    FolioDocxReviewer.fromBuffer(base, {
+      author: options.author ?? "folio compare",
+    }),
     FolioDocxReviewer.fromBuffer(revised),
   ]);
   const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
-  const revisedStories = revisedReviewer.listStories().map(({ handle }) => handle);
+  const revisedStories = revisedReviewer
+    .listStories()
+    .map(({ handle }) => handle);
   for (const story of baseStories) {
     if (!baseReviewer.resolveReviewedStory({ story, view: baseView })) {
       panic("A listed base story could not be resolved");
@@ -463,7 +504,8 @@ export const generateRedlineDocx = async (
   const nextOperationId = () => {
     if (operationSequence >= MAX_GENERATED_REDLINE_OPERATIONS) {
       throw new GenerateRedlineDocxOperationLimitError({
-        message: "The document comparison exceeds the generated operation limit.",
+        message:
+          "The document comparison exceeds the generated operation limit.",
       });
     }
     return `redline-${++operationSequence}`;
@@ -502,12 +544,20 @@ export const generateRedlineDocx = async (
       story: pair.baseStory,
       snapshot: baseSnapshot,
       revisedSnapshot,
-      inserted: createInsertedResourceProjection({ base: baseSnapshot, revised: revisedSnapshot }),
+      inserted: createInsertedResourceProjection({
+        base: baseSnapshot,
+        revised: revisedSnapshot,
+      }),
     });
   }
 
-  const insertedSnapshots = plannedStories.map(({ inserted }) => inserted.snapshot);
-  const numberingReferences = insertedNumberingReferences(revisedReviewer, insertedSnapshots);
+  const insertedSnapshots = plannedStories.map(
+    ({ inserted }) => inserted.snapshot,
+  );
+  const numberingReferences = insertedNumberingReferences(
+    revisedReviewer,
+    insertedSnapshots,
+  );
   const resources = importStyleClosureWithNumbering({
     destination: baseReviewer,
     source: revisedReviewer,
@@ -516,7 +566,10 @@ export const generateRedlineDocx = async (
     numberingReferences,
   });
   const { styleImport } = resources;
-  if (styleImport.status === "unalignable" || resources.numberingStage === "conflict") {
+  if (
+    styleImport.status === "unalignable" ||
+    resources.numberingStage === "conflict"
+  ) {
     const detail =
       styleImport.status === "unalignable"
         ? styleImport.detail
@@ -530,16 +583,24 @@ export const generateRedlineDocx = async (
   const destinationStyles = new Set(
     baseAccess.styleDefinitions()?.styles.map(({ styleId }) => styleId),
   );
-  for (const [index, { story, snapshot, revisedSnapshot, inserted }] of plannedStories.entries()) {
+  for (const [
+    index,
+    { story, snapshot, revisedSnapshot, inserted },
+  ] of plannedStories.entries()) {
     const rebound =
-      resources.snapshots.at(index) ?? panic("A redline resource import lost its snapshot");
+      resources.snapshots.at(index) ??
+      panic("A redline resource import lost its snapshot");
     const insertedById = rebindInsertedResourceBlocks(inserted, rebound);
-    const originalBlocksById = new Map(revisedSnapshot.blocks.map((block) => [block.id, block]));
+    const originalBlocksById = new Map(
+      revisedSnapshot.blocks.map((block) => [block.id, block]),
+    );
     for (const [id, imported] of insertedById) {
       const original =
-        originalBlocksById.get(id) ?? panic("A carried insertion lost its original block");
+        originalBlocksById.get(id) ??
+        panic("A carried insertion lost its original block");
       const anchor =
-        revisedSnapshot.anchors[id] ?? panic("A carried insertion lost its original position");
+        revisedSnapshot.anchors[id] ??
+        panic("A carried insertion lost its original position");
       const prepared = prepareInsertedReferences({
         original,
         rebound: imported,
@@ -553,7 +614,9 @@ export const generateRedlineDocx = async (
     }
     const operations = buildRedlineOperations({
       baseSnapshot: snapshot,
-      revisedBlocks: revisedSnapshot.blocks.map((block) => insertedById.get(block.id) ?? block),
+      revisedBlocks: revisedSnapshot.blocks.map(
+        (block) => insertedById.get(block.id) ?? block,
+      ),
       nextOperationId,
     });
     if (operations.length === 0) continue;
@@ -580,9 +643,14 @@ export const generateRedlineDocx = async (
     privacyTransforms.length === 0
       ? {
           buffer: redlineBuffer,
-          privacyReport: { appliedTransforms: [], removedMetadataProperties: [] },
+          privacyReport: {
+            appliedTransforms: [],
+            removedMetadataProperties: [],
+          },
         }
-      : await rewriteDocxMetadataPrivacy(redlineBuffer, { transforms: privacyTransforms });
+      : await rewriteDocxMetadataPrivacy(redlineBuffer, {
+          transforms: privacyTransforms,
+        });
   return {
     buffer: privacyResult.buffer,
     applied,

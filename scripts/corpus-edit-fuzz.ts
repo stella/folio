@@ -1,7 +1,16 @@
+import { createHash } from "node:crypto";
 /** Seeded public edit operations over the pinned, cache-only DOCX corpus. */
 import path from "node:path";
-import { createHash } from "node:crypto";
 
+import type {
+  EditFailure,
+  EditWorkerResult,
+} from "../test/corpus-edit-fuzz-contract.ts";
+import {
+  compareBaseline,
+  type EditBaseline,
+  type EditReport,
+} from "./lib/corpus-edit-fuzz-ratchet.ts";
 import {
   corpusCacheRoot,
   loadCorpusLock,
@@ -9,14 +18,12 @@ import {
   writeJsonFile,
 } from "./lib/corpus-manifest.ts";
 import { selectTiers, tierScopedLockDigest } from "./lib/corpus-tiers.ts";
-import {
-  compareBaseline,
-  type EditBaseline,
-  type EditReport,
-} from "./lib/corpus-edit-fuzz-ratchet.ts";
-import type { EditFailure, EditWorkerResult } from "../test/corpus-edit-fuzz-contract.ts";
 
-const BASELINE = path.join(REPOSITORY_ROOT, "corpus", "edit-fuzz-baseline.json");
+const BASELINE = path.join(
+  REPOSITORY_ROOT,
+  "corpus",
+  "edit-fuzz-baseline.json",
+);
 const WORKER = path.join(REPOSITORY_ROOT, "test", "corpus-edit-fuzz-worker.ts");
 const DEFAULT_TIMEOUT = 120_000;
 
@@ -39,8 +46,13 @@ const messageOf = (error: unknown): string =>
 
 const check = async (reports: readonly EditReport[]): Promise<void> => {
   const baseline = JSON.parse(await Bun.file(BASELINE).text()) as EditBaseline;
-  const { introduced, missing, duplicates, unexpectedIncomplete, recoveredIncomplete } =
-    compareBaseline(reports, baseline);
+  const {
+    introduced,
+    missing,
+    duplicates,
+    unexpectedIncomplete,
+    recoveredIncomplete,
+  } = compareBaseline(reports, baseline);
   if (
     introduced.length ||
     missing.length ||
@@ -72,15 +84,24 @@ const main = async (): Promise<void> => {
     const selected = report.cases[index];
     if (!selected) throw new Error(`case ${index} does not exist`);
     const lock = selectTiers(await loadCorpusLock(), [1]);
-    const source = lock.sources.find(({ id }) => selected.document.startsWith(`${id}/`));
-    const relativePath = source && selected.document.slice(source.id.length + 1);
+    const source = lock.sources.find(({ id }) =>
+      selected.document.startsWith(`${id}/`),
+    );
+    const relativePath =
+      source && selected.document.slice(source.id.length + 1);
     const file = source?.files.find(
       ({ path: filePath }) =>
-        filePath === relativePath && source.id + "/" + filePath === selected.document,
+        filePath === relativePath &&
+        source.id + "/" + filePath === selected.document,
     );
     if (!source || !file || file.sha256 !== selected.sha256)
       throw new Error("replay case does not match the pinned corpus lock");
-    const location = path.join(corpusCacheRoot(), "sources", source.id, file.path);
+    const location = path.join(
+      corpusCacheRoot(),
+      "sources",
+      source.id,
+      file.path,
+    );
     const child = Bun.spawnSync(
       [
         "bun",
@@ -90,11 +111,20 @@ const main = async (): Promise<void> => {
         JSON.stringify(selected.operations),
         ...(process.argv.includes("--skip-sdk") ? ["--skip-sdk"] : []),
       ],
-      { cwd: REPOSITORY_ROOT, stdout: "pipe", stderr: "pipe", timeout: DEFAULT_TIMEOUT },
+      {
+        cwd: REPOSITORY_ROOT,
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: DEFAULT_TIMEOUT,
+      },
     );
     if (child.exitCode !== 0)
-      throw new Error(`replay worker failed: ${new TextDecoder().decode(child.stderr)}`);
-    const observed = JSON.parse(new TextDecoder().decode(child.stdout)) as EditFailure | null;
+      throw new Error(
+        `replay worker failed: ${new TextDecoder().decode(child.stderr)}`,
+      );
+    const observed = JSON.parse(
+      new TextDecoder().decode(child.stdout),
+    ) as EditFailure | null;
     process.stdout.write(`${JSON.stringify(observed, null, 2)}\n`);
     if (observed?.signature !== selected.signature) process.exitCode = 1;
     return;
@@ -103,11 +133,14 @@ const main = async (): Promise<void> => {
     const files = process.argv.slice(3);
     if (files.length === 0) throw new Error("check requires report files");
     const reports = await Promise.all(
-      files.map(async (file) => JSON.parse(await Bun.file(file).text()) as EditReport),
+      files.map(
+        async (file) => JSON.parse(await Bun.file(file).text()) as EditReport,
+      ),
     );
     const cases = reports.flatMap(({ cases: reportCases }) => reportCases);
     const counts = new Map<string, number>();
-    for (const { class: kind } of cases) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    for (const { class: kind } of cases)
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
     const lines = [
       "## Corpus edit fuzz",
       `Documents: ${reports.reduce((sum, report) => sum + report.documents, 0)}; parsed: ${reports.reduce((sum, report) => sum + report.parsed, 0)}; attempted edits: ${reports.reduce((sum, report) => sum + report.attempts, 0)}`,
@@ -123,7 +156,15 @@ const main = async (): Promise<void> => {
       ...cases
         .slice(0, 3)
         .map(
-          ({ document, sha256, seed, signature, operations, expected, observed }) =>
+          ({
+            document,
+            sha256,
+            seed,
+            signature,
+            operations,
+            expected,
+            observed,
+          }) =>
             `- ${signature} in ${document} (SHA-256 ${sha256}, seed ${seed}); ops ${JSON.stringify(operations)}; expected ${expected}; observed ${observed}`,
         ),
     ];
@@ -145,10 +186,13 @@ const main = async (): Promise<void> => {
   const shardParts = shard?.match(/^(\d+)\/(\d+)$/u);
   if (
     shard &&
-    (!shardParts || Number(shardParts[1]) < 1 || Number(shardParts[1]) > Number(shardParts[2]))
+    (!shardParts ||
+      Number(shardParts[1]) < 1 ||
+      Number(shardParts[1]) > Number(shardParts[2]))
   )
     throw new Error("--shard expects k/n with 1 <= k <= n");
-  if (shard && limit) throw new Error("--shard and --sample cannot be combined");
+  if (shard && limit)
+    throw new Error("--shard and --sample cannot be combined");
   const timeout = positive(option("--timeout"), DEFAULT_TIMEOUT);
   if (!process.argv.includes("--skip-sdk")) {
     const dll = path.join(
@@ -202,7 +246,9 @@ const main = async (): Promise<void> => {
   };
   for (const [index, entry] of selected.entries()) {
     if (!(await Bun.file(entry.path).exists()))
-      throw new Error(`corpus cache is missing ${entry.id}; run bun run corpus:fetch`);
+      throw new Error(
+        `corpus cache is missing ${entry.id}; run bun run corpus:fetch`,
+      );
     const seed = seedOf(entry.sha256);
     // oxlint-disable-next-line no-await-in-loop -- each document has its own child process and deadline
     const child = Bun.spawnSync(
@@ -237,14 +283,21 @@ const main = async (): Promise<void> => {
       try {
         result = JSON.parse(new TextDecoder().decode(child.stdout));
       } catch (error) {
-        throw new Error(`${entry.id}: invalid worker result: ${messageOf(error)}`);
+        throw new Error(
+          `${entry.id}: invalid worker result: ${messageOf(error)}`,
+        );
       }
     }
     if (result.status === "parsed") report.parsed += 1;
     report.attempts += result.attempts;
     for (const failure of result.failures) {
       report.counts[failure.class] = (report.counts[failure.class] ?? 0) + 1;
-      report.cases.push({ document: entry.id, sha256: entry.sha256, seed, ...failure });
+      report.cases.push({
+        document: entry.id,
+        sha256: entry.sha256,
+        seed,
+        ...failure,
+      });
     }
     if ((index + 1) % 10 === 0 || index + 1 === selected.length) {
       process.stderr.write(
@@ -265,7 +318,15 @@ const main = async (): Promise<void> => {
     ...report.cases
       .slice(0, 3)
       .map(
-        ({ document, sha256, seed, signature, operations, expected, observed }) =>
+        ({
+          document,
+          sha256,
+          seed,
+          signature,
+          operations,
+          expected,
+          observed,
+        }) =>
           `- ${signature} in ${document} (SHA-256 ${sha256}, seed ${seed}); ops ${JSON.stringify(operations)}; expected ${expected}; observed ${observed.replaceAll("\n", " ")}`,
       ),
   ].join("\n");

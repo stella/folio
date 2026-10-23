@@ -17,9 +17,13 @@
  * guarantees.
  */
 
-import { fontFamiliesMatch, normalizeFontName, observedSatisfiesRequested } from "./fontNames";
-import { normalizeLineText, textSimilarity } from "./textNorm";
+import {
+  fontFamiliesMatch,
+  normalizeFontName,
+  observedSatisfiesRequested,
+} from "./fontNames";
 import { createLiteralSearchScope } from "./literalSearch";
+import { normalizeLineText, textSimilarity } from "./textNorm";
 import type {
   AttributedDivergence,
   Cluster,
@@ -95,7 +99,8 @@ const tokenize = (xml: string): Token[] => {
       const isWordElement = isWordprocessingElement(name, bindings);
       const { localName } = splitQualifiedName(name);
       const selfClosing = /\/\s*$/.test(attributes);
-      if (isWordElement && localName === "tbl") tokens.push({ type: "tblOpen" });
+      if (isWordElement && localName === "tbl")
+        tokens.push({ type: "tblOpen" });
       if (isWordElement && localName === "p") {
         tokens.push({
           type: "pOpen",
@@ -116,7 +121,9 @@ const decodeXmlEntities = (text: string): string =>
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) =>
       String.fromCodePoint(Number.parseInt(hex, 16)),
     )
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
+    .replace(/&#(\d+);/g, (_, dec: string) =>
+      String.fromCodePoint(Number.parseInt(dec, 10)),
+    )
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
@@ -127,15 +134,25 @@ const WORDPROCESSINGML_NAMESPACES = new Set([
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
   "http://purl.oclc.org/ooxml/wordprocessingml/main",
 ]);
-const REVIEW_ELEMENT_NAMES = new Set(["ins", "del", "moveFrom", "moveTo", "delText"]);
+const REVIEW_ELEMENT_NAMES = new Set([
+  "ins",
+  "del",
+  "moveFrom",
+  "moveTo",
+  "delText",
+]);
 
 /** Bounded tokenizer for the OOXML fragments used by review text extraction. */
 const ELEMENT_RE = /<(\/)?([A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)([^>]*)>/g;
-const NAMESPACE_DECLARATION_RE = /\bxmlns(?::([A-Za-z_][\w.-]*))?\s*=\s*(["'])(.*?)\2/g;
+const NAMESPACE_DECLARATION_RE =
+  /\bxmlns(?::([A-Za-z_][\w.-]*))?\s*=\s*(["'])(.*?)\2/g;
 
 type NamespaceBindings = Map<string, string>;
 
-const applyNamespaceDeclarations = (attributes: string, bindings: NamespaceBindings): void => {
+const applyNamespaceDeclarations = (
+  attributes: string,
+  bindings: NamespaceBindings,
+): void => {
   for (const match of attributes.matchAll(NAMESPACE_DECLARATION_RE)) {
     const prefix = match[1] ?? "";
     const namespace = match[3];
@@ -143,17 +160,27 @@ const applyNamespaceDeclarations = (attributes: string, bindings: NamespaceBindi
   }
 };
 
-const splitQualifiedName = (name: string): { prefix: string; localName: string } => {
+const splitQualifiedName = (
+  name: string,
+): { prefix: string; localName: string } => {
   const separator = name.indexOf(":");
   return separator < 0
     ? { prefix: "", localName: name }
-    : { prefix: name.slice(0, separator), localName: name.slice(separator + 1) };
+    : {
+        prefix: name.slice(0, separator),
+        localName: name.slice(separator + 1),
+      };
 };
 
-const isWordprocessingElement = (name: string, bindings: NamespaceBindings): boolean => {
+const isWordprocessingElement = (
+  name: string,
+  bindings: NamespaceBindings,
+): boolean => {
   const { prefix } = splitQualifiedName(name);
   const namespace = bindings.get(prefix);
-  return namespace === undefined ? prefix === "w" : WORDPROCESSINGML_NAMESPACES.has(namespace);
+  return namespace === undefined
+    ? prefix === "w"
+    : WORDPROCESSINGML_NAMESPACES.has(namespace);
 };
 
 const shouldIncludeReviewText = (
@@ -208,7 +235,9 @@ const extractParagraphText = (
   const bindings = new Map(inheritedBindings);
   const namespaceStack: Array<{ previous: NamespaceBindings }> = [];
   const revisionStack: string[] = [];
-  let openText: { name: string; localName: "t" | "delText"; contentStart: number } | undefined;
+  let openText:
+    | { name: string; localName: "t" | "delText"; contentStart: number }
+    | undefined;
   let text = "";
   let match: RegExpExecArray | null = elementRe.exec(segment);
   while (match !== null) {
@@ -223,7 +252,11 @@ const extractParagraphText = (
       const hiddenInFinal = revisionStack.some(
         (container) => container === "del" || container === "moveFrom",
       );
-      const include = shouldIncludeReviewText(openText.localName, reviewView, hiddenInFinal);
+      const include = shouldIncludeReviewText(
+        openText.localName,
+        reviewView,
+        hiddenInFinal,
+      );
       if (include) text += decodeXmlEntities(contents);
       openText = undefined;
     }
@@ -244,7 +277,8 @@ const extractParagraphText = (
       const frame = namespaceStack.pop();
       if (frame !== undefined) {
         bindings.clear();
-        for (const [prefix, namespace] of frame.previous) bindings.set(prefix, namespace);
+        for (const [prefix, namespace] of frame.previous)
+          bindings.set(prefix, namespace);
       }
       match = elementRe.exec(segment);
       continue;
@@ -262,7 +296,11 @@ const extractParagraphText = (
         localName === "moveTo")
     ) {
       if (!selfClosing) revisionStack.push(localName);
-    } else if (isWordElement && (localName === "t" || localName === "delText") && !selfClosing) {
+    } else if (
+      isWordElement &&
+      (localName === "t" || localName === "delText") &&
+      !selfClosing
+    ) {
       openText = { name, localName, contentStart: match.index + token.length };
     }
     if (!selfClosing) namespaceStack.push({ previous });
@@ -277,7 +315,10 @@ const extractParagraphText = (
 const stripTabsBlocks = (segment: string): string =>
   segment.replace(/<w:tabs(?=[\s/>])[^>]*>[\s\S]*?<\/w:tabs>/g, "");
 
-const hasSpacingLineRule = (segment: string, rule: "exact" | "atLeast"): boolean => {
+const hasSpacingLineRule = (
+  segment: string,
+  rule: "exact" | "atLeast",
+): boolean => {
   const spacingRe = /<w:spacing(?=[\s/>])[^>]*>/g;
   let match: RegExpExecArray | null = spacingRe.exec(segment);
   while (match !== null) {
@@ -291,7 +332,8 @@ const hasSpacingMultiple = (segment: string): boolean => {
   const spacingRe = /<w:spacing(?=[\s/>])[^>]*>/g;
   let match: RegExpExecArray | null = spacingRe.exec(segment);
   while (match !== null) {
-    if (match[0].includes('w:lineRule="auto"') && /w:line="/.test(match[0])) return true;
+    if (match[0].includes('w:lineRule="auto"') && /w:line="/.test(match[0]))
+      return true;
     match = spacingRe.exec(segment);
   }
   return false;
@@ -307,7 +349,9 @@ const RTL_TEXT_RE = /[֐-ࣿ]/u;
  * ...>` and its `</w:p>`), excluding the depth-derived table tags and the
  * text-derived cjk/rtl tags, which are handled separately in
  * `paragraphFeatures`. */
-const SEGMENT_FEATURE_CHECKS: ReadonlyArray<readonly [string, (segment: string) => boolean]> = [
+const SEGMENT_FEATURE_CHECKS: ReadonlyArray<
+  readonly [string, (segment: string) => boolean]
+> = [
   ["tab-stops", (s) => /<w:tabs(?=[\s/>])/.test(s)],
   ["tab", (s) => /<w:tab(?=[\s/>])/.test(stripTabsBlocks(s))],
   ["numbering", (s) => /<w:numPr(?=[\s/>])/.test(s)],
@@ -323,9 +367,17 @@ const SEGMENT_FEATURE_CHECKS: ReadonlyArray<readonly [string, (segment: string) 
   ["textbox", (s) => s.includes("w:txbxContent")],
   [
     "tracked-changes",
-    (s) => /<w:(?:ins|del|moveFrom|moveTo)(?=[\s/>])/.test(s) || /<w:delText(?=[\s/>])/.test(s),
+    (s) =>
+      /<w:(?:ins|del|moveFrom|moveTo)(?=[\s/>])/.test(s) ||
+      /<w:delText(?=[\s/>])/.test(s),
   ],
-  ["field", (s) => /<w:fldChar(?=[\s/>])|<w:instrText(?=[\s/>])|<w:fldSimple(?=[\s/>])/.test(s)],
+  [
+    "field",
+    (s) =>
+      /<w:fldChar(?=[\s/>])|<w:instrText(?=[\s/>])|<w:fldSimple(?=[\s/>])/.test(
+        s,
+      ),
+  ],
   ["hyperlink", (s) => /<w:hyperlink(?=[\s/>])/.test(s)],
   ["footnote-ref", (s) => /<w:footnoteReference(?=[\s/>])/.test(s)],
   ["endnote-ref", (s) => /<w:endnoteReference(?=[\s/>])/.test(s)],
@@ -333,7 +385,10 @@ const SEGMENT_FEATURE_CHECKS: ReadonlyArray<readonly [string, (segment: string) 
   ["column-break", (s) => /<w:br(?=[\s/>])[^>]*w:type="column"/.test(s)],
   ["keep-next", (s) => /<w:keepNext(?=[\s/>])/.test(s)],
   ["keep-lines", (s) => /<w:keepLines(?=[\s/>])/.test(s)],
-  ["widow-control-off", (s) => /<w:widowControl(?=[\s/>])[^>]*w:val="(0|false)"/.test(s)],
+  [
+    "widow-control-off",
+    (s) => /<w:widowControl(?=[\s/>])[^>]*w:val="(0|false)"/.test(s),
+  ],
   ["sect-props", (s) => /<w:sectPr(?=[\s/>])/.test(s)],
   ["rtl", (s) => /<w:bidi(?=[\s/>])/.test(s)],
   ["vertical-merge", (s) => /<w:vMerge(?=[\s/>])/.test(s)],
@@ -347,14 +402,20 @@ const paragraphFeatures = (
   reviewView: ReviewView,
   namespaceBindings: NamespaceBindings,
 ): ParagraphFeatures => {
-  const normText = normalizeLineText(extractParagraphText(segment, reviewView, namespaceBindings));
+  const normText = normalizeLineText(
+    extractParagraphText(segment, reviewView, namespaceBindings),
+  );
   const features = new Set<string>();
   if (tblDepth >= 1) features.add("table");
   if (tblDepth >= 2) features.add("nested-table");
   for (const [tag, check] of SEGMENT_FEATURE_CHECKS) {
     if (
       tag === "tracked-changes"
-        ? hasWordprocessingElement(segment, namespaceBindings, REVIEW_ELEMENT_NAMES)
+        ? hasWordprocessingElement(
+            segment,
+            namespaceBindings,
+            REVIEW_ELEMENT_NAMES,
+          )
         : check(segment)
     ) {
       features.add(tag);
@@ -371,7 +432,8 @@ const computeBodyFeatures = (xml: string): string[] => {
   let match: RegExpExecArray | null = colsRe.exec(xml);
   while (match !== null) {
     const numMatch = /w:num="(\d+)"/.exec(match[0]);
-    if (numMatch?.[1] && Number.parseInt(numMatch[1], 10) >= 2) features.add("multi-column");
+    if (numMatch?.[1] && Number.parseInt(numMatch[1], 10) >= 2)
+      features.add("multi-column");
     match = colsRe.exec(xml);
   }
   if (/w:orient="landscape"/.test(xml)) features.add("landscape");
@@ -421,7 +483,14 @@ export const scanDocumentXml = (
     if (token.type === "pOpen") {
       if (token.selfClosing) {
         if (pDepth === 0) {
-          paragraphs.push(paragraphFeatures("", tblDepth, reviewView, token.namespaceBindings));
+          paragraphs.push(
+            paragraphFeatures(
+              "",
+              tblDepth,
+              reviewView,
+              token.namespaceBindings,
+            ),
+          );
         }
         continue;
       }
@@ -461,7 +530,10 @@ const runUnzip = (args: string[]): { stdout: string; exitCode: number } => {
   return { stdout: proc.stdout.toString("utf8"), exitCode: proc.exitCode };
 };
 
-const readZipPart = (docxPath: string, partName: string): string | undefined => {
+const readZipPart = (
+  docxPath: string,
+  partName: string,
+): string | undefined => {
   const { stdout, exitCode } = runUnzip(["-p", docxPath, partName]);
   return exitCode === 0 ? stdout : undefined;
 };
@@ -481,7 +553,9 @@ const listZipParts = (docxPath: string): string[] => {
 };
 
 const hasRealNote = (xml: string): boolean =>
-  Array.from(xml.matchAll(/w:id="(-?\d+)"/g)).some((m) => Number.parseInt(m[1] ?? "", 10) >= 1);
+  Array.from(xml.matchAll(/w:id="(-?\d+)"/g)).some(
+    (m) => Number.parseInt(m[1] ?? "", 10) >= 1,
+  );
 
 // The extraction itself is fully synchronous (Bun.spawnSync); the exported
 // signature is a Promise so future extractors (or a real XML parser) can go
@@ -504,8 +578,10 @@ export const extractDocFeatures = (
   const docFeatures = new Set(bodyFeatures);
 
   const partNames = listZipParts(docxPath);
-  if (partNames.some((name) => /^word\/header\d*\.xml$/.test(name))) docFeatures.add("headers");
-  if (partNames.some((name) => /^word\/footer\d*\.xml$/.test(name))) docFeatures.add("footers");
+  if (partNames.some((name) => /^word\/header\d*\.xml$/.test(name)))
+    docFeatures.add("headers");
+  if (partNames.some((name) => /^word\/footer\d*\.xml$/.test(name)))
+    docFeatures.add("footers");
 
   if (partNames.includes("word/footnotes.xml")) {
     const footnotesXml = readZipPart(docxPath, "word/footnotes.xml");
@@ -535,14 +611,17 @@ export const computeFontSubstitutionTags = (
   requestedFonts: string[],
   observedPdfFonts: string[],
 ): string[] => {
-  const observed = observedPdfFonts.map(normalizeFontName).filter((name) => name.length > 0);
+  const observed = observedPdfFonts
+    .map(normalizeFontName)
+    .filter((name) => name.length > 0);
   const tags: string[] = [];
   const seen = new Set<string>();
   for (const requestedRaw of requestedFonts) {
     const requested = normalizeFontName(requestedRaw);
     if (requested.length === 0 || seen.has(requested)) continue;
     seen.add(requested);
-    if (observed.some((obs) => observedSatisfiesRequested(obs, requested))) continue;
+    if (observed.some((obs) => observedSatisfiesRequested(obs, requested)))
+      continue;
     tags.push(`font-substituted:${requested}`);
   }
   return tags;
@@ -572,7 +651,10 @@ const MIN_FONT_METRIC_OUTLIER_SHARE = 0.25;
 export const MAX_LINE_LEVEL_FONT_MISMATCH_SHARE = 0.05;
 
 /** Reference/Folio lines paired by identical text, for font comparison. */
-export const collectFontPairs = (referenceGeom: DocGeom, folioGeom: DocGeom): FontPair[] => {
+export const collectFontPairs = (
+  referenceGeom: DocGeom,
+  folioGeom: DocGeom,
+): FontPair[] => {
   const folioLinesByText = new Map<string, LineBox[]>();
   for (const page of folioGeom.pages) {
     for (const line of page.lines) {
@@ -602,7 +684,10 @@ export const collectFontPairs = (referenceGeom: DocGeom, folioGeom: DocGeom): Fo
       let closestWidthDelta = Number.POSITIVE_INFINITY;
       for (let index = 0; index < candidates.length; index += 1) {
         const candidate = candidates[index];
-        if (!candidate?.fontName || !fontFamiliesMatch(line.fontName, candidate.fontName)) {
+        if (
+          !candidate?.fontName ||
+          !fontFamiliesMatch(line.fontName, candidate.fontName)
+        ) {
           continue;
         }
         const widthDelta = Math.abs(line.widthPt - candidate.widthPt);
@@ -612,7 +697,9 @@ export const collectFontPairs = (referenceGeom: DocGeom, folioGeom: DocGeom): Fo
         }
       }
       const folioLine =
-        matchingIndex >= 0 ? candidates.splice(matchingIndex, 1).at(0) : candidates.shift();
+        matchingIndex >= 0
+          ? candidates.splice(matchingIndex, 1).at(0)
+          : candidates.shift();
       if (folioLine?.fontName !== undefined) {
         pairs.push({
           referenceFont: line.fontName,
@@ -639,7 +726,9 @@ const hasFontMetricMismatch = (pairs: FontPair[]): boolean => {
         referenceWidthPt <= MAX_FONT_METRIC_WIDTH_PT &&
         folioWidthPt <= MAX_FONT_METRIC_WIDTH_PT,
     )
-    .map(({ referenceWidthPt, folioWidthPt }) => folioWidthPt / referenceWidthPt)
+    .map(
+      ({ referenceWidthPt, folioWidthPt }) => folioWidthPt / referenceWidthPt,
+    )
     .toSorted((a, b) => a - b);
   if (ratios.length < MIN_FONT_METRIC_SAMPLES) return false;
 
@@ -650,9 +739,15 @@ const hasFontMetricMismatch = (pairs: FontPair[]): boolean => {
       : (ratios[middle] ?? 1);
   if (Math.abs(median - 1) > FONT_METRIC_RELATIVE_TOLERANCE) return true;
 
-  const wider = ratios.filter((ratio) => ratio > 1 + FONT_METRIC_RELATIVE_TOLERANCE).length;
-  const narrower = ratios.filter((ratio) => ratio < 1 - FONT_METRIC_RELATIVE_TOLERANCE).length;
-  return Math.max(wider, narrower) / ratios.length >= MIN_FONT_METRIC_OUTLIER_SHARE;
+  const wider = ratios.filter(
+    (ratio) => ratio > 1 + FONT_METRIC_RELATIVE_TOLERANCE,
+  ).length;
+  const narrower = ratios.filter(
+    (ratio) => ratio < 1 - FONT_METRIC_RELATIVE_TOLERANCE,
+  ).length;
+  return (
+    Math.max(wider, narrower) / ratios.length >= MIN_FONT_METRIC_OUTLIER_SHARE
+  );
 };
 
 /** Classify the actual fonts resolved by the reference renderer and Chromium. Requested-font
@@ -664,9 +759,14 @@ export const assessFontEnvironment = (
   folioGeom: DocGeom,
 ): FontEnvironmentAssessment => {
   const observedReferenceFonts = referenceGeom.pages.flatMap((page) =>
-    page.lines.flatMap((line) => (line.fontName === undefined ? [] : [line.fontName])),
+    page.lines.flatMap((line) =>
+      line.fontName === undefined ? [] : [line.fontName],
+    ),
   );
-  const substitutionTags = computeFontSubstitutionTags(requestedFonts, observedReferenceFonts);
+  const substitutionTags = computeFontSubstitutionTags(
+    requestedFonts,
+    observedReferenceFonts,
+  );
   const pairs = collectFontPairs(referenceGeom, folioGeom);
   const matchingLines = pairs.filter(({ referenceFont, folioFont }) =>
     fontFamiliesMatch(referenceFont, folioFont),
@@ -709,12 +809,19 @@ export const assessFontEnvironment = (
   if (substitutionTags.length > 0) {
     return {
       status: "shared-substitution",
-      tags: substitutionTags.map((tag) => tag.replace("font-substituted:", "font-shared:")),
+      tags: substitutionTags.map((tag) =>
+        tag.replace("font-substituted:", "font-shared:"),
+      ),
       comparedLines: pairs.length,
       matchingLines,
     };
   }
-  return { status: "native", tags: [], comparedLines: pairs.length, matchingLines };
+  return {
+    status: "native",
+    tags: [],
+    comparedLines: pairs.length,
+    matchingLines,
+  };
 };
 
 const RFONTS_ASCII_RE = /<w:rFonts\b[^>]*\bw:(?:ascii|hAnsi)="([^"]+)"/g;
@@ -731,7 +838,8 @@ const collectRequestedFonts = (docxPath: string): string[] => {
     if (match[1] !== undefined) fonts.push(match[1]);
   }
   const stylesXml = readZipPart(docxPath, "word/styles.xml") ?? "";
-  const docDefaults = /<w:docDefaults>[\s\S]*?<\/w:docDefaults>/.exec(stylesXml)?.[0] ?? "";
+  const docDefaults =
+    /<w:docDefaults>[\s\S]*?<\/w:docDefaults>/.exec(stylesXml)?.[0] ?? "";
   for (const match of docDefaults.matchAll(RFONTS_ASCII_RE)) {
     if (match[1] !== undefined) fonts.push(match[1]);
   }
@@ -751,7 +859,11 @@ export const detectFontEnvironment = (
   referenceGeom: DocGeom,
   folioGeom: DocGeom,
 ): FontEnvironmentAssessment =>
-  assessFontEnvironment(collectRequestedFonts(docxPath), referenceGeom, folioGeom);
+  assessFontEnvironment(
+    collectRequestedFonts(docxPath),
+    referenceGeom,
+    folioGeom,
+  );
 
 // ---------------------------------------------------------------------------
 // divergence -> paragraph attribution
@@ -772,7 +884,8 @@ const MIN_MATCH_LEN = 4;
 const SIMILARITY_THRESHOLD = 0.9;
 const MIN_LENGTH_RATIO = 0.8;
 const MIN_SIMILARITY_MARGIN = 0.05;
-const TOC_LEADER_PAGE_PATTERN = /^(?<title>.+?)\s+(?:…|\.{3})\s+\p{Decimal_Number}+$/u;
+const TOC_LEADER_PAGE_PATTERN =
+  /^(?<title>.+?)\s+(?:…|\.{3})\s+\p{Decimal_Number}+$/u;
 const TRAILING_PAGE_NUMBER_PATTERN = /\p{Decimal_Number}+$/u;
 
 /** Canonicalization used only to identify a divergence's source paragraph.
@@ -795,7 +908,9 @@ type ParagraphCandidate = {
   featureKey: string;
 };
 
-const buildParagraphCandidates = (paragraphs: ParagraphFeatures[]): ParagraphCandidate[] =>
+const buildParagraphCandidates = (
+  paragraphs: ParagraphFeatures[],
+): ParagraphCandidate[] =>
   paragraphs.flatMap((paragraph) => {
     const normText = normalizeAttributionText(paragraph.normText);
     return normText.length === 0
@@ -806,7 +921,8 @@ const buildParagraphCandidates = (paragraphs: ParagraphFeatures[]): ParagraphCan
 const shareFeatureSet = (candidates: ParagraphCandidate[]): boolean => {
   const first = candidates.at(0);
   return (
-    first !== undefined && candidates.every(({ featureKey }) => featureKey === first.featureKey)
+    first !== undefined &&
+    candidates.every(({ featureKey }) => featureKey === first.featureKey)
   );
 };
 
@@ -819,12 +935,15 @@ const findTocFieldParagraph = (
   normalizedSearchText: string,
   candidates: ParagraphCandidate[],
 ): ParagraphFeatures | undefined => {
-  const title = TOC_LEADER_PAGE_PATTERN.exec(normalizedSearchText)?.groups?.["title"];
+  const title =
+    TOC_LEADER_PAGE_PATTERN.exec(normalizedSearchText)?.groups?.["title"];
   if (!title) return undefined;
 
   const matches = candidates.filter(({ paragraph, normText }) => {
     if (!paragraph.features.includes("field")) return false;
-    return normText.replace(TRAILING_PAGE_NUMBER_PATTERN, "").trimEnd() === title;
+    return (
+      normText.replace(TRAILING_PAGE_NUMBER_PATTERN, "").trimEnd() === title
+    );
   });
   if (matches.length === 1) return matches[0]?.paragraph;
   return shareFeatureSet(matches) ? matches[0]?.paragraph : undefined;
@@ -844,7 +963,10 @@ const findMatchingParagraph = ({
   search,
 }: FindMatchingParagraphOptions): ParagraphFeatures | undefined => {
   const normalizedSearchText = normalizeAttributionText(searchText);
-  const tocFieldParagraph = findTocFieldParagraph(normalizedSearchText, candidates);
+  const tocFieldParagraph = findTocFieldParagraph(
+    normalizedSearchText,
+    candidates,
+  );
   if (tocFieldParagraph) return tocFieldParagraph;
 
   const isContained = search.createCandidateContainment(
@@ -858,14 +980,17 @@ const findMatchingParagraph = ({
   });
   if (substringMatches.length > 0) {
     if (substringMatches.length === 1) return substringMatches[0]?.paragraph;
-    return shareFeatureSet(substringMatches) ? substringMatches[0]?.paragraph : undefined;
+    return shareFeatureSet(substringMatches)
+      ? substringMatches[0]?.paragraph
+      : undefined;
   }
 
   const fuzzyMatches = candidates
     .flatMap((candidate) => {
       const { normText } = candidate;
       const maxLength = Math.max(normText.length, normalizedSearchText.length);
-      const lengthRatio = Math.min(normText.length, normalizedSearchText.length) / maxLength;
+      const lengthRatio =
+        Math.min(normText.length, normalizedSearchText.length) / maxLength;
       if (lengthRatio < MIN_LENGTH_RATIO) return [];
       const score = textSimilarity(normText, normalizedSearchText);
       return score >= SIMILARITY_THRESHOLD ? [{ candidate, score }] : [];
@@ -888,16 +1013,21 @@ export const attributeDivergences = (
   doc: DocFeatures,
 ): Omit<FeatureAttributedResult, "reviewView"> => {
   const docPrefixed =
-    doc.docFeatures.length > 0 ? doc.docFeatures.map((f) => `doc:${f}`) : ["doc:unattributed"];
+    doc.docFeatures.length > 0
+      ? doc.docFeatures.map((f) => `doc:${f}`)
+      : ["doc:unattributed"];
   const candidates = buildParagraphCandidates(doc.paragraphs);
   const search = createLiteralSearchScope();
 
-  const attributed: AttributedDivergence[] = result.divergences.map((divergence) => {
-    const searchText = divergenceSearchText(divergence);
-    if (searchText === undefined) return { divergence, features: docPrefixed };
-    const matched = findMatchingParagraph({ searchText, candidates, search });
-    return { divergence, features: matched ? matched.features : docPrefixed };
-  });
+  const attributed: AttributedDivergence[] = result.divergences.map(
+    (divergence) => {
+      const searchText = divergenceSearchText(divergence);
+      if (searchText === undefined)
+        return { divergence, features: docPrefixed };
+      const matched = findMatchingParagraph({ searchText, candidates, search });
+      return { divergence, features: matched ? matched.features : docPrefixed };
+    },
+  );
 
   return { ...result, attributed, docFeatures: doc.docFeatures };
 };
@@ -925,10 +1055,16 @@ type Bucket = {
 };
 
 const KEY_SEP = "\0";
-const bucketKey = (kind: DivergenceKind, feature: string): string => `${kind}${KEY_SEP}${feature}`;
-const splitBucketKey = (key: string): { kind: DivergenceKind; feature: string } => {
+const bucketKey = (kind: DivergenceKind, feature: string): string =>
+  `${kind}${KEY_SEP}${feature}`;
+const splitBucketKey = (
+  key: string,
+): { kind: DivergenceKind; feature: string } => {
   const sepIndex = key.indexOf(KEY_SEP);
-  return { kind: key.slice(0, sepIndex) as DivergenceKind, feature: key.slice(sepIndex + 1) };
+  return {
+    kind: key.slice(0, sepIndex) as DivergenceKind,
+    feature: key.slice(sepIndex + 1),
+  };
 };
 
 export const clusterCorpus = (
@@ -947,12 +1083,17 @@ export const clusterCorpus = (
       : [],
   );
   const comparableResults = comparableEntries.map(({ result }) => result);
-  const allParagraphs = comparableEntries.flatMap(({ paragraphs }) => paragraphs);
+  const allParagraphs = comparableEntries.flatMap(
+    ({ paragraphs }) => paragraphs,
+  );
   const totalParagraphs = allParagraphs.length;
   const paragraphFeatureCounts = new Map<string, number>();
   for (const paragraph of allParagraphs) {
     for (const feature of paragraph.features) {
-      paragraphFeatureCounts.set(feature, (paragraphFeatureCounts.get(feature) ?? 0) + 1);
+      paragraphFeatureCounts.set(
+        feature,
+        (paragraphFeatureCounts.get(feature) ?? 0) + 1,
+      );
     }
   }
 
@@ -967,11 +1108,14 @@ export const clusterCorpus = (
   const baselinePrevalence = (feature: string): number => {
     if (feature.startsWith("doc:")) {
       const bare = feature.slice("doc:".length);
-      const rate = totalDocs > 0 ? (docFeatureCounts.get(bare) ?? 0) / totalDocs : 0;
+      const rate =
+        totalDocs > 0 ? (docFeatureCounts.get(bare) ?? 0) / totalDocs : 0;
       return Math.max(rate, MIN_BASELINE_PREVALENCE);
     }
     const rate =
-      totalParagraphs > 0 ? (paragraphFeatureCounts.get(feature) ?? 0) / totalParagraphs : 0;
+      totalParagraphs > 0
+        ? (paragraphFeatureCounts.get(feature) ?? 0) / totalParagraphs
+        : 0;
     return Math.max(rate, MIN_BASELINE_PREVALENCE);
   };
 
@@ -1010,7 +1154,8 @@ export const clusterCorpus = (
     const lift = observedRate / baselinePrevalence(feature);
     const meanMagnitudePt =
       bucket.magnitudes.length > 0
-        ? bucket.magnitudes.reduce((sum, value) => sum + value, 0) / bucket.magnitudes.length
+        ? bucket.magnitudes.reduce((sum, value) => sum + value, 0) /
+          bucket.magnitudes.length
         : undefined;
     clusters.push({
       kind,
@@ -1023,6 +1168,8 @@ export const clusterCorpus = (
     });
   }
 
-  clusters.sort((a, b) => b.lift * Math.sqrt(b.count) - a.lift * Math.sqrt(a.count));
+  clusters.sort(
+    (a, b) => b.lift * Math.sqrt(b.count) - a.lift * Math.sqrt(a.count),
+  );
   return clusters;
 };

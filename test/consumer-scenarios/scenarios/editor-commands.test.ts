@@ -8,20 +8,33 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { fromMarkdown } from "@stll/folio-core/markdown";
-import { toggleBulletList, toggleNumberedList } from "@stll/folio-core/prosemirror";
+import {
+  toggleBulletList,
+  toggleNumberedList,
+} from "@stll/folio-core/prosemirror";
 
 import { packDocument, styleNumberedDocument } from "../support/documents.ts";
 import { labelsOf, toggleAndSave } from "../support/editor.ts";
 
 describe("editor list commands in a package without a list of that kind (#1091)", () => {
   test("Numbered List in a package without a numbering part saves", async () => {
-    const bytes = await packDocument(fromMarkdown("Intro paragraph.\n\nFirst item\n\nTail."));
-    const labels = await labelsOf(await toggleAndSave(bytes, ["First item"], toggleNumberedList));
-    assert.deepEqual(labels, ["· Intro paragraph.", "1. First item", "· Tail."]);
+    const bytes = await packDocument(
+      fromMarkdown("Intro paragraph.\n\nFirst item\n\nTail."),
+    );
+    const labels = await labelsOf(
+      await toggleAndSave(bytes, ["First item"], toggleNumberedList),
+    );
+    assert.deepEqual(labels, [
+      "· Intro paragraph.",
+      "1. First item",
+      "· Tail.",
+    ]);
   });
 
   test("Bullet List in a package without a numbering part saves", async () => {
-    const bytes = await packDocument(fromMarkdown("Intro.\n\nMake me a bullet"));
+    const bytes = await packDocument(
+      fromMarkdown("Intro.\n\nMake me a bullet"),
+    );
     const labels = await labelsOf(
       await toggleAndSave(bytes, ["Make me a bullet"], toggleBulletList),
     );
@@ -35,7 +48,11 @@ describe("editor list commands in a package without a list of that kind (#1091)"
     const labels = await labelsOf(
       await toggleAndSave(bytes, ["Make me a bullet"], toggleBulletList),
     );
-    assert.equal(labels.at(-1), "• Make me a bullet", "the toggled paragraph is not a bullet");
+    assert.equal(
+      labels.at(-1),
+      "• Make me a bullet",
+      "the toggled paragraph is not a bullet",
+    );
   });
 });
 
@@ -47,7 +64,11 @@ describe("a list command after an unrelated list (#1092)", () => {
       ),
     );
     const labels = await labelsOf(
-      await toggleAndSave(bytes, ["New list one", "New list two"], toggleNumberedList),
+      await toggleAndSave(
+        bytes,
+        ["New list one", "New list two"],
+        toggleNumberedList,
+      ),
     );
     assert.deepEqual(
       labels.slice(-2),
@@ -68,7 +89,9 @@ describe("a list command in a document whose headings are numbered by style (#10
       ),
     );
     const headings = (labels: string[]) =>
-      labels.filter((label) => /^\d+\.(?:\d+\.)? (?:Scope|Definitions|Payment)$/u.test(label));
+      labels.filter((label) =>
+        /^\d+\.(?:\d+\.)? (?:Scope|Definitions|Payment)$/u.test(label),
+      );
     assert.deepEqual(headings(after), headings(before));
     assert.equal(
       after.find((label) => label.endsWith("The Buyer pays on delivery.")),

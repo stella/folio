@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import type {
   FlowBlock,
+  Page,
   PageMargins,
   ParagraphBlock,
   ParagraphFragment,
-  Page,
   TableBlock,
   TableFragment,
   TextBoxBlock,
@@ -32,7 +32,11 @@ const fragment = (blockId: string): ParagraphFragment => ({
   toLine: 1,
 });
 
-const tableFragment = (blockId: string, fromRow: number, toRow: number): TableFragment => ({
+const tableFragment = (
+  blockId: string,
+  fromRow: number,
+  toRow: number,
+): TableFragment => ({
   kind: "table",
   blockId,
   x: 0,
@@ -71,7 +75,11 @@ describe("buildBookmarkPageMap", () => {
   test("maps bookmarks to authored logical page numbers", () => {
     const logicalPage = { ...page(1, ["a"]), logicalNumber: 13 };
 
-    expect(buildBookmarkPageMap([logicalPage], [para("a", ["target"])]).get("target")).toBe(13);
+    expect(
+      buildBookmarkPageMap([logicalPage], [para("a", ["target"])]).get(
+        "target",
+      ),
+    ).toBe(13);
   });
 
   test("a bookmark whose paragraph splits across pages takes the first page", () => {

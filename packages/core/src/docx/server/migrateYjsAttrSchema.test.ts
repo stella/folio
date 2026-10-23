@@ -4,12 +4,11 @@ import * as Y from "yjs";
 
 import { readParagraphAttrs } from "../../prosemirror/attrs";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
-import { schema } from "../../prosemirror/schema";
-
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { schema } from "../../prosemirror/schema";
 import {
-  FOLIO_YJS_ATTR_SCHEMA_VERSION,
   applyAttrSchemaMigrations,
+  FOLIO_YJS_ATTR_SCHEMA_VERSION,
   readYjsAttrSchemaVersion,
   writeYjsDocumentMetadata,
 } from "../../prosemirror/yjsDocumentMetadata";
@@ -18,7 +17,10 @@ import {
   FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME,
   FOLIO_YJS_UPDATE_MAX_BYTES,
 } from "./materializeYjsDocx";
-import { FolioYjsSnapshotMigrationError, migrateFolioYjsSnapshot } from "./migrateYjsAttrSchema";
+import {
+  FolioYjsSnapshotMigrationError,
+  migrateFolioYjsSnapshot,
+} from "./migrateYjsAttrSchema";
 
 const METADATA_MAP_NAME = "folio:document-metadata";
 const ATTR_SCHEMA_VERSION_KEY = "attrSchemaVersion";
@@ -26,7 +28,10 @@ const ATTR_SCHEMA_VERSION_KEY = "attrSchemaVersion";
 const snapshot = (marker?: unknown): Uint8Array => {
   const ydoc = new Y.Doc();
   const document = toProseDoc(createEmptyDocument({ initialText: "Room" }));
-  prosemirrorToYXmlFragment(document, ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME));
+  prosemirrorToYXmlFragment(
+    document,
+    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+  );
   writeYjsDocumentMetadata(ydoc, document);
   if (marker !== undefined) {
     ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, marker);
@@ -70,7 +75,9 @@ const versionOneFieldSnapshot = (): Uint8Array => {
   storedAttributes(field).setAttribute("dirty", false);
   const paragraph = new Y.XmlElement("paragraph");
   paragraph.insert(0, [field]);
-  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [paragraph]);
+  ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .insert(0, [paragraph]);
   ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 1);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
@@ -86,7 +93,9 @@ const versionNineSdtSnapshot = (): Uint8Array => {
   const showing = new Y.XmlElement("blockSdt");
   showing.setAttribute("sdtType", "richText");
   storedAttributes(showing).setAttribute("showingPlaceholder", true);
-  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [unstated, showing]);
+  ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .insert(0, [unstated, showing]);
   ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 9);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
@@ -102,7 +111,9 @@ const versionTenRunOwnerSnapshot = (): Uint8Array => {
   text.insert(11, "after", { pageBreakRunOwner: null });
   const paragraph = new Y.XmlElement("paragraph");
   paragraph.insert(0, [text]);
-  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [paragraph]);
+  ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .insert(0, [paragraph]);
   ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 10);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
@@ -114,7 +125,9 @@ type TextDeltaOp = { insert: string; attributes?: Record<string, unknown> };
 const paragraphTextDelta = (update: Uint8Array): TextDeltaOp[] => {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, update);
-  const paragraph = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).get(0);
+  const paragraph = ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .get(0);
   if (!(paragraph instanceof Y.XmlElement)) {
     throw new Error("Expected a paragraph element");
   }
@@ -218,7 +231,9 @@ const cellAttributes = (update: Uint8Array): Record<string, unknown>[] => {
 const fieldAttributes = (update: Uint8Array): Record<string, unknown> => {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, update);
-  const paragraph = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).get(0);
+  const paragraph = ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .get(0);
   if (!(paragraph instanceof Y.XmlElement)) {
     throw new Error("Expected a paragraph element");
   }
@@ -231,10 +246,15 @@ const fieldAttributes = (update: Uint8Array): Record<string, unknown> => {
   return attributes;
 };
 
-const controlAttributes = (update: Uint8Array, index: number): Record<string, unknown> => {
+const controlAttributes = (
+  update: Uint8Array,
+  index: number,
+): Record<string, unknown> => {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, update);
-  const control = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).get(index);
+  const control = ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .get(index);
   if (!(control instanceof Y.XmlElement)) {
     throw new Error("Expected a blockSdt element");
   }
@@ -278,8 +298,12 @@ describe("migrateFolioYjsSnapshot carries a version-9 control forward", () => {
     expect(migrated.value.fromVersion).toBe(9);
     expect(migrated.value.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
     expect(migrated.value.paragraphsRewritten).toBe(1);
-    expect(controlAttributes(migrated.value.update, 0)["showingPlaceholder"]).toBeUndefined();
-    expect(controlAttributes(migrated.value.update, 1)["showingPlaceholder"]).toBe(true);
+    expect(
+      controlAttributes(migrated.value.update, 0)["showingPlaceholder"],
+    ).toBeUndefined();
+    expect(
+      controlAttributes(migrated.value.update, 1)["showingPlaceholder"],
+    ).toBe(true);
   });
 });
 
@@ -354,7 +378,9 @@ describe("a load path carries an older fragment forward", () => {
     expect(applyAttrSchemaMigrations(ydoc, fragment, 1)).toBe(1);
 
     const after = readYjsAttrSchemaVersion(ydoc);
-    expect(after.isOk() ? after.value : null).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    expect(after.isOk() ? after.value : null).toBe(
+      FOLIO_YJS_ATTR_SCHEMA_VERSION,
+    );
     const attributes = fieldAttributes(Y.encodeStateAsUpdate(ydoc));
     expect(attributes["fldLock"]).toBeUndefined();
     expect(attributes["dirty"]).toBeUndefined();
@@ -405,7 +431,9 @@ const versionSixOutlineSnapshot = (): Uint8Array => {
     }
     return paragraph;
   });
-  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, paragraphs);
+  ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .insert(0, paragraphs);
   ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 6);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
@@ -429,7 +457,9 @@ const paragraphOutlineLevels = (update: Uint8Array): unknown[] => {
   return levels;
 };
 
-const paragraphFormattingCarriers = (update: Uint8Array): Record<string, unknown>[] => {
+const paragraphFormattingCarriers = (
+  update: Uint8Array,
+): Record<string, unknown>[] => {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, update);
   const carriers = ydoc
@@ -469,7 +499,12 @@ describe("migrateFolioYjsSnapshot carries a version-6 outline level forward", ()
     ]);
     expect(paragraphFormattingCarriers(migrated.value.update)).toEqual([
       {},
-      { _originalFormatting: { outlineLevel: { kind: "heading", level: 1 }, styleId: "Heading2" } },
+      {
+        _originalFormatting: {
+          outlineLevel: { kind: "heading", level: 1 },
+          styleId: "Heading2",
+        },
+      },
       { _resolvedFormatting: { outlineLevel: { kind: "heading", level: 2 } } },
       {
         _propertyChanges: [
@@ -503,11 +538,15 @@ describe("migrateFolioYjsSnapshot carries a version-6 outline level forward", ()
       expect(readParagraphAttrs(document.child(index)).ok).toBe(true);
     }
 
-    const saved = fromProseDoc(document, undefined, { stylesheetSource: { type: "package" } });
-    expect(saved.package.document.content[1]?.formatting?.outlineLevel).toEqual({
-      kind: "heading",
-      level: 1,
+    const saved = fromProseDoc(document, undefined, {
+      stylesheetSource: { type: "package" },
     });
+    expect(saved.package.document.content[1]?.formatting?.outlineLevel).toEqual(
+      {
+        kind: "heading",
+        level: 1,
+      },
+    );
     expect(saved.package.document.content[3]?.propertyChanges).toEqual([
       {
         type: "paragraphPropertyChange",
@@ -582,7 +621,9 @@ const versionSevenNumberingSnapshot = (): Uint8Array => {
     }
     return paragraph;
   });
-  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, paragraphs);
+  ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .insert(0, paragraphs);
   ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 7);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
@@ -684,13 +725,15 @@ describe("migrateFolioYjsSnapshot failures", () => {
   });
 
   test("refuses an update that is not Yjs state", () => {
-    expect(expectError(new Uint8Array([255, 255, 255, 255])).code).toBe("invalid_update");
+    expect(expectError(new Uint8Array([255, 255, 255, 255])).code).toBe(
+      "invalid_update",
+    );
   });
 
   test("refuses an update above the snapshot limit", () => {
-    expect(expectError(new Uint8Array(FOLIO_YJS_UPDATE_MAX_BYTES + 1)).code).toBe(
-      "update_too_large",
-    );
+    expect(
+      expectError(new Uint8Array(FOLIO_YJS_UPDATE_MAX_BYTES + 1)).code,
+    ).toBe("update_too_large");
   });
 });
 
@@ -699,10 +742,14 @@ test.each([11, FOLIO_YJS_ATTR_SCHEMA_VERSION])(
   (version) => {
     const ydoc = new Y.Doc();
     const text = new Y.XmlText();
-    text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+    text.insert(0, "123123", {
+      footnoteRef: { id: "123", noteType: "footnote" },
+    });
     const paragraph = new Y.XmlElement("paragraph");
     paragraph.insert(0, [text]);
-    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [paragraph]);
+    ydoc
+      .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+      .insert(0, [paragraph]);
     ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);
     const result = migrateFolioYjsSnapshot(Y.encodeStateAsUpdate(ydoc));
     expect(result.isErr()).toBe(true);

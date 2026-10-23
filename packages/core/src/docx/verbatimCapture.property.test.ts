@@ -11,10 +11,12 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { captureVerbatimXml } from "./verbatimCapture";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseTableMeasurement } from "./tableParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 import { parseXml, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -23,7 +25,9 @@ const STRICT_W = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 const UNITS = ["mm", "cm", "in", "pt", "pc", "pi"] as const;
 
 const cellWidth = (value: string): XmlElement => {
-  const root = parseXml(`<w:tcW xmlns:w="${STRICT_W}" w:w="${value}" w:type="dxa"/>`).elements?.[0];
+  const root = parseXml(
+    `<w:tcW xmlns:w="${STRICT_W}" w:w="${value}" w:type="dxa"/>`,
+  ).elements?.[0];
   if (root === undefined) {
     throw new Error("fixture did not parse");
   }
@@ -38,9 +42,13 @@ describe("captured and projected lengths agree", () => {
         fc.integer({ min: 0, max: 99 }),
         fc.constantFrom(...UNITS),
         (whole, hundredths, unit) => {
-          const element = cellWidth(`${whole}.${String(hundredths).padStart(2, "0")}${unit}`);
+          const element = cellWidth(
+            `${whole}.${String(hundredths).padStart(2, "0")}${unit}`,
+          );
 
-          const captured = /w:w="(-?\d+)"/u.exec(captureVerbatimXml(element))?.[1];
+          const captured = /w:w="(-?\d+)"/u.exec(
+            captureVerbatimXml(element),
+          )?.[1];
           const projected = parseTableMeasurement(element)?.value;
 
           expect(captured).toBeDefined();

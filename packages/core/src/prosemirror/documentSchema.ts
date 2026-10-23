@@ -15,7 +15,11 @@ import { panic } from "better-result";
 import type { MarkType, Schema } from "prosemirror-model";
 
 /** `type`'s counterpart in the schema of `state`. */
-export const documentMarkType = (state: { readonly schema: Schema }, type: MarkType): MarkType =>
+export const documentMarkType = (
+  state: { readonly schema: Schema },
+  type: MarkType,
+): MarkType =>
   type.schema === state.schema
     ? type
-    : (state.schema.marks[type.name] ?? panic(`The document schema has no mark ${type.name}`));
+    : (state.schema.marks[type.name] ??
+      panic(`The document schema has no mark ${type.name}`));

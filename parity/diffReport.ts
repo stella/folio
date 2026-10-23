@@ -5,7 +5,11 @@
 import path from "node:path";
 
 import { isReferenceRendererId } from "./referenceRenderer";
-import type { CorpusReport, DivergenceKind, FeatureAttributedResult } from "./types";
+import type {
+  CorpusReport,
+  DivergenceKind,
+  FeatureAttributedResult,
+} from "./types";
 
 type DiffFlags = {
   before?: string | undefined;
@@ -71,7 +75,9 @@ const readReport = async (file: string): Promise<CorpusReport> => {
     throw new Error(`${file} is not a parity JSON report`);
   }
   if (!report.reference || !isReferenceRendererId(report.reference.id)) {
-    throw new Error(`${file} predates explicit reference-renderer metadata; regenerate it`);
+    throw new Error(
+      `${file} predates explicit reference-renderer metadata; regenerate it`,
+    );
   }
   return report;
 };
@@ -103,15 +109,24 @@ const formatScoreDelta = (after: number, before: number): string => {
 
 const main = async (): Promise<void> => {
   const flags = parseArgs(process.argv.slice(2));
-  const [before, after] = await Promise.all([readReport(flags.before!), readReport(flags.after!)]);
+  const [before, after] = await Promise.all([
+    readReport(flags.before!),
+    readReport(flags.after!),
+  ]);
   if (before.reference.id !== after.reference.id) {
     throw new Error(
       `cannot diff reports from different references (${before.reference.id} vs ${after.reference.id})`,
     );
   }
-  const beforeByFile = new Map(before.results.map((result) => [result.file, summarize(result)]));
-  const afterByFile = new Map(after.results.map((result) => [result.file, summarize(result)]));
-  const files = Array.from(new Set([...beforeByFile.keys(), ...afterByFile.keys()])).toSorted();
+  const beforeByFile = new Map(
+    before.results.map((result) => [result.file, summarize(result)]),
+  );
+  const afterByFile = new Map(
+    after.results.map((result) => [result.file, summarize(result)]),
+  );
+  const files = Array.from(
+    new Set([...beforeByFile.keys(), ...afterByFile.keys()]),
+  ).toSorted();
 
   const docs = files.map((file) => {
     const b = beforeByFile.get(file);

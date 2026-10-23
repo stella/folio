@@ -1,4 +1,4 @@
-import { decodeText } from "../../utils/textEncoding";
+import { Result, TaggedError } from "better-result";
 /**
  * A self-contained TrueType/OpenType (sfnt) reader.
  *
@@ -12,8 +12,7 @@ import { decodeText } from "../../utils/textEncoding";
  * a throw, and no field is ever `NaN`.
  */
 
-import { Result, TaggedError } from "better-result";
-
+import { decodeText } from "../../utils/textEncoding";
 import {
   fitsInView,
   readLocaOffsets,
@@ -69,7 +68,9 @@ export type SfntGlyphBounds = {
   readonly yMax: number;
 };
 
-export class SfntParseError extends TaggedError("SfntParseError")<{ message: string }> {}
+export class SfntParseError extends TaggedError("SfntParseError")<{
+  message: string;
+}> {}
 
 const fail = (message: string) => Result.err(new SfntParseError({ message }));
 
@@ -124,7 +125,14 @@ const FIXED_POINT_DIVISOR = 65536;
 const HMTX_METRIC_SIZE = 4;
 
 /** Byte offsets inside a glyph description header. */
-const GLYPH_HEADER = { numberOfContours: 0, xMin: 2, yMin: 4, xMax: 6, yMax: 8, size: 10 } as const;
+const GLYPH_HEADER = {
+  numberOfContours: 0,
+  xMin: 2,
+  yMin: 4,
+  xMax: 6,
+  yMax: 8,
+  size: 10,
+} as const;
 
 /**
  * Cap and x-height fallbacks for fonts without OS/2 version 2 whose 'H' and
@@ -177,10 +185,20 @@ const CMAP_FORMAT = {
 const FORMAT_4 = { segCountX2: 6, endCodes: 14, headerSize: 14 } as const;
 
 /** Byte offsets inside a format 6 subtable. */
-const FORMAT_6 = { firstCode: 6, entryCount: 8, glyphIds: 10, headerSize: 10 } as const;
+const FORMAT_6 = {
+  firstCode: 6,
+  entryCount: 8,
+  glyphIds: 10,
+  headerSize: 10,
+} as const;
 
 /** Byte offsets inside a format 12 subtable. */
-const FORMAT_12 = { numGroups: 12, groups: 16, headerSize: 16, groupSize: 12 } as const;
+const FORMAT_12 = {
+  numGroups: 12,
+  groups: 16,
+  headerSize: 16,
+  groupSize: 12,
+} as const;
 
 /**
  * Symbol fonts (platform 3, encoding 0) map their glyphs into the private use
@@ -212,7 +230,11 @@ type CmapSubtable = {
 };
 
 /** Reads `count` big-endian uint16s into a typed array. Bounds pre-checked. */
-const readUint16Array = (view: DataView, offset: number, count: number): Uint16Array => {
+const readUint16Array = (
+  view: DataView,
+  offset: number,
+  count: number,
+): Uint16Array => {
   const values = new Uint16Array(count);
   for (let index = 0; index < count; index++) {
     values[index] = view.getUint16(offset + index * 2);
@@ -220,7 +242,11 @@ const readUint16Array = (view: DataView, offset: number, count: number): Uint16A
   return values;
 };
 
-const readInt16Array = (view: DataView, offset: number, count: number): Int16Array => {
+const readInt16Array = (
+  view: DataView,
+  offset: number,
+  count: number,
+): Int16Array => {
   const values = new Int16Array(count);
   for (let index = 0; index < count; index++) {
     values[index] = view.getInt16(offset + index * 2);
@@ -233,8 +259,15 @@ const readInt16Array = (view: DataView, offset: number, count: number): Int16Arr
  * segments address by a byte offset from their own `idRangeOffset` slot. The
  * arrays are read once here; lookup is a binary search over `endCodes`.
  */
-const buildFormat4Lookup = ({ view, start, end }: CmapSubtable): CmapLookup | undefined => {
-  if (!fitsInView(view, start, FORMAT_4.headerSize) || start + FORMAT_4.headerSize > end) {
+const buildFormat4Lookup = ({
+  view,
+  start,
+  end,
+}: CmapSubtable): CmapLookup | undefined => {
+  if (
+    !fitsInView(view, start, FORMAT_4.headerSize) ||
+    start + FORMAT_4.headerSize > end
+  ) {
     return undefined;
   }
 
@@ -250,7 +283,10 @@ const buildFormat4Lookup = ({ view, start, end }: CmapSubtable): CmapLookup | un
   const idDeltasBase = startCodesBase + segCountX2;
   const idRangeOffsetsBase = idDeltasBase + segCountX2;
   const arraysSize = segCountX2 * 4 + 2;
-  if (!fitsInView(view, endCodesBase, arraysSize) || endCodesBase + arraysSize > end) {
+  if (
+    !fitsInView(view, endCodesBase, arraysSize) ||
+    endCodesBase + arraysSize > end
+  ) {
     return undefined;
   }
 
@@ -291,7 +327,11 @@ const buildFormat4Lookup = ({ view, start, end }: CmapSubtable): CmapLookup | un
       return (codePoint + delta) & 0xffff;
     }
 
-    const address = idRangeOffsetsBase + segment * 2 + rangeOffset + (codePoint - segmentStart) * 2;
+    const address =
+      idRangeOffsetsBase +
+      segment * 2 +
+      rangeOffset +
+      (codePoint - segmentStart) * 2;
     if (!fitsInView(view, address, 2) || address + 2 > end) {
       return 0;
     }
@@ -301,15 +341,25 @@ const buildFormat4Lookup = ({ view, start, end }: CmapSubtable): CmapLookup | un
 };
 
 /** Format 6: one contiguous run of glyph ids, materialized eagerly. */
-const buildFormat6Lookup = ({ view, start, end }: CmapSubtable): CmapLookup | undefined => {
-  if (!fitsInView(view, start, FORMAT_6.headerSize) || start + FORMAT_6.headerSize > end) {
+const buildFormat6Lookup = ({
+  view,
+  start,
+  end,
+}: CmapSubtable): CmapLookup | undefined => {
+  if (
+    !fitsInView(view, start, FORMAT_6.headerSize) ||
+    start + FORMAT_6.headerSize > end
+  ) {
     return undefined;
   }
 
   const firstCode = view.getUint16(start + FORMAT_6.firstCode);
   const entryCount = view.getUint16(start + FORMAT_6.entryCount);
   const glyphIdsBase = start + FORMAT_6.glyphIds;
-  if (!fitsInView(view, glyphIdsBase, entryCount * 2) || glyphIdsBase + entryCount * 2 > end) {
+  if (
+    !fitsInView(view, glyphIdsBase, entryCount * 2) ||
+    glyphIdsBase + entryCount * 2 > end
+  ) {
     return undefined;
   }
 
@@ -329,15 +379,25 @@ const buildFormat6Lookup = ({ view, start, end }: CmapSubtable): CmapLookup | un
  * group is expanded into the map up to {@link MAX_CMAP_MAPPINGS}, so lookup is
  * a hash hit rather than a per-character binary search.
  */
-const buildFormat12Lookup = ({ view, start, end }: CmapSubtable): CmapLookup | undefined => {
-  if (!fitsInView(view, start, FORMAT_12.headerSize) || start + FORMAT_12.headerSize > end) {
+const buildFormat12Lookup = ({
+  view,
+  start,
+  end,
+}: CmapSubtable): CmapLookup | undefined => {
+  if (
+    !fitsInView(view, start, FORMAT_12.headerSize) ||
+    start + FORMAT_12.headerSize > end
+  ) {
     return undefined;
   }
 
   const numGroups = view.getUint32(start + FORMAT_12.numGroups);
   const groupsBase = start + FORMAT_12.groups;
   const groupsSize = numGroups * FORMAT_12.groupSize;
-  if (!fitsInView(view, groupsBase, groupsSize) || groupsBase + groupsSize > end) {
+  if (
+    !fitsInView(view, groupsBase, groupsSize) ||
+    groupsBase + groupsSize > end
+  ) {
     return undefined;
   }
 
@@ -417,12 +477,16 @@ const CMAP_PREFERENCES = [
     // Last resort: any Macintosh or Unicode subtable in a format we read, so
     // an old font with only a (1,0) format 6 table still measures.
     matches: (subtable: CmapSubtable) =>
-      subtable.platformId === PLATFORM.macintosh || subtable.platformId === PLATFORM.unicode,
+      subtable.platformId === PLATFORM.macintosh ||
+      subtable.platformId === PLATFORM.unicode,
     symbol: false,
   },
 ] as const;
 
-const listCmapSubtables = (view: DataView, cmap: SfntTableRecord): readonly CmapSubtable[] => {
+const listCmapSubtables = (
+  view: DataView,
+  cmap: SfntTableRecord,
+): readonly CmapSubtable[] => {
   const end = cmap.offset + cmap.length;
   if (!fitsInView(view, cmap.offset, CMAP.recordsStart)) {
     return [];
@@ -432,7 +496,10 @@ const listCmapSubtables = (view: DataView, cmap: SfntTableRecord): readonly Cmap
   const subtables: CmapSubtable[] = [];
   for (let index = 0; index < numTables; index++) {
     const record = cmap.offset + CMAP.recordsStart + index * CMAP.recordSize;
-    if (record + CMAP.recordSize > end || !fitsInView(view, record, CMAP.recordSize)) {
+    if (
+      record + CMAP.recordSize > end ||
+      !fitsInView(view, record, CMAP.recordSize)
+    ) {
       break;
     }
 
@@ -479,7 +546,9 @@ const buildCmapLookup = (
       }
       return Result.ok((codePoint) => {
         const glyphId = lookup(codePoint);
-        return glyphId === 0 ? lookup(SYMBOL_CODEPOINT_BASE | codePoint) : glyphId;
+        return glyphId === 0
+          ? lookup(SYMBOL_CODEPOINT_BASE | codePoint)
+          : glyphId;
       });
     }
   }
@@ -498,21 +567,40 @@ const sanitizePostScriptName = (raw: string): string => {
   let name = "";
   for (const character of raw) {
     const code = character.codePointAt(0) ?? 0;
-    if (code > 0x20 && code < 0x7f && !POSTSCRIPT_NAME_DELIMITERS.has(character)) {
+    if (
+      code > 0x20 &&
+      code < 0x7f &&
+      !POSTSCRIPT_NAME_DELIMITERS.has(character)
+    ) {
       name += character;
     }
   }
   return name.slice(0, MAX_POSTSCRIPT_NAME_LENGTH);
 };
 
-const decodeUtf16Be = (view: DataView, offset: number, length: number): string => {
-  return decodeText(new Uint8Array(view.buffer, view.byteOffset + offset, length - (length % 2)), {
-    encoding: "utf-16be",
-    ignoreBOM: true,
-  });
+const decodeUtf16Be = (
+  view: DataView,
+  offset: number,
+  length: number,
+): string => {
+  return decodeText(
+    new Uint8Array(
+      view.buffer,
+      view.byteOffset + offset,
+      length - (length % 2),
+    ),
+    {
+      encoding: "utf-16be",
+      ignoreBOM: true,
+    },
+  );
 };
 
-const decodeMacRomanAscii = (view: DataView, offset: number, length: number): string => {
+const decodeMacRomanAscii = (
+  view: DataView,
+  offset: number,
+  length: number,
+): string => {
   // Only the ASCII subset is unambiguous without a MacRoman table.
   const bytes = new Uint8Array(view.buffer, view.byteOffset + offset, length);
   return decodeText(
@@ -533,12 +621,16 @@ const readPostScriptName = (view: DataView, name: SfntTableRecord): string => {
   }
 
   const count = view.getUint16(name.offset + NAME.count);
-  const stringsBase = name.offset + view.getUint16(name.offset + NAME.stringOffset);
+  const stringsBase =
+    name.offset + view.getUint16(name.offset + NAME.stringOffset);
   let windows = "";
   let macintosh = "";
   for (let index = 0; index < count; index++) {
     const record = name.offset + NAME.recordsStart + index * NAME.recordSize;
-    if (record + NAME.recordSize > end || !fitsInView(view, record, NAME.recordSize)) {
+    if (
+      record + NAME.recordSize > end ||
+      !fitsInView(view, record, NAME.recordSize)
+    ) {
       break;
     }
     if (view.getUint16(record + NAME_RECORD.nameId) !== POSTSCRIPT_NAME_ID) {
@@ -594,7 +686,12 @@ const buildGlyphBoundsReader = ({
   const glyf = directory.tables.get(SFNT_TABLE.glyf);
   const offsets =
     loca && glyf
-      ? readLocaOffsets({ view: directory.view, loca, numGlyphs, longFormat: longLoca })
+      ? readLocaOffsets({
+          view: directory.view,
+          loca,
+          numGlyphs,
+          longFormat: longLoca,
+        })
       : undefined;
   if (!glyf || !offsets) {
     return () => null;
@@ -609,12 +706,19 @@ const buildGlyphBoundsReader = ({
     const start = offsets[glyphId];
     const end = offsets[glyphId + 1];
     // Equal offsets are how a font spells "this glyph has no outline".
-    if (start === undefined || end === undefined || end - start < GLYPH_HEADER.size) {
+    if (
+      start === undefined ||
+      end === undefined ||
+      end - start < GLYPH_HEADER.size
+    ) {
       return null;
     }
 
     const at = glyf.offset + start;
-    if (!fitsInView(view, at, GLYPH_HEADER.size) || start + GLYPH_HEADER.size > glyf.length) {
+    if (
+      !fitsInView(view, at, GLYPH_HEADER.size) ||
+      start + GLYPH_HEADER.size > glyf.length
+    ) {
       return null;
     }
 
@@ -637,8 +741,13 @@ const requireTable = (
   if (!record) {
     return fail(`font has no '${tag}' table`);
   }
-  if (record.length < size || !fitsInView(directory.view, record.offset, size)) {
-    return fail(`'${tag}' table is ${record.length} bytes, needs at least ${size}`);
+  if (
+    record.length < size ||
+    !fitsInView(directory.view, record.offset, size)
+  ) {
+    return fail(
+      `'${tag}' table is ${record.length} bytes, needs at least ${size}`,
+    );
   }
   return Result.ok(record);
 };
@@ -646,21 +755,31 @@ const requireTable = (
 const rejectContainer = (version: number): Result<void, SfntParseError> => {
   switch (version) {
     case SFNT_VERSION.collection:
-      return fail("font collections ('ttcf') are not supported; extract a single face first");
+      return fail(
+        "font collections ('ttcf') are not supported; extract a single face first",
+      );
     case SFNT_VERSION.woff:
-      return fail("this is a WOFF container; decode it with decodeWoff before parsing");
+      return fail(
+        "this is a WOFF container; decode it with decodeWoff before parsing",
+      );
     case SFNT_VERSION.woff2:
-      return fail("this is a WOFF2 container; it must be decoded before parsing");
+      return fail(
+        "this is a WOFF2 container; it must be decoded before parsing",
+      );
     case SFNT_VERSION.trueType:
     case SFNT_VERSION.trueMac:
     case SFNT_VERSION.openTypeCff:
       return Result.ok();
     default:
-      return fail(`unrecognized sfnt version 0x${(version >>> 0).toString(16).padStart(8, "0")}`);
+      return fail(
+        `unrecognized sfnt version 0x${(version >>> 0).toString(16).padStart(8, "0")}`,
+      );
   }
 };
 
-export const parseSfnt = (bytes: Uint8Array): Result<SfntFont, SfntParseError> => {
+export const parseSfnt = (
+  bytes: Uint8Array,
+): Result<SfntFont, SfntParseError> => {
   const version = readSfntVersion(bytes);
   if (version === undefined) {
     return fail(`buffer is ${bytes.byteLength} bytes, too short to be a font`);
@@ -691,7 +810,9 @@ export const parseSfnt = (bytes: Uint8Array): Result<SfntFont, SfntParseError> =
 
   const unitsPerEm = view.getUint16(head.offset + HEAD.unitsPerEm);
   if (unitsPerEm < MIN_UNITS_PER_EM || unitsPerEm > MAX_UNITS_PER_EM) {
-    return fail(`head.unitsPerEm is ${unitsPerEm}, outside the permitted 16..16384`);
+    return fail(
+      `head.unitsPerEm is ${unitsPerEm}, outside the permitted 16..16384`,
+    );
   }
 
   const hheaResult = requireTable(directory, SFNT_TABLE.hhea, HHEA.size);
@@ -716,7 +837,11 @@ export const parseSfnt = (bytes: Uint8Array): Result<SfntFont, SfntParseError> =
     );
   }
 
-  const hmtxResult = requireTable(directory, SFNT_TABLE.hmtx, numberOfHMetrics * HMTX_METRIC_SIZE);
+  const hmtxResult = requireTable(
+    directory,
+    SFNT_TABLE.hmtx,
+    numberOfHMetrics * HMTX_METRIC_SIZE,
+  );
   if (hmtxResult.isErr()) {
     return Result.err(hmtxResult.error);
   }
@@ -726,13 +851,19 @@ export const parseSfnt = (bytes: Uint8Array): Result<SfntFont, SfntParseError> =
   // A subset font legitimately has no cmap: a PDF CIDFontType2 addresses
   // glyphs directly, so the tables that map characters are dropped.
   const unmappedLookup: CmapLookup = () => 0;
-  const lookupResult = cmap ? buildCmapLookup(view, cmap) : Result.ok(unmappedLookup);
+  const lookupResult = cmap
+    ? buildCmapLookup(view, cmap)
+    : Result.ok(unmappedLookup);
   if (lookupResult.isErr()) {
     return Result.err(lookupResult.error);
   }
   const lookup = lookupResult.value;
   const glyphIdFor = (codePoint: number) => {
-    if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > MAX_UNICODE_CODE_POINT) {
+    if (
+      !Number.isInteger(codePoint) ||
+      codePoint < 0 ||
+      codePoint > MAX_UNICODE_CODE_POINT
+    ) {
       return 0;
     }
     const glyphId = lookup(codePoint);
@@ -749,7 +880,11 @@ export const parseSfnt = (bytes: Uint8Array): Result<SfntFont, SfntParseError> =
   };
 
   const longLoca = view.getInt16(head.offset + HEAD.indexToLocFormat) === 1;
-  const glyphBoundsFor = buildGlyphBoundsReader({ directory, numGlyphs, longLoca });
+  const glyphBoundsFor = buildGlyphBoundsReader({
+    directory,
+    numGlyphs,
+    longLoca,
+  });
 
   const os2 = directory.tables.get(SFNT_TABLE.os2);
   const os2HasHeights =
@@ -776,14 +911,18 @@ export const parseSfnt = (bytes: Uint8Array): Result<SfntFont, SfntParseError> =
 
   const post = directory.tables.get(SFNT_TABLE.post);
   const italicAngle =
-    post !== undefined && post.length >= POST.size && fitsInView(view, post.offset, POST.size)
+    post !== undefined &&
+    post.length >= POST.size &&
+    fitsInView(view, post.offset, POST.size)
       ? view.getInt32(post.offset + POST.italicAngle) / FIXED_POINT_DIVISOR
       : 0;
 
   const name = directory.tables.get(SFNT_TABLE.name);
   const postScriptName =
     (name ? readPostScriptName(view, name) : "") ||
-    syntheticPostScriptName(view.getUint32(head.offset + HEAD.checkSumAdjustment));
+    syntheticPostScriptName(
+      view.getUint32(head.offset + HEAD.checkSumAdjustment),
+    );
 
   return Result.ok({
     unitsPerEm,

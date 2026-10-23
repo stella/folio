@@ -1,13 +1,19 @@
 import type {
+  FolioCommentAnchor,
+  FolioReviewChange,
+  FolioUndefinedReferencePolicy,
+} from "@stll/folio-core/ai-edits";
+import { createReply } from "@stll/folio-core/docx/replyToComment";
+import type {
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
+  FolioDocumentNavigationTarget,
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
-  FolioDocumentNavigationTarget,
 } from "@stll/folio-core/server";
 import {
   assertSupportedFolioDocumentOperationVersion,
@@ -15,17 +21,18 @@ import {
   getFolioDocumentOperationIssues,
   getFolioDocumentOperationReceipts,
 } from "@stll/folio-core/server";
-import type {
-  FolioCommentAnchor,
-  FolioReviewChange,
-  FolioUndefinedReferencePolicy,
-} from "@stll/folio-core/ai-edits";
-import { createReply } from "@stll/folio-core/docx/replyToComment";
 import type { Comment } from "@stll/folio-core/types/content";
 
-import { registerDecodedCommentHandlers, type FolioAgentBridge } from "../bridge";
+import {
+  type FolioAgentBridge,
+  registerDecodedCommentHandlers,
+} from "../bridge";
 import { decodeCommentId } from "../codecs";
-import type { FolioAgentChange, FolioAgentComment, FolioAgentCommentReply } from "../types";
+import type {
+  FolioAgentChange,
+  FolioAgentComment,
+  FolioAgentCommentReply,
+} from "../types";
 import { toAgentChange } from "./shared";
 
 export type FolioAgentEditorApplyDocumentOperationsOptions = {
@@ -104,7 +111,10 @@ export type FolioAgentEditorRefLike = {
     snapshot?: FolioAIEditSnapshot,
   ): number | null;
   /** `DocxEditorRef.showInDocument`, when available on newer refs. */
-  showInDocument?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): boolean;
+  showInDocument?(
+    target: FolioDocumentNavigationTarget,
+    snapshot?: FolioAIEditSnapshot,
+  ): boolean;
 };
 
 /** Options for {@link createEditorRefBridge}. */
@@ -171,7 +181,9 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
  * - Page-scoped search and `show_in_document` report an unsupported-capability
  *   error when `ref.getTargetPage` / `ref.showInDocument` are absent.
  */
-export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): FolioAgentBridge => {
+export const createEditorRefBridge = (
+  options: CreateEditorRefBridgeOptions,
+): FolioAgentBridge => {
   const { ref, author, getComments, setComments } = options;
   const undoDocumentOperations = ref.undoDocumentOperations?.bind(ref);
   const mode = options.mode ?? "tracked-changes";
@@ -186,7 +198,10 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     return true;
   };
 
-  const resolveDecodedComment = (commentId: number, resolved: boolean): boolean => {
+  const resolveDecodedComment = (
+    commentId: number,
+    resolved: boolean,
+  ): boolean => {
     const comments = getComments();
     let found = false;
     const next = comments.map((comment) => {
@@ -206,7 +221,9 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
   const requireSnapshot = (): FolioAIEditSnapshot => {
     const snapshot = ref.createAIEditSnapshot();
     if (!snapshot) {
-      throw new Error("The editor view is not mounted; no snapshot is available yet.");
+      throw new Error(
+        "The editor view is not mounted; no snapshot is available yet.",
+      );
     }
     return snapshot;
   };
@@ -217,7 +234,8 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     applyDocumentOperations: (batch) => {
       assertSupportedFolioDocumentOperationVersion(batch.version);
       const snapshot = requireSnapshot();
-      const versionedBatch = batch.mode === undefined ? { ...batch, mode } : batch;
+      const versionedBatch =
+        batch.mode === undefined ? { ...batch, mode } : batch;
       if (ref.applyDocumentOperations) {
         const result = ref.applyDocumentOperations({
           undefinedReferences: "refuse",
@@ -230,10 +248,16 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           ...result,
           issues:
             result.issues ??
-            getFolioDocumentOperationIssues(versionedBatch.operations, result.skipped),
+            getFolioDocumentOperationIssues(
+              versionedBatch.operations,
+              result.skipped,
+            ),
           receipts:
             result.receipts ??
-            getFolioDocumentOperationReceipts(versionedBatch.operations, result.applied),
+            getFolioDocumentOperationReceipts(
+              versionedBatch.operations,
+              result.applied,
+            ),
           undoHandle: result.undoHandle ?? null,
         };
       }
@@ -247,7 +271,10 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           status: "previewed",
           applied: [],
           skipped,
-          issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
+          issues: getFolioDocumentOperationIssues(
+            versionedBatch.operations,
+            skipped,
+          ),
           receipts: [],
           undoHandle: null,
         };
@@ -262,7 +289,10 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           status: "rejected",
           applied: [],
           skipped,
-          issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
+          issues: getFolioDocumentOperationIssues(
+            versionedBatch.operations,
+            skipped,
+          ),
           receipts: [],
           undoHandle: null,
         };
@@ -278,8 +308,14 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         status: "committed",
         ...result,
-        issues: getFolioDocumentOperationIssues(versionedBatch.operations, result.skipped),
-        receipts: getFolioDocumentOperationReceipts(versionedBatch.operations, result.applied),
+        issues: getFolioDocumentOperationIssues(
+          versionedBatch.operations,
+          result.skipped,
+        ),
+        receipts: getFolioDocumentOperationReceipts(
+          versionedBatch.operations,
+          result.applied,
+        ),
         undoHandle: null,
       };
     },
@@ -322,7 +358,9 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           // `null` / `""` on an older ref — see KNOWN LIMITATIONS above.
           blockId: anchor?.blockId ?? null,
           quote: anchor?.quote ?? "",
-          replies: (repliesByParent.get(comment.id) ?? []).map(toAgentCommentReply),
+          replies: (repliesByParent.get(comment.id) ?? []).map(
+            toAgentCommentReply,
+          ),
         };
       });
     },
@@ -336,7 +374,9 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     },
     resolveComment: (commentId, resolved) => {
       const decoded = decodeCommentId(commentId);
-      return decoded !== null && resolveDecodedComment(decoded.numeric, resolved);
+      return (
+        decoded !== null && resolveDecodedComment(decoded.numeric, resolved)
+      );
     },
     scrollToBlock: (blockId) => ref.scrollToBlock(blockId),
     getPageCount: () => ref.getTotalPages(),
@@ -371,6 +411,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
 
   return registerDecodedCommentHandlers(bridge, {
     replyToComment: ({ numeric }, text) => replyToDecodedComment(numeric, text),
-    resolveComment: ({ numeric }, resolved) => resolveDecodedComment(numeric, resolved),
+    resolveComment: ({ numeric }, resolved) =>
+      resolveDecodedComment(numeric, resolved),
   });
 };

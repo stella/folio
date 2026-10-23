@@ -8,6 +8,8 @@ import { createRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+
+import type { EditorState } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
 
 import type { HostShortcut } from "@stll/folio-core/managers/editorShortcuts";
@@ -18,23 +20,25 @@ import {
 import { DocxEditor } from "@stll/folio-react";
 import type { DocxEditorRef } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
-import type { EditorState } from "prosemirror-state";
 
+import { createHistoryBridgePlugin } from "./historyBridge";
+import type { HistoryChange } from "./historyBridge";
 import type {
   FolioEditorDocument,
   FolioEditorHandle,
   FolioEditorHost,
   FolioEditorSaveStrategy,
 } from "./host";
-import { createHistoryBridgePlugin } from "./historyBridge";
-import type { HistoryChange } from "./historyBridge";
 import type { FolioEditingMode } from "./modes";
 
 /**
  * The host keeps the undo stack the user sees, and print means nothing inside
  * an embedded page, so the editor leaves both sets of keys to the host.
  */
-const HOST_SHORTCUTS = ["history", "print"] as const satisfies readonly HostShortcut[];
+const HOST_SHORTCUTS = [
+  "history",
+  "print",
+] as const satisfies readonly HostShortcut[];
 
 /**
  * How long to wait for the editor to mount a freshly parsed document, polled
@@ -43,7 +47,10 @@ const HOST_SHORTCUTS = ["history", "print"] as const satisfies readonly HostShor
 const MOUNT_POLL_MS = 16;
 const MOUNT_POLL_LIMIT = 250;
 
-export const mountFolioEditor = (root: HTMLElement, host: FolioEditorHost): FolioEditorHandle => {
+export const mountFolioEditor = (
+  root: HTMLElement,
+  host: FolioEditorHost,
+): FolioEditorHandle => {
   const session = createSession(host);
   const reactRoot = createRoot(root);
   // Synchronous, so the editor's ref is attached before the first load starts.
@@ -101,7 +108,9 @@ const FolioEditorApp = ({
 }: FolioEditorAppProps) => {
   const mode = useSyncExternalStore(modeStore.subscribe, modeStore.get);
   // One plugin instance for the editor's lifetime, as `plugins` requires.
-  const [plugins] = useState(() => [createHistoryBridgePlugin(onHistoryChange)]);
+  const [plugins] = useState(() => [
+    createHistoryBridgePlugin(onHistoryChange),
+  ]);
   const [locale] = useState(() => canonicalLocale(hostLocale));
 
   return (
@@ -183,14 +192,22 @@ const createSession = (host: FolioEditorHost) => {
   };
 
   const waitForMountedEditor = async (ref: DocxEditorRef): Promise<void> => {
-    for (let poll = 0; poll < MOUNT_POLL_LIMIT && ref.getEditorRef() === null; poll += 1) {
+    for (
+      let poll = 0;
+      poll < MOUNT_POLL_LIMIT && ref.getEditorRef() === null;
+      poll += 1
+    ) {
       await new Promise((resolve) => setTimeout(resolve, MOUNT_POLL_MS));
     }
   };
 
   /** The load numbered `generation`, while it is still the one in flight. */
-  const inFlight = (generation: number): Extract<LoadState, { type: "loading" }> | null =>
-    !disposed && loadState.type === "loading" && loadState.generation === generation
+  const inFlight = (
+    generation: number,
+  ): Extract<LoadState, { type: "loading" }> | null =>
+    !disposed &&
+    loadState.type === "loading" &&
+    loadState.generation === generation
       ? loadState
       : null;
 
@@ -203,7 +220,9 @@ const createSession = (host: FolioEditorHost) => {
       await ref.loadDocumentBuffer(document.bytes);
     } catch (error) {
       if (inFlight(generation) !== null) {
-        host.onLoadFailed(error instanceof Error ? error.message : "The document did not load.");
+        host.onLoadFailed(
+          error instanceof Error ? error.message : "The document did not load.",
+        );
       }
       return;
     }
@@ -227,9 +246,12 @@ const createSession = (host: FolioEditorHost) => {
 
   const saveStrategy = (): FolioEditorSaveStrategy => {
     const state = bodyState?.();
-    if (state === undefined) return { type: "full-repack", reason: "noBodyView" };
-    if (hasStructuralChanges(state)) return { type: "full-repack", reason: "structuralChange" };
-    if (hasUntrackedChanges(state)) return { type: "full-repack", reason: "untrackedChange" };
+    if (state === undefined)
+      return { type: "full-repack", reason: "noBodyView" };
+    if (hasStructuralChanges(state))
+      return { type: "full-repack", reason: "structuralChange" };
+    if (hasUntrackedChanges(state))
+      return { type: "full-repack", reason: "untrackedChange" };
     return { type: "selective-first" };
   };
 
@@ -269,7 +291,11 @@ const createSession = (host: FolioEditorHost) => {
     },
     onError: (error: Error) => {
       if (loadState.type === "loading") {
-        loadState = { type: "loading", generation: loadState.generation, error: error.message };
+        loadState = {
+          type: "loading",
+          generation: loadState.generation,
+          error: error.message,
+        };
         return;
       }
       host.onError(error.message);

@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
+
 import { FIND_SEARCH_KEY_OPTION_CHANGES } from "../../typecheck/findSearchKey.typecheck";
+import type { Document } from "../types/document";
 import { createEmptyDocument } from "./createDocument";
 import { createDefaultFindOptions } from "./findReplace";
-import { createFindQueryKey, createFindSearchKey, sameFindSearchKey } from "./findSearchKey";
-import type { Document } from "../types/document";
+import {
+  createFindQueryKey,
+  createFindSearchKey,
+  sameFindSearchKey,
+} from "./findSearchKey";
 
 const document = createEmptyDocument({ initialText: "hit" });
 const base = { query: "hit", options: createDefaultFindOptions(), document };
@@ -14,9 +19,12 @@ test.each(Object.entries(FIND_SEARCH_KEY_OPTION_CHANGES))(
     const mutable = createDefaultFindOptions();
     const previous = createFindSearchKey({ ...base, options: mutable });
     Object.assign(mutable, options);
-    expect(sameFindSearchKey(previous, createFindSearchKey({ ...base, options: mutable }))).toBe(
-      false,
-    );
+    expect(
+      sameFindSearchKey(
+        previous,
+        createFindSearchKey({ ...base, options: mutable }),
+      ),
+    ).toBe(false);
     expect(sameFindSearchKey(previous, createFindSearchKey(base))).toBe(true);
   },
 );
@@ -55,12 +63,19 @@ test("query, body version and rendered story scope each invalidate the key", () 
   expect(
     sameFindSearchKey(
       previous,
-      createFindSearchKey({ ...base, query: "other", bodyVersion: previous.bodyVersion }),
+      createFindSearchKey({
+        ...base,
+        query: "other",
+        bodyVersion: previous.bodyVersion,
+      }),
     ),
   ).toBe(false);
-  expect(sameFindSearchKey(previous, createFindSearchKey({ ...base, bodyVersion: {} }))).toBe(
-    false,
-  );
+  expect(
+    sameFindSearchKey(
+      previous,
+      createFindSearchKey({ ...base, bodyVersion: {} }),
+    ),
+  ).toBe(false);
   expect(
     sameFindSearchKey(
       previous,
@@ -79,15 +94,19 @@ test("a model source version detects body edits without an editor version token"
   source.package.document.content = createEmptyDocument({
     initialText: "changed",
   }).package.document.content;
-  expect(sameFindSearchKey(previous, createFindSearchKey({ ...base, document: source }))).toBe(
-    false,
-  );
+  expect(
+    sameFindSearchKey(
+      previous,
+      createFindSearchKey({ ...base, document: source }),
+    ),
+  ).toBe(false);
 });
 
 test.each(["header", "footer", "footnote", "endnote", "comment"] as const)(
   "%s edits invalidate the key even with an unchanged editor body",
   (kind) => {
-    const content = createEmptyDocument({ initialText: "side hit" }).package.document.content;
+    const content = createEmptyDocument({ initialText: "side hit" }).package
+      .document.content;
     const source: Document = {
       ...document,
       package: {
@@ -103,28 +122,48 @@ test.each(["header", "footer", "footnote", "endnote", "comment"] as const)(
       },
     };
     const bodyVersion = {};
-    const previous = createFindSearchKey({ ...base, document: source, bodyVersion });
+    const previous = createFindSearchKey({
+      ...base,
+      document: source,
+      bodyVersion,
+    });
     const changed = structuredClone(source);
-    const replacement = createEmptyDocument({ initialText: "changed" }).package.document.content;
+    const replacement = createEmptyDocument({ initialText: "changed" }).package
+      .document.content;
     switch (kind) {
       case "header":
-        changed.package.headers?.set("rId1", { type: "header", content: replacement });
+        changed.package.headers?.set("rId1", {
+          type: "header",
+          content: replacement,
+        });
         break;
       case "footer":
-        changed.package.footers?.set("rId2", { type: "footer", content: replacement });
+        changed.package.footers?.set("rId2", {
+          type: "footer",
+          content: replacement,
+        });
         break;
       case "footnote":
-        changed.package.footnotes = [{ type: "footnote", id: 37, content: replacement }];
+        changed.package.footnotes = [
+          { type: "footnote", id: 37, content: replacement },
+        ];
         break;
       case "endnote":
-        changed.package.endnotes = [{ type: "endnote", id: 41, content: replacement }];
+        changed.package.endnotes = [
+          { type: "endnote", id: 41, content: replacement },
+        ];
         break;
       case "comment":
-        changed.package.document.comments = [{ id: 91, author: "Reviewer", content: replacement }];
+        changed.package.document.comments = [
+          { id: 91, author: "Reviewer", content: replacement },
+        ];
         break;
     }
     expect(
-      sameFindSearchKey(previous, createFindSearchKey({ ...base, document: changed, bodyVersion })),
+      sameFindSearchKey(
+        previous,
+        createFindSearchKey({ ...base, document: changed, bodyVersion }),
+      ),
     ).toBe(false);
   },
 );

@@ -16,13 +16,16 @@ export type ReportIssueEnv = {
 };
 
 export function buildReportIssueUrl(env: ReportIssueEnv = {}): string {
-  const ua = env.userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "unknown");
+  const ua =
+    env.userAgent ??
+    (typeof navigator !== "undefined" ? navigator.userAgent : "unknown");
   const vp =
     env.viewport ??
     (typeof window !== "undefined"
       ? { width: window.innerWidth, height: window.innerHeight }
       : { width: 0, height: 0 });
-  const pageUrl = env.pageUrl ?? (typeof window !== "undefined" ? window.location.href : "");
+  const pageUrl =
+    env.pageUrl ?? (typeof window !== "undefined" ? window.location.href : "");
 
   const body = [
     "### What happened",

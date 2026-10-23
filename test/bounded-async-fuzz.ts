@@ -1,5 +1,5 @@
-import fc from "fast-check";
 import { panic } from "better-result";
+import fc from "fast-check";
 
 export const BROWSER_FUZZ_BUDGET = {
   testMs: 600_000,
@@ -57,7 +57,9 @@ export const checkWithBoundedShrink = async <T>({
     value,
     error: discovery.errorInstance,
   });
-  const replay: { status: "pending" | "matched" | "mismatch" } = { status: "pending" };
+  const replay: { status: "pending" | "matched" | "mismatch" } = {
+    status: "pending",
+  };
   const shrinking = await fc.check(
     fc.asyncProperty(arbitrary, (candidate) => {
       if (replay.status !== "pending") return evaluate(candidate);
@@ -80,6 +82,7 @@ export const checkWithBoundedShrink = async <T>({
   );
   if (replay.status === "mismatch")
     panic("The seeded shrink replay did not start from the retained failure.");
-  const verdict = shrinking.failed && !shrinking.interrupted ? shrinking : discovery;
+  const verdict =
+    shrinking.failed && !shrinking.interrupted ? shrinking : discovery;
   return { verdict, discovery, shrinking };
 };

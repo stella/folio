@@ -1,4 +1,10 @@
-import { chromium, type FullConfig, type Frame, type Page } from "@playwright/test";
+import {
+  chromium,
+  type Frame,
+  type FullConfig,
+  type Page,
+} from "@playwright/test";
+
 import { PLAYGROUND_HOSTS } from "./playgroundHosts";
 
 const QUIET_WINDOW_MS = 2_000;
@@ -52,7 +58,9 @@ const loadQuietPlayground = async (page: Page, url: string) => {
 
 /** Warm each dev-server dependency graph before the first test owns a page. */
 export default async (config: FullConfig) => {
-  const browser = await chromium.launch(config.projects.at(0)?.use.launchOptions);
+  const browser = await chromium.launch(
+    config.projects.at(0)?.use.launchOptions,
+  );
   try {
     for (const origin of Object.values(PLAYGROUND_HOSTS)) {
       const page = await browser.newPage();

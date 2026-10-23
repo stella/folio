@@ -25,7 +25,10 @@ export const PageBreakRunExtension = createNodeExtension({
             return false;
           }
           const clear = node.dataset["docxBreakClear"];
-          return clear === "none" || clear === "left" || clear === "right" || clear === "all"
+          return clear === "none" ||
+            clear === "left" ||
+            clear === "right" ||
+            clear === "all"
             ? { clear }
             : null;
         },

@@ -15,7 +15,10 @@ import type {
   TrackedRunChange,
 } from "../types/document";
 import { pixelsToEmu } from "../utils/units";
-import { groupTextContentFingerprint, groupXmlFingerprint } from "./drawingGroupChildren";
+import {
+  groupTextContentFingerprint,
+  groupXmlFingerprint,
+} from "./drawingGroupChildren";
 import type { GroupTextBoxFrame } from "./drawingGroupChildren";
 import { groupPreviewTextBoxes } from "./groupDrawingParser";
 import type { NumberingMap } from "./numberingParser";
@@ -36,15 +39,17 @@ import type { TableParserFn } from "./textBoxParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
   findChildByLocalName,
-  findWordprocessingChild,
   findDeep,
+  findWordprocessingChild,
   getAttribute,
   getChildElements,
   getLocalName,
   type XmlElement,
 } from "./xmlParser";
 
-const VML_HORIZONTAL_RELATIVES = new Set<ImagePosition["horizontal"]["relativeTo"]>([
+const VML_HORIZONTAL_RELATIVES = new Set<
+  ImagePosition["horizontal"]["relativeTo"]
+>([
   "character",
   "column",
   "insideMargin",
@@ -54,17 +59,24 @@ const VML_HORIZONTAL_RELATIVES = new Set<ImagePosition["horizontal"]["relativeTo
   "page",
   "rightMargin",
 ]);
-const VML_VERTICAL_RELATIVES = new Set<ImagePosition["vertical"]["relativeTo"]>([
-  "insideMargin",
-  "line",
-  "margin",
-  "outsideMargin",
-  "page",
-  "paragraph",
-  "topMargin",
-  "bottomMargin",
-]);
-const VML_TEXTBOX_INSET_DEFAULTS = ["0.1in", "0.05in", "0.1in", "0.05in"] as const;
+const VML_VERTICAL_RELATIVES = new Set<ImagePosition["vertical"]["relativeTo"]>(
+  [
+    "insideMargin",
+    "line",
+    "margin",
+    "outsideMargin",
+    "page",
+    "paragraph",
+    "topMargin",
+    "bottomMargin",
+  ],
+);
+const VML_TEXTBOX_INSET_DEFAULTS = [
+  "0.1in",
+  "0.05in",
+  "0.1in",
+  "0.05in",
+] as const;
 const MAX_VML_TEXTBOX_INSET_TOKEN_CHARACTERS = 64;
 const MAX_VML_STYLE_CHARACTERS = 16_384;
 
@@ -87,9 +99,10 @@ const parseVmlStyle = (value: string | null): Record<string, string> => {
 };
 
 const vmlLengthToPixels = (value: string | undefined): number | undefined => {
-  const match = /^(?<amount>-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?<unit>pt|in|px|cm|mm|pc)?$/iu.exec(
-    value?.trim() ?? "",
-  );
+  const match =
+    /^(?<amount>-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?<unit>pt|in|px|cm|mm|pc)?$/iu.exec(
+      value?.trim() ?? "",
+    );
   const amount = Number.parseFloat(match?.groups?.["amount"] ?? "");
   if (!Number.isFinite(amount)) {
     return undefined;
@@ -124,7 +137,9 @@ const horizontalRelativeTo = (
   return "character";
 };
 
-const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"]["relativeTo"] => {
+const verticalRelativeTo = (
+  value: string | undefined,
+): ImagePosition["vertical"]["relativeTo"] => {
   for (const relative of VML_VERTICAL_RELATIVES) {
     if (relative.toLowerCase() === value?.toLowerCase()) {
       return relative;
@@ -133,7 +148,9 @@ const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"
   return "paragraph";
 };
 
-const parseVmlInsetFields = (rawInset: string): Array<string | undefined> | undefined => {
+const parseVmlInsetFields = (
+  rawInset: string,
+): Array<string | undefined> | undefined => {
   const fields: Array<string | undefined> = [];
   let offset = 0;
   let segmentHasField = false;
@@ -146,7 +163,9 @@ const parseVmlInsetFields = (rawInset: string): Array<string | undefined> | unde
       if (!segmentHasField) {
         fields.push(undefined);
       }
-      return fields.length <= VML_TEXTBOX_INSET_DEFAULTS.length ? fields : undefined;
+      return fields.length <= VML_TEXTBOX_INSET_DEFAULTS.length
+        ? fields
+        : undefined;
     }
     if (rawInset.charAt(offset) === ",") {
       if (!segmentHasField) {
@@ -161,7 +180,10 @@ const parseVmlInsetFields = (rawInset: string): Array<string | undefined> | unde
     }
 
     const tokenStart = offset;
-    while (offset < rawInset.length && !/[,\s]/u.test(rawInset.charAt(offset))) {
+    while (
+      offset < rawInset.length &&
+      !/[,\s]/u.test(rawInset.charAt(offset))
+    ) {
       offset += 1;
       if (offset - tokenStart > MAX_VML_TEXTBOX_INSET_TOKEN_CHARACTERS) {
         return undefined;
@@ -185,10 +207,15 @@ const parseVmlInsets = (
   if (!fields) {
     return undefined;
   }
-  const [left, top, right, bottom] = VML_TEXTBOX_INSET_DEFAULTS.map((fallback, index) =>
-    vmlLengthToPixels(fields.at(index) ?? fallback),
+  const [left, top, right, bottom] = VML_TEXTBOX_INSET_DEFAULTS.map(
+    (fallback, index) => vmlLengthToPixels(fields.at(index) ?? fallback),
   );
-  if (left === undefined || top === undefined || right === undefined || bottom === undefined) {
+  if (
+    left === undefined ||
+    top === undefined ||
+    right === undefined ||
+    bottom === undefined
+  ) {
     return undefined;
   }
   return {
@@ -200,9 +227,13 @@ const parseVmlInsets = (
 };
 
 const parseVmlFill = (shapeEl: XmlElement): Shape["fill"] =>
-  getAttribute(shapeEl, null, "filled")?.toLowerCase() === "f" ? { type: "none" } : undefined;
+  getAttribute(shapeEl, null, "filled")?.toLowerCase() === "f"
+    ? { type: "none" }
+    : undefined;
 
-const parseVmlTextAnchor = (value: string | undefined): ShapeTextBody["anchor"] | undefined => {
+const parseVmlTextAnchor = (
+  value: string | undefined,
+): ShapeTextBody["anchor"] | undefined => {
   switch (value?.toLowerCase()) {
     case "top":
       return "top";
@@ -215,7 +246,10 @@ const parseVmlTextAnchor = (value: string | undefined): ShapeTextBody["anchor"] 
   }
 };
 
-const vmlWrapType = (positioned: boolean, zIndex: number): NonNullable<Shape["wrap"]>["type"] => {
+const vmlWrapType = (
+  positioned: boolean,
+  zIndex: number,
+): NonNullable<Shape["wrap"]>["type"] => {
   if (!positioned) {
     return "inline";
   }
@@ -312,7 +346,10 @@ const liftGroupTextBoxes = (
   }
 };
 
-const liftGroupTextBoxesInRun = (run: Run, parsers: GroupTextBoxParsers): void => {
+const liftGroupTextBoxesInRun = (
+  run: Run,
+  parsers: GroupTextBoxParsers,
+): void => {
   if (!run.content.some((item) => item.type === "drawing")) {
     return;
   }
@@ -342,18 +379,36 @@ const groupTextBoxShape = (
   groupImage: Image,
   frame: GroupTextBoxFrame,
   group: string,
-  { styles, theme, numbering, rels, media, parseTable, previews }: GroupTextBoxParsers,
+  {
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    parseTable,
+    previews,
+  }: GroupTextBoxParsers,
 ): Shape | undefined => {
   const position = groupImage.position;
   const horizontalOffset = position?.horizontal.posOffset;
   const verticalOffset = position?.vertical.posOffset;
-  if (!position || horizontalOffset === undefined || verticalOffset === undefined) {
+  if (
+    !position ||
+    horizontalOffset === undefined ||
+    verticalOffset === undefined
+  ) {
     return undefined;
   }
-  const size = { width: Math.round(frame.width), height: Math.round(frame.height) };
+  const size = {
+    width: Math.round(frame.width),
+    height: Math.round(frame.height),
+  };
   const textBox = parseTextBoxFromShape(frame.wsp, size);
   const content = parseTextBoxContent(
-    findChildByLocalName(findChildByLocalName(frame.wsp, "txbx"), "txbxContent"),
+    findChildByLocalName(
+      findChildByLocalName(frame.wsp, "txbx"),
+      "txbxContent",
+    ),
     parseParagraph,
     parseTable,
     styles,
@@ -390,15 +445,21 @@ const groupTextBoxShape = (
     },
     // The group owns any wrapping; its children only stack in its layer.
     wrap: { type: groupImage.wrap.type === "behind" ? "behind" : "inFront" },
-    ...(groupImage.anchor !== undefined ? { anchor: { ...groupImage.anchor } } : {}),
+    ...(groupImage.anchor !== undefined
+      ? { anchor: { ...groupImage.anchor } }
+      : {}),
     ...(textBox?.fill !== undefined ? { fill: textBox.fill } : {}),
     ...(textBox?.outline !== undefined ? { outline: textBox.outline } : {}),
     ...(transform !== undefined ? { transform } : {}),
     textBody: {
       content,
       ...(textBox?.autoFit !== undefined ? { autoFit: textBox.autoFit } : {}),
-      ...(textBox?.textWrap !== undefined ? { textWrap: textBox.textWrap } : {}),
-      ...(textBox?.verticalAlign !== undefined ? { anchor: textBox.verticalAlign } : {}),
+      ...(textBox?.textWrap !== undefined
+        ? { textWrap: textBox.textWrap }
+        : {}),
+      ...(textBox?.verticalAlign !== undefined
+        ? { anchor: textBox.verticalAlign }
+        : {}),
       ...(textBox?.margins !== undefined ? { margins: textBox.margins } : {}),
     },
     groupChild: {
@@ -427,7 +488,9 @@ type EnrichTextBoxRunsParams = {
   context: ParseContext | undefined;
 };
 
-const trackedChangeTypeFromXml = (localName: string): TrackedRunChange["type"] | undefined => {
+const trackedChangeTypeFromXml = (
+  localName: string,
+): TrackedRunChange["type"] | undefined => {
   if (localName === "ins") {
     return "insertion";
   }
@@ -484,7 +547,10 @@ const enrichTextBoxRuns = ({
 
       for (let index = parsedIndex; index < content.length; index += 1) {
         const candidate = content[index];
-        if (candidate?.type !== "inlineSdt" || candidate.properties !== properties) {
+        if (
+          candidate?.type !== "inlineSdt" ||
+          candidate.properties !== properties
+        ) {
           continue;
         }
         nestedContent.push(...candidate.content);
@@ -519,15 +585,20 @@ const enrichTextBoxRuns = ({
       continue;
     }
 
-    const { textBoxDrawings, vmlTextBoxes, hasNonTextBoxContent } = scanRunForTextBoxDrawings({
-      xmlRun: xmlChild,
-      claimedByRunParser: (pictElement) => isVmlPictParsedByRunParser(pictElement, rels, media),
-    });
+    const { textBoxDrawings, vmlTextBoxes, hasNonTextBoxContent } =
+      scanRunForTextBoxDrawings({
+        xmlRun: xmlChild,
+        claimedByRunParser: (pictElement) =>
+          isVmlPictParsedByRunParser(pictElement, rels, media),
+      });
 
-    const parsedRun: Run | undefined = parsedContent?.type === "run" ? parsedContent : undefined;
-    const targetRun = parsedRun ?? (hasNonTextBoxContent ? lastConsumedRun : undefined);
+    const parsedRun: Run | undefined =
+      parsedContent?.type === "run" ? parsedContent : undefined;
+    const targetRun =
+      parsedRun ?? (hasNonTextBoxContent ? lastConsumedRun : undefined);
     const targetRunMatchesXml =
-      targetRun !== undefined && (hasNonTextBoxContent || parsedRun?.content.length === 0);
+      targetRun !== undefined &&
+      (hasNonTextBoxContent || parsedRun?.content.length === 0);
     // This `w:r` carried nothing but the text box, and the run that waited for
     // it is the one at `parsedIndex`. Filling it consumes that position, so the
     // next `w:r` must look past it; leaving the index where it was made a
@@ -535,7 +606,10 @@ const enrichTextBoxRuns = ({
     const fillsEmptyCarrier =
       targetRunMatchesXml && !hasNonTextBoxContent && parsedRun !== undefined;
 
-    for (const { drawing: runEl, alternateContent: source } of textBoxDrawings) {
+    for (const {
+      drawing: runEl,
+      alternateContent: source,
+    } of textBoxDrawings) {
       const textBox = parseTextBox(runEl, context);
       if (!textBox) {
         continue;
@@ -566,18 +640,30 @@ const enrichTextBoxRuns = ({
         ...(textBox.name !== undefined ? { name: textBox.name } : {}),
         ...(textBox.alt !== undefined ? { alt: textBox.alt } : {}),
         ...(textBox.title !== undefined ? { title: textBox.title } : {}),
-        ...(textBox.position !== undefined ? { position: textBox.position } : {}),
+        ...(textBox.position !== undefined
+          ? { position: textBox.position }
+          : {}),
         ...(textBox.wrap !== undefined ? { wrap: textBox.wrap } : {}),
         ...(textBox.anchor !== undefined ? { anchor: textBox.anchor } : {}),
         ...(textBox.fill !== undefined ? { fill: textBox.fill } : {}),
         ...(textBox.outline !== undefined ? { outline: textBox.outline } : {}),
         textBody: {
           content: textBox.content,
-          ...(textBox.autoFit !== undefined ? { autoFit: textBox.autoFit } : {}),
-          ...(textBox.textWrap !== undefined ? { textWrap: textBox.textWrap } : {}),
-          ...(textBox.verticalAlign !== undefined ? { anchor: textBox.verticalAlign } : {}),
-          ...(textBox.margins !== undefined ? { margins: textBox.margins } : {}),
-          ...(textBox.wordArt !== undefined ? { wordArt: textBox.wordArt } : {}),
+          ...(textBox.autoFit !== undefined
+            ? { autoFit: textBox.autoFit }
+            : {}),
+          ...(textBox.textWrap !== undefined
+            ? { textWrap: textBox.textWrap }
+            : {}),
+          ...(textBox.verticalAlign !== undefined
+            ? { anchor: textBox.verticalAlign }
+            : {}),
+          ...(textBox.margins !== undefined
+            ? { margins: textBox.margins }
+            : {}),
+          ...(textBox.wordArt !== undefined
+            ? { wordArt: textBox.wordArt }
+            : {}),
         },
       };
       if (textBox.id) {
@@ -660,7 +746,15 @@ type VmlTextBoxShapeParsers = {
 
 const parseVmlTextBoxShape = (
   pictEl: XmlElement,
-  { styles, theme, numbering, rels, media, parseTable, previews }: VmlTextBoxShapeParsers,
+  {
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    parseTable,
+    previews,
+  }: VmlTextBoxShapeParsers,
 ): Shape | null => {
   const shapeEl = findDeep(pictEl, "v", "shape");
   const textBoxEl = shapeEl ? findDeep(shapeEl, "v", "textbox") : null;
@@ -673,7 +767,12 @@ const parseVmlTextBoxShape = (
   const textBoxStyle = parseVmlStyle(getAttribute(textBoxEl, null, "style"));
   const width = vmlLengthToPixels(style["width"]);
   const height = vmlLengthToPixels(style["height"]);
-  if (width === undefined || height === undefined || width <= 0 || height <= 0) {
+  if (
+    width === undefined ||
+    height === undefined ||
+    width <= 0 ||
+    height <= 0
+  ) {
     return null;
   }
 
@@ -713,7 +812,9 @@ const parseVmlTextBoxShape = (
   if (positioned) {
     shape.position = {
       horizontal: {
-        relativeTo: horizontalRelativeTo(style["mso-position-horizontal-relative"]),
+        relativeTo: horizontalRelativeTo(
+          style["mso-position-horizontal-relative"],
+        ),
         posOffset: pixelsToEmu(left ?? 0),
       },
       vertical: {

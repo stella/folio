@@ -68,7 +68,10 @@ class FakeElement {
         return element.dataset["pageNumber"] !== undefined;
       }
       if (selector === "[data-block-id][data-pm-start]") {
-        return element.dataset["blockId"] !== undefined && element.dataset["pmStart"] !== undefined;
+        return (
+          element.dataset["blockId"] !== undefined &&
+          element.dataset["pmStart"] !== undefined
+        );
       }
       return false;
     };
@@ -95,14 +98,21 @@ const block = (pmStart: number, rect: RectInit): FakeElement => {
   return element;
 };
 
-const page = (pageNumber: number, blocks: readonly FakeElement[]): FakeElement => {
-  const element = new FakeElement(domRect({ top: 0, left: 0, width: 600, height: 800 }));
+const page = (
+  pageNumber: number,
+  blocks: readonly FakeElement[],
+): FakeElement => {
+  const element = new FakeElement(
+    domRect({ top: 0, left: 0, width: 600, height: 800 }),
+  );
   element.dataset["pageNumber"] = String(pageNumber);
   element.append(...blocks);
   return element;
 };
 
-const snapshot = (...entries: readonly [blockId: string, from: number][]): FolioAIEditSnapshot => ({
+const snapshot = (
+  ...entries: readonly [blockId: string, from: number][]
+): FolioAIEditSnapshot => ({
   blocks: entries.map(([id]) => ({ id, kind: "paragraph", text: id })),
   anchors: Object.fromEntries(
     entries.map(([id, from]) => [
@@ -129,9 +139,13 @@ describe("block geometry", () => {
   test("measures snapshot ids in order and omits an unpainted page", () => {
     const first = block(10, { top: 140, left: 90, width: 300, height: 20 });
     const second = block(20, { top: 180, left: 90, width: 320, height: 24 });
-    const pages = new FakeElement(domRect({ top: 0, left: 0, width: 0, height: 0 }));
+    const pages = new FakeElement(
+      domRect({ top: 0, left: 0, width: 0, height: 0 }),
+    );
     pages.append(page(1, [first, second]), page(2, []));
-    const scrollRoot = new FakeElement(domRect({ top: 100, left: 50, width: 700, height: 500 }));
+    const scrollRoot = new FakeElement(
+      domRect({ top: 100, left: 50, width: 700, height: 500 }),
+    );
     scrollRoot.clientLeft = 2;
     scrollRoot.clientTop = 3;
     scrollRoot.scrollLeft = 5;
@@ -152,7 +166,9 @@ describe("block geometry", () => {
       width: 300,
       height: 20,
     });
-    expect(rects.get("second")?.top).toBeGreaterThan(rects.get("first")?.top ?? Infinity);
+    expect(rects.get("second")?.top).toBeGreaterThan(
+      rects.get("first")?.top ?? Infinity,
+    );
     expect(rects.has("unpainted")).toBe(false);
     expect(rects.has("missing")).toBe(false);
     expect(scrollRoot.rectReads).toBe(1);
@@ -165,9 +181,13 @@ describe("block geometry", () => {
     // live snapshot keys the same block by the hex paraId the editor minted.
     const first = block(10, { top: 140, left: 90, width: 300, height: 20 });
     const second = block(20, { top: 180, left: 90, width: 320, height: 24 });
-    const pages = new FakeElement(domRect({ top: 0, left: 0, width: 0, height: 0 }));
+    const pages = new FakeElement(
+      domRect({ top: 0, left: 0, width: 0, height: 0 }),
+    );
     pages.append(page(1, [first, second]));
-    const scrollRoot = new FakeElement(domRect({ top: 0, left: 0, width: 700, height: 500 }));
+    const scrollRoot = new FakeElement(
+      domRect({ top: 0, left: 0, width: 700, height: 500 }),
+    );
 
     const rects = readBlockRects({
       blockIds: ["seq-0002", "seq-0009"],
@@ -189,12 +209,20 @@ describe("block geometry", () => {
   test("never reads a matching block from another editor instance", () => {
     const blockA = block(10, { top: 120, left: 20, width: 100, height: 10 });
     const blockB = block(10, { top: 420, left: 20, width: 200, height: 30 });
-    const pagesA = new FakeElement(domRect({ top: 0, left: 0, width: 0, height: 0 }));
-    const pagesB = new FakeElement(domRect({ top: 0, left: 0, width: 0, height: 0 }));
+    const pagesA = new FakeElement(
+      domRect({ top: 0, left: 0, width: 0, height: 0 }),
+    );
+    const pagesB = new FakeElement(
+      domRect({ top: 0, left: 0, width: 0, height: 0 }),
+    );
     pagesA.append(page(1, [blockA]));
     pagesB.append(page(1, [blockB]));
-    const rootA = new FakeElement(domRect({ top: 100, left: 0, width: 500, height: 400 }));
-    const rootB = new FakeElement(domRect({ top: 400, left: 0, width: 500, height: 400 }));
+    const rootA = new FakeElement(
+      domRect({ top: 100, left: 0, width: 500, height: 400 }),
+    );
+    const rootB = new FakeElement(
+      domRect({ top: 400, left: 0, width: 500, height: 400 }),
+    );
 
     const rectA = readBlockRects({
       blockIds: ["same-id"],
@@ -214,8 +242,12 @@ describe("block geometry", () => {
   });
 
   test("layout subscriptions are instance-scoped and disposable", () => {
-    const pagesA = new FakeElement(domRect({ top: 0, left: 0, width: 0, height: 0 }));
-    const pagesB = new FakeElement(domRect({ top: 0, left: 0, width: 0, height: 0 }));
+    const pagesA = new FakeElement(
+      domRect({ top: 0, left: 0, width: 0, height: 0 }),
+    );
+    const pagesB = new FakeElement(
+      domRect({ top: 0, left: 0, width: 0, height: 0 }),
+    );
     let changes = 0;
     const unsubscribe = onPaintedLayoutChange(htmlElement(pagesA), () => {
       changes += 1;

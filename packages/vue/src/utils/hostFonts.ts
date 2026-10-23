@@ -36,7 +36,8 @@ function isValidFontDefinition(font: unknown): font is FontDefinition {
     return false;
   }
   return (
-    isNonEmptyString(Reflect.get(font, "family")) && isNonEmptyString(Reflect.get(font, "src"))
+    isNonEmptyString(Reflect.get(font, "family")) &&
+    isNonEmptyString(Reflect.get(font, "src"))
   );
 }
 

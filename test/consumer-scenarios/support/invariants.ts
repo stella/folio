@@ -5,6 +5,7 @@
  */
 
 import assert from "node:assert/strict";
+
 import { validateDocxPackage } from "@stll/docx-core";
 
 import { openReviewer } from "./documents.ts";
@@ -94,7 +95,11 @@ export const visibleState = (reviewer: Reviewer) => ({
   // Overview only; the shared review comparator checks lossless coverage,
   // authorship dates and both complete resolution documents below.
   changes: [
-    ...new Set(reviewer.getChanges().map((change) => `${change.type} by ${change.author}`)),
+    ...new Set(
+      reviewer
+        .getChanges()
+        .map((change) => `${change.type} by ${change.author}`),
+    ),
   ].sort(),
   comments: reviewer.getComments().map((comment) => ({
     author: comment.author,
@@ -107,7 +112,9 @@ export const visibleState = (reviewer: Reviewer) => ({
 });
 
 const describeError = (error: unknown): string =>
-  error instanceof Error ? error.message.split("\n").slice(0, 3).join(" | ") : String(error);
+  error instanceof Error
+    ? error.message.split("\n").slice(0, 3).join(" | ")
+    : String(error);
 
 export type SaveOptions = {
   /**
@@ -130,7 +137,9 @@ export const saveAndReopen = async (
   try {
     buffer = await reviewer.toBuffer();
   } catch (error) {
-    throw new Error(`${context}: toBuffer() threw: ${describeError(error)}`, { cause: error });
+    throw new Error(`${context}: toBuffer() threw: ${describeError(error)}`, {
+      cause: error,
+    });
   }
   const validity = await validateDocxPackage(buffer);
   assert.equal(
@@ -143,9 +152,12 @@ export const saveAndReopen = async (
   try {
     reopened = await openReviewer(bytes);
   } catch (error) {
-    throw new Error(`${context}: the saved package does not reopen: ${describeError(error)}`, {
-      cause: error,
-    });
+    throw new Error(
+      `${context}: the saved package does not reopen: ${describeError(error)}`,
+      {
+        cause: error,
+      },
+    );
   }
   if (options.compare === false) {
     return { bytes, reopened };
@@ -174,10 +186,17 @@ export const saveAndReopen = async (
 };
 
 /** Every reader of `bytes` shows the same blocks, kinds, levels and numbers. */
-export const assertReadersAgree = async (bytes: Uint8Array, context: string): Promise<void> => {
+export const assertReadersAgree = async (
+  bytes: Uint8Array,
+  context: string,
+): Promise<void> => {
   const views = await readAll(bytes);
 
-  assert.deepEqual(views.snapshot, views.getContent, `${context}: snapshot vs getContent()`);
+  assert.deepEqual(
+    views.snapshot,
+    views.getContent,
+    `${context}: snapshot vs getContent()`,
+  );
   assert.deepEqual(
     views.rows.map((row) => row["blockId"]),
     views.ids,

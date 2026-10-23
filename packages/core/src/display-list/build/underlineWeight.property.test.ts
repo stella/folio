@@ -27,8 +27,8 @@ import type {
   ParagraphBlock,
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
-import { UNDERLINE_STYLE_VALUES } from "../../types/documentEnumValues";
 import type { UnderlineStyle } from "../../types/document";
+import { UNDERLINE_STYLE_VALUES } from "../../types/documentEnumValues";
 import { DOUBLE_STROKE_GAP_FACTOR, strokeCrossExtentPx } from "../primitives";
 import type { DisplayGlyphRun, DisplayLine, DisplayPrimitive } from "../types";
 import { buildDisplayList } from "./buildDisplayList";
@@ -70,7 +70,10 @@ const pagePrimitives = (blocks: FlowBlock[]): readonly DisplayPrimitive[] => {
   return list.pages.at(0)?.primitives.slice(1) ?? [];
 };
 
-type Painted = { readonly lines: readonly DisplayLine[]; readonly run: DisplayGlyphRun };
+type Painted = {
+  readonly lines: readonly DisplayLine[];
+  readonly run: DisplayGlyphRun;
+};
 
 const paint = (style: UnderlineStyle): Painted => {
   const primitives = pagePrimitives([underlined(style)]);
@@ -82,7 +85,9 @@ const paint = (style: UnderlineStyle): Painted => {
     throw new Error("unreachable");
   }
   return {
-    lines: primitives.filter((primitive): primitive is DisplayLine => primitive.kind === "line"),
+    lines: primitives.filter(
+      (primitive): primitive is DisplayLine => primitive.kind === "line",
+    ),
     run,
   };
 };
@@ -94,7 +99,10 @@ describe("an underline's weight comes from the total record", () => {
         const { lines, run } = paint(style);
         const { pattern, weight } = UNDERLINE_STROKES[style];
         if (pattern === "none") {
-          expect(lines, `${style} cancels an underline and paints nothing`).toHaveLength(0);
+          expect(
+            lines,
+            `${style} cancels an underline and paints nothing`,
+          ).toHaveLength(0);
           continue;
         }
 
@@ -102,7 +110,10 @@ describe("an underline's weight comes from the total record", () => {
         expect(lines.length, `${style} paints no underline`).toBeGreaterThan(0);
         for (const line of lines) {
           expect(line.stroke.pattern, `${style} pattern`).toBe(pattern);
-          expect(line.stroke.thicknessPx, `${style} thickness`).toBeCloseTo(expectedPx, 6);
+          expect(line.stroke.thicknessPx, `${style} thickness`).toBeCloseTo(
+            expectedPx,
+            6,
+          );
         }
       }
     }, fakeMeasure);
@@ -127,7 +138,9 @@ describe("an underline's weight comes from the total record", () => {
           continue;
         }
         const words = style === "words" ? 2 : 1;
-        expect(paint(style).lines, `${style} stroke count`).toHaveLength(words * strokes);
+        expect(paint(style).lines, `${style} stroke count`).toHaveLength(
+          words * strokes,
+        );
       }
     }, fakeMeasure);
   });
@@ -138,7 +151,9 @@ describe("the members CSS cannot draw", () => {
     withFakeTextMeasure(() => {
       const { lines, run } = paint("words");
 
-      expect(lines.map((line) => [line.x1Px - run.xPx, line.x2Px - run.xPx])).toEqual([
+      expect(
+        lines.map((line) => [line.x1Px - run.xPx, line.x2Px - run.xPx]),
+      ).toEqual([
         [0, WORD_WIDTH_PX],
         [WORD_WIDTH_PX + CHAR_WIDTH_PX, TEXT.length * CHAR_WIDTH_PX],
       ]);
@@ -168,7 +183,8 @@ describe("the members CSS cannot draw", () => {
       expect((upper.y1Px + lower.y1Px) / 2).toBeCloseTo(centerYPx, 6);
       // The waves clear each other by the gap `double` leaves between its rules.
       const separationPx =
-        strokeCrossExtentPx(upper.stroke) + DOUBLE_STROKE_GAP_FACTOR * upper.stroke.thicknessPx;
+        strokeCrossExtentPx(upper.stroke) +
+        DOUBLE_STROKE_GAP_FACTOR * upper.stroke.thicknessPx;
       expect(lower.y1Px - upper.y1Px).toBeCloseTo(separationPx, 6);
     }, fakeMeasure);
   });

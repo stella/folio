@@ -23,7 +23,10 @@ const OPTIONS = {
 } as const;
 
 const run = (text: string) =>
-  ({ type: "run", content: [{ type: "text", text }] }) as const satisfies ParagraphContent;
+  ({
+    type: "run",
+    content: [{ type: "text", text }],
+  }) as const satisfies ParagraphContent;
 
 /** One grammar-check annotation, exactly as Word writes it beside a run. */
 const proofErr = (kind: "gramStart" | "gramEnd") =>
@@ -57,7 +60,10 @@ const buildDocx = (terms: string) => {
           type: "tableRow",
           cells: [
             { type: "tableCell", content: [cover("22222222", terms)] },
-            { type: "tableCell", content: [run("Payment Process")].map(asParagraph) },
+            {
+              type: "tableCell",
+              content: [run("Payment Process")].map(asParagraph),
+            },
           ],
         },
       ],
@@ -74,10 +80,14 @@ const asParagraph = (content: ParagraphContent): BlockContent => ({
 });
 
 test("a paragraph carrying proofing markup round-trips through a word replacement", async () => {
-  const result = await compareDocx(await buildDocx("Framework"), await buildDocx("Standard"), {
-    ...OPTIONS,
-    granularity: "word",
-  });
+  const result = await compareDocx(
+    await buildDocx("Framework"),
+    await buildDocx("Standard"),
+    {
+      ...OPTIONS,
+      granularity: "word",
+    },
+  );
   if (result.isErr()) {
     throw result.error;
   }

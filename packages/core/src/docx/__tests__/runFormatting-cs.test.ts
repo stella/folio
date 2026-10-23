@@ -12,7 +12,11 @@ const parseFormatting = (innerXml: string) => {
   if (!runProperties || runProperties.type !== "element") {
     throw new TypeError("Expected run properties element");
   }
-  return parseRunProperties(runProperties, null, RUN_PROPERTY_OWNERS.standalone);
+  return parseRunProperties(
+    runProperties,
+    null,
+    RUN_PROPERTY_OWNERS.standalone,
+  );
 };
 
 describe("complex-script run formatting round-trip", () => {

@@ -1,3 +1,13 @@
+import type { Node as PMNode } from "prosemirror-model";
+import { Plugin } from "prosemirror-state";
+import type { EditorState } from "prosemirror-state";
+
+import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragraphPropertySource";
+import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
+import { getTransactionDirtyRange } from "../../../paged-layout/transactionDirtyRange";
+import { detectBaseDirection } from "../../../utils/baseDirection";
+import { directionIsAutoManaged } from "../../paragraphDirection";
+import type { ParagraphDirection } from "../../paragraphDirection";
 /**
  * AutoBidiDetection — sets the paragraph `direction` (to `{ source: "auto" }`)
  * on RTL-led paragraphs that arrived without an explicit direction decision.
@@ -34,16 +44,6 @@
  * `ParaIdAllocatorExtension`.
  */
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
-import type { Node as PMNode } from "prosemirror-model";
-import { Plugin } from "prosemirror-state";
-import type { EditorState } from "prosemirror-state";
-
-import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
-import { getTransactionDirtyRange } from "../../../paged-layout/transactionDirtyRange";
-import { detectBaseDirection } from "../../../utils/baseDirection";
-import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragraphPropertySource";
-import { directionIsAutoManaged } from "../../paragraphDirection";
-import type { ParagraphDirection } from "../../paragraphDirection";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
@@ -97,7 +97,9 @@ const evaluateParagraph = (node: PMNode, pos: number): BidiUpdate | null => {
   if (currentIsAuto === wantRtl) {
     return null;
   }
-  const desired: ParagraphDirection | null = wantRtl ? { source: "auto" } : null;
+  const desired: ParagraphDirection | null = wantRtl
+    ? { source: "auto" }
+    : null;
   return { pos, attrs: { ...node.attrs, direction: desired } };
 };
 
@@ -121,7 +123,10 @@ const collectBidiUpdates = (doc: PMNode): BidiUpdate[] => {
 
 // Scan only the paragraphs overlapping a transaction's edited range, so a
 // keystroke in a large mostly-LTR document doesn't re-scan every paragraph.
-const collectBidiUpdatesInRange = (doc: PMNode, range: DirtyRange): BidiUpdate[] => {
+const collectBidiUpdatesInRange = (
+  doc: PMNode,
+  range: DirtyRange,
+): BidiUpdate[] => {
   const from = Math.max(0, Math.min(range.from, doc.content.size));
   const to = Math.max(from, Math.min(range.to, doc.content.size));
   const seen = new Set<number>();
@@ -138,7 +143,10 @@ const collectBidiUpdatesInRange = (doc: PMNode, range: DirtyRange): BidiUpdate[]
   return updates;
 };
 
-const applyBidiUpdates = (state: EditorState, updates: BidiUpdate[]): EditorState["tr"] => {
+const applyBidiUpdates = (
+  state: EditorState,
+  updates: BidiUpdate[],
+): EditorState["tr"] => {
   const tr = state.tr;
   for (const update of updates) {
     setProseParagraphMarkupWithPropertySource({
@@ -197,7 +205,8 @@ const createAutoBidiDetectionPlugin = (): Plugin =>
       // rarer multi-transaction batch (positions would span intermediate docs),
       // fall back to a correct whole-document scan.
       const [first, ...rest] = transactions;
-      const range = first && rest.length === 0 ? getTransactionDirtyRange(first) : null;
+      const range =
+        first && rest.length === 0 ? getTransactionDirtyRange(first) : null;
       const updates = range
         ? collectBidiUpdatesInRange(newState.doc, range)
         : collectBidiUpdates(newState.doc);

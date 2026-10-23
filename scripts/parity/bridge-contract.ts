@@ -83,7 +83,11 @@ export type FolioParityBridge = {
     hasScrollRoot: boolean;
   };
   /** Reveal the first stable snapshot block and report target/current pages. */
-  navigateToFirstBlock: () => { shown: boolean; targetPage: number; currentPage: number };
+  navigateToFirstBlock: () => {
+    shown: boolean;
+    targetPage: number;
+    currentPage: number;
+  };
   /** Plain text of the current live editor selection. */
   getSelectedText: () => string;
   /** Apply and undo one direct document-operation batch; true only when content restores. */

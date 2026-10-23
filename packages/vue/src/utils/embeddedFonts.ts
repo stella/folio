@@ -1,9 +1,9 @@
 /** Register fonts embedded in a document with the browser font set. */
 
 import {
-  extractEmbeddedFonts,
   buildEmbeddedFontFamilyMap,
   type EmbeddedFont,
+  extractEmbeddedFonts,
 } from "@stll/folio-core/fonts/embeddedFonts";
 
 import { getDocumentFontSet, registerFontFace } from "./fontFaces";
@@ -22,14 +22,19 @@ export type LoadedEmbeddedFonts = {
   familyMap: ReadonlyMap<string, string>;
 };
 
-const EMPTY_LOADED_EMBEDDED_FONTS: LoadedEmbeddedFonts = { faces: [], familyMap: new Map() };
+const EMPTY_LOADED_EMBEDDED_FONTS: LoadedEmbeddedFonts = {
+  faces: [],
+  familyMap: new Map(),
+};
 
 /**
  * Extract and register embedded faces from a raw document buffer. Extraction
  * and individual face failures are best-effort: rendering falls back to the
  * normal CSS font stack instead of failing the document load.
  */
-export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<LoadedEmbeddedFonts> {
+export async function loadEmbeddedFontFaces(
+  buffer: ArrayBuffer,
+): Promise<LoadedEmbeddedFonts> {
   const fontSet = getDocumentFontSet();
   if (!fontSet) {
     return EMPTY_LOADED_EMBEDDED_FONTS;

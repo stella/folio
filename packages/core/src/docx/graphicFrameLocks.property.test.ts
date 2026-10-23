@@ -18,9 +18,15 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import type { Document, DrawingContent, ImageFrameLocks } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type {
+  Document,
+  DrawingContent,
+  ImageFrameLocks,
+} from "../types/document";
 import { GRAPHIC_FRAME_LOCK_KEYS } from "./graphicFrameLocks";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
@@ -28,7 +34,8 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** Smallest valid PNG, so the picture resolves to real media. */
 const ONE_PIXEL_PNG_BASE64 =
@@ -68,7 +75,10 @@ const buildDocx = async (graphicFramePr: string): Promise<ArrayBuffer> => {
   }
   zip.file(
     "[Content_Types].xml",
-    types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+    types.replace(
+      "</Types>",
+      '<Default Extension="png" ContentType="image/png"/></Types>',
+    ),
   );
   zip.file(
     "word/_rels/document.xml.rels",
@@ -127,23 +137,28 @@ const FRAME_STATES: FrameState[] = [
 describe("a drawing's frame locks survive the rebuild path unchanged", () => {
   test("absent stays absent, and every authored lock comes back", async () => {
     await fc.assert(
-      fc.asyncProperty(fc.constantFrom(...FRAME_STATES), async ({ xml, locks }) => {
-        const parsed = await openDocx(await buildDocx(xml));
-        const drawing = firstDrawing(parsed);
-        expect(drawing.image.frameLocks).toEqual(locks);
+      fc.asyncProperty(
+        fc.constantFrom(...FRAME_STATES),
+        async ({ xml, locks }) => {
+          const parsed = await openDocx(await buildDocx(xml));
+          const drawing = firstDrawing(parsed);
+          expect(drawing.image.frameLocks).toEqual(locks);
 
-        // Resizing invalidates the captured drawing XML, so the serializers
-        // run: the path every edited document takes.
-        drawing.image.size = {
-          width: drawing.image.size.width * 2,
-          height: drawing.image.size.height * 2,
-        };
-        const rebuilt = firstDrawing(
-          await openDocx(await repackDocx(parsed, { updateModifiedDate: false })),
-        );
+          // Resizing invalidates the captured drawing XML, so the serializers
+          // run: the path every edited document takes.
+          drawing.image.size = {
+            width: drawing.image.size.width * 2,
+            height: drawing.image.size.height * 2,
+          };
+          const rebuilt = firstDrawing(
+            await openDocx(
+              await repackDocx(parsed, { updateModifiedDate: false }),
+            ),
+          );
 
-        expect(rebuilt.image.frameLocks).toEqual(locks);
-      }),
+          expect(rebuilt.image.frameLocks).toEqual(locks);
+        },
+      ),
       propertyConfig({ numRuns: FRAME_STATES.length * 2 }),
     );
   });

@@ -7,21 +7,25 @@
 
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { DEFAULT_TEXTBOX_MARGINS } from "../../layout-engine/types";
-import type { TextBoxBlock, TextBoxFragment, TextBoxMeasure } from "../../layout-engine/types";
+import type {
+  TextBoxBlock,
+  TextBoxFragment,
+  TextBoxMeasure,
+} from "../../layout-engine/types";
+import { presetDashForOutlineAttr } from "../../types/documentEnumValues";
 import {
   hasHorizontalFlip,
   hasVerticalFlip,
   parseRotationDegrees,
 } from "../../utils/rotationBoundingBox";
-import type { DisplayPrimitive } from "../types";
 import { HIT_REGION_KINDS } from "../primitives";
+import type { DisplayPrimitive } from "../types";
 import type { BuildContext } from "./buildContext";
-import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { parseDisplayColor } from "./colors";
 import { paintParagraphFragment } from "./paragraphPrimitives";
-import { paintTableBlock } from "./tablePrimitives";
-import { presetDashForOutlineAttr } from "../../types/documentEnumValues";
+import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { resolveOutlineStroke } from "./strokes";
+import { paintTableBlock } from "./tablePrimitives";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 export type TextBoxPaintOptions = {
@@ -43,12 +47,24 @@ export const paintTextBoxFragment = ({
   const flipH = hasHorizontalFlip(block.transform);
   const flipV = hasVerticalFlip(block.transform);
   if (rotation === 0 && !flipH && !flipV) {
-    paintUnrotatedTextBoxFragment({ composer, fragment, block, measure, context });
+    paintUnrotatedTextBoxFragment({
+      composer,
+      fragment,
+      block,
+      measure,
+      context,
+    });
     return;
   }
 
   const inner = createPageComposer();
-  paintUnrotatedTextBoxFragment({ composer: inner, fragment, block, measure, context });
+  paintUnrotatedTextBoxFragment({
+    composer: inner,
+    fragment,
+    block,
+    measure,
+    context,
+  });
   composer.push([
     {
       kind: "rotateGroup",
@@ -101,7 +117,11 @@ const paintUnrotatedTextBoxFragment = ({
   // aliases, and the explicit no-outline sentinel. Resolve it to a dash once,
   // here, rather than matching its spelling against a border table.
   const outlineDash = presetDashForOutlineAttr(block.outlineStyle) ?? "solid";
-  if (block.outlineWidth !== undefined && block.outlineWidth > 0 && outlineDash !== "none") {
+  if (
+    block.outlineWidth !== undefined &&
+    block.outlineWidth > 0 &&
+    outlineDash !== "none"
+  ) {
     const { stroke, unresolvedColor } = resolveOutlineStroke({
       width: block.outlineWidth,
       dash: outlineDash,
@@ -147,7 +167,10 @@ const paintUnrotatedTextBoxFragment = ({
     }
     cursorYPx += placement.leadingSpacing;
 
-    if (contentBlock.kind === "paragraph" && contentMeasure.kind === "paragraph") {
+    if (
+      contentBlock.kind === "paragraph" &&
+      contentMeasure.kind === "paragraph"
+    ) {
       const previous = block.content[index - 1];
       const next = block.content[index + 1];
       composer.push(primitives);
@@ -163,7 +186,11 @@ const paintUnrotatedTextBoxFragment = ({
         toLine: contentMeasure.lines.length,
       } as const;
       composer.region(
-        blockRegion({ fragment: contentFragment, kind: HIT_REGION_KINDS.paragraph, context }),
+        blockRegion({
+          fragment: contentFragment,
+          kind: HIT_REGION_KINDS.paragraph,
+          context,
+        }),
         () => {
           paintParagraphFragment({
             composer,
@@ -171,7 +198,8 @@ const paintUnrotatedTextBoxFragment = ({
             block: contentBlock,
             measure: contentMeasure,
             context,
-            ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
+            ...(previous?.kind === "paragraph" &&
+            previous.attrs?.borders !== undefined
               ? { prevBorders: previous.attrs.borders }
               : {}),
             ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
@@ -180,7 +208,10 @@ const paintUnrotatedTextBoxFragment = ({
           });
         },
       );
-    } else if (contentBlock.kind === "table" && contentMeasure.kind === "table") {
+    } else if (
+      contentBlock.kind === "table" &&
+      contentMeasure.kind === "table"
+    ) {
       composer.push(primitives);
       primitives.length = 0;
       const contentFragment = {
@@ -191,7 +222,11 @@ const paintUnrotatedTextBoxFragment = ({
         height: contentMeasure.totalHeight,
       };
       composer.region(
-        blockRegion({ fragment: contentFragment, kind: HIT_REGION_KINDS.table, context }),
+        blockRegion({
+          fragment: contentFragment,
+          kind: HIT_REGION_KINDS.table,
+          context,
+        }),
         () => {
           paintTableBlock({
             composer,

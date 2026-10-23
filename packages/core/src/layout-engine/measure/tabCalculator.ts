@@ -13,12 +13,14 @@
 /**
  * Tab alignment types
  */
-export type TabAlignment = "start" | "end" | "center" | "decimal" | "bar" | "clear";
+export type TabAlignment =
+  "start" | "end" | "center" | "decimal" | "bar" | "clear";
 
 /**
  * Tab leader (fill character) types
  */
-export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "middleDot" | "heavy";
+export type TabLeader =
+  "none" | "dot" | "hyphen" | "underscore" | "middleDot" | "heavy";
 
 /**
  * Tab stop definition
@@ -110,7 +112,8 @@ export function computeTabStops(context: TabContext): TabStop[] {
     leftIndent = 0,
   } = context;
   const tabInterval =
-    Number.isFinite(defaultTabInterval) && defaultTabInterval >= TAB_STOP_MATCH_TOLERANCE_TWIPS
+    Number.isFinite(defaultTabInterval) &&
+    defaultTabInterval >= TAB_STOP_MATCH_TOLERANCE_TWIPS
       ? defaultTabInterval
       : DEFAULT_TAB_INTERVAL_TWIPS;
 
@@ -184,7 +187,8 @@ export function computeTabStops(context: TabContext): TabStop[] {
     }
     // Skip if at leftIndent only when the implicit stop was added above.
     const isAtLeftIndent =
-      addsImplicitLeftIndent && Math.abs(pos - leftIndent) < TAB_STOP_MATCH_TOLERANCE_TWIPS;
+      addsImplicitLeftIndent &&
+      Math.abs(pos - leftIndent) < TAB_STOP_MATCH_TOLERANCE_TWIPS;
 
     if (!hasExplicitStop && !hasClearStop && !isAtLeftIndent) {
       stops.push({
@@ -247,7 +251,9 @@ export function calculateTabWidth(
   const stops = computeTabStops(context);
 
   // Find next stop after current position
-  const nextStop = stops.find((stop) => stop.pos > currentXTwips + TAB_POSITION_EPSILON_TWIPS);
+  const nextStop = stops.find(
+    (stop) => stop.pos > currentXTwips + TAB_POSITION_EPSILON_TWIPS,
+  );
 
   // Fallback to default grid
   if (!nextStop) {
@@ -301,7 +307,9 @@ export function calculateTabWidth(
     width,
     ...(nextStop.leader !== undefined ? { leader: nextStop.leader } : {}),
     alignment: nextStop.val,
-    ...(context.explicitStops?.includes(nextStop) === true ? { explicit: true as const } : {}),
+    ...(context.explicitStops?.includes(nextStop) === true
+      ? { explicit: true as const }
+      : {}),
   };
 }
 

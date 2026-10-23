@@ -15,7 +15,8 @@
 
 <script setup lang="ts">
 import { computed, type CSSProperties } from "vue";
-import { getInitials, getAvatarColor } from "./sidebarUtils";
+
+import { getAvatarColor, getInitials } from "./sidebarUtils";
 
 const props = withDefaults(
   defineProps<{

@@ -1,22 +1,24 @@
 import { describe, expect, test } from "bun:test";
 
 import { createNumberingMap, parseNumbering } from "../../docx/numberingParser";
-import {
-  listAttrsFromResolvedStyle,
-  paragraphAttrsFromResolvedStyle,
-  listLevelAttrPatch,
-  listLevelIndentRemovalPatch,
-} from "./resolvedStyleAttrs";
+import { expectParagraphAttrs } from "../attrs/index";
 import { paragraphNumberingAttr } from "../numberingAttr";
 import {
   directParagraphIndentation,
   paragraphIndentationFromFormatting,
 } from "../paragraphIndentation";
-import { expectParagraphAttrs } from "../attrs/index";
 import { schema } from "../schema/index";
+import {
+  listAttrsFromResolvedStyle,
+  listLevelAttrPatch,
+  listLevelIndentRemovalPatch,
+  paragraphAttrsFromResolvedStyle,
+} from "./resolvedStyleAttrs";
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-const MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const MC =
+  'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
 
 // numId 1 -> abstractNum 6 (custom decimalZero4, "[%1]", level ind 360/360)
 // numId 2 -> abstractNum 10 (decimal, "[Claim %1]", level ind 360/360)
@@ -65,12 +67,21 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
 
   test("projects the style numPr into numPr + marker attrs", () => {
     const attrs = listAttrsFromResolvedStyle(
-      { paragraphFormatting: { numPr: { kind: "reference", numId: 2 }, indentLeft: 1134 } },
+      {
+        paragraphFormatting: {
+          numPr: { kind: "reference", numId: 2 },
+          indentLeft: 1134,
+        },
+      },
       map,
     );
     expect(attrs).not.toBeNull();
     expect(attrs?.["numPr"]).toBeNull();
-    expect(attrs?.["numPrFromStyle"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
+    expect(attrs?.["numPrFromStyle"]).toEqual({
+      kind: "reference",
+      numId: 2,
+      ilvl: 0,
+    });
     expect(attrs?.["listMarker"]).toBe("[Claim %1]");
     expect(attrs?.["listNumFmt"]).toBe("decimal");
     expect(attrs?.["listAbstractNumId"]).toBe(10);
@@ -105,10 +116,16 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
 
   test("returns null for styles without numbering or with numId 0", () => {
     expect(
-      listAttrsFromResolvedStyle({ paragraphFormatting: { indentLeft: 100 } }, map),
+      listAttrsFromResolvedStyle(
+        { paragraphFormatting: { indentLeft: 100 } },
+        map,
+      ),
     ).toBeNull();
     expect(
-      listAttrsFromResolvedStyle({ paragraphFormatting: { numPr: { kind: "none" } } }, map),
+      listAttrsFromResolvedStyle(
+        { paragraphFormatting: { numPr: { kind: "none" } } },
+        map,
+      ),
     ).toBeNull();
   });
 
@@ -148,9 +165,18 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
 
 const INDENTATION_SOURCES = [
   { kind: "inherited", direct: undefined },
-  { kind: "zero", direct: { indentLeft: 0, indentFirstLine: 0, hangingIndent: false } },
-  { kind: "first-line", direct: { indentLeft: 901, indentFirstLine: 120, hangingIndent: false } },
-  { kind: "hanging", direct: { indentLeft: 902, indentFirstLine: -240, hangingIndent: true } },
+  {
+    kind: "zero",
+    direct: { indentLeft: 0, indentFirstLine: 0, hangingIndent: false },
+  },
+  {
+    kind: "first-line",
+    direct: { indentLeft: 901, indentFirstLine: 120, hangingIndent: false },
+  },
+  {
+    kind: "hanging",
+    direct: { indentLeft: 902, indentFirstLine: -240, hangingIndent: true },
+  },
   { kind: "right-only", direct: { indentRight: 123 } },
 ] as const;
 const LEVELS = Array.from({ length: 9 }, (_, level) => level);
@@ -163,7 +189,9 @@ const LEVEL_NUMBERING = parseNumbering(
       `<w:lvl w:ilvl="${String(level)}"><w:start w:val="1"/><w:numFmt w:val="decimal"/>` +
       `<w:lvlText w:val="%${String(level + 1)}."/>` +
       `<w:pPr><w:ind w:left="${String(720 * (level + 1))}" w:hanging="360"/></w:pPr></w:lvl>`,
-  ).join("")}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
+  ).join(
+    "",
+  )}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
 );
 const LEVEL_MAP = createNumberingMap(LEVEL_NUMBERING.definitions);
 const PARAGRAPH_ATTRS = expectParagraphAttrs(schema.node("paragraph"));
@@ -174,7 +202,11 @@ test.each(LEVEL_PROVENANCE_CASES)(
   "$source.kind indentation keeps its ownership across level $from -> $to",
   ({ source, from, to }) => {
     const direct = paragraphIndentationFromFormatting(source.direct);
-    const inherited = { indentLeft: 720 * (from + 1), indentFirstLine: -360, hangingIndent: true };
+    const inherited = {
+      indentLeft: 720 * (from + 1),
+      indentFirstLine: -360,
+      hangingIndent: true,
+    };
     const styleFormatting = {
       alignment: "center",
       indentLeft: 100,
@@ -189,10 +221,17 @@ test.each(LEVEL_PROVENANCE_CASES)(
     const attrs = {
       ...PARAGRAPH_ATTRS,
       ...styleAttrs,
-      numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: from }),
+      numPr: paragraphNumberingAttr({
+        kind: "reference",
+        numId: 1,
+        ilvl: from,
+      }),
       ...inherited,
       ...direct,
-      _originalFormatting: { numPr: { kind: "reference", numId: 1, ilvl: from }, ...direct },
+      _originalFormatting: {
+        numPr: { kind: "reference", numId: 1, ilvl: from },
+        ...direct,
+      },
       _resolvedFormatting: { ...styleAttrs._resolvedFormatting, ...inherited },
       indentRight: direct?.indentRight ?? styleFormatting.indentRight,
     };
@@ -221,11 +260,15 @@ test.each(LEVEL_PROVENANCE_CASES)(
       ...listLevelIndentRemovalPatch(changed, LEVEL_MAP),
       numPr: paragraphNumberingAttr({ kind: "none" }),
     };
-    expect(removed.indentLeft).toBe(direct?.indentLeft ?? styleFormatting.indentLeft);
+    expect(removed.indentLeft).toBe(
+      direct?.indentLeft ?? styleFormatting.indentLeft,
+    );
     expect(removed.indentFirstLine).toBe(
       direct?.indentFirstLine ?? styleFormatting.indentFirstLine,
     );
-    expect(removed.hangingIndent).toBe(direct?.hangingIndent ?? styleFormatting.hangingIndent);
+    expect(removed.hangingIndent).toBe(
+      direct?.hangingIndent ?? styleFormatting.hangingIndent,
+    );
     expect(directParagraphIndentation(removed)).toEqual(direct);
   },
 );
@@ -258,13 +301,21 @@ test("style-owned numbering keeps its baseline when its effective level changes"
     ...PARAGRAPH_ATTRS,
     ...paragraphAttrsFromResolvedStyle(
       {
-        paragraphFormatting: { indentLeft: 100, indentFirstLine: 20, hangingIndent: false },
+        paragraphFormatting: {
+          indentLeft: 100,
+          indentFirstLine: 20,
+          hangingIndent: false,
+        },
       },
       { styleId: "IndentedList" },
     ),
     styleId: "IndentedList",
     numPr: null,
-    numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
+    numPrFromStyle: paragraphNumberingAttr({
+      kind: "reference",
+      numId: 1,
+      ilvl: 0,
+    }),
     _originalFormatting: { styleId: "IndentedList" },
   };
   const changed = {
@@ -272,7 +323,11 @@ test("style-owned numbering keeps its baseline when its effective level changes"
     ...listLevelAttrPatch(attrs, 1, LEVEL_MAP),
   };
   expect(changed.numPr).toEqual({ kind: "levelOnly", ilvl: 1 });
-  expect(changed.numPrFromStyle).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
+  expect(changed.numPrFromStyle).toEqual({
+    kind: "reference",
+    numId: 1,
+    ilvl: 0,
+  });
   expect(changed.indentLeft).toBe(100);
   expect(changed.indentFirstLine).toBe(20);
   expect(changed.hangingIndent).toBe(false);
@@ -280,8 +335,16 @@ test("style-owned numbering keeps its baseline when its effective level changes"
 });
 
 test.each(LEVELS)("style-owned indentation wins over list level %s", (ilvl) => {
-  const numPr = paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 });
-  const styleFormatting = { indentLeft: 100, indentFirstLine: 0, hangingIndent: false } as const;
+  const numPr = paragraphNumberingAttr({
+    kind: "reference",
+    numId: 1,
+    ilvl: 0,
+  });
+  const styleFormatting = {
+    indentLeft: 100,
+    indentFirstLine: 0,
+    hangingIndent: false,
+  } as const;
   const attrs = {
     ...PARAGRAPH_ATTRS,
     ...paragraphAttrsFromResolvedStyle(

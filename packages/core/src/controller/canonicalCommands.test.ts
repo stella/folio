@@ -1,12 +1,16 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
-import { EditorState, TextSelection, type Command } from "prosemirror-state";
+import { describe, expect, test } from "bun:test";
+import { type Command, EditorState, TextSelection } from "prosemirror-state";
+
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
-import { schema, singletonManager } from "../prosemirror/schema";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
-import { prepareCanonicalCommands } from "./canonicalStructure";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
+import { schema, singletonManager } from "../prosemirror/schema";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
+import { prepareCanonicalCommands } from "./canonicalStructure";
 
 describe("canonical command integration", () => {
   test("every public mark command matches legacy authored formatting over mixed runs", () => {
@@ -14,7 +18,9 @@ describe("canonical command integration", () => {
       singletonManager.requireCommand("toggleBold")(),
       singletonManager.requireCommand("toggleItalic")(),
       singletonManager.requireCommand("toggleUnderline")(),
-      singletonManager.requireCommand("setUnderlineStyle")("double", { rgb: "654321" }),
+      singletonManager.requireCommand("setUnderlineStyle")("double", {
+        rgb: "654321",
+      }),
       singletonManager.requireCommand("toggleStrike")(),
       singletonManager.requireCommand("toggleSuperscript")(),
       singletonManager.requireCommand("toggleSubscript")(),
@@ -35,10 +41,16 @@ describe("canonical command integration", () => {
               ? [
                   schema.mark("bold"),
                   schema.mark("italic"),
-                  schema.mark("underline", { style: "single", color: { rgb: suffix } }),
+                  schema.mark("underline", {
+                    style: "single",
+                    color: { rgb: suffix },
+                  }),
                   schema.mark("strike"),
                   schema.mark("fontSize", { size: 22 }),
-                  schema.mark("fontFamily", { ascii: `Old ${suffix}`, eastAsia: `East ${suffix}` }),
+                  schema.mark("fontFamily", {
+                    ascii: `Old ${suffix}`,
+                    eastAsia: `East ${suffix}`,
+                  }),
                   schema.mark("textColor", { rgb: suffix }),
                   schema.mark("highlight", { color: "green" }),
                   schema.mark("superscript"),
@@ -70,7 +82,9 @@ describe("canonical command integration", () => {
           ).toBe(true);
           const intents = getCanonicalCommandIntents(command, state);
           if (intents === undefined)
-            throw new TypeError("A public mark command has no canonical descriptor.");
+            throw new TypeError(
+              "A public mark command has no canonical descriptor.",
+            );
           const prepared = prepareCanonicalCommands(session, state, intents);
           let canonical = state;
           if (prepared.isErr()) expect(prepared.error.reason).toBe("noChange");
@@ -88,12 +102,15 @@ describe("canonical command integration", () => {
             value.doc.descendants((node) => {
               if (!node.isText) return;
               const authored = marksToTextFormatting(node.marks);
-              for (const text of node.text ?? "") characters.push({ text, formatting: authored });
+              for (const text of node.text ?? "")
+                characters.push({ text, formatting: authored });
             });
             return characters;
           };
           expect(formatting(canonical)).toEqual(formatting(legacy));
-          expect(canonical.selection.toJSON()).toEqual(legacy.selection.toJSON());
+          expect(canonical.selection.toJSON()).toEqual(
+            legacy.selection.toJSON(),
+          );
         }
       }
     }
@@ -136,7 +153,8 @@ describe("canonical command integration", () => {
           if (!node.isText) return;
           // Underline turns off as the `none` style, so only a visible style counts.
           const has = node.marks.some(
-            (mark) => mark.type.name === markName && mark.attrs["style"] !== "none",
+            (mark) =>
+              mark.type.name === markName && mark.attrs["style"] !== "none",
           );
           for (const _ of node.text ?? "") flags.push(has);
         });
@@ -155,10 +173,24 @@ describe("canonical command integration", () => {
         canonical = publishCanonicalProjection({
           session,
           state: canonical,
-          commit: prepareCanonicalCommands(session, canonical, intents).unwrap(),
+          commit: prepareCanonicalCommands(
+            session,
+            canonical,
+            intents,
+          ).unwrap(),
         }).unwrap().state;
-        expect(marked(legacy)).toEqual([expected, expected, expected, expected]);
-        expect(marked(canonical)).toEqual([expected, expected, expected, expected]);
+        expect(marked(legacy)).toEqual([
+          expected,
+          expected,
+          expected,
+          expected,
+        ]);
+        expect(marked(canonical)).toEqual([
+          expected,
+          expected,
+          expected,
+          expected,
+        ]);
       }
     }
   });

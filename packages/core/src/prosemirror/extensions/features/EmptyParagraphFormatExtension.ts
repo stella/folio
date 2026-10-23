@@ -19,15 +19,17 @@
  * untouched so ordinary typed text stays mark-free and serializes cleanly.
  */
 
-import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { Plugin } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { createExtension } from "../create";
 import { textFormattingToMarks } from "../marks/markUtils";
 import type { ExtensionRuntime } from "../types";
 
-export const emptyParagraphFormatKey = createPluginKeyOwner("emptyParagraphFormat");
+export const emptyParagraphFormatKey = createPluginKeyOwner(
+  "emptyParagraphFormat",
+);
 
 /**
  * Run-formatting properties the painter does NOT reproduce from
@@ -41,7 +43,8 @@ const FONT_ONLY_DEFAULTS = new Set(["fontFamily", "fontSize"]);
 
 function hasNonFontDefaults(dtf: TextFormatting): boolean {
   return Object.entries(dtf).some(
-    ([property, value]) => value !== undefined && !FONT_ONLY_DEFAULTS.has(property),
+    ([property, value]) =>
+      value !== undefined && !FONT_ONLY_DEFAULTS.has(property),
   );
 }
 
@@ -70,7 +73,8 @@ function createEmptyParagraphFormatPlugin(): Plugin {
         return null;
       }
 
-      const dtf = para.attrs["defaultTextFormatting"] as TextFormatting | null | undefined;
+      const dtf = para.attrs["defaultTextFormatting"] as
+        TextFormatting | null | undefined;
       if (!dtf || !hasNonFontDefaults(dtf)) {
         return null;
       }

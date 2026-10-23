@@ -31,15 +31,18 @@ import {
   outlineLevelStatedValue,
 } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { modelParagraphFormattingEmission } from "../internal/paragraphFormattingSerialization";
 import { parseParagraphProperties } from "./paragraphProperties";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** The stated range, the sentinel, and what producers write outside both. */
 const STATED_VALUES = [
@@ -77,7 +80,9 @@ const parsePPr = (xml: string): OutlineLevel | undefined => {
  * markup to drop here, because `modelParagraphFormattingEmission` is the
  * rebuild path itself.
  */
-const throughRealSave = (stated: string | undefined): OutlineLevel | undefined => {
+const throughRealSave = (
+  stated: string | undefined,
+): OutlineLevel | undefined => {
   const parsed = parsePPr(pPrXml(stated));
   const written = modelParagraphFormattingEmission(
     parsed === undefined ? {} : { outlineLevel: parsed },
@@ -86,7 +91,9 @@ const throughRealSave = (stated: string | undefined): OutlineLevel | undefined =
 };
 
 /** What the source stated, read off the generated case rather than the parser. */
-const expectedOutlineLevel = (stated: string | undefined): OutlineLevel | undefined => {
+const expectedOutlineLevel = (
+  stated: string | undefined,
+): OutlineLevel | undefined => {
   if (stated === undefined) {
     return undefined;
   }
@@ -97,7 +104,9 @@ const expectedOutlineLevel = (stated: string | undefined): OutlineLevel | undefi
   return value === 9 ? BODY_TEXT_OUTLINE_LEVEL : headingOutlineLevel(value);
 };
 
-const statedArbitrary = fc.option(fc.constantFrom(...STATED_VALUES), { nil: undefined });
+const statedArbitrary = fc.option(fc.constantFrom(...STATED_VALUES), {
+  nil: undefined,
+});
 
 describe("a stated outline level survives a save", () => {
   test("what the document stated comes back, and what it did not stays unstated", () => {
@@ -116,7 +125,9 @@ describe("a stated outline level survives a save", () => {
       fc.property(statedArbitrary, (stated) => {
         const once = throughRealSave(stated);
         const twice = throughRealSave(
-          once === undefined ? undefined : String(outlineLevelStatedValue(once)),
+          once === undefined
+            ? undefined
+            : String(outlineLevelStatedValue(once)),
         );
         expect(twice).toEqual(once);
       }),
@@ -152,7 +163,9 @@ describe("the body-text sentinel is never a heading level", () => {
     for (let value = 0; value <= 9; value += 1) {
       const level = outlineLevelFromStatedValue(value);
       expect(level).toBeDefined();
-      expect(level === undefined ? undefined : outlineLevelStatedValue(level)).toBe(value);
+      expect(
+        level === undefined ? undefined : outlineLevelStatedValue(level),
+      ).toBe(value);
     }
     expect(outlineLevelFromStatedValue(10)).toBeUndefined();
     expect(outlineLevelFromStatedValue(-1)).toBeUndefined();

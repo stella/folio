@@ -13,7 +13,9 @@ import type { SdtProperties } from "../types/document";
  * mutation. Caller can override with `{ force: true }` if they understand
  * the consequences (overrides apply per call, not per document).
  */
-export class ContentControlLockedError extends TaggedError("ContentControlLockedError")<{
+export class ContentControlLockedError extends TaggedError(
+  "ContentControlLockedError",
+)<{
   message: string;
   lock: NonNullable<SdtProperties["lock"]>;
   tag?: string;
@@ -34,7 +36,9 @@ export class ContentControlLockedError extends TaggedError("ContentControlLocked
  * Reference: python-docx #965, Aspose forum thread on removing custom
  * XML mapping before content updates.
  */
-export class ContentControlBoundError extends TaggedError("ContentControlBoundError")<{
+export class ContentControlBoundError extends TaggedError(
+  "ContentControlBoundError",
+)<{
   message: string;
   xpath: string;
   storeItemID?: string;
@@ -47,7 +51,9 @@ export class ContentControlBoundError extends TaggedError("ContentControlBoundEr
  * control's type — e.g. setting free text on a checkbox, or unwrapping a
  * `w15:repeatingSection` (which would orphan its row items).
  */
-export class ContentControlTypeError extends TaggedError("ContentControlTypeError")<{
+export class ContentControlTypeError extends TaggedError(
+  "ContentControlTypeError",
+)<{
   message: string;
   sdtType: SdtProperties["sdtType"];
   reason: string;

@@ -5,12 +5,12 @@
 // React or `paged-editor/*` dependency so it stays portable across hosts.
 
 import { panic } from "better-result";
-import type { FolioGetDocxOptions } from "../types/docxSerialization";
 import type { EditorState } from "prosemirror-state";
 
 import type { Layout } from "../layout-engine/types";
-import type { Document } from "../types/document";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { Document } from "../types/document";
+import type { FolioGetDocxOptions } from "../types/docxSerialization";
 import type { DocxInput } from "../utils/docxInput";
 import type { FolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -28,7 +28,10 @@ export type FolioEditorDeps = {
 };
 
 export { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
-export type { FolioDocxSerializationMode, FolioGetDocxOptions } from "../types/docxSerialization";
+export type {
+  FolioDocxSerializationMode,
+  FolioGetDocxOptions,
+} from "../types/docxSerialization";
 
 /**
  * Document lifecycle operations supplied by a host integration.
@@ -57,7 +60,8 @@ export type FolioEditor = HiddenEditorApi & {
 
 export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
   const getDocumentIO = () =>
-    deps.getDocumentIO?.() ?? panic("FolioEditor document I/O requires a getDocumentIO dependency");
+    deps.getDocumentIO?.() ??
+    panic("FolioEditor document I/O requires a getDocumentIO dependency");
 
   return {
     getDocx: (options) => getDocumentIO().getDocx(options),
@@ -80,7 +84,8 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.updateCanonicalInputLifecycle(action) ?? false,
     applyCanonicalStoryHistory: (options) =>
       deps.getEditorApi()?.applyCanonicalStoryHistory(options) ?? false,
-    applyCanonicalComment: (request) => deps.getEditorApi()?.applyCanonicalComment(request) ?? null,
+    applyCanonicalComment: (request) =>
+      deps.getEditorApi()?.applyCanonicalComment(request) ?? null,
     applyCanonicalSectionProperties: (patch) => {
       const api = deps.getEditorApi();
       if (!api)
@@ -91,7 +96,8 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
         };
       return api.applyCanonicalSectionProperties(patch);
     },
-    applyCanonicalOperations: (ops) => deps.getEditorApi()?.applyCanonicalOperations(ops) ?? false,
+    applyCanonicalOperations: (ops) =>
+      deps.getEditorApi()?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>
       deps.getEditorApi()?.getCanonicalStorySelection(story) ?? null,
     getCanonicalStoryProjection: (story) =>
@@ -100,19 +106,25 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.replaceCanonicalStoryText(options) ?? false,
     isCanonicalSaveCurrent: (version) =>
       deps.getEditorApi()?.isCanonicalSaveCurrent(version) ?? false,
-    captureCanonicalSave: () => deps.getEditorApi()?.captureCanonicalSave() ?? null,
+    captureCanonicalSave: () =>
+      deps.getEditorApi()?.captureCanonicalSave() ?? null,
     applyCanonicalDocumentOperations: (options) =>
       deps.getEditorApi()?.applyCanonicalDocumentOperations(options) ?? null,
     undoCanonicalDocumentOperations: (handle) =>
       deps.getEditorApi()?.undoCanonicalDocumentOperations(handle) ?? null,
-    getCanonicalComments: () => deps.getEditorApi()?.getCanonicalComments() ?? null,
-    getCanonicalCommittedVersion: () => deps.getEditorApi()?.getCanonicalCommittedVersion() ?? null,
-    getCanonicalDocument: () => deps.getEditorApi()?.getCanonicalDocument() ?? null,
+    getCanonicalComments: () =>
+      deps.getEditorApi()?.getCanonicalComments() ?? null,
+    getCanonicalCommittedVersion: () =>
+      deps.getEditorApi()?.getCanonicalCommittedVersion() ?? null,
+    getCanonicalDocument: () =>
+      deps.getEditorApi()?.getCanonicalDocument() ?? null,
 
-    setCanonicalMode: (mode) => deps.getEditorApi()?.setCanonicalMode(mode) ?? false,
+    setCanonicalMode: (mode) =>
+      deps.getEditorApi()?.setCanonicalMode(mode) ?? false,
 
     resolveCanonicalRevisions: (revisionIds, resolution) =>
-      deps.getEditorApi()?.resolveCanonicalRevisions(revisionIds, resolution) ?? false,
+      deps.getEditorApi()?.resolveCanonicalRevisions(revisionIds, resolution) ??
+      false,
 
     focus: () => deps.getEditorApi()?.focus(),
 
@@ -122,7 +134,8 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
 
     dispatch: (tr) => deps.getEditorApi()?.dispatch(tr),
 
-    executeCommand: (command) => deps.getEditorApi()?.executeCommand(command) ?? false,
+    executeCommand: (command) =>
+      deps.getEditorApi()?.executeCommand(command) ?? false,
 
     undo: () => deps.getEditorApi()?.undo() ?? false,
 
@@ -132,7 +145,8 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
 
     canRedo: () => deps.getEditorApi()?.canRedo() ?? false,
 
-    setSelection: (anchor, head) => deps.getEditorApi()?.setSelection(anchor, head),
+    setSelection: (anchor, head) =>
+      deps.getEditorApi()?.setSelection(anchor, head),
 
     setNodeSelection: (pos) => deps.getEditorApi()?.setNodeSelection(pos),
 

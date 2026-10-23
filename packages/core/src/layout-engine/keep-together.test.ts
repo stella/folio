@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { layoutDocument } from "./index";
 import { calculateChainHeight, computeKeepNextChains } from "./keep-together";
-import type { FlowBlock, Measure, ParagraphBlock, ParagraphMeasure } from "./types";
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+  ParagraphMeasure,
+} from "./types";
 
 const paragraph = (id: string, keepNext = false): ParagraphBlock => ({
   kind: "paragraph",
@@ -47,7 +52,11 @@ const paragraphMeasure = (...lineHeights: number[]): ParagraphMeasure => ({
 
 type Spacing = { before: number; after: number };
 
-const spacedParagraph = (id: string, spacing: Spacing, keepNext = false): ParagraphBlock => ({
+const spacedParagraph = (
+  id: string,
+  spacing: Spacing,
+  keepNext = false,
+): ParagraphBlock => ({
   kind: "paragraph",
   id,
   pmStart: 0,
@@ -57,9 +66,15 @@ const spacedParagraph = (id: string, spacing: Spacing, keepNext = false): Paragr
 });
 
 /** Measure shaped like the real measurer: totalHeight includes the paragraph's own spacing. */
-const spacedParagraphMeasure = (spacing: Spacing, ...lineHeights: number[]): ParagraphMeasure => {
+const spacedParagraphMeasure = (
+  spacing: Spacing,
+  ...lineHeights: number[]
+): ParagraphMeasure => {
   const measure = paragraphMeasure(...lineHeights);
-  return { ...measure, totalHeight: measure.totalHeight + spacing.before + spacing.after };
+  return {
+    ...measure,
+    totalHeight: measure.totalHeight + spacing.before + spacing.after,
+  };
 };
 
 const pageGeometry = {
@@ -73,7 +88,9 @@ const pageOptions = {
 };
 
 const pageBlockIds = (result: ReturnType<typeof layoutDocument>): string[][] =>
-  result.pages.map((page) => page.fragments.map((fragment) => String(fragment.blockId)));
+  result.pages.map((page) =>
+    page.fragments.map((fragment) => String(fragment.blockId)),
+  );
 
 describe("calculateChainHeight", () => {
   test("counts each paragraph's spacing once when measures include it", () => {
@@ -87,7 +104,12 @@ describe("calculateChainHeight", () => {
       spacedParagraphMeasure(headingSpacing, 24),
       spacedParagraphMeasure(anchorSpacing, 16, 16),
     ];
-    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+    const chain = {
+      startIndex: 0,
+      endIndex: 0,
+      memberIndices: [0],
+      anchorIndex: 1,
+    };
 
     // before 24 + heading line 24 + collapsed gap max(8, 8) + both anchor lines,
     // since widow control cannot split a two-line anchor
@@ -106,7 +128,12 @@ describe("calculateChainHeight", () => {
       spacedParagraphMeasure(spacing, 14),
       spacedParagraphMeasure(spacing, 10, 10),
     ];
-    const chain = { startIndex: 0, endIndex: 1, memberIndices: [0, 1], anchorIndex: 2 };
+    const chain = {
+      startIndex: 0,
+      endIndex: 1,
+      memberIndices: [0, 1],
+      anchorIndex: 2,
+    };
 
     // 12 + 20 + max(12, 6) + 14 + max(12, 6) + 10 + 10
     expect(calculateChainHeight(chain, blocks, measures)).toBe(90);
@@ -121,7 +148,12 @@ describe("calculateChainHeight", () => {
       spacedParagraphMeasure({ before: 6, after: 0 }, 20),
       spacedParagraphMeasure({ before: 0, after: 0 }, 10),
     ];
-    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+    const chain = {
+      startIndex: 0,
+      endIndex: 0,
+      memberIndices: [0],
+      anchorIndex: 1,
+    };
 
     expect(calculateChainHeight(chain, blocks, measures, 18)).toBe(48);
   });
@@ -158,7 +190,11 @@ describe("calculateChainHeight", () => {
       paragraph("heading", true),
       paragraph("anchor"),
     ];
-    const measures: Measure[] = [paragraphMeasure(12), paragraphMeasure(14), paragraphMeasure(16)];
+    const measures: Measure[] = [
+      paragraphMeasure(12),
+      paragraphMeasure(14),
+      paragraphMeasure(16),
+    ];
 
     expect(
       calculateChainHeight(
@@ -175,9 +211,19 @@ describe("calculateChainHeight", () => {
   });
 
   test("reserves two anchor lines after a trailing table separator", () => {
-    const blocks: FlowBlock[] = [table("table"), emptyParagraph("separator"), paragraph("body")];
+    const blocks: FlowBlock[] = [
+      table("table"),
+      emptyParagraph("separator"),
+      paragraph("body"),
+    ];
     const measures: Measure[] = [
-      { kind: "table", rows: [], columnWidths: [], totalWidth: 0, totalHeight: 100 },
+      {
+        kind: "table",
+        rows: [],
+        columnWidths: [],
+        totalWidth: 0,
+        totalHeight: 100,
+      },
       paragraphMeasure(12),
       paragraphMeasure(14, 14, 14, 14),
     ];
@@ -199,9 +245,19 @@ describe("calculateChainHeight", () => {
   test("reserves one anchor line when widow control is disabled", () => {
     const anchor = paragraph("body");
     anchor.attrs = { widowControl: false };
-    const blocks: FlowBlock[] = [table("table"), emptyParagraph("separator"), anchor];
+    const blocks: FlowBlock[] = [
+      table("table"),
+      emptyParagraph("separator"),
+      anchor,
+    ];
     const measures: Measure[] = [
-      { kind: "table", rows: [], columnWidths: [], totalWidth: 0, totalHeight: 100 },
+      {
+        kind: "table",
+        rows: [],
+        columnWidths: [],
+        totalWidth: 0,
+        totalHeight: 100,
+      },
       paragraphMeasure(12),
       paragraphMeasure(14, 14, 14),
     ];
@@ -222,16 +278,32 @@ describe("calculateChainHeight", () => {
 
   test("reserves a whole widow-controlled anchor shorter than four lines", () => {
     const blocks: FlowBlock[] = [paragraph("heading", true), paragraph("body")];
-    const measures: Measure[] = [paragraphMeasure(20), paragraphMeasure(10, 11, 12)];
-    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+    const measures: Measure[] = [
+      paragraphMeasure(20),
+      paragraphMeasure(10, 11, 12),
+    ];
+    const chain = {
+      startIndex: 0,
+      endIndex: 0,
+      memberIndices: [0],
+      anchorIndex: 1,
+    };
 
     expect(calculateChainHeight(chain, blocks, measures)).toBe(53);
   });
 
   test("reserves two lines of a widow-controlled anchor with four or more lines", () => {
     const blocks: FlowBlock[] = [paragraph("heading", true), paragraph("body")];
-    const measures: Measure[] = [paragraphMeasure(20), paragraphMeasure(10, 11, 12, 13)];
-    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+    const measures: Measure[] = [
+      paragraphMeasure(20),
+      paragraphMeasure(10, 11, 12, 13),
+    ];
+    const chain = {
+      startIndex: 0,
+      endIndex: 0,
+      memberIndices: [0],
+      anchorIndex: 1,
+    };
 
     expect(calculateChainHeight(chain, blocks, measures)).toBe(41);
   });
@@ -240,8 +312,16 @@ describe("calculateChainHeight", () => {
     const anchor = paragraph("body");
     anchor.attrs = { keepLines: true, widowControl: false };
     const blocks: FlowBlock[] = [paragraph("heading", true), anchor];
-    const measures: Measure[] = [paragraphMeasure(20), paragraphMeasure(10, 10, 10, 10, 10)];
-    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+    const measures: Measure[] = [
+      paragraphMeasure(20),
+      paragraphMeasure(10, 10, 10, 10, 10),
+    ];
+    const chain = {
+      startIndex: 0,
+      endIndex: 0,
+      memberIndices: [0],
+      anchorIndex: 1,
+    };
 
     expect(calculateChainHeight(chain, blocks, measures)).toBe(70);
   });
@@ -257,7 +337,12 @@ describe("calculateChainHeight", () => {
       paragraphMeasure(10, 10, 10),
       paragraphMeasure(5, 5, 5, 5, 5),
     ];
-    const chain = { startIndex: 0, endIndex: 1, memberIndices: [0, 1], anchorIndex: 2 };
+    const chain = {
+      startIndex: 0,
+      endIndex: 1,
+      memberIndices: [0, 1],
+      anchorIndex: 2,
+    };
 
     expect(calculateChainHeight(chain, blocks, measures)).toBe(60);
   });
@@ -312,7 +397,11 @@ describe("computeKeepNextChains", () => {
   });
 
   test("carries a trailing table separator to the next content paragraph", () => {
-    const blocks: FlowBlock[] = [table("table"), emptyParagraph("separator"), paragraph("body")];
+    const blocks: FlowBlock[] = [
+      table("table"),
+      emptyParagraph("separator"),
+      paragraph("body"),
+    ];
 
     expect(computeKeepNextChains(blocks).get(1)).toEqual({
       startIndex: 1,
@@ -361,7 +450,9 @@ describe("keep-with-next pagination", () => {
     // and its two-line anchor need 24 + 24 + 8 + 16 + 16 = 88.
     const result = layoutDocument(blocks, measures, pageOptions);
 
-    const firstPageIds = result.pages[0]?.fragments.map((fragment) => fragment.blockId);
+    const firstPageIds = result.pages[0]?.fragments.map(
+      (fragment) => fragment.blockId,
+    );
     expect(firstPageIds).toEqual(["body", "heading", "anchor"]);
   });
 
@@ -382,7 +473,10 @@ describe("keep-with-next pagination", () => {
     const result = layoutDocument(blocks, measures, pageOptions);
 
     expect(pageBlockIds(result)).toEqual([["body"], ["heading", "anchor"]]);
-    expect(result.pages[1]?.fragments.at(-1)).toMatchObject({ fromLine: 0, toLine: 3 });
+    expect(result.pages[1]?.fragments.at(-1)).toMatchObject({
+      fromLine: 0,
+      toLine: 3,
+    });
   });
 });
 
@@ -394,12 +488,18 @@ describe("keepLines pagination", () => {
 
   test("moves a keepLines paragraph that does not fit whole to the next page", () => {
     const blocks: FlowBlock[] = [paragraph("body"), keepLinesParagraph("kept")];
-    const measures: Measure[] = [paragraphMeasure(850), paragraphMeasure(20, 20, 20, 20)];
+    const measures: Measure[] = [
+      paragraphMeasure(850),
+      paragraphMeasure(20, 20, 20, 20),
+    ];
 
     const result = layoutDocument(blocks, measures, pageOptions);
 
     expect(pageBlockIds(result)).toEqual([["body"], ["kept"]]);
-    expect(result.pages[1]?.fragments[0]).toMatchObject({ fromLine: 0, toLine: 4 });
+    expect(result.pages[1]?.fragments[0]).toMatchObject({
+      fromLine: 0,
+      toLine: 4,
+    });
   });
 
   test("splits a keepLines paragraph taller than a full page", () => {
@@ -412,14 +512,19 @@ describe("keepLines pagination", () => {
     const result = layoutDocument(blocks, measures, pageOptions);
 
     expect(pageBlockIds(result)[0]).toEqual(["body", "kept"]);
-    expect(result.pages[0]?.fragments[1]).toMatchObject({ fromLine: 0, toLine: 2 });
+    expect(result.pages[0]?.fragments[1]).toMatchObject({
+      fromLine: 0,
+      toLine: 2,
+    });
   });
 
   test("reads a keepLines paragraph's lines a bounded number of times across column retries", () => {
     const columnCount = 200;
     const lineCount = 200;
     const lineReads = { count: 0 };
-    const measured = paragraphMeasure(...Array.from({ length: lineCount }, () => 0));
+    const measured = paragraphMeasure(
+      ...Array.from({ length: lineCount }, () => 0),
+    );
     const countedLines = new Proxy(measured.lines, {
       get(target, property, receiver) {
         if (typeof property === "string" && /^\d+$/.test(property)) {
@@ -430,9 +535,16 @@ describe("keepLines pagination", () => {
     });
     const kept: ParagraphBlock = {
       ...paragraph("kept"),
-      attrs: { keepLines: true, widowControl: false, spacing: { before: 500, after: 0 } },
+      attrs: {
+        keepLines: true,
+        widowControl: false,
+        spacing: { before: 500, after: 0 },
+      },
     };
-    const sectionBreak = (id: string, columns?: { count: number; gap: number }): FlowBlock => ({
+    const sectionBreak = (
+      id: string,
+      columns?: { count: number; gap: number },
+    ): FlowBlock => ({
       kind: "sectionBreak",
       id,
       type: "continuous",
@@ -464,7 +576,10 @@ describe("keepLines pagination", () => {
       paragraph("body"),
       { ...paragraph("plain"), attrs: { widowControl: false } },
     ];
-    const measures: Measure[] = [paragraphMeasure(850), paragraphMeasure(20, 20, 20, 20)];
+    const measures: Measure[] = [
+      paragraphMeasure(850),
+      paragraphMeasure(20, 20, 20, 20),
+    ];
 
     const result = layoutDocument(blocks, measures, pageOptions);
 

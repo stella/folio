@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 import { NodeSelection, TextSelection } from "prosemirror-state";
 
@@ -16,7 +16,11 @@ import { deleteSelectionAsSuggestion } from "./suggestionMode";
 const project = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map((block) => {
     if (block.kind === "diagnostic") {
-      return { kind: block.kind, text: block.text, diagnostic: block.diagnostic };
+      return {
+        kind: block.kind,
+        text: block.text,
+        diagnostic: block.diagnostic,
+      };
     }
     return {
       kind: block.kind,
@@ -29,8 +33,14 @@ const project = (reviewer: FolioDocxReviewer) =>
   });
 
 const cases = (["open", "closed"] as const).flatMap((clipboard) =>
-  (["node", "image-range", "paragraph-range", "cross-paragraph"] as const).flatMap((range) =>
-    (["forward", "backward"] as const).map((direction) => ({ clipboard, range, direction })),
+  (
+    ["node", "image-range", "paragraph-range", "cross-paragraph"] as const
+  ).flatMap((range) =>
+    (["forward", "backward"] as const).map((direction) => ({
+      clipboard,
+      range,
+      direction,
+    })),
   ),
 );
 
@@ -39,7 +49,9 @@ test.each(cases)(
   async ({ clipboard, range, direction }) => {
     const bytes = await documentShape("image").build();
     const base = await parseShapeDocument(bytes);
-    const baseline = project(await FolioDocxReviewer.fromBuffer(bytes.slice().buffer));
+    const baseline = project(
+      await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+    );
     const outputs = [];
     for (const mode of ["editing", "suggesting"] as const) {
       const view = new HeadlessEditorView(createHarnessState(base, mode));
@@ -48,7 +60,10 @@ test.each(cases)(
       view.paste(
         new Slice(
           Fragment.from([
-            schema.node("paragraph", null, [schema.text("First "), schema.text("bold", [strong])]),
+            schema.node("paragraph", null, [
+              schema.text("First "),
+              schema.text("bold", [strong]),
+            ]),
             schema.node("paragraph", null, [schema.text("Second")]),
           ]),
           clipboard === "open" ? 1 : 0,
@@ -75,7 +90,9 @@ test.each(cases)(
             );
       view.dispatch(view.state.tr.setSelection(selection));
       if (mode === "suggesting") {
-        expect(deleteSelectionAsSuggestion(view.state, view.dispatch)).toBe(true);
+        expect(deleteSelectionAsSuggestion(view.state, view.dispatch)).toBe(
+          true,
+        );
       } else {
         view.dispatch(view.state.tr.deleteSelection());
       }
@@ -83,14 +100,22 @@ test.each(cases)(
     }
     const direct = outputs.at(0) ?? panic("Missing edited output");
     const suggested = outputs.at(1) ?? panic("Missing suggested output");
-    const edited = project(await FolioDocxReviewer.fromBuffer(direct.bytes.slice().buffer));
-    const accepted = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
-    accepted.acceptAll();
-    expect(project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer()))).toEqual(edited);
-    const rejected = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
-    rejected.rejectAll();
-    expect(project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()))).toEqual(
-      baseline,
+    const edited = project(
+      await FolioDocxReviewer.fromBuffer(direct.bytes.slice().buffer),
     );
+    const accepted = await FolioDocxReviewer.fromBuffer(
+      suggested.bytes.slice().buffer,
+    );
+    accepted.acceptAll();
+    expect(
+      project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer())),
+    ).toEqual(edited);
+    const rejected = await FolioDocxReviewer.fromBuffer(
+      suggested.bytes.slice().buffer,
+    );
+    rejected.rejectAll();
+    expect(
+      project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer())),
+    ).toEqual(baseline);
   },
 );

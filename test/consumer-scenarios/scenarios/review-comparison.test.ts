@@ -1,14 +1,16 @@
-import assert from "node:assert/strict";
 import JSZip from "jszip";
-import type { SimpleField, ComplexField } from "@stll/docx-core/model";
+import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createDocx, paragraph } from "@stll/folio-core/server";
+
+import type { ComplexField, SimpleField } from "@stll/docx-core/model";
 import { fromMarkdown } from "@stll/folio-core/markdown";
+import { createDocx, paragraph } from "@stll/folio-core/server";
+
 import { openReviewer } from "../support/documents.ts";
 import {
-  canonicalReviewModel,
-  assertRevisionCoverage,
   assertReviewRoundTrip,
+  assertRevisionCoverage,
+  canonicalReviewModel,
   revisionCoverage,
 } from "../support/review-comparison.ts";
 
@@ -30,7 +32,10 @@ test("revision comparison preserves character order across adjacent run groups",
   const formatting = { ...revision, type: "formatting" as const };
   assertRevisionCoverage(
     [revision, formatting],
-    fragments.flatMap((entry) => [entry, { ...entry, type: "formatting" as const }]),
+    fragments.flatMap((entry) => [
+      entry,
+      { ...entry, type: "formatting" as const },
+    ]),
   );
   for (const changed of [
     fragments.slice(1),
@@ -87,18 +92,27 @@ test("round-trip comparison checks both full resolution documents", async () => 
     },
     { undefinedReferences: "refuse" },
   );
-  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
-  await assertReviewRoundTrip({ live: reviewer, reopened, context: "round trip" });
+  const reopened = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
+  await assertReviewRoundTrip({
+    live: reviewer,
+    reopened,
+    context: "round trip",
+  });
   const changed = reopened.toDocument();
   changed.package.document.content.push(paragraph("Different"));
-  const changedSaved = await openReviewer(new Uint8Array(await createDocx(changed)));
+  const changedSaved = await openReviewer(
+    new Uint8Array(await createDocx(changed)),
+  );
   await assert.rejects(
     assertReviewRoundTrip({
       live: reviewer,
       reopened: {
         getContent: () => reopened.getContent(),
         getChanges: () => reopened.getChanges(),
-        toResolvedDocument: (decision) => changedSaved.toResolvedDocument(decision),
+        toResolvedDocument: (decision) =>
+          changedSaved.toResolvedDocument(decision),
       },
       context: "changed resolution",
     }),
@@ -119,14 +133,17 @@ test("round-trip comparison checks both full resolution documents", async () => 
     }
   }
   assert.ok(altered > 0);
-  const rejectedSaved = await openReviewer(new Uint8Array(await createDocx(rejected)));
+  const rejectedSaved = await openReviewer(
+    new Uint8Array(await createDocx(rejected)),
+  );
   await assert.rejects(
     assertReviewRoundTrip({
       live: reviewer,
       reopened: {
         getContent: () => reopened.getContent(),
         getChanges: () => reopened.getChanges(),
-        toResolvedDocument: (decision) => rejectedSaved.toResolvedDocument(decision),
+        toResolvedDocument: (decision) =>
+          rejectedSaved.toResolvedDocument(decision),
       },
       context: "changed rejected content",
     }),
@@ -135,7 +152,9 @@ test("round-trip comparison checks both full resolution documents", async () => 
 });
 
 test("round-trip comparison preserves table formatting in resolved models", async () => {
-  const model = fromMarkdown("| First | Second |\n| --- | --- |\n| Alpha beta | Body |");
+  const model = fromMarkdown(
+    "| First | Second |\n| --- | --- |\n| Alpha beta | Body |",
+  );
   const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
   const block = reviewer.getContent().find(({ text }) => text.includes("beta"));
   if (!block) throw new Error("Expected table cell paragraph");
@@ -155,22 +174,33 @@ test("round-trip comparison preserves table formatting in resolved models", asyn
     },
     { undefinedReferences: "refuse" },
   );
-  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
-  await assertReviewRoundTrip({ live: reviewer, reopened, context: "table round trip" });
+  const reopened = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
+  await assertReviewRoundTrip({
+    live: reviewer,
+    reopened,
+    context: "table round trip",
+  });
   const changed = reopened.toDocument();
-  const table = changed.package.document.content.find(({ type }) => type === "table");
+  const table = changed.package.document.content.find(
+    ({ type }) => type === "table",
+  );
   if (table?.type !== "table") throw new Error("Expected table");
   const cell = table.rows.at(0)?.cells.at(0);
   if (!cell) throw new Error("Expected table cell");
   cell.formatting = { ...cell.formatting, textDirection: "tbRl" };
-  const changedSaved = await openReviewer(new Uint8Array(await createDocx(changed)));
+  const changedSaved = await openReviewer(
+    new Uint8Array(await createDocx(changed)),
+  );
   await assert.rejects(
     assertReviewRoundTrip({
       live: reviewer,
       reopened: {
         getContent: () => reopened.getContent(),
         getChanges: () => reopened.getChanges(),
-        toResolvedDocument: (decision) => changedSaved.toResolvedDocument(decision),
+        toResolvedDocument: (decision) =>
+          changedSaved.toResolvedDocument(decision),
       },
       context: "changed table formatting",
     }),
@@ -182,7 +212,8 @@ test("round-trip comparison preserves table formatting in resolved models", asyn
 test("round-trip comparison detects lossy revision formatting with unchanged coverage", async () => {
   const model = fromMarkdown("Alpha");
   const sourceParagraph = model.package.document.content.at(0);
-  if (sourceParagraph?.type !== "paragraph") throw new Error("Expected paragraph");
+  if (sourceParagraph?.type !== "paragraph")
+    throw new Error("Expected paragraph");
   const run = sourceParagraph.content.find(({ type }) => type === "run");
   if (run?.type !== "run") throw new Error("Expected run");
   run.formatting = { bold: true };
@@ -197,9 +228,11 @@ test("round-trip comparison detects lossy revision formatting with unchanged cov
   const original = structuredClone(reviewer.toDocument());
   const lossy = structuredClone(reviewer.toDocument());
   const lossyParagraph = lossy.package.document.content.at(0);
-  if (lossyParagraph?.type !== "paragraph") throw new Error("Expected paragraph");
+  if (lossyParagraph?.type !== "paragraph")
+    throw new Error("Expected paragraph");
   const lossyRun = lossyParagraph.content.find(({ type }) => type === "run");
-  const change = lossyRun?.type === "run" ? lossyRun.propertyChanges?.at(0) : undefined;
+  const change =
+    lossyRun?.type === "run" ? lossyRun.propertyChanges?.at(0) : undefined;
   if (!change) throw new Error("Expected formatting revision");
   delete change.previousFormatting;
   // Simulate an exporter that drops the same field on every save. The live
@@ -208,9 +241,12 @@ test("round-trip comparison detects lossy revision formatting with unchanged cov
     getContent: () => reviewer.getContent(),
     getChanges: () => reviewer.getChanges(),
     toDocument: () => lossy,
-    toResolvedDocument: (decision: "accept" | "reject") => reviewer.toResolvedDocument(decision),
+    toResolvedDocument: (decision: "accept" | "reject") =>
+      reviewer.toResolvedDocument(decision),
   };
-  const reopened = await openReviewer(new Uint8Array(await createDocx(live.toDocument())));
+  const reopened = await openReviewer(
+    new Uint8Array(await createDocx(live.toDocument())),
+  );
   assertRevisionCoverage(live.getChanges(), reopened.getChanges());
   await assert.rejects(
     assertReviewRoundTrip({ live, reopened, context: "lossy formatting save" }),
@@ -259,11 +295,16 @@ test("round-trip comparison detects changed header text with unchanged revision 
     },
   ];
   const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
-  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  const reopened = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
   const withHeader = (decision: "accept" | "reject", text: string) => {
     const document = reviewer.toResolvedDocument(decision);
     document.package.headers = new Map([
-      ["rId8", { type: "header", hdrFtrType: "default", content: [paragraph(text)] }],
+      [
+        "rId8",
+        { type: "header", hdrFtrType: "default", content: [paragraph(text)] },
+      ],
     ]);
     return document;
   };
@@ -290,9 +331,15 @@ test("model projection keeps authored identities and revision dates strict", () 
   const generated = [{ type: "paragraph", paraId: "412DDC7F", content: [] }];
   assert.deepEqual(
     canonicalReviewModel(absent),
-    canonicalReviewModel(generated, new Map([["412DDC7F", "\u0000position:0"]])),
+    canonicalReviewModel(
+      generated,
+      new Map([["412DDC7F", "\u0000position:0"]]),
+    ),
   );
-  assert.notDeepEqual(canonicalReviewModel(absent), canonicalReviewModel(generated));
+  assert.notDeepEqual(
+    canonicalReviewModel(absent),
+    canonicalReviewModel(generated),
+  );
   assert.notDeepEqual(
     canonicalReviewModel({ info: { date: "2026-01-01" } }),
     canonicalReviewModel({ info: { date: "2026-01-02" } }),
@@ -302,14 +349,20 @@ test("model projection keeps authored identities and revision dates strict", () 
 test("capture-only formatting holders disappear while authored properties stay strict", () => {
   for (const key of ["formatting", "previousFormatting", "currentFormatting"]) {
     const captures = { sourceXml: "<w:tcPr/>", gridSourceXml: "<w:tblGrid/>" };
-    assert.deepEqual(canonicalReviewModel({ [key]: captures }), canonicalReviewModel({}));
+    assert.deepEqual(
+      canonicalReviewModel({ [key]: captures }),
+      canonicalReviewModel({}),
+    );
     assert.throws(() =>
       assert.deepEqual(
         canonicalReviewModel({ [key]: { ...captures, bold: true } }),
         canonicalReviewModel({ [key]: { ...captures, bold: false } }),
       ),
     );
-    assert.notDeepEqual(canonicalReviewModel({ [key]: {} }), canonicalReviewModel({}));
+    assert.notDeepEqual(
+      canonicalReviewModel({ [key]: {} }),
+      canonicalReviewModel({}),
+    );
     assert.notDeepEqual(
       canonicalReviewModel({ [key]: { ...captures, bold: true } }),
       canonicalReviewModel({}),
@@ -329,7 +382,11 @@ test("field model comparison preserves meaning across simple and complex forms",
     fldLock: false,
     dirty: true,
     content: [
-      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "1 May 2026" }] },
+      {
+        type: "run",
+        formatting: { bold: true },
+        content: [{ type: "text", text: "1 May 2026" }],
+      },
     ],
   } satisfies SimpleField;
   const complex = {
@@ -340,7 +397,11 @@ test("field model comparison preserves meaning across simple and complex forms",
     dirty: true,
     formatting: { bold: true },
     fieldCode: [
-      { type: "run", formatting: { bold: true }, content: [{ type: "instrText", text: "DATE" }] },
+      {
+        type: "run",
+        formatting: { bold: true },
+        content: [{ type: "instrText", text: "DATE" }],
+      },
     ],
     fieldResult: simple.content,
   } satisfies ComplexField;
@@ -351,7 +412,12 @@ test("field model comparison preserves meaning across simple and complex forms",
     { ...complex, fldLock: true },
     { ...complex, dirty: false },
     { ...complex, fieldResult: [] },
-    { ...complex, fieldCode: [{ type: "run", content: [{ type: "instrText", text: "PAGE" }] }] },
+    {
+      ...complex,
+      fieldCode: [
+        { type: "run", content: [{ type: "instrText", text: "PAGE" }] },
+      ],
+    },
     {
       ...complex,
       fieldResult: [
@@ -418,6 +484,12 @@ test("a simple DATE field in a deleted paragraph keeps its resolved model and un
   );
   assert.equal(result.applied.length, 1);
   assert.deepEqual(result.skipped, []);
-  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
-  await assertReviewRoundTrip({ live: reviewer, reopened, context: "tracked DATE field" });
+  const reopened = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
+  await assertReviewRoundTrip({
+    live: reviewer,
+    reopened,
+    context: "tracked DATE field",
+  });
 });

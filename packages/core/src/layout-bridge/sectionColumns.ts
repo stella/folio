@@ -9,8 +9,8 @@
  */
 
 import type { ColumnLayout } from "../layout-engine/types";
-import type { SectionProperties } from "../types/document";
 import { twipsToPixels } from "../paged-layout/sectionGeometry";
+import type { SectionProperties } from "../types/document";
 
 /** Default column spacing per OOXML spec: 720 twips (0.5 inch). */
 const DEFAULT_COLUMN_SPACE_TWIPS = 720;
@@ -25,7 +25,9 @@ export function getColumns(
   const authoredColumns = sectionProps?.columns;
   const count = sectionProps?.columnCount ?? authoredColumns?.length ?? 1;
   if (count <= 1) return undefined;
-  const gap = twipsToPixels(sectionProps?.columnSpace ?? DEFAULT_COLUMN_SPACE_TWIPS);
+  const gap = twipsToPixels(
+    sectionProps?.columnSpace ?? DEFAULT_COLUMN_SPACE_TWIPS,
+  );
   const columns: ColumnLayout = {
     count,
     gap,
@@ -36,14 +38,19 @@ export function getColumns(
     authoredColumns?.length === count &&
     authoredColumns.every(({ width }) => width !== undefined)
   ) {
-    columns.widths = authoredColumns.map(({ width }) => twipsToPixels(width ?? 0));
+    columns.widths = authoredColumns.map(({ width }) =>
+      twipsToPixels(width ?? 0),
+    );
     columns.gaps = authoredColumns
       .slice(0, -1)
       .map(({ space }) =>
-        twipsToPixels(space ?? sectionProps.columnSpace ?? DEFAULT_COLUMN_SPACE_TWIPS),
+        twipsToPixels(
+          space ?? sectionProps.columnSpace ?? DEFAULT_COLUMN_SPACE_TWIPS,
+        ),
       );
   }
   // exactOptionalPropertyTypes: only attach `separator` when explicitly set.
-  if (sectionProps?.separator !== undefined) columns.separator = sectionProps.separator;
+  if (sectionProps?.separator !== undefined)
+    columns.separator = sectionProps.separator;
   return columns;
 }

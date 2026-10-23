@@ -22,12 +22,11 @@ import {
   calculateFootnoteAreaRenderHeight,
   type FootnoteRenderItem,
 } from "../../layout-painter/renderPage";
-import type { DisplayColor, DisplayPrimitive } from "../types";
-import type { BuildContext } from "./buildContext";
 import { HIT_REGION_KINDS } from "../primitives";
-import type { PageComposer } from "./regions";
-import type { DisplayStoryRef } from "../types";
+import type { DisplayColor, DisplayPrimitive, DisplayStoryRef } from "../types";
+import type { BuildContext } from "./buildContext";
 import { DOC_CANVAS_TEXT } from "./colors";
+import type { PageComposer } from "./regions";
 import { paintFootnoteBlocks } from "./storyPrimitives";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
@@ -35,9 +34,13 @@ import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 const COLUMN_SEPARATOR_WIDTH_PX = 0.5;
 
 /** `renderFootnoteArea`: a hairline across a third of the column, centred in its 12px slot. */
-const FOOTNOTE_RULE_MARGIN_PX = (FOOTNOTE_SEPARATOR_HEIGHT - NOTE_SEPARATOR_RULE_THICKNESS) / 2;
+const FOOTNOTE_RULE_MARGIN_PX =
+  (FOOTNOTE_SEPARATOR_HEIGHT - NOTE_SEPARATOR_RULE_THICKNESS) / 2;
 
-export const paintPageBackground = (page: Page, fill: DisplayColor): DisplayPrimitive => ({
+export const paintPageBackground = (
+  page: Page,
+  fill: DisplayColor,
+): DisplayPrimitive => ({
   kind: "rect",
   rect: { xPx: 0, yPx: 0, widthPx: page.size.w, heightPx: page.size.h },
   fill,
@@ -49,7 +52,9 @@ export const paintPageBackground = (page: Page, fill: DisplayColor): DisplayPrim
  * does this: diverging here would put the export's rules somewhere the editor
  * never drew them.
  */
-export const paintColumnSeparators = (page: Page): readonly DisplayPrimitive[] => {
+export const paintColumnSeparators = (
+  page: Page,
+): readonly DisplayPrimitive[] => {
   const columns = page.columns;
   if (!columns?.separator || columns.count <= 1) {
     return [];
@@ -57,11 +62,13 @@ export const paintColumnSeparators = (page: Page): readonly DisplayPrimitive[] =
 
   const contentWidthPx = page.size.w - page.margins.left - page.margins.right;
   const contentHeightPx = page.size.h - page.margins.top - page.margins.bottom;
-  const columnWidthPx = (contentWidthPx - (columns.count - 1) * columns.gap) / columns.count;
+  const columnWidthPx =
+    (contentWidthPx - (columns.count - 1) * columns.gap) / columns.count;
 
   const primitives: DisplayPrimitive[] = [];
   for (let column = 0; column < columns.count - 1; column += 1) {
-    const offsetPx = (column + 1) * columnWidthPx + column * columns.gap + columns.gap / 2;
+    const offsetPx =
+      (column + 1) * columnWidthPx + column * columns.gap + columns.gap / 2;
     primitives.push({
       kind: "rect",
       rect: {
@@ -81,7 +88,9 @@ export const paintColumnSeparators = (page: Page): readonly DisplayPrimitive[] =
  * paginator records where each `w:separator` / `w:continuationSeparator` mark
  * landed, so like the column rules they are derivable from the `Layout` alone.
  */
-export const paintFlowedNoteSeparators = (page: Page): readonly DisplayPrimitive[] =>
+export const paintFlowedNoteSeparators = (
+  page: Page,
+): readonly DisplayPrimitive[] =>
   (page.noteSeparators ?? []).map((rule): DisplayPrimitive => ({
     kind: "rect",
     rect: {
@@ -125,8 +134,13 @@ export const paintFootnoteArea = ({
     return;
   }
 
-  const bodies = noteIds.map((noteId) => ({ noteId, content: contentById?.get(noteId) }));
-  const missing = bodies.flatMap(({ noteId, content }) => (content === undefined ? [noteId] : []));
+  const bodies = noteIds.map((noteId) => ({
+    noteId,
+    content: contentById?.get(noteId),
+  }));
+  const missing = bodies.flatMap(({ noteId, content }) =>
+    content === undefined ? [noteId] : [],
+  );
   if (missing.length > 0) {
     context.unsupported.report(
       UNSUPPORTED_CONSTRUCT.footnoteContent,
@@ -141,14 +155,23 @@ export const paintFootnoteArea = ({
     ...(content === undefined
       ? {}
       : {
-          content: { blocks: content.blocks, measures: content.measures, height: content.height },
+          content: {
+            blocks: content.blocks,
+            measures: content.measures,
+            height: content.height,
+          },
         }),
   }));
 
   const contentHeightPx = page.size.h - page.margins.top - page.margins.bottom;
   const contentWidthPx = page.size.w - page.margins.left - page.margins.right;
-  const bandHeightPx = Math.max(reservedHeightPx, calculateFootnoteAreaRenderHeight(items));
-  const areaTopPx = page.margins.top + Math.max(-page.margins.top, contentHeightPx - bandHeightPx);
+  const bandHeightPx = Math.max(
+    reservedHeightPx,
+    calculateFootnoteAreaRenderHeight(items),
+  );
+  const areaTopPx =
+    page.margins.top +
+    Math.max(-page.margins.top, contentHeightPx - bandHeightPx);
 
   const primitives: DisplayPrimitive[] = [
     {

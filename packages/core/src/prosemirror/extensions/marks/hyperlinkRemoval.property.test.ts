@@ -1,13 +1,20 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
 import { getCanonicalCommandIntents } from "../../canonicalCommands";
-import { schema, singletonManager } from "../../schema";
-import { HyperlinkRemovalRefusal, removeHyperlinkInRange } from "../../hyperlinkRemoval";
-import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { acceptAllChanges, rejectAllChanges } from "../../commands/comments";
+import {
+  HyperlinkRemovalRefusal,
+  removeHyperlinkInRange,
+} from "../../hyperlinkRemoval";
+import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
+import { schema, singletonManager } from "../../schema";
 
 setDefaultTimeout(propertyTestTimeout(15_000));
 
@@ -63,7 +70,9 @@ const assertRemoval = ({ nodes, link, neighbor }: AssertRemovalOptions) => {
     });
     if (doc.resolve(cursor).parent.type.name !== "paragraph") {
       expect(() => command(state)).toThrow(HyperlinkRemovalRefusal);
-      expect(() => getCanonicalCommandIntents(command, state)).toThrow(HyperlinkRemovalRefusal);
+      expect(() => getCanonicalCommandIntents(command, state)).toThrow(
+        HyperlinkRemovalRefusal,
+      );
       expect(() =>
         command(state, () => {
           throw new TypeError("A refused command dispatched");
@@ -123,9 +132,12 @@ const atomFactories = {
       [link],
     ),
   field: (link: Mark) =>
-    schema.node("field", { fieldType: "PAGE", instruction: "PAGE", displayText: "1" }, undefined, [
-      link,
-    ]),
+    schema.node(
+      "field",
+      { fieldType: "PAGE", instruction: "PAGE", displayText: "1" },
+      undefined,
+      [link],
+    ),
   structuredField: (link: Mark) =>
     schema.node(
       "structuredField",
@@ -165,7 +177,10 @@ test("collapsed removal crosses linked inline atoms without losing content", () 
       }
       expect([...exercised].sort()).toEqual(Object.keys(atomFactories).sort());
     }),
-    { numRuns: 40, id: "collapsed removal crosses linked inline atoms without losing content" },
+    {
+      numRuns: 40,
+      id: "collapsed removal crosses linked inline atoms without losing content",
+    },
   );
 });
 
@@ -209,7 +224,9 @@ const assertPartialFieldRefusal = (text: string) => {
         plugins: [createSuggestionModePlugin(true, "Reviewer")],
       });
       const tr = state.tr;
-      expect(() => removeHyperlinkInRange(state, tr, from, to)).toThrow(HyperlinkRemovalRefusal);
+      expect(() => removeHyperlinkInRange(state, tr, from, to)).toThrow(
+        HyperlinkRemovalRefusal,
+      );
       expect(tr.steps).toEqual([]);
       expect(tr.doc.eq(doc)).toBe(true);
       expect(() => command(state)).toThrow(HyperlinkRemovalRefusal);

@@ -7,7 +7,11 @@ import {
   findInDocument,
   findInParagraph,
 } from "@stll/folio-core/utils/findReplace";
-import type { FindMatch, FindOptions, FindResult } from "@stll/folio-core/utils/findReplace";
+import type {
+  FindMatch,
+  FindOptions,
+  FindResult,
+} from "@stll/folio-core/utils/findReplace";
 
 export type { FindMatch, FindOptions, FindResult };
 export {
@@ -40,14 +44,21 @@ export const replaceFirstInContent = (
   replaceText: string,
   options: FindOptions,
   startIndex: number = 0,
-): { content: string; replaced: boolean; matchStart: number; matchEnd: number } => {
+): {
+  content: string;
+  replaced: boolean;
+  matchStart: number;
+  matchEnd: number;
+} => {
   const matches = findAllMatches(content, searchText, options);
-  const match = matches.find(({ start }) => start >= startIndex) ?? matches.at(0);
+  const match =
+    matches.find(({ start }) => start >= startIndex) ?? matches.at(0);
   if (!match) {
     return { content, replaced: false, matchStart: -1, matchEnd: -1 };
   }
   return {
-    content: content.slice(0, match.start) + replaceText + content.slice(match.end),
+    content:
+      content.slice(0, match.start) + replaceText + content.slice(match.end),
     replaced: true,
     matchStart: match.start,
     matchEnd: match.start + replaceText.length,
@@ -75,7 +86,10 @@ export const getDefaultHighlightOptions = (): HighlightOptions => ({
   otherMatchColor: "var(--doc-find-highlight)",
 });
 
-export const scrollToMatch = (containerElement: HTMLElement | null, match: FindMatch): void => {
+export const scrollToMatch = (
+  containerElement: HTMLElement | null,
+  match: FindMatch,
+): void => {
   if (!containerElement) {
     return;
   }
@@ -86,6 +100,8 @@ export const scrollToMatch = (containerElement: HTMLElement | null, match: FindM
     containerElement.querySelector<HTMLElement>(
       `.layout-paragraph[data-block-id="block-${match.paragraphIndex + 1}"]`,
     ) ??
-    containerElement.querySelectorAll<HTMLElement>(".layout-paragraph").item(match.paragraphIndex);
+    containerElement
+      .querySelectorAll<HTMLElement>(".layout-paragraph")
+      .item(match.paragraphIndex);
   scrollEditorElementIntoView(paragraphElement);
 };

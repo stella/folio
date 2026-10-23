@@ -1,6 +1,6 @@
-import { cloneModel } from "./modelClone";
 import { Result } from "better-result";
 
+import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { DocumentOp } from "./types";
 
@@ -34,7 +34,9 @@ export const captureDocumentOp = (op: DocumentOp): DocumentOp => {
 };
 
 /** Restore validated presence metadata without mutating the supplied operation. */
-export const restoreDocumentOp = (op: DocumentOp): Result<DocumentOp, DocumentOpRefusal> => {
+export const restoreDocumentOp = (
+  op: DocumentOp,
+): Result<DocumentOp, DocumentOpRefusal> => {
   if (op === null || typeof op !== "object" || Array.isArray(op))
     return Result.err(
       new DocumentOpRefusal({
@@ -61,20 +63,30 @@ export const restoreDocumentOp = (op: DocumentOp): Result<DocumentOp, DocumentOp
     if (
       !Array.isArray(path) ||
       path.length === 0 ||
-      path.some((part) => typeof part !== "string" || RESERVED_SEGMENTS.has(part))
+      path.some(
+        (part) => typeof part !== "string" || RESERVED_SEGMENTS.has(part),
+      )
     )
       return invalid("Operation presence metadata contains an invalid path.");
     const first = path.at(0);
     if (first === "type" || first === PRESENCE_FIELD)
-      return invalid("Operation presence metadata cannot replace journal identity.");
+      return invalid(
+        "Operation presence metadata cannot replace journal identity.",
+      );
     const identity = JSON.stringify(path);
     if (known.has(identity))
       return invalid("Operation presence metadata contains duplicate paths.");
     known.add(identity);
     let parent: unknown = restored;
     for (const part of path.slice(0, -1)) {
-      if (typeof parent !== "object" || parent === null || !Object.hasOwn(parent, part))
-        return invalid("Operation presence metadata has no owned parent field.");
+      if (
+        typeof parent !== "object" ||
+        parent === null ||
+        !Object.hasOwn(parent, part)
+      )
+        return invalid(
+          "Operation presence metadata has no owned parent field.",
+        );
       parent = Reflect.get(parent, part);
     }
     const field = path.at(-1);
@@ -87,12 +99,16 @@ export const restoreDocumentOp = (op: DocumentOp): Result<DocumentOp, DocumentOp
       value !== undefined &&
       !(Array.isArray(parent) && value === null)
     )
-      return invalid("Operation presence metadata conflicts with an existing value.");
+      return invalid(
+        "Operation presence metadata conflicts with an existing value.",
+      );
     if (
       Array.isArray(parent) &&
       (!/^(0|[1-9][0-9]*)$/u.test(field) || Number(field) >= parent.length)
     )
-      return invalid("Operation presence metadata names an unavailable array slot.");
+      return invalid(
+        "Operation presence metadata names an unavailable array slot.",
+      );
     Reflect.set(parent, field, undefined);
   }
   delete restored.undefinedFields;

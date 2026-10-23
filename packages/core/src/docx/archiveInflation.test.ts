@@ -30,7 +30,10 @@ const observeInflatedBytes = (entry: JSZip.JSZipObject): (() => number) => {
   return () => seen;
 };
 
-const loadEntry = async (bytes: Uint8Array, path: string): Promise<JSZip.JSZipObject> => {
+const loadEntry = async (
+  bytes: Uint8Array,
+  path: string,
+): Promise<JSZip.JSZipObject> => {
   const entry = (await JSZip.loadAsync(bytes)).file(path);
   if (!entry) {
     throw new Error(`Expected the fixture entry ${path}`);
@@ -38,7 +41,9 @@ const loadEntry = async (bytes: Uint8Array, path: string): Promise<JSZip.JSZipOb
   return entry;
 };
 
-const storedArchive = async (entries: Record<string, string>): Promise<Uint8Array> => {
+const storedArchive = async (
+  entries: Record<string, string>,
+): Promise<Uint8Array> => {
   const zip = new JSZip();
   for (const [path, content] of Object.entries(entries)) {
     zip.file(path, content, { createFolders: false });
@@ -85,7 +90,10 @@ describe("inflateEntryWithinLimits", () => {
         budget,
       });
 
-    expect(await inflate("a")).toEqual({ ok: true, bytes: new TextEncoder().encode("12345") });
+    expect(await inflate("a")).toEqual({
+      ok: true,
+      bytes: new TextEncoder().encode("12345"),
+    });
     expect(await inflate("b")).toEqual({ ok: false, limit: "total" });
     expect(budget.inflatedBytes).toBe(5);
   });
@@ -124,7 +132,11 @@ describe("inflateEntryWithinLimits", () => {
     const deflated = rawDeflateOfZeros(1024);
     expect(deflated.byteLength).toBeLessThan(2 * MEBIBYTE);
     const entry = await loadEntry(
-      await archiveWithRawDeflate({ entryPath: "zeros.bin", deflated, declaredBytes: 64 }),
+      await archiveWithRawDeflate({
+        entryPath: "zeros.bin",
+        deflated,
+        declaredBytes: 64,
+      }),
       "zeros.bin",
     );
     const inflatedBytes = observeInflatedBytes(entry);
@@ -160,7 +172,10 @@ describe("inflateEntryWithinLimits", () => {
       inflate("word/header1.xml"),
     ]);
 
-    expect(kept).toEqual({ ok: true, bytes: new TextEncoder().encode("<w:document/>") });
+    expect(kept).toEqual({
+      ok: true,
+      bytes: new TextEncoder().encode("<w:document/>"),
+    });
     expect(stopped).toEqual({ ok: false, limit: "declared-size" });
     expect(budget.inflatedBytes).toBe("<w:document/>".length);
   });
@@ -197,7 +212,9 @@ describe("entry classification", () => {
     expect(isRatioBoundedPart("word/document.xml")).toBe(true);
     expect(isRatioBoundedPart("word/_rels/document.xml.rels")).toBe(true);
     expect(isRatioBoundedPart("word/media/image1.BMP")).toBe(false);
-    expect(compressionRatioLimitFor("word/media/image1.emf", 200)).toBe(Number.POSITIVE_INFINITY);
+    expect(compressionRatioLimitFor("word/media/image1.emf", 200)).toBe(
+      Number.POSITIVE_INFINITY,
+    );
     expect(compressionRatioLimitFor("word/header1.xml", 200)).toBe(200);
   });
 });

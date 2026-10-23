@@ -18,20 +18,20 @@
  * - Content: w:p (paragraphs)
  */
 
-import type {
-  BlockContent,
-  Footnote,
-  Endnote,
-  Theme,
-  RelationshipMap,
-  MediaFile,
-} from "../types/document";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import type {
+  BlockContent,
+  Endnote,
+  Footnote,
+  MediaFile,
+  RelationshipMap,
+  Theme,
+} from "../types/document";
 import type { NumberingMap } from "./numberingParser";
+import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
-import { parseParagraph } from "./paragraphParser";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
@@ -42,8 +42,8 @@ import {
   getAttributes,
   getChildElements,
   getLocalName,
-  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 
@@ -125,7 +125,10 @@ function parseNoteType(
   }
 }
 
-function getNoteAttribute(element: XmlElement, localName: "id" | "type"): string | null {
+function getNoteAttribute(
+  element: XmlElement,
+  localName: "id" | "type",
+): string | null {
   for (const [name, value] of Object.entries(getAttributes(element))) {
     if (getLocalName(name) === localName) {
       return value;
@@ -163,9 +166,15 @@ function parseNoteBlockContent(
   for (const child of getChildElements(element)) {
     const localName = getLocalName(child.name ?? "");
     if (localName === "p") {
-      blocks.push(parseParagraph(child, styles, theme, numbering, rels, media, { previews }));
+      blocks.push(
+        parseParagraph(child, styles, theme, numbering, rels, media, {
+          previews,
+        }),
+      );
     } else if (localName === "tbl") {
-      const table = parseTable(child, styles, theme, numbering, rels, media, { previews });
+      const table = parseTable(child, styles, theme, numbering, rels, media, {
+        previews,
+      });
       if (table) {
         blocks.push(table);
       }
@@ -188,7 +197,15 @@ function parseNoteBlockContent(
         type: "blockSdt",
         properties,
         content: sdtContent
-          ? parseNoteBlockContent(sdtContent, styles, theme, numbering, rels, media, previews)
+          ? parseNoteBlockContent(
+              sdtContent,
+              styles,
+              theme,
+              numbering,
+              rels,
+              media,
+              previews,
+            )
           : [],
       });
     } else if (
@@ -218,7 +235,15 @@ function parseFootnote(
   const typeAttr = getNoteAttribute(element, "type");
   const noteType = parseNoteType(typeAttr);
 
-  const content = parseNoteBlockContent(element, styles, theme, numbering, rels, media, previews);
+  const content = parseNoteBlockContent(
+    element,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    previews,
+  );
 
   return {
     type: "footnote",
@@ -260,7 +285,8 @@ export function parseFootnotes(
 
   // Find the root footnotes element
   const rootElement = doc.elements?.find(
-    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "footnotes",
+    (el: XmlElement) =>
+      el.type === "element" && getLocalName(el.name ?? "") === "footnotes",
   );
 
   if (!rootElement) {
@@ -271,7 +297,15 @@ export function parseFootnotes(
   const footnoteElements = findChildren(rootElement, "w", "footnote");
 
   for (const fnEl of footnoteElements) {
-    const footnote = parseFootnote(fnEl, styles, theme, numbering, rels, media, previews);
+    const footnote = parseFootnote(
+      fnEl,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      previews,
+    );
     // A `w:footnoteReference` names one `w:id`, so a repeat of an id is a note
     // nothing can reference. Word resolves such a reference to the first
     // definition; keeping the first here is also what `mergeFootnoteMaps` does,
@@ -295,7 +329,10 @@ export function parseFootnotes(
 /**
  * Create FootnoteMap object with helper methods
  */
-function createFootnoteMap(byId: Map<number, Footnote>, footnotes: Footnote[]): FootnoteMap {
+function createFootnoteMap(
+  byId: Map<number, Footnote>,
+  footnotes: Footnote[],
+): FootnoteMap {
   return {
     byId,
     footnotes,
@@ -342,7 +379,15 @@ function parseEndnote(
   const typeAttr = getNoteAttribute(element, "type");
   const noteType = parseNoteType(typeAttr);
 
-  const content = parseNoteBlockContent(element, styles, theme, numbering, rels, media, previews);
+  const content = parseNoteBlockContent(
+    element,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    previews,
+  );
 
   return {
     type: "endnote",
@@ -384,7 +429,8 @@ export function parseEndnotes(
 
   // Find the root endnotes element
   const rootElement = doc.elements?.find(
-    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "endnotes",
+    (el: XmlElement) =>
+      el.type === "element" && getLocalName(el.name ?? "") === "endnotes",
   );
 
   if (!rootElement) {
@@ -395,7 +441,15 @@ export function parseEndnotes(
   const endnoteElements = findChildren(rootElement, "w", "endnote");
 
   for (const enEl of endnoteElements) {
-    const endnote = parseEndnote(enEl, styles, theme, numbering, rels, media, previews);
+    const endnote = parseEndnote(
+      enEl,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      previews,
+    );
     // First definition wins, as for footnotes above.
     if (byId.has(endnote.id)) {
       context?.warn({
@@ -416,7 +470,10 @@ export function parseEndnotes(
 /**
  * Create EndnoteMap object with helper methods
  */
-function createEndnoteMap(byId: Map<number, Endnote>, endnotes: Endnote[]): EndnoteMap {
+function createEndnoteMap(
+  byId: Map<number, Endnote>,
+  endnotes: Endnote[],
+): EndnoteMap {
   return {
     byId,
     endnotes,
@@ -444,7 +501,10 @@ function createEndnoteMap(byId: Map<number, Endnote>, endnotes: Endnote[]): Endn
 }
 
 // Re-export note properties parsers for backward compatibility
-export { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
+export {
+  parseFootnoteProperties,
+  parseEndnoteProperties,
+} from "./notePropertiesParser";
 
 // ============================================================================
 // UTILITY FUNCTIONS

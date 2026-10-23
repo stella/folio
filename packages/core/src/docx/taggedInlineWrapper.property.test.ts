@@ -16,8 +16,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, ParagraphContent } from "../types/document";
@@ -29,7 +31,9 @@ const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const parseParagraphXml = (body: string): Paragraph => {
-  const root = parseXmlDocument(`<w:p xmlns:w="${W}" xmlns:r="${R}">${body}</w:p>`);
+  const root = parseXmlDocument(
+    `<w:p xmlns:w="${W}" xmlns:r="${R}">${body}</w:p>`,
+  );
   if (!root) {
     throw new Error("Failed to parse the paragraph fixture");
   }
@@ -38,7 +42,9 @@ const parseParagraphXml = (body: string): Paragraph => {
 
 /** The serializer writes a bare `<w:p>`, so re-reading it needs the bindings back. */
 const reparse = (saved: string): Paragraph =>
-  parseParagraphXml(saved.slice(saved.indexOf(">") + 1, saved.lastIndexOf("</w:p>")));
+  parseParagraphXml(
+    saved.slice(saved.indexOf(">") + 1, saved.lastIndexOf("</w:p>")),
+  );
 
 const wrapParagraph = (paragraph: Paragraph): Document => ({
   package: { document: { content: [paragraph] } },
@@ -74,7 +80,9 @@ const shapeOf = (item: ParagraphContent): Shape => {
     case "run":
       return {
         of: "text",
-        text: item.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+        text: item.content
+          .map((part) => (part.type === "text" ? part.text : ""))
+          .join(""),
       };
     case "inlineWrapper":
       return {
@@ -89,19 +97,31 @@ const shapeOf = (item: ParagraphContent): Shape => {
     case "deletion":
     case "moveFrom":
     case "moveTo":
-      return { of: "revision", type: item.type, content: item.content.map(shapeOf) };
+      return {
+        of: "revision",
+        type: item.type,
+        content: item.content.map(shapeOf),
+      };
     case "hyperlink":
-      return { of: "hyperlink", anchor: item.anchor, content: item.children.map(shapeOf) };
+      return {
+        of: "hyperlink",
+        anchor: item.anchor,
+        content: item.children.map(shapeOf),
+      };
     default:
       return { of: "other", type: item.type };
   }
 };
 
-const shapesOf = (paragraph: Paragraph): Shape[] => paragraph.content.map(shapeOf);
+const shapesOf = (paragraph: Paragraph): Shape[] =>
+  paragraph.content.map(shapeOf);
 
 type Layer = { xml: (inner: string) => string; shape: string };
 
-const bidiLayer = (control: "override" | "embedding", direction?: "ltr" | "rtl"): Layer => {
+const bidiLayer = (
+  control: "override" | "embedding",
+  direction?: "ltr" | "rtl",
+): Layer => {
   const tag = control === "override" ? "bdo" : "dir";
   const value = direction === undefined ? "" : ` w:val="${direction}"`;
   return {
@@ -142,7 +162,9 @@ const taggedArbitrary: fc.Arbitrary<Layer> = fc
     uri: fc.constantFrom("urn:example:tags", undefined),
     properties: fc.constantFrom("v", undefined),
   })
-  .map(({ kind, element, uri, properties }) => taggedLayer(kind, element, uri, properties));
+  .map(({ kind, element, uri, properties }) =>
+    taggedLayer(kind, element, uri, properties),
+  );
 
 /** One to three layers, at least one of which is the kind under test. */
 const layersArbitrary: fc.Arbitrary<Layer[]> = fc
@@ -176,9 +198,17 @@ const nest = (layers: readonly Layer[], inner: string): string => {
 const authoredShape = (layers: readonly Layer[], inner: string): Shape => {
   let wrapped: Shape;
   if (inner === HYPERLINK) {
-    wrapped = { of: "hyperlink", anchor: "top", content: [{ of: "text", text: "x" }] };
+    wrapped = {
+      of: "hyperlink",
+      anchor: "top",
+      content: [{ of: "text", text: "x" }],
+    };
   } else if (inner === INSERTED) {
-    wrapped = { of: "revision", type: "insertion", content: [{ of: "text", text: "x" }] };
+    wrapped = {
+      of: "revision",
+      type: "insertion",
+      content: [{ of: "text", text: "x" }],
+    };
   } else {
     wrapped = { of: "text", text: "x" };
   }
@@ -195,7 +225,9 @@ describe("a smart tag or a run-level custom-XML wrapper through parse and save",
       fc.assert(
         fc.property(layersArbitrary, contentArbitrary, (layers, inner) => {
           const authored = parseParagraphXml(nest(layers, inner));
-          expect(shapesOf(reparse(serializeParagraph(authored)))).toEqual(shapesOf(authored));
+          expect(shapesOf(reparse(serializeParagraph(authored)))).toEqual(
+            shapesOf(authored),
+          );
         }),
         propertyConfig({ numRuns: 200 }),
       );
@@ -208,7 +240,9 @@ describe("a smart tag or a run-level custom-XML wrapper through parse and save",
     () => {
       fc.assert(
         fc.property(layersArbitrary, contentArbitrary, (layers, inner) => {
-          const once = serializeParagraph(parseParagraphXml(nest(layers, inner)));
+          const once = serializeParagraph(
+            parseParagraphXml(nest(layers, inner)),
+          );
           expect(serializeParagraph(reparse(once))).toBe(once);
         }),
         propertyConfig({ numRuns: 200 }),
@@ -222,9 +256,13 @@ describe("a smart tag or a run-level custom-XML wrapper through parse and save",
     () => {
       fc.assert(
         fc.property(layersArbitrary, contentArbitrary, (layers, inner) => {
-          const saved = serializeParagraph(parseParagraphXml(nest(layers, inner)));
+          const saved = serializeParagraph(
+            parseParagraphXml(nest(layers, inner)),
+          );
           for (const layer of layers) {
-            expect(saved).toContain(layer.xml("").slice(0, layer.xml("").indexOf(">") + 1));
+            expect(saved).toContain(
+              layer.xml("").slice(0, layer.xml("").indexOf(">") + 1),
+            );
           }
         }),
         propertyConfig({ numRuns: 200 }),
@@ -240,7 +278,9 @@ describe("a smart tag or a run-level custom-XML wrapper through the editor", () 
     () => {
       fc.assert(
         fc.property(layersArbitrary, contentArbitrary, (layers, inner) => {
-          const reopened = throughTheEditor(parseParagraphXml(nest(layers, inner)));
+          const reopened = throughTheEditor(
+            parseParagraphXml(nest(layers, inner)),
+          );
           expect(shapesOf(reopened)).toEqual([authoredShape(layers, inner)]);
         }),
         propertyConfig({ numRuns: 200 }),
@@ -279,7 +319,9 @@ describe("the properties a tagged wrapper carries", () => {
         throw new Error(`Expected a ${kind} wrapper`);
       }
       expect(wrapper.propertiesXml).toBe(properties);
-      expect(serializeParagraph(throughTheEditor(authored))).toContain(properties);
+      expect(serializeParagraph(throughTheEditor(authored))).toContain(
+        properties,
+      );
     });
 
     test(`two adjacent w:${kind} that differ only in their properties stay two`, () => {
@@ -287,12 +329,16 @@ describe("the properties a tagged wrapper carries", () => {
       const two = `<w:${kind} w:element="Date"><w:${kind}Pr><w:attr w:name="k" w:val="2"/></w:${kind}Pr><w:r><w:t>b</w:t></w:r></w:${kind}>`;
       const reopened = throughTheEditor(parseParagraphXml(`${one}${two}`));
       expect(reopened.content).toHaveLength(2);
-      expect(shapesOf(reopened)).toEqual(shapesOf(parseParagraphXml(`${one}${two}`)));
+      expect(shapesOf(reopened)).toEqual(
+        shapesOf(parseParagraphXml(`${one}${two}`)),
+      );
     });
   }
 
   test("properties that are not the element they claim to be are not replayed", () => {
-    const authored = parseParagraphXml(`<w:smartTag w:element="Date">${RUN}</w:smartTag>`);
+    const authored = parseParagraphXml(
+      `<w:smartTag w:element="Date">${RUN}</w:smartTag>`,
+    );
     const wrapper = authored.content.at(0);
     if (wrapper?.type !== "inlineWrapper" || wrapper.kind !== "smartTag") {
       throw new Error("Expected a smart tag wrapper");
@@ -311,16 +357,21 @@ describe("the properties a tagged wrapper carries", () => {
     ["<?producer hidden?><w:smartTagPr/>", "<w:smartTagPr/>"],
     ['<x:smartTagPr xmlns:x="urn:evil"/>', ""],
     ['<w:smartTagPr xmlns:w="urn:evil"/>', ""],
-  ] as const)("unsafe smart-tag properties are sanitized: %s", (propertiesXml, sanitized) => {
-    const authored = parseParagraphXml(`<w:smartTag w:element="Date">${RUN}</w:smartTag>`);
-    const wrapper = authored.content.at(0);
-    if (wrapper?.type !== "inlineWrapper" || wrapper.kind !== "smartTag") {
-      throw new Error("Expected a smart tag wrapper");
-    }
-    wrapper.propertiesXml = propertiesXml;
+  ] as const)(
+    "unsafe smart-tag properties are sanitized: %s",
+    (propertiesXml, sanitized) => {
+      const authored = parseParagraphXml(
+        `<w:smartTag w:element="Date">${RUN}</w:smartTag>`,
+      );
+      const wrapper = authored.content.at(0);
+      if (wrapper?.type !== "inlineWrapper" || wrapper.kind !== "smartTag") {
+        throw new Error("Expected a smart tag wrapper");
+      }
+      wrapper.propertiesXml = propertiesXml;
 
-    expect(serializeParagraph(authored)).toBe(
-      `<w:p><w:smartTag w:element="Date">${sanitized}<w:r><w:t>x</w:t></w:r></w:smartTag></w:p>`,
-    );
-  });
+      expect(serializeParagraph(authored)).toBe(
+        `<w:p><w:smartTag w:element="Date">${sanitized}<w:r><w:t>x</w:t></w:r></w:smartTag></w:p>`,
+      );
+    },
+  );
 });

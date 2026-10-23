@@ -102,7 +102,8 @@ export const syncWorkspaceVersions = (
     }
 
     const start = cursor;
-    while (cursor < source.length && !/[\s,}\]]/.test(source[cursor] ?? "")) cursor += 1;
+    while (cursor < source.length && !/[\s,}\]]/.test(source[cursor] ?? ""))
+      cursor += 1;
     if (cursor === start) fail("expected a value");
     return { kind: "other" };
   };
@@ -136,17 +137,21 @@ export const syncWorkspaceVersions = (
   const root = parseValue();
   skipTrivia();
   if (cursor !== source.length) fail("unexpected content after root value");
-  if (root.kind !== "object") throw new Error("Invalid bun.lock: root must be an object");
+  if (root.kind !== "object")
+    throw new Error("Invalid bun.lock: root must be an object");
   const workspaces = root.properties.get("workspaces");
   if (workspaces?.kind !== "object") {
-    throw new Error("Invalid bun.lock: root workspaces property must be an object");
+    throw new Error(
+      "Invalid bun.lock: root workspaces property must be an object",
+    );
   }
 
   const mismatches: WorkspaceVersionMismatch[] = [];
   const replacements: Array<{ start: number; end: number; value: string }> = [];
   for (const [workspace, expected] of expectedVersions) {
     const entry = workspaces.properties.get(workspace);
-    const version = entry?.kind === "object" ? entry.properties.get("version") : undefined;
+    const version =
+      entry?.kind === "object" ? entry.properties.get("version") : undefined;
     const actual = version?.kind === "string" ? version.value : null;
     if (actual === expected) continue;
     mismatches.push({ workspace, expected, actual });
@@ -161,7 +166,10 @@ export const syncWorkspaceVersions = (
 
   let text = source;
   for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
-    text = text.slice(0, replacement.start) + replacement.value + text.slice(replacement.end);
+    text =
+      text.slice(0, replacement.start) +
+      replacement.value +
+      text.slice(replacement.end);
   }
   return { text, mismatches };
 };

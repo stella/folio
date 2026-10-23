@@ -3,12 +3,13 @@
  */
 
 import { useCallback, useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import {
   TABLE_PROPERTY_JUSTIFICATIONS,
-  toTablePropertyJustification,
   type TablePropertiesCommand,
+  toTablePropertyJustification,
 } from "@stll/folio-core/utils/tableOperations";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -23,7 +24,9 @@ export type TablePropertiesDialogProps = {
   currentProps?: TableProperties;
 };
 
-const editableWidthType = (value: string): NonNullable<TableProperties["widthType"]> => {
+const editableWidthType = (
+  value: string,
+): NonNullable<TableProperties["widthType"]> => {
   switch (value) {
     case "dxa":
     case "pct":
@@ -48,7 +51,12 @@ export function TablePropertiesDialog(props: TablePropertiesDialogProps) {
   if (!props.isOpen) {
     return null;
   }
-  return <TablePropertiesDialogForm key={JSON.stringify(props.currentProps)} {...props} />;
+  return (
+    <TablePropertiesDialogForm
+      key={JSON.stringify(props.currentProps)}
+      {...props}
+    />
+  );
 }
 
 function TablePropertiesDialogForm({
@@ -69,7 +77,9 @@ function TablePropertiesDialogForm({
   const t = useTranslations("folio");
   const id = useId();
   const [width, setWidth] = useState(currentProps?.width ?? 0);
-  const [widthType, setWidthType] = useState(editableWidthType(currentProps?.widthType ?? "auto"));
+  const [widthType, setWidthType] = useState(
+    editableWidthType(currentProps?.widthType ?? "auto"),
+  );
   const [justification, setJustification] = useState(
     toTablePropertyJustification(currentProps?.justification),
   );
@@ -115,12 +125,20 @@ function TablePropertiesDialogForm({
               <select
                 className={inputCls}
                 id={fieldIds.widthType}
-                onChange={(e) => setWidthType(editableWidthType(e.target.value))}
+                onChange={(e) =>
+                  setWidthType(editableWidthType(e.target.value))
+                }
                 value={widthType}
               >
-                <option value="auto">{t("dialogs.tableProperties.widthTypes.auto")}</option>
-                <option value="dxa">{t("dialogs.tableProperties.widthTypes.fixed")}</option>
-                <option value="pct">{t("dialogs.tableProperties.widthTypes.percentage")}</option>
+                <option value="auto">
+                  {t("dialogs.tableProperties.widthTypes.auto")}
+                </option>
+                <option value="dxa">
+                  {t("dialogs.tableProperties.widthTypes.fixed")}
+                </option>
+                <option value="pct">
+                  {t("dialogs.tableProperties.widthTypes.percentage")}
+                </option>
               </select>
             </div>
 
@@ -153,7 +171,9 @@ function TablePropertiesDialogForm({
               <select
                 className={inputCls}
                 id={fieldIds.align}
-                onChange={(e) => setJustification(toTablePropertyJustification(e.target.value))}
+                onChange={(e) =>
+                  setJustification(toTablePropertyJustification(e.target.value))
+                }
                 value={justification}
               >
                 {TABLE_PROPERTY_JUSTIFICATIONS.map((value) => (

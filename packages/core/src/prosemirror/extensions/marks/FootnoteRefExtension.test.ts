@@ -12,7 +12,11 @@ describe("FootnoteRefExtension parseDOM", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.text("1", [
-          footnoteRef.create({ occurrenceId: "fixture-note", id: "1", noteType: "footnote" }),
+          footnoteRef.create({
+            occurrenceId: "fixture-note",
+            id: "1",
+            noteType: "footnote",
+          }),
         ]),
       ]),
     ]);
@@ -23,7 +27,9 @@ describe("FootnoteRefExtension parseDOM", () => {
 
     expect(footnoteRef.spec.inclusive).toBe(false);
     expect(inserted?.text).toBe("replacement");
-    expect(inserted?.marks.some((mark) => mark.type === footnoteRef)).toBe(false);
+    expect(inserted?.marks.some((mark) => mark.type === footnoteRef)).toBe(
+      false,
+    );
   });
 
   test("parses superscript footnote refs rendered as sup", () => {
@@ -32,13 +38,19 @@ describe("FootnoteRefExtension parseDOM", () => {
       throw new Error("expected footnoteRef mark");
     }
     const parseRules = footnoteRef.spec.parseDOM ?? [];
-    const rule = parseRules.find((candidate) => candidate.tag === "sup.docx-footnote-ref");
+    const rule = parseRules.find(
+      (candidate) => candidate.tag === "sup.docx-footnote-ref",
+    );
     if (!rule || typeof rule.getAttrs !== "function") {
       throw new Error("expected sup footnoteRef getAttrs rule");
     }
 
     const attrs = rule.getAttrs({
-      dataset: { noteOccurrence: "fixture-note", id: "7", noteType: "footnote" },
+      dataset: {
+        noteOccurrence: "fixture-note",
+        id: "7",
+        noteType: "footnote",
+      },
     } as unknown as HTMLElement);
 
     expect(attrs).toEqual({
@@ -55,13 +67,19 @@ describe("FootnoteRefExtension parseDOM", () => {
       throw new Error("expected footnoteRef mark");
     }
     const parseRules = footnoteRef.spec.parseDOM ?? [];
-    const rule = parseRules.find((candidate) => candidate.tag === "span.docx-footnote-ref");
+    const rule = parseRules.find(
+      (candidate) => candidate.tag === "span.docx-footnote-ref",
+    );
     if (!rule || typeof rule.getAttrs !== "function") {
       throw new Error("expected span footnoteRef getAttrs rule");
     }
 
     const attrs = rule.getAttrs({
-      dataset: { noteOccurrence: "fixture-note", id: "7", noteType: "footnote" },
+      dataset: {
+        noteOccurrence: "fixture-note",
+        id: "7",
+        noteType: "footnote",
+      },
     } as unknown as HTMLElement);
 
     expect(attrs).toEqual({
@@ -78,7 +96,9 @@ describe("FootnoteRefExtension parseDOM", () => {
       throw new Error("expected footnoteRef mark");
     }
     const parseRules = footnoteRef.spec.parseDOM ?? [];
-    const rule = parseRules.find((candidate) => candidate.tag === "span.docx-endnote-ref");
+    const rule = parseRules.find(
+      (candidate) => candidate.tag === "span.docx-endnote-ref",
+    );
     if (!rule || typeof rule.getAttrs !== "function") {
       throw new Error("expected span endnoteRef getAttrs rule");
     }
@@ -104,7 +124,11 @@ describe("FootnoteRefExtension toDOM", () => {
     }
 
     const dom = footnoteRef.spec.toDOM(
-      footnoteRef.create({ occurrenceId: "fixture-note", id: "7", noteType: "footnote" }),
+      footnoteRef.create({
+        occurrenceId: "fixture-note",
+        id: "7",
+        noteType: "footnote",
+      }),
       false,
     );
 

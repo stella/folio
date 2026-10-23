@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
-import type { EditorState as PMEditorState, Transaction } from "prosemirror-state";
+import type {
+  EditorState as PMEditorState,
+  Transaction,
+} from "prosemirror-state";
 
 import { schema } from "../schema";
 import { createTemplateDirectivesPlugin } from "./templateDirectives";
@@ -18,7 +21,11 @@ import type { TemplateSlashMenuKeyAction } from "./templateSlashMenu";
  *  offset, converted to the absolute PM position by the leading "+1"). */
 const stateWith = (text: string, caret: number): PMEditorState => {
   const doc = schema.node("doc", null, [
-    schema.node("paragraph", null, text === "" ? undefined : [schema.text(text)]),
+    schema.node(
+      "paragraph",
+      null,
+      text === "" ? undefined : [schema.text(text)],
+    ),
   ]);
   return EditorState.create({
     doc,
@@ -120,7 +127,9 @@ describe("templateSlashMenu state machine", () => {
     let state = stateWith("/", 1);
     state = openAt(state, 0);
     state = typeChars(state, "fi"); // "/fi", span [1, 4]
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 3)),
+    );
     const open = getTemplateSlashMenu(state);
     expect(open.active).toBe(true);
     expect(open.active && open.query).toBe("fi");
@@ -133,7 +142,9 @@ describe("templateSlashMenu state machine", () => {
     state = openAt(state, 0);
     state = typeChars(state, "fi"); // "/fi more", span [1, 4]
     expect(getTemplateSlashMenu(state).active).toBe(true);
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 7)),
+    );
     expect(getTemplateSlashMenu(state).active).toBe(false);
   });
 
@@ -141,7 +152,9 @@ describe("templateSlashMenu state machine", () => {
     let state = stateWith("/", 1);
     state = openAt(state, 0);
     state = typeChars(state, "fi");
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 3)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 3)),
+    );
     expect(getTemplateSlashMenu(state).active).toBe(false);
   });
 
@@ -165,7 +178,9 @@ describe("consumeTemplateSlashQuery", () => {
         .setMeta(templateSlashMenuKey, { type: "open", from: 5, query: "" }),
     );
     state = typeChars(state, "field");
-    expect(getTemplateSlashMenu(state).active && getTemplateSlashMenu(state).query).toBe("field");
+    expect(
+      getTemplateSlashMenu(state).active && getTemplateSlashMenu(state).query,
+    ).toBe("field");
     const result = consumeTemplateSlashQuery(state);
     expect(result).not.toBeNull();
     if (result === null) {
@@ -189,7 +204,9 @@ describe("consumeTemplateSlashQuery", () => {
         .setMeta(templateSlashMenuKey, { type: "open", from: 5, query: "" }),
     );
     state = typeChars(state, "field");
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 8)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 8)),
+    );
     expect(getTemplateSlashMenu(state).active).toBe(true);
     const result = consumeTemplateSlashQuery(state);
     expect(result).not.toBeNull();
@@ -246,9 +263,15 @@ const makePluginHarness = (
   caret: number,
   onKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean,
 ) => {
-  const plugin = onKeyAction ? templateSlashMenuPlugin({ onKeyAction }) : templateSlashMenuPlugin();
+  const plugin = onKeyAction
+    ? templateSlashMenuPlugin({ onKeyAction })
+    : templateSlashMenuPlugin();
   const doc = schema.node("doc", null, [
-    schema.node("paragraph", null, text === "" ? undefined : [schema.text(text)]),
+    schema.node(
+      "paragraph",
+      null,
+      text === "" ? undefined : [schema.text(text)],
+    ),
   ]);
   const view: FakeView = {
     state: EditorState.create({
@@ -262,7 +285,12 @@ const makePluginHarness = (
   };
   const props = plugin.props as unknown as {
     handleKeyDown: (view: FakeView, event: KeyEventLike) => boolean;
-    handleTextInput: (view: FakeView, from: number, to: number, text: string) => boolean;
+    handleTextInput: (
+      view: FakeView,
+      from: number,
+      to: number,
+      text: string,
+    ) => boolean;
   };
   return { view, props };
 };
@@ -276,7 +304,9 @@ type KeyEventLike = {
   preventDefault: () => void;
 };
 
-const keyEvent = (key: string): KeyEventLike & { defaultPrevented: boolean } => {
+const keyEvent = (
+  key: string,
+): KeyEventLike & { defaultPrevented: boolean } => {
   const event = {
     key,
     metaKey: false,
@@ -314,7 +344,9 @@ describe("templateSlashMenu handleTextInput", () => {
     // (`{% if {{ field }} %}`), which the fill grammar cannot parse, so the
     // directive-range guard must reject it.
     const text = "{% if cond %}";
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text(text)]),
+    ]);
     const caretAfterIf = text.indexOf("if ") + "if ".length; // parent offset
     const slash = templateSlashMenuPlugin();
     const view: FakeView = {
@@ -329,7 +361,12 @@ describe("templateSlashMenu handleTextInput", () => {
     };
     const handleTextInput = (
       slash.props as {
-        handleTextInput: (v: FakeView, from: number, to: number, text: string) => boolean;
+        handleTextInput: (
+          v: FakeView,
+          from: number,
+          to: number,
+          text: string,
+        ) => boolean;
       }
     ).handleTextInput;
     const at = view.state.selection.from;

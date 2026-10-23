@@ -34,15 +34,14 @@
     "build": "rm -rf dist && tsdown",
     "test": "bun test src",
     "typecheck": "bun check --no-pretty --all --project=tsconfig.build.json",
-    "prepack": "bun run build",
-    "format": "oxfmt ."
+    "prepack": "bun run build"
   },
   "dependencies": {
     "better-result": "3.0.1"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.87.0",
-    "bun-types": "1.4.3",
+    "bun-types": "1.4.4",
     "tsdown": "0.23.1"
   },
   "peerDependencies": {

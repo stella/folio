@@ -10,6 +10,7 @@ import {
   insertImageFromFile,
 } from "@stll/folio-core/prosemirror/commands/image";
 import type { ImageTransformAction } from "@stll/folio-core/prosemirror/commands/image";
+
 import type { ImagePositionData } from "../dialogs/ImagePositionDialog";
 import type { ImagePropertiesData } from "../dialogs/ImagePropertiesDialog";
 

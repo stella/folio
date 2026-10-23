@@ -15,9 +15,9 @@
  */
 
 import {
+  type ImportedIdCollisionKind,
   MAX_RETAINED_PARSE_WARNINGS_PER_CODE,
   type ParseWarning,
-  type ImportedIdCollisionKind,
   type ParseWarningCode,
   type ParseWarningLocation,
 } from "@stll/docx-core/model";
@@ -57,22 +57,32 @@ export type ParseWarningCollector = {
 
 const PACKAGE_PART = "package";
 
-export const createParseWarningCollector = (part = PACKAGE_PART): ParseWarningCollector => {
+export const createParseWarningCollector = (
+  part = PACKAGE_PART,
+): ParseWarningCollector => {
   const retained: ParseWarning[] = [];
   const retainedByCode = new Map<ParseWarningCode, number>();
   const suppressedByCode = new Map<ParseWarningCode, number>();
 
-  const record = (location: ParseWarningLocation, report: ParseWarningReport): void => {
+  const record = (
+    location: ParseWarningLocation,
+    report: ParseWarningReport,
+  ): void => {
     const count = report.count ?? 1;
     const kept = retainedByCode.get(report.code) ?? 0;
     if (kept >= MAX_RETAINED_PARSE_WARNINGS_PER_CODE) {
-      suppressedByCode.set(report.code, (suppressedByCode.get(report.code) ?? 0) + count);
+      suppressedByCode.set(
+        report.code,
+        (suppressedByCode.get(report.code) ?? 0) + count,
+      );
       return;
     }
     retainedByCode.set(report.code, kept + 1);
     retained.push({
       code: report.code,
-      ...(report.identityKind === undefined ? {} : { identityKind: report.identityKind }),
+      ...(report.identityKind === undefined
+        ? {}
+        : { identityKind: report.identityKind }),
       location: {
         ...location,
         ...(report.element === undefined ? {} : { element: report.element }),
@@ -94,7 +104,9 @@ export const createParseWarningCollector = (part = PACKAGE_PART): ParseWarningCo
       const at = next.at ?? location.at;
       return contextAt({
         part: next.part ?? location.part,
-        ...(location.element === undefined ? {} : { element: location.element }),
+        ...(location.element === undefined
+          ? {}
+          : { element: location.element }),
         ...(at === undefined ? {} : { at }),
       });
     },

@@ -22,7 +22,8 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocx } from "./parser";
 import { attemptSelectiveSave } from "./selectiveSave";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const CONTENT_TYPES = `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -89,7 +90,10 @@ const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
   return text;
 };
 
-const rangeOfText = (state: EditorState, text: string): { from: number; to: number } => {
+const rangeOfText = (
+  state: EditorState,
+  text: string,
+): { from: number; to: number } => {
   let range: { from: number; to: number } | undefined;
   state.doc.descendants((node, position) => {
     const at = node.isText ? (node.text?.indexOf(text) ?? -1) : -1;
@@ -110,11 +114,15 @@ describe("a selective save of an edit inside a bidirectional wrapper", () => {
     const state = EditorState.create({ doc: toProseDoc(parsed) });
     const { from, to } = rangeOfText(state, "side");
     const edited = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, from, to)).insertText("SIDE", from, to),
+      state.tr
+        .setSelection(TextSelection.create(state.doc, from, to))
+        .insertText("SIDE", from, to),
     );
 
     const saved = await attemptSelectiveSave(
-      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(edited.doc, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
       buffer,
       {
         changedParaIds: new Set([WRAPPED_PARAGRAPH_ID]),
@@ -134,6 +142,8 @@ describe("a selective save of an edit inside a bidirectional wrapper", () => {
     expect(xml.match(/<w:commentRangeStart\b/gu)).toHaveLength(1);
     expect(xml.match(/<w:commentRangeEnd\b/gu)).toHaveLength(1);
     // Only the edited paragraph was rebuilt.
-    expect(xml).toContain(`<w:p w14:paraId="${UNTOUCHED_PARAGRAPH_ID}"><w:r><w:t>untouched</w:t>`);
+    expect(xml).toContain(
+      `<w:p w14:paraId="${UNTOUCHED_PARAGRAPH_ID}"><w:r><w:t>untouched</w:t>`,
+    );
   });
 });

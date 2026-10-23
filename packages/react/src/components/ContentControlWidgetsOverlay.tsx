@@ -8,6 +8,7 @@ import { useTranslations } from "use-intl";
 
 import { ContentControlWidgetController } from "@stll/folio-core/controller/contentControlWidgetController";
 import type { ContentControlListItem } from "@stll/folio-core/controller/contentControlWidgetController";
+
 import { useFolioUI } from "../ui/folio-ui";
 
 type FolioMenuItem = ReturnType<typeof useFolioUI>["Menu"]["Item"];
@@ -112,8 +113,15 @@ type ContentControlDropdownItemProps = {
   onPick: (value: string) => boolean;
 };
 
-function ContentControlDropdownItem({ item, MenuItem, onPick }: ContentControlDropdownItemProps) {
-  const handleClick = useCallback(() => onPick(item.value), [item.value, onPick]);
+function ContentControlDropdownItem({
+  item,
+  MenuItem,
+  onPick,
+}: ContentControlDropdownItemProps) {
+  const handleClick = useCallback(
+    () => onPick(item.value),
+    [item.value, onPick],
+  );
 
   return <MenuItem onClick={handleClick}>{item.displayText}</MenuItem>;
 }

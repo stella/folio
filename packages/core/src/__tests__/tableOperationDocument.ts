@@ -10,15 +10,25 @@
  * package table is on its own.
  */
 
-import type { Paragraph, Table, TableCell, TableCellBlock, TableRow } from "@stll/docx-core/model";
+import type {
+  Paragraph,
+  Table,
+  TableCell,
+  TableCellBlock,
+  TableRow,
+} from "@stll/docx-core/model";
 
-import { parseDocx } from "../docx/parser";
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { createDocx } from "../docx/rezip";
-import { findChildren, OOXML_NAMESPACE_SCOPE, parseXml } from "../docx/xmlParser";
-import { fromMarkdown, toMarkdown } from "../markdown";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import {
+  findChildren,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+} from "../docx/xmlParser";
+import { fromMarkdown, toMarkdown } from "../markdown";
 
 /** One merged (or single) cell of a spec: where it starts and how far it spans. */
 export type TableSpecCell = {
@@ -41,7 +51,9 @@ export type TableSpec = {
 const paragraph = (text: string): Paragraph => ({
   type: "paragraph",
   content:
-    text.length === 0 ? [] : [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
+    text.length === 0
+      ? []
+      : [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });
 
 const COLUMN_WIDTH_TWIPS = 1400;
@@ -52,7 +64,10 @@ export const tableFromSpec = (spec: TableSpec): Table => {
   for (const cell of spec.cells) {
     origins.set(`${cell.row}:${cell.column}`, cell);
   }
-  const coveringCell = (row: number, column: number): TableSpecCell | undefined =>
+  const coveringCell = (
+    row: number,
+    column: number,
+  ): TableSpecCell | undefined =>
     spec.cells.find(
       (cell) =>
         row >= cell.row &&
@@ -86,7 +101,10 @@ export const tableFromSpec = (spec: TableSpec): Table => {
   }
   return {
     type: "table",
-    columnWidths: Array.from({ length: spec.columns }, () => COLUMN_WIDTH_TWIPS),
+    columnWidths: Array.from(
+      { length: spec.columns },
+      () => COLUMN_WIDTH_TWIPS,
+    ),
     rows,
   };
 };
@@ -95,9 +113,18 @@ export const tableFromSpec = (spec: TableSpec): Table => {
 export const buildTableDocx = async (spec: TableSpec): Promise<ArrayBuffer> => {
   const document = fromMarkdown("Before.\n\nAfter.");
   const body = document.package.document;
-  body.content = [body.content[0]!, tableFromSpec(spec), ...body.content.slice(1)];
-  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  body.content = [
+    body.content[0]!,
+    tableFromSpec(spec),
+    ...body.content.slice(1),
+  ];
+  const bytes = (
+    await ensureParaIds(new Uint8Array(await createDocx(document)))
+  ).docx;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 /** A cell as every reader reports it: its origin slot, its spans, its text. */
@@ -126,7 +153,9 @@ const byOrigin = (left: ProjectedCell, right: ProjectedCell): number =>
  * text is its own paragraphs joined by a newline — a nested table's text
  * belongs to that table, not the cell around it.
  */
-export const projectSnapshotTables = (blocks: readonly FolioAIBlock[]): ProjectedTable[] => {
+export const projectSnapshotTables = (
+  blocks: readonly FolioAIBlock[],
+): ProjectedTable[] => {
   const tables = new Map<number, Map<string, ProjectedCell>>();
   const topLevel = new Set<number>();
   for (const block of blocks) {
@@ -137,7 +166,8 @@ export const projectSnapshotTables = (blocks: readonly FolioAIBlock[]): Projecte
     if (table.outerTableIndex === table.tableIndex) {
       topLevel.add(table.tableIndex);
     }
-    const cells = tables.get(table.tableIndex) ?? new Map<string, ProjectedCell>();
+    const cells =
+      tables.get(table.tableIndex) ?? new Map<string, ProjectedCell>();
     tables.set(table.tableIndex, cells);
     const key = `${table.rowIndex}:${table.gridColumnIndex}`;
     const existing = cells.get(key);
@@ -159,7 +189,10 @@ export const projectSnapshotTables = (blocks: readonly FolioAIBlock[]): Projecte
       const list = [...cells.values()].sort(byOrigin);
       return {
         topLevel: topLevel.has(tableIndex),
-        columns: Math.max(0, ...list.map((cell) => cell.column + cell.columnSpan)),
+        columns: Math.max(
+          0,
+          ...list.map((cell) => cell.column + cell.columnSpan),
+        ),
         rows: Math.max(0, ...list.map((cell) => cell.row + cell.rowSpan)),
         cells: list,
       };
@@ -222,7 +255,11 @@ export const checkTableGrid = (
   // captured XML so an unmeasured but well formed grid is still checked.
   const gridSource = table.formatting?.gridSourceXml;
   const columns = gridSource
-    ? findChildren(parseXml(gridSource, OOXML_NAMESPACE_SCOPE).elements?.[0], "w", "gridCol").length
+    ? findChildren(
+        parseXml(gridSource, OOXML_NAMESPACE_SCOPE).elements?.[0],
+        "w",
+        "gridCol",
+      ).length
     : (table.columnWidths?.length ?? 0);
   const cells: ProjectedCell[] = [];
   const openByColumn = new Map<number, ProjectedCell>();
@@ -284,7 +321,12 @@ export const checkTableGrid = (
     }
   });
   return {
-    projection: { topLevel, columns, rows: table.rows.length, cells: cells.sort(byOrigin) },
+    projection: {
+      topLevel,
+      columns,
+      rows: table.rows.length,
+      cells: cells.sort(byOrigin),
+    },
     problems,
   };
 };
@@ -296,7 +338,9 @@ export type SavedTables = {
 };
 
 /** The package's own tables, checked, and the Markdown `docxToMarkdown` makes of it. */
-export const readSavedTables = async (bytes: ArrayBuffer): Promise<SavedTables> => {
+export const readSavedTables = async (
+  bytes: ArrayBuffer,
+): Promise<SavedTables> => {
   const document = await parseDocx(bytes, { preloadFonts: false });
   const tables = collectTables(document.package.document.content, []);
   const checked = tables.map(({ table, topLevel }, index) =>
@@ -321,7 +365,9 @@ export const readSavedTables = async (bytes: ArrayBuffer): Promise<SavedTables> 
  * single cells. Text is compared through the snapshot and the package; here
  * only the geometry is read.
  */
-export const projectMarkdownTables = (markdown: string): Omit<ProjectedCell, "text">[][] => {
+export const projectMarkdownTables = (
+  markdown: string,
+): Omit<ProjectedCell, "text">[][] => {
   const tables: Omit<ProjectedCell, "text">[][] = [];
   const lines = markdown.split("\n");
   let index = 0;
@@ -355,7 +401,12 @@ export const projectMarkdownTables = (markdown: string): Omit<ProjectedCell, "te
           row
             .slice(1, -1)
             .split(/(?<!\\)\|/)
-            .map((_cell, column) => ({ row: rowIndex, column, rowSpan: 1, columnSpan: 1 })),
+            .map((_cell, column) => ({
+              row: rowIndex,
+              column,
+              rowSpan: 1,
+              columnSpan: 1,
+            })),
         ),
       );
       continue;
@@ -410,7 +461,10 @@ const placeHtmlCells = (html: string): Omit<ProjectedCell, "text">[] => {
 
 const geometry = (cells: readonly Omit<ProjectedCell, "text">[]): string =>
   cells
-    .map(({ row, column, rowSpan, columnSpan }) => `${row}:${column}+${rowSpan}x${columnSpan}`)
+    .map(
+      ({ row, column, rowSpan, columnSpan }) =>
+        `${row}:${column}+${rowSpan}x${columnSpan}`,
+    )
     .join(" ");
 
 /** A reviewer's tables as the package, its reopened snapshot and its Markdown read them. */
@@ -426,7 +480,9 @@ export type TableReading = {
 };
 
 /** Save a reviewer and read its tables back every way there is. */
-export const readReviewerTables = async (reviewer: FolioDocxReviewer): Promise<TableReading> => {
+export const readReviewerTables = async (
+  reviewer: FolioDocxReviewer,
+): Promise<TableReading> => {
   const live = projectSnapshotTables(reviewer.getContent());
   const bytes = await reviewer.toBuffer();
   const reopened = await FolioDocxReviewer.fromBuffer(bytes);
@@ -446,7 +502,8 @@ export const readReviewerTables = async (reviewer: FolioDocxReviewer): Promise<T
  */
 export const tableReadingProblems = (reading: TableReading): string[] => {
   const problems = reading.saved.problems.map(
-    ({ table, row, problem }) => `package table ${table} row ${row}: ${problem}`,
+    ({ table, row, problem }) =>
+      `package table ${table} row ${row}: ${problem}`,
   );
   const snapshot = JSON.stringify(reading.snapshot);
   if (JSON.stringify(reading.saved.tables) !== snapshot) {

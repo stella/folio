@@ -1,5 +1,6 @@
-import type JSZip from "jszip";
 import { TaggedError } from "better-result";
+import type JSZip from "jszip";
+
 import { base64ToBytes, encodeBinaryString, encodeUtf8 } from "./encoding";
 
 class ZipStreamInputError extends TaggedError("ZipStreamInputError")<{
@@ -7,7 +8,9 @@ class ZipStreamInputError extends TaggedError("ZipStreamInputError")<{
 }> {}
 
 const joinBytes = (chunks: Uint8Array[]): Uint8Array => {
-  const result = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
+  const result = new Uint8Array(
+    chunks.reduce((length, chunk) => length + chunk.length, 0),
+  );
   let offset = 0;
   for (const chunk of chunks) {
     result.set(chunk, offset);
@@ -17,7 +20,9 @@ const joinBytes = (chunks: Uint8Array[]): Uint8Array => {
 };
 
 // Text streams are collected before encoding so a split surrogate pair stays whole.
-const readZipStream = (stream: NodeJS.ReadableStream): Promise<string | Uint8Array> =>
+const readZipStream = (
+  stream: NodeJS.ReadableStream,
+): Promise<string | Uint8Array> =>
   new Promise((resolve, reject) => {
     const chunks: (string | Uint8Array)[] = [];
     const onError = (error: unknown) => {
@@ -29,7 +34,11 @@ const readZipStream = (stream: NodeJS.ReadableStream): Promise<string | Uint8Arr
         chunks.push(chunk);
         return;
       }
-      onError(new ZipStreamInputError({ message: "ZIP stream emitted an unsupported chunk" }));
+      onError(
+        new ZipStreamInputError({
+          message: "ZIP stream emitted an unsupported chunk",
+        }),
+      );
     };
     const onEnd = () => {
       cleanup();
@@ -41,7 +50,11 @@ const readZipStream = (stream: NodeJS.ReadableStream): Promise<string | Uint8Arr
         resolve(joinBytes(chunks));
         return;
       }
-      reject(new ZipStreamInputError({ message: "ZIP stream mixed text and byte chunks" }));
+      reject(
+        new ZipStreamInputError({
+          message: "ZIP stream mixed text and byte chunks",
+        }),
+      );
     };
     const cleanup = () => {
       stream.removeListener("data", onData);
@@ -67,9 +80,14 @@ const zipEntryBytes = async (
   }
   if (content instanceof ArrayBuffer) return new Uint8Array(content);
   if (ArrayBuffer.isView(content))
-    return new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+    return new Uint8Array(
+      content.buffer,
+      content.byteOffset,
+      content.byteLength,
+    );
   if (Array.isArray(content)) return Uint8Array.from(content);
-  if (content instanceof Blob) return new Uint8Array(await content.arrayBuffer());
+  if (content instanceof Blob)
+    return new Uint8Array(await content.arrayBuffer());
   const streamed = await readZipStream(content);
   return zipEntryBytes(streamed, options);
 };

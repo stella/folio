@@ -18,10 +18,9 @@
  * that no declaration allows.
  */
 
-import path from "node:path";
-
 import { Result, TaggedError } from "better-result";
 import { XMLParser } from "fast-xml-parser";
+import path from "node:path";
 
 import type { OoxmlSchemaGraph } from "../generate-ooxml-schema-graph";
 import { orderedParticlesByOwner } from "./ooxml-schema-graph";
@@ -83,7 +82,8 @@ const DEFAULT_VIOLATION_LIMIT = 50;
 
 const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
 const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
-const XML_SCHEMA_INSTANCE_NAMESPACE = "http://www.w3.org/2001/XMLSchema-instance";
+const XML_SCHEMA_INSTANCE_NAMESPACE =
+  "http://www.w3.org/2001/XMLSchema-instance";
 const MARKUP_COMPATIBILITY_NAMESPACE =
   "http://schemas.openxmlformats.org/markup-compatibility/2006";
 
@@ -123,7 +123,8 @@ const REQUIRED_USE = "required";
 const EXTENSION_DERIVATION = "extension";
 
 const UNKNOWN_ROOT_DETAIL = "root element is not a global element declaration";
-const OUT_OF_ORDER_DETAIL = "child precedes a sibling the sequence declares earlier";
+const OUT_OF_ORDER_DETAIL =
+  "child precedes a sibling the sequence declares earlier";
 
 const PARSER_OPTIONS = {
   preserveOrder: true,
@@ -207,7 +208,9 @@ const splitName = (name: string): { prefix: string; local: string } => {
 };
 
 const buildIndex = (graph: OoxmlSchemaGraph): SchemaIndex => {
-  const symbolsById = new Map(graph.symbols.map((symbol) => [symbol.id, symbol]));
+  const symbolsById = new Map(
+    graph.symbols.map((symbol) => [symbol.id, symbol]),
+  );
   const globalElementByQName = new Map(
     graph.symbols
       .filter((symbol) => symbol.kind === "element")
@@ -229,9 +232,13 @@ const buildIndex = (graph: OoxmlSchemaGraph): SchemaIndex => {
     globalElementByQName,
     childrenByOwner,
     attributesByOwner,
-    compositorsById: new Map(graph.compositors.map((compositor) => [compositor.id, compositor])),
+    compositorsById: new Map(
+      graph.compositors.map((compositor) => [compositor.id, compositor]),
+    ),
     compositorCountByOwner,
-    inheritanceByDerived: new Map(graph.inheritance.map((edge) => [edge.derived, edge])),
+    inheritanceByDerived: new Map(
+      graph.inheritance.map((edge) => [edge.derived, edge]),
+    ),
     knownNamespaces: new Set(graph.namespaces.map(({ uri }) => uri)),
     typeCache: new Map(),
     enumerationCache: new Map(),
@@ -250,9 +257,15 @@ const indexFor = (graph: OoxmlSchemaGraph): SchemaIndex => {
   return built;
 };
 
-const elementParticle = (index: SchemaIndex, particle: SchemaChild): ResolvedChild => {
+const elementParticle = (
+  index: SchemaIndex,
+  particle: SchemaChild,
+): ResolvedChild => {
   if (particle.ref !== undefined) {
-    return { qname: particle.ref, typeQName: index.globalElementByQName.get(particle.ref)?.type };
+    return {
+      qname: particle.ref,
+      typeQName: index.globalElementByQName.get(particle.ref)?.type,
+    };
   }
   return {
     qname: qualify(particle.namespace ?? "", particle.name ?? ""),
@@ -260,10 +273,15 @@ const elementParticle = (index: SchemaIndex, particle: SchemaChild): ResolvedChi
   };
 };
 
-const attributeParticle = (index: SchemaIndex, particle: SchemaAttribute): ResolvedAttribute => {
+const attributeParticle = (
+  index: SchemaIndex,
+  particle: SchemaAttribute,
+): ResolvedAttribute => {
   const required = particle.use === REQUIRED_USE;
   if (particle.ref !== undefined) {
-    const global = index.symbolsById.get(`${SYMBOL_PREFIXES.attribute}${particle.ref}`);
+    const global = index.symbolsById.get(
+      `${SYMBOL_PREFIXES.attribute}${particle.ref}`,
+    );
     return { qname: particle.ref, typeQName: global?.type, required };
   }
   return {
@@ -303,7 +321,9 @@ const contentModelFor = (
         ? undefined
         : index.compositorsById.get(particle.compositor);
     if (compositor !== undefined) {
-      ordered &&= compositor.kind === SEQUENCE_COMPOSITOR && compositor.parent === undefined;
+      ordered &&=
+        compositor.kind === SEQUENCE_COMPOSITOR &&
+        compositor.parent === undefined;
     }
     if (particle.kind === PARTICLE_KINDS.any) {
       allowsAny = true;
@@ -315,7 +335,11 @@ const contentModelFor = (
         ordered = false;
         continue;
       }
-      const expanded = contentModelFor(index, `${SYMBOL_PREFIXES.group}${particle.ref}`, expanding);
+      const expanded = contentModelFor(
+        index,
+        `${SYMBOL_PREFIXES.group}${particle.ref}`,
+        expanding,
+      );
       children.push(...expanded.children);
       allowsAny ||= expanded.allowsAny;
       ordered &&= expanded.ordered;
@@ -377,7 +401,11 @@ const EMPTY_TYPE_MODEL: TypeModel = {
  * restriction, so the branch below only ever takes the extension path, but a
  * future schema revision must not silently inherit through a restriction.
  */
-const typeModelFor = (index: SchemaIndex, typeQName: string, deriving: Set<string>): TypeModel => {
+const typeModelFor = (
+  index: SchemaIndex,
+  typeQName: string,
+  deriving: Set<string>,
+): TypeModel => {
   const typeId = `${SYMBOL_PREFIXES.complexType}${typeQName}`;
   if (deriving.has(typeId)) {
     return EMPTY_TYPE_MODEL;
@@ -406,16 +434,21 @@ const resolveType = (index: SchemaIndex, typeQName: string): ResolvedType => {
     return cached;
   }
   const model = typeModelFor(index, typeQName, new Set());
-  const childByQName = new Map(model.children.map((child) => [child.qname, child]));
+  const childByQName = new Map(
+    model.children.map((child) => [child.qname, child]),
+  );
   const attributeByQName = new Map(
     model.attributes.map((attribute) => [attribute.qname, attribute]),
   );
-  const orderIsDecidable = model.ordered && childByQName.size === model.children.length;
+  const orderIsDecidable =
+    model.ordered && childByQName.size === model.children.length;
   const resolved: ResolvedType = {
     childByQName,
     allowsAnyChild: model.allowsAnyChild,
     attributeByQName,
-    requiredAttributes: [...attributeByQName.values()].filter(({ required }) => required),
+    requiredAttributes: [...attributeByQName.values()].filter(
+      ({ required }) => required,
+    ),
     allowsAnyAttribute: model.allowsAnyAttribute,
     ordinalByQName: orderIsDecidable
       ? new Map(model.children.map((child, ordinal) => [child.qname, ordinal]))
@@ -479,7 +512,10 @@ const resolveDerivedEnumeration = (
   return enumerationOf(index, symbol.base, following);
 };
 
-const enumerationFor = (index: SchemaIndex, typeQName: string): ReadonlySet<string> | undefined => {
+const enumerationFor = (
+  index: SchemaIndex,
+  typeQName: string,
+): ReadonlySet<string> | undefined => {
   if (index.enumerationCache.has(typeQName)) {
     return index.enumerationCache.get(typeQName);
   }
@@ -488,9 +524,13 @@ const enumerationFor = (index: SchemaIndex, typeQName: string): ReadonlySet<stri
   return values;
 };
 
-const attributesOf = (node: ParsedNode): Record<string, unknown> | undefined => {
+const attributesOf = (
+  node: ParsedNode,
+): Record<string, unknown> | undefined => {
   const bag = node[ATTRIBUTES_KEY];
-  return typeof bag === "object" && bag !== null ? (bag as Record<string, unknown>) : undefined;
+  return typeof bag === "object" && bag !== null
+    ? (bag as Record<string, unknown>)
+    : undefined;
 };
 
 const tagOf = (node: ParsedNode): string | undefined => {
@@ -527,7 +567,10 @@ const childrenOf = ({ node, tag }: ParsedElement): ParsedElement[] => {
   return Array.isArray(nested) ? elementsOf(nested) : [];
 };
 
-const extendScope = (parent: NamespaceScope, node: ParsedNode): NamespaceScope => {
+const extendScope = (
+  parent: NamespaceScope,
+  node: ParsedNode,
+): NamespaceScope => {
   const attributes = attributesOf(node);
   if (attributes === undefined) {
     return parent;
@@ -549,14 +592,25 @@ const extendScope = (parent: NamespaceScope, node: ParsedNode): NamespaceScope =
 };
 
 /** An unprefixed element takes the default namespace; an unprefixed attribute takes none. */
-const elementNamespace = (prefix: string, scope: NamespaceScope): string | undefined =>
-  prefix === DEFAULT_PREFIX ? (scope.get(DEFAULT_PREFIX) ?? "") : scope.get(prefix);
+const elementNamespace = (
+  prefix: string,
+  scope: NamespaceScope,
+): string | undefined =>
+  prefix === DEFAULT_PREFIX
+    ? (scope.get(DEFAULT_PREFIX) ?? "")
+    : scope.get(prefix);
 
-const attributeNamespace = (prefix: string, scope: NamespaceScope): string | undefined =>
-  prefix === DEFAULT_PREFIX ? "" : scope.get(prefix);
+const attributeNamespace = (
+  prefix: string,
+  scope: NamespaceScope,
+): string | undefined => (prefix === DEFAULT_PREFIX ? "" : scope.get(prefix));
 
-const isValidatableNamespace = (index: SchemaIndex, namespace: string): boolean =>
-  namespace !== MARKUP_COMPATIBILITY_NAMESPACE && index.knownNamespaces.has(namespace);
+const isValidatableNamespace = (
+  index: SchemaIndex,
+  namespace: string,
+): boolean =>
+  namespace !== MARKUP_COMPATIBILITY_NAMESPACE &&
+  index.knownNamespaces.has(namespace);
 
 type WalkState = {
   index: SchemaIndex;
@@ -564,7 +618,8 @@ type WalkState = {
   limit: number;
 };
 
-const isFull = (state: WalkState): boolean => state.violations.length >= state.limit;
+const isFull = (state: WalkState): boolean =>
+  state.violations.length >= state.limit;
 
 const record = (state: WalkState, violation: SchemaViolation): void => {
   if (isFull(state)) {
@@ -573,20 +628,29 @@ const record = (state: WalkState, violation: SchemaViolation): void => {
   state.violations.push(violation);
 };
 
-const observedAttributes = (node: ParsedNode, scope: NamespaceScope): Map<string, string> => {
+const observedAttributes = (
+  node: ParsedNode,
+  scope: NamespaceScope,
+): Map<string, string> => {
   const observed = new Map<string, string>();
   const attributes = attributesOf(node);
   if (attributes === undefined) {
     return observed;
   }
   for (const [name, value] of Object.entries(attributes)) {
-    if (name === XMLNS_DECLARATION || name.startsWith(XMLNS_PREFIX_DECLARATION)) {
+    if (
+      name === XMLNS_DECLARATION ||
+      name.startsWith(XMLNS_PREFIX_DECLARATION)
+    ) {
       continue;
     }
     const { prefix, local } = splitName(name);
     const namespace = attributeNamespace(prefix, scope);
     // An undeclared prefix is a well-formedness fault, not a schema one.
-    if (namespace === undefined || IGNORED_ATTRIBUTE_NAMESPACES.has(namespace)) {
+    if (
+      namespace === undefined ||
+      IGNORED_ATTRIBUTE_NAMESPACES.has(namespace)
+    ) {
       continue;
     }
     observed.set(qualify(namespace, local), String(value));
@@ -685,7 +749,10 @@ const walkElement = (
     const childScope = extendScope(scope, child.node);
     const { prefix, local } = splitName(child.tag);
     const namespace = elementNamespace(prefix, childScope);
-    if (namespace === undefined || !isValidatableNamespace(state.index, namespace)) {
+    if (
+      namespace === undefined ||
+      !isValidatableNamespace(state.index, namespace)
+    ) {
       continue;
     }
     const qname = qualify(namespace, local);
@@ -730,7 +797,11 @@ export const validateOoxmlPart = ({
 }: ValidatePartOptions): SchemaViolation[] => {
   const parsed = Result.try({
     try: (): unknown => new XMLParser(PARSER_OPTIONS).parse(xml),
-    catch: (cause) => new SchemaPartParseError({ message: "part is not well-formed XML", cause }),
+    catch: (cause) =>
+      new SchemaPartParseError({
+        message: "part is not well-formed XML",
+        cause,
+      }),
   });
   // Well-formedness is the corpus classifier's verdict (`malformed-document-xml`);
   // a part that never parsed has no schema signature to report here.
@@ -776,7 +847,10 @@ export const validateOoxmlPart = ({
  * sequence-row order test needs the two apart, and this is the validator's own
  * answer rather than a second derivation beside it.
  */
-export const ordersChildrenOf = (graph: OoxmlSchemaGraph, typeQName: string): boolean =>
+export const ordersChildrenOf = (
+  graph: OoxmlSchemaGraph,
+  typeQName: string,
+): boolean =>
   resolveType(indexFor(graph), typeQName).ordinalByQName !== undefined;
 
 let graphPromise: Promise<OoxmlSchemaGraph> | undefined;

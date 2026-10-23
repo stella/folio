@@ -5,20 +5,25 @@ import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
-import { buildDocx, CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  buildDocx,
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
 import {
   acquireEditorLease,
   acquireLeaseForWrite,
   flushRequestPathFor,
+  type FlushWatcher,
   keepEditorLeaseAlive,
   pendingFlushRequests,
   watchFlushRequests,
-  type FlushWatcher,
 } from "./editor-lease";
 import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteOptions } from "./execute-write";
-import { lockPathFor, readLease, type AcquiredLease } from "./lock";
+import { type AcquiredLease, lockPathFor, readLease } from "./lock";
 import { findFileTool } from "./registry";
 import { saveDocumentBytes } from "./save";
 
@@ -33,7 +38,10 @@ const UNNUMBERED = { text: "Czech law governs this contract." };
 
 beforeEach(async () => {
   ({ dir, cleanup } = await makeTempDir());
-  file = await writeDocx(dir, "contract.docx", [...CONTRACT_PARAGRAPHS, UNNUMBERED]);
+  file = await writeDocx(dir, "contract.docx", [
+    ...CONTRACT_PARAGRAPHS,
+    UNNUMBERED,
+  ]);
 });
 
 afterEach(async () => {
@@ -48,7 +56,14 @@ const versionOf = async (filePath: string): Promise<string> =>
   fileVersionOf(new Uint8Array(await readFile(filePath)));
 
 const REPLACE_FIFTY = {
-  operations: [{ type: "replaceInBlock", blockId: "10000002", find: "$50", replace: "$500" }],
+  operations: [
+    {
+      type: "replaceInBlock",
+      blockId: "10000002",
+      find: "$50",
+      replace: "$500",
+    },
+  ],
 };
 
 const write = async (
@@ -93,14 +108,21 @@ const syntheticIdOf = async (fileVersion: string): Promise<string> => {
   const tool = findFileTool("read_document");
   if (!tool) throw new Error("read_document is not registered");
   const data = (
-    await executeReadTool(tool, { path: file, fileVersion, args: {} }, CLI_READ_BOUNDS)
+    await executeReadTool(
+      tool,
+      { path: file, fileVersion, args: {} },
+      CLI_READ_BOUNDS,
+    )
   ).unwrap();
   const result: unknown = isObject(data) ? data["result"] : undefined;
   const blocks: unknown = isObject(result) ? result["blocks"] : undefined;
   const block = (Array.isArray(blocks) ? blocks : [])
     .filter(isObject)
     .find(({ text }) => text === UNNUMBERED.text);
-  if (block?.["blockIdSource"] !== "synthetic" || typeof block["blockId"] !== "string") {
+  if (
+    block?.["blockIdSource"] !== "synthetic" ||
+    typeof block["blockId"] !== "string"
+  ) {
     throw new Error("no synthetic block id");
   }
   return block["blockId"];
@@ -114,7 +136,9 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
  * `flushed` resolves to the version it saved.
  */
 const startEditor = async (): Promise<{ flushed: Promise<string> }> => {
-  const lease = (await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })).unwrap();
+  const lease = (
+    await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })
+  ).unwrap();
   editor = lease;
   const loaded = await versionOf(file);
   const bytes = await unsavedEdit();
@@ -122,7 +146,11 @@ const startEditor = async (): Promise<{ flushed: Promise<string> }> => {
   const requested = new Promise<void>((resolve) => {
     onRequest = resolve;
   });
-  watcher = watchFlushRequests({ documentPath: file, token: lease.holder.token, onRequest });
+  watcher = watchFlushRequests({
+    documentPath: file,
+    token: lease.holder.token,
+    onRequest,
+  });
   const flush = async (): Promise<string> => {
     await requested;
     const saved = await saveDocumentBytes({
@@ -151,7 +179,9 @@ describe("flush handshake", () => {
     const read = await versionOf(file);
     const { flushed } = await startEditor();
 
-    const receipt = (await write("suggest_changes", REPLACE_FIFTY, read)).unwrap();
+    const receipt = (
+      await write("suggest_changes", REPLACE_FIFTY, read)
+    ).unwrap();
     const saved = await flushed;
 
     expect(receipt["status"]).toBe("committed");
@@ -164,12 +194,17 @@ describe("flush handshake", () => {
     const content = await texts(file);
     expect(content).toContain("Late payment accrues 2% interest.");
     expect(content.some((text) => text.includes("$500"))).toBe(true);
-    const tools = (await readFile(path.join(dir, ".folio", "journal.jsonl"), "utf8"))
+    const tools = (
+      await readFile(path.join(dir, ".folio", "journal.jsonl"), "utf8")
+    )
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line).tool);
     expect(tools).toEqual(["editor_save", "suggest_changes"]);
-    expect((await readdir(dir)).toSorted()).toEqual([".folio", "contract.docx"]);
+    expect((await readdir(dir)).toSorted()).toEqual([
+      ".folio",
+      "contract.docx",
+    ]);
   });
 
   test("a write targeting any text-derived block id is not carried over the flush", async () => {
@@ -182,7 +217,12 @@ describe("flush handshake", () => {
       {
         operations: [
           ...REPLACE_FIFTY.operations,
-          { type: "replaceInBlock", blockId: synthetic, find: "Czech", replace: "Slovak" },
+          {
+            type: "replaceInBlock",
+            blockId: synthetic,
+            find: "Czech",
+            replace: "Slovak",
+          },
         ],
       },
       read,
@@ -225,7 +265,11 @@ describe("flush handshake", () => {
     const read = await versionOf(file);
     const { flushed } = await startEditor();
 
-    const result = await write("resolve_changes", { action: "accept", all: true }, read);
+    const result = await write(
+      "resolve_changes",
+      { action: "accept", all: true },
+      read,
+    );
     await flushed;
 
     expect(result.isErr() && result.error.code).toBe("stale_version");
@@ -249,29 +293,45 @@ describe("flush handshake", () => {
   });
 
   test("an unresponsive editor makes the write wait a bounded time, then refuse", async () => {
-    editor = (await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })).unwrap();
+    editor = (
+      await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })
+    ).unwrap();
     const read = await versionOf(file);
     const started = Date.now();
 
-    const result = await write("suggest_changes", REPLACE_FIFTY, read, { flushWaitMs: 300 });
+    const result = await write("suggest_changes", REPLACE_FIFTY, read, {
+      flushWaitMs: 300,
+    });
 
     const waited = Date.now() - started;
     expect(result.isErr() && result.error.code).toBe("locked");
-    expect(result.isErr() && JSON.stringify(result.error.details)).toContain('"timedOut"');
+    expect(result.isErr() && JSON.stringify(result.error.details)).toContain(
+      '"timedOut"',
+    );
     expect(waited).toBeGreaterThanOrEqual(300);
     expect(waited).toBeLessThan(10_000);
     expect(await versionOf(file)).toBe(read);
-    expect((await readdir(dir)).toSorted()).toEqual([".contract.docx.folio-lock", "contract.docx"]);
+    expect((await readdir(dir)).toSorted()).toEqual([
+      ".contract.docx.folio-lock",
+      "contract.docx",
+    ]);
     expect((await editor.verify()).isOk()).toBe(true);
   });
 
   test("after the wait, --force takes the lease over from an unresponsive editor", async () => {
-    editor = (await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })).unwrap();
+    editor = (
+      await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })
+    ).unwrap();
 
-    const result = await write("suggest_changes", REPLACE_FIFTY, await versionOf(file), {
-      flushWaitMs: 200,
-      force: true,
-    });
+    const result = await write(
+      "suggest_changes",
+      REPLACE_FIFTY,
+      await versionOf(file),
+      {
+        flushWaitMs: 200,
+        force: true,
+      },
+    );
 
     expect(result.isOk()).toBe(true);
     const fenced = await editor.verify();
@@ -296,7 +356,11 @@ describe("flush handshake", () => {
     const started = Date.now();
 
     const acquired = (
-      await acquireLeaseForWrite({ documentPath: file, txId: "tx", force: false })
+      await acquireLeaseForWrite({
+        documentPath: file,
+        txId: "tx",
+        force: false,
+      })
     ).unwrap();
 
     expect(acquired.flush).toEqual({ type: "notAsked" });
@@ -307,7 +371,9 @@ describe("flush handshake", () => {
 
 describe("editor lease", () => {
   test("is long-lived, advertises flushes, and renews", async () => {
-    editor = (await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })).unwrap();
+    editor = (
+      await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })
+    ).unwrap();
     const lease = editor;
     const expires = Date.parse(lease.holder.expiresAt);
 
@@ -324,14 +390,24 @@ describe("editor lease", () => {
   });
 
   test("stops renewing and reports once the lease is taken over", async () => {
-    editor = (await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })).unwrap();
+    editor = (
+      await acquireEditorLease({ documentPath: file, owner: "folio-vscode" })
+    ).unwrap();
     const lost = new Promise<string>((resolve) => {
       if (!editor) throw new Error("no editor lease");
-      keepEditorLeaseAlive(editor, { intervalMs: 20, onLost: (error) => resolve(error.code) });
+      keepEditorLeaseAlive(editor, {
+        intervalMs: 20,
+        onLost: (error) => resolve(error.code),
+      });
     });
 
     (
-      await acquireLeaseForWrite({ documentPath: file, txId: "t", force: true, flushWaitMs: 0 })
+      await acquireLeaseForWrite({
+        documentPath: file,
+        txId: "t",
+        force: true,
+        flushWaitMs: 0,
+      })
     ).unwrap();
 
     expect(await lost).toBe("locked");
@@ -353,11 +429,18 @@ describe("editor lease", () => {
       }),
     );
 
-    const refused = await acquireEditorLease({ documentPath: file, owner: "folio-vscode" });
+    const refused = await acquireEditorLease({
+      documentPath: file,
+      owner: "folio-vscode",
+    });
 
     expect(refused.isErr() && refused.error.code).toBe("locked");
-    expect((await pendingFlushRequests(file)).map(({ id }) => id)).toEqual(["r1"]);
-    expect(await pendingFlushRequests(file, new Date(Date.parse(deadline) + 1))).toEqual([]);
+    expect((await pendingFlushRequests(file)).map(({ id }) => id)).toEqual([
+      "r1",
+    ]);
+    expect(
+      await pendingFlushRequests(file, new Date(Date.parse(deadline) + 1)),
+    ).toEqual([]);
     expect(await readdir(dir)).toEqual(["contract.docx"]);
   });
 });
@@ -389,7 +472,10 @@ test("a rejected background renewal surfaces its error", async () => {
   const handler = "renew().catch(surfaceBackgroundError);";
   const moduleSource = await readFile(modulePath, "utf8");
   expect(moduleSource).toContain(handler);
-  const mutantPath = path.join(import.meta.dir, `.renewal-mutant-${process.pid}.ts`);
+  const mutantPath = path.join(
+    import.meta.dir,
+    `.renewal-mutant-${process.pid}.ts`,
+  );
   try {
     await writeFile(mutantPath, moduleSource.replace(handler, "void renew();"));
     const mutant = Bun.spawnSync(
@@ -481,7 +567,7 @@ test.each(["initial", "poll", "watcher"] as const)(
       initial: "  check().catch(surfaceBackgroundError);\n  return {",
       poll: "  const timer = setInterval(() => {\n    check().catch(surfaceBackgroundError);",
       watcher:
-        "if (name === null || name.startsWith(prefix)) check().catch(surfaceBackgroundError);",
+        "if (name === null || name.startsWith(prefix))\n        check().catch(surfaceBackgroundError);",
     };
     const moduleSource = await readFile(modulePath, "utf8");
     const handler = handlers[invocation];
@@ -493,19 +579,27 @@ test.each(["initial", "poll", "watcher"] as const)(
     try {
       await writeFile(
         mutantPath,
-        moduleSource.replace(handler, handler.replace(".catch(surfaceBackgroundError)", "")),
+        moduleSource.replace(
+          handler,
+          handler.replace(".catch(surfaceBackgroundError)", ""),
+        ),
       );
       const mutant = Bun.spawnSync(
         [
           process.execPath,
           "--eval",
-          source.replace(JSON.stringify(modulePath), JSON.stringify(mutantPath)),
+          source.replace(
+            JSON.stringify(modulePath),
+            JSON.stringify(mutantPath),
+          ),
         ],
         { stdout: "pipe", stderr: "pipe", timeout: 3000 },
       );
       // Without the handler, the child takes the distinct unhandled-rejection path.
       expect(mutant.exitCode).toBe(0);
-      expect(mutant.stderr.toString()).not.toContain("surfaced:flush check failed");
+      expect(mutant.stderr.toString()).not.toContain(
+        "surfaced:flush check failed",
+      );
     } finally {
       await rm(mutantPath, { force: true });
     }

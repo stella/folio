@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import path from "node:path";
-
 import JSZip from "jszip";
+import path from "node:path";
 
 import {
   buildCloseStagedDocumentScript,
@@ -34,9 +33,15 @@ describe("Word automation scripts", () => {
     expect(script).toContain("if candidatePath is stagedDocumentPath then");
     expect(script).toContain("set theDoc to contents of candidateDocument");
     expect(script).toContain("set print revisions of theDoc to false");
-    expect(script).toContain("set documentView to view of active window of theDoc");
-    expect(script).toContain("set revisions view of documentView to revisions view final");
-    expect(script).toContain("set show revisions and comments of documentView to false");
+    expect(script).toContain(
+      "set documentView to view of active window of theDoc",
+    );
+    expect(script).toContain(
+      "set revisions view of documentView to revisions view final",
+    );
+    expect(script).toContain(
+      "set show revisions and comments of documentView to false",
+    );
     expect(script).not.toContain("set revisions mode of documentView");
     expect(script).not.toContain("active document");
   });
@@ -53,7 +58,9 @@ describe("Word automation scripts", () => {
     expect(delaySeconds).toBeLessThanOrEqual(1);
     expect(attempts * delaySeconds).toBeGreaterThanOrEqual(120);
     expect(script).toContain("within 120 seconds of opening it");
-    const appleEventTimeout = Number(/with timeout of (\d+) seconds/.exec(script)?.[1]);
+    const appleEventTimeout = Number(
+      /with timeout of (\d+) seconds/.exec(script)?.[1],
+    );
     expect(appleEventTimeout).toBeGreaterThan(attempts * delaySeconds);
   });
 
@@ -66,12 +73,22 @@ describe("Word automation scripts", () => {
     });
 
     expect(script).toContain("set print revisions of theDoc to true");
-    expect(script).toContain("set revisions view of documentView to revisions view final");
-    expect(script).toContain("set revisions mode of documentView to in line revisions");
-    expect(script).toContain("set show insertions and deletions of documentView to true");
+    expect(script).toContain(
+      "set revisions view of documentView to revisions view final",
+    );
+    expect(script).toContain(
+      "set revisions mode of documentView to in line revisions",
+    );
+    expect(script).toContain(
+      "set show insertions and deletions of documentView to true",
+    );
     expect(script).toContain("set show comments of documentView to false");
-    expect(script).toContain("set show revisions and comments of documentView to true");
-    expect(script.indexOf("set show revisions and comments of documentView to true")).toBeLessThan(
+    expect(script).toContain(
+      "set show revisions and comments of documentView to true",
+    );
+    expect(
+      script.indexOf("set show revisions and comments of documentView to true"),
+    ).toBeLessThan(
       script.indexOf("set show comments of documentView to false"),
     );
   });
@@ -88,10 +105,20 @@ describe("Word automation scripts", () => {
   });
 
   test("recognizes only parity-owned docx paths in Word staging", () => {
-    expect(isParityStagedDocumentPath(path.join(wordContainerTmp, "parity-test.docx"))).toBe(true);
-    expect(isParityStagedDocumentPath(path.join(wordContainerTmp, "ordinary.docx"))).toBe(false);
+    expect(
+      isParityStagedDocumentPath(
+        path.join(wordContainerTmp, "parity-test.docx"),
+      ),
+    ).toBe(true);
+    expect(
+      isParityStagedDocumentPath(path.join(wordContainerTmp, "ordinary.docx")),
+    ).toBe(false);
     expect(isParityStagedDocumentPath("/tmp/parity-test.docx")).toBe(false);
-    expect(isParityStagedDocumentPath(path.join(wordContainerTmp, "parity-test.pdf"))).toBe(false);
+    expect(
+      isParityStagedDocumentPath(
+        path.join(wordContainerTmp, "parity-test.pdf"),
+      ),
+    ).toBe(false);
   });
 
   test("escapes staged paths before AppleScript interpolation", () => {
@@ -106,7 +133,8 @@ describe("Word automation scripts", () => {
   });
 });
 
-const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const settingsXml = (body: string): string =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings ${W_NS}><w:zoom w:percent="100"/>${body}<w:defaultTabStop w:val="720"/></w:settings>`;
@@ -133,23 +161,33 @@ describe("export staging", () => {
   });
 
   test("leaves unrestricted settings untouched", () => {
-    expect(stripEditRestrictions(settingsXml("<w:trackRevisions/>"))).toBeUndefined();
     expect(
-      stripEditRestrictions(settingsXml('<w:documentProtectionNote w:val="1"/>')),
+      stripEditRestrictions(settingsXml("<w:trackRevisions/>")),
+    ).toBeUndefined();
+    expect(
+      stripEditRestrictions(
+        settingsXml('<w:documentProtectionNote w:val="1"/>'),
+      ),
     ).toBeUndefined();
   });
 
   test("stages a restricted document as an unrestricted copy", async () => {
     const source = await buildDocx(
-      settingsXml('<w:documentProtection w:edit="readOnly" w:enforcement="1"/>'),
+      settingsXml(
+        '<w:documentProtection w:edit="readOnly" w:enforcement="1"/>',
+      ),
     );
     const sourceCopy = source.slice();
 
     const staged = await stageableDocxBytes(source);
     const stagedZip = await JSZip.loadAsync(staged);
 
-    expect(await stagedZip.file("word/settings.xml")?.async("string")).toBe(settingsXml(""));
-    expect(await stagedZip.file("word/document.xml")?.async("string")).toContain("<w:t>Text</w:t>");
+    expect(await stagedZip.file("word/settings.xml")?.async("string")).toBe(
+      settingsXml(""),
+    );
+    expect(
+      await stagedZip.file("word/document.xml")?.async("string"),
+    ).toContain("<w:t>Text</w:t>");
     expect(source).toEqual(sourceCopy);
   });
 

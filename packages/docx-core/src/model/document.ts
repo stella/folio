@@ -19,10 +19,22 @@ export {
   setDocumentBodyComments,
 } from "./canonical";
 
-import type { DocumentBody, EndnoteProperties, Footnote, Endnote, HeaderFooter } from "./content";
+import type {
+  DocumentBody,
+  Endnote,
+  EndnoteProperties,
+  Footnote,
+  HeaderFooter,
+} from "./content";
 import type { NumberingDefinitions } from "./lists";
 import type { ParseWarning } from "./parseWarning";
-import type { StyleDefinitions, Theme, FontTable, RelationshipMap, MediaFile } from "./styles";
+import type {
+  FontTable,
+  MediaFile,
+  RelationshipMap,
+  StyleDefinitions,
+  Theme,
+} from "./styles";
 
 export {
   MAX_RETAINED_PARSE_WARNINGS_PER_CODE,
@@ -74,13 +86,21 @@ export {
 } from "./outlineLevel";
 
 // The ordered verbatim sink every dispatched container carries.
-export type { PreservedAttribute, PreservedChild, PreservedMarkup } from "./preservedMarkup";
+export type {
+  PreservedAttribute,
+  PreservedChild,
+  PreservedMarkup,
+} from "./preservedMarkup";
 
 // How a drawing with no image data says what it looks like.
 export type { PreviewDescriptor, PreviewShape } from "./preview";
 
 // A relationship reference that names something, and the two ways to get one.
-export { mintRelationshipId, relationshipIdOf, type RelationshipId } from "./relationshipId";
+export {
+  mintRelationshipId,
+  relationshipIdOf,
+  type RelationshipId,
+} from "./relationshipId";
 
 // Color & Styling Primitives
 export type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
@@ -135,7 +155,10 @@ export {
 
 // `ST_PresetLineDashVal`, derived from the same schema graph, and the reader
 // for a shape or text-box outline's `a:prstDash@val`.
-export { PRESET_LINE_DASH_VALS, type PresetLineDashVal } from "./presetLineDash.gen";
+export {
+  PRESET_LINE_DASH_VALS,
+  type PresetLineDashVal,
+} from "./presetLineDash.gen";
 export {
   isPresetLineDashVal,
   presetLineDashFrom,

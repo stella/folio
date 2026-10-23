@@ -1,5 +1,6 @@
 import type { EditorState } from "prosemirror-state";
 
+import type { FontAlternates } from "../fonts/fontAlternates";
 import type { FlowBlock, Measure } from "../layout-engine/types";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type {
@@ -8,7 +9,6 @@ import type {
   TemplatePreviewValues,
 } from "../prosemirror/plugins/templatePreviewValues";
 import type { StyleDefinitions, Theme } from "../types/document";
-import type { FontAlternates } from "../fonts/fontAlternates";
 
 export type LayoutArtifacts = {
   blocks: FlowBlock[];

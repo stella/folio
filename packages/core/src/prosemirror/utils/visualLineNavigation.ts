@@ -11,17 +11,21 @@
  * @packageDocumentation
  * @internal
  */
-import { Selection, TextSelection } from "prosemirror-state";
 import type { Node as PmNode } from "prosemirror-model";
+import { Selection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+
 import { findCollapsedLineEdgeCaretTarget } from "../../layout-bridge/dom/clickToPositionDom";
-import { findBodyEmptyRuns, findBodyPmSpans } from "../../layout-bridge/dom/findBodyPmSpans";
-import { scrollEditorElementIntoView } from "../../paged-layout/editorScrollRoot";
+import {
+  findBodyEmptyRuns,
+  findBodyPmSpans,
+} from "../../layout-bridge/dom/findBodyPmSpans";
 import {
   createTextStreamRange,
   descendantTextNodes,
   totalTextLength,
 } from "../../layout-bridge/dom/textStreamDom";
+import { scrollEditorElementIntoView } from "../../paged-layout/editorScrollRoot";
 
 const CONTENT_LINE_SELECTOR = ".layout-page-content .layout-line";
 const PM_SPAN_SELECTOR = "span[data-pm-start][data-pm-end]";
@@ -59,11 +63,18 @@ export function createVisualLineState(): VisualLineState {
 }
 
 function scrollIntoViewIfNeeded(el: HTMLElement): void {
-  scrollEditorElementIntoView(el, { block: "nearest", margin: 40, behavior: "instant" });
+  scrollEditorElementIntoView(el, {
+    block: "nearest",
+    margin: 40,
+    behavior: "instant",
+  });
 }
 
 /** @internal */
-export function getCaretClientX(container: HTMLElement, pmPos: number): number | null {
+export function getCaretClientX(
+  container: HTMLElement,
+  pmPos: number,
+): number | null {
   const spans = findBodyPmSpans(container);
   // A line-edge space is painted at zero font size, so a range inside it
   // reports the column *before* the space while the caret is painted after it.
@@ -75,7 +86,8 @@ export function getCaretClientX(container: HTMLElement, pmPos: number): number |
     const pmStart = Number(spanEl.dataset["pmStart"]);
     const pmEnd = Number(spanEl.dataset["pmEnd"]);
     if (spanEl.classList.contains("layout-run-tab")) {
-      if (pmPos >= pmStart && pmPos < pmEnd) return spanEl.getBoundingClientRect().left;
+      if (pmPos >= pmStart && pmPos < pmEnd)
+        return spanEl.getBoundingClientRect().left;
       continue;
     }
     if (pmPos >= pmStart && pmPos <= pmEnd) {
@@ -90,7 +102,8 @@ export function getCaretClientX(container: HTMLElement, pmPos: number): number |
     if (!paragraph) continue;
     const pmStart = Number(paragraph.dataset["pmStart"]);
     const pmEnd = Number(paragraph.dataset["pmEnd"]);
-    if (pmPos >= pmStart && pmPos <= pmEnd) return emptyRun.getBoundingClientRect().left;
+    if (pmPos >= pmStart && pmPos <= pmEnd)
+      return emptyRun.getBoundingClientRect().left;
   }
   return null;
 }
@@ -101,7 +114,9 @@ export function getCaretClientX(container: HTMLElement, pmPos: number): number |
  * starts.
  */
 const lineCarriesPosition = (lineEl: HTMLElement, pmPos: number): boolean => {
-  for (const span of Array.from(lineEl.querySelectorAll<HTMLElement>(PM_SPAN_SELECTOR))) {
+  for (const span of Array.from(
+    lineEl.querySelectorAll<HTMLElement>(PM_SPAN_SELECTOR),
+  )) {
     const start = Number(span.dataset["pmStart"]);
     const end = Number(span.dataset["pmEnd"]);
     if (pmPos >= start && pmPos <= end) return true;
@@ -114,7 +129,9 @@ export function findLineElementAtPosition(
   container: HTMLElement,
   pmPos: number,
 ): HTMLElement | null {
-  const allLines = container.querySelectorAll<HTMLElement>(CONTENT_LINE_SELECTOR);
+  const allLines = container.querySelectorAll<HTMLElement>(
+    CONTENT_LINE_SELECTOR,
+  );
   for (const lineEl of Array.from(allLines)) {
     if (lineCarriesPosition(lineEl, pmPos)) return lineEl;
   }
@@ -132,7 +149,10 @@ export function findLineElementAtPosition(
 }
 
 /** @internal */
-export function findPositionOnLineAtClientX(lineEl: HTMLElement, clientX: number): number | null {
+export function findPositionOnLineAtClientX(
+  lineEl: HTMLElement,
+  clientX: number,
+): number | null {
   const spans = lineEl.querySelectorAll("span[data-pm-start][data-pm-end]");
   const emptyRun = lineEl.querySelector<HTMLElement>(".layout-empty-run");
   if (emptyRun) {
@@ -145,7 +165,8 @@ export function findPositionOnLineAtClientX(lineEl: HTMLElement, clientX: number
   }
   if (spans.length === 0) {
     const paragraph = lineEl.closest(".layout-paragraph") as HTMLElement;
-    if (paragraph?.dataset["pmStart"]) return Number(paragraph.dataset["pmStart"]) + 1;
+    if (paragraph?.dataset["pmStart"])
+      return Number(paragraph.dataset["pmStart"]) + 1;
     return null;
   }
   for (const span of Array.from(spans)) {
@@ -195,7 +216,8 @@ export function findPositionOnLineAtClientX(lineEl: HTMLElement, clientX: number
   for (const span of Array.from(spans)) {
     const spanEl = span as HTMLElement;
     const rect = spanEl.getBoundingClientRect();
-    const dist = clientX < rect.left ? rect.left - clientX : clientX - rect.right;
+    const dist =
+      clientX < rect.left ? rect.left - clientX : clientX - rect.right;
     if (dist < closestDist) {
       closestDist = dist;
       closestSpan = spanEl;
@@ -229,7 +251,8 @@ const resolveVisualLineStep = ({
   const remembered = state.step;
   if (remembered?.pmPos === pmPos) {
     const rememberedLine = allLines[remembered.lineIndex];
-    if (rememberedLine && lineCarriesPosition(rememberedLine, pmPos)) return remembered;
+    if (rememberedLine && lineCarriesPosition(rememberedLine, pmPos))
+      return remembered;
   }
 
   const currentLine = findLineElementAtPosition(container, pmPos);
@@ -254,10 +277,14 @@ const createVerticalSelection = ({
   extend,
 }: VerticalSelectionOptions): Selection => {
   try {
-    return extend ? TextSelection.create(doc, anchor, head) : TextSelection.create(doc, head);
+    return extend
+      ? TextSelection.create(doc, anchor, head)
+      : TextSelection.create(doc, head);
   } catch {
     const $head = doc.resolve(head);
-    return extend ? TextSelection.between(doc.resolve(anchor), $head) : Selection.near($head);
+    return extend
+      ? TextSelection.between(doc.resolve(anchor), $head)
+      : Selection.near($head);
   }
 };
 
@@ -279,16 +306,24 @@ export function handleVisualLineKeyDown(
   if (event.ctrlKey || event.metaKey) return false;
   if (!container) return false;
 
-  const allLines = Array.from(container.querySelectorAll<HTMLElement>(CONTENT_LINE_SELECTOR));
+  const allLines = Array.from(
+    container.querySelectorAll<HTMLElement>(CONTENT_LINE_SELECTOR),
+  );
   if (allLines.length === 0) return false;
 
   // The head is where the caret is painted: for a shift-extended selection
   // `from` is the fixed end, which would step down from the wrong line.
   const { head, anchor } = view.state.selection;
-  const step = resolveVisualLineStep({ state, container, allLines, pmPos: head });
+  const step = resolveVisualLineStep({
+    state,
+    container,
+    allLines,
+    pmPos: head,
+  });
   if (!step) return false;
 
-  const targetIndex = event.key === "ArrowUp" ? step.lineIndex - 1 : step.lineIndex + 1;
+  const targetIndex =
+    event.key === "ArrowUp" ? step.lineIndex - 1 : step.lineIndex + 1;
   const targetLine = allLines[targetIndex];
   if (!targetLine) {
     state.step = null;
@@ -307,7 +342,11 @@ export function handleVisualLineKeyDown(
     extend: event.shiftKey,
   });
   dispatch(pmState.tr.setSelection(selection));
-  state.step = { stickyX: step.stickyX, lineIndex: targetIndex, pmPos: selection.head };
+  state.step = {
+    stickyX: step.stickyX,
+    lineIndex: targetIndex,
+    pmPos: selection.head,
+  };
 
   scrollIntoViewIfNeeded(targetLine);
   return true;

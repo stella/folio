@@ -5,12 +5,17 @@ import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operation
 import { createDocx } from "../docx/rezip";
 import { toMarkdown } from "../markdown";
 import type { Document } from "../types/document";
-import { FolioDocxReviewer, type FolioEditableDocumentStoryHandle } from "./headless";
+import {
+  FolioDocxReviewer,
+  type FolioEditableDocumentStoryHandle,
+} from "./headless";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml";
 
-const buildDocx = async (paragraphs: readonly string[]): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  paragraphs: readonly string[],
+): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -65,7 +70,10 @@ describe("FolioDocxReviewer.save", () => {
                   info: { id: 7, author: "Reviewer" },
                   content: [
                     { type: "commentRangeStart", id: 9 },
-                    { type: "run", content: [{ type: "text", text: "inserted" }] },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "inserted" }],
+                    },
                     { type: "commentRangeEnd", id: 9 },
                     { type: "commentReference", id: 9 },
                   ],
@@ -81,7 +89,12 @@ describe("FolioDocxReviewer.save", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "Check." }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "Check." }],
+                    },
+                  ],
                 },
               ],
             },
@@ -89,13 +102,17 @@ describe("FolioDocxReviewer.save", () => {
         },
       },
     };
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+    );
 
     expect(reviewer.rejectAll()).toBe(1);
     const beforeSave = reviewer.getComments();
     expect(beforeSave).toEqual([]);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reopened.getComments()).toEqual(beforeSave);
   });
 
@@ -108,7 +125,9 @@ describe("FolioDocxReviewer.save", () => {
             {
               type: "paragraph",
               paraId: "61000001",
-              content: [{ type: "run", content: [{ type: "text", text: "Body" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Body" }] },
+              ],
             },
           ],
           comments: [
@@ -118,7 +137,12 @@ describe("FolioDocxReviewer.save", () => {
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "Remove this." }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "Remove this." }],
+                    },
+                  ],
                 },
               ],
             },
@@ -139,7 +163,10 @@ describe("FolioDocxReviewer.save", () => {
                   paraId: "62000001",
                   content: [
                     { type: "commentRangeStart", id: 9 },
-                    { type: "run", content: [{ type: "text", text: "Header clause" }] },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "Header clause" }],
+                    },
                     { type: "commentRangeEnd", id: 9 },
                     { type: "commentReference", id: 9 },
                   ],
@@ -150,8 +177,13 @@ describe("FolioDocxReviewer.save", () => {
         ]),
       },
     };
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
-    const story: FolioEditableDocumentStoryHandle = { type: "header", relationshipId: headerId };
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+    );
+    const story: FolioEditableDocumentStoryHandle = {
+      type: "header",
+      relationshipId: headerId,
+    };
     const headerBlock = reviewer.snapshotStory(story)?.blocks.at(0);
     if (!headerBlock) throw new Error("header block is missing");
     const receipt = reviewer.applyDocumentOperationsToStory({
@@ -160,7 +192,9 @@ describe("FolioDocxReviewer.save", () => {
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "direct",
-        operations: [{ id: "delete", type: "deleteBlock", blockId: headerBlock.id }],
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: headerBlock.id },
+        ],
       },
     });
     expect(receipt.applied).toHaveLength(1);
@@ -192,7 +226,9 @@ describe("FolioDocxReviewer.save", () => {
   });
 
   test("a new reply has the same live and saved range", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Clause."]));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildDocx(["Clause."]),
+    );
     reviewer.applyOperations(
       [
         {
@@ -224,15 +260,20 @@ describe("FolioDocxReviewer.save", () => {
     expect(ranges).toHaveLength(2);
     expect(toMarkdown(live)).toEqual(toMarkdown(reviewer.toDocument()));
 
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(toMarkdown(live)).toEqual(toMarkdown(reopened.toDocument()));
     expect(reviewer.snapshot().anchors).toEqual(reopened.snapshot().anchors);
   });
 
   test("reports a selective save for an in-paragraph edit", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Pay $50 now."]), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildDocx(["Pay $50 now."]),
+      {
+        author: "Reviewer",
+      },
+    );
     reviewer.applyOperations(
       [
         {
@@ -254,9 +295,18 @@ describe("FolioDocxReviewer.save", () => {
   test("refuses or performs a full repack for a structural edit", async () => {
     const source = await buildDocx(["First.", "Second."]);
     const insert = async (): Promise<FolioDocxReviewer> => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+      const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+        author: "Reviewer",
+      });
       reviewer.applyOperations(
-        [{ id: "insert", type: "insertAfterBlock", blockId: firstBlockId(reviewer), text: "New." }],
+        [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: firstBlockId(reviewer),
+            text: "New.",
+          },
+        ],
         { undefinedReferences: "refuse" },
       );
       return reviewer;
@@ -265,7 +315,10 @@ describe("FolioDocxReviewer.save", () => {
     const refused = await (await insert()).save({ repack: "refuse" });
     const repacked = await (await insert()).save();
 
-    expect(refused).toEqual({ type: "repackRefused", reason: "structuralChange" });
+    expect(refused).toEqual({
+      type: "repackRefused",
+      reason: "structuralChange",
+    });
     expect(repacked.type).toBe("full-repack");
     if (repacked.type !== "full-repack") return;
     expect(repacked.reason).toBe("structuralChange");
@@ -275,9 +328,12 @@ describe("FolioDocxReviewer.save", () => {
 
   test("stamps created comments and replies with the supplied date", async () => {
     const date = "2026-01-02T03:04:05Z";
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Clause."]), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildDocx(["Clause."]),
+      {
+        author: "Reviewer",
+      },
+    );
     reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

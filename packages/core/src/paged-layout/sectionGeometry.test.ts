@@ -40,7 +40,9 @@ describe("paged editor section geometry", () => {
   });
 
   test("keeps page size defensive: zero size falls back to Letter", () => {
-    expect(getPageSize({ pageWidth: 0, pageHeight: 0 }).w).toBe(DEFAULT_PAGE_WIDTH_PX);
+    expect(getPageSize({ pageWidth: 0, pageHeight: 0 }).w).toBe(
+      DEFAULT_PAGE_WIDTH_PX,
+    );
   });
 
   test("twipsToPxOr distinguishes explicit zero from absent offsets", () => {
@@ -55,12 +57,17 @@ describe("paged editor section geometry", () => {
 
     expect(page.w).toBe(twipsToPixels(1001));
     expect(margins.left).toBe(twipsToPixels(101));
-    expect(page.w - margins.left - margins.right).toBeCloseTo(twipsToPixels(698), 10);
+    expect(page.w - margins.left - margins.right).toBeCloseTo(
+      twipsToPixels(698),
+      10,
+    );
   });
 
   test("normalizes omitted starts as continuation and authored starts as restarts", () => {
     expect(getPageNumbering(undefined)).toEqual({ type: "continue" });
-    expect(getPageNumbering({ pageNumbering: { format: "lowerRoman" } })).toEqual({
+    expect(
+      getPageNumbering({ pageNumbering: { format: "lowerRoman" } }),
+    ).toEqual({
       type: "continue",
       format: "lowerRoman",
     });

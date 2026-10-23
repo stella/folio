@@ -10,7 +10,8 @@
         left: `${caret.x}px`,
         top: `${caret.y}px`,
         lineHeight: `${caret.lineHeight}px`,
-        maxWidth: caret.maxWidth === undefined ? undefined : `${caret.maxWidth}px`,
+        maxWidth:
+          caret.maxWidth === undefined ? undefined : `${caret.maxWidth}px`,
       }"
     >
       {{ text
@@ -58,7 +59,11 @@ defineProps<AutocompleteCaretOverlayProps>();
   padding: 0 0.45em;
   height: 1.1em;
   border-radius: 9999px;
-  background: color-mix(in oklch, var(--doc-text, currentColor) 8%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--doc-text, currentColor) 8%,
+    transparent
+  );
   color: color-mix(in oklch, var(--doc-text, currentColor) 70%, transparent);
   font-size: 0.72em;
   font-weight: 500;

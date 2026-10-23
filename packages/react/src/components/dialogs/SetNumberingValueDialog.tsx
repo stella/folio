@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -34,7 +35,11 @@ export function SetNumberingValueDialog(props: SetNumberingValueDialogProps) {
   return <SetNumberingValueDialogForm {...props} />;
 }
 
-function SetNumberingValueDialogForm({ isOpen, onClose, onApply }: SetNumberingValueDialogProps) {
+function SetNumberingValueDialogForm({
+  isOpen,
+  onClose,
+  onApply,
+}: SetNumberingValueDialogProps) {
   const {
     Root: Dialog,
     Portal: DialogPortal,

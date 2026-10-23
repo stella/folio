@@ -17,8 +17,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createEmptyDocx, repackDocx } from "../../docx/rezip";
 import { fromProseDoc } from "./fromProseDoc";
@@ -26,8 +28,10 @@ import { toProseDoc } from "./toProseDoc";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const AUTHORED = 'w:author="A" w:date="2024-01-01T00:00:00Z"';
 
 type MoveIds = { range: number; revision: number };
@@ -67,16 +71,24 @@ const documentPartOf = async (saved: ArrayBuffer): Promise<string> => {
 
 /** The part as it comes back from one editor round trip. */
 const throughTheEditor = async (body: string): Promise<string> => {
-  const parsed = await parseDocx(await documentWith(body), { preloadFonts: false });
+  const parsed = await parseDocx(await documentWith(body), {
+    preloadFonts: false,
+  });
   const projected = fromProseDoc(toProseDoc(parsed), parsed, {
     stylesheetSource: { type: "package" },
   });
-  return documentPartOf(await repackDocx(projected, { updateModifiedDate: false }));
+  return documentPartOf(
+    await repackDocx(projected, { updateModifiedDate: false }),
+  );
 };
 
 /** Every `w:name` the part carries, in document order. */
 const namesIn = (xml: string): string[] =>
-  [...xml.matchAll(/<w:(?:moveFrom|moveTo)RangeStart[^>]*\sw:name="([^"]*)"/gu)].map(
+  [
+    ...xml.matchAll(
+      /<w:(?:moveFrom|moveTo)RangeStart[^>]*\sw:name="([^"]*)"/gu,
+    ),
+  ].map(
     // SAFETY: the capture group is present whenever the pattern matched.
     (match) => match[1] as string,
   );
@@ -95,10 +107,20 @@ describe("a tracked move keeps its name across the editor", () => {
         moveName,
         fc.uniqueArray(annotationId, { minLength: 4, maxLength: 4 }),
         fc.boolean(),
-        async (name, [fromRange, fromRevision, toRange, toRevision], separated) => {
+        async (
+          name,
+          [fromRange, fromRevision, toRange, toRevision],
+          separated,
+        ) => {
           // SAFETY: `uniqueArray` of exactly four gives four defined ids.
-          const from = { range: fromRange as number, revision: fromRevision as number };
-          const to = { range: toRange as number, revision: toRevision as number };
+          const from = {
+            range: fromRange as number,
+            revision: fromRevision as number,
+          };
+          const to = {
+            range: toRange as number,
+            revision: toRevision as number,
+          };
           const body =
             movedAway(name, from) +
             (separated ? plainParagraph : "") +
@@ -129,12 +151,16 @@ describe("a tracked move keeps its name across the editor", () => {
       movedAway("relocation", { range: 1, revision: 2 }) +
       movedHere("relocation", { range: 3, revision: 4 });
     const once = await throughTheEditor(body);
-    const parsed = await parseDocx(await documentWith(body), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWith(body), {
+      preloadFonts: false,
+    });
     const twice = await documentPartOf(
       await repackDocx(
         fromProseDoc(
           toProseDoc(
-            fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(toProseDoc(parsed), parsed, {
+              stylesheetSource: { type: "package" },
+            }),
           ),
           parsed,
           { stylesheetSource: { type: "package" } },
@@ -166,7 +192,9 @@ describe("a tracked move keeps its name across the editor", () => {
     ];
 
     expect(boundaries.every((position) => position >= 0)).toBe(true);
-    expect(boundaries).toEqual(boundaries.toSorted((left, right) => left - right));
+    expect(boundaries).toEqual(
+      boundaries.toSorted((left, right) => left - right),
+    );
     expect(namesIn(saved)).toEqual(["first", "second"]);
   });
 
@@ -175,24 +203,29 @@ describe("a tracked move keeps its name across the editor", () => {
     ["dir", '<w:dir w:val="rtl">', "</w:dir>"],
     ["smartTag", '<w:smartTag w:element="Move">', "</w:smartTag>"],
     ["customXml", '<w:customXml w:element="Move">', "</w:customXml>"],
-  ] as const)("keeps a non-empty move range inside w:%s", async (_kind, open, close) => {
-    const saved = await throughTheEditor(
-      `<w:p>${open}${movedAwayContent("nested", { range: 31, revision: 41 })}${close}</w:p>`,
-    );
+  ] as const)(
+    "keeps a non-empty move range inside w:%s",
+    async (_kind, open, close) => {
+      const saved = await throughTheEditor(
+        `<w:p>${open}${movedAwayContent("nested", { range: 31, revision: 41 })}${close}</w:p>`,
+      );
 
-    expect(namesIn(saved)).toEqual(["nested"]);
-    const rangeStart = saved.indexOf('<w:moveFromRangeStart w:id="31"');
-    const move = saved.indexOf('<w:moveFrom w:id="41"');
-    const rangeEnd = saved.indexOf('<w:moveFromRangeEnd w:id="31"');
-    const startWrapper = saved.lastIndexOf(open, rangeStart);
-    const startWrapperEnd = saved.indexOf(close, rangeStart);
-    const endWrapper = saved.lastIndexOf(open, rangeEnd);
+      expect(namesIn(saved)).toEqual(["nested"]);
+      const rangeStart = saved.indexOf('<w:moveFromRangeStart w:id="31"');
+      const move = saved.indexOf('<w:moveFrom w:id="41"');
+      const rangeEnd = saved.indexOf('<w:moveFromRangeEnd w:id="31"');
+      const startWrapper = saved.lastIndexOf(open, rangeStart);
+      const startWrapperEnd = saved.indexOf(close, rangeStart);
+      const endWrapper = saved.lastIndexOf(open, rangeEnd);
 
-    expect([rangeStart, move, rangeEnd].every((position) => position >= 0)).toBe(true);
-    expect(startWrapper).toBeLessThan(rangeStart);
-    expect(rangeStart).toBeLessThan(move);
-    expect(move).toBeLessThan(rangeEnd);
-    expect(rangeEnd).toBeLessThan(startWrapperEnd);
-    expect(endWrapper).toBe(startWrapper);
-  });
+      expect(
+        [rangeStart, move, rangeEnd].every((position) => position >= 0),
+      ).toBe(true);
+      expect(startWrapper).toBeLessThan(rangeStart);
+      expect(rangeStart).toBeLessThan(move);
+      expect(move).toBeLessThan(rangeEnd);
+      expect(rangeEnd).toBeLessThan(startWrapperEnd);
+      expect(endWrapper).toBe(startWrapper);
+    },
+  );
 });

@@ -1,4 +1,5 @@
 import type JSZip from "jszip";
+
 import { writeZipEntry } from "@stll/utf8-boundaries";
 
 // Match the deterministic timestamp used by the package fixtures.
@@ -14,7 +15,12 @@ type WriteZipPartOptions = {
 };
 
 /** Write exactly one entry, without synthesizing parent directory entries. */
-export const writeZipPart = ({ zip, path, data, options = {} }: WriteZipPartOptions): void => {
+export const writeZipPart = ({
+  zip,
+  path,
+  data,
+  options = {},
+}: WriteZipPartOptions): void => {
   const unixPermissions =
     typeof options.unixPermissions === "string"
       ? Number.parseInt(options.unixPermissions, 8)

@@ -1,16 +1,18 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 
 import { DOCUMENT_SHAPES } from "../../__tests__/documentShapes";
 import {
+  type ConformanceOperation,
   EXTRA_OPERATIONS,
   runLegacyConformanceCase,
-  type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
 import { TEXTBLOCK_SELECTION_PLACEMENTS } from "../../__tests__/editorHarness";
 
-const copiedBlocks = EXTRA_OPERATIONS.find(({ id }) => id === "paste:copied-blocks");
+const copiedBlocks = EXTRA_OPERATIONS.find(
+  ({ id }) => id === "paste:copied-blocks",
+);
 const trackedShape = DOCUMENT_SHAPES.find(({ id }) => id === "tracked-changes");
 if (!copiedBlocks || !trackedShape) panic("Missing paste resolution inputs");
 
@@ -32,7 +34,9 @@ describe("tracked paste resolution", () => {
 const REVISION_KINDS = ["insertion", "deletion", "moveTo", "moveFrom"] as const;
 const nestedCases = REVISION_KINDS.flatMap((outer) =>
   REVISION_KINDS.flatMap((inner) =>
-    TEXTBLOCK_SELECTION_PLACEMENTS.map((placement) => [outer, inner, placement] as const),
+    TEXTBLOCK_SELECTION_PLACEMENTS.map(
+      (placement) => [outer, inner, placement] as const,
+    ),
   ),
 );
 const plainShape = DOCUMENT_SHAPES.find(({ id }) => id === "bare-package");
@@ -49,7 +53,9 @@ test.each(nestedCases)(
       run: ({ view }) => {
         const markType =
           view.state.schema.marks[
-            inner === "insertion" || inner === "moveTo" ? "insertion" : "deletion"
+            inner === "insertion" || inner === "moveTo"
+              ? "insertion"
+              : "deletion"
           ];
         if (!markType) panic("Missing clipboard revision mark");
         const mark = markType.create({
@@ -67,7 +73,13 @@ test.each(nestedCases)(
             },
           ],
         });
-        view.paste(new Slice(Fragment.from(view.state.schema.text("Clipboard", [mark])), 0, 0));
+        view.paste(
+          new Slice(
+            Fragment.from(view.state.schema.text("Clipboard", [mark])),
+            0,
+            0,
+          ),
+        );
         return undefined;
       },
     } as const satisfies ConformanceOperation;

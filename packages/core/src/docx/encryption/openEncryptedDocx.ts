@@ -8,7 +8,10 @@
 
 import { decryptAgileEncryptedPackage } from "./agileDecryption";
 import { readEncryptedPackageStreams } from "./compoundFile";
-import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./containerFormat";
+import {
+  detectDocxContainerType,
+  DOCX_CONTAINER_TYPES,
+} from "./containerFormat";
 import { toArrayBuffer } from "./cryptoBytes";
 import { parseAgileEncryptionInfo } from "./encryptionInfo";
 import { DOCX_ENCRYPTION_ERROR_CODES, DocxEncryptionError } from "./errors";
@@ -29,7 +32,8 @@ const assertZipPayload = (bytes: Uint8Array): void => {
   if (detectDocxContainerType(bytes) !== DOCX_CONTAINER_TYPES.ZIP) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
-      message: "Decrypted output is not a valid ZIP archive — the file may be corrupt",
+      message:
+        "Decrypted output is not a valid ZIP archive — the file may be corrupt",
     });
   }
 };
@@ -56,14 +60,16 @@ export const decryptDocxIfNeeded = async (
   if (container !== DOCX_CONTAINER_TYPES.CFB) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
-      message: "Unrecognized file format — expected a .docx (ZIP) or encrypted .docx (OLE/CFB)",
+      message:
+        "Unrecognized file format — expected a .docx (ZIP) or encrypted .docx (OLE/CFB)",
     });
   }
 
   if (options.password == null) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.PASSWORD_REQUIRED,
-      message: "This document is password-protected. A password is required to open it.",
+      message:
+        "This document is password-protected. A password is required to open it.",
     });
   }
 

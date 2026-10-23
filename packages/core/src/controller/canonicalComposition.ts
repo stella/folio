@@ -1,16 +1,19 @@
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
-
-import { EditorState, TextSelection, type Transaction } from "prosemirror-state";
+import {
+  EditorState,
+  TextSelection,
+  type Transaction,
+} from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { CanonicalSessionError } from "./canonicalSession";
+import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
+import { RUN_IDENTITY_MARK_NAME } from "../prosemirror/runIdentity";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   CANONICAL_COMPOSITION_FLUSH_DELAY_MS,
   setCanonicalInputTimer,
 } from "./canonicalInputTimer";
-import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
-import { RUN_IDENTITY_MARK_NAME } from "../prosemirror/runIdentity";
+import { CanonicalSessionError } from "./canonicalSession";
 
 type CompositionOptions = {
   begin: () => boolean;
@@ -28,7 +31,11 @@ type CompositionOptions = {
 type CompositionCompletionEvidence = "provisional" | "explicitFinal";
 type CompositionPhase =
   | { type: "active"; completion: CompositionCompletionEvidence }
-  | { type: "ended"; data: string | null; completion: CompositionCompletionEvidence };
+  | {
+      type: "ended";
+      data: string | null;
+      completion: CompositionCompletionEvidence;
+    };
 
 type CompositionState =
   | { type: "committed" }
@@ -64,7 +71,11 @@ type CompletedComposition =
   | { type: "completed"; receipt: CompletedReceipt }
   | { type: "authorized"; receipt: CompletedReceipt; text: string };
 
-type OmittedRunIdentityTolerance = { type: "omittedRunIdentity"; from: number; to: number };
+type OmittedRunIdentityTolerance = {
+  type: "omittedRunIdentity";
+  from: number;
+  to: number;
+};
 type NativeReplacementComparisonOptions = {
   baseline: EditorState;
   proposed: EditorState;
@@ -81,7 +92,8 @@ const matchesNativeReplacement = ({
 }: NativeReplacementComparisonOptions) => {
   const expected = baseline.tr.insertText(text, from, to);
   if (expected.doc.eq(proposed.doc)) return true;
-  if (!baseline.doc.resolve(from).sameParent(baseline.doc.resolve(to))) return false;
+  if (!baseline.doc.resolve(from).sameParent(baseline.doc.resolve(to)))
+    return false;
   if (expected.doc.content.size !== proposed.doc.content.size) return false;
   const markType = baseline.schema.marks[RUN_IDENTITY_MARK_NAME];
   if (markType === undefined) return false;
@@ -122,7 +134,8 @@ const matchesNativeReplacement = ({
       }
     }
   });
-  for (const range of missing) expected.removeMark(range.from, range.to, markType);
+  for (const range of missing)
+    expected.removeMark(range.from, range.to, markType);
   return expected.doc.eq(proposed.doc);
 };
 
@@ -136,17 +149,27 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
-  const selectedText = (baseline: EditorState, proposed: Pick<EditorState, "doc">) => {
+  const selectedText = (
+    baseline: EditorState,
+    proposed: Pick<EditorState, "doc">,
+  ) => {
     const { from, to } = baseline.selection;
-    const size = proposed.doc.content.size - baseline.doc.content.size + to - from;
+    const size =
+      proposed.doc.content.size - baseline.doc.content.size + to - from;
     if (size < 0 || from + size > proposed.doc.content.size) return null;
     const text = proposed.doc.textBetween(from, from + size, "", "");
     return text.length === size ? text : null;
   };
-  const selectedReplacement = (baseline: EditorState, proposed: EditorState) => {
+  const selectedReplacement = (
+    baseline: EditorState,
+    proposed: EditorState,
+  ) => {
     const { from, to } = baseline.selection;
     const text = selectedText(baseline, proposed);
-    if (text === null || !matchesNativeReplacement({ baseline, proposed, from, to, text }))
+    if (
+      text === null ||
+      !matchesNativeReplacement({ baseline, proposed, from, to, text })
+    )
       return null;
     return { from, to, text, semantic: "composition" as const };
   };
@@ -159,7 +182,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (selected) {
       if (
         $from.sameParent($to) &&
-        selected.text === baseline.doc.textBetween(selected.from, selected.to, "", "")
+        selected.text ===
+          baseline.doc.textBetween(selected.from, selected.to, "", "")
       ) {
         return {
           from: selected.from,
@@ -203,13 +227,25 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     // Node diffs also report mark-only changes (a native rewrite can drop run
     // identity). Narrow to the text change; reconstruction still checks every
     // semantic mark instead of committing a same-text replacement.
-    while (from < oldEnd && from < newEnd && before[from] === after[from]) from++;
-    while (oldEnd > from && newEnd > from && before[oldEnd - 1] === after[newEnd - 1]) {
+    while (from < oldEnd && from < newEnd && before[from] === after[from])
+      from++;
+    while (
+      oldEnd > from &&
+      newEnd > from &&
+      before[oldEnd - 1] === after[newEnd - 1]
+    ) {
       oldEnd--;
       newEnd--;
     }
-    while (splitsSurrogatePair(before, from) || splitsSurrogatePair(after, from)) from--;
-    while (splitsSurrogatePair(before, oldEnd) || splitsSurrogatePair(after, newEnd)) {
+    while (
+      splitsSurrogatePair(before, from) ||
+      splitsSurrogatePair(after, from)
+    )
+      from--;
+    while (
+      splitsSurrogatePair(before, oldEnd) ||
+      splitsSurrogatePair(after, newEnd)
+    ) {
       oldEnd++;
       newEnd++;
     }
@@ -231,7 +267,12 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       })
     )
       return null;
-    return { from: start + from, to: start + oldEnd, text, semantic: "composition" as const };
+    return {
+      from: start + from,
+      to: start + oldEnd,
+      text,
+      semantic: "composition" as const,
+    };
   };
   const applyNative = (view: EditorView, transaction: Transaction) =>
     Result.try({
@@ -249,7 +290,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     const pending = state;
     if (pending.type === "committed") return { type: "idle" };
     const input =
-      commit && pending.type === "provisional" ? replacement(pending.baseline, view.state) : null;
+      commit && pending.type === "provisional"
+        ? replacement(pending.baseline, view.state)
+        : null;
     // A final beforeinput carries the whole selected replacement, even when
     // the native observer produced a smaller diff with a shared prefix/suffix.
     // Acceptance is validated by replacement(); payload identity depends on text,
@@ -262,7 +305,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (!view.isDestroyed) {
       // Recovery may finish without a native end event (for example a refused
       // final beforeinput). Let PM end its own lifecycle before restoring DOM.
-      if (view.composing) view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+      if (view.composing)
+        view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
       view.updateState(pending.baseline);
     }
     options.end();
@@ -275,7 +319,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
         committedText === "")
     )
       return { type: "cancelled" };
-    if (pending.type === "refused") return { type: "refused", text: pending.text };
+    if (pending.type === "refused")
+      return { type: "refused", text: pending.text };
     if (!input) {
       options.refuse(
         "Composition changed unsupported content; the canonical document was restored.",
@@ -288,7 +333,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       !view.isDestroyed &&
       view.state.doc.textContent === proposed.doc.textContent &&
       from + committedText.length <= view.state.doc.content.size &&
-      view.state.doc.textBetween(from, from + committedText.length, "", "") === committedText
+      view.state.doc.textBetween(from, from + committedText.length, "", "") ===
+        committedText
     ) {
       completed = {
         type: "completed",
@@ -300,7 +346,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
           text: committedText,
           marks:
             pending.baseline.storedMarks ??
-            pending.baseline.selection.$from.marksAcross(pending.baseline.selection.$to),
+            pending.baseline.selection.$from.marksAcross(
+              pending.baseline.selection.$to,
+            ),
         },
       };
     }
@@ -309,7 +357,10 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
   const schedule = (view: EditorView) => {
     clearTimer();
     // Allow the native final input and PM's delayed composition flush to settle.
-    timer = setCanonicalInputTimer(() => finish(view, true), CANONICAL_COMPOSITION_FLUSH_DELAY_MS);
+    timer = setCanonicalInputTimer(
+      () => finish(view, true),
+      CANONICAL_COMPOSITION_FLUSH_DELAY_MS,
+    );
   };
   return {
     // Keep declaration emission tied to the authored union, not inferred member order.
@@ -319,7 +370,10 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     get active() {
       return state.type !== "committed";
     },
-    matchesCancellationRange: (view: EditorView, range: { from: number; to: number }) => {
+    matchesCancellationRange: (
+      view: EditorView,
+      range: { from: number; to: number },
+    ) => {
       if (state.type === "committed" || state.view !== view) return false;
       const text = selectedText(state.baseline, view.state);
       if (text === null || text.length === 0) return false;
@@ -330,10 +384,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       const selection = view.dom.ownerDocument.getSelection();
       if (!selection || selection.rangeCount !== 1) return false;
       const selected = selection.getRangeAt(0);
-      if (!view.dom.contains(selected.startContainer) || !view.dom.contains(selected.endContainer))
+      if (
+        !view.dom.contains(selected.startContainer) ||
+        !view.dom.contains(selected.endContainer)
+      )
         return false;
       return (
-        view.posAtDOM(selected.startContainer, selected.startOffset) === range.from &&
+        view.posAtDOM(selected.startContainer, selected.startOffset) ===
+          range.from &&
         view.posAtDOM(selected.endContainer, selected.endOffset) === range.to
       );
     },
@@ -393,7 +451,10 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       completed = { type: "authorized", receipt, text };
       return true;
     },
-    authorizeNative: (view: EditorView, completion: CompositionCompletionEvidence) => {
+    authorizeNative: (
+      view: EditorView,
+      completion: CompositionCompletionEvidence,
+    ) => {
       authorizedNativeState = view.state;
       if (state.type !== "committed" && completion === "explicitFinal") {
         state.phase =
@@ -409,7 +470,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       queueMicrotask(() => {
         if (authorizedNativeState === authorized) authorizedNativeState = null;
       });
-      if (state.type !== "committed" && state.phase.type === "ended") schedule(view);
+      if (state.type !== "committed" && state.phase.type === "ended")
+        schedule(view);
     },
     recover: (view: EditorView) => finish(view, true),
     cancel: (view: EditorView) => finish(view, false),
@@ -424,9 +486,11 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     accept: (view: EditorView, transaction: Transaction) => {
       if (state.type === "committed") {
         const final = completed;
-        if (final.type !== "authorized" || final.receipt.view !== view) return false;
+        if (final.type !== "authorized" || final.receipt.view !== view)
+          return false;
         completed = { type: "idle" };
-        if (view.isDestroyed || final.receipt.state !== view.state) return false;
+        if (view.isDestroyed || final.receipt.state !== view.state)
+          return false;
         const applied = applyNative(view, transaction);
         const baseline = EditorState.create({
           schema: final.receipt.state.schema,
@@ -438,7 +502,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
           ),
           storedMarks: final.receipt.marks,
         });
-        const input = applied.isOk() ? replacement(baseline, applied.value.state) : null;
+        const input = applied.isOk()
+          ? replacement(baseline, applied.value.state)
+          : null;
         // A final can arrive as the full replacement or its minimal native diff.
         // The captured range and full payload must match in either form.
         if (
@@ -468,7 +534,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
         if (
           !view.isDestroyed &&
           view.state.doc.textContent === applied.value.state.doc.textContent &&
-          final.receipt.from + final.text.length <= view.state.doc.content.size &&
+          final.receipt.from + final.text.length <=
+            view.state.doc.content.size &&
           view.state.doc.textBetween(
             final.receipt.from,
             final.receipt.from + final.text.length,

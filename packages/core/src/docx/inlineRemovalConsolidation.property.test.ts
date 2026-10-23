@@ -24,15 +24,20 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { getParagraphText } from "./paragraphParser";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const COMMENTS_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 
@@ -94,7 +99,10 @@ const COMMENTS_PART =
 
 type Package = { items: readonly Item[]; withComments: boolean };
 
-const buildDocx = async ({ items, withComments }: Package): Promise<ArrayBuffer> => {
+const buildDocx = async ({
+  items,
+  withComments,
+}: Package): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file(
     "word/document.xml",
@@ -126,16 +134,25 @@ const buildDocx = async ({ items, withComments }: Package): Promise<ArrayBuffer>
 };
 
 const documentPart = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
-const bodyText = ({ package: { document } }: Awaited<ReturnType<typeof parseDocx>>): string =>
+const bodyText = ({
+  package: { document },
+}: Awaited<ReturnType<typeof parseDocx>>): string =>
   document.content
     .filter((block) => block.type === "paragraph")
     .map((paragraph) => getParagraphText(paragraph))
     .join("\n");
 
 const generated = fc.record({
-  items: fc.array(fc.constantFrom(...Object.values(ITEMS)), { minLength: 1, maxLength: 7 }),
+  items: fc.array(fc.constantFrom(...Object.values(ITEMS)), {
+    minLength: 1,
+    maxLength: 7,
+  }),
   withComments: fc.boolean(),
 });
 
@@ -148,15 +165,22 @@ describe("a removal restores the consolidation the parse guarantees", () => {
           const source = await buildDocx(generatedPackage);
 
           const first = await parseDocx(source, { preloadFonts: false });
-          const firstSave = await repackDocx(first, { updateModifiedDate: false });
+          const firstSave = await repackDocx(first, {
+            updateModifiedDate: false,
+          });
           const second = await parseDocx(firstSave, { preloadFonts: false });
-          const secondSave = await repackDocx(second, { updateModifiedDate: false });
+          const secondSave = await repackDocx(second, {
+            updateModifiedDate: false,
+          });
 
           expect({ generatedPackage, text: bodyText(second) }).toEqual({
             generatedPackage,
             text: bodyText(first),
           });
-          expect({ generatedPackage, part: await documentPart(secondSave) }).toEqual({
+          expect({
+            generatedPackage,
+            part: await documentPart(secondSave),
+          }).toEqual({
             generatedPackage,
             part: await documentPart(firstSave),
           });

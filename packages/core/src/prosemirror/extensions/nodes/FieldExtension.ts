@@ -10,7 +10,11 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { parseFieldInstruction } from "../../../docx/fieldParser";
-import { expectFieldAttrs, isValidEmptyFieldResultRuns, isValidFieldCode } from "../../attrs";
+import {
+  expectFieldAttrs,
+  isValidEmptyFieldResultRuns,
+  isValidFieldCode,
+} from "../../attrs";
 import { createNodeExtension } from "../create";
 
 type FieldOptions = {
@@ -65,7 +69,9 @@ const readFieldDomAttrs = (dom: HTMLElement) => {
     fieldType: dom.dataset["fieldType"] ?? "UNKNOWN",
     instruction: dom.dataset["instruction"] ?? "",
     displayText:
-      (emptyResultRuns === null ? undefined : dom.dataset["displayText"]) ?? dom.textContent ?? "",
+      (emptyResultRuns === null ? undefined : dom.dataset["displayText"]) ??
+      dom.textContent ??
+      "",
     fieldKind: dom.dataset["fieldKind"] ?? "simple",
     fldLock: statedFlag(dom.dataset["fldLock"]),
     dirty: statedFlag(dom.dataset["dirty"]),
@@ -98,11 +104,15 @@ const getFieldDomAttrs = (node: PMNode) => {
     ...(fieldResultIsFallback === undefined
       ? {}
       : { "data-field-result-is-fallback": String(fieldResultIsFallback) }),
-    ...(formFieldDataXml === undefined ? {} : { "data-form-field-data-xml": formFieldDataXml }),
+    ...(formFieldDataXml === undefined
+      ? {}
+      : { "data-form-field-data-xml": formFieldDataXml }),
     ...(_docxEmptyResultRuns === undefined
       ? {}
       : { "data-empty-result-runs": JSON.stringify(_docxEmptyResultRuns) }),
-    ...(_docxFieldCode === undefined ? {} : { "data-field-code": JSON.stringify(_docxFieldCode) }),
+    ...(_docxFieldCode === undefined
+      ? {}
+      : { "data-field-code": JSON.stringify(_docxFieldCode) }),
     style:
       "outline: 1px solid var(--doc-field-outline, rgba(200,200,200,0.4)); padding: 0 1px; border-radius: 2px;",
   };
@@ -153,7 +163,10 @@ export const FieldExtension = createNodeExtension<FieldOptions>({
         {
           ...getFieldDomAttrs(node),
           ...(options.getInternalClipboardToken
-            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
+            ? {
+                "data-docx-internal-clipboard":
+                  options.getInternalClipboardToken(),
+              }
             : {}),
           ...(_docxEmptyResultRuns ? { "data-display-text": displayText } : {}),
         },
@@ -178,7 +191,10 @@ export const StructuredFieldExtension = createNodeExtension<FieldOptions>({
       {
         tag: 'span.docx-field[data-field-structured="true"]',
         getAttrs(dom) {
-          if (dom.dataset["fieldKind"] !== "simple" || !dom.querySelector("a[href]")) {
+          if (
+            dom.dataset["fieldKind"] !== "simple" ||
+            !dom.querySelector("a[href]")
+          ) {
             return false;
           }
           return readFieldDomAttrs(dom);
@@ -192,7 +208,10 @@ export const StructuredFieldExtension = createNodeExtension<FieldOptions>({
           ...getFieldDomAttrs(node),
           "data-field-structured": "true",
           ...(options.getInternalClipboardToken
-            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
+            ? {
+                "data-docx-internal-clipboard":
+                  options.getInternalClipboardToken(),
+              }
             : {}),
         },
         0,

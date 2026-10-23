@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { computeListRendering, parseNumbering } from "./numberingParser";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const numberingXml = `<w:numbering ${W}>
   <w:abstractNum w:abstractNumId="7">
@@ -45,11 +46,15 @@ describe("numbering-level complex-script marker formatting", () => {
   test("uses the canonical run parser and preserves explicit false values", () => {
     const numbering = parseNumbering(numberingXml);
 
-    expect(numbering.getLevel(3, 0)?.rPr).toMatchObject(expectedLevelZeroFormatting);
-    expect(computeListRendering({ numId: 3, ilvl: 0 }, numbering)?.markerFormatting).toEqual(
+    expect(numbering.getLevel(3, 0)?.rPr).toMatchObject(
       expectedLevelZeroFormatting,
     );
-    expect(computeListRendering({ numId: 3, ilvl: 1 }, numbering)?.markerFormatting).toEqual({
+    expect(
+      computeListRendering({ numId: 3, ilvl: 0 }, numbering)?.markerFormatting,
+    ).toEqual(expectedLevelZeroFormatting);
+    expect(
+      computeListRendering({ numId: 3, ilvl: 1 }, numbering)?.markerFormatting,
+    ).toEqual({
       fontFamily: { cs: "Arabic Typesetting" },
       rtl: true,
       cs: true,
@@ -57,7 +62,9 @@ describe("numbering-level complex-script marker formatting", () => {
   });
 
   test("serializes and reparses every independent CS property", () => {
-    const serialized = serializeNumberingXml(parseNumbering(numberingXml).definitions);
+    const serialized = serializeNumberingXml(
+      parseNumbering(numberingXml).definitions,
+    );
 
     expect(serialized).toContain('w:cs="Traditional Arabic"');
     expect(serialized).toContain('<w:bCs w:val="0"/>');
@@ -69,7 +76,9 @@ describe("numbering-level complex-script marker formatting", () => {
     expect(serialized).toContain("<w:cs/>");
 
     const reparsed = parseNumbering(serialized);
-    expect(reparsed.getLevel(3, 0)?.rPr).toMatchObject(expectedLevelZeroFormatting);
+    expect(reparsed.getLevel(3, 0)?.rPr).toMatchObject(
+      expectedLevelZeroFormatting,
+    );
     expect(reparsed.getLevel(3, 1)?.rPr).toMatchObject({
       fontFamily: { cs: "Arabic Typesetting" },
       rtl: true,

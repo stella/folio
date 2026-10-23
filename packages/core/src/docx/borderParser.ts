@@ -10,25 +10,41 @@
  * `w:suff` and `w:tab`.
  */
 
-import { borderStyleFrom, isBorderStyle, PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import {
+  borderStyleFrom,
+  isBorderStyle,
+  PARSE_WARNING_CODES,
+} from "@stll/docx-core/model";
 
 import type { BorderSpec, ColorValue } from "../types/document";
 import { readAttributeBag } from "./attributeRemainder";
 import type { ParseContext } from "./parseContext";
 import { BORDER_ATTRIBUTES } from "./propertyElementAttributes";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
-import { getAttribute, parseNumericAttribute, parseOnOffAttribute } from "./xmlParser";
+import {
+  getAttribute,
+  parseNumericAttribute,
+  parseOnOffAttribute,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 /** `ST_HexColor`'s reserved "let the consumer decide" token, as `shadingParser` spells it. */
 const AUTOMATIC_COLOR = "auto";
 
-const parseBorderColor = (border: XmlElement, context?: ParseContext): ColorValue | undefined => {
+const parseBorderColor = (
+  border: XmlElement,
+  context?: ParseContext,
+): ColorValue | undefined => {
   const rgb = getAttribute(border, "w", "color");
   const themeColor = getAttribute(border, "w", "themeColor");
   const themeTint = getAttribute(border, "w", "themeTint");
   const themeShade = getAttribute(border, "w", "themeShade");
-  if (rgb === null && themeColor === null && themeTint === null && themeShade === null) {
+  if (
+    rgb === null &&
+    themeColor === null &&
+    themeTint === null &&
+    themeShade === null
+  ) {
     return undefined;
   }
 
@@ -126,15 +142,27 @@ export function parseBorderSpec(
   if (topLeftArtRelationshipId) {
     spec.topLeftArtRelationshipId = topLeftArtRelationshipId;
   }
-  const topRightArtRelationshipId = getAttribute(border, "r", "topRight")?.trim();
+  const topRightArtRelationshipId = getAttribute(
+    border,
+    "r",
+    "topRight",
+  )?.trim();
   if (topRightArtRelationshipId) {
     spec.topRightArtRelationshipId = topRightArtRelationshipId;
   }
-  const bottomLeftArtRelationshipId = getAttribute(border, "r", "bottomLeft")?.trim();
+  const bottomLeftArtRelationshipId = getAttribute(
+    border,
+    "r",
+    "bottomLeft",
+  )?.trim();
   if (bottomLeftArtRelationshipId) {
     spec.bottomLeftArtRelationshipId = bottomLeftArtRelationshipId;
   }
-  const bottomRightArtRelationshipId = getAttribute(border, "r", "bottomRight")?.trim();
+  const bottomRightArtRelationshipId = getAttribute(
+    border,
+    "r",
+    "bottomRight",
+  )?.trim();
   if (bottomRightArtRelationshipId) {
     spec.bottomRightArtRelationshipId = bottomRightArtRelationshipId;
   }

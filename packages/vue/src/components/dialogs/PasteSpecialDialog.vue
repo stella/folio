@@ -20,29 +20,39 @@
     </div>
     <div class="dialog__footer">
       <button class="dialog__btn" @click="$emit('close')">Cancel</button>
-      <button class="dialog__btn dialog__btn--primary" @click="paste">Paste</button>
+      <button class="dialog__btn dialog__btn--primary" @click="paste">
+        Paste
+      </button>
     </div>
   </FolioDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
 
 const { Dialog: FolioDialog } = useFolioUI();
 
-export type PasteSpecialMode = "keepFormatting" | "mergeFormatting" | "plainText";
+export type PasteSpecialMode =
+  "keepFormatting" | "mergeFormatting" | "plainText";
 
-const PASTE_MODES: Array<{ value: PasteSpecialMode; label: string; description: string }> = [
+const PASTE_MODES: Array<{
+  value: PasteSpecialMode;
+  label: string;
+  description: string;
+}> = [
   {
     value: "keepFormatting",
     label: "Keep source formatting",
-    description: "Preserve styles, links, and inline formatting from the clipboard.",
+    description:
+      "Preserve styles, links, and inline formatting from the clipboard.",
   },
   {
     value: "mergeFormatting",
     label: "Merge formatting",
-    description: "Keep useful inline formatting while matching the destination paragraph.",
+    description:
+      "Keep useful inline formatting while matching the destination paragraph.",
   },
   {
     value: "plainText",

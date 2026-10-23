@@ -10,16 +10,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { Document, Paragraph, ParagraphContent } from "../types/document";
-import {
-  fieldResultsInFile,
-  fieldResultsShown,
-  foldFaults,
-  inlineTokens,
-} from "./__tests__/listNumberFieldFixture";
-import { normalizeFoldedListNumbers } from "./foldedListNumberFields";
-import { serializeParagraph } from "./serializer/paragraphSerializer";
 import {
   applyDocumentOp,
   DOCUMENT_OP_TYPES,
@@ -29,6 +19,20 @@ import {
   paragraphLength,
   SPLIT_HALVES,
 } from "@stll/docx-core/ops";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type { Document, Paragraph, ParagraphContent } from "../types/document";
+import {
+  fieldResultsInFile,
+  fieldResultsShown,
+  foldFaults,
+  inlineTokens,
+} from "./__tests__/listNumberFieldFixture";
+import { normalizeFoldedListNumbers } from "./foldedListNumberFields";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -49,7 +53,9 @@ const fieldCapture = (serial: number): ParagraphContent => ({
       instruction: " LISTNUM ",
       fieldType: "LISTNUM",
       fieldCode: [],
-      fieldResult: [{ type: "run", content: [{ type: "text", text: resultOf(serial) }] }],
+      fieldResult: [
+        { type: "run", content: [{ type: "text", text: resultOf(serial) }] },
+      ],
     },
   },
 });
@@ -58,7 +64,10 @@ const tabCapture = (): ParagraphContent => ({
   type: "preservedInline",
   xml: "<w:r><w:tab/></w:r>",
   text: "",
-  foldedListNumber: { kind: "tab", run: { type: "run", content: [{ type: "tab" }] } },
+  foldedListNumber: {
+    kind: "tab",
+    run: { type: "run", content: [{ type: "tab" }] },
+  },
 });
 
 type ParagraphShape = { fields: boolean[]; text: boolean };
@@ -111,9 +120,13 @@ const documentOf = (
 };
 
 const paragraphsOf = (document: Document): Paragraph[] =>
-  document.package.document.content.flatMap((block) => (block.type === "paragraph" ? [block] : []));
+  document.package.document.content.flatMap((block) =>
+    block.type === "paragraph" ? [block] : [],
+  );
 
-const fractionArbitrary = fc.nat({ max: 1000 }).map((thousandths) => thousandths / 1000);
+const fractionArbitrary = fc
+  .nat({ max: 1000 })
+  .map((thousandths) => thousandths / 1000);
 
 const STEP_KINDS = ["split", "join", "type"] as const;
 
@@ -133,9 +146,16 @@ type Step = {
   half: (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
 };
 
-const opFor = (document: Document, step: Step, serial: number): DocumentOp | undefined => {
+const opFor = (
+  document: Document,
+  step: Step,
+  serial: number,
+): DocumentOp | undefined => {
   const paragraphs = paragraphsOf(document);
-  const index = Math.min(paragraphs.length - 1, Math.floor(step.paragraph * paragraphs.length));
+  const index = Math.min(
+    paragraphs.length - 1,
+    Math.floor(step.paragraph * paragraphs.length),
+  );
   const paragraph = paragraphs[index];
   if (!paragraph?.paraId) {
     return undefined;
@@ -155,7 +175,10 @@ const opFor = (document: Document, step: Step, serial: number): DocumentOp | und
       return {
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
         at,
-        newBlockId: (0x10_00 + serial).toString(16).toUpperCase().padStart(8, "0"),
+        newBlockId: (0x10_00 + serial)
+          .toString(16)
+          .toUpperCase()
+          .padStart(8, "0"),
         newHalf: step.half,
       };
     case "join": {
@@ -172,7 +195,12 @@ const opFor = (document: Document, step: Step, serial: number): DocumentOp | und
       };
     }
     case "type":
-      return { type: DOCUMENT_OP_TYPES.INSERT_TEXT, at, text: "x", runProps: INHERIT_RUN_PROPS };
+      return {
+        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+        at,
+        text: "x",
+        runProps: INHERIT_RUN_PROPS,
+      };
     default: {
       const unhandled: never = step.kind;
       return unhandled;
@@ -188,7 +216,10 @@ const asSaved = (document: Document): Paragraph[] =>
     return copy;
   });
 
-const expectSavedForm = (document: Document, results: readonly string[]): void => {
+const expectSavedForm = (
+  document: Document,
+  results: readonly string[],
+): void => {
   const written: string[] = [];
   for (const paragraph of asSaved(document)) {
     // Nothing hidden behind text, and the marker shows exactly what is hidden.
@@ -198,7 +229,9 @@ const expectSavedForm = (document: Document, results: readonly string[]): void =
     written.push(...tokens.filter((token) => /^text:\(\d+\)$/u.test(token)));
   }
   // Every field written once: none lost to a cut, none doubled by a join.
-  expect(written.toSorted()).toEqual(results.map((result) => `text:${result}`).toSorted());
+  expect(written.toSorted()).toEqual(
+    results.map((result) => `text:${result}`).toSorted(),
+  );
 };
 
 describe("the fold's rule after document operations", () => {

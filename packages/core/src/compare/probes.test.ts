@@ -21,8 +21,12 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import type { FolioAIBlock, FolioAIInlineBooleanProperty } from "../ai-edits/types";
+import type {
+  FolioAIBlock,
+  FolioAIInlineBooleanProperty,
+} from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
 import type { Table, TableCell, TextFormatting } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -37,16 +41,24 @@ import {
 import { compareDocx } from "./compare";
 import { applyEditScript, type EditScript } from "./scenario";
 import type { CompareChange } from "./types";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
-const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
+const FIXTURES_DIR = path.join(
+  import.meta.dir,
+  "../docx/__tests__/__fixtures__/corpus",
+);
 
 const readFixture = (filename: string): ArrayBuffer => {
   const bytes = readFileSync(path.join(FIXTURES_DIR, filename));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
-const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2024-03-01T00:00:00.000Z",
+} as const;
 
 const PROSE_BASE = readFixture("upstream-styled-content.docx");
 const TABLE_BASE = readFixture("upstream-with-tables.docx");
@@ -55,7 +67,9 @@ const LIST_BASE = await buildNumberedListDocx();
 
 type ColumnCell = { text: string; gridSpan?: number };
 
-const buildColumnTableDocx = (rows: readonly (readonly ColumnCell[])[]): Promise<ArrayBuffer> => {
+const buildColumnTableDocx = (
+  rows: readonly (readonly ColumnCell[])[],
+): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
   const cell = ({ text, gridSpan }: ColumnCell): TableCell => ({
     type: "tableCell",
@@ -100,11 +114,15 @@ const withNumberingFormats = async (
       `(<w:lvl w:ilvl="${String(level)}">[\\s\\S]*?<w:numFmt w:val=")[^"]+("/>)`,
       "u",
     );
-    const replaced = xml.replace(levelFormat, (_match, before: string, after: string) =>
-      [before, format, after].join(""),
+    const replaced = xml.replace(
+      levelFormat,
+      (_match, before: string, after: string) =>
+        [before, format, after].join(""),
     );
     if (replaced === xml) {
-      throw new Error(`The numbered-list fixture has no level ${String(level)} format.`);
+      throw new Error(
+        `The numbered-list fixture has no level ${String(level)} format.`,
+      );
     }
     xml = replaced;
   }
@@ -152,7 +170,10 @@ const buildBooleanFormattingDocx = (
     ...document.package.styles,
     docDefaults: {
       ...docDefaults,
-      rPr: { ...docDefaults?.rPr, ...booleanTextFormatting(property, inherited) },
+      rPr: {
+        ...docDefaults?.rPr,
+        ...booleanTextFormatting(property, inherited),
+      },
     },
   };
   document.package.document.content = [
@@ -198,14 +219,19 @@ const booleanFormattingProjection = async (
   };
 };
 
-const withoutTerminalBodyParagraph = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
+const withoutTerminalBodyParagraph = async (
+  buffer: ArrayBuffer,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(buffer);
   const documentEntry = zip.file("word/document.xml");
   if (!documentEntry) {
     throw new Error("The fixture has no main document part.");
   }
   const documentXml = await documentEntry.async("string");
-  const withoutCarrier = documentXml.replace(/<w:p\b[^>]*><\/w:p>(?=<w:sectPr>)/u, "");
+  const withoutCarrier = documentXml.replace(
+    /<w:p\b[^>]*><\/w:p>(?=<w:sectPr>)/u,
+    "",
+  );
   if (withoutCarrier === documentXml) {
     throw new Error("The fixture has no terminal empty body paragraph.");
   }
@@ -223,7 +249,8 @@ const paragraphsOf = (documentXml: string): string[] =>
  * of the answer.
  */
 const markIsDeleted = (paragraph: string): boolean => {
-  const properties = /^<w:p\b[^>]*><w:pPr>([\s\S]*?)<\/w:pPr>/u.exec(paragraph)?.[1] ?? "";
+  const properties =
+    /^<w:p\b[^>]*><w:pPr>([\s\S]*?)<\/w:pPr>/u.exec(paragraph)?.[1] ?? "";
   return /<w:rPr>[\s\S]*?<w:(?:del|moveFrom)\b/u.test(properties);
 };
 
@@ -232,7 +259,8 @@ const marksDeletedIn = (partXml: string): string[] =>
   paragraphsOf(partXml).filter((paragraph) => markIsDeleted(paragraph));
 
 const markIsInserted = (paragraph: string): boolean => {
-  const properties = /^<w:p\b[^>]*><w:pPr>([\s\S]*?)<\/w:pPr>/u.exec(paragraph)?.[1] ?? "";
+  const properties =
+    /^<w:p\b[^>]*><w:pPr>([\s\S]*?)<\/w:pPr>/u.exec(paragraph)?.[1] ?? "";
   return /<w:rPr>[\s\S]*?<w:(?:ins|moveTo)\b/u.test(properties);
 };
 
@@ -277,7 +305,10 @@ type ProbeOutcome = {
  * Apply one mutation, compare, and assert the round trip. Every probe shares
  * this much; what differs is what each one then says about the change list.
  */
-const probe = async (base: ArrayBuffer, script: EditScript): Promise<ProbeOutcome> => {
+const probe = async (
+  base: ArrayBuffer,
+  script: EditScript,
+): Promise<ProbeOutcome> => {
   const scripted = await applyEditScript(base, script);
   if (scripted.isErr()) {
     throw scripted.error;
@@ -305,7 +336,10 @@ const probe = async (base: ArrayBuffer, script: EditScript): Promise<ProbeOutcom
 };
 
 /** A block with enough words to split, edit inside, or bold part of. */
-const wordyBlockIndex = (blocks: readonly FolioAIBlock[], minimumWords: number): number => {
+const wordyBlockIndex = (
+  blocks: readonly FolioAIBlock[],
+  minimumWords: number,
+): number => {
   const index = blocks.findIndex(
     (block) => !block.table && block.text.split(" ").length >= minimumWords,
   );
@@ -332,14 +366,20 @@ describe("single-mutation probes", () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
     const word = PROSE_BLOCKS[blockIndex]?.text.split(" ").at(0) ?? "";
     const { kinds } = await probe(PROSE_BASE, [
-      { type: "replaceWords", blockIndex, find: word, replace: `${word} A new sentence applies.` },
+      {
+        type: "replaceWords",
+        blockIndex,
+        find: word,
+        replace: `${word} A new sentence applies.`,
+      },
     ]);
     expect(kinds).toEqual(["replace"]);
   });
 
   test("delete_sentence: one removed phrase is one replace", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 6);
-    const phrase = PROSE_BLOCKS[blockIndex]?.text.split(" ").slice(1, 3).join(" ") ?? "";
+    const phrase =
+      PROSE_BLOCKS[blockIndex]?.text.split(" ").slice(1, 3).join(" ") ?? "";
     const { kinds } = await probe(PROSE_BASE, [
       { type: "replaceWords", blockIndex, find: `${phrase} `, replace: "" },
     ]);
@@ -378,13 +418,17 @@ describe("single-mutation probes", () => {
     expect(kinds).toEqual(["split"]);
     const [change] = changes;
     expect(change?.kind === "split" && change.targetBlockIds).toHaveLength(2);
-    expect(change?.kind === "split" && change.text).toBe(PROSE_BLOCKS[blockIndex]?.text);
+    expect(change?.kind === "split" && change.text).toBe(
+      PROSE_BLOCKS[blockIndex]?.text,
+    );
   });
 
   /** The mirror of the split: one deleted paragraph mark. */
   test("merge_paragraphs: one deleted paragraph mark", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 3);
-    const { changes, kinds } = await probe(PROSE_BASE, [{ type: "mergeParagraphs", blockIndex }]);
+    const { changes, kinds } = await probe(PROSE_BASE, [
+      { type: "mergeParagraphs", blockIndex },
+    ]);
     expect(kinds).toEqual(["merge"]);
     const [change] = changes;
     expect(change?.kind === "merge" && change.baseBlockIds).toHaveLength(2);
@@ -408,12 +452,20 @@ describe("single-mutation probes", () => {
     // text was relocated rather than rewritten.
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
     const scripted = await applyEditScript(PROSE_BASE, [
-      { type: "moveParagraph", blockIndex, beforeBlockIndex: PROSE_BLOCKS.length - 1 },
+      {
+        type: "moveParagraph",
+        blockIndex,
+        beforeBlockIndex: PROSE_BLOCKS.length - 1,
+      },
     ]);
     if (scripted.isErr()) {
       throw scripted.error;
     }
-    const result = await compareDocx(PROSE_BASE, scripted.value.buffer, OPTIONS);
+    const result = await compareDocx(
+      PROSE_BASE,
+      scripted.value.buffer,
+      OPTIONS,
+    );
     if (result.isErr()) {
       throw result.error;
     }
@@ -437,14 +489,21 @@ describe("single-mutation probes", () => {
 
   test("add_list_item: an added item is one insert", async () => {
     const { kinds } = await probe(LIST_BASE, [
-      { type: "insertParagraphAfter", blockIndex: 1, text: "Delivery may be made in instalments." },
+      {
+        type: "insertParagraphAfter",
+        blockIndex: 1,
+        text: "Delivery may be made in instalments.",
+      },
     ]);
     expect(kinds).toEqual(["insert"]);
   });
 
   test("delete_table_row: a removed row is one table-row-delete", async () => {
     const { kinds } = await probe(TABLE_BASE, [
-      { type: "deleteTableRow", blockIndex: firstTableBlockIndex(TABLE_BLOCKS) },
+      {
+        type: "deleteTableRow",
+        blockIndex: firstTableBlockIndex(TABLE_BLOCKS),
+      },
     ]);
     expect(kinds).toEqual(["table-row-delete"]);
   });
@@ -455,7 +514,11 @@ describe("single-mutation probes", () => {
       [{ text: "Fees" }, { text: "Annual" }, { text: "Open" }],
     ]);
     const target = await buildColumnTableDocx([
-      [{ text: "Account details", gridSpan: 2 }, { text: "Currency" }, { text: "Status" }],
+      [
+        { text: "Account details", gridSpan: 2 },
+        { text: "Currency" },
+        { text: "Status" },
+      ],
       [{ text: "Fees" }, { text: "Annual" }, { text: "EUR" }, { text: "Open" }],
     ]);
 
@@ -464,7 +527,9 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
     expect(result.value.verification).toEqual({ status: "verified" });
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-column-insert"]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "table-column-insert",
+    ]);
     expect(await projectView(result.value.buffer, "final")).toEqual(
       await projectView(target, "final"),
     );
@@ -488,7 +553,9 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
     expect(result.value.verification).toEqual({ status: "verified" });
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "table-column-delete",
+    ]);
     expect(await projectView(result.value.buffer, "final")).toEqual(
       await projectView(target, "final"),
     );
@@ -503,7 +570,12 @@ describe("single-mutation probes", () => {
       [{ text: "Fees" }, { text: "Open" }],
     ]);
     const target = await buildColumnTableDocx([
-      [{ text: "Account" }, { text: "Currency" }, { text: "Region" }, { text: "Status" }],
+      [
+        { text: "Account" },
+        { text: "Currency" },
+        { text: "Region" },
+        { text: "Status" },
+      ],
       [{ text: "Fees" }, { text: "EUR" }, { text: "EMEA" }, { text: "Open" }],
     ]);
 
@@ -533,7 +605,8 @@ describe("single-mutation probes", () => {
   test("append_after_nested_table: the new paragraph lands at body level", async () => {
     const base = await buildNestedTableDocx();
     const target = await buildNestedTableDocx({
-      trailingParagraph: "Signed by the parties on the date first written above.",
+      trailingParagraph:
+        "Signed by the parties on the date first written above.",
     });
 
     const result = await compareDocx(base, target, OPTIONS);
@@ -575,7 +648,9 @@ describe("single-mutation probes", () => {
     );
     // Both still accept back to the target and reject back to the base.
     for (const result of [wordLevel.value, characterLevel.value]) {
-      expect(await projectView(result.buffer, "final")).toEqual(await projectView(target, "final"));
+      expect(await projectView(result.buffer, "final")).toEqual(
+        await projectView(target, "final"),
+      );
       expect(await projectView(result.buffer, "original")).toEqual(
         await projectView(PROSE_BASE, "final"),
       );
@@ -585,7 +660,13 @@ describe("single-mutation probes", () => {
   test("format_only_bold: bolding a phrase is a format, never a rewrite", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
     const { changes, kinds } = await probe(PROSE_BASE, [
-      { type: "formatRange", blockIndex, startOffset: 0, endOffset: 4, formatting: { bold: true } },
+      {
+        type: "formatRange",
+        blockIndex,
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { bold: true },
+      },
     ]);
     expect(kinds).toEqual(["format"]);
     const [change] = changes;
@@ -600,8 +681,16 @@ describe("single-mutation probes", () => {
             continue;
           }
           test(`format_only_${property}: inherited ${String(inherited)}, direct ${baseDirect} -> ${targetDirect}`, async () => {
-            const base = await buildBooleanFormattingDocx(property, inherited, baseDirect);
-            const target = await buildBooleanFormattingDocx(property, inherited, targetDirect);
+            const base = await buildBooleanFormattingDocx(
+              property,
+              inherited,
+              baseDirect,
+            );
+            const target = await buildBooleanFormattingDocx(
+              property,
+              inherited,
+              targetDirect,
+            );
             const result = await compareDocx(base, target, OPTIONS);
             if (result.isErr()) {
               throw result.error;
@@ -616,30 +705,45 @@ describe("single-mutation probes", () => {
                     startOffset: 0,
                     endOffset: "Boolean formatting".length,
                     formatting: {
-                      [property]: targetDirect === "absent" ? null : targetDirect === "on",
+                      [property]:
+                        targetDirect === "absent"
+                          ? null
+                          : targetDirect === "on",
                     },
                   },
                 ],
               }),
             ]);
 
-            const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+            const accepting = await FolioDocxReviewer.fromBuffer(
+              result.value.buffer,
+            );
             accepting.acceptAll();
             const accepted = await accepting.toBuffer();
-            const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+            const rejecting = await FolioDocxReviewer.fromBuffer(
+              result.value.buffer,
+            );
             rejecting.rejectAll();
             const rejected = await rejecting.toBuffer();
 
-            expect((await FolioDocxReviewer.fromBuffer(accepted)).getChanges()).toEqual([]);
-            expect((await FolioDocxReviewer.fromBuffer(rejected)).getChanges()).toEqual([]);
-            expect(await booleanFormattingProjection(accepted, property)).toEqual(
-              await booleanFormattingProjection(target, property),
+            expect(
+              (await FolioDocxReviewer.fromBuffer(accepted)).getChanges(),
+            ).toEqual([]);
+            expect(
+              (await FolioDocxReviewer.fromBuffer(rejected)).getChanges(),
+            ).toEqual([]);
+            expect(
+              await booleanFormattingProjection(accepted, property),
+            ).toEqual(await booleanFormattingProjection(target, property));
+            expect(
+              await booleanFormattingProjection(rejected, property),
+            ).toEqual(await booleanFormattingProjection(base, property));
+            expect(await documentPartOf(accepted)).not.toContain(
+              "<w:rPrChange ",
             );
-            expect(await booleanFormattingProjection(rejected, property)).toEqual(
-              await booleanFormattingProjection(base, property),
+            expect(await documentPartOf(rejected)).not.toContain(
+              "<w:rPrChange ",
             );
-            expect(await documentPartOf(accepted)).not.toContain("<w:rPrChange ");
-            expect(await documentPartOf(rejected)).not.toContain("<w:rPrChange ");
           });
         }
       }
@@ -669,12 +773,10 @@ describe("single-mutation probes", () => {
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["format"]);
     expect(result.value.verification).toEqual({ status: "verified" });
     const accepted = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    const acceptedBlock = accepted.readReviewedStory({ view: "final" })?.snapshot.blocks[
-      blockIndex
-    ];
-    const rejectedBlock = accepted.readReviewedStory({ view: "original" })?.snapshot.blocks[
-      blockIndex
-    ];
+    const acceptedBlock = accepted.readReviewedStory({ view: "final" })
+      ?.snapshot.blocks[blockIndex];
+    const rejectedBlock = accepted.readReviewedStory({ view: "original" })
+      ?.snapshot.blocks[blockIndex];
     expect(acceptedBlock?.previewRuns?.at(0)?.strike).toBe(true);
     expect(rejectedBlock?.previewRuns?.at(0)?.strike).not.toBe(true);
   });
@@ -687,7 +789,11 @@ describe("single-mutation probes", () => {
         blockIndex,
         startOffset: 0,
         endOffset: 4,
-        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+        formatting: {
+          fontFamily: "Georgia",
+          fontSizePt: 10.5,
+          color: "C00000",
+        },
       },
     ]);
     expect(kinds).toEqual(["format"]);
@@ -696,7 +802,11 @@ describe("single-mutation probes", () => {
       {
         startOffset: 0,
         endOffset: 4,
-        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+        formatting: {
+          fontFamily: "Georgia",
+          fontSizePt: 10.5,
+          color: "C00000",
+        },
       },
     ]);
     const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
@@ -724,7 +834,11 @@ describe("single-mutation probes", () => {
         blockIndex,
         startOffset: 0,
         endOffset: 4,
-        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+        formatting: {
+          fontFamily: "Georgia",
+          fontSizePt: 10.5,
+          color: "C00000",
+        },
       },
     ]);
     if (formatted.isErr()) {
@@ -741,7 +855,9 @@ describe("single-mutation probes", () => {
       },
     ]);
     expect(kinds).toEqual(["format"]);
-    expect(changes.at(0)?.kind === "format" ? changes.at(0)?.ranges : []).toEqual([
+    expect(
+      changes.at(0)?.kind === "format" ? changes.at(0)?.ranges : [],
+    ).toEqual([
       {
         startOffset: 0,
         endOffset: 4,
@@ -750,8 +866,9 @@ describe("single-mutation probes", () => {
     ]);
     const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
     expect(
-      reviewed.readReviewedStory({ view: "final" })?.snapshot.blocks[blockIndex]?.previewRuns?.at(0)
-        ?.directFormatting,
+      reviewed
+        .readReviewedStory({ view: "final" })
+        ?.snapshot.blocks[blockIndex]?.previewRuns?.at(0)?.directFormatting,
     ).toBeUndefined();
     expect(
       reviewed
@@ -789,7 +906,9 @@ describe("single-mutation probes", () => {
     // The words are identical; only `numbering.xml` differs. Labels are
     // rendered from the definitions, so nothing in any block's text moves and
     // a text-only comparison sees two identical documents.
-    const roman = await buildNumberedListDocx(NUMBERED_LIST_ITEMS, { format: "lowerRoman" });
+    const roman = await buildNumberedListDocx(NUMBERED_LIST_ITEMS, {
+      format: "lowerRoman",
+    });
     const result = await compareDocx(LIST_BASE, roman, OPTIONS);
     if (result.isErr()) {
       throw result.error;
@@ -798,8 +917,12 @@ describe("single-mutation probes", () => {
     const kinds = result.value.changes.map(({ kind }) => kind);
     expect(kinds).toContain("numbering");
     const [change] = result.value.changes;
-    expect(change?.kind === "numbering" && change.before?.format).toBe("decimal");
-    expect(change?.kind === "numbering" && change.after?.format).toBe("lowerRoman");
+    expect(change?.kind === "numbering" && change.before?.format).toBe(
+      "decimal",
+    );
+    expect(change?.kind === "numbering" && change.after?.format).toBe(
+      "lowerRoman",
+    );
   });
 
   test("numbering definitions: only changed levels referenced by either document are reported", async () => {
@@ -814,48 +937,61 @@ describe("single-mutation probes", () => {
     }
     expect(result.value.verification).toEqual({ status: "verified" });
 
-    const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
+    const numberingChanges = result.value.changes.filter(
+      ({ kind }) => kind === "numbering",
+    );
     expect(numberingChanges.map(({ level }) => level)).toEqual([0, 1]);
   });
 
   test("numbering definitions: a changed level newly referenced by the target is reported", async () => {
     const items = withItemDemoted(NUMBERED_LIST_ITEMS, 1);
-    const changed = await withNumberingFormats(await buildNumberedListDocx(items), [
-      { level: 2, format: "upperRoman" },
-    ]);
+    const changed = await withNumberingFormats(
+      await buildNumberedListDocx(items),
+      [{ level: 2, format: "upperRoman" }],
+    );
     const result = await compareDocx(LIST_BASE, changed, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
     expect(result.value.verification).toEqual({ status: "verified" });
 
-    const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
+    const numberingChanges = result.value.changes.filter(
+      ({ kind }) => kind === "numbering",
+    );
     expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
   });
 
   test("numbering definitions: a changed level referenced only by the base is reported", async () => {
     const baseItems = withItemDemoted(NUMBERED_LIST_ITEMS, 1);
     const base = await buildNumberedListDocx(baseItems);
-    const changed = await withNumberingFormats(LIST_BASE, [{ level: 2, format: "upperRoman" }]);
+    const changed = await withNumberingFormats(LIST_BASE, [
+      { level: 2, format: "upperRoman" },
+    ]);
     const result = await compareDocx(base, changed, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
     expect(result.value.verification).toEqual({ status: "verified" });
 
-    const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
+    const numberingChanges = result.value.changes.filter(
+      ({ kind }) => kind === "numbering",
+    );
     expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
   });
 
   test("change_list_level: a demoted list item is one paragraph-format change", async () => {
     // The target states a complete reference: preserve its id as well as its
     // changed level, independently of the unchanged visible text.
-    const demoted = await buildNumberedListDocx(withItemDemoted(NUMBERED_LIST_ITEMS, 3));
+    const demoted = await buildNumberedListDocx(
+      withItemDemoted(NUMBERED_LIST_ITEMS, 3),
+    );
     const result = await compareDocx(LIST_BASE, demoted, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "paragraph-format",
+    ]);
     const [change] = result.value.changes;
     expect(change?.kind === "paragraph-format" && change.properties).toEqual({
       numbering: { kind: "reference", numId: 1, ilvl: 1 },
@@ -867,7 +1003,9 @@ describe("single-mutation probes", () => {
     expect(await projectView(result.value.buffer, "original")).toEqual(
       await projectView(LIST_BASE, "final"),
     );
-    expect(await documentPartOf(result.value.buffer)).toContain("<w:pPrChange ");
+    expect(await documentPartOf(result.value.buffer)).toContain(
+      "<w:pPrChange ",
+    );
   });
 
   test("unnumber_list_item: a paragraph that stopped being a list item is reported", async () => {
@@ -875,12 +1013,16 @@ describe("single-mutation probes", () => {
     // level alone made this invisible — an absent level is not a level that
     // differs — so the comparison reported nothing and its own self-check
     // then refused the pair, because the accepted result was still a list.
-    const unnumbered = await buildNumberedListDocx(withItemUnnumbered(NUMBERED_LIST_ITEMS, 2));
+    const unnumbered = await buildNumberedListDocx(
+      withItemUnnumbered(NUMBERED_LIST_ITEMS, 2),
+    );
     const result = await compareDocx(LIST_BASE, unnumbered, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "paragraph-format",
+    ]);
     const [change] = result.value.changes;
     expect(change?.kind === "paragraph-format" && change.properties).toEqual({
       numbering: { kind: "inherit" },
@@ -892,7 +1034,9 @@ describe("single-mutation probes", () => {
     expect(await projectView(result.value.buffer, "original")).toEqual(
       await projectView(LIST_BASE, "final"),
     );
-    expect(await documentPartOf(result.value.buffer)).toContain("<w:pPrChange ");
+    expect(await documentPartOf(result.value.buffer)).toContain(
+      "<w:pPrChange ",
+    );
   });
 
   test("insert_paragraph_beside_list_item: the new paragraph is not a list item", async () => {
@@ -936,7 +1080,9 @@ describe("single-mutation probes", () => {
       clauses.map((text) => ({ kind: "paragraph", text }) as const),
     );
     const target = await buildBodySequenceDocx(
-      [clauses[0], clauses[2]].map((text) => ({ kind: "paragraph", text }) as const),
+      [clauses[0], clauses[2]].map(
+        (text) => ({ kind: "paragraph", text }) as const,
+      ),
     );
 
     const result = await compareDocx(base, target, OPTIONS);
@@ -944,9 +1090,9 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["delete"]);
-    const deleted = paragraphsOf(await documentPartOf(result.value.buffer)).filter((paragraph) =>
-      paragraph.includes("<w:delText"),
-    );
+    const deleted = paragraphsOf(
+      await documentPartOf(result.value.buffer),
+    ).filter((paragraph) => paragraph.includes("<w:delText"));
     expect(deleted).toHaveLength(1);
     expect(deleted.at(0)).toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\s/u);
 
@@ -965,7 +1111,9 @@ describe("single-mutation probes", () => {
       "This agreement is governed by the stated law.",
     ] as const;
     const base = await buildBodySequenceDocx(
-      [clauses[0], clauses[2]].map((text) => ({ kind: "paragraph", text }) as const),
+      [clauses[0], clauses[2]].map(
+        (text) => ({ kind: "paragraph", text }) as const,
+      ),
     );
     const target = await buildBodySequenceDocx(
       clauses.map((text) => ({ kind: "paragraph", text }) as const),
@@ -976,8 +1124,11 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["insert"]);
-    const inserted = paragraphsOf(await documentPartOf(result.value.buffer)).filter(
-      (paragraph) => paragraph.includes("<w:ins ") && !paragraph.includes("<w:delText"),
+    const inserted = paragraphsOf(
+      await documentPartOf(result.value.buffer),
+    ).filter(
+      (paragraph) =>
+        paragraph.includes("<w:ins ") && !paragraph.includes("<w:delText"),
     );
     expect(inserted).toHaveLength(1);
     expect(inserted.at(0)).toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:ins\s/u);
@@ -995,23 +1146,35 @@ describe("single-mutation probes", () => {
     // on the last paragraph of a cell it could not do what it says: resolving
     // it would merge the cells rather than the paragraphs.
     const base = await buildBodySequenceDocx([
-      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      {
+        kind: "paragraph",
+        text: "The schedule below records the agreed fees.",
+      },
       { kind: "table", rows: [["Service", "Fee"]] },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
     ]);
     const target = await buildBodySequenceDocx([
-      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      {
+        kind: "paragraph",
+        text: "The schedule below records the agreed fees.",
+      },
       { kind: "table", rows: [["Service", ""]] },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
     ]);
 
     const result = await compareDocx(base, target, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    const deleted = paragraphsOf(await documentPartOf(result.value.buffer)).filter((paragraph) =>
-      paragraph.includes("<w:delText"),
-    );
+    const deleted = paragraphsOf(
+      await documentPartOf(result.value.buffer),
+    ).filter((paragraph) => paragraph.includes("<w:delText"));
     expect(deleted).toHaveLength(1);
     expect(deleted.at(0)).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\s/u);
   });
@@ -1033,10 +1196,17 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
 
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["delete", "table-delete"]);
-    const terminalParagraph = paragraphsOf(await documentPartOf(result.value.buffer)).at(-1);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "delete",
+      "table-delete",
+    ]);
+    const terminalParagraph = paragraphsOf(
+      await documentPartOf(result.value.buffer),
+    ).at(-1);
     expect(terminalParagraph).toBeDefined();
-    expect(terminalParagraph).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\b/u);
+    expect(terminalParagraph).not.toMatch(
+      /<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\b/u,
+    );
     expect(await projectView(result.value.buffer, "final")).toEqual(
       await projectView(target, "final"),
     );
@@ -1084,19 +1254,31 @@ describe("single-mutation probes", () => {
     );
     expect(pendingXml).toMatch(/<\/w:tbl><w:sectPr>/u);
 
-    const acceptedReviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const acceptedReviewer = await FolioDocxReviewer.fromBuffer(
+      result.value.buffer,
+    );
     acceptedReviewer.acceptAll();
     const accepted = await acceptedReviewer.toBuffer();
-    const rejectedReviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const rejectedReviewer = await FolioDocxReviewer.fromBuffer(
+      result.value.buffer,
+    );
     rejectedReviewer.rejectAll();
     const rejected = await rejectedReviewer.toBuffer();
 
     const acceptedReopened = await FolioDocxReviewer.fromBuffer(accepted);
     const rejectedReopened = await FolioDocxReviewer.fromBuffer(rejected);
-    expect(acceptedReopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
-    expect(rejectedReopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
-    expect(await projectView(accepted, "final")).toEqual(await projectView(target, "final"));
-    expect(await projectView(rejected, "final")).toEqual(await projectView(base, "final"));
+    expect(
+      acceptedReopened.readReviewedStory({ view: "current-markup" })?.changes,
+    ).toEqual([]);
+    expect(
+      rejectedReopened.readReviewedStory({ view: "current-markup" })?.changes,
+    ).toEqual([]);
+    expect(await projectView(accepted, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(rejected, "final")).toEqual(
+      await projectView(base, "final"),
+    );
     expect(await documentPartOf(accepted)).toMatch(/<\/w:tbl><w:sectPr>/u);
     expect(await documentPartOf(rejected)).toMatch(/<\/w:p><w:sectPr>/u);
   });
@@ -1120,7 +1302,9 @@ describe("single-mutation probes", () => {
     const base = await buildBodySequenceDocx(
       TRAILING_CLAUSES.map((text) => ({ kind: "paragraph", text }) as const),
     );
-    const target = await buildBodySequenceDocx([{ kind: "paragraph", text: REVISED_CLAUSE }]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: REVISED_CLAUSE },
+    ]);
 
     const result = await compareDocx(base, target, OPTIONS);
     if (result.isErr()) {
@@ -1154,14 +1338,26 @@ describe("single-mutation probes", () => {
     const cell = (texts: readonly string[]) =>
       texts.map((text) => ({ kind: "paragraph", text }) as const);
     const base = await buildBodySequenceDocx([
-      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      {
+        kind: "paragraph",
+        text: "The schedule below records the agreed fees.",
+      },
       { kind: "table", rows: [[cell(TRAILING_CLAUSES), "Fee"]] },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
     ]);
     const target = await buildBodySequenceDocx([
-      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      {
+        kind: "paragraph",
+        text: "The schedule below records the agreed fees.",
+      },
       { kind: "table", rows: [[cell([REVISED_CLAUSE]), "Fee"]] },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
     ]);
 
     const result = await compareDocx(base, target, OPTIONS);
@@ -1187,9 +1383,13 @@ describe("single-mutation probes", () => {
   });
 
   test("delete_trailing_paragraphs_in_a_header: the header story keeps its final mark", async () => {
-    const body = [{ kind: "paragraph", text: "The parties agree as set out below." }] as const;
+    const body = [
+      { kind: "paragraph", text: "The parties agree as set out below." },
+    ] as const;
     const base = await buildBodySequenceDocx(body, {
-      header: TRAILING_CLAUSES.map((text) => ({ kind: "paragraph", text }) as const),
+      header: TRAILING_CLAUSES.map(
+        (text) => ({ kind: "paragraph", text }) as const,
+      ),
     });
     const target = await buildBodySequenceDocx(body, {
       header: [{ kind: "paragraph", text: REVISED_CLAUSE }],
@@ -1200,14 +1400,13 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
     expect(result.value.unsupported).toEqual([]);
-    const headerParagraphs = paragraphsOf(await partOf(result.value.buffer, "word/header1.xml"));
+    const headerParagraphs = paragraphsOf(
+      await partOf(result.value.buffer, "word/header1.xml"),
+    );
     expect(headerParagraphs).toHaveLength(4);
-    expect(headerParagraphs.map((paragraph) => markIsDeleted(paragraph))).toEqual([
-      true,
-      true,
-      true,
-      false,
-    ]);
+    expect(
+      headerParagraphs.map((paragraph) => markIsDeleted(paragraph)),
+    ).toEqual([true, true, true, false]);
   });
 
   test("trailing_deletion_moves_the_surviving_properties_to_the_carrier", async () => {
@@ -1229,7 +1428,8 @@ describe("single-mutation probes", () => {
     if (result.isErr()) {
       throw result.error;
     }
-    const carrier = paragraphsOf(await documentPartOf(result.value.buffer)).at(-1) ?? "";
+    const carrier =
+      paragraphsOf(await documentPartOf(result.value.buffer)).at(-1) ?? "";
     expect(carrier).toContain(`<w:pStyle w:val="Heading1"/>`);
     expect(carrier).toContain("<w:pPrChange ");
     expect(markIsDeleted(carrier)).toBe(false);
@@ -1292,7 +1492,10 @@ describe("single-mutation probes", () => {
       { kind: "paragraph", text: "The target clause changes." },
       { kind: "paragraph", text: "Terminal target paragraph." },
     ]);
-    const result = await compareDocx(base, target, { ...OPTIONS, revisionFormat: "folio-exact" });
+    const result = await compareDocx(base, target, {
+      ...OPTIONS,
+      revisionFormat: "folio-exact",
+    });
     if (result.isErr()) throw result.error;
 
     expect(result.value.verification).toEqual({ status: "verified" });
@@ -1307,14 +1510,21 @@ describe("single-mutation probes", () => {
     for (const mode of ["accept", "reject"] as const) {
       const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       const changes = reviewer.getChanges();
-      const terminalTableDeletion = changes.find(({ type }) => type === "rowDeleted");
-      if (!terminalTableDeletion) throw new Error("Expected the terminal table deletion.");
-      const unrelated = changes.find(({ id }) => id !== terminalTableDeletion.id);
+      const terminalTableDeletion = changes.find(
+        ({ type }) => type === "rowDeleted",
+      );
+      if (!terminalTableDeletion)
+        throw new Error("Expected the terminal table deletion.");
+      const unrelated = changes.find(
+        ({ id }) => id !== terminalTableDeletion.id,
+      );
       if (!unrelated) throw new Error("Expected an unrelated revision.");
       for (const change of changes) {
         if (change.id === terminalTableDeletion.id) continue;
         expect(
-          mode === "accept" ? reviewer.acceptChange(change) : reviewer.rejectChange(change),
+          mode === "accept"
+            ? reviewer.acceptChange(change)
+            : reviewer.rejectChange(change),
         ).toBe(true);
         expect(await documentPartOf(await reviewer.toBuffer())).toContain(
           'folio:reviewCarrier="terminal-table"',
@@ -1328,7 +1538,9 @@ describe("single-mutation probes", () => {
       const resolved = await reviewer.toBuffer();
       const reopened = await FolioDocxReviewer.fromBuffer(resolved);
       expect(reopened.getChanges()).toEqual([]);
-      expect(await documentPartOf(resolved)).not.toContain('folio:reviewCarrier="terminal-table"');
+      expect(await documentPartOf(resolved)).not.toContain(
+        'folio:reviewCarrier="terminal-table"',
+      );
       expect(await projectView(resolved, "final")).toEqual(
         await projectView(mode === "accept" ? target : base, "final"),
       );
@@ -1357,7 +1569,10 @@ describe("single-mutation probes", () => {
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["insert", "insert"]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "insert",
+      "insert",
+    ]);
 
     const paragraphs = paragraphsOf(await documentPartOf(result.value.buffer));
     expect(paragraphs).toHaveLength(4);
@@ -1381,14 +1596,26 @@ describe("single-mutation probes", () => {
     // target columns is new. Guessing would produce a plausible but misleading
     // column edit; replacing the table preserves both reviewed views exactly.
     const base = await buildBodySequenceDocx([
-      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      {
+        kind: "paragraph",
+        text: "The schedule below records the agreed fees.",
+      },
       { kind: "table", rows: [["", ""]] },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
     ]);
     const target = await buildBodySequenceDocx([
-      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      {
+        kind: "paragraph",
+        text: "The schedule below records the agreed fees.",
+      },
       { kind: "table", rows: [["", "", ""]] },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
     ]);
 
     const result = await compareDocx(base, target, OPTIONS);
@@ -1396,7 +1623,10 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
     expect(result.value.verification.status).toBe("verified");
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "table-delete",
+      "table-insert",
+    ]);
     expect(await projectView(result.value.buffer, "final")).toEqual(
       await projectView(target, "final"),
     );
@@ -1413,12 +1643,21 @@ describe("single-mutation probes", () => {
     // has after them.
     const base = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The parties agree as set out below." },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
     ]);
     const target = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The parties agree as set out below." },
-      { kind: "paragraph", text: "This agreement is governed by the stated law." },
-      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      {
+        kind: "paragraph",
+        text: "This agreement is governed by the stated law.",
+      },
+      {
+        kind: "paragraph",
+        text: "The schedule below records the agreed fees.",
+      },
       { kind: "table", rows: [["Service", "Fee"]] },
     ]);
 

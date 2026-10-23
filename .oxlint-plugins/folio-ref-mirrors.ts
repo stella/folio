@@ -33,12 +33,15 @@ const isAstNode = (value: unknown): value is AstNode =>
   typeof (value as { type: unknown }).type === "string";
 
 const identifierName = (node: unknown): string | null =>
-  isAstNode(node) && node.type === "Identifier" && typeof node["name"] === "string"
+  isAstNode(node) &&
+  node.type === "Identifier" &&
+  typeof node["name"] === "string"
     ? node["name"]
     : null;
 
 /** Components and hooks: `Name`, `useName`. */
-const isRenderScopeName = (name: string): boolean => /^(?:use[A-Z0-9_]|[A-Z])/.test(name);
+const isRenderScopeName = (name: string): boolean =>
+  /^(?:use[A-Z0-9_]|[A-Z])/.test(name);
 
 /** `x.current` on the left of an assignment: the ref identifier, else null. */
 const assignedRefName = (node: AstNode): string | null => {
@@ -46,7 +49,11 @@ const assignedRefName = (node: AstNode): string | null => {
     return null;
   }
   const left = node["left"];
-  if (!isAstNode(left) || left.type !== "MemberExpression" || left["computed"] === true) {
+  if (
+    !isAstNode(left) ||
+    left.type !== "MemberExpression" ||
+    left["computed"] === true
+  ) {
     return null;
   }
   if (identifierName(left["property"]) !== "current") {
@@ -75,11 +82,17 @@ const forEachChild = (node: AstNode, visit: (child: AstNode) => void): void => {
 };
 
 /** Mirror statements: `ref.current = value;` directly in the function body. */
-const collectRenderMirrors = (fn: AstNode): { names: Set<string>; nodes: Set<AstNode> } => {
+const collectRenderMirrors = (
+  fn: AstNode,
+): { names: Set<string>; nodes: Set<AstNode> } => {
   const names = new Set<string>();
   const nodes = new Set<AstNode>();
   const body = fn["body"];
-  if (!isAstNode(body) || body.type !== "BlockStatement" || !Array.isArray(body["body"])) {
+  if (
+    !isAstNode(body) ||
+    body.type !== "BlockStatement" ||
+    !Array.isArray(body["body"])
+  ) {
     return { names, nodes };
   }
   for (const statement of body["body"]) {
@@ -108,7 +121,11 @@ const checkRenderScope = (fn: AstNode, context: RuleContext): void => {
   const visit = (node: AstNode): void => {
     const name = assignedRefName(node);
     if (name !== null && mirrors.names.has(name) && !mirrors.nodes.has(node)) {
-      context.report({ node, messageId: "writeToRenderMirroredRef", data: { name } });
+      context.report({
+        node,
+        messageId: "writeToRenderMirroredRef",
+        data: { name },
+      });
     }
     forEachChild(node, visit);
   };
@@ -120,7 +137,11 @@ const checkRenderScope = (fn: AstNode, context: RuleContext): void => {
  * `const X = () =>`, `const X = memo(() =>`) so component and hook bodies can
  * be told apart from callbacks and effects nested inside them.
  */
-const walk = (node: AstNode, boundName: string | null, context: RuleContext): void => {
+const walk = (
+  node: AstNode,
+  boundName: string | null,
+  context: RuleContext,
+): void => {
   if (FUNCTION_TYPES.has(node.type)) {
     const ownName = identifierName(node["id"]) ?? boundName;
     if (ownName !== null && isRenderScopeName(ownName)) {

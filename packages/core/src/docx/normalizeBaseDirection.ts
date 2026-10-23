@@ -19,16 +19,16 @@ import type { StyleResolver } from "../prosemirror/styles/styleResolver";
  */
 import type {
   BlockContent,
-  TableCellBlock,
   Document,
   Hyperlink,
   Paragraph,
   ParagraphContent,
   Run,
   Table,
+  TableCellBlock,
 } from "../types/document";
-import { cloneParagraphWithoutPropertySource } from "./paragraphPropertySource";
 import { detectBaseDirection } from "../utils/baseDirection";
+import { cloneParagraphWithoutPropertySource } from "./paragraphPropertySource";
 
 const runText = (run: Run): string => {
   let text = "";
@@ -82,9 +82,13 @@ function singleItemText(item: ParagraphContent): string {
   }
 }
 
-const paragraphText = (paragraph: Paragraph): string => paragraphContentText(paragraph.content);
+const paragraphText = (paragraph: Paragraph): string =>
+  paragraphContentText(paragraph.content);
 
-const normalizeParagraph = (paragraph: Paragraph, styles: StyleResolver): Paragraph => {
+const normalizeParagraph = (
+  paragraph: Paragraph,
+  styles: StyleResolver,
+): Paragraph => {
   // Respect an explicit direction decision before normalizing — direct
   // (`true` = RTL, `false` = forced LTR) OR inherited from the paragraph style
   // / doc defaults (e.g. a style with `w:bidi w:val="0"` that forces Arabic
@@ -92,7 +96,8 @@ const normalizeParagraph = (paragraph: Paragraph, styles: StyleResolver): Paragr
   // `formatting?.bidi ?? stylePpr?.bidi` resolution.
   const effectiveBidi =
     paragraph.formatting?.bidi ??
-    styles.resolveParagraphStyle(paragraph.formatting?.styleId).paragraphFormatting?.bidi;
+    styles.resolveParagraphStyle(paragraph.formatting?.styleId)
+      .paragraphFormatting?.bidi;
   if (effectiveBidi != null) {
     return paragraph;
   }
@@ -115,7 +120,10 @@ const normalizeTable = (table: Table, styles: StyleResolver): Table => ({
   })),
 });
 
-const normalizeCellBlock = (block: TableCellBlock, styles: StyleResolver): TableCellBlock => {
+const normalizeCellBlock = (
+  block: TableCellBlock,
+  styles: StyleResolver,
+): TableCellBlock => {
   switch (block.type) {
     case "paragraph":
       return normalizeParagraph(block, styles);
@@ -123,7 +131,12 @@ const normalizeCellBlock = (block: TableCellBlock, styles: StyleResolver): Table
       return normalizeTable(block, styles);
     case "blockSdt":
     case "blockCustomXml":
-      return { ...block, content: block.content.map((child) => normalizeCellBlock(child, styles)) };
+      return {
+        ...block,
+        content: block.content.map((child) =>
+          normalizeCellBlock(child, styles),
+        ),
+      };
     case "preservedBlock":
     // A delimiter carries no text and so no base direction.
     case "bookmarkStart":
@@ -136,7 +149,10 @@ const normalizeCellBlock = (block: TableCellBlock, styles: StyleResolver): Table
   }
 };
 
-const normalizeBlocks = (blocks: BlockContent[], styles: StyleResolver): BlockContent[] =>
+const normalizeBlocks = (
+  blocks: BlockContent[],
+  styles: StyleResolver,
+): BlockContent[] =>
   blocks.map((block) => {
     if (block.type === "paragraph") {
       return normalizeParagraph(block, styles);

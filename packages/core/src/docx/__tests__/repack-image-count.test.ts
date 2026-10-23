@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { BlockContent, Document, Paragraph, Run } from "../../types/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Run,
+} from "../../types/document";
 import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 
@@ -18,7 +23,10 @@ import { repackDocx } from "../rezip";
  * next parse counted the now-bare shapes as plain drawings.
  */
 
-const FIXTURE_PATH = path.join(import.meta.dir, "__fixtures__/regressions/repack-image-count.docx");
+const FIXTURE_PATH = path.join(
+  import.meta.dir,
+  "__fixtures__/regressions/repack-image-count.docx",
+);
 
 function countDrawings(doc: Document): number {
   let total = 0;
@@ -73,7 +81,10 @@ function countDrawings(doc: Document): number {
 
 test("repackDocx preserves drawing count across round-trip for textbox-heavy contracts", async () => {
   const bytes = readFileSync(FIXTURE_PATH);
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 
   const first = await parseDocx(buffer, { preloadFonts: false });
   const before = countDrawings(first);

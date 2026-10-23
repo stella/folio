@@ -1,10 +1,11 @@
 /** Semantic comment definitions and anchors, with narrow exact-state inverses. */
 import { Result } from "better-result";
+
 import {
-  MAX_REVISION_ID,
-  COMMENT_PART_RELATIONSHIPS,
   type Comment,
+  COMMENT_PART_RELATIONSHIPS,
   type Document,
+  MAX_REVISION_ID,
   type ParagraphContent,
   setDocumentBodyComments,
 } from "../model/document";
@@ -12,20 +13,26 @@ import { replaceParagraphs, storyParagraphs } from "./blocks";
 import { contractViolation } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
-import { IDENTITY_SPACES, idKey, isParaId, identityKeysIn, packageIdentityKeys } from "./ids";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+  idKey,
+  isParaId,
+  packageIdentityKeys,
+} from "./ids";
 import {
   asParagraphContent,
   childNodes,
   compareGaps,
   defaultInsertionGap,
+  type Gap,
+  type InlineNode,
   isCommentAnchor,
   isEmptyRecord,
+  type LeafSpan,
   leafSpans,
   mergeAlike,
   rebuildNode,
-  type Gap,
-  type InlineNode,
-  type LeafSpan,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
 import { applyFormattingPatch } from "./patch";
@@ -35,12 +42,17 @@ import {
   type DocumentOpRefusalReason,
 } from "./refusal";
 import type { ApplyOps } from "./resolve";
-import { documentStories, findStoryBody, sameStory, storyBody } from "./stories";
 import {
-  DOCUMENT_OP_TYPES,
+  documentStories,
+  findStoryBody,
+  sameStory,
+  storyBody,
+} from "./stories";
+import {
   type CommentOp,
   type CommentState,
   type CreateCommentOp,
+  DOCUMENT_OP_TYPES,
   type NewIds,
   type OpStory,
   type RestoreCommentStateOp,
@@ -52,7 +64,8 @@ const fail = (
   message: string,
   reason: DocumentOpRefusalReason = DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
 ) => Result.err(new DocumentOpRefusal({ opType: op.type, reason, message }));
-const validId = (id: number): boolean => Number.isInteger(id) && id >= 0 && id <= MAX_REVISION_ID;
+const validId = (id: number): boolean =>
+  Number.isInteger(id) && id >= 0 && id <= MAX_REVISION_ID;
 const anchorId = (node: InlineNode): number | undefined => {
   switch (node.type) {
     case "commentRangeStart":
@@ -71,7 +84,11 @@ const storyBodiesIncludingTextBoxes = (
   for (const location of paragraphs) {
     for (const { node } of leafSpans(location.paragraph.content)) {
       if (node.type !== "shape" || node.shape.textBody === undefined) continue;
-      bodies.push(...storyBodiesIncludingTextBoxes({ content: node.shape.textBody.content }));
+      bodies.push(
+        ...storyBodiesIncludingTextBoxes({
+          content: node.shape.textBody.content,
+        }),
+      );
     }
   }
   return bodies;
@@ -80,7 +97,9 @@ type StoryAnchorSpan = LeafSpan & { story: OpStory; blockId: string };
 const anchorsIn = (document: Document) => {
   const anchors: StoryAnchorSpan[] = [];
   for (const story of documentStories(document)) {
-    for (const body of storyBodiesIncludingTextBoxes(storyBody(document, story))) {
+    for (const body of storyBodiesIncludingTextBoxes(
+      storyBody(document, story),
+    )) {
       for (const { paragraph } of storyParagraphs(body)) {
         for (const span of leafSpans(paragraph.content)) {
           if (isCommentAnchor(span.node))
@@ -96,7 +115,9 @@ const anchorsIn = (document: Document) => {
 const coveredCommentIds = (document: Document): Set<number> => {
   const covered = new Set<number>();
   for (const story of documentStories(document)) {
-    for (const body of storyBodiesIncludingTextBoxes(storyBody(document, story))) {
+    for (const body of storyBodiesIncludingTextBoxes(
+      storyBody(document, story),
+    )) {
       const open = new Set<number>();
       for (const { paragraph } of storyParagraphs(body)) {
         for (const { node } of leafSpans(paragraph.content)) {
@@ -130,7 +151,9 @@ export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
   if (input.type === "coverage")
     return input.anchorKind === "range" && !input.survivingNonCarrierContent;
   const { document, id } = input;
-  const comment = document.package.document.comments?.find((entry) => entry.id === id);
+  const comment = document.package.document.comments?.find(
+    (entry) => entry.id === id,
+  );
   if (comment === undefined || comment.parentId !== undefined) return false;
   return isCommentExhausted({
     type: "coverage",
@@ -144,12 +167,15 @@ export const survivingComments = (document: Document): Comment[] => {
   const comments = document.package.document.comments ?? [];
   const exhausted = new Set(
     comments
-      .filter(({ id }) => isCommentExhausted({ type: "document", document, id }))
+      .filter(({ id }) =>
+        isCommentExhausted({ type: "document", document, id }),
+      )
       .map(({ id }) => id),
   );
   return comments.filter(
     ({ id, parentId }) =>
-      !exhausted.has(id) && (parentId === undefined || !exhausted.has(parentId)),
+      !exhausted.has(id) &&
+      (parentId === undefined || !exhausted.has(parentId)),
   );
 };
 
@@ -161,11 +187,14 @@ export const survivingComments = (document: Document): Comment[] => {
 export const orphanRootCommentIds = (document: Document): Set<number> => {
   const comments = document.package.document.comments ?? [];
   const ids = new Set(comments.map(({ id }) => id));
-  const anchored = new Set(anchorsIn(document).map(({ node }) => anchorId(node)));
+  const anchored = new Set(
+    anchorsIn(document).map(({ node }) => anchorId(node)),
+  );
   return new Set(
     comments
       .filter(
-        ({ id, parentId }) => (parentId === undefined || !ids.has(parentId)) && !anchored.has(id),
+        ({ id, parentId }) =>
+          (parentId === undefined || !ids.has(parentId)) && !anchored.has(id),
       )
       .map(({ id }) => id),
   );
@@ -190,42 +219,65 @@ export const commentDocumentIssue = (
     const own = anchors.filter(({ node }) => anchorId(node) === comment.id);
     const starts = own.filter(({ node }) => node.type === "commentRangeStart");
     const ends = own.filter(({ node }) => node.type === "commentRangeEnd");
-    const references = own.filter(({ node }) => node.type === "commentReference");
+    const references = own.filter(
+      ({ node }) => node.type === "commentReference",
+    );
     const start = starts.at(0);
     const end = ends.at(0);
-    if (starts.length !== ends.length || starts.length > 1 || references.length > 1)
+    if (
+      starts.length !== ends.length ||
+      starts.length > 1 ||
+      references.length > 1
+    )
       return "Comment anchors are unbalanced or duplicated.";
     if (
       start &&
       end &&
-      (!sameStory(start.story, end.story) || anchors.indexOf(start) > anchors.indexOf(end))
+      (!sameStory(start.story, end.story) ||
+        anchors.indexOf(start) > anchors.indexOf(end))
     )
       return "Comment range boundaries must be ordered in one story.";
-    const parent = comment.parentId === undefined ? undefined : byId.get(comment.parentId);
-    if (!parent && own.length === 0 && allowedOrphans !== "all" && !allowedOrphans.has(comment.id))
+    const parent =
+      comment.parentId === undefined ? undefined : byId.get(comment.parentId);
+    if (
+      !parent &&
+      own.length === 0 &&
+      allowedOrphans !== "all" &&
+      !allowedOrphans.has(comment.id)
+    )
       return "A root or revision-associated comment needs an owned source anchor.";
     if (comment.parentId !== undefined && !validId(comment.parentId))
       return "A comment parent identity is invalid.";
     const visited = new Set([comment.id]);
     let current = parent;
     while (current) {
-      if (visited.has(current.id)) return "Comment parent relations cannot cycle.";
+      if (visited.has(current.id))
+        return "Comment parent relations cannot cycle.";
       visited.add(current.id);
-      current = current.parentId === undefined ? undefined : byId.get(current.parentId);
+      current =
+        current.parentId === undefined ? undefined : byId.get(current.parentId);
     }
   }
   return undefined;
 };
 
 /** Allocate from the package's annotation domains without a hidden mutable counter. */
-export const freshCommentId = (document: Document): Result<number, DocumentOpRefusal> => {
+export const freshCommentId = (
+  document: Document,
+): Result<number, DocumentOpRefusal> => {
   let maximum = -1;
   for (const comment of document.package.document.comments ?? []) {
     maximum = Math.max(maximum, comment.id, comment.parentId ?? -1);
   }
-  for (const { node } of anchorsIn(document)) maximum = Math.max(maximum, anchorId(node) ?? -1);
+  for (const { node } of anchorsIn(document))
+    maximum = Math.max(maximum, anchorId(node) ?? -1);
   for (const key of packageIdentityKeys(document.package)) {
-    if (!Object.values(IDENTITY_SPACES).some((space) => key.startsWith(`${space}:`))) continue;
+    if (
+      !Object.values(IDENTITY_SPACES).some((space) =>
+        key.startsWith(`${space}:`),
+      )
+    )
+      continue;
     maximum = Math.max(maximum, Number(key.slice(key.lastIndexOf(":") + 1)));
   }
   if (!Number.isInteger(maximum) || maximum >= MAX_REVISION_ID)
@@ -239,7 +291,10 @@ export const freshCommentId = (document: Document): Result<number, DocumentOpRef
   return Result.ok(maximum + 1);
 };
 
-const propertyPresence = (record: object, key: string): CommentState["listPresence"] => {
+const propertyPresence = (
+  record: object,
+  key: string,
+): CommentState["listPresence"] => {
   if (!Object.hasOwn(record, key)) return "absent";
   return Reflect.get(record, key) === undefined ? "undefined" : "present";
 };
@@ -280,7 +335,10 @@ const capture = (
   };
 };
 
-const changedAnchors = (before: Document, after: Document): CommentState["anchors"] => {
+const changedAnchors = (
+  before: Document,
+  after: Document,
+): CommentState["anchors"] => {
   const anchors: CommentState["anchors"][number][] = [];
   for (const story of documentStories(before)) {
     const next = new Map(
@@ -290,8 +348,14 @@ const changedAnchors = (before: Document, after: Document): CommentState["anchor
       ]),
     );
     for (const { paragraph } of storyParagraphs(storyBody(before, story))) {
-      if (paragraph.content !== next.get(idKey(paragraph.paraId ?? ""))?.content)
-        anchors.push({ story, blockId: paragraph.paraId ?? "", content: paragraph.content });
+      if (
+        paragraph.content !== next.get(idKey(paragraph.paraId ?? ""))?.content
+      )
+        anchors.push({
+          story,
+          blockId: paragraph.paraId ?? "",
+          content: paragraph.content,
+        });
     }
   }
   return anchors;
@@ -307,11 +371,17 @@ const scaffoldDelta = (before: CommentState, after: CommentState): NewIds => {
     changed
       .filter((key) => key.startsWith(`${space}:`))
       .map((key) => Number(key.slice(key.indexOf(":") + 1)));
-  return { revision: values(IDENTITY_SPACES.REVISION), control: values(IDENTITY_SPACES.CONTROL) };
+  return {
+    revision: values(IDENTITY_SPACES.REVISION),
+    control: values(IDENTITY_SPACES.CONTROL),
+  };
 };
 
 /** Remove only owned anchors, then merge scaffolding with the shared exact field predicate. */
-const ownedSeams = (content: readonly InlineNode[], ids: ReadonlySet<number>): number[] => {
+const ownedSeams = (
+  content: readonly InlineNode[],
+  ids: ReadonlySet<number>,
+): number[] => {
   let references = 0;
   return leafSpans(content).flatMap(({ node, before }) => {
     const id = anchorId(node);
@@ -342,9 +412,15 @@ const normalizedWithoutAnchors = ({
         ? node
         : rebuildNode(
             node,
-            normalizedWithoutAnchors({ content: children, ids, seams, start: position }),
+            normalizedWithoutAnchors({
+              content: children,
+              ids,
+              seams,
+              start: position,
+            }),
           );
-    if (seams.has(position)) normalized = mergeAlike(normalized, [normalizedNode]);
+    if (seams.has(position))
+      normalized = mergeAlike(normalized, [normalizedNode]);
     else normalized.push(normalizedNode);
     position += leafSpans([normalizedNode]).at(-1)?.after.offset ?? 0;
   }
@@ -364,7 +440,9 @@ const reconcilePartRelationships = (
   let next =
     Math.max(
       0,
-      ...[...relationships.keys()].map((id) => Number(/^rId(\d+)$/u.exec(id)?.at(1) ?? 0)),
+      ...[...relationships.keys()].map((id) =>
+        Number(/^rId(\d+)$/u.exec(id)?.at(1) ?? 0),
+      ),
     ) + 1;
   const extended = comments.some(
     (comment) => comment.parentId !== undefined || comment.done !== undefined,
@@ -376,10 +454,17 @@ const reconcilePartRelationships = (
       target: "numbering.xml",
       needed:
         scope === "document" &&
-        ((numbering?.abstractNums.length ?? 0) > 0 || (numbering?.nums.length ?? 0) > 0),
+        ((numbering?.abstractNums.length ?? 0) > 0 ||
+          (numbering?.nums.length ?? 0) > 0),
     },
-    comments: { ...COMMENT_PART_RELATIONSHIPS.comments, needed: comments.length > 0 },
-    commentsExtended: { ...COMMENT_PART_RELATIONSHIPS.commentsExtended, needed: extended },
+    comments: {
+      ...COMMENT_PART_RELATIONSHIPS.comments,
+      needed: comments.length > 0,
+    },
+    commentsExtended: {
+      ...COMMENT_PART_RELATIONSHIPS.commentsExtended,
+      needed: extended,
+    },
   };
   for (const [kind, part] of Object.entries(parts)) {
     const { needed } = part;
@@ -393,14 +478,20 @@ const reconcilePartRelationships = (
     if (kind === "commentsExtended" && !needed)
       for (const [id] of matching) relationships.delete(id);
   }
-  if (structurallyEqual([...relationships], [...(document.package.relationships ?? [])]))
+  if (
+    structurallyEqual(
+      [...relationships],
+      [...(document.package.relationships ?? [])],
+    )
+  )
     return document;
   return { ...document, package: { ...document.package, relationships } };
 };
 
 /** Reconcile modeled comment and numbering parts with their document relationships. */
-export const reconcileDocumentPartRelationships = (document: Document): Document =>
-  reconcilePartRelationships(document, "document");
+export const reconcileDocumentPartRelationships = (
+  document: Document,
+): Document => reconcilePartRelationships(document, "document");
 
 const edited = (
   before: Document,
@@ -412,9 +503,12 @@ const edited = (
     after = reconcilePartRelationships(after, "comments");
   const restoresExhaustedState =
     op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
-    [...ids].every((id) => isCommentExhausted({ type: "document", document: after, id }));
+    [...ids].every((id) =>
+      isCommentExhausted({ type: "document", document: after, id }),
+    );
   const invalid = contractViolation(after);
-  if (invalid && !restoresExhaustedState) return fail(op, invalid.message, invalid.reason);
+  if (invalid && !restoresExhaustedState)
+    return fail(op, invalid.message, invalid.reason);
   // An edit may keep a loaded orphan, never strand another comment.
   const issue = commentDocumentIssue(after, orphanRootCommentIds(before));
   if (issue && !restoresExhaustedState) return fail(op, issue);
@@ -438,7 +532,11 @@ const edited = (
         state: cloneModel(prior),
       },
     ],
-    touched: { modified: anchors.map(({ blockId }) => blockId), inserted: [], removed: [] },
+    touched: {
+      modified: anchors.map(({ blockId }) => blockId),
+      inserted: [],
+      removed: [],
+    },
   });
 };
 
@@ -479,7 +577,8 @@ const withoutAnchors = (
       continue;
     }
     const children = childNodes(node);
-    const filtered = children === undefined ? undefined : withoutAnchors(children, ids);
+    const filtered =
+      children === undefined ? undefined : withoutAnchors(children, ids);
     if (filtered === children || filtered === undefined) {
       kept.push(node);
       continue;
@@ -510,15 +609,22 @@ const restoreAnchors = ({
         ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(blockId),
       );
     if (!location)
-      return fail(op, "An owned comment paragraph is missing.", DOCUMENT_OP_REFUSAL_REASONS.STALE);
+      return fail(
+        op,
+        "An owned comment paragraph is missing.",
+        DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      );
     const changed = replaceParagraphs({
       document: current,
       story,
       at: location,
       count: 1,
-      replacement: [{ ...location.paragraph, content: cloneModel([...content]) }],
+      replacement: [
+        { ...location.paragraph, content: cloneModel([...content]) },
+      ],
     });
-    if (changed.isErr()) return fail(op, changed.error.message, changed.error.reason);
+    if (changed.isErr())
+      return fail(op, changed.error.message, changed.error.reason);
     current = changed.value;
   }
   return Result.ok(current);
@@ -534,26 +640,48 @@ const restore = (
     op.ids.some((id) => !validId(id)) ||
     !structurallyEqual(capture(document, ids, op.expected.anchors), op.expected)
   )
-    return fail(op, "The comment inverse is stale.", DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    return fail(
+      op,
+      "The comment inverse is stale.",
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   if (
     op.state.records.some(
-      ({ comment, index }) => !ids.has(comment.id) || !Number.isInteger(index) || index < 0,
+      ({ comment, index }) =>
+        !ids.has(comment.id) || !Number.isInteger(index) || index < 0,
     ) ||
-    new Set(op.state.records.map(({ comment }) => comment.id)).size !== op.state.records.length
+    new Set(op.state.records.map(({ comment }) => comment.id)).size !==
+      op.state.records.length
   )
-    return fail(op, "The restored comment records do not match the owned identities.");
-  if (!op.scaffoldIds || !structurallyEqual(scaffoldDelta(op.expected, op.state), op.scaffoldIds))
-    return fail(op, "The comment inverse scaffold identities do not match its owned cuts.");
+    return fail(
+      op,
+      "The restored comment records do not match the owned identities.",
+    );
+  if (
+    !op.scaffoldIds ||
+    !structurallyEqual(scaffoldDelta(op.expected, op.state), op.scaffoldIds)
+  )
+    return fail(
+      op,
+      "The comment inverse scaffold identities do not match its owned cuts.",
+    );
   const allowed = new Set([
-    ...(op.scaffoldIds.revision ?? []).map((id) => `${IDENTITY_SPACES.REVISION}:${id}`),
-    ...(op.scaffoldIds.control ?? []).map((id) => `${IDENTITY_SPACES.CONTROL}:${id}`),
+    ...(op.scaffoldIds.revision ?? []).map(
+      (id) => `${IDENTITY_SPACES.REVISION}:${id}`,
+    ),
+    ...(op.scaffoldIds.control ?? []).map(
+      (id) => `${IDENTITY_SPACES.CONTROL}:${id}`,
+    ),
   ]);
   const identities = (state: CommentState) =>
     identityKeysIn(state.anchors)
       .filter((id) => !allowed.has(id))
       .toSorted();
   if (!structurallyEqual(identities(op.expected), identities(op.state)))
-    return fail(op, "The comment inverse changes an unowned identified record.");
+    return fail(
+      op,
+      "The comment inverse changes an unowned identified record.",
+    );
   if (
     op.state.anchors.length !== op.expected.anchors.length ||
     op.state.anchors.some((entry, index) => {
@@ -578,15 +706,23 @@ const restore = (
           })
           .map(({ node }) => node);
       return (
-        !structurallyEqual(preserved(entry.content), preserved(expected.content)) ||
+        !structurallyEqual(
+          preserved(entry.content),
+          preserved(expected.content),
+        ) ||
         !structurallyEqual(unowned(entry.content), unowned(expected.content))
       );
     })
   )
-    return fail(op, "A comment inverse cannot replace text or unowned anchors.");
+    return fail(
+      op,
+      "A comment inverse cannot replace text or unowned anchors.",
+    );
   const anchors = restoreAnchors({ document, op, anchors: op.state.anchors });
   if (anchors.isErr()) return anchors;
-  const comments = (document.package.document.comments ?? []).filter(({ id }) => !ids.has(id));
+  const comments = (document.package.document.comments ?? []).filter(
+    ({ id }) => !ids.has(id),
+  );
   for (const { index, comment } of op.state.records) {
     if (index > comments.length)
       return fail(
@@ -597,14 +733,22 @@ const restore = (
     comments.splice(index, 0, cloneModel(comment));
   }
   if (op.state.listPresence !== "present" && comments.length > 0)
-    return fail(op, "A missing comment list cannot discard unowned definitions.");
+    return fail(
+      op,
+      "A missing comment list cannot discard unowned definitions.",
+    );
   const relationships = [...(anchors.value.package.relationships ?? [])].filter(
     ([, relation]) => !isCommentRelationship(relation.type),
   );
   for (const { index, key, relationship } of op.state.relationships) {
-    const existing = op.expected.relationships.find((entry) => entry.key === key);
+    const existing = op.expected.relationships.find(
+      (entry) => entry.key === key,
+    );
     if (existing && !structurallyEqual(existing.relationship, relationship))
-      return fail(op, "A comment inverse cannot alter an existing relationship payload.");
+      return fail(
+        op,
+        "A comment inverse cannot alter an existing relationship payload.",
+      );
     if (
       !isCommentRelationship(relationship.type) ||
       relationship.id !== key ||
@@ -612,11 +756,17 @@ const restore = (
       index > relationships.length ||
       relationships.some(([id]) => id === key)
     )
-      return fail(op, "The comment inverse cannot replace an unowned relationship.");
+      return fail(
+        op,
+        "The comment inverse cannot replace an unowned relationship.",
+      );
     relationships.splice(index, 0, [key, cloneModel(relationship)]);
   }
   if (op.state.relationshipPresence !== "present" && relationships.length > 0)
-    return fail(op, "A missing relationship map cannot discard unowned relationships.");
+    return fail(
+      op,
+      "A missing relationship map cannot discard unowned relationships.",
+    );
   const restored = withComments(anchors.value, comments, op.state.listPresence);
   const pkg = { ...restored.package };
   switch (op.state.relationshipPresence) {
@@ -664,9 +814,12 @@ const revisionRange = (
             node.type === "moveFrom" ||
             node.type === "moveTo") &&
             node.info.id === revisionId) ||
-          (node.type === "run" && node.propertyChanges?.some(({ info }) => info.id === revisionId)),
+          (node.type === "run" &&
+            node.propertyChanges?.some(({ info }) => info.id === revisionId)),
       );
-      return selected ? [{ from: position(span.before), to: position(span.after) }] : [];
+      return selected
+        ? [{ from: position(span.before), to: position(span.after) }]
+        : [];
     });
   });
   const first = spans.at(0);
@@ -679,10 +832,18 @@ const remainingIds = (document: Document, ids: NewIds | undefined): NewIds => {
   return {
     ...(ids?.revision === undefined
       ? {}
-      : { revision: ids.revision.filter((id) => !used.has(`${IDENTITY_SPACES.REVISION}:${id}`)) }),
+      : {
+          revision: ids.revision.filter(
+            (id) => !used.has(`${IDENTITY_SPACES.REVISION}:${id}`),
+          ),
+        }),
     ...(ids?.control === undefined
       ? {}
-      : { control: ids.control.filter((id) => !used.has(`${IDENTITY_SPACES.CONTROL}:${id}`)) }),
+      : {
+          control: ids.control.filter(
+            (id) => !used.has(`${IDENTITY_SPACES.CONTROL}:${id}`),
+          ),
+        }),
   };
 };
 
@@ -706,10 +867,15 @@ const create = (
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
     );
   if (Object.hasOwn(op.comment, "parentId"))
-    return fail(op, "Comment parent ownership belongs to the anchor discriminator.");
+    return fail(
+      op,
+      "Comment parent ownership belongs to the anchor discriminator.",
+    );
   if (
     op.comment.content.length === 0 ||
-    op.comment.content.some(({ paraId }) => paraId === undefined || !isParaId(paraId))
+    op.comment.content.some(
+      ({ paraId }) => paraId === undefined || !isParaId(paraId),
+    )
   )
     return fail(
       op,
@@ -728,7 +894,9 @@ const create = (
       // Loaded replies may carry no body markers of their own; the thread is
       // anchored by its nearest anchored ancestor, as for any unanchored reply.
       const anchors = anchorsIn(document);
-      const parentById = new Map(comments.map(({ id, parentId: owner }) => [id, owner]));
+      const parentById = new Map(
+        comments.map(({ id, parentId: owner }) => [id, owner]),
+      );
       const visited = new Set<number>();
       let anchorOwner: number | undefined = parentId;
       let parentAnchors: typeof anchors = [];
@@ -738,47 +906,80 @@ const create = (
         parentAnchors = anchors.filter(({ node }) => anchorId(node) === owner);
         if (parentAnchors.length > 0) break;
         const next = parentById.get(owner);
-        anchorOwner = typeof next === "number" && parentById.has(next) ? next : undefined;
+        anchorOwner =
+          typeof next === "number" && parentById.has(next) ? next : undefined;
       }
       if (parentAnchors.length === 0)
-        return fail(op, "The parent comment has no representable owned anchors.");
-      positions = parentAnchors.toReversed().map(({ story, blockId, node, after }) => {
-        switch (node.type) {
-          case "commentRangeStart":
-          case "commentRangeEnd":
-          case "commentReference":
-            return {
-              at: { story, blockId, offset: after.offset, zeroWidthBefore: after.zeroWidthBefore },
-              content: [{ type: node.type, id: comment.id }],
-            };
-          default:
-            return {
-              at: { story, blockId, offset: after.offset, zeroWidthBefore: after.zeroWidthBefore },
-              content: [],
-            };
-        }
-      });
+        return fail(
+          op,
+          "The parent comment has no representable owned anchors.",
+        );
+      positions = parentAnchors
+        .toReversed()
+        .map(({ story, blockId, node, after }) => {
+          switch (node.type) {
+            case "commentRangeStart":
+            case "commentRangeEnd":
+            case "commentReference":
+              return {
+                at: {
+                  story,
+                  blockId,
+                  offset: after.offset,
+                  zeroWidthBefore: after.zeroWidthBefore,
+                },
+                content: [{ type: node.type, id: comment.id }],
+              };
+            default:
+              return {
+                at: {
+                  story,
+                  blockId,
+                  offset: after.offset,
+                  zeroWidthBefore: after.zeroWidthBefore,
+                },
+                content: [],
+              };
+          }
+        });
       break;
     }
     case "revision": {
       const revisionId = op.anchor.revisionId;
       if (!validId(revisionId) || comments.some(({ id }) => id === revisionId))
-        return fail(op, "Revision association cannot ambiguously name a comment parent.");
+        return fail(
+          op,
+          "Revision association cannot ambiguously name a comment parent.",
+        );
       range = revisionRange(document, op.anchor.story, op.anchor.revisionId);
-      if (!range) return fail(op, "The associated revision has no representable source range.");
+      if (!range)
+        return fail(
+          op,
+          "The associated revision has no representable source range.",
+        );
       comment = { ...comment, parentId: op.anchor.revisionId };
       if (
         range.from.blockId === range.to.blockId &&
         range.from.offset === range.to.offset &&
         range.from.zeroWidthBefore === range.to.zeroWidthBefore
       ) {
-        positions = [{ at: range.from, content: [{ type: "commentReference", id: comment.id }] }];
+        positions = [
+          {
+            at: range.from,
+            content: [{ type: "commentReference", id: comment.id }],
+          },
+        ];
         range = undefined;
       }
       break;
     }
     case "point":
-      positions = [{ at: op.anchor.at, content: [{ type: "commentReference", id: comment.id }] }];
+      positions = [
+        {
+          at: op.anchor.at,
+          content: [{ type: "commentReference", id: comment.id }],
+        },
+      ];
       break;
     case "range":
       range = { from: op.anchor.from, to: op.anchor.to };
@@ -821,12 +1022,21 @@ const create = (
     const fromGap =
       range.from.zeroWidthBefore === undefined
         ? defaultInsertionGap(fromParagraph.content, range.from.offset)
-        : { offset: range.from.offset, zeroWidthBefore: range.from.zeroWidthBefore };
+        : {
+            offset: range.from.offset,
+            zeroWidthBefore: range.from.zeroWidthBefore,
+          };
     const toGap =
       range.to.zeroWidthBefore === undefined
         ? defaultInsertionGap(toParagraph.content, range.to.offset)
-        : { offset: range.to.offset, zeroWidthBefore: range.to.zeroWidthBefore };
-    if (fromIndex > toIndex || (fromIndex === toIndex && compareGaps(fromGap, toGap) > 0))
+        : {
+            offset: range.to.offset,
+            zeroWidthBefore: range.to.zeroWidthBefore,
+          };
+    if (
+      fromIndex > toIndex ||
+      (fromIndex === toIndex && compareGaps(fromGap, toGap) > 0)
+    )
       return fail(
         op,
         "A comment range cannot run backwards.",
@@ -894,7 +1104,10 @@ export const applyCommentOp = (
   const orphans = orphanRootCommentIds(document);
   if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
     if (op.anchor?.kind === "reply" && orphans.has(op.anchor.parentId))
-      return fail(op, "A comment without a source anchor is preserved read-only.");
+      return fail(
+        op,
+        "A comment without a source anchor is preserved read-only.",
+      );
     if (
       !op.comment ||
       typeof op.comment.author !== "string" ||
@@ -936,7 +1149,10 @@ export const applyCommentOp = (
       isCommentExhausted({ type: "document", document, id: comment.id })
     )
   )
-    return fail(op, "A comment without a source anchor is preserved read-only.");
+    return fail(
+      op,
+      "A comment without a source anchor is preserved read-only.",
+    );
   if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
     if (
       !Array.isArray(op.content) ||
@@ -950,7 +1166,9 @@ export const applyCommentOp = (
       );
     if (
       op.patch &&
-      Object.keys(op.patch).some((key) => key !== "author" && key !== "initials" && key !== "date")
+      Object.keys(op.patch).some(
+        (key) => key !== "author" && key !== "initials" && key !== "date",
+      )
     )
       return fail(op, "A content edit cannot change comment ownership.");
     if (
@@ -964,7 +1182,9 @@ export const applyCommentOp = (
       ...applyFormattingPatch(
         {
           author: comment.author,
-          ...(Object.hasOwn(comment, "initials") ? { initials: comment.initials } : {}),
+          ...(Object.hasOwn(comment, "initials")
+            ? { initials: comment.initials }
+            : {}),
           ...(Object.hasOwn(comment, "date") ? { date: comment.date } : {}),
         },
         op.patch ?? {},
@@ -991,7 +1211,9 @@ export const applyCommentOp = (
       withComments(
         document,
         comments.map((value) =>
-          value === comment ? { ...comment, done: op.status === "resolved" } : value,
+          value === comment
+            ? { ...comment, done: op.status === "resolved" }
+            : value,
         ),
       ),
       op,
@@ -999,26 +1221,44 @@ export const applyCommentOp = (
     );
   }
   const parentIsComment =
-    comment.parentId !== undefined && comments.some(({ id }) => id === comment.parentId);
-  if ((op.scope !== "thread" && op.scope !== "reply") || (op.scope === "reply") !== parentIsComment)
-    return fail(op, "Comment deletion scope must match root or reply ownership.");
+    comment.parentId !== undefined &&
+    comments.some(({ id }) => id === comment.parentId);
+  if (
+    (op.scope !== "thread" && op.scope !== "reply") ||
+    (op.scope === "reply") !== parentIsComment
+  )
+    return fail(
+      op,
+      "Comment deletion scope must match root or reply ownership.",
+    );
   const ids = new Set([comment.id]);
   for (let previousSize = -1; previousSize !== ids.size;) {
     previousSize = ids.size;
     for (const value of comments)
-      if (value.parentId !== undefined && ids.has(value.parentId)) ids.add(value.id);
+      if (value.parentId !== undefined && ids.has(value.parentId))
+        ids.add(value.id);
   }
   let current = document;
   for (const story of documentStories(document)) {
     for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
       const seams = new Set(ownedSeams(paragraph.content, ids));
       if (seams.size === 0) continue;
-      const content = normalizedWithoutAnchors({ content: paragraph.content, ids, seams });
+      const content = normalizedWithoutAnchors({
+        content: paragraph.content,
+        ids,
+        seams,
+      });
       if (content === paragraph.content) continue;
       const changed = restoreAnchors({
         document: current,
         op,
-        anchors: [{ story, blockId: paragraph.paraId ?? "", content: asParagraphContent(content) }],
+        anchors: [
+          {
+            story,
+            blockId: paragraph.paraId ?? "",
+            content: asParagraphContent(content),
+          },
+        ],
       });
       if (changed.isErr()) return changed;
       current = changed.value;

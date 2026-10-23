@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { patchNumberingDefinitions } from "./selectiveXmlPatch";
 import {
   getAttributeByNamespaceUri,
@@ -45,7 +46,9 @@ for (const prefix of ["w", "n", ""] as const) {
             .replaceAll('numId="', 'a:numId="')
             .replaceAll('val="', 'a:val="')
             .replace("<numbering ", `<numbering xmlns:a="${W}" `)
-        : baseline.replaceAll("w:", `${prefix}:`).replace("xmlns:w=", `xmlns:${prefix}=`);
+        : baseline
+            .replaceAll("w:", `${prefix}:`)
+            .replace("xmlns:w=", `xmlns:${prefix}=`);
     const patched = patchNumberingDefinitions({
       originalXml: original,
       baselineXml: baseline,
@@ -55,7 +58,12 @@ for (const prefix of ["w", "n", ""] as const) {
     const root = parseXmlDocument(patched ?? "");
     if (!root) throw new Error("Expected numbering root");
     const definitions = getChildElements(root);
-    expect(definitions.map((child) => getNamespaceUri(child))).toEqual([W, W, W, W]);
+    expect(definitions.map((child) => getNamespaceUri(child))).toEqual([
+      W,
+      W,
+      W,
+      W,
+    ]);
     expect(definitions.map((child) => getLocalName(child.name))).toEqual([
       "abstractNum",
       "abstractNum",

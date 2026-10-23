@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 
-import { collectBlockChunks, joinChunks, offsetToDocPos } from "./plugins/pmTextScan";
-import { findTextInPmParagraph, getVanillaNodeText, getVanillaTextBetween } from "./paraText";
+import {
+  findTextInPmParagraph,
+  getVanillaNodeText,
+  getVanillaTextBetween,
+} from "./paraText";
+import {
+  collectBlockChunks,
+  joinChunks,
+  offsetToDocPos,
+} from "./plugins/pmTextScan";
 import { schema } from "./schema";
 
 describe("field text extraction", () => {
@@ -20,11 +28,16 @@ describe("field text extraction", () => {
         fieldKind: "simple",
       },
       [
-        schema.node("bookmarkBoundary", { type: "start", id: 31, name: "target" }, null, [
+        schema.node(
+          "bookmarkBoundary",
+          { type: "start", id: 31, name: "target" },
+          null,
+          [hyperlink],
+        ),
+        schema.text("Target", [hyperlink]),
+        schema.node("bookmarkBoundary", { type: "end", id: 31 }, null, [
           hyperlink,
         ]),
-        schema.text("Target", [hyperlink]),
-        schema.node("bookmarkBoundary", { type: "end", id: 31 }, null, [hyperlink]),
       ],
     );
     const pageField = schema.node("field", {
@@ -46,9 +59,13 @@ describe("field text extraction", () => {
     expect(paragraph.textContent).toBe(expected);
     expect(paragraph.textBetween(0, paragraph.content.size)).toBe(expected);
     const clipboardSlice = new Slice(Fragment.from(paragraph), 0, 0);
-    expect(clipboardSlice.content.textBetween(0, clipboardSlice.content.size, "\n\n")).toBe(
-      expected,
-    );
+    expect(
+      clipboardSlice.content.textBetween(
+        0,
+        clipboardSlice.content.size,
+        "\n\n",
+      ),
+    ).toBe(expected);
     expect(getVanillaNodeText(paragraph)).toBe(expected);
     expect(collectBlockChunks(doc).map(joinChunks)).toEqual([expected]);
 
@@ -56,7 +73,9 @@ describe("field text extraction", () => {
       const match = findTextInPmParagraph(doc, 0, doc.content.size, searchText);
       expect(match).not.toBeNull();
       if (match) {
-        expect(getVanillaTextBetween(doc, match.from, match.to)).toBe(searchText);
+        expect(getVanillaTextBetween(doc, match.from, match.to)).toBe(
+          searchText,
+        );
       }
     }
     expect(findTextInPmParagraph(doc, 0, doc.content.size, "page")).toBeNull();
@@ -80,9 +99,17 @@ describe("field text extraction", () => {
       ]),
     ]);
 
-    expect(findTextInPmParagraph(doc, 0, doc.content.size, "left")).toEqual({ from: 1, to: 5 });
-    expect(findTextInPmParagraph(doc, 0, doc.content.size, "right")).toEqual({ from: 6, to: 11 });
-    expect(findTextInPmParagraph(doc, 0, doc.content.size, "leftright")).toBeNull();
+    expect(findTextInPmParagraph(doc, 0, doc.content.size, "left")).toEqual({
+      from: 1,
+      to: 5,
+    });
+    expect(findTextInPmParagraph(doc, 0, doc.content.size, "right")).toEqual({
+      from: 6,
+      to: 11,
+    });
+    expect(
+      findTextInPmParagraph(doc, 0, doc.content.size, "leftright"),
+    ).toBeNull();
 
     const scanSegments = collectBlockChunks(doc);
     expect(scanSegments.map(joinChunks)).toEqual(["left", "right"]);

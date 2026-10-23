@@ -19,8 +19,15 @@
   this fires alongside it.
 -->
 <template>
-  <div ref="rootRef" class="folio-anonymization-overlay" data-folio-anonymization-overlay="">
-    <template v-for="group in groups" :key="`${group.label}:${group.canonical}`">
+  <div
+    ref="rootRef"
+    class="folio-anonymization-overlay"
+    data-folio-anonymization-overlay=""
+  >
+    <template
+      v-for="group in groups"
+      :key="`${group.label}:${group.canonical}`"
+    >
       <span
         v-for="(rect, idx) in group.rects"
         :key="`${group.canonical}:${idx}:${rect.left}:${rect.top}`"
@@ -47,14 +54,18 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
-import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
-import { projectRangesToRects } from "@stll/folio-core/paged-layout/rangeProjection";
+import type {
+  FlowBlock,
+  Layout,
+  Measure,
+} from "@stll/folio-core/layout-engine/types";
 import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
+import { projectRangesToRects } from "@stll/folio-core/paged-layout/rangeProjection";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import {
   getAnonymizationMatches,
@@ -137,7 +148,13 @@ async function project(): Promise<void> {
 }
 
 watch(
-  () => [props.editorState, props.zoom, props.layout, props.blocks, props.measures],
+  () => [
+    props.editorState,
+    props.zoom,
+    props.layout,
+    props.blocks,
+    props.measures,
+  ],
   () => scheduleProject(),
 );
 
@@ -159,7 +176,8 @@ function scrollSelectedIntoView(): void {
   if (spans.length === 0) {
     return;
   }
-  const nextIndex = cycle?.canonical === canonical ? (cycle.index + 1) % spans.length : 0;
+  const nextIndex =
+    cycle?.canonical === canonical ? (cycle.index + 1) % spans.length : 0;
   cycle = { canonical, index: nextIndex };
   scrollEditorElementIntoView(spans.item(nextIndex));
 }
@@ -181,7 +199,9 @@ function handleDocumentClick(event: MouseEvent): void {
   if (!root) {
     return;
   }
-  const spans = root.querySelectorAll<HTMLElement>("[data-folio-anonymization-canonical]");
+  const spans = root.querySelectorAll<HTMLElement>(
+    "[data-folio-anonymization-canonical]",
+  );
   // Reverse paint order so the topmost rect wins when several overlap.
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const el = spans.item(i);

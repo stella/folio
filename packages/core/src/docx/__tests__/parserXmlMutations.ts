@@ -30,7 +30,11 @@ const HUGE_TEXT_CHARS = 256 * 1024;
 const DEEP_NESTING_LEVEL = 120;
 const XML_DECLARATION = /^\uFEFF?<\?xml\b[^?]*\?>/iu;
 
-const requiredMatch = (xml: string, expression: RegExp, label: string): RegExpExecArray => {
+const requiredMatch = (
+  xml: string,
+  expression: RegExp,
+  label: string,
+): RegExpExecArray => {
   const match = expression.exec(xml);
   if (!match) throw new Error(`Cannot apply XML mutation: no ${label} found`);
   return match;
@@ -46,7 +50,11 @@ const replaceFirst = (
   return xml.replace(expression, replacement);
 };
 
-const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: string): string => {
+const mutateXmlText = (
+  xml: string,
+  mutation: ParserXmlMutation,
+  targetPart: string,
+): string => {
   switch (mutation) {
     case "dropElement": {
       const match = requiredMatch(
@@ -71,11 +79,18 @@ const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: str
       const empty = emptyElements.exec(xml);
       if (empty) return xml.replace(empty[0], `${empty[2]}${empty[1]}`);
       const block = blockElements.exec(xml);
-      if (block) return xml.replace(block[0], `${block[3]}${block[2]}${block[1]}`);
-      throw new Error("Cannot apply XML mutation: no reorderable adjacent elements found");
+      if (block)
+        return xml.replace(block[0], `${block[3]}${block[2]}${block[1]}`);
+      throw new Error(
+        "Cannot apply XML mutation: no reorderable adjacent elements found",
+      );
     }
     case "invalidAttribute": {
-      const match = requiredMatch(xml, /<[\w.-]+:[\w.-]+\b|<[\w.-]+\b/u, "start tag");
+      const match = requiredMatch(
+        xml,
+        /<[\w.-]+:[\w.-]+\b|<[\w.-]+\b/u,
+        "start tag",
+      );
       return (
         xml.slice(0, match.index + match[0].length) +
         ' broken="\u0000"' +
@@ -88,7 +103,10 @@ const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: str
         /\b(?:w:)?(?:id|numId|styleId)\s*=\s*(["'])[^"']*\1/iu,
         "id attribute",
       );
-      return xml.replace(match[0], match[0].replace(/(["'])[^"']*\1/u, '"2147483648"'));
+      return xml.replace(
+        match[0],
+        match[0].replace(/(["'])[^"']*\1/u, '"2147483648"'),
+      );
     }
     case "deepNesting": {
       const wrapper = "<w:proofErr>";
@@ -99,9 +117,16 @@ const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: str
             /<w:body\b[^>]*>/u,
             (opening) => `${opening}${wrapper.repeat(DEEP_NESTING_LEVEL)}`,
           )
-          .replace(/<\/w:body>/u, `${close.repeat(DEEP_NESTING_LEVEL)}</w:body>`);
+          .replace(
+            /<\/w:body>/u,
+            `${close.repeat(DEEP_NESTING_LEVEL)}</w:body>`,
+          );
       }
-      const root = requiredMatch(xml, /<([\w.-]+:[\w.-]+|[\w.-]+)\b[^>]*>/u, "root element");
+      const root = requiredMatch(
+        xml,
+        /<([\w.-]+:[\w.-]+|[\w.-]+)\b[^>]*>/u,
+        "root element",
+      );
       const rootName = root[1];
       const rootClose = new RegExp(`<\\/${rootName}\\s*>`, "u");
       requiredMatch(xml, rootClose, "root closing tag");
@@ -117,7 +142,12 @@ const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: str
       return xml.replace(/<\/[^>]+>/u, `${text}$&`);
     }
     case "emptyText": {
-      return replaceFirst(xml, /(<w:t\b[^>]*>)[\s\S]*?(<\/w:t>)/u, "$1$2", "w:t text node");
+      return replaceFirst(
+        xml,
+        /(<w:t\b[^>]*>)[\s\S]*?(<\/w:t>)/u,
+        "$1$2",
+        "w:t text node",
+      );
     }
     case "unknownNamespace": {
       return replaceFirst(
@@ -129,50 +159,67 @@ const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: str
     }
     case "bom":
       if (xml.startsWith("\uFEFF"))
-        throw new Error("Cannot apply BOM mutation: target already has a UTF-8 BOM");
+        throw new Error(
+          "Cannot apply BOM mutation: target already has a UTF-8 BOM",
+        );
       return `\uFEFF${xml}`;
     case "encoding": {
       const declaration = XML_DECLARATION.exec(xml);
       const changed = declaration
-        ? declaration[0].replace(/encoding\s*=\s*(["'])[^"']*\1/iu, 'encoding="UTF-16"')
+        ? declaration[0].replace(
+            /encoding\s*=\s*(["'])[^"']*\1/iu,
+            'encoding="UTF-16"',
+          )
         : '<?xml version="1.0" encoding="UTF-16"?>';
-      return declaration ? xml.replace(XML_DECLARATION, changed) : `${changed}${xml}`;
+      return declaration
+        ? xml.replace(XML_DECLARATION, changed)
+        : `${changed}${xml}`;
     }
     case "danglingNumberingId":
       return replaceFirst(
         xml,
         /<w:numId\b[^>]*w:val\s*=\s*(["'])\d+\1[^>]*\/?\s*>/u,
-        (match) => match.replace(/w:val\s*=\s*(["'])\d+\1/u, 'w:val="2147483647"'),
+        (match) =>
+          match.replace(/w:val\s*=\s*(["'])\d+\1/u, 'w:val="2147483647"'),
         "w:numId reference",
       );
     case "danglingStyleId":
       return replaceFirst(
         xml,
         /<w:(?:pStyle|rStyle|tblStyle)\b[^>]*w:val\s*=\s*(["'])[^"']+\1[^>]*\/?\s*>/u,
-        (match) => match.replace(/w:val\s*=\s*(["'])[^"']+\1/u, 'w:val="FolioMissingStyle"'),
+        (match) =>
+          match.replace(
+            /w:val\s*=\s*(["'])[^"']+\1/u,
+            'w:val="FolioMissingStyle"',
+          ),
         "style reference",
       );
     case "danglingCommentId":
       return replaceFirst(
         xml,
         /<w:comment(?:RangeStart|RangeEnd|Reference)\b[^>]*w:id\s*=\s*(["'])-?\d+\1[^>]*\/?\s*>/u,
-        (match) => match.replace(/w:id\s*=\s*(["'])-?\d+\1/u, 'w:id="2147483647"'),
+        (match) =>
+          match.replace(/w:id\s*=\s*(["'])-?\d+\1/u, 'w:id="2147483647"'),
         "comment reference",
       );
     case "danglingFootnoteId":
       return replaceFirst(
         xml,
         /<w:footnoteReference\b[^>]*w:id\s*=\s*(["'])-?\d+\1[^>]*\/?\s*>/u,
-        (match) => match.replace(/w:id\s*=\s*(["'])-?\d+\1/u, 'w:id="2147483647"'),
+        (match) =>
+          match.replace(/w:id\s*=\s*(["'])-?\d+\1/u, 'w:id="2147483647"'),
         "footnote reference",
       );
     case "cyclicStyles": {
-      const styles = /<w:style\b[^>]*w:styleId\s*=\s*(["'])([^"']+)\1[^>]*>[\s\S]*?<\/w:style>/gu;
-      const basedOn = /<w:basedOn\b[^>]*w:val\s*=\s*(["'])[^"']+\1[^>]*\/?\s*>/u;
+      const styles =
+        /<w:style\b[^>]*w:styleId\s*=\s*(["'])([^"']+)\1[^>]*>[\s\S]*?<\/w:style>/gu;
+      const basedOn =
+        /<w:basedOn\b[^>]*w:val\s*=\s*(["'])[^"']+\1[^>]*\/?\s*>/u;
       let changed = false;
       const updated = xml.replace(styles, (style) => {
         if (changed) return style;
-        const opening = /<w:style\b[^>]*w:styleId\s*=\s*(["'])([^"']+)\1[^>]*>/u.exec(style);
+        const opening =
+          /<w:style\b[^>]*w:styleId\s*=\s*(["'])([^"']+)\1[^>]*>/u.exec(style);
         const styleId = opening?.[2];
         if (!opening || !styleId) return style;
         const current = basedOn.exec(style);
@@ -181,12 +228,20 @@ const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: str
         return current
           ? style.replace(
               current[0],
-              current[0].replace(/w:val\s*=\s*(["'])[^"']+\1/u, `w:val="${styleId}"`),
+              current[0].replace(
+                /w:val\s*=\s*(["'])[^"']+\1/u,
+                `w:val="${styleId}"`,
+              ),
             )
-          : style.replace(opening[0], `${opening[0]}<w:basedOn w:val="${styleId}"/>`);
+          : style.replace(
+              opening[0],
+              `${opening[0]}<w:basedOn w:val="${styleId}"/>`,
+            );
       });
       if (!changed)
-        throw new Error("Cannot apply XML mutation: no style without a self-reference found");
+        throw new Error(
+          "Cannot apply XML mutation: no style without a self-reference found",
+        );
       return updated;
     }
     case "selfReferencingRelationship": {
@@ -206,7 +261,9 @@ const mutateXmlText = (xml: string, mutation: ParserXmlMutation, targetPart: str
           "relationship target",
         );
       }
-      throw new Error(`Cannot mutate relationship XML in ${targetPart}; expected a .rels part`);
+      throw new Error(
+        `Cannot mutate relationship XML in ${targetPart}; expected a .rels part`,
+      );
     }
     default: {
       const exhaustive: never = mutation;
@@ -225,7 +282,8 @@ export const mutateXml = async (
     throw new Error("DOCX mutation input exceeds size limit");
   const zip = await JSZip.loadAsync(source);
   const file = zip.file(targetPart);
-  if (!file) throw new Error(`DOCX mutation target part not found: ${targetPart}`);
+  if (!file)
+    throw new Error(`DOCX mutation target part not found: ${targetPart}`);
   const original = await file.async("uint8array");
   if (original.byteLength > MAX_PART_BYTES)
     throw new Error(`DOCX mutation part exceeds size limit: ${targetPart}`);

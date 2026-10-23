@@ -23,7 +23,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * and that recovery did not discard. Matching the version rather than the
  * path keeps a symlinked folder from hiding the line.
  */
-export const commitForVersion = (journal: string, version: string): JournalCommit | null => {
+export const commitForVersion = (
+  journal: string,
+  version: string,
+): JournalCommit | null => {
   const lines = journal.split("\n");
   const discarded = new Set<unknown>();
   for (let index = lines.length - 1; index >= 0; index--) {
@@ -43,7 +46,11 @@ export const commitForVersion = (journal: string, version: string): JournalCommi
     if (entry["type"] !== "commit" || entry["toVersion"] !== version) continue;
     if (discarded.has(entry["txId"])) continue;
     const { tool, author, time } = entry;
-    if (typeof tool !== "string" || typeof author !== "string" || typeof time !== "string") {
+    if (
+      typeof tool !== "string" ||
+      typeof author !== "string" ||
+      typeof time !== "string"
+    ) {
       return null;
     }
     return { tool, author, time, toVersion: version };
@@ -72,7 +79,10 @@ const toolLabel = (tool: string): string =>
   tool === "editor_save" ? "saved in an editor" : tool.replaceAll("_", " ");
 
 /** The notice for a reload: "Updated by Ada (add comment)", or a plain one without a commit. */
-export const updatedNotice = (fileName: string, commit: JournalCommit | null): string =>
+export const updatedNotice = (
+  fileName: string,
+  commit: JournalCommit | null,
+): string =>
   commit === null
     ? `${fileName} changed on disk; reloaded.`
     : `${fileName} updated by ${commit.author} (${toolLabel(commit.tool)}).`;

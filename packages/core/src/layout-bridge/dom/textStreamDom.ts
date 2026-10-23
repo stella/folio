@@ -7,7 +7,8 @@ export type PaintedSpanRangeMeasurement =
 
 const TEXT_NODE_TYPE = 3;
 
-const isTextNode = (node: Node): node is Text => node.nodeType === TEXT_NODE_TYPE;
+const isTextNode = (node: Node): node is Text =>
+  node.nodeType === TEXT_NODE_TYPE;
 
 /** Treat every descendant text node as one logical character stream. */
 export const descendantTextNodes = (root: Node): Text[] => {
@@ -38,9 +39,14 @@ export const textBoundaryAt = (
   for (const [index, node] of nodes.entries()) {
     const next = consumed + node.length;
     const ownsBoundary =
-      offset < next || (edge === "end" && offset === next) || index === nodes.length - 1;
+      offset < next ||
+      (edge === "end" && offset === next) ||
+      index === nodes.length - 1;
     if (ownsBoundary) {
-      return { node, offset: Math.max(0, Math.min(node.length, offset - consumed)) };
+      return {
+        node,
+        offset: Math.max(0, Math.min(node.length, offset - consumed)),
+      };
     }
     consumed = next;
   }
@@ -72,7 +78,11 @@ export const createTextStreamRange = (
   const boundedStart = Math.max(0, Math.min(length, startOffset));
   const boundedEnd = Math.max(0, Math.min(length, endOffset));
   const start = textBoundaryAt(nodes, boundedStart, "start");
-  const end = textBoundaryAt(nodes, boundedEnd, boundedStart === boundedEnd ? "start" : "end");
+  const end = textBoundaryAt(
+    nodes,
+    boundedEnd,
+    boundedStart === boundedEnd ? "start" : "end",
+  );
   if (!start || !end) return null;
 
   const range = element.ownerDocument.createRange();
@@ -89,7 +99,12 @@ export const measurePaintedSpanRange = (
 ): PaintedSpanRangeMeasurement => {
   const pmStart = Number(element.dataset["pmStart"]);
   const pmEnd = Number(element.dataset["pmEnd"]);
-  if (!Number.isFinite(pmStart) || !Number.isFinite(pmEnd) || pmEnd <= from || pmStart >= to) {
+  if (
+    !Number.isFinite(pmStart) ||
+    !Number.isFinite(pmEnd) ||
+    pmEnd <= from ||
+    pmStart >= to
+  ) {
     return { type: "outside" };
   }
   if (element.classList.contains("layout-run-tab")) {
@@ -102,5 +117,7 @@ export const measurePaintedSpanRange = (
   if (startOffset >= endOffset) return { type: "outside" };
 
   const range = createTextStreamRange(element, startOffset, endOffset);
-  return range ? { type: "text", rects: Array.from(range.getClientRects()) } : { type: "outside" };
+  return range
+    ? { type: "text", rects: Array.from(range.getClientRects()) }
+    : { type: "outside" };
 };

@@ -19,18 +19,24 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, Selection } from "prosemirror-state";
 import type { StepMap } from "prosemirror-transform";
 
-import type { DisplayMode } from "../managers/EditorModeManager";
 import { indexedPositionMap } from "../internal/indexedPositionMap";
-import { finalRevisionParagraphRanges } from "../internal/revisionResolutionTracking";
 import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
+import { finalRevisionParagraphRanges } from "../internal/revisionResolutionTracking";
 import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
-import { createDocumentNumberingPlugin, getDocumentNumbering } from "./plugins/documentNumbering";
-import { createDocumentStyleContextPlugin } from "./plugins/documentStyles";
+import type { DisplayMode } from "../managers/EditorModeManager";
 import type { NumberingDefinitions, StyleDefinitions } from "../types/document";
+import {
+  createDocumentNumberingPlugin,
+  getDocumentNumbering,
+} from "./plugins/documentNumbering";
+import { createDocumentStyleContextPlugin } from "./plugins/documentStyles";
 import { getDocumentStyleResolver } from "./plugins/documentStyleState";
 
 /** Resolve every revision in the state's story with the state's own styles and numbering. */
-export const resolveStateStory = (state: EditorState, mode: RevisionResolutionMode) =>
+export const resolveStateStory = (
+  state: EditorState,
+  mode: RevisionResolutionMode,
+) =>
   resolveWholeStory({
     doc: state.doc,
     mode,
@@ -43,7 +49,11 @@ type ChangeIndicators = "none" | "change-bars";
 
 type MarkupViewResolution =
   | { type: "authored" }
-  | { type: "resolved"; mode: RevisionResolutionMode; indicators: ChangeIndicators };
+  | {
+      type: "resolved";
+      mode: RevisionResolutionMode;
+      indicators: ChangeIndicators;
+    };
 
 /**
  * Every view's reading of the document. Total over `DisplayMode`, so a new view
@@ -51,7 +61,11 @@ type MarkupViewResolution =
  */
 const MARKUP_VIEW_RESOLUTIONS = {
   "all-markup": { type: "authored" },
-  "simple-markup": { type: "resolved", mode: "accept", indicators: "change-bars" },
+  "simple-markup": {
+    type: "resolved",
+    mode: "accept",
+    indicators: "change-bars",
+  },
   "no-markup": { type: "resolved", mode: "accept", indicators: "none" },
   original: { type: "resolved", mode: "reject", indicators: "none" },
 } as const satisfies Record<DisplayMode, MarkupViewResolution>;
@@ -86,7 +100,10 @@ export type MarkupViewProjection =
 
 const AUTHORED: MarkupViewProjection = { type: "authored" };
 
-const projectionCache = new WeakMap<EditorState, Map<DisplayMode, MarkupViewProjection>>();
+const projectionCache = new WeakMap<
+  EditorState,
+  Map<DisplayMode, MarkupViewProjection>
+>();
 
 /**
  * The document a markup view lays out, for the state's current document.
@@ -94,12 +111,17 @@ const projectionCache = new WeakMap<EditorState, Map<DisplayMode, MarkupViewProj
  * plugins, which may change while the document node stays the same.
  */
 /** How a view resolves the revisions it reads, or null when it shows them inline. */
-export const markupViewResolutionMode = (view: DisplayMode): RevisionResolutionMode | null => {
+export const markupViewResolutionMode = (
+  view: DisplayMode,
+): RevisionResolutionMode | null => {
   const resolution = MARKUP_VIEW_RESOLUTIONS[view];
   return resolution.type === "resolved" ? resolution.mode : null;
 };
 
-export const projectMarkupView = (state: EditorState, view: DisplayMode): MarkupViewProjection => {
+export const projectMarkupView = (
+  state: EditorState,
+  view: DisplayMode,
+): MarkupViewProjection => {
   const resolution = MARKUP_VIEW_RESOLUTIONS[view];
   if (resolution.type === "authored") {
     return AUTHORED;
@@ -119,7 +141,9 @@ export const projectMarkupView = (state: EditorState, view: DisplayMode): Markup
         toView: indexedPositionMap(result.positionMap),
         toEditor: indexedPositionMap(result.positionMap.invert()),
         changeBarRanges:
-          resolution.indicators === "change-bars" ? finalRevisionParagraphRanges(result) : [],
+          resolution.indicators === "change-bars"
+            ? finalRevisionParagraphRanges(result)
+            : [],
         completeness: result.failed ? "partial" : "complete",
       };
   if (!byView) {
@@ -144,11 +168,17 @@ export const visibleCaretPosition = (
   if (projection.type === "authored") {
     return position;
   }
-  const { pos: viewPosition, deletedAcross } = projection.toView.mapResult(position, -1);
+  const { pos: viewPosition, deletedAcross } = projection.toView.mapResult(
+    position,
+    -1,
+  );
   if (!deletedAcross) {
     return position;
   }
-  const bounded = Math.max(0, Math.min(viewPosition, projection.doc.content.size));
+  const bounded = Math.max(
+    0,
+    Math.min(viewPosition, projection.doc.content.size),
+  );
   const near = Selection.near(projection.doc.resolve(bounded), -1);
   return projection.toEditor(near.head, -1);
 };
@@ -183,7 +213,10 @@ export const projectStoryMarkupView = ({
   }
   const state = EditorState.create({
     doc,
-    plugins: [createDocumentStyleContextPlugin(styles), createDocumentNumberingPlugin(numbering)],
+    plugins: [
+      createDocumentStyleContextPlugin(styles),
+      createDocumentNumberingPlugin(numbering),
+    ],
   });
   storyProjectionStates.set(doc, { styles, numbering, state });
   return projectMarkupView(state, markupView);

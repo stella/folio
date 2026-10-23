@@ -16,9 +16,12 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { composeRunMeasurement, composeTextWidth } from "./advanceComposition";
-import { withFakeTextMeasure, uppercaseAwareCharWidth } from "./__tests__/fakeTextMeasure";
+import {
+  uppercaseAwareCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
 import type { FakeCharWidth } from "./__tests__/fakeTextMeasure";
+import { composeRunMeasurement, composeTextWidth } from "./advanceComposition";
 import { buildFontString } from "./measureHelpers";
 import { getMeasureProvider } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
@@ -46,27 +49,49 @@ const STYLES = [
   { label: "sized", style: { fontFamily: "Arial", fontSize: 14 } },
   { label: "bold italic", style: { bold: true, italic: true } },
   { label: "letter spaced", style: { letterSpacing: 1.25 } },
-  { label: "letter spaced and scaled", style: { letterSpacing: 2, horizontalScale: 150 } },
+  {
+    label: "letter spaced and scaled",
+    style: { letterSpacing: 2, horizontalScale: 150 },
+  },
   { label: "scaled down", style: { horizontalScale: 66 } },
   { label: "uppercased", style: { textTransform: "uppercase" } },
   { label: "small caps", style: { fontVariant: "small-caps" } },
   { label: "kerned", style: { kerning: true } },
-  { label: "east asian", style: { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho" } },
+  {
+    label: "east asian",
+    style: { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho" },
+  },
   {
     label: "east asian hinted",
-    style: { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho", eastAsiaHint: true },
+    style: {
+      fontFamily: "Arial",
+      eastAsiaFontFamily: "MS Mincho",
+      eastAsiaHint: true,
+    },
   },
   {
     label: "east asian with letter spacing",
-    style: { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho", letterSpacing: 3 },
+    style: {
+      fontFamily: "Arial",
+      eastAsiaFontFamily: "MS Mincho",
+      letterSpacing: 3,
+    },
   },
   {
     label: "complex script",
-    style: { fontFamily: "Arial", complexScriptFontFamily: "Arial", complexScriptFontSize: 13 },
+    style: {
+      fontFamily: "Arial",
+      complexScriptFontFamily: "Arial",
+      complexScriptFontSize: 13,
+    },
   },
   {
     label: "forced complex script",
-    style: { fontFamily: "Arial", complexScriptFontFamily: "Arial", forceComplexScript: true },
+    style: {
+      fontFamily: "Arial",
+      complexScriptFontFamily: "Arial",
+      forceComplexScript: true,
+    },
   },
 ] as const satisfies readonly { label: string; style: FontStyle }[];
 
@@ -96,7 +121,11 @@ describe("advance composition matches the canvas backend", () => {
               label,
               text,
               width: composeTextWidth({ text, style, advanceOf }),
-            }).toEqual({ label, text, width: canvas.measureTextWidth(text, style) });
+            }).toEqual({
+              label,
+              text,
+              width: canvas.measureTextWidth(text, style),
+            });
           }
         }
       },
@@ -118,7 +147,12 @@ describe("advance composition matches the canvas backend", () => {
               metrics: expected.metrics,
               advanceOf,
             });
-            expect({ label, text, width: actual.width, charWidths: actual.charWidths }).toEqual({
+            expect({
+              label,
+              text,
+              width: actual.width,
+              charWidths: actual.charWidths,
+            }).toEqual({
               label,
               text,
               width: expected.width,
@@ -152,12 +186,23 @@ describe("advance composition matches the canvas backend", () => {
 
 describe('w:hint="eastAsia" in advance composition', () => {
   // Wide glyphs in the East Asian face, narrow ones elsewhere.
-  const advanceOf = advanceOfFrom((_char, font) => (font.includes("Mincho") ? 20 : 5));
-  const style: FontStyle = { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho" };
+  const advanceOf = advanceOfFrom((_char, font) =>
+    font.includes("Mincho") ? 20 : 5,
+  );
+  const style: FontStyle = {
+    fontFamily: "Arial",
+    eastAsiaFontFamily: "MS Mincho",
+  };
   const text = "a\u201cb\u201d";
 
   test("hinted symbols measure with the East Asian face", () => {
-    expect(composeTextWidth({ text, style: { ...style, eastAsiaHint: true }, advanceOf })).toBe(50);
+    expect(
+      composeTextWidth({
+        text,
+        style: { ...style, eastAsiaHint: true },
+        advanceOf,
+      }),
+    ).toBe(50);
     expect(composeTextWidth({ text, style, advanceOf })).toBe(20);
   });
 

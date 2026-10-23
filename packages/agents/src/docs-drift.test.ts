@@ -12,7 +12,10 @@ import { FOLIO_DOCUMENT_OPERATION_TYPES } from "@stll/folio-core/server";
 
 import { DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES } from "./suggest-changes-options";
 
-const SKILL_PATH = path.join(import.meta.dir, "../skills/folio-agents/SKILL.md");
+const SKILL_PATH = path.join(
+  import.meta.dir,
+  "../skills/folio-agents/SKILL.md",
+);
 const README_PATH = path.join(import.meta.dir, "../README.md");
 
 const mentions = (text: string, name: string): boolean =>

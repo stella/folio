@@ -31,7 +31,9 @@ export type FontSizePickerProps = {
 };
 
 // Word's standard size ladder, in points.
-const DEFAULT_SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72] as const;
+const DEFAULT_SIZES = [
+  8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72,
+] as const;
 
 const NUMERIC_FORMATTER = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -82,7 +84,11 @@ export function FontSizePicker({
   );
 
   return (
-    <Select value={selectedLabel} onValueChange={handleValueChange} disabled={disabled}>
+    <Select
+      value={selectedLabel}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         aria-label={ariaLabel}
         size="sm"

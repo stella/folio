@@ -28,7 +28,9 @@ export type CommentMarkerSlot = {
   index: number;
   item: Extract<
     ParagraphContent,
-    { type: "commentRangeStart" } | { type: "commentRangeEnd" } | { type: "commentReference" }
+    | { type: "commentRangeStart" }
+    | { type: "commentRangeEnd" }
+    | { type: "commentReference" }
   >;
 };
 
@@ -112,9 +114,13 @@ export const removeCommentMarkers = (
 
   const rebuildHyperlink = (hyperlink: Hyperlink): Hyperlink => {
     const children = rebuildArray(hyperlink.children, rebuildHyperlinkContent);
-    return children === hyperlink.children ? hyperlink : { ...hyperlink, children };
+    return children === hyperlink.children
+      ? hyperlink
+      : { ...hyperlink, children };
   };
-  const rebuildSimpleFieldContent = (item: SimpleFieldContent): SimpleFieldContent => {
+  const rebuildSimpleFieldContent = (
+    item: SimpleFieldContent,
+  ): SimpleFieldContent => {
     switch (item.type) {
       case "hyperlink":
         return rebuildHyperlink(item);
@@ -136,7 +142,9 @@ export const removeCommentMarkers = (
     const content = rebuildArray(field.content, rebuildSimpleFieldContent);
     return content === field.content ? field : { ...field, content };
   };
-  const rebuildInlineSdtContent = (item: InlineSdtContent): InlineSdtContent => {
+  const rebuildInlineSdtContent = (
+    item: InlineSdtContent,
+  ): InlineSdtContent => {
     switch (item.type) {
       case "hyperlink":
         return rebuildHyperlink(item);
@@ -170,7 +178,9 @@ export const removeCommentMarkers = (
     const content = rebuildArray(sdt.content, rebuildInlineSdtContent);
     return content === sdt.content ? sdt : { ...sdt, content };
   };
-  const rebuildTrackedContent = (item: TrackedRunContent): TrackedRunContent => {
+  const rebuildTrackedContent = (
+    item: TrackedRunContent,
+  ): TrackedRunContent => {
     switch (item.type) {
       case "hyperlink":
         return rebuildHyperlink(item);
@@ -204,7 +214,10 @@ export const removeCommentMarkers = (
     }
   };
   const rebuildTrackedChange = (
-    change: Extract<ParagraphContent, { type: "insertion" | "deletion" | "moveFrom" | "moveTo" }>,
+    change: Extract<
+      ParagraphContent,
+      { type: "insertion" | "deletion" | "moveFrom" | "moveTo" }
+    >,
   ): typeof change => {
     const content = rebuildArray(change.content, rebuildTrackedContent);
     return content === change.content ? change : { ...change, content };
@@ -242,7 +255,9 @@ export const removeCommentMarkers = (
         return item;
     }
   };
-  const rebuildHyperlinkContent = (item: HyperlinkContent): HyperlinkContent => {
+  const rebuildHyperlinkContent = (
+    item: HyperlinkContent,
+  ): HyperlinkContent => {
     switch (item.type) {
       case "inlineWrapper": {
         const content = rebuildParagraphContent(item.content);
@@ -255,8 +270,9 @@ export const removeCommentMarkers = (
         return item;
     }
   };
-  const rebuildParagraphContent = (content: ParagraphContent[]): ParagraphContent[] =>
-    rebuildArray(content, rebuildParagraphItem);
+  const rebuildParagraphContent = (
+    content: ParagraphContent[],
+  ): ParagraphContent[] => rebuildArray(content, rebuildParagraphItem);
 
   const rebuildParagraph = (paragraph: Paragraph): Paragraph => {
     const content = rebuildParagraphContent(paragraph.content);
@@ -311,7 +327,9 @@ export const removeCommentMarkers = (
  * whole story: a reference that trails the end of a range three paragraphs back
  * is still not a point comment.
  */
-export const rangedCommentIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
+export const rangedCommentIds = (
+  blocks: readonly BlockContent[],
+): ReadonlySet<number> => {
   const ids = new Set<number>();
   visitCommentMarkers(blocks, ({ item }) => {
     if (item.type === "commentRangeStart") {

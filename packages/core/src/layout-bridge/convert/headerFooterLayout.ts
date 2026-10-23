@@ -20,13 +20,10 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { DisplayMode } from "../../managers/EditorModeManager";
-import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
-import { remapMarkupViewBlocks } from "./markupViewFlow";
-
+import { cloneParagraphWithPropertySource } from "../../docx/paragraphPropertySource";
 import type {
-  FlowBlock,
   FloatingTablePosition,
+  FlowBlock,
   HeaderFooterContent,
   ImageRun,
   ImageRunPosition,
@@ -42,11 +39,12 @@ import {
   isFloatingTextBoxBlock,
   isTextWrappingFloatingImageRun,
 } from "../../layout-engine/types";
+import type { DisplayMode } from "../../managers/EditorModeManager";
 import {
   headerFooterToProseDoc,
   type ToProseDocOptions,
 } from "../../prosemirror/conversion/toProseDoc";
-import { cloneParagraphWithPropertySource } from "../../docx/paragraphPropertySource";
+import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
 import type {
   BlockContent,
   HeaderFooter,
@@ -56,6 +54,7 @@ import type {
 } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
+import { remapMarkupViewBlocks } from "./markupViewFlow";
 import { toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
@@ -65,14 +64,19 @@ const headerFooterToProseDocWithDetachedWatermarkHost = (
   headerFooter: HeaderFooter,
   options: ToProseDocOptions,
 ): PMNode => {
-  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
-    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
-      return block;
-    }
-    const marked = cloneParagraphWithPropertySource(block, {});
-    Reflect.set(marked, DETACHED_WATERMARK_HOST, true);
-    return marked;
-  });
+  const markedContent: BlockContent[] = headerFooter.content.map(
+    (block, blockIndex) => {
+      if (
+        blockIndex !== headerFooter.watermarkBlockIndex ||
+        block.type !== "paragraph"
+      ) {
+        return block;
+      }
+      const marked = cloneParagraphWithPropertySource(block, {});
+      Reflect.set(marked, DETACHED_WATERMARK_HOST, true);
+      return marked;
+    },
+  );
   return headerFooterToProseDoc(markedContent, options);
 };
 
@@ -163,7 +167,9 @@ export function normalizeHeaderFooterMeasureBlocks(
   blocks: FlowBlock[],
   section: HeaderFooterMetrics["section"] = "header",
 ): FlowBlock[] {
-  return normalizeFlowBlockArray(blocks, { suppressTrailingEmptyAfterTable: section === "header" });
+  return normalizeFlowBlockArray(blocks, {
+    suppressTrailingEmptyAfterTable: section === "header",
+  });
 }
 
 type HeaderFooterMeasureNormalization = {
@@ -208,8 +214,10 @@ function normalizeFlowBlockArray(
     const hasResolvedBefore = block.attrs?.spacing?.before != null;
     const hasResolvedAfter = block.attrs?.spacing?.after != null;
     const preserveInherited = preservesInheritedSpacing(block);
-    const beforeIsInherited = hasResolvedBefore && !explicit?.before && !preserveInherited;
-    const afterIsInherited = hasResolvedAfter && !explicit?.after && !preserveInherited;
+    const beforeIsInherited =
+      hasResolvedBefore && !explicit?.before && !preserveInherited;
+    const afterIsInherited =
+      hasResolvedAfter && !explicit?.after && !preserveInherited;
     const stripsSpacing = beforeIsInherited || afterIsInherited;
 
     const stripsImages = block.runs.some(isAnchoredImageRun);
@@ -242,11 +250,16 @@ function normalizeFlowBlockArray(
       attrs = { ...attrs, suppressEmptyParagraphHeight: true };
     }
 
-    return attrs ? { ...block, runs: inlineRuns, attrs } : { ...block, runs: inlineRuns };
+    return attrs
+      ? { ...block, runs: inlineRuns, attrs }
+      : { ...block, runs: inlineRuns };
   });
 }
 
-function isCanonicalTrailingEmptyParagraphAfterTable(blocks: FlowBlock[], index: number): boolean {
+function isCanonicalTrailingEmptyParagraphAfterTable(
+  blocks: FlowBlock[],
+  index: number,
+): boolean {
   const cur = blocks[index];
   const prev = blocks[index - 1];
   return (
@@ -262,7 +275,9 @@ function isVisuallyEmptyParagraph(block: FlowBlock): boolean {
   if (block.kind !== "paragraph") {
     return false;
   }
-  return block.runs.every((run) => run.kind === "text" && run.text.trim().length === 0);
+  return block.runs.every(
+    (run) => run.kind === "text" && run.text.trim().length === 0,
+  );
 }
 
 function isPaintlessParagraph(block: FlowBlock): boolean {
@@ -316,7 +331,9 @@ type PositionedAxis = {
   alignment?: string;
 };
 
-function getPositionAlignment(axis: PositionedAxis | undefined): string | undefined {
+function getPositionAlignment(
+  axis: PositionedAxis | undefined,
+): string | undefined {
   return axis?.align ?? axis?.alignment;
 }
 
@@ -338,7 +355,10 @@ export function resolveHeaderFooterPositionedVisualTop(
   }
 
   const align = getPositionAlignment(vertical);
-  const offsetPx = vertical.posOffset !== undefined ? emuToPixels(vertical.posOffset) : undefined;
+  const offsetPx =
+    vertical.posOffset !== undefined
+      ? emuToPixels(vertical.posOffset)
+      : undefined;
 
   if (vertical.relativeTo === "page") {
     if (offsetPx !== undefined) {
@@ -357,7 +377,8 @@ export function resolveHeaderFooterPositionedVisualTop(
 
   if (vertical.relativeTo === "margin") {
     const marginTop = metrics.margins.top;
-    const marginHeight = metrics.pageSize.h - metrics.margins.top - metrics.margins.bottom;
+    const marginHeight =
+      metrics.pageSize.h - metrics.margins.top - metrics.margins.bottom;
     if (offsetPx !== undefined) {
       return marginTop + offsetPx - flowTop;
     }
@@ -435,7 +456,8 @@ function resolveHeaderFooterFloatingTableVisualTop(
     vertAnchor === "page"
       ? metrics.pageSize.h
       : metrics.pageSize.h - metrics.margins.top - metrics.margins.bottom;
-  const vertFrameOffset = vertAnchor === "page" ? -flowTop : metrics.margins.top - flowTop;
+  const vertFrameOffset =
+    vertAnchor === "page" ? -flowTop : metrics.margins.top - flowTop;
 
   if (floating.tblpYSpec === "top") {
     return vertFrameOffset;
@@ -459,7 +481,9 @@ function isBehindDocImageBlock(block: FlowBlock): boolean {
 
 type HeaderFooterTextBoxBlock = Extract<FlowBlock, { kind: "textBox" }>;
 
-function isPositionedHeaderFooterTextBoxBlock(block: HeaderFooterTextBoxBlock): boolean {
+function isPositionedHeaderFooterTextBoxBlock(
+  block: HeaderFooterTextBoxBlock,
+): boolean {
   if (block.displayMode === "block" || block.displayMode === "inline") {
     return false;
   }
@@ -502,7 +526,12 @@ export function calculateHeaderFooterVisualBounds(
         if (!run.position && !isFloatingImageRun(run)) {
           continue;
         }
-        const runTop = resolveHeaderFooterVisualTop(run, paragraphStartY, flowHeight, metrics);
+        const runTop = resolveHeaderFooterVisualTop(
+          run,
+          paragraphStartY,
+          flowHeight,
+          metrics,
+        );
         const runBottom = runTop + run.height;
         if (!floatIntersectsPageBand(runTop, runBottom, metrics, flowHeight)) {
           continue;
@@ -541,7 +570,11 @@ export function calculateHeaderFooterVisualBounds(
         visualTop = Math.min(visualTop, cursorY);
         visualBottom = Math.max(visualBottom, blockBottomY);
         cursorY = blockBottomY;
-      } else if (block.kind === "table" && block.floating && measure.kind === "table") {
+      } else if (
+        block.kind === "table" &&
+        block.floating &&
+        measure.kind === "table"
+      ) {
         const blockTop = resolveHeaderFooterFloatingTableVisualTop(
           block.floating,
           measure,
@@ -550,7 +583,9 @@ export function calculateHeaderFooterVisualBounds(
           metrics,
         );
         const blockBottom = blockTop + blockHeight;
-        if (floatIntersectsPageBand(blockTop, blockBottom, metrics, flowHeight)) {
+        if (
+          floatIntersectsPageBand(blockTop, blockBottom, metrics, flowHeight)
+        ) {
           visualTop = Math.min(visualTop, blockTop);
           visualBottom = Math.max(visualBottom, blockBottom);
         }
@@ -567,7 +602,9 @@ export function calculateHeaderFooterVisualBounds(
           metrics,
         );
         const blockBottom = blockTop + measure.height;
-        if (floatIntersectsPageBand(blockTop, blockBottom, metrics, flowHeight)) {
+        if (
+          floatIntersectsPageBand(blockTop, blockBottom, metrics, flowHeight)
+        ) {
           visualTop = Math.min(visualTop, blockTop);
           visualBottom = Math.max(visualBottom, blockBottom);
         }
@@ -666,7 +703,11 @@ export function calculateHeaderFooterMarginPushBounds(
         top = Math.min(top, cursorY);
         bottom = Math.max(bottom, blockBottomY);
         cursorY = blockBottomY;
-      } else if (block.kind === "table" && block.floating && measure.kind === "table") {
+      } else if (
+        block.kind === "table" &&
+        block.floating &&
+        measure.kind === "table"
+      ) {
         const blockTop = resolveHeaderFooterFloatingTableVisualTop(
           block.floating,
           measure,
@@ -715,7 +756,9 @@ export function calculateHeaderFooterBodyTopClearance(
         continue;
       }
       const pageTop =
-        flowTop + resolveHeaderFooterVisualTop(run, 0, flowHeight, metrics) - (run.distTop ?? 0);
+        flowTop +
+        resolveHeaderFooterVisualTop(run, 0, flowHeight, metrics) -
+        (run.distTop ?? 0);
       if (pageTop > metrics.margins.top) {
         continue;
       }
@@ -797,8 +840,16 @@ export function convertHeaderFooterToContent(
   const pmDoc =
     headerFooter.watermarkBlockIndex === undefined
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
-      : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
-  return convertHeaderFooterPmDocToContent(pmDoc, contentWidth, metrics, options);
+      : headerFooterToProseDocWithDetachedWatermarkHost(
+          headerFooter,
+          proseDocOptions,
+        );
+  return convertHeaderFooterPmDocToContent(
+    pmDoc,
+    contentWidth,
+    metrics,
+    options,
+  );
 }
 
 // =============================================================================
@@ -871,7 +922,9 @@ export function convertHeaderFooterPmDocToContent(
   const viewDoc = projection.type === "resolved" ? projection.doc : pmDoc;
   const flowBlocks = toFlowBlocks(viewDoc, flowOptions);
   const blocks =
-    projection.type === "resolved" ? remapMarkupViewBlocks(flowBlocks, projection) : flowBlocks;
+    projection.type === "resolved"
+      ? remapMarkupViewBlocks(flowBlocks, projection)
+      : flowBlocks;
   return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);
 }
 
@@ -885,16 +938,23 @@ type HorizontalImageLeftOptions = {
   metrics: HeaderFooterMetrics;
 };
 
-function horizontalImageLeft({ run, contentWidth, metrics }: HorizontalImageLeftOptions): number {
+function horizontalImageLeft({
+  run,
+  contentWidth,
+  metrics,
+}: HorizontalImageLeftOptions): number {
   const horizontal = run.position?.horizontal;
   if (horizontal?.posOffset !== undefined) {
-    const frameLeft = horizontal.relativeTo === "page" ? -metrics.margins.left : 0;
+    const frameLeft =
+      horizontal.relativeTo === "page" ? -metrics.margins.left : 0;
     return frameLeft + emuToPixels(horizontal.posOffset);
   }
 
   const alignment = getPositionAlignment(horizontal);
-  const frameWidth = horizontal?.relativeTo === "page" ? metrics.pageSize.w : contentWidth;
-  const frameLeft = horizontal?.relativeTo === "page" ? -metrics.margins.left : 0;
+  const frameWidth =
+    horizontal?.relativeTo === "page" ? metrics.pageSize.w : contentWidth;
+  const frameLeft =
+    horizontal?.relativeTo === "page" ? -metrics.margins.left : 0;
   if (alignment === "center") {
     return frameLeft + (frameWidth - run.width) / 2;
   }
@@ -934,11 +994,16 @@ export function reserveHeaderFooterFullWidthWrapBands({
         continue;
       }
       const relativeTo = run.position?.vertical?.relativeTo;
-      if (relativeTo !== undefined && relativeTo !== "paragraph" && relativeTo !== "line") {
+      if (
+        relativeTo !== undefined &&
+        relativeTo !== "paragraph" &&
+        relativeTo !== "line"
+      ) {
         continue;
       }
       const distLeft = run.distLeft ?? 0;
-      const left = horizontalImageLeft({ run, contentWidth, metrics }) - distLeft;
+      const left =
+        horizontalImageLeft({ run, contentWidth, metrics }) - distLeft;
       const right = left + run.width + distLeft + (run.distRight ?? 0);
       if (left > 0 || right < contentWidth) {
         continue;
@@ -968,7 +1033,10 @@ function finalizeHeaderFooterContent(
 
   // Tables keep their `w:tblGrid` widths exactly as body tables do: an
   // autofit grid wider than the frame extends past the margin (§17.4.64).
-  const blocksForMeasure = normalizeHeaderFooterMeasureBlocks(blocks, metrics.section);
+  const blocksForMeasure = normalizeHeaderFooterMeasureBlocks(
+    blocks,
+    metrics.section,
+  );
   const measuredBlocks = options.measureBlocks(blocksForMeasure, contentWidth);
   const measures = reserveHeaderFooterFullWidthWrapBands({
     blocks,
@@ -991,13 +1059,18 @@ function finalizeHeaderFooterContent(
     flowHeight,
     metrics,
   );
-  const { top: marginPushTop, bottom: marginPushBottom } = calculateHeaderFooterMarginPushBounds(
+  const { top: marginPushTop, bottom: marginPushBottom } =
+    calculateHeaderFooterMarginPushBounds(
+      blocks,
+      measures,
+      flowHeight,
+      metrics,
+    );
+  const bodyTopClearance = calculateHeaderFooterBodyTopClearance(
     blocks,
-    measures,
     flowHeight,
     metrics,
   );
-  const bodyTopClearance = calculateHeaderFooterBodyTopClearance(blocks, flowHeight, metrics);
 
   return {
     blocks,
@@ -1013,7 +1086,10 @@ function finalizeHeaderFooterContent(
   };
 }
 
-function getHeaderFooterFlowMeasureHeight(block: FlowBlock, measure: Measure): number {
+function getHeaderFooterFlowMeasureHeight(
+  block: FlowBlock,
+  measure: Measure,
+): number {
   if (block.kind === "paragraph" && measure.kind === "paragraph") {
     return measure.totalHeight;
   }
@@ -1085,7 +1161,9 @@ function blockSig(b: FlowBlock): string {
         // signature — width × height alone would let an unchanged
         // layout slip past the painter's incremental cache (Codex
         // #487 P2: 23:09 review).
-        text += `[i${r.width}x${r.height}|${r.src}|` + `${r.transform ?? ""}|${r.wrapType ?? ""}];`;
+        text +=
+          `[i${r.width}x${r.height}|${r.src}|` +
+          `${r.transform ?? ""}|${r.wrapType ?? ""}];`;
       } else if (r.kind === "math") {
         // OMML XML uniquely identifies the rendered MathML output;
         // changes to the equation must invalidate the HF cache so the
@@ -1131,7 +1209,9 @@ function blockSig(b: FlowBlock): string {
   return "";
 }
 
-function serializeParagraphAttrs(attrs: Record<string, unknown> | undefined): string {
+function serializeParagraphAttrs(
+  attrs: Record<string, unknown> | undefined,
+): string {
   if (!attrs) {
     return "";
   }

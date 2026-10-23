@@ -13,13 +13,16 @@
  */
 
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
-import { mergeParagraphNumbering } from "../docx/numberingReference";
+import {
+  resolveCachedListRendering,
+  resolveListRenderingDefinition,
+} from "../docx/listRendering";
 import { getCachedNumberingMap } from "../docx/numberingParser";
-import { resolveCachedListRendering, resolveListRenderingDefinition } from "../docx/listRendering";
+import { mergeParagraphNumbering } from "../docx/numberingReference";
 import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
-import { renderParagraphInline } from "./renderRuns";
 import { inlineBreaksToHtml } from "./escape";
+import { renderParagraphInline } from "./renderRuns";
 import type { RenderContext } from "./types";
 
 /** Markdown has six heading levels; Word has nine. */
@@ -59,13 +62,19 @@ export function renderParagraphBlock(
   const numPrFromStyle = inherited ?? para.formatting?.numPrFromStyle;
   const numPr = mergeParagraphNumbering(numPrFromStyle, para.formatting?.numPr);
   let list = para.listRendering;
-  if (numPr?.kind === "none" || (pkg?.numbering !== undefined && numPr === undefined)) {
+  if (
+    numPr?.kind === "none" ||
+    (pkg?.numbering !== undefined && numPr === undefined)
+  ) {
     list = undefined;
   } else if (pkg?.numbering !== undefined && numPr?.kind === "reference") {
     list =
       resolveCachedListRendering(
         para.listRendering,
-        resolveListRenderingDefinition(numPr, getCachedNumberingMap(pkg.numbering)),
+        resolveListRenderingDefinition(
+          numPr,
+          getCachedNumberingMap(pkg.numbering),
+        ),
       ) ?? undefined;
   }
   const counterAttrs = listLabelAttrsFromRendering(list, {
@@ -79,13 +88,15 @@ export function renderParagraphBlock(
       ({ previousFormatting, ...change }) => {
         if (!previousFormatting) return change;
         const previousInherited =
-          ctx.paragraphNumbering(previousFormatting.styleId) ?? previousFormatting.numPrFromStyle;
+          ctx.paragraphNumbering(previousFormatting.styleId) ??
+          previousFormatting.numPrFromStyle;
         const previousNumbering = mergeParagraphNumbering(
           previousInherited,
           previousFormatting.numPr,
         );
         const previousRendering =
-          pkg?.numbering !== undefined && previousNumbering?.kind === "reference"
+          pkg?.numbering !== undefined &&
+          previousNumbering?.kind === "reference"
             ? (resolveListRenderingDefinition(
                 previousNumbering,
                 getCachedNumberingMap(pkg.numbering),
@@ -126,11 +137,15 @@ export function renderParagraphBlock(
       // Whitespace without a visible list label carries no text block.
       return { type: "paragraph", markdown: "" };
     }
-    const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
+    const hashes = "#".repeat(
+      Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1),
+    );
     // ATX headings occupy one source line; physical newlines create new blocks.
     const headingInline = inlineBreaksToHtml(inline);
     return {
-      markdown: label ? `${hashes} ${label} ${headingInline}` : `${hashes} ${headingInline}`,
+      markdown: label
+        ? `${hashes} ${label} ${headingInline}`
+        : `${hashes} ${headingInline}`,
       type: "paragraph",
     };
   }
@@ -156,9 +171,15 @@ export function renderParagraphBlock(
 }
 
 /** The paragraph's 0-based heading level, as `builtInStyles` classifies it. */
-function markdownHeadingLevel(ctx: RenderContext, para: Paragraph): number | undefined {
+function markdownHeadingLevel(
+  ctx: RenderContext,
+  para: Paragraph,
+): number | undefined {
   return resolveHeadingLevel(
-    { outlineLevel: para.formatting?.outlineLevel, styleId: para.formatting?.styleId },
+    {
+      outlineLevel: para.formatting?.outlineLevel,
+      styleId: para.formatting?.styleId,
+    },
     ctx.builtInStyles,
   );
 }
@@ -227,7 +248,8 @@ function renderListItem(
   const indent = " ".repeat(listIndentWidth(ctx, list.level));
   const marker = list.isBullet ? "- " : `${label} `;
   ctx.listIndentWidths[list.level] = marker.length;
-  const markdown = `${indent}${marker}${escapeLeadingBlockMarker(inline)}`.trimEnd();
+  const markdown =
+    `${indent}${marker}${escapeLeadingBlockMarker(inline)}`.trimEnd();
   return {
     type: "listItem",
     markdown,

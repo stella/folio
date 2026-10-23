@@ -40,7 +40,10 @@ const SCOPED_FAMILY_PREFIX = "folio-embedded";
  * so the same original name in two different documents (or two loads of the
  * same document) never collides.
  */
-export function scopeEmbeddedFontFamily(docNonce: string, originalFamily: string): string {
+export function scopeEmbeddedFontFamily(
+  docNonce: string,
+  originalFamily: string,
+): string {
   return `${SCOPED_FAMILY_PREFIX}-${docNonce}-${originalFamily}`;
 }
 
@@ -76,7 +79,8 @@ export type EmbeddedFontParts = {
   fonts: ReadonlyMap<string, ArrayBuffer>;
 };
 
-type EmbedField = "embedRegular" | "embedBold" | "embedItalic" | "embedBoldItalic";
+type EmbedField =
+  "embedRegular" | "embedBold" | "embedItalic" | "embedBoldItalic";
 
 type EmbedKind = {
   ref: EmbedField;
@@ -189,7 +193,14 @@ export function getEmbeddedFontFaces(
       if (!ref) {
         continue;
       }
-      const face = resolveFace(entry.name, ref, kind, parts.fonts, rels, docNonce);
+      const face = resolveFace(
+        entry.name,
+        ref,
+        kind,
+        parts.fonts,
+        rels,
+        docNonce,
+      );
       if (face) {
         faces.push(face);
       }
@@ -205,7 +216,9 @@ export function getEmbeddedFontFaces(
  * runs — which still carry the original name — keep resolving to the scoped
  * face that was actually registered on `document.fonts`.
  */
-export function buildEmbeddedFontFamilyMap(faces: readonly EmbeddedFont[]): Map<string, string> {
+export function buildEmbeddedFontFamilyMap(
+  faces: readonly EmbeddedFont[],
+): Map<string, string> {
   const map = new Map<string, string>();
   for (const face of faces) {
     map.set(face.originalFamily, face.family);
@@ -213,7 +226,9 @@ export function buildEmbeddedFontFamilyMap(faces: readonly EmbeddedFont[]): Map<
   return map;
 }
 
-function findFontTableRels(allXml: ReadonlyMap<string, string>): string | undefined {
+function findFontTableRels(
+  allXml: ReadonlyMap<string, string>,
+): string | undefined {
   for (const [path, xml] of allXml) {
     if (normalizePackagePath(path) === FONTTABLE_RELS_PATH) {
       return xml;

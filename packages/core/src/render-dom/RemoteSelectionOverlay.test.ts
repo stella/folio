@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { RenderedDomContext } from "./RenderedDomContext";
 import { resolveRemoteSelectionOverlayGeometry } from "./RemoteSelectionOverlay";
+import type { RenderedDomContext } from "./RenderedDomContext";
 
 describe("resolveRemoteSelectionOverlayGeometry", () => {
   test("normalizes backward ranges while keeping the caret at the remote head", () => {
@@ -30,7 +30,13 @@ describe("resolveRemoteSelectionOverlayGeometry", () => {
       {
         caret: { x: 5, y: 4, height: 12 },
         rects: [{ x: 5, y: 4, width: 9, height: 12 }],
-        selection: { anchor: 14, clientId: 7, color: "#123456", head: 5, name: "Ada" },
+        selection: {
+          anchor: 14,
+          clientId: 7,
+          color: "#123456",
+          head: 5,
+          name: "Ada",
+        },
       },
     ]);
   });

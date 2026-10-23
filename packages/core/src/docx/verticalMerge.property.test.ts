@@ -22,11 +22,18 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Table, TableCell, TableCellFormatting } from "../types/document";
+import type {
+  Document,
+  Table,
+  TableCell,
+  TableCellFormatting,
+} from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
@@ -52,7 +59,11 @@ const TRACKED_CHANGE_INFO = {
 const vMergeOf = (state: MergeState): TableCellFormatting["vMerge"] =>
   state === "none" ? undefined : state;
 
-const cellFor = (state: MergeState, revision: RevisionState, text: string): TableCell => {
+const cellFor = (
+  state: MergeState,
+  revision: RevisionState,
+  text: string,
+): TableCell => {
   const vMerge = vMergeOf(state);
   return {
     type: "tableCell",
@@ -72,7 +83,12 @@ const cellFor = (state: MergeState, revision: RevisionState, text: string): Tabl
           },
         }
       : {}),
-    content: [{ type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] }],
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text }] }],
+      },
+    ],
   };
 };
 
@@ -92,7 +108,10 @@ const tableFor = ({ column, revision }: MergeCase): Table => ({
 });
 
 const mergeCase = fc.record({
-  column: fc.array(fc.constantFrom(...MERGE_STATES), { minLength: 2, maxLength: 4 }),
+  column: fc.array(fc.constantFrom(...MERGE_STATES), {
+    minLength: 2,
+    maxLength: 4,
+  }),
   revision: fc.constantFrom(...REVISION_STATES),
 });
 
@@ -105,7 +124,9 @@ const withTable = (document: Document, table: Table): Document => ({
 });
 
 /** The first column's merge state, row by row. */
-const readColumn = (document: Document): (TableCellFormatting["vMerge"] | "missing")[] => {
+const readColumn = (
+  document: Document,
+): (TableCellFormatting["vMerge"] | "missing")[] => {
   const block = document.package.document.content.at(0);
   if (!block || block.type !== "table") {
     return ["missing"];
@@ -123,7 +144,12 @@ describe("a vertical merge keeps its origin", () => {
   test("a restart with no continuation is still a restart after an edit", async () => {
     const template = await parse(await createEmptyDocx());
     const opened = await parse(
-      await save(withTable(template, tableFor({ column: ["restart"], revision: "untracked" }))),
+      await save(
+        withTable(
+          template,
+          tableFor({ column: ["restart"], revision: "untracked" }),
+        ),
+      ),
     );
     expect(readColumn(opened)).toEqual(["restart"]);
 
@@ -140,9 +166,13 @@ describe("a vertical merge keeps its origin", () => {
 
       await fc.assert(
         fc.asyncProperty(mergeCase, async (merge) => {
-          const opened = await parse(await save(withTable(template, tableFor(merge))));
+          const opened = await parse(
+            await save(withTable(template, tableFor(merge))),
+          );
           const expected = readColumn(opened);
-          expect(expected).toEqual(merge.column.map((state) => vMergeOf(state)));
+          expect(expected).toEqual(
+            merge.column.map((state) => vMergeOf(state)),
+          );
 
           expect(readColumn(await parse(await save(opened)))).toEqual(expected);
 

@@ -2,23 +2,27 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
-import { panic } from "better-result";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
 import type { EditorView } from "prosemirror-view";
 import { IntlProvider } from "use-intl";
 
-import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { toggleBulletList } from "@stll/folio-core/prosemirror";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -49,7 +53,11 @@ test("save carries editor-created numbering definitions into the document packag
     );
     await act(async () => {
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <DocxEditor
             ref={editor}
             document={document}
@@ -65,16 +73,22 @@ test("save carries editor-created numbering definitions into the document packag
     await act(async () => {
       toggleBulletList(view.state, view.dispatch);
     });
-    const current = editor.current?.getDocument() ?? panic("Expected current document");
+    const current =
+      editor.current?.getDocument() ?? panic("Expected current document");
     const paragraph = current.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       panic("Expected first paragraph");
     }
     const numbering = paragraph.formatting?.numPr;
-    if (numbering?.kind !== "reference") panic("Expected authored bullet numbering");
+    if (numbering?.kind !== "reference")
+      panic("Expected authored bullet numbering");
     const numId = numbering.numId;
     expect(typeof numId).toBe("number");
-    expect(current.package.numbering?.nums.some((instance) => instance.numId === numId)).toBe(true);
+    expect(
+      current.package.numbering?.nums.some(
+        (instance) => instance.numId === numId,
+      ),
+    ).toBe(true);
     let saved: ArrayBuffer | null | undefined;
     await act(async () => {
       saved = await editor.current?.save({ selective: false });
@@ -84,11 +98,16 @@ test("save carries editor-created numbering definitions into the document packag
     if (!saved) {
       panic("Expected saved DOCX");
     }
-    const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+    const reopened = await parseDocx(saved, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
     const savedParagraph = reopened.package.document.content.at(0);
-    if (savedParagraph?.type !== "paragraph") panic("Expected saved bullet paragraph");
+    if (savedParagraph?.type !== "paragraph")
+      panic("Expected saved bullet paragraph");
     const savedNumbering = savedParagraph.formatting?.numPr;
-    if (savedNumbering?.kind !== "reference") panic("Expected saved authored bullet numbering");
+    if (savedNumbering?.kind !== "reference")
+      panic("Expected saved authored bullet numbering");
     expect(savedNumbering.numId).toBe(numId);
   } finally {
     await act(async () => root.unmount());

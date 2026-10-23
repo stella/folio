@@ -1,19 +1,22 @@
-import { FolioDocxReviewer } from "@stll/folio-core/ai-edits/headless";
+import { describe, expect, test } from "bun:test";
+
 import { buildParagraphsDocx } from "@stll/folio-core/ai-edits/__fixtures__/paragraphs";
+import { FolioDocxReviewer } from "@stll/folio-core/ai-edits/headless";
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { describe, expect, test } from "bun:test";
 
 import type { CorpusInvariantInput } from "./lib/corpus-invariants/contract";
 import {
-  INSERTED_CHARACTER,
   firstEditableBlock,
+  INSERTED_CHARACTER,
   insertOneCharacterOperation,
   runEditLocalityInvariant,
 } from "./lib/corpus-invariants/edit-locality";
 import { generalizePartPath } from "./lib/corpus-invariants/save-idempotence";
 
-const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => ({
+const inputFor = async (
+  buffer: ArrayBuffer,
+): Promise<CorpusInvariantInput> => ({
   bytes: new Uint8Array(buffer),
   buffer,
   parsed: await parseDocx(buffer, { preloadFonts: false }),
@@ -35,7 +38,9 @@ const editedBlockTexts = async (buffer: ArrayBuffer): Promise<string[]> => {
     undefinedReferences: "refuse",
     mode: "direct",
   });
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   return reopened.snapshot().blocks.map((block) => block.text);
 };
 
@@ -66,7 +71,9 @@ describe("edit locality", () => {
   });
 
   test("a body with nothing to edit is not a defect", async () => {
-    const buffer = await buildBodySequenceDocx([{ kind: "paragraph", text: "" }]);
+    const buffer = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "" },
+    ]);
 
     expect(await failuresFor(buffer)).toEqual([]);
   });
@@ -78,7 +85,10 @@ describe("edit locality", () => {
    * changing here, and the minted ids being written to disk with it.
    */
   test("an id-less package keeps the paragraphs the edit did not touch", async () => {
-    const buffer = await buildParagraphsDocx(["First paragraph.", "Second paragraph."]);
+    const buffer = await buildParagraphsDocx([
+      "First paragraph.",
+      "Second paragraph.",
+    ]);
 
     expect(await failuresFor(buffer)).toEqual([]);
   });

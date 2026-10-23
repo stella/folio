@@ -9,15 +9,19 @@
 
 import { encodeBackup } from "./backup";
 import {
-  isEditorMessage,
   type EditorMessage,
   type FolioEditingMode,
   type FolioEditorDocument,
   type FolioEditorSaveStrategy,
   type HostMessage,
+  isEditorMessage,
 } from "./editor-protocol";
 import type { EditorLease } from "./lease";
-import { fileVersionOf, type CliSaveOutcome, type CliSaveRequest } from "./save";
+import {
+  type CliSaveOutcome,
+  type CliSaveRequest,
+  fileVersionOf,
+} from "./save";
 
 /** The user declined a save (a dialog's Cancel); the document stays dirty. */
 export class SaveCancelled extends Error {
@@ -40,7 +44,10 @@ export type SessionUi = {
   /** The file changed on disk while the document has unsaved edits. */
   readonly resolveConflict: () => Promise<ConflictChoice | undefined>;
   /** Ask where to save a copy of `bytes` and write it; `false` when cancelled. */
-  readonly saveCopy: (bytes: Uint8Array, strategy: FolioEditorSaveStrategy) => Promise<boolean>;
+  readonly saveCopy: (
+    bytes: Uint8Array,
+    strategy: FolioEditorSaveStrategy,
+  ) => Promise<boolean>;
   /** Save through the workbench, so its dirty state follows; `false` when it did not save. */
   readonly saveThroughWorkbench: () => Promise<boolean>;
   /** Revert through the workbench, so its dirty state follows. */
@@ -67,9 +74,13 @@ export type RewriteWarning = {
 export const needsRewriteConfirmation = (
   strategy: FolioEditorSaveStrategy,
   warning: RewriteWarning,
-): boolean => strategy.type === "full-repack" && warning.enabled() && !warning.confirmed;
+): boolean =>
+  strategy.type === "full-repack" && warning.enabled() && !warning.confirmed;
 
-export type SessionLease = Pick<EditorLease, "token" | "ensure" | "release" | "forget" | "dispose">;
+export type SessionLease = Pick<
+  EditorLease,
+  "token" | "ensure" | "release" | "forget" | "dispose"
+>;
 
 export type SessionDisk = {
   /** The document's bytes on disk now. */
@@ -106,7 +117,10 @@ export type SessionOptions = {
   readonly serializeTimeoutMs?: number;
 };
 
-type Serialized = { readonly bytes: Uint8Array; readonly strategy: FolioEditorSaveStrategy };
+type Serialized = {
+  readonly bytes: Uint8Array;
+  readonly strategy: FolioEditorSaveStrategy;
+};
 
 type PendingSerialization = {
   readonly resolve: (serialized: Serialized) => void;
@@ -233,7 +247,9 @@ export class DocxSession {
         if (pending === undefined) return;
         if (message.fileVersion !== this.loadedVersion) {
           pending.reject(
-            new Error("The document was reloaded while it was being saved. Save again."),
+            new Error(
+              "The document was reloaded while it was being saved. Save again.",
+            ),
           );
           return;
         }
@@ -302,10 +318,12 @@ export class DocxSession {
   /** The webview's document as `.docx` bytes. */
   serialize(): Promise<Serialized> {
     const { post } = this;
-    if (post === undefined) return Promise.reject(new Error("The editor is not open."));
+    if (post === undefined)
+      return Promise.reject(new Error("The editor is not open."));
     const requestId = this.nextRequestId;
     this.nextRequestId += 1;
-    const timeoutMs = this.options.serializeTimeoutMs ?? DEFAULT_SERIALIZE_TIMEOUT_MS;
+    const timeoutMs =
+      this.options.serializeTimeoutMs ?? DEFAULT_SERIALIZE_TIMEOUT_MS;
     return new Promise<Serialized>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.takePending(requestId)?.reject(
@@ -337,7 +355,9 @@ export class DocxSession {
   private async runSave(): Promise<void> {
     const { documentPath } = this.options;
     if (documentPath === null) {
-      throw new Error(`${this.options.fileName} is read-only here. Use Save As to keep a copy.`);
+      throw new Error(
+        `${this.options.fileName} is read-only here. Use Save As to keep a copy.`,
+      );
     }
     const editCount = this.editCount;
     const savedTop = this.top;
@@ -375,7 +395,8 @@ export class DocxSession {
         this.savedAt = savedTop;
         // Keep the lease while the user typed on during the save; a flush
         // lets it go regardless, so the waiting write can land.
-        if (flushFor !== undefined || this.editCount === editCount) await lease?.release();
+        if (flushFor !== undefined || this.editCount === editCount)
+          await lease?.release();
         if (flushFor !== undefined && rewriteDue) {
           const backup =
             outcome.backup === undefined
@@ -406,7 +427,9 @@ export class DocxSession {
         continue;
       }
       throw new Error(
-        outcome.hint === undefined ? outcome.message : `${outcome.message} ${outcome.hint}`,
+        outcome.hint === undefined
+          ? outcome.message
+          : `${outcome.message} ${outcome.hint}`,
       );
     }
   }
@@ -417,11 +440,17 @@ export class DocxSession {
    */
   async saveCopyTo(
     destinationPath: string,
-    serialized?: { readonly bytes: Uint8Array; readonly strategy: FolioEditorSaveStrategy },
+    serialized?: {
+      readonly bytes: Uint8Array;
+      readonly strategy: FolioEditorSaveStrategy;
+    },
   ): Promise<void> {
     const { bytes, strategy } = serialized ?? (await this.serialize());
     const { documentPath } = this.options;
-    const source = documentPath === null ? null : await this.options.disk.read().catch(() => null);
+    const source =
+      documentPath === null
+        ? null
+        : await this.options.disk.read().catch(() => null);
     if (documentPath === null || source === null) {
       // The CLI saves from a document on disk; without one, write the copy directly.
       await this.options.disk.write(destinationPath, bytes);
@@ -441,7 +470,9 @@ export class DocxSession {
     });
     if (outcome.type === "error") {
       throw new Error(
-        outcome.hint === undefined ? outcome.message : `${outcome.message} ${outcome.hint}`,
+        outcome.hint === undefined
+          ? outcome.message
+          : `${outcome.message} ${outcome.hint}`,
       );
     }
   }
@@ -516,7 +547,9 @@ export class DocxSession {
         return;
       case "saveCopy": {
         const serialized = await this.serialize();
-        if (await this.options.ui.saveCopy(serialized.bytes, serialized.strategy)) {
+        if (
+          await this.options.ui.saveCopy(serialized.bytes, serialized.strategy)
+        ) {
           await this.options.ui.revertThroughWorkbench();
         }
         return;
@@ -540,7 +573,8 @@ export class DocxSession {
     if (this.flushRequester !== undefined || this.disposed) return;
     this.flushRequester = requester;
     try {
-      if (await this.options.ui.saveThroughWorkbench()) await this.options.lease?.release();
+      if (await this.options.ui.saveThroughWorkbench())
+        await this.options.lease?.release();
     } finally {
       this.flushRequester = undefined;
     }

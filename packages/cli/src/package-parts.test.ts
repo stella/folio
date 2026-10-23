@@ -2,10 +2,15 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { buildDocx, CONTRACT_PARAGRAPHS } from "./__tests__/fixtures";
-import { checkPackageIntegrity, diffPackages, nextRevisionIdSeed } from "./package-parts";
+import {
+  checkPackageIntegrity,
+  diffPackages,
+  nextRevisionIdSeed,
+} from "./package-parts";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const rewrite = async (
   bytes: Uint8Array,
@@ -44,7 +49,10 @@ describe("nextRevisionIdSeed", () => {
     const bytes = await rewrite(await buildDocx([]), (zip) => {
       zip.file(
         "word/document.xml",
-        documentXml('<x:p><x:ins x:id="41"/><x:bookmarkStart x:id="7"/></x:p>', "x"),
+        documentXml(
+          '<x:p><x:ins x:id="41"/><x:bookmarkStart x:id="7"/></x:p>',
+          "x",
+        ),
       );
       zip.file(
         "word/other.xml",
@@ -71,7 +79,10 @@ describe("checkPackageIntegrity", () => {
       zip.file("word/document.xml", "<w:document><w:body>");
     });
     const dangling = await rewrite(base, (zip) => {
-      zip.file("word/document.xml", documentXml('<w:p><w:hyperlink rel:id="rId99"/></w:p>'));
+      zip.file(
+        "word/document.xml",
+        documentXml('<w:p><w:hyperlink rel:id="rId99"/></w:p>'),
+      );
     });
     const missingTarget = await rewrite(base, (zip) => {
       zip.remove("word/styles.xml");
@@ -80,7 +91,10 @@ describe("checkPackageIntegrity", () => {
     for (const [bytes, parts] of [
       [malformed, changed],
       [dangling, changed],
-      [missingTarget, [{ part: "word/_rels/document.xml.rels", change: "modified" } as const]],
+      [
+        missingTarget,
+        [{ part: "word/_rels/document.xml.rels", change: "modified" } as const],
+      ],
     ] as const) {
       const result = await checkPackageIntegrity(bytes, parts);
       expect(result.isErr() && result.error.code).toBe("integrity_failed");

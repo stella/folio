@@ -9,24 +9,27 @@ import {
   getLocalName,
   parseXmlDocument,
 } from "../docx/xmlParser";
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
 import type { BlockContent, Paragraph, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import {
   FOLIO_RESOLVED_REVIEWED_VIEWS,
-  type FolioEditableDocumentStoryHandle,
   FolioDocxReviewer,
+  type FolioEditableDocumentStoryHandle,
   type FolioReviewComment,
   type FolioReviewCommentReply,
   getFolioDocxComparisonAccess,
 } from "./headless";
 import {
   FOLIO_REVIEW_CHANGE_KINDS,
-  getTrackedChangeStatsFromDoc,
   getTrackedChangesFromDoc,
   getTrackedChangesFromSnapshot,
+  getTrackedChangeStatsFromDoc,
 } from "./read";
 import { sourceDocumentOf, storyTablesOf } from "./snapshot";
 import type { FolioAIEditSnapshot } from "./types";
@@ -37,7 +40,9 @@ const WORDPROCESSINGML_NAMESPACES = [
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
   "http://purl.oclc.org/ooxml/wordprocessingml/main",
 ] as const;
-const WORDPROCESSINGML_NAMESPACE_SET = new Set<string>(WORDPROCESSINGML_NAMESPACES);
+const WORDPROCESSINGML_NAMESPACE_SET = new Set<string>(
+  WORDPROCESSINGML_NAMESPACES,
+);
 
 const REVISION = {
   insertion: 1,
@@ -72,16 +77,23 @@ const revisionContent = (): BlockContent[] => {
       type: "paragraph",
       paraId: "A0000100",
       content: [
-        { type: "run", content: [{ type: "text", text: "Stable <&> 日本語 " }] },
+        {
+          type: "run",
+          content: [{ type: "text", text: "Stable <&> 日本語 " }],
+        },
         {
           type: "insertion",
           info: revisionInfo(REVISION.insertion),
-          content: [{ type: "run", content: [{ type: "text", text: "Inserted" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Inserted" }] },
+          ],
         },
         {
           type: "deletion",
           info: revisionInfo(REVISION.deletion),
-          content: [{ type: "run", content: [{ type: "text", text: "Deleted" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Deleted" }] },
+          ],
         },
         {
           type: "run",
@@ -98,19 +110,26 @@ const revisionContent = (): BlockContent[] => {
         {
           type: "moveFrom",
           info: revisionInfo(REVISION.moveFrom),
-          content: [{ type: "run", content: [{ type: "text", text: " Moved from" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: " Moved from" }] },
+          ],
         },
         {
           type: "moveTo",
           info: revisionInfo(REVISION.moveTo),
-          content: [{ type: "run", content: [{ type: "text", text: " Moved to" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: " Moved to" }] },
+          ],
         },
       ],
     },
     {
       type: "paragraph",
       paraId: "A0000101",
-      pPrMark: { kind: "ins", info: revisionInfo(REVISION.paragraphMarkInserted) },
+      pPrMark: {
+        kind: "ins",
+        info: revisionInfo(REVISION.paragraphMarkInserted),
+      },
       content: paragraphContent("Inserted boundary"),
     },
     {
@@ -121,7 +140,10 @@ const revisionContent = (): BlockContent[] => {
     {
       type: "paragraph",
       paraId: "A0000103",
-      pPrMark: { kind: "del", info: revisionInfo(REVISION.paragraphMarkDeleted) },
+      pPrMark: {
+        kind: "del",
+        info: revisionInfo(REVISION.paragraphMarkDeleted),
+      },
       content: paragraphContent("Deleted boundary"),
     },
     {
@@ -331,8 +353,16 @@ const expectedChanges = [
   { id: REVISION.formatting, type: "formatting", text: " Formatted" },
   { id: REVISION.moveFrom, type: "deletion", text: " Moved from" },
   { id: REVISION.moveTo, type: "insertion", text: " Moved to" },
-  { id: REVISION.paragraphMarkInserted, type: "paragraphMarkInserted", text: "Inserted boundary" },
-  { id: REVISION.paragraphMarkDeleted, type: "paragraphMarkDeleted", text: "Deleted boundary" },
+  {
+    id: REVISION.paragraphMarkInserted,
+    type: "paragraphMarkInserted",
+    text: "Inserted boundary",
+  },
+  {
+    id: REVISION.paragraphMarkDeleted,
+    type: "paragraphMarkDeleted",
+    text: "Deleted boundary",
+  },
   {
     id: REVISION.paragraphPropertiesChanged,
     type: "paragraphPropertiesChanged",
@@ -353,8 +383,16 @@ const expectedChanges = [
     type: "tablePropertyExceptionsChanged",
     text: "Cell",
   },
-  { id: REVISION.rowPropertiesChanged, type: "rowPropertiesChanged", text: "Cell" },
-  { id: REVISION.cellPropertiesChanged, type: "cellPropertiesChanged", text: "Cell" },
+  {
+    id: REVISION.rowPropertiesChanged,
+    type: "rowPropertiesChanged",
+    text: "Cell",
+  },
+  {
+    id: REVISION.cellPropertiesChanged,
+    type: "cellPropertiesChanged",
+    text: "Cell",
+  },
   { id: REVISION.rowInserted, type: "rowInserted", text: "Inserted row" },
   { id: REVISION.rowDeleted, type: "rowDeleted", text: "Deleted row" },
   { id: REVISION.cellInserted, type: "cellInserted", text: "Inserted cell" },
@@ -395,13 +433,21 @@ const makeRevisionMatrixDocument = () => {
   document.package.headers = new Map([
     [
       HEADER_RELATIONSHIP_ID,
-      { type: "header", hdrFtrType: "default", content: structuredClone(revisionContent()) },
+      {
+        type: "header",
+        hdrFtrType: "default",
+        content: structuredClone(revisionContent()),
+      },
     ],
   ]);
   document.package.footers = new Map([
     [
       FOOTER_RELATIONSHIP_ID,
-      { type: "footer", hdrFtrType: "default", content: structuredClone(revisionContent()) },
+      {
+        type: "footer",
+        hdrFtrType: "default",
+        content: structuredClone(revisionContent()),
+      },
     ],
   ]);
   document.package.document.finalSectionProperties = {
@@ -410,16 +456,30 @@ const makeRevisionMatrixDocument = () => {
     footerReferences: [{ type: "default", rId: FOOTER_RELATIONSHIP_ID }],
   };
   document.package.footnotes = [
-    { type: "footnote", id: 2, noteType: "normal", content: structuredClone(revisionContent()) },
+    {
+      type: "footnote",
+      id: 2,
+      noteType: "normal",
+      content: structuredClone(revisionContent()),
+    },
   ];
   document.package.endnotes = [
-    { type: "endnote", id: 3, noteType: "normal", content: structuredClone(revisionContent()) },
+    {
+      type: "endnote",
+      id: 3,
+      noteType: "normal",
+      content: structuredClone(revisionContent()),
+    },
   ];
   return document;
 };
 
-const makeRevisionMatrixDocx = async (paragraphIds: "with" | "without"): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createDocx(makeRevisionMatrixDocument()));
+const makeRevisionMatrixDocx = async (
+  paragraphIds: "with" | "without",
+): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(
+    await createDocx(makeRevisionMatrixDocument()),
+  );
   if (paragraphIds === "without") {
     for (const path of [
       "word/document.xml",
@@ -432,14 +492,18 @@ const makeRevisionMatrixDocx = async (paragraphIds: "with" | "without"): Promise
       if (!file) {
         throw new Error(`revision matrix is missing ${path}`);
       }
-      zip.file(path, (await file.async("text")).replace(/ w14:paraId="[^"]+"/gu, ""));
+      zip.file(
+        path,
+        (await file.async("text")).replace(/ w14:paraId="[^"]+"/gu, ""),
+      );
     }
   }
   zip.file(PRESERVATION_SENTINEL_PART, PRESERVATION_SENTINEL);
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const storyKey = (story: FolioEditableDocumentStoryHandle): string => JSON.stringify(story);
+const storyKey = (story: FolioEditableDocumentStoryHandle): string =>
+  JSON.stringify(story);
 
 const REVIEW_COMMENT_FIELD_CENSUS = {
   id: "id",
@@ -458,32 +522,58 @@ const REVIEW_COMMENT_REPLY_FIELD_CENSUS = {
   author: "author",
   date: "date",
   text: "text",
-} as const satisfies Record<keyof FolioReviewCommentReply, keyof FolioReviewCommentReply>;
+} as const satisfies Record<
+  keyof FolioReviewCommentReply,
+  keyof FolioReviewCommentReply
+>;
 
 const commentProjection = (reviewer: FolioDocxReviewer) =>
   reviewer
     .getComments()
-    .map(({ id, author, date, text, anchoredText, blockId, story, replies, done }) => ({
-      id,
-      author,
-      date,
-      text,
-      anchoredText,
-      blockId,
-      story,
-      replies: replies.map(
-        ({ id: replyId, author: replyAuthor, date: replyDate, text: replyText }) => ({
-          id: replyId,
-          author: replyAuthor,
-          date: replyDate,
-          text: replyText,
-        }),
-      ),
-      done,
-    }));
+    .map(
+      ({
+        id,
+        author,
+        date,
+        text,
+        anchoredText,
+        blockId,
+        story,
+        replies,
+        done,
+      }) => ({
+        id,
+        author,
+        date,
+        text,
+        anchoredText,
+        blockId,
+        story,
+        replies: replies.map(
+          ({
+            id: replyId,
+            author: replyAuthor,
+            date: replyDate,
+            text: replyText,
+          }) => ({
+            id: replyId,
+            author: replyAuthor,
+            date: replyDate,
+            text: replyText,
+          }),
+        ),
+        done,
+      }),
+    );
 
-const storyProjection = (reviewer: FolioDocxReviewer, story: FolioEditableDocumentStoryHandle) => {
-  const reviewed = reviewer.readReviewedStory({ story, view: "current-markup" });
+const storyProjection = (
+  reviewer: FolioDocxReviewer,
+  story: FolioEditableDocumentStoryHandle,
+) => {
+  const reviewed = reviewer.readReviewedStory({
+    story,
+    view: "current-markup",
+  });
   if (!reviewed) {
     throw new Error(`revision matrix is missing ${storyKey(story)}`);
   }
@@ -497,7 +587,10 @@ const storyProjection = (reviewer: FolioDocxReviewer, story: FolioEditableDocume
   };
 };
 
-const partBytes = async (buffer: ArrayBuffer, path: string): Promise<Uint8Array> => {
+const partBytes = async (
+  buffer: ArrayBuffer,
+  path: string,
+): Promise<Uint8Array> => {
   const file = (await JSZip.loadAsync(buffer)).file(path);
   if (!file) {
     throw new Error(`revision matrix is missing ${path}`);
@@ -541,7 +634,11 @@ const commentAnchorIds = (
       WORDPROCESSINGML_NAMESPACE_SET.has(element.namespaceUri) &&
       getLocalName(element.name) === localName
     ) {
-      const id = getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_SET, "id");
+      const id = getAttributeByNamespaceUri(
+        element,
+        WORDPROCESSINGML_NAMESPACE_SET,
+        "id",
+      );
       if (id !== null) {
         ids.push(id);
       }
@@ -593,9 +690,17 @@ describe("body revision enumeration", () => {
         type: "paragraph",
         paraId: "10000200",
         content: [
-          { type: "deletion", info: revisionInfo(321), content: paragraphContent("Before") },
+          {
+            type: "deletion",
+            info: revisionInfo(321),
+            content: paragraphContent("Before"),
+          },
           ...paragraphContent(" kept "),
-          { type: "deletion", info: revisionInfo(321), content: paragraphContent("After") },
+          {
+            type: "deletion",
+            info: revisionInfo(321),
+            content: paragraphContent("After"),
+          },
         ],
       },
     ];
@@ -604,8 +709,11 @@ describe("body revision enumeration", () => {
       { id: 321, type: "deletion", text: "Before" },
       { id: 321, type: "deletion", text: "After" },
     ]);
-    const reopened = await FolioDocxReviewer.fromBuffer(await createDocx(document));
-    const view = (changes: typeof live) => changes.map(({ id: _id, ...change }) => change);
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+    );
+    const view = (changes: typeof live) =>
+      changes.map(({ id: _id, ...change }) => change);
     expect(view(reopened.getChanges())).toEqual(view(live));
   });
 
@@ -626,8 +734,12 @@ describe("body revision enumeration", () => {
       highestId: Math.max(...expectedChanges.map(({ id }) => id)),
       present: true,
     });
-    expect(new Set(stats.ids)).toEqual(new Set(expectedChanges.map(({ id }) => id)));
-    expect(getTrackedChangeStatsFromDoc(toProseDoc(createEmptyDocument()))).toEqual({
+    expect(new Set(stats.ids)).toEqual(
+      new Set(expectedChanges.map(({ id }) => id)),
+    );
+    expect(
+      getTrackedChangeStatsFromDoc(toProseDoc(createEmptyDocument())),
+    ).toEqual({
       highestId: 0,
       present: false,
       ids: [],
@@ -635,24 +747,39 @@ describe("body revision enumeration", () => {
 
     const changes = getTrackedChangesFromDoc(doc);
 
-    expect(changes.map(({ id, type, text }) => ({ id, type, text }))).toEqual(expectedChanges);
+    expect(changes.map(({ id, type, text }) => ({ id, type, text }))).toEqual(
+      expectedChanges,
+    );
     expect(
       getTrackedChangesFromDoc(
-        toProseDoc(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+        toProseDoc(
+          fromProseDoc(doc, undefined, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
       ),
     ).toEqual(changes);
     expect(
-      changes.every(({ author, date, blockId }) => author === AUTHOR && date === DATE && blockId),
+      changes.every(
+        ({ author, date, blockId }) =>
+          author === AUTHOR && date === DATE && blockId,
+      ),
     ).toBe(true);
   });
 
   test("keeps changes in document order when a comment splits revision runs", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(revisionDocument()), {
-      author: AUTHOR,
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(revisionDocument()),
+      {
+        author: AUTHOR,
+      },
+    );
     const snapshot = reviewer.snapshot();
-    const target = snapshot.blocks.find(({ text }) => text.includes("Stable <&>"));
-    if (!target) throw new Error("revision fixture is missing its first paragraph");
+    const target = snapshot.blocks.find(({ text }) =>
+      text.includes("Stable <&>"),
+    );
+    if (!target)
+      throw new Error("revision fixture is missing its first paragraph");
 
     const before = reviewer.getChanges();
     const result = reviewer.applyDocumentOperationsToStory({
@@ -674,7 +801,9 @@ describe("body revision enumeration", () => {
     });
     expect(result.status).toBe("committed");
 
-    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     expect(reopened.getChanges()).toEqual(before);
   });
 
@@ -695,7 +824,12 @@ describe("body revision enumeration", () => {
                 {
                   type: "hyperlink",
                   href: "https://example.test/terms",
-                  children: [{ type: "run", content: [{ type: "text", text: "linked" }] }],
+                  children: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "linked" }],
+                    },
+                  ],
                 },
                 { type: "run", content: [{ type: "text", text: " after" }] },
               ],
@@ -703,15 +837,23 @@ describe("body revision enumeration", () => {
           ],
         },
       ];
-      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
-      expect(reviewer.getChanges().map(({ text }) => text)).toEqual(["Before linked after"]);
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(document),
+      );
+      expect(reviewer.getChanges().map(({ text }) => text)).toEqual([
+        "Before linked after",
+      ]);
       const selected = reviewer.getChanges().at(0);
       if (!selected) throw new Error("the split insertion is missing");
       expect(
-        mode === "accept" ? reviewer.acceptChange(selected) : reviewer.rejectChange(selected),
+        mode === "accept"
+          ? reviewer.acceptChange(selected)
+          : reviewer.rejectChange(selected),
       ).toBe(true);
       expect(reviewer.getChanges()).toEqual([]);
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(reopened.getChanges()).toEqual([]);
     },
   );
@@ -724,12 +866,20 @@ describe("body revision enumeration", () => {
         {
           type: "paragraph",
           paraId: "A0000300",
-          content: [{ type: "run", content: [{ type: "text", text: "Service Agreement" }] }],
+          content: [
+            {
+              type: "run",
+              content: [{ type: "text", text: "Service Agreement" }],
+            },
+          ],
         },
       ];
-      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
-        author: AUTHOR,
-      });
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(document),
+        {
+          author: AUTHOR,
+        },
+      );
       const blockId = reviewer.getContent().at(0)?.id;
       if (blockId === undefined) throw new Error("the paragraph is missing");
       const apply = (
@@ -747,11 +897,17 @@ describe("body revision enumeration", () => {
       // A comment over the paragraph, its text replaced under tracking, and a
       // second comment on a word of the inserted text: the insertion's saved
       // runs are split at the inner comment's start, inside the outer one.
-      expect(apply("direct", { type: "commentOnBlock", comment: { text: "Whole clause." } })).toBe(
-        1,
-      );
       expect(
-        apply("tracked-changes", { type: "replaceBlock", text: "Agreement notice goods clause." }),
+        apply("direct", {
+          type: "commentOnBlock",
+          comment: { text: "Whole clause." },
+        }),
+      ).toBe(1);
+      expect(
+        apply("tracked-changes", {
+          type: "replaceBlock",
+          text: "Agreement notice goods clause.",
+        }),
       ).toBe(1);
       expect(
         apply("tracked-changes", {
@@ -772,15 +928,23 @@ describe("body revision enumeration", () => {
         { type: "deletion", text: "Service Agreement", blockId },
         { type: "insertion", text: "Agreement notice goods clause.", blockId },
       ]);
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(project(reopened.getChanges())).toEqual(live);
 
-      const insertion = reopened.getChanges().find(({ type }) => type === "insertion");
+      const insertion = reopened
+        .getChanges()
+        .find(({ type }) => type === "insertion");
       if (!insertion) throw new Error("the split insertion is missing");
       expect(
-        mode === "accept" ? reopened.acceptChange(insertion) : reopened.rejectChange(insertion),
+        mode === "accept"
+          ? reopened.acceptChange(insertion)
+          : reopened.rejectChange(insertion),
       ).toBe(true);
-      expect(reopened.getChanges().filter(({ type }) => type === "insertion")).toEqual([]);
+      expect(
+        reopened.getChanges().filter(({ type }) => type === "insertion"),
+      ).toEqual([]);
     },
   );
 
@@ -790,7 +954,9 @@ describe("body revision enumeration", () => {
       for (const selected of expectedChanges) {
         let state = EditorState.create({ doc: toProseDoc(revisionDocument()) });
         const command =
-          mode === "accept" ? acceptAIEditRevision(selected.id) : rejectAIEditRevision(selected.id);
+          mode === "accept"
+            ? acceptAIEditRevision(selected.id)
+            : rejectAIEditRevision(selected.id);
 
         expect(
           command(state, (transaction) => {
@@ -799,9 +965,13 @@ describe("body revision enumeration", () => {
         ).toBe(true);
 
         const roundtripped = toProseDoc(
-          fromProseDoc(state.doc, undefined, { stylesheetSource: { type: "package" } }),
+          fromProseDoc(state.doc, undefined, {
+            stylesheetSource: { type: "package" },
+          }),
         );
-        const remainingIds = getTrackedChangesFromDoc(roundtripped).map(({ id }) => id);
+        const remainingIds = getTrackedChangesFromDoc(roundtripped).map(
+          ({ id }) => id,
+        );
         expect(remainingIds).not.toContain(selected.id);
         expect(remainingIds.toSorted((left, right) => left - right)).toEqual(
           expectedChanges
@@ -816,19 +986,29 @@ describe("body revision enumeration", () => {
   test.each(["accept", "reject"] as const)(
     "headless %s persists a fully resolved revision census",
     async (mode) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(revisionDocument()));
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(revisionDocument()),
+      );
       const changes = reviewer.getChanges();
-      expect(changes.map(({ id }) => id).toSorted((left, right) => left - right)).toEqual(
-        expectedChanges.map(({ id }) => id).toSorted((left, right) => left - right),
+      expect(
+        changes.map(({ id }) => id).toSorted((left, right) => left - right),
+      ).toEqual(
+        expectedChanges
+          .map(({ id }) => id)
+          .toSorted((left, right) => left - right),
       );
 
       for (const change of changes) {
         expect(
-          mode === "accept" ? reviewer.acceptChange(change) : reviewer.rejectChange(change),
+          mode === "accept"
+            ? reviewer.acceptChange(change)
+            : reviewer.rejectChange(change),
         ).toBe(true);
       }
 
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(reopened.getChanges()).toEqual([]);
     },
   );
@@ -836,9 +1016,12 @@ describe("body revision enumeration", () => {
 
 describe("resolved story serialization structural matrix", () => {
   test("keeps each story projection bound to its own state across resolution and mutation", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeRevisionMatrixDocx("with"), {
-      author: AUTHOR,
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await makeRevisionMatrixDocx("with"),
+      {
+        author: AUTHOR,
+      },
+    );
     const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
     const arrivingByStory = new Map<
       string,
@@ -850,7 +1033,10 @@ describe("resolved story serialization structural matrix", () => {
     >();
 
     for (const story of REVIEW_STORIES) {
-      const arriving = comparisonAccess.snapshotReviewedStory({ story, view: "current-markup" });
+      const arriving = comparisonAccess.snapshotReviewedStory({
+        story,
+        view: "current-markup",
+      });
       if (!arriving) {
         throw new Error(`revision matrix is missing ${storyKey(story)}`);
       }
@@ -864,7 +1050,9 @@ describe("resolved story serialization structural matrix", () => {
     }
 
     const projection = comparisonAccess.projectStories("with-revision-census");
-    expect(projection.stories.map(({ handle }) => handle)).toEqual(REVIEW_STORIES);
+    expect(projection.stories.map(({ handle }) => handle)).toEqual(
+      REVIEW_STORIES,
+    );
     expect(projection.revisions.present).toBe(true);
     expect(Math.max(...projection.revisions.ids)).toBe(
       Math.max(...expectedChanges.map(({ id }) => id)),
@@ -873,7 +1061,8 @@ describe("resolved story serialization structural matrix", () => {
       new Set([...arrivingByStory.values()].flatMap(({ ids }) => ids)),
     );
     for (const { changes } of arrivingByStory.values()) {
-      for (const { id } of changes) expect(projection.revisions.ids).toContain(id);
+      for (const { id } of changes)
+        expect(projection.revisions.ids).toContain(id);
     }
 
     for (const { handle: story, snapshot: resolved } of projection.stories) {
@@ -883,7 +1072,9 @@ describe("resolved story serialization structural matrix", () => {
       expect(getTrackedChangesFromSnapshot(resolved)).toEqual([]);
       const target = resolved.blocks.find(({ text }) => text === "Cell");
       if (!target) {
-        throw new Error(`revision matrix is missing the table cell in ${storyKey(story)}`);
+        throw new Error(
+          `revision matrix is missing the table cell in ${storyKey(story)}`,
+        );
       }
       const mutationText = `${story.type} mutation`;
       const result = reviewer.applyDocumentOperationsToStory({
@@ -906,17 +1097,28 @@ describe("resolved story serialization structural matrix", () => {
       });
       expect(result.status).toBe("committed");
 
-      const mutated = comparisonAccess.snapshotReviewedStory({ story, view: "current-markup" });
+      const mutated = comparisonAccess.snapshotReviewedStory({
+        story,
+        view: "current-markup",
+      });
       if (!mutated) {
-        throw new Error(`revision matrix lost ${storyKey(story)} after mutation`);
+        throw new Error(
+          `revision matrix lost ${storyKey(story)} after mutation`,
+        );
       }
       expect(storyTablesOf(resolved).at(0)?.node.textContent).toContain("Cell");
-      expect(storyTablesOf(resolved).at(0)?.node.textContent).not.toContain(mutationText);
-      expect(storyTablesOf(mutated).at(0)?.node.textContent).toContain(mutationText);
+      expect(storyTablesOf(resolved).at(0)?.node.textContent).not.toContain(
+        mutationText,
+      );
+      expect(storyTablesOf(mutated).at(0)?.node.textContent).toContain(
+        mutationText,
+      );
       const arriving = arrivingByStory.get(storyKey(story));
       expect(arriving).toBeDefined();
       if (arriving) {
-        expect(getTrackedChangesFromSnapshot(arriving.snapshot)).toEqual(arriving.changes);
+        expect(getTrackedChangesFromSnapshot(arriving.snapshot)).toEqual(
+          arriving.changes,
+        );
       }
     }
   });
@@ -925,7 +1127,10 @@ describe("resolved story serialization structural matrix", () => {
     "recognizes comment anchors in the %s namespace independent of prefix",
     (namespace) => {
       const xml = `<alt:document xmlns:alt="${namespace}"><alt:commentRangeStart alt:id="42"/><alt:commentRangeEnd alt:id="42"/></alt:document>`;
-      for (const localName of ["commentRangeStart", "commentRangeEnd"] as const) {
+      for (const localName of [
+        "commentRangeStart",
+        "commentRangeEnd",
+      ] as const) {
         expect(commentAnchorIds(xml, localName)).toContain("42");
       }
     },
@@ -949,7 +1154,9 @@ describe("resolved story serialization structural matrix", () => {
     "preserves every revision kind in $view view, $paragraphIds paragraph ids, comments: $comments",
     async ({ view, paragraphIds, commentScenario }) => {
       const baseline = await makeRevisionMatrixDocx(paragraphIds);
-      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: AUTHOR });
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: AUTHOR,
+      });
 
       const commentIdsByStory = new Map<string, readonly number[]>();
 
@@ -957,15 +1164,23 @@ describe("resolved story serialization structural matrix", () => {
         for (const story of REVIEW_STORIES) {
           const commentIds: number[] = [];
           const parentIds: number[] = [];
-          for (let rootIndex = 0; rootIndex < commentScenario.rootCount; rootIndex += 1) {
+          for (
+            let rootIndex = 0;
+            rootIndex < commentScenario.rootCount;
+            rootIndex += 1
+          ) {
             const snapshot = reviewer.snapshotStory(story);
-            const target = snapshot?.blocks.find(({ text }) => text.includes("Stable <&>"));
+            const target = snapshot?.blocks.find(({ text }) =>
+              text.includes("Stable <&>"),
+            );
             if (!snapshot || !target) {
               throw new Error(
                 `revision matrix is missing the comment target in ${storyKey(story)}`,
               );
             }
-            const previousIds = new Set(reviewer.getComments().map(({ id }) => id));
+            const previousIds = new Set(
+              reviewer.getComments().map(({ id }) => id),
+            );
             const result = reviewer.applyDocumentOperationsToStory({
               undefinedReferences: "refuse",
               story,
@@ -978,15 +1193,21 @@ describe("resolved story serialization structural matrix", () => {
                     id: `matrix-comment-${story.type}-${rootIndex}`,
                     type: "commentOnBlock",
                     blockId: target.id,
-                    comment: { text: `Parent ${story.type} ${rootIndex} <&> 日本語` },
+                    comment: {
+                      text: `Parent ${story.type} ${rootIndex} <&> 日本語`,
+                    },
                   },
                 ],
               },
             });
             expect(result.status).toBe("committed");
-            const parent = reviewer.getComments().find(({ id }) => !previousIds.has(id));
+            const parent = reviewer
+              .getComments()
+              .find(({ id }) => !previousIds.has(id));
             if (!parent) {
-              throw new Error(`revision matrix did not create a comment in ${storyKey(story)}`);
+              throw new Error(
+                `revision matrix did not create a comment in ${storyKey(story)}`,
+              );
             }
             parentIds.push(parent.id);
             commentIds.push(parent.id);
@@ -1001,7 +1222,9 @@ describe("resolved story serialization structural matrix", () => {
                     text: `Reply ${story.type} <&> العربية`,
                   });
             if (!reply) {
-              throw new Error(`revision matrix did not create a reply in ${storyKey(story)}`);
+              throw new Error(
+                `revision matrix did not create a reply in ${storyKey(story)}`,
+              );
             }
             commentIds.push(reply.id);
           }
@@ -1014,9 +1237,15 @@ describe("resolved story serialization structural matrix", () => {
         }
       }
 
-      const expectedByStory = new Map<string, ReturnType<typeof storyProjection>>();
+      const expectedByStory = new Map<
+        string,
+        ReturnType<typeof storyProjection>
+      >();
       for (const story of REVIEW_STORIES) {
-        const current = reviewer.readReviewedStory({ story, view: "current-markup" });
+        const current = reviewer.readReviewedStory({
+          story,
+          view: "current-markup",
+        });
         const resolved = reviewer.readReviewedStory({ story, view });
         if (!current || !resolved) {
           throw new Error(`revision matrix is missing ${storyKey(story)}`);
@@ -1030,7 +1259,9 @@ describe("resolved story serialization structural matrix", () => {
       const expectedComments = commentProjection(reviewer);
 
       const saved = await reviewer.toBuffer();
-      expect(await partBytes(saved, PRESERVATION_SENTINEL_PART)).toEqual(PRESERVATION_SENTINEL);
+      expect(await partBytes(saved, PRESERVATION_SENTINEL_PART)).toEqual(
+        PRESERVATION_SENTINEL,
+      );
       for (const story of REVIEW_STORIES) {
         await assertCommentAnchorsInStoryPart(
           saved,
@@ -1062,7 +1293,9 @@ describe("resolved story serialization structural matrix", () => {
         );
       }
       for (const story of REVIEW_STORIES) {
-        expect(storyProjection(reopenedAgain, story)).toEqual(expectedByStory.get(storyKey(story)));
+        expect(storyProjection(reopenedAgain, story)).toEqual(
+          expectedByStory.get(storyKey(story)),
+        );
       }
       expect(commentProjection(reopenedAgain)).toEqual(expectedComments);
     },

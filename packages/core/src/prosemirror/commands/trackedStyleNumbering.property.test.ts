@@ -1,34 +1,59 @@
 import { expect, test } from "bun:test";
-import type { Node as PMNode } from "prosemirror-model";
-import { advanceListMarker, advanceVisibleListMarker, createListCounterState } from "../listMarker";
 import fc from "fast-check";
-import { paragraphNumberingReference } from "@stll/docx-core/model";
 import JSZip from "jszip";
-import { findChild, findChildren, parseXml } from "../../docx/xmlParser";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { ensureParaIds } from "../../docx/ensureParaIds";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, repackDocx } from "../../docx/rezip";
+import { findChild, findChildren, parseXml } from "../../docx/xmlParser";
 import type { Document } from "../../types/document";
 import { expectParagraphAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
+import {
+  ListExtension,
+  toggleBulletList,
+} from "../extensions/features/ListExtension";
+import {
+  advanceListMarker,
+  advanceVisibleListMarker,
+  createListCounterState,
+} from "../listMarker";
 import { carryParagraphProperties } from "../paragraphPropertyCarry";
-import { createDocumentNumberingPlugin, getDocumentNumbering } from "../plugins/documentNumbering";
-import { createDocumentStylesPlugin, getDocumentStyleResolver } from "../plugins/documentStyles";
+import {
+  createDocumentNumberingPlugin,
+  getDocumentNumbering,
+} from "../plugins/documentNumbering";
+import {
+  createDocumentStylesPlugin,
+  getDocumentStyleResolver,
+} from "../plugins/documentStyles";
 import { createSuggestionModePlugin } from "../plugins/suggestionMode";
-import { ListExtension, toggleBulletList } from "../extensions/features/ListExtension";
 import { schema } from "../schema";
-import { ensureParaIds } from "../../docx/ensureParaIds";
-import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { acceptAllChanges, rejectAllChanges } from "./comments";
 
 type NumberingSource = "style" | "paragraph" | "style-level";
 
-type SourceDocumentOptions = { numId: number; level: number; numberingSource: NumberingSource };
+type SourceDocumentOptions = {
+  numId: number;
+  level: number;
+  numberingSource: NumberingSource;
+};
 
-const numberingStateForSource = ({ numId, level, numberingSource }: SourceDocumentOptions) => {
+const numberingStateForSource = ({
+  numId,
+  level,
+  numberingSource,
+}: SourceDocumentOptions) => {
   const reference = { kind: "reference", numId, ilvl: level } as const;
   switch (numberingSource) {
     case "style":
@@ -36,7 +61,10 @@ const numberingStateForSource = ({ numId, level, numberingSource }: SourceDocume
     case "paragraph":
       return { direct: reference, inherited: undefined };
     case "style-level":
-      return { direct: { kind: "levelOnly", ilvl: level } as const, inherited: reference };
+      return {
+        direct: { kind: "levelOnly", ilvl: level } as const,
+        inherited: reference,
+      };
     default: {
       const unreachable: never = numberingSource;
       return unreachable;
@@ -54,7 +82,9 @@ const sourceDocument = (options: SourceDocumentOptions): Document => {
           {
             type: "paragraph",
             formatting: { styleId: "Plain" },
-            content: [{ type: "run", content: [{ type: "text", text: "Source" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Source" }] },
+            ],
           },
           {
             type: "paragraph",
@@ -62,7 +92,9 @@ const sourceDocument = (options: SourceDocumentOptions): Document => {
               styleId: "Numbered",
               ...(direct === undefined ? {} : { numPr: direct }),
             },
-            content: [{ type: "run", content: [{ type: "text", text: "Target" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Target" }] },
+            ],
           },
         ],
       },
@@ -81,7 +113,14 @@ const sourceDocument = (options: SourceDocumentOptions): Document => {
         abstractNums: [
           {
             abstractNumId: 1,
-            levels: [{ ilvl: level, numFmt: "decimal", lvlText: `%${level + 1}.`, start: 1 }],
+            levels: [
+              {
+                ilvl: level,
+                numFmt: "decimal",
+                lvlText: `%${level + 1}.`,
+                start: 1,
+              },
+            ],
           },
         ],
       },
@@ -104,7 +143,11 @@ const exercise = async ({
   decision,
   numberingSource,
 }: ExerciseOptions) => {
-  const numberingState = numberingStateForSource({ numId, level, numberingSource });
+  const numberingState = numberingStateForSource({
+    numId,
+    level,
+    numberingSource,
+  });
   const document = await parseDocx(
     await createDocx(sourceDocument({ numId, level, numberingSource })),
   );
@@ -130,16 +173,22 @@ const exercise = async ({
     state = state.apply(tr);
   }
   if (operation !== "carry") {
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position + 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, position + 1)),
+    );
     expect(
       toggleBulletList(state, (tr) => {
         state = state.apply(tr);
       }),
     ).toBe(true);
   }
-  const record = expectParagraphAttrs(state.doc.child(1))._propertyChanges?.at(0);
+  const record = expectParagraphAttrs(state.doc.child(1))._propertyChanges?.at(
+    0,
+  );
   expect(record).toBeDefined();
-  expect(record?.previousFormatting?.numPr ?? undefined).toEqual(numberingState.direct);
+  expect(record?.previousFormatting?.numPr ?? undefined).toEqual(
+    numberingState.direct,
+  );
   const resolve = decision === "accept" ? acceptAllChanges : rejectAllChanges;
   expect(
     resolve()(state, (tr) => {
@@ -153,44 +202,68 @@ const exercise = async ({
     expect(attrs.listNumFmt).toBe("decimal");
   } else if (operation !== "carry") {
     expect(attrs.numPr?.kind).toBe("reference");
-    if (attrs.numPr?.kind !== "reference") throw new Error("The list command lost its reference.");
+    if (attrs.numPr?.kind !== "reference")
+      throw new Error("The list command lost its reference.");
     expect(attrs.numPr.numId).not.toBe(numId);
     expect(attrs.listIsBullet).toBe(true);
     expect(attrs.listNumFmt).toBe("bullet");
   }
-  const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
+  const saved = fromProseDoc(state.doc, document, {
+    stylesheetSource: { type: "package" },
+  });
   const bytes = await repackDocx(saved);
   const reopened = await parseDocx(bytes);
   const paragraph = reopened.package.document.content.at(1);
   expect(paragraph?.type).toBe("paragraph");
-  if (paragraph?.type !== "paragraph") throw new Error("Expected target paragraph");
+  if (paragraph?.type !== "paragraph")
+    throw new Error("Expected target paragraph");
   expect(paragraph.propertyChanges).toBeUndefined();
   if (decision === "reject" || operation === "carry") {
-    const xml = await (await JSZip.loadAsync(bytes)).file("word/document.xml")?.async("string");
+    const xml = await (
+      await JSZip.loadAsync(bytes)
+    )
+      .file("word/document.xml")
+      ?.async("string");
     expect(xml).toBeDefined();
     const root = parseXml(xml ?? "");
     const body = findChild(findChild(root, "w", "document"), "w", "body");
     const target = findChildren(body, "w", "p").at(1);
-    const directNumbering = findChild(findChild(target, "w", "pPr"), "w", "numPr");
+    const directNumbering = findChild(
+      findChild(target, "w", "pPr"),
+      "w",
+      "numPr",
+    );
     if (decision === "reject") {
       const directNumberingKind = numberingState.direct?.kind ?? "undefined";
       switch (directNumberingKind) {
         case "reference":
           expect(directNumbering).not.toBeNull();
-          expect(paragraph.formatting?.numPr).toEqual({ kind: "reference", numId, ilvl: level });
+          expect(paragraph.formatting?.numPr).toEqual({
+            kind: "reference",
+            numId,
+            ilvl: level,
+          });
           expect(paragraph.formatting?.numPrFromStyle).toBeUndefined();
           break;
         case "levelOnly":
           expect(directNumbering).not.toBeNull();
-          if (!directNumbering) throw new Error("Expected direct level-only numbering");
+          if (!directNumbering)
+            throw new Error("Expected direct level-only numbering");
           expect(findChild(directNumbering, "w", "numId")).toBeNull();
-          expect(paragraph.formatting?.numPr).toEqual({ kind: "levelOnly", ilvl: level });
-          expect(paragraph.formatting?.numPrFromStyle).toEqual(numberingState.inherited);
+          expect(paragraph.formatting?.numPr).toEqual({
+            kind: "levelOnly",
+            ilvl: level,
+          });
+          expect(paragraph.formatting?.numPrFromStyle).toEqual(
+            numberingState.inherited,
+          );
           break;
         case "undefined":
           expect(directNumbering).toBeNull();
           expect(paragraph.formatting?.numPr).toBeUndefined();
-          expect(paragraph.formatting?.numPrFromStyle).toEqual(numberingState.inherited);
+          expect(paragraph.formatting?.numPrFromStyle).toEqual(
+            numberingState.inherited,
+          );
           break;
         default: {
           const unreachable: never = directNumberingKind;
@@ -200,28 +273,33 @@ const exercise = async ({
     } else {
       expect(directNumbering).toBeNull();
     }
-    expect(paragraph.formatting?.styleId).toBe(decision === "reject" ? "Numbered" : "Plain");
+    expect(paragraph.formatting?.styleId).toBe(
+      decision === "reject" ? "Numbered" : "Plain",
+    );
   } else {
     expect(paragraph.formatting?.numPr?.kind).toBe("reference");
     expect(paragraph.listRendering?.isBullet).toBe(true);
     expect(paragraph.listRendering?.numFmt).toBe("bullet");
   }
-  expect(expectParagraphAttrs(toProseDoc(reopened).child(1)).numPr).toEqual(attrs.numPr);
+  expect(expectParagraphAttrs(toProseDoc(reopened).child(1)).numPr).toEqual(
+    attrs.numPr,
+  );
 };
 
 type StyleNumberingRequest =
-  | "toggle bullet"
-  | "toggle number"
-  | "change level"
-  | "new list"
-  | "cancel";
+  "toggle bullet" | "toggle number" | "change level" | "new list" | "cancel";
 
 const styleNumberingDocument = (): Document => {
-  const document = sourceDocument({ numId: 4, level: 0, numberingSource: "style" });
+  const document = sourceDocument({
+    numId: 4,
+    level: 0,
+    numberingSource: "style",
+  });
   const numbering = document.package.numbering;
   if (!numbering) throw new Error("Expected numbering definitions");
   const abstractNum = numbering.abstractNums[0];
-  if (!abstractNum) throw new Error("Expected an abstract numbering definition");
+  if (!abstractNum)
+    throw new Error("Expected an abstract numbering definition");
   abstractNum.levels = [
     { ilvl: 0, numFmt: "decimal", lvlText: "%1.", start: 1 },
     { ilvl: 1, numFmt: "lowerLetter", lvlText: "%1.%2.", start: 1 },
@@ -231,15 +309,20 @@ const styleNumberingDocument = (): Document => {
 
 const targetProjection = (reviewer: FolioDocxReviewer) => {
   const block = reviewer.getContent().find(({ text }) => text === "Target");
-  if (!block || block.kind === "diagnostic") throw new Error("Expected the target paragraph");
+  if (!block || block.kind === "diagnostic")
+    throw new Error("Expected the target paragraph");
   return block;
 };
 
 const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
-  const { docx } = await ensureParaIds(await createDocx(styleNumberingDocument()));
+  const { docx } = await ensureParaIds(
+    await createDocx(styleNumberingDocument()),
+  );
   let saved: ArrayBuffer;
   if (request === "new list" || request === "cancel") {
-    const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "Reviewer" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+      author: "Reviewer",
+    });
     const result = reviewer.applyDocumentOperations(
       {
         version: 1,
@@ -251,7 +334,9 @@ const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
             blockId: targetProjection(reviewer).id,
             properties: {
               numbering:
-                request === "new list" ? { kind: "newList", format: "numbered" } : { kind: "none" },
+                request === "new list"
+                  ? { kind: "newList", format: "numbered" }
+                  : { kind: "none" },
             },
           },
         ],
@@ -271,7 +356,11 @@ const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
       ],
     });
     const targetPosition = state.doc.child(0).nodeSize;
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, targetPosition + 1)));
+    state = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, targetPosition + 1),
+      ),
+    );
     const runtime = ListExtension().onSchemaReady({ schema });
     const command = (() => {
       switch (request) {
@@ -287,14 +376,17 @@ const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
         }
       }
     })();
-    if (!command) throw new Error(`List extension has no command for ${request}`);
+    if (!command)
+      throw new Error(`List extension has no command for ${request}`);
     expect(
       command(state, (transaction) => {
         state = state.apply(transaction);
       }),
     ).toBe(true);
     saved = await repackDocx(
-      fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(state.doc, document, {
+        stylesheetSource: { type: "package" },
+      }),
     );
   }
 
@@ -325,7 +417,10 @@ const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
       expect(projection.listReference).toEqual({ numId: 4, level: 1 });
       expect(projection.displayLabel).toBe("1.a.");
       expect(renderedAttrs.listNumFmt).toBe("lowerLetter");
-      expect(projection.statedNumbering).toEqual({ kind: "levelOnly", ilvl: 1 });
+      expect(projection.statedNumbering).toEqual({
+        kind: "levelOnly",
+        ilvl: 1,
+      });
       break;
     case "new list":
       expect(projection.listReference).toBeDefined();
@@ -372,10 +467,24 @@ test(
         fc.integer({ min: 1, max: 20 }),
         fc.integer({ min: 0, max: 8 }),
         async (numId, level) => {
-          for (const operation of ["carry", "list", "carry then list"] as const) {
+          for (const operation of [
+            "carry",
+            "list",
+            "carry then list",
+          ] as const) {
             for (const decision of ["accept", "reject"] as const) {
-              for (const numberingSource of ["style", "paragraph", "style-level"] as const) {
-                await exercise({ numId, level, operation, decision, numberingSource });
+              for (const numberingSource of [
+                "style",
+                "paragraph",
+                "style-level",
+              ] as const) {
+                await exercise({
+                  numId,
+                  level,
+                  operation,
+                  decision,
+                  numberingSource,
+                });
               }
             }
           }
@@ -391,13 +500,25 @@ test(
 );
 
 const pendingCounterProjection = (doc: PMNode) => {
-  const streams = { final: createListCounterState(), original: createListCounterState() };
+  const streams = {
+    final: createListCounterState(),
+    original: createListCounterState(),
+  };
   const final: (string | null)[] = [];
   const original: (string | null)[] = [];
   doc.forEach((node) => {
-    const projected = advanceVisibleListMarker(expectParagraphAttrs(node), streams);
-    final.push(projected.advances.find(({ stream }) => stream === "final")?.marker ?? null);
-    original.push(projected.advances.find(({ stream }) => stream === "original")?.marker ?? null);
+    const projected = advanceVisibleListMarker(
+      expectParagraphAttrs(node),
+      streams,
+    );
+    final.push(
+      projected.advances.find(({ stream }) => stream === "final")?.marker ??
+        null,
+    );
+    original.push(
+      projected.advances.find(({ stream }) => stream === "original")?.marker ??
+        null,
+    );
   });
   return { final, original, streams };
 };
@@ -405,7 +526,9 @@ const pendingCounterProjection = (doc: PMNode) => {
 const resolvedCounterProjection = (doc: PMNode) => {
   const counters = createListCounterState();
   const markers: (string | null)[] = [];
-  doc.forEach((node) => markers.push(advanceListMarker(expectParagraphAttrs(node), counters)));
+  doc.forEach((node) =>
+    markers.push(advanceListMarker(expectParagraphAttrs(node), counters)),
+  );
   return { markers, counters };
 };
 
@@ -417,11 +540,25 @@ test(
         fc.integer({ min: 1, max: 20 }),
         fc.integer({ min: 0, max: 8 }),
         async (numId, level) => {
-          for (const authored of ["absent", "levelOnly", "reference", "none"] as const) {
-            for (const transition of ["remove", "switch", "style then switch"] as const) {
-              const source = sourceDocument({ numId, level, numberingSource: "style" });
+          for (const authored of [
+            "absent",
+            "levelOnly",
+            "reference",
+            "none",
+          ] as const) {
+            for (const transition of [
+              "remove",
+              "switch",
+              "style then switch",
+            ] as const) {
+              const source = sourceDocument({
+                numId,
+                level,
+                numberingSource: "style",
+              });
               const target = source.package.document.content.at(1);
-              if (target?.type !== "paragraph") throw new Error("Expected target paragraph");
+              if (target?.type !== "paragraph")
+                throw new Error("Expected target paragraph");
               const overrides = {
                 absent: undefined,
                 levelOnly: { kind: "levelOnly", ilvl: level },
@@ -436,7 +573,12 @@ test(
               source.package.document.content.push({
                 type: "paragraph",
                 formatting: { styleId: "Numbered" },
-                content: [{ type: "run", content: [{ type: "text", text: "Following" }] }],
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Following" }],
+                  },
+                ],
               });
               const document = await parseDocx(await createDocx(source));
               let state = EditorState.create({
@@ -456,12 +598,18 @@ test(
                   source: state.doc.child(0),
                   styleResolver: getDocumentStyleResolver(state),
                   numbering: getDocumentNumbering(state),
-                  revision: { id: 42, author: "Reviewer", date: "2026-09-01T00:00:00Z" },
+                  revision: {
+                    id: 42,
+                    author: "Reviewer",
+                    date: "2026-09-01T00:00:00Z",
+                  },
                 });
                 state = state.apply(tr);
               }
               state = state.apply(
-                state.tr.setSelection(TextSelection.create(state.doc, position + 1)),
+                state.tr.setSelection(
+                  TextSelection.create(state.doc, position + 1),
+                ),
               );
               const runtime = ListExtension().onSchemaReady({ schema });
               const command =
@@ -477,7 +625,9 @@ test(
                 toProseDoc(
                   await parseDocx(
                     await repackDocx(
-                      fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }),
+                      fromProseDoc(state.doc, document, {
+                        stylesheetSource: { type: "package" },
+                      }),
                     ),
                   ),
                 ),
@@ -491,15 +641,17 @@ test(
                       createDocumentNumberingPlugin(document.package.numbering),
                     ],
                   });
-                  const resolve = decision === "accept" ? acceptAllChanges : rejectAllChanges;
+                  const resolve =
+                    decision === "accept" ? acceptAllChanges : rejectAllChanges;
                   resolve()(resolved, (tr) => {
                     resolved = resolved.apply(tr);
                   });
                   const expected = resolvedCounterProjection(resolved.doc);
                   const stream = decision === "accept" ? "final" : "original";
-                  expect(pending[stream], `${authored}/${transition}/${decision}`).toEqual(
-                    expected.markers,
-                  );
+                  expect(
+                    pending[stream],
+                    `${authored}/${transition}/${decision}`,
+                  ).toEqual(expected.markers);
                   expect(pending.streams[stream]).toEqual(expected.counters);
                 }
               }
@@ -507,7 +659,10 @@ test(
           }
         },
       ),
-      { numRuns: 10, id: "pending style-numbering counter streams equal resolved documents" },
+      {
+        numRuns: 10,
+        id: "pending style-numbering counter streams equal resolved documents",
+      },
     );
   },
   propertyTestTimeout(30_000),

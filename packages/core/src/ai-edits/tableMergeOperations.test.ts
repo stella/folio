@@ -9,8 +9,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildTableDocx,
   readReviewerTables,
-  tableReadingProblems,
   type TableReading,
+  tableReadingProblems,
   type TableSpec,
 } from "../__tests__/tableOperationDocument";
 import {
@@ -34,10 +34,13 @@ const MERGED_LEFT: TableSpec = {
 
 type Mode = "direct" | "tracked-changes";
 
-const open = (bytes: ArrayBuffer) => FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
+const open = (bytes: ArrayBuffer) =>
+  FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`no block reads ${JSON.stringify(text)}`);
   }
@@ -67,7 +70,9 @@ const resolveTracked = async (
   resolution: "accept" | "reject",
 ): Promise<TableReading> => {
   const reopened = await open(await reviewer.toBuffer());
-  expect(resolution === "accept" ? reopened.acceptAll() : reopened.rejectAll()).toBeGreaterThan(0);
+  expect(
+    resolution === "accept" ? reopened.acceptAll() : reopened.rejectAll(),
+  ).toBeGreaterThan(0);
   return readReviewerTables(reopened);
 };
 
@@ -130,7 +135,9 @@ test("a row-removing merge cannot shift another merge's original row coordinates
   expect(result.skipped).toEqual([{ id: "short", reason: "unsupportedBlock" }]);
   const reading = await readReviewerTables(direct);
   expect(tableReadingProblems(reading)).toEqual([]);
-  const rightCells = reading.snapshot.at(0)?.cells.filter(({ column }) => column === 2);
+  const rightCells = reading.snapshot
+    .at(0)
+    ?.cells.filter(({ column }) => column === 2);
   expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
     ["right-top", 1],
     ["right-middle", 1],
@@ -296,12 +303,19 @@ describe("a column deletion in a nested table the same batch moves", () => {
             blockId: blockId(reviewer, "c4"),
             endBlockId: firstCell.id,
           },
-          { id: "column", type: "deleteTableColumn", blockId: blockId(reviewer, "n1") },
+          {
+            id: "column",
+            type: "deleteTableColumn",
+            blockId: blockId(reviewer, "n1"),
+          },
         ],
       },
       { undefinedReferences: "refuse" },
     );
-    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["column", "merge"]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "column",
+      "merge",
+    ]);
 
     const reading = await readReviewerTables(reviewer);
     expect(tableReadingProblems(reading)).toEqual([]);
@@ -341,8 +355,13 @@ describe("a merge or split the batch requests before a row insertion in the same
   };
 
   /** The table as applied: a tracked result is read once accepted. */
-  const settle = (reviewer: FolioDocxReviewer, mode: Mode): Promise<TableReading> =>
-    mode === "direct" ? readReviewerTables(reviewer) : resolveTracked(reviewer, "accept");
+  const settle = (
+    reviewer: FolioDocxReviewer,
+    mode: Mode,
+  ): Promise<TableReading> =>
+    mode === "direct"
+      ? readReviewerTables(reviewer)
+      : resolveTracked(reviewer, "accept");
 
   // `cellTexts` fills the row as the source grid has it: the cell-shape edit
   // is refused whatever its place in the request, so it never runs first.
@@ -350,7 +369,12 @@ describe("a merge or split the batch requests before a row insertion in the same
     "a merge reaching over the boundary is refused and the row keeps its source cells (%s)",
     async (mode) => {
       const { reviewer, result } = await applyBatch(PLAIN, mode, (live) => [
-        { id: "merge", type: "mergeTableCells", blockId: blockId(live, "A1"), rowCount: 2 },
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: blockId(live, "A1"),
+          rowCount: 2,
+        },
         {
           id: "row",
           type: "insertTableRow",
@@ -362,7 +386,10 @@ describe("a merge or split the batch requests before a row insertion in the same
 
       expect(result.applied.map(({ id }) => id)).toEqual(["row"]);
       expect(result.issues).toEqual([
-        expect.objectContaining({ operationId: "merge", code: "unsupportedBlock" }),
+        expect.objectContaining({
+          operationId: "merge",
+          code: "unsupportedBlock",
+        }),
       ]);
       const reading = await settle(reviewer, mode);
       expect(tableReadingProblems(reading)).toEqual([]);
@@ -384,20 +411,27 @@ describe("a merge or split the batch requests before a row insertion in the same
   test.each(["direct", "tracked-changes"] as const)(
     "a split of the merge crossing the boundary is refused and the row keeps its source capacity (%s)",
     async (mode) => {
-      const { reviewer, result } = await applyBatch(MERGED_LEFT, mode, (live) => [
-        { id: "split", type: "splitTableCell", blockId: blockId(live, "A1") },
-        {
-          id: "row",
-          type: "insertTableRow",
-          blockId: blockId(live, "B1"),
-          position: "after",
-          cellTexts: ["X"],
-        },
-      ]);
+      const { reviewer, result } = await applyBatch(
+        MERGED_LEFT,
+        mode,
+        (live) => [
+          { id: "split", type: "splitTableCell", blockId: blockId(live, "A1") },
+          {
+            id: "row",
+            type: "insertTableRow",
+            blockId: blockId(live, "B1"),
+            position: "after",
+            cellTexts: ["X"],
+          },
+        ],
+      );
 
       expect(result.applied.map(({ id }) => id)).toEqual(["row"]);
       expect(result.issues).toEqual([
-        expect.objectContaining({ operationId: "split", code: "unsupportedBlock" }),
+        expect.objectContaining({
+          operationId: "split",
+          code: "unsupportedBlock",
+        }),
       ]);
       const reading = await settle(reviewer, mode);
       expect(tableReadingProblems(reading)).toEqual([]);
@@ -429,7 +463,11 @@ describe("an edit inside a cell the same batch merges away", () => {
   };
 
   /** The first paragraph of the outer table's cell at `row`, `column`. */
-  const cellBlockId = (reviewer: FolioDocxReviewer, row: number, column: number): string => {
+  const cellBlockId = (
+    reviewer: FolioDocxReviewer,
+    row: number,
+    column: number,
+  ): string => {
     const block = reviewer
       .getContent()
       .find(
@@ -481,13 +519,21 @@ describe("an edit inside a cell the same batch merges away", () => {
     "refuses a merge after an edit of a cell it folds (%s)",
     async (mode) => {
       const { result, table } = await run(mode, (live) => [
-        { id: "edit", type: "replaceBlock", blockId: cellBlockId(live, 1, 1), text: "X" },
+        {
+          id: "edit",
+          type: "replaceBlock",
+          blockId: cellBlockId(live, 1, 1),
+          text: "X",
+        },
         merge(live),
       ]);
 
       expect(result.applied.map(({ id }) => id)).toEqual(["edit"]);
       expect(result.skipped).toEqual([
-        expect.objectContaining({ id: "merge", reason: "overlappingOperation" }),
+        expect.objectContaining({
+          id: "merge",
+          reason: "overlappingOperation",
+        }),
       ]);
       expect(table).toEqual([
         [
@@ -505,7 +551,12 @@ describe("an edit inside a cell the same batch merges away", () => {
     async (mode) => {
       const { result, table } = await run(mode, (live) => [
         merge(live),
-        { id: "edit", type: "replaceBlock", blockId: cellBlockId(live, 1, 1), text: "X" },
+        {
+          id: "edit",
+          type: "replaceBlock",
+          blockId: cellBlockId(live, 1, 1),
+          text: "X",
+        },
       ]);
 
       expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
@@ -526,7 +577,12 @@ describe("an edit inside a cell the same batch merges away", () => {
     "applies an edit of the cell the merge keeps alongside it (%s)",
     async (mode) => {
       const { result, table } = await run(mode, (live) => [
-        { id: "edit", type: "replaceBlock", blockId: cellBlockId(live, 0, 1), text: "X" },
+        {
+          id: "edit",
+          type: "replaceBlock",
+          blockId: cellBlockId(live, 0, 1),
+          text: "X",
+        },
         merge(live),
       ]);
 

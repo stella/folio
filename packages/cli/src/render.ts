@@ -13,10 +13,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { selectDisplayPages } from "@stll/folio-core/display-list/selectDisplayPages";
 import { renderDisplayListToHtml } from "@stll/folio-core/display-list/html/renderDisplayListToHtml";
+import { selectDisplayPages } from "@stll/folio-core/display-list/selectDisplayPages";
 import type { DisplayList } from "@stll/folio-core/display-list/types";
-import { buildDocxDisplayList, writeDisplayListPdf } from "@stll/folio-core/export-pdf";
+import {
+  buildDocxDisplayList,
+  writeDisplayListPdf,
+} from "@stll/folio-core/export-pdf";
 import {
   createFontsourceFaces,
   type FontsourceFaces,
@@ -48,7 +51,9 @@ export const cliFontFaces = (): FontsourceFaces => {
       const directory = fontsourceDirectory(packageName);
       if (directory === null) return null;
       const filePath = path.join(directory, relativePath);
-      return existsSync(filePath) ? new Uint8Array(readFileSync(filePath)) : null;
+      return existsSync(filePath)
+        ? new Uint8Array(readFileSync(filePath))
+        : null;
     },
   });
   return faces;
@@ -69,7 +74,11 @@ export const buildDisplayList = async (
   });
   return built.isOk()
     ? Result.ok(built.value.list)
-    : Result.err(renderError(`${file.path} could not be laid out: ${built.error.message}`));
+    : Result.err(
+        renderError(
+          `${file.path} could not be laid out: ${built.error.message}`,
+        ),
+      );
 };
 
 /** Refuse page numbers the document does not have; `undefined` keeps every page. */
@@ -101,7 +110,9 @@ export const checkPages = (
 export const displayListHtml = (list: DisplayList, title: string): string =>
   renderDisplayListToHtml(list, {
     title,
-    fontFaceCss: cliFontFaces().fontFaceCss({ families: list.fonts.map((face) => face.family) }),
+    fontFaceCss: cliFontFaces().fontFaceCss({
+      families: list.fonts.map((face) => face.family),
+    }),
     pageGapPx: 16,
     canvasColor: "#e8e8e8",
   });
@@ -129,18 +140,30 @@ export const renderPdf = async ({
     producer: "folio",
   });
   return exported.isOk()
-    ? Result.ok({ bytes: exported.value.bytes, pageCount: exported.value.pageCount })
-    : Result.err(renderError(`${file.path} could not be exported: ${exported.error.message}`));
+    ? Result.ok({
+        bytes: exported.value.bytes,
+        pageCount: exported.value.pageCount,
+      })
+    : Result.err(
+        renderError(
+          `${file.path} could not be exported: ${exported.error.message}`,
+        ),
+      );
 };
 
 /** What `playwright-core` exposes that this module uses. */
 type ChromiumLike = {
   launch: (options: { headless: boolean }) => Promise<{
     newPage: (options: { deviceScaleFactor: number }) => Promise<{
-      setContent: (html: string, options: { waitUntil: "load" }) => Promise<void>;
+      setContent: (
+        html: string,
+        options: { waitUntil: "load" },
+      ) => Promise<void>;
       evaluate: (script: string) => Promise<unknown>;
       locator: (selector: string) => {
-        first: () => { screenshot: (options: { type: "png" }) => Promise<Uint8Array> };
+        first: () => {
+          screenshot: (options: { type: "png" }) => Promise<Uint8Array>;
+        };
       };
     }>;
     close: () => Promise<void>;
@@ -176,25 +199,35 @@ export const renderPng = async ({
   if (selected.isErr()) return Result.err(selected.error);
 
   const imported = await Result.tryPromise(() => import("playwright-core"));
-  if (imported.isErr()) return Result.err(rasterUnavailable("the package is not installed"));
+  if (imported.isErr())
+    return Result.err(rasterUnavailable("the package is not installed"));
   const module: unknown = imported.value;
-  if (!hasChromium(module)) return Result.err(rasterUnavailable("the package has no chromium"));
+  if (!hasChromium(module))
+    return Result.err(rasterUnavailable("the package has no chromium"));
 
   const shot = await Result.tryPromise({
     try: async () => {
       const browser = await module.chromium.launch({ headless: true });
       try {
         const tab = await browser.newPage({ deviceScaleFactor: scale });
-        await tab.setContent(displayListHtml(selected.value, path.basename(file.path)), {
-          waitUntil: "load",
-        });
+        await tab.setContent(
+          displayListHtml(selected.value, path.basename(file.path)),
+          {
+            waitUntil: "load",
+          },
+        );
         await tab.evaluate("document.fonts.ready");
-        return await tab.locator(".layout-page").first().screenshot({ type: "png" });
+        return await tab
+          .locator(".layout-page")
+          .first()
+          .screenshot({ type: "png" });
       } finally {
         await browser.close();
       }
     },
     catch: (error) => rasterUnavailable(describe(error)),
   });
-  return shot.isOk() ? Result.ok({ bytes: shot.value, pageCount: 1 }) : Result.err(shot.error);
+  return shot.isOk()
+    ? Result.ok({ bytes: shot.value, pageCount: 1 })
+    : Result.err(shot.error);
 };

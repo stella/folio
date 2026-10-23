@@ -21,18 +21,21 @@
  */
 
 import type {
+  Column,
   FooterReference,
   HeaderReference,
+  LineNumberRestart,
+  PageOrientation,
   SectionProperties,
   SectionPropertyChange,
-  PageOrientation,
   SectionStart,
   VerticalAlign,
-  LineNumberRestart,
-  Column,
 } from "../types/document";
-
-import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
+import {
+  attributeRemainder,
+  NO_MODELLED_ATTRIBUTES,
+} from "./attributeRemainder";
+import { parseBorderSpec } from "./borderParser";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -41,23 +44,32 @@ import {
   keptUnless,
   sequencePositions,
 } from "./containerChildren";
-import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
+import {
+  parseFooterReference,
+  parseHeaderReference,
+} from "./headerFooterRefParser";
+import {
+  parseEndnoteProperties,
+  parseFootnoteProperties,
+} from "./notePropertiesParser";
 import type { ParseContext } from "./parseContext";
-import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
-import { NumberFormatSchema, TextDirectionSchema, narrowEnum } from "./parserEnums";
+import {
+  narrowEnum,
+  NumberFormatSchema,
+  TextDirectionSchema,
+} from "./parserEnums";
+import { parseSectionReferenceHistory } from "./sectionReferenceHistory";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
-import { parseBorderSpec } from "./borderParser";
+import { parsePropertyChangeInfo } from "./trackedChangeInfo";
 import {
   findChild,
   findChildren,
   getAttribute,
-  parseNumericAttribute,
   parseBooleanElement,
+  parseNumericAttribute,
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
-import { parsePropertyChangeInfo } from "./trackedChangeInfo";
-import { parseSectionReferenceHistory } from "./sectionReferenceHistory";
 
 /**
  * Sanity cap on `w:cols/@w:num`. Word's column picker tops out well below
@@ -132,7 +144,9 @@ function parseVerticalAlign(align: string | null): VerticalAlign | undefined {
 /**
  * Parse line number restart type
  */
-function parseLineNumberRestart(restart: string | null): LineNumberRestart | undefined {
+function parseLineNumberRestart(
+  restart: string | null,
+): LineNumberRestart | undefined {
   switch (restart) {
     case "continuous":
       return "continuous";
@@ -210,7 +224,9 @@ const SECTION_PROPERTY_HANDLERS = {
     if (orientation) {
       props.orientation = orientation;
     }
-    return keptUnless(width !== undefined || height !== undefined || orientation !== undefined);
+    return keptUnless(
+      width !== undefined || height !== undefined || orientation !== undefined,
+    );
   },
   pgMar: (child, { props }) => {
     const margins = [
@@ -243,7 +259,8 @@ const SECTION_PROPERTY_HANDLERS = {
     }
     return keptUnless(first !== undefined || other !== undefined);
   },
-  pgBorders: (child, { props, context }) => keptUnless(readPageBorders(props, child, context)),
+  pgBorders: (child, { props, context }) =>
+    keptUnless(readPageBorders(props, child, context)),
   lnNumType: (child, { props }) => {
     const lineNumbers: NonNullable<SectionProperties["lineNumbers"]> = {};
     for (const [attribute, field] of [
@@ -268,7 +285,10 @@ const SECTION_PROPERTY_HANDLERS = {
   },
   pgNumType: (child, { props }) => {
     const pageNumbering: NonNullable<SectionProperties["pageNumbering"]> = {};
-    const format = narrowEnum(getAttribute(child, "w", "fmt"), NumberFormatSchema);
+    const format = narrowEnum(
+      getAttribute(child, "w", "fmt"),
+      NumberFormatSchema,
+    );
     if (format) {
       pageNumbering.format = format;
     }
@@ -308,7 +328,10 @@ const SECTION_PROPERTY_HANDLERS = {
     props.titlePg = parseBooleanElement(child, "w", context);
   },
   textDirection: (child, { props }) => {
-    const textDirection = narrowEnum(getAttribute(child, "w", "val"), TextDirectionSchema);
+    const textDirection = narrowEnum(
+      getAttribute(child, "w", "val"),
+      TextDirectionSchema,
+    );
     if (textDirection) {
       props.textDirection = textDirection;
     }
@@ -370,7 +393,8 @@ const SECTION_PROPERTY_HANDLERS = {
 } as const satisfies ChildHandlers<"section-properties", SectionPropertiesWalk>;
 
 const SECTION_PROPERTY_UNDECLARED = {
-  background: (child, { props, context }) => keptUnless(readBackground(props, child, context)),
+  background: (child, { props, context }) =>
+    keptUnless(readBackground(props, child, context)),
   evenAndOddHeaders: (child, { props, context }) => {
     props.evenAndOddHeaders = parseBooleanElement(child, "w", context);
   },
@@ -434,7 +458,10 @@ export function parseSectionProperties(
   // `AG_SectPrAttributes`'s four `w:rsid*` attributes, and anything else the
   // source put on the element: `serializeSectionProperties` writes a bare
   // `<w:sectPr>` start tag, so the record models none of them.
-  const remainder = attributeRemainder({ element: sectPr, modelled: NO_MODELLED_ATTRIBUTES });
+  const remainder = attributeRemainder({
+    element: sectPr,
+    modelled: NO_MODELLED_ATTRIBUTES,
+  });
   if (remainder) {
     props.preservedAttributes = remainder;
   }
@@ -510,7 +537,11 @@ function readPageBorders(
   }
 
   const display = getAttribute(pgBorders, "w", "display");
-  if (display === "allPages" || display === "firstPage" || display === "notFirstPage") {
+  if (
+    display === "allPages" ||
+    display === "firstPage" ||
+    display === "notFirstPage"
+  ) {
     pageBorders.display = display;
   }
 
@@ -855,7 +886,8 @@ export function mergeSectionProperties(
     result.rtlGutter = override.rtlGutter;
   }
   if (override.printerSettingsRelationshipId !== undefined) {
-    result.printerSettingsRelationshipId = override.printerSettingsRelationshipId;
+    result.printerSettingsRelationshipId =
+      override.printerSettingsRelationshipId;
   }
 
   return result;

@@ -20,17 +20,24 @@ describe("sortKeys", () => {
     const result = sortKeys(input);
 
     const folio = result["folio"];
-    expect(typeof folio === "object" && Object.keys(folio)).toEqual(["clearDate", "zoomGroup"]);
+    expect(typeof folio === "object" && Object.keys(folio)).toEqual([
+      "clearDate",
+      "zoomGroup",
+    ]);
   });
 });
 
 describe("isSorted", () => {
   test("returns false when a trailing key is out of order (clearDate after zoomGroup)", () => {
-    expect(isSorted({ folio: { zoomGroup: "Zoom", clearDate: "Clear date" } })).toBe(false);
+    expect(
+      isSorted({ folio: { zoomGroup: "Zoom", clearDate: "Clear date" } }),
+    ).toBe(false);
   });
 
   test("returns true for a sorted nested catalog", () => {
-    expect(isSorted({ folio: { clearDate: "Clear date", zoomGroup: "Zoom" } })).toBe(true);
+    expect(
+      isSorted({ folio: { clearDate: "Clear date", zoomGroup: "Zoom" } }),
+    ).toBe(true);
   });
 });
 
@@ -54,7 +61,9 @@ describe("syncMessages", () => {
     const source: NestedMessages = { greeting: { formal: "Good day" } };
     const target: NestedMessages = { greeting: "Hi" };
 
-    expect(syncMessages(source, target)).toEqual({ greeting: { formal: "Good day" } });
+    expect(syncMessages(source, target)).toEqual({
+      greeting: { formal: "Good day" },
+    });
   });
 });
 
@@ -79,7 +88,9 @@ describe("findUntranslated", () => {
         brand: "stella",
       },
     };
-    expect(findUntranslated(en, target, "sk", emptyBaseline())).toEqual(["folio.insertTable"]);
+    expect(findUntranslated(en, target, "sk", emptyBaseline())).toEqual([
+      "folio.insertTable",
+    ]);
   });
 
   test("skips a real translation", () => {
@@ -120,7 +131,9 @@ describe("findUntranslated", () => {
     };
 
     expect(findUntranslated(source, source, "de", emptyBaseline())).toEqual([]);
-    expect(findUntranslated(source, source, "cs", emptyBaseline())).toEqual(["position"]);
+    expect(findUntranslated(source, source, "cs", emptyBaseline())).toEqual([
+      "position",
+    ]);
   });
 
   test("respects the per-locale baseline grandfathering", () => {
@@ -138,7 +151,9 @@ describe("findUntranslated", () => {
       identicalToSource: { "folio.insertTable": ["sk"] },
     };
     // Grandfathered for sk...
-    expect(findUntranslated(en, target, "sk", baseline)).toEqual(["folio.zoomGroup"]);
+    expect(findUntranslated(en, target, "sk", baseline)).toEqual([
+      "folio.zoomGroup",
+    ]);
     // ...but still flagged for a locale not in the baseline list.
     expect(findUntranslated(en, target, "de", baseline)).toEqual([
       "folio.insertTable",
@@ -165,7 +180,9 @@ describe("getTranslationCoverage", () => {
       identicalToSource: { approved: ["sk"] },
     };
 
-    expect(getTranslationCoverage({ source, target, locale: "sk", baseline })).toEqual({
+    expect(
+      getTranslationCoverage({ source, target, locale: "sk", baseline }),
+    ).toEqual({
       locale: "sk",
       total: 3,
       translated: 1,

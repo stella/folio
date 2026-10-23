@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
+
 import { InvalidOoxmlNumericIdError } from "@stll/docx-core";
 
-import { parseParagraph } from "../paragraphParser";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { ComplexField, Paragraph } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
+import { parseParagraph } from "../paragraphParser";
 import { parseXmlDocument, type XmlElement } from "../xmlParser";
 import { serializeParagraph } from "./paragraphSerializer";
 
@@ -27,7 +28,9 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
     'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
 
   const parseInner = (inner: string): Paragraph => {
-    const node = parseXmlDocument(`<w:p ${W_NS}>${inner}</w:p>`) as XmlElement | null;
+    const node = parseXmlDocument(
+      `<w:p ${W_NS}>${inner}</w:p>`,
+    ) as XmlElement | null;
     if (!node) {
       throw new Error("failed to parse paragraph fixture");
     }
@@ -47,7 +50,9 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
   };
 
   const fieldOf = (paragraph: Paragraph): ComplexField => {
-    const field = paragraph.content.find((c): c is ComplexField => c.type === "complexField");
+    const field = paragraph.content.find(
+      (c): c is ComplexField => c.type === "complexField",
+    );
     if (!field) {
       throw new Error("no complex field in paragraph");
     }
@@ -69,7 +74,10 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
       <w:r><w:fldChar w:fldCharType="end"/></w:r>
     `);
     const field = fieldOf(original);
-    expect(field.formatting?.fontFamily).toEqual({ ascii: "Georgia", hAnsi: "Georgia" });
+    expect(field.formatting?.fontFamily).toEqual({
+      ascii: "Georgia",
+      hAnsi: "Georgia",
+    });
     // The guard only bites when the captured field formatting differs from the
     // result run's formatting.
     expect(field.formatting).not.toEqual(field.fieldResult[0]?.formatting);
@@ -105,9 +113,14 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
     `);
     const field = fieldOf(original);
     expect(field.fieldCode).toHaveLength(1);
-    expect(field.fieldCode[0]?.content).toEqual([{ type: "instrText", text: " PAGE " }]);
+    expect(field.fieldCode[0]?.content).toEqual([
+      { type: "instrText", text: " PAGE " },
+    ]);
     expect(field.fieldResult).toHaveLength(0);
-    expect(field.formatting).toEqual({ color: { rgb: "595959" }, fontSize: 14 });
+    expect(field.formatting).toEqual({
+      color: { rgb: "595959" },
+      fontSize: 14,
+    });
 
     const roundTripped = reparse(serializeParagraph(original));
     expect(roundTripped).toEqual(original);
@@ -177,7 +190,8 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
 
 describe("serializeSimpleField structural round-trip", () => {
   test("keeps an authored simple field simple", () => {
-    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const namespace =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const instruction = ' HYPERLINK "https://example.com/reference?x=1&y=2" ';
     const source = parseXmlDocument(`
       <w:p ${namespace}>
@@ -208,7 +222,14 @@ describe("serializeSimpleField structural round-trip", () => {
     if (!reopenedSource) {
       throw new Error("failed to reparse simple field fixture");
     }
-    const reopened = parseParagraph(reopenedSource, null, null, null, null, null);
+    const reopened = parseParagraph(
+      reopenedSource,
+      null,
+      null,
+      null,
+      null,
+      null,
+    );
     expect(reopened.content.at(0)).toEqual(original.content.at(0));
     expect(reopened.content.at(0)).toMatchObject({
       type: "simpleField",
@@ -219,7 +240,8 @@ describe("serializeSimpleField structural round-trip", () => {
   });
 
   test("keeps hyperlink display content inside a simple field", () => {
-    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const namespace =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const source = parseXmlDocument(`
       <w:p ${namespace}>
         <w:fldSimple w:instr="PAGE">
@@ -241,7 +263,14 @@ describe("serializeSimpleField structural round-trip", () => {
     if (!reopenedSource) {
       throw new Error("failed to reparse hyperlink field fixture");
     }
-    const reopened = parseParagraph(reopenedSource, null, null, null, null, null);
+    const reopened = parseParagraph(
+      reopenedSource,
+      null,
+      null,
+      null,
+      null,
+      null,
+    );
     expect(serialized).toContain('<w:fldSimple w:instr="PAGE">');
     expect(serialized).toContain('<w:hyperlink w:anchor="_page">');
     expect(reopened.content.at(0)).toEqual(original.content.at(0));
@@ -264,7 +293,11 @@ describe("serializeParagraph tracked-change hardening", () => {
               fldLock: true,
               dirty: true,
               content: [
-                { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "1" }] },
+                {
+                  type: "run",
+                  formatting: { bold: true },
+                  content: [{ type: "text", text: "1" }],
+                },
               ],
             },
           ],
@@ -273,7 +306,9 @@ describe("serializeParagraph tracked-change hardening", () => {
     };
     const xml = serializeParagraph(paragraph);
     expect(xml).not.toContain("<w:fldSimple");
-    expect(xml).toContain('<w:fldChar w:fldCharType="begin" w:fldLock="1" w:dirty="1"/>');
+    expect(xml).toContain(
+      '<w:fldChar w:fldCharType="begin" w:fldLock="1" w:dirty="1"/>',
+    );
     const source = parseXmlDocument(
       xml.replace(
         /^<w:p(?=[\s>])/u,
@@ -281,7 +316,14 @@ describe("serializeParagraph tracked-change hardening", () => {
       ),
     );
     if (!source) throw new Error("failed to parse serialized tracked field");
-    const deletion = parseParagraph(source, null, null, null, null, null).content.at(0);
+    const deletion = parseParagraph(
+      source,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ).content.at(0);
     expect(deletion?.type).toBe("deletion");
     if (deletion?.type !== "deletion") return;
     const field = deletion.content.at(0);
@@ -310,7 +352,9 @@ describe("serializeParagraph tracked-change hardening", () => {
                 {
                   type: "hyperlink",
                   anchor: "_page",
-                  children: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: "1" }] },
+                  ],
                 },
               ],
             },
@@ -325,7 +369,8 @@ describe("serializeParagraph tracked-change hardening", () => {
   });
 
   test("keeps a complex field inside its authored revision wrapper through the editor model", () => {
-    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const namespace =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const source = parseXmlDocument(`
       <w:p ${namespace}>
         <w:del w:id="22" w:author="Reviewer">
@@ -348,7 +393,11 @@ describe("serializeParagraph tracked-change hardening", () => {
     if (deletion?.type !== "deletion") {
       return;
     }
-    expect(deletion.content.map(({ type }) => type)).toEqual(["run", "complexField", "run"]);
+    expect(deletion.content.map(({ type }) => type)).toEqual([
+      "run",
+      "complexField",
+      "run",
+    ]);
 
     const document = createEmptyDocument();
     document.package.document.content = [paragraph];
@@ -366,7 +415,8 @@ describe("serializeParagraph tracked-change hardening", () => {
   });
 
   test("keeps nested revisions inside the authored outer wrapper", () => {
-    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const namespace =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const source = parseXmlDocument(`
       <w:p ${namespace}>
         <w:ins w:id="40" w:author="Outer">
@@ -385,7 +435,11 @@ describe("serializeParagraph tracked-change hardening", () => {
     if (insertion?.type !== "insertion") {
       return;
     }
-    expect(insertion.content.map(({ type }) => type)).toEqual(["run", "deletion", "run"]);
+    expect(insertion.content.map(({ type }) => type)).toEqual([
+      "run",
+      "deletion",
+      "run",
+    ]);
     const xml = serializeParagraph(paragraph);
     expect(xml.match(/<w:ins\b/gu)).toHaveLength(1);
     expect(xml.match(/<w:del\b/gu)).toHaveLength(1);
@@ -437,13 +491,17 @@ describe("serializeParagraph tracked-change hardening", () => {
 
     const xml = serializeParagraph(paragraph);
 
-    expect(xml).toContain('<w:del w:id="11" w:author="Reviewer" w:date="2026-02-22T10:00:00Z">');
+    expect(xml).toContain(
+      '<w:del w:id="11" w:author="Reviewer" w:date="2026-02-22T10:00:00Z">',
+    );
     expect(xml).toContain("<w:delText>Removed</w:delText>");
     expect(xml).toContain(
       '<w:delInstrText xml:space="preserve"> MERGEFIELD name </w:delInstrText>',
     );
     expect(xml).not.toContain("<w:t>Removed</w:t>");
-    expect(xml).not.toContain('<w:instrText xml:space="preserve"> MERGEFIELD name </w:instrText>');
+    expect(xml).not.toContain(
+      '<w:instrText xml:space="preserve"> MERGEFIELD name </w:instrText>',
+    );
   });
 
   test("normalizes invalid tracked-change metadata while serializing", () => {
@@ -478,12 +536,16 @@ describe("serializeParagraph tracked-change hardening", () => {
         {
           type: "insertion",
           info: { id: 1_784_212_345_678, author: "Reviewer" },
-          content: [{ type: "run", content: [{ type: "text", text: "Added" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Added" }] },
+          ],
         },
       ],
     };
 
-    expect(() => serializeParagraph(paragraph)).toThrow(InvalidOoxmlNumericIdError);
+    expect(() => serializeParagraph(paragraph)).toThrow(
+      InvalidOoxmlNumericIdError,
+    );
   });
 });
 
@@ -506,7 +568,9 @@ describe("serializeParagraph native frame geometry", () => {
           wrap: "around",
         },
       },
-      content: [{ type: "run", content: [{ type: "text", text: "Framed text" }] }],
+      content: [
+        { type: "run", content: [{ type: "text", text: "Framed text" }] },
+      ],
     };
 
     const xml = serializeParagraph(paragraph);
@@ -537,7 +601,8 @@ describe("serializeParagraph revision nesting around a hyperlink", () => {
   test.each(["del", "ins"] as const)(
     "wraps the link around a w:%s rather than the other way round",
     (tag) => {
-      const text = tag === "del" ? "<w:delText>linked</w:delText>" : "<w:t>linked</w:t>";
+      const text =
+        tag === "del" ? "<w:delText>linked</w:delText>" : "<w:t>linked</w:t>";
       const paragraph = parseBody(
         `<w:hyperlink r:id="rId7"><w:${tag} w:id="3" w:author="Reviewer">` +
           `<w:r>${text}</w:r></w:${tag}></w:hyperlink>`,
@@ -546,7 +611,9 @@ describe("serializeParagraph revision nesting around a hyperlink", () => {
       const xml = serializeParagraph(paragraph);
 
       expect(xml).toContain(`<w:hyperlink r:id="rId7"><w:${tag} w:id="3"`);
-      expect(new RegExp(`<w:${tag}\\b[^>]*><w:hyperlink`, "u").test(xml)).toBe(false);
+      expect(new RegExp(`<w:${tag}\\b[^>]*><w:hyperlink`, "u").test(xml)).toBe(
+        false,
+      );
     },
   );
 
@@ -572,7 +639,9 @@ describe("pPr children follow the schema's sequence", () => {
     'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
 
   const parseProperties = (inner: string): Paragraph => {
-    const element = parseXmlDocument(`<w:p ${NAMESPACES}><w:pPr>${inner}</w:pPr></w:p>`);
+    const element = parseXmlDocument(
+      `<w:p ${NAMESPACES}><w:pPr>${inner}</w:pPr></w:p>`,
+    );
     if (!element) {
       throw new Error("failed to parse the paragraph-properties fixture");
     }
@@ -619,8 +688,8 @@ describe("pPr children follow the schema's sequence", () => {
     );
 
     const xml = serializeParagraph(paragraph);
-    const order = ["<w:pStyle", "<w:rPr>", "<w:sectPr>", "<w:pPrChange"].map((element) =>
-      xml.indexOf(element),
+    const order = ["<w:pStyle", "<w:rPr>", "<w:sectPr>", "<w:pPrChange"].map(
+      (element) => xml.indexOf(element),
     );
 
     expect(order).not.toContain(-1);

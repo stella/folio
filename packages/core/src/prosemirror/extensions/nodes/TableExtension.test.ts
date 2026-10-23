@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { DOMParser, DOMSerializer, type Node as PMNode } from "prosemirror-model";
+import { Window } from "happy-dom";
+import {
+  DOMParser,
+  DOMSerializer,
+  type Node as PMNode,
+} from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
-import { Window } from "happy-dom";
 
 import { schema, singletonManager } from "../../schema";
 import { goToNextCell, goToPrevCell } from "./TableExtension";
@@ -62,7 +66,11 @@ const createTableStateWithNullBorders = () => {
   });
 };
 
-const runTableCommand = (state: EditorState, commandName: string, ...values: unknown[]) => {
+const runTableCommand = (
+  state: EditorState,
+  commandName: string,
+  ...values: unknown[]
+) => {
   const commandFactory = singletonManager.getCommand(commandName);
   if (!commandFactory) {
     throw new Error(`Missing command: ${commandName}`);
@@ -77,7 +85,10 @@ const runTableCommand = (state: EditorState, commandName: string, ...values: unk
   return nextState;
 };
 
-const tableCommandHandled = (state: EditorState, commandName: string): boolean => {
+const tableCommandHandled = (
+  state: EditorState,
+  commandName: string,
+): boolean => {
   const commandFactory = singletonManager.getCommand(commandName);
   if (!commandFactory) {
     throw new Error(`Missing command: ${commandName}`);
@@ -129,13 +140,18 @@ const createOmittedGridSlotTableState = (selectedText = "Authored A") => {
 };
 
 describe("table cell block content", () => {
-  test.each(["tableCell", "tableHeader"] as const)("accepts a blockSdt in a %s", (cellType) => {
-    const control = schema.node("blockSdt", { tag: "cell-control" }, [
-      schema.node("paragraph", null, [schema.text("controlled")]),
-    ]);
+  test.each(["tableCell", "tableHeader"] as const)(
+    "accepts a blockSdt in a %s",
+    (cellType) => {
+      const control = schema.node("blockSdt", { tag: "cell-control" }, [
+        schema.node("paragraph", null, [schema.text("controlled")]),
+      ]);
 
-    expect(schema.node(cellType, null, [control]).firstChild?.type.name).toBe("blockSdt");
-  });
+      expect(schema.node(cellType, null, [control]).firstChild?.type.name).toBe(
+        "blockSdt",
+      );
+    },
+  );
 });
 
 describe("omitted table grid slots", () => {
@@ -148,30 +164,41 @@ describe("omitted table grid slots", () => {
     "deleteColumn",
     "mergeCells",
     "splitCell",
-  ])("rejects %s before it can turn a structural placeholder into authored content", (command) => {
-    expect(tableCommandHandled(createOmittedGridSlotTableState(), command)).toBe(false);
-  });
+  ])(
+    "rejects %s before it can turn a structural placeholder into authored content",
+    (command) => {
+      expect(
+        tableCommandHandled(createOmittedGridSlotTableState(), command),
+      ).toBe(false);
+    },
+  );
 
   test.each([
     { command: goToNextCell(), from: "Authored A", to: "Authored B" },
     { command: goToPrevCell(), from: "Authored B", to: "Authored A" },
-  ])("skips omitted slots when navigating from $from to $to", ({ command, from, to }) => {
-    const state = createOmittedGridSlotTableState(from);
-    let nextState = state;
+  ])(
+    "skips omitted slots when navigating from $from to $to",
+    ({ command, from, to }) => {
+      const state = createOmittedGridSlotTableState(from);
+      let nextState = state;
 
-    expect(
-      command(state, (tr) => {
-        nextState = state.apply(tr);
-      }),
-    ).toBe(true);
+      expect(
+        command(state, (tr) => {
+          nextState = state.apply(tr);
+        }),
+      ).toBe(true);
 
-    const { $from } = nextState.selection;
-    const selectedCell = Array.from({ length: $from.depth }, (_, index) => $from.depth - index)
-      .map((depth) => $from.node(depth))
-      .find((node) => node.type.name === "tableCell");
-    expect(selectedCell?.textContent).toBe(to);
-    expect(selectedCell?.attrs["_omittedGridSlot"]).toBeNull();
-  });
+      const { $from } = nextState.selection;
+      const selectedCell = Array.from(
+        { length: $from.depth },
+        (_, index) => $from.depth - index,
+      )
+        .map((depth) => $from.node(depth))
+        .find((node) => node.type.name === "tableCell");
+      expect(selectedCell?.textContent).toBe(to);
+      expect(selectedCell?.attrs["_omittedGridSlot"]).toBeNull();
+    },
+  );
 });
 
 describe("splitting a cell with a DOCX identifier", () => {
@@ -179,9 +206,11 @@ describe("splitting a cell with a DOCX identifier", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", { colspan: 2, _docxCellId: "authored-cell" }, [
-            schema.node("paragraph", null, [schema.text("Authored")]),
-          ]),
+          schema.node(
+            "tableCell",
+            { colspan: 2, _docxCellId: "authored-cell" },
+            [schema.node("paragraph", null, [schema.text("Authored")])],
+          ),
         ]),
       ]),
     ]);
@@ -204,8 +233,12 @@ describe("omitted table grid slots in nested tables", () => {
   test("does not let a nested placeholder disable outer-table commands", () => {
     const nestedTable = schema.node("table", null, [
       schema.node("tableRow", null, [
-        schema.node("tableCell", { _omittedGridSlot: "before" }, [schema.node("paragraph")]),
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Nested")])]),
+        schema.node("tableCell", { _omittedGridSlot: "before" }, [
+          schema.node("paragraph"),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Nested")]),
+        ]),
       ]),
     ]);
     const outerTable = schema.node("table", null, [
@@ -242,18 +275,28 @@ describe("omitted table grid slot DOM round trips", () => {
     (cellType) => {
       const window = new Window();
       const document = window.document as unknown as globalThis.Document;
-      const cell = schema.node(cellType, { _omittedGridSlot: "after" }, [schema.node("paragraph")]);
+      const cell = schema.node(cellType, { _omittedGridSlot: "after" }, [
+        schema.node("paragraph"),
+      ]);
       const source = schema.node("doc", null, [
         schema.node("table", null, [schema.node("tableRow", null, [cell])]),
       ]);
       const host = document.createElement("div");
-      host.append(DOMSerializer.fromSchema(schema).serializeFragment(source.content, { document }));
+      host.append(
+        DOMSerializer.fromSchema(schema).serializeFragment(source.content, {
+          document,
+        }),
+      );
 
       const renderedCell = host.querySelector("td, th");
-      expect(renderedCell?.getAttribute("data-omitted-grid-slot")).toBe("after");
+      expect(renderedCell?.getAttribute("data-omitted-grid-slot")).toBe(
+        "after",
+      );
 
       const reparsed = parseWithWindow(window, host);
-      expect(reparsed.child(0).child(0).child(0).attrs["_omittedGridSlot"]).toBe("after");
+      expect(
+        reparsed.child(0).child(0).child(0).attrs["_omittedGridSlot"],
+      ).toBe("after");
     },
   );
 
@@ -266,7 +309,9 @@ describe("omitted table grid slot DOM round trips", () => {
       host.innerHTML = `<table><tbody><tr><${cellTag} data-omitted-grid-slot="before"><p>Authored</p></${cellTag}></tr></tbody></table>`;
 
       const reparsed = parseWithWindow(window, host);
-      expect(reparsed.child(0).child(0).child(0).attrs["_omittedGridSlot"]).toBeNull();
+      expect(
+        reparsed.child(0).child(0).child(0).attrs["_omittedGridSlot"],
+      ).toBeNull();
     },
   );
 });
@@ -305,7 +350,11 @@ describe("table border commands", () => {
   });
 
   test("setTableBorderWidth creates borders on a cell with null borders", () => {
-    const state = runTableCommand(createTableStateWithNullBorders(), "setTableBorderWidth", 12);
+    const state = runTableCommand(
+      createTableStateWithNullBorders(),
+      "setTableBorderWidth",
+      12,
+    );
 
     expect(firstTableCell(state.doc).attrs["borders"]).toMatchObject({
       bottom: { color: { rgb: "000000" }, size: 12, style: "single" },
@@ -330,11 +379,15 @@ describe("table border commands", () => {
   });
 
   test("setAllTableBorders creates borders on a cell with null borders", () => {
-    const state = runTableCommand(createTableStateWithNullBorders(), "setAllTableBorders", {
-      color: { rgb: "00AA00" },
-      size: 6,
-      style: "single",
-    });
+    const state = runTableCommand(
+      createTableStateWithNullBorders(),
+      "setAllTableBorders",
+      {
+        color: { rgb: "00AA00" },
+        size: 6,
+        style: "single",
+      },
+    );
 
     expect(firstTableCell(state.doc).attrs["borders"]).toMatchObject({
       bottom: { color: { rgb: "00AA00" }, size: 6, style: "single" },
@@ -381,8 +434,16 @@ const countNodes = (doc: PMNode, typeName: string): number => {
   return count;
 };
 
-const selectCells = (state: EditorState, anchorCellPos: number, headCellPos: number): EditorState =>
-  state.apply(state.tr.setSelection(CellSelection.create(state.doc, anchorCellPos, headCellPos)));
+const selectCells = (
+  state: EditorState,
+  anchorCellPos: number,
+  headCellPos: number,
+): EditorState =>
+  state.apply(
+    state.tr.setSelection(
+      CellSelection.create(state.doc, anchorCellPos, headCellPos),
+    ),
+  );
 
 // eigenpal/docx-editor#783 — deleting a table row must remove every row a
 // CellSelection spans (not just the anchor row), and drop the whole table when
@@ -499,7 +560,11 @@ describe("table border presets", () => {
   };
 
   test("'all' sets w:tblBorders on the table and bakes every cell", () => {
-    const state = runTableCommand(createTableStateWithNullBorders(), "setTableBorderPreset", "all");
+    const state = runTableCommand(
+      createTableStateWithNullBorders(),
+      "setTableBorderPreset",
+      "all",
+    );
 
     expect(firstTable(state.doc).attrs["borders"]).toEqual({
       top: wordDefaultBorder,
@@ -550,7 +615,11 @@ describe("table border presets", () => {
   });
 });
 
-const createGridTable = (rowCount: number, colCount: number, caretCol: number): EditorState => {
+const createGridTable = (
+  rowCount: number,
+  colCount: number,
+  caretCol: number,
+): EditorState => {
   const rows = Array.from({ length: rowCount }, (_row, r) =>
     schema.node(
       "tableRow",
@@ -575,7 +644,11 @@ const createGridTable = (rowCount: number, colCount: number, caretCol: number): 
     throw new Error(`Expected caret text ${caretText}`);
   }
 
-  return EditorState.create({ doc, schema, selection: TextSelection.create(doc, caretPos) });
+  return EditorState.create({
+    doc,
+    schema,
+    selection: TextSelection.create(doc, caretPos),
+  });
 };
 
 const rowCellCounts = (doc: PMNode): number[] => {
@@ -586,7 +659,10 @@ const rowCellCounts = (doc: PMNode): number[] => {
     }
     let cells = 0;
     node.forEach((child) => {
-      if (child.type.name === "tableCell" || child.type.name === "tableHeader") {
+      if (
+        child.type.name === "tableCell" ||
+        child.type.name === "tableHeader"
+      ) {
         cells += 1;
       }
     });
@@ -692,7 +768,9 @@ describe("table cell paste — dataset.bgcolor validation", () => {
 
 describe("inserting a row through a vertical merge", () => {
   const cell = (text: string, attrs: Record<string, unknown> = {}) =>
-    schema.node("tableCell", attrs, [schema.node("paragraph", null, [schema.text(text)])]);
+    schema.node("tableCell", attrs, [
+      schema.node("paragraph", null, [schema.text(text)]),
+    ]);
 
   /**
    * Two columns, three rows; column 0 is one cell merged across all three, so
@@ -701,7 +779,10 @@ describe("inserting a row through a vertical merge", () => {
   const mergedColumnState = (caretText: string) => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
-        schema.node("tableRow", null, [cell("merged", { rowspan: 3 }), cell("r0")]),
+        schema.node("tableRow", null, [
+          cell("merged", { rowspan: 3 }),
+          cell("r0"),
+        ]),
         schema.node("tableRow", null, [cell("r1")]),
         schema.node("tableRow", null, [cell("r2")]),
       ]),
@@ -780,7 +861,9 @@ describe("applyTableStyle records the look it paints", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", { look }, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("A")])]),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("A")]),
+          ]),
         ]),
       ]),
     ]);
@@ -803,11 +886,15 @@ describe("applyTableStyle records the look it paints", () => {
   };
 
   const lookAfterApply = (look: unknown, style: unknown): unknown =>
-    runTableCommand(tableWithLook(look), "applyTableStyle", style).doc.child(0).attrs["look"];
+    runTableCommand(tableWithLook(look), "applyTableStyle", style).doc.child(0)
+      .attrs["look"];
 
   test("states every region, including the ones the style turns off", () => {
     expect(
-      lookAfterApply(undefined, { styleId: "Banded", look: { firstRow: true, lastCol: true } }),
+      lookAfterApply(undefined, {
+        styleId: "Banded",
+        look: { firstRow: true, lastCol: true },
+      }),
     ).toEqual({
       firstRow: true,
       lastRow: false,
@@ -821,7 +908,9 @@ describe("applyTableStyle records the look it paints", () => {
   test("leaves w:val as the author wrote it", () => {
     // The style names no look, so the command's own fallback applies: first
     // row on, horizontal banding on, no vertical bands.
-    expect(lookAfterApply({ val: "04A0", firstRow: true }, { styleId: "Banded" })).toEqual({
+    expect(
+      lookAfterApply({ val: "04A0", firstRow: true }, { styleId: "Banded" }),
+    ).toEqual({
       val: "04A0",
       firstRow: true,
       lastRow: false,

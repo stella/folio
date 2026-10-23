@@ -1,4 +1,4 @@
-import { createTextReader } from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * Whether a file is a WordprocessingML package at all, decided the way the
  * Open Packaging Conventions say to find its main part: the package
@@ -16,11 +16,11 @@ import { createTextReader } from "@stll/folio-core/utils/textEncoding";
  * Transitional and the Strict relationship and WordprocessingML namespaces are
  * accepted.
  */
-
-import { Result } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";
 import path from "node:path";
+
+import { createTextReader } from "@stll/folio-core/utils/textEncoding";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 
@@ -29,7 +29,8 @@ const PACKAGE_RELATIONSHIPS_PART = "_rels/.rels";
 /** The one main part the folio parser reads. */
 const READ_MAIN_DOCUMENT_PART = "word/document.xml";
 
-const CONTENT_TYPES_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/content-types";
+const CONTENT_TYPES_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/content-types";
 const PACKAGE_RELATIONSHIPS_NAMESPACE =
   "http://schemas.openxmlformats.org/package/2006/relationships";
 
@@ -78,8 +79,10 @@ export type InvalidPackageReason =
 
 type Refusal = { reason: InvalidPackageReason; message: string };
 
-const refuse = (reason: InvalidPackageReason, message: string): Result<never, Refusal> =>
-  Result.err({ reason, message });
+const refuse = (
+  reason: InvalidPackageReason,
+  message: string,
+): Result<never, Refusal> => Result.err({ reason, message });
 
 type XmlElement = {
   namespace: string | undefined;
@@ -102,11 +105,16 @@ const orderedParser = new XMLParser({
   ignorePiTags: true,
 });
 
-const splitName = (qualified: string): { prefix: string; localName: string } => {
+const splitName = (
+  qualified: string,
+): { prefix: string; localName: string } => {
   const colon = qualified.indexOf(":");
   return colon === -1
     ? { prefix: "", localName: qualified }
-    : { prefix: qualified.slice(0, colon), localName: qualified.slice(colon + 1) };
+    : {
+        prefix: qualified.slice(0, colon),
+        localName: qualified.slice(colon + 1),
+      };
 };
 
 const stringAttributes = (value: unknown): Record<string, string> => {
@@ -119,18 +127,24 @@ const stringAttributes = (value: unknown): Record<string, string> => {
 };
 
 /** The element children of one ordered node list, with namespaces in scope resolved. */
-const elementsOf = (nodes: unknown, scope: ReadonlyMap<string, string>): XmlElement[] => {
+const elementsOf = (
+  nodes: unknown,
+  scope: ReadonlyMap<string, string>,
+): XmlElement[] => {
   if (!Array.isArray(nodes)) return [];
   const elements: XmlElement[] = [];
   for (const node of nodes) {
     if (!isRecord(node)) continue;
-    const name = Object.keys(node).find((key) => key !== ":@" && key !== "#text");
+    const name = Object.keys(node).find(
+      (key) => key !== ":@" && key !== "#text",
+    );
     if (name === undefined) continue;
     const attributes = stringAttributes(node[":@"]);
     const inner = new Map(scope);
     for (const [attribute, value] of Object.entries(attributes)) {
       if (attribute === "xmlns") inner.set("", value);
-      else if (attribute.startsWith("xmlns:")) inner.set(attribute.slice("xmlns:".length), value);
+      else if (attribute.startsWith("xmlns:"))
+        inner.set(attribute.slice("xmlns:".length), value);
     }
     const { prefix, localName } = splitName(name);
     elements.push({
@@ -145,7 +159,8 @@ const elementsOf = (nodes: unknown, scope: ReadonlyMap<string, string>): XmlElem
 
 /** The root element of a well-formed XML part, or `null`. */
 const parseRoot = (xml: string): XmlElement | null => {
-  if (/<!DOCTYPE/iu.test(xml) || XMLValidator.validate(xml) !== true) return null;
+  if (/<!DOCTYPE/iu.test(xml) || XMLValidator.validate(xml) !== true)
+    return null;
   const parsed: unknown = orderedParser.parse(xml);
   const [root] = elementsOf(parsed, new Map());
   return root ?? null;
@@ -186,7 +201,9 @@ const inflatePrefix = (
         }
       })
       .on("error", reject)
-      .on("end", () => resolve({ text: text + decoder.finish(), truncated: false }))
+      .on("end", () =>
+        resolve({ text: text + decoder.finish(), truncated: false }),
+      )
       .resume();
   });
 
@@ -207,14 +224,22 @@ const readIndexPart = async ({
   if (entry === undefined) return refuse(missing, `it has no ${name}.`);
   const inflated = await Result.tryPromise({
     try: () => inflatePrefix(entry, MAX_PACKAGE_INDEX_BYTES),
-    catch: () => ({ reason: invalid, message: `its ${name} cannot be inflated.` }),
+    catch: () => ({
+      reason: invalid,
+      message: `its ${name} cannot be inflated.`,
+    }),
   });
   if (inflated.isErr()) return Result.err(inflated.error);
   if (inflated.value.truncated) {
-    return refuse(invalid, `its ${name} is over ${String(MAX_PACKAGE_INDEX_BYTES)} bytes.`);
+    return refuse(
+      invalid,
+      `its ${name} is over ${String(MAX_PACKAGE_INDEX_BYTES)} bytes.`,
+    );
   }
   const root = parseRoot(inflated.value.text);
-  return root === null ? refuse(invalid, `its ${name} is not well-formed XML.`) : Result.ok(root);
+  return root === null
+    ? refuse(invalid, `its ${name} is not well-formed XML.`)
+    : Result.ok(root);
 };
 
 /** The part a package-relative relationship target names, without its leading `/`. */
@@ -238,7 +263,11 @@ const mainPartName = (relationships: XmlElement): Result<string, Refusal> => {
       `its ${PACKAGE_RELATIONSHIPS_PART} is not a relationships part.`,
     );
   }
-  const main = childrenNamed(relationships, PACKAGE_RELATIONSHIPS_NAMESPACE, "Relationship").filter(
+  const main = childrenNamed(
+    relationships,
+    PACKAGE_RELATIONSHIPS_NAMESPACE,
+    "Relationship",
+  ).filter(
     ({ attributes }) =>
       OFFICE_DOCUMENT_RELATIONSHIP_TYPES.has(attributes["Type"] ?? "") &&
       attributes["TargetMode"] !== "External",
@@ -268,9 +297,16 @@ const mainPartName = (relationships: XmlElement): Result<string, Refusal> => {
 type ContentTypeOptions = { contentTypes: XmlElement; part: string };
 
 /** An `Override` for the part wins over the `Default` for its extension. */
-const contentTypeOf = ({ contentTypes, part }: ContentTypeOptions): string | undefined => {
+const contentTypeOf = ({
+  contentTypes,
+  part,
+}: ContentTypeOptions): string | undefined => {
   const partName = partKey(`/${part}`);
-  const override = childrenNamed(contentTypes, CONTENT_TYPES_NAMESPACE, "Override").find(
+  const override = childrenNamed(
+    contentTypes,
+    CONTENT_TYPES_NAMESPACE,
+    "Override",
+  ).find(
     ({ attributes }) => partKey(attributes["PartName"] ?? "") === partName,
   );
   if (override !== undefined) return override.attributes["ContentType"];
@@ -283,9 +319,10 @@ const contentTypeOf = ({ contentTypes, part }: ContentTypeOptions): string | und
 /** The first element's name and namespace declarations, read from its start tag. */
 const rootOfPrefix = (xml: string): XmlElement | null => {
   const body = xml.replace(/^﻿?(?:\s|<\?[\s\S]*?\?>|<!--[\s\S]*?-->)*/u, "");
-  const match = /^<([A-Za-z_][\w.:-]*)((?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*\/?>/u.exec(
-    body,
-  );
+  const match =
+    /^<([A-Za-z_][\w.:-]*)((?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*\/?>/u.exec(
+      body,
+    );
   if (match === null) return null;
   const [, name = "", attributeText = ""] = match;
   const scope = new Map<string, string>();
@@ -294,10 +331,16 @@ const rootOfPrefix = (xml: string): XmlElement | null => {
   )) {
     const value = double ?? single ?? "";
     if (attribute === "xmlns") scope.set("", value);
-    else if (attribute.startsWith("xmlns:")) scope.set(attribute.slice("xmlns:".length), value);
+    else if (attribute.startsWith("xmlns:"))
+      scope.set(attribute.slice("xmlns:".length), value);
   }
   const { prefix, localName } = splitName(name);
-  return { namespace: scope.get(prefix), localName, attributes: {}, children: [] };
+  return {
+    namespace: scope.get(prefix),
+    localName,
+    attributes: {},
+    children: [],
+  };
 };
 
 const ZIP_END_SIGNATURE = 0x06054b50;
@@ -314,28 +357,43 @@ const checkRawMemberNames = (bytes: Uint8Array): Result<void, Refusal> => {
   let end = -1;
   for (
     let offset = bytes.length - ZIP_END_LENGTH;
-    offset >= Math.max(0, bytes.length - ZIP_END_LENGTH - ZIP_MAX_COMMENT_LENGTH);
+    offset >=
+    Math.max(0, bytes.length - ZIP_END_LENGTH - ZIP_MAX_COMMENT_LENGTH);
     offset -= 1
   ) {
     if (
       view.getUint32(offset, true) === ZIP_END_SIGNATURE &&
-      offset + ZIP_END_LENGTH + view.getUint16(offset + 20, true) === bytes.length
+      offset + ZIP_END_LENGTH + view.getUint16(offset + 20, true) ===
+        bytes.length
     ) {
       end = offset;
       break;
     }
   }
   if (end < 0) {
-    return refuse(INVALID_PACKAGE_REASONS.notZip, "it has no readable ZIP directory.");
+    return refuse(
+      INVALID_PACKAGE_REASONS.notZip,
+      "it has no readable ZIP directory.",
+    );
   }
 
   let count = view.getUint16(end + 10, true);
   let size = view.getUint32(end + 12, true);
   let directoryEnd = end;
-  if (count === 0xffff || size === 0xffffffff || view.getUint32(end + 16, true) === 0xffffffff) {
+  if (
+    count === 0xffff ||
+    size === 0xffffffff ||
+    view.getUint32(end + 16, true) === 0xffffffff
+  ) {
     const locator = end - 20;
-    if (locator < 0 || view.getUint32(locator, true) !== ZIP64_LOCATOR_SIGNATURE) {
-      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP64 directory is missing.");
+    if (
+      locator < 0 ||
+      view.getUint32(locator, true) !== ZIP64_LOCATOR_SIGNATURE
+    ) {
+      return refuse(
+        INVALID_PACKAGE_REASONS.notZip,
+        "its ZIP64 directory is missing.",
+      );
     }
     const zip64Offset = Number(view.getBigUint64(locator + 8, true));
     if (
@@ -344,14 +402,24 @@ const checkRawMemberNames = (bytes: Uint8Array): Result<void, Refusal> => {
       zip64Offset + 56 > locator ||
       view.getUint32(zip64Offset, true) !== ZIP64_END_SIGNATURE
     ) {
-      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP64 directory is invalid.");
+      return refuse(
+        INVALID_PACKAGE_REASONS.notZip,
+        "its ZIP64 directory is invalid.",
+      );
     }
     count = Number(view.getBigUint64(zip64Offset + 32, true));
     size = Number(view.getBigUint64(zip64Offset + 40, true));
     directoryEnd = zip64Offset;
   }
-  if (!Number.isSafeInteger(count) || !Number.isSafeInteger(size) || size > directoryEnd) {
-    return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+  if (
+    !Number.isSafeInteger(count) ||
+    !Number.isSafeInteger(size) ||
+    size > directoryEnd
+  ) {
+    return refuse(
+      INVALID_PACKAGE_REASONS.notZip,
+      "its ZIP directory is invalid.",
+    );
   }
 
   const seen = new Set<string>();
@@ -361,14 +429,25 @@ const checkRawMemberNames = (bytes: Uint8Array): Result<void, Refusal> => {
       offset + ZIP_CENTRAL_MEMBER_LENGTH > directoryEnd ||
       view.getUint32(offset, true) !== ZIP_CENTRAL_MEMBER_SIGNATURE
     ) {
-      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+      return refuse(
+        INVALID_PACKAGE_REASONS.notZip,
+        "its ZIP directory is invalid.",
+      );
     }
     const nameLength = view.getUint16(offset + 28, true);
     const extraLength = view.getUint16(offset + 30, true);
     const commentLength = view.getUint16(offset + 32, true);
-    const next = offset + ZIP_CENTRAL_MEMBER_LENGTH + nameLength + extraLength + commentLength;
+    const next =
+      offset +
+      ZIP_CENTRAL_MEMBER_LENGTH +
+      nameLength +
+      extraLength +
+      commentLength;
     if (next > directoryEnd) {
-      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+      return refuse(
+        INVALID_PACKAGE_REASONS.notZip,
+        "its ZIP directory is invalid.",
+      );
     }
     const name = Buffer.from(
       bytes.subarray(
@@ -386,12 +465,17 @@ const checkRawMemberNames = (bytes: Uint8Array): Result<void, Refusal> => {
     offset = next;
   }
   if (offset !== directoryEnd) {
-    return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+    return refuse(
+      INVALID_PACKAGE_REASONS.notZip,
+      "its ZIP directory is invalid.",
+    );
   }
   return Result.ok();
 };
 
-const checkPackage = async (bytes: Uint8Array): Promise<Result<void, Refusal>> => {
+const checkPackage = async (
+  bytes: Uint8Array,
+): Promise<Result<void, Refusal>> => {
   const rawNames = checkRawMemberNames(bytes);
   if (rawNames.isErr()) return rawNames;
   const zip = await Result.tryPromise({
@@ -448,8 +532,14 @@ const checkPackage = async (bytes: Uint8Array): Promise<Result<void, Refusal>> =
       `its main document part /${part.value} is missing.`,
     );
   }
-  const contentType = contentTypeOf({ contentTypes: contentTypes.value, part: part.value });
-  if (contentType === undefined || !MAIN_DOCUMENT_CONTENT_TYPES.has(contentType)) {
+  const contentType = contentTypeOf({
+    contentTypes: contentTypes.value,
+    part: part.value,
+  });
+  if (
+    contentType === undefined ||
+    !MAIN_DOCUMENT_CONTENT_TYPES.has(contentType)
+  ) {
     return refuse(
       INVALID_PACKAGE_REASONS.mainPartContentType,
       `its main part /${part.value} has content type ${contentType ?? "(none)"}, not a WordprocessingML document.`,

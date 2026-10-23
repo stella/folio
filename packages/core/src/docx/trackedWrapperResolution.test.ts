@@ -29,14 +29,20 @@ const insertedInsideWrapper = (): Document => {
             content: [
               {
                 type: "insertion",
-                info: { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+                info: {
+                  id: 1,
+                  author: "Reviewer",
+                  date: "2026-01-01T00:00:00Z",
+                },
                 content: [
                   {
                     type: "inlineWrapper",
                     kind: "bidi",
                     control: "override",
                     direction: "rtl",
-                    content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "x" }] },
+                    ],
                   },
                 ],
               },
@@ -59,11 +65,15 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
 describe("resolving a revision that holds a bidirectional wrapper", () => {
   test("the authored package nests the wrapper inside the revision", async () => {
     const xml = await documentXml(await createDocx(insertedInsideWrapper()));
-    expect(xml).toMatch(/<w:ins\b[^>]*><w:bdo w:val="rtl"><w:r><w:t>x<\/w:t><\/w:r><\/w:bdo>/u);
+    expect(xml).toMatch(
+      /<w:ins\b[^>]*><w:bdo w:val="rtl"><w:r><w:t>x<\/w:t><\/w:r><\/w:bdo>/u,
+    );
   });
 
   test("accepting keeps the text and drops the revision", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(insertedInsideWrapper()));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(insertedInsideWrapper()),
+    );
     expect(reviewer.getChanges()).toHaveLength(1);
     expect(reviewer.acceptAll()).toBe(1);
 
@@ -73,7 +83,9 @@ describe("resolving a revision that holds a bidirectional wrapper", () => {
   });
 
   test("rejecting drops the text and leaves no empty wrapper behind", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(insertedInsideWrapper()));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(insertedInsideWrapper()),
+    );
     expect(reviewer.getChanges()).toHaveLength(1);
     expect(reviewer.rejectAll()).toBe(1);
 

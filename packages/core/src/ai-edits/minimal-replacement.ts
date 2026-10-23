@@ -65,8 +65,10 @@ export type TextChange = { start: number; end: number; text: string };
 /** A clean-text span that can only be replaced whole (a field result). */
 export type AtomicTextSpan = { offset: number; length: number };
 
-const isHighSurrogate = (code: number): boolean => code >= 0xd8_00 && code <= 0xdb_ff;
-const isLowSurrogate = (code: number): boolean => code >= 0xdc_00 && code <= 0xdf_ff;
+const isHighSurrogate = (code: number): boolean =>
+  code >= 0xd8_00 && code <= 0xdb_ff;
+const isLowSurrogate = (code: number): boolean =>
+  code >= 0xdc_00 && code <= 0xdf_ff;
 
 /** Common prefix length that never ends between the halves of a surrogate pair. */
 export const commonPrefixLength = (a: string, b: string): number => {
@@ -76,7 +78,9 @@ export const commonPrefixLength = (a: string, b: string): number => {
     index++;
   }
   // Stopping after a high surrogate would split its pair.
-  return index > 0 && isHighSurrogate(a.charCodeAt(index - 1)) ? index - 1 : index;
+  return index > 0 && isHighSurrogate(a.charCodeAt(index - 1))
+    ? index - 1
+    : index;
 };
 
 /** Common suffix length that never starts between the halves of a surrogate pair. */
@@ -90,7 +94,9 @@ export const commonSuffixLength = (a: string, b: string): number => {
     length++;
   }
   // Starting at a low surrogate would split its pair.
-  return length > 0 && isLowSurrogate(a.charCodeAt(a.length - length)) ? length - 1 : length;
+  return length > 0 && isLowSurrogate(a.charCodeAt(a.length - length))
+    ? length - 1
+    : length;
 };
 
 /** A letter, digit, combining mark or connector: what a word is made of. */
@@ -98,7 +104,9 @@ const WORD_CHARACTER = /^[\p{L}\p{N}\p{M}\p{Pc}]$/u;
 
 const codePointBefore = (text: string, index: number): string => {
   const low = text.charCodeAt(index - 1);
-  return index >= 2 && isLowSurrogate(low) && isHighSurrogate(text.charCodeAt(index - 2))
+  return index >= 2 &&
+    isLowSurrogate(low) &&
+    isHighSurrogate(text.charCodeAt(index - 2))
     ? text.slice(index - 2, index)
     : text.slice(index - 1, index);
 };
@@ -114,7 +122,8 @@ const isWordBoundary = (text: string, index: number): boolean =>
   !WORD_CHARACTER.test(codePointAt(text, index));
 
 /** At most one word, with whatever separators around it. */
-const SINGLE_WORD = /^[^\p{L}\p{N}\p{M}\p{Pc}]*[\p{L}\p{N}\p{M}\p{Pc}]*[^\p{L}\p{N}\p{M}\p{Pc}]*$/u;
+const SINGLE_WORD =
+  /^[^\p{L}\p{N}\p{M}\p{Pc}]*[\p{L}\p{N}\p{M}\p{Pc}]*[^\p{L}\p{N}\p{M}\p{Pc}]*$/u;
 
 /**
  * The longest length up to `length` that ends (`fromEnd` false) or starts
@@ -155,7 +164,8 @@ const trimChange = (source: string, change: TextChange): TextChange | null => {
   // Whole words first; once what is left lies within one word on both sides,
   // letter by letter.
   for (const granularity of ["word", "letter"] as const) {
-    const withinOneWord = SINGLE_WORD.test(removed) && SINGLE_WORD.test(inserted);
+    const withinOneWord =
+      SINGLE_WORD.test(removed) && SINGLE_WORD.test(inserted);
     if (granularity === "letter" && !withinOneWord) {
       break;
     }
@@ -177,8 +187,14 @@ const trimChange = (source: string, change: TextChange): TextChange | null => {
       break;
     }
   }
-  const trimmed = { start: change.start + prefix, end: change.end - suffix, text: inserted };
-  return trimmed.start === trimmed.end && trimmed.text.length === 0 ? null : trimmed;
+  const trimmed = {
+    start: change.start + prefix,
+    end: change.end - suffix,
+    text: inserted,
+  };
+  return trimmed.start === trimmed.end && trimmed.text.length === 0
+    ? null
+    : trimmed;
 };
 
 const reconstructs = (
@@ -231,7 +247,9 @@ export const shortestTokenDiff = (
   search: for (let d = 0; d <= limit; d++) {
     trace.push(frontier.slice(offset - d, offset + d + 1));
     for (let k = -d; k <= d; k += 2) {
-      const down = k === -d || (k !== d && frontier[offset + k - 1]! < frontier[offset + k + 1]!);
+      const down =
+        k === -d ||
+        (k !== d && frontier[offset + k - 1]! < frontier[offset + k + 1]!);
       let x = down ? frontier[offset + k + 1]! : frontier[offset + k - 1]! + 1;
       let y = x - k;
       while (x < n && y < m && before[x] === after[y]) {
@@ -303,11 +321,17 @@ export const shortestTokenDiff = (
  * diff that does not reconstruct both strings exactly (it never should), is
  * one change over the whole span, trimmed the same way.
  */
-export const planTextChanges = (source: string, replacement: string): TextChange[] => {
+export const planTextChanges = (
+  source: string,
+  replacement: string,
+): TextChange[] => {
   if (source === replacement) {
     return [];
   }
-  const diffed = shortestTokenDiff(tokenizeWords(source), tokenizeWords(replacement));
+  const diffed = shortestTokenDiff(
+    tokenizeWords(source),
+    tokenizeWords(replacement),
+  );
   const segments: readonly WordDiffSegment[] =
     diffed !== null && reconstructs(diffed, source, replacement)
       ? diffed
@@ -316,7 +340,9 @@ export const planTextChanges = (source: string, replacement: string): TextChange
           { type: "ins", text: replacement },
         ];
 
-  return changesFromSegments(segments).flatMap((change) => trimChange(source, change) ?? []);
+  return changesFromSegments(segments).flatMap(
+    (change) => trimChange(source, change) ?? [],
+  );
 };
 
 /**
@@ -325,7 +351,9 @@ export const planTextChanges = (source: string, replacement: string): TextChange
  * exactly as wide as the segments say. A redline's segments come cut to the
  * granularity its reader asked for, so they are not trimmed further.
  */
-export const changesFromSegments = (segments: readonly WordDiffSegment[]): TextChange[] => {
+export const changesFromSegments = (
+  segments: readonly WordDiffSegment[],
+): TextChange[] => {
   const changes: TextChange[] = [];
   let cursor = 0;
   let pending: TextChange | null = null;
@@ -352,8 +380,10 @@ export const changesFromSegments = (segments: readonly WordDiffSegment[]): TextC
   return changes;
 };
 
-const cutsInto = ({ offset, length }: AtomicTextSpan, position: number): boolean =>
-  position > offset && position < offset + length;
+const cutsInto = (
+  { offset, length }: AtomicTextSpan,
+  position: number,
+): boolean => position > offset && position < offset + length;
 
 /**
  * `changes` widened so none cuts into an atomic span, then merged where the
@@ -411,7 +441,10 @@ export const widenChangesToAtomicSpans = (
 };
 
 /** Where each character `changes` keeps of `source` lands in the result. */
-const keptPositions = (source: string, changes: readonly TextChange[]): Map<number, number> => {
+const keptPositions = (
+  source: string,
+  changes: readonly TextChange[],
+): Map<number, number> => {
   const kept = new Map<number, number>();
   let shift = 0;
   let cursor = 0;
@@ -459,7 +492,11 @@ export const keepAtomicSpans = (
     let sourceCursor = change.start;
     let textCursor = 0;
     for (const { offset, length } of spans) {
-      if (offset < sourceCursor || offset + length > change.end || length === 0) {
+      if (
+        offset < sourceCursor ||
+        offset + length > change.end ||
+        length === 0
+      ) {
         continue;
       }
       const lands = keptAt.get(offset);
@@ -472,27 +509,42 @@ export const keepAtomicSpans = (
       if (
         !wholeAndInOrder ||
         local < textCursor ||
-        change.text.slice(local, local + length) !== source.slice(offset, offset + length)
+        change.text.slice(local, local + length) !==
+          source.slice(offset, offset + length)
       ) {
         continue;
       }
-      cut.push({ start: sourceCursor, end: offset, text: change.text.slice(textCursor, local) });
+      cut.push({
+        start: sourceCursor,
+        end: offset,
+        text: change.text.slice(textCursor, local),
+      });
       sourceCursor = offset + length;
       textCursor = local + length;
     }
-    cut.push({ start: sourceCursor, end: change.end, text: change.text.slice(textCursor) });
+    cut.push({
+      start: sourceCursor,
+      end: change.end,
+      text: change.text.slice(textCursor),
+    });
   }
   // A piece left rewriting its source to itself is no change: the word the
   // redline rewrote ran into the field, and past it nothing differs. Marking
   // it would strike text through only to insert it again.
   const pieces = cut.filter(
-    ({ start, end, text }) => (start < end || text.length > 0) && source.slice(start, end) !== text,
+    ({ start, end, text }) =>
+      (start < end || text.length > 0) && source.slice(start, end) !== text,
   );
-  return applyTextChanges(source, pieces) === replacement ? pieces : [...changes];
+  return applyTextChanges(source, pieces) === replacement
+    ? pieces
+    : [...changes];
 };
 
 /** `source` with `changes` applied; the invariant the planner owes. */
-export const applyTextChanges = (source: string, changes: readonly TextChange[]): string => {
+export const applyTextChanges = (
+  source: string,
+  changes: readonly TextChange[],
+): string => {
   let result = "";
   let cursor = 0;
   for (const change of changes) {

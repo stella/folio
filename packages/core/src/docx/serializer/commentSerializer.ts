@@ -4,27 +4,39 @@
  * Serializes Comment[] to OOXML comments.xml format.
  */
 
-import { COMMENT_PART_RELATIONSHIPS } from "@stll/docx-core/model";
-import type { Document } from "../../types/document";
-
-import { commentThreadParaId } from "../commentThreadKey";
-import { deterministicHexId } from "../../utils/hexId";
-import type { Comment, Paragraph } from "../../types/content";
-import type { TextFormatting } from "../../types/formatting";
-import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
-import { serializeWithPreservedChildren } from "../containerChildren";
-import { serializeParagraph } from "./paragraphSerializer";
-import { serializeTextFormatting } from "./textFormattingSerializer";
-import { assertValidOoxmlNumericIds, escapeXmlAttribute } from "@stll/docx-core";
 import { Result } from "better-result";
-import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
+
+import {
+  assertValidOoxmlNumericIds,
+  escapeXmlAttribute,
+} from "@stll/docx-core";
+import { COMMENT_PART_RELATIONSHIPS } from "@stll/docx-core/model";
+
+import type { Comment, Paragraph } from "../../types/content";
+import type { Document } from "../../types/document";
+import type { TextFormatting } from "../../types/formatting";
 import { canonicalJson } from "../../utils/canonicalJson";
+import { deterministicHexId } from "../../utils/hexId";
+import { commentThreadParaId } from "../commentThreadKey";
+import { serializeWithPreservedChildren } from "../containerChildren";
+import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
+import { serializeParagraph } from "./paragraphSerializer";
+import {
+  type OoxmlNamespacePrefix,
+  serializePartElement,
+} from "./partNamespaces";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 
 /** An unrelated body edit must retain unmodelled duplicate comment definitions. */
-export const canReplayCommentsPart = (document: Document, sourceXml: string): boolean => {
+export const canReplayCommentsPart = (
+  document: Document,
+  sourceXml: string,
+): boolean => {
   // A caller may supply the bytes from before import repaired their identities.
   // In that case the model must serialize its valid ids instead of replaying them.
-  const validity = Result.try(() => assertValidOoxmlNumericIds(sourceXml, "word/comments.xml"));
+  const validity = Result.try(() =>
+    assertValidOoxmlNumericIds(sourceXml, "word/comments.xml"),
+  );
   if (validity.isErr()) return false;
   const baseline = getDocumentSourceBaseline(document);
   return (
@@ -44,7 +56,9 @@ const DEFAULT_ANNOTATION_REFERENCE_PROPERTIES =
   '<w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>';
 const PARAGRAPH_PROPERTIES_END = "</w:pPr>";
 
-const serializeAnnotationReference = (formatting: TextFormatting | undefined): string => {
+const serializeAnnotationReference = (
+  formatting: TextFormatting | undefined,
+): string => {
   const properties = formatting
     ? serializeTextFormatting(formatting)
     : DEFAULT_ANNOTATION_REFERENCE_PROPERTIES;
@@ -85,7 +99,10 @@ function serializeComment(comment: Comment): string {
   const paragraphs = comment.content.map((paragraph, index) =>
     // First paragraph must contain an annotationRef run for Word to link the comment
     index === 0
-      ? serializeParagraphWithAnnotationRef(paragraph, comment.annotationReferenceFormatting)
+      ? serializeParagraphWithAnnotationRef(
+          paragraph,
+          comment.annotationReferenceFormatting,
+        )
       : serializeParagraph(paragraph),
   );
   if (paragraphs.length === 0 && comment.preserved === undefined) {
@@ -127,7 +144,8 @@ const COMMENTS_EXTENDED_BASELINE_PREFIXES = [
   "w15",
 ] as const satisfies readonly OoxmlNamespacePrefix[];
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
 /**
  * The ids of comments that need a `commentsExtended.xml` entry: a reply, a
@@ -207,7 +225,9 @@ export type CommentPartPlan = {
  * (comment id and text derived) so repeated saves mint the same id, and it
  * happens here rather than at each call site because both parts must see it.
  */
-export const planCommentParts = (comments: readonly Comment[]): CommentPartPlan => {
+export const planCommentParts = (
+  comments: readonly Comment[],
+): CommentPartPlan => {
   const byId = new Map<number, Comment>();
   const order: number[] = [];
   // A duplicate `w:id` is resolved the way the parser resolves it
@@ -236,7 +256,9 @@ export const planCommentParts = (comments: readonly Comment[]): CommentPartPlan 
   for (const id of order) {
     // SAFETY: `order` holds exactly the keys of `byId`.
     const comment = byId.get(id)!;
-    const existing = commentThreadParaId((comment.content ?? []).map(({ paraId }) => paraId));
+    const existing = commentThreadParaId(
+      (comment.content ?? []).map(({ paraId }) => paraId),
+    );
     if (existing) {
       threadParaIdById.set(id, existing);
       continue;
@@ -245,7 +267,9 @@ export const planCommentParts = (comments: readonly Comment[]): CommentPartPlan 
     if (!threadedIds.has(id) || !last) {
       continue;
     }
-    let minted = deterministicHexId(`comment:${id}:${commentPlainText(comment)}`);
+    let minted = deterministicHexId(
+      `comment:${id}:${commentPlainText(comment)}`,
+    );
     for (let salt = 1; used.has(minted.toUpperCase()); salt++) {
       minted = deterministicHexId(`comment:${id}:${salt}`);
     }
@@ -325,7 +349,8 @@ function buildCommentExtendedEntries({
     }
     // SAFETY: `order` holds exactly the keys of `byId`.
     const { parentId, done } = byId.get(id)!;
-    const parentParaId = parentId !== undefined ? threadParaIdById.get(parentId) : undefined;
+    const parentParaId =
+      parentId !== undefined ? threadParaIdById.get(parentId) : undefined;
     entries.push({
       paraId,
       ...(parentParaId !== undefined ? { paraIdParent: parentParaId } : {}),
@@ -342,7 +367,9 @@ function buildCommentExtendedEntries({
  * {@link buildCommentExtendedEntries}). This is the part that makes Word render
  * a comment as a REPLY rather than a separate top-level thread.
  */
-export function serializeCommentsExtended(plan: CommentPartPlan): string | null {
+export function serializeCommentsExtended(
+  plan: CommentPartPlan,
+): string | null {
   const entries = buildCommentExtendedEntries(plan);
   if (!entries) {
     return null;
@@ -354,7 +381,8 @@ export function serializeCommentsExtended(plan: CommentPartPlan): string | null 
         entry.paraIdParent !== undefined
           ? ` w15:paraIdParent="${escapeXmlAttribute(entry.paraIdParent)}"`
           : "";
-      const doneAttr = entry.done === undefined ? "" : ` w15:done="${entry.done ? "1" : "0"}"`;
+      const doneAttr =
+        entry.done === undefined ? "" : ` w15:done="${entry.done ? "1" : "0"}"`;
       return `<w15:commentEx w15:paraId="${escapeXmlAttribute(entry.paraId)}"${parentAttr}${doneAttr}/>`;
     })
     .join("");

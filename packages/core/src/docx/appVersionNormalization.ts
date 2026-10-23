@@ -44,7 +44,9 @@ const CANONICAL_BUILD = "0000";
  * throws this rather than letting the package go out carrying a version a
  * consumer refuses.
  */
-export class AppVersionSchemaError extends TaggedError("AppVersionSchemaError")<{
+export class AppVersionSchemaError extends TaggedError(
+  "AppVersionSchemaError",
+)<{
   message: string;
   appVersion: string;
 }> {}
@@ -87,7 +89,10 @@ const APP_VERSION_ELEMENT =
  * malformed one is byte-identical.
  */
 export const normalizeAppVersionInExtendedProperties = (xml: string): string =>
-  xml.replace(APP_VERSION_ELEMENT, (whole, open: string, value: string, close: string) => {
-    const replacement = appVersionInSchemaForm(value);
-    return replacement === value ? whole : `${open}${replacement}${close}`;
-  });
+  xml.replace(
+    APP_VERSION_ELEMENT,
+    (whole, open: string, value: string, close: string) => {
+      const replacement = appVersionInSchemaForm(value);
+      return replacement === value ? whole : `${open}${replacement}${close}`;
+    },
+  );

@@ -1,8 +1,8 @@
 import { panic, Result } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import { createXmlEntityDecoder } from "./xmlEntityDecoder";
 
 import { SCHEMA_ATTRIBUTE_FACTS } from "./schemaAttributes.gen";
+import { createXmlEntityDecoder } from "./xmlEntityDecoder";
 
 type Whitespace = "preserve" | "replace" | "collapse";
 type Constraint =
@@ -11,7 +11,12 @@ type Constraint =
   | { type: "pattern"; patterns: readonly string[]; whitespace: Whitespace }
   | { type: "integer"; min?: string; max?: string; whitespace: Whitespace }
   | { type: "union"; members: readonly Constraint[] };
-type Attribute = { name: string; required: boolean; constraint: Constraint; fixed?: string };
+type Attribute = {
+  name: string;
+  required: boolean;
+  constraint: Constraint;
+  fixed?: string;
+};
 type Model = {
   attributes: readonly number[];
   children: Readonly<Record<string, readonly string[]>>;
@@ -25,7 +30,9 @@ export type SchemaAttributeFacts = {
 };
 
 const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
-const namespaceIndex = new Map(SCHEMA_ATTRIBUTE_FACTS.namespaces.map((uri, index) => [uri, index]));
+const namespaceIndex = new Map(
+  SCHEMA_ATTRIBUTE_FACTS.namespaces.map((uri, index) => [uri, index]),
+);
 const strictToTransitional = (uri: string): string =>
   uri
     .replace(
@@ -41,8 +48,16 @@ const strictToTransitional = (uri: string): string =>
       "http://schemas.openxmlformats.org/officeDocument/2006/",
     );
 
-type ResolveNameOptions = { name: string; scope: ReadonlyMap<string, string>; attribute: boolean };
-const resolveName = ({ name, scope, attribute }: ResolveNameOptions): string | null => {
+type ResolveNameOptions = {
+  name: string;
+  scope: ReadonlyMap<string, string>;
+  attribute: boolean;
+};
+const resolveName = ({
+  name,
+  scope,
+  attribute,
+}: ResolveNameOptions): string | null => {
   const colon = name.indexOf(":");
   const prefix = colon < 0 ? "" : name.slice(0, colon);
   const local = colon < 0 ? name : name.slice(colon + 1);
@@ -71,7 +86,9 @@ const normalizeWhitespace = (value: string, policy: Whitespace): string => {
 
 const accepts = (constraint: Constraint, value: string): boolean => {
   const normalized =
-    constraint.type === "union" ? value : normalizeWhitespace(value, constraint.whitespace);
+    constraint.type === "union"
+      ? value
+      : normalizeWhitespace(value, constraint.whitespace);
   switch (constraint.type) {
     case "any":
       return true;
@@ -101,13 +118,17 @@ const accepts = (constraint: Constraint, value: string): boolean => {
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const validateAttributes = (model: Model, values: ReadonlyMap<string, string>): string | null => {
+const validateAttributes = (
+  model: Model,
+  values: ReadonlyMap<string, string>,
+): string | null => {
   for (const index of model.attributes) {
     const attribute = SCHEMA_ATTRIBUTE_FACTS.definitions.at(index);
     if (!attribute) return panic("Invalid generated schema attribute index");
     const value = values.get(attribute.name);
     if (value === undefined) {
-      if (attribute.required) return `Missing required attribute ${attribute.name}`;
+      if (attribute.required)
+        return `Missing required attribute ${attribute.name}`;
       continue;
     }
     if (attribute.fixed !== undefined && value !== attribute.fixed)
@@ -142,18 +163,28 @@ export const validateSchemaAttributes = (xml: string): string | null => {
     }).parse(xml),
   );
   if (parsed.isErr()) return "Malformed XML: XML parser rejected the part";
-  if (!Array.isArray(parsed.value)) return "Malformed XML: expected a document element";
+  if (!Array.isArray(parsed.value))
+    return "Malformed XML: expected a document element";
   const roots = parsed.value.filter(
     (node: unknown) =>
       record(node) &&
-      Object.keys(node).some((tag) => tag !== ":@" && !tag.startsWith("#") && !tag.startsWith("?")),
+      Object.keys(node).some(
+        (tag) => tag !== ":@" && !tag.startsWith("#") && !tag.startsWith("?"),
+      ),
   );
-  if (roots.length !== 1) return "Malformed XML: expected exactly one document element";
+  if (roots.length !== 1)
+    return "Malformed XML: expected exactly one document element";
   const pending: Array<{
     nodes: unknown;
     scope: ReadonlyMap<string, string>;
     types: readonly string[];
-  }> = [{ nodes: parsed.value, scope: new Map([["xml", XML_NAMESPACE]]), types: [] }];
+  }> = [
+    {
+      nodes: parsed.value,
+      scope: new Map([["xml", XML_NAMESPACE]]),
+      types: [],
+    },
+  ];
   while (pending.length > 0) {
     const current = pending.pop();
     if (!current || !Array.isArray(current.nodes)) continue;
@@ -175,7 +206,8 @@ export const validateSchemaAttributes = (xml: string): string | null => {
         if (typeof value === "string") values.set(resolved, value);
       }
       for (const [tag, nodes] of Object.entries(node)) {
-        if (tag === ":@" || tag.startsWith("#") || tag.startsWith("?")) continue;
+        if (tag === ":@" || tag.startsWith("#") || tag.startsWith("?"))
+          continue;
         const name = resolveName({ name: tag, scope, attribute: false });
         if (name === null) return `Unbound XML element prefix: ${tag}`;
         const contextual = current.types.flatMap(

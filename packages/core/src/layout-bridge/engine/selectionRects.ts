@@ -10,43 +10,43 @@
 
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineContentOffset } from "../../layout-engine/lineFlow";
-import { resolveTableCellPadding } from "../../layout-engine/types";
 import { measureParagraph } from "../../layout-engine/measure";
 import { buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
 import { measureRun } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
-import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import {
+  buildTableCellFloatingZones,
+  getTableCellContentWidth,
+  getTableCellFloatingImages,
+} from "../../layout-engine/measure/tableCellFloating";
 import {
   buildTableCellGrid,
   buildTableCellPlacements,
   getTableCellSpacingInsetsY,
   type TableCellPlacements,
 } from "../../layout-engine/measure/tableCellGrid";
-import {
-  buildTableCellFloatingZones,
-  getTableCellContentWidth,
-  getTableCellFloatingImages,
-} from "../../layout-engine/measure/tableCellFloating";
+import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
-  Layout,
+  BlockId,
   FlowBlock,
+  Layout,
+  MathRun,
   Measure,
+  MeasuredLine,
   ParagraphBlock,
   ParagraphFragment,
   ParagraphMeasure,
-  MeasuredLine,
   TableBlock,
   TableCell,
   TableCellMeasure,
   TableFragment,
   TableMeasure,
-  TextRun,
   TabRun,
-  MathRun,
-  BlockId,
+  TextRun,
 } from "../../layout-engine/types";
-import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { resolvePhysicalParagraphInlineLayout } from "../../utils/paragraphInlineLayout";
+import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { getPageTop } from "./hitTest";
 
 /**
@@ -109,7 +109,9 @@ function mathRunToFontStyle(run: MathRun): FontStyle {
     fontSize: run.fontSize ?? 11,
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
-    ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
+    ...(run.letterSpacing !== undefined
+      ? { letterSpacing: run.letterSpacing }
+      : {}),
     ...(horizontalScale !== undefined ? { horizontalScale } : {}),
   };
 }
@@ -196,7 +198,11 @@ function computeLinePmRange(
   let charOffset = 0;
   let pmStart: number | undefined;
 
-  for (let runIndex = 0; runIndex < block.runs.length && runIndex <= line.toRun; runIndex++) {
+  for (
+    let runIndex = 0;
+    runIndex < block.runs.length && runIndex <= line.toRun;
+    runIndex++
+  ) {
     const run = block.runs[runIndex];
     if (!run) {
       continue;
@@ -290,7 +296,11 @@ function findLinesInRange(
  * clamp to the value text, positions after it land after the value. Falls
  * back to the legacy whole-line subtraction when a run lacks PM metadata.
  */
-function pmPosToCharOffset(block: ParagraphBlock, line: MeasuredLine, pmPos: number): number {
+function pmPosToCharOffset(
+  block: ParagraphBlock,
+  line: MeasuredLine,
+  pmPos: number,
+): number {
   let charOffset = 0;
 
   for (
@@ -397,7 +407,10 @@ function charOffsetToX(
     }
 
     if (run.kind === "math") {
-      const mathWidth = measureRun(run.plainText, mathRunToFontStyle(run)).width;
+      const mathWidth = measureRun(
+        run.plainText,
+        mathRunToFontStyle(run),
+      ).width;
       if (charsProcessed + 1 >= charOffset) {
         if (charOffset <= charsProcessed) {
           return x;
@@ -498,7 +511,10 @@ export function selectionToRects(
         const paragraphFragment = fragment as ParagraphFragment;
         const { alignment, indentLeft, indentRight } =
           resolvePhysicalParagraphInlineLayout(paragraphBlock);
-        const availableWidth = Math.max(0, fragment.width - indentLeft - indentRight);
+        const availableWidth = Math.max(
+          0,
+          fragment.width - indentLeft - indentRight,
+        );
 
         // Find lines that intersect with selection
         const intersectingLines = findLinesInRange(
@@ -510,7 +526,10 @@ export function selectionToRects(
 
         for (const { line, index } of intersectingLines) {
           // Skip lines not in this fragment
-          if (index < paragraphFragment.fromLine || index >= paragraphFragment.toLine) {
+          if (
+            index < paragraphFragment.fromLine ||
+            index >= paragraphFragment.toLine
+          ) {
             continue;
           }
 
@@ -527,8 +546,10 @@ export function selectionToRects(
           // break row, which would otherwise highlight whenever the selection
           // merely crosses the paragraph start (eigenpal/docx-editor#836).
           const isTrailingBreakRow =
-            paragraphBlock.runs.length > 0 && line.fromRun >= paragraphBlock.runs.length;
-          const isEmptyLine = range.pmStart === range.pmEnd && !isTrailingBreakRow;
+            paragraphBlock.runs.length > 0 &&
+            line.fromRun >= paragraphBlock.runs.length;
+          const isEmptyLine =
+            range.pmStart === range.pmEnd && !isTrailingBreakRow;
           const sliceFrom = Math.max(range.pmStart, selFrom);
           const sliceTo = Math.min(range.pmEnd, selTo);
           if (!isEmptyLine && sliceFrom >= sliceTo) {
@@ -536,12 +557,26 @@ export function selectionToRects(
           }
 
           // Convert PM positions to character offsets
-          const charOffsetFrom = pmPosToCharOffset(paragraphBlock, line, sliceFrom);
+          const charOffsetFrom = pmPosToCharOffset(
+            paragraphBlock,
+            line,
+            sliceFrom,
+          );
           const charOffsetTo = pmPosToCharOffset(paragraphBlock, line, sliceTo);
 
           // Get X coordinates for selection bounds
-          const startX = charOffsetToX(paragraphBlock, line, charOffsetFrom, availableWidth);
-          const endX = charOffsetToX(paragraphBlock, line, charOffsetTo, availableWidth);
+          const startX = charOffsetToX(
+            paragraphBlock,
+            line,
+            charOffsetFrom,
+            availableWidth,
+          );
+          const endX = charOffsetToX(
+            paragraphBlock,
+            line,
+            charOffsetTo,
+            availableWidth,
+          );
 
           // Calculate alignment offset
           let alignmentOffset = 0;
@@ -559,7 +594,8 @@ export function selectionToRects(
           );
 
           // Create selection rectangle
-          const rectX = fragment.x + indentLeft + alignmentOffset + Math.min(startX, endX);
+          const rectX =
+            fragment.x + indentLeft + alignmentOffset + Math.min(startX, endX);
           const rectWidth = isEmptyLine
             ? EMPTY_PARAGRAPH_SLIVER_WIDTH
             : Math.max(1, Math.abs(endX - startX));
@@ -596,7 +632,10 @@ export function selectionToRects(
         const tableFragment = fragment as TableFragment;
         let cellPlacements = tableCellPlacements.get(tableBlock);
         if (!cellPlacements) {
-          const cellGrid = buildTableCellGrid(tableBlock.rows, tableMeasure.columnWidths.length);
+          const cellGrid = buildTableCellGrid(
+            tableBlock.rows,
+            tableMeasure.columnWidths.length,
+          );
           cellPlacements = buildTableCellPlacements({
             grid: cellGrid,
             columnWidths: tableMeasure.columnWidths,
@@ -639,8 +678,15 @@ export function selectionToRects(
               continue;
             }
             const contentWidth = getTableCellContentWidth(cell, cellMeasure);
-            const floatingImages = getTableCellFloatingImages(cell, cellMeasure, contentWidth);
-            const floatingZones = buildTableCellFloatingZones(floatingImages, contentWidth);
+            const floatingImages = getTableCellFloatingImages(
+              cell,
+              cellMeasure,
+              contentWidth,
+            );
+            const floatingZones = buildTableCellFloatingZones(
+              floatingImages,
+              contentWidth,
+            );
             const contentOffsetX = getCellContentOffsetX(cell);
             const spacing = getTableCellSpacingInsetsY(
               tableBlock.cellSpacing,
@@ -674,14 +720,21 @@ export function selectionToRects(
               const paragraphBlock = cellBlock as ParagraphBlock;
               let paragraphMeasure = cellBlockMeasure as ParagraphMeasure;
               if (floatingZones.length > 0) {
-                paragraphMeasure = measureParagraph(paragraphBlock, contentWidth, {
-                  floatingZones,
-                  paragraphYOffset: blockY,
-                });
+                paragraphMeasure = measureParagraph(
+                  paragraphBlock,
+                  contentWidth,
+                  {
+                    floatingZones,
+                    paragraphYOffset: blockY,
+                  },
+                );
               }
               const { alignment, indentLeft, indentRight } =
                 resolvePhysicalParagraphInlineLayout(paragraphBlock);
-              const availableWidth = Math.max(0, contentWidth - indentLeft - indentRight);
+              const availableWidth = Math.max(
+                0,
+                contentWidth - indentLeft - indentRight,
+              );
 
               // Find lines that intersect with selection
               const intersectingLines = findLinesInRange(
@@ -700,29 +753,59 @@ export function selectionToRects(
                 // Only a true empty paragraph draws a sliver — not the blank row
                 // a trailing hard break leaves behind (eigenpal/docx-editor#836).
                 const isTrailingBreakRow =
-                  paragraphBlock.runs.length > 0 && line.fromRun >= paragraphBlock.runs.length;
-                const isEmptyLine = range.pmStart === range.pmEnd && !isTrailingBreakRow;
+                  paragraphBlock.runs.length > 0 &&
+                  line.fromRun >= paragraphBlock.runs.length;
+                const isEmptyLine =
+                  range.pmStart === range.pmEnd && !isTrailingBreakRow;
                 const sliceFrom = Math.max(range.pmStart, selFrom);
                 const sliceTo = Math.min(range.pmEnd, selTo);
                 if (!isEmptyLine && sliceFrom >= sliceTo) {
                   continue;
                 }
 
-                const charOffsetFrom = pmPosToCharOffset(paragraphBlock, line, sliceFrom);
-                const charOffsetTo = pmPosToCharOffset(paragraphBlock, line, sliceTo);
+                const charOffsetFrom = pmPosToCharOffset(
+                  paragraphBlock,
+                  line,
+                  sliceFrom,
+                );
+                const charOffsetTo = pmPosToCharOffset(
+                  paragraphBlock,
+                  line,
+                  sliceTo,
+                );
 
-                const startX = charOffsetToX(paragraphBlock, line, charOffsetFrom, availableWidth);
-                const endX = charOffsetToX(paragraphBlock, line, charOffsetTo, availableWidth);
+                const startX = charOffsetToX(
+                  paragraphBlock,
+                  line,
+                  charOffsetFrom,
+                  availableWidth,
+                );
+                const endX = charOffsetToX(
+                  paragraphBlock,
+                  line,
+                  charOffsetTo,
+                  availableWidth,
+                );
                 let alignmentOffset = 0;
                 if (alignment === "center") {
-                  alignmentOffset = Math.max(0, (availableWidth - line.width) / 2);
+                  alignmentOffset = Math.max(
+                    0,
+                    (availableWidth - line.width) / 2,
+                  );
                 } else if (alignment === "right") {
                   alignmentOffset = Math.max(0, availableWidth - line.width);
                 }
 
-                const lineY = measuredLineContentOffset(paragraphMeasure.lines, 0, index);
+                const lineY = measuredLineContentOffset(
+                  paragraphMeasure.lines,
+                  0,
+                  index,
+                );
                 const clippedLineY = contentOffsetY + blockY + lineY;
-                if (clippedLineY + line.lineHeight <= clipTop || clippedLineY >= clipBottom) {
+                if (
+                  clippedLineY + line.lineHeight <= clipTop ||
+                  clippedLineY >= clipBottom
+                ) {
                   continue;
                 }
 
@@ -840,14 +923,26 @@ export function getCaretPosition(
 
           if (pmPosition >= range.pmStart && pmPosition <= range.pmEnd) {
             // Position is in this line
-            const charOffset = pmPosToCharOffset(paragraphBlock, line, pmPosition);
+            const charOffset = pmPosToCharOffset(
+              paragraphBlock,
+              line,
+              pmPosition,
+            );
 
             // Calculate indentation
             const { alignment, indentLeft, indentRight } =
               resolvePhysicalParagraphInlineLayout(paragraphBlock);
-            const availableWidth = Math.max(0, fragment.width - indentLeft - indentRight);
+            const availableWidth = Math.max(
+              0,
+              fragment.width - indentLeft - indentRight,
+            );
 
-            const x = charOffsetToX(paragraphBlock, line, charOffset, availableWidth);
+            const x = charOffsetToX(
+              paragraphBlock,
+              line,
+              charOffset,
+              availableWidth,
+            );
 
             // Calculate alignment offset
             let alignmentOffset = 0;
@@ -916,7 +1011,9 @@ export function isMultiPageSelection(rects: SelectionRect[]): boolean {
  * @param rects - Selection rectangles.
  * @returns Map of page index to rectangles on that page.
  */
-export function groupRectsByPage(rects: SelectionRect[]): Map<number, SelectionRect[]> {
+export function groupRectsByPage(
+  rects: SelectionRect[],
+): Map<number, SelectionRect[]> {
   const map = new Map<number, SelectionRect[]>();
 
   for (const rect of rects) {

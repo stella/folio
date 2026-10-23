@@ -5,7 +5,11 @@
   Popover.
 -->
 <template>
-  <Popover :open="isOpen" @update:open="(v: boolean) => (isOpen = v)" @close="onClose">
+  <Popover
+    :open="isOpen"
+    @update:open="(v: boolean) => (isOpen = v)"
+    @close="onClose"
+  >
     <template #trigger="{ toggle }">
       <button
         type="button"
@@ -21,7 +25,9 @@
     </template>
     <template #panel>
       <div class="docx-table-grid__panel">
-        <div class="docx-table-grid__label">{{ hover.rows }} × {{ hover.cols }}</div>
+        <div class="docx-table-grid__label">
+          {{ hover.rows }} × {{ hover.cols }}
+        </div>
         <div
           class="docx-table-grid__grid"
           :style="{ gridTemplateColumns: `repeat(${gridColumns}, 18px)` }"
@@ -31,7 +37,8 @@
             :key="`${cell.r}-${cell.c}`"
             class="docx-table-grid__cell"
             :class="{
-              'docx-table-grid__cell--active': cell.r <= hover.rows && cell.c <= hover.cols,
+              'docx-table-grid__cell--active':
+                cell.r <= hover.rows && cell.c <= hover.cols,
             }"
             @mouseenter="hover = { rows: cell.r, cols: cell.c }"
             @click.prevent="handleInsert(cell.r, cell.c)"
@@ -43,9 +50,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import MaterialSymbol from "./MaterialSymbol.vue";
+import { computed, ref } from "vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
+import MaterialSymbol from "./MaterialSymbol.vue";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).

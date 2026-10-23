@@ -20,7 +20,10 @@
 
 import type { CorpusFileId } from "./corpus-census";
 import { fileIdOf } from "./corpus-census";
-import { type CorpusInvariantFamily, familyOf } from "./corpus-invariants/contract";
+import {
+  type CorpusInvariantFamily,
+  familyOf,
+} from "./corpus-invariants/contract";
 import type { CorpusFailure } from "./corpus-signature";
 import { failureSignature } from "./corpus-signature";
 
@@ -51,7 +54,11 @@ export const fileSignatureRows = (
   }
   const id = fileIdOf(file);
   return [...byFamily.entries()]
-    .map(([family, signatures]) => ({ id, family, signatures: signatures.sort() }))
+    .map(([family, signatures]) => ({
+      id,
+      family,
+      signatures: signatures.sort(),
+    }))
     .sort((left, right) => (left.family < right.family ? -1 : 1));
 };
 
@@ -66,7 +73,9 @@ export type SignaturesByFamily = Map<CorpusInvariantFamily, FilesBySignature>;
  * Shards write disjoint rows, so several artifacts index into one map without
  * a merge step of their own.
  */
-export const indexFileSignatures = (rows: readonly CorpusFileSignatures[]): SignaturesByFamily => {
+export const indexFileSignatures = (
+  rows: readonly CorpusFileSignatures[],
+): SignaturesByFamily => {
   const byFamily: SignaturesByFamily = new Map();
   for (const { id, family, signatures } of rows) {
     const bySignature = byFamily.get(family) ?? new Map<string, Set<string>>();

@@ -151,7 +151,9 @@ function parseTopLevelChildren(html: string): FakeElement[] {
     const isSelfClose = html[tagEnd - 1] === "/";
     const tagBody = html.slice(openIdx + 1, isSelfClose ? tagEnd - 1 : tagEnd);
     const spaceIdx = tagBody.search(/\s/u);
-    const tagName = (spaceIdx === -1 ? tagBody : tagBody.slice(0, spaceIdx)).trim();
+    const tagName = (
+      spaceIdx === -1 ? tagBody : tagBody.slice(0, spaceIdx)
+    ).trim();
     const attrText = spaceIdx === -1 ? "" : tagBody.slice(spaceIdx);
     const el = new FakeElement(tagName);
     // Linear-time attribute extraction: walk the text instead of using a
@@ -242,7 +244,10 @@ function findElement(
   return null;
 }
 
-function findAll(root: FakeElement, predicate: (el: FakeElement) => boolean): FakeElement[] {
+function findAll(
+  root: FakeElement,
+  predicate: (el: FakeElement) => boolean,
+): FakeElement[] {
   const hits: FakeElement[] = [];
   const walk = (el: FakeElement) => {
     if (predicate(el)) {
@@ -256,7 +261,8 @@ function findAll(root: FakeElement, predicate: (el: FakeElement) => boolean): Fa
   return hits;
 }
 
-const MATH_NS = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
+const MATH_NS =
+  'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 
 function mathRun(overrides: Partial<MathRun>): MathRun {
   return {
@@ -271,7 +277,10 @@ function mathRun(overrides: Partial<MathRun>): MathRun {
   };
 }
 
-function renderMathRunOnce(run: MathRun, attrs: ParagraphAttrs = {}): FakeElement {
+function renderMathRunOnce(
+  run: MathRun,
+  attrs: ParagraphAttrs = {},
+): FakeElement {
   const block = {
     kind: "paragraph",
     runs: [run],
@@ -307,11 +316,15 @@ describe("painter — OMML math run", () => {
       }),
     );
 
-    const host = findElement(line, (el) => el.className.includes("docx-math-inline"));
+    const host = findElement(line, (el) =>
+      el.className.includes("docx-math-inline"),
+    );
     expect(host).not.toBeNull();
     expect(host?.dataset["ommlRender"]).toBe("mathml");
     // `innerHTML` carries the MathML root element.
-    expect(host?.innerHTML).toContain('xmlns="http://www.w3.org/1998/Math/MathML"');
+    expect(host?.innerHTML).toContain(
+      'xmlns="http://www.w3.org/1998/Math/MathML"',
+    );
     expect(host?.innerHTML).toContain("<mi>a</mi>");
     expect(host?.innerHTML).toContain("<mo>+</mo>");
     expect(host?.innerHTML).toContain("<mi>b</mi>");
@@ -326,7 +339,9 @@ describe("painter — OMML math run", () => {
       }),
     );
 
-    const host = findElement(line, (el) => el.className.includes("docx-math-block"));
+    const host = findElement(line, (el) =>
+      el.className.includes("docx-math-block"),
+    );
     expect(host).not.toBeNull();
     expect(host?.dataset["display"]).toBe("block");
     expect(host?.innerHTML).toContain('display="block"');
@@ -351,7 +366,10 @@ describe("painter — OMML math run", () => {
   });
 
   test("centres display math in RTL with no explicit alignment", () => {
-    const line = renderMathRunOnce(mathRun({ display: "block", plainText: "س" }), { bidi: true });
+    const line = renderMathRunOnce(
+      mathRun({ display: "block", plainText: "س" }),
+      { bidi: true },
+    );
 
     expect(line.style.textAlign).toBe("center");
   });
@@ -364,7 +382,9 @@ describe("painter — OMML math run", () => {
       }),
     );
 
-    const fallback = findElement(line, (el) => el.className.includes("docx-math-fallback"));
+    const fallback = findElement(line, (el) =>
+      el.className.includes("docx-math-fallback"),
+    );
     expect(fallback).not.toBeNull();
     expect(fallback?.dataset["ommlRender"]).toBe("fallback");
     expect(fallback?.dataset["ommlRenderError"]).toBe("1");
@@ -379,14 +399,18 @@ describe("painter — OMML math run", () => {
       }),
     );
 
-    const fallback = findElement(line, (el) => el.className.includes("docx-math-fallback"));
+    const fallback = findElement(line, (el) =>
+      el.className.includes("docx-math-fallback"),
+    );
     expect(fallback).not.toBeNull();
     expect(fallback?.textContent).toBe("empty");
   });
 
   test("scales MathML and fallback paint to the measured zero-width advance", () => {
     const mathLine = renderMathRunOnce(mathRun({ horizontalScale: 0 }));
-    const mathHost = findElement(mathLine, (el) => el.className.includes("docx-math-inline"));
+    const mathHost = findElement(mathLine, (el) =>
+      el.className.includes("docx-math-inline"),
+    );
     const fallbackLine = renderMathRunOnce(
       mathRun({ ommlXml: "<not-actually-omml>", horizontalScale: 0 }),
     );
@@ -423,7 +447,9 @@ describe("painter — OMML math run", () => {
         pmEnd: 5,
       }),
     );
-    const mathHost = findElement(mathLine, (el) => el.className.includes("docx-math-inline"));
+    const mathHost = findElement(mathLine, (el) =>
+      el.className.includes("docx-math-inline"),
+    );
 
     const fallbackLine = renderMathRunOnce(
       mathRun({
@@ -513,7 +539,9 @@ describe("painter — OMML math run", () => {
       tabStops: [{ val: "end", pos: 4500 }],
     }) as unknown as FakeElement;
 
-    const tab = findElement(rendered, (el) => el.className.includes("layout-run-tab"));
+    const tab = findElement(rendered, (el) =>
+      el.className.includes("layout-run-tab"),
+    );
     expect(tab?.style.width).toBe("265px");
   });
 });

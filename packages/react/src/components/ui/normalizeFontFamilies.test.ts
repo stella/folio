@@ -29,7 +29,11 @@ describe("normalizeFontFamilies", () => {
   });
 
   test("normalizes a mixed string / FontOption array in order", () => {
-    const option: FontOption = { name: "Georgia", fontFamily: "Georgia, serif", category: "serif" };
+    const option: FontOption = {
+      name: "Georgia",
+      fontFamily: "Georgia, serif",
+      category: "serif",
+    };
     expect(normalizeFontFamilies(["Arial", option])).toEqual([
       { name: "Arial", fontFamily: "Arial", category: "other" },
       option,
@@ -37,7 +41,11 @@ describe("normalizeFontFamilies", () => {
   });
 
   test("skips null / undefined / blank / malformed entries", () => {
-    const option: FontOption = { name: "Keep", fontFamily: "Keep, serif", category: "serif" };
+    const option: FontOption = {
+      name: "Keep",
+      fontFamily: "Keep, serif",
+      category: "serif",
+    };
     // Simulate an untrusted plain-JS host slipping in invalid entries.
     const messy = [
       null,

@@ -28,7 +28,9 @@ export const FOLIO_CARET_RECT_ATTRIBUTE = "data-folio-caret-rect";
  * callers should retry on a later frame instead of treating null as
  * "no selection".
  */
-export const getFolioSelectionViewportRect = (view: EditorView): DOMRect | null => {
+export const getFolioSelectionViewportRect = (
+  view: EditorView,
+): DOMRect | null => {
   const scrollContainer = view.dom.closest("[data-folio-scroll]");
   if (!scrollContainer) {
     return null;
@@ -73,7 +75,9 @@ export const getFolioCaretViewportRect = (view: EditorView): DOMRect | null => {
   if (!scrollContainer) {
     return null;
   }
-  const caret = scrollContainer.querySelector<HTMLElement>(`[${FOLIO_CARET_RECT_ATTRIBUTE}]`);
+  const caret = scrollContainer.querySelector<HTMLElement>(
+    `[${FOLIO_CARET_RECT_ATTRIBUTE}]`,
+  );
   if (!caret) {
     return null;
   }

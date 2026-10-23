@@ -6,79 +6,85 @@
  * - Commands from paragraph.ts (alignment, spacing, indent, style)
  */
 
-import {
-  withCanonicalCommand,
-  withCanonicalParagraphFormatting,
-  withCanonicalStartParagraphFormatting,
-} from "../../canonicalCommands";
-
-import { mintBookmarkId, reserveProseBookmarkIds } from "../../../docx/bookmarkIds";
-
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode, NodeSpec } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import { headingOutlineLevel } from "@stll/docx-core/model";
 
-import { PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR } from "../../../docx/paragraphPropertySource";
-
+import {
+  mintBookmarkId,
+  reserveProseBookmarkIds,
+} from "../../../docx/bookmarkIds";
+import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
 import type { NumberingMap } from "../../../docx/numberingParser";
+import { PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR } from "../../../docx/paragraphPropertySource";
+import { isStyleSourcedParagraphNumbering } from "../../../internal/paragraphFormattingSerialization";
 import type {
-  ParagraphAlignment,
-  LineSpacingRule,
-  ParagraphFormatting,
-  TextFormatting,
   CounterFormat,
+  LineSpacingRule,
+  ParagraphAlignment,
+  ParagraphFormatting,
+  TabLeader,
   TabStop,
   TabStopAlignment,
-  TabLeader,
+  TextFormatting,
 } from "../../../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
-import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
-import {
-  getDocumentBuiltInStyles,
-  getDocumentStyleResolver,
-} from "../../plugins/documentStyleState";
-import { isStyleSourcedParagraphNumbering } from "../../../internal/paragraphFormattingSerialization";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../../listMarker";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
-import { rebaseParagraphRuns } from "../../rebaseParagraphRuns";
 import { expectParagraphAttrs } from "../../attrs";
-import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumberingReference,
-} from "../../numberingAttr";
 import { autospacingMatchesBase } from "../../autospacingBase";
+import {
+  withCanonicalCommand,
+  withCanonicalParagraphFormatting,
+  withCanonicalStartParagraphFormatting,
+} from "../../canonicalCommands";
 import {
   removeSectionBreakAtSelection,
   sectionBreakSelectionIsTopLevel,
   setSectionBreakType,
 } from "../../commands/sectionBreak";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../../listMarker";
 import {
-  mintSectionProperties,
-  parseSectionBreakType,
-  sectionBreakTypeOf,
-  type SectionBreakType,
-} from "../../sectionCarrier";
+  effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
+} from "../../numberingAttr";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
-import { directParagraphSpacing, withDirectParagraphSpacing } from "../../paragraphSpacing";
+import type { ParagraphDirection } from "../../paragraphDirection";
 import {
   type DirectParagraphIndentation,
   directParagraphIndentation,
 } from "../../paragraphIndentation";
-import type { ParagraphDirection } from "../../paragraphDirection";
+import { recordReplacedParagraphProperties } from "../../paragraphPropertyCarry";
+import {
+  directParagraphSpacing,
+  withDirectParagraphSpacing,
+} from "../../paragraphSpacing";
+import { getDocumentNumbering } from "../../plugins/documentNumbering";
+import {
+  getDocumentBuiltInStyles,
+  getDocumentStyleResolver,
+} from "../../plugins/documentStyleState";
+import {
+  makeRevisionInfo,
+  SUGGESTION_META,
+} from "../../plugins/suggestionMode";
+import { rebaseParagraphRuns } from "../../rebaseParagraphRuns";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 import {
-  paragraphAttrsFromResolvedStyle,
+  mintSectionProperties,
+  parseSectionBreakType,
+  type SectionBreakType,
+  sectionBreakTypeOf,
+} from "../../sectionCarrier";
+import {
   listAttrsFromResolvedStyle,
   listIndentationProvenancePatch,
+  paragraphAttrsFromResolvedStyle,
 } from "../../styles/resolvedStyleAttrs";
-import { getDocumentNumbering } from "../../plugins/documentNumbering";
-import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
-import { recordReplacedParagraphProperties } from "../../paragraphPropertyCarry";
 import { createNodeExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
@@ -88,35 +94,59 @@ import type { ExtensionRuntime } from "../types";
 
 function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
   const rawIndentLeft: unknown = Reflect.get(attrs, "indentLeft");
-  let indentLeft = typeof rawIndentLeft === "number" ? rawIndentLeft : undefined;
+  let indentLeft =
+    typeof rawIndentLeft === "number" ? rawIndentLeft : undefined;
   const numbering = effectiveParagraphNumberingReference(
     paragraphNumberingSourcesFromBoundary({
       numPr: attrs.numPr,
       numPrFromStyle: attrs.numPrFromStyle,
     }),
   );
-  if (numbering !== undefined && (rawIndentLeft === null || rawIndentLeft === undefined)) {
+  if (
+    numbering !== undefined &&
+    (rawIndentLeft === null || rawIndentLeft === undefined)
+  ) {
     indentLeft = (numbering.ilvl + 1) * 720;
   }
 
   const formatting: ParagraphFormatting = {
     ...(attrs.alignment !== undefined ? { alignment: attrs.alignment } : {}),
-    ...(attrs.spaceBefore !== undefined ? { spaceBefore: attrs.spaceBefore } : {}),
+    ...(attrs.spaceBefore !== undefined
+      ? { spaceBefore: attrs.spaceBefore }
+      : {}),
     ...(attrs.spaceAfter !== undefined ? { spaceAfter: attrs.spaceAfter } : {}),
-    ...(attrs.lineSpacing !== undefined ? { lineSpacing: attrs.lineSpacing } : {}),
-    ...(attrs.lineSpacingRule !== undefined ? { lineSpacingRule: attrs.lineSpacingRule } : {}),
+    ...(attrs.lineSpacing !== undefined
+      ? { lineSpacing: attrs.lineSpacing }
+      : {}),
+    ...(attrs.lineSpacingRule !== undefined
+      ? { lineSpacingRule: attrs.lineSpacingRule }
+      : {}),
     ...(indentLeft !== undefined ? { indentLeft } : {}),
-    ...(attrs.indentRight !== undefined ? { indentRight: attrs.indentRight } : {}),
-    ...(attrs.indentFirstLine !== undefined ? { indentFirstLine: attrs.indentFirstLine } : {}),
-    ...(attrs.hangingIndent !== undefined ? { hangingIndent: attrs.hangingIndent } : {}),
+    ...(attrs.indentRight !== undefined
+      ? { indentRight: attrs.indentRight }
+      : {}),
+    ...(attrs.indentFirstLine !== undefined
+      ? { indentFirstLine: attrs.indentFirstLine }
+      : {}),
+    ...(attrs.hangingIndent !== undefined
+      ? { hangingIndent: attrs.hangingIndent }
+      : {}),
     ...(attrs.borders !== undefined ? { borders: attrs.borders } : {}),
     ...(attrs.shading !== undefined ? { shading: attrs.shading } : {}),
     // HTML-origin auto spacing uses the PM-only import baseline, so direct and
     // style-sourced auto flags behave the same until an edit changes spacing.
-    ...(autospacingMatchesBase(attrs._autospacingBase, "before", attrs.spaceBefore)
+    ...(autospacingMatchesBase(
+      attrs._autospacingBase,
+      "before",
+      attrs.spaceBefore,
+    )
       ? { beforeAutospacing: true }
       : {}),
-    ...(autospacingMatchesBase(attrs._autospacingBase, "after", attrs.spaceAfter)
+    ...(autospacingMatchesBase(
+      attrs._autospacingBase,
+      "after",
+      attrs.spaceAfter,
+    )
       ? { afterAutospacing: true }
       : {}),
   };
@@ -158,7 +188,10 @@ function numFmtToClass(numFmt: CounterFormat | undefined): string {
 }
 
 function getListClass(
-  attrs: Pick<ParagraphAttrs, "numPr" | "numPrFromStyle" | "listIsBullet" | "listNumFmt">,
+  attrs: Pick<
+    ParagraphAttrs,
+    "numPr" | "numPrFromStyle" | "listIsBullet" | "listNumFmt"
+  >,
 ): string {
   const numbering = effectiveParagraphNumberingReference(
     paragraphNumberingSourcesFromBoundary({
@@ -226,7 +259,9 @@ function cssLengthToTwips(value: string): number | undefined {
 /**
  * Map CSS text-align value to ParagraphAlignment.
  */
-function cssTextAlignToAlignment(value: string): ParagraphAlignment | undefined {
+function cssTextAlignToAlignment(
+  value: string,
+): ParagraphAlignment | undefined {
   switch (value.trim().toLowerCase()) {
     case "left":
       return "left";
@@ -247,7 +282,9 @@ function cssTextAlignToAlignment(value: string): ParagraphAlignment | undefined 
   }
 }
 
-const parseParagraphAlignment = (value: string | undefined): ParagraphAlignment | undefined =>
+const parseParagraphAlignment = (
+  value: string | undefined,
+): ParagraphAlignment | undefined =>
   PARAGRAPH_ALIGNMENT_VALUES.find((alignment) => alignment === value);
 
 /**
@@ -299,7 +336,9 @@ function cssLineHeightToSpacing(
  * Extract paragraph-level attributes from a pasted HTML <p> element's inline styles.
  * Used by parseDOM to preserve formatting from external apps (Google Docs, Word Online, etc.).
  */
-function extractParagraphAttrsFromStyle(element: HTMLElement): Partial<ParagraphAttrs> {
+function extractParagraphAttrsFromStyle(
+  element: HTMLElement,
+): Partial<ParagraphAttrs> {
   const style = element.style;
   const attrs: Partial<ParagraphAttrs> = {};
 
@@ -474,15 +513,23 @@ const paragraphNodeSpec: NodeSpec = {
         // Start with data-attribute values (from our own editor's copy/paste)
         const paraId = element.dataset["paraId"];
         const alignment = parseParagraphAlignment(element.dataset["alignment"]);
-        const authoredAlignment = parseParagraphAlignment(element.dataset["directAlignment"]);
-        const alignmentFromStyle = parseParagraphAlignment(element.dataset["alignmentFromStyle"]);
+        const authoredAlignment = parseParagraphAlignment(
+          element.dataset["directAlignment"],
+        );
+        const alignmentFromStyle = parseParagraphAlignment(
+          element.dataset["alignmentFromStyle"],
+        );
         const styleId = element.dataset["styleId"];
-        const tableOfContentsLevel = Number(element.dataset["tableOfContentsLevel"]);
+        const tableOfContentsLevel = Number(
+          element.dataset["tableOfContentsLevel"],
+        );
         // The DOM carries the break type and nothing else of the section, so a
         // paste mints the record that type names. Two pasted paragraphs mint
         // two records and so end two sections, which is what two `w:sectPr`
         // elements in the copied range meant.
-        const sectionBreakType = parseSectionBreakType(element.dataset["sectionBreak"]);
+        const sectionBreakType = parseSectionBreakType(
+          element.dataset["sectionBreak"],
+        );
         const pastedListGroup = Number(element.dataset["folioListGroup"]);
         const pastedListLevel = Number(element.dataset["folioListLevel"]);
         const pastedListKind = element.dataset["folioListKind"];
@@ -509,7 +556,8 @@ const paragraphNodeSpec: NodeSpec = {
           ...(alignmentFromStyle ? { alignmentFromStyle } : {}),
           ...(styleId ? { styleId } : {}),
           ...(pastedHtmlList ? { _pastedHtmlList: pastedHtmlList } : {}),
-          ...(Number.isSafeInteger(tableOfContentsLevel) && tableOfContentsLevel > 0
+          ...(Number.isSafeInteger(tableOfContentsLevel) &&
+          tableOfContentsLevel > 0
             ? { _tableOfContentsLevel: tableOfContentsLevel }
             : {}),
           ...(sectionBreakType
@@ -525,16 +573,22 @@ const paragraphNodeSpec: NodeSpec = {
         const mergedAlignment = attrs.alignment || styleAttrs.alignment;
         const mergedDirectAlignment =
           authoredAlignment ??
-          (attrs.alignmentFromStyle === undefined ? mergedAlignment : undefined);
+          (attrs.alignmentFromStyle === undefined
+            ? mergedAlignment
+            : undefined);
         const originalFormatting: ParagraphFormatting = {
           ...(styleId ? { styleId } : {}),
-          ...(mergedDirectAlignment ? { alignment: mergedDirectAlignment } : {}),
+          ...(mergedDirectAlignment
+            ? { alignment: mergedDirectAlignment }
+            : {}),
         };
         return {
           ...styleAttrs,
           ...attrs,
           // For alignment, prefer data-attribute if present, otherwise use CSS
-          ...(mergedAlignment !== undefined ? { alignment: mergedAlignment } : {}),
+          ...(mergedAlignment !== undefined
+            ? { alignment: mergedAlignment }
+            : {}),
           ...(Object.keys(originalFormatting).length > 0
             ? { _originalFormatting: originalFormatting }
             : {}),
@@ -598,7 +652,9 @@ const paragraphNodeSpec: NodeSpec = {
     }
 
     if (typeof attrs._tableOfContentsLevel === "number") {
-      domAttrs["data-table-of-contents-level"] = String(attrs._tableOfContentsLevel);
+      domAttrs["data-table-of-contents-level"] = String(
+        attrs._tableOfContentsLevel,
+      );
     }
 
     if (attrs.listMarker) {
@@ -612,7 +668,8 @@ const paragraphNodeSpec: NodeSpec = {
     const sectionBreakType = sectionBreakTypeOf(attrs._sectionProperties);
     if (sectionBreakType) {
       domAttrs["data-section-break"] = sectionBreakType;
-      domAttrs["class"] = `${domAttrs["class"] ? `${domAttrs["class"]} ` : ""}docx-section-break`;
+      domAttrs["class"] =
+        `${domAttrs["class"] ? `${domAttrs["class"]} ` : ""}docx-section-break`;
     }
 
     return ["p", domAttrs, 0];
@@ -649,7 +706,10 @@ function setParagraphAttr(attr: string, value: unknown): Command {
   };
 }
 
-function setParagraphSpacingAttr(side: "before" | "after", twips: number): Command {
+function setParagraphSpacingAttr(
+  side: "before" | "after",
+  twips: number,
+): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
 
@@ -693,14 +753,21 @@ const DIRECT_PARAGRAPH_TOGGLES = [
 ] as const;
 
 /** The attrs a paragraph states itself, over whatever style it reads. */
-function directParagraphAttrs(attrs: Readonly<ParagraphAttrs>): Record<string, unknown> {
+function directParagraphAttrs(
+  attrs: Readonly<ParagraphAttrs>,
+): Record<string, unknown> {
   const direct: Record<string, unknown> = {};
   const alignment = directParagraphAlignment(attrs);
   if (alignment !== undefined) {
     direct["alignment"] = alignment;
   }
   const spacing = directParagraphSpacing(attrs);
-  for (const key of ["spaceBefore", "spaceAfter", "lineSpacing", "lineSpacingRule"] as const) {
+  for (const key of [
+    "spaceBefore",
+    "spaceAfter",
+    "lineSpacing",
+    "lineSpacingRule",
+  ] as const) {
     if (spacing?.[key] !== undefined) {
       direct[key] = spacing[key];
     }
@@ -735,7 +802,10 @@ function restyledIndentation(
   originalFormatting: ParagraphFormatting | undefined,
 ): DirectParagraphIndentation {
   const stated: DirectParagraphIndentation = {};
-  if (originalFormatting?.indentLeft !== undefined && typeof styleAttrs.indentLeft === "number") {
+  if (
+    originalFormatting?.indentLeft !== undefined &&
+    typeof styleAttrs.indentLeft === "number"
+  ) {
     stated.indentLeft = styleAttrs.indentLeft;
   }
   if (
@@ -823,7 +893,10 @@ function makeSetAlignment(alignment: ParagraphAlignment): Command {
   };
 }
 
-function makeSetLineSpacing(value: number, rule: LineSpacingRule = "auto"): Command {
+function makeSetLineSpacing(
+  value: number,
+  rule: LineSpacingRule = "auto",
+): Command {
   return (state, dispatch) =>
     setParagraphAttrsCmd({
       lineSpacing: value,
@@ -899,7 +972,10 @@ function makeDecreaseIndent(amount: number = 720): Command {
 function makeApplyStyle() {
   // `styleId: null` clears the style: the paragraph takes the default
   // paragraph style, which `resolvedAttrs` then resolves.
-  return (styleId: string | null, resolvedAttrs?: ResolvedStyleAttrs): Command =>
+  return (
+      styleId: string | null,
+      resolvedAttrs?: ResolvedStyleAttrs,
+    ): Command =>
     (state, dispatch) => {
       const { $from, $to } = state.selection;
 
@@ -935,24 +1011,32 @@ function makeApplyStyle() {
             const current = expectParagraphAttrs(node);
             const styleAttrs = paragraphAttrsFromResolvedStyle(resolvedAttrs, {
               styleId: styleId ?? "",
-              ...(resolvedAttrs.styleName ? { styleName: resolvedAttrs.styleName } : {}),
+              ...(resolvedAttrs.styleName
+                ? { styleName: resolvedAttrs.styleName }
+                : {}),
             });
             Object.assign(newAttrs, styleAttrs);
             if (!styleId) {
               newAttrs["_tableOfContentsLevel"] = null;
             }
-            const originalFormatting: ParagraphFormatting = { ...current._originalFormatting };
+            const originalFormatting: ParagraphFormatting = {
+              ...current._originalFormatting,
+            };
             if (styleId) {
               originalFormatting.styleId = styleId;
             } else {
               Reflect.deleteProperty(originalFormatting, "styleId");
             }
-            let restyledOriginal: ParagraphFormatting | undefined = originalFormatting;
+            let restyledOriginal: ParagraphFormatting | undefined =
+              originalFormatting;
             if (styleId) {
               // The style decides these, as the attrs above now say.
               Reflect.deleteProperty(originalFormatting, "alignment");
               Reflect.deleteProperty(originalFormatting, "outlineLevel");
-              restyledOriginal = withDirectParagraphSpacing(originalFormatting, undefined);
+              restyledOriginal = withDirectParagraphSpacing(
+                originalFormatting,
+                undefined,
+              );
               newAttrs["spacingExplicit"] = null;
             } else {
               // Clearing the style keeps what the paragraph states itself over
@@ -965,14 +1049,23 @@ function makeApplyStyle() {
             // untouched: direct numbering survives a style switch, and with
             // it the level's indentation where the restyled paragraph states
             // none, as a reopen reads it.
-            const listAttrs = listAttrsFromResolvedStyle(resolvedAttrs, resolvedAttrs.numbering);
+            const listAttrs = listAttrsFromResolvedStyle(
+              resolvedAttrs,
+              resolvedAttrs.numbering,
+            );
             const directNumbering =
-              current.numPrFromStyle == null && current.numPr?.kind === "reference"
+              current.numPrFromStyle == null &&
+              current.numPr?.kind === "reference"
                 ? current.numPr
                 : undefined;
             if (listAttrs) {
               Object.assign(newAttrs, listAttrs);
-            } else if (isStyleSourcedParagraphNumbering(current.numPr, current.numPrFromStyle)) {
+            } else if (
+              isStyleSourcedParagraphNumbering(
+                current.numPr,
+                current.numPrFromStyle,
+              )
+            ) {
               // Numbering the previous style supplied leaves with it.
               Object.assign(newAttrs, CLEARED_LIST_RENDERING_ATTRS, {
                 numPr: null,
@@ -989,7 +1082,8 @@ function makeApplyStyle() {
                     numId: directNumbering.numId,
                     ilvl: directNumbering.ilvl ?? 0,
                   },
-                  numbering: resolvedAttrs.numbering ?? getDocumentNumbering(state),
+                  numbering:
+                    resolvedAttrs.numbering ?? getDocumentNumbering(state),
                 }),
               );
             }
@@ -997,7 +1091,12 @@ function makeApplyStyle() {
 
           tr = tr.setNodeMarkup(pos, undefined, newAttrs);
           if (revision) {
-            recordReplacedParagraphProperties({ tr, position: pos, replaced: node, revision });
+            recordReplacedParagraphProperties({
+              tr,
+              position: pos,
+              replaced: node,
+              revision,
+            });
           }
 
           rebaseParagraphRuns({
@@ -1020,7 +1119,9 @@ function makeApplyStyle() {
 // QUERY HELPERS (exported for toolbar)
 // ============================================================================
 
-export function getParagraphAlignment(state: EditorState): ParagraphAlignment | null {
+export function getParagraphAlignment(
+  state: EditorState,
+): ParagraphAlignment | null {
   const { $from } = state.selection;
   const paragraph = $from.parent;
 
@@ -1088,15 +1189,25 @@ export const ParagraphExtension = createNodeExtension({
     return {
       commands: {
         setAlignment: (alignment: ParagraphAlignment) =>
-          withCanonicalParagraphFormatting(makeSetAlignment(alignment), { alignment }),
+          withCanonicalParagraphFormatting(makeSetAlignment(alignment), {
+            alignment,
+          }),
         alignLeft: () =>
-          withCanonicalParagraphFormatting(makeSetAlignment("left"), { alignment: "left" }),
+          withCanonicalParagraphFormatting(makeSetAlignment("left"), {
+            alignment: "left",
+          }),
         alignCenter: () =>
-          withCanonicalParagraphFormatting(makeSetAlignment("center"), { alignment: "center" }),
+          withCanonicalParagraphFormatting(makeSetAlignment("center"), {
+            alignment: "center",
+          }),
         alignRight: () =>
-          withCanonicalParagraphFormatting(makeSetAlignment("right"), { alignment: "right" }),
+          withCanonicalParagraphFormatting(makeSetAlignment("right"), {
+            alignment: "right",
+          }),
         alignJustify: () =>
-          withCanonicalParagraphFormatting(makeSetAlignment("both"), { alignment: "both" }),
+          withCanonicalParagraphFormatting(makeSetAlignment("both"), {
+            alignment: "both",
+          }),
         setLineSpacing: (value: number, rule?: LineSpacingRule) =>
           withCanonicalParagraphFormatting(makeSetLineSpacing(value, rule), {
             lineSpacing: value,
@@ -1118,34 +1229,50 @@ export const ParagraphExtension = createNodeExtension({
             lineSpacingRule: "auto",
           }),
         setSpaceBefore: (twips: number) =>
-          withCanonicalParagraphFormatting(setParagraphSpacingAttr("before", twips), {
-            spaceBefore: twips,
-          }),
+          withCanonicalParagraphFormatting(
+            setParagraphSpacingAttr("before", twips),
+            {
+              spaceBefore: twips,
+            },
+          ),
         setSpaceAfter: (twips: number) =>
-          withCanonicalParagraphFormatting(setParagraphSpacingAttr("after", twips), {
-            spaceAfter: twips,
-          }),
+          withCanonicalParagraphFormatting(
+            setParagraphSpacingAttr("after", twips),
+            {
+              spaceAfter: twips,
+            },
+          ),
         increaseIndent: (amount?: number) =>
-          withCanonicalParagraphFormatting(makeIncreaseIndent(amount), (node) => ({
-            indentLeft: (expectParagraphAttrs(node).indentLeft ?? 0) + (amount ?? 720),
-          })),
-        decreaseIndent: (amount?: number) =>
-          withCanonicalParagraphFormatting(makeDecreaseIndent(amount), (node) => {
-            const attrs = expectParagraphAttrs(node);
-            const indentLeft = Math.max(0, (attrs.indentLeft ?? 0) - (amount ?? 720));
-            return {
+          withCanonicalParagraphFormatting(
+            makeIncreaseIndent(amount),
+            (node) => ({
               indentLeft:
-                indentLeft > 0 ||
-                effectiveParagraphNumberingReference(
-                  paragraphNumberingSourcesFromBoundary({
-                    numPr: attrs.numPr,
-                    numPrFromStyle: attrs.numPrFromStyle,
-                  }),
-                ) !== undefined
-                  ? indentLeft
-                  : null,
-            };
-          }),
+                (expectParagraphAttrs(node).indentLeft ?? 0) + (amount ?? 720),
+            }),
+          ),
+        decreaseIndent: (amount?: number) =>
+          withCanonicalParagraphFormatting(
+            makeDecreaseIndent(amount),
+            (node) => {
+              const attrs = expectParagraphAttrs(node);
+              const indentLeft = Math.max(
+                0,
+                (attrs.indentLeft ?? 0) - (amount ?? 720),
+              );
+              return {
+                indentLeft:
+                  indentLeft > 0 ||
+                  effectiveParagraphNumberingReference(
+                    paragraphNumberingSourcesFromBoundary({
+                      numPr: attrs.numPr,
+                      numPrFromStyle: attrs.numPrFromStyle,
+                    }),
+                  ) !== undefined
+                    ? indentLeft
+                    : null,
+              };
+            },
+          ),
         setIndentLeft: (twips: number) =>
           withCanonicalParagraphFormatting(
             setParagraphAttr("indentLeft", twips > 0 ? twips : null),
@@ -1162,22 +1289,28 @@ export const ParagraphExtension = createNodeExtension({
               indentFirstLine: twips > 0 ? twips : null,
               hangingIndent: hanging ?? false,
             }),
-            { indentFirstLine: twips > 0 ? twips : null, hangingIndent: hanging ?? false },
+            {
+              indentFirstLine: twips > 0 ? twips : null,
+              hangingIndent: hanging ?? false,
+            },
           ),
         applyStyle: (styleId: string, resolvedAttrs?: ResolvedStyleAttrs) =>
-          withCanonicalParagraphFormatting(applyStyleFn(styleId, resolvedAttrs), {
-            styleId,
-            ...(resolvedAttrs
-              ? {
-                  alignment: null,
-                  outlineLevel: null,
-                  spaceBefore: null,
-                  spaceAfter: null,
-                  lineSpacing: null,
-                  lineSpacingRule: null,
-                }
-              : {}),
-          }),
+          withCanonicalParagraphFormatting(
+            applyStyleFn(styleId, resolvedAttrs),
+            {
+              styleId,
+              ...(resolvedAttrs
+                ? {
+                    alignment: null,
+                    outlineLevel: null,
+                    spaceBefore: null,
+                    spaceAfter: null,
+                    lineSpacing: null,
+                    lineSpacingRule: null,
+                  }
+                : {}),
+            },
+          ),
         clearStyle: () =>
           withCanonicalParagraphFormatting(
             (state: EditorState, dispatch?: (tr: Transaction) => void) => {
@@ -1193,7 +1326,9 @@ export const ParagraphExtension = createNodeExtension({
                 ...(resolved.paragraphFormatting && {
                   paragraphFormatting: resolved.paragraphFormatting,
                 }),
-                ...(resolved.runFormatting && { runFormatting: resolved.runFormatting }),
+                ...(resolved.runFormatting && {
+                  runFormatting: resolved.runFormatting,
+                }),
                 ...(styleName && { styleName }),
                 numbering: getDocumentNumbering(state),
               })(state, dispatch);
@@ -1208,7 +1343,9 @@ export const ParagraphExtension = createNodeExtension({
           ),
         removeSectionBreak: () =>
           withCanonicalCommand(removeSectionBreakAtSelection, (state) =>
-            sectionBreakSelectionIsTopLevel(state) ? [{ type: "removeSectionBreak" }] : undefined,
+            sectionBreakSelectionIsTopLevel(state)
+              ? [{ type: "removeSectionBreak" }]
+              : undefined,
           ),
         generateTOC: ({ title }: GenerateTableOfContentsOptions) =>
           withCanonicalCommand(
@@ -1284,10 +1421,17 @@ export const ParagraphExtension = createNodeExtension({
                 s.node(
                   "paragraph",
                   {
-                    ...(tocHeadingStyleId === undefined ? {} : { styleId: tocHeadingStyleId }),
+                    ...(tocHeadingStyleId === undefined
+                      ? {}
+                      : { styleId: tocHeadingStyleId }),
                     alignment: "center",
                   },
-                  [s.text(title, s.marks["bold"] ? [s.marks["bold"].create()] : [])],
+                  [
+                    s.text(
+                      title,
+                      s.marks["bold"] ? [s.marks["bold"].create()] : [],
+                    ),
+                  ],
                 ),
               );
 
@@ -1308,11 +1452,19 @@ export const ParagraphExtension = createNodeExtension({
                   marginLeft?: number;
                   marginRight?: number;
                 } | null;
-                if (sp && typeof sp.pageWidth === "number" && sp.pageWidth > 0) {
+                if (
+                  sp &&
+                  typeof sp.pageWidth === "number" &&
+                  sp.pageWidth > 0
+                ) {
                   const left =
-                    typeof sp.marginLeft === "number" ? sp.marginLeft : DEFAULT_MARGIN_TWIPS;
+                    typeof sp.marginLeft === "number"
+                      ? sp.marginLeft
+                      : DEFAULT_MARGIN_TWIPS;
                   const right =
-                    typeof sp.marginRight === "number" ? sp.marginRight : DEFAULT_MARGIN_TWIPS;
+                    typeof sp.marginRight === "number"
+                      ? sp.marginRight
+                      : DEFAULT_MARGIN_TWIPS;
                   tocTabStopTwips = sp.pageWidth - left - right;
                   tabStopResolved = true;
                 }
@@ -1324,7 +1476,9 @@ export const ParagraphExtension = createNodeExtension({
 
               for (const entry of bookmarkEntries) {
                 const indent = entry.level * 720; // 0.5 inch per level in twips
-                const tocStyleId = builtInStyles.styleIdForTableOfContentsLevel(entry.level + 1);
+                const tocStyleId = builtInStyles.styleIdForTableOfContentsLevel(
+                  entry.level + 1,
+                );
                 if (!s.marks["hyperlink"]) {
                   continue;
                 }
@@ -1351,7 +1505,9 @@ export const ParagraphExtension = createNodeExtension({
                   s.node(
                     "paragraph",
                     {
-                      ...(tocStyleId === undefined ? {} : { styleId: tocStyleId }),
+                      ...(tocStyleId === undefined
+                        ? {}
+                        : { styleId: tocStyleId }),
                       indentLeft: indent > 0 ? indent : null,
                       ...(canPageNumber
                         ? {
@@ -1376,18 +1532,25 @@ export const ParagraphExtension = createNodeExtension({
               dispatch(tr.scrollIntoView());
               return true;
             },
-            (state) => [{ type: "generateTOC", at: state.selection.from, title }],
+            (state) => [
+              { type: "generateTOC", at: state.selection.from, title },
+            ],
           ),
         toggleBidi: () => {
           const directionFor = (paragraph: PMNode): ParagraphDirection => ({
             source: "manual",
-            value: directionIsRtl(expectParagraphAttrs(paragraph).direction) ? "ltr" : "rtl",
+            value: directionIsRtl(expectParagraphAttrs(paragraph).direction)
+              ? "ltr"
+              : "rtl",
           });
           return withCanonicalStartParagraphFormatting(
             (state, dispatch) => {
               const paragraph = state.selection.$from.parent;
               if (paragraph.type.name !== "paragraph") return false;
-              return setParagraphAttr("direction", directionFor(paragraph))(state, dispatch);
+              return setParagraphAttr("direction", directionFor(paragraph))(
+                state,
+                dispatch,
+              );
             },
             (paragraph) => ({ bidi: directionIsRtl(directionFor(paragraph)) }),
           );
@@ -1423,7 +1586,10 @@ export const ParagraphExtension = createNodeExtension({
             (state, dispatch) => {
               const paragraph = state.selection.$from.parent;
               if (paragraph.type.name !== "paragraph") return false;
-              return setParagraphAttr("tabs", tabsFor(paragraph))(state, dispatch);
+              return setParagraphAttr("tabs", tabsFor(paragraph))(
+                state,
+                dispatch,
+              );
             },
             (paragraph) => ({ tabs: tabsFor(paragraph) }),
           );
@@ -1439,7 +1605,10 @@ export const ParagraphExtension = createNodeExtension({
             (state, dispatch) => {
               const paragraph = state.selection.$from.parent;
               if (paragraph.type.name !== "paragraph") return false;
-              return setParagraphAttr("tabs", tabsFor(paragraph))(state, dispatch);
+              return setParagraphAttr("tabs", tabsFor(paragraph))(
+                state,
+                dispatch,
+              );
             },
             (paragraph) => ({ tabs: tabsFor(paragraph) }),
           );

@@ -2,32 +2,42 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, mock, test } from "bun:test";
-import { panic } from "better-result";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, mock, test } from "bun:test";
 import { IntlProvider } from "use-intl";
+
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
-import { findInDocument } from "@stll/folio-core/utils/findReplace";
-import { createFindQueryKey } from "@stll/folio-core/utils/findSearchKey";
-import type { FindResult } from "@stll/folio-core/utils/findReplace";
 import type { Document as FolioDocument } from "@stll/folio-core/types/document";
-import { FolioUIProvider, type FolioDialog, type FolioInputProps } from "../../ui/folio-ui";
+import { findInDocument } from "@stll/folio-core/utils/findReplace";
+import type { FindResult } from "@stll/folio-core/utils/findReplace";
+import { createFindQueryKey } from "@stll/folio-core/utils/findSearchKey";
+
+import {
+  type FolioDialog,
+  type FolioInputProps,
+  FolioUIProvider,
+} from "../../ui/folio-ui";
+import { HyperlinkPopup } from "../ui/HyperlinkPopup";
+import { FindReplaceDialog } from "./FindReplaceDialog";
+import { HyperlinkDialog } from "./HyperlinkDialog";
 import { ImagePositionDialog } from "./ImagePositionDialog";
 import { ImagePropertiesDialog } from "./ImagePropertiesDialog";
-import { TablePropertiesDialog } from "./TablePropertiesDialog";
-import { SetNumberingValueDialog } from "./SetNumberingValueDialog";
-import { PasteSpecialDialog } from "./PasteSpecialDialog";
 import { InsertImageDialog } from "./InsertImageDialog";
 import { InsertTableDialog } from "./InsertTableDialog";
-import { SplitCellDialog } from "./SplitCellDialog";
-import { HyperlinkDialog } from "./HyperlinkDialog";
-import { WatermarkDialog } from "./WatermarkDialog";
 import { PageSetupDialog } from "./PageSetupDialog";
-import { FindReplaceDialog } from "./FindReplaceDialog";
-import { HyperlinkPopup } from "../ui/HyperlinkPopup";
+import { PasteSpecialDialog } from "./PasteSpecialDialog";
+import { SetNumberingValueDialog } from "./SetNumberingValueDialog";
+import { SplitCellDialog } from "./SplitCellDialog";
+import { TablePropertiesDialog } from "./TablePropertiesDialog";
+import { WatermarkDialog } from "./WatermarkDialog";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -55,7 +65,11 @@ const messages = getFolioMessages("en");
 const components = { Dialog: dialog, Input: NativeEventInput };
 const imagePosition = { horizontal: { posOffset: 10 }, distTop: 20 };
 const imageProperties = { alt: "Diagram", borderWidth: 2 };
-const tableProperties = { width: 2500, widthType: "dxa", justification: "center" } as const;
+const tableProperties = {
+  width: 2500,
+  widthType: "dxa",
+  justification: "center",
+} as const;
 const hyperlink = { href: "#intro", displayText: "Introduction" };
 const watermark = { kind: "text", text: "DRAFT", opacity: 0.3 } as const;
 const firstImage = { alt: "first" };
@@ -82,7 +96,10 @@ const popupData = (anchorEl: HTMLAnchorElement, name: string) => ({
   displayText: name,
   anchorEl,
 });
-const keyedResult = (queryKey: string, result: FindResult) => ({ queryKey, result });
+const keyedResult = (queryKey: string, result: FindResult) => ({
+  queryKey,
+  result,
+});
 const noop = () => {};
 const noMatch = () => null;
 const wrap = (children: ReactNode) => (
@@ -116,7 +133,9 @@ const formCases = [
       currentProps={tableProperties}
     />
   ),
-  (isOpen: boolean) => <SetNumberingValueDialog isOpen={isOpen} onClose={noop} onApply={noop} />,
+  (isOpen: boolean) => (
+    <SetNumberingValueDialog isOpen={isOpen} onClose={noop} onApply={noop} />
+  ),
   (isOpen: boolean) => (
     <PasteSpecialDialog
       isOpen={isOpen}
@@ -125,7 +144,9 @@ const formCases = [
       defaultMode="mergeFormatting"
     />
   ),
-  (isOpen: boolean) => <InsertImageDialog isOpen={isOpen} onClose={noop} onInsert={noop} />,
+  (isOpen: boolean) => (
+    <InsertImageDialog isOpen={isOpen} onClose={noop} onInsert={noop} />
+  ),
   (isOpen: boolean) => (
     <InsertTableDialog
       isOpen={isOpen}
@@ -145,12 +166,24 @@ const formCases = [
     />
   ),
   (isOpen: boolean) => (
-    <HyperlinkDialog isOpen={isOpen} onClose={noop} onSubmit={noop} currentData={hyperlink} />
+    <HyperlinkDialog
+      isOpen={isOpen}
+      onClose={noop}
+      onSubmit={noop}
+      currentData={hyperlink}
+    />
   ),
   (isOpen: boolean) => (
-    <WatermarkDialog isOpen={isOpen} onClose={noop} onApply={noop} currentWatermark={watermark} />
+    <WatermarkDialog
+      isOpen={isOpen}
+      onClose={noop}
+      onApply={noop}
+      currentWatermark={watermark}
+    />
   ),
-  (isOpen: boolean) => <PageSetupDialog isOpen={isOpen} onClose={noop} onApply={noop} />,
+  (isOpen: boolean) => (
+    <PageSetupDialog isOpen={isOpen} onClose={noop} onApply={noop} />
+  ),
 ];
 
 for (const [index, renderForm] of formCases.entries()) {
@@ -158,21 +191,31 @@ for (const [index, renderForm] of formCases.entries()) {
     const container = document.createElement("div");
     const root = createRoot(container);
     const values = () =>
-      [...container.querySelectorAll("input, select, textarea")].map((field) => {
-        if (field instanceof HTMLInputElement) return [field.value, field.checked];
-        if (field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement)
-          return field.value;
-        return null;
-      });
+      [...container.querySelectorAll("input, select, textarea")].map(
+        (field) => {
+          if (field instanceof HTMLInputElement)
+            return [field.value, field.checked];
+          if (
+            field instanceof HTMLSelectElement ||
+            field instanceof HTMLTextAreaElement
+          )
+            return field.value;
+          return null;
+        },
+      );
     await act(async () => root.render(wrap(renderForm(true))));
-    const originalFields = [...container.querySelectorAll("input, select, textarea")];
+    const originalFields = [
+      ...container.querySelectorAll("input, select, textarea"),
+    ];
     const initialValues = values();
     expect(originalFields.length).toBeGreaterThan(0);
     await act(async () => root.render(wrap(renderForm(false))));
     expect(container.querySelector("input, select, textarea")).toBeNull();
     await act(async () => root.render(wrap(renderForm(true))));
     expect(values()).toEqual(initialValues);
-    expect(container.querySelector("input, select, textarea")).not.toBe(originalFields.at(0));
+    expect(container.querySelector("input, select, textarea")).not.toBe(
+      originalFields.at(0),
+    );
     await act(async () => root.unmount());
   });
 }
@@ -181,7 +224,14 @@ test("source changes reset editable forms without retaining values from the prev
   const container = document.createElement("div");
   const root = createRoot(container);
   const render = (currentData: { alt: string }) =>
-    wrap(<ImagePropertiesDialog isOpen onClose={noop} onApply={noop} currentData={currentData} />);
+    wrap(
+      <ImagePropertiesDialog
+        isOpen
+        onClose={noop}
+        onApply={noop}
+        currentData={currentData}
+      />,
+    );
   await act(async () => root.render(render(firstImage)));
   expect(container.querySelector("textarea")?.value).toBe("first");
   await act(async () => root.render(render(secondImage)));
@@ -204,7 +254,12 @@ test.each([false, true])(
                   fieldType: "DOCVARIABLE",
                   instruction: "DOCVARIABLE label",
                   fieldCode: [],
-                  fieldResult: [{ type: "run", content: [{ type: "text", text: "hit hit" }] }],
+                  fieldResult: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "hit hit" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -212,8 +267,15 @@ test.each([false, true])(
         },
       },
     };
-    const matches = findInDocument(fixture, "hit", { matchCase: false, matchWholeWord: false });
-    const onFind = mock(() => ({ matches, totalCount: matches.length, currentIndex: 0 }));
+    const matches = findInDocument(fixture, "hit", {
+      matchCase: false,
+      matchWholeWord: false,
+    });
+    const onFind = mock(() => ({
+      matches,
+      totalCount: matches.length,
+      currentIndex: 0,
+    }));
     const result = onFind();
     const onReplace = mock(() => false);
     const onReplaceAll = mock(() => ({ replacedCount: 0, skippedCount: 2 }));
@@ -229,7 +291,10 @@ test.each([false, true])(
               readOnly={readOnly}
               initialSearchText="hit"
               currentSearch={keyedResult(
-                createFindQueryKey("hit", { matchCase: false, matchWholeWord: false }),
+                createFindQueryKey("hit", {
+                  matchCase: false,
+                  matchWholeWord: false,
+                }),
                 result,
               )}
               onClose={noop}
@@ -245,11 +310,15 @@ test.each([false, true])(
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 140));
       });
-      const buttons = [...container.querySelectorAll<HTMLButtonElement>("button")];
+      const buttons = [
+        ...container.querySelectorAll<HTMLButtonElement>("button"),
+      ];
       const replaceCurrent = buttons.find(
         (button) => button.textContent === "Replace current match",
       );
-      const replaceAll = buttons.find((button) => button.textContent === "Replace all");
+      const replaceAll = buttons.find(
+        (button) => button.textContent === "Replace all",
+      );
       expect(replaceCurrent?.disabled).toBe(true);
       expect(replaceAll?.disabled).toBe(readOnly);
       if (!readOnly) {
@@ -260,7 +329,9 @@ test.each([false, true])(
           matchCase: false,
           matchWholeWord: false,
         });
-        expect(container.querySelector('[role="status"]')?.textContent).toContain("2 skipped");
+        expect(
+          container.querySelector('[role="status"]')?.textContent,
+        ).toContain("2 skipped");
       }
       expect(onReplace).not.toHaveBeenCalled();
     } finally {
@@ -284,13 +355,20 @@ test("find initializes selected text, searches, clears on close and refreshes ex
     onClearHighlights,
   };
   await act(async () =>
-    root.render(wrap(<FindReplaceDialog {...props} isOpen initialSearchText="selected" />)),
+    root.render(
+      wrap(
+        <FindReplaceDialog {...props} isOpen initialSearchText="selected" />,
+      ),
+    ),
   );
   expect(container.querySelector("input")?.value).toBe("selected");
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 140));
   });
-  expect(onFind).toHaveBeenCalledWith("selected", { matchCase: false, matchWholeWord: false });
+  expect(onFind).toHaveBeenCalledWith("selected", {
+    matchCase: false,
+    matchWholeWord: false,
+  });
   await act(async () =>
     root.render(
       wrap(
@@ -309,10 +387,16 @@ test("find initializes selected text, searches, clears on close and refreshes ex
     await new Promise((resolve) => setTimeout(resolve, 140));
   });
   expect(onFind).toHaveBeenCalledTimes(1);
-  await act(async () => root.render(wrap(<FindReplaceDialog {...props} isOpen={false} />)));
+  await act(async () =>
+    root.render(wrap(<FindReplaceDialog {...props} isOpen={false} />)),
+  );
   expect(onClearHighlights).toHaveBeenCalled();
   await act(async () =>
-    root.render(wrap(<FindReplaceDialog {...props} isOpen initialSearchText="reopened" />)),
+    root.render(
+      wrap(
+        <FindReplaceDialog {...props} isOpen initialSearchText="reopened" />,
+      ),
+    ),
   );
   expect(container.querySelector("input")?.value).toBe("reopened");
   await act(async () => root.unmount());
@@ -334,7 +418,13 @@ test("query edits invalidate unchanged host results and reopening an empty query
     currentSearch: { result: externalResult, queryKey: selectedQueryKey },
   };
   const render = (isOpen: boolean, initialSearchText: string) =>
-    wrap(<FindReplaceDialog {...props} isOpen={isOpen} initialSearchText={initialSearchText} />);
+    wrap(
+      <FindReplaceDialog
+        {...props}
+        isOpen={isOpen}
+        initialSearchText={initialSearchText}
+      />,
+    );
   const navigation = () => [
     ...container.querySelectorAll<HTMLButtonElement>(
       'button[aria-label="Previous match"], button[aria-label="Next match"]',
@@ -381,7 +471,10 @@ test("query edits invalidate unchanged host results and reopening an empty query
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(input.value).toBe("");
-    expect(onFind).toHaveBeenCalledWith("", { matchCase: false, matchWholeWord: false });
+    expect(onFind).toHaveBeenCalledWith("", {
+      matchCase: false,
+      matchWholeWord: false,
+    });
     assertReset();
     await act(async () => {
       for (const button of navigation()) button.click();
@@ -421,7 +514,15 @@ test.each(["matchCase", "matchWholeWord"] as const)(
     };
     try {
       await act(async () =>
-        root.render(wrap(<FindReplaceDialog {...props} isOpen initialSearchText="selected" />)),
+        root.render(
+          wrap(
+            <FindReplaceDialog
+              {...props}
+              isOpen
+              initialSearchText="selected"
+            />,
+          ),
+        ),
       );
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 140));
@@ -479,7 +580,10 @@ test("a host result for another query cannot enable replacement of the dialog qu
     await act(async () =>
       root.render(
         render(
-          createFindQueryKey("another query", { matchCase: false, matchWholeWord: false }),
+          createFindQueryKey("another query", {
+            matchCase: false,
+            matchWholeWord: false,
+          }),
           lateExternalResult,
         ),
       ),
@@ -499,19 +603,35 @@ test("popup resets edit mode when the link changes and after closing", async () 
   const anchorEl = document.createElement("a");
   document.body.append(anchorEl);
   const root = createRoot(container);
-  const props = { onNavigate: noop, onCopy: noop, onEdit: noop, onRemove: noop, onClose: noop };
+  const props = {
+    onNavigate: noop,
+    onCopy: noop,
+    onEdit: noop,
+    onRemove: noop,
+    onClose: noop,
+  };
   const first = popupData(anchorEl, "first");
   const second = popupData(anchorEl, "second");
-  await act(async () => root.render(wrap(<HyperlinkPopup {...props} data={first} />)));
-  const edit = container.querySelector<HTMLButtonElement>('button[title="Edit link"]');
+  await act(async () =>
+    root.render(wrap(<HyperlinkPopup {...props} data={first} />)),
+  );
+  const edit = container.querySelector<HTMLButtonElement>(
+    'button[title="Edit link"]',
+  );
   expect(edit).not.toBeNull();
   await act(async () => edit?.click());
   expect(container.querySelector("input")?.value).toBe("first");
-  await act(async () => root.render(wrap(<HyperlinkPopup {...props} data={second} />)));
+  await act(async () =>
+    root.render(wrap(<HyperlinkPopup {...props} data={second} />)),
+  );
   expect(container.querySelector("input")).toBeNull();
   expect(container.textContent).toContain("https://second.example");
-  await act(async () => root.render(wrap(<HyperlinkPopup {...props} data={null} />)));
-  await act(async () => root.render(wrap(<HyperlinkPopup {...props} data={first} />)));
+  await act(async () =>
+    root.render(wrap(<HyperlinkPopup {...props} data={null} />)),
+  );
+  await act(async () =>
+    root.render(wrap(<HyperlinkPopup {...props} data={first} />)),
+  );
   expect(container.querySelector("input")).toBeNull();
   await act(async () => root.unmount());
   anchorEl.remove();

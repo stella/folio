@@ -1,4 +1,4 @@
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
 
 import type { Document } from "../../model/document";
 import { validateOpsDocument } from "../contract";
@@ -9,10 +9,10 @@ import { applyBatch } from "./applyBatch";
 import {
   BATCH_REJECTION_REASONS,
   BatchRejection,
-  validateDocumentBatch,
-  validateSequencedBatch,
   type DocumentBatch,
   type SequencedBatch,
+  validateDocumentBatch,
+  validateSequencedBatch,
 } from "./envelope";
 import type { BatchAck, BatchReject } from "./sequencer";
 import { transformBatch } from "./transform";
@@ -30,7 +30,11 @@ type PendingEntry = {
   status: (typeof PENDING_STATUSES)[keyof typeof PENDING_STATUSES];
 };
 
-export type ClientNotice = { opId: string; reason: BatchRejection; ops: readonly DocumentOp[] };
+export type ClientNotice = {
+  opId: string;
+  reason: BatchRejection;
+  ops: readonly DocumentOp[];
+};
 
 /** Optimistic state with ordered authoritative replay and one causal submission in flight. */
 export const createClient = (document: Document) => {
@@ -71,29 +75,41 @@ export const createClient = (document: Document) => {
             rest,
             new BatchRejection({
               reason: BATCH_REJECTION_REASONS.CONFLICT,
-              message: "An earlier optimistic dependency could not be replayed.",
+              message:
+                "An earlier optimistic dependency could not be replayed.",
             }),
           );
         }
         break;
       }
       current = applied.value.document;
-      surviving.push({ ...entry, inverse: applied.value.inverse, effects: applied.value.effects });
+      surviving.push({
+        ...entry,
+        inverse: applied.value.inverse,
+        effects: applied.value.effects,
+      });
     }
     entries = surviving;
   };
 
-  const enqueue = (batch: DocumentBatch): Result<DocumentBatch, BatchRejection> => {
+  const enqueue = (
+    batch: DocumentBatch,
+  ): Result<DocumentBatch, BatchRejection> => {
     const validated = validateDocumentBatch(batch);
     if (validated.isErr()) {
       return validated;
     }
     batch = validated.value;
-    if (batch.revision !== undefined || batch.baseRev !== headRev || localIds.has(batch.opId)) {
+    if (
+      batch.revision !== undefined ||
+      batch.baseRev !== headRev ||
+      localIds.has(batch.opId)
+    ) {
       return Result.err(
         new BatchRejection({
           reason: BATCH_REJECTION_REASONS.INVALID_BATCH,
-          message: "Local batch must name the current revision and a fresh operation id.",
+          message:
+            "Local batch must name the current revision and a fresh operation id.",
         }),
       );
     }
@@ -156,7 +172,9 @@ export const createClient = (document: Document) => {
 
   const receiveAck = (ack: BatchAck): void => {
     entries = entries.map((entry) =>
-      entry.batch.opId === ack.opId ? { ...entry, status: PENDING_STATUSES.ACKNOWLEDGED } : entry,
+      entry.batch.opId === ack.opId
+        ? { ...entry, status: PENDING_STATUSES.ACKNOWLEDGED }
+        : entry,
     );
     if (appliedIds.has(ack.opId) && inFlight === ack.opId) {
       inFlight = undefined;
@@ -164,7 +182,9 @@ export const createClient = (document: Document) => {
   };
 
   const receiveReject = (rejection: BatchReject): void => {
-    const index = entries.findIndex(({ batch }) => batch.opId === rejection.opId);
+    const index = entries.findIndex(
+      ({ batch }) => batch.opId === rejection.opId,
+    );
     if (index < 0) {
       if (inFlight === rejection.opId) {
         inFlight = undefined;
@@ -209,17 +229,21 @@ export const createClient = (document: Document) => {
       );
       if (adjusted.isErr()) {
         drop(pending, adjusted.error);
-        for (const rest of later.slice(laterIndex + 1)) drop(rest, adjusted.error);
+        for (const rest of later.slice(laterIndex + 1))
+          drop(rest, adjusted.error);
         break;
       }
       retained.push({ ...pending, batch: adjusted.value });
       if (propagated.isErr()) {
-        for (const rest of later.slice(laterIndex + 1)) drop(rest, propagated.error);
+        for (const rest of later.slice(laterIndex + 1))
+          drop(rest, propagated.error);
         break;
       }
       const originalPending = applyBatch(originalCursor, pending.batch.ops);
       if (originalPending.isErr())
-        return panic("Pending batch must replay in its original coordinate space.");
+        return panic(
+          "Pending batch must replay in its original coordinate space.",
+        );
       originalCursor = originalPending.value.document;
       const captured = applyBatch(originalCursor, propagated.value.ops);
       if (captured.isErr()) {
@@ -230,7 +254,11 @@ export const createClient = (document: Document) => {
         for (const rest of later.slice(laterIndex + 1)) drop(rest, reason);
         break;
       }
-      inverse = { ...propagated.value, revision: headRev + 1, effects: captured.value.effects };
+      inverse = {
+        ...propagated.value,
+        revision: headRev + 1,
+        effects: captured.value.effects,
+      };
     }
     entries = retained;
     if (inFlight === rejection.opId) {
@@ -239,7 +267,9 @@ export const createClient = (document: Document) => {
     replay();
   };
 
-  const receiveBroadcast = (batch: SequencedBatch): Result<void, BatchRejection> => {
+  const receiveBroadcast = (
+    batch: SequencedBatch,
+  ): Result<void, BatchRejection> => {
     const checked = validateSequencedBatch(batch);
     if (checked.isErr()) return checked;
     batch = checked.value;
@@ -255,14 +285,16 @@ export const createClient = (document: Document) => {
         }),
       );
     }
-    const existing = history.get(batch.revision) ?? received.get(batch.revision);
+    const existing =
+      history.get(batch.revision) ?? received.get(batch.revision);
     if (existing !== undefined) {
       return equalForStaleness(existing, batch)
         ? Result.ok(undefined)
         : Result.err(
             new BatchRejection({
               reason: BATCH_REJECTION_REASONS.CONFLICT,
-              message: "Broadcast conflicts with a previously delivered revision.",
+              message:
+                "Broadcast conflicts with a previously delivered revision.",
             }),
           );
     }
@@ -290,7 +322,9 @@ export const createClient = (document: Document) => {
         );
       }
       if (localIds.has(next.opId)) {
-        entries = entries.filter(({ batch: pendingBatch }) => pendingBatch.opId !== next.opId);
+        entries = entries.filter(
+          ({ batch: pendingBatch }) => pendingBatch.opId !== next.opId,
+        );
         if (inFlight === next.opId) {
           inFlight = undefined;
         }
@@ -302,22 +336,32 @@ export const createClient = (document: Document) => {
           const adjusted = transformBatch(pending.batch, [remote]);
           const propagated = transformBatch(
             remote,
-            [{ ...pending.batch, revision: headRev + 1, effects: pending.effects }],
+            [
+              {
+                ...pending.batch,
+                revision: headRev + 1,
+                effects: pending.effects,
+              },
+            ],
             { order: "before" },
           );
           if (adjusted.isErr()) {
             drop(pending, adjusted.error);
-            for (const rest of entries.slice(index + 1)) drop(rest, adjusted.error);
+            for (const rest of entries.slice(index + 1))
+              drop(rest, adjusted.error);
             break;
           }
           rebased.push({ ...pending, batch: adjusted.value });
           if (propagated.isErr()) {
-            for (const rest of entries.slice(index + 1)) drop(rest, propagated.error);
+            for (const rest of entries.slice(index + 1))
+              drop(rest, propagated.error);
             break;
           }
           const originalPending = applyBatch(originalCursor, pending.batch.ops);
           if (originalPending.isErr())
-            return panic("Pending batch must replay in its original coordinate space.");
+            return panic(
+              "Pending batch must replay in its original coordinate space.",
+            );
           originalCursor = originalPending.value.document;
           const captured = applyBatch(originalCursor, propagated.value.ops);
           if (captured.isErr()) {

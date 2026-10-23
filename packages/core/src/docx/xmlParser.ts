@@ -22,22 +22,22 @@
 import { XMLParser } from "fast-xml-parser";
 
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
-import { OOXML_NS } from "@stll/docx-utils";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { OOXML_NS } from "@stll/docx-utils";
 
 import type { ParseContext } from "./parseContext";
 import { parseStreamingXml } from "./streamingXmlParser";
-import {
-  attachXmlNamespaceContext,
-  EMPTY_NAMESPACE_SCOPE,
-  resolveNamespaceUri,
-} from "./xmlNamespaceContext";
 import {
   NUMBERS_PER_PERCENT,
   percentageSpelling,
   transitionalSlotEncoding,
 } from "./transitionalSpelling";
 import { universalMeasureAs } from "./universalMeasure";
+import {
+  attachXmlNamespaceContext,
+  EMPTY_NAMESPACE_SCOPE,
+  resolveNamespaceUri,
+} from "./xmlNamespaceContext";
 
 /**
  * XML element tree node — drop-in replacement for the `Element` type
@@ -151,7 +151,10 @@ function fxpNodeToElement(
       element.attributes = attrs;
     }
 
-    const namespaceScope = attachXmlNamespaceContext(element, inheritedNamespaceScope);
+    const namespaceScope = attachXmlNamespaceContext(
+      element,
+      inheritedNamespaceScope,
+    );
 
     if (children.length > 0) {
       for (let index = 0; index < children.length; index += 1) {
@@ -369,7 +372,8 @@ export function getNamespacePrefix(name: string): string | null {
 }
 
 /** Namespace URI resolved from the element's in-scope XML declarations. */
-export const getNamespaceUri = (element: XmlElement): string | undefined => element.namespaceUri;
+export const getNamespaceUri = (element: XmlElement): string | undefined =>
+  element.namespaceUri;
 
 /**
  * Namespace URI of one of the element's attributes, by its source spelling.
@@ -387,7 +391,10 @@ export const resolveAttributeNamespaceUri = (
   if (colonIndex === -1) {
     return undefined;
   }
-  return resolveNamespaceUri(element.namespaceScope, attributeName.slice(0, colonIndex));
+  return resolveNamespaceUri(
+    element.namespaceScope,
+    attributeName.slice(0, colonIndex),
+  );
 };
 
 /** WordprocessingML main namespace, Transitional and Strict (ECMA-376 Parts 1 and 4). */
@@ -431,7 +438,8 @@ export function findChildByNamespaceUri(
 export const findWordprocessingChild = (
   parent: XmlElement | null | undefined,
   localName: string,
-): XmlElement | null => findChildByNamespaceUri(parent, WORDPROCESSINGML_NAMESPACE_URIS, localName);
+): XmlElement | null =>
+  findChildByNamespaceUri(parent, WORDPROCESSINGML_NAMESPACE_URIS, localName);
 
 /** All direct children whose local name and resolved namespace both match. */
 export function findChildrenByNamespaceUri(
@@ -472,7 +480,9 @@ export function findAttributeByNamespaceUri(
     const prefix = getNamespacePrefix(name);
     if (
       prefix !== null &&
-      namespaceUris.has(resolveNamespaceUri(element.namespaceScope, prefix) ?? "")
+      namespaceUris.has(
+        resolveNamespaceUri(element.namespaceScope, prefix) ?? "",
+      )
     ) {
       return { name, value: String(value) };
     }
@@ -487,7 +497,10 @@ export function getAttributeByNamespaceUri(
   namespaceUris: ReadonlySet<string>,
   localName: string,
 ): string | null {
-  return findAttributeByNamespaceUri(element, namespaceUris, localName)?.value ?? null;
+  return (
+    findAttributeByNamespaceUri(element, namespaceUris, localName)?.value ??
+    null
+  );
 }
 
 function hasLocalName(name: string | undefined, localName: string): boolean {
@@ -498,7 +511,11 @@ function hasLocalName(name: string | undefined, localName: string): boolean {
     return true;
   }
   const localNameOffset = name.length - localName.length;
-  return localNameOffset > 0 && name[localNameOffset - 1] === ":" && name.endsWith(localName);
+  return (
+    localNameOffset > 0 &&
+    name[localNameOffset - 1] === ":" &&
+    name.endsWith(localName)
+  );
 }
 
 /**
@@ -508,7 +525,11 @@ function hasLocalName(name: string | undefined, localName: string): boolean {
  * @param namespace - Namespace prefix (e.g., "w", "a")
  * @param localName - Local element name (e.g., "p", "r")
  */
-export function matchesName(element: XmlElement, _namespace: string, localName: string): boolean {
+export function matchesName(
+  element: XmlElement,
+  _namespace: string,
+  localName: string,
+): boolean {
   if (!element.name) {
     return false;
   }
@@ -667,7 +688,9 @@ export function findByFullName(
  * @param parent - Parent element
  * @returns Array of child elements
  */
-export function getChildElements(parent: XmlElement | null | undefined): XmlElement[] {
+export function getChildElements(
+  parent: XmlElement | null | undefined,
+): XmlElement[] {
   if (!parent || !parent.elements) {
     return [];
   }
@@ -686,7 +709,9 @@ export function getChildElements(parent: XmlElement | null | undefined): XmlElem
  * use Fallback only when there is no Choice. Callers serialize that selected
  * branch as ordinary WordprocessingML rather than concatenating alternatives.
  */
-export function selectAlternateContentBranch(alternateContent: XmlElement): XmlElement | undefined {
+export function selectAlternateContentBranch(
+  alternateContent: XmlElement,
+): XmlElement | undefined {
   let fallback: XmlElement | undefined;
   for (const child of getChildElements(alternateContent)) {
     if (getNamespaceUri(child) !== NAMESPACES.mc) continue;
@@ -849,7 +874,9 @@ export function getAttributeAny(
  * @param element - Element to get attributes from
  * @returns Record of attribute name -> value
  */
-export function getAttributes(element: XmlElement | null | undefined): Record<string, string> {
+export function getAttributes(
+  element: XmlElement | null | undefined,
+): Record<string, string> {
   if (!element || !element.attributes) {
     return {};
   }
@@ -908,7 +935,11 @@ export function parseOnOffAttribute(
   name: string,
   context?: ParseContext,
 ): boolean | undefined {
-  return parseOnOffValue(getAttribute(element, namespace, name), context, element?.name ?? name);
+  return parseOnOffValue(
+    getAttribute(element, namespace, name),
+    context,
+    element?.name ?? name,
+  );
 }
 
 /**
@@ -984,7 +1015,8 @@ export function parseNumericAttribute(
     getLocalName(element?.name),
     name,
   )?.measure;
-  const measure = unit === undefined ? undefined : universalMeasureAs(value, unit);
+  const measure =
+    unit === undefined ? undefined : universalMeasureAs(value, unit);
   if (measure !== undefined) {
     return measure * scale;
   }
@@ -1033,7 +1065,11 @@ export function parseTableMeasurementValue(
     const unit =
       element === null || element === undefined
         ? undefined
-        : transitionalSlotEncoding(element.namespaceUri, getLocalName(element.name), "w")?.percent;
+        : transitionalSlotEncoding(
+            element.namespaceUri,
+            getLocalName(element.name),
+            "w",
+          )?.percent;
     if (percent !== undefined && unit !== undefined) {
       return Math.round(percent * NUMBERS_PER_PERCENT[unit]);
     }
@@ -1128,7 +1164,9 @@ export function parseBooleanElement(
   // URI). The wrapper-prefix and canonical-prefix lookups above miss
   // that; scan by local-name suffix so the OnOff parse is honest.
   if (val === null && element.attributes) {
-    for (const [key, value] of Object.entries(element.attributes as Record<string, string>)) {
+    for (const [key, value] of Object.entries(
+      element.attributes as Record<string, string>,
+    )) {
       if (key === "val" || key.endsWith(":val")) {
         val = value;
         break;
@@ -1169,7 +1207,9 @@ export function parseOnOffChild(
   context?: ParseContext,
 ): boolean | undefined {
   const element = findChildren(parent, namespace, localName).at(-1);
-  return element === undefined ? undefined : parseBooleanElement(element, namespace, context);
+  return element === undefined
+    ? undefined
+    : parseBooleanElement(element, namespace, context);
 }
 
 /**
@@ -1271,7 +1311,9 @@ const MAX_XMLNS_VALUE_LENGTH = 512;
  */
 const MAX_XMLNS_DECLARATION_CHARS = 8192;
 
-const xmlnsDeclarationChars = (declarations: Record<string, string>): number => {
+const xmlnsDeclarationChars = (
+  declarations: Record<string, string>,
+): number => {
   let chars = 0;
   for (const [name, value] of Object.entries(declarations)) {
     chars += name.length + value.length;
@@ -1288,7 +1330,9 @@ const xmlnsDeclarationChars = (declarations: Record<string, string>): number => 
  * is emitted on its own. Carrying the source declarations forward keeps the
  * raw replay self-contained regardless of the producer's prefix choice.
  */
-export function collectXmlnsDeclarations(element: XmlElement): Record<string, string> {
+export function collectXmlnsDeclarations(
+  element: XmlElement,
+): Record<string, string> {
   const out: Record<string, string> = {};
   const attrs = element.attributes;
   if (!attrs) {
@@ -1311,7 +1355,10 @@ export function collectXmlnsDeclarations(element: XmlElement): Record<string, st
     if (declaration.length > MAX_XMLNS_VALUE_LENGTH) {
       continue;
     }
-    if (declarationChars + key.length + declaration.length > MAX_XMLNS_DECLARATION_CHARS) {
+    if (
+      declarationChars + key.length + declaration.length >
+      MAX_XMLNS_DECLARATION_CHARS
+    ) {
       break;
     }
     out[key] = declaration;
@@ -1336,7 +1383,9 @@ export function mergeXmlnsDeclarations(
   const own = collectXmlnsDeclarations(element);
   for (const _key in own) {
     const merged = { ...inherited, ...own };
-    return xmlnsDeclarationChars(merged) > MAX_XMLNS_DECLARATION_CHARS ? inherited : merged;
+    return xmlnsDeclarationChars(merged) > MAX_XMLNS_DECLARATION_CHARS
+      ? inherited
+      : merged;
   }
   return inherited;
 }
@@ -1387,7 +1436,9 @@ const collectUsedNamespacePrefixes = (
       }
       for (const token of String(value).split(/\s+/u)) {
         const separatorIndex = token.indexOf(":");
-        prefixes.add(separatorIndex > 0 ? token.slice(0, separatorIndex) : token);
+        prefixes.add(
+          separatorIndex > 0 ? token.slice(0, separatorIndex) : token,
+        );
       }
     }
   }
@@ -1402,8 +1453,9 @@ const collectUsedNamespacePrefixes = (
   return prefixes;
 };
 
-const isCanonicalNamespacePrefix = (prefix: string): prefix is keyof typeof NAMESPACES =>
-  Object.hasOwn(NAMESPACES, prefix);
+const isCanonicalNamespacePrefix = (
+  prefix: string,
+): prefix is keyof typeof NAMESPACES => Object.hasOwn(NAMESPACES, prefix);
 
 /**
  * Return a shallow clone of `element` carrying the inherited namespace
@@ -1441,7 +1493,9 @@ export function cloneWithXmlnsDeclarations(
     additions[name] = NAMESPACES[prefix];
   }
   for (const _key in additions) {
-    return cloneElement(element, { attributes: { ...attributes, ...additions } });
+    return cloneElement(element, {
+      attributes: { ...attributes, ...additions },
+    });
   }
   return element;
 }
@@ -1455,7 +1509,10 @@ export function cloneWithXmlnsDeclarations(
  * original's scope leaves resolution unchanged whether or not the clone
  * carries `xmlns` attributes of its own.
  */
-export function cloneElement(element: XmlElement, overrides: Partial<XmlElement>): XmlElement {
+export function cloneElement(
+  element: XmlElement,
+  overrides: Partial<XmlElement>,
+): XmlElement {
   const clone: XmlElement = { ...element, ...overrides };
   attachXmlNamespaceContext(clone, element.namespaceScope);
   return clone;

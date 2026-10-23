@@ -17,6 +17,7 @@ import { $ } from "bun";
 import { bundleAsync, transform } from "lightningcss";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+
 import { scopeEditorCss } from "../../../scripts/lib/scoped-editor-css";
 
 const pkgDir = path.resolve(import.meta.dir, "..");
@@ -28,7 +29,10 @@ const outFile = path.join(pkgDir, "dist", "editor.css");
 // ProseMirror's base stylesheet — the components that import it are stripped
 // from the JS, so its rules have to be in the bundle. No relative `url()`s, so
 // inlining is safe (unlike @fontsource).
-const prosemirrorViewCss = Bun.resolveSync("prosemirror-view/style/prosemirror.css", pkgDir);
+const prosemirrorViewCss = Bun.resolveSync(
+  "prosemirror-view/style/prosemirror.css",
+  pkgDir,
+);
 
 // Virtual entry: the consumer-facing cascade order. ProseMirror base first,
 // then folio's prosemirror layer, then the editor chrome, then AI decorations.
@@ -82,10 +86,15 @@ const bundled = await bundleAsync({
 });
 
 if (fontImports.size === 0) {
-  panic("build-css: expected to capture @fontsource imports from fonts.css, found none");
+  panic(
+    "build-css: expected to capture @fontsource imports from fonts.css, found none",
+  );
 }
 
-const fontImportBlock = Array.from(fontImports, (spec) => `@import "${spec}";`).join("\n");
+const fontImportBlock = Array.from(
+  fontImports,
+  (spec) => `@import "${spec}";`,
+).join("\n");
 const bundledBody = new TextDecoder().decode(bundled.code);
 const composed = `${fontImportBlock}\n${bundledBody}`;
 
@@ -119,11 +128,16 @@ const standaloneEntry = path.join(stylesDir, "standalone.css");
 const standaloneOut = path.join(pkgDir, "dist", "standalone.css");
 // Resolve the CLI entry from the installed package (its `exports` map does not
 // expose the dist path directly, so resolve via package.json + its `bin`).
-const tailwindCliPkgJson = Bun.resolveSync("@tailwindcss/cli/package.json", pkgDir);
+const tailwindCliPkgJson = Bun.resolveSync(
+  "@tailwindcss/cli/package.json",
+  pkgDir,
+);
 const tailwindCliBin = (await Bun.file(tailwindCliPkgJson).json()).bin;
 const tailwindCli = path.resolve(
   path.dirname(tailwindCliPkgJson),
-  typeof tailwindCliBin === "string" ? tailwindCliBin : tailwindCliBin.tailwindcss,
+  typeof tailwindCliBin === "string"
+    ? tailwindCliBin
+    : tailwindCliBin.tailwindcss,
 );
 const utilitiesTmp = path.join(pkgDir, "dist", ".standalone-utilities.css");
 
@@ -132,7 +146,9 @@ const twResult =
     .cwd(pkgDir)
     .nothrow();
 if (twResult.exitCode !== 0) {
-  panic(`build-css: tailwindcss failed to compile standalone utilities\n${twResult.stderr}`);
+  panic(
+    `build-css: tailwindcss failed to compile standalone utilities\n${twResult.stderr}`,
+  );
 }
 const utilitiesCss = await Bun.file(utilitiesTmp).text();
 await rm(utilitiesTmp, { force: true });

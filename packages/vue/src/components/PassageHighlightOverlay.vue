@@ -20,7 +20,10 @@
   reason about the document itself.
 -->
 <template>
-  <div class="folio-passage-highlight-overlay" data-folio-passage-highlight-overlay="">
+  <div
+    class="folio-passage-highlight-overlay"
+    data-folio-passage-highlight-overlay=""
+  >
     <span
       v-for="(rect, idx) in rects"
       :key="`${idx}:${rect.left}:${rect.top}`"
@@ -40,7 +43,11 @@
 import { onBeforeUnmount, ref, watch } from "vue";
 
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
-import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
+import type {
+  FlowBlock,
+  Layout,
+  Measure,
+} from "@stll/folio-core/layout-engine/types";
 import { projectRangesToRects } from "@stll/folio-core/paged-layout/rangeProjection";
 
 /** Projected rectangle in overlay (post-zoom) pixel space. */

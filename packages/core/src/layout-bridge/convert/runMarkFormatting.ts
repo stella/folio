@@ -3,24 +3,28 @@
  * mark paint dispositions, bidi wrapper direction, and per-mark formatting.
  */
 
-import type { Mark } from "prosemirror-model";
 import { panic } from "better-result";
+import type { Mark } from "prosemirror-model";
+
 import type { UnderlineStyle } from "@stll/docx-core/model";
-import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternates";
-import type { RunFormatting } from "../../layout-engine/types";
+
+import {
+  type FontAlternates,
+  getFontAlternate,
+} from "../../fonts/fontAlternates";
 import { setHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
-import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import type { RunFormatting } from "../../layout-engine/types";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCommentMarkAttrs,
   expectEmphasisMarkAttrs,
   expectFontFamilyMarkAttrs,
-  expectLanguageMarkAttrs,
   expectFontSizeMarkAttrs,
   expectFootnoteRefMarkAttrs,
   expectHighlightMarkAttrs,
   expectHyperlinkMarkAttrs,
   expectInlineWrapperMarkAttrs,
+  expectLanguageMarkAttrs,
   expectRunFormattingOverrideMarkAttrs,
   expectRunShadingMarkAttrs,
   expectTextColorMarkAttrs,
@@ -37,14 +41,15 @@ import type {
 import type { ColorValue, Theme } from "../../types/document";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { halfPointsToPixels, halfPointsToPoints } from "../../utils/units";
 import { twipsToPixels } from "./flowConversionShared";
 import { applyRunFormattingOverrides } from "./runFormattingMerge";
 import {
-  resolveWesternThemeFont,
+  isAutomaticTextColorValue,
   resolveComplexScriptThemeFont,
   resolveEastAsiaThemeFont,
-  isAutomaticTextColorValue,
+  resolveWesternThemeFont,
 } from "./textFormattingConversion";
 
 /**
@@ -99,7 +104,10 @@ const MARK_PAINT_DISPOSITIONS = {
   // painter draws the properties the run has now, which the formatting marks
   // beside this one already carry.
   runPropertyChange: "notPainted",
-} as const satisfies Record<SchemaMarkName, "runFormatting" | "resolvedElsewhere" | "notPainted">;
+} as const satisfies Record<
+  SchemaMarkName,
+  "runFormatting" | "resolvedElsewhere" | "notPainted"
+>;
 
 const markPaintDisposition = (name: string): string | undefined => {
   const byName: Record<string, string | undefined> = MARK_PAINT_DISPOSITIONS;
@@ -114,7 +122,9 @@ const markPaintDisposition = (name: string): string | undefined => {
  * would without them. The `switch` is here rather than inline so a kind added
  * to the model has to answer the question.
  */
-const paintedDirection = (layer: InlineWrapperLayer): RunFormatting["bidiWrapper"] => {
+const paintedDirection = (
+  layer: InlineWrapperLayer,
+): RunFormatting["bidiWrapper"] => {
   switch (layer.kind) {
     case "bidi":
       return layer.direction === undefined
@@ -217,7 +227,9 @@ export function extractRunFormatting(
       }
 
       case "highlight":
-        formatting.highlight = resolveHighlightToCss(expectHighlightMarkAttrs(mark).color);
+        formatting.highlight = resolveHighlightToCss(
+          expectHighlightMarkAttrs(mark).color,
+        );
         break;
 
       case "runShading": {
@@ -376,7 +388,10 @@ export function extractRunFormatting(
         if (attrs.vertAlign === "superscript") {
           formatting.superscript = true;
         }
-        const id = typeof attrs.id === "string" ? Number.parseInt(attrs.id, 10) : attrs.id;
+        const id =
+          typeof attrs.id === "string"
+            ? Number.parseInt(attrs.id, 10)
+            : attrs.id;
         if (attrs.noteType === "endnote") {
           formatting.endnoteRefId = id;
         } else {
@@ -434,7 +449,9 @@ export function extractRunFormatting(
       }
 
       case "inlineWrapper": {
-        const bidiWrapper = innermostBidiWrapper(expectInlineWrapperMarkAttrs(mark).stack);
+        const bidiWrapper = innermostBidiWrapper(
+          expectInlineWrapperMarkAttrs(mark).stack,
+        );
         if (bidiWrapper) {
           formatting.bidiWrapper = bidiWrapper;
         }
@@ -443,7 +460,9 @@ export function extractRunFormatting(
 
       default:
         if (markPaintDisposition(mark.type.name) === "runFormatting") {
-          panic(`Mark ${mark.type.name} is painted as run formatting but has no branch here`);
+          panic(
+            `Mark ${mark.type.name} is painted as run formatting but has no branch here`,
+          );
         }
         break;
     }

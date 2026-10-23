@@ -18,7 +18,11 @@ export const modelPendingTextEffect = (
   switch (operation.type) {
     case "replaceRange": {
       const { startOffset, endOffset } = operation.range;
-      assert.ok(startOffset >= 0 && endOffset >= startOffset && endOffset <= text.length);
+      assert.ok(
+        startOffset >= 0 &&
+          endOffset >= startOffset &&
+          endOffset <= text.length,
+      );
       textByBlock.set(
         blockId,
         text.slice(0, startOffset) + operation.replace + text.slice(endOffset),
@@ -28,10 +32,16 @@ export const modelPendingTextEffect = (
     case "replaceInBlock": {
       const start = text.indexOf(operation.find);
       assert.ok(start >= 0);
-      assert.equal(start, text.lastIndexOf(operation.find), "Pinned replacement must be unique");
+      assert.equal(
+        start,
+        text.lastIndexOf(operation.find),
+        "Pinned replacement must be unique",
+      );
       textByBlock.set(
         blockId,
-        text.slice(0, start) + operation.replace + text.slice(start + operation.find.length),
+        text.slice(0, start) +
+          operation.replace +
+          text.slice(start + operation.find.length),
       );
       return;
     }
@@ -71,7 +81,9 @@ export const modelPendingTextEffect = (
       const paragraphs =
         operation.lineBreakMode === "inline"
           ? [operation.text]
-          : operation.text.split(/\r\n|[\r\n]/u).filter((paragraph) => paragraph.length > 0);
+          : operation.text
+              .split(/\r\n|[\r\n]/u)
+              .filter((paragraph) => paragraph.length > 0);
       const entries = [...textByBlock];
       const index = entries.findIndex(([id]) => id === blockId);
       entries.splice(
@@ -100,10 +112,14 @@ export const modelPendingTextEffect = (
     case "deleteTableColumn":
     case "mergeTableCells":
     case "splitTableCell":
-      assert.fail(`Pinned paragraph fixture cannot model table operation ${operation.type}`);
+      assert.fail(
+        `Pinned paragraph fixture cannot model table operation ${operation.type}`,
+      );
     default: {
       const unhandled: never = operation;
-      assert.fail(`Unhandled proposal text effect ${JSON.stringify(unhandled)}`);
+      assert.fail(
+        `Unhandled proposal text effect ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };

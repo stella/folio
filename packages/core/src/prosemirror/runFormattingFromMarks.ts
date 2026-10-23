@@ -1,22 +1,33 @@
 import type { Mark } from "prosemirror-model";
+
 import type { RunPropsPatch } from "@stll/docx-core/ops";
+
+import type { ColorValue, TextFormatting } from "../types/document";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
-import type { TextFormatting, ColorValue } from "../types/document";
+import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
   expectEmphasisMarkAttrs,
-  expectTextEffectMarkAttrs,
   expectFontFamilyMarkAttrs,
-  expectLanguageMarkAttrs,
   expectFontSizeMarkAttrs,
   expectHighlightMarkAttrs,
-  expectRunShadingMarkAttrs,
+  expectLanguageMarkAttrs,
   expectRunFormattingOverrideMarkAttrs,
+  expectRunShadingMarkAttrs,
   expectStrikeMarkAttrs,
   expectTextColorMarkAttrs,
+  expectTextEffectMarkAttrs,
   expectUnderlineMarkAttrs,
 } from "./attrs";
+import {
+  runShadingAttrsToShading,
+  shadingToRunShadingAttrs,
+} from "./conversion/runShadingMark";
+import {
+  applyRunFormattingOverrideAttrs,
+  buildRunFormattingOverrideAttrs,
+} from "./extensions/marks/RunFormattingOverrideExtension";
 import {
   authoredRunFormattingFromAttrs,
   hasAuthoredRunFormattingProvenance,
@@ -25,16 +36,10 @@ import {
   isParagraphMarkSuppressionEligible,
   paragraphFormattingForRun,
   resolveEffectiveRunStyleFormatting,
-  suppressParagraphMarkFormatting,
   type RunStyleResolver,
+  suppressParagraphMarkFormatting,
 } from "./runStyleFormatting";
-import {
-  applyRunFormattingOverrideAttrs,
-  buildRunFormattingOverrideAttrs,
-} from "./extensions/marks/RunFormattingOverrideExtension";
 import type { RunFormattingOverrideAttrs } from "./schema/marks";
-import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./conversion/runShadingMark";
-import { mergeTextFormatting } from "../utils/textFormattingMerge";
 
 /**
  * Convert ProseMirror marks to TextFormatting
@@ -124,9 +129,14 @@ const RUN_FORMATTING_FAST_PATH_DISPOSITION = {
   // Bytes, not a visual: a run holding one has formatting no mark carries, so
   // it must not take the fast path that rebuilds the run from marks alone.
   preserved: "structural",
-} as const satisfies Record<keyof TextFormatting, "character-style" | "structural" | "visual">;
+} as const satisfies Record<
+  keyof TextFormatting,
+  "character-style" | "structural" | "visual"
+>;
 
-const hasOnlyCarrierlessVisualFormatting = (formatting: TextFormatting): boolean => {
+const hasOnlyCarrierlessVisualFormatting = (
+  formatting: TextFormatting,
+): boolean => {
   for (const property of Object.keys(formatting) as (keyof TextFormatting)[]) {
     if (RUN_FORMATTING_FAST_PATH_DISPOSITION[property] !== "visual") {
       return false;
@@ -142,7 +152,9 @@ const visibleUnderline = (
   return underline?.style === "none" ? undefined : underline;
 };
 
-const visibleStrike = (formatting: TextFormatting | undefined): "double" | "single" | undefined => {
+const visibleStrike = (
+  formatting: TextFormatting | undefined,
+): "double" | "single" | undefined => {
   if (formatting?.doubleStrike === true) {
     return "double";
   }
@@ -154,8 +166,9 @@ const visibleColor = (
 ): TextFormatting["color"] | undefined =>
   formatting?.color?.auto === true ? undefined : formatting?.color;
 
-const visibleValue = <Value>(value: Value | "none" | undefined): Value | undefined =>
-  value === "none" ? undefined : value;
+const visibleValue = <Value>(
+  value: Value | "none" | undefined,
+): Value | undefined => (value === "none" ? undefined : value);
 
 /**
  * Compare the exact presentation encoded by PM run marks without allocating the
@@ -227,7 +240,9 @@ const visualFormattingGroups = (
   if (formatting.underline && formatting.underline.style !== "none") {
     groups.set("underline", {
       style: formatting.underline.style || "single",
-      ...(formatting.underline.color ? { color: formatting.underline.color } : {}),
+      ...(formatting.underline.color
+        ? { color: formatting.underline.color }
+        : {}),
     });
   }
   if (formatting.strike || formatting.doubleStrike) {
@@ -253,8 +268,17 @@ const visualFormattingGroups = (
     groups.set("fontSize", formatting.fontSize);
   }
   if (formatting.fontFamily) {
-    const { ascii, hAnsi, eastAsia, cs, hint, asciiTheme, hAnsiTheme, eastAsiaTheme, csTheme } =
-      formatting.fontFamily;
+    const {
+      ascii,
+      hAnsi,
+      eastAsia,
+      cs,
+      hint,
+      asciiTheme,
+      hAnsiTheme,
+      eastAsiaTheme,
+      csTheme,
+    } = formatting.fontFamily;
     groups.set("fontFamily", {
       ...(ascii ? { ascii } : {}),
       ...(hAnsi ? { hAnsi } : {}),
@@ -275,7 +299,10 @@ const visualFormattingGroups = (
       ...(bidi ? { bidi } : {}),
     });
   }
-  if (formatting.vertAlign === "superscript" || formatting.vertAlign === "subscript") {
+  if (
+    formatting.vertAlign === "superscript" ||
+    formatting.vertAlign === "subscript"
+  ) {
     groups.set("vertAlign", formatting.vertAlign);
   }
   for (const [property, group] of [
@@ -292,11 +319,19 @@ const visualFormattingGroups = (
       groups.set(group, true);
     }
   }
-  const spacing = typeof formatting.spacing === "number" ? formatting.spacing : null;
-  const position = typeof formatting.position === "number" ? formatting.position : null;
+  const spacing =
+    typeof formatting.spacing === "number" ? formatting.spacing : null;
+  const position =
+    typeof formatting.position === "number" ? formatting.position : null;
   const scale = normalizeHorizontalScalePercent(formatting.scale) ?? null;
-  const kerning = typeof formatting.kerning === "number" ? formatting.kerning : null;
-  if (spacing !== null || position !== null || scale !== null || kerning !== null) {
+  const kerning =
+    typeof formatting.kerning === "number" ? formatting.kerning : null;
+  if (
+    spacing !== null ||
+    position !== null ||
+    scale !== null ||
+    kerning !== null
+  ) {
     groups.set("characterSpacing", { spacing, position, scale, kerning });
   }
   if (formatting.effect && formatting.effect !== "none") {
@@ -323,9 +358,9 @@ const expectedRunFormattingOverrideAttrs = (
   }
 
   const expected: RunFormattingOverrideAttrs = { ...attrs };
-  const directFontProperties = (["color", "fontFamily", "fontSize"] as const).filter(
-    (property) => authoredFormatting[property] !== undefined,
-  );
+  const directFontProperties = (
+    ["color", "fontFamily", "fontSize"] as const
+  ).filter((property) => authoredFormatting[property] !== undefined);
   if (directFontProperties.length > 0) {
     expected.directFontProperties = directFontProperties;
   }
@@ -338,7 +373,8 @@ const expectedRunFormattingOverrideAttrs = (
   )
     .filter(
       ([ordinary, complex]) =>
-        authoredFormatting[ordinary] !== undefined && authoredFormatting[complex] === undefined,
+        authoredFormatting[ordinary] !== undefined &&
+        authoredFormatting[complex] === undefined,
     )
     .map(([, complex]) => complex);
   if (complexScriptPropertyAbsences.length > 0) {
@@ -381,7 +417,8 @@ export const runFormattingPatchFromMarks = (
   const isFormattingKey = (key: string): key is keyof TextFormatting =>
     Object.hasOwn(RUN_FORMATTING_VISUAL_GROUPS, key);
   for (const [key, group] of Object.entries(RUN_FORMATTING_VISUAL_GROUPS)) {
-    if (!isFormattingKey(key) || group === null || !changed.has(group)) continue;
+    if (!isFormattingKey(key) || group === null || !changed.has(group))
+      continue;
     Reflect.set(patch, key, after[key] ?? null);
   }
   return patch;
@@ -453,11 +490,22 @@ const DIRECT_OVERRIDE_FORMATTING_PROPERTIES = [
   "smallCaps",
   "strike",
   "underline",
-] as const satisfies readonly (keyof TextFormatting & keyof RunFormattingOverrideAttrs)[];
+] as const satisfies readonly (keyof TextFormatting &
+  keyof RunFormattingOverrideAttrs)[];
 
 const POSITIVE_OVERRIDE_PROPERTIES_REPRESENTED_BY_VISUAL_MARKS = new Set<
   (typeof DIRECT_OVERRIDE_FORMATTING_PROPERTIES)[number]
->(["allCaps", "emboss", "hidden", "imprint", "outline", "rtl", "shadow", "smallCaps", "strike"]);
+>([
+  "allCaps",
+  "emboss",
+  "hidden",
+  "imprint",
+  "outline",
+  "rtl",
+  "shadow",
+  "smallCaps",
+  "strike",
+]);
 
 const setFormattingFromOverrideSignal = (
   formatting: TextFormatting,
@@ -479,14 +527,25 @@ export const sameFormattingValue = (left: unknown, right: unknown): boolean => {
   if (left === right) {
     return true;
   }
-  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
+  if (
+    typeof left !== "object" ||
+    left === null ||
+    typeof right !== "object" ||
+    right === null
+  ) {
     return false;
   }
   if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    if (
+      !Array.isArray(left) ||
+      !Array.isArray(right) ||
+      left.length !== right.length
+    ) {
       return false;
     }
-    return left.every((value, index) => sameFormattingValue(value, right[index]));
+    return left.every((value, index) =>
+      sameFormattingValue(value, right[index]),
+    );
   }
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
@@ -530,8 +589,10 @@ const reconcileOverrideSignals = (
   }
 
   for (const property of ["color", "fontFamily", "fontSize"] as const) {
-    const currentIsDirect = current?.directFontProperties?.includes(property) === true;
-    const expectedIsDirect = expected?.directFontProperties?.includes(property) === true;
+    const currentIsDirect =
+      current?.directFontProperties?.includes(property) === true;
+    const expectedIsDirect =
+      expected?.directFontProperties?.includes(property) === true;
     if (currentIsDirect === expectedIsDirect) {
       continue;
     }
@@ -546,8 +607,10 @@ const reconcileOverrideSignals = (
   }
 
   for (const property of ["boldCs", "italicCs", "fontSizeCs"] as const) {
-    const currentIsAbsent = current?.complexScriptPropertyAbsences?.includes(property) === true;
-    const expectedIsAbsent = expected?.complexScriptPropertyAbsences?.includes(property) === true;
+    const currentIsAbsent =
+      current?.complexScriptPropertyAbsences?.includes(property) === true;
+    const expectedIsAbsent =
+      expected?.complexScriptPropertyAbsences?.includes(property) === true;
     if (currentIsAbsent !== expectedIsAbsent && currentIsAbsent) {
       Reflect.deleteProperty(formatting, property);
     }
@@ -588,9 +651,14 @@ const reconcileAuthoredFormatting = ({
   const expectedFormatting = hasAuthoredFormatting
     ? mergeTextFormatting(inheritedFormatting, authoredFormatting)
     : inheritedFormatting;
-  const changedGroups = changedVisualFormattingGroups(observedFormatting, expectedFormatting);
+  const changedGroups = changedVisualFormattingGroups(
+    observedFormatting,
+    expectedFormatting,
+  );
   const reconciled: TextFormatting = { ...authoredFormatting };
-  for (const property of Object.keys(RUN_FORMATTING_VISUAL_GROUPS) as Array<keyof TextFormatting>) {
+  for (const property of Object.keys(RUN_FORMATTING_VISUAL_GROUPS) as Array<
+    keyof TextFormatting
+  >) {
     const group = RUN_FORMATTING_VISUAL_GROUPS[property];
     if (group === null || !changedGroups.has(group)) {
       continue;
@@ -728,7 +796,9 @@ export function marksToTextFormatting(
 
       case "runShading":
         // Rebuild the model `w:shd` fill so the run serializer re-emits it.
-        formatting.shading = runShadingAttrsToShading(expectRunShadingMarkAttrs(mark));
+        formatting.shading = runShadingAttrsToShading(
+          expectRunShadingMarkAttrs(mark),
+        );
         break;
 
       case "fontSize": {
@@ -871,7 +941,9 @@ export function marksToTextFormatting(
 
   let authoredFormatting: TextFormatting = {};
   if (runFormattingOverrideMark) {
-    const overrideAttrs = expectRunFormattingOverrideMarkAttrs(runFormattingOverrideMark);
+    const overrideAttrs = expectRunFormattingOverrideMarkAttrs(
+      runFormattingOverrideMark,
+    );
     currentOverrideAttrs = overrideAttrs;
     directFontProperties = overrideAttrs.directFontProperties;
     directOverrideFormatting = {};
@@ -882,12 +954,15 @@ export function marksToTextFormatting(
         Reflect.set(directOverrideFormatting, property, value);
       }
     }
-    authoredFormatting = authoredRunFormattingFromAttrs(overrideAttrs) ?? directOverrideFormatting;
+    authoredFormatting =
+      authoredRunFormattingFromAttrs(overrideAttrs) ?? directOverrideFormatting;
   }
 
   if (characterStyleId !== undefined && !options?.styleResolver) {
-    const conservativeFormatting = mergeTextFormatting(formatting, directOverrideFormatting) ?? {};
-    for (const property of currentOverrideAttrs?.complexScriptPropertyAbsences ?? []) {
+    const conservativeFormatting =
+      mergeTextFormatting(formatting, directOverrideFormatting) ?? {};
+    for (const property of currentOverrideAttrs?.complexScriptPropertyAbsences ??
+      []) {
       Reflect.deleteProperty(conservativeFormatting, property);
     }
     return { ...conservativeFormatting, styleId: characterStyleId };
@@ -907,12 +982,16 @@ export function marksToTextFormatting(
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
     marks,
     paragraphFormatting,
-    ...(options?.styleResolver !== undefined ? { styleResolver: options.styleResolver } : {}),
+    ...(options?.styleResolver !== undefined
+      ? { styleResolver: options.styleResolver }
+      : {}),
   });
   let reconciled = reconcileAuthoredFormatting({
     authoredFormatting,
     carrierlessContext:
-      options?.paragraphMarkFormatting === undefined ? "ordinary" : "paragraph-mark",
+      options?.paragraphMarkFormatting === undefined
+        ? "ordinary"
+        : "paragraph-mark",
     currentOverrideAttrs,
     inheritedFormatting,
     observedFormatting: formatting,
@@ -931,7 +1010,9 @@ export function marksToTextFormatting(
     const suppressedInheritedFormatting = resolveEffectiveRunStyleFormatting({
       marks,
       paragraphFormatting: suppressedParagraphFormatting,
-      ...(options.styleResolver !== undefined ? { styleResolver: options.styleResolver } : {}),
+      ...(options.styleResolver !== undefined
+        ? { styleResolver: options.styleResolver }
+        : {}),
     });
     const suppressed = reconcileAuthoredFormatting({
       authoredFormatting,
@@ -943,7 +1024,8 @@ export function marksToTextFormatting(
     // The reader must see a stated run property to apply this suppression context.
     if (
       isParagraphMarkSuppressionEligible(suppressed) &&
-      formattingAuthorshipCost(suppressed) < formattingAuthorshipCost(reconciled)
+      formattingAuthorshipCost(suppressed) <
+        formattingAuthorshipCost(reconciled)
     ) {
       reconciled = suppressed;
     }

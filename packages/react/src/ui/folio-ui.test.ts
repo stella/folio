@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { DEFAULT_COMPONENTS, resolveFolioComponents, type FolioButtonProps } from "./folio-ui";
+import {
+  DEFAULT_COMPONENTS,
+  type FolioButtonProps,
+  resolveFolioComponents,
+} from "./folio-ui";
 
 // A sentinel override component; identity is all the resolution test checks.
 const InjectedButton = (_props: FolioButtonProps) => null;

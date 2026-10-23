@@ -24,8 +24,10 @@ import fc from "fast-check";
 import { XMLParser } from "fast-xml-parser";
 import { Window } from "happy-dom";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   escapeXmlAttribute,
   escapeXmlText,
@@ -46,7 +48,8 @@ const ILLEGAL_XML_CHARACTERS = new RegExp(ILLEGAL_XML_CHARACTER.source, "gu");
  * character no document can hold. Restated from the spec rather than imported,
  * so the round-trip below is not checked against the code that produced it.
  */
-const legalCharactersOf = (value: string): string => value.replace(ILLEGAL_XML_CHARACTERS, "");
+const legalCharactersOf = (value: string): string =>
+  value.replace(ILLEGAL_XML_CHARACTERS, "");
 
 const hazards = [
   "]]>",
@@ -103,7 +106,10 @@ type ParsedValues = { attribute: string; text: string };
 
 const readWithFastXmlParser = (xml: string): ParsedValues => {
   const nodes = fxp.parse(xml) as Record<string, unknown>[];
-  const root = nodes[0] as { r: { "#text"?: string }[]; ":@": Record<string, string> };
+  const root = nodes[0] as {
+    r: { "#text"?: string }[];
+    ":@": Record<string, string>;
+  };
   return {
     attribute: root[":@"]?.["a"] ?? "",
     text: root.r.map((child) => child["#text"] ?? "").join(""),
@@ -116,7 +122,10 @@ const readWithDomParser = (xml: string): ParsedValues => {
   const document = new happyDom.DOMParser().parseFromString(xml, "text/xml");
   const root = document.documentElement;
   expect(root.tagName).toBe("r");
-  return { attribute: root.getAttribute("a") ?? "", text: root.textContent ?? "" };
+  return {
+    attribute: root.getAttribute("a") ?? "",
+    text: root.textContent ?? "",
+  };
 };
 
 const documentFor = (value: string) =>
@@ -150,8 +159,14 @@ describe("the escaper preserves the value it was given", () => {
       fc.property(hostileString, (value) => {
         const expected = legalCharactersOf(value);
         const xml = documentFor(value);
-        expect(readWithFastXmlParser(xml)).toEqual({ attribute: expected, text: expected });
-        expect(readWithDomParser(xml)).toEqual({ attribute: expected, text: expected });
+        expect(readWithFastXmlParser(xml)).toEqual({
+          attribute: expected,
+          text: expected,
+        });
+        expect(readWithDomParser(xml)).toEqual({
+          attribute: expected,
+          text: expected,
+        });
       }),
       propertyConfig({ numRuns: 500 }),
     );

@@ -1,7 +1,12 @@
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
-import { isAllowedExternalWatermarkImageUrl, type Watermark } from "@stll/folio-core/watermark";
+import {
+  isAllowedExternalWatermarkImageUrl,
+  type Watermark,
+} from "@stll/folio-core/watermark";
+
 import { useFolioUI } from "../../ui/folio-ui";
 import {
   DIALOG_BACKDROP_CLASS,
@@ -31,10 +36,20 @@ export function WatermarkDialog(props: WatermarkDialogProps) {
   if (!props.isOpen) {
     return null;
   }
-  return <WatermarkDialogForm key={JSON.stringify(props.currentWatermark)} {...props} />;
+  return (
+    <WatermarkDialogForm
+      key={JSON.stringify(props.currentWatermark)}
+      {...props}
+    />
+  );
 }
 
-function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: WatermarkDialogProps) {
+function WatermarkDialogForm({
+  isOpen,
+  onClose,
+  onApply,
+  currentWatermark,
+}: WatermarkDialogProps) {
   const {
     Root: Dialog,
     Portal: DialogPortal,
@@ -46,12 +61,16 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [mode, setMode] = useState<WatermarkMode>(currentWatermark?.kind ?? "text");
+  const [mode, setMode] = useState<WatermarkMode>(
+    currentWatermark?.kind ?? "text",
+  );
   const [text, setText] = useState(
     currentWatermark?.kind === "text" ? currentWatermark.text : "CONFIDENTIAL",
   );
   const [font, setFont] = useState(
-    currentWatermark?.kind === "text" ? (currentWatermark.font ?? "Calibri") : "Calibri",
+    currentWatermark?.kind === "text"
+      ? (currentWatermark.font ?? "Calibri")
+      : "Calibri",
   );
   const [color, setColor] = useState(
     currentWatermark?.kind === "text"
@@ -59,25 +78,39 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
       : DEFAULT_TEXT_COLOR,
   );
   const [diagonal, setDiagonal] = useState(
-    currentWatermark?.kind === "text" ? (currentWatermark.diagonal ?? true) : true,
+    currentWatermark?.kind === "text"
+      ? (currentWatermark.diagonal ?? true)
+      : true,
   );
   const [opacityPercent, setOpacityPercent] = useState(
-    currentWatermark?.kind === "text" ? Math.round((currentWatermark.opacity ?? 0.5) * 100) : 50,
+    currentWatermark?.kind === "text"
+      ? Math.round((currentWatermark.opacity ?? 0.5) * 100)
+      : 50,
   );
   const [imageRId, setImageRId] = useState(
-    currentWatermark?.kind === "picture" ? (currentWatermark.imageRId ?? "") : "",
+    currentWatermark?.kind === "picture"
+      ? (currentWatermark.imageRId ?? "")
+      : "",
   );
   const [imageTarget, setImageTarget] = useState(
-    currentWatermark?.kind === "picture" ? (currentWatermark.imageTarget ?? "") : "",
+    currentWatermark?.kind === "picture"
+      ? (currentWatermark.imageTarget ?? "")
+      : "",
   );
   const [imageTargetExternal, setImageTargetExternal] = useState(
-    currentWatermark?.kind === "picture" ? (currentWatermark.imageTargetExternal ?? false) : false,
+    currentWatermark?.kind === "picture"
+      ? (currentWatermark.imageTargetExternal ?? false)
+      : false,
   );
   const [scalePercent, setScalePercent] = useState(
-    currentWatermark?.kind === "picture" ? Math.round((currentWatermark.scale ?? 1) * 100) : 100,
+    currentWatermark?.kind === "picture"
+      ? Math.round((currentWatermark.scale ?? 1) * 100)
+      : 100,
   );
   const [washout, setWashout] = useState(
-    currentWatermark?.kind === "picture" ? (currentWatermark.washout ?? true) : true,
+    currentWatermark?.kind === "picture"
+      ? (currentWatermark.washout ?? true)
+      : true,
   );
 
   const fieldIds = {
@@ -105,7 +138,9 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
   const canApply =
     mode === "none" ||
     (mode === "text" && text.trim().length > 0) ||
-    (mode === "picture" && imageRId.trim().length > 0 && imageTargetError.length === 0);
+    (mode === "picture" &&
+      imageRId.trim().length > 0 &&
+      imageTargetError.length === 0);
 
   const handleApply = () => {
     if (!canApply) {
@@ -144,27 +179,42 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>{t("dialogs.watermark.title")}</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>
+            {t("dialogs.watermark.title")}
+          </DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <label className="flex flex-col gap-1" htmlFor={fieldIds.mode}>
-              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.type")}</span>
+              <span className={DIALOG_LABEL_CLASS}>
+                {t("dialogs.watermark.type")}
+              </span>
               <select
                 className={DIALOG_INPUT_CLASS}
                 id={fieldIds.mode}
                 onChange={(e) => setMode(toWatermarkMode(e.target.value))}
                 value={mode}
               >
-                <option value="text">{t("dialogs.watermark.textWatermark")}</option>
-                <option value="picture">{t("dialogs.watermark.pictureWatermark")}</option>
-                <option value="none">{t("dialogs.watermark.noWatermark")}</option>
+                <option value="text">
+                  {t("dialogs.watermark.textWatermark")}
+                </option>
+                <option value="picture">
+                  {t("dialogs.watermark.pictureWatermark")}
+                </option>
+                <option value="none">
+                  {t("dialogs.watermark.noWatermark")}
+                </option>
               </select>
             </label>
 
             {mode === "text" && (
               <div className="grid grid-cols-2 gap-3">
-                <label className="col-span-2 flex flex-col gap-1" htmlFor={fieldIds.text}>
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.text")}</span>
+                <label
+                  className="col-span-2 flex flex-col gap-1"
+                  htmlFor={fieldIds.text}
+                >
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.text")}
+                  </span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.text}
@@ -173,7 +223,9 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
                   />
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.font}>
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.font")}</span>
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.font")}
+                  </span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.font}
@@ -182,7 +234,9 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
                   />
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.color}>
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.color")}</span>
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.color")}
+                  </span>
                   <input
                     className={`${DIALOG_INPUT_CLASS} h-[34px]`}
                     id={fieldIds.color}
@@ -191,33 +245,48 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
                     value={color}
                   />
                 </label>
-                <label className="flex flex-col gap-1" htmlFor={fieldIds.opacity}>
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.opacity")}</span>
+                <label
+                  className="flex flex-col gap-1"
+                  htmlFor={fieldIds.opacity}
+                >
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.opacity")}
+                  </span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.opacity}
                     max={100}
                     min={0}
-                    onChange={(e) => setOpacityPercent(Number(e.target.value) || 0)}
+                    onChange={(e) =>
+                      setOpacityPercent(Number(e.target.value) || 0)
+                    }
                     type="number"
                     value={opacityPercent}
                   />
                 </label>
-                <label className="flex items-center gap-2 pt-6" htmlFor={fieldIds.diagonal}>
+                <label
+                  className="flex items-center gap-2 pt-6"
+                  htmlFor={fieldIds.diagonal}
+                >
                   <input
                     checked={diagonal}
                     id={fieldIds.diagonal}
                     onChange={(e) => setDiagonal(e.target.checked)}
                     type="checkbox"
                   />
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.diagonal")}</span>
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.diagonal")}
+                  </span>
                 </label>
               </div>
             )}
 
             {mode === "picture" && (
               <div className="grid grid-cols-2 gap-3">
-                <label className="col-span-2 flex flex-col gap-1" htmlFor={fieldIds.imageRId}>
+                <label
+                  className="col-span-2 flex flex-col gap-1"
+                  htmlFor={fieldIds.imageRId}
+                >
                   <span className={DIALOG_LABEL_CLASS}>
                     {t("dialogs.watermark.imageRelationshipId")}
                   </span>
@@ -229,8 +298,13 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
                     value={imageRId}
                   />
                 </label>
-                <label className="col-span-2 flex flex-col gap-1" htmlFor={fieldIds.imageTarget}>
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.imageTarget")}</span>
+                <label
+                  className="col-span-2 flex flex-col gap-1"
+                  htmlFor={fieldIds.imageTarget}
+                >
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.imageTarget")}
+                  </span>
                   <input
                     aria-invalid={imageTargetError.length > 0}
                     className={DIALOG_INPUT_CLASS}
@@ -240,29 +314,40 @@ function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: Wat
                     value={imageTarget}
                   />
                   {imageTargetError.length > 0 && (
-                    <span className="text-destructive text-xs">{imageTargetError}</span>
+                    <span className="text-destructive text-xs">
+                      {imageTargetError}
+                    </span>
                   )}
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.scale}>
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.scale")}</span>
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.scale")}
+                  </span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.scale}
                     max={300}
                     min={1}
-                    onChange={(e) => setScalePercent(Number(e.target.value) || 1)}
+                    onChange={(e) =>
+                      setScalePercent(Number(e.target.value) || 1)
+                    }
                     type="number"
                     value={scalePercent}
                   />
                 </label>
-                <label className="flex items-center gap-2 pt-6" htmlFor={fieldIds.washout}>
+                <label
+                  className="flex items-center gap-2 pt-6"
+                  htmlFor={fieldIds.washout}
+                >
                   <input
                     checked={washout}
                     id={fieldIds.washout}
                     onChange={(e) => setWashout(e.target.checked)}
                     type="checkbox"
                   />
-                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.washout")}</span>
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.washout")}
+                  </span>
                 </label>
                 <label
                   className="col-span-2 flex items-center gap-2"
@@ -324,7 +409,9 @@ function stripHash(value: string): string {
  * field-level validation message (existing convention for this kind of inline
  * error in this dialog family). */
 function getExternalImageTargetError(value: string): string {
-  return isAllowedExternalWatermarkImageUrl(value) ? "" : "Use a web address (http/https).";
+  return isAllowedExternalWatermarkImageUrl(value)
+    ? ""
+    : "Use a web address (http/https).";
 }
 
 function toColorInputValue(value: string | undefined): string {

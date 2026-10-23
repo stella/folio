@@ -1,7 +1,8 @@
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
   var __folioInterleavingSuggest: ((text: string) => number) | undefined;
 }
 
@@ -21,7 +22,8 @@ export const createInterleavingSuggest = (ref: InterleavingRef) => {
     );
     if (!block) throw new Error("interleaving fixture has no body block");
     const blockTextHash = snapshot.anchors[block.id]?.textHash;
-    if (!blockTextHash) throw new Error("interleaving block precondition unavailable");
+    if (!blockTextHash)
+      throw new Error("interleaving block precondition unavailable");
     operationSequence++;
     const id = `interleaving-${operationSequence}`;
     // Preserve the previous agent bridge's tracked-change mode and text-hash
@@ -43,7 +45,9 @@ export const createInterleavingSuggest = (ref: InterleavingRef) => {
           },
         ],
       },
-    } as const satisfies Parameters<DocxEditorRef["applyDocumentOperations"]>[0];
+    } as const satisfies Parameters<
+      DocxEditorRef["applyDocumentOperations"]
+    >[0];
     const result = ref.applyDocumentOperations(options);
     if (
       result.status !== "committed" ||
@@ -51,7 +55,9 @@ export const createInterleavingSuggest = (ref: InterleavingRef) => {
       result.skipped.length !== 0 ||
       result.applied.at(0)?.id !== id
     ) {
-      throw new Error(`interleaving edit did not apply: ${JSON.stringify(result)}`);
+      throw new Error(
+        `interleaving edit did not apply: ${JSON.stringify(result)}`,
+      );
     }
     return ref.getTrackedChanges().length;
   };

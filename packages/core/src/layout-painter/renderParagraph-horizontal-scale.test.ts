@@ -29,7 +29,10 @@ class FakeElement {
     return child;
   }
 
-  getContext(): { font: string; measureText: (text: string) => { width: number } } | null {
+  getContext(): {
+    font: string;
+    measureText: (text: string) => { width: number };
+  } | null {
     if (this.tagName !== "canvas") {
       return null;
     }
@@ -79,22 +82,36 @@ describe("horizontal text scale painting", () => {
   test.each([
     [0, "scaleX(0)", "0px"],
     [600, "scaleX(6)", "168px"],
-  ])("preserves valid boundary scale %p", (horizontalScale, transform, width) => {
-    const runElement = renderSingleRun({ kind: "text", text: "abcd", horizontalScale });
+  ])(
+    "preserves valid boundary scale %p",
+    (horizontalScale, transform, width) => {
+      const runElement = renderSingleRun({
+        kind: "text",
+        text: "abcd",
+        horizontalScale,
+      });
 
-    expect(runElement.style["transform"]).toBe(transform);
-    expect(runElement.style["width"]).toBe(width);
-  });
-
-  test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    "does not emit CSS for malformed scale %p",
-    (horizontalScale) => {
-      const runElement = renderSingleRun({ kind: "text", text: "abcd", horizontalScale });
-
-      expect(runElement.style["transform"]).toBeUndefined();
-      expect(runElement.style["width"]).toBeUndefined();
+      expect(runElement.style["transform"]).toBe(transform);
+      expect(runElement.style["width"]).toBe(width);
     },
   );
+
+  test.each([
+    -50,
+    601,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])("does not emit CSS for malformed scale %p", (horizontalScale) => {
+    const runElement = renderSingleRun({
+      kind: "text",
+      text: "abcd",
+      horizontalScale,
+    });
+
+    expect(runElement.style["transform"]).toBeUndefined();
+    expect(runElement.style["width"]).toBeUndefined();
+  });
 
   test("normalizes the field wrapper and reserved advance together", () => {
     const runElement = renderSingleRun({

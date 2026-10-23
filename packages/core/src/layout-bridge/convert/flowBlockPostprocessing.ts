@@ -5,10 +5,11 @@
  */
 
 import { headingLevelOf } from "@stll/docx-core/model";
+
 import type {
   FlowBlock,
-  ParagraphBlock,
   ParagraphAttrs,
+  ParagraphBlock,
   SdtGroup,
 } from "../../layout-engine/types";
 
@@ -18,7 +19,9 @@ import type {
  * empty paragraphs retain their height and may carry the document onto a blank
  * page. Preserve every block and PM range while collapsing only the final one.
  */
-function isPaintlessTerminalParagraph(block: FlowBlock | undefined): block is ParagraphBlock {
+function isPaintlessTerminalParagraph(
+  block: FlowBlock | undefined,
+): block is ParagraphBlock {
   if (block?.kind !== "paragraph" || block.runs.length !== 0) {
     return false;
   }
@@ -43,9 +46,14 @@ function isPaintlessTerminalParagraph(block: FlowBlock | undefined): block is Pa
   );
 }
 
-export function suppressFinalEmptyParagraphAfterTable(blocks: FlowBlock[]): void {
+export function suppressFinalEmptyParagraphAfterTable(
+  blocks: FlowBlock[],
+): void {
   let suffixStart = blocks.length;
-  while (suffixStart > 0 && isPaintlessTerminalParagraph(blocks[suffixStart - 1])) {
+  while (
+    suffixStart > 0 &&
+    isPaintlessTerminalParagraph(blocks[suffixStart - 1])
+  ) {
     suffixStart -= 1;
   }
 
@@ -59,13 +67,21 @@ export function suppressFinalEmptyParagraphAfterTable(blocks: FlowBlock[]): void
 
   const finalBlock = blocks.at(-1);
   if (isPaintlessTerminalParagraph(finalBlock)) {
-    finalBlock.attrs = { ...finalBlock.attrs, suppressEmptyParagraphHeight: true };
+    finalBlock.attrs = {
+      ...finalBlock.attrs,
+      suppressEmptyParagraphHeight: true,
+    };
   }
 }
 
-export function suppressFinalParagraphInRepeatedEmptySuffix(blocks: FlowBlock[]): void {
+export function suppressFinalParagraphInRepeatedEmptySuffix(
+  blocks: FlowBlock[],
+): void {
   let suffixStart = blocks.length;
-  while (suffixStart > 0 && isPaintlessTerminalParagraph(blocks[suffixStart - 1])) {
+  while (
+    suffixStart > 0 &&
+    isPaintlessTerminalParagraph(blocks[suffixStart - 1])
+  ) {
     suffixStart -= 1;
   }
 
@@ -79,7 +95,10 @@ export function suppressFinalParagraphInRepeatedEmptySuffix(blocks: FlowBlock[])
 
   const finalBlock = blocks.at(-1);
   if (isPaintlessTerminalParagraph(finalBlock)) {
-    finalBlock.attrs = { ...finalBlock.attrs, suppressEmptyParagraphHeight: true };
+    finalBlock.attrs = {
+      ...finalBlock.attrs,
+      suppressEmptyParagraphHeight: true,
+    };
   }
 }
 
@@ -114,7 +133,10 @@ export function reserveLeadingEmptyOutlineHeight(blocks: FlowBlock[]): void {
  * preserve runInWithNext only when the second paragraph itself has
  * specVanish).
  */
-function sdtGroupStacksEqual(a: SdtGroup[] | undefined, b: SdtGroup[] | undefined): boolean {
+function sdtGroupStacksEqual(
+  a: SdtGroup[] | undefined,
+  b: SdtGroup[] | undefined,
+): boolean {
   // pmPos is unique per SDT instance within a single toFlowBlocks call, so
   // comparing the pmPos stacks is enough to tell "same membership" vs.
   // "different membership" without copying the rest of the group payload.

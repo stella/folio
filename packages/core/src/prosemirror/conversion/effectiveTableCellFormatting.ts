@@ -80,7 +80,11 @@ export const resolveEffectiveTableCellFormatting = ({
   theme,
 }: ResolveEffectiveTableCellFormattingOptions): EffectiveTableCellFormatting => {
   const width = resolveEffectiveWidth(directFormatting, gridWidthPercent);
-  const background = resolveEffectiveBackground({ directFormatting, styleFormatting, theme });
+  const background = resolveEffectiveBackground({
+    directFormatting,
+    styleFormatting,
+    theme,
+  });
   const borders = resolveEffectiveBorders({
     directFormatting,
     styleFormatting,
@@ -111,7 +115,12 @@ const resolveEffectiveWidth = (
     };
   }
   if (gridWidthPercent !== undefined) {
-    return { type: "value", source: "grid", value: gridWidthPercent, widthType: "pct" };
+    return {
+      type: "value",
+      source: "grid",
+      value: gridWidthPercent,
+      widthType: "pct",
+    };
   }
   return { type: "none" };
 };
@@ -128,12 +137,20 @@ const resolveEffectiveBackground = ({
 }: ResolveEffectiveBackgroundOptions): EffectiveTableCellBackground => {
   const directShading = directFormatting?.shading;
   if (directShading !== undefined) {
-    return resolveBackgroundColor({ shading: directShading, source: "direct", theme });
+    return resolveBackgroundColor({
+      shading: directShading,
+      source: "direct",
+      theme,
+    });
   }
 
   const styleShading = styleFormatting?.shading;
   if (styleShading !== undefined) {
-    return resolveBackgroundColor({ shading: styleShading, source: "style", theme });
+    return resolveBackgroundColor({
+      shading: styleShading,
+      source: "style",
+      theme,
+    });
   }
 
   return { type: "none", source: "none" };
@@ -175,7 +192,9 @@ const resolveEffectiveBorders = ({
         top: position.isFirstRow ? tableBorders.top : tableBorders.insideH,
         bottom: position.isLastRow ? tableBorders.bottom : tableBorders.insideH,
         left: position.isFirstColumn ? tableBorders.left : tableBorders.insideV,
-        right: position.isLastColumn ? tableBorders.right : tableBorders.insideV,
+        right: position.isLastColumn
+          ? tableBorders.right
+          : tableBorders.insideV,
       }
     : undefined;
   const styleBorders = styleFormatting?.borders;

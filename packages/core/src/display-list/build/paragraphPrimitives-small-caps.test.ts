@@ -45,10 +45,18 @@ const pagePrimitives = (blocks: FlowBlock[]): readonly DisplayPrimitive[] => {
   return page?.primitives.slice(1) ?? [];
 };
 
-const glyphRuns = (primitives: readonly DisplayPrimitive[]): DisplayGlyphRun[] =>
-  primitives.filter((primitive): primitive is DisplayGlyphRun => primitive.kind === "glyphRun");
+const glyphRuns = (
+  primitives: readonly DisplayPrimitive[],
+): DisplayGlyphRun[] =>
+  primitives.filter(
+    (primitive): primitive is DisplayGlyphRun => primitive.kind === "glyphRun",
+  );
 
-const para = (text: string, smallCaps: boolean, allCaps?: boolean): ParagraphBlock => ({
+const para = (
+  text: string,
+  smallCaps: boolean,
+  allCaps?: boolean,
+): ParagraphBlock => ({
   kind: "paragraph",
   id: "p",
   runs: [
@@ -98,7 +106,10 @@ describe("buildDisplayList: small-caps glyph run splitting", () => {
       expect(runs).toHaveLength(2);
       const first = runs[0]!;
       const second = runs[1]!;
-      const firstWidth = first.advancesPx.reduce((sum, advance) => sum + advance, 0);
+      const firstWidth = first.advancesPx.reduce(
+        (sum, advance) => sum + advance,
+        0,
+      );
       expect(second.xPx).toBeCloseTo(first.xPx + firstWidth, 6);
     });
   });

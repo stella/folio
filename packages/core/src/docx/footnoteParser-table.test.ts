@@ -77,7 +77,10 @@ describe("footnoteParser table content", () => {
     const endnote = map.byId.get(1);
 
     expect(endnote).toBeDefined();
-    expect(endnote?.content.map((block) => block.type)).toEqual(["paragraph", "table"]);
+    expect(endnote?.content.map((block) => block.type)).toEqual([
+      "paragraph",
+      "table",
+    ]);
   });
 
   test("parses footnote block content with alternate namespace prefixes", () => {
@@ -85,7 +88,10 @@ describe("footnoteParser table content", () => {
     const footnote = map.byId.get(1);
 
     expect(footnote).toBeDefined();
-    expect(footnote?.content.map((block) => block.type)).toEqual(["paragraph", "table"]);
+    expect(footnote?.content.map((block) => block.type)).toEqual([
+      "paragraph",
+      "table",
+    ]);
   });
 
   test("parses endnote block content with alternate namespace prefixes", () => {
@@ -93,6 +99,9 @@ describe("footnoteParser table content", () => {
     const endnote = map.byId.get(1);
 
     expect(endnote).toBeDefined();
-    expect(endnote?.content.map((block) => block.type)).toEqual(["paragraph", "table"]);
+    expect(endnote?.content.map((block) => block.type)).toEqual([
+      "paragraph",
+      "table",
+    ]);
   });
 });

@@ -1,5 +1,9 @@
 import { panic } from "better-result";
-import { type ParagraphNumberingOverride, resolveParagraphNumbering } from "@stll/docx-core/model";
+
+import {
+  type ParagraphNumberingOverride,
+  resolveParagraphNumbering,
+} from "@stll/docx-core/model";
 
 import { isBulletLevel, type NumberingMap } from "../docx/numberingParser";
 
@@ -20,7 +24,11 @@ import { isBulletLevel, type NumberingMap } from "../docx/numberingParser";
 export type ListState =
   | { readonly type: "none" }
   | { readonly type: "bullet"; readonly level: number; readonly numId?: number }
-  | { readonly type: "numbered"; readonly level: number; readonly numId?: number };
+  | {
+      readonly type: "numbered";
+      readonly level: number;
+      readonly numId?: number;
+    };
 
 /** The kinds of list a toolbar distinguishes. */
 export type ListType = ListState["type"];
@@ -35,7 +43,9 @@ export type ActiveListState = Exclude<ListState, { type: "none" }>;
  * Whether the selection is in a list at all: the one reader over the
  * discriminator, so no consumer spells the empty arm itself.
  */
-export const isInListState = (state: ListState | undefined): state is ActiveListState =>
+export const isInListState = (
+  state: ListState | undefined,
+): state is ActiveListState =>
   // oxlint-disable-next-line folio-reserved-values/no-bare-reserved-compare -- `ListState.type` is this union's own discriminator, not an OOXML attribute; this is the reader every consumer calls.
   state !== undefined && state.type !== "none";
 
@@ -68,7 +78,8 @@ export const resolveListState = (
   }
   const { numId, ilvl: level } = resolved;
   const definition = numbering?.getLevel(numId, level) ?? null;
-  const type = definition !== null && isBulletLevel(definition) ? "bullet" : "numbered";
+  const type =
+    definition !== null && isBulletLevel(definition) ? "bullet" : "numbered";
   return { type, level, numId };
 };
 
@@ -85,7 +96,11 @@ export const sameListState = (
       return right.type === left.type;
     case "bullet":
     case "numbered":
-      return left.type === right.type && left.level === right.level && left.numId === right.numId;
+      return (
+        left.type === right.type &&
+        left.level === right.level &&
+        left.numId === right.numId
+      );
     default: {
       const unhandled: never = left;
       return panic(`Unhandled list state ${JSON.stringify(unhandled)}`);

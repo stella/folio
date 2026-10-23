@@ -1,4 +1,3 @@
-import { sliceText } from "@stll/folio-core/utils/sliceText";
 import type {
   FolioBlockDiff,
   FolioCompareDocxVersionsOptions,
@@ -11,6 +10,7 @@ import {
   compareDocxVersions as compareDocxVersionsCore,
   generateRedlineDocx as generateRedlineDocxCore,
 } from "@stll/folio-core/server";
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 
 /** Backward-compatible name for a core word-level version-diff segment. */
 export type FolioAgentVersionDiffSegment = FolioVersionDiffSegment;
@@ -22,7 +22,8 @@ export type FolioAgentBlockDiff = FolioBlockDiff;
 export type FolioAgentVersionDiff = FolioVersionDiff;
 
 /** Backward-compatible name for core comparison options. */
-export type FolioAgentCompareDocxVersionsOptions = FolioCompareDocxVersionsOptions;
+export type FolioAgentCompareDocxVersionsOptions =
+  FolioCompareDocxVersionsOptions;
 
 /** Agent-facing name for core redline-generation options. */
 export type FolioAgentGenerateRedlineDocxOptions = GenerateRedlineDocxOptions;
@@ -35,14 +36,16 @@ export const compareDocxVersions = (
   base: ArrayBuffer,
   revised: ArrayBuffer,
   options: FolioAgentCompareDocxVersionsOptions = {},
-): Promise<FolioAgentVersionDiff> => compareDocxVersionsCore(base, revised, options);
+): Promise<FolioAgentVersionDiff> =>
+  compareDocxVersionsCore(base, revised, options);
 
 /** Generate a reviewed package from two `.docx` buffers. */
 export const generateRedlineDocx = (
   base: ArrayBuffer,
   revised: ArrayBuffer,
   options: FolioAgentGenerateRedlineDocxOptions = {},
-): Promise<FolioAgentGenerateRedlineDocxResult> => generateRedlineDocxCore(base, revised, options);
+): Promise<FolioAgentGenerateRedlineDocxResult> =>
+  generateRedlineDocxCore(base, revised, options);
 
 const ELLIPSIS = "…";
 const UNCHANGED_EDGE_CHARS = 30;
@@ -67,7 +70,9 @@ const renderSegment = (segment: FolioVersionDiffSegment): string => {
   }
 };
 
-const renderChangedProperties = (properties: readonly string[] | undefined): string =>
+const renderChangedProperties = (
+  properties: readonly string[] | undefined,
+): string =>
   properties && properties.length > 0 ? ` (${properties.join(", ")})` : "";
 
 const formatChangeLine = (change: FolioBlockDiff): string => {
@@ -97,10 +102,20 @@ const formatChangeLine = (change: FolioBlockDiff): string => {
 };
 
 /** Render a structured version diff as compact, deterministic model input. */
-export const formatVersionDiffForLLM = (diff: FolioAgentVersionDiff): string => {
-  const { added, deleted, modified, formatChanged, moved, metadataChanged, unchanged } =
-    diff.summaryCounts;
-  const metadataSummary = metadataChanged > 0 ? `, ${metadataChanged} metadata-changed` : "";
+export const formatVersionDiffForLLM = (
+  diff: FolioAgentVersionDiff,
+): string => {
+  const {
+    added,
+    deleted,
+    modified,
+    formatChanged,
+    moved,
+    metadataChanged,
+    unchanged,
+  } = diff.summaryCounts;
+  const metadataSummary =
+    metadataChanged > 0 ? `, ${metadataChanged} metadata-changed` : "";
   const header = `Version diff: ${added} added, ${deleted} deleted, ${modified} modified, ${formatChanged} format-changed, ${moved} moved${metadataSummary}, ${unchanged} unchanged`;
   const metadataLines = diff.metadataChanges.map(
     ({ property, baseValue, revisedValue }) =>
@@ -113,7 +128,10 @@ export const formatVersionDiffForLLM = (diff: FolioAgentVersionDiff): string => 
           `Privacy transforms: ${diff.privacyReport.appliedTransforms.join(", ")}`,
           `Removed metadata fields: ${diff.privacyReport.removedMetadataProperties.join(", ") || "none"}`,
         ];
-  return [header, ...privacyLines, ...diff.changes.map(formatChangeLine), ...metadataLines].join(
-    "\n",
-  );
+  return [
+    header,
+    ...privacyLines,
+    ...diff.changes.map(formatChangeLine),
+    ...metadataLines,
+  ].join("\n");
 };

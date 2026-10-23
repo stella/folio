@@ -1,6 +1,11 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
+import {
+  readTestFont,
+  TEST_FONTS_INSTALLED,
+  TEST_FONTS_SKIP_REASON,
+} from "./__tests__/testFonts";
 import { parseSfnt } from "./parse";
 import type { SfntFont } from "./parse";
 import { subsetTrueType } from "./subset";
@@ -12,7 +17,6 @@ import {
   SFNT_TABLE,
   SFNT_VERSION,
 } from "./tables";
-import { TEST_FONTS_INSTALLED, TEST_FONTS_SKIP_REASON, readTestFont } from "./__tests__/testFonts";
 import { decodeWoff } from "./woff";
 
 const GLYPH_HEADER_SIZE = 10;
@@ -37,7 +41,10 @@ const loadArimo = async (): Promise<SfntFont> => {
 };
 
 /** Independent glyph reader, so the tests check the bytes, not the subsetter. */
-const glyphDataFor = (font: SfntFont, glyphId: number): Uint8Array | undefined => {
+const glyphDataFor = (
+  font: SfntFont,
+  glyphId: number,
+): Uint8Array | undefined => {
   const directory = readSfntDirectory(font.bytes);
   if (directory.isErr()) {
     return undefined;
@@ -101,7 +108,11 @@ const findCompositeGlyph = (font: SfntFont): number | undefined => {
       continue;
     }
     const glyph = glyphDataFor(font, glyphId);
-    if (glyph && glyph.byteLength >= GLYPH_HEADER_SIZE && componentGlyphIds(glyph).length > 0) {
+    if (
+      glyph &&
+      glyph.byteLength >= GLYPH_HEADER_SIZE &&
+      componentGlyphIds(glyph).length > 0
+    ) {
       return glyphId;
     }
   }
@@ -117,8 +128,13 @@ const glyphIdsFor = (font: SfntFont, text: string): Set<number> => {
 };
 
 /** Minimal sfnt builder, used to stand up fonts the fixtures do not provide. */
-const buildSfnt = (version: number, tables: readonly { tag: string; data: Uint8Array }[]) => {
-  const sorted = [...tables].sort((left, right) => (left.tag < right.tag ? -1 : 1));
+const buildSfnt = (
+  version: number,
+  tables: readonly { tag: string; data: Uint8Array }[],
+) => {
+  const sorted = [...tables].sort((left, right) =>
+    left.tag < right.tag ? -1 : 1,
+  );
   const directorySize = sorted.length * SFNT_DIRECTORY_ENTRY_SIZE;
   const bodySize = sorted.reduce(
     (total, table) => total + Math.ceil(table.data.byteLength / 4) * 4,
@@ -175,7 +191,10 @@ const buildFillerFont = (donor: SfntFont): SfntFont => {
   const head = copy(SFNT_TABLE.head);
   new DataView(head.buffer).setInt16(HEAD_INDEX_TO_LOC_FORMAT, 1);
   const hhea = copy(SFNT_TABLE.hhea);
-  new DataView(hhea.buffer).setUint16(HHEA_NUMBER_OF_HMETRICS, FILLER_GLYPH_COUNT);
+  new DataView(hhea.buffer).setUint16(
+    HHEA_NUMBER_OF_HMETRICS,
+    FILLER_GLYPH_COUNT,
+  );
   const maxp = copy(SFNT_TABLE.maxp);
   new DataView(maxp.buffer).setUint16(MAXP_NUM_GLYPHS, FILLER_GLYPH_COUNT);
 
@@ -197,7 +216,10 @@ const buildFillerFont = (donor: SfntFont): SfntFont => {
     glyfView.setInt16(at + 6, 400);
     glyfView.setInt16(at + 8, 700 + glyphId);
   }
-  locaView.setUint32(FILLER_GLYPH_COUNT * 4, FILLER_GLYPH_COUNT * FILLER_GLYPH_SIZE);
+  locaView.setUint32(
+    FILLER_GLYPH_COUNT * 4,
+    FILLER_GLYPH_COUNT * FILLER_GLYPH_SIZE,
+  );
 
   const parsed = parseSfnt(
     buildSfnt(SFNT_VERSION.trueType, [
@@ -239,28 +261,31 @@ const buildCffLookalike = (font: SfntFont): Uint8Array => {
 };
 
 describe(`subsetTrueType (${TEST_FONTS_SKIP_REASON})`, () => {
-  test.skipIf(!TEST_FONTS_INSTALLED)("produces a font that re-parses", async () => {
-    const font = await loadArimo();
-    const requested = glyphIdsFor(font, "Hello, world!");
-    const subset = subsetTrueType(font, requested);
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "produces a font that re-parses",
+    async () => {
+      const font = await loadArimo();
+      const requested = glyphIdsFor(font, "Hello, world!");
+      const subset = subsetTrueType(font, requested);
 
-    expect(subset.isErr()).toBe(false);
-    if (subset.isErr()) {
-      return;
-    }
+      expect(subset.isErr()).toBe(false);
+      if (subset.isErr()) {
+        return;
+      }
 
-    const reparsed = parseSfnt(subset.value.bytes);
-    expect(reparsed.isErr()).toBe(false);
-    if (reparsed.isErr()) {
-      return;
-    }
+      const reparsed = parseSfnt(subset.value.bytes);
+      expect(reparsed.isErr()).toBe(false);
+      if (reparsed.isErr()) {
+        return;
+      }
 
-    expect(reparsed.value.numGlyphs).toBe(subset.value.glyphIdMap.size);
-    expect(reparsed.value.unitsPerEm).toBe(font.unitsPerEm);
-    expect(reparsed.value.ascender).toBe(font.ascender);
-    expect(reparsed.value.bbox).toEqual(font.bbox);
-    expect(subset.value.bytes.byteLength).toBeLessThan(font.bytes.byteLength);
-  });
+      expect(reparsed.value.numGlyphs).toBe(subset.value.glyphIdMap.size);
+      expect(reparsed.value.unitsPerEm).toBe(font.unitsPerEm);
+      expect(reparsed.value.ascender).toBe(font.ascender);
+      expect(reparsed.value.bbox).toEqual(font.bbox);
+      expect(subset.value.bytes.byteLength).toBeLessThan(font.bytes.byteLength);
+    },
+  );
 
   test.skipIf(!TEST_FONTS_INSTALLED)("keeps .notdef at glyph 0", async () => {
     const font = await loadArimo();
@@ -272,175 +297,218 @@ describe(`subsetTrueType (${TEST_FONTS_SKIP_REASON})`, () => {
 
     expect(subset.value.glyphIdMap.get(0)).toBe(0);
     // New ids are a dense 0..n-1 range.
-    expect([...subset.value.glyphIdMap.values()].sort((left, right) => left - right)).toEqual(
-      [...subset.value.glyphIdMap.values()].map((_, index) => index),
-    );
+    expect(
+      [...subset.value.glyphIdMap.values()].sort((left, right) => left - right),
+    ).toEqual([...subset.value.glyphIdMap.values()].map((_, index) => index));
   });
 
-  test.skipIf(!TEST_FONTS_INSTALLED)("preserves the requested advances", async () => {
-    const font = await loadArimo();
-    const subset = subsetTrueType(font, glyphIdsFor(font, "The quick brown fox, 1234!"));
-    expect(subset.isErr()).toBe(false);
-    if (subset.isErr()) {
-      return;
-    }
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "preserves the requested advances",
+    async () => {
+      const font = await loadArimo();
+      const subset = subsetTrueType(
+        font,
+        glyphIdsFor(font, "The quick brown fox, 1234!"),
+      );
+      expect(subset.isErr()).toBe(false);
+      if (subset.isErr()) {
+        return;
+      }
 
-    const reparsed = parseSfnt(subset.value.bytes);
-    expect(reparsed.isErr()).toBe(false);
-    if (reparsed.isErr()) {
-      return;
-    }
+      const reparsed = parseSfnt(subset.value.bytes);
+      expect(reparsed.isErr()).toBe(false);
+      if (reparsed.isErr()) {
+        return;
+      }
 
-    for (const [oldId, newId] of subset.value.glyphIdMap) {
-      expect(reparsed.value.advanceWidthFor(newId)).toBe(font.advanceWidthFor(oldId));
-    }
-  });
+      for (const [oldId, newId] of subset.value.glyphIdMap) {
+        expect(reparsed.value.advanceWidthFor(newId)).toBe(
+          font.advanceWidthFor(oldId),
+        );
+      }
+    },
+  );
 
-  test.skipIf(!TEST_FONTS_INSTALLED)("keeps the glyph outlines byte for byte", async () => {
-    const font = await loadArimo();
-    const subset = subsetTrueType(font, glyphIdsFor(font, "Wg"));
-    expect(subset.isErr()).toBe(false);
-    if (subset.isErr()) {
-      return;
-    }
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "keeps the glyph outlines byte for byte",
+    async () => {
+      const font = await loadArimo();
+      const subset = subsetTrueType(font, glyphIdsFor(font, "Wg"));
+      expect(subset.isErr()).toBe(false);
+      if (subset.isErr()) {
+        return;
+      }
 
-    const reparsed = parseSfnt(subset.value.bytes);
-    expect(reparsed.isErr()).toBe(false);
-    if (reparsed.isErr()) {
-      return;
-    }
+      const reparsed = parseSfnt(subset.value.bytes);
+      expect(reparsed.isErr()).toBe(false);
+      if (reparsed.isErr()) {
+        return;
+      }
 
-    for (const [oldId, newId] of subset.value.glyphIdMap) {
-      const original = glyphDataFor(font, oldId);
-      const copied = glyphDataFor(reparsed.value, newId);
+      for (const [oldId, newId] of subset.value.glyphIdMap) {
+        const original = glyphDataFor(font, oldId);
+        const copied = glyphDataFor(reparsed.value, newId);
+        if (!original) {
+          continue;
+        }
+        expect(copied).toBeDefined();
+        // Composite components are renumbered, so only simple glyphs compare
+        // byte for byte; the copy is padded to four bytes.
+        if (componentGlyphIds(original).length === 0 && copied) {
+          expect(
+            Buffer.from(copied.subarray(0, original.byteLength)).equals(
+              Buffer.from(original),
+            ),
+          ).toBe(true);
+        }
+        expect(reparsed.value.glyphBoundsFor(newId)).toEqual(
+          font.glyphBoundsFor(oldId),
+        );
+      }
+    },
+  );
+
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "pulls composite components into the subset",
+    async () => {
+      const font = await loadArimo();
+      const compositeId = findCompositeGlyph(font);
+      expect(compositeId).toBeDefined();
+      if (compositeId === undefined) {
+        return;
+      }
+
+      const original = glyphDataFor(font, compositeId);
+      expect(original).toBeDefined();
       if (!original) {
-        continue;
+        return;
       }
+      const components = componentGlyphIds(original);
+      expect(components.length).toBeGreaterThan(0);
+
+      const subset = subsetTrueType(font, new Set([compositeId]));
+      expect(subset.isErr()).toBe(false);
+      if (subset.isErr()) {
+        return;
+      }
+
+      for (const component of components) {
+        expect(subset.value.glyphIdMap.has(component)).toBe(true);
+      }
+
+      const reparsed = parseSfnt(subset.value.bytes);
+      expect(reparsed.isErr()).toBe(false);
+      if (reparsed.isErr()) {
+        return;
+      }
+
+      const newId = subset.value.glyphIdMap.get(compositeId);
+      expect(newId).toBeDefined();
+      if (newId === undefined) {
+        return;
+      }
+
+      const copied = glyphDataFor(reparsed.value, newId);
       expect(copied).toBeDefined();
-      // Composite components are renumbered, so only simple glyphs compare
-      // byte for byte; the copy is padded to four bytes.
-      if (componentGlyphIds(original).length === 0 && copied) {
-        expect(
-          Buffer.from(copied.subarray(0, original.byteLength)).equals(Buffer.from(original)),
-        ).toBe(true);
+      if (!copied) {
+        return;
       }
-      expect(reparsed.value.glyphBoundsFor(newId)).toEqual(font.glyphBoundsFor(oldId));
-    }
-  });
 
-  test.skipIf(!TEST_FONTS_INSTALLED)("pulls composite components into the subset", async () => {
-    const font = await loadArimo();
-    const compositeId = findCompositeGlyph(font);
-    expect(compositeId).toBeDefined();
-    if (compositeId === undefined) {
-      return;
-    }
+      // The component indices must have been rewritten to the new numbering.
+      const copiedComponents = componentGlyphIds(copied);
+      expect(copiedComponents.length).toBe(components.length);
+      for (const [index, component] of components.entries()) {
+        expect(copiedComponents[index]).toBe(
+          subset.value.glyphIdMap.get(component),
+        );
+        expect(copiedComponents[index]).toBeLessThan(reparsed.value.numGlyphs);
+      }
+    },
+  );
 
-    const original = glyphDataFor(font, compositeId);
-    expect(original).toBeDefined();
-    if (!original) {
-      return;
-    }
-    const components = componentGlyphIds(original);
-    expect(components.length).toBeGreaterThan(0);
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "is byte-identical across runs and set orders",
+    async () => {
+      const font = await loadArimo();
+      const ascending = glyphIdsFor(font, "abcdefghij");
+      const shuffled = new Set([...ascending].reverse());
 
-    const subset = subsetTrueType(font, new Set([compositeId]));
-    expect(subset.isErr()).toBe(false);
-    if (subset.isErr()) {
-      return;
-    }
+      const first = subsetTrueType(font, ascending);
+      const second = subsetTrueType(font, ascending);
+      const reordered = subsetTrueType(font, shuffled);
+      expect(first.isErr()).toBe(false);
+      expect(second.isErr()).toBe(false);
+      expect(reordered.isErr()).toBe(false);
+      if (first.isErr() || second.isErr() || reordered.isErr()) {
+        return;
+      }
 
-    for (const component of components) {
-      expect(subset.value.glyphIdMap.has(component)).toBe(true);
-    }
+      expect(
+        Buffer.from(first.value.bytes).equals(Buffer.from(second.value.bytes)),
+      ).toBe(true);
+      expect(
+        Buffer.from(first.value.bytes).equals(
+          Buffer.from(reordered.value.bytes),
+        ),
+      ).toBe(true);
+      expect([...first.value.glyphIdMap]).toEqual([
+        ...reordered.value.glyphIdMap,
+      ]);
+    },
+  );
 
-    const reparsed = parseSfnt(subset.value.bytes);
-    expect(reparsed.isErr()).toBe(false);
-    if (reparsed.isErr()) {
-      return;
-    }
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "writes a checkSumAdjustment the file sums to",
+    async () => {
+      const font = await loadArimo();
+      const subset = subsetTrueType(font, glyphIdsFor(font, "checksum"));
+      expect(subset.isErr()).toBe(false);
+      if (subset.isErr()) {
+        return;
+      }
 
-    const newId = subset.value.glyphIdMap.get(compositeId);
-    expect(newId).toBeDefined();
-    if (newId === undefined) {
-      return;
-    }
+      const bytes = subset.value.bytes;
+      expect(bytes.byteLength % 4).toBe(0);
 
-    const copied = glyphDataFor(reparsed.value, newId);
-    expect(copied).toBeDefined();
-    if (!copied) {
-      return;
-    }
+      const view = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      );
+      let sum = 0;
+      for (let at = 0; at < bytes.byteLength; at += 4) {
+        sum = (sum + view.getUint32(at)) % 0x100000000;
+      }
+      expect(sum).toBe(0xb1b0afba);
+    },
+  );
 
-    // The component indices must have been rewritten to the new numbering.
-    const copiedComponents = componentGlyphIds(copied);
-    expect(copiedComponents.length).toBe(components.length);
-    for (const [index, component] of components.entries()) {
-      expect(copiedComponents[index]).toBe(subset.value.glyphIdMap.get(component));
-      expect(copiedComponents[index]).toBeLessThan(reparsed.value.numGlyphs);
-    }
-  });
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "subsets an empty request down to .notdef",
+    async () => {
+      const font = await loadArimo();
+      const subset = subsetTrueType(font, new Set());
+      expect(subset.isErr()).toBe(false);
+      if (subset.isErr()) {
+        return;
+      }
 
-  test.skipIf(!TEST_FONTS_INSTALLED)("is byte-identical across runs and set orders", async () => {
-    const font = await loadArimo();
-    const ascending = glyphIdsFor(font, "abcdefghij");
-    const shuffled = new Set([...ascending].reverse());
-
-    const first = subsetTrueType(font, ascending);
-    const second = subsetTrueType(font, ascending);
-    const reordered = subsetTrueType(font, shuffled);
-    expect(first.isErr()).toBe(false);
-    expect(second.isErr()).toBe(false);
-    expect(reordered.isErr()).toBe(false);
-    if (first.isErr() || second.isErr() || reordered.isErr()) {
-      return;
-    }
-
-    expect(Buffer.from(first.value.bytes).equals(Buffer.from(second.value.bytes))).toBe(true);
-    expect(Buffer.from(first.value.bytes).equals(Buffer.from(reordered.value.bytes))).toBe(true);
-    expect([...first.value.glyphIdMap]).toEqual([...reordered.value.glyphIdMap]);
-  });
-
-  test.skipIf(!TEST_FONTS_INSTALLED)("writes a checkSumAdjustment the file sums to", async () => {
-    const font = await loadArimo();
-    const subset = subsetTrueType(font, glyphIdsFor(font, "checksum"));
-    expect(subset.isErr()).toBe(false);
-    if (subset.isErr()) {
-      return;
-    }
-
-    const bytes = subset.value.bytes;
-    expect(bytes.byteLength % 4).toBe(0);
-
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    let sum = 0;
-    for (let at = 0; at < bytes.byteLength; at += 4) {
-      sum = (sum + view.getUint32(at)) % 0x100000000;
-    }
-    expect(sum).toBe(0xb1b0afba);
-  });
-
-  test.skipIf(!TEST_FONTS_INSTALLED)("subsets an empty request down to .notdef", async () => {
-    const font = await loadArimo();
-    const subset = subsetTrueType(font, new Set());
-    expect(subset.isErr()).toBe(false);
-    if (subset.isErr()) {
-      return;
-    }
-
-    expect(subset.value.glyphIdMap.size).toBe(1);
-    const reparsed = parseSfnt(subset.value.bytes);
-    expect(reparsed.isErr()).toBe(false);
-    if (!reparsed.isErr()) {
-      expect(reparsed.value.numGlyphs).toBe(1);
-    }
-  });
+      expect(subset.value.glyphIdMap.size).toBe(1);
+      const reparsed = parseSfnt(subset.value.bytes);
+      expect(reparsed.isErr()).toBe(false);
+      if (!reparsed.isErr()) {
+        expect(reparsed.value.numGlyphs).toBe(1);
+      }
+    },
+  );
 
   test.skipIf(!TEST_FONTS_INSTALLED)(
     "copies every glyph when everything is requested",
     async () => {
       const font = await loadArimo();
-      const everyGlyph = new Set(Array.from({ length: font.numGlyphs }, (_, index) => index));
+      const everyGlyph = new Set(
+        Array.from({ length: font.numGlyphs }, (_, index) => index),
+      );
       const subset = subsetTrueType(font, everyGlyph);
       expect(subset.isErr()).toBe(false);
       if (subset.isErr()) {
@@ -456,65 +524,77 @@ describe(`subsetTrueType (${TEST_FONTS_SKIP_REASON})`, () => {
       // A full subset renumbers nothing, so every glyph keeps its own id.
       for (const [oldId, newId] of subset.value.glyphIdMap) {
         expect(newId).toBe(oldId);
-        expect(reparsed.value.glyphBoundsFor(newId)).toEqual(font.glyphBoundsFor(oldId));
+        expect(reparsed.value.glyphBoundsFor(newId)).toEqual(
+          font.glyphBoundsFor(oldId),
+        );
       }
     },
   );
 
-  test.skipIf(!TEST_FONTS_INSTALLED)("switches to long loca for a large glyf", async () => {
-    // The Latin fixture faces are far too small to overrun short loca, so the
-    // branch that would silently truncate a large font gets its own font.
-    const font = buildFillerFont(await loadArimo());
-    const subset = subsetTrueType(
-      font,
-      new Set(Array.from({ length: font.numGlyphs }, (_, index) => index)),
-    );
-    expect(subset.isErr()).toBe(false);
-    if (subset.isErr()) {
-      return;
-    }
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "switches to long loca for a large glyf",
+    async () => {
+      // The Latin fixture faces are far too small to overrun short loca, so the
+      // branch that would silently truncate a large font gets its own font.
+      const font = buildFillerFont(await loadArimo());
+      const subset = subsetTrueType(
+        font,
+        new Set(Array.from({ length: font.numGlyphs }, (_, index) => index)),
+      );
+      expect(subset.isErr()).toBe(false);
+      if (subset.isErr()) {
+        return;
+      }
 
-    const directory = readSfntDirectory(subset.value.bytes);
-    expect(directory.isErr()).toBe(false);
-    if (directory.isErr()) {
-      return;
-    }
+      const directory = readSfntDirectory(subset.value.bytes);
+      expect(directory.isErr()).toBe(false);
+      if (directory.isErr()) {
+        return;
+      }
 
-    const { view, tables } = directory.value;
-    const head = tables.get(SFNT_TABLE.head);
-    const glyf = tables.get(SFNT_TABLE.glyf);
-    const loca = tables.get(SFNT_TABLE.loca);
-    expect(head).toBeDefined();
-    expect(glyf).toBeDefined();
-    expect(loca).toBeDefined();
-    if (!head || !glyf || !loca) {
-      return;
-    }
+      const { view, tables } = directory.value;
+      const head = tables.get(SFNT_TABLE.head);
+      const glyf = tables.get(SFNT_TABLE.glyf);
+      const loca = tables.get(SFNT_TABLE.loca);
+      expect(head).toBeDefined();
+      expect(glyf).toBeDefined();
+      expect(loca).toBeDefined();
+      if (!head || !glyf || !loca) {
+        return;
+      }
 
-    expect(glyf.length).toBeGreaterThan(MAX_SHORT_LOCA_GLYF_LENGTH);
-    expect(view.getInt16(head.offset + HEAD_INDEX_TO_LOC_FORMAT)).toBe(1);
-    expect(loca.length).toBe((font.numGlyphs + 1) * 4);
+      expect(glyf.length).toBeGreaterThan(MAX_SHORT_LOCA_GLYF_LENGTH);
+      expect(view.getInt16(head.offset + HEAD_INDEX_TO_LOC_FORMAT)).toBe(1);
+      expect(loca.length).toBe((font.numGlyphs + 1) * 4);
 
-    const reparsed = parseSfnt(subset.value.bytes);
-    expect(reparsed.isErr()).toBe(false);
-    if (reparsed.isErr()) {
-      return;
-    }
-    expect(reparsed.value.numGlyphs).toBe(font.numGlyphs);
-    for (let glyphId = 0; glyphId < font.numGlyphs; glyphId++) {
-      expect(reparsed.value.advanceWidthFor(glyphId)).toBe(font.advanceWidthFor(glyphId));
-      expect(reparsed.value.glyphBoundsFor(glyphId)).toEqual(font.glyphBoundsFor(glyphId));
-    }
-  });
+      const reparsed = parseSfnt(subset.value.bytes);
+      expect(reparsed.isErr()).toBe(false);
+      if (reparsed.isErr()) {
+        return;
+      }
+      expect(reparsed.value.numGlyphs).toBe(font.numGlyphs);
+      for (let glyphId = 0; glyphId < font.numGlyphs; glyphId++) {
+        expect(reparsed.value.advanceWidthFor(glyphId)).toBe(
+          font.advanceWidthFor(glyphId),
+        );
+        expect(reparsed.value.glyphBoundsFor(glyphId)).toEqual(
+          font.glyphBoundsFor(glyphId),
+        );
+      }
+    },
+  );
 
-  test.skipIf(!TEST_FONTS_INSTALLED)("rejects a glyph id outside the font", async () => {
-    const font = await loadArimo();
-    const subset = subsetTrueType(font, new Set([font.numGlyphs]));
-    expect(subset.isErr()).toBe(true);
-    if (subset.isErr()) {
-      expect(subset.error.message).toContain("outside");
-    }
-  });
+  test.skipIf(!TEST_FONTS_INSTALLED)(
+    "rejects a glyph id outside the font",
+    async () => {
+      const font = await loadArimo();
+      const subset = subsetTrueType(font, new Set([font.numGlyphs]));
+      expect(subset.isErr()).toBe(true);
+      if (subset.isErr()) {
+        expect(subset.error.message).toContain("outside");
+      }
+    },
+  );
 
   test.skipIf(!TEST_FONTS_INSTALLED)("refuses a CFF font", async () => {
     const donor = await loadArimo();

@@ -40,7 +40,11 @@ const TABLE_BLOCKS = [
 
 describe("flow source tracing", () => {
   test("matches text spanning multiple table cells and reports cell context", () => {
-    const matches = traceFlowBlocks({ blocks: TABLE_BLOCKS, query: "alpha beta", limit: 8 });
+    const matches = traceFlowBlocks({
+      blocks: TABLE_BLOCKS,
+      query: "alpha beta",
+      limit: 8,
+    });
 
     expect(matches).toHaveLength(1);
     expect(matches.at(0)).toMatchObject({
@@ -74,7 +78,11 @@ describe("flow source tracing", () => {
   });
 
   test("reports a paragraph inside a table alongside its row context", () => {
-    const matches = traceFlowBlocks({ blocks: TABLE_BLOCKS, query: "beta", limit: 8 });
+    const matches = traceFlowBlocks({
+      blocks: TABLE_BLOCKS,
+      query: "beta",
+      limit: 8,
+    });
 
     expect(matches.map(({ type }) => type)).toEqual(["tableRow", "paragraph"]);
     expect(matches.at(1)).toMatchObject({
@@ -86,7 +94,9 @@ describe("flow source tracing", () => {
   });
 
   test("enforces the match limit across nested blocks", () => {
-    expect(traceFlowBlocks({ blocks: TABLE_BLOCKS, query: "beta", limit: 1 })).toHaveLength(1);
+    expect(
+      traceFlowBlocks({ blocks: TABLE_BLOCKS, query: "beta", limit: 1 }),
+    ).toHaveLength(1);
   });
 
   test("searches complete cell text beyond the diagnostic preview", () => {
@@ -115,7 +125,9 @@ describe("flow source tracing", () => {
       },
     ] satisfies FlowBlock[];
 
-    expect(traceFlowBlocks({ blocks, query: "needle", limit: 8 }).at(0)).toMatchObject({
+    expect(
+      traceFlowBlocks({ blocks, query: "needle", limit: 8 }).at(0),
+    ).toMatchObject({
       type: "tableRow",
       tableId: "long-table",
     });

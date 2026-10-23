@@ -6,8 +6,10 @@
  * per-page footnote area heights for layout space reservation.
  */
 
+import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import type {
   FlowBlock,
+  FootnoteContent,
   Measure,
   Page,
   ParagraphBlock,
@@ -17,19 +19,18 @@ import type {
   TableMeasure,
   TableRowMeasure,
   TextRun,
-  FootnoteContent,
 } from "../../layout-engine/types";
-import { isFloatingImageRun, resolveTableWidthPx } from "../../layout-engine/types";
 import {
   DEFAULT_TEXTBOX_MARGINS as TEXTBOX_MARGINS,
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
   FOOTNOTE_FALLBACK_LINE_HEIGHT,
   FOOTNOTE_SEPARATOR_HEIGHT,
+  isFloatingImageRun,
+  resolveTableWidthPx,
 } from "../../layout-engine/types";
 import type { DisplayMode } from "../../managers/EditorModeManager";
-import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
-import { remapMarkupViewBlocks } from "./markupViewFlow";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
 import type {
   Endnote,
   Footnote,
@@ -38,20 +39,30 @@ import type {
   Theme,
 } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
-import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
+import { remapMarkupViewBlocks } from "./markupViewFlow";
 import { collectNoteRefs, toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
 // Re-exported for back-compat with existing callers that imported the
 // constants from this module before they moved to `layout-engine/types`.
-export { FOOTNOTE_SEPARATOR_HEIGHT, FOOTNOTE_ENTRY_MARGIN_BOTTOM, FOOTNOTE_FALLBACK_LINE_HEIGHT };
+export {
+  FOOTNOTE_SEPARATOR_HEIGHT,
+  FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+  FOOTNOTE_FALLBACK_LINE_HEIGHT,
+};
 
 /** Default footnote font size in points */
 const FOOTNOTE_FONT_SIZE = 8;
 
-export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Measure[];
+export type MeasureBlocksFn = (
+  blocks: FlowBlock[],
+  contentWidth: number,
+) => Measure[];
 
-export type ConvertFootnoteOptions = Pick<ToFlowBlocksOptions, "embeddedFontFamilyMap"> & {
+export type ConvertFootnoteOptions = Pick<
+  ToFlowBlocksOptions,
+  "embeddedFontFamilyMap"
+> & {
   /** Whether comment highlights are painted. Defaults to true. */
   showCommentHighlights?: boolean;
   markupView?: DisplayMode;
@@ -89,7 +100,9 @@ export type ConvertFootnoteOptions = Pick<ToFlowBlocksOptions, "embeddedFontFami
  * render inside the body but never get an entry in the per-page footnote
  * area.
  */
-export function collectFootnoteRefs(blocks: FlowBlock[]): { footnoteId: number; pmPos: number }[] {
+export function collectFootnoteRefs(
+  blocks: FlowBlock[],
+): { footnoteId: number; pmPos: number }[] {
   return collectNoteRefs(blocks, "footnoteRefId").map(({ noteId, pmPos }) => ({
     footnoteId: noteId,
     pmPos,
@@ -100,7 +113,9 @@ export function collectFootnoteRefs(blocks: FlowBlock[]): { footnoteId: number; 
  * Scan FlowBlocks for runs with endnoteRefId set, in document order.
  * Same recursive walk as `collectFootnoteRefs`.
  */
-export function collectEndnoteRefs(blocks: FlowBlock[]): { endnoteId: number; pmPos: number }[] {
+export function collectEndnoteRefs(
+  blocks: FlowBlock[],
+): { endnoteId: number; pmPos: number }[] {
   return collectNoteRefs(blocks, "endnoteRefId").map(({ noteId, pmPos }) => ({
     endnoteId: noteId,
     pmPos,
@@ -164,8 +179,14 @@ export type NoteDisplayNumberMaps = {
  * so click-to-position still resolves into the marker (same contract as the
  * template preview substitution).
  */
-export function remapNoteMarkerText(blocks: FlowBlock[], maps: NoteDisplayNumberMaps): FlowBlock[] {
-  if ((maps.footnoteNumbers?.size ?? 0) === 0 && (maps.endnoteTexts?.size ?? 0) === 0) {
+export function remapNoteMarkerText(
+  blocks: FlowBlock[],
+  maps: NoteDisplayNumberMaps,
+): FlowBlock[] {
+  if (
+    (maps.footnoteNumbers?.size ?? 0) === 0 &&
+    (maps.endnoteTexts?.size ?? 0) === 0
+  ) {
     return blocks;
   }
 
@@ -178,7 +199,10 @@ export function remapNoteMarkerText(blocks: FlowBlock[], maps: NoteDisplayNumber
   return changed ? next : blocks;
 }
 
-function remapNoteMarkerBlock(block: FlowBlock, maps: NoteDisplayNumberMaps): FlowBlock {
+function remapNoteMarkerBlock(
+  block: FlowBlock,
+  maps: NoteDisplayNumberMaps,
+): FlowBlock {
   if (block.kind === "paragraph") {
     return remapNoteMarkerParagraph(block, maps);
   }
@@ -200,7 +224,10 @@ function remapNoteMarkerBlock(block: FlowBlock, maps: NoteDisplayNumberMaps): Fl
   return block;
 }
 
-function remapNoteMarkerTable(block: TableBlock, maps: NoteDisplayNumberMaps): TableBlock {
+function remapNoteMarkerTable(
+  block: TableBlock,
+  maps: NoteDisplayNumberMaps,
+): TableBlock {
   let tableChanged = false;
   const rows = block.rows.map((row) => {
     const cells = row.cells.map((cell) => {
@@ -243,7 +270,10 @@ function remapNoteMarkerRun(run: Run, maps: NoteDisplayNumberMaps): Run {
   return run.text === displayText ? run : { ...run, text: displayText };
 }
 
-function getRunDisplayText(run: TextRun, maps: NoteDisplayNumberMaps): string | undefined {
+function getRunDisplayText(
+  run: TextRun,
+  maps: NoteDisplayNumberMaps,
+): string | undefined {
   if (run.footnoteRefId !== undefined) {
     const displayNumber = maps.footnoteNumbers?.get(run.footnoteRefId);
     return displayNumber === undefined ? undefined : String(displayNumber);
@@ -281,7 +311,12 @@ export function mapFootnotesToPages(
       for (const fragment of page.fragments) {
         const pmStart = fragment.pmStart ?? -1;
         const pmEnd = fragment.pmEnd ?? -1;
-        if (pmStart >= 0 && pmEnd >= 0 && ref.pmPos >= pmStart && ref.pmPos < pmEnd) {
+        if (
+          pmStart >= 0 &&
+          pmEnd >= 0 &&
+          ref.pmPos >= pmStart &&
+          ref.pmPos < pmEnd
+        ) {
           const existing = pageFootnotes.get(page.number) ?? [];
           // Avoid duplicates (same footnote shouldn't appear twice on same page)
           if (!existing.includes(ref.footnoteId)) {
@@ -422,12 +457,16 @@ export function convertNoteStoryToFlowBlocks(
   }
   const converted = toFlowBlocks(viewDoc, flowOptions);
   const flowBlocks = preserveAuthoredFootnoteTerminalParagraph(
-    projection.type === "resolved" ? remapMarkupViewBlocks(converted, projection) : converted,
+    projection.type === "resolved"
+      ? remapMarkupViewBlocks(converted, projection)
+      : converted,
   );
   return { flowBlocks, hasReferenceMark };
 }
 
-function containsNoteReferenceMark(doc: ReturnType<typeof footnoteToProseDoc>): boolean {
+function containsNoteReferenceMark(
+  doc: ReturnType<typeof footnoteToProseDoc>,
+): boolean {
   let found = false;
   doc.descendants((node) => {
     if (found) {
@@ -442,7 +481,9 @@ function containsNoteReferenceMark(doc: ReturnType<typeof footnoteToProseDoc>): 
 }
 
 /** Restore an authored footnote line that the body-only terminal-table policy collapsed. */
-function preserveAuthoredFootnoteTerminalParagraph(blocks: FlowBlock[]): FlowBlock[] {
+function preserveAuthoredFootnoteTerminalParagraph(
+  blocks: FlowBlock[],
+): FlowBlock[] {
   const finalBlock = blocks.at(-1);
   const precedingBlock = blocks.at(-2);
   if (
@@ -458,7 +499,10 @@ function preserveAuthoredFootnoteTerminalParagraph(blocks: FlowBlock[]): FlowBlo
   return [...blocks.slice(0, -1), { ...finalBlock, attrs }];
 }
 
-function measureFootnoteBlocks(blocks: FlowBlock[], contentWidth: number): Measure[] {
+function measureFootnoteBlocks(
+  blocks: FlowBlock[],
+  contentWidth: number,
+): Measure[] {
   return blocks.map((block) => measureFootnoteBlock(block, contentWidth));
 }
 
@@ -487,7 +531,10 @@ function measureFootnoteBlock(block: FlowBlock, contentWidth: number): Measure {
         }
         return measureParagraph(contentBlock, innerWidth);
       });
-      const contentHeight = layoutTextBoxContent(block.content, innerMeasures).totalHeight;
+      const contentHeight = layoutTextBoxContent(
+        block.content,
+        innerMeasures,
+      ).totalHeight;
 
       return {
         kind: "textBox",
@@ -513,9 +560,16 @@ function measureFootnoteBlock(block: FlowBlock, contentWidth: number): Measure {
   }
 }
 
-function measureFootnoteTable(tableBlock: TableBlock, contentWidth: number): TableMeasure {
+function measureFootnoteTable(
+  tableBlock: TableBlock,
+  contentWidth: number,
+): TableMeasure {
   let columnWidths = tableBlock.columnWidths ?? [];
-  const explicitWidth = resolveTableWidthPx(tableBlock.width, tableBlock.widthType, contentWidth);
+  const explicitWidth = resolveTableWidthPx(
+    tableBlock.width,
+    tableBlock.widthType,
+    contentWidth,
+  );
 
   if (columnWidths.length === 0) {
     const firstRow = tableBlock.rows.at(0);
@@ -525,7 +579,10 @@ function measureFootnoteTable(tableBlock: TableBlock, contentWidth: number): Tab
     }
     const totalWidth = explicitWidth ?? contentWidth;
     const equalWidth = totalWidth / Math.max(1, colCount);
-    columnWidths = Array.from({ length: Math.max(1, colCount) }, () => equalWidth);
+    columnWidths = Array.from(
+      { length: Math.max(1, colCount) },
+      () => equalWidth,
+    );
   } else if (explicitWidth) {
     const totalWidth = sumColumnWidths(columnWidths);
     if (totalWidth > 0 && Math.abs(totalWidth - explicitWidth) > 1) {
@@ -690,15 +747,20 @@ function createFootnoteNumberRun(
   const numberRun: TextRun = {
     kind: "text",
     text,
-    fontSize: firstFormattedRun?.fontSize ?? paragraph.attrs?.defaultFontSize ?? FOOTNOTE_FONT_SIZE,
+    fontSize:
+      firstFormattedRun?.fontSize ??
+      paragraph.attrs?.defaultFontSize ??
+      FOOTNOTE_FONT_SIZE,
     superscript: true,
   };
   const embeddedFontFamilyMap =
-    firstFormattedRun?.embeddedFontFamilyMap ?? paragraph.attrs?.embeddedFontFamilyMap;
+    firstFormattedRun?.embeddedFontFamilyMap ??
+    paragraph.attrs?.embeddedFontFamilyMap;
   if (embeddedFontFamilyMap) {
     numberRun.embeddedFontFamilyMap = embeddedFontFamilyMap;
   }
-  const fontFamily = firstFormattedRun?.fontFamily ?? paragraph.attrs?.defaultFontFamily;
+  const fontFamily =
+    firstFormattedRun?.fontFamily ?? paragraph.attrs?.defaultFontFamily;
   if (fontFamily) {
     numberRun.fontFamily = fontFamily;
   }
@@ -717,7 +779,8 @@ const FOOTNOTE_NUMBER_SUFFIX = {
   SEPARATED: "space",
 } as const;
 
-type FootnoteNumberSuffix = (typeof FOOTNOTE_NUMBER_SUFFIX)[keyof typeof FOOTNOTE_NUMBER_SUFFIX];
+type FootnoteNumberSuffix =
+  (typeof FOOTNOTE_NUMBER_SUFFIX)[keyof typeof FOOTNOTE_NUMBER_SUFFIX];
 
 // Closing/final punctuation belongs to the reconstructed marker. Sentence
 // terminals and common international comma/colon/semicolon forms can also be
@@ -728,23 +791,32 @@ const ATTACHED_FOOTNOTE_SUFFIX_PATTERN =
 const LEADING_WHITESPACE_PATTERN = /^\s/u;
 
 function resolveTextFootnoteNumberSuffix(text: string): FootnoteNumberSuffix {
-  if (LEADING_WHITESPACE_PATTERN.test(text) || ATTACHED_FOOTNOTE_SUFFIX_PATTERN.test(text)) {
+  if (
+    LEADING_WHITESPACE_PATTERN.test(text) ||
+    ATTACHED_FOOTNOTE_SUFFIX_PATTERN.test(text)
+  ) {
     return FOOTNOTE_NUMBER_SUFFIX.ATTACHED;
   }
   return FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
 }
 
-function resolveRunFootnoteNumberSuffix(run: Run): FootnoteNumberSuffix | undefined {
+function resolveRunFootnoteNumberSuffix(
+  run: Run,
+): FootnoteNumberSuffix | undefined {
   switch (run.kind) {
     case "text":
-      return run.text.length === 0 ? undefined : resolveTextFootnoteNumberSuffix(run.text);
+      return run.text.length === 0
+        ? undefined
+        : resolveTextFootnoteNumberSuffix(run.text);
     case "tab":
     case "lineBreak":
       return FOOTNOTE_NUMBER_SUFFIX.ATTACHED;
     case "field":
       return resolveTextFootnoteNumberSuffix(run.fallback || "1");
     case "image":
-      return isFloatingImageRun(run) ? undefined : FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
+      return isFloatingImageRun(run)
+        ? undefined
+        : FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
     case "math":
       return FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
     case "renderedPageBreak":
@@ -799,7 +871,9 @@ function applyFootnoteTablePresentation(block: TableBlock): TableBlock {
   };
 }
 
-function applyFootnoteParagraphPresentation(block: ParagraphBlock): ParagraphBlock {
+function applyFootnoteParagraphPresentation(
+  block: ParagraphBlock,
+): ParagraphBlock {
   return {
     ...block,
     runs: block.runs.map(applyFootnoteRunPresentation),

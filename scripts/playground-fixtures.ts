@@ -1,8 +1,9 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const FIXTURE_PREFIX = "/fixtures/";
 
 type FixtureMiddlewareOptions = { fixturesDir: string; cacheControl: string };

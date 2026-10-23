@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { parseSettings } from "../../docx/settingsParser";
-import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
+import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
+import type {
+  Document,
+  ShadingProperties,
+  TableCell,
+  Theme,
+} from "../../types/document";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -66,7 +71,9 @@ describe("toProseDoc", () => {
                 styleId: "SectionStyle",
                 numPr: { kind: "levelOnly", ilvl: 1 },
               },
-              content: [{ type: "run", content: [{ type: "text", text: "Section" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Section" }] },
+              ],
             },
           ],
         },
@@ -75,7 +82,11 @@ describe("toProseDoc", () => {
 
     const attrs = toProseDoc(document).firstChild?.attrs;
     expect(attrs?.numPr).toEqual({ kind: "levelOnly", ilvl: 1 });
-    expect(attrs?.numPrFromStyle).toEqual({ kind: "reference", numId: 23, ilvl: 0 });
+    expect(attrs?.numPrFromStyle).toEqual({
+      kind: "reference",
+      numId: 23,
+      ilvl: 0,
+    });
   });
 
   test("keeps a direct numbering identity ahead of the style identity", () => {
@@ -98,7 +109,9 @@ describe("toProseDoc", () => {
                 styleId: "SectionStyle",
                 numPr: { kind: "reference", numId: 7 },
               },
-              content: [{ type: "run", content: [{ type: "text", text: "Section" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Section" }] },
+              ],
             },
           ],
         },
@@ -149,7 +162,9 @@ describe("toProseDoc", () => {
               content: [
                 {
                   type: "run",
-                  content: [{ type: "symbol", font: "Wingdings", char: "F06F" }],
+                  content: [
+                    { type: "symbol", font: "Wingdings", char: "F06F" },
+                  ],
                 },
               ],
             },
@@ -182,15 +197,21 @@ describe("toProseDoc", () => {
       { kind: "text", text: "\uF06F", fontFamily: "Wingdings" },
     ]);
 
-    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuiltParagraph = rebuilt.package.document.content.at(0);
     const rebuiltRun =
-      rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content.at(0) : undefined;
+      rebuiltParagraph?.type === "paragraph"
+        ? rebuiltParagraph.content.at(0)
+        : undefined;
     expect(rebuiltRun?.type).toBe("run");
     if (rebuiltRun?.type !== "run") {
       return;
     }
-    expect(rebuiltRun.content).toEqual([{ type: "symbol", font: "Wingdings", char: "F06F" }]);
+    expect(rebuiltRun.content).toEqual([
+      { type: "symbol", font: "Wingdings", char: "F06F" },
+    ]);
   });
 
   test("converts table-cell text-box shapes into block nodes", () => {
@@ -224,7 +245,12 @@ describe("toProseDoc", () => {
                                           content: [
                                             {
                                               type: "run",
-                                              content: [{ type: "text", text: "Cell card" }],
+                                              content: [
+                                                {
+                                                  type: "text",
+                                                  text: "Cell card",
+                                                },
+                                              ],
                                             },
                                           ],
                                         },
@@ -254,13 +280,20 @@ describe("toProseDoc", () => {
     expect(textBox?.type.name).toBe("textBox");
     expect(textBox?.textContent).toBe("Cell card");
 
-    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltParagraph =
-      rebuiltTable?.type === "table" ? rebuiltTable.rows[0]?.cells[0]?.content[0] : undefined;
+      rebuiltTable?.type === "table"
+        ? rebuiltTable.rows[0]?.cells[0]?.content[0]
+        : undefined;
     const rebuiltRun =
-      rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content[0] : undefined;
-    const rebuiltShape = rebuiltRun?.type === "run" ? rebuiltRun.content[0] : undefined;
+      rebuiltParagraph?.type === "paragraph"
+        ? rebuiltParagraph.content[0]
+        : undefined;
+    const rebuiltShape =
+      rebuiltRun?.type === "run" ? rebuiltRun.content[0] : undefined;
 
     expect(rebuiltShape?.type).toBe("shape");
   });
@@ -281,7 +314,9 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document, { styles: document.package.styles });
 
     expect(doc.firstChild?.attrs.spaceAfter).toBe(160);
-    expect(doc.firstChild?.attrs.spacingFromDocDefaults).toEqual({ after: true });
+    expect(doc.firstChild?.attrs.spacingFromDocDefaults).toEqual({
+      after: true,
+    });
     expect(doc.firstChild?.attrs.spacingExplicit).toBeNull();
   });
 
@@ -332,7 +367,11 @@ describe("toProseDoc", () => {
             {
               styleId: "Heading",
               type: "paragraph",
-              pPr: { indentLeft: 360, indentFirstLine: -180, hangingIndent: true },
+              pPr: {
+                indentLeft: 360,
+                indentFirstLine: -180,
+                hangingIndent: true,
+              },
             },
           ],
         },
@@ -420,8 +459,12 @@ describe("toProseDoc", () => {
 
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(true);
     expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(false);
-    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(21);
-    expect(text?.marks.some((mark) => mark.type.name === "fontFamily")).toBe(false);
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(21);
+    expect(text?.marks.some((mark) => mark.type.name === "fontFamily")).toBe(
+      false,
+    );
   });
 
   test("keeps direct run formatting ahead of paragraph-mark defaults", () => {
@@ -458,7 +501,9 @@ describe("toProseDoc", () => {
 
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(true);
     expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(false);
-    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(20);
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(20);
   });
 
   test("keeps paragraph font size when a run only overrides the font family", () => {
@@ -478,7 +523,10 @@ describe("toProseDoc", () => {
                 {
                   type: "run",
                   formatting: {
-                    fontFamily: { ascii: "Arial Narrow", hAnsi: "Arial Narrow" },
+                    fontFamily: {
+                      ascii: "Arial Narrow",
+                      hAnsi: "Arial Narrow",
+                    },
                   },
                   content: [{ type: "text", text: " " }],
                 },
@@ -492,7 +540,9 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document);
     const text = doc.firstChild?.firstChild;
 
-    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(16);
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(16);
   });
 
   test("keeps the default paragraph style size when paragraph and run only set a font family", () => {
@@ -538,8 +588,12 @@ describe("toProseDoc", () => {
     const text = paragraph?.firstChild;
 
     expect(paragraph?.attrs.defaultTextFormatting.fontSize).toBe(24);
-    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(24);
-    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(24);
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii,
+    ).toBe("Arial");
   });
 
   test("does not leak a paragraph-mark-only size into directly formatted body text", () => {
@@ -587,7 +641,9 @@ describe("toProseDoc", () => {
     const text = paragraph?.firstChild;
 
     expect(paragraph?.attrs.defaultTextFormatting.fontSize).toBe(52);
-    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(24);
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(24);
   });
 
   test("does not leak a paragraph-mark font into directly formatted body text", () => {
@@ -623,7 +679,9 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document, { styles: document.package.styles });
     const text = doc.firstChild?.firstChild;
 
-    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii,
+    ).toBe("Arial");
   });
 
   test("keeps the default style font on an unformatted body run", () => {
@@ -659,7 +717,9 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document, { styles: document.package.styles });
     const text = doc.firstChild?.firstChild;
 
-    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii,
+    ).toBe("Arial");
   });
 
   test("keeps named paragraph style fonts ahead of paragraph-mark formatting", () => {
@@ -702,7 +762,10 @@ describe("toProseDoc", () => {
               default: true,
               rPr: {
                 fontSize: 12,
-                fontFamily: { ascii: "Times New Roman", hAnsi: "Times New Roman" },
+                fontFamily: {
+                  ascii: "Times New Roman",
+                  hAnsi: "Times New Roman",
+                },
               },
             },
             {
@@ -711,7 +774,10 @@ describe("toProseDoc", () => {
               basedOn: "Normal",
               rPr: {
                 fontSize: 12,
-                fontFamily: { ascii: "Times New Roman", hAnsi: "Times New Roman" },
+                fontFamily: {
+                  ascii: "Times New Roman",
+                  hAnsi: "Times New Roman",
+                },
               },
             },
           ],
@@ -723,14 +789,21 @@ describe("toProseDoc", () => {
     const spaces = doc.firstChild?.firstChild;
     const reference = doc.firstChild?.maybeChild(1);
 
-    expect(spaces?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(12);
-    expect(spaces?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
-      "Times New Roman",
-    );
-    expect(reference?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(11);
-    expect(reference?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
-      "Calibri",
-    );
+    expect(
+      spaces?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(12);
+    expect(
+      spaces?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs
+        .ascii,
+    ).toBe("Times New Roman");
+    expect(
+      reference?.marks.find((mark) => mark.type.name === "fontSize")?.attrs
+        .size,
+    ).toBe(11);
+    expect(
+      reference?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs
+        .ascii,
+    ).toBe("Calibri");
   });
 
   test("keeps named paragraph-mark emphasis and color off unformatted body text", () => {
@@ -775,7 +848,9 @@ describe("toProseDoc", () => {
     const text = paragraph?.firstChild;
 
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
-    expect(text?.marks.some((mark) => mark.type.name === "textColor")).toBe(false);
+    expect(text?.marks.some((mark) => mark.type.name === "textColor")).toBe(
+      false,
+    );
     expect(paragraph?.attrs.defaultTextFormatting?.bold).toBeUndefined();
     expect(paragraph?.attrs.defaultTextFormatting?.color).toBeUndefined();
   });
@@ -810,7 +885,9 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document);
     const text = doc.firstChild?.firstChild;
 
-    expect(text?.marks.some((mark) => mark.type.name === "allCaps")).toBe(false);
+    expect(text?.marks.some((mark) => mark.type.name === "allCaps")).toBe(
+      false,
+    );
     expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(true);
   });
 
@@ -844,7 +921,9 @@ describe("toProseDoc", () => {
     const text = paragraph?.firstChild;
 
     expect(paragraph?.attrs.defaultTextFormatting?.vertAlign).toBeUndefined();
-    expect(text?.marks.some((mark) => mark.type.name === "superscript")).toBe(false);
+    expect(text?.marks.some((mark) => mark.type.name === "superscript")).toBe(
+      false,
+    );
   });
 
   test("preserves explicit run-level all-caps", () => {
@@ -903,7 +982,9 @@ describe("toProseDoc", () => {
     const tab = doc.firstChild?.firstChild;
 
     expect(tab?.type.name).toBe("tab");
-    expect(tab?.marks.find((mark) => mark.type.name === "underline")?.attrs.style).toBe("single");
+    expect(
+      tab?.marks.find((mark) => mark.type.name === "underline")?.attrs.style,
+    ).toBe("single");
   });
 
   test("does not leak paragraph mark underline onto directly formatted text runs", () => {
@@ -943,11 +1024,16 @@ describe("toProseDoc", () => {
     const label = doc.firstChild?.child(0);
     const tab = doc.firstChild?.child(1);
 
-    expect(label?.marks.some((mark) => mark.type.name === "underline")).toBe(false);
+    expect(label?.marks.some((mark) => mark.type.name === "underline")).toBe(
+      false,
+    );
     expect(
-      label?.marks.find((mark) => mark.type.name === "runFormattingOverride")?.attrs.underline,
+      label?.marks.find((mark) => mark.type.name === "runFormattingOverride")
+        ?.attrs.underline,
     ).toBe("none");
-    expect(tab?.marks.find((mark) => mark.type.name === "underline")?.attrs.style).toBe("single");
+    expect(
+      tab?.marks.find((mark) => mark.type.name === "underline")?.attrs.style,
+    ).toBe("single");
   });
 
   test("does not leak paragraph mark bold onto directly formatted highlighted text", () => {
@@ -982,9 +1068,10 @@ describe("toProseDoc", () => {
     const text = doc.firstChild?.firstChild;
 
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
-    expect(text?.marks.find((mark) => mark.type.name === "runFormattingOverride")?.attrs.bold).toBe(
-      false,
-    );
+    expect(
+      text?.marks.find((mark) => mark.type.name === "runFormattingOverride")
+        ?.attrs.bold,
+    ).toBe(false);
   });
 
   test("does not leak paragraph-mark emphasis through a character-style reference", () => {
@@ -1038,25 +1125,32 @@ describe("toProseDoc", () => {
       italic: true,
     });
     for (const markName of emphasisMarks) {
-      expect(text?.marks.some((mark) => mark.type.name === markName)).toBe(false);
+      expect(text?.marks.some((mark) => mark.type.name === markName)).toBe(
+        false,
+      );
       expect(formattingOverride?.attrs[markName]).toBe(false);
     }
-    expect(text?.marks.find((mark) => mark.type.name === "characterStyle")?.attrs.styleId).toBe(
-      "BodyCharacter",
-    );
+    expect(
+      text?.marks.find((mark) => mark.type.name === "characterStyle")?.attrs
+        .styleId,
+    ).toBe("BodyCharacter");
 
-    const rebuilt = fromProseDoc(doc, document, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(doc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuiltParagraph = rebuilt.package.document.content.at(0);
     const rebuiltRun =
-      rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content.at(0) : null;
+      rebuiltParagraph?.type === "paragraph"
+        ? rebuiltParagraph.content.at(0)
+        : null;
 
     expect(rebuiltParagraph?.formatting?.runProperties).toMatchObject({
       bold: true,
       italic: true,
     });
-    expect(rebuiltRun?.type === "run" ? rebuiltRun.formatting?.styleId : null).toBe(
-      "BodyCharacter",
-    );
+    expect(
+      rebuiltRun?.type === "run" ? rebuiltRun.formatting?.styleId : null,
+    ).toBe("BodyCharacter");
   });
 
   test("does not leak paragraph mark character spacing onto a directly formatted run", () => {
@@ -1087,9 +1181,10 @@ describe("toProseDoc", () => {
     const text = paragraph?.firstChild;
 
     expect(paragraph?.attrs.defaultTextFormatting.spacing).toBe(-60);
-    expect(text?.marks.find((mark) => mark.type.name === "characterSpacing")?.attrs.spacing).toBe(
-      0,
-    );
+    expect(
+      text?.marks.find((mark) => mark.type.name === "characterSpacing")?.attrs
+        .spacing,
+    ).toBe(0);
   });
 
   test("applies oneNDA table style run properties before direct run properties", () => {
@@ -1144,9 +1239,9 @@ describe("toProseDoc", () => {
     const text = doc.firstChild?.firstChild?.firstChild?.firstChild?.firstChild;
 
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(true);
-    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
-      "Open Sans Light",
-    );
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii,
+    ).toBe("Open Sans Light");
   });
 
   test("table style run properties do not override inherited paragraph style fonts", () => {
@@ -1222,9 +1317,13 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document, { styles: document.package.styles });
     const text = doc.firstChild?.firstChild?.firstChild?.firstChild?.firstChild;
 
-    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Aptos");
+    expect(
+      text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii,
+    ).toBe("Aptos");
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(true);
-    expect(text?.marks.find((mark) => mark.type.name === "textColor")?.attrs.rgb).toBe("365F91");
+    expect(
+      text?.marks.find((mark) => mark.type.name === "textColor")?.attrs.rgb,
+    ).toBe("365F91");
   });
 
   test("table style fonts replace doc defaults while retaining paragraph-style slots", () => {
@@ -1252,7 +1351,13 @@ describe("toProseDoc", () => {
             {
               styleId: "TableGrid",
               type: "table",
-              rPr: { fontFamily: { ascii: "Arial", hAnsi: "Arial", cs: "Times New Roman" } },
+              rPr: {
+                fontFamily: {
+                  ascii: "Arial",
+                  hAnsi: "Arial",
+                  cs: "Times New Roman",
+                },
+              },
             },
           ],
         },
@@ -1270,7 +1375,10 @@ describe("toProseDoc", () => {
                           type: "paragraph",
                           formatting: { styleId: "Header" },
                           content: [
-                            { type: "run", content: [{ type: "text", text: "Styled cell" }] },
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "Styled cell" }],
+                            },
                           ],
                         },
                       ],
@@ -1284,8 +1392,12 @@ describe("toProseDoc", () => {
       },
     };
 
-    const text = toProseDoc(document).firstChild?.firstChild?.firstChild?.firstChild?.firstChild;
-    const fontFamily = text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs;
+    const text =
+      toProseDoc(document).firstChild?.firstChild?.firstChild?.firstChild
+        ?.firstChild;
+    const fontFamily = text?.marks.find(
+      (mark) => mark.type.name === "fontFamily",
+    )?.attrs;
 
     expect(fontFamily?.ascii).toBe("Arial");
     expect(fontFamily?.hAnsi).toBe("Arial");
@@ -1322,10 +1434,14 @@ describe("toProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const attrs = firstTableCellAttrs(document);
-    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltCell =
-      rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
+      rebuiltTable?.type === "table"
+        ? rebuiltTable.rows.at(0)?.cells.at(0)
+        : null;
 
     expect(attrs["backgroundColor"]).toBe("DAE3F3");
     expect(attrs["_resolvedBackgroundColor"]).toBe("DAE3F3");
@@ -1370,17 +1486,26 @@ describe("toProseDoc", () => {
     const editedPmDoc = pmDoc.type.create(pmDoc.attrs, [
       table.type.create(table.attrs, [
         row.type.create(row.attrs, [
-          cell.type.create({ ...cell.attrs, backgroundColor: "123456" }, cell.content),
+          cell.type.create(
+            { ...cell.attrs, backgroundColor: "123456" },
+            cell.content,
+          ),
         ]),
       ]),
     ]);
 
-    const rebuilt = fromProseDoc(editedPmDoc, document, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(editedPmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltCell =
-      rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
+      rebuiltTable?.type === "table"
+        ? rebuiltTable.rows.at(0)?.cells.at(0)
+        : null;
 
-    expect(rebuiltCell?.formatting?.shading).toEqual({ fill: { rgb: "123456" } });
+    expect(rebuiltCell?.formatting?.shading).toEqual({
+      fill: { rgb: "123456" },
+    });
   });
 
   test("resolves themed table-style fills without materializing direct cell shading", () => {
@@ -1424,10 +1549,14 @@ describe("toProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const attrs = firstTableCellAttrs(document);
-    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltCell =
-      rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
+      rebuiltTable?.type === "table"
+        ? rebuiltTable.rows.at(0)?.cells.at(0)
+        : null;
 
     expect(attrs["backgroundColor"]).toBe("70AD47");
     expect(rebuiltCell?.formatting?.shading).toBeUndefined();
@@ -1441,14 +1570,21 @@ describe("toProseDoc", () => {
     const clearedPmDoc = pmDoc.type.create(pmDoc.attrs, [
       table.type.create(table.attrs, [
         row.type.create(row.attrs, [
-          cell.type.create({ ...cell.attrs, backgroundColor: null }, cell.content),
+          cell.type.create(
+            { ...cell.attrs, backgroundColor: null },
+            cell.content,
+          ),
         ]),
       ]),
     ]);
-    const cleared = fromProseDoc(clearedPmDoc, document, { stylesheetSource: { type: "package" } });
+    const cleared = fromProseDoc(clearedPmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const clearedTable = cleared.package.document.content.at(0);
     const clearedCell =
-      clearedTable?.type === "table" ? clearedTable.rows.at(0)?.cells.at(0) : null;
+      clearedTable?.type === "table"
+        ? clearedTable.rows.at(0)?.cells.at(0)
+        : null;
 
     expect(clearedCell?.formatting?.shading).toEqual({ pattern: "nil" });
   });
@@ -1568,7 +1704,8 @@ describe("toProseDoc", () => {
     };
 
     const attrs = firstTableCellAttrs(document);
-    const borders = attrs["borders"] as { bottom?: { style?: string } } | undefined;
+    const borders = attrs["borders"] as
+      { bottom?: { style?: string } } | undefined;
 
     expect(borders?.bottom?.style).toBe("0");
   });
@@ -1847,7 +1984,9 @@ describe("toProseDoc", () => {
 
     expect(field?.type.name).toBe("field");
     expect(field?.attrs.fieldType).toBe("MERGEFIELD");
-    expect(field?.attrs.instruction).toBe(' MERGEFIELD "Client Name" \\* MERGEFORMAT ');
+    expect(field?.attrs.instruction).toBe(
+      ' MERGEFIELD "Client Name" \\* MERGEFORMAT ',
+    );
     expect(field?.attrs.displayText).toBe("Acme s.r.o.");
     expect(field?.attrs.fieldKind).toBe("simple");
   });
@@ -1873,7 +2012,10 @@ describe("toProseDoc", () => {
                         fontSizeCs: 27,
                         fontFamily: { ascii: "Aptos", cs: "Noto Sans Arabic" },
                         color: { auto: true },
-                        underline: { style: "single", color: { rgb: "00AA00" } },
+                        underline: {
+                          style: "single",
+                          color: { rgb: "00AA00" },
+                        },
                         highlight: "yellow",
                         noProof: true,
                       },
@@ -1890,13 +2032,21 @@ describe("toProseDoc", () => {
 
     const prose = toProseDoc(document);
     const field = prose.firstChild?.firstChild;
-    const override = field?.marks.find(({ type }) => type.name === "runFormattingOverride");
+    const override = field?.marks.find(
+      ({ type }) => type.name === "runFormattingOverride",
+    );
     expect(override?.attrs.noProof).toBe(true);
 
-    const rebuilt = fromProseDoc(prose, document, { stylesheetSource: { type: "package" } });
+    const rebuilt = fromProseDoc(prose, document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = rebuilt.package.document.content.at(0);
-    const rebuiltField = paragraph?.type === "paragraph" ? paragraph.content.at(0) : null;
-    if (rebuiltField?.type !== "simpleField" || rebuiltField.content.at(0)?.type !== "run") {
+    const rebuiltField =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : null;
+    if (
+      rebuiltField?.type !== "simpleField" ||
+      rebuiltField.content.at(0)?.type !== "run"
+    ) {
       throw new Error("Expected a simple field result run");
     }
     expect(rebuiltField.content.at(0).formatting).toEqual({
@@ -1954,7 +2104,12 @@ describe("toProseDoc", () => {
                     {
                       type: "run",
                       formatting: {},
-                      content: [{ type: "text", text: "Definitions and Interpretation" }],
+                      content: [
+                        {
+                          type: "text",
+                          text: "Definitions and Interpretation",
+                        },
+                      ],
                     },
                   ],
                 },
@@ -1968,7 +2123,9 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document, { styles: document.package.styles });
     const paragraph = doc.firstChild;
     const field = paragraph?.firstChild;
-    const fieldFont = field?.marks.find((mark) => mark.type.name === "fontFamily");
+    const fieldFont = field?.marks.find(
+      (mark) => mark.type.name === "fontFamily",
+    );
     const defaultTextFormatting = paragraph?.attrs.defaultTextFormatting;
 
     expect(field?.type.name).toBe("field");
@@ -2024,12 +2181,22 @@ describe("toProseDoc", () => {
                     {
                       type: "insertion",
                       info: { id: 1, author: "Reviewer" },
-                      content: [{ type: "run", content: [{ type: "text", text: "added" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "added" }],
+                        },
+                      ],
                     },
                     {
                       type: "deletion",
                       info: { id: 2, author: "Reviewer" },
-                      content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "removed" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -2050,7 +2217,10 @@ describe("toProseDoc", () => {
           moveKind: mark.attrs.moveKind,
         })),
       ),
-    ).toEqual([[{ type: "insertion", moveKind: null }], [{ type: "deletion", moveKind: null }]]);
+    ).toEqual([
+      [{ type: "insertion", moveKind: null }],
+      [{ type: "deletion", moveKind: null }],
+    ]);
   });
 
   test("does not apply paragraph-mark size to an unformatted deleted run", () => {
@@ -2065,7 +2235,12 @@ describe("toProseDoc", () => {
                 {
                   type: "deletion",
                   info: { id: 1, author: "Reviewer" },
-                  content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "removed" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -2077,8 +2252,12 @@ describe("toProseDoc", () => {
     const paragraph = toProseDoc(document).firstChild;
     const deleted = paragraph?.firstChild;
 
-    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(false);
-    expect(deleted?.marks.find((mark) => mark.type.name === "deletion")?.attrs).toMatchObject({
+    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(
+      false,
+    );
+    expect(
+      deleted?.marks.find((mark) => mark.type.name === "deletion")?.attrs,
+    ).toMatchObject({
       _historicalFormatting: true,
     });
   });
@@ -2095,7 +2274,9 @@ describe("toProseDoc", () => {
                 {
                   type: "insertion",
                   info: { id: 1, author: "Reviewer" },
-                  content: [{ type: "run", content: [{ type: "text", text: "added" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "added" }] },
+                  ],
                 },
               ],
             },
@@ -2105,7 +2286,9 @@ describe("toProseDoc", () => {
     };
 
     const inserted = toProseDoc(document).firstChild?.firstChild;
-    expect(inserted?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(22);
+    expect(
+      inserted?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(22);
   });
 
   test("preserves historical defaults when they equal paragraph-mark formatting", () => {
@@ -2120,7 +2303,12 @@ describe("toProseDoc", () => {
                 {
                   type: "deletion",
                   info: { id: 1, author: "Reviewer" },
-                  content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "removed" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -2130,9 +2318,11 @@ describe("toProseDoc", () => {
       },
     };
 
-    const deleted = toProseDoc(document, { styles: document.package.styles }).firstChild
-      ?.firstChild;
-    expect(deleted?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(22);
+    const deleted = toProseDoc(document, { styles: document.package.styles })
+      .firstChild?.firstChild;
+    expect(
+      deleted?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
+    ).toBe(22);
   });
 
   test("does not leak paragraph-mark formatting into directly formatted deletions", () => {
@@ -2163,11 +2353,16 @@ describe("toProseDoc", () => {
     };
 
     const deleted = toProseDoc(document).firstChild?.firstChild;
-    expect(deleted?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
-      "Times New Roman",
+    expect(
+      deleted?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs
+        .ascii,
+    ).toBe("Times New Roman");
+    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(
+      false,
     );
-    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(false);
-    expect(deleted?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
+    expect(deleted?.marks.some((mark) => mark.type.name === "bold")).toBe(
+      false,
+    );
   });
 
   test("keeps historical formatting inside deleted inline content controls", () => {
@@ -2186,7 +2381,12 @@ describe("toProseDoc", () => {
                     {
                       type: "inlineSdt",
                       properties: { sdtType: "richText" },
-                      content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "removed" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -2199,12 +2399,18 @@ describe("toProseDoc", () => {
 
     const deleted = toProseDoc(document).firstChild?.firstChild?.firstChild;
     expect(deleted?.text).toBe("removed");
-    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(false);
-    expect(deleted?.marks.find((mark) => mark.type.name === "deletion")?.attrs).toMatchObject({
+    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(
+      false,
+    );
+    expect(
+      deleted?.marks.find((mark) => mark.type.name === "deletion")?.attrs,
+    ).toMatchObject({
       _historicalFormatting: true,
     });
 
-    const paragraph = toFlowBlocks(toProseDoc(document), { defaultSize: 10 }).at(0);
+    const paragraph = toFlowBlocks(toProseDoc(document), {
+      defaultSize: 10,
+    }).at(0);
     expect(paragraph?.kind).toBe("paragraph");
     if (paragraph?.kind !== "paragraph") return;
     expect(paragraph.runs.at(0)).toMatchObject({
@@ -2237,7 +2443,9 @@ describe("toProseDoc", () => {
 
     const doc = toProseDoc(document);
     const text = doc.firstChild?.firstChild;
-    const commentMark = text?.marks.find((mark) => mark.type.name === "comment");
+    const commentMark = text?.marks.find(
+      (mark) => mark.type.name === "comment",
+    );
 
     expect(commentMark?.attrs.commentId).toBe(42);
   });
@@ -2309,12 +2517,22 @@ describe("toProseDoc", () => {
       if (!node) {
         continue;
       }
-      if (node.marks.some((mark) => mark.type.name === "comment" && mark.attrs.commentId === 99)) {
+      if (
+        node.marks.some(
+          (mark) => mark.type.name === "comment" && mark.attrs.commentId === 99,
+        )
+      ) {
         commentMarkedNodeTypes.push(node.type.name);
       }
     }
 
-    expect(commentMarkedNodeTypes).toEqual(["text", "text", "field", "text", "math"]);
+    expect(commentMarkedNodeTypes).toEqual([
+      "text",
+      "text",
+      "field",
+      "text",
+      "math",
+    ]);
     // All emitted carriers sit inside the same source range, including atoms.
     expect(commentMarkedNodeTypes).toHaveLength(paragraph?.childCount ?? 0);
   });
@@ -2344,7 +2562,10 @@ describe("toProseDoc", () => {
                               type: "paragraph",
                               content: [
                                 { type: "commentRangeStart", id: 8 },
-                                { type: "run", content: [{ type: "text", text: "inside" }] },
+                                {
+                                  type: "run",
+                                  content: [{ type: "text", text: "inside" }],
+                                },
                               ],
                             },
                           ],

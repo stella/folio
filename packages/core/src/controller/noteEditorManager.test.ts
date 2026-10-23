@@ -28,7 +28,12 @@ describe("note editor story identity", () => {
           { type: "footnote", id: 2, noteType: "normal", content: [] },
         ],
         endnotes: [
-          { type: "endnote", id: 0, noteType: "continuationSeparator", content: [] },
+          {
+            type: "endnote",
+            id: 0,
+            noteType: "continuationSeparator",
+            content: [],
+          },
           { type: "endnote", id: 3, content: [] },
         ],
       },

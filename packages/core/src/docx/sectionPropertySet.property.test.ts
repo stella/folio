@@ -16,11 +16,16 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+} from "./containerChildren.gen";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
@@ -135,7 +140,9 @@ describe("a section's property set survives a rebuild", () => {
 
     const positions = DECLARED.map((name) => saved.indexOf(`<w:${name}`));
     expect(positions.every((at) => at > -1)).toBe(true);
-    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
   });
 
   test("a section that carries an unread child is still written", () => {

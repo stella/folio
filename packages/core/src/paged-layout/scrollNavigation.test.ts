@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Layout } from "../layout-engine/types";
-import { getPageScrollTarget, isValidPmScrollPosition } from "./scrollNavigation";
+import {
+  getPageScrollTarget,
+  isValidPmScrollPosition,
+} from "./scrollNavigation";
 
 const layout = {
   pages: [

@@ -46,7 +46,10 @@ export type PrunableXml = {
 
 type PruneState = { next: number; keep: (address: number) => boolean };
 
-const pruneNodes = (nodes: readonly OrderedNode[], state: PruneState): OrderedNode[] => {
+const pruneNodes = (
+  nodes: readonly OrderedNode[],
+  state: PruneState,
+): OrderedNode[] => {
   const kept: OrderedNode[] = [];
   for (const node of nodes) {
     const tag = elementTag(node);
@@ -68,7 +71,10 @@ export const prepareXmlPruning = (xml: string): PrunableXml => {
   const parsed = new XMLParser(parserOptions).parse(xml) as OrderedNode[];
   const counter: PruneState = { next: 0, keep: () => true };
   pruneNodes(parsed, counter);
-  const builder = new XMLBuilder({ ...parserOptions, suppressEmptyNode: false });
+  const builder = new XMLBuilder({
+    ...parserOptions,
+    suppressEmptyNode: false,
+  });
   return {
     addresses: Array.from({ length: counter.next }, (_, index) => index),
     render: (keep) =>

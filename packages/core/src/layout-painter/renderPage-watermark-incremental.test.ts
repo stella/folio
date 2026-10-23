@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import type {
   FieldRun,
+  HeaderFooterContent,
   MeasuredLine,
   Page,
   ParagraphBlock,
   ParagraphFragment,
   ParagraphMeasure,
-  HeaderFooterContent,
 } from "../layout-engine/types";
 import type { Watermark } from "../types/document";
 import type { BlockLookup } from "./index";
@@ -54,7 +54,9 @@ class FakeElement {
   }
 
   get textContent(): string {
-    return this.ownText + this.children.map((child) => child.textContent).join("");
+    return (
+      this.ownText + this.children.map((child) => child.textContent).join("")
+    );
   }
 
   set textContent(value: string) {
@@ -181,12 +183,21 @@ class FakeElement {
   }
 
   querySelector(selector: string): FakeElement | null {
-    return findByClass(this, classFromSelector(selector), isScopeChild(selector));
+    return findByClass(
+      this,
+      classFromSelector(selector),
+      isScopeChild(selector),
+    );
   }
 
   querySelectorAll(selector: string): FakeElement[] {
     const out: FakeElement[] = [];
-    collectByClass(this, classFromSelector(selector), out, isScopeChild(selector));
+    collectByClass(
+      this,
+      classFromSelector(selector),
+      out,
+      isScopeChild(selector),
+    );
     return out;
   }
 
@@ -201,7 +212,8 @@ const CLASS_SELECTOR_RE = /\.(?<cls>[\w-]+)/u;
 const classFromSelector = (selector: string): string =>
   CLASS_SELECTOR_RE.exec(selector)?.groups?.["cls"] ?? "";
 
-const isScopeChild = (selector: string): boolean => selector.includes(":scope >");
+const isScopeChild = (selector: string): boolean =>
+  selector.includes(":scope >");
 
 const hasClass = (element: FakeElement, className: string): boolean =>
   element.className.split(/\s+/u).includes(className);
@@ -273,11 +285,17 @@ class FakeCustomEvent<T> {
   }
 }
 
-const originalGlobalDescriptors = new Map<string, PropertyDescriptor | undefined>();
+const originalGlobalDescriptors = new Map<
+  string,
+  PropertyDescriptor | undefined
+>();
 
 function setGlobal(name: string, value: unknown): void {
   if (!originalGlobalDescriptors.has(name)) {
-    originalGlobalDescriptors.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+    originalGlobalDescriptors.set(
+      name,
+      Object.getOwnPropertyDescriptor(globalThis, name),
+    );
   }
   Object.defineProperty(globalThis, name, {
     configurable: true,
@@ -297,7 +315,9 @@ function restoreGlobals(): void {
   originalGlobalDescriptors.clear();
 }
 
-const watermarkByHeaderRId = new Map<string, Watermark>([["h1", { kind: "text", text: "DRAFT" }]]);
+const watermarkByHeaderRId = new Map<string, Watermark>([
+  ["h1", { kind: "text", text: "DRAFT" }],
+]);
 
 function makePages(firstPageHeaderRId: string): Page[] {
   return Array.from({ length: 8 }, (_unused, index) =>
@@ -420,12 +440,16 @@ describe("renderPages watermark overlays", () => {
     if (!firstShell) {
       throw new TypeError("expected first page shell");
     }
-    expect(firstShell.querySelector(":scope > .layout-page-watermark")?.textContent).toBe("DRAFT");
+    expect(
+      firstShell.querySelector(":scope > .layout-page-watermark")?.textContent,
+    ).toBe("DRAFT");
 
     renderPages(makePages("h2"), container as unknown as HTMLElement, options);
 
     expect(container.children.at(0)).toBe(firstShell);
-    expect(firstShell.querySelector(":scope > .layout-page-watermark")).toBeNull();
+    expect(
+      firstShell.querySelector(":scope > .layout-page-watermark"),
+    ).toBeNull();
   });
 
   test("repaints rendered pages when field resolution maps change", () => {

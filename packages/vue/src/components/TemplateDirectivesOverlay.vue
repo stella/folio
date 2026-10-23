@@ -40,7 +40,10 @@
       />
     </template>
 
-    <template v-for="(group, groupIdx) in projectedGroups" :key="`d:${groupIdx}`">
+    <template
+      v-for="(group, groupIdx) in projectedGroups"
+      :key="`d:${groupIdx}`"
+    >
       <span
         v-for="(rect, idx) in group.rects"
         :key="`d:${groupIdx}:${idx}`"
@@ -60,13 +63,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
-import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
+import type {
+  FlowBlock,
+  Layout,
+  Measure,
+} from "@stll/folio-core/layout-engine/types";
 import type {
   DirectiveGutterGeometry,
   PageContentBand,
@@ -123,9 +130,13 @@ type RailBand = {
   railX: number;
   segments: BandSegment[];
 };
-type ProjectedDirectiveGroup = { range: DirectiveRange; rects: SelectionRect[] };
+type ProjectedDirectiveGroup = {
+  range: DirectiveRange;
+  rects: SelectionRect[];
+};
 
-const bandKindOf = (kind: DirectiveKind): BandKind => (kind === "for" ? "for" : "if");
+const bandKindOf = (kind: DirectiveKind): BandKind =>
+  kind === "for" ? "for" : "if";
 
 function railBudgetDepth(marginWidth: number): number {
   const usable = marginWidth - RAIL_TEXT_CLEARANCE - RAIL_WIDTH - RAIL_EDGE_PAD;
@@ -135,7 +146,11 @@ function railBudgetDepth(marginWidth: number): number {
   return Math.floor(usable / RAIL_DEPTH_GAP);
 }
 
-function railXForDepth(depth: number, contentLeft: number, marginWidth: number): number {
+function railXForDepth(
+  depth: number,
+  contentLeft: number,
+  marginWidth: number,
+): number {
   const budget = railBudgetDepth(marginWidth);
   const capped = Math.min(Math.max(0, depth), budget);
   const deepestX = contentLeft - RAIL_TEXT_CLEARANCE - RAIL_WIDTH;
@@ -162,7 +177,10 @@ function segmentBandByPages(
 
 function pairBlockRanges(ranges: readonly DirectiveRange[]): BlockPairing[] {
   const orderedBlocks = ranges
-    .filter((r) => r.block && (BLOCK_OPENERS.has(r.kind) || BLOCK_CLOSERS.has(r.kind)))
+    .filter(
+      (r) =>
+        r.block && (BLOCK_OPENERS.has(r.kind) || BLOCK_CLOSERS.has(r.kind)),
+    )
     .slice()
     .sort((a, b) => a.from - b.from);
 
@@ -216,7 +234,8 @@ function innermostBlockAt(
   let bestBlockId: number | null = null;
   let bestOpener = Number.NEGATIVE_INFINITY;
   for (const pairing of pairings) {
-    const contains = caretPos >= pairing.openerFrom && caretPos <= pairing.closerTo;
+    const contains =
+      caretPos >= pairing.openerFrom && caretPos <= pairing.closerTo;
     if (contains && pairing.openerFrom > bestOpener) {
       bestOpener = pairing.openerFrom;
       bestBlockId = pairing.blockId;
@@ -248,7 +267,11 @@ function computeRailBands(
     bands.push({
       blockId: pairing.blockId,
       kind: pairing.kind,
-      railX: railXForDepth(pairing.depth, gutter.contentLeft, gutter.marginWidth),
+      railX: railXForDepth(
+        pairing.depth,
+        gutter.contentLeft,
+        gutter.marginWidth,
+      ),
       segments,
     });
   }
@@ -316,14 +339,22 @@ async function project(): Promise<void> {
 }
 
 watch(
-  () => [props.editorState, props.zoom, props.layout, props.blocks, props.measures],
+  () => [
+    props.editorState,
+    props.zoom,
+    props.layout,
+    props.blocks,
+    props.measures,
+  ],
   () => scheduleProject(),
 );
 
 // ---- Derived pairing / emphasis -----------------------------------------
 const pairings = computed(() => pairBlockRanges(ranges.value));
 const railBands = computed(() =>
-  gutter.value ? computeRailBands(pairings.value, projectedGroups.value, gutter.value) : [],
+  gutter.value
+    ? computeRailBands(pairings.value, projectedGroups.value, gutter.value)
+    : [],
 );
 const blockIdByFrom = computed(() => {
   const map = new Map<number, number>();
@@ -336,18 +367,26 @@ const blockIdByFrom = computed(() => {
 const closerLabelByFrom = computed(() => {
   const map = new Map<number, string>();
   for (const pairing of pairings.value) {
-    map.set(pairing.closerFrom, closerHintLabel(pairing.kind, pairing.openerExpr));
+    map.set(
+      pairing.closerFrom,
+      closerHintLabel(pairing.kind, pairing.openerExpr),
+    );
   }
   return map;
 });
-const caretBlockId = computed(() => innermostBlockAt(pairings.value, caretPos.value));
+const caretBlockId = computed(() =>
+  innermostBlockAt(pairings.value, caretPos.value),
+);
 
 function isActive(blockId: number): boolean {
   return blockId === hoveredBlockId.value || blockId === caretBlockId.value;
 }
 
 function isBlockChip(range: DirectiveRange): boolean {
-  return range.block && (BLOCK_OPENERS.has(range.kind) || BLOCK_CLOSERS.has(range.kind));
+  return (
+    range.block &&
+    (BLOCK_OPENERS.has(range.kind) || BLOCK_CLOSERS.has(range.kind))
+  );
 }
 
 function blockIdFor(range: DirectiveRange): number | undefined {
@@ -358,7 +397,9 @@ function closerTitleFor(range: DirectiveRange): string | undefined {
   return range.block ? closerLabelByFrom.value.get(range.from) : undefined;
 }
 
-function chipClass(range: DirectiveRange): (string | Record<string, boolean>)[] {
+function chipClass(
+  range: DirectiveRange,
+): (string | Record<string, boolean>)[] {
   const blockId = blockIdFor(range);
   const active = blockId !== undefined && isActive(blockId);
   return [
@@ -435,13 +476,21 @@ onBeforeUnmount(() => {
 .folio-template-directive--elif,
 .folio-template-directive--else,
 .folio-template-directive--endif {
-  background: color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 26%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-cond, #0d9488) 26%,
+    transparent
+  );
 }
 
 .folio-template-directive--loop,
 .folio-template-directive--for,
 .folio-template-directive--endfor {
-  background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 26%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-loop, #7c3aed) 26%,
+    transparent
+  );
 }
 
 .folio-template-directive--block {
@@ -453,12 +502,20 @@ onBeforeUnmount(() => {
 .folio-template-directive--elif.folio-template-directive--active,
 .folio-template-directive--else.folio-template-directive--active,
 .folio-template-directive--endif.folio-template-directive--active {
-  background: color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 44%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-cond, #0d9488) 44%,
+    transparent
+  );
 }
 
 .folio-template-directive--for.folio-template-directive--active,
 .folio-template-directive--endfor.folio-template-directive--active {
-  background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 44%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-loop, #7c3aed) 44%,
+    transparent
+  );
 }
 
 .folio-template-band-rail {
@@ -471,20 +528,38 @@ onBeforeUnmount(() => {
 }
 
 .folio-template-band-rail--for {
-  background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 22%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-loop, #7c3aed) 22%,
+    transparent
+  );
 }
 
 .folio-template-band-rail--if {
-  background: color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 22%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-cond, #0d9488) 22%,
+    transparent
+  );
 }
 
 .folio-template-band-rail--for.folio-template-band-rail--active {
-  background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 90%, transparent);
-  box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 45%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-loop, #7c3aed) 90%,
+    transparent
+  );
+  box-shadow: 0 0 0 0.75px
+    color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 45%, transparent);
 }
 
 .folio-template-band-rail--if.folio-template-band-rail--active {
-  background: color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 90%, transparent);
-  box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 45%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--doc-tmpl-cond, #0d9488) 90%,
+    transparent
+  );
+  box-shadow: 0 0 0 0.75px
+    color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 45%, transparent);
 }
 </style>

@@ -6,14 +6,16 @@
  * can act on it.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { compareSelectiveVsFull } from "./selectiveSaveTripwire";
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-async function makeZip(entries: Record<string, string | Uint8Array>): Promise<ArrayBuffer> {
+async function makeZip(
+  entries: Record<string, string | Uint8Array>,
+): Promise<ArrayBuffer> {
   const zip = new JSZip();
   for (const [path, data] of Object.entries(entries)) {
     zip.file(path, data);

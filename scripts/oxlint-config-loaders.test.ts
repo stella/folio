@@ -57,16 +57,24 @@ const lintFixtures = (loader: Loader): LintResult => {
 
 /** JSON diagnostic codes, sorted: the diagnostics both loaders must agree on. */
 const rulesReported = (output: string): string[] =>
-  [...output.matchAll(/"code":\s*"([\w-]+\([\w-]+\))"/g)].map(([, rule]) => rule).sort();
+  [...output.matchAll(/"code":\s*"([\w-]+\([\w-]+\))"/g)]
+    .map(([, rule]) => rule)
+    .sort();
 
 const outputs = new Map<Loader, LintResult>(
-  (Object.keys(LOADERS) as Loader[]).map((loader) => [loader, lintFixtures(loader)]),
+  (Object.keys(LOADERS) as Loader[]).map((loader) => [
+    loader,
+    lintFixtures(loader),
+  ]),
 );
 
 describe("oxlint config", () => {
   for (const loader of Object.keys(LOADERS) as Loader[]) {
     test(`loads every JS plugin under the ${loader} loader`, () => {
-      const { exitCode, output } = outputs.get(loader) ?? { exitCode: -1, output: "" };
+      const { exitCode, output } = outputs.get(loader) ?? {
+        exitCode: -1,
+        output: "",
+      };
       expect(exitCode).toBe(1);
       expect(output).not.toContain("Failed to load JS plugin");
       expect(output).not.toContain("Failed to parse oxlint configuration file");

@@ -23,7 +23,8 @@ export const CANONICAL_GAP = {
   publicSuggestedMode: "publicOps.suggestedMode",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   publicTableStructure: "publicOps.tableStructure",
-  publicPendingParagraphMarkProperties: "publicOps.pendingParagraphMarkProperties",
+  publicPendingParagraphMarkProperties:
+    "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
   publicSecondaryStories: "publicOps.secondaryStories",
 } as const;
@@ -38,7 +39,8 @@ type CanonicalCapability = {
 } & (
   | {
       owner: "document-operations";
-      defaultSessionMutation: "pm-public-operations" | "pm-headless-reviewer" | "canonical";
+      defaultSessionMutation:
+        "pm-public-operations" | "pm-headless-reviewer" | "canonical";
     }
   | { owner: "controller" | "adapters" | "prosemirror" | "ai-edits" }
 );
@@ -83,7 +85,8 @@ export const CANONICAL_CAPABILITIES = {
     owner: "adapters",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Direct model and pending-suggestion snapshots bypass the canonical journal.",
+    summary:
+      "Direct model and pending-suggestion snapshots bypass the canonical journal.",
   },
   [CANONICAL_GAP.sectionProperties]: {
     owner: "controller",
@@ -108,7 +111,8 @@ export const CANONICAL_CAPABILITIES = {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Unclassified native and plugin mutations are refused at the projection boundary.",
+    summary:
+      "Unclassified native and plugin mutations are refused at the projection boundary.",
   },
   [CANONICAL_GAP.save]: {
     owner: "controller",
@@ -139,7 +143,8 @@ export const CANONICAL_CAPABILITIES = {
     owner: "prosemirror",
     kind: "mutation-source",
     adapters: ["react", "vue"],
-    summary: "Dirty tracking and section bookkeeping still observe PM transactions.",
+    summary:
+      "Dirty tracking and section bookkeeping still observe PM transactions.",
   },
   [CANONICAL_GAP.tableGeometry]: {
     owner: "prosemirror",
@@ -151,7 +156,8 @@ export const CANONICAL_CAPABILITIES = {
     owner: "prosemirror",
     kind: "mutation-source",
     adapters: ["react", "vue"],
-    summary: "Legacy paragraph identity repair remains a PM append transaction.",
+    summary:
+      "Legacy paragraph identity repair remains a PM append transaction.",
   },
   [CANONICAL_GAP.documentOperations]: {
     owner: "document-operations",
@@ -181,14 +187,16 @@ export const CANONICAL_CAPABILITIES = {
     defaultSessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Unsupported public payloads refuse with a typed compiler capability gap.",
+    summary:
+      "Unsupported public payloads refuse with a typed compiler capability gap.",
   },
   [CANONICAL_GAP.publicTableStructure]: {
     owner: "document-operations",
     defaultSessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Public table structure operations require canonical table operation descriptors.",
+    summary:
+      "Public table structure operations require canonical table operation descriptors.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",
@@ -203,7 +211,8 @@ export const CANONICAL_CAPABILITIES = {
     defaultSessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Public secondary-story batches refuse until canonical story routing is available.",
+    summary:
+      "Public secondary-story batches refuse until canonical story routing is available.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
@@ -230,5 +239,7 @@ export const usesCanonicalSession = (
   _gap: CanonicalGap,
 ): boolean => session === "canonical";
 
-export const canonicalRefusalMessage = (gap: CanonicalGap, message: string): string =>
-  `[${gap}] ${message}`;
+export const canonicalRefusalMessage = (
+  gap: CanonicalGap,
+  message: string,
+): string => `[${gap}] ${message}`;

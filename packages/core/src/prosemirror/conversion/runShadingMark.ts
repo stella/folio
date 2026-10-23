@@ -68,7 +68,9 @@ export function shadingToRunShadingAttrs(
 }
 
 /** Reconstruct the model shading (`w:shd` fill) from the mark attrs. */
-export function runShadingAttrsToShading(attrs: RunShadingAttrs): ShadingProperties {
+export function runShadingAttrsToShading(
+  attrs: RunShadingAttrs,
+): ShadingProperties {
   const fill: ColorValue = {};
   if (attrs.rgb) {
     fill.rgb = attrs.rgb;

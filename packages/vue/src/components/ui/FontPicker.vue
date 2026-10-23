@@ -58,6 +58,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+
 import type { FontOption } from "../../utils/fontOptions";
 import { getPrimaryFontFamily } from "./fontPickerValue";
 
@@ -80,23 +81,58 @@ const emit = defineEmits<{
 }>();
 
 const DEFAULT_FONTS: FontOption[] = [
-  { name: "Arial", fontFamily: "Arial, Helvetica, sans-serif", category: "sans-serif" },
-  { name: "Calibri", fontFamily: '"Calibri", Arial, sans-serif', category: "sans-serif" },
-  { name: "Helvetica", fontFamily: "Helvetica, Arial, sans-serif", category: "sans-serif" },
-  { name: "Verdana", fontFamily: "Verdana, Geneva, sans-serif", category: "sans-serif" },
-  { name: "Open Sans", fontFamily: '"Open Sans", sans-serif', category: "sans-serif" },
+  {
+    name: "Arial",
+    fontFamily: "Arial, Helvetica, sans-serif",
+    category: "sans-serif",
+  },
+  {
+    name: "Calibri",
+    fontFamily: '"Calibri", Arial, sans-serif',
+    category: "sans-serif",
+  },
+  {
+    name: "Helvetica",
+    fontFamily: "Helvetica, Arial, sans-serif",
+    category: "sans-serif",
+  },
+  {
+    name: "Verdana",
+    fontFamily: "Verdana, Geneva, sans-serif",
+    category: "sans-serif",
+  },
+  {
+    name: "Open Sans",
+    fontFamily: '"Open Sans", sans-serif',
+    category: "sans-serif",
+  },
   { name: "Roboto", fontFamily: "Roboto, sans-serif", category: "sans-serif" },
-  { name: "Times New Roman", fontFamily: '"Times New Roman", Times, serif', category: "serif" },
+  {
+    name: "Times New Roman",
+    fontFamily: '"Times New Roman", Times, serif',
+    category: "serif",
+  },
   { name: "Georgia", fontFamily: "Georgia, serif", category: "serif" },
   { name: "Cambria", fontFamily: "Cambria, Georgia, serif", category: "serif" },
   { name: "Garamond", fontFamily: "Garamond, serif", category: "serif" },
-  { name: "Courier New", fontFamily: '"Courier New", monospace', category: "monospace" },
-  { name: "Consolas", fontFamily: "Consolas, monospace", category: "monospace" },
+  {
+    name: "Courier New",
+    fontFamily: '"Courier New", monospace',
+    category: "monospace",
+  },
+  {
+    name: "Consolas",
+    fontFamily: "Consolas, monospace",
+    category: "monospace",
+  },
 ];
 
 const resolvedFonts = computed(() => props.fonts ?? DEFAULT_FONTS);
 const groups = computed(() => {
-  const out: Record<"sans-serif" | "serif" | "monospace" | "other", FontOption[]> = {
+  const out: Record<
+    "sans-serif" | "serif" | "monospace" | "other",
+    FontOption[]
+  > = {
     "sans-serif": [],
     serif: [],
     monospace: [],
@@ -123,7 +159,10 @@ function onChange(e: Event) {
   if (!(e.target instanceof HTMLSelectElement)) return;
   const name = e.target.value;
   const font = resolvedFonts.value.find((f) => f.name === name);
-  emit("change", font ? getPrimaryFontFamily(font.fontFamily) || font.name : name);
+  emit(
+    "change",
+    font ? getPrimaryFontFamily(font.fontFamily) || font.name : name,
+  );
 }
 </script>
 

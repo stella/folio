@@ -16,10 +16,14 @@ import type {
   Table,
   TextFormatting,
 } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
+import { isCommentExhausted } from "../comments";
 import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
-import { isCommentExhausted } from "../comments";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -32,7 +36,11 @@ import {
 
 const DATE = "2026-05-06T07:08:09Z";
 
-const stamp = (id: number, author = "Reviewer"): RevisionStamp => ({ id, author, date: DATE });
+const stamp = (id: number, author = "Reviewer"): RevisionStamp => ({
+  id,
+  author,
+  date: DATE,
+});
 
 const run = (text: string, formatting?: TextFormatting): ParagraphContent =>
   formatting === undefined
@@ -54,7 +62,9 @@ const table = (text: string): Table => ({
   rows: [
     {
       type: "tableRow",
-      cells: [{ type: "tableCell", content: [paragraph("10000001", [run(text)])] }],
+      cells: [
+        { type: "tableCell", content: [paragraph("10000001", [run(text)])] },
+      ],
     },
   ],
 });
@@ -75,7 +85,11 @@ const commentedDocument = (content: ParagraphContent[]): Document => ({
   },
 });
 
-const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+const at = (blockId: string, offset: number) => ({
+  story: OP_STORIES.MAIN,
+  blockId,
+  offset,
+});
 
 const applied = (document: Document, op: DocumentOp): AppliedDocumentOp => {
   const result = applyDocumentOp(document, op);
@@ -112,14 +126,17 @@ const refusalOf = (document: Document, op: DocumentOp): string | undefined => {
   return result.isErr() ? result.error.reason : undefined;
 };
 
-const blocks = (document: Document): BlockContent[] => document.package.document.content;
+const blocks = (document: Document): BlockContent[] =>
+  document.package.document.content;
 
 describe("tracked text", () => {
   test("a point comment is not exhausted without covered content", () => {
     const document = commentedDocument([{ type: "commentReference", id: 40 }]);
     document.package.document.comments![0]!.anchorKind = "point";
 
-    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(false);
+    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(
+      false,
+    );
   });
 
   test("a note marker is surviving covered content for a ranged comment", () => {
@@ -130,7 +147,9 @@ describe("tracked text", () => {
       { type: "commentReference", id: 40 },
     ]);
 
-    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(false);
+    expect(isCommentExhausted({ type: "document", document, id: 40 })).toBe(
+      false,
+    );
   });
 
   // The L1 generator found an empty revision acting as a zero-width deletion
@@ -140,7 +159,10 @@ describe("tracked text", () => {
     (type) => {
       const document = normalizeForOps(
         documentOf(
-          paragraph("00000001", [{ type, info: { id: 1, author: "A" }, content: [] }, run("x")]),
+          paragraph("00000001", [
+            { type, info: { id: 1, author: "A" }, content: [] },
+            run("x"),
+          ]),
         ),
       );
       const op = {
@@ -151,9 +173,13 @@ describe("tracked text", () => {
       } as const satisfies DocumentOp;
       const tracked = applied(document, op);
       const direct = applied(document, directly(op));
-      expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT)).toEqual(
-        direct.document,
-      );
+      expect(
+        resolved(
+          tracked.document,
+          tracked.revisions,
+          REVISION_DECISIONS.ACCEPT,
+        ),
+      ).toEqual(direct.document);
       expect(blocks(direct.document)).toEqual([paragraph("00000001", [])]);
     },
   );
@@ -182,10 +208,12 @@ describe("tracked text", () => {
       ]),
     ]);
     const direct = applied(document, directly(insert));
-    expect(resolved(tracked.document, [1], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
-      direct.document,
-    );
-    expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, [1], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct.document);
+    expect(
+      resolved(tracked.document, [1], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   test("rejecting a tracked insertion retires a comment that only covered inserted text", () => {
@@ -250,10 +278,9 @@ describe("tracked text", () => {
     });
     expect(second.revisions).toEqual([]);
     const [only] = blocks(second.document);
-    expect(only?.type === "paragraph" && only.content.map(({ type }) => type)).toEqual([
-      "run",
-      "insertion",
-    ]);
+    expect(
+      only?.type === "paragraph" && only.content.map(({ type }) => type),
+    ).toEqual(["run", "insertion"]);
     // Another date is another change.
     const later = applied(first.document, {
       type: DOCUMENT_OP_TYPES.INSERT_TEXT,
@@ -291,7 +318,9 @@ describe("tracked text", () => {
       },
       { ...theirs, info: { ...theirs.info, id: 7 }, content: [run("b")] },
     ]);
-    expect(resolved(tracked.document, [6], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, [6], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   // A closed insertion keeps the authored hyperlink seam through acceptance.
@@ -308,7 +337,9 @@ describe("tracked text", () => {
       href: "https://example.org",
       children,
     });
-    const document = documentOf(paragraph("00000001", [link([wrapper([run("a")])])]));
+    const document = documentOf(
+      paragraph("00000001", [link([wrapper([run("a")])])]),
+    );
     const op = {
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at: at("00000001", 0),
@@ -317,8 +348,14 @@ describe("tracked text", () => {
     } as const satisfies DocumentOp;
     const tracked = applied(document, op);
     const direct = applied(document, directly(op));
-    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
-    const expected = [paragraph("00000001", [link([wrapper([])]), link([wrapper([run("a")])])])];
+    const accepted = resolved(
+      tracked.document,
+      tracked.revisions,
+      REVISION_DECISIONS.ACCEPT,
+    );
+    const expected = [
+      paragraph("00000001", [link([wrapper([])]), link([wrapper([run("a")])])]),
+    ];
     expect(blocks(accepted)).toEqual(expected);
     expect(blocks(direct.document)).toStrictEqual(blocks(accepted));
   });
@@ -348,7 +385,13 @@ describe("tracked text", () => {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         at: at("00000001", 1),
         slice: {
-          content: [{ type: "deletion", info: { id: 5, author: "Other" }, content: [run("x")] }],
+          content: [
+            {
+              type: "deletion",
+              info: { id: 5, author: "Other" },
+              content: [run("x")],
+            },
+          ],
           openStart: 1,
           openEnd: 1,
         },
@@ -365,9 +408,17 @@ describe("tracked text", () => {
     };
     const document = documentOf(
       paragraph("00000001", [
-        { type: "insertion", info: { id: 5, author: "Other" }, content: [run("a")] },
+        {
+          type: "insertion",
+          info: { id: 5, author: "Other" },
+          content: [run("a")],
+        },
         run("b"),
-        { type: "deletion", info: { id: 6, author: "Other" }, content: [run("c")] },
+        {
+          type: "deletion",
+          info: { id: 6, author: "Other" },
+          content: [run("c")],
+        },
         control,
       ]),
     );
@@ -399,7 +450,11 @@ describe("tracked text", () => {
           resolutionJoins: { before: 0, after: 0, remove: 0 },
           content: [run("b")],
         },
-        { type: "deletion", info: { id: 6, author: "Other" }, content: [run("c")] },
+        {
+          type: "deletion",
+          info: { id: 6, author: "Other" },
+          content: [run("c")],
+        },
         {
           type: "deletion",
           info: info(12),
@@ -409,12 +464,12 @@ describe("tracked text", () => {
       ]),
     ]);
     expect(tracked.revisions).toEqual([10, 11, 12]);
-    expect(resolved(tracked.document, [10, 11, 12], REVISION_DECISIONS.REJECT)).toStrictEqual(
-      document,
-    );
-    expect(resolved(tracked.document, [10, 11, 12, 6], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
-      documentOf(paragraph("00000001", [])),
-    );
+    expect(
+      resolved(tracked.document, [10, 11, 12], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, [10, 11, 12, 6], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(documentOf(paragraph("00000001", [])));
   });
 
   test("a tracked deletion refuses comment anchors; the plan deletes around them", () => {
@@ -423,12 +478,20 @@ describe("tracked text", () => {
         run("ab"),
         { type: "commentRangeStart", id: 1 },
         run("cd", { bold: true }),
-        { type: "insertion", info: { id: 5, author: "Reviewer" }, content: [run("ef")] },
+        {
+          type: "insertion",
+          info: { id: 5, author: "Reviewer" },
+          content: [run("ef")],
+        },
       ]),
     );
     const range = { from: at("00000001", 1), to: at("00000001", 6) };
     expect(
-      refusalOf(document, { type: DOCUMENT_OP_TYPES.DELETE_RANGE, ...range, revision: stamp(9) }),
+      refusalOf(document, {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        ...range,
+        revision: stamp(9),
+      }),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
     const plan = planTrackedDeletion(document, {
       ...range,
@@ -438,7 +501,9 @@ describe("tracked text", () => {
     if (plan.isErr()) throw plan.error;
     // The own insertion goes directly; the rest is tracked in two pieces around the anchor.
     expect(
-      plan.value.map((op) => op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision?.id),
+      plan.value.map(
+        (op) => op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision?.id,
+      ),
     ).toEqual([undefined, 9, 22]);
     const after = applyDocumentOps(document, plan.value);
     if (after.isErr()) throw after.error;
@@ -478,13 +543,19 @@ describe("tracked text", () => {
     } as const satisfies DocumentOp;
     const tracked = applied(document, deletion);
 
-    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
-      document,
+    expect(
+      resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    const accepted = resolved(
+      tracked.document,
+      tracked.revisions,
+      REVISION_DECISIONS.ACCEPT,
     );
-    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
     expect(accepted.package.document.comments).toBeUndefined();
 
-    expect(blocks(accepted)).toEqual([paragraph("00000001", [run(" remains")])]);
+    expect(blocks(accepted)).toEqual([
+      paragraph("00000001", [run(" remains")]),
+    ]);
   });
 
   test("accepting deletion keeps a range that still covers an inline object", () => {
@@ -501,7 +572,11 @@ describe("tracked text", () => {
       to: at("00000001", 1),
       revision: stamp(9),
     });
-    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+    const accepted = resolved(
+      tracked.document,
+      tracked.revisions,
+      REVISION_DECISIONS.ACCEPT,
+    );
 
     expect(accepted.package.document.comments).toHaveLength(1);
   });
@@ -542,7 +617,9 @@ describe("tracked text", () => {
   test("revisionIdDemand counts the ids a tracked operation takes past its stamp", () => {
     const withChange: ParagraphContent = {
       type: "run",
-      propertyChanges: [{ type: "runPropertyChange", info: { id: 4, author: "Other" } }],
+      propertyChanges: [
+        { type: "runPropertyChange", info: { id: 4, author: "Other" } },
+      ],
       content: [{ type: "text", text: "abc" }],
     };
     const document = documentOf(paragraph("00000001", [withChange, run("de")]));
@@ -555,14 +632,20 @@ describe("tracked text", () => {
     const demand = revisionIdDemand(document, op);
     // The piece of the cut run the deletion wraps takes a new id for its property change.
     expect(demand.isOk() && demand.value).toBe(1);
-    expect(refusalOf(document, op)).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
-    expect(refusalOf(document, { ...op, newIds: { revision: [30] } })).toBeUndefined();
+    expect(refusalOf(document, op)).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+    );
+    expect(
+      refusalOf(document, { ...op, newIds: { revision: [30] } }),
+    ).toBeUndefined();
   });
 });
 
 describe("C8: tracked formatting is recorded, not applied directly", () => {
   test("a tracked run patch records each run's own formatting", () => {
-    const document = documentOf(paragraph("00000001", [run("ab", { italic: true }), run("cd")]));
+    const document = documentOf(
+      paragraph("00000001", [run("ab", { italic: true }), run("cd")]),
+    );
     const patch: DocumentOp = {
       type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
       from: at("00000001", 1),
@@ -592,18 +675,26 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
         {
           type: "run",
           formatting: { bold: true },
-          propertyChanges: [{ type: "runPropertyChange", info: info(2), boundaryJoins: ["after"] }],
+          propertyChanges: [
+            {
+              type: "runPropertyChange",
+              info: info(2),
+              boundaryJoins: ["after"],
+            },
+          ],
           content: [{ type: "text", text: "c" }],
         },
         run("d"),
       ]),
     ]);
     expect(tracked.revisions).toEqual([1, 2]);
-    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, [1, 2], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
     const direct = applied(document, directly(patch));
-    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
-      direct.document,
-    );
+    expect(
+      resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct.document);
   });
 
   test("a run already carrying a property change keeps its baseline", () => {
@@ -641,9 +732,9 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
       ]),
     ]);
     // Rejecting the change that was there restores what it started from.
-    expect(blocks(resolved(tracked.document, [4], REVISION_DECISIONS.REJECT))).toEqual([
-      paragraph("00000001", [run("ab", { italic: true })]),
-    ]);
+    expect(
+      blocks(resolved(tracked.document, [4], REVISION_DECISIONS.REJECT)),
+    ).toEqual([paragraph("00000001", [run("ab", { italic: true })])]);
   });
 
   test("a tracked paragraph patch records the paragraph properties, not the mark's", () => {
@@ -668,7 +759,9 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
         previousFormatting: { styleId: "Heading1" },
       },
     ]);
-    expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, [1], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
     expect(
       refusalOf(document, {
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
@@ -682,10 +775,14 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
 });
 
 describe("C9: Enter and Delete record paragraph marks", () => {
-  const source = paragraph("00000001", [run("Hello"), run("World", { bold: true })], {
-    formatting: { styleId: "Heading1" },
-    textId: "77777777",
-  });
+  const source = paragraph(
+    "00000001",
+    [run("Hello"), run("World", { bold: true })],
+    {
+      formatting: { styleId: "Heading1" },
+      textId: "77777777",
+    },
+  );
 
   test("a tracked split inside a paragraph gives the new id to the first half", () => {
     const document = documentOf(source, paragraph("00000009", [run("next")]));
@@ -709,10 +806,12 @@ describe("C9: Enter and Delete record paragraph marks", () => {
       paragraph("00000009", [run("next")]),
     ]);
     const direct = applied(document, directly(split));
-    expect(resolved(tracked.document, [1], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
-      direct.document,
-    );
-    expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, [1], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct.document);
+    expect(
+      resolved(tracked.document, [1], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   test("a tracked split at the end adds a paragraph that records the source's properties", () => {
@@ -745,11 +844,16 @@ describe("C9: Enter and Delete record paragraph marks", () => {
         },
       },
       paragraph("00000002", [], {
-        propertyChanges: [{ ...pending, info: { id: 7, author: "Reviewer", date: DATE } }],
+        propertyChanges: [
+          { ...pending, info: { id: 7, author: "Reviewer", date: DATE } },
+        ],
       }),
       paragraph("00000009", [run("next")]),
     ]);
-    const plain = applied(documentOf(source, paragraph("00000009", [run("next")])), split);
+    const plain = applied(
+      documentOf(source, paragraph("00000009", [run("next")])),
+      split,
+    );
     expect(blocks(plain.document)[1]).toEqual(
       paragraph("00000002", [], {
         propertyChanges: [
@@ -764,7 +868,9 @@ describe("C9: Enter and Delete record paragraph marks", () => {
   });
 
   test("a tracked join marks the first paragraph's mark as deleted and moves nothing", () => {
-    const next = paragraph("00000002", [run("World")], { formatting: { alignment: "end" } });
+    const next = paragraph("00000002", [run("World")], {
+      formatting: { alignment: "end" },
+    });
     const document = documentOf(source, next);
     const join: DocumentOp = {
       type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
@@ -776,7 +882,13 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     };
     const tracked = applied(document, join);
     expect(blocks(tracked.document)).toEqual([
-      { ...source, pPrMark: { kind: "del", info: { id: 1, author: "Reviewer", date: DATE } } },
+      {
+        ...source,
+        pPrMark: {
+          kind: "del",
+          info: { id: 1, author: "Reviewer", date: DATE },
+        },
+      },
       {
         ...next,
         formatting: { styleId: "Heading1" },
@@ -790,10 +902,12 @@ describe("C9: Enter and Delete record paragraph marks", () => {
       },
     ]);
     const direct = applied(document, directly(join));
-    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
-      direct.document,
-    );
-    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct.document);
+    expect(
+      resolved(tracked.document, [1, 2], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
     // A mark already carrying a change is not overwritten.
     expect(refusalOf(tracked.document, { ...join, revision: stamp(3) })).toBe(
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -822,11 +936,21 @@ describe("C9: Enter and Delete record paragraph marks", () => {
   });
 
   test("accepting a join of an empty paragraph leaves the next one as it was", () => {
-    const empty = paragraph("00000001", [{ type: "bookmarkStart", id: 1, name: "_Ref" }], {
-      formatting: { styleId: "Heading1" },
+    const empty = paragraph(
+      "00000001",
+      [{ type: "bookmarkStart", id: 1, name: "_Ref" }],
+      {
+        formatting: { styleId: "Heading1" },
+      },
+    );
+    const next = paragraph("00000002", [run("World")], {
+      formatting: { alignment: "end" },
     });
-    const next = paragraph("00000002", [run("World")], { formatting: { alignment: "end" } });
-    const document = documentOf(empty, next, paragraph("00000003", [run("end")]));
+    const document = documentOf(
+      empty,
+      next,
+      paragraph("00000003", [run("end")]),
+    );
     const tracked = applied(document, {
       type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
       story: OP_STORIES.MAIN,
@@ -835,8 +959,13 @@ describe("C9: Enter and Delete record paragraph marks", () => {
       newIds: { revision: [2] },
       revision: stamp(1),
     });
-    expect(blocks(resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT))).toEqual([
-      { ...next, content: [{ type: "bookmarkStart", id: 1, name: "_Ref" }, run("World")] },
+    expect(
+      blocks(resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT)),
+    ).toEqual([
+      {
+        ...next,
+        content: [{ type: "bookmarkStart", id: 1, name: "_Ref" }, run("World")],
+      },
       paragraph("00000003", [run("end")]),
     ]);
   });
@@ -868,7 +997,9 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     expect(blocks(accepted).at(0)?.sectionProperties).toBeUndefined();
     // Rejecting keeps the break, which needs no section operation.
     expect(blocks(resolved(document, [1], REVISION_DECISIONS.REJECT))).toEqual([
-      paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 12240 } }),
+      paragraph("00000001", [run("a")], {
+        sectionProperties: { pageWidth: 12240 },
+      }),
       paragraph("00000002", [run("b")]),
     ]);
   });
@@ -876,7 +1007,10 @@ describe("C9: Enter and Delete record paragraph marks", () => {
 
 describe("C6: a tracked split's new paragraph has exactly the direct split's fields", () => {
   test("nothing resolved is added; a property change records the source's own formatting", () => {
-    const document = documentOf(source6(), paragraph("00000009", [run("next")]));
+    const document = documentOf(
+      source6(),
+      paragraph("00000009", [run("next")]),
+    );
     const split: DocumentOp = {
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 3),
@@ -931,11 +1065,18 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
 
   test("other mark run properties are refused: rejecting could not give them back", () => {
     for (const fields of [{}, { propertyChanges: [pending] }]) {
-      const document = documentOf(source(fields), paragraph("00000009", [run("next")]));
+      const document = documentOf(
+        source(fields),
+        paragraph("00000009", [run("next")]),
+      );
       for (const formatting of [
         { styleId: "Heading1", runProperties: { italic: true } },
         { styleId: "Heading1" },
-        { styleId: "Heading1", runProperties: { bold: true }, runInWithNext: true },
+        {
+          styleId: "Heading1",
+          runProperties: { bold: true },
+          runInWithNext: true,
+        },
       ]) {
         expect(refusalOf(document, splitAtEnd(formatting))).toBe(
           DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -947,7 +1088,10 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
   test("rejecting a split with the same mark run properties gives the paragraph back", () => {
     for (const fields of [{}, { propertyChanges: [pending] }]) {
       const original = source(fields);
-      const document = documentOf(original, paragraph("00000009", [run("next")]));
+      const document = documentOf(
+        original,
+        paragraph("00000009", [run("next")]),
+      );
       const split = applied(
         document,
         splitAtEnd({ styleId: "Heading1", runProperties: { bold: true } }),
@@ -964,7 +1108,11 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
 
 const source6 = (): Paragraph =>
   paragraph("00000001", [run("abcdef")], {
-    formatting: { styleId: "Heading1", spaceBefore: 120, runProperties: { bold: true } },
+    formatting: {
+      styleId: "Heading1",
+      spaceBefore: 120,
+      runProperties: { bold: true },
+    },
   });
 
 describe("C5: undoing a tracked split after a later edit never drops a mark silently", () => {
@@ -988,7 +1136,10 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
   test("undoing in reverse order restores exactly", () => {
     const first = applied(document, split);
     const second = applied(first.document, format);
-    const undone = applyDocumentOps(second.document, [...second.inverse, ...first.inverse]);
+    const undone = applyDocumentOps(second.document, [
+      ...second.inverse,
+      ...first.inverse,
+    ]);
     if (undone.isErr()) throw undone.error;
     expect(undone.value.document).toStrictEqual(document);
   });
@@ -997,7 +1148,9 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
     const first = applied(document, split);
     const second = applied(first.document, format);
     const undone = applyDocumentOps(second.document, first.inverse);
-    expect(undone.isErr() && undone.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    expect(undone.isErr() && undone.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   });
 
   test("undoing the split alone after an edit of its text keeps the edit and the mark", () => {
@@ -1024,14 +1177,23 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
       blockId: "00000002",
       revision: stamp(3),
     });
-    const accepted = resolved(formatted.document, [1], REVISION_DECISIONS.ACCEPT);
+    const accepted = resolved(
+      formatted.document,
+      [1],
+      REVISION_DECISIONS.ACCEPT,
+    );
     const undone = applyDocumentOps(accepted, formatted.inverse);
-    expect(undone.isErr() && undone.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    expect(undone.isErr() && undone.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   });
 });
 
 describe("an empty content control is content: resolution never merges it away", () => {
-  const control = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+  const control = (
+    id: number,
+    content: ParagraphContent[],
+  ): ParagraphContent => ({
     type: "inlineSdt",
     properties: { sdtType: "richText", id, tag: "clause" },
     content,
@@ -1050,12 +1212,12 @@ describe("an empty content control is content: resolution never merges it away",
       newIds: { revision: [2] },
     } as const satisfies DocumentOp;
     const tracked = applied(document, op);
-    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
-      document,
-    );
-    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT)).toStrictEqual(
-      applied(document, directly(op)).document,
-    );
+    expect(
+      resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    expect(
+      resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(applied(document, directly(op)).document);
   });
 
   test("rejecting a tracked split keeps an empty control that ends the first half", () => {
@@ -1069,9 +1231,9 @@ describe("an empty content control is content: resolution never merges it away",
       newBlockId: "00000002",
       revision: stamp(1),
     });
-    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
-      document,
-    );
+    expect(
+      resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   test("a piece of a cut control that resolution empties still goes back into it", () => {
@@ -1091,7 +1253,9 @@ describe("an empty content control is content: resolution never merges it away",
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at: at("00000001", 1),
       slice: {
-        content: [{ type: "simpleField", instruction: "PAGE", content: [run("3")] }],
+        content: [
+          { type: "simpleField", instruction: "PAGE", content: [run("3")] },
+        ],
         openStart: 0,
         openEnd: 0,
       },
@@ -1099,7 +1263,9 @@ describe("an empty content control is content: resolution never merges it away",
       newIds: { control: [7] },
     });
     const ids = [...typed.revisions, ...field.revisions];
-    expect(resolved(field.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(field.document, ids, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   // Two alike containers a resolution merges meet inside too; a piece there
@@ -1136,7 +1302,9 @@ describe("an empty content control is content: resolution never merges it away",
       newIds: { control: [8, 18] },
     });
     const ids = [...typed.revisions, ...first.revisions, ...second.revisions];
-    expect(resolved(second.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(second.document, ids, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   // The L3 generator accepted a deletion that emptied one piece of a cut
@@ -1201,10 +1369,17 @@ describe("an empty content control is content: resolution never merges it away",
       ]),
     ]);
     const runs = [deleted.revisions, inserted.revisions, removed.revisions];
-    const atOnce = resolved(removed.document, runs.flat(), REVISION_DECISIONS.ACCEPT);
+    const atOnce = resolved(
+      removed.document,
+      runs.flat(),
+      REVISION_DECISIONS.ACCEPT,
+    );
     let inTurn = removed.document;
-    for (const ids of runs) inTurn = resolved(inTurn, ids, REVISION_DECISIONS.ACCEPT);
-    expect(blocks(atOnce)).toEqual([paragraph("00000001", [wrapper([run("b")])])]);
+    for (const ids of runs)
+      inTurn = resolved(inTurn, ids, REVISION_DECISIONS.ACCEPT);
+    expect(blocks(atOnce)).toEqual([
+      paragraph("00000001", [wrapper([run("b")])]),
+    ]);
     expect(inTurn).toStrictEqual(atOnce);
   });
 
@@ -1225,7 +1400,11 @@ describe("an empty content control is content: resolution never merges it away",
       revision: stamp(1),
     });
     // Pasted inside the typed insertion, the slice open at its start.
-    const typing = { type: "insertion", info: stamp(1), content: [run("y")] } as const;
+    const typing = {
+      type: "insertion",
+      info: stamp(1),
+      content: [run("y")],
+    } as const;
     const pasted = applied(typed.document, {
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at: at("00000001", 1),
@@ -1242,7 +1421,11 @@ describe("an empty content control is content: resolution never merges it away",
     expect(blocks(pasted.document)).toEqual([
       paragraph("00000001", [
         control(1, [
-          { ...typing, resolutionJoins: { before: 0, after: 2, remove: 0 }, content: [run("x")] },
+          {
+            ...typing,
+            resolutionJoins: { before: 0, after: 2, remove: 0 },
+            content: [run("x")],
+          },
           {
             ...typing,
             resolutionJoins: { before: 3, after: 0, remove: 3 },
@@ -1256,7 +1439,9 @@ describe("an empty content control is content: resolution never merges it away",
     // The typing is revision 1 and the piece of it the paste cut off, 3.
     const typings = [...typed.revisions, 3];
     const ids = [...typings, ...pasted.revisions];
-    expect(resolved(pasted.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    expect(
+      resolved(pasted.document, ids, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
     let inTurn = pasted.document;
     for (const turn of [pasted.revisions, typings]) {
       inTurn = resolved(inTurn, turn, REVISION_DECISIONS.REJECT);
@@ -1285,29 +1470,47 @@ describe("an empty content control is content: resolution never merges it away",
       info: stamp(id),
       content: [run(text)],
     });
-    const kinds: [string, (id: number, content: ParagraphContent[]) => ParagraphContent][] = [
+    const kinds: [
+      string,
+      (id: number, content: ParagraphContent[]) => ParagraphContent,
+    ][] = [
       ["a content control", control],
       ["a bidi wrapper", (_, content) => wrapper(content)],
-      ["a hyperlink holding a bidi wrapper", (_, content) => link([wrapper(content)])],
+      [
+        "a hyperlink holding a bidi wrapper",
+        (_, content) => link([wrapper(content)]),
+      ],
     ];
     for (const [name, piece] of kinds) {
       test(name, () => {
         const withNext = (content: ParagraphContent[]): Document =>
-          documentOf(paragraph("00000001", content), paragraph("00000009", [run("next")]));
-        const cut = withNext([piece(1, [inserted(1, "x")]), piece(7, [run("ab")])]);
+          documentOf(
+            paragraph("00000001", content),
+            paragraph("00000009", [run("next")]),
+          );
+        const cut = withNext([
+          piece(1, [inserted(1, "x")]),
+          piece(7, [run("ab")]),
+        ]);
         expect(resolved(cut, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(
           withNext([piece(1, [run("ab")])]),
         );
         // Both pieces emptied, at once or one after the other, leave one.
-        const both = withNext([piece(1, [inserted(1, "x")]), piece(7, [inserted(2, "ab")])]);
+        const both = withNext([
+          piece(1, [inserted(1, "x")]),
+          piece(7, [inserted(2, "ab")]),
+        ]);
         const one = withNext([piece(1, [])]);
-        expect(resolved(both, [1, 2], REVISION_DECISIONS.REJECT)).toStrictEqual(one);
+        expect(resolved(both, [1, 2], REVISION_DECISIONS.REJECT)).toStrictEqual(
+          one,
+        );
         for (const order of [
           [1, 2],
           [2, 1],
         ]) {
           let inTurn = both;
-          for (const id of order) inTurn = resolved(inTurn, [id], REVISION_DECISIONS.REJECT);
+          for (const id of order)
+            inTurn = resolved(inTurn, [id], REVISION_DECISIONS.REJECT);
           expect(inTurn).toStrictEqual(one);
         }
       });
@@ -1330,7 +1533,9 @@ describe("section-aware tracked editor joins", () => {
     expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
       documentOf(
         table("cell"),
-        paragraph("00000002", [run("beforeafter")], { sectionProperties: properties }),
+        paragraph("00000002", [run("beforeafter")], {
+          sectionProperties: properties,
+        }),
       ),
     );
   });
@@ -1348,7 +1553,9 @@ describe("section-aware tracked editor joins", () => {
 
     expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
       documentOf(
-        paragraph("00000001", [run("before")], { sectionProperties: properties }),
+        paragraph("00000001", [run("before")], {
+          sectionProperties: properties,
+        }),
         paragraph("00000003", [run("after")]),
       ),
     );
@@ -1376,15 +1583,27 @@ describe("section-aware tracked editor joins", () => {
 
   test("explicit section removal is tracked until resolution and every inverse preserves both sections", () => {
     const document = documentOf(
-      paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 10000 } }),
-      paragraph("00000002", [run("b")], { sectionProperties: { pageWidth: 12000 } }),
+      paragraph("00000001", [run("a")], {
+        sectionProperties: { pageWidth: 10000 },
+      }),
+      paragraph("00000002", [run("b")], {
+        sectionProperties: { pageWidth: 12000 },
+      }),
       paragraph("00000003", [run("c")]),
     );
     const content = document.package.document.content;
     document.package.document.finalSectionProperties = { pageWidth: 14000 };
     document.package.document.sections = [
-      { properties: { pageWidth: 10000 }, content: content.slice(0, 1), headers: new Map() },
-      { properties: { pageWidth: 12000 }, content: content.slice(1, 2), footers: new Map() },
+      {
+        properties: { pageWidth: 10000 },
+        content: content.slice(0, 1),
+        headers: new Map(),
+      },
+      {
+        properties: { pageWidth: 12000 },
+        content: content.slice(1, 2),
+        footers: new Map(),
+      },
       { properties: { pageWidth: 14000 }, content: content.slice(2) },
     ] satisfies Section[];
     const join = {
@@ -1400,13 +1619,15 @@ describe("section-aware tracked editor joins", () => {
       revision: stamp(1),
       newIds: { revision: [2, 3] },
     });
-    expect(blocks(tracked.document).at(0)?.sectionProperties).toEqual({ pageWidth: 10000 });
-    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT))).toStrictEqual(
-      blocks(direct.document),
-    );
-    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.REJECT))).toEqual(
-      blocks(document),
-    );
+    expect(blocks(tracked.document).at(0)?.sectionProperties).toEqual({
+      pageWidth: 10000,
+    });
+    expect(
+      blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT)),
+    ).toStrictEqual(blocks(direct.document));
+    expect(
+      blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.REJECT)),
+    ).toEqual(blocks(document));
   });
 });
 
@@ -1425,7 +1646,9 @@ test("tracked paragraph patches and joins keep one pending property review and i
       previousFormatting: { alignment: "start" as const },
     };
     let document = documentOf(
-      paragraph("00000001", [run("first")], { formatting: { styleId: "Heading1" } }),
+      paragraph("00000001", [run("first")], {
+        formatting: { styleId: "Heading1" },
+      }),
       paragraph("00000002", [run("second")], {
         formatting: { alignment },
         propertyChanges: [pending],
@@ -1447,8 +1670,13 @@ test("tracked paragraph patches and joins keep one pending property review and i
         previous.propertyChanges?.at(0)?.info.author === "Other"
       ) {
         const patched = blocks(patch.document).at(1);
-        expect(patched?.type === "paragraph" && patched.propertyChanges).toEqual([
-          { ...pending, info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" } },
+        expect(
+          patched?.type === "paragraph" && patched.propertyChanges,
+        ).toEqual([
+          {
+            ...pending,
+            info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" },
+          },
         ]);
       }
       document = patch.document;
@@ -1464,12 +1692,19 @@ test("tracked paragraph patches and joins keep one pending property review and i
     expect(joined.revisions).not.toContain(7);
     const survivor = blocks(joined.document).at(1);
     expect(survivor?.type === "paragraph" && survivor.propertyChanges).toEqual([
-      { ...pending, info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" } },
+      {
+        ...pending,
+        info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" },
+      },
     ]);
-    expect(survivor?.type === "paragraph" && survivor.formatting).toEqual({ styleId: "Heading1" });
+    expect(survivor?.type === "paragraph" && survivor.formatting).toEqual({
+      styleId: "Heading1",
+    });
     const rejected = resolved(joined.document, [7], REVISION_DECISIONS.REJECT);
     const restoredBaseline = blocks(rejected).at(1);
-    expect(restoredBaseline?.type === "paragraph" && restoredBaseline.formatting).toEqual({
+    expect(
+      restoredBaseline?.type === "paragraph" && restoredBaseline.formatting,
+    ).toEqual({
       alignment: "start",
     });
   }
@@ -1504,7 +1739,9 @@ test("a new first split half records its own review without moving the surviving
       previousFormatting: { alignment: "center" },
     },
   ]);
-  expect(second?.type === "paragraph" && second.propertyChanges).toEqual([pending]);
+  expect(second?.type === "paragraph" && second.propertyChanges).toEqual([
+    pending,
+  ]);
 });
 
 describe("whole-document revision rejection", () => {
@@ -1521,7 +1758,9 @@ describe("whole-document revision rejection", () => {
               type: "hyperlink",
               rId: "rId9",
               href: "https://example.org",
-              children: [{ type: "run", content: [{ type: "footnoteRef", id: 2 }] }],
+              children: [
+                { type: "run", content: [{ type: "footnoteRef", id: 2 }] },
+              ],
             },
           ],
         },
@@ -1562,9 +1801,13 @@ describe("whole-document revision rejection", () => {
             { properties: finalSectionProperties, content: [cellTable] },
           ],
           finalSectionProperties,
-          comments: [{ id: 7, author: "A", content: [paragraph("7FFFFFF0", [])] }],
+          comments: [
+            { id: 7, author: "A", content: [paragraph("7FFFFFF0", [])] },
+          ],
         },
-        footnotes: [{ type: "footnote", id: 2, content: [paragraph("7FFFFFF1", [])] }],
+        footnotes: [
+          { type: "footnote", id: 2, content: [paragraph("7FFFFFF1", [])] },
+        ],
         settings: { defaultTabStop: 720 },
         properties: { title: "synthetic" },
       },

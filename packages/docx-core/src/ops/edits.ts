@@ -27,16 +27,23 @@ const TOUCH_TRANSITIONS = {
   modified: { modified: "modified", inserted: "modified", removed: "removed" },
   inserted: { modified: "inserted", inserted: "inserted", removed: undefined },
   removed: { modified: "modified", inserted: "modified", removed: "removed" },
-} as const satisfies Record<TouchedState, Record<TouchedState, TouchedState | undefined>>;
+} as const satisfies Record<
+  TouchedState,
+  Record<TouchedState, TouchedState | undefined>
+>;
 
 /** Edits made in turn, starting from `document`, as one edit. */
-export const combineEdits = (document: Document, edits: readonly DocumentEdit[]): DocumentEdit => {
+export const combineEdits = (
+  document: Document,
+  edits: readonly DocumentEdit[],
+): DocumentEdit => {
   const touched = new Map<string, TouchedState>();
   for (const edit of edits) {
     for (const state of TOUCHED_STATES) {
       for (const id of edit.touched[state]) {
         const previous = touched.get(id);
-        const next = previous === undefined ? state : TOUCH_TRANSITIONS[previous][state];
+        const next =
+          previous === undefined ? state : TOUCH_TRANSITIONS[previous][state];
         if (next === undefined) {
           touched.delete(id);
         } else {
@@ -50,6 +57,10 @@ export const combineEdits = (document: Document, edits: readonly DocumentEdit[])
   return {
     document: edits.at(-1)?.document ?? document,
     inverse: edits.toReversed().flatMap(({ inverse }) => inverse),
-    touched: { modified: ids("modified"), inserted: ids("inserted"), removed: ids("removed") },
+    touched: {
+      modified: ids("modified"),
+      inserted: ids("inserted"),
+      removed: ids("removed"),
+    },
   };
 };

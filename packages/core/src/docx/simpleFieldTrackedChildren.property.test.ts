@@ -1,8 +1,21 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { EditorState, type Command } from "prosemirror-state";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Node as PMNode } from "prosemirror-model";
+import { type Command, EditorState } from "prosemirror-state";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { toMarkdown } from "../markdown/index";
+import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+  resolveAllChangesInHeadlessState,
+} from "../prosemirror/commands/comments";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type {
   ParagraphContent,
   RunContent,
@@ -10,27 +23,18 @@ import type {
   TrackedRunChange,
 } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import {
-  acceptAIEditRevision,
-  rejectAIEditRevision,
-  resolveAllChangesInHeadlessState,
-} from "../prosemirror/commands/comments";
-import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
-import { createDocx } from "./rezip";
+import { TRACKED_RUN_WORDPROCESSING_CHILDREN } from "./containerChildren.gen";
 import { parseDocx } from "./parser";
-import { toMarkdown } from "../markdown/index";
+import { createDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import {
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getTextContent,
-  getAttributeByNamespaceUri,
-  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
-import { TRACKED_RUN_WORDPROCESSING_CHILDREN } from "./containerChildren.gen";
 
 const applyReviewCommand = (state: EditorState, command: Command) => {
   let resolved = state;
@@ -43,7 +47,9 @@ const applyReviewCommand = (state: EditorState, command: Command) => {
 const FIELD_DATA =
   '<w:fldData xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">AQID</w:fldData>';
 
-const expectFieldDataHome = (source: ReturnType<typeof createEmptyDocument>) => {
+const expectFieldDataHome = (
+  source: ReturnType<typeof createEmptyDocument>,
+) => {
   const paragraph = source.package.document.content.at(0);
   expect(paragraph?.type).toBe("paragraph");
   if (paragraph?.type !== "paragraph") return;
@@ -54,7 +60,9 @@ const expectFieldDataHome = (source: ReturnType<typeof createEmptyDocument>) => 
   expect(root).not.toBeNull();
   if (!root) return;
   const pending = [root];
-  const revisionChildren: ReadonlySet<string> = new Set(TRACKED_RUN_WORDPROCESSING_CHILDREN);
+  const revisionChildren: ReadonlySet<string> = new Set(
+    TRACKED_RUN_WORDPROCESSING_CHILDREN,
+  );
   let count = 0;
   while (pending.length > 0) {
     const parent = pending.pop();
@@ -66,7 +74,11 @@ const expectFieldDataHome = (source: ReturnType<typeof createEmptyDocument>) => 
       if (getLocalName(child.name) === "fldData") {
         expect(name).toBe("fldChar");
         expect(
-          getAttributeByNamespaceUri(parent, WORDPROCESSINGML_NAMESPACE_URIS, "fldCharType"),
+          getAttributeByNamespaceUri(
+            parent,
+            WORDPROCESSINGML_NAMESPACE_URIS,
+            "fldCharType",
+          ),
         ).toBe("begin");
         expect(getTextContent(child)).toBe("AQID");
         count++;
@@ -81,7 +93,8 @@ const childRevisions = (doc: PMNode) => {
   const found = [];
   doc.descendants((node) => {
     for (const mark of node.marks) {
-      if (mark.type.name !== "insertion" && mark.type.name !== "deletion") continue;
+      if (mark.type.name !== "insertion" && mark.type.name !== "deletion")
+        continue;
       const attrs = expectTrackedChangeMarkAttrs(mark);
       if (attrs.revisionId !== 37) continue;
       found.push({
@@ -94,7 +107,11 @@ const childRevisions = (doc: PMNode) => {
         ancestors:
           attrs._docxRevisionAncestors
             ?.filter(({ author }) => author === "Ancestor Reviewer")
-            .map(({ type, revisionId, author }) => ({ type, revisionId, author })) ?? [],
+            .map(({ type, revisionId, author }) => ({
+              type,
+              revisionId,
+              author,
+            })) ?? [],
       });
     }
   });
@@ -111,9 +128,22 @@ test(
         fc.constantFrom("run", "hyperlink", "inlineWrapper"),
         fc.integer({ min: 1, max: 8 }),
         fc.constantFrom("none", "insertion"),
-        fc.constantFrom("Child Reviewer", "Outer Reviewer", "Žluťoučký", "レビュー"),
+        fc.constantFrom(
+          "Child Reviewer",
+          "Outer Reviewer",
+          "Žluťoučký",
+          "レビュー",
+        ),
         fc.constantFrom("none", "fldData"),
-        async (kind, outer, carrier, length, ancestry, author, fieldCapture) => {
+        async (
+          kind,
+          outer,
+          carrier,
+          length,
+          ancestry,
+          author,
+          fieldCapture,
+        ) => {
           const run = {
             type: "run",
             content: [{ type: "text", text: "x".repeat(length) }],
@@ -166,15 +196,25 @@ test(
             { type: "run", content: [{ type: "text", text: "after" }] },
           ];
           if (fieldCapture === "fldData")
-            field.content.unshift({ type: "preservedInline", xml: FIELD_DATA, text: "" });
+            field.content.unshift({
+              type: "preservedInline",
+              xml: FIELD_DATA,
+              text: "",
+            });
           const source = createEmptyDocument();
           const content: ParagraphContent =
             outer === "none"
               ? field
-              : { type: outer, info: { id: 35, author: "Outer Reviewer" }, content: [field] };
+              : {
+                  type: outer,
+                  info: { id: 35, author: "Outer Reviewer" },
+                  content: [field],
+                };
           // Field results share the paragraph renderer's revision projection in both modes.
           const fieldSource = createEmptyDocument();
-          fieldSource.package.document.content = [{ type: "paragraph", content: [field] }];
+          fieldSource.package.document.content = [
+            { type: "paragraph", content: [field] },
+          ];
           const flattenedSource = createEmptyDocument();
           flattenedSource.package.document.content = [
             { type: "paragraph", content: field.content },
@@ -184,33 +224,48 @@ test(
               toMarkdown(flattenedSource, { trackedChanges }),
             );
           }
-          source.package.document.content = [{ type: "paragraph", content: [content] }];
+          source.package.document.content = [
+            { type: "paragraph", content: [content] },
+          ];
           const initial = toProseDoc(source);
           expect(childRevisions(initial)).toHaveLength(1);
           // Initials are UI/model metadata, excluded from schema-strict CT_TrackChange XML.
           expect(
             childRevisions(
-              toProseDoc(fromProseDoc(initial, source, { stylesheetSource: { type: "package" } })),
+              toProseDoc(
+                fromProseDoc(initial, source, {
+                  stylesheetSource: { type: "package" },
+                }),
+              ),
             ),
           ).toEqual(childRevisions(initial));
           const serializedRevisions = childRevisions(initial);
-          for (const revisionAttrs of serializedRevisions) revisionAttrs.initials = undefined;
+          for (const revisionAttrs of serializedRevisions)
+            revisionAttrs.initials = undefined;
           const live = EditorState.create({ doc: initial });
           const serializedSource = fromProseDoc(initial, source, {
             stylesheetSource: { type: "package" },
           });
-          if (fieldCapture === "fldData" && outer !== "none") expectFieldDataHome(serializedSource);
+          if (fieldCapture === "fldData" && outer !== "none")
+            expectFieldDataHome(serializedSource);
           const saved = await createDocx(serializedSource);
-          const reopenedSource = await parseDocx(saved, { preloadFonts: false });
-          if (fieldCapture === "fldData" && outer !== "none") expectFieldDataHome(reopenedSource);
-          const reopened = EditorState.create({ doc: toProseDoc(reopenedSource) });
+          const reopenedSource = await parseDocx(saved, {
+            preloadFonts: false,
+          });
+          if (fieldCapture === "fldData" && outer !== "none")
+            expectFieldDataHome(reopenedSource);
+          const reopened = EditorState.create({
+            doc: toProseDoc(reopenedSource),
+          });
           expect(childRevisions(reopened.doc)).toEqual(serializedRevisions);
           for (const mode of ["accept", "reject"] as const) {
             const childKept =
               mode === "accept"
                 ? kind === "insertion" || kind === "moveTo"
-                : ancestry === "none" && (kind === "deletion" || kind === "moveFrom");
-            const outerRemoved = mode === "accept" ? outer === "deletion" : outer === "insertion";
+                : ancestry === "none" &&
+                  (kind === "deletion" || kind === "moveFrom");
+            const outerRemoved =
+              mode === "accept" ? outer === "deletion" : outer === "insertion";
             const expected = outerRemoved
               ? ""
               : `before${childKept ? "x".repeat(length) : ""}after`;
@@ -222,7 +277,9 @@ test(
               expect(resolved.doc.textContent).toBe(expected);
               const reopenedResolved = await parseDocx(
                 await createDocx(
-                  fromProseDoc(resolved.doc, baseline, { stylesheetSource: { type: "package" } }),
+                  fromProseDoc(resolved.doc, baseline, {
+                    stylesheetSource: { type: "package" },
+                  }),
                 ),
                 { preloadFonts: false },
               );
@@ -233,16 +290,20 @@ test(
                 ).doc.textContent,
               ).toBe(expected);
               let individuallyResolved = state;
-              const resolve = mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
+              const resolve =
+                mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
               // Resolve one revision id at a time, exercising overlapping ancestry.
               for (let step = 0; step < 20; step++) {
                 let revisionId: number | undefined;
                 individuallyResolved.doc.descendants((node) => {
                   const revisionMark = node.marks.find(
-                    (mark) => mark.type.name === "insertion" || mark.type.name === "deletion",
+                    (mark) =>
+                      mark.type.name === "insertion" ||
+                      mark.type.name === "deletion",
                   );
                   if (revisionId === undefined && revisionMark)
-                    revisionId = expectTrackedChangeMarkAttrs(revisionMark).revisionId;
+                    revisionId =
+                      expectTrackedChangeMarkAttrs(revisionMark).revisionId;
                 });
                 if (revisionId === undefined) break;
                 const before = individuallyResolved.doc;
@@ -265,14 +326,21 @@ test(
             }
           }
           const savedAgain = await createDocx(
-            fromProseDoc(reopened.doc, reopenedSource, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(reopened.doc, reopenedSource, {
+              stylesheetSource: { type: "package" },
+            }),
           );
           expect(
-            childRevisions(toProseDoc(await parseDocx(savedAgain, { preloadFonts: false }))),
+            childRevisions(
+              toProseDoc(await parseDocx(savedAgain, { preloadFonts: false })),
+            ),
           ).toEqual(serializedRevisions);
         },
       ),
-      { numRuns: 40, id: "simple field child revision ownership survives editor save and reopen" },
+      {
+        numRuns: 40,
+        id: "simple field child revision ownership survives editor save and reopen",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -307,13 +375,19 @@ for (const type of ["insertion", "deletion"] as const) {
       stylesheetSource: { type: "package" },
     });
     expectFieldDataHome(projected);
-    const reopened = await parseDocx(await createDocx(projected), { preloadFonts: false });
+    const reopened = await parseDocx(await createDocx(projected), {
+      preloadFonts: false,
+    });
     expectFieldDataHome(reopened);
     const projectedAgain = fromProseDoc(toProseDoc(reopened), reopened, {
       stylesheetSource: { type: "package" },
     });
     expectFieldDataHome(projectedAgain);
-    expectFieldDataHome(await parseDocx(await createDocx(projectedAgain), { preloadFonts: false }));
+    expectFieldDataHome(
+      await parseDocx(await createDocx(projectedAgain), {
+        preloadFonts: false,
+      }),
+    );
   });
 }
 
@@ -357,7 +431,10 @@ test(
     ] as const satisfies readonly RunContent[];
     await assertProperty(
       fc.asyncProperty(
-        fc.array(fc.constantFrom(...nonTextResults), { minLength: 1, maxLength: 6 }),
+        fc.array(fc.constantFrom(...nonTextResults), {
+          minLength: 1,
+          maxLength: 6,
+        }),
         fc.constantFrom("insertion", "deletion"),
         async (results, kind) => {
           const source = createEmptyDocument();
@@ -374,7 +451,12 @@ test(
                     {
                       type: kind,
                       info: { id: 37, author: "Reviewer" },
-                      content: [{ type: "run", content: [{ type: "text", text: "tracked" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "tracked" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -386,14 +468,20 @@ test(
             const resolved = resolveAllChangesInHeadlessState(state, mode);
             const individual = applyReviewCommand(
               state,
-              (mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision)(37),
+              (mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision)(
+                37,
+              ),
             );
             for (const reviewed of [resolved, individual]) {
               for (const document of [
-                fromProseDoc(reviewed.doc, source, { stylesheetSource: { type: "package" } }),
+                fromProseDoc(reviewed.doc, source, {
+                  stylesheetSource: { type: "package" },
+                }),
                 await parseDocx(
                   await createDocx(
-                    fromProseDoc(reviewed.doc, source, { stylesheetSource: { type: "package" } }),
+                    fromProseDoc(reviewed.doc, source, {
+                      stylesheetSource: { type: "package" },
+                    }),
                   ),
                   {
                     preloadFonts: false,
@@ -403,26 +491,41 @@ test(
                 const paragraph = document.package.document.content.at(0);
                 if (paragraph?.type !== "paragraph")
                   throw new TypeError("Missing reviewed paragraph");
-                const field = paragraph.content.find((child) => child.type === "simpleField");
-                if (field?.type !== "simpleField") throw new TypeError("Missing reviewed field");
+                const field = paragraph.content.find(
+                  (child) => child.type === "simpleField",
+                );
+                if (field?.type !== "simpleField")
+                  throw new TypeError("Missing reviewed field");
                 const runChildren = field.content.flatMap((child) =>
                   child.type === "run" ? child.content : [],
                 );
-                expect(runChildren.filter((child) => child.type !== "text")).toEqual(results);
+                expect(
+                  runChildren.filter((child) => child.type !== "text"),
+                ).toEqual(results);
                 expect(
                   runChildren
-                    .flatMap((child) => (child.type === "text" ? [child.text] : []))
+                    .flatMap((child) =>
+                      child.type === "text" ? [child.text] : [],
+                    )
                     .join(""),
-                ).toBe((mode === "accept") === (kind === "insertion") ? "tracked" : "");
-                expect(toProseDoc(document).content.firstChild?.firstChild?.type.name).toBe(
-                  "structuredField",
+                ).toBe(
+                  (mode === "accept") === (kind === "insertion")
+                    ? "tracked"
+                    : "",
                 );
+                expect(
+                  toProseDoc(document).content.firstChild?.firstChild?.type
+                    .name,
+                ).toBe("structuredField");
               }
             }
           }
         },
       ),
-      { numRuns: 20, id: "simple field non-text results survive resolution and save reopen" },
+      {
+        numRuns: 20,
+        id: "simple field non-text results survive resolution and save reopen",
+      },
     );
   },
   propertyTestTimeout(30_000),

@@ -1,4 +1,3 @@
-import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 /**
  * Vue port of packages/react/src/hooks/useClipboard.ts. Wraps the
  * framework-agnostic clipboard helpers in core.
@@ -9,18 +8,20 @@ import { readBlobText } from "@stll/folio-core/utils/textEncoding";
  * path uses `parseClipboardHtml`. NB: our `copyRuns` options expose
  * `onError` only (no `theme`), so the upstream `theme` option is dropped.
  */
-import { ref, type Ref } from "vue";
+import { type Ref, ref } from "vue";
+
+import {
+  type ClipboardSelection,
+  createSelectionFromDOM,
+  getSelectionRuns,
+} from "@stll/folio-core/managers/ClipboardManager";
 import {
   copyRuns,
   parseClipboardHtml,
-  runsToClipboardContent,
   type ParsedClipboardContent,
+  runsToClipboardContent,
 } from "@stll/folio-core/utils/clipboard";
-import {
-  getSelectionRuns,
-  createSelectionFromDOM,
-  type ClipboardSelection,
-} from "@stll/folio-core/managers/ClipboardManager";
+import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 
 export { getSelectionRuns, createSelectionFromDOM, runsToClipboardContent };
 export type { ClipboardSelection };
@@ -42,8 +43,17 @@ export type UseClipboardReturn = {
   lastPastedContent: Ref<ParsedClipboardContent | null>;
 };
 
-export function useClipboard(options: UseClipboardOptions = {}): UseClipboardReturn {
-  const { onCopy, onCut, onPaste, cleanWordFormatting = true, editable = true, onError } = options;
+export function useClipboard(
+  options: UseClipboardOptions = {},
+): UseClipboardReturn {
+  const {
+    onCopy,
+    onCut,
+    onPaste,
+    cleanWordFormatting = true,
+    editable = true,
+    onError,
+  } = options;
 
   const isProcessing = ref(false);
   const lastPastedContent = ref<ParsedClipboardContent | null>(null);
@@ -74,7 +84,9 @@ export function useClipboard(options: UseClipboardOptions = {}): UseClipboardRet
     }
   }
 
-  async function paste(asPlainText = false): Promise<ParsedClipboardContent | null> {
+  async function paste(
+    asPlainText = false,
+  ): Promise<ParsedClipboardContent | null> {
     if (isProcessing.value || !editable) return null;
     isProcessing.value = true;
     try {
@@ -91,7 +103,11 @@ export function useClipboard(options: UseClipboardOptions = {}): UseClipboardRet
           }
         }
         if (asPlainText) html = "";
-        const content = parseClipboardHtml(html, plainText, cleanWordFormatting);
+        const content = parseClipboardHtml(
+          html,
+          plainText,
+          cleanWordFormatting,
+        );
         lastPastedContent.value = content;
         onPaste?.(content, asPlainText);
         return content;

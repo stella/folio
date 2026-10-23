@@ -22,11 +22,13 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Table } from "../types/document";
-import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+} from "./containerChildren.gen";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
@@ -108,7 +110,11 @@ const rebuild = (properties: string): string => {
   if (!table) {
     throw new Error("the table fixture parsed to nothing");
   }
-  const { sourceXml: _source, gridSourceXml: _grid, ...formatting } = table.formatting ?? {};
+  const {
+    sourceXml: _source,
+    gridSourceXml: _grid,
+    ...formatting
+  } = table.formatting ?? {};
   return serializeTable({ ...table, formatting }, serializeParagraph);
 };
 
@@ -128,13 +134,20 @@ const throughEditor = (properties: string): string => {
   const projected = fromProseDoc(toProseDoc(document), document, {
     stylesheetSource: { type: "package" },
   }).package.document.content[0] as Table;
-  const { sourceXml: _source, gridSourceXml: _grid, ...formatting } = projected.formatting ?? {};
+  const {
+    sourceXml: _source,
+    gridSourceXml: _grid,
+    ...formatting
+  } = projected.formatting ?? {};
   return serializeTable({ ...projected, formatting }, serializeParagraph);
 };
 
 /** The outer `w:tblPr`'s own children: a `w:tblPrChange` nests a second one. */
 const propertiesOf = (saved: string): string =>
-  saved.slice(saved.indexOf("<w:tblPr>") + "<w:tblPr>".length, saved.lastIndexOf("</w:tblPr>"));
+  saved.slice(
+    saved.indexOf("<w:tblPr>") + "<w:tblPr>".length,
+    saved.lastIndexOf("</w:tblPr>"),
+  );
 
 describe("a table's property set survives a rebuild", () => {
   test("every declared child comes back, and the save after it is a fixed point", () => {
@@ -173,23 +186,34 @@ describe("a table's property set survives a rebuild", () => {
     );
 
     const positions = DECLARED.map((name) => saved.indexOf(`<w:${name}`));
-    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
     expect(positions.every((at) => at > -1)).toBe(true);
   });
 
   test("a capture comes back between the same two modelled properties", () => {
-    const saved = rebuild('<w:tblStyle w:val="TableGrid"/><w:tblLook/><w:tblCaption w:val="c"/>');
+    const saved = rebuild(
+      '<w:tblStyle w:val="TableGrid"/><w:tblLook/><w:tblCaption w:val="c"/>',
+    );
 
-    expect(saved.indexOf("<w:tblStyle")).toBeLessThan(saved.indexOf("<w:tblLook/>"));
-    expect(saved.indexOf("<w:tblLook/>")).toBeLessThan(saved.indexOf("<w:tblCaption"));
+    expect(saved.indexOf("<w:tblStyle")).toBeLessThan(
+      saved.indexOf("<w:tblLook/>"),
+    );
+    expect(saved.indexOf("<w:tblLook/>")).toBeLessThan(
+      saved.indexOf("<w:tblCaption"),
+    );
   });
 
   test("a capture before the first declared property stays first", () => {
     const saved = rebuild(
-      '<x:hint xmlns:x="urn:example:vendor" x:kind="layout"/>' + '<w:tblStyle w:val="TableGrid"/>',
+      '<x:hint xmlns:x="urn:example:vendor" x:kind="layout"/>' +
+        '<w:tblStyle w:val="TableGrid"/>',
     );
 
-    expect(saved.indexOf("<x:hint ")).toBeLessThan(saved.indexOf("<w:tblStyle "));
+    expect(saved.indexOf("<x:hint ")).toBeLessThan(
+      saved.indexOf("<w:tblStyle "),
+    );
   });
 
   test("every declared child survives the editor projection", () => {
@@ -205,7 +229,10 @@ describe("a table's property set survives a rebuild", () => {
           propertiesOf(rebuild(SAMPLES[name])),
         );
       }),
-      { numRuns: 100, id: "every declared child survives the editor projection" },
+      {
+        numRuns: 100,
+        id: "every declared child survives the editor projection",
+      },
     );
   });
 

@@ -10,9 +10,13 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
-import { isSequentialFolioBlockId } from "../types/block-id";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { ensureParaIds, EnsureParaIdsError, ENSURE_PARA_IDS_REASONS } from "./ensureParaIds";
+import { isSequentialFolioBlockId } from "../types/block-id";
+import {
+  ENSURE_PARA_IDS_REASONS,
+  ensureParaIds,
+  EnsureParaIdsError,
+} from "./ensureParaIds";
 import { parseDocx } from "./parser";
 import { DOCX_MAX_ENTRIES } from "./server/boundedArchive";
 
@@ -27,19 +31,26 @@ const DOCUMENT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 
 const DIGITAL_SIGNATURE_PARTS = {
   "_xmlsignatures/origin.sigs": "",
-  "_xmlsignatures/sig1.xml": '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"/>',
+  "_xmlsignatures/sig1.xml":
+    '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"/>',
 };
 
-const ID_NS = ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
-const MC_NS = ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+const ID_NS =
+  ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
+const MC_NS =
+  ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
 
-const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const documentXml = (body: string, extraRootAttrs = ""): string =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document ${W_NS}${extraRootAttrs}><w:body>${body}<w:sectPr/></w:body></w:document>`;
 
-const buildDocx = async (parts: Record<string, string>, entryDate?: Date): Promise<Uint8Array> => {
+const buildDocx = async (
+  parts: Record<string, string>,
+  entryDate?: Date,
+): Promise<Uint8Array> => {
   const zip = new JSZip();
   const options = entryDate === undefined ? undefined : { date: entryDate };
   zip.file("[Content_Types].xml", CONTENT_TYPES, options);
@@ -80,7 +91,9 @@ const NODE_STREAM_SUPPORT = "nodestream";
  * Run `work` with JSZip reporting the capabilities of a browser or web worker,
  * where `readable-stream` is absent and `nodeStream` throws.
  */
-const withoutNodeStreamSupport = async <T>(work: () => Promise<T>): Promise<T> => {
+const withoutNodeStreamSupport = async <T>(
+  work: () => Promise<T>,
+): Promise<T> => {
   const supported: unknown = Reflect.get(JSZip.support, NODE_STREAM_SUPPORT);
   Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, false);
   try {
@@ -118,13 +131,19 @@ describe("ensureParaIds", () => {
   });
 
   test("declares xmlns:w14 / xmlns:mc and mc:Ignorable on a root that lacks them", async () => {
-    const input = await buildDocx({ "word/document.xml": documentXml(PARA("Hello")) });
+    const input = await buildDocx({
+      "word/document.xml": documentXml(PARA("Hello")),
+    });
 
     const { docx } = await ensureParaIds(input);
     const xml = await getPart(docx, "word/document.xml");
 
-    expect(xml).toContain('xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"');
-    expect(xml).toContain('xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"');
+    expect(xml).toContain(
+      'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"',
+    );
+    expect(xml).toContain(
+      'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"',
+    );
     expect(xml).toContain('mc:Ignorable="w14"');
     // Declarations land on the root element, before its first child.
     expect(xml.indexOf("xmlns:w14")).toBeLessThan(xml.indexOf("<w:body>"));
@@ -189,7 +208,9 @@ describe("ensureParaIds", () => {
     const first = await ensureParaIds(input);
     const second = await ensureParaIds(first.docx);
 
-    expect(first.mintedParaIds).toEqual(collectIds(await getPart(first.docx, "word/document.xml")));
+    expect(first.mintedParaIds).toEqual(
+      collectIds(await getPart(first.docx, "word/document.xml")),
+    );
     expect(second.alreadyComplete).toBe(true);
     expect(second.assigned).toBe(0);
     expect(second.deduplicated).toBe(0);
@@ -283,7 +304,9 @@ describe("ensureParaIds", () => {
 
     // The fallback branch is byte-identical: the id-less paragraph stays
     // id-less and the existing id is not treated as a duplicate to rewrite.
-    expect(xml).toContain(`<mc:Fallback>${fallbackParagraph}${PARA("No id either")}</mc:Fallback>`);
+    expect(xml).toContain(
+      `<mc:Fallback>${fallbackParagraph}${PARA("No id either")}</mc:Fallback>`,
+    );
     // The fallback ID owns its value, so the conflicting outer paragraph is
     // reminted even though it appears first; the mc:Choice paragraph gets an ID.
     expect(result.assigned).toBe(1);
@@ -311,15 +334,29 @@ describe("ensureParaIds", () => {
     expect(result.assigned).toBe(5);
 
     const bodyIds = collectIds(await getPart(result.docx, "word/document.xml"));
-    const headerIds = collectIds(await getPart(result.docx, "word/header1.xml"));
-    const footerIds = collectIds(await getPart(result.docx, "word/footer1.xml"));
-    const footnoteIds = collectIds(await getPart(result.docx, "word/footnotes.xml"));
-    const endnoteIds = collectIds(await getPart(result.docx, "word/endnotes.xml"));
+    const headerIds = collectIds(
+      await getPart(result.docx, "word/header1.xml"),
+    );
+    const footerIds = collectIds(
+      await getPart(result.docx, "word/footer1.xml"),
+    );
+    const footnoteIds = collectIds(
+      await getPart(result.docx, "word/footnotes.xml"),
+    );
+    const endnoteIds = collectIds(
+      await getPart(result.docx, "word/endnotes.xml"),
+    );
     expect(headerIds).toHaveLength(1);
     expect(footerIds).toHaveLength(1);
     expect(footnoteIds).toHaveLength(1);
     expect(endnoteIds).toHaveLength(1);
-    const all = [...bodyIds, ...headerIds, ...footerIds, ...footnoteIds, ...endnoteIds];
+    const all = [
+      ...bodyIds,
+      ...headerIds,
+      ...footerIds,
+      ...footnoteIds,
+      ...endnoteIds,
+    ];
     expect(new Set(all).size).toBe(all.length);
 
     const headerOut = await getPart(result.docx, "word/header1.xml");
@@ -330,7 +367,10 @@ describe("ensureParaIds", () => {
     const commentsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:comments ${W_NS} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="0">${PARA("A comment", ' w14:paraId="C0FFEE01"')}</w:comment></w:comments>`;
     const input = await buildDocx({
-      "word/document.xml": documentXml(PARA("Body", ' w14:paraId="C0FFEE01"'), ID_NS),
+      "word/document.xml": documentXml(
+        PARA("Body", ' w14:paraId="C0FFEE01"'),
+        ID_NS,
+      ),
       "word/comments.xml": commentsXml,
     });
 
@@ -342,7 +382,10 @@ describe("ensureParaIds", () => {
   });
 
   test("uses fresh prefixes when conventional extension prefixes bind foreign URIs", async () => {
-    const conflictingRoots = [' xmlns:w14="urn:wrong"', ' xmlns:mc="urn:wrong"'];
+    const conflictingRoots = [
+      ' xmlns:w14="urn:wrong"',
+      ' xmlns:mc="urn:wrong"',
+    ];
 
     for (const rootAttrs of conflictingRoots) {
       const input = await buildDocx({
@@ -377,9 +420,13 @@ describe("ensureParaIds", () => {
       "word/document.xml": documentXml(PARA("Needs an ID")),
     });
 
-    await expect(ensureParaIds(input)).rejects.toThrow("digitally signed package");
+    await expect(ensureParaIds(input)).rejects.toThrow(
+      "digitally signed package",
+    );
 
-    const result = await ensureParaIds(input, { allowSignedPackageMutation: true });
+    const result = await ensureParaIds(input, {
+      allowSignedPackageMutation: true,
+    });
     expect(result.assigned).toBe(1);
     expect(result.alreadyComplete).toBe(false);
   });
@@ -388,7 +435,10 @@ describe("ensureParaIds", () => {
     const input = await buildDocx({
       ...DIGITAL_SIGNATURE_PARTS,
       "word/document.xml": documentXml(
-        PARA("Already identified", ' w14:paraId="12345678" w14:textId="12345678"'),
+        PARA(
+          "Already identified",
+          ' w14:paraId="12345678" w14:textId="12345678"',
+        ),
         ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14"',
       ),
     });
@@ -407,8 +457,14 @@ describe("ensureParaIds", () => {
     });
 
     const { docx } = await ensureParaIds(input);
-    const buffer = docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength);
-    const parsed = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
+    const buffer = docx.buffer.slice(
+      docx.byteOffset,
+      docx.byteOffset + docx.byteLength,
+    );
+    const parsed = await parseDocx(buffer, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
     const snapshot = createFolioAIEditSnapshot(toProseDoc(parsed));
 
     expect(snapshot.blocks.length).toBeGreaterThanOrEqual(3);
@@ -451,10 +507,14 @@ describe("ensureParaIds", () => {
       "word/document.xml": documentXml(`${PARA("First")}${PARA("Second")}`),
     });
 
-    const result = await withoutNodeStreamSupport(async () => await ensureParaIds(input));
+    const result = await withoutNodeStreamSupport(
+      async () => await ensureParaIds(input),
+    );
 
     expect(result.assigned).toBe(2);
-    expect(collectIds(await getPart(result.docx, "word/document.xml"))).toHaveLength(2);
+    expect(
+      collectIds(await getPart(result.docx, "word/document.xml")),
+    ).toHaveLength(2);
   });
 
   test("wraps malformed ZIP input in EnsureParaIdsError", async () => {

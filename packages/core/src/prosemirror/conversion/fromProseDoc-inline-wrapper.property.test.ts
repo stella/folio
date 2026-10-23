@@ -16,8 +16,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   Document,
   InlineWrapper,
@@ -31,7 +33,11 @@ import { toProseDoc } from "./toProseDoc";
 
 const TEXT = "x";
 const RUN = { type: "run", content: [{ type: "text", text: TEXT }] } as const;
-const INFO: TrackedChangeInfo = { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+const INFO: TrackedChangeInfo = {
+  id: 1,
+  author: "Reviewer",
+  date: "2026-01-01T00:00:00Z",
+};
 
 const documentWith = (content: Paragraph["content"]): Document => {
   const template = createEmptyDocument();
@@ -59,7 +65,9 @@ const paragraphContentOf = (document: Document): ParagraphContent[] => {
 const roundTrip = (content: Paragraph["content"]): ParagraphContent[] => {
   const source = documentWith(content);
   return paragraphContentOf(
-    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    }),
   );
 };
 
@@ -70,7 +78,12 @@ const roundTrip = (content: Paragraph["content"]): ParagraphContent[] => {
  */
 type WrapperShape =
   | { kind: "text"; text: string }
-  | { kind: "wrapper"; control: string; direction: string | undefined; content: WrapperShape[] }
+  | {
+      kind: "wrapper";
+      control: string;
+      direction: string | undefined;
+      content: WrapperShape[];
+    }
   | { kind: "revision"; type: string; content: WrapperShape[] }
   | { kind: "hyperlink"; content: WrapperShape[] }
   | { kind: "other"; type: string };
@@ -80,7 +93,9 @@ const shapeOf = (item: ParagraphContent): WrapperShape => {
     case "run":
       return {
         kind: "text",
-        text: item.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+        text: item.content
+          .map((part) => (part.type === "text" ? part.text : ""))
+          .join(""),
       };
     case "inlineWrapper":
       return {
@@ -93,7 +108,11 @@ const shapeOf = (item: ParagraphContent): WrapperShape => {
     case "deletion":
     case "moveFrom":
     case "moveTo":
-      return { kind: "revision", type: item.type, content: item.content.map(shapeOf) };
+      return {
+        kind: "revision",
+        type: item.type,
+        content: item.content.map(shapeOf),
+      };
     case "hyperlink":
       return { kind: "hyperlink", content: item.children.map(shapeOf) };
     default:
@@ -101,7 +120,8 @@ const shapeOf = (item: ParagraphContent): WrapperShape => {
   }
 };
 
-const shapesOf = (content: readonly ParagraphContent[]): WrapperShape[] => content.map(shapeOf);
+const shapesOf = (content: readonly ParagraphContent[]): WrapperShape[] =>
+  content.map(shapeOf);
 
 /** An authored wrapper, without the content it holds. */
 type AuthoredWrapper = Omit<InlineWrapper, "content">;
@@ -131,14 +151,14 @@ const INSERTED_RUN = { type: "insertion", info: INFO, content: [RUN] } as const;
  * A revision-wrapped run exercises the same wrapper stack as ordinary content,
  * while retaining whether the revision was authored inside or outside it.
  */
-const contentArbitrary: fc.Arbitrary<ParagraphContent> = fc.constantFrom<ParagraphContent>(
-  RUN,
-  HYPERLINK,
-  INSERTED_RUN,
-);
+const contentArbitrary: fc.Arbitrary<ParagraphContent> =
+  fc.constantFrom<ParagraphContent>(RUN, HYPERLINK, INSERTED_RUN);
 
 /** `inner` wrapped by `authored`, outermost first. */
-const nest = (authored: readonly AuthoredWrapper[], inner: ParagraphContent): ParagraphContent => {
+const nest = (
+  authored: readonly AuthoredWrapper[],
+  inner: ParagraphContent,
+): ParagraphContent => {
   let nested = inner;
   for (const wrapper of authored.toReversed()) {
     nested = { ...wrapper, content: [nested] };
@@ -211,7 +231,11 @@ describe("a wrapper tree the editor gives back", () => {
       direction: "rtl",
       content: [
         { type: "run", content: [{ type: "text", text: "a" }] },
-        { type: "run", content: [{ type: "text", text: "b" }], formatting: { bold: true } },
+        {
+          type: "run",
+          content: [{ type: "text", text: "b" }],
+          formatting: { bold: true },
+        },
       ],
     };
     const saved = roundTrip([wrapped]);
@@ -220,7 +244,10 @@ describe("a wrapper tree the editor gives back", () => {
   });
 
   test("leaves text outside the wrapper outside it", () => {
-    const outer = { type: "run", content: [{ type: "text", text: "out" }] } as const;
+    const outer = {
+      type: "run",
+      content: [{ type: "text", text: "out" }],
+    } as const;
     const wrapped: ParagraphContent = {
       type: "inlineWrapper",
       kind: "bidi",
@@ -228,7 +255,9 @@ describe("a wrapper tree the editor gives back", () => {
       direction: "rtl",
       content: [{ type: "run", content: [{ type: "text", text: "in" }] }],
     };
-    expect(shapesOf(roundTrip([outer, wrapped, outer]))).toEqual(shapesOf([outer, wrapped, outer]));
+    expect(shapesOf(roundTrip([outer, wrapped, outer]))).toEqual(
+      shapesOf([outer, wrapped, outer]),
+    );
   });
 });
 
@@ -256,11 +285,15 @@ describe("a wrapper authored outside a revision", () => {
   };
 
   test("keeps the wrapper outside the revision", () => {
-    expect(shapesOf(roundTrip([WRAPPER_OUTSIDE]))).toEqual(shapesOf([WRAPPER_OUTSIDE]));
+    expect(shapesOf(roundTrip([WRAPPER_OUTSIDE]))).toEqual(
+      shapesOf([WRAPPER_OUTSIDE]),
+    );
   });
 
   test("distinguishes a revision authored outside the wrapper", () => {
-    expect(shapesOf(roundTrip([REVISION_OUTSIDE]))).toEqual(shapesOf([REVISION_OUTSIDE]));
+    expect(shapesOf(roundTrip([REVISION_OUTSIDE]))).toEqual(
+      shapesOf([REVISION_OUTSIDE]),
+    );
   });
 });
 

@@ -43,5 +43,7 @@ export const findParagraphByParaId = (
  * Sugar over {@link findParagraphByParaId} when callers only need the
  * `from` position (e.g. to feed `scrollToPosition`).
  */
-export const findStartPosForParaId = (doc: PMNode, paraId: string): number | null =>
-  findParagraphByParaId(doc, paraId)?.from ?? null;
+export const findStartPosForParaId = (
+  doc: PMNode,
+  paraId: string,
+): number | null => findParagraphByParaId(doc, paraId)?.from ?? null;

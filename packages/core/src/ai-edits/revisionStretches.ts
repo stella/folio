@@ -16,9 +16,9 @@
  * each resulting carrier gets its own id through the same allocator.
  */
 
+import { panic } from "better-result";
 import type { Mark } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
-import { panic } from "better-result";
 
 import {
   expectRunPropertyChangeMarkAttrs,
@@ -32,7 +32,12 @@ import {
 
 type Stretch = { id: number; interrupted: boolean };
 
-type Retarget = { from: number; to: number; mark: Mark; ids: ReadonlyMap<number, number> };
+type Retarget = {
+  from: number;
+  to: number;
+  mark: Mark;
+  ids: ReadonlyMap<number, number>;
+};
 
 type FormattingRetarget = {
   representation: RunFormattingCarrierRepresentation;
@@ -74,15 +79,22 @@ export const separateRevisionStretches = ({
     // A property revision lives on one w:r, rather than the wrapper around
     // several runs. Later text/revision edits can split that run: give every
     // resulting carrier its id now, before the save's uniqueness pass would.
-    const carrier = node.marks.some(({ type }) => type.name === "runPropertyChange")
+    const carrier = node.marks.some(
+      ({ type }) => type.name === "runPropertyChange",
+    )
       ? expandRunFormattingCarrier(node, pos)
       : null;
     for (const representation of carrier?.representations ?? []) {
-      if (carrier?.disposition === "structured-field" && representation.role === "owner") {
+      if (
+        carrier?.disposition === "structured-field" &&
+        representation.role === "owner"
+      ) {
         // The outer field projects its result runs; it emits no w:rPr itself.
         continue;
       }
-      const mark = representation.node.marks.find(({ type }) => type.name === "runPropertyChange");
+      const mark = representation.node.marks.find(
+        ({ type }) => type.name === "runPropertyChange",
+      );
       if (!mark) continue;
       if (formattingRepresentations.has(representation.position)) continue;
       formattingRepresentations.add(representation.position);
@@ -119,7 +131,9 @@ export const separateRevisionStretches = ({
     );
     const carried = new Set(
       revisionMarks.flatMap((mark) =>
-        layersOf(mark).map(({ kind, revisionId }) => `${kind}:${String(revisionId)}`),
+        layersOf(mark).map(
+          ({ kind, revisionId }) => `${kind}:${String(revisionId)}`,
+        ),
       ),
     );
     // Content outside a revision ends the stretch it interrupts; a comment
@@ -174,11 +188,15 @@ export const separateRevisionStretches = ({
   }
   for (const { representation, mark, ids } of formattingRetargets) {
     const live = tr.doc.nodeAt(representation.position);
-    if (!live) panic("A formatting revision carrier vanished during normalization");
-    const changes = expectRunPropertyChangeMarkAttrs(mark).changes.map((change) =>
-      Object.assign({}, change, {
-        info: Object.assign({}, change.info, { id: ids.get(change.info.id) ?? change.info.id }),
-      }),
+    if (!live)
+      panic("A formatting revision carrier vanished during normalization");
+    const changes = expectRunPropertyChangeMarkAttrs(mark).changes.map(
+      (change) =>
+        Object.assign({}, change, {
+          info: Object.assign({}, change.info, {
+            id: ids.get(change.info.id) ?? change.info.id,
+          }),
+        }),
     );
     const replacement = mark.type.create({ ...mark.attrs, changes });
     applyMarksToRunFormattingRepresentation({

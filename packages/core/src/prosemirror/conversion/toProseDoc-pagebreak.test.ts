@@ -3,11 +3,11 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
-import type { Document, Paragraph } from "../../types/document";
 import {
   assignParagraphPropertySource,
   getParagraphPropertySource,
 } from "../../docx/paragraphPropertySource";
+import type { Document, Paragraph } from "../../types/document";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -19,7 +19,10 @@ function childTypeNames(pmDoc: ReturnType<typeof toProseDoc>): string[] {
   return names;
 }
 
-function descendantsOfType(pmDoc: ReturnType<typeof toProseDoc>, typeName: string) {
+function descendantsOfType(
+  pmDoc: ReturnType<typeof toProseDoc>,
+  typeName: string,
+) {
   const nodes: PMNode[] = [];
   pmDoc.descendants((node) => {
     if (node.type.name === typeName) {
@@ -39,28 +42,33 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
         { type: "break", breakType: "page" },
       ] as const,
     ],
-  ])("a %s carrier rebuild preserves its paragraph-property owner", (_position, content) => {
-    const paragraph: Paragraph = {
-      type: "paragraph",
-      content: [{ type: "run", content: [...content] }],
-    };
-    assignParagraphPropertySource(
-      paragraph,
-      '<w:pPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
-        'xmlns:x="urn:folio:test"><x:property/></w:pPr>',
-    );
-    const document: Document = { package: { document: { content: [paragraph] } } };
+  ])(
+    "a %s carrier rebuild preserves its paragraph-property owner",
+    (_position, content) => {
+      const paragraph: Paragraph = {
+        type: "paragraph",
+        content: [{ type: "run", content: [...content] }],
+      };
+      assignParagraphPropertySource(
+        paragraph,
+        '<w:pPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+          'xmlns:x="urn:folio:test"><x:property/></w:pPr>',
+      );
+      const document: Document = {
+        package: { document: { content: [paragraph] } },
+      };
 
-    const restored = fromProseDoc(toProseDoc(document), document, {
-      stylesheetSource: { type: "package" },
-    });
-    const restoredParagraph = restored.package.document.content.find(
-      (block): block is Paragraph => block.type === "paragraph",
-    );
-    expect(getParagraphPropertySource(restoredParagraph)).toEqual(
-      getParagraphPropertySource(paragraph),
-    );
-  });
+      const restored = fromProseDoc(toProseDoc(document), document, {
+        stylesheetSource: { type: "package" },
+      });
+      const restoredParagraph = restored.package.document.content.find(
+        (block): block is Paragraph => block.type === "paragraph",
+      );
+      expect(getParagraphPropertySource(restoredParagraph)).toEqual(
+        getParagraphPropertySource(paragraph),
+      );
+    },
+  );
 
   test("keeps a break-only run inside its paragraph", () => {
     // <w:p><w:r><w:br w:type="page"/></w:r></w:p>
@@ -101,7 +109,11 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "paragraph", "paragraph"]);
+    expect(childTypeNames(pmDoc)).toEqual([
+      "paragraph",
+      "paragraph",
+      "paragraph",
+    ]);
     expect(pmDoc.child(1).child(0).type.name).toBe("pageBreakRun");
   });
 
@@ -249,7 +261,9 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     const pmDoc = toProseDoc(document);
     const pageBreak = descendantsOfType(pmDoc, "pageBreakRun").at(0);
     expect(pageBreak).toBeDefined();
-    expect(pageBreak?.marks.some((mark) => mark.type.name === "hyperlink")).toBe(true);
+    expect(
+      pageBreak?.marks.some((mark) => mark.type.name === "hyperlink"),
+    ).toBe(true);
   });
 
   test("keeps the inline carrier inside an inlineSdt wrapper", () => {
@@ -312,7 +326,10 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
               content: [
                 {
                   type: "run",
-                  content: [{ type: "softHyphen" }, { type: "break", breakType: "page" }],
+                  content: [
+                    { type: "softHyphen" },
+                    { type: "break", breakType: "page" },
+                  ],
                 },
               ],
             },
@@ -333,14 +350,16 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     const details: (string | undefined)[] = [];
     const prose = toProseDoc(document, {
       warn: ({ code, detail }) => {
-        if (code === PARSE_WARNING_CODES.pageBreakProjectionApproximated) details.push(detail);
+        if (code === PARSE_WARNING_CODES.pageBreakProjectionApproximated)
+          details.push(detail);
       },
     });
 
     expect(details).toContain("A page-break-bearing run also holds softHyphen");
     let pageBreaks = 0;
     prose.descendants((node) => {
-      if (node.type.name === "pageBreakRun" || node.type.name === "pageBreak") pageBreaks += 1;
+      if (node.type.name === "pageBreakRun" || node.type.name === "pageBreak")
+        pageBreaks += 1;
     });
     expect(pageBreaks).toBe(1);
   });
@@ -481,6 +500,8 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     const pmDoc = toProseDoc(document);
     const pageBreak = descendantsOfType(pmDoc, "pageBreakRun").at(0);
     expect(pageBreak).toBeDefined();
-    expect(pageBreak?.marks.some((mark) => mark.type.name === "insertion")).toBe(true);
+    expect(
+      pageBreak?.marks.some((mark) => mark.type.name === "insertion"),
+    ).toBe(true);
   });
 });

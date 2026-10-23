@@ -8,19 +8,22 @@
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { Schema } from "prosemirror-model";
 import fc from "fast-check";
+import { Schema } from "prosemirror-model";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import {
   claimRevisionIds,
   mintRevisionId,
   nextRevisionId,
   nextRevisionIdRange,
-  revisionIdSeedAbove,
   RevisionIdAllocationError,
+  revisionIdSeedAbove,
   seedRevisionIdsAbove,
   seedRevisionIdsFromDoc,
 } from "./revisionIds";
@@ -44,7 +47,11 @@ const schema = new Schema({
       toDOM: () => ["span", 0],
     },
     insertion: {
-      attrs: { revisionId: { default: 0 }, author: { default: "" }, date: { default: "" } },
+      attrs: {
+        revisionId: { default: 0 },
+        author: { default: "" },
+        date: { default: "" },
+      },
       toDOM: () => ["ins", 0],
     },
   },
@@ -110,7 +117,9 @@ describe("seedRevisionIdsFromDoc", () => {
   test("seeds above an id carried by an inline mark", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.text("x", [schema.marks["insertion"]!.create({ revisionId: 3_000_000 })]),
+        schema.text("x", [
+          schema.marks["insertion"]!.create({ revisionId: 3_000_000 }),
+        ]),
       ]),
     ]);
 
@@ -121,9 +130,11 @@ describe("seedRevisionIdsFromDoc", () => {
 
   test("seeds above an id carried by a paragraph-mark attr", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { pPrMark: { kind: "ins", info: { id: 4_000_000, author: "A" } } }, [
-        schema.text("x"),
-      ]),
+      schema.node(
+        "paragraph",
+        { pPrMark: { kind: "ins", info: { id: 4_000_000, author: "A" } } },
+        [schema.text("x")],
+      ),
     ]);
 
     seedRevisionIdsFromDoc(doc);
@@ -135,7 +146,12 @@ describe("seedRevisionIdsFromDoc", () => {
     const doc = schema.node("doc", null, [
       schema.node(
         "paragraph",
-        { cellMarker: { kind: "ins", info: { revisionId: 5_000_000, author: "A", date: null } } },
+        {
+          cellMarker: {
+            kind: "ins",
+            info: { revisionId: 5_000_000, author: "A", date: null },
+          },
+        },
         [schema.text("x")],
       ),
     ]);
@@ -153,7 +169,9 @@ test("reserves every loaded run-property revision, including on rollover", () =>
   ];
   const doc = schema.node("doc", null, [
     schema.node("paragraph", null, [
-      schema.text("x", [schema.marks["runPropertyChange"]!.create({ changes })]),
+      schema.text("x", [
+        schema.marks["runPropertyChange"]!.create({ changes }),
+      ]),
     ]),
   ]);
   seedRevisionIdsFromDoc(doc);
@@ -179,9 +197,9 @@ describe("range top boundary", () => {
 
   test("rejects an overflowing batch before reserving it", () => {
     const before = nextRevisionId();
-    expect(() => claimRevisionIds(MAX_REVISION_ID, MAX_REVISION_ID + 2)).toThrow(
-      RevisionIdAllocationError,
-    );
+    expect(() =>
+      claimRevisionIds(MAX_REVISION_ID, MAX_REVISION_ID + 2),
+    ).toThrow(RevisionIdAllocationError);
     expect(nextRevisionId()).toBe(before);
   });
 });
@@ -199,7 +217,9 @@ test("shared contiguous batches avoid every occupied hole and high tail across p
         { minLength: 2, maxLength: 20 },
       ),
       (schedule) => {
-        const loaded = new Set(schedule.map(({ offset }) => MAX_REVISION_ID - offset));
+        const loaded = new Set(
+          schedule.map(({ offset }) => MAX_REVISION_ID - offset),
+        );
         for (const id of loaded) seedRevisionIdsAbove(id);
         const issued = new Set<number>();
         for (const { offset, demand } of schedule) {

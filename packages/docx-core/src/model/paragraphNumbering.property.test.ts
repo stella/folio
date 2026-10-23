@@ -22,15 +22,17 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   isNumberingReference,
   mergeParagraphNumbering,
   NO_NUMBERING_NUM_ID,
-  type ParagraphNumberingOverride,
   paragraphNumberingFromSlots,
   paragraphNumberingLevel,
+  type ParagraphNumberingOverride,
   paragraphNumberingReferenceId,
   paragraphNumberingSlots,
   resolveParagraphNumbering,
@@ -51,14 +53,17 @@ describe("the five spellings of the reserved w:numId", () => {
     fc.assert(
       fc.property(slots, ({ numId, ilvl }) => {
         const stated = paragraphNumberingFromSlots({ numId, ilvl });
-        const namesADefinition = paragraphNumberingReferenceId(stated) !== undefined;
+        const namesADefinition =
+          paragraphNumberingReferenceId(stated) !== undefined;
 
         // A: the sanctioned reader.
         expect(isNumberingReference(numId)).toBe(namesADefinition);
         // B: the bare literal, as `document-operations.ts` spelled it.
         expect(numId !== undefined && numId !== 0).toBe(namesADefinition);
         // C: the absence-or-literal hand-inlined across the package boundary.
-        expect(!(numId === undefined || numId === NO_NUMBERING_NUM_ID)).toBe(namesADefinition);
+        expect(!(numId === undefined || numId === NO_NUMBERING_NUM_ID)).toBe(
+          namesADefinition,
+        );
         // D: the relational form the AI snapshot used. It is the one spelling
         // that disagreed: a malformed package's negative id is a dangling
         // reference to A, B, C and E, and "not numbered" to D.
@@ -70,7 +75,9 @@ describe("the five spellings of the reserved w:numId", () => {
           expect(relational).toBe(namesADefinition);
         }
         // E: the Rust kernel's `num_id != Some(0)`, which also admits absence.
-        expect(numId !== NO_NUMBERING_NUM_ID).toBe(namesADefinition || numId === undefined);
+        expect(numId !== NO_NUMBERING_NUM_ID).toBe(
+          namesADefinition || numId === undefined,
+        );
       }),
       propertyConfig({ numRuns: 300 }),
     );
@@ -79,7 +86,9 @@ describe("the five spellings of the reserved w:numId", () => {
   test("the reserved id never reaches a reference arm", () => {
     fc.assert(
       fc.property(statedArbitrary, (stated) => {
-        expect(paragraphNumberingReferenceId(stated)).not.toBe(NO_NUMBERING_NUM_ID);
+        expect(paragraphNumberingReferenceId(stated)).not.toBe(
+          NO_NUMBERING_NUM_ID,
+        );
         expect(resolveParagraphNumbering(stated).kind === "reference").toBe(
           paragraphNumberingReferenceId(stated) !== undefined,
         );
@@ -89,7 +98,9 @@ describe("the five spellings of the reserved w:numId", () => {
   });
 
   test("a reference arm is unrepresentable for the reserved id at the type level", () => {
-    expect(paragraphNumberingFromSlots({ numId: NO_NUMBERING_NUM_ID, ilvl: 3 })).toEqual({
+    expect(
+      paragraphNumberingFromSlots({ numId: NO_NUMBERING_NUM_ID, ilvl: 3 }),
+    ).toEqual({
       kind: "none",
     });
   });
@@ -172,7 +183,10 @@ describe("w:numId and w:ilvl inherit independently", () => {
       fc.property(statedArbitrary, (inherited) => {
         const cancelled = mergeParagraphNumbering(inherited, { kind: "none" });
         expect(
-          mergeParagraphNumbering(cancelled, paragraphNumberingFromSlots({ numId: 7 })),
+          mergeParagraphNumbering(
+            cancelled,
+            paragraphNumberingFromSlots({ numId: 7 }),
+          ),
         ).toEqual(paragraphNumberingFromSlots({ numId: 7 }));
       }),
       propertyConfig({ numRuns: 300 }),
@@ -214,6 +228,8 @@ describe("an authored w:ilvl absence survives the round trip", () => {
     const withLevel = paragraphNumberingFromSlots({ numId: 7, ilvl: 0 });
     const withoutLevel = paragraphNumberingFromSlots({ numId: 7 });
     expect(sameStatedParagraphNumbering(withLevel, withoutLevel)).toBe(false);
-    expect(resolveParagraphNumbering(withLevel)).toEqual(resolveParagraphNumbering(withoutLevel));
+    expect(resolveParagraphNumbering(withLevel)).toEqual(
+      resolveParagraphNumbering(withoutLevel),
+    );
   });
 });

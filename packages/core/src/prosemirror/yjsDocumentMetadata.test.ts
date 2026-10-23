@@ -11,11 +11,11 @@ import type { ImageAttrs } from "./schema/nodes";
 import { SECTION_BREAK_TYPES } from "./sectionCarrier";
 import {
   applyAttrSchemaMigrations,
+  attrSchemaMigrationSteps,
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
   FolioYjsAttrSchemaVersionError,
   FolioYjsNoteReferenceSchemaError,
   FolioYjsNumberingSourceSchemaError,
-  attrSchemaMigrationSteps,
   readYjsAttrSchemaVersion,
   writeYjsDocumentMetadata,
 } from "./yjsDocumentMetadata";
@@ -31,7 +31,10 @@ const LEGACY_PARAGRAPH_TEXT = "Ends the section";
 const seededDocument = () => {
   const ydoc = new Y.Doc();
   const document = toProseDoc(createEmptyDocument({ initialText: "Seeded" }));
-  prosemirrorToYXmlFragment(document, ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME));
+  prosemirrorToYXmlFragment(
+    document,
+    ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME),
+  );
   writeYjsDocumentMetadata(ydoc, document);
   return { document, ydoc };
 };
@@ -50,20 +53,30 @@ describe("attr-schema version marker", () => {
 
   test("an unversioned snapshot reads as version 0 and still loads", () => {
     const ydoc = new Y.Doc();
-    const document = toProseDoc(createEmptyDocument({ initialText: "Pre-marker" }));
-    prosemirrorToYXmlFragment(document, ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME));
+    const document = toProseDoc(
+      createEmptyDocument({ initialText: "Pre-marker" }),
+    );
+    prosemirrorToYXmlFragment(
+      document,
+      ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME),
+    );
 
     const read = readYjsAttrSchemaVersion(ydoc);
     expect(read.isOk() ? read.value : null).toBe(0);
     expect(
-      initProseMirrorDoc(ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME), schema).doc.eq(document),
+      initProseMirrorDoc(
+        ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME),
+        schema,
+      ).doc.eq(document),
     ).toBe(true);
     ydoc.destroy();
   });
 
   test("a marker from newer code is refused instead of read", () => {
     const { ydoc } = seededDocument();
-    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, FOLIO_YJS_ATTR_SCHEMA_VERSION + 1);
+    ydoc
+      .getMap(METADATA_MAP_NAME)
+      .set(ATTR_SCHEMA_VERSION_KEY, FOLIO_YJS_ATTR_SCHEMA_VERSION + 1);
 
     const read = readYjsAttrSchemaVersion(ydoc);
     expect(read.isErr()).toBe(true);
@@ -76,7 +89,10 @@ describe("attr-schema version marker", () => {
   });
 
   test.each([
-    ["a string spelling of the current version", String(FOLIO_YJS_ATTR_SCHEMA_VERSION)],
+    [
+      "a string spelling of the current version",
+      String(FOLIO_YJS_ATTR_SCHEMA_VERSION),
+    ],
     ["a fractional version", 1.5],
     ["a negative version", -1],
   ])("refuses %s", (_name, marker) => {
@@ -98,16 +114,21 @@ describe("attr-schema version marker", () => {
 
     expect(read.isOk() ? read.value : null).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
     expect(
-      initProseMirrorDoc(reloaded.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME), schema).doc.eq(
-        document,
-      ),
+      initProseMirrorDoc(
+        reloaded.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME),
+        schema,
+      ).doc.eq(document),
     ).toBe(true);
     reloaded.destroy();
   });
 
   test("every version below the current one carries a migration step", () => {
-    expect(attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION)).toHaveLength(0);
-    expect(attrSchemaMigrationSteps(0)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    expect(
+      attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION),
+    ).toHaveLength(0);
+    expect(attrSchemaMigrationSteps(0)).toHaveLength(
+      FOLIO_YJS_ATTR_SCHEMA_VERSION,
+    );
   });
 });
 
@@ -122,7 +143,9 @@ describe("attr-schema version marker", () => {
 describe("the inline wrapper mark against stored snapshots", () => {
   test("carries a snapshot from before it forward without rewriting anything", () => {
     const ydoc = new Y.Doc();
-    const document = toProseDoc(createEmptyDocument({ initialText: "Pre-wrapper" }));
+    const document = toProseDoc(
+      createEmptyDocument({ initialText: "Pre-wrapper" }),
+    );
     const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
     prosemirrorToYXmlFragment(document, fragment);
     ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 2);
@@ -134,11 +157,16 @@ describe("the inline wrapper mark against stored snapshots", () => {
 
   test("a snapshot that states no stack loads as a document with no wrapper", () => {
     const { document, ydoc } = seededDocument();
-    const loaded = initProseMirrorDoc(ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME), schema).doc;
+    const loaded = initProseMirrorDoc(
+      ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME),
+      schema,
+    ).doc;
 
     expect(loaded.eq(document)).toBe(true);
     loaded.descendants((node) => {
-      expect(node.marks.map((mark) => mark.type.name)).not.toContain("inlineWrapper");
+      expect(node.marks.map((mark) => mark.type.name)).not.toContain(
+        "inlineWrapper",
+      );
     });
     ydoc.destroy();
   });
@@ -156,7 +184,9 @@ describe("a stored preview carried forward from version 3", () => {
     '<w:pict><v:rect style="width:10pt;height:10pt" fillcolor="#abcdef"/></w:pict>';
 
   const storedImageElement = (fragment: Y.XmlFragment): Y.XmlElement => {
-    const find = (node: Y.XmlElement | Y.XmlFragment): Y.XmlElement | undefined => {
+    const find = (
+      node: Y.XmlElement | Y.XmlFragment,
+    ): Y.XmlElement | undefined => {
       if ("nodeName" in node && node.nodeName === "image") {
         return node;
       }
@@ -194,7 +224,10 @@ describe("a stored preview carried forward from version 3", () => {
     const withImage = document.copy(
       document.content.replaceChild(0, paragraph.copy(Fragment.from(image))),
     );
-    prosemirrorToYXmlFragment(withImage, ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME));
+    prosemirrorToYXmlFragment(
+      withImage,
+      ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME),
+    );
     return ydoc;
   };
 
@@ -204,7 +237,8 @@ describe("a stored preview carried forward from version 3", () => {
 
     expect(applyAttrSchemaMigrations(ydoc, fragment, 3)).toBe(1);
 
-    const migrated: Record<string, unknown> = storedImageElement(fragment).getAttributes();
+    const migrated: Record<string, unknown> =
+      storedImageElement(fragment).getAttributes();
     expect(migrated["rId"]).toBeUndefined();
     expect(migrated["_docxRawXmlMode"]).toBe("previewOnly");
     expect(migrated["_docxRawXml"]).toBe(V3_CAPTURE);
@@ -231,7 +265,8 @@ describe("a stored preview carried forward from version 3", () => {
 
     expect(applyAttrSchemaMigrations(ydoc, fragment, 3)).toBe(0);
 
-    const migrated: Record<string, unknown> = storedImageElement(fragment).getAttributes();
+    const migrated: Record<string, unknown> =
+      storedImageElement(fragment).getAttributes();
     expect(migrated["rId"]).toBe("rId7");
     expect(migrated["_docxRawXmlMode"]).toBeUndefined();
     ydoc.destroy();
@@ -259,27 +294,43 @@ describe("the section break's one carrier against stored snapshots", () => {
       paragraph.setAttribute(name, value as string);
     }
     fragment.insert(0, [paragraph]);
-    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, LEGACY_ATTR_SCHEMA_VERSION);
+    ydoc
+      .getMap(METADATA_MAP_NAME)
+      .set(ATTR_SCHEMA_VERSION_KEY, LEGACY_ATTR_SCHEMA_VERSION);
     return { fragment, ydoc };
   };
 
   const loadedParagraph = (ydoc: Y.Doc) =>
-    initProseMirrorDoc(ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME), schema).doc.child(0);
+    initProseMirrorDoc(
+      ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME),
+      schema,
+    ).doc.child(0);
 
   const referenceParagraph = (properties: Record<string, unknown>) =>
     schema.node("paragraph", { _sectionProperties: properties }, [
       schema.text(LEGACY_PARAGRAPH_TEXT),
     ]);
 
-  test.each(SECTION_BREAK_TYPES)("mints the record a v3 %s break meant", (breakType) => {
-    const { fragment, ydoc } = legacySnapshot({ sectionBreakType: breakType });
+  test.each(SECTION_BREAK_TYPES)(
+    "mints the record a v3 %s break meant",
+    (breakType) => {
+      const { fragment, ydoc } = legacySnapshot({
+        sectionBreakType: breakType,
+      });
 
-    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(1);
+      expect(
+        applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION),
+      ).toBe(1);
 
-    expect(loadedParagraph(ydoc).eq(referenceParagraph({ sectionStart: breakType }))).toBe(true);
-    expect(readYjsAttrSchemaVersion(ydoc).isOk()).toBe(true);
-    ydoc.destroy();
-  });
+      expect(
+        loadedParagraph(ydoc).eq(
+          referenceParagraph({ sectionStart: breakType }),
+        ),
+      ).toBe(true);
+      expect(readYjsAttrSchemaVersion(ydoc).isOk()).toBe(true);
+      ydoc.destroy();
+    },
+  );
 
   test("an unmigrated v3 paragraph loses the section the step exists to keep", () => {
     const { ydoc } = legacySnapshot({ sectionBreakType: "nextPage" });
@@ -287,7 +338,11 @@ describe("the section break's one carrier against stored snapshots", () => {
     // Read without the step: the attr the schema no longer declares is dropped,
     // and with it the only statement that a section ended here.
     expect(loadedParagraph(ydoc).attrs["_sectionProperties"]).toBeNull();
-    expect(loadedParagraph(ydoc).eq(referenceParagraph({ sectionStart: "nextPage" }))).toBe(false);
+    expect(
+      loadedParagraph(ydoc).eq(
+        referenceParagraph({ sectionStart: "nextPage" }),
+      ),
+    ).toBe(false);
     ydoc.destroy();
   });
 
@@ -298,7 +353,9 @@ describe("the section break's one carrier against stored snapshots", () => {
       _sectionProperties: parsed,
     });
 
-    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(1);
+    expect(
+      applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION),
+    ).toBe(1);
 
     // The record was always the authority the save leg preferred; a type beside
     // it that disagreed never reached the package.
@@ -307,9 +364,13 @@ describe("the section break's one carrier against stored snapshots", () => {
   });
 
   test("a v3 break type outside ST_SectionMark is dropped, not minted", () => {
-    const { fragment, ydoc } = legacySnapshot({ sectionBreakType: "nextFrame" });
+    const { fragment, ydoc } = legacySnapshot({
+      sectionBreakType: "nextFrame",
+    });
 
-    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(1);
+    expect(
+      applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION),
+    ).toBe(1);
 
     // No producer could state it and no reader could resolve it, so there is no
     // section to keep.
@@ -322,22 +383,31 @@ describe("the section break's one carrier against stored snapshots", () => {
     applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION);
     const migrated = loadedParagraph(ydoc);
 
-    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(0);
+    expect(
+      applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION),
+    ).toBe(0);
 
     expect(loadedParagraph(ydoc).eq(migrated)).toBe(true);
     ydoc.destroy();
   });
 
   test("the section step remains in the contiguous migration chain", () => {
-    expect(attrSchemaMigrationSteps(8)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION - 8);
-    expect(attrSchemaMigrationSteps(0)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    expect(attrSchemaMigrationSteps(8)).toHaveLength(
+      FOLIO_YJS_ATTR_SCHEMA_VERSION - 8,
+    );
+    expect(attrSchemaMigrationSteps(0)).toHaveLength(
+      FOLIO_YJS_ATTR_SCHEMA_VERSION,
+    );
   });
 });
 
 describe("note-reference occurrence schema cutover", () => {
   test.each(
     ([0, 11, FOLIO_YJS_ATTR_SCHEMA_VERSION] as const).flatMap((version) =>
-      [undefined, "", " \t\n\u00a0"].map((occurrenceId) => ({ version, occurrenceId })),
+      [undefined, "", " \t\n\u00a0"].map((occurrenceId) => ({
+        version,
+        occurrenceId,
+      })),
     ),
   )(
     "refuses unattributed references at schema %s before migration mutates anything",
@@ -379,7 +449,11 @@ describe("stated numbering source schema cutover", () => {
   test.each([0, 7, 11, 12] as const)(
     "schema %s refuses ambiguous sources without mutation",
     (version) => {
-      for (const location of ["attrs", "_originalFormatting", "_propertyChanges"] as const) {
+      for (const location of [
+        "attrs",
+        "_originalFormatting",
+        "_propertyChanges",
+      ] as const) {
         for (const numId of [7, 8]) {
           const ydoc = new Y.Doc();
           const ambiguous = {
@@ -388,7 +462,8 @@ describe("stated numbering source schema cutover", () => {
           };
           const attributes = (() => {
             if (location === "attrs") return ambiguous;
-            if (location === "_originalFormatting") return { _originalFormatting: ambiguous };
+            if (location === "_originalFormatting")
+              return { _originalFormatting: ambiguous };
             return { _propertyChanges: [{ previousFormatting: ambiguous }] };
           })();
           const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
@@ -398,9 +473,9 @@ describe("stated numbering source schema cutover", () => {
           );
           ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);
           const before = Y.encodeStateAsUpdate(ydoc);
-          expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
-            FolioYjsNumberingSourceSchemaError,
-          );
+          expect(() =>
+            applyAttrSchemaMigrations(ydoc, fragment, version),
+          ).toThrow(FolioYjsNumberingSourceSchemaError);
           expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
           expect(readYjsAttrSchemaVersion(ydoc).unwrap()).toBe(version);
           ydoc.destroy();
@@ -417,9 +492,18 @@ describe("stated numbering source schema cutover", () => {
         numPr: { kind: "reference", numId, ilvl: 2 },
         numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
       });
-      prosemirrorToYXmlFragment(schema.node("doc", null, [paragraph]), fragment);
+      prosemirrorToYXmlFragment(
+        schema.node("doc", null, [paragraph]),
+        fragment,
+      );
       const before = Y.encodeStateAsUpdate(ydoc);
-      expect(applyAttrSchemaMigrations(ydoc, fragment, FOLIO_YJS_ATTR_SCHEMA_VERSION)).toBe(0);
+      expect(
+        applyAttrSchemaMigrations(
+          ydoc,
+          fragment,
+          FOLIO_YJS_ATTR_SCHEMA_VERSION,
+        ),
+      ).toBe(0);
       expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
       ydoc.destroy();
     }

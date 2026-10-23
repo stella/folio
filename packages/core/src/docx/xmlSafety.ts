@@ -12,7 +12,8 @@ const XML_DECLARATION = new RegExp(
   "u",
 );
 
-export type DocxXmlSafetyIssue = "doctype-forbidden" | "entity-forbidden" | "not-well-formed";
+export type DocxXmlSafetyIssue =
+  "doctype-forbidden" | "entity-forbidden" | "not-well-formed";
 
 const isXmlCharacter = (codePoint: number): boolean =>
   codePoint === 0x09 ||
@@ -26,16 +27,22 @@ const validEntity = (entity: string): boolean => {
   if (BUILT_IN_ENTITIES.has(entity)) {
     return true;
   }
-  if (!DECIMAL_CHARACTER_REFERENCE.test(entity) && !HEX_CHARACTER_REFERENCE.test(entity)) {
+  if (
+    !DECIMAL_CHARACTER_REFERENCE.test(entity) &&
+    !HEX_CHARACTER_REFERENCE.test(entity)
+  ) {
     return false;
   }
-  const digits = entity[1]?.toLowerCase() === "x" ? entity.slice(2) : entity.slice(1);
+  const digits =
+    entity[1]?.toLowerCase() === "x" ? entity.slice(2) : entity.slice(1);
   const significantDigits = digits.replace(/^0+/u, "") || "0";
   const hexadecimal = entity[1]?.toLowerCase() === "x";
   if (digits.length === 0 || significantDigits.length > (hexadecimal ? 6 : 7)) {
     return false;
   }
-  return isXmlCharacter(Number.parseInt(significantDigits, hexadecimal ? 16 : 10));
+  return isXmlCharacter(
+    Number.parseInt(significantDigits, hexadecimal ? 16 : 10),
+  );
 };
 
 const hasForbiddenEntity = (xml: string): boolean => {
@@ -88,7 +95,10 @@ const containsOnlyXmlCharacters = (xml: string): boolean => {
 };
 
 const isWhitespace = (character: string | undefined): boolean =>
-  character === " " || character === "\t" || character === "\r" || character === "\n";
+  character === " " ||
+  character === "\t" ||
+  character === "\r" ||
+  character === "\n";
 
 type ScannedName = { name: string; next: number };
 
@@ -120,7 +130,8 @@ const hasInvalidXmlLexicalForm = (xml: string): boolean => {
   const byteOrderMark = xml.indexOf(BYTE_ORDER_MARK);
   if (
     byteOrderMark > 0 ||
-    (byteOrderMark === 0 && xml.indexOf(BYTE_ORDER_MARK, BYTE_ORDER_MARK.length) !== -1)
+    (byteOrderMark === 0 &&
+      xml.indexOf(BYTE_ORDER_MARK, BYTE_ORDER_MARK.length) !== -1)
   ) {
     return true;
   }
@@ -161,7 +172,11 @@ const hasInvalidXmlLexicalForm = (xml: string): boolean => {
         return true;
       }
       let targetEnd = opening + 2;
-      while (targetEnd < end && !isWhitespace(xml[targetEnd]) && xml[targetEnd] !== "?") {
+      while (
+        targetEnd < end &&
+        !isWhitespace(xml[targetEnd]) &&
+        xml[targetEnd] !== "?"
+      ) {
         targetEnd += 1;
       }
       const target = xml.slice(opening + 2, targetEnd);
@@ -170,7 +185,9 @@ const hasInvalidXmlLexicalForm = (xml: string): boolean => {
       }
       if (target.toLowerCase() === "xml") {
         // The XML declaration is the sole reserved `xml` processing target.
-        const declarationOpening = xml.startsWith(BYTE_ORDER_MARK) ? BYTE_ORDER_MARK.length : 0;
+        const declarationOpening = xml.startsWith(BYTE_ORDER_MARK)
+          ? BYTE_ORDER_MARK.length
+          : 0;
         if (
           opening !== declarationOpening ||
           target !== "xml" ||
@@ -261,7 +278,9 @@ const hasInvalidXmlLexicalForm = (xml: string): boolean => {
   return false;
 };
 
-export const getDocxXmlSafetyIssue = (xml: string): DocxXmlSafetyIssue | null => {
+export const getDocxXmlSafetyIssue = (
+  xml: string,
+): DocxXmlSafetyIssue | null => {
   if (DOCTYPE_PATTERN.test(xml)) {
     return "doctype-forbidden";
   }

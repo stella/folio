@@ -6,19 +6,21 @@
 
 import {
   baseKeymap,
-  splitBlock,
   deleteSelection,
   joinBackward,
   joinForward,
   selectAll,
   selectParentNode,
+  splitBlock,
 } from "prosemirror-commands";
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Command, Transaction } from "prosemirror-state";
 
-import type { ParagraphFormatting, TextFormatting } from "../../../types/document";
-import type { ParagraphAttrs } from "../../schema/nodes";
+import type {
+  ParagraphFormatting,
+  TextFormatting,
+} from "../../../types/document";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
 import {
   expectCharacterStyleMarkAttrs,
@@ -30,12 +32,16 @@ import { keepSectionBreaksOnSurvivingMarks } from "../../commands/sectionBreak";
 import { getDocumentStyleResolver } from "../../plugins/documentStyleState";
 import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
 import { authoredRunFormattingFromAttrs } from "../../runFormattingProvenance";
+import type { ParagraphAttrs } from "../../schema/nodes";
 import { paragraphAttrsFromResolvedStyle } from "../../styles/resolvedStyleAttrs";
 import type { StyleResolver } from "../../styles/styleResolver";
 import { createExtension } from "../create";
-import { marksToTextFormatting, textFormattingToMarks } from "../marks/markUtils";
+import {
+  marksToTextFormatting,
+  textFormattingToMarks,
+} from "../marks/markUtils";
 import { Priority } from "../types";
-import type { ExtensionRuntime, ExtensionContext } from "../types";
+import type { ExtensionContext, ExtensionRuntime } from "../types";
 
 function chainCommands(...commands: Command[]): Command {
   return (state, dispatch, view) => {
@@ -66,11 +72,23 @@ const INHERITED_PARA_ATTRS = [
   { attr: "defaultTextFormatting", formattingFields: ["runProperties"] },
   { attr: "styleId", formattingFields: ["styleId"] },
   { attr: "_tableOfContentsLevel", formattingFields: [] },
-  { attr: "lineSpacing", formattingFields: ["lineSpacing", "spacingPreservedAttributes"] },
-  { attr: "lineSpacingRule", formattingFields: ["lineSpacingRule", "spacingPreservedAttributes"] },
+  {
+    attr: "lineSpacing",
+    formattingFields: ["lineSpacing", "spacingPreservedAttributes"],
+  },
+  {
+    attr: "lineSpacingRule",
+    formattingFields: ["lineSpacingRule", "spacingPreservedAttributes"],
+  },
   { attr: "snapToGrid", formattingFields: ["snapToGrid"] },
-  { attr: "spaceAfter", formattingFields: ["spaceAfter", "spacingPreservedAttributes"] },
-  { attr: "spaceBefore", formattingFields: ["spaceBefore", "spacingPreservedAttributes"] },
+  {
+    attr: "spaceAfter",
+    formattingFields: ["spaceAfter", "spacingPreservedAttributes"],
+  },
+  {
+    attr: "spaceBefore",
+    formattingFields: ["spaceBefore", "spacingPreservedAttributes"],
+  },
   // Spacing provenance keeps effective defaults from becoming authored spacing.
   { attr: "spacingExplicit", formattingFields: ["spacingExplicit"] },
   { attr: "spacingFromDocDefaults", formattingFields: [] },
@@ -81,12 +99,20 @@ const INHERITED_PARA_ATTRS = [
 /** Style formatting needed when the caret has no marks of its own. */
 const STYLE_MARK_NAMES = new Set(["fontFamily", "fontSize", "textColor"]);
 
-const directFormattingFromMarks = (marks: readonly Mark[]): TextFormatting | undefined => {
-  const override = marks.find(({ type }) => type.name === "runFormattingOverride");
+const directFormattingFromMarks = (
+  marks: readonly Mark[],
+): TextFormatting | undefined => {
+  const override = marks.find(
+    ({ type }) => type.name === "runFormattingOverride",
+  );
   const directFormatting = override
-    ? authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(override))
+    ? authoredRunFormattingFromAttrs(
+        expectRunFormattingOverrideMarkAttrs(override),
+      )
     : undefined;
-  const characterStyle = marks.find(({ type }) => type.name === "characterStyle");
+  const characterStyle = marks.find(
+    ({ type }) => type.name === "characterStyle",
+  );
   if (!characterStyle) {
     return directFormatting;
   }
@@ -149,7 +175,9 @@ function applyNextParagraphStyle(
 
   // setStoredMarks MUST come after setNodeMarkup — every step clears it.
   tr.setStoredMarks(
-    resolved.runFormatting ? textFormattingToMarks(resolved.runFormatting, tr.doc.type.schema) : [],
+    resolved.runFormatting
+      ? textFormattingToMarks(resolved.runFormatting, tr.doc.type.schema)
+      : [],
   );
   return true;
 }
@@ -157,9 +185,12 @@ function applyNextParagraphStyle(
 // Whole-paragraph replacement can map the old text endpoint to the surrounding
 // block boundary. Split from the deletion's valid caret instead of that endpoint.
 const blockBoundaryDeletion = (state: EditorState): Transaction | null => {
-  if (!(state.selection instanceof TextSelection) || state.selection.empty) return null;
+  if (!(state.selection instanceof TextSelection) || state.selection.empty)
+    return null;
   const tr = state.tr.deleteSelection();
-  return tr.doc.resolve(tr.mapping.map(state.selection.from)).parent.isTextblock ? null : tr;
+  return tr.doc.resolve(tr.mapping.map(state.selection.from)).parent.isTextblock
+    ? null
+    : tr;
 };
 
 export const splitBlockClearBorders: Command = (state, dispatch, view) => {
@@ -176,7 +207,8 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
     : state;
   // Capture source paragraph info BEFORE split (splitBlock resets everything)
   const { $from: preSplitFrom } = splitState.selection;
-  const sourcePara = preSplitFrom.parent.type.name === "paragraph" ? preSplitFrom.parent : null;
+  const sourcePara =
+    preSplitFrom.parent.type.name === "paragraph" ? preSplitFrom.parent : null;
 
   // Collect run formatting from the cursor position before splitting.
   // Use storedMarks if set, otherwise resolve from the position.
@@ -203,7 +235,9 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
   if (dispatch && splitResult.tr !== null) {
     if (deletion) {
       for (const step of splitResult.tr.steps) deletion.step(step);
-      deletion.setSelection(splitResult.tr.selection.getBookmark().resolve(deletion.doc));
+      deletion.setSelection(
+        splitResult.tr.selection.getBookmark().resolve(deletion.doc),
+      );
       deletion.setStoredMarks(splitResult.tr.storedMarks);
       splitResult.tr = deletion;
     }
@@ -227,20 +261,26 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
         newPara.content.size === 0 &&
         applyNextParagraphStyle(tr, sourcePara, newPara, resolver)
       ) {
-        const directFormatting = directFormattingFromMarks(caretFormattingMarks);
+        const directFormatting =
+          directFormattingFromMarks(caretFormattingMarks);
         if (directFormatting && Object.keys(directFormatting).length > 0) {
           const nextParagraph = tr.selection.$from.parent;
-          const nextStyleFormatting = nextParagraph.attrs["defaultTextFormatting"] as
-            | TextFormatting
-            | undefined;
+          const nextStyleFormatting = nextParagraph.attrs[
+            "defaultTextFormatting"
+          ] as TextFormatting | undefined;
           const defaultTextFormatting =
-            mergeTextFormatting(nextStyleFormatting, directFormatting) ?? directFormatting;
+            mergeTextFormatting(nextStyleFormatting, directFormatting) ??
+            directFormatting;
           tr.setNodeMarkup(tr.selection.$from.before(), undefined, {
             ...nextParagraph.attrs,
             defaultTextFormatting,
           });
           tr.setStoredMarks(
-            marksForParagraphFormatting(defaultTextFormatting, directFormatting, state.schema),
+            marksForParagraphFormatting(
+              defaultTextFormatting,
+              directFormatting,
+              state.schema,
+            ),
           );
         }
         dispatch(tr.scrollIntoView());
@@ -254,8 +294,12 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
       if (sourcePara) {
         const sourceAttrs = expectParagraphAttrs(sourcePara);
         const addedAttrs = expectParagraphAttrs(newPara);
-        const originalFormatting: ParagraphFormatting = { ...addedAttrs._originalFormatting };
-        const resolvedFormatting: ParagraphFormatting = { ...addedAttrs._resolvedFormatting };
+        const originalFormatting: ParagraphFormatting = {
+          ...addedAttrs._originalFormatting,
+        };
+        const resolvedFormatting: ParagraphFormatting = {
+          ...addedAttrs._resolvedFormatting,
+        };
         for (const { attr, formattingFields } of INHERITED_PARA_ATTRS) {
           const srcVal = sourceAttrs[attr];
           if (srcVal !== null && newAttrs[attr] === null) {
@@ -265,9 +309,11 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
           if (newAttrs[attr] !== srcVal) continue;
           for (const field of formattingFields) {
             const original = sourceAttrs._originalFormatting?.[field];
-            if (original !== undefined) Reflect.set(originalFormatting, field, original);
+            if (original !== undefined)
+              Reflect.set(originalFormatting, field, original);
             const resolved = sourceAttrs._resolvedFormatting?.[field];
-            if (resolved !== undefined) Reflect.set(resolvedFormatting, field, resolved);
+            if (resolved !== undefined)
+              Reflect.set(resolvedFormatting, field, resolved);
           }
         }
         if (Object.keys(originalFormatting).length > 0) {
@@ -300,10 +346,13 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
         let effectiveMarks: Mark[] = caretFormattingMarks;
 
         if (effectiveMarks.length === 0 && sourcePara) {
-          const dtf = sourcePara.attrs["defaultTextFormatting"] as TextFormatting | undefined;
+          const dtf = sourcePara.attrs["defaultTextFormatting"] as
+            TextFormatting | undefined;
           if (dtf) {
             const allMarks = textFormattingToMarks(dtf, state.schema);
-            effectiveMarks = allMarks.filter((m) => STYLE_MARK_NAMES.has(m.type.name));
+            effectiveMarks = allMarks.filter((m) =>
+              STYLE_MARK_NAMES.has(m.type.name),
+            );
           }
         }
 
@@ -313,11 +362,11 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
           // would lose direct bold, italic, color, and similar choices after
           // leaving and returning to this empty paragraph.
           const previousFormatting = newAttrs["defaultTextFormatting"] as
-            | TextFormatting
-            | undefined;
+            TextFormatting | undefined;
           const markFormatting = marksToTextFormatting(effectiveMarks);
           const defaultTextFormatting =
-            mergeTextFormatting(previousFormatting, markFormatting) ?? markFormatting;
+            mergeTextFormatting(previousFormatting, markFormatting) ??
+            markFormatting;
           tr.setNodeMarkup($from.before(), undefined, {
             ...newAttrs,
             defaultTextFormatting,
@@ -352,7 +401,9 @@ export const BaseKeymapExtension = createExtension({
         Backspace: keepSectionBreaksOnSurvivingMarks(
           chainCommands(deleteSelection, clearIndentOnBackspace, joinBackward),
         ),
-        Delete: keepSectionBreaksOnSurvivingMarks(chainCommands(deleteSelection, joinForward)),
+        Delete: keepSectionBreaksOnSurvivingMarks(
+          chainCommands(deleteSelection, joinForward),
+        ),
         "Mod-a": selectAll,
         Escape: selectParentNode,
       },

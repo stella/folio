@@ -31,17 +31,17 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { MAX_REVISION_ID } from "@stll/docx-core/model";
-import { EditorState } from "prosemirror-state";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { EditorState } from "prosemirror-state";
+
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
 import {
   assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
@@ -52,7 +52,10 @@ import { schema, singletonManager } from "../prosemirror/schema";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIBlock, FolioAIEditOperation } from "./types";
 
-const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
+const FIXTURES_DIR = path.join(
+  import.meta.dir,
+  "../docx/__tests__/__fixtures__/corpus",
+);
 
 const FIXTURE_FILES: string[] = readdirSync(FIXTURES_DIR)
   .filter((name) => name.endsWith(".docx"))
@@ -60,7 +63,10 @@ const FIXTURE_FILES: string[] = readdirSync(FIXTURES_DIR)
 
 const readFixture = (filename: string): ArrayBuffer => {
   const bytes = readFileSync(path.join(FIXTURES_DIR, filename));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 // Plain replacement text: letters and digits only, so the redline diff and the
@@ -88,7 +94,10 @@ const editTargets = (blocks: FolioAIBlock[]): EditTarget[] => {
   return targets;
 };
 
-const replaceOp = (target: EditTarget, replace: string): FolioAIEditOperation => ({
+const replaceOp = (
+  target: EditTarget,
+  replace: string,
+): FolioAIEditOperation => ({
   id: "1",
   type: "replaceInBlock",
   blockId: target.blockId,
@@ -103,8 +112,13 @@ const replaceOp = (target: EditTarget, replace: string): FolioAIEditOperation =>
  * paraId-bearing baseline the selective patcher can key against. Mirrors
  * `headless.test.ts`.
  */
-const makeParaIdBaseline = async (source: ArrayBuffer): Promise<ArrayBuffer> => {
-  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+const makeParaIdBaseline = async (
+  source: ArrayBuffer,
+): Promise<ArrayBuffer> => {
+  const document = await parseDocx(source, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   const state = ensureParaIdsInState(
     EditorState.create({
       schema,
@@ -112,7 +126,10 @@ const makeParaIdBaseline = async (source: ArrayBuffer): Promise<ArrayBuffer> => 
       plugins: singletonManager.getPlugins(),
     }),
   );
-  return repackDocx({ ...updateDocumentContent(document, state.doc), originalBuffer: source });
+  return repackDocx({
+    ...updateDocumentContent(document, state.doc),
+    originalBuffer: source,
+  });
 };
 
 describe("headless reviewer invariants (full corpus)", () => {
@@ -137,11 +154,17 @@ describe("headless reviewer invariants (full corpus)", () => {
   test.each(FIXTURE_FILES)(
     "toBuffer with no operations is a visible-text fixed point (%s)",
     async (filename) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(filename), { author: "AI" });
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        readFixture(filename),
+        { author: "AI" },
+      );
       const before = blockTexts(reviewer);
-      const reparsed = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-        author: "AI",
-      });
+      const reparsed = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        {
+          author: "AI",
+        },
+      );
       expect(blockTexts(reparsed)).toEqual(before);
     },
   );
@@ -156,22 +179,33 @@ describe("headless reviewer invariants (full corpus)", () => {
           replaceArb,
           async (filename, selector, replace) => {
             const buffer = readFixture(filename);
-            const probe = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
             const targets = editTargets(probe.snapshot().blocks);
             if (targets.length === 0) {
               return;
             }
             const op = replaceOp(targets[selector % targets.length]!, replace);
 
-            const tracked = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            const applied = tracked.applyOperations([op], { undefinedReferences: "refuse" });
+            const tracked = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
+            const applied = tracked.applyOperations([op], {
+              undefinedReferences: "refuse",
+            });
             if (applied.applied.length === 0) {
               return;
             }
             tracked.acceptAll();
 
-            const direct = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            direct.applyOperations([op], { undefinedReferences: "refuse", mode: "direct" });
+            const direct = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
+            direct.applyOperations([op], {
+              undefinedReferences: "refuse",
+              mode: "direct",
+            });
 
             expect(blockTexts(tracked)).toEqual(blockTexts(direct));
           },
@@ -192,7 +226,9 @@ describe("headless reviewer invariants (full corpus)", () => {
           replaceArb,
           async (filename, selector, replace) => {
             const buffer = readFixture(filename);
-            const probe = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
             const targets = editTargets(probe.snapshot().blocks);
             if (targets.length === 0) {
               return;
@@ -204,8 +240,12 @@ describe("headless reviewer invariants (full corpus)", () => {
             probe.rejectAll();
             const original = blockTexts(probe);
 
-            const tracked = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            const applied = tracked.applyOperations([op], { undefinedReferences: "refuse" });
+            const tracked = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
+            const applied = tracked.applyOperations([op], {
+              undefinedReferences: "refuse",
+            });
             if (applied.applied.length === 0) {
               return;
             }
@@ -229,16 +269,21 @@ describe("headless reviewer invariants (full corpus)", () => {
       let engaged = 0;
       for (const filename of FIXTURE_FILES) {
         const baseline = await makeParaIdBaseline(readFixture(filename));
-        const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+        const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+          author: "AI",
+        });
         const targets = editTargets(reviewer.snapshot().blocks);
         if (targets.length === 0) {
           continue;
         }
         const target = targets[0]!;
-        const applied = reviewer.applyOperations([replaceOp(target, "ZZWORD")], {
-          undefinedReferences: "refuse",
-          mode: "direct",
-        });
+        const applied = reviewer.applyOperations(
+          [replaceOp(target, "ZZWORD")],
+          {
+            undefinedReferences: "refuse",
+            mode: "direct",
+          },
+        );
         if (applied.applied.length === 0) {
           continue;
         }
@@ -264,9 +309,16 @@ describe("headless reviewer invariants (full corpus)", () => {
 
         // Selective and a forced full repack of the same edited model must
         // re-parse to the same visible text.
-        const fullRepack = await repackDocx({ ...editedDocument, originalBuffer: baseline });
-        const fromSelective = await FolioDocxReviewer.fromBuffer(selective, { author: "AI" });
-        const fromFull = await FolioDocxReviewer.fromBuffer(fullRepack, { author: "AI" });
+        const fullRepack = await repackDocx({
+          ...editedDocument,
+          originalBuffer: baseline,
+        });
+        const fromSelective = await FolioDocxReviewer.fromBuffer(selective, {
+          author: "AI",
+        });
+        const fromFull = await FolioDocxReviewer.fromBuffer(fullRepack, {
+          author: "AI",
+        });
         expect(blockTexts(fromSelective)).toEqual(blockTexts(fromFull));
       }
       // Loud failure if the selective path never engaged across the corpus: the
@@ -288,7 +340,10 @@ describe("headless reviewer invariants (full corpus)", () => {
         fc.asyncProperty(
           fc.constantFrom(...FIXTURE_FILES),
           fc.nat(),
-          fc.array(fc.stringMatching(/^[A-Za-z0-9 ]{0,20}$/u), { minLength: 1, maxLength: 4 }),
+          fc.array(fc.stringMatching(/^[A-Za-z0-9 ]{0,20}$/u), {
+            minLength: 1,
+            maxLength: 4,
+          }),
           fc.constantFrom("\n", "\r\n"),
           async (filename, selector, lines, lineBreak) => {
             const text = lines.join(lineBreak);
@@ -296,7 +351,9 @@ describe("headless reviewer invariants (full corpus)", () => {
               return;
             }
             const buffer = readFixture(filename);
-            const probe = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
             const targets = editTargets(probe.snapshot().blocks);
             if (targets.length === 0) {
               return;
@@ -309,7 +366,9 @@ describe("headless reviewer invariants (full corpus)", () => {
               text,
             };
 
-            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
             const applied = reviewer.applyOperations([op], {
               undefinedReferences: "refuse",
               mode: "direct",
@@ -352,7 +411,9 @@ describe("headless reviewer invariants (full corpus)", () => {
           }),
           async (filename, selectorA, selectorB, lines) => {
             const buffer = readFixture(filename);
-            const probe = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
             const targets = editTargets(probe.snapshot().blocks);
             if (targets.length < 2) {
               return;
@@ -360,7 +421,9 @@ describe("headless reviewer invariants (full corpus)", () => {
             const targetA = targets[selectorA % targets.length]!;
             const targetB = targets[selectorB % targets.length]!;
 
-            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "AI",
+            });
             const firstApply = reviewer.applyOperations(
               [
                 {
@@ -372,9 +435,12 @@ describe("headless reviewer invariants (full corpus)", () => {
               ],
               { undefinedReferences: "refuse" },
             );
-            const secondApply = reviewer.applyOperations([replaceOp(targetB, "ZZWORD")], {
-              undefinedReferences: "refuse",
-            });
+            const secondApply = reviewer.applyOperations(
+              [replaceOp(targetB, "ZZWORD")],
+              {
+                undefinedReferences: "refuse",
+              },
+            );
 
             const revisionIds = [
               ...firstApply.applied.flatMap((op) => op.revisionIds ?? []),

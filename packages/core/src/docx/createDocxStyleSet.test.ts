@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+
 import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
 import { createEmptyDocument } from "../utils/createDocument";
 import { isNumberingReference } from "./numberingReference";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
-import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 describe("createDocx definition parts", () => {
   test("exports every in-memory style for a generic empty document", async () => {
@@ -15,7 +16,9 @@ describe("createDocx definition parts", () => {
     const stylesXml = await zip.file("word/styles.xml")!.async("string");
 
     expect(
-      [...stylesXml.matchAll(/w:styleId="(?<id>[^"]+)"/gu)].map((match) => match.groups!.id),
+      [...stylesXml.matchAll(/w:styleId="(?<id>[^"]+)"/gu)].map(
+        (match) => match.groups!.id,
+      ),
     ).toEqual([
       "Normal",
       "Title",
@@ -40,11 +43,14 @@ describe("createDocx definition parts", () => {
     // `heading 1`, `toc 1`, `footnote text` and `footer` are lowercase while
     // `Title`, `Body Text` and `Footnote Text Char` are not.
     const nameOf = (stylesXml: string, styleId: string): string | undefined =>
-      new RegExp(`w:styleId="${styleId}"[^>]*>\\s*<w:name w:val="(?<name>[^"]*)"`, "u").exec(
-        stylesXml,
-      )?.groups?.["name"];
+      new RegExp(
+        `w:styleId="${styleId}"[^>]*>\\s*<w:name w:val="(?<name>[^"]*)"`,
+        "u",
+      ).exec(stylesXml)?.groups?.["name"];
 
-    const generic = await JSZip.loadAsync(await createDocx(createEmptyDocument()));
+    const generic = await JSZip.loadAsync(
+      await createDocx(createEmptyDocument()),
+    );
     const genericXml = await generic.file("word/styles.xml")!.async("string");
     expect({
       Normal: nameOf(genericXml, "Normal"),
@@ -63,7 +69,9 @@ describe("createDocx definition parts", () => {
     });
 
     const stella = await JSZip.loadAsync(
-      await createDocx(createEmptyDocument({ preset: createStellaStyleDocumentPreset() })),
+      await createDocx(
+        createEmptyDocument({ preset: createStellaStyleDocumentPreset() }),
+      ),
     );
     const stellaXml = await stella.file("word/styles.xml")!.async("string");
     expect({
@@ -106,7 +114,9 @@ describe("createDocx definition parts", () => {
   });
 
   test("materializes stella styles and all of their supported dependencies", async () => {
-    const document = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const document = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
     const buffer = await createDocx(document);
     const zip = await JSZip.loadAsync(buffer);
 
@@ -127,11 +137,18 @@ describe("createDocx definition parts", () => {
     expect(relationships).toContain('Target="settings.xml"');
 
     const parsed = await parseDocx(buffer, { preloadFonts: false });
-    expect(parsed.package.styles?.styles.map((style) => style.styleId)).toContain("ClauseHeading1");
+    expect(
+      parsed.package.styles?.styles.map((style) => style.styleId),
+    ).toContain("ClauseHeading1");
     expect(parsed.package.numbering?.nums).toHaveLength(5);
-    expect(parsed.package.fontTable?.fonts.map((font) => font.name)).toEqual(["Arial", "Georgia"]);
+    expect(parsed.package.fontTable?.fonts.map((font) => font.name)).toEqual([
+      "Arial",
+      "Georgia",
+    ]);
     expect(parsed.package.settings?.defaultTabStop).toBe(720);
-    expect(parsed.package.document.content.at(0)?.formatting?.styleId).toBe("BodyText");
+    expect(parsed.package.document.content.at(0)?.formatting?.styleId).toBe(
+      "BodyText",
+    );
   });
 
   test("materializes a modeled theme for a new document", async () => {
@@ -148,9 +165,9 @@ describe("createDocx definition parts", () => {
     expect(await zip.file("[Content_Types].xml")!.async("string")).toContain(
       "/word/theme/theme1.xml",
     );
-    expect(await zip.file("word/_rels/document.xml.rels")!.async("string")).toContain(
-      'Target="theme/theme1.xml"',
-    );
+    expect(
+      await zip.file("word/_rels/document.xml.rels")!.async("string"),
+    ).toContain('Target="theme/theme1.xml"');
 
     const parsed = await parseDocx(buffer, { preloadFonts: false });
     expect(parsed.package.theme?.name).toBe("Imported theme");
@@ -168,7 +185,9 @@ describe("createDocx definition parts", () => {
     const parsed = await parseDocx(buffer, { preloadFonts: false });
 
     for (const style of parsed.package.styles?.styles ?? []) {
-      expect(isNumberingReference(paragraphNumberingReferenceId(style.pPr?.numPr))).toBe(false);
+      expect(
+        isNumberingReference(paragraphNumberingReferenceId(style.pPr?.numPr)),
+      ).toBe(false);
     }
   });
 });

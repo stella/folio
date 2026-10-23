@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import type { Document, Run } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
@@ -33,10 +37,16 @@ test(
                     paraId: "12345678",
                     content: [
                       textRun(source.slice(0, start)),
-                      ...ids.map((id) => ({ type: "commentRangeStart", id }) as const),
+                      ...ids.map(
+                        (id) => ({ type: "commentRangeStart", id }) as const,
+                      ),
                       textRun(source.slice(start, end)),
-                      ...ids.map((id) => ({ type: "commentRangeEnd", id }) as const),
-                      ...ids.map((id) => ({ type: "commentReference", id }) as const),
+                      ...ids.map(
+                        (id) => ({ type: "commentRangeEnd", id }) as const,
+                      ),
+                      ...ids.map(
+                        (id) => ({ type: "commentReference", id }) as const,
+                      ),
                       textRun(source.slice(end)),
                     ],
                   },
@@ -69,7 +79,12 @@ test(
                 version: 1,
                 mode,
                 operations: [
-                  { id: "replace", type: "replaceBlock", blockId: target.id, text: replacement },
+                  {
+                    id: "replace",
+                    type: "replaceBlock",
+                    blockId: target.id,
+                    text: replacement,
+                  },
                 ],
               },
               { undefinedReferences: "refuse" },
@@ -79,22 +94,34 @@ test(
           const pending = await tracked.toBuffer();
           tracked.acceptAll();
           const comments = (reviewer: FolioDocxReviewer) =>
-            reviewer
-              .getComments()
-              .map(({ id, text, anchoredText }) => ({ id, text, anchoredText }));
+            reviewer.getComments().map(({ id, text, anchoredText }) => ({
+              id,
+              text,
+              anchoredText,
+            }));
           expect(comments(tracked)).toEqual(comments(direct));
-          expect(comments(direct)).toHaveLength(replacement === "" ? 0 : ids.length);
-          const reopenedDirect = await FolioDocxReviewer.fromBuffer(await direct.toBuffer());
-          const reopenedTracked = await FolioDocxReviewer.fromBuffer(await tracked.toBuffer());
+          expect(comments(direct)).toHaveLength(
+            replacement === "" ? 0 : ids.length,
+          );
+          const reopenedDirect = await FolioDocxReviewer.fromBuffer(
+            await direct.toBuffer(),
+          );
+          const reopenedTracked = await FolioDocxReviewer.fromBuffer(
+            await tracked.toBuffer(),
+          );
           expect(comments(reopenedTracked)).toEqual(comments(reopenedDirect));
           expect(comments(reopenedDirect)).toEqual(comments(direct));
           const individually = await FolioDocxReviewer.fromBuffer(pending);
-          for (const change of individually.getChanges()) individually.acceptChange(change);
+          for (const change of individually.getChanges())
+            individually.acceptChange(change);
           expect(comments(individually)).toEqual(comments(direct));
           const rejected = await FolioDocxReviewer.fromBuffer(pending);
           rejected.rejectAll();
-          expect(rejected.getComments().at(0)?.anchoredText).toBe(source.slice(start, end));
-          if (replacement === "") expect(direct.getComments().at(0)?.anchoredText ?? "").toBe("");
+          expect(rejected.getComments().at(0)?.anchoredText).toBe(
+            source.slice(start, end),
+          );
+          if (replacement === "")
+            expect(direct.getComments().at(0)?.anchoredText ?? "").toBe("");
         },
       ),
       {

@@ -13,7 +13,7 @@
  * surface which characters a run holds, cannot agree here by accident.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // Two full editor sessions, each probed five times.
 test.setTimeout(120_000);
@@ -21,13 +21,18 @@ test.setTimeout(120_000);
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
 }
 
 const FIXTURE = "sample.docx";
 
 /** Both renderers are asked for the same document-relative point. */
-type Probe = { readonly label: string; readonly xRatio: number; readonly yRatio: number };
+type Probe = {
+  readonly label: string;
+  readonly xRatio: number;
+  readonly yRatio: number;
+};
 
 /**
  * Points chosen to land on text rather than in a margin: the left third of a
@@ -41,7 +46,11 @@ const PROBES: readonly Probe[] = [
   { label: "later line, right", xRatio: 0.6, yRatio: 0.36 },
 ];
 
-type Caret = { readonly xPx: number; readonly yPx: number; readonly heightPx: number };
+type Caret = {
+  readonly xPx: number;
+  readonly yPx: number;
+  readonly heightPx: number;
+};
 
 type Landing = {
   readonly label: string;
@@ -50,13 +59,19 @@ type Landing = {
   /** What a drag from this point to the next selected. */
   readonly dragTo: { readonly from: number; readonly to: number } | null;
   /** What a double-click selected: a word, so `to - from` is its length. */
-  readonly word: { readonly from: number; readonly to: number; readonly text: string } | null;
+  readonly word: {
+    readonly from: number;
+    readonly to: number;
+    readonly text: string;
+  } | null;
   /** The caret's own box after the click, relative to the page. */
   readonly caret: Caret | null;
 };
 
 const open = async (page: Page, renderer: string): Promise<void> => {
-  await page.goto(`/?file=${FIXTURE}&pageRenderer=${renderer}`, { timeout: 60_000 });
+  await page.goto(`/?file=${FIXTURE}&pageRenderer=${renderer}`, {
+    timeout: 60_000,
+  });
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForSelector(".layout-page");
   await page.evaluate(async () => {
@@ -74,11 +89,19 @@ const pageBox = async (page: Page) => {
 
 const selection = (page: Page): Promise<{ from: number; to: number } | null> =>
   page.evaluate(() => {
-    const state = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state;
-    return state === undefined ? null : { from: state.selection.from, to: state.selection.to };
+    const state = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView()?.state;
+    return state === undefined
+      ? null
+      : { from: state.selection.from, to: state.selection.to };
   });
 
-const caretBox = async (page: Page, origin: { x: number; y: number }): Promise<Caret | null> => {
+const caretBox = async (
+  page: Page,
+  origin: { x: number; y: number },
+): Promise<Caret | null> => {
   const box = await page.getByTestId("caret").first().boundingBox();
   return box === null
     ? null
@@ -86,9 +109,15 @@ const caretBox = async (page: Page, origin: { x: number; y: number }): Promise<C
 };
 
 const selectedText = (page: Page): Promise<string> =>
-  page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getSelectionText() ?? "");
+  page.evaluate(
+    () =>
+      globalThis.__folioPlayground?.getEditorRef()?.getSelectionText() ?? "",
+  );
 
-const probeAll = async (page: Page, renderer: string): Promise<readonly Landing[]> => {
+const probeAll = async (
+  page: Page,
+  renderer: string,
+): Promise<readonly Landing[]> => {
   await open(page, renderer);
   const box = await pageBox(page);
   const at = (probe: Probe) => ({
@@ -152,7 +181,8 @@ const sameCaret = (left: Caret | null, right: Caret | null): boolean => {
   return (
     Math.abs(left.xPx - right.xPx) <= CARET_TOLERANCE_PX &&
     Math.abs(left.heightPx - right.heightPx) <= CARET_TOLERANCE_PX &&
-    Math.abs(left.yPx - right.yPx) <= left.heightPx * CARET_VERTICAL_BUDGET_RATIO
+    Math.abs(left.yPx - right.yPx) <=
+      left.heightPx * CARET_VERTICAL_BUDGET_RATIO
   );
 };
 
@@ -173,7 +203,9 @@ test.describe("selection parity between the renderers", () => {
    * for making this renderer the editor's, and it turns red the day it starts
    * passing so that fact is not missed.
    */
-  test("a click, a drag and a double-click resolve the same either way", async ({ page }) => {
+  test("a click, a drag and a double-click resolve the same either way", async ({
+    page,
+  }) => {
     const legacy = await probeAll(page, "legacy");
     const displayList = await probeAll(page, "display-list");
 

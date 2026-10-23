@@ -13,7 +13,10 @@ export const checkRecordedDigests = (
     const previous = recorded[id];
     if (!previous) {
       missing.push(id);
-    } else if (previous.buffer !== digests.buffer || previous.changes !== digests.changes) {
+    } else if (
+      previous.buffer !== digests.buffer ||
+      previous.changes !== digests.changes
+    ) {
       drifted.push(id);
     }
   }

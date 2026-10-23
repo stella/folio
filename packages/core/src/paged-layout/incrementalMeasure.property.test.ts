@@ -6,10 +6,19 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import type { FlowBlock, Measure, ParagraphBlock } from "../layout-engine/types";
-import { findDirtyBlockIndexes, tryBuildIncrementalMeasures } from "./incrementalMeasure";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+} from "../layout-engine/types";
+import {
+  findDirtyBlockIndexes,
+  tryBuildIncrementalMeasures,
+} from "./incrementalMeasure";
 import type { DirtyRange } from "./incrementalMeasure";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -39,7 +48,10 @@ describe("incremental paragraph measurement", () => {
             from: firstPosition,
             to: secondPosition,
           });
-          const expectedDirtyIndexes = findDirtyBlockIndexes(nextBlocks, dirtyRange);
+          const expectedDirtyIndexes = findDirtyBlockIndexes(
+            nextBlocks,
+            dirtyRange,
+          );
 
           const result = tryBuildIncrementalMeasures({
             previousBlocks,

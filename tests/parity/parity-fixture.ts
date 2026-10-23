@@ -10,7 +10,8 @@
  * in both adapters.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+
 import type { FolioParityBridge } from "../../packages/playground-vue/src/parityBridge";
 
 declare global {
@@ -59,9 +60,12 @@ export async function openEditor(
   await page.goto(`${adapter.baseUrl}/?file=${fixture}`);
   await page.waitForSelector(PAGES_SELECTOR, { timeout: 30_000 });
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0), {
-      timeout: 30_000,
-    })
+    .poll(
+      () => page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0),
+      {
+        timeout: 30_000,
+      },
+    )
     .toBeGreaterThan(0);
 }
 

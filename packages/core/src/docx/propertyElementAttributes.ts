@@ -52,7 +52,11 @@ export type ModelledAttributes<Field extends string> = Readonly<
 >;
 
 /** A record's attribute-bearing fields: all of them but the remainder itself. */
-type AttributeFields<Shape> = Exclude<keyof Required<Shape>, "preservedAttributes"> & string;
+type AttributeFields<Shape> = Exclude<
+  keyof Required<Shape>,
+  "preservedAttributes"
+> &
+  string;
 
 type IndentationField = Extract<
   keyof ParagraphFormatting,
@@ -109,7 +113,9 @@ export const FRAME_ATTRIBUTES = {
   xAlign: "xAlign",
   yAlign: "yAlign",
   wrap: "wrap",
-} as const satisfies ModelledAttributes<AttributeFields<NonNullable<ParagraphFormatting["frame"]>>>;
+} as const satisfies ModelledAttributes<
+  AttributeFields<NonNullable<ParagraphFormatting["frame"]>>
+>;
 
 export const TAB_STOP_ATTRIBUTES = {
   position: "pos",
@@ -162,7 +168,9 @@ export const PROPERTY_ELEMENT_ATTRIBUTES = {
 } as const satisfies Readonly<Record<string, ModelledAttributes<string>>>;
 
 /** Every attribute local name a table names, flattened, in field order. */
-export const modelledAttributeNames = (modelled: ModelledAttributes<string>): readonly string[] => {
+export const modelledAttributeNames = (
+  modelled: ModelledAttributes<string>,
+): readonly string[] => {
   const names: string[] = [];
   for (const declared of Object.values(modelled)) {
     if (typeof declared === "string") {

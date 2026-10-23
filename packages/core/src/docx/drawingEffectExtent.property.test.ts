@@ -19,8 +19,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
@@ -29,12 +31,17 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const A_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const WP_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
-const PIC_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const WP_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const PIC_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
 /** A 1×1 PNG, so the drawing has a real picture relationship to resolve. */
 const PNG = Buffer.from(
@@ -117,7 +124,10 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
   }
   zip.file(
     "[Content_Types].xml",
-    types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+    types.replace(
+      "</Types>",
+      '<Default Extension="png" ContentType="image/png"/></Types>',
+    ),
   );
   zip.file(
     "word/_rels/document.xml.rels",
@@ -159,17 +169,25 @@ const resizePictures = (document: Document): void => {
 };
 
 const partOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(saved)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 /** The two legs the container survival law runs: a forced save, and the editor. */
 const LEGS = ["save", "editor"] as const;
 type Leg = (typeof LEGS)[number];
 
 const savedPart = async (body: string, leg: Leg): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   const document =
     leg === "editor"
-      ? fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } })
+      ? fromProseDoc(toProseDoc(parsed), parsed, {
+          stylesheetSource: { type: "package" },
+        })
       : parsed;
   resizePictures(document);
   return partOf(await repackDocx(document, { updateModifiedDate: false }));
@@ -180,11 +198,15 @@ const drawingExtentIn = (part: string): Extent | undefined =>
   extentIn(/<wp:extent [^>]*\/>(<wp:effectExtent [^>]*\/>)/u.exec(part)?.[1]);
 
 /** The reservation inside the wrap child, wherever the save put it. */
-const wrapChildExtentIn = (part: string, kind: WrapKind): Extent | undefined => {
+const wrapChildExtentIn = (
+  part: string,
+  kind: WrapKind,
+): Extent | undefined => {
   const name = WRAP_ELEMENT_NAMES[kind];
-  const element = new RegExp(`<wp:${name}[^>]*>(<wp:effectExtent [^>]*/>)</wp:${name}>`, "u").exec(
-    part,
-  );
+  const element = new RegExp(
+    `<wp:${name}[^>]*>(<wp:effectExtent [^>]*/>)</wp:${name}>`,
+    "u",
+  ).exec(part);
   return extentIn(element?.[1]);
 };
 
@@ -206,16 +228,29 @@ describe("a rebuilt drawing states each wp:effectExtent on the element that auth
         fc.constantFrom(...LEGS),
         async (kind, authoredOn, leg) => {
           const part = await savedPart(anchorBody(kind, authoredOn), leg);
-          expect({ kind, authoredOn, leg, drawing: drawingExtentIn(part) }).toEqual({
+          expect({
+            kind,
+            authoredOn,
+            leg,
+            drawing: drawingExtentIn(part),
+          }).toEqual({
             kind,
             authoredOn,
             leg,
             // A drawing that authored none still states one: `CT_EffectExtent`
             // requires all four sides and an omitted element reads as zero, so
             // the two spellings are the same document.
-            drawing: authoredOn === "wrapChild" ? { l: 0, t: 0, r: 0, b: 0 } : DRAWING_EXTENT,
+            drawing:
+              authoredOn === "wrapChild"
+                ? { l: 0, t: 0, r: 0, b: 0 }
+                : DRAWING_EXTENT,
           });
-          expect({ kind, authoredOn, leg, wrapChild: wrapChildExtentIn(part, kind) }).toEqual({
+          expect({
+            kind,
+            authoredOn,
+            leg,
+            wrapChild: wrapChildExtentIn(part, kind),
+          }).toEqual({
             kind,
             authoredOn,
             leg,
@@ -223,7 +258,9 @@ describe("a rebuilt drawing states each wp:effectExtent on the element that auth
           });
         },
       ),
-      propertyConfig({ numRuns: WRAP_KINDS.length * AUTHORED_ON.length * LEGS.length }),
+      propertyConfig({
+        numRuns: WRAP_KINDS.length * AUTHORED_ON.length * LEGS.length,
+      }),
     );
   });
 
@@ -231,7 +268,10 @@ describe("a rebuilt drawing states each wp:effectExtent on the element that auth
     await fc.assert(
       fc.asyncProperty(fc.constantFrom(...LEGS), async (leg) => {
         const part = await savedPart(inlineBody("drawing"), leg);
-        expect({ leg, drawing: drawingExtentIn(part) }).toEqual({ leg, drawing: DRAWING_EXTENT });
+        expect({ leg, drawing: drawingExtentIn(part) }).toEqual({
+          leg,
+          drawing: DRAWING_EXTENT,
+        });
       }),
       propertyConfig({ numRuns: LEGS.length }),
     );

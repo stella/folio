@@ -20,14 +20,21 @@
  * ```
  */
 
-import { createApp, h, ref, type App, type MaybeRefOrGetter } from "vue";
+import { type App, createApp, h, type MaybeRefOrGetter, ref } from "vue";
 
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import DocxEditor from "./components/DocxEditor.vue";
-import type { DocxEditorProps, DocxEditorRef } from "./components/DocxEditor/types";
-import { colorModePlugin, defaultColorMode, type ColorMode } from "./composables/useColorMode";
+import type {
+  DocxEditorProps,
+  DocxEditorRef,
+} from "./components/DocxEditor/types";
+import {
+  type ColorMode,
+  colorModePlugin,
+  defaultColorMode,
+} from "./composables/useColorMode";
 import { i18nPlugin } from "./i18n";
 
 /** Framework-agnostic handle for an imperatively mounted editor instance. */
@@ -53,7 +60,10 @@ export type DocxEditorHandle = EditorHandle & {
 };
 
 /** Options for {@link renderAsync}. */
-export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {
+export type RenderAsyncOptions = Omit<
+  DocxEditorProps,
+  "documentBuffer" | "document"
+> & {
   /** BCP-47 locale for bundled folio UI strings (default: `en`). */
   locale?: string;
   /** Editor chrome color mode (default: `light`). */
@@ -71,7 +81,11 @@ export const renderAsync = (
   container: HTMLElement,
   options: RenderAsyncOptions = {},
 ): Promise<DocxEditorHandle> => {
-  const { colorMode = defaultColorMode, locale = "en", ...editorOptions } = options;
+  const {
+    colorMode = defaultColorMode,
+    locale = "en",
+    ...editorOptions
+  } = options;
 
   return new Promise<DocxEditorHandle>((resolve, reject) => {
     const editorRef = ref<DocxEditorRef | null>(null);

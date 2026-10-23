@@ -1,42 +1,51 @@
-import { expect, test } from "bun:test";
-import { FolioDocxReviewer } from "../ai-edits/headless";
-import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
 import { panic } from "better-result";
-import { storyRevisionIds } from "../../../../test/reviewProjection";
-import { Fragment, Slice } from "prosemirror-model";
-import { EditorState, TextSelection } from "prosemirror-state";
-import type { Paragraph } from "../types/document";
-import { createDocx } from "../docx/rezip";
-import { parseDocx } from "../docx/parser";
-import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
-import { serializeCanonicalSave } from "../docx/canonicalSave";
-import { createEmptyDocument } from "../utils/createDocument";
-import { schema } from "../prosemirror/schema";
-import {
-  createCanonicalSession,
-  type CanonicalSession,
-  CanonicalSessionError,
-  publishCanonicalProjection,
-} from "./canonicalSession";
-import { prepareCanonicalPaste } from "./canonicalClipboard";
-import { validateDocxPackage } from "@stll/docx-core";
-import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp } from "@stll/docx-core/ops";
-import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
+import { expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { Fragment, Slice } from "prosemirror-model";
+import { EditorState, TextSelection } from "prosemirror-state";
+
+import { validateDocxPackage } from "@stll/docx-core";
 import {
-  findWordprocessingChild,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+} from "@stll/docx-core/ops";
+
+import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
+import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { storyRevisionIds } from "../../../../test/reviewProjection";
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { mintListInstance } from "../docx/listNumberingInstances";
+import { createNumberingMap } from "../docx/numberingParser";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import {
   findChildrenByNamespaceUri,
+  findWordprocessingChild,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "../docx/xmlParser";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { mintListInstance } from "../docx/listNumberingInstances";
-import { createNumberingMap } from "../docx/numberingParser";
-import { listItemAttrs } from "../prosemirror/listNumbering";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
+import { listItemAttrs } from "../prosemirror/listNumbering";
+import { schema } from "../prosemirror/schema";
+import type { Paragraph } from "../types/document";
+import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
+import { createEmptyDocument } from "../utils/createDocument";
+import { prepareCanonicalPaste } from "./canonicalClipboard";
 import { normalizeCanonicalListRendering } from "./canonicalListRendering";
-import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
+import {
+  type CanonicalSession,
+  CanonicalSessionError,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
 
 test(
   "generated LISTNUM level edits preserve child counters, history and save/reopen",
@@ -67,29 +76,46 @@ test(
                 fieldType: "LISTNUM",
                 instruction: "LISTNUM",
                 fieldCode: [],
-                fieldResult: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+                fieldResult: [
+                  { type: "run", content: [{ type: "text", text: "1" }] },
+                ],
               }) satisfies Paragraph["content"][number],
           );
           const host = {
             type: "paragraph",
             paraId: "10000001",
-            formatting: { numPr: { kind: "reference", numId: minted.numId, ilvl: 0 } },
-            content: position === "leading" ? [...fields, text] : [text, ...fields],
+            formatting: {
+              numPr: { kind: "reference", numId: minted.numId, ilvl: 0 },
+            },
+            content:
+              position === "leading" ? [...fields, text] : [text, ...fields],
           } satisfies Paragraph;
           const following = {
             type: "paragraph",
             paraId: "10000002",
-            formatting: { numPr: { kind: "reference", numId: minted.numId, ilvl: level + 1 } },
+            formatting: {
+              numPr: {
+                kind: "reference",
+                numId: minted.numId,
+                ilvl: level + 1,
+              },
+            },
             content: [text],
           } satisfies Paragraph;
           const parsed = await parseDocx(
             await createDocx({
-              package: { numbering: minted.definitions, document: { content: [host, following] } },
+              package: {
+                numbering: minted.definitions,
+                document: { content: [host, following] },
+              },
             }),
             { preloadFonts: false },
           );
           const session = createCanonicalSession(parsed).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const before = structuredClone(session.document);
           const at = session.projection.inputAddressAt(1).unwrap();
           state = publishCanonicalProjection({
@@ -99,14 +125,21 @@ test(
               .prepareIntent(state, {
                 type: "formatParagraph",
                 at,
-                patch: { numPr: { kind: "reference", numId: minted.numId, ilvl: level } },
+                patch: {
+                  numPr: {
+                    kind: "reference",
+                    numId: minted.numId,
+                    ilvl: level,
+                  },
+                },
               })
               .unwrap(),
           }).unwrap().state;
           const after = structuredClone(session.document);
           const marker = (document: typeof parsed) => {
             const paragraph = document.package.document.content.at(1);
-            if (paragraph?.type !== "paragraph") throw new TypeError("Missing child paragraph");
+            if (paragraph?.type !== "paragraph")
+              throw new TypeError("Missing child paragraph");
             return paragraph.listRendering?.marker;
           };
           expect(marker(session.document)).toBe(`${fieldCount + 1}.`);
@@ -115,7 +148,9 @@ test(
               snapshot: session.captureSaveSnapshot(),
               options: { mode },
             });
-            const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+            const reopened = await parseDocx(saved.buffer, {
+              preloadFonts: false,
+            });
             expect(marker(reopened)).toBe(`${fieldCount + 1}.`);
             expect(structuredClone(reopened.package.document.content)).toEqual(
               after.package.document.content,
@@ -176,7 +211,11 @@ test(
                       styleId: "Numbered",
                       name: "Numbered",
                       pPr: {
-                        numPr: { kind: "reference", numId: original.numId, ilvl: styleLevel },
+                        numPr: {
+                          kind: "reference",
+                          numId: original.numId,
+                          ilvl: styleLevel,
+                        },
                       },
                     },
                   ],
@@ -185,8 +224,16 @@ test(
                   content: authored.map((numPr, index) => ({
                     type: "paragraph",
                     paraId: (index + 1).toString(16).padStart(8, "0"),
-                    formatting: { styleId: "Numbered", ...(numPr === undefined ? {} : { numPr }) },
-                    content: [{ type: "run", content: [{ type: "text", text: "Item" }] }],
+                    formatting: {
+                      styleId: "Numbered",
+                      ...(numPr === undefined ? {} : { numPr }),
+                    },
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Item" }],
+                      },
+                    ],
                   })),
                 },
               },
@@ -194,17 +241,27 @@ test(
             { preloadFonts: false },
           );
           const session = createCanonicalSession(parsed).unwrap();
-          const state = EditorState.create({ schema, doc: session.projection.doc });
+          const state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           publishCanonicalProjection({
             session,
             state,
-            commit: session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
+            commit: session
+              .prepareReplace(state, { from: 1, to: 1, text: "X" })
+              .unwrap(),
           }).unwrap();
-          for (const [index, paragraph] of session.document.package.document.content.entries()) {
+          for (const [
+            index,
+            paragraph,
+          ] of session.document.package.document.content.entries()) {
             if (paragraph.type !== "paragraph") continue;
             expect(paragraph.formatting?.numPr).toEqual(authored.at(index));
           }
-          expect(normalizeCanonicalListRendering(session.document).document).toBe(session.document);
+          expect(
+            normalizeCanonicalListRendering(session.document).document,
+          ).toBe(session.document);
           for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
             const saved = await serializeCanonicalSave({
               snapshot: session.captureSaveSnapshot(),
@@ -223,8 +280,13 @@ test(
               "p",
             );
             expect(paragraphs).toHaveLength(authored.length);
-            const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
-            for (const [index, paragraph] of reopened.package.document.content.entries()) {
+            const reopened = await parseDocx(saved.buffer, {
+              preloadFonts: false,
+            });
+            for (const [
+              index,
+              paragraph,
+            ] of reopened.package.document.content.entries()) {
               expect(paragraph.type).toBe("paragraph");
               if (paragraph.type !== "paragraph") continue;
               const expected = authored.at(index);
@@ -249,17 +311,29 @@ test(
             expect(style).toBeDefined();
             if (style === undefined) return;
             style.pPr = {
-              numPr: { kind: "reference", numId: replacement.numId, ilvl: styleLevel },
+              numPr: {
+                kind: "reference",
+                numId: replacement.numId,
+                ilvl: styleLevel,
+              },
             };
-            const restyled = await parseDocx(await createDocx({ package: restyledPackage }), {
-              preloadFonts: false,
-            });
-            for (const [index, paragraph] of restyled.package.document.content.entries()) {
+            const restyled = await parseDocx(
+              await createDocx({ package: restyledPackage }),
+              {
+                preloadFonts: false,
+              },
+            );
+            for (const [
+              index,
+              paragraph,
+            ] of restyled.package.document.content.entries()) {
               if (paragraph.type !== "paragraph") continue;
               const expected = authored.at(index);
               expect(paragraph.formatting?.numPr).toEqual(expected);
               expect(paragraph.listRendering?.numId).toBe(
-                expected?.kind === "reference" ? original.numId : replacement.numId,
+                expected?.kind === "reference"
+                  ? original.numId
+                  : replacement.numId,
               );
               expect(paragraph.listRendering?.level).toBe(
                 expected === undefined ? styleLevel : expected.ilvl,
@@ -282,16 +356,26 @@ test(
   async () => {
     await assertProperty(
       fc.asyncProperty(
-        fc.array(fc.constantFrom("Alpha", "é", "😀", "東京"), { minLength: 2, maxLength: 4 }),
+        fc.array(fc.constantFrom("Alpha", "é", "😀", "東京"), {
+          minLength: 2,
+          maxLength: 4,
+        }),
         fc.integer({ min: 0, max: 2 }),
         async (texts, nestedLevel) => {
-          const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+          const source = await createDocx(
+            createEmptyDocument({ initialText: "alpha😀café東京" }),
+          );
           const input = (await prepareCanonicalDocxInput(source)).unwrap();
           const session = createCanonicalSession(
             await parseDocx(input, { preloadFonts: false }),
           ).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
-          state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 6)));
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
+          state = state.apply(
+            state.tr.setSelection(TextSelection.create(state.doc, 1, 6)),
+          );
           const minted = mintListInstance(undefined, { kind: "bullet" });
           const numbering = createNumberingMap(minted.definitions);
           const attrs = expectParagraphAttrs(schema.node("paragraph"));
@@ -302,7 +386,10 @@ test(
                   "paragraph",
                   listItemAttrs(
                     attrs,
-                    { numId: minted.numId, ilvl: index === 1 ? nestedLevel : 0 },
+                    {
+                      numId: minted.numId,
+                      ilvl: index === 1 ? nestedLevel : 0,
+                    },
                     numbering,
                   ),
                   schema.text(text),
@@ -331,13 +418,19 @@ test(
             }
             for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
               const snapshot = session.captureSaveSnapshot();
-              const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
+              const saved = await serializeCanonicalSave({
+                snapshot,
+                options: { mode },
+              });
               expect(saved.diagnostics).toEqual(
-                mode === FOLIO_DOCX_SERIALIZATION_MODE.preferSelective && transition !== "undo"
+                mode === FOLIO_DOCX_SERIALIZATION_MODE.preferSelective &&
+                  transition !== "undo"
                   ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
                   : [],
               );
-              expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({
+              expect(
+                await validateDocxPackage(new Uint8Array(saved.buffer)),
+              ).toEqual({
                 valid: true,
               });
               const xml = await (
@@ -345,7 +438,8 @@ test(
               )
                 .file("word/document.xml")
                 ?.async("text");
-              if (xml === undefined) throw new Error("Saved package must contain its document XML");
+              if (xml === undefined)
+                throw new Error("Saved package must contain its document XML");
               const paragraphs = findChildrenByNamespaceUri(
                 findWordprocessingChild(parseXmlDocument(xml), "body"),
                 WORDPROCESSINGML_NAMESPACE_URIS,
@@ -355,14 +449,23 @@ test(
               // These lists author numbering only; a save must not materialize level indentation.
               for (const paragraph of paragraphs) {
                 expect(
-                  findWordprocessingChild(findWordprocessingChild(paragraph, "pPr"), "ind"),
+                  findWordprocessingChild(
+                    findWordprocessingChild(paragraph, "pPr"),
+                    "ind",
+                  ),
                 ).toBeNull();
               }
-              const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
-              expect(structuredClone(reopened.package.document.content)).toEqual(
+              const reopened = await parseDocx(saved.buffer, {
+                preloadFonts: false,
+              });
+              expect(
+                structuredClone(reopened.package.document.content),
+              ).toEqual(
                 structuredClone(snapshot.document.package.document.content),
               );
-              expect(reopened.package.numbering).toEqual(snapshot.document.package.numbering);
+              expect(reopened.package.numbering).toEqual(
+                snapshot.document.package.numbering,
+              );
             }
           }
           expect(session.document).toEqual(pasted);
@@ -424,7 +527,13 @@ test(
                           type: "paragraph",
                           styleId: "List",
                           name: "List",
-                          pPr: { numPr: { kind: "reference", numId: minted.numId, ilvl: level } },
+                          pPr: {
+                            numPr: {
+                              kind: "reference",
+                              numId: minted.numId,
+                              ilvl: level,
+                            },
+                          },
                         },
                       ],
                     },
@@ -434,12 +543,20 @@ test(
                   const paragraph = {
                     type: "paragraph",
                     paraId: (index + 1).toString(16).padStart(8, "0"),
-                    content: [{ type: "run", content: [{ type: "text", text }] }],
+                    content: [
+                      { type: "run", content: [{ type: "text", text }] },
+                    ],
                   } satisfies Paragraph;
                   if (ilvl === undefined) return paragraph;
                   const formatting = (
                     provenance === "direct"
-                      ? { numPr: { kind: "reference", numId: minted.numId, ilvl } }
+                      ? {
+                          numPr: {
+                            kind: "reference",
+                            numId: minted.numId,
+                            ilvl,
+                          },
+                        }
                       : { styleId: "List", numPr: { kind: "levelOnly", ilvl } }
                   ) satisfies NonNullable<Paragraph["formatting"]>;
                   const indentation = (() => {
@@ -447,12 +564,17 @@ test(
                       case "inherited":
                         return {};
                       case "zero":
-                        return { indentLeft: 0, indentFirstLine: 0, hangingIndent: false };
+                        return {
+                          indentLeft: 0,
+                          indentFirstLine: 0,
+                          hangingIndent: false,
+                        };
                       case "matching":
                         return (
                           minted.definitions.abstractNums
                             .at(0)
-                            ?.levels.find((entry) => entry.ilvl === ilvl)?.pPr ??
+                            ?.levels.find((entry) => entry.ilvl === ilvl)
+                            ?.pPr ??
                           panic("A minted list level must have indentation.")
                         );
                       case "custom":
@@ -480,18 +602,29 @@ test(
           const exercised = new Set<string>();
           for (const edit of listEdits) {
             const session = createCanonicalSession(parsed).unwrap();
-            let state = EditorState.create({ schema, doc: session.projection.doc });
+            let state = EditorState.create({
+              schema,
+              doc: session.projection.doc,
+            });
             const index = listEditParagraph[edit];
             let position = 1;
             for (let previous = 0; previous < index; previous++)
               position += state.doc.child(previous).nodeSize;
-            if (edit === "joinForward") position += state.doc.child(index).content.size;
-            state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+            if (edit === "joinForward")
+              position += state.doc.child(index).content.size;
+            state = state.apply(
+              state.tr.setSelection(TextSelection.create(state.doc, position)),
+            );
             const before = session.document;
             const beforeProjection = state.doc.toJSON();
             const beforeSelection = state.selection.toJSON();
-            const prepareEdit = (editSession: CanonicalSession, editState: EditorState) => {
-              const at = editSession.projection.inputAddressAt(position).unwrap();
+            const prepareEdit = (
+              editSession: CanonicalSession,
+              editState: EditorState,
+            ) => {
+              const at = editSession.projection
+                .inputAddressAt(position)
+                .unwrap();
               switch (edit) {
                 case "remove":
                   return editSession.prepareIntent(editState, {
@@ -541,7 +674,11 @@ test(
               }
             };
             const commit = prepareEdit(session, state).unwrap();
-            state = publishCanonicalProjection({ session, state, commit }).unwrap().state;
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit,
+            }).unwrap().state;
             const after = session.document;
             for (const paragraph of after.package.document.content) {
               if (paragraph.type !== "paragraph") continue;
@@ -563,7 +700,9 @@ test(
                     : session.prepareRedo(state)
                   ).unwrap(),
                 }).unwrap().state;
-                expect(session.document).toEqual(transition === "undo" ? before : after);
+                expect(session.document).toEqual(
+                  transition === "undo" ? before : after,
+                );
                 expect(state.doc.toJSON()).toEqual(
                   transition === "undo" ? beforeProjection : afterProjection,
                 );
@@ -573,19 +712,33 @@ test(
               }
               for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
                 const snapshot = session.captureSaveSnapshot();
-                const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
-                const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
-                expect(structuredClone(reopened.package.document.content)).toEqual(
+                const saved = await serializeCanonicalSave({
+                  snapshot,
+                  options: { mode },
+                });
+                const reopened = await parseDocx(saved.buffer, {
+                  preloadFonts: false,
+                });
+                expect(
+                  structuredClone(reopened.package.document.content),
+                ).toEqual(
                   structuredClone(snapshot.document.package.document.content),
                 );
-                expect(reopened.package.numbering).toEqual(snapshot.document.package.numbering);
+                expect(reopened.package.numbering).toEqual(
+                  snapshot.document.package.numbering,
+                );
               }
             }
             const suggested = createCanonicalSession(parsed).unwrap();
             suggested.setMode({ type: "suggesting", author: "Reviewer" });
-            let suggestedState = EditorState.create({ schema, doc: suggested.projection.doc });
+            let suggestedState = EditorState.create({
+              schema,
+              doc: suggested.projection.doc,
+            });
             suggestedState = suggestedState.apply(
-              suggestedState.tr.setSelection(TextSelection.create(suggestedState.doc, position)),
+              suggestedState.tr.setSelection(
+                TextSelection.create(suggestedState.doc, position),
+              ),
             );
             const beforeSuggestion = structuredClone(suggested.document);
             suggestedState = publishCanonicalProjection({
@@ -595,8 +748,13 @@ test(
             }).unwrap().state;
             // Rejection must restore authored properties, even when the snapshot
             // began with derived list indentation and is loaded in a fresh session.
-            const reviewing = createCanonicalSession(suggested.document).unwrap();
-            let reviewState = EditorState.create({ schema, doc: reviewing.projection.doc });
+            const reviewing = createCanonicalSession(
+              suggested.document,
+            ).unwrap();
+            let reviewState = EditorState.create({
+              schema,
+              doc: reviewing.projection.doc,
+            });
             reviewState = publishCanonicalProjection({
               session: reviewing,
               state: reviewState,
@@ -607,7 +765,9 @@ test(
                 })
                 .unwrap(),
             }).unwrap().state;
-            expect(structuredClone(reviewing.document)).toEqual(beforeSuggestion);
+            expect(structuredClone(reviewing.document)).toEqual(
+              beforeSuggestion,
+            );
             expect(reviewState.doc.toJSON()).toEqual(beforeProjection);
             exercised.add(edit);
           }
@@ -628,7 +788,10 @@ test(
   async () => {
     await assertProperty(
       fc.asyncProperty(
-        fc.array(fc.integer({ min: 0, max: 2 }), { minLength: 1, maxLength: 4 }),
+        fc.array(fc.integer({ min: 0, max: 2 }), {
+          minLength: 1,
+          maxLength: 4,
+        }),
         fc.constantFrom("bullet" as const, "numbered" as const),
         async (levels, kind) => {
           const minted = mintListInstance(undefined, { kind });
@@ -637,25 +800,41 @@ test(
           document.package.document.content = levels.map((ilvl) => ({
             type: "paragraph",
             formatting: {
-              numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
+              numPrFromStyle: {
+                kind: "reference",
+                numId: minted.numId,
+                ilvl: 0,
+              },
               numPr: { kind: "levelOnly", ilvl },
             },
-            content: [{ type: "run", content: [{ type: "text", text: "List item" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "List item" }] },
+            ],
           }));
           const original = structuredClone(document);
           const refused = createCanonicalSession(document);
           expect(refused.isErr()).toBe(true);
-          if (refused.isErr()) expect(refused.error).toBeInstanceOf(CanonicalSessionError);
+          if (refused.isErr())
+            expect(refused.error).toBeInstanceOf(CanonicalSessionError);
           expect(document).toStrictEqual(original);
-          const input = (await prepareCanonicalDocxInput(await createDocx(document))).unwrap();
+          const input = (
+            await prepareCanonicalDocxInput(await createDocx(document))
+          ).unwrap();
           const identified = await parseDocx(input, { preloadFonts: false });
           // Restore the generated style inheritance/override shape after the load-time ID owner.
-          for (const [index, block] of identified.package.document.content.entries()) {
+          for (const [
+            index,
+            block,
+          ] of identified.package.document.content.entries()) {
             if (block.type !== "paragraph") continue;
             const ilvl = levels.at(index);
             if (ilvl === undefined) continue;
             block.formatting = {
-              numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
+              numPrFromStyle: {
+                kind: "reference",
+                numId: minted.numId,
+                ilvl: 0,
+              },
               numPr: { kind: "levelOnly", ilvl },
             };
           }
@@ -675,7 +854,10 @@ test(
           expect(result.isOk()).toBe(true);
           const session = result.unwrap();
           const identities = new Set<string>();
-          for (const [index, block] of session.document.package.document.content.entries()) {
+          for (const [
+            index,
+            block,
+          ] of session.document.package.document.content.entries()) {
             expect(block.type).toBe("paragraph");
             if (block.type !== "paragraph") continue;
             expect(block.paraId).toBeDefined();
@@ -686,7 +868,10 @@ test(
             });
             expect(block.listRendering?.level).toBe(levels.at(index));
           }
-          const state = EditorState.create({ schema, doc: session.projection.doc });
+          const state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const anchor = session.document.package.document.content.at(0);
           if (anchor?.type !== "paragraph" || anchor.paraId === undefined)
             return panic("Missing identified fixture paragraph.");
@@ -696,10 +881,19 @@ test(
               type: "paragraph",
               ...(identity === undefined ? {} : { paraId: identity }),
               formatting: {
-                numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
+                numPrFromStyle: {
+                  kind: "reference",
+                  numId: minted.numId,
+                  ilvl: 0,
+                },
                 numPr: { kind: "levelOnly", ilvl: levels.at(0) ?? 0 },
               },
-              content: [{ type: "run", content: [{ type: "text", text: "Inserted list item" }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Inserted list item" }],
+                },
+              ],
             };
             const operation = {
               type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
@@ -707,10 +901,14 @@ test(
               at: { type: "before", blockId: anchor.paraId },
               blocks: [inserted],
             } as const satisfies DocumentOp;
-            const refusedInsertion = session.prepareOperations(state, [operation]);
+            const refusedInsertion = session.prepareOperations(state, [
+              operation,
+            ]);
             expect(refusedInsertion.isErr()).toBe(true);
             if (refusedInsertion.isErr())
-              expect(refusedInsertion.error).toBeInstanceOf(CanonicalSessionError);
+              expect(refusedInsertion.error).toBeInstanceOf(
+                CanonicalSessionError,
+              );
             expect(structuredClone(session.document)).toStrictEqual(before);
           }
           expect(identities.size).toBe(levels.length);
@@ -736,7 +934,10 @@ test(
         fc.integer({ min: 1, max: 9 }),
         fc.integer({ min: 1, max: 4 }),
         async (start, count) => {
-          const minted = mintListInstance(undefined, { kind: "numbered", start });
+          const minted = mintListInstance(undefined, {
+            kind: "numbered",
+            start,
+          });
           const buffer = await createDocx({
             package: {
               numbering: minted.definitions,
@@ -746,7 +947,13 @@ test(
                     type: "paragraph",
                     styleId: "Numbered",
                     name: "Numbered",
-                    pPr: { numPr: { kind: "reference", numId: minted.numId, ilvl: 0 } },
+                    pPr: {
+                      numPr: {
+                        kind: "reference",
+                        numId: minted.numId,
+                        ilvl: 0,
+                      },
+                    },
                   },
                 ],
               },
@@ -754,8 +961,12 @@ test(
                 content: Array.from({ length: count + 1 }, (_, index) => ({
                   type: "paragraph",
                   paraId: (index + 1).toString(16).padStart(8, "0"),
-                  ...(index === 0 ? {} : { formatting: { styleId: "Numbered" } }),
-                  content: [{ type: "run", content: [{ type: "text", text: "Item" }] }],
+                  ...(index === 0
+                    ? {}
+                    : { formatting: { styleId: "Numbered" } }),
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "Item" }] },
+                  ],
                 })),
               },
             },
@@ -763,9 +974,16 @@ test(
           const canonical = createCanonicalSession(
             await parseDocx(buffer, { preloadFonts: false }),
           ).unwrap();
-          let state = EditorState.create({ schema, doc: canonical.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: canonical.projection.doc,
+          });
           const before = canonical.document;
-          const position = { story: "main", blockId: "00000001", offset: 0 } as const;
+          const position = {
+            story: "main",
+            blockId: "00000001",
+            offset: 0,
+          } as const;
           state = publishCanonicalProjection({
             session: canonical,
             state,
@@ -790,13 +1008,17 @@ test(
             state,
             commit: canonical.prepareUndo(state).unwrap(),
           }).unwrap().state;
-          expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(before));
+          expect(canonicalReviewModel(canonical.document)).toEqual(
+            canonicalReviewModel(before),
+          );
           state = publishCanonicalProjection({
             session: canonical,
             state,
             commit: canonical.prepareRedo(state).unwrap(),
           }).unwrap().state;
-          expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(after));
+          expect(canonicalReviewModel(canonical.document)).toEqual(
+            canonicalReviewModel(after),
+          );
           for (const mode of ["direct", "tracked-changes"] as const) {
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
             const block = reviewer.snapshot().blocks.at(0);
@@ -818,9 +1040,13 @@ test(
             );
             expect(result.skipped).toEqual([]);
             expect(result.applied).toHaveLength(1);
-            const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+            const reopened = await FolioDocxReviewer.fromBuffer(
+              await reviewer.toBuffer(),
+            );
             for (const decision of ["accept", "reject"] as const) {
-              expect(canonicalReviewModel(reopened.toResolvedDocument(decision))).toEqual(
+              expect(
+                canonicalReviewModel(reopened.toResolvedDocument(decision)),
+              ).toEqual(
                 canonicalReviewModel(reviewer.toResolvedDocument(decision)),
               );
             }
@@ -869,7 +1095,12 @@ test("changing to a style without numbering drops style numbering before and aft
     index: number,
   ) => {
     const block = document.package.document.content.at(index);
-    if (!block || typeof block !== "object" || !("type" in block) || block.type !== "paragraph")
+    if (
+      !block ||
+      typeof block !== "object" ||
+      !("type" in block) ||
+      block.type !== "paragraph"
+    )
       panic("Expected a paragraph");
     return block as Paragraph;
   };
@@ -911,7 +1142,9 @@ test("changing to a style without numbering drops style numbering before and aft
     state,
     commit: canonical.prepareUndo(state).unwrap(),
   }).unwrap().state;
-  expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(before));
+  expect(canonicalReviewModel(canonical.document)).toEqual(
+    canonicalReviewModel(before),
+  );
 
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
   const block = reviewer.snapshot().blocks.at(0);
@@ -936,7 +1169,9 @@ test("changing to a style without numbering drops style numbering before and aft
   const live = reviewer.toDocument();
   expectUnnumbered(paragraphAt(live, 0));
   expect(paragraphAt(live, 1).listRendering?.marker).toBe("1.");
-  const saved = (await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer())).toDocument();
+  const saved = (
+    await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer())
+  ).toDocument();
   expectUnnumbered(paragraphAt(saved, 0));
   expect(paragraphAt(saved, 1).listRendering?.marker).toBe("1.");
   expect(canonicalReviewModel(saved)).toEqual(canonicalReviewModel(live));

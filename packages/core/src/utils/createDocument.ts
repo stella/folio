@@ -4,32 +4,38 @@
  * Provides functions to create new documents programmatically.
  */
 
-import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import { panic } from "better-result";
 
-import { BUILT_IN_STYLE_NAME, builtInHeadingStyleName } from "../docx/builtInStyles";
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
-import type {
-  Document,
-  DocxPackage,
-  DocumentBody,
-  DocumentSettings,
-  Paragraph,
-  Run,
-  TextContent,
-  SectionProperties,
-  Style,
-} from "../types/document";
+import {
+  BUILT_IN_STYLE_NAME,
+  builtInHeadingStyleName,
+} from "../docx/builtInStyles";
 import { BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID } from "../docx/defaultParagraphStyle";
 import { createParseWarningCollector } from "../docx/parseContext";
 import { formatParseWarnings } from "../docx/parseWarningMessage";
 import { DEFAULT_TAB_STOP_TWIPS } from "../docx/settingsParser";
-import { normalizeDocumentStyleSet, STYLE_SET_PART } from "../style-sets/styleSetNormalization";
+import {
+  normalizeDocumentStyleSet,
+  STYLE_SET_PART,
+} from "../style-sets/styleSetNormalization";
 import {
   DOCUMENT_PRESET_VERSION,
   type DocumentPreset,
   type DocumentStyleSet,
 } from "../style-sets/types";
+import type {
+  Document,
+  DocumentBody,
+  DocumentSettings,
+  DocxPackage,
+  Paragraph,
+  Run,
+  SectionProperties,
+  Style,
+  TextContent,
+} from "../types/document";
 
 /**
  * `compatibilityMode` a new document declares, so it is laid out, and read
@@ -378,7 +384,10 @@ type CreateEmptyDocumentStyleOptions =
 export type CreateEmptyDocumentOptions = CreateEmptyDocumentBaseOptions &
   CreateEmptyDocumentStyleOptions;
 
-type CreateDocumentWithTextOptions = Omit<CreateEmptyDocumentBaseOptions, "initialText"> &
+type CreateDocumentWithTextOptions = Omit<
+  CreateEmptyDocumentBaseOptions,
+  "initialText"
+> &
   CreateEmptyDocumentStyleOptions;
 
 /**
@@ -404,10 +413,17 @@ type CreateDocumentWithTextOptions = Omit<CreateEmptyDocumentBaseOptions, "initi
  * });
  * ```
  */
-export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): Document {
+export function createEmptyDocument(
+  options: CreateEmptyDocumentOptions = {},
+): Document {
   const suppliedStyleSet = options.preset?.styleSet ?? options.styleSet;
-  if (options.preset?.version !== undefined && options.preset.version !== DOCUMENT_PRESET_VERSION) {
-    return panic(`Unsupported document preset version: ${options.preset.version}`);
+  if (
+    options.preset?.version !== undefined &&
+    options.preset.version !== DOCUMENT_PRESET_VERSION
+  ) {
+    return panic(
+      `Unsupported document preset version: ${options.preset.version}`,
+    );
   }
   // A style set is portable and may have been persisted before folio learned
   // to repair one, so it enters through the same normalisation a `.docx` does
@@ -467,7 +483,9 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
     type: "paragraph",
     content: [run],
     formatting: {
-      styleId: styleSet?.initialParagraphStyleId ?? BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID,
+      styleId:
+        styleSet?.initialParagraphStyleId ??
+        BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID,
     },
   };
 

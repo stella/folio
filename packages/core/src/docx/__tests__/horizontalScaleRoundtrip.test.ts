@@ -12,7 +12,11 @@ const parseScale = (value: string) => {
   if (!runProperties || runProperties.type !== "element") {
     throw new Error("Expected run properties element");
   }
-  return parseRunProperties(runProperties, null, RUN_PROPERTY_OWNERS.standalone);
+  return parseRunProperties(
+    runProperties,
+    null,
+    RUN_PROPERTY_OWNERS.standalone,
+  );
 };
 
 describe("horizontal text scale round-trip", () => {
@@ -27,7 +31,9 @@ describe("horizontal text scale round-trip", () => {
     const formatting = parseScale(value);
 
     expect(formatting?.scale).toBe(expected);
-    expect(serializeTextFormatting(formatting)).toContain(`<w:w w:val="${expected}"/>`);
+    expect(serializeTextFormatting(formatting)).toContain(
+      `<w:w w:val="${expected}"/>`,
+    );
   });
 
   test.each([
@@ -49,6 +55,8 @@ describe("horizontal text scale round-trip", () => {
     // the element the author wrote is not folio's to discard, so it comes back
     // verbatim from the sink rather than being dropped.
     expect(formatting?.scale).toBeUndefined();
-    expect(serializeTextFormatting(formatting)).toContain(`<w:w w:val="${value}"/>`);
+    expect(serializeTextFormatting(formatting)).toContain(
+      `<w:w w:val="${value}"/>`,
+    );
   });
 });

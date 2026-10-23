@@ -17,11 +17,11 @@
  * one painter.
  */
 
-import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorState, PluginSpec } from "prosemirror-state";
 
+import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import { collectBlockChunks, joinChunks, offsetToDocPos } from "./pmTextScan";
 
 export type AnonymizationTerm = {
@@ -49,9 +49,10 @@ type AnonymizationDecorationState = {
   matches: readonly AnonymizationMatch[];
 };
 
-export const anonymizationDecorationsKey = createPluginKeyOwner<AnonymizationDecorationState>(
-  "anonymizationDecorations",
-);
+export const anonymizationDecorationsKey =
+  createPluginKeyOwner<AnonymizationDecorationState>(
+    "anonymizationDecorations",
+  );
 
 export const slugAnonymizationLabel = (label: string): string =>
   label.toLowerCase().replace(/[^a-z0-9]+/gu, "-");
@@ -92,13 +93,19 @@ const buildMatcher = (terms: readonly AnonymizationTerm[]): CompiledTerm[] => {
     const alternation = surfaces.map(escapeChar).join("|");
     compiled.push({
       term,
-      regex: new RegExp(`(?<![\\p{L}\\p{N}])(?:${alternation})(?![\\p{L}\\p{N}])`, "giu"),
+      regex: new RegExp(
+        `(?<![\\p{L}\\p{N}])(?:${alternation})(?![\\p{L}\\p{N}])`,
+        "giu",
+      ),
     });
   }
   return compiled;
 };
 
-const buildMatches = (doc: PMNode, terms: readonly AnonymizationTerm[]): AnonymizationMatch[] => {
+const buildMatches = (
+  doc: PMNode,
+  terms: readonly AnonymizationTerm[],
+): AnonymizationMatch[] => {
   const compiled = buildMatcher(terms);
   if (compiled.length === 0) {
     return [];
@@ -205,7 +212,9 @@ export const createAnonymizationDecorationsPlugin = ({
       }
       return {
         update(updatedView) {
-          const next = anonymizationDecorationsKey.getState(updatedView.state)?.matches;
+          const next = anonymizationDecorationsKey.getState(
+            updatedView.state,
+          )?.matches;
           if (next && next !== last) {
             last = next;
             onMatchesChange(next);
@@ -231,5 +240,7 @@ export const setAnonymizationTermsMeta = (
 });
 
 /** Read anonymization matches owned by this editor state. */
-export const getAnonymizationMatches = (state: EditorState): readonly AnonymizationMatch[] =>
+export const getAnonymizationMatches = (
+  state: EditorState,
+): readonly AnonymizationMatch[] =>
   anonymizationDecorationsKey.getState(state)?.matches ?? [];

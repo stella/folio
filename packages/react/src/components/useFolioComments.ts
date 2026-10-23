@@ -24,12 +24,13 @@ import {
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { isValidHexId } from "@stll/folio-core/utils/hexId";
+
 import {
-  PENDING_COMMENT_ID,
   countOpenCommentThreads,
   createComment as buildComment,
   getCommentAuthorKey,
   getCommentParentId,
+  PENDING_COMMENT_ID,
   seedCommentIdAbove,
 } from "./commentsHelpers";
 
@@ -41,8 +42,10 @@ import {
  * serializer, so they aren't guaranteed to satisfy the id shape those trust.
  */
 function sanitizeCommentParagraph(paragraph: Paragraph): Paragraph {
-  const paraIdValid = paragraph.paraId === undefined || isValidHexId(paragraph.paraId);
-  const textIdValid = paragraph.textId === undefined || isValidHexId(paragraph.textId);
+  const paraIdValid =
+    paragraph.paraId === undefined || isValidHexId(paragraph.paraId);
+  const textIdValid =
+    paragraph.textId === undefined || isValidHexId(paragraph.textId);
   if (paraIdValid && textIdValid) {
     return paragraph;
   }
@@ -111,14 +114,19 @@ export function useFolioComments({
   committedComments,
 }: UseFolioCommentsOptions) {
   const [showCommentsSidebar, setShowCommentsSidebar] = useState(false);
-  const [visibleCommentAuthors, setVisibleCommentAuthors] = useState<Set<string> | null>(null);
+  const [visibleCommentAuthors, setVisibleCommentAuthors] =
+    useState<Set<string> | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [internalComments, setInternalComments] = useState<Comment[]>([]);
   const sanitizedCommentsProp = useMemo(
-    () => (commentsProp !== undefined ? sanitizeControlledComments(commentsProp) : undefined),
+    () =>
+      commentsProp !== undefined
+        ? sanitizeControlledComments(commentsProp)
+        : undefined,
     [commentsProp],
   );
-  const commentsMode = sanitizedCommentsProp === undefined ? "uncontrolled" : "controlled";
+  const commentsMode =
+    sanitizedCommentsProp === undefined ? "uncontrolled" : "controlled";
   const isControlledComments = commentsMode === "controlled";
   const comments = sanitizedCommentsProp ?? internalComments;
 
@@ -197,7 +205,9 @@ export function useFolioComments({
     from: number;
     to: number;
   } | null>(null);
-  const [addCommentYPosition, setAddCommentYPosition] = useState<number | null>(null);
+  const [addCommentYPosition, setAddCommentYPosition] = useState<number | null>(
+    null,
+  );
 
   // Floating "add comment" button position (relative to scroll container, null = hidden)
   const [floatingCommentBtn, setFloatingCommentBtn] = useState<{
@@ -222,7 +232,11 @@ export function useFolioComments({
     bodyComments.length > 0
   ) {
     setCommentsLoaded(true);
-    if (committedComments == null && !isControlledComments && doc?.package.document.comments) {
+    if (
+      committedComments == null &&
+      !isControlledComments &&
+      doc?.package.document.comments
+    ) {
       const loadedComments = doc.package.document.comments;
       setInternalComments(loadedComments);
       setLoadedCommentsNotification({ comments: loadedComments });
@@ -234,8 +248,11 @@ export function useFolioComments({
     }
   }
 
-  const notifyLoadedComments = useEffectEvent((loaded: Comment[]) => onCommentsChange?.(loaded));
-  const lastLoadedNotificationRef = useRef<typeof loadedCommentsNotification>(null);
+  const notifyLoadedComments = useEffectEvent((loaded: Comment[]) =>
+    onCommentsChange?.(loaded),
+  );
+  const lastLoadedNotificationRef =
+    useRef<typeof loadedCommentsNotification>(null);
   useEffect(() => {
     if (
       loadedCommentsNotification === null ||
@@ -280,7 +297,11 @@ export function useFolioComments({
     const visibleRootIds = new Set<number>();
     for (const comment of listedComments) {
       const parentId = getCommentParentId(comment);
-      if (parentId === null || parentId === undefined || !visibleCommentIds.has(comment.id)) {
+      if (
+        parentId === null ||
+        parentId === undefined ||
+        !visibleCommentIds.has(comment.id)
+      ) {
         continue;
       }
       visibleRootIds.add(parentId);
@@ -290,11 +311,14 @@ export function useFolioComments({
       if (parentId !== null && parentId !== undefined) {
         return visibleCommentIds.has(comment.id);
       }
-      return visibleCommentIds.has(comment.id) || visibleRootIds.has(comment.id);
+      return (
+        visibleCommentIds.has(comment.id) || visibleRootIds.has(comment.id)
+      );
     });
   }, [listedComments, visibleCommentIds]);
 
-  const activeCommentVisible = activeCommentId !== null && visibleCommentIds.has(activeCommentId);
+  const activeCommentVisible =
+    activeCommentId !== null && visibleCommentIds.has(activeCommentId);
 
   if (activeCommentId !== null && !activeCommentVisible) {
     setActiveCommentId(null);
@@ -306,14 +330,19 @@ export function useFolioComments({
       return;
     }
 
-    const nodes = root.querySelectorAll<HTMLElement>(`.layout-run-text${COMMENT_ANCHOR_SELECTOR}`);
+    const nodes = root.querySelectorAll<HTMLElement>(
+      `.layout-run-text${COMMENT_ANCHOR_SELECTOR}`,
+    );
     for (const node of nodes) {
       // A run inside overlapping ranges belongs to every one of them, so it
       // stays lit while any of its comments is visible and goes active for
       // whichever of them the user is on.
-      const commentIds = commentAnchorIds(node).map((id) => Number.parseInt(id, 10));
+      const commentIds = commentAnchorIds(node).map((id) =>
+        Number.parseInt(id, 10),
+      );
       const isVisible = commentIds.some(
-        (commentId) => commentId === PENDING_COMMENT_ID || visibleCommentIds.has(commentId),
+        (commentId) =>
+          commentId === PENDING_COMMENT_ID || visibleCommentIds.has(commentId),
       );
       if (!isVisible) {
         node.style.backgroundColor = "transparent";
@@ -324,7 +353,8 @@ export function useFolioComments({
       }
 
       if (activeCommentId !== null && commentIds.includes(activeCommentId)) {
-        node.style.backgroundColor = "var(--doc-comment-active-bg, rgba(255, 212, 0, 0.22))";
+        node.style.backgroundColor =
+          "var(--doc-comment-active-bg, rgba(255, 212, 0, 0.22))";
         node.style.borderBottom =
           "1px solid var(--doc-comment-active-border, rgba(180, 130, 0, 0.62))";
         node.style.boxShadow = "none";
@@ -332,8 +362,10 @@ export function useFolioComments({
         continue;
       }
 
-      node.style.backgroundColor = "var(--doc-comment-bg, rgba(255, 212, 0, 0.08))";
-      node.style.borderBottom = "1px solid var(--doc-comment-border, rgba(180, 130, 0, 0.24))";
+      node.style.backgroundColor =
+        "var(--doc-comment-bg, rgba(255, 212, 0, 0.08))";
+      node.style.borderBottom =
+        "1px solid var(--doc-comment-border, rgba(180, 130, 0, 0.24))";
       node.style.boxShadow = "none";
       delete node.dataset["activeComment"];
     }
@@ -347,22 +379,24 @@ export function useFolioComments({
     highlightLayoutCommit(anchorPositions, syncCommentHighlightStyles);
   }, [syncCommentHighlightStyles, anchorPositions]);
 
-  const scheduleHighlightCommit = useEffectEvent((_comments: Comment[], sync: () => void) => {
-    sync();
-    let secondFrame: number | null = null;
-    const firstFrame = requestAnimationFrame(() => {
+  const scheduleHighlightCommit = useEffectEvent(
+    (_comments: Comment[], sync: () => void) => {
       sync();
-      secondFrame = requestAnimationFrame(sync);
-    });
-    const timeout = setTimeout(sync, 120);
-    return () => {
-      cancelAnimationFrame(firstFrame);
-      if (secondFrame !== null) {
-        cancelAnimationFrame(secondFrame);
-      }
-      clearTimeout(timeout);
-    };
-  });
+      let secondFrame: number | null = null;
+      const firstFrame = requestAnimationFrame(() => {
+        sync();
+        secondFrame = requestAnimationFrame(sync);
+      });
+      const timeout = setTimeout(sync, 120);
+      return () => {
+        cancelAnimationFrame(firstFrame);
+        if (secondFrame !== null) {
+          cancelAnimationFrame(secondFrame);
+        }
+        clearTimeout(timeout);
+      };
+    },
+  );
   useEffect(
     () => scheduleHighlightCommit(comments, syncCommentHighlightStyles),
     [comments, syncCommentHighlightStyles],

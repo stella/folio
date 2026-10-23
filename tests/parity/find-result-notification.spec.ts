@@ -1,4 +1,5 @@
 import { test } from "@playwright/test";
+
 import type { FindNotificationBridge } from "../../packages/playground-vue/src/findNotificationBridge";
 import { expect, openEditor, VUE_ADAPTER } from "./parity-fixture";
 
@@ -8,7 +9,9 @@ declare global {
 
 // Composable tests invoke a plain callback; mount the adapter so Vue's event
 // listener forwarding participates in every notification.
-test("find result listener receives one notification per update [vue]", async ({ page }) => {
+test("find result listener receives one notification per update [vue]", async ({
+  page,
+}) => {
   await openEditor(page, VUE_ADAPTER);
   const updates = await page.evaluate(() => {
     const bridge = globalThis.__folioVueFindNotifications;

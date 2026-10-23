@@ -44,6 +44,8 @@ export function isWorkerFontMetricsEnabled(): boolean {
  * Test-only helper to set the flag bag without polluting host state.
  * Production callers should set `globalThis.__folioFeatureFlags` directly.
  */
-export function setFolioMeasurementFlags(flags: FolioMeasurementFeatureFlags | undefined): void {
+export function setFolioMeasurementFlags(
+  flags: FolioMeasurementFeatureFlags | undefined,
+): void {
   globalThis.__folioFeatureFlags = flags;
 }

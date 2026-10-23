@@ -9,26 +9,44 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
-import { parseDocx } from "../../docx/parser";
-import { createDocx } from "../../docx/rezip";
-import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
-import { fromMarkdown } from "../../markdown/fromMarkdown";
-import type { BlockContent, Document, StyleDefinitions } from "../../types/document";
-import { updateDocumentContent } from "./fromProseDoc";
-import { footnoteToProseDoc, headerFooterToProseDoc, toProseDoc } from "./toProseDoc";
-import { paragraphNumberingReference, paragraphNumberingReferenceId } from "@stll/docx-core/model";
+import {
+  paragraphNumberingReference,
+  paragraphNumberingReferenceId,
+} from "@stll/docx-core/model";
 import {
   applyDocumentOps,
   DOCUMENT_OP_TYPES,
   normalizeForOps,
   paragraphVisibleText,
 } from "@stll/docx-core/ops";
-import { computeListRendering, getCachedNumberingMap } from "../../docx/numberingParser";
-import { listRenderingAttrPatch } from "../listRenderingAttrs";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { listRenderingDefinitionsMatch } from "../../docx/listRendering";
+import {
+  computeListRendering,
+  getCachedNumberingMap,
+} from "../../docx/numberingParser";
+import { parseDocx } from "../../docx/parser";
+import { createDocx } from "../../docx/rezip";
+import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
+import { fromMarkdown } from "../../markdown/fromMarkdown";
+import type {
+  BlockContent,
+  Document,
+  StyleDefinitions,
+} from "../../types/document";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { updateDocumentContent } from "./fromProseDoc";
+import {
+  footnoteToProseDoc,
+  headerFooterToProseDoc,
+  toProseDoc,
+} from "./toProseDoc";
 
 type FixtureOptions = {
   /** `w:start` for abstract level 0. */
@@ -49,14 +67,17 @@ const numberedFixture = async ({
   const model = fromMarkdown("1. Alpha\n2. Beta\n\nTail.");
   // Operations address authored package ids; normalization does not allocate them.
   for (const [index, block] of model.package.document.content.entries()) {
-    if (block.type === "paragraph") block.paraId = (index + 1).toString(16).padStart(8, "0");
+    if (block.type === "paragraph")
+      block.paraId = (index + 1).toString(16).padStart(8, "0");
   }
   const [alpha, beta] = model.package.document.content;
   if (alpha?.type !== "paragraph" || beta?.type !== "paragraph") {
     throw new Error("fixture must start with two paragraphs");
   }
   const numId = paragraphNumberingReferenceId(alpha.formatting?.numPr);
-  const instance = model.package.numbering?.nums.find((num) => num.numId === numId);
+  const instance = model.package.numbering?.nums.find(
+    (num) => num.numId === numId,
+  );
   const abstract = model.package.numbering?.abstractNums.find(
     (definition) => definition.abstractNumId === instance?.abstractNumId,
   );
@@ -76,7 +97,10 @@ const numberedFixture = async ({
       lvlText: "%2.",
       pPr: { indentLeft: 1440, indentFirstLine: -360, hangingIndent: true },
     };
-    beta.formatting = { ...beta.formatting, numPr: { kind: "reference", numId, ilvl: 1 } };
+    beta.formatting = {
+      ...beta.formatting,
+      numPr: { kind: "reference", numId, ilvl: 1 },
+    };
   }
   if (startOverride !== undefined) {
     instance.levelOverrides = [{ ilvl: 0, startOverride }];
@@ -88,12 +112,17 @@ const numberedFixture = async ({
         instruction: "LISTNUM",
         fieldType: "LISTNUM",
         fieldCode: [],
-        fieldResult: [{ type: "run", content: [{ type: "text", text: "(a)" }] }],
+        fieldResult: [
+          { type: "run", content: [{ type: "text", text: "(a)" }] },
+        ],
       },
       { type: "run", content: [{ type: "tab" }] },
     );
   }
-  return parseDocx(await createDocx(model), { preloadFonts: false, detectVariables: false });
+  return parseDocx(await createDocx(model), {
+    preloadFonts: false,
+    detectVariables: false,
+  });
 };
 
 const markers = (model: Document): (string | null)[] =>
@@ -110,10 +139,19 @@ describe("listRendering.levelStarts round-trip", () => {
   test("unchanged ordinary lists preserve each parsed counter marker and rendering field", async () => {
     const initial = await numberedFixture({ startOverride: 5 });
     const projection = toProseDoc(initial);
-    for (const [index, paragraph] of initial.package.document.content.entries()) {
-      if (paragraph.type !== "paragraph" || paragraph.listRendering === undefined) continue;
+    for (const [
+      index,
+      paragraph,
+    ] of initial.package.document.content.entries()) {
+      if (
+        paragraph.type !== "paragraph" ||
+        paragraph.listRendering === undefined
+      )
+        continue;
       const attrs = projection.child(index).attrs;
-      for (const [key, value] of Object.entries(listRenderingAttrPatch(paragraph.listRendering))) {
+      for (const [key, value] of Object.entries(
+        listRenderingAttrPatch(paragraph.listRendering),
+      )) {
         expect(attrs[key]).toEqual(value);
       }
     }
@@ -122,58 +160,87 @@ describe("listRendering.levelStarts round-trip", () => {
   });
 
   test("unchanged LISTNUM folding preserves its suffix, child advance and second-slot alignment", async () => {
-    const initial = await numberedFixture({ start: 7, nestedStart: 1, foldedListNum: true });
+    const initial = await numberedFixture({
+      start: 7,
+      nestedStart: 1,
+      foldedListNum: true,
+    });
     const paragraph = initial.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph" || paragraph.listRendering === undefined)
+    if (
+      paragraph?.type !== "paragraph" ||
+      paragraph.listRendering === undefined
+    )
       throw new TypeError("Expected parsed LISTNUM rendering.");
     expect(paragraph.listRendering.marker).toBe("7.\t(a)");
     expect(paragraph.listRendering.markerTemplate).toBe("%1.");
     expect(paragraph.listRendering.foldedMarkerSuffix).toBe("(a)");
     expect(paragraph.listRendering.implicitChildLevelAdvances).toBe(1);
     expect(paragraph.listRendering.markerSecondSlotOffsetTwips).toBe(360);
-    expect(paragraph.content.some((item) => item.type === "complexField")).toBe(false);
+    expect(paragraph.content.some((item) => item.type === "complexField")).toBe(
+      false,
+    );
     const projection = toProseDoc(initial);
-    for (const [key, value] of Object.entries(listRenderingAttrPatch(paragraph.listRendering))) {
+    for (const [key, value] of Object.entries(
+      listRenderingAttrPatch(paragraph.listRendering),
+    )) {
       expect(projection.child(0).attrs[key]).toEqual(value);
     }
     const rebuilt = updateDocumentContent(initial, projection);
     const rebuiltFirst = rebuilt.package.document.content.at(0);
-    expect(rebuiltFirst?.type === "paragraph" ? rebuiltFirst.listRendering : undefined).toEqual(
-      paragraph.listRendering,
-    );
+    expect(
+      rebuiltFirst?.type === "paragraph"
+        ? rebuiltFirst.listRendering
+        : undefined,
+    ).toEqual(paragraph.listRendering);
     expect(markers(rebuilt).at(1)).toBe("b.");
     expect(markers(initial).at(0)).toBe("7.\t(a)");
     expect(markers(rebuilt).at(0)).toBe("7.\t(a)");
   });
 
   test("definition matching excludes generated paragraph counter and folded-field metadata", async () => {
-    const initial = await numberedFixture({ start: 7, nestedStart: 1, foldedListNum: true });
+    const initial = await numberedFixture({
+      start: 7,
+      nestedStart: 1,
+      foldedListNum: true,
+    });
     const paragraph = initial.package.document.content.at(0);
-    const rendering = paragraph?.type === "paragraph" ? paragraph.listRendering : undefined;
-    if (rendering === undefined) throw new TypeError("Expected parsed list rendering.");
+    const rendering =
+      paragraph?.type === "paragraph" ? paragraph.listRendering : undefined;
+    if (rendering === undefined)
+      throw new TypeError("Expected parsed list rendering.");
     let cases = 0;
     await assertProperty(
       fc.property(
         fc.record({
           marker: fc.string(),
           foldedMarkerSuffix: fc.option(fc.string(), { nil: undefined }),
-          implicitChildLevelAdvances: fc.option(fc.integer({ min: 0, max: 100 }), {
-            nil: undefined,
-          }),
-          markerSecondSlotOffsetTwips: fc.option(fc.integer({ min: 0, max: 10_000 }), {
-            nil: undefined,
-          }),
+          implicitChildLevelAdvances: fc.option(
+            fc.integer({ min: 0, max: 100 }),
+            {
+              nil: undefined,
+            },
+          ),
+          markerSecondSlotOffsetTwips: fc.option(
+            fc.integer({ min: 0, max: 10_000 }),
+            {
+              nil: undefined,
+            },
+          ),
         }),
         (local) => {
           cases += 1;
           const changed = { ...structuredClone(rendering), ...local };
           expect(listRenderingDefinitionsMatch(rendering, changed)).toBe(true);
           expect(
-            listRenderingDefinitionsMatch(rendering, { ...changed, numId: rendering.numId + 1 }),
+            listRenderingDefinitionsMatch(rendering, {
+              ...changed,
+              numId: rendering.numId + 1,
+            }),
           ).toBe(false);
           const model = structuredClone(initial);
           const source = model.package.document.content.at(0);
-          if (source?.type !== "paragraph") throw new TypeError("Expected list paragraph.");
+          if (source?.type !== "paragraph")
+            throw new TypeError("Expected list paragraph.");
           // Alignment must still match the definition for the cached projection path.
           source.listRendering = {
             ...changed,
@@ -194,14 +261,22 @@ describe("listRendering.levelStarts round-trip", () => {
           }
         },
       ),
-      { id: "definition matching excludes generated paragraph counter and folded-field metadata" },
+      {
+        id: "definition matching excludes generated paragraph counter and folded-field metadata",
+      },
     );
     expect(cases).toBeGreaterThan(0);
   });
 
   test("same reference recomputes cached rendering when its definition changes", async () => {
     const initial = await numberedFixture({ startOverride: 5 });
-    for (const mutation of ["template", "start", "format", "marker", "tabs"] as const) {
+    for (const mutation of [
+      "template",
+      "start",
+      "format",
+      "marker",
+      "tabs",
+    ] as const) {
       const changed = structuredClone(initial);
       const paragraph = changed.package.document.content.at(0);
       const numbering = changed.package.numbering;
@@ -219,7 +294,8 @@ describe("listRendering.levelStarts round-trip", () => {
         (abstract) => abstract.abstractNumId === instance?.abstractNumId,
       );
       const level = definition?.levels.at(0);
-      if (!instance || !level) throw new TypeError("Missing numbering definition.");
+      if (!instance || !level)
+        throw new TypeError("Missing numbering definition.");
       switch (mutation) {
         case "template":
           level.lvlText = "(%1)";
@@ -241,10 +317,16 @@ describe("listRendering.levelStarts round-trip", () => {
           throw new TypeError(`Unknown rendering mutation ${unreachable}`);
         }
       }
-      const computed = computeListRendering(numPr, getCachedNumberingMap(numbering));
-      if (computed === null) throw new TypeError("Changed definition did not resolve.");
+      const computed = computeListRendering(
+        numPr,
+        getCachedNumberingMap(numbering),
+      );
+      if (computed === null)
+        throw new TypeError("Changed definition did not resolve.");
       const attrs = toProseDoc(changed).child(0).attrs;
-      for (const [key, value] of Object.entries(listRenderingAttrPatch(computed))) {
+      for (const [key, value] of Object.entries(
+        listRenderingAttrPatch(computed),
+      )) {
         expect(attrs[key]).toEqual(value);
       }
       expect(attrs["listMarker"]).toBe(level.lvlText);
@@ -257,7 +339,12 @@ describe("listRendering.levelStarts round-trip", () => {
         fc.array(
           fc.record({
             start: fc.integer({ min: 1, max: 30 }),
-            ownership: fc.constantFrom("direct", "cachedStyle", "resolvedStyle", "none"),
+            ownership: fc.constantFrom(
+              "direct",
+              "cachedStyle",
+              "resolvedStyle",
+              "none",
+            ),
             template: fc.constantFrom("%1.", "(%1)", "%1)"),
             format: fc.constantFrom("decimal", "upperRoman", "lowerLetter"),
             bold: fc.boolean(),
@@ -279,7 +366,8 @@ describe("listRendering.levelStarts round-trip", () => {
             paragraph.formatting.numPr,
             getCachedNumberingMap(originalNumbering),
           );
-          if (cached === null) throw new TypeError("Expected cached list rendering.");
+          if (cached === null)
+            throw new TypeError("Expected cached list rendering.");
           paragraph.listRendering = cached;
           const numPr = paragraph.formatting.numPr;
           for (const mutation of trace) {
@@ -289,9 +377,14 @@ describe("listRendering.levelStarts round-trip", () => {
             if (source?.type !== "paragraph" || numbering === undefined)
               throw new TypeError("Expected authored numbering reference.");
             const ilvl = numPr.ilvl ?? 0;
-            const instance = numbering.nums.find((num) => num.numId === numPr.numId);
+            const instance = numbering.nums.find(
+              (num) => num.numId === numPr.numId,
+            );
             const level = numbering.abstractNums
-              .find((definition) => definition.abstractNumId === instance?.abstractNumId)
+              .find(
+                (definition) =>
+                  definition.abstractNumId === instance?.abstractNumId,
+              )
               ?.levels.find((candidate) => candidate.ilvl === ilvl);
             if (instance === undefined || level === undefined)
               throw new TypeError("Expected owned numbering definition.");
@@ -299,10 +392,17 @@ describe("listRendering.levelStarts round-trip", () => {
             level.lvlText = mutation.template;
             level.numFmt = mutation.format;
             level.rPr = { bold: mutation.bold };
-            level.pPr = { tabs: [{ alignment: "left", position: mutation.tab }] };
-            const computed = computeListRendering(numPr, getCachedNumberingMap(numbering));
+            level.pPr = {
+              tabs: [{ alignment: "left", position: mutation.tab }],
+            };
+            const computed = computeListRendering(
+              numPr,
+              getCachedNumberingMap(numbering),
+            );
             if (computed === null)
-              throw new TypeError("Changed numbering definition did not resolve.");
+              throw new TypeError(
+                "Changed numbering definition did not resolve.",
+              );
             const {
               numPr: _direct,
               numPrFromStyle: _cachedStyle,
@@ -310,7 +410,9 @@ describe("listRendering.levelStarts round-trip", () => {
               ...formatting
             } = source.formatting ?? {};
             const styles = {
-              styles: [{ type: "paragraph", styleId: "ListStyle", pPr: { numPr } }],
+              styles: [
+                { type: "paragraph", styleId: "ListStyle", pPr: { numPr } },
+              ],
             } satisfies StyleDefinitions;
             current.package.styles = styles;
             switch (mutation.ownership) {
@@ -346,7 +448,9 @@ describe("listRendering.levelStarts round-trip", () => {
                 rows: [
                   {
                     type: "tableRow",
-                    cells: [{ type: "tableCell", content: [structuredClone(source)] }],
+                    cells: [
+                      { type: "tableCell", content: [structuredClone(source)] },
+                    ],
                   },
                 ],
               },
@@ -354,10 +458,16 @@ describe("listRendering.levelStarts round-trip", () => {
             const projections = [
               { document: toProseDoc(current), expectedCount: 1 },
               {
-                document: headerFooterToProseDoc(content, { numbering, styles }),
+                document: headerFooterToProseDoc(content, {
+                  numbering,
+                  styles,
+                }),
                 expectedCount: 2,
               },
-              { document: footnoteToProseDoc(content, { numbering, styles }), expectedCount: 2 },
+              {
+                document: footnoteToProseDoc(content, { numbering, styles }),
+                expectedCount: 2,
+              },
             ];
             for (const projection of projections) {
               let count = 0;
@@ -386,13 +496,21 @@ describe("listRendering.levelStarts round-trip", () => {
   });
 
   test("changing a LISTNUM alignment definition invalidates its paragraph-local rendering", async () => {
-    const initial = await numberedFixture({ start: 7, nestedStart: 1, foldedListNum: true });
+    const initial = await numberedFixture({
+      start: 7,
+      nestedStart: 1,
+      foldedListNum: true,
+    });
     const changed = structuredClone(initial);
     const nextLevel = changed.package.numbering?.abstractNums
       .at(0)
       ?.levels.find((level) => level.ilvl === 1);
     if (!nextLevel) throw new TypeError("Expected child numbering level.");
-    nextLevel.pPr = { ...nextLevel.pPr, indentFirstLine: -720, hangingIndent: true };
+    nextLevel.pPr = {
+      ...nextLevel.pPr,
+      indentFirstLine: -720,
+      hangingIndent: true,
+    };
     const attrs = toProseDoc(changed).child(0).attrs;
     expect(attrs["listMarker"]).toBe("%1.");
     expect(attrs["listImplicitChildLevelAdvances"]).toBeNull();
@@ -403,8 +521,12 @@ describe("listRendering.levelStarts round-trip", () => {
     for (const foldedListNum of [false, true]) {
       const initial = await numberedFixture({ nestedStart: 1, foldedListNum });
       const paragraph = initial.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") throw new TypeError("Expected numbered paragraph.");
-      paragraph.formatting = { ...paragraph.formatting, numPr: { kind: "none" } };
+      if (paragraph?.type !== "paragraph")
+        throw new TypeError("Expected numbered paragraph.");
+      paragraph.formatting = {
+        ...paragraph.formatting,
+        numPr: { kind: "none" },
+      };
       const attrs = toProseDoc(initial).child(0).attrs;
       for (const [key, value] of Object.entries(CLEARED_LIST_RENDERING_ATTRS)) {
         expect(attrs[key]).toEqual(value);
@@ -414,15 +536,23 @@ describe("listRendering.levelStarts round-trip", () => {
   });
 
   test("authored numbering operations replace stale cached starts and clear removed lists", async () => {
-    const initial = normalizeForOps(await numberedFixture({ startOverride: 5 }));
+    const initial = normalizeForOps(
+      await numberedFixture({ startOverride: 5 }),
+    );
     const paragraph = initial.package.document.content.at(0);
     if (paragraph?.type !== "paragraph" || paragraph.paraId === undefined)
       throw new TypeError("Expected identified paragraph.");
     const numId = paragraphNumberingReferenceId(paragraph.formatting?.numPr);
-    const original = initial.package.numbering?.nums.find((num) => num.numId === numId);
-    if (original === undefined) throw new TypeError("Expected numbering instance.");
+    const original = initial.package.numbering?.nums.find(
+      (num) => num.numId === numId,
+    );
+    if (original === undefined)
+      throw new TypeError("Expected numbering instance.");
     const nextId =
-      Math.max(0, ...(initial.package.numbering?.nums.map((num) => num.numId) ?? [])) + 1;
+      Math.max(
+        0,
+        ...(initial.package.numbering?.nums.map((num) => num.numId) ?? []),
+      ) + 1;
     const changed = applyDocumentOps(initial, [
       {
         type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
@@ -432,7 +562,9 @@ describe("listRendering.levelStarts round-trip", () => {
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
         story: "main",
         blockId: paragraph.paraId,
-        patch: { numPr: paragraphNumberingReference({ numId: nextId, ilvl: 0 }) },
+        patch: {
+          numPr: paragraphNumberingReference({ numId: nextId, ilvl: 0 }),
+        },
       },
     ]).unwrap();
     const projection = toProseDoc(changed.document);
@@ -447,14 +579,26 @@ describe("listRendering.levelStarts round-trip", () => {
         patch: { numPr: { kind: "none" } },
       },
     ]).unwrap();
-    expect(toProseDoc(cleared.document).firstChild?.attrs["listNumFmt"]).toBeNull();
+    expect(
+      toProseDoc(cleared.document).firstChild?.attrs["listNumFmt"],
+    ).toBeNull();
     expect(markers(cleared.document).at(0)).toBeNull();
-    expect(applyDocumentOps(changed.document, changed.inverse).unwrap().document).toEqual(initial);
+    expect(
+      applyDocumentOps(changed.document, changed.inverse).unwrap().document,
+    ).toEqual(initial);
   });
 
-  const cases: { name: string; options: FixtureOptions; expected: (string | null)[] }[] = [
+  const cases: {
+    name: string;
+    options: FixtureOptions;
+    expected: (string | null)[];
+  }[] = [
     { name: "default start", options: {}, expected: ["1.", "2.", null] },
-    { name: "abstract level start 5", options: { start: 5 }, expected: ["5.", "6.", null] },
+    {
+      name: "abstract level start 5",
+      options: { start: 5 },
+      expected: ["5.", "6.", null],
+    },
     {
       name: "instance start override 5",
       options: { startOverride: 5 },

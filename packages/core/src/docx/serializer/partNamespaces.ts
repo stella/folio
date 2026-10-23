@@ -12,13 +12,16 @@
  * nothing fails the save instead of being written unbound.
  */
 
-import { OOXML_NS, type OoxmlPrefix } from "@stll/docx-utils";
 import { TaggedError } from "better-result";
-import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 
-import { toTransitionalNamespaceUri } from "../transitionalSpelling";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import {
+  assertValidOoxmlNumericIds,
+  escapeXmlAttribute,
+} from "@stll/docx-core";
+import { OOXML_NS, type OoxmlPrefix } from "@stll/docx-utils";
+
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "../reviewHistoryNamespace";
+import { toTransitionalNamespaceUri } from "../transitionalSpelling";
 
 /**
  * A namespace a rebuilt WordprocessingML part may declare.
@@ -78,22 +81,60 @@ export type OoxmlNamespacePrefix =
  * URIs shared with the parser are taken from its table rather than retyped, so
  * the two cannot drift.
  */
-export const OOXML_NAMESPACES: Readonly<Record<OoxmlNamespacePrefix, OoxmlNamespace>> = {
+export const OOXML_NAMESPACES: Readonly<
+  Record<OoxmlNamespacePrefix, OoxmlNamespace>
+> = {
   wpc: { uri: OOXML_NS.wpc, ignorable: false },
-  cx: { uri: "http://schemas.microsoft.com/office/drawing/2014/chartex", ignorable: false },
-  cx1: { uri: "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex", ignorable: false },
-  cx2: { uri: "http://schemas.microsoft.com/office/drawing/2015/10/21/chartex", ignorable: false },
-  cx3: { uri: "http://schemas.microsoft.com/office/drawing/2016/5/9/chartex", ignorable: false },
-  cx4: { uri: "http://schemas.microsoft.com/office/drawing/2016/5/10/chartex", ignorable: false },
-  cx5: { uri: "http://schemas.microsoft.com/office/drawing/2016/5/11/chartex", ignorable: false },
-  cx6: { uri: "http://schemas.microsoft.com/office/drawing/2016/5/12/chartex", ignorable: false },
-  cx7: { uri: "http://schemas.microsoft.com/office/drawing/2016/5/13/chartex", ignorable: false },
-  cx8: { uri: "http://schemas.microsoft.com/office/drawing/2016/5/14/chartex", ignorable: false },
+  cx: {
+    uri: "http://schemas.microsoft.com/office/drawing/2014/chartex",
+    ignorable: false,
+  },
+  cx1: {
+    uri: "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex",
+    ignorable: false,
+  },
+  cx2: {
+    uri: "http://schemas.microsoft.com/office/drawing/2015/10/21/chartex",
+    ignorable: false,
+  },
+  cx3: {
+    uri: "http://schemas.microsoft.com/office/drawing/2016/5/9/chartex",
+    ignorable: false,
+  },
+  cx4: {
+    uri: "http://schemas.microsoft.com/office/drawing/2016/5/10/chartex",
+    ignorable: false,
+  },
+  cx5: {
+    uri: "http://schemas.microsoft.com/office/drawing/2016/5/11/chartex",
+    ignorable: false,
+  },
+  cx6: {
+    uri: "http://schemas.microsoft.com/office/drawing/2016/5/12/chartex",
+    ignorable: false,
+  },
+  cx7: {
+    uri: "http://schemas.microsoft.com/office/drawing/2016/5/13/chartex",
+    ignorable: false,
+  },
+  cx8: {
+    uri: "http://schemas.microsoft.com/office/drawing/2016/5/14/chartex",
+    ignorable: false,
+  },
   mc: { uri: OOXML_NS.mc, ignorable: false },
-  aink: { uri: "http://schemas.microsoft.com/office/drawing/2016/ink", ignorable: false },
-  am3d: { uri: "http://schemas.microsoft.com/office/drawing/2017/model3d", ignorable: false },
+  aink: {
+    uri: "http://schemas.microsoft.com/office/drawing/2016/ink",
+    ignorable: false,
+  },
+  am3d: {
+    uri: "http://schemas.microsoft.com/office/drawing/2017/model3d",
+    ignorable: false,
+  },
   o: { uri: OOXML_NS.o, ignorable: false },
-  oel: { uri: "http://schemas.microsoft.com/office/2019/extlst", ignorable: false },
+  oel: {
+    uri: "http://schemas.microsoft.com/office/2019/extlst",
+    ignorable: false,
+  },
   r: { uri: OOXML_NS.r, ignorable: false },
   m: { uri: OOXML_NS.m, ignorable: false },
   v: { uri: OOXML_NS.v, ignorable: false },
@@ -103,19 +144,40 @@ export const OOXML_NAMESPACES: Readonly<Record<OoxmlNamespacePrefix, OoxmlNamesp
   w: { uri: OOXML_NS.w, ignorable: false },
   w14: { uri: OOXML_NS.w14, ignorable: true },
   w15: { uri: OOXML_NS.w15, ignorable: true },
-  w16cex: { uri: "http://schemas.microsoft.com/office/word/2018/wordml/cex", ignorable: true },
-  w16cid: { uri: "http://schemas.microsoft.com/office/word/2016/wordml/cid", ignorable: true },
-  w16: { uri: "http://schemas.microsoft.com/office/word/2018/wordml", ignorable: true },
-  w16du: { uri: "http://schemas.microsoft.com/office/word/2023/wordml/word16du", ignorable: true },
+  w16cex: {
+    uri: "http://schemas.microsoft.com/office/word/2018/wordml/cex",
+    ignorable: true,
+  },
+  w16cid: {
+    uri: "http://schemas.microsoft.com/office/word/2016/wordml/cid",
+    ignorable: true,
+  },
+  w16: {
+    uri: "http://schemas.microsoft.com/office/word/2018/wordml",
+    ignorable: true,
+  },
+  w16du: {
+    uri: "http://schemas.microsoft.com/office/word/2023/wordml/word16du",
+    ignorable: true,
+  },
   w16sdtdh: {
     uri: "http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash",
     ignorable: true,
   },
-  w16se: { uri: "http://schemas.microsoft.com/office/word/2015/wordml/symex", ignorable: true },
+  w16se: {
+    uri: "http://schemas.microsoft.com/office/word/2015/wordml/symex",
+    ignorable: true,
+  },
   folio: { uri: FOLIO_REVIEW_HISTORY_NAMESPACE, ignorable: true },
   wpg: { uri: OOXML_NS.wpg, ignorable: false },
-  wpi: { uri: "http://schemas.microsoft.com/office/word/2010/wordprocessingInk", ignorable: false },
-  wne: { uri: "http://schemas.microsoft.com/office/word/2006/wordml", ignorable: false },
+  wpi: {
+    uri: "http://schemas.microsoft.com/office/word/2010/wordprocessingInk",
+    ignorable: false,
+  },
+  wne: {
+    uri: "http://schemas.microsoft.com/office/word/2006/wordml",
+    ignorable: false,
+  },
   wps: { uri: OOXML_NS.wps, ignorable: false },
   a: { uri: OOXML_NS.a, ignorable: false },
   pic: { uri: OOXML_NS.pic, ignorable: false },
@@ -127,7 +189,9 @@ const NAMESPACE_TABLE: ReadonlyMap<string, OoxmlNamespace> = new Map(
 );
 
 /** A rebuilt part uses a prefix that resolves to no namespace URI. */
-export class UnboundNamespacePrefixError extends TaggedError("UnboundNamespacePrefixError")<{
+export class UnboundNamespacePrefixError extends TaggedError(
+  "UnboundNamespacePrefixError",
+)<{
   message: string;
   partPath: string;
   prefixes: readonly string[];
@@ -138,10 +202,16 @@ const XMLNS_ATTRIBUTE_PREFIX = "xmlns:";
 const RESERVED_PREFIX = "xml";
 
 const isWhitespace = (character: string): boolean =>
-  character === " " || character === "\t" || character === "\n" || character === "\r";
+  character === " " ||
+  character === "\t" ||
+  character === "\n" ||
+  character === "\r";
 
 const isNameBoundary = (character: string): boolean =>
-  isWhitespace(character) || character === ">" || character === "/" || character === "=";
+  isWhitespace(character) ||
+  character === ">" ||
+  character === "/" ||
+  character === "=";
 
 const namePrefix = (qualifiedName: string): string | undefined => {
   const colon = qualifiedName.indexOf(":");
@@ -285,8 +355,9 @@ const scanXmlNames = (xml: string, rootTagOnly: boolean): ScannedNames => {
  * Reused when the part is rebuilt so a producer-specific prefix that
  * {@link OOXML_NAMESPACES} does not know keeps the URI the document gave it.
  */
-export const readRootNamespaceBindings = (partXml: string): ReadonlyMap<string, string> =>
-  scanXmlNames(partXml, true).declared;
+export const readRootNamespaceBindings = (
+  partXml: string,
+): ReadonlyMap<string, string> => scanXmlNames(partXml, true).declared;
 
 /** The part a rebuild replaces: where it lives, and what its root element bound. */
 export type SourcePart = {
@@ -345,7 +416,9 @@ export const serializePartElement = ({
     // subtree back in the vocabulary the rest of the part left behind.
     const uri =
       NAMESPACE_TABLE.get(prefix)?.uri ??
-      (sourceBinding === undefined ? undefined : toTransitionalNamespaceUri(sourceBinding));
+      (sourceBinding === undefined
+        ? undefined
+        : toTransitionalNamespaceUri(sourceBinding));
     if (uri !== undefined) {
       bindings.set(prefix, uri);
       continue;
@@ -378,7 +451,9 @@ export const serializePartElement = ({
   // source-only prefixes: a part whose body needs nothing extra keeps the exact
   // declaration list it had before, so an unrelated edit does not rewrite it.
   const baseline = new Set<string>(baselinePrefixes);
-  const extra = new Set([...bindings.keys()].filter((prefix) => !baseline.has(prefix)));
+  const extra = new Set(
+    [...bindings.keys()].filter((prefix) => !baseline.has(prefix)),
+  );
   const orderedPrefixes = [
     ...baselinePrefixes,
     ...[...NAMESPACE_TABLE.keys()].filter((prefix) => extra.has(prefix)),
@@ -386,7 +461,8 @@ export const serializePartElement = ({
   ];
   const attributes = orderedPrefixes.map(
     // SAFETY: every ordered prefix came from `bindings`.
-    (prefix) => `xmlns:${prefix}="${escapeXmlAttribute(bindings.get(prefix)!)}"`,
+    (prefix) =>
+      `xmlns:${prefix}="${escapeXmlAttribute(bindings.get(prefix)!)}"`,
   );
   const ignorable = orderedPrefixes.filter(
     (prefix) => NAMESPACE_TABLE.get(prefix)?.ignorable === true,

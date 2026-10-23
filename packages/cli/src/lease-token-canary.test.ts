@@ -1,19 +1,27 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 
-import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
+import { runFolioCli } from "./cli";
 import { fileVersionOf } from "./document";
-import { acquireEditorLease, acquireLeaseForWrite, flushRequestPathFor } from "./editor-lease";
+import {
+  acquireEditorLease,
+  acquireLeaseForWrite,
+  flushRequestPathFor,
+} from "./editor-lease";
+import { lockPathFor } from "./lock";
 import { createFolioMcpServer } from "./mcp";
 import { FOLIO_FILE_TOOLS, toolAccess } from "./registry";
-import { lockPathFor } from "./lock";
-import { runFolioCli } from "./cli";
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
 
 let dir = "";
 let cleanup = async (): Promise<void> => {};
@@ -44,7 +52,11 @@ const sectionHandleFrom = (text: string): Record<string, unknown> => {
   return firstSection["handle"];
 };
 
-const writeHeldLease = async (documentPath: string, token: string, acceptsFlush = false) => {
+const writeHeldLease = async (
+  documentPath: string,
+  token: string,
+  acceptsFlush = false,
+) => {
   await writeFile(
     lockPathFor(documentPath),
     JSON.stringify({
@@ -65,11 +77,21 @@ const removeHeldLease = async (documentPath: string): Promise<void> => {
   await rm(`${lockPathFor(documentPath)}.swap`, { force: true });
 };
 
-const argsFor = (name: string, revisedPath: string): Record<string, unknown> => {
+const argsFor = (
+  name: string,
+  revisedPath: string,
+): Record<string, unknown> => {
   switch (name) {
     case "suggest_changes":
       return {
-        operations: [{ type: "replaceInBlock", blockId: "10000002", find: "$50", replace: "$500" }],
+        operations: [
+          {
+            type: "replaceInBlock",
+            blockId: "10000002",
+            find: "$50",
+            replace: "$500",
+          },
+        ],
       };
     case "add_comment":
       return { blockId: "10000002", text: "Canary sweep comment." };
@@ -136,27 +158,46 @@ describe("lease token output canary", () => {
     const rendered = captureIo();
     expect(
       await runFolioCli(
-        ["render", file, "--out", path.join(dir, "preview.html"), "--output", "json"],
+        [
+          "render",
+          file,
+          "--out",
+          path.join(dir, "preview.html"),
+          "--output",
+          "json",
+        ],
         rendered.io,
       ),
     ).toBe(0);
     expect(envelopeOf(rendered.stdout())["ok"]).toBe(true);
     assertNoCanary(rendered.stdout() + rendered.stderr(), canary);
 
-    const readTools = FOLIO_FILE_TOOLS.filter((tool) => toolAccess(tool) === "read");
-    const cliReadCommands = readTools.flatMap((tool) => tool.commands.map(({ name }) => name));
+    const readTools = FOLIO_FILE_TOOLS.filter(
+      (tool) => toolAccess(tool) === "read",
+    );
+    const cliReadCommands = readTools.flatMap((tool) =>
+      tool.commands.map(({ name }) => name),
+    );
     for (const commandName of cliReadCommands) {
       const tool = readTools.find(({ commands }) =>
         commands.some(({ name }) => name === commandName),
       );
-      if (tool === undefined) throw new Error(`No registry tool for command ${commandName}`);
+      if (tool === undefined)
+        throw new Error(`No registry tool for command ${commandName}`);
       const captured = captureIo();
       const exitCode = await runFolioCli(
-        [commandName, file, "--input", JSON.stringify(readArgsFor(tool.name, sectionHandle))],
+        [
+          commandName,
+          file,
+          "--input",
+          JSON.stringify(readArgsFor(tool.name, sectionHandle)),
+        ],
         captured.io,
       );
       if (exitCode !== 0) {
-        throw new Error(`${commandName} failed: ${captured.stdout()} ${captured.stderr()}`);
+        throw new Error(
+          `${commandName} failed: ${captured.stdout()} ${captured.stderr()}`,
+        );
       }
       assertNoCanary(captured.stdout() + captured.stderr(), canary);
     }
@@ -241,20 +282,30 @@ describe("lease token output canary", () => {
       ok: false,
       error: { code: "locked" },
     });
-    assertNoCanary(saveWithoutToken.stdout() + saveWithoutToken.stderr(), canary);
+    assertNoCanary(
+      saveWithoutToken.stdout() + saveWithoutToken.stderr(),
+      canary,
+    );
     await removeHeldLease(file);
 
     // Derive the full registry-backed CLI write surface. Compare writes to
     // their destination; all other writes target the source in place.
-    const writeTools = FOLIO_FILE_TOOLS.filter((tool) => toolAccess(tool) !== "read");
-    const cliCommands = writeTools.flatMap((tool) => tool.commands.map(({ name }) => name));
+    const writeTools = FOLIO_FILE_TOOLS.filter(
+      (tool) => toolAccess(tool) !== "read",
+    );
+    const cliCommands = writeTools.flatMap((tool) =>
+      tool.commands.map(({ name }) => name),
+    );
     for (const [index, commandName] of cliCommands.entries()) {
       const tool = writeTools.find(({ commands }) =>
         commands.some(({ name }) => name === commandName),
       );
-      if (tool === undefined) throw new Error(`No registry tool for command ${commandName}`);
+      if (tool === undefined)
+        throw new Error(`No registry tool for command ${commandName}`);
       const target =
-        tool.type === "compare" ? path.join(dir, `cli-redline-${String(index)}.docx`) : file;
+        tool.type === "compare"
+          ? path.join(dir, `cli-redline-${String(index)}.docx`)
+          : file;
       await writeHeldLease(target, canary);
       const input = JSON.stringify(argsFor(tool.name, revised));
       const argv = [
@@ -302,16 +353,26 @@ describe("lease token output canary", () => {
 
     // Independently exercise each registered MCP write tool through the MCP
     // protocol. This includes the compare tool's destination write variant.
-    const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
-    const server = createFolioMcpServer({ roots: [dir], author: "Canary Reviewer" });
-    const client = new Client({ name: "lease-token-canary-test", version: "0.0.0" });
+    const [serverTransport, clientTransport] =
+      InMemoryTransport.createLinkedPair();
+    const server = createFolioMcpServer({
+      roots: [dir],
+      author: "Canary Reviewer",
+    });
+    const client = new Client({
+      name: "lease-token-canary-test",
+      version: "0.0.0",
+    });
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
       const listed = await client.listTools();
-      expect(listed.tools.map(({ name }) => name)).toContain("invoke_capability");
+      expect(listed.tools.map(({ name }) => name)).toContain(
+        "invoke_capability",
+      );
       for (const tool of writeTools) {
-        const target = tool.type === "compare" ? path.join(dir, "mcp-redline.docx") : file;
+        const target =
+          tool.type === "compare" ? path.join(dir, "mcp-redline.docx") : file;
         await writeHeldLease(target, canary);
         const result = await client.callTool({
           name: tool.name,
@@ -326,7 +387,9 @@ describe("lease token output canary", () => {
         assertNoCanary(output, canary);
         const first = result.content.at(0);
         expect(
-          first !== undefined && first.type === "text" ? JSON.parse(first.text) : null,
+          first !== undefined && first.type === "text"
+            ? JSON.parse(first.text)
+            : null,
         ).toMatchObject({ error: { code: "locked" } });
         await removeHeldLease(target);
       }
@@ -409,9 +472,15 @@ describe("lease token output canary", () => {
         deadline: new Date(Date.now() + 60_000).toISOString(),
       }),
     );
-    const pending = await acquireEditorLease({ documentPath: file, owner: "folio-test-editor" });
+    const pending = await acquireEditorLease({
+      documentPath: file,
+      owner: "folio-test-editor",
+    });
     expect(pending.isErr() && pending.error.code).toBe("locked");
-    assertNoCanary(JSON.stringify(pending.isErr() ? pending.error : pending.value), canary);
+    assertNoCanary(
+      JSON.stringify(pending.isErr() ? pending.error : pending.value),
+      canary,
+    );
     await rm(pendingPath, { force: true });
   }, 15_000);
 });

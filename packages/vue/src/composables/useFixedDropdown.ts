@@ -6,7 +6,7 @@
  * fixed` directly under its trigger button. Same close-on-outside-
  * click / escape / scroll behaviour as the React hook.
  */
-import { ref, watch, onScopeDispose, type Ref, type CSSProperties } from "vue";
+import { type CSSProperties, onScopeDispose, type Ref, ref, watch } from "vue";
 
 export type UseFixedDropdownOptions = {
   isOpen: Ref<boolean>;
@@ -65,7 +65,11 @@ export function useFixedDropdown({
     // size presets). Only an ancestor/page scroll, which would detach this
     // fixed-positioned dropdown from its trigger, should close it.
     const target = e.target;
-    if (target instanceof Node && dropdownRef.value && dropdownRef.value.contains(target)) {
+    if (
+      target instanceof Node &&
+      dropdownRef.value &&
+      dropdownRef.value.contains(target)
+    ) {
       return;
     }
     onClose();

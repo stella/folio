@@ -58,17 +58,27 @@
  * text within a surviving block retains a point rather than dropping it.
  */
 
-import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
+import {
+  Fragment,
+  Mark,
+  type Node as PMNode,
+  type Schema,
+} from "prosemirror-model";
+
 import { isCommentExhausted } from "@stll/docx-core/ops";
 
 import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
+import {
+  expectParagraphAttrs,
+  expectTableCellAttrs,
+  expectTableRowAttrs,
+} from "./attrs";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
-import { expectParagraphAttrs, expectTableRowAttrs, expectTableCellAttrs } from "./attrs";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import { isZeroWidthAnchor } from "./zeroWidthAnchors";
 
@@ -97,8 +107,9 @@ export const nonInclusiveMarkNames = (schema: Schema): string[] =>
     .map(([name]) => name);
 
 const isCarried = (mark: Mark): boolean =>
-  NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
-  "carry";
+  NON_INCLUSIVE_MARK_DISPOSITION[
+    mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION
+  ] === "carry";
 
 /** One typed anchor for a comment authored as a point. */
 export const commentPoint = (schema: Schema, id: number): PMNode =>
@@ -121,15 +132,23 @@ export const createResolvedCommentPointCollector = ({
   const points = new Map<number, number>();
   const retained = new Set<number>();
   const removedStructures: { from: number; to: number }[] = [];
-  const visit = (node: PMNode, position: number, previous?: PMNode): boolean => {
+  const visit = (
+    node: PMNode,
+    position: number,
+    previous?: PMNode,
+  ): boolean => {
     if (node.type.name === "paragraph") {
       const mark = expectParagraphAttrs(node).pPrMark;
       // A final block deletion retires the boundary on its preceding carrier.
       const precedingMark =
-        previous?.type.name === "paragraph" ? expectParagraphAttrs(previous).pPrMark : null;
+        previous?.type.name === "paragraph"
+          ? expectParagraphAttrs(previous).pPrMark
+          : null;
       const retiredBoundary =
-        ((mark?.kind === "del" || mark?.kind === "moveFrom") && retiresStructure(node, position)) ||
-        ((precedingMark?.kind === "del" || precedingMark?.kind === "moveFrom") &&
+        ((mark?.kind === "del" || mark?.kind === "moveFrom") &&
+          retiresStructure(node, position)) ||
+        ((precedingMark?.kind === "del" ||
+          precedingMark?.kind === "moveFrom") &&
           previous !== undefined &&
           retiresStructure(previous, position - previous.nodeSize));
       if (retiredBoundary) {
@@ -146,7 +165,10 @@ export const createResolvedCommentPointCollector = ({
         // Keep walking an emptied carrier so its ranged comments are recorded
         // for removal along with the carrier.
         if (!survivingContent)
-          removedStructures.push({ from: position, to: position + node.nodeSize });
+          removedStructures.push({
+            from: position,
+            to: position + node.nodeSize,
+          });
       }
     }
     if (
@@ -204,7 +226,10 @@ export const resolvedCommentPoints = ({
   removes,
   retiresStructure,
 }: ResolvedCommentPointsOptions): Map<number, number> => {
-  const collector = createResolvedCommentPointCollector({ removes, retiresStructure });
+  const collector = createResolvedCommentPointCollector({
+    removes,
+    retiresStructure,
+  });
   doc.descendants((node, position, parent, index) =>
     collector.visit(
       node,
@@ -249,13 +274,18 @@ export type ReplacedAnnotations = {
   trailing: readonly PMNode[];
 };
 
-const NOTHING_REPLACED: ReplacedAnnotations = { carried: [], leading: [], trailing: [] };
+const NOTHING_REPLACED: ReplacedAnnotations = {
+  carried: [],
+  leading: [],
+  trailing: [],
+};
 
 export const hasReplacedAnnotations = ({
   carried,
   leading,
   trailing,
-}: ReplacedAnnotations): boolean => carried.length > 0 || leading.length > 0 || trailing.length > 0;
+}: ReplacedAnnotations): boolean =>
+  carried.length > 0 || leading.length > 0 || trailing.length > 0;
 
 /**
  * The annotations carried by `[from, to)`. An anchor counts only when the
@@ -285,7 +315,11 @@ export const surveyReplacedAnnotations = (
       }
     }
     const placement = anchorPlacement(node);
-    if (placement === undefined || position < from || position + node.nodeSize > to) {
+    if (
+      placement === undefined ||
+      position < from ||
+      position + node.nodeSize > to
+    ) {
       return false;
     }
     (opensRange(node, placement) ? leading : trailing).push(node);
@@ -374,7 +408,11 @@ const innermostEdge = (node: PMNode, direction: -1 | 1): PMNode | null => {
  * order: past empty paragraphs, and into and out of tables, the way a saved
  * range's two points read it.
  */
-const contentBesideBoundary = (doc: PMNode, at: number, direction: -1 | 1): PMNode | null => {
+const contentBesideBoundary = (
+  doc: PMNode,
+  at: number,
+  direction: -1 | 1,
+): PMNode | null => {
   const $at = doc.resolve(at);
   for (let depth = $at.depth; depth >= 0; depth--) {
     const parent = $at.node(depth);
@@ -399,7 +437,10 @@ const contentBesideBoundary = (doc: PMNode, at: number, direction: -1 | 1): PMNo
  * The content either side of `at` in its paragraph, past zero-width anchors
  * (a comment's own reference sits between its text and what follows).
  */
-const neighboursAt = (doc: PMNode, at: number): { before: PMNode | null; after: PMNode | null } => {
+const neighboursAt = (
+  doc: PMNode,
+  at: number,
+): { before: PMNode | null; after: PMNode | null } => {
   const $at = doc.resolve(at);
   const parent = $at.parent;
   const neighbour = (direction: -1 | 1): PMNode | null => {
@@ -426,7 +467,9 @@ const neighboursAt = (doc: PMNode, at: number): { before: PMNode | null; after: 
 /** The comments on both `before` and `after`: text between them must carry them. */
 const commentsAround = (before: PMNode | null, after: PMNode | null): Mark[] =>
   before && after
-    ? before.marks.filter((mark) => mark.type.name === "comment" && mark.isInSet(after.marks))
+    ? before.marks.filter(
+        (mark) => mark.type.name === "comment" && mark.isInSet(after.marks),
+      )
     : [];
 
 /**
@@ -446,7 +489,11 @@ export const commentsForTrackedInsertion = (
   pieces: readonly (readonly Mark[])[],
 ): (readonly Mark[])[] => {
   const { before, after } = neighboursAt(doc, at);
-  const sets: (readonly Mark[])[] = [before?.marks ?? [], ...pieces, after?.marks ?? []];
+  const sets: (readonly Mark[])[] = [
+    before?.marks ?? [],
+    ...pieces,
+    after?.marks ?? [],
+  ];
   const comments: Mark[] = [];
   for (const set of sets) {
     for (const mark of set) {
@@ -459,14 +506,20 @@ export const commentsForTrackedInsertion = (
     set.filter((mark) => mark.type.name !== "comment"),
   );
   for (const comment of comments) {
-    const covered = sets.flatMap((set, index) => (comment.isInSet(set) ? [index] : []));
+    const covered = sets.flatMap((set, index) =>
+      comment.isInSet(set) ? [index] : [],
+    );
     const first = covered[0]!;
     const last = covered.at(-1)!;
     // Only a stretch that reaches a neighbour continues the comment.
     if (first !== 0 && last !== sets.length - 1) {
       continue;
     }
-    for (let index = Math.max(first, 1); index <= Math.min(last, pieces.length); index++) {
+    for (
+      let index = Math.max(first, 1);
+      index <= Math.min(last, pieces.length);
+      index++
+    ) {
       result[index - 1] = comment.addToSet([...result[index - 1]!]);
     }
   }
@@ -499,11 +552,15 @@ export const placeTrackedInsertion = (
       if (mark.type.name !== "comment") {
         continue;
       }
-      const known = [...stretches.keys()].find((other) => other.eq(mark)) ?? mark;
+      const known =
+        [...stretches.keys()].find((other) => other.eq(mark)) ?? mark;
       const start = Math.max(position, from);
       const end = Math.min(position + node.nodeSize, to);
       const stretch = stretches.get(known);
-      stretches.set(known, stretch ? { start: stretch.start, end } : { start, end });
+      stretches.set(
+        known,
+        stretch ? { start: stretch.start, end } : { start, end },
+      );
     }
     return false;
   });
@@ -547,8 +604,12 @@ export const placeTrackedInsertion = (
     if (stretch) {
       position = stretch.end;
     } else {
-      const next = anchored.slice(index + 1).find((candidate) => candidate !== undefined);
-      const placedBefore = anchored.slice(0, index).some((candidate) => candidate !== undefined);
+      const next = anchored
+        .slice(index + 1)
+        .find((candidate) => candidate !== undefined);
+      const placedBefore = anchored
+        .slice(0, index)
+        .some((candidate) => candidate !== undefined);
       position = next && !placedBefore ? next.start : to;
       if (placedBefore && next) {
         position = previous;
@@ -569,7 +630,10 @@ export const placeTrackedInsertion = (
  * reopens exactly so. A merge's separator lands on such a boundary too.
  */
 export const commentsAcrossBlockBoundary = (doc: PMNode, at: number): Mark[] =>
-  commentsAround(contentBesideBoundary(doc, at, -1), contentBesideBoundary(doc, at, 1));
+  commentsAround(
+    contentBesideBoundary(doc, at, -1),
+    contentBesideBoundary(doc, at, 1),
+  );
 
 const withCarriedMarks = (node: PMNode, carried: readonly Mark[]): PMNode =>
   node.mark(addCarriedMarks(node.marks, carried));
@@ -581,7 +645,9 @@ export const annotatedReplacement = ({
 }: AnnotatedReplacementOptions): AnnotatedReplacement => {
   const inline: PMNode[] = [];
   content.forEach((child) => {
-    inline.push(carried.length === 0 ? child : withCarriedMarks(child, carried));
+    inline.push(
+      carried.length === 0 ? child : withCarriedMarks(child, carried),
+    );
   });
 
   const fragment = Fragment.fromArray([...leading, ...inline, ...trailing]);
@@ -603,5 +669,8 @@ export const inheritedReplacementMarks = (
   to: number,
 ): readonly Mark[] => {
   const $from = doc.resolve(from);
-  return (to === from ? $from.marks() : $from.marksAcross(doc.resolve(to))) ?? Mark.none;
+  return (
+    (to === from ? $from.marks() : $from.marksAcross(doc.resolve(to))) ??
+    Mark.none
+  );
 };

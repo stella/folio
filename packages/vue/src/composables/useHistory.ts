@@ -1,3 +1,5 @@
+import { redo, redoDepth, undo, undoDepth } from "prosemirror-history";
+import type { EditorView } from "prosemirror-view";
 /**
  * useHistory — undo/redo composable wrapping prosemirror-history's
  * `undo` / `redo` commands and `undoDepth` / `redoDepth` selectors.
@@ -10,8 +12,6 @@
  * peer dep for consumers.
  */
 import { computed, type ComputedRef, type Ref } from "vue";
-import type { EditorView } from "prosemirror-view";
-import { undo, redo, undoDepth, redoDepth } from "prosemirror-history";
 
 export type UseHistoryReturn = {
   canUndo: ComputedRef<boolean>;
@@ -20,7 +20,10 @@ export type UseHistoryReturn = {
   redo: () => boolean;
 };
 
-export function useHistory(view: Ref<EditorView | null>, stateTick: Ref<number>): UseHistoryReturn {
+export function useHistory(
+  view: Ref<EditorView | null>,
+  stateTick: Ref<number>,
+): UseHistoryReturn {
   const canUndo = computed(() => {
     void stateTick.value;
     const v = view.value;

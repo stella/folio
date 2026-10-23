@@ -1,7 +1,6 @@
 // The generated TS catalogs keep raw JSON out of the source-mirrored build.
 // Import a messages/<locale> entry to load one catalog independently.
 import { CATALOGS as GENERATED_CATALOGS } from "./messages/catalogs.gen";
-
 import { FOLIO_LOCALES, type FolioLocale } from "./messages/locales";
 
 export { FOLIO_LOCALES, type FolioLocale } from "./messages/locales";
@@ -21,7 +20,10 @@ export type FolioMessages = { folio: FolioMessageTree };
 // makes the 13 translated catalogs assignable to one shared type.
 type Widen<T> = { [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
 
-const CATALOGS: Record<FolioLocale, Widen<(typeof GENERATED_CATALOGS)["en"]>> = GENERATED_CATALOGS;
+const CATALOGS: Record<
+  FolioLocale,
+  Widen<(typeof GENERATED_CATALOGS)["en"]>
+> = GENERATED_CATALOGS;
 
 const FOLIO_LOCALE_SET = new Set<string>(FOLIO_LOCALES);
 

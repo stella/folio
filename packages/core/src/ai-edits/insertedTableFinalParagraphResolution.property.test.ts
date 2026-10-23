@@ -5,24 +5,33 @@
  * this generator composes table and paragraph insertions in the same batch.
  */
 
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { createDocx } from "../docx/rezip";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { createDocx } from "../docx/rezip";
 import { paragraph, run, table as buildTable } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { FolioDocxReviewer, type FolioEditableDocumentStoryHandle } from "./headless";
+import {
+  FolioDocxReviewer,
+  type FolioEditableDocumentStoryHandle,
+} from "./headless";
 
 const FOOTNOTE_ID = 19;
-const FOOTNOTE = { type: "footnote", noteType: "normal", id: FOOTNOTE_ID } as const;
+const FOOTNOTE = {
+  type: "footnote",
+  noteType: "normal",
+  id: FOOTNOTE_ID,
+} as const;
 const FOOTNOTE_STORY = { type: "footnote", noteId: FOOTNOTE_ID } as const;
 
 setDefaultTimeout(propertyTestTimeout(120_000));
@@ -30,7 +39,8 @@ setDefaultTimeout(propertyTestTimeout(120_000));
 const buildSeed = async (): Promise<ArrayBuffer> => {
   const document = fromMarkdown("Anchor.");
   const [anchor] = document.package.document.content;
-  if (anchor?.type !== "paragraph") panic("Missing body anchor in table-resolution fixture");
+  if (anchor?.type !== "paragraph")
+    panic("Missing body anchor in table-resolution fixture");
   anchor.content.unshift({
     type: "run",
     content: [{ type: "footnoteRef", id: FOOTNOTE_ID }],
@@ -42,23 +52,37 @@ const buildSeed = async (): Promise<ArrayBuffer> => {
         {
           type: "paragraph",
           paraId: "19000001",
-          content: [{ type: "run", content: [{ type: "text", text: "Note anchor." }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Note anchor." }] },
+          ],
         },
       ],
     },
   ];
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
   return new Uint8Array(docx).buffer;
 };
 
 const open = async (bytes: ArrayBuffer): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
 
-const content = (reviewer: FolioDocxReviewer, story?: FolioEditableDocumentStoryHandle) => {
+const content = (
+  reviewer: FolioDocxReviewer,
+  story?: FolioEditableDocumentStoryHandle,
+) => {
   const blocks =
-    story === undefined ? reviewer.getContent() : reviewer.snapshotStory(story)?.blocks;
-  if (blocks === undefined) panic("Missing story in table-resolution fixture", { story });
-  return blocks.map(({ kind, text, table }) => ({ kind, text, table: table ?? null }));
+    story === undefined
+      ? reviewer.getContent()
+      : reviewer.snapshotStory(story)?.blocks;
+  if (blocks === undefined)
+    panic("Missing story in table-resolution fixture", { story });
+  return blocks.map(({ kind, text, table }) => ({
+    kind,
+    text,
+    table: table ?? null,
+  }));
 };
 
 type OperationsForOptions = {
@@ -94,7 +118,10 @@ const operationsFor = ({
             ).join("\n"),
             formattingScope: "allParagraphs" as const,
             ...(numbered && {
-              numbering: { kind: "newList" as const, format: "numbered" as const },
+              numbering: {
+                kind: "newList" as const,
+                format: "numbered" as const,
+              },
             }),
           },
         ]),
@@ -108,28 +135,42 @@ type ApplyOptions = {
 };
 
 const apply = ({ reviewer, story, mode, operations }: ApplyOptions): void => {
-  const batch = { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations };
+  const batch = {
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode,
+    operations,
+  };
   const result =
     story === undefined
-      ? reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" })
-      : reviewer.applyDocumentOperationsToStory({ undefinedReferences: "refuse", story, batch });
+      ? reviewer.applyDocumentOperations(batch, {
+          undefinedReferences: "refuse",
+        })
+      : reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
+          story,
+          batch,
+        });
   expect(result.applied.map(({ id }) => id).toSorted()).toEqual(
     operations.map(({ id }) => id).toSorted(),
   );
 };
 
-const nestedCellSeed = async (mode: "original" | "pending" | "direct"): Promise<ArrayBuffer> => {
+const nestedCellSeed = async (
+  mode: "original" | "pending" | "direct",
+): Promise<ArrayBuffer> => {
   const document = fromMarkdown("Outside.");
   const outerTable = buildTable({ rows: [["placeholder"]] });
   const outerRow = outerTable.rows.at(0);
   const outerCell = outerRow?.cells.at(0);
-  if (!outerRow || !outerCell) panic("Missing outer cell in nested-table fixture");
+  if (!outerRow || !outerCell)
+    panic("Missing outer cell in nested-table fixture");
 
   const anchor = paragraph("Cell anchor.");
   const nestedTable = buildTable({ rows: [["Nested table text"]] });
   const nestedRow = nestedTable.rows.at(0);
   const nestedCell = nestedRow?.cells.at(0);
-  if (!nestedRow || !nestedCell) panic("Missing nested cell in nested-table fixture");
+  if (!nestedRow || !nestedCell)
+    panic("Missing nested cell in nested-table fixture");
 
   if (mode === "pending") {
     anchor.pPrMark = { kind: "ins", info: { id: 410, author: "Reviewer" } };
@@ -158,20 +199,30 @@ const nestedCellSeed = async (mode: "original" | "pending" | "direct"): Promise<
       ]),
     ];
   } else if (mode === "direct") {
-    outerCell.content = [anchor, nestedTable, paragraph("Inserted cell paragraph.")];
+    outerCell.content = [
+      anchor,
+      nestedTable,
+      paragraph("Inserted cell paragraph."),
+    ];
   } else {
     outerCell.content = [anchor];
   }
 
   document.package.document.content = [outerTable, paragraph("Body end.")];
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
   return new Uint8Array(docx).buffer;
 };
 
 const existingTableSeed = async (): Promise<ArrayBuffer> => {
   const document = fromMarkdown("Before table.");
-  document.package.document.content.push(buildTable({ rows: [["Existing cell"]] }));
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+  document.package.document.content.push(
+    buildTable({ rows: [["Existing cell"]] }),
+  );
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
   return new Uint8Array(docx).buffer;
 };
 
@@ -182,15 +233,20 @@ describe("resolving inserted paragraphs after an inserted table", () => {
       const tracked = await open(bytes);
       const anchor = tracked.getContent().at(-1);
       if (!anchor) panic("Missing body anchor in table-resolution fixture");
-      const operations = operationsFor({ blockId: anchor.id, paragraphCount: followingParagraphs });
+      const operations = operationsFor({
+        blockId: anchor.id,
+        paragraphCount: followingParagraphs,
+      });
       apply({ reviewer: tracked, mode: "tracked-changes", operations });
       const pending = content(tracked);
       if (followingParagraphs > 0) {
         expect(pending.at(-1)?.kind).toBe("listItem");
       } else {
-        expect(pending.some(({ text, table }) => text === "Inserted cell" && table !== null)).toBe(
-          true,
-        );
+        expect(
+          pending.some(
+            ({ text, table }) => text === "Inserted cell" && table !== null,
+          ),
+        ).toBe(true);
       }
 
       const pendingReopened = await open(await tracked.toBuffer());
@@ -199,7 +255,9 @@ describe("resolving inserted paragraphs after an inserted table", () => {
       const rejecting = await open(await tracked.toBuffer());
       rejecting.rejectAll();
       expect(content(rejecting)).toEqual(content(await open(bytes)));
-      expect(content(await open(await rejecting.toBuffer()))).toEqual(content(await open(bytes)));
+      expect(content(await open(await rejecting.toBuffer()))).toEqual(
+        content(await open(bytes)),
+      );
 
       const liveRejecting = await open(bytes);
       const liveRejectAnchor = liveRejecting.getContent().at(-1);
@@ -230,11 +288,15 @@ describe("resolving inserted paragraphs after an inserted table", () => {
       const accepting = await open(await tracked.toBuffer());
       accepting.acceptAll();
       expect(content(accepting)).toEqual(content(direct));
-      expect(content(await open(await accepting.toBuffer()))).toEqual(content(direct));
+      expect(content(await open(await accepting.toBuffer()))).toEqual(
+        content(direct),
+      );
 
       tracked.acceptAll();
       expect(content(tracked)).toEqual(content(direct));
-      expect(content(await open(await tracked.toBuffer()))).toEqual(content(direct));
+      expect(content(await open(await tracked.toBuffer()))).toEqual(
+        content(direct),
+      );
     });
   }
 
@@ -245,16 +307,29 @@ describe("resolving inserted paragraphs after an inserted table", () => {
     const anchor = note?.blocks.at(-1);
     if (!anchor) panic("Missing footnote anchor in table-resolution fixture");
     const original = content(tracked, FOOTNOTE_STORY);
-    const operations = operationsFor({ blockId: anchor.id, paragraphCount: 1, numbered: false });
-    apply({ reviewer: tracked, story: FOOTNOTE_STORY, mode: "tracked-changes", operations });
+    const operations = operationsFor({
+      blockId: anchor.id,
+      paragraphCount: 1,
+      numbered: false,
+    });
+    apply({
+      reviewer: tracked,
+      story: FOOTNOTE_STORY,
+      mode: "tracked-changes",
+      operations,
+    });
     const pending = content(tracked, FOOTNOTE_STORY);
     expect(pending.at(-1)?.kind).toBe("paragraph");
-    expect(content(await open(await tracked.toBuffer()), FOOTNOTE_STORY)).toEqual(pending);
+    expect(
+      content(await open(await tracked.toBuffer()), FOOTNOTE_STORY),
+    ).toEqual(pending);
 
     const rejecting = await open(await tracked.toBuffer());
     rejecting.rejectAll();
     expect(content(rejecting, FOOTNOTE_STORY)).toEqual(original);
-    expect(content(await open(await rejecting.toBuffer()), FOOTNOTE_STORY)).toEqual(original);
+    expect(
+      content(await open(await rejecting.toBuffer()), FOOTNOTE_STORY),
+    ).toEqual(original);
 
     const direct = await open(bytes);
     const directAnchor = direct.snapshotStory(FOOTNOTE_STORY)?.blocks.at(-1);
@@ -272,10 +347,12 @@ describe("resolving inserted paragraphs after an inserted table", () => {
 
     const accepting = await open(await tracked.toBuffer());
     accepting.acceptAll();
-    expect(content(accepting, FOOTNOTE_STORY)).toEqual(content(direct, FOOTNOTE_STORY));
-    expect(content(await open(await accepting.toBuffer()), FOOTNOTE_STORY)).toEqual(
+    expect(content(accepting, FOOTNOTE_STORY)).toEqual(
       content(direct, FOOTNOTE_STORY),
     );
+    expect(
+      content(await open(await accepting.toBuffer()), FOOTNOTE_STORY),
+    ).toEqual(content(direct, FOOTNOTE_STORY));
   });
 
   test("a nested cell ending resolves a rotated break across an inserted table", async () => {
@@ -288,19 +365,25 @@ describe("resolving inserted paragraphs after an inserted table", () => {
     const rejecting = await open(pendingBuffer);
     rejecting.rejectAll();
     expect(content(rejecting)).toEqual(content(original));
-    expect(content(await open(await rejecting.toBuffer()))).toEqual(content(original));
+    expect(content(await open(await rejecting.toBuffer()))).toEqual(
+      content(original),
+    );
 
     const accepting = await open(pendingBuffer);
     accepting.acceptAll();
     expect(content(accepting)).toEqual(content(direct));
-    expect(content(await open(await accepting.toBuffer()))).toEqual(content(direct));
+    expect(content(await open(await accepting.toBuffer()))).toEqual(
+      content(direct),
+    );
   });
 
   test.each(["existing", "partially inserted"] as const)(
     "%s tables remain barriers for cell-anchored batches",
     async (tableState) => {
       const reviewer = await open(await existingTableSeed());
-      const beforeTable = reviewer.getContent().find(({ text }) => text === "Before table.");
+      const beforeTable = reviewer
+        .getContent()
+        .find(({ text }) => text === "Before table.");
       if (!beforeTable) panic("Missing paragraph before existing table");
       const paragraphMarkInsertions = () =>
         reviewer
@@ -316,7 +399,13 @@ describe("resolving inserted paragraphs after an inserted table", () => {
         mode: "tracked-changes",
         operations: [
           ...(tableState === "partially inserted"
-            ? [{ id: "row", type: "insertTableRow" as const, blockId: anchor.id }]
+            ? [
+                {
+                  id: "row",
+                  type: "insertTableRow" as const,
+                  blockId: anchor.id,
+                },
+              ]
             : []),
           ...operationsFor({ blockId: anchor.id, paragraphCount: 1 }),
         ],
@@ -364,7 +453,9 @@ describe("resolving inserted paragraphs after an inserted table", () => {
           const rejecting = await open(pendingBuffer);
           rejecting.rejectAll();
           expect(content(rejecting)).toEqual(content(original));
-          expect(content(await open(await rejecting.toBuffer()))).toEqual(content(original));
+          expect(content(await open(await rejecting.toBuffer()))).toEqual(
+            content(original),
+          );
 
           const direct = await open(bytes);
           const directAnchor = direct.getContent().at(-1);
@@ -383,10 +474,15 @@ describe("resolving inserted paragraphs after an inserted table", () => {
           const accepting = await open(pendingBuffer);
           accepting.acceptAll();
           expect(content(accepting)).toEqual(content(direct));
-          expect(content(await open(await accepting.toBuffer()))).toEqual(content(direct));
+          expect(content(await open(await accepting.toBuffer()))).toEqual(
+            content(direct),
+          );
         },
       ),
-      { numRuns: 10, id: "generated table rows and following paragraphs preserve resolution laws" },
+      {
+        numRuns: 10,
+        id: "generated table rows and following paragraphs preserve resolution laws",
+      },
     );
   });
 });

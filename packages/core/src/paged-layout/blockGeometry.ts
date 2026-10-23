@@ -1,6 +1,9 @@
 import { resolveSequentialBlockAnchor } from "../ai-edits/blockRange";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
-import { findPageShellForPmPos, PAINTER_PAINTED_EVENT } from "../layout-painter/renderPage";
+import {
+  findPageShellForPmPos,
+  PAINTER_PAINTED_EVENT,
+} from "../layout-painter/renderPage";
 
 /** Painted geometry for one AI-snapshot block in scroll-content coordinates. */
 export type BlockRect = {
@@ -55,9 +58,13 @@ const requestedBlocks = (
   return requested;
 };
 
-const paintedBlocksByPmStart = (page: HTMLElement): ReadonlyMap<number, HTMLElement> => {
+const paintedBlocksByPmStart = (
+  page: HTMLElement,
+): ReadonlyMap<number, HTMLElement> => {
   const blocks = new Map<number, HTMLElement>();
-  for (const element of page.querySelectorAll<HTMLElement>(PAINTED_BLOCK_SELECTOR)) {
+  for (const element of page.querySelectorAll<HTMLElement>(
+    PAINTED_BLOCK_SELECTOR,
+  )) {
     const pmStart = Number(element.dataset["pmStart"]);
     if (Number.isFinite(pmStart) && !blocks.has(pmStart)) {
       blocks.set(pmStart, element);
@@ -72,7 +79,10 @@ const groupVirtualizedRequestsByPage = (
 ): ReadonlyMap<HTMLElement, RequestedBlock[]> | null => {
   const byPage = new Map<HTMLElement, RequestedBlock[]>();
   for (const request of requests) {
-    const page = findPageShellForPmPos(pagesContainer, request.pmStart)?.element;
+    const page = findPageShellForPmPos(
+      pagesContainer,
+      request.pmStart,
+    )?.element;
     if (!page) {
       return null;
     }
@@ -91,7 +101,10 @@ const findPaintedElements = (
   pagesContainer: HTMLElement,
 ): ReadonlyMap<string, { element: HTMLElement; page: number }> => {
   const found = new Map<string, { element: HTMLElement; page: number }>();
-  const virtualizedRequests = groupVirtualizedRequestsByPage(requests, pagesContainer);
+  const virtualizedRequests = groupVirtualizedRequestsByPage(
+    requests,
+    pagesContainer,
+  );
 
   if (virtualizedRequests) {
     for (const [page, pageRequests] of virtualizedRequests) {
@@ -110,8 +123,12 @@ const findPaintedElements = (
     return found;
   }
 
-  const requestsByPmStart = new Map(requests.map((request) => [request.pmStart, request]));
-  for (const page of pagesContainer.querySelectorAll<HTMLElement>(PAGE_SELECTOR)) {
+  const requestsByPmStart = new Map(
+    requests.map((request) => [request.pmStart, request]),
+  );
+  for (const page of pagesContainer.querySelectorAll<HTMLElement>(
+    PAGE_SELECTOR,
+  )) {
     const pageNumber = pageNumberOf(page);
     if (pageNumber === null) {
       continue;
@@ -161,8 +178,13 @@ export const readBlockRects = ({
     rects.set(request.blockId, {
       blockId: request.blockId,
       page: painted.page,
-      top: rect.top - rootRect.top - scrollRoot.clientTop + scrollRoot.scrollTop,
-      left: rect.left - rootRect.left - scrollRoot.clientLeft + scrollRoot.scrollLeft,
+      top:
+        rect.top - rootRect.top - scrollRoot.clientTop + scrollRoot.scrollTop,
+      left:
+        rect.left -
+        rootRect.left -
+        scrollRoot.clientLeft +
+        scrollRoot.scrollLeft,
       width: rect.width,
       height: rect.height,
     });

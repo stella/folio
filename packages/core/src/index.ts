@@ -6,7 +6,10 @@
 // pulling React or @stll/ui into their import graph. The root `@stll/folio`
 // entry re-exports all of this and adds the React components on top.
 
-export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
+export {
+  createEmptyDocument,
+  type CreateEmptyDocumentOptions,
+} from "./utils/createDocument";
 export { mergeDocumentContent } from "./utils/mergeDocumentContent";
 export {
   DEFAULT_OUTLINE_DEPTH,
@@ -116,7 +119,10 @@ export {
   type FolioDocxCompatibilityProfile,
   type InspectDocxCompatibilityOptions,
 } from "./docx/compatibility";
-export { DRAWING_SAFETY_CLASSES, type DrawingSafetyClass } from "./docx/imageRawXml";
+export {
+  DRAWING_SAFETY_CLASSES,
+  type DrawingSafetyClass,
+} from "./docx/imageRawXml";
 export {
   currentFolioBlockId,
   deriveBlockId,
@@ -230,7 +236,10 @@ export {
   isSuggestionStale,
   type ResolvedAnchor,
 } from "./ai-suggestions/conflict";
-export { buildPositionalText, type PositionalText } from "./ai-suggestions/text-positions";
+export {
+  buildPositionalText,
+  type PositionalText,
+} from "./ai-suggestions/text-positions";
 export {
   setAISuggestionsMeta,
   setFocusedSuggestionMeta,
@@ -318,7 +327,10 @@ export {
   type EmbeddedFont,
   type EmbeddedFontParts,
 } from "./fonts/embeddedFonts";
-export { getGoogleFontsEnabled, setGoogleFontsEnabled } from "./utils/fontResolver";
+export {
+  getGoogleFontsEnabled,
+  setGoogleFontsEnabled,
+} from "./utils/fontResolver";
 
 // Collaboration snapshot compatibility: the attr-schema version a stored Yjs
 // snapshot was written under. The editor refuses to load one written by newer

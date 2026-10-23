@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
-import { TextSelection, EditorState } from "prosemirror-state";
+import { describe, expect, test } from "bun:test";
+import { EditorState, TextSelection } from "prosemirror-state";
 
 import { schema } from "../schema";
 import { extractSelectionSnapshot } from "../selectionState";
@@ -51,7 +51,9 @@ describe("extractSelectionContext", () => {
       selection: TextSelection.create(doc, 1, 14),
     });
 
-    expect(extractSelectionContext(state).textFormatting.underline).toMatchObject({
+    expect(
+      extractSelectionContext(state).textFormatting.underline,
+    ).toMatchObject({
       style: "single",
     });
   });
@@ -78,7 +80,9 @@ describe("extractSelectionContext", () => {
     const context = extractSelectionContext(state);
 
     expect(context.textFormatting).toEqual(snapshot.textFormatting);
-    expect(context.paragraphFormatting).toMatchObject(snapshot.paragraphFormatting);
+    expect(context.paragraphFormatting).toMatchObject(
+      snapshot.paragraphFormatting,
+    );
     expect(context.paragraphFormatting.styleId).toBe(snapshot.styleId);
     expect(context.startParagraphIndex).toBe(snapshot.startParagraphIndex);
     expect(context.endParagraphIndex).toBe(snapshot.endParagraphIndex);

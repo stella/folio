@@ -27,11 +27,9 @@
  *   bun scripts/generate-ooxml-enumerations.ts check
  */
 
+import { TaggedError } from "better-result";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
-
-import { buildIndex, loadSchemaGraph, WML_NAMESPACE } from "./lib/ooxml-schema-graph";
 import {
   emitGeneratedModule,
   enumerationOf,
@@ -39,12 +37,22 @@ import {
   renderMap,
   renderModule,
 } from "./lib/generated-enumeration";
+import {
+  buildIndex,
+  loadSchemaGraph,
+  WML_NAMESPACE,
+} from "./lib/ooxml-schema-graph";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/docx-core/src/model/ooxmlEnumerations.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/docx-core/src/model/ooxmlEnumerations.gen.ts",
+);
 const SCRIPT = "generate:ooxml-enumerations";
 
-class TextDirectionPairingError extends TaggedError("TextDirectionPairingError")<{
+class TextDirectionPairingError extends TaggedError(
+  "TextDirectionPairingError",
+)<{
   message: string;
 }> {}
 
@@ -93,12 +101,16 @@ const textDirectionFlows = (tokens: readonly string[]): readonly string[] => {
   }
   for (const token of tokens) {
     if (!paired.has(token)) {
-      fail(`The ST_TextDirection pairing does not say which flow \`${token}\` names.`);
+      fail(
+        `The ST_TextDirection pairing does not say which flow \`${token}\` names.`,
+      );
     }
   }
   for (const token of paired.keys()) {
     if (!tokens.includes(token)) {
-      fail(`The ST_TextDirection pairing carries \`${token}\`, which the enumeration does not.`);
+      fail(
+        `The ST_TextDirection pairing carries \`${token}\`, which the enumeration does not.`,
+      );
     }
   }
   const flows = tokens.filter((token) => paired.get(token) === token);
@@ -116,7 +128,11 @@ const main = async (): Promise<void> => {
   const paragraphAlignments = enumerationOf(index, WML_NAMESPACE, "ST_Jc");
   const tabStopAlignments = enumerationOf(index, WML_NAMESPACE, "ST_TabJc");
   const tableAlignments = enumerationOf(index, WML_NAMESPACE, "ST_JcTable");
-  const textDirections = enumerationOf(index, WML_NAMESPACE, "ST_TextDirection");
+  const textDirections = enumerationOf(
+    index,
+    WML_NAMESPACE,
+    "ST_TextDirection",
+  );
   const textDirectionFlowNames = textDirectionFlows(textDirections);
   const numberFormats = enumerationOf(index, WML_NAMESPACE, "ST_NumberFormat");
 

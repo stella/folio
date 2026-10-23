@@ -13,9 +13,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as vscode from "vscode";
 
-import { decodeBackup, type Backup } from "./backup";
+import { type Backup, decodeBackup } from "./backup";
 import { debounce } from "./debounce";
-import type { FolioEditingMode, FolioEditorSaveStrategy } from "./editor-protocol";
+import type {
+  FolioEditingMode,
+  FolioEditorSaveStrategy,
+} from "./editor-protocol";
 import {
   CONFIRM_REWRITE_SETTING,
   initialMode,
@@ -28,7 +31,12 @@ import { readCommitForVersion, updatedNotice } from "./journal";
 import { EditorLease } from "./lease";
 import type { CliRuntime } from "./runtime";
 import { fileVersionOf, saveWithCli } from "./save";
-import { DocxSession, SaveCancelled, type RewriteWarning, type SessionUi } from "./session";
+import {
+  DocxSession,
+  type RewriteWarning,
+  SaveCancelled,
+  type SessionUi,
+} from "./session";
 import { createNonce, editorShellHtml } from "./shell";
 
 export const EDITOR_VIEW_TYPE = "folio.docxEditor";
@@ -38,7 +46,8 @@ const AUTHOR_SETTING = "folio.author";
 /** How long the file must be quiet before a change on disk is looked at. */
 const DISK_CHANGE_DELAY_MS = 300;
 
-const baseName = (uri: vscode.Uri): string => uri.path.split("/").at(-1) ?? uri.path;
+const baseName = (uri: vscode.Uri): string =>
+  uri.path.split("/").at(-1) ?? uri.path;
 
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -72,7 +81,10 @@ class FolioDocxDocument implements vscode.CustomDocument {
   readonly disposables: vscode.Disposable[] = [];
 
   /** `createSession` may keep the document: its callbacks run only once it is built. */
-  constructor(uri: vscode.Uri, createSession: (document: FolioDocxDocument) => DocxSession) {
+  constructor(
+    uri: vscode.Uri,
+    createSession: (document: FolioDocxDocument) => DocxSession,
+  ) {
     this.uri = uri;
     this.fileName = baseName(uri);
     this.session = createSession(this);
@@ -92,9 +104,14 @@ class FolioDocxDocument implements vscode.CustomDocument {
     const onChange = (changed: vscode.Uri) => {
       if (changed.toString() === this.uri.toString()) check.schedule();
     };
-    this.disposables.push(watcher, watcher.onDidChange(onChange), watcher.onDidCreate(onChange), {
-      dispose: () => check.dispose(),
-    });
+    this.disposables.push(
+      watcher,
+      watcher.onDidChange(onChange),
+      watcher.onDidCreate(onChange),
+      {
+        dispose: () => check.dispose(),
+      },
+    );
   }
 
   dispose(): void {
@@ -112,11 +129,18 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
   private readonly editorRoot: vscode.Uri;
   /** Shared by every document: the rewrite warning shows once per session. */
   private readonly rewrite: RewriteWarning = {
-    enabled: () => vscode.workspace.getConfiguration().get<boolean>(CONFIRM_REWRITE_SETTING, true),
+    enabled: () =>
+      vscode.workspace
+        .getConfiguration()
+        .get<boolean>(CONFIRM_REWRITE_SETTING, true),
     disable: async () => {
       await vscode.workspace
         .getConfiguration()
-        .update(CONFIRM_REWRITE_SETTING, false, vscode.ConfigurationTarget.Global);
+        .update(
+          CONFIRM_REWRITE_SETTING,
+          false,
+          vscode.ConfigurationTarget.Global,
+        );
     },
     confirmed: false,
   };
@@ -152,7 +176,11 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
     const key = uri.toString();
     this.readOnlyRequests.add(key);
     try {
-      await vscode.commands.executeCommand("vscode.openWith", uri, EDITOR_VIEW_TYPE);
+      await vscode.commands.executeCommand(
+        "vscode.openWith",
+        uri,
+        EDITOR_VIEW_TYPE,
+      );
     } finally {
       this.readOnlyRequests.delete(key);
     }
@@ -166,7 +194,9 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
     const documentPath = uri.scheme === "file" ? uri.fsPath : null;
     const readOnly = this.readOnlyRequests.has(uri.toString());
     const restored =
-      openContext.backupId === undefined ? null : await this.readBackup(openContext.backupId);
+      openContext.backupId === undefined
+        ? null
+        : await this.readBackup(openContext.backupId);
     const bytes = restored?.bytes ?? (await vscode.workspace.fs.readFile(uri));
     const configuration = vscode.workspace.getConfiguration();
     const author = resolveEditorAuthor({
@@ -184,9 +214,14 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
       restored: restored !== null,
       mode: readOnly
         ? "viewing"
-        : initialMode(configuration.get(TRACK_CHANGES_SETTING), documentPath !== null),
+        : initialMode(
+            configuration.get(TRACK_CHANGES_SETTING),
+            documentPath !== null,
+          ),
     };
-    const document = new FolioDocxDocument(uri, (created) => this.createSession(created, opened));
+    const document = new FolioDocxDocument(uri, (created) =>
+      this.createSession(created, opened),
+    );
     document.watch();
     const key = uri.toString();
     this.documents.set(key, document);
@@ -198,14 +233,18 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
     return document;
   }
 
-  private createSession(document: FolioDocxDocument, opened: Opened): DocxSession {
+  private createSession(
+    document: FolioDocxDocument,
+    opened: Opened,
+  ): DocxSession {
     const { uri, fileName } = document;
     const { documentPath, author, bytes, baseline, restored, mode } = opened;
     const lease =
       documentPath === null
         ? null
         : new EditorLease(documentPath, {
-            onFlushRequest: (request) => void document.session.flush(request.owner),
+            onFlushRequest: (request) =>
+              void document.session.flush(request.owner),
             onLost: (message) => document.session.leaseLost(message),
           });
     return new DocxSession({
@@ -232,7 +271,9 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
       describeChange: async (version) =>
         updatedNotice(
           fileName,
-          documentPath === null ? null : await readCommitForVersion(documentPath, version),
+          documentPath === null
+            ? null
+            : await readCommitForVersion(documentPath, version),
         ),
       lease,
       ui: this.sessionUi(document),
@@ -250,7 +291,9 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
   /** The backup's document, or `null` (the file on disk opens) when it cannot be read. */
   private async readBackup(backupId: string): Promise<Backup | null> {
     try {
-      const backup = decodeBackup(await vscode.workspace.fs.readFile(vscode.Uri.parse(backupId)));
+      const backup = decodeBackup(
+        await vscode.workspace.fs.readFile(vscode.Uri.parse(backupId)),
+      );
       if (backup !== null) return backup;
     } catch {
       // Reported below.
@@ -269,7 +312,8 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
           `This save rewrites the whole document package; a backup of the previous version is kept in .folio/backups/${fileName}/.`,
           {
             modal: true,
-            detail: "Always saves without asking again (the folio.editor.confirmRewrite setting).",
+            detail:
+              "Always saves without asking again (the folio.editor.confirmRewrite setting).",
           },
           "Save",
           "Save a Copy…",
@@ -317,7 +361,8 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
         await this.writeCopy(document, target, { bytes, strategy });
         return true;
       },
-      saveThroughWorkbench: async () => (await vscode.workspace.save(document.uri)) !== undefined,
+      saveThroughWorkbench: async () =>
+        (await vscode.workspace.save(document.uri)) !== undefined,
       revertThroughWorkbench: async () => {
         // Revert acts on the active editor.
         document.panel?.reveal(undefined, false);
@@ -327,7 +372,9 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
         vscode.window.setStatusBarMessage(`$(sync) ${message}`, 8000);
       },
       showLoadFailed: (message) => {
-        void vscode.window.showErrorMessage(`Folio could not open ${fileName}: ${message}`);
+        void vscode.window.showErrorMessage(
+          `Folio could not open ${fileName}: ${message}`,
+        );
       },
       showInfo: (message) => {
         void vscode.window.showInformationMessage(`Folio: ${message}`);
@@ -347,7 +394,10 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
   private async writeCopy(
     document: FolioDocxDocument,
     target: vscode.Uri,
-    serialized?: { readonly bytes: Uint8Array; readonly strategy: FolioEditorSaveStrategy },
+    serialized?: {
+      readonly bytes: Uint8Array;
+      readonly strategy: FolioEditorSaveStrategy;
+    },
   ): Promise<void> {
     if (target.scheme === "file") {
       await document.session.saveCopyTo(target.fsPath, serialized);
@@ -357,14 +407,24 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
     await vscode.workspace.fs.writeFile(target, bytes);
   }
 
-  resolveCustomEditor(document: FolioDocxDocument, panel: vscode.WebviewPanel): void {
+  resolveCustomEditor(
+    document: FolioDocxDocument,
+    panel: vscode.WebviewPanel,
+  ): void {
     const { webview } = panel;
-    webview.options = { enableScripts: true, localResourceRoots: [this.editorRoot] };
+    webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this.editorRoot],
+    };
     webview.html = editorShellHtml({
       nonce: createNonce(),
       cspSource: webview.cspSource,
-      scriptUri: webview.asWebviewUri(vscode.Uri.joinPath(this.editorRoot, "editor.js")).toString(),
-      styleUri: webview.asWebviewUri(vscode.Uri.joinPath(this.editorRoot, "editor.css")).toString(),
+      scriptUri: webview
+        .asWebviewUri(vscode.Uri.joinPath(this.editorRoot, "editor.js"))
+        .toString(),
+      styleUri: webview
+        .asWebviewUri(vscode.Uri.joinPath(this.editorRoot, "editor.css"))
+        .toString(),
       fileName: document.fileName,
       testMode: this.testMode,
     });
@@ -388,11 +448,16 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
       await document.session.save();
     } catch (error) {
       if (error instanceof SaveCancelled) throw new vscode.CancellationError();
-      throw new Error(`Folio could not save ${document.fileName}: ${describe(error)}`);
+      throw new Error(
+        `Folio could not save ${document.fileName}: ${describe(error)}`,
+      );
     }
   }
 
-  async saveCustomDocumentAs(document: FolioDocxDocument, destination: vscode.Uri): Promise<void> {
+  async saveCustomDocumentAs(
+    document: FolioDocxDocument,
+    destination: vscode.Uri,
+  ): Promise<void> {
     if (destination.toString() === document.uri.toString()) {
       await this.saveCustomDocument(document);
       return;
@@ -413,7 +478,9 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
     return {
       id: context.destination.toString(),
       delete: () => {
-        void vscode.workspace.fs.delete(context.destination).then(undefined, () => undefined);
+        void vscode.workspace.fs
+          .delete(context.destination)
+          .then(undefined, () => undefined);
       },
     };
   }
@@ -421,8 +488,12 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
 
 /** The file behind the active tab, whichever editor shows it. */
 const activeTabUri = (): vscode.Uri | undefined => {
-  const input: unknown = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-  if (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) {
+  const input: unknown =
+    vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (
+    input instanceof vscode.TabInputText ||
+    input instanceof vscode.TabInputCustom
+  ) {
     return input.uri;
   }
   return undefined;
@@ -461,20 +532,27 @@ export const registerEditor = (
       supportsMultipleEditorsPerDocument: false,
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.commands.registerCommand("folio.openReadOnly", async (target?: vscode.Uri) => {
-      const uri = target ?? activeTabUri();
-      if (uri === undefined) {
-        void vscode.window.showInformationMessage("Folio: select a .docx file to open.");
-        return;
-      }
-      await provider.openReadOnly(uri);
-    }),
+    vscode.commands.registerCommand(
+      "folio.openReadOnly",
+      async (target?: vscode.Uri) => {
+        const uri = target ?? activeTabUri();
+        if (uri === undefined) {
+          void vscode.window.showInformationMessage(
+            "Folio: select a .docx file to open.",
+          );
+          return;
+        }
+        await provider.openReadOnly(uri);
+      },
+    ),
   );
   const testHooks: EditorTestHooks = {
     received: (uri) => provider.documentFor(uri)?.received ?? [],
     post: async (uri, message) => {
       const panel = provider.documentFor(uri)?.panel;
-      return panel === undefined ? false : await panel.webview.postMessage(message);
+      return panel === undefined
+        ? false
+        : await panel.webview.postMessage(message);
     },
   };
   return { disposable, testHooks };

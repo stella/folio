@@ -12,12 +12,12 @@ import { describe, expect, test } from "bun:test";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, InlineSdt, Paragraph } from "../types/document";
-
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORDPROCESSINGML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const MOVE_RANGES = [
   {
@@ -69,7 +69,11 @@ const inlineControl = (paragraph: Paragraph): InlineSdt => {
   return control;
 };
 
-const fixtureXml = (start: string, end: string, inner = "<w:r><w:t>inside</w:t></w:r>"): string =>
+const fixtureXml = (
+  start: string,
+  end: string,
+  inner = "<w:r><w:t>inside</w:t></w:r>",
+): string =>
   `<w:p><w:sdt><w:sdtPr><w:tag w:val="move-range"/></w:sdtPr><w:sdtContent>` +
   `${start}${inner}${end}` +
   "</w:sdtContent></w:sdt></w:p>";
@@ -111,7 +115,9 @@ describe("tracked-move boundaries inside inline content controls", () => {
         serializedControl.indexOf(range.end),
       );
 
-      const fixedPoint = serializeParagraph(throughEditor(parseParagraphXml(serialized)));
+      const fixedPoint = serializeParagraph(
+        throughEditor(parseParagraphXml(serialized)),
+      );
       expect(fixedPoint).toBe(serialized);
     });
 
@@ -128,7 +134,9 @@ describe("tracked-move boundaries inside inline content controls", () => {
       });
       expect(anchors).toBe(1);
 
-      const serializedControl = controlXml(serializeParagraph(throughEditor(parsed)));
+      const serializedControl = controlXml(
+        serializeParagraph(throughEditor(parsed)),
+      );
       expect(serializedControl).toContain(`${range.start}${range.end}`);
     });
   }

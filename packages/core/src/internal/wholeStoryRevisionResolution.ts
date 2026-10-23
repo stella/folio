@@ -1,31 +1,51 @@
-import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
+import {
+  Mapping,
+  ReplaceStep,
+  type Step,
+  StepMap,
+  Transform,
+} from "prosemirror-transform";
+
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
-import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
+
+import type { NumberingMap } from "../docx/numberingParser";
 import {
   getProseParagraphPropertySourceToken,
   recreateProseNodeWithParagraphPropertySource as rebuild,
 } from "../docx/paragraphPropertySource";
+import {
+  anchoredTextBoxId,
+  droppedTextBoxAnchorIds,
+} from "../prosemirror/anchoredTextBoxes";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
-import type { NumberingMap } from "../docx/numberingParser";
-import { composeRevisionResolutionMaps } from "./revisionResolutionStep";
-import { recordNodeResolution } from "./revisionResolutionEdits";
-import { resolveAllTableChanges } from "../prosemirror/commands/resolveAllTableChanges";
-import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
-import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
-import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
-import { runParagraphsIntoTables, runsIntoFollowingTable } from "../prosemirror/tableRunIn";
-import { anchoredTextBoxId, droppedTextBoxAnchorIds } from "../prosemirror/anchoredTextBoxes";
-import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
+import { resolveAllTableChanges } from "../prosemirror/commands/resolveAllTableChanges";
+import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
+import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
+import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
+import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
+import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
-import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
-import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
-import { resolveInlineRevisions, type RevisionResolutionMode } from "./revisionResolutionInline";
+import {
+  paragraphRunStyleContext,
+  type RunStyleResolver,
+} from "../prosemirror/runStyleFormatting";
+import {
+  runParagraphsIntoTables,
+  runsIntoFollowingTable,
+} from "../prosemirror/tableRunIn";
+import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
+import { recordNodeResolution } from "./revisionResolutionEdits";
+import {
+  resolveInlineRevisions,
+  type RevisionResolutionMode,
+} from "./revisionResolutionInline";
+import { composeRevisionResolutionMaps } from "./revisionResolutionStep";
 import type { RemovedSectionReference } from "./sectionEndpointResolution";
 
 // Property changes do not change positions. Resolve their style context before
@@ -46,7 +66,8 @@ const resolveProperties = ({
   steps,
   changedRanges,
 }: ResolvePropertiesOptions) => {
-  const removedMark = doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
+  const removedMark =
+    doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
   const collector = createResolvedCommentPointCollector({
     removes: (node) => removedMark?.isInSet(node.marks) !== undefined,
     retiresStructure: () => mode === "accept",
@@ -67,11 +88,14 @@ const resolveProperties = ({
     eligibleComments?: boolean;
     previous?: PMNode;
   }): PMNode => {
-    const childComments = eligibleComments && collector.visit(node, position, previous);
+    const childComments =
+      eligibleComments && collector.visit(node, position, previous);
     if (node.isText) return node;
     if (!runsIntoTable && !node.isTextblock) {
       for (let index = 0; index + 1 < node.childCount; index++) {
-        if (runsIntoFollowingTable(node.child(index), node.child(index + 1), mode)) {
+        if (
+          runsIntoFollowingTable(node.child(index), node.child(index + 1), mode)
+        ) {
           runsIntoTable = true;
           break;
         }
@@ -110,7 +134,8 @@ const resolveProperties = ({
         changedRanges.push({ from: position, to: position + node.nodeSize });
       structural ||= node.type.name !== "paragraph";
     }
-    if (position >= 0) recordNodeResolution({ before: node, after: resolved, position, steps });
+    if (position >= 0)
+      recordNodeResolution({ before: node, after: resolved, position, steps });
     const rebased = new Map<PMNode, PMNode>();
     if (
       node.type.name === "paragraph" &&
@@ -143,7 +168,11 @@ const resolveProperties = ({
     }
     const children: PMNode[] = [];
     let changed = false;
-    const visitChild = (child: PMNode, childPosition: number, previousChild?: PMNode): PMNode => {
+    const visitChild = (
+      child: PMNode,
+      childPosition: number,
+      previousChild?: PMNode,
+    ): PMNode => {
       const replacement = rebased.get(child) ?? child;
       if (rebased.size === 0)
         return walk({
@@ -153,7 +182,12 @@ const resolveProperties = ({
           ...(previousChild ? { previous: previousChild } : {}),
         });
       if (childComments) collector.visit(child, childPosition, previousChild);
-      recordNodeResolution({ before: child, after: replacement, position: childPosition, steps });
+      recordNodeResolution({
+        before: child,
+        after: replacement,
+        position: childPosition,
+        steps,
+      });
       if (replacement.isLeaf) return replacement;
       const nested: PMNode[] = [];
       replacement.forEach((inner, offset) =>
@@ -179,7 +213,10 @@ const resolveProperties = ({
     runsIntoTable,
     removedEndpointCount,
     removedReferences,
-    pointComments: mode === "accept" ? new Set(collector.finish().keys()) : new Set<number>(),
+    pointComments:
+      mode === "accept"
+        ? new Set(collector.finish().keys())
+        : new Set<number>(),
   };
 };
 
@@ -225,15 +262,23 @@ const structuralReplacementMap = ({
   bookmarkJoins,
   origin,
 }: StructuralReplacementMapOptions): StepMap => {
-  const tablesByPosition = new Map(tables.map((table) => [table.position, table]));
-  const bookmarkJoinsByPosition = new Map(bookmarkJoins.map((join) => [join.from, join]));
+  const tablesByPosition = new Map(
+    tables.map((table) => [table.position, table]),
+  );
+  const bookmarkJoinsByPosition = new Map(
+    bookmarkJoins.map((join) => [join.from, join]),
+  );
   const ranges: number[] = [];
   const mapFor = ({ from, to, slice }: StructuralReplacement): StepMap => {
     const table = tablesByPosition.get(from);
     if (table && table.sourceNodeSize === to - from) {
       const tableRanges: number[] = [];
       table.positionMap.forEach((oldStart, oldEnd, newStart, newEnd) => {
-        tableRanges.push(from - origin + oldStart, oldEnd - oldStart, newEnd - newStart);
+        tableRanges.push(
+          from - origin + oldStart,
+          oldEnd - oldStart,
+          newEnd - newStart,
+        );
       });
       return new StepMap(tableRanges);
     }
@@ -241,7 +286,11 @@ const structuralReplacementMap = ({
     if (bookmarkJoin?.to === to) {
       const joinRanges: number[] = [];
       bookmarkJoin.positionMap.forEach((oldStart, oldEnd, newStart, newEnd) => {
-        joinRanges.push(from - origin + oldStart, oldEnd - oldStart, newEnd - newStart);
+        joinRanges.push(
+          from - origin + oldStart,
+          oldEnd - oldStart,
+          newEnd - newStart,
+        );
       });
       return new StepMap(joinRanges);
     }
@@ -266,7 +315,9 @@ const structuralReplacementMap = ({
         const first = maps.at(index);
         const second = maps.at(index + 1);
         if (!first) break;
-        combined.push(second ? composeRevisionResolutionMaps(first, second) : first);
+        combined.push(
+          second ? composeRevisionResolutionMaps(first, second) : first,
+        );
       }
       maps = combined;
     }
@@ -325,9 +376,17 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
   if (properties === undefined) return;
   context.removedEndpointCount++;
   for (const { type, rId } of properties?.headerReferences ?? [])
-    context.removedReferences.push({ part: "header", type, relationshipId: rId });
+    context.removedReferences.push({
+      part: "header",
+      type,
+      relationshipId: rId,
+    });
   for (const { type, rId } of properties?.footerReferences ?? [])
-    context.removedReferences.push({ part: "footer", type, relationshipId: rId });
+    context.removedReferences.push({
+      part: "footer",
+      type,
+      relationshipId: rId,
+    });
 };
 
 /** A cleared record (null) and an absent one (undefined) both end no section. */
@@ -340,8 +399,11 @@ const precedingSectionOwner = (
 ): "unavailable" | "available" | "same" | "occupied" => {
   if (preceding?.type.name !== "paragraph") return "unavailable";
   if (!ownsSection(preceding)) return "available";
-  const precedingProperties = expectParagraphAttrs(preceding)._sectionProperties;
-  return JSON.stringify(precedingProperties) === JSON.stringify(properties) ? "same" : "occupied";
+  const precedingProperties =
+    expectParagraphAttrs(preceding)._sectionProperties;
+  return JSON.stringify(precedingProperties) === JSON.stringify(properties)
+    ? "same"
+    : "occupied";
 };
 
 type ParagraphChain = {
@@ -356,11 +418,22 @@ type ParagraphChain = {
   before: PMNode;
   joinBoundaries: { closing: number; bookmarks: Fragment }[];
 };
-type ResolveStructureOptions = { node: PMNode; position: number; context: StructuralContext };
-const resolveStructure = ({ node, position, context }: ResolveStructureOptions): PMNode | null => {
+type ResolveStructureOptions = {
+  node: PMNode;
+  position: number;
+  context: StructuralContext;
+};
+const resolveStructure = ({
+  node,
+  position,
+  context,
+}: ResolveStructureOptions): PMNode | null => {
   if (node.isLeaf) return node;
   const textBoxAnchor = anchoredTextBoxId(node);
-  if (textBoxAnchor !== undefined && context.droppedTextBoxAnchors.has(textBoxAnchor)) {
+  if (
+    textBoxAnchor !== undefined &&
+    context.droppedTextBoxAnchors.has(textBoxAnchor)
+  ) {
     context.structural = true;
     return null;
   }
@@ -371,10 +444,15 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     tableRanges: context.tableRanges.length,
     bookmarkJoins: context.bookmarkJoins.length,
   };
-  const entries: { node: PMNode | null; original: PMNode; position: number }[] = [];
+  const entries: { node: PMNode | null; original: PMNode; position: number }[] =
+    [];
   node.forEach((child, offset) =>
     entries.push({
-      node: resolveStructure({ node: child, position: position + 1 + offset, context }),
+      node: resolveStructure({
+        node: child,
+        position: position + 1 + offset,
+        context,
+      }),
       original: child,
       position: position + 1 + offset,
     }),
@@ -393,8 +471,12 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         if (!chunk) continue;
         // The surviving owner keeps its own marks, as the single-change join
         // does. Rebuilding them would change provenance without a style change.
-        let content = chunk.type === "paragraph" ? chunk.source.content : chunk.content;
-        if (chunk.type === "paragraph" && chunk.position !== chain.formattingOwnerPosition) {
+        let content =
+          chunk.type === "paragraph" ? chunk.source.content : chunk.content;
+        if (
+          chunk.type === "paragraph" &&
+          chunk.position !== chain.formattingOwnerPosition
+        ) {
           content = rebaseParagraphRunContent({
             paragraph: chunk.source,
             target: chain.node,
@@ -443,7 +525,11 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         positionMap: new StepMap([0, 1, 0, bookmarks.size + 1, 1, 0]),
       });
     }
-    reversed.push(chain.chunks.length === 1 && final.eq(chain.before) ? chain.before : final);
+    reversed.push(
+      chain.chunks.length === 1 && final.eq(chain.before)
+        ? chain.before
+        : final,
+    );
     chain = null;
   };
   const flushBookmarks = (): void => {
@@ -496,7 +582,10 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         precedingSectionOwner: precedingSectionOwner(preceding, properties),
         followingHasSectionProperties: ownsSection(chain.node),
       });
-      if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
+      if (
+        outcome.sectionDestination === "preceding" &&
+        preceding?.type.name === "paragraph"
+      ) {
         entries[index - 1]!.node = rebuild(preceding, {
           attrs: { ...preceding.attrs, _sectionProperties: properties },
         });
@@ -524,10 +613,15 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       const displacedToken = getProseParagraphPropertySourceToken(paragraph);
       const selectedToken = getProseParagraphPropertySourceToken(chain.node);
       context.transfers.push({
-        displacedToken: typeof displacedToken === "string" ? displacedToken : null,
+        displacedToken:
+          typeof displacedToken === "string" ? displacedToken : null,
         selectedToken: typeof selectedToken === "string" ? selectedToken : null,
       });
-      chain.chunks.push({ type: "paragraph", source: paragraph, position: entry.position });
+      chain.chunks.push({
+        type: "paragraph",
+        source: paragraph,
+        position: entry.position,
+      });
       chain.position = entry.position;
       chain.before = paragraph;
       chain.joinBoundaries.push({
@@ -546,9 +640,11 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     // so it must be a paragraph (a cell or body never ends with a table).
     let containerStillEndsWithParagraph = true;
     if (follows === "table") {
-      containerStillEndsWithParagraph = node.lastChild?.type.name === "paragraph";
+      containerStillEndsWithParagraph =
+        node.lastChild?.type.name === "paragraph";
     } else if (follows === "nothing") {
-      containerStillEndsWithParagraph = entries[index - 1]?.original.type.name === "paragraph";
+      containerStillEndsWithParagraph =
+        entries[index - 1]?.original.type.name === "paragraph";
     }
     const outcome = paragraphMarkOutcome({
       follows,
@@ -572,7 +668,10 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     ) {
       const properties = expectParagraphAttrs(paragraph)._sectionProperties;
       const preceding = entries[index - 1]?.node;
-      if (outcome.sectionDestination === "preceding" && preceding?.type.name === "paragraph") {
+      if (
+        outcome.sectionDestination === "preceding" &&
+        preceding?.type.name === "paragraph"
+      ) {
         entries[index - 1]!.node = rebuild(preceding, {
           attrs: { ...preceding.attrs, _sectionProperties: properties },
         });
@@ -581,7 +680,10 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
           attrs: { ...chain.node.attrs, _sectionProperties: properties },
         });
       }
-      context.deleted.push({ from: entry.position, to: entry.position + paragraph.nodeSize });
+      context.deleted.push({
+        from: entry.position,
+        to: entry.position + paragraph.nodeSize,
+      });
       removedEndpoint(paragraph, context);
       continue;
     }
@@ -591,7 +693,9 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     chain = {
       node: resolved,
       formattingOwnerPosition: entry.position,
-      chunks: [{ type: "paragraph", source: resolved, position: entry.position }],
+      chunks: [
+        { type: "paragraph", source: resolved, position: entry.position },
+      ],
       position: entry.position,
       before: paragraph,
       joinBoundaries: [],
@@ -636,7 +740,10 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
           reversed[reversed.length - 1] = cleared;
         } else if (reversed.length > 1) {
           reversed.pop();
-          context.deleted.push({ from: entry.position, to: entry.position + carrier.nodeSize });
+          context.deleted.push({
+            from: entry.position,
+            to: entry.position + carrier.nodeSize,
+          });
         } else {
           const filler = node.type.schema.nodes["paragraph"]?.createAndFill();
           if (filler) {
@@ -656,7 +763,10 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     reversed.every((child, index) => child === node.child(index));
   const rebuilt = unchanged ? node : rebuild(node, { content: reversed });
   if (node.type.spec["tableRole"] !== "table") return rebuilt;
-  const tableResult = resolveAllTableChanges({ table: rebuilt, mode: context.mode });
+  const tableResult = resolveAllTableChanges({
+    table: rebuilt,
+    mode: context.mode,
+  });
   context.structural ||= tableResult.structural;
   context.failed ||= tableResult.failed;
   const final = tableResult.node;
@@ -673,7 +783,10 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       bookmarkJoins: context.bookmarkJoins.slice(structuralStart.bookmarkJoins),
       origin: position,
     });
-    const positionMap = composeRevisionResolutionMaps(inputMap, tableResult.positionMap);
+    const positionMap = composeRevisionResolutionMaps(
+      inputMap,
+      tableResult.positionMap,
+    );
     context.tableRanges.push({
       node: final,
       inputNode: rebuilt,
@@ -721,7 +834,11 @@ export const resolveWholeStory = ({
   // A paragraph whose mark goes right before a table runs on into the table's
   // first cell before the rest resolves; both read as one resolution.
   const runIn = new Transform(doc);
-  const { targets, maps, transfers } = runParagraphsIntoTables(runIn, mode, styleResolver);
+  const { targets, maps, transfers } = runParagraphsIntoTables(
+    runIn,
+    mode,
+    styleResolver,
+  );
   if (!runIn.docChanged) return direct;
   const { runsIntoTable: _rerun, ...result } = resolveStoryRevisions({
     doc: runIn.doc,
@@ -735,8 +852,12 @@ export const resolveWholeStory = ({
     if (target) result.changedRanges.push({ from, to: from + target.nodeSize });
   }
   let runInMap = StepMap.empty;
-  for (const map of maps) runInMap = composeRevisionResolutionMaps(runInMap, map);
-  const positionMap = composeRevisionResolutionMaps(runInMap, result.positionMap);
+  for (const map of maps)
+    runInMap = composeRevisionResolutionMaps(runInMap, map);
+  const positionMap = composeRevisionResolutionMaps(
+    runInMap,
+    result.positionMap,
+  );
   return {
     ...result,
     steps: [...runIn.steps, ...result.steps],
@@ -768,8 +889,10 @@ const resolveStoryRevisions = ({
     doc: properties,
     mode,
     styleResolver,
-    keepType: doc.type.schema.marks[mode === "accept" ? "insertion" : "deletion"],
-    removeType: doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"],
+    keepType:
+      doc.type.schema.marks[mode === "accept" ? "insertion" : "deletion"],
+    removeType:
+      doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"],
   });
   const context: StructuralContext = {
     mode,
@@ -790,12 +913,20 @@ const resolveStoryRevisions = ({
       : new Set<string>(),
   };
   const resolved =
-    resolveStructure({ node: inline?.resolved ?? properties, position: -1, context }) ?? doc;
+    resolveStructure({
+      node: inline?.resolved ?? properties,
+      position: -1,
+      context,
+    }) ?? doc;
   if (inline) steps.push(...inline.steps);
   steps.push(...context.steps);
   const replacements = [
     ...context.replacements,
-    ...context.deleted.map(({ from, to }) => ({ from, to, slice: Slice.empty })),
+    ...context.deleted.map(({ from, to }) => ({
+      from,
+      to,
+      slice: Slice.empty,
+    })),
   ].sort((a, b) => a.from - b.from);
   const structuralMap = structuralReplacementMap({
     replacements,

@@ -1,15 +1,16 @@
-import {
-  canonicalResourceReplacementOf,
-  CanonicalResourceSaveRefusalError,
-} from "./canonicalResourceSave";
 import { Result, TaggedError } from "better-result";
+
+import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
 } from "../types/docxSerialization";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
-import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
+import {
+  canonicalResourceReplacementOf,
+  CanonicalResourceSaveRefusalError,
+} from "./canonicalResourceSave";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
 import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import type { SaveDiagnostic } from "./saveDiagnostics";
@@ -17,7 +18,9 @@ import type { FolioSelectiveSaveFlags } from "./selectiveSaveFlags";
 import { resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
 
 /** Forward a fidelity fallback through the adapters' existing error channel. */
-export class CanonicalSaveDiagnosticError extends TaggedError("CanonicalSaveDiagnosticError")<{
+export class CanonicalSaveDiagnosticError extends TaggedError(
+  "CanonicalSaveDiagnosticError",
+)<{
   message: string;
   gap: typeof CANONICAL_GAP.save;
   diagnostic: SaveDiagnostic;
@@ -38,7 +41,9 @@ export const serializeCanonicalSave = async ({
   const document = withoutUnreferencedNotes(snapshot.document);
   // Package-resource operations conservatively retain structural save work through undo.
   const replacementPart =
-    snapshot.structure === "changed" ? canonicalResourceReplacementOf(document) : undefined;
+    snapshot.structure === "changed"
+      ? canonicalResourceReplacementOf(document)
+      : undefined;
   if (replacementPart) {
     const diagnostic = {
       type: "canonicalResourceReplacement",
@@ -47,7 +52,8 @@ export const serializeCanonicalSave = async ({
     } as const satisfies SaveDiagnostic;
     options?.onDiagnostic?.(diagnostic);
     throw new CanonicalResourceSaveRefusalError({
-      message: "Canonical save cannot preserve this package resource replacement.",
+      message:
+        "Canonical save cannot preserve this package resource replacement.",
       gap: CANONICAL_GAP.resourceReplacement,
       diagnostic,
     });
@@ -58,13 +64,16 @@ export const serializeCanonicalSave = async ({
   const onDiagnostic = (diagnostic: SaveDiagnostic) => {
     if (
       !diagnostics.some(
-        (existing) => existing.type === diagnostic.type && existing.part === diagnostic.part,
+        (existing) =>
+          existing.type === diagnostic.type &&
+          existing.part === diagnostic.part,
       )
     )
       diagnostics.push(diagnostic);
   };
   const { repackDocx, createDocx } = await import("./rezip");
-  const useSelective = flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
+  const useSelective =
+    flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
   let selectiveBuffer: ArrayBuffer | null = null;
   if (baseline && (useSelective || flags.selectiveSaveTripwire)) {
     const { attemptSelectiveSave } = await import("./selectiveSave");
@@ -81,11 +90,15 @@ export const serializeCanonicalSave = async ({
   }
   const repack = () => {
     if (baseline && getDocumentSourceBaseline(document).type === "missing")
-      onDiagnostic({ type: "sourceReplayUnavailable", part: "word/document.xml" });
+      onDiagnostic({
+        type: "sourceReplayUnavailable",
+        part: "word/document.xml",
+      });
     return baseline
       ? repackWithCanonicalStoryRemovals({
           document,
-          repack: () => repackDocx(document, { onDiagnostic, bodyAuthority: "canonical" }),
+          repack: () =>
+            repackDocx(document, { onDiagnostic, bodyAuthority: "canonical" }),
         })
       : createDocx(document, { onDiagnostic, bodyAuthority: "canonical" });
   };
@@ -95,7 +108,10 @@ export const serializeCanonicalSave = async ({
     fullBuffer = await repack();
     buffer = fullBuffer;
   } else if (flags.selectiveSaveTripwire) {
-    const full = await Result.tryPromise({ try: repack, catch: (error: unknown) => error });
+    const full = await Result.tryPromise({
+      try: repack,
+      catch: (error: unknown) => error,
+    });
     if (full.isOk()) fullBuffer = full.value;
   }
   let tripwireResult = null;
@@ -109,5 +125,11 @@ export const serializeCanonicalSave = async ({
     if (compared.isOk()) tripwireResult = compared.value;
   }
   for (const diagnostic of diagnostics) options?.onDiagnostic?.(diagnostic);
-  return { buffer, document, version: snapshot.version, diagnostics, tripwireResult };
+  return {
+    buffer,
+    document,
+    version: snapshot.version,
+    diagnostics,
+    tripwireResult,
+  };
 };

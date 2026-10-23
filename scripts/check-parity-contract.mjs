@@ -27,14 +27,26 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 
-const REACT_PROPS_SRC = path.join(repoRoot, "packages/react/src/components/DocxEditor.props.ts");
-const VUE_TYPES_SRC = path.join(repoRoot, "packages/vue/src/components/DocxEditor/types.ts");
-const REACT_PAGED_REF_SRC = path.join(repoRoot, "packages/react/src/paged-editor/PagedEditor.tsx");
+const REACT_PROPS_SRC = path.join(
+  repoRoot,
+  "packages/react/src/components/DocxEditor.props.ts",
+);
+const VUE_TYPES_SRC = path.join(
+  repoRoot,
+  "packages/vue/src/components/DocxEditor/types.ts",
+);
+const REACT_PAGED_REF_SRC = path.join(
+  repoRoot,
+  "packages/react/src/paged-editor/PagedEditor.tsx",
+);
 const VUE_PAGED_REF_SRC = path.join(
   repoRoot,
   "packages/vue/src/components/DocxEditor/pagedEditorRef.ts",
 );
-const CONTRACT_PATH = path.join(repoRoot, "scripts/parity/parity.contract.json");
+const CONTRACT_PATH = path.join(
+  repoRoot,
+  "scripts/parity/parity.contract.json",
+);
 
 /**
  * Extract the top-level field/member names from an `export type <Name> = { ... }`
@@ -121,7 +133,9 @@ function validateContractShape(contract) {
       const ok =
         type === "array"
           ? Array.isArray(value)
-          : typeof value === "object" && value !== null && !Array.isArray(value);
+          : typeof value === "object" &&
+            value !== null &&
+            !Array.isArray(value);
       if (!ok)
         errors.push(
           `contract.${top}.${bucket} must be ${type === "array" ? "an array" : "an object"}`,
@@ -133,7 +147,10 @@ function validateContractShape(contract) {
       const value = section[bucket];
       const keys = Array.isArray(value) ? value : Object.keys(value ?? {});
       for (const k of keys) {
-        if (seen.has(k)) errors.push(`contract.${top}: '${k}' appears in more than one bucket`);
+        if (seen.has(k))
+          errors.push(
+            `contract.${top}: '${k}' appears in more than one bucket`,
+          );
         seen.add(k);
       }
     }
@@ -152,24 +169,32 @@ function checkSection(kind, section, reactMembers, vueMembers, issues) {
 
   // paired must exist on both adapters.
   for (const k of paired) {
-    if (!reactMembers.has(k)) issues.push(`${kind} paired '${k}' missing from React`);
-    if (!vueMembers.has(k)) issues.push(`${kind} paired '${k}' missing from Vue`);
+    if (!reactMembers.has(k))
+      issues.push(`${kind} paired '${k}' missing from React`);
+    if (!vueMembers.has(k))
+      issues.push(`${kind} paired '${k}' missing from Vue`);
   }
   // deferredInVue is a React feature the Vue implementation stubs; the name must
   // exist on React. (It also exists on Vue's type surface — that is expected and
   // not asserted, since the deferral is at the implementation level.)
   for (const k of deferred) {
     if (!reactMembers.has(k))
-      issues.push(`${kind} deferredInVue '${k}' missing from React (contract stale)`);
+      issues.push(
+        `${kind} deferredInVue '${k}' missing from React (contract stale)`,
+      );
   }
   // Any adapter member not classified is drift.
   for (const k of reactMembers) {
     if (!classified.has(k))
-      issues.push(`${kind} '${k}' in React is not declared in the parity contract`);
+      issues.push(
+        `${kind} '${k}' in React is not declared in the parity contract`,
+      );
   }
   for (const k of vueMembers) {
     if (!classified.has(k))
-      issues.push(`${kind} '${k}' in Vue is not declared in the parity contract`);
+      issues.push(
+        `${kind} '${k}' in Vue is not declared in the parity contract`,
+      );
   }
 }
 
@@ -241,24 +266,48 @@ function main() {
     issues,
   );
 
-  console.log(`Parity contract: scripts/parity/parity.contract.json (v${contract.version})`);
-  console.log(`  React DocxEditorProps: ${parsed["React DocxEditorProps"].size} fields`);
-  console.log(`  Vue   DocxEditorProps: ${parsed["Vue DocxEditorProps"].size} fields`);
-  console.log(`  React DocxEditorRef:   ${parsed["React DocxEditorRef"].size} members`);
-  console.log(`  Vue   DocxEditorRef:   ${parsed["Vue DocxEditorRef"].size} members`);
-  console.log(`  React PagedEditorRef:  ${parsed["React PagedEditorRef"].size} members`);
-  console.log(`  Vue   PagedEditorRef:  ${parsed["Vue PagedEditorRef"].size} members`);
+  console.log(
+    `Parity contract: scripts/parity/parity.contract.json (v${contract.version})`,
+  );
+  console.log(
+    `  React DocxEditorProps: ${parsed["React DocxEditorProps"].size} fields`,
+  );
+  console.log(
+    `  Vue   DocxEditorProps: ${parsed["Vue DocxEditorProps"].size} fields`,
+  );
+  console.log(
+    `  React DocxEditorRef:   ${parsed["React DocxEditorRef"].size} members`,
+  );
+  console.log(
+    `  Vue   DocxEditorRef:   ${parsed["Vue DocxEditorRef"].size} members`,
+  );
+  console.log(
+    `  React PagedEditorRef:  ${parsed["React PagedEditorRef"].size} members`,
+  );
+  console.log(
+    `  Vue   PagedEditorRef:  ${parsed["Vue PagedEditorRef"].size} members`,
+  );
   console.log(`  Paired props:          ${contract.props.paired.length}`);
-  console.log(`  Deferred-in-Vue props: ${Object.keys(contract.props.deferredInVue).length}`);
+  console.log(
+    `  Deferred-in-Vue props: ${Object.keys(contract.props.deferredInVue).length}`,
+  );
   console.log(`  Paired ref members:    ${contract.ref.paired.length}`);
-  console.log(`  Deferred-in-Vue refs:  ${Object.keys(contract.ref.deferredInVue).length}`);
+  console.log(
+    `  Deferred-in-Vue refs:  ${Object.keys(contract.ref.deferredInVue).length}`,
+  );
   console.log(`  Paired paged refs:     ${contract.pagedRef.paired.length}`);
-  console.log(`  Deferred paged refs:  ${Object.keys(contract.pagedRef.deferredInVue).length}`);
+  console.log(
+    `  Deferred paged refs:  ${Object.keys(contract.pagedRef.deferredInVue).length}`,
+  );
 
   if (issues.length > 0) {
-    console.error(`\nParity drift: ${issues.length} issue${issues.length === 1 ? "" : "s"}`);
+    console.error(
+      `\nParity drift: ${issues.length} issue${issues.length === 1 ? "" : "s"}`,
+    );
     for (const issue of issues) console.error(`  - ${issue}`);
-    console.error("\nFix: update scripts/parity/parity.contract.json to acknowledge the change,");
+    console.error(
+      "\nFix: update scripts/parity/parity.contract.json to acknowledge the change,",
+    );
     console.error("then commit the contract alongside the adapter change.");
     process.exit(1);
   }

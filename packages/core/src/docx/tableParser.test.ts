@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
+import { parseBlockContent } from "./blockContentParser";
 import {
   serializeTableCellFormatting,
   serializeTableFormatting,
   serializeTableRowFormatting,
 } from "./serializer/tableSerializer";
-import { parseBlockContent } from "./blockContentParser";
 import {
   parseTable,
   parseTableCellProperties,
@@ -28,7 +28,8 @@ function parseTableXml(xml: string) {
   return table;
 }
 
-const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /**
  * A property set as if it had been built rather than parsed.
@@ -49,7 +50,9 @@ const rebuilt = <TFormatting extends { sourceXml?: string }>(
 
 describe("parseTableMeasurement", () => {
   const tblW = (w: string, type = "pct") => {
-    const root = parseXmlDocument(`<w:tblW ${NS} w:w="${w}" w:type="${type}"/>`) as XmlElement;
+    const root = parseXmlDocument(
+      `<w:tblW ${NS} w:w="${w}" w:type="${type}"/>`,
+    ) as XmlElement;
     return parseTableMeasurement(root);
   };
 
@@ -66,7 +69,9 @@ describe("parseTableMeasurement", () => {
 
 describe("parseTableGrid", () => {
   const grid = (column: string) =>
-    parseTableGrid(parseXmlDocument(`<w:tblGrid ${NS}>${column}</w:tblGrid>`) as XmlElement);
+    parseTableGrid(
+      parseXmlDocument(`<w:tblGrid ${NS}>${column}</w:tblGrid>`) as XmlElement,
+    );
 
   test("distinguishes an explicit zero width from an omitted width", () => {
     expect(grid('<w:gridCol w:w="0"/>')).toEqual([0]);
@@ -83,27 +88,37 @@ describe("rowless tables", () => {
     </w:body>`) as XmlElement;
 
     expect(
-      parseBlockContent(root, null, null, null, null, new Map()).map(({ type }) => type),
+      parseBlockContent(root, null, null, null, null, new Map()).map(
+        ({ type }) => type,
+      ),
     ).toEqual(["paragraph", "paragraph"]);
   });
 });
 
 describe("table cell marker visibility", () => {
   test("writes the package's one off spelling for an explicit false override", () => {
-    const root = parseXmlDocument(`<w:tcPr ${NS}><w:hideMark w:val="false"/></w:tcPr>`);
+    const root = parseXmlDocument(
+      `<w:tcPr ${NS}><w:hideMark w:val="false"/></w:tcPr>`,
+    );
     const formatting = parseTableCellProperties(root);
 
     expect(formatting?.hideMark).toBe(false);
     // The parsed element goes back exactly as it arrived, `w:val="false"` and
     // all; the rebuilt one writes `0`, as every other on/off element does.
-    expect(serializeTableCellFormatting(formatting)).toContain('<w:hideMark w:val="false"/>');
-    expect(serializeTableCellFormatting(rebuilt(formatting))).toContain('<w:hideMark w:val="0"/>');
+    expect(serializeTableCellFormatting(formatting)).toContain(
+      '<w:hideMark w:val="false"/>',
+    );
+    expect(serializeTableCellFormatting(rebuilt(formatting))).toContain(
+      '<w:hideMark w:val="0"/>',
+    );
   });
 });
 
 describe("table cell grid span cap", () => {
   test("clamps a hostile gridSpan to the practical column cap", () => {
-    const root = parseXmlDocument(`<w:tcPr ${NS}><w:gridSpan w:val="2000000000"/></w:tcPr>`);
+    const root = parseXmlDocument(
+      `<w:tcPr ${NS}><w:gridSpan w:val="2000000000"/></w:tcPr>`,
+    );
     const formatting = parseTableCellProperties(root);
 
     expect(formatting?.gridSpan).toBe(63);
@@ -131,7 +146,9 @@ describe("table cell merge revisions", () => {
       verticalMerge: "continue",
       verticalMergeOriginal: "rest",
     });
-    expect(serializeTableCellFormatting(undefined, undefined, change)).toContain(
+    expect(
+      serializeTableCellFormatting(undefined, undefined, change),
+    ).toContain(
       '<w:cellMerge w:id="17" w:author="Reviewer" w:vMerge="cont" w:vMergeOrig="rest"/>',
     );
   });
@@ -152,9 +169,9 @@ describe("table cell merge revisions", () => {
       type: "tableCellMerge",
       info: { id: 18, author: "Reviewer" },
     });
-    expect(serializeTableCellFormatting(undefined, undefined, change)).toContain(
-      '<w:cellMerge w:id="18" w:author="Reviewer"/>',
-    );
+    expect(
+      serializeTableCellFormatting(undefined, undefined, change),
+    ).toContain('<w:cellMerge w:id="18" w:author="Reviewer"/>');
   });
 });
 
@@ -167,7 +184,9 @@ describe("table properties", () => {
       width: { value: 8000, type: "dxa" },
       justification: "center",
       indent: { value: 120, type: "dxa" },
-      borders: { top: { style: "single", size: 4, space: 0, color: { rgb: "000000" } } },
+      borders: {
+        top: { style: "single", size: 4, space: 0, color: { rgb: "000000" } },
+      },
       shading: { fill: { rgb: "D9D9D9" }, pattern: "clear" },
       layout: "fixed",
       cellMargins: { top: { value: 80, type: "dxa" } },
@@ -218,7 +237,9 @@ describe("table row grid offsets", () => {
     // indentation included. Rebuilt, the children come out in the order
     // `CT_TrPrBase` declares them, which pairs the two counts before the two
     // widths rather than pairing each count with its own width.
-    expect(serializeTableRowFormatting(formatting)).toContain('<w:gridBefore w:val="2"/>');
+    expect(serializeTableRowFormatting(formatting)).toContain(
+      '<w:gridBefore w:val="2"/>',
+    );
     expect(serializeTableRowFormatting(rebuilt(formatting))).toContain(
       '<w:gridBefore w:val="2"/><w:gridAfter w:val="1"/><w:wBefore w:w="900" w:type="dxa"/><w:wAfter w:w="450" w:type="dxa"/>',
     );
@@ -263,9 +284,9 @@ describe("table row conditional formatting", () => {
       serializeTableRowFormatting(formatting),
       serializeTableRowFormatting(rebuilt(formatting)),
     ]) {
-      expect(rebuilt(parseTableRowProperties(parseXmlDocument(serialized)))).toEqual(
-        rebuilt(formatting),
-      );
+      expect(
+        rebuilt(parseTableRowProperties(parseXmlDocument(serialized))),
+      ).toEqual(rebuilt(formatting));
     }
   });
 });
@@ -427,12 +448,20 @@ describe("table bookmark placement", () => {
       "paragraph",
       "bookmarkEnd",
     ]);
-    expect(firstCell?.content.at(0)).toMatchObject({ type: "bookmarkStart", id: 1 });
-    expect(firstCell?.content.at(-1)).toMatchObject({ type: "bookmarkEnd", id: 1 });
+    expect(firstCell?.content.at(0)).toMatchObject({
+      type: "bookmarkStart",
+      id: 1,
+    });
+    expect(firstCell?.content.at(-1)).toMatchObject({
+      type: "bookmarkEnd",
+      id: 1,
+    });
 
     // The row-level end closes after the first cell, not inside it: the range
     // still covers the cell rather than part of its text.
-    expect(row?.bookmarks).toEqual([{ index: 1, marker: { type: "bookmarkEnd", id: 2 } }]);
+    expect(row?.bookmarks).toEqual([
+      { index: 1, marker: { type: "bookmarkEnd", id: 2 } },
+    ]);
   });
 
   test("a bookmark that selects whole rows keeps both halves on the row", () => {
@@ -459,7 +488,10 @@ describe("table bookmark placement", () => {
     </w:tbl>`);
 
     expect(table.bookmarks).toEqual([
-      { index: 0, marker: { type: "bookmarkStart", id: 9, name: "wholeTable" } },
+      {
+        index: 0,
+        marker: { type: "bookmarkStart", id: 9, name: "wholeTable" },
+      },
       { index: 1, marker: { type: "bookmarkEnd", id: 9 } },
     ]);
   });
@@ -479,7 +511,9 @@ describe("parseTable pct width", () => {
 
 describe("a cell's closing paragraph", () => {
   const cellBlockTypes = (xml: string): readonly string[] =>
-    (parseTableXml(xml).rows.at(0)?.cells.at(0)?.content ?? []).map(({ type }) => type);
+    (parseTableXml(xml).rows.at(0)?.cells.at(0)?.content ?? []).map(
+      ({ type }) => type,
+    );
 
   const CELL_WITH_A_NESTED_TABLE =
     `<w:p><w:r><w:t>Insurance minimums</w:t></w:r></w:p>` +
@@ -499,11 +533,15 @@ describe("a cell's closing paragraph", () => {
   // closing paragraph is the usual way a producer authors one.
   test("is supplied when the package ends the cell with a nested table", () => {
     expect(
-      cellBlockTypes(`<w:tbl ${NS}><w:tr><w:tc>${CELL_WITH_A_NESTED_TABLE}</w:tc></w:tr></w:tbl>`),
+      cellBlockTypes(
+        `<w:tbl ${NS}><w:tr><w:tc>${CELL_WITH_A_NESTED_TABLE}</w:tc></w:tr></w:tbl>`,
+      ),
     ).toEqual(["paragraph", "table", "paragraph"]);
   });
 
   test("is supplied when the cell states no block at all", () => {
-    expect(cellBlockTypes(`<w:tbl ${NS}><w:tr><w:tc/></w:tr></w:tbl>`)).toEqual(["paragraph"]);
+    expect(cellBlockTypes(`<w:tbl ${NS}><w:tr><w:tc/></w:tr></w:tbl>`)).toEqual(
+      ["paragraph"],
+    );
   });
 });

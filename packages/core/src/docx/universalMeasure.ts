@@ -45,7 +45,12 @@ export const universalMeasureInPoints = (value: string): number | undefined => {
 };
 
 /** A universal measure as the whole number a Transitional attribute of `unit` holds. */
-export const universalMeasureAs = (value: string, unit: MeasureUnit): number | undefined => {
+export const universalMeasureAs = (
+  value: string,
+  unit: MeasureUnit,
+): number | undefined => {
   const points = universalMeasureInPoints(value);
-  return points === undefined ? undefined : roundHalfAwayFromZero(points * NUMBERS_PER_POINT[unit]);
+  return points === undefined
+    ? undefined
+    : roundHalfAwayFromZero(points * NUMBERS_PER_POINT[unit]);
 };

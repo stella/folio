@@ -57,7 +57,9 @@ const rectClassName = (suggestion: AISuggestion, focused: boolean): string =>
     .filter(Boolean)
     .join(" ");
 
-export const AISuggestionRectsOverlay = ({ groups }: AISuggestionRectsOverlayProps) => {
+export const AISuggestionRectsOverlay = ({
+  groups,
+}: AISuggestionRectsOverlayProps) => {
   if (groups.length === 0) {
     return null;
   }
@@ -67,7 +69,9 @@ export const AISuggestionRectsOverlay = ({ groups }: AISuggestionRectsOverlayPro
       {groups.map(({ suggestion, rects, focused, font }) => {
         const replacementAnchor = rects.at(-1);
         const showReplacement =
-          focused && suggestion.suggestedText.length > 0 && replacementAnchor !== undefined;
+          focused &&
+          suggestion.suggestedText.length > 0 &&
+          replacementAnchor !== undefined;
         return (
           <span key={suggestion.id}>
             {rects.map((rect, idx) => (

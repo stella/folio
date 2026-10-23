@@ -2,16 +2,18 @@
  * Text Color Mark Extension
  */
 
-import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
-
 import { panic } from "better-result";
 
 import { textToStyle } from "../../../utils/formatToStyle";
 import { expectTextColorMarkAttrs } from "../../attrs";
+import {
+  canonicalRunFormatting,
+  withCanonicalCommand,
+} from "../../canonicalCommands";
+import { clearRunColor } from "../../clearRunColor";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { clearRunColor } from "../../clearRunColor";
 import { setMark } from "./markUtils";
 
 export const TextColorExtension = createMarkExtension({
@@ -28,7 +30,9 @@ export const TextColorExtension = createMarkExtension({
       {
         style: "color",
         getAttrs: (value) => {
-          const hexMatch = /#(?<hex>[0-9a-fA-F]{6}|[0-9a-fA-F]{3})/u.exec(value);
+          const hexMatch = /#(?<hex>[0-9a-fA-F]{6}|[0-9a-fA-F]{3})/u.exec(
+            value,
+          );
           if (hexMatch) {
             // SAFETY: capture group always present when regex matches
             return { rgb: (hexMatch.groups?.["hex"] ?? "").toUpperCase() };
@@ -41,7 +45,8 @@ export const TextColorExtension = createMarkExtension({
       const colorAttrs = expectTextColorMarkAttrs(mark);
       const style = textToStyle({ color: colorAttrs });
       const cssColor: unknown = style.color;
-      const cssString = typeof cssColor === "string" && cssColor ? `color: ${cssColor}` : "";
+      const cssString =
+        typeof cssColor === "string" && cssColor ? `color: ${cssColor}` : "";
       return ["span", { style: cssString }, 0];
     },
   },

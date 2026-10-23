@@ -1,13 +1,24 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, Paragraph, Table, TableCell, TableRow } from "../../model/document";
+import type {
+  Document,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
+import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { revisionIdDemand } from "../plan";
-import { permitsCellFinalMark } from "../tableTracking";
-import { storyParagraphs } from "../blocks";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS, type DocumentOp } from "../types";
+import { permitsCellFinalMark } from "../tableTracking";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+} from "../types";
 
 const makeParagraph = (
   paraId: string,
@@ -17,7 +28,10 @@ const makeParagraph = (
   ...fields,
   type: "paragraph",
   paraId,
-  content: text.length === 0 ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+  content:
+    text.length === 0
+      ? []
+      : [{ type: "run", content: [{ type: "text", text }] }],
 });
 const makeRow = (paraId: string): TableRow => ({
   type: "tableRow",
@@ -27,12 +41,18 @@ const tableOf = (...rows: TableRow[]): Table => ({ type: "table", rows });
 const documentOf = (table: Table): Document => ({
   package: {
     document: {
-      content: [makeParagraph("00000001", "before"), table, makeParagraph("00000002", "after")],
+      content: [
+        makeParagraph("00000001", "before"),
+        table,
+        makeParagraph("00000002", "after"),
+      ],
     },
   },
 });
 const revision = { id: 100, author: "Reviewer", date: "2026-05-06T07:08:09Z" };
-const newIds = { revision: Array.from({ length: 32 }, (_, index) => 101 + index) };
+const newIds = {
+  revision: Array.from({ length: 32 }, (_, index) => 101 + index),
+};
 const applied = (document: Document, op: DocumentOp) => {
   const result = applyDocumentOp(document, op);
   if (result.isErr()) throw result.error;
@@ -43,7 +63,11 @@ const applied = (document: Document, op: DocumentOp) => {
   return result.value;
 };
 
-const expectRefusalWithoutMutation = (document: Document, op: DocumentOp, reason: string): void => {
+const expectRefusalWithoutMutation = (
+  document: Document,
+  op: DocumentOp,
+  reason: string,
+): void => {
   const before = structuredClone(document);
   const result = applyDocumentOp(document, op);
   if (result.isOk()) throw new Error(`Expected ${reason} refusal.`);
@@ -53,7 +77,8 @@ const expectRefusalWithoutMutation = (document: Document, op: DocumentOp, reason
 
 const firstParagraph = (row: TableRow): Paragraph => {
   const paragraph = row.cells.at(0)?.content.at(0);
-  if (paragraph?.type !== "paragraph") throw new Error("Fixture row has a first paragraph.");
+  if (paragraph?.type !== "paragraph")
+    throw new Error("Fixture row has a first paragraph.");
   return paragraph;
 };
 
@@ -82,7 +107,9 @@ describe("table row review", () => {
       revisionIds: [100],
       decision: REVISION_DECISIONS.REJECT,
     });
-    expect(result.document).toStrictEqual(documentOf(tableOf(makeRow("00000010"))));
+    expect(result.document).toStrictEqual(
+      documentOf(tableOf(makeRow("00000010"))),
+    );
   });
 
   test("insertion at either edge preserves body paragraphs and cell final marks", () => {
@@ -112,12 +139,17 @@ describe("table row review", () => {
         at,
         row: inserted,
       });
-      const rows = result.document.package.document.content.find((block) => block.type === "table");
-      if (rows?.type !== "table") throw new Error("Fixture table remains present.");
+      const rows = result.document.package.document.content.find(
+        (block) => block.type === "table",
+      );
+      if (rows?.type !== "table")
+        throw new Error("Fixture table remains present.");
       expect(rowAt(rows, at)).toStrictEqual(inserted);
       expect(before).toBe(result.document.package.document.content[0]);
       expect(after).toBe(result.document.package.document.content[2]);
-      expect(firstParagraph(rowAt(rows, at === 0 ? 1 : 0)).pPrMark).toStrictEqual(mark);
+      expect(
+        firstParagraph(rowAt(rows, at === 0 ? 1 : 0)).pPrMark,
+      ).toStrictEqual(mark);
     }
   });
 
@@ -137,15 +169,21 @@ describe("table row review", () => {
       newIds: { revision: [101] },
     });
     expect(result.revisions).toEqual([revision.id, 101]);
-    const table = result.document.package.document.content.find((block) => block.type === "table");
-    if (table?.type !== "table") throw new Error("Fixture table remains present.");
+    const table = result.document.package.document.content.find(
+      (block) => block.type === "table",
+    );
+    if (table?.type !== "table")
+      throw new Error("Fixture table remains present.");
     expect(rowAt(table, 1)).toStrictEqual({
       ...empty,
       cells: [
         {
           ...firstCell(empty),
           content: [
-            { ...firstParagraph(empty), pPrMark: { kind: "ins", info: { ...revision, id: 101 } } },
+            {
+              ...firstParagraph(empty),
+              pPrMark: { kind: "ins", info: { ...revision, id: 101 } },
+            },
           ],
         },
       ],
@@ -157,12 +195,22 @@ describe("table row review", () => {
     const foreign = {
       type: "insertion" as const,
       info: { id: 50, author: "Other", date: "2026-01-02T03:04:05Z" },
-      content: [{ type: "run" as const, content: [{ type: "text" as const, text: "foreign" }] }],
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: "foreign" }],
+        },
+      ],
     };
     const paragraphWithForeign = makeParagraph("00000010", "");
     const sourceRow: TableRow = {
       ...makeRow("00000010"),
-      cells: [{ type: "tableCell", content: [{ ...paragraphWithForeign, content: [foreign] }] }],
+      cells: [
+        {
+          type: "tableCell",
+          content: [{ ...paragraphWithForeign, content: [foreign] }],
+        },
+      ],
     };
     const document = documentOf(tableOf(sourceRow, makeRow("00000020")));
     const result = applied(document, {
@@ -173,8 +221,11 @@ describe("table row review", () => {
       revision,
       newIds,
     });
-    const table = result.document.package.document.content.find((block) => block.type === "table");
-    if (table?.type !== "table") throw new Error("Fixture table remains present.");
+    const table = result.document.package.document.content.find(
+      (block) => block.type === "table",
+    );
+    if (table?.type !== "table")
+      throw new Error("Fixture table remains present.");
     const trackedParagraph = firstParagraph(rowAt(table, 0));
     expect(trackedParagraph.content).toEqual([
       {
@@ -213,7 +264,10 @@ describe("table row review", () => {
       revision,
       newIds,
     });
-    for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+    for (const decision of [
+      REVISION_DECISIONS.ACCEPT,
+      REVISION_DECISIONS.REJECT,
+    ]) {
       const resolved = applied(result.document, {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
@@ -255,7 +309,9 @@ describe("table row review", () => {
     } as const satisfies DocumentOp;
     const result = applied(document, op);
     expect(result.revisions).toEqual([100, 101, 102]);
-    expect(applied(structuredClone(document), op).document).toStrictEqual(result.document);
+    expect(applied(structuredClone(document), op).document).toStrictEqual(
+      result.document,
+    );
   });
 
   test.each([
@@ -323,7 +379,12 @@ describe("table row review", () => {
           cells: [
             {
               ...firstCell(empty),
-              content: [{ ...firstParagraph(empty), pPrMark: { kind: "ins", info: revision } }],
+              content: [
+                {
+                  ...firstParagraph(empty),
+                  pPrMark: { kind: "ins", info: revision },
+                },
+              ],
             },
           ],
         },
@@ -345,7 +406,14 @@ describe("table row review", () => {
       ],
     };
     for (const owner of ["outer", "inner"] as const) {
-      for (const mismatch of ["none", "author", "date", "initials", "kind", "id"] as const) {
+      for (const mismatch of [
+        "none",
+        "author",
+        "date",
+        "initials",
+        "kind",
+        "id",
+      ] as const) {
         const row = structuredClone(inner);
         if (owner === "inner") {
           row.structuralChange = { type: "tableRowInsertion", info: revision };
@@ -374,14 +442,19 @@ describe("table row review", () => {
         const location = storyParagraphs(body).find(
           ({ paragraph }) => paragraph.paraId === "00000031",
         );
-        if (location === undefined) throw new Error("Fixture nested paragraph exists.");
-        expect(permitsCellFinalMark(body, location)).toBe(owner === "inner" && mismatch === "none");
+        if (location === undefined)
+          throw new Error("Fixture nested paragraph exists.");
+        expect(permitsCellFinalMark(body, location)).toBe(
+          owner === "inner" && mismatch === "none",
+        );
       }
     }
   });
 
   test("an inverse is stale when another row changes", () => {
-    const document = documentOf(tableOf(makeRow("00000010"), makeRow("00000020")));
+    const document = documentOf(
+      tableOf(makeRow("00000010"), makeRow("00000020")),
+    );
     const inserted = applied(document, {
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
@@ -392,7 +465,8 @@ describe("table row review", () => {
     const table = inserted.document.package.document.content.find(
       (block) => block.type === "table",
     );
-    if (table?.type !== "table") throw new Error("Fixture table remains present.");
+    if (table?.type !== "table")
+      throw new Error("Fixture table remains present.");
     const changedRows = table.rows.map((row, index) =>
       index === 0 ? { ...row, formatting: { cantSplit: true } } : row,
     );
@@ -418,7 +492,12 @@ describe("table row review", () => {
     const secondParagraph = makeParagraph("00000021", "second");
     const twoParagraphRow: TableRow = {
       ...inserted,
-      cells: [{ ...firstCell(inserted), content: [firstParagraph(inserted), secondParagraph] }],
+      cells: [
+        {
+          ...firstCell(inserted),
+          content: [firstParagraph(inserted), secondParagraph],
+        },
+      ],
     };
     const document = documentOf(tableOf(makeRow("00000010")));
     const op: DocumentOp = {
@@ -431,7 +510,11 @@ describe("table row review", () => {
     };
     const demand = revisionIdDemand(document, op);
     expect(demand.isOk() ? demand.value : undefined).toBe(3);
-    expectRefusalWithoutMutation(document, op, DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
+    expectRefusalWithoutMutation(
+      document,
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+    );
     expectRefusalWithoutMutation(
       document,
       { ...op, newIds: { revision: [101] } },
@@ -467,7 +550,9 @@ describe("table row review", () => {
   });
 
   test("a paragraph outside a table cannot target a row operation", () => {
-    const document = documentOf(tableOf(makeRow("00000010"), makeRow("00000020")));
+    const document = documentOf(
+      tableOf(makeRow("00000010"), makeRow("00000020")),
+    );
     expectRefusalWithoutMutation(
       document,
       {
@@ -483,7 +568,9 @@ describe("table row review", () => {
     const inner = tableOf(makeRow("00000031"));
     const outerRow: TableRow = {
       type: "tableRow",
-      cells: [{ type: "tableCell", content: [inner, makeParagraph("00000030")] }],
+      cells: [
+        { type: "tableCell", content: [inner, makeParagraph("00000030")] },
+      ],
     };
     const outer = tableOf(outerRow);
     const sibling = tableOf(makeRow("00000040"));
@@ -513,11 +600,11 @@ describe("table row review", () => {
       .at(0)
       ?.cells.at(0)
       ?.content.find((block) => block.type === "table");
-    if (nextInner?.type !== "table") throw new Error("Nested table remains present.");
-    expect(nextInner.rows.map((candidate) => firstParagraph(candidate).paraId)).toEqual([
-      "00000031",
-      "00000032",
-    ]);
+    if (nextInner?.type !== "table")
+      throw new Error("Nested table remains present.");
+    expect(
+      nextInner.rows.map((candidate) => firstParagraph(candidate).paraId),
+    ).toEqual(["00000031", "00000032"]);
     expect(nextBefore).toBe(before);
     expect(nextSibling).toBe(sibling);
     expect(nextAfter).toBe(after);
@@ -563,9 +650,12 @@ describe("table row review", () => {
       const resolvedTable = result.document.package.document.content.find(
         (block) => block.type === "table",
       );
-      if (resolvedTable?.type !== "table") throw new Error("Resolved table remains present.");
+      if (resolvedTable?.type !== "table")
+        throw new Error("Resolved table remains present.");
       if (kind === "cell") {
-        expect(resolvedTable.rows.at(0)?.cells.at(0)?.structuralChange).toBeUndefined();
+        expect(
+          resolvedTable.rows.at(0)?.cells.at(0)?.structuralChange,
+        ).toBeUndefined();
         expect(resolvedTable.rows.at(0)?.cells.at(0)).toBeDefined();
       } else {
         expect(resolvedTable.propertyChanges).toBeUndefined();

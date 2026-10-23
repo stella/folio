@@ -24,15 +24,17 @@ const GRAPHIC_FRAME_LOCK_ATTRIBUTES = {
   noResize: "noResize",
 } as const satisfies Record<keyof ImageFrameLocks, string>;
 
-const isGraphicFrameLockKey = (key: string): key is keyof typeof GRAPHIC_FRAME_LOCK_ATTRIBUTES =>
+const isGraphicFrameLockKey = (
+  key: string,
+): key is keyof typeof GRAPHIC_FRAME_LOCK_ATTRIBUTES =>
   key in GRAPHIC_FRAME_LOCK_ATTRIBUTES;
 
 /** Every modeled lock, in schema order: the total map above keeps it exhaustive. */
-export const GRAPHIC_FRAME_LOCK_KEYS: readonly (keyof ImageFrameLocks)[] = Object.keys(
-  GRAPHIC_FRAME_LOCK_ATTRIBUTES,
-).filter(isGraphicFrameLockKey);
+export const GRAPHIC_FRAME_LOCK_KEYS: readonly (keyof ImageFrameLocks)[] =
+  Object.keys(GRAPHIC_FRAME_LOCK_ATTRIBUTES).filter(isGraphicFrameLockKey);
 
-const DRAWINGML_NAMESPACE = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+const DRAWINGML_NAMESPACE =
+  'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
 
 /**
  * Read the locks off a `wp:inline` or `wp:anchor` element.
@@ -41,8 +43,14 @@ const DRAWINGML_NAMESPACE = 'xmlns:a="http://schemas.openxmlformats.org/drawingm
  * attribute: an authored `<a:graphicFrameLocks/>` with nothing on it means the
  * same as no element at all, so both stay "spec defaults" on the model.
  */
-export const parseGraphicFrameLocks = (parent: XmlElement): ImageFrameLocks | undefined => {
-  const locksEl = findChild(findChild(parent, "wp", "cNvGraphicFramePr"), "a", "graphicFrameLocks");
+export const parseGraphicFrameLocks = (
+  parent: XmlElement,
+): ImageFrameLocks | undefined => {
+  const locksEl = findChild(
+    findChild(parent, "wp", "cNvGraphicFramePr"),
+    "a",
+    "graphicFrameLocks",
+  );
   if (!locksEl) {
     return undefined;
   }
@@ -50,7 +58,9 @@ export const parseGraphicFrameLocks = (parent: XmlElement): ImageFrameLocks | un
   const locks: ImageFrameLocks = {};
   let present = false;
   for (const key of GRAPHIC_FRAME_LOCK_KEYS) {
-    const value = parseOnOffValue(getAttribute(locksEl, null, GRAPHIC_FRAME_LOCK_ATTRIBUTES[key]));
+    const value = parseOnOffValue(
+      getAttribute(locksEl, null, GRAPHIC_FRAME_LOCK_ATTRIBUTES[key]),
+    );
     if (value !== undefined) {
       locks[key] = value;
       present = true;
@@ -69,7 +79,9 @@ export const parseGraphicFrameLocks = (parent: XmlElement): ImageFrameLocks | un
  * construction rather than at serialization, where "the author wrote no frame"
  * and "folio made this picture" are the same `undefined`.
  */
-export const FOLIO_INSERTED_PICTURE_FRAME_LOCKS: ImageFrameLocks = { noChangeAspect: true };
+export const FOLIO_INSERTED_PICTURE_FRAME_LOCKS: ImageFrameLocks = {
+  noChangeAspect: true,
+};
 
 /**
  * Emit `wp:cNvGraphicFramePr` for regenerated DrawingML, or nothing.
@@ -79,7 +91,9 @@ export const FOLIO_INSERTED_PICTURE_FRAME_LOCKS: ImageFrameLocks = { noChangeAsp
  * path, where it would appear on every edited document and on none of the
  * replayed ones.
  */
-export const serializeGraphicFrameLocks = (locks: ImageFrameLocks | undefined): string => {
+export const serializeGraphicFrameLocks = (
+  locks: ImageFrameLocks | undefined,
+): string => {
   if (!locks) {
     return "";
   }

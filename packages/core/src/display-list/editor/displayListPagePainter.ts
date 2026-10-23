@@ -29,11 +29,11 @@
 
 import { panic } from "better-result";
 
+import type { Page } from "../../layout-engine/types";
 import { createDisplayListBuilder } from "../build/buildDisplayList";
 import type { BuildDisplayListOptions } from "../build/buildDisplayList";
 import { renderDisplayPageToDom } from "../dom/renderDisplayListToDom";
 import type { DisplayList } from "../types";
-import type { Page } from "../../layout-engine/types";
 
 export type DisplayListPagePainterOptions = BuildDisplayListOptions & {
   /** Document to create elements in. */
@@ -58,7 +58,8 @@ export type DisplayListPagePainter = {
  */
 const indexByPageNumber = (
   layout: BuildDisplayListOptions["layout"],
-): ReadonlyMap<number, number> => new Map(layout.pages.map((page, index) => [page.number, index]));
+): ReadonlyMap<number, number> =>
+  new Map(layout.pages.map((page, index) => [page.number, index]));
 
 export const createDisplayListPagePainter = (
   options: DisplayListPagePainterOptions,
@@ -82,7 +83,12 @@ export const createDisplayListPagePainter = (
     // The tables are read after the page is built, never before: building it is
     // what puts its faces and images in them.
     const { fonts, images } = builder.snapshot();
-    return renderDisplayPageToDom(displayPage, { doc, fonts, images, pageIndex: index });
+    return renderDisplayPageToDom(displayPage, {
+      doc,
+      fonts,
+      images,
+      pageIndex: index,
+    });
   };
 
   return { paintPage, list: builder.snapshot };

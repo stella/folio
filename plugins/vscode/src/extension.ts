@@ -6,8 +6,12 @@
 import path from "node:path";
 import * as vscode from "vscode";
 
-import { registerEditor, type EditorTestHooks } from "./editor";
-import { osUserName, readGitUserName, resolveEditorAuthor } from "./editor-settings";
+import { type EditorTestHooks, registerEditor } from "./editor";
+import {
+  osUserName,
+  readGitUserName,
+  resolveEditorAuthor,
+} from "./editor-settings";
 import { buildMcpLaunch, configuredAuthor, FOLIO_MCP_PROVIDER_ID } from "./mcp";
 import type { CliRuntime } from "./runtime";
 
@@ -15,7 +19,11 @@ const AUTHOR_SETTING = "folio.author";
 
 const extensionVersion = (context: vscode.ExtensionContext): string => {
   const packageJson: unknown = context.extension.packageJSON;
-  if (typeof packageJson === "object" && packageJson !== null && "version" in packageJson) {
+  if (
+    typeof packageJson === "object" &&
+    packageJson !== null &&
+    "version" in packageJson
+  ) {
     const { version } = packageJson;
     if (typeof version === "string") return version;
   }
@@ -48,37 +56,48 @@ const registerMcp = (
   runtime: CliRuntime,
 ): vscode.Disposable | undefined => {
   if (typeof vscode.lm?.registerMcpServerDefinitionProvider !== "function") {
-    console.log("[Folio] MCP registration skipped: this editor has no MCP provider API.");
+    console.log(
+      "[Folio] MCP registration skipped: this editor has no MCP provider API.",
+    );
     return undefined;
   }
   const changed = new vscode.EventEmitter<void>();
   const version = extensionVersion(context);
 
-  const provider: vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition> = {
-    onDidChangeMcpServerDefinitions: changed.event,
-    provideMcpServerDefinitions: async () => {
-      // The server changes files; an untrusted workspace does not get it.
-      if (!vscode.workspace.isTrusted) return [];
-      const roots = diskRoots();
-      const first = roots.at(0);
-      if (first === undefined) return [];
-      const launch = buildMcpLaunch({ runtime, roots, author: await mcpAuthor(first), version });
-      if (launch === null) return [];
-      const definition = new vscode.McpStdioServerDefinition(
-        launch.label,
-        launch.command,
-        [...launch.args],
-        { ...launch.env },
-        launch.version,
-      );
-      definition.cwd = vscode.Uri.file(launch.cwd);
-      return [definition];
-    },
-  };
+  const provider: vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition> =
+    {
+      onDidChangeMcpServerDefinitions: changed.event,
+      provideMcpServerDefinitions: async () => {
+        // The server changes files; an untrusted workspace does not get it.
+        if (!vscode.workspace.isTrusted) return [];
+        const roots = diskRoots();
+        const first = roots.at(0);
+        if (first === undefined) return [];
+        const launch = buildMcpLaunch({
+          runtime,
+          roots,
+          author: await mcpAuthor(first),
+          version,
+        });
+        if (launch === null) return [];
+        const definition = new vscode.McpStdioServerDefinition(
+          launch.label,
+          launch.command,
+          [...launch.args],
+          { ...launch.env },
+          launch.version,
+        );
+        definition.cwd = vscode.Uri.file(launch.cwd);
+        return [definition];
+      },
+    };
 
   return vscode.Disposable.from(
     changed,
-    vscode.lm.registerMcpServerDefinitionProvider(FOLIO_MCP_PROVIDER_ID, provider),
+    vscode.lm.registerMcpServerDefinitionProvider(
+      FOLIO_MCP_PROVIDER_ID,
+      provider,
+    ),
     vscode.workspace.onDidChangeWorkspaceFolders(() => changed.fire()),
     vscode.workspace.onDidGrantWorkspaceTrust(() => changed.fire()),
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -95,7 +114,9 @@ export type ExtensionTestHooks = EditorTestHooks & {
   readonly mcpRegistration: "registered" | "unavailable";
 };
 
-export const activate = (context: vscode.ExtensionContext): ExtensionTestHooks | undefined => {
+export const activate = (
+  context: vscode.ExtensionContext,
+): ExtensionTestHooks | undefined => {
   const runtime: CliRuntime = {
     nodePath: process.execPath,
     cliEntry: context.asAbsolutePath(path.join("dist", "cli", "folio.mjs")),
@@ -106,7 +127,10 @@ export const activate = (context: vscode.ExtensionContext): ExtensionTestHooks |
   const mcp = registerMcp(context, runtime);
   if (mcp !== undefined) context.subscriptions.push(mcp);
   if (!testMode || editor.testHooks === undefined) return undefined;
-  return { ...editor.testHooks, mcpRegistration: mcp === undefined ? "unavailable" : "registered" };
+  return {
+    ...editor.testHooks,
+    mcpRegistration: mcp === undefined ? "unavailable" : "registered",
+  };
 };
 
 export const deactivate = (): void => undefined;

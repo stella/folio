@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
 import { changedApiPaths } from "./ci-api-plan";
 
 const TYPECHECK_ALL_INPUTS = new Set([
@@ -18,8 +19,7 @@ export type TypecheckProject = {
 };
 
 export type TypecheckPlan =
-  | { type: "all" }
-  | { type: "selected"; projects: readonly TypecheckProject[] };
+  { type: "all" } | { type: "selected"; projects: readonly TypecheckProject[] };
 
 type Manifest = {
   name?: unknown;
@@ -29,7 +29,8 @@ type Manifest = {
   peerDependencies?: unknown;
 };
 
-const readManifest = (file: string): Manifest => JSON.parse(readFileSync(file, "utf8"));
+const readManifest = (file: string): Manifest =>
+  JSON.parse(readFileSync(file, "utf8"));
 
 const rootProjects = [
   {
@@ -71,27 +72,39 @@ const rootProjects = [
 
 type TsconfigInputs = { include?: unknown; files?: unknown; exclude?: unknown };
 
-const rootProjectMatches = (tsconfigPath: string, file: string, repoRoot: string) => {
+const rootProjectMatches = (
+  tsconfigPath: string,
+  file: string,
+  repoRoot: string,
+) => {
   if (file === tsconfigPath) return true;
   const config: TsconfigInputs = JSON.parse(
     readFileSync(path.join(repoRoot, tsconfigPath), "utf8"),
   );
   const directory = path.posix.dirname(tsconfigPath);
   const inputs = [config.include, config.files].flatMap((value) =>
-    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [],
+    Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string")
+      : [],
   );
   const excludes = Array.isArray(config.exclude)
-    ? config.exclude.filter((entry): entry is string => typeof entry === "string")
+    ? config.exclude.filter(
+        (entry): entry is string => typeof entry === "string",
+      )
     : [];
   return inputs.some((input) => {
     const relativePattern = input === "." ? "**" : input;
-    const pattern = path.posix.normalize(path.posix.join(directory, relativePattern));
+    const pattern = path.posix.normalize(
+      path.posix.join(directory, relativePattern),
+    );
     if (!new Bun.Glob(pattern).match(file)) return false;
     return !excludes.some((exclude) => {
-      const excludedPattern = exclude.endsWith("/") ? `${exclude}**` : `${exclude}/**`;
-      return new Bun.Glob(path.posix.normalize(path.posix.join(directory, excludedPattern))).match(
-        file,
-      );
+      const excludedPattern = exclude.endsWith("/")
+        ? `${exclude}**`
+        : `${exclude}/**`;
+      return new Bun.Glob(
+        path.posix.normalize(path.posix.join(directory, excludedPattern)),
+      ).match(file);
     });
   });
 };
@@ -106,10 +119,14 @@ export const typecheckPlanForPaths = (
   changedPaths: readonly string[],
   repoRoot = path.resolve(import.meta.dir, ".."),
 ): TypecheckPlan => {
-  if (changedPaths.some((file) => TYPECHECK_ALL_INPUTS.has(file))) return { type: "all" };
+  if (changedPaths.some((file) => TYPECHECK_ALL_INPUTS.has(file)))
+    return { type: "all" };
 
   const packageDirectories = [
-    ...new Bun.Glob("packages/*/package.json").scanSync({ cwd: repoRoot, onlyFiles: true }),
+    ...new Bun.Glob("packages/*/package.json").scanSync({
+      cwd: repoRoot,
+      onlyFiles: true,
+    }),
   ].toSorted();
   const packages = packageDirectories.flatMap((manifestPath) => {
     const manifest = readManifest(path.join(repoRoot, manifestPath));
@@ -124,15 +141,24 @@ export const typecheckPlanForPaths = (
       manifest.dependencies,
       manifest.devDependencies,
       manifest.peerDependencies,
-    ].flatMap((value) => (typeof value === "object" && value !== null ? Object.keys(value) : []));
-    return [{ name: manifest.name, directory: path.posix.dirname(manifestPath), dependencies }];
+    ].flatMap((value) =>
+      typeof value === "object" && value !== null ? Object.keys(value) : [],
+    );
+    return [
+      {
+        name: manifest.name,
+        directory: path.posix.dirname(manifestPath),
+        dependencies,
+      },
+    ];
   });
   const selectedNames = new Set(
     packages
       .filter(({ directory }) =>
         changedPaths.some(
           (file) =>
-            isTypecheckedInput(file) && (file === directory || file.startsWith(`${directory}/`)),
+            isTypecheckedInput(file) &&
+            (file === directory || file.startsWith(`${directory}/`)),
         ),
       )
       .map(({ name }) => name),
@@ -141,20 +167,32 @@ export const typecheckPlanForPaths = (
   while (selectedNames.size !== previousSize) {
     previousSize = selectedNames.size;
     for (const project of packages) {
-      if (project.dependencies.some((dependency) => selectedNames.has(dependency)))
+      if (
+        project.dependencies.some((dependency) => selectedNames.has(dependency))
+      )
         selectedNames.add(project.name);
     }
   }
 
   const projects: TypecheckProject[] = packages
     .filter(({ name }) => selectedNames.has(name))
-    .map(({ name }) => ({ name, command: ["bun", "--filter", name, "typecheck"] }));
+    .map(({ name }) => ({
+      name,
+      command: ["bun", "--filter", name, "typecheck"],
+    }));
   for (const project of rootProjects) {
     if (
-      project.dependencies.some((dependency) => selectedNames.has(dependency)) ||
-      changedPaths.some((file) => rootProjectMatches(project.tsconfig, file, repoRoot))
+      project.dependencies.some((dependency) =>
+        selectedNames.has(dependency),
+      ) ||
+      changedPaths.some((file) =>
+        rootProjectMatches(project.tsconfig, file, repoRoot),
+      )
     )
-      projects.push({ name: project.name, command: ["bun", "run", project.name] });
+      projects.push({
+        name: project.name,
+        command: ["bun", "run", project.name],
+      });
   }
   return { type: "selected", projects };
 };
@@ -173,11 +211,14 @@ export const changedTypecheckPaths = ({
   fallbackOnMissingBase = false,
 }: ChangedTypecheckPathsOptions): string[] => {
   if (fallbackOnMissingBase) {
-    const resolved = Bun.spawnSync(["git", "rev-parse", "--verify", `${base}^{commit}`], {
-      cwd: repoRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const resolved = Bun.spawnSync(
+      ["git", "rev-parse", "--verify", `${base}^{commit}`],
+      {
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
     if (resolved.exitCode !== 0) return ["package.json"];
   }
   return changedApiPaths({ repoRoot, base, head });
@@ -187,7 +228,10 @@ type RunTypecheckPlanOptions = {
   run: (command: readonly string[]) => number;
 };
 
-export const runTypecheckPlan = (plan: TypecheckPlan, { run }: RunTypecheckPlanOptions): number => {
+export const runTypecheckPlan = (
+  plan: TypecheckPlan,
+  { run }: RunTypecheckPlanOptions,
+): number => {
   if (plan.type === "all") {
     process.stdout.write("Typechecking all projects.\n");
     return run(["bun", "run", "typecheck"]);
@@ -196,7 +240,9 @@ export const runTypecheckPlan = (plan: TypecheckPlan, { run }: RunTypecheckPlanO
     process.stdout.write("Skipped typecheck: no typechecked inputs changed.\n");
     return 0;
   }
-  process.stdout.write(`Typechecking: ${plan.projects.map(({ name }) => name).join(", ")}\n`);
+  process.stdout.write(
+    `Typechecking: ${plan.projects.map(({ name }) => name).join(", ")}\n`,
+  );
   for (const { command } of plan.projects) {
     const exitCode = run(command);
     if (exitCode !== 0) return exitCode;
@@ -217,11 +263,14 @@ const run = (command: readonly string[]) => {
 if (import.meta.main) {
   const args = process.argv.slice(2);
   if (args.length !== 4 || args.at(0) !== "--base" || args.at(2) !== "--head")
-    throw new TypeError("Usage: bun scripts/ci-plan.ts --base <sha> --head <sha>");
+    throw new TypeError(
+      "Usage: bun scripts/ci-plan.ts --base <sha> --head <sha>",
+    );
   const repoRoot = path.resolve(import.meta.dir, "..");
   const base = args[1];
   const head = args[3];
-  if (!base || !head) throw new TypeError("Typecheck planning requires a base and head.");
+  if (!base || !head)
+    throw new TypeError("Typecheck planning requires a base and head.");
   const changedPaths = /^0+$/u.test(base)
     ? ["package.json"]
     : changedTypecheckPaths({
@@ -230,5 +279,8 @@ if (import.meta.main) {
         head,
         fallbackOnMissingBase: process.env["TYPECHECK_PUSH"] === "true",
       });
-  process.exitCode = runTypecheckPlan(typecheckPlanForPaths(changedPaths, repoRoot), { run });
+  process.exitCode = runTypecheckPlan(
+    typecheckPlanForPaths(changedPaths, repoRoot),
+    { run },
+  );
 }

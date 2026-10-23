@@ -1,25 +1,31 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import fc from "fast-check";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+import {
+  buildDocx,
+  makeTempDir,
+} from "../../packages/cli/src/__tests__/fixtures";
+import { runFolioCli } from "../../packages/cli/src/cli";
+import { fileVersionOf } from "../../packages/cli/src/document";
+import {
+  type FolioDocumentOperationBatch,
+  FolioDocxReviewer,
+} from "../../packages/core/src/server";
+import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import {
   failureMarker,
   failureRecord,
   logFailureMarker,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
-import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
-import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-
 import {
-  FolioDocxReviewer,
-  type FolioDocumentOperationBatch,
-} from "../../packages/core/src/server";
-import { runFolioCli } from "../../packages/cli/src/cli";
-import { fileVersionOf } from "../../packages/cli/src/document";
-import { buildDocx, makeTempDir } from "../../packages/cli/src/__tests__/fixtures";
-import { propertyConfig, propertyTestTimeout } from "../../test/property-testing";
-import { openEditor } from "./parity-fixture";
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../test/property-testing";
 import { assertGeneratedFlowReceipt } from "./flow-receipt";
+import { openEditor } from "./parity-fixture";
 
 // Authored paragraph ids address the original paragraphs through insertions and saves.
 // Actions shrink independently; each replacement keeps its find token available.
@@ -40,12 +46,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const semanticProjection = async (bytes: Uint8Array) => {
   expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
-  const reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(bytes).buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    new Uint8Array(bytes).buffer,
+  );
   return {
     // Exclude regenerated identity and package metadata, retain semantic structure.
     blocks: reviewer.snapshot().blocks.map((block) => {
       if (block.kind === "diagnostic") {
-        return { kind: block.kind, text: block.text, diagnostic: block.diagnostic };
+        return {
+          kind: block.kind,
+          text: block.text,
+          diagnostic: block.diagnostic,
+        };
       }
       return {
         kind: block.kind,
@@ -55,8 +67,12 @@ const semanticProjection = async (bytes: Uint8Array) => {
         table: block.table,
       };
     }),
-    changes: reviewer.getChanges().map(({ type, text, author }) => ({ type, text, author })),
-    comments: reviewer.getComments().map(({ text, author }) => ({ text, author })),
+    changes: reviewer
+      .getChanges()
+      .map(({ type, text, author }) => ({ type, text, author })),
+    comments: reviewer
+      .getComments()
+      .map(({ text, author }) => ({ text, author })),
   };
 };
 
@@ -70,8 +86,14 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
   const react = await browser.newPage();
   const vue = await browser.newPage();
   try {
-    await openEditor(react, { name: "react", baseUrl: `http://localhost:${reactPort}` });
-    await openEditor(vue, { name: "vue", baseUrl: `http://localhost:${vuePort}` });
+    await openEditor(react, {
+      name: "react",
+      baseUrl: `http://localhost:${reactPort}`,
+    });
+    await openEditor(vue, {
+      name: "vue",
+      baseUrl: `http://localhost:${vuePort}`,
+    });
     const verdict = await fc.check(
       fc.asyncProperty(flowArbitrary, async ({ paragraphs, actions }) => {
         const initial = Array.from({ length: paragraphs }, (_, index) => ({
@@ -86,15 +108,22 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
           const paraId = (0x10000001 + targetIndex).toString(16).toUpperCase();
           const id = `flow-${index}`;
           const token = `token${targetIndex}`;
-          const currentIndex = expected.findIndex((entry) => entry.paraId === paraId);
+          const currentIndex = expected.findIndex(
+            (entry) => entry.paraId === paraId,
+          );
           const current = expected.at(currentIndex);
           if (!current) throw new Error("Generated target disappeared");
           if (kind === "insert") {
-            expected.splice(currentIndex + 1, 0, { text, paraId: `inserted-${index}` });
+            expected.splice(currentIndex + 1, 0, {
+              text,
+              paraId: `inserted-${index}`,
+            });
             return {
               version: 1,
               mode: "direct",
-              operations: [{ id, type: "insertAfterBlock", blockId: paraId, text }],
+              operations: [
+                { id, type: "insertAfterBlock", blockId: paraId, text },
+              ],
             } as const satisfies FolioDocumentOperationBatch;
           }
           current.text = current.text.replace(token, `${token} ${text}`);
@@ -112,15 +141,24 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
             ],
           } as const satisfies FolioDocumentOperationBatch;
         });
-        const headless = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
+        const headless = await FolioDocxReviewer.fromBuffer(
+          new Uint8Array(source).buffer,
+        );
         for (const batch of batches) {
           const operation = batch.operations[0];
           assertGeneratedFlowReceipt(
-            headless.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
+            headless.applyDocumentOperations(batch, {
+              undefinedReferences: "refuse",
+            }),
             operation,
           );
         }
-        const outputs = [{ name: "headless", bytes: new Uint8Array(await headless.toBuffer()) }];
+        const outputs = [
+          {
+            name: "headless",
+            bytes: new Uint8Array(await headless.toBuffer()),
+          },
+        ];
         for (const [name, page] of [
           ["react", react],
           ["vue", vue],
@@ -180,17 +218,27 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
             }
             expect(envelope["ok"]).toBe(true);
             expect(envelope["data"]["status"]).toBe("committed");
-            assertGeneratedFlowReceipt(envelope["data"]["result"], batch.operations[0]);
-            expect(fileVersionOf(new Uint8Array(await readFile(file)))).not.toBe(
-              fileVersionOf(before),
+            assertGeneratedFlowReceipt(
+              envelope["data"]["result"],
+              batch.operations[0],
             );
+            expect(
+              fileVersionOf(new Uint8Array(await readFile(file))),
+            ).not.toBe(fileVersionOf(before));
           }
-          outputs.push({ name: "cli", bytes: new Uint8Array(await readFile(file)) });
+          outputs.push({
+            name: "cli",
+            bytes: new Uint8Array(await readFile(file)),
+          });
         } finally {
           await cleanup();
         }
-        const baseline = await semanticProjection(new Uint8Array(await headless.toBuffer()));
-        expect(baseline.blocks.map(({ text }) => text)).toEqual(expected.map(({ text }) => text));
+        const baseline = await semanticProjection(
+          new Uint8Array(await headless.toBuffer()),
+        );
+        expect(baseline.blocks.map(({ text }) => text)).toEqual(
+          expected.map(({ text }) => text),
+        );
         expect(baseline.changes).toEqual([]);
         for (const output of outputs) {
           const projection = await semanticProjection(output.bytes);

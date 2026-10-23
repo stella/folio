@@ -4,7 +4,6 @@ import { decodeText } from "../../utils/textEncoding";
  *
  * @see https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-offcrypto/87020a34-e73f-4139-99bc-bbdf6cf6fa55
  */
-
 import { decodeBase64 } from "./cryptoBytes";
 import { DOCX_ENCRYPTION_ERROR_CODES, DocxEncryptionError } from "./errors";
 
@@ -80,7 +79,12 @@ const parseAttributes = (tag: string): Record<string, string> => {
       i++;
     }
     const nameStart = i;
-    while (i < tag.length && tag[i] !== "=" && tag[i] !== ">" && tag[i] !== "/") {
+    while (
+      i < tag.length &&
+      tag[i] !== "=" &&
+      tag[i] !== ">" &&
+      tag[i] !== "/"
+    ) {
       i++;
     }
     if (i >= tag.length || tag[i] !== "=") {
@@ -106,7 +110,11 @@ const parseAttributes = (tag: string): Record<string, string> => {
   return attrs;
 };
 
-const requireAttr = (attrs: Record<string, string>, name: string, element: string): string => {
+const requireAttr = (
+  attrs: Record<string, string>,
+  name: string,
+  element: string,
+): string => {
   const value = attrs[name];
   if (value === undefined) {
     throw new DocxEncryptionError({
@@ -117,7 +125,11 @@ const requireAttr = (attrs: Record<string, string>, name: string, element: strin
   return value;
 };
 
-const requireInt = (attrs: Record<string, string>, name: string, element: string): number => {
+const requireInt = (
+  attrs: Record<string, string>,
+  name: string,
+  element: string,
+): number => {
   const parsed = Number.parseInt(requireAttr(attrs, name, element), 10);
   if (Number.isNaN(parsed)) {
     throw new DocxEncryptionError({
@@ -128,8 +140,11 @@ const requireInt = (attrs: Record<string, string>, name: string, element: string
   return parsed;
 };
 
-const requireBase64 = (attrs: Record<string, string>, name: string, element: string): Uint8Array =>
-  decodeBase64(requireAttr(attrs, name, element));
+const requireBase64 = (
+  attrs: Record<string, string>,
+  name: string,
+  element: string,
+): Uint8Array => decodeBase64(requireAttr(attrs, name, element));
 
 /**
  * Cap on `encryptedKey/@spinCount`. MS-OFFCRYPTO's documented default is
@@ -140,7 +155,10 @@ const requireBase64 = (attrs: Record<string, string>, name: string, element: str
  */
 export const MAX_SPIN_COUNT = 200_000;
 
-const requireSpinCount = (attrs: Record<string, string>, element: string): number => {
+const requireSpinCount = (
+  attrs: Record<string, string>,
+  element: string,
+): number => {
   const spinCount = requireInt(attrs, "spinCount", element);
   if (spinCount < 0 || spinCount > MAX_SPIN_COUNT) {
     throw new DocxEncryptionError({
@@ -159,7 +177,8 @@ const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
   if (!keyDataTag || !integrityTag || !encryptedKeyTag) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
-      message: "EncryptionInfo XML is missing required agile encryption elements",
+      message:
+        "EncryptionInfo XML is missing required agile encryption elements",
     });
   }
 
@@ -190,13 +209,27 @@ const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
       "encryptedVerifierHashValue",
       "encryptedKey",
     ),
-    encryptedIntermediateKey: requireBase64(encryptedKey, "encryptedKeyValue", "encryptedKey"),
-    encryptedIntegrityKey: requireBase64(integrity, "encryptedHmacKey", "dataIntegrity"),
-    encryptedIntegrityDigest: requireBase64(integrity, "encryptedHmacValue", "dataIntegrity"),
+    encryptedIntermediateKey: requireBase64(
+      encryptedKey,
+      "encryptedKeyValue",
+      "encryptedKey",
+    ),
+    encryptedIntegrityKey: requireBase64(
+      integrity,
+      "encryptedHmacKey",
+      "dataIntegrity",
+    ),
+    encryptedIntegrityDigest: requireBase64(
+      integrity,
+      "encryptedHmacValue",
+      "dataIntegrity",
+    ),
   };
 };
 
-export const parseAgileEncryptionInfo = (stream: Uint8Array): AgileEncryptionDescriptor => {
+export const parseAgileEncryptionInfo = (
+  stream: Uint8Array,
+): AgileEncryptionDescriptor => {
   if (stream.length < STREAM_PREFIX_BYTES) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
@@ -208,10 +241,16 @@ export const parseAgileEncryptionInfo = (stream: Uint8Array): AgileEncryptionDes
   const kind = readUint16Le(stream, 2);
 
   if (version === AGILE_STREAM_VERSION && kind === AGILE_STREAM_KIND) {
-    return { scheme: "agile", material: parseAgileXml(stream.subarray(STREAM_PREFIX_BYTES)) };
+    return {
+      scheme: "agile",
+      material: parseAgileXml(stream.subarray(STREAM_PREFIX_BYTES)),
+    };
   }
 
-  if ((version === 0x0003 || version === AGILE_STREAM_VERSION) && kind === STANDARD_STREAM_KIND) {
+  if (
+    (version === 0x0003 || version === AGILE_STREAM_VERSION) &&
+    kind === STANDARD_STREAM_KIND
+  ) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.ENCRYPTION_UNSUPPORTED,
       message:

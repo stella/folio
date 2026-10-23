@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { EditorState, type Command, type Transaction } from "prosemirror-state";
+import { type Command, EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
 import { schema } from "../schema";
@@ -15,14 +15,20 @@ const boundary = (type: "start" | "end", id: number) =>
 const resolve = (state: EditorState, command: Command) => {
   let transaction: Transaction | null = null;
   expect(command(state, (dispatched) => (transaction = dispatched))).toBe(true);
-  if (!transaction) throw new Error("Expected a paragraph-mark resolution transaction");
+  if (!transaction)
+    throw new Error("Expected a paragraph-mark resolution transaction");
   return { doc: state.apply(transaction).doc, mapping: transaction.mapping };
 };
 
 const bookmarkedParagraphBreak = () => {
   const first = schema.node(
     "paragraph",
-    { pPrMark: { kind: "del", info: { id: 1, author: "Reviewer", date: "2026-09-09" } } },
+    {
+      pPrMark: {
+        kind: "del",
+        info: { id: 1, author: "Reviewer", date: "2026-09-09" },
+      },
+    },
     [schema.text("before")],
   );
   const second = schema.node("paragraph", null, [schema.text("after")]);
@@ -47,7 +53,11 @@ test("a deleted paragraph break carries interstitial bookmarks into the joined p
   expect(joined.type.name).toBe("paragraph");
   expect(joined.textContent).toBe("beforeafter");
   expect(
-    joined.content.content.map((node) => [node.type.name, node.attrs["type"], node.attrs["id"]]),
+    joined.content.content.map((node) => [
+      node.type.name,
+      node.attrs["type"],
+      node.attrs["id"],
+    ]),
   ).toEqual([
     ["text", undefined, undefined],
     ["bookmarkBoundary", "end", 1],
@@ -55,7 +65,8 @@ test("a deleted paragraph break carries interstitial bookmarks into the joined p
     ["text", undefined, undefined],
   ]);
 
-  const finalSecondText = single.doc.child(0).nodeSize + 1 + first.content.size + 2;
+  const finalSecondText =
+    single.doc.child(0).nodeSize + 1 + first.content.size + 2;
   expect(single.doc.nodeAt(finalSecondText)?.text).toBe("after");
 });
 
@@ -75,7 +86,8 @@ test("whole-story resolution preserves positions through a bookmark-spanning joi
   acceptAllChanges()(state, (dispatched) => {
     transaction = dispatched;
   });
-  if (!transaction) throw new Error("Expected a whole-story resolution transaction");
+  if (!transaction)
+    throw new Error("Expected a whole-story resolution transaction");
   const step = transaction.steps.at(0);
   if (!step) throw new Error("Expected a whole-story resolution step");
   const replayed = Step.fromJSON(schema, step.toJSON()).apply(source);
@@ -92,7 +104,12 @@ test("range resolution maps a field and trailing insertion through a bookmark-sp
   });
   const first = schema.node(
     "paragraph",
-    { pPrMark: { kind: "del", info: { id: 1, author: "Reviewer", date: "2026-09-09" } } },
+    {
+      pPrMark: {
+        kind: "del",
+        info: { id: 1, author: "Reviewer", date: "2026-09-09" },
+      },
+    },
     [schema.text("before"), field, schema.text("after")],
   );
   const source = schema.node("doc", null, [
@@ -118,7 +135,10 @@ test("range resolution maps a field and trailing insertion through a bookmark-sp
 
 test("an emptied paragraph keeps the following paragraph's property source across bookmarks", () => {
   const first = schema.node("paragraph", {
-    pPrMark: { kind: "del", info: { id: 1, author: "Reviewer", date: "2026-09-09" } },
+    pPrMark: {
+      kind: "del",
+      info: { id: 1, author: "Reviewer", date: "2026-09-09" },
+    },
     styleId: "Heading1",
     _docxParagraphSourceToken: "first-source",
   });
@@ -142,14 +162,21 @@ test("an emptied paragraph keeps the following paragraph's property source acros
   );
 
   expect(doc.firstChild?.attrs["styleId"]).toBe("Normal");
-  expect(doc.firstChild?.attrs["_docxParagraphSourceToken"]).toBe("second-source");
+  expect(doc.firstChild?.attrs["_docxParagraphSourceToken"]).toBe(
+    "second-source",
+  );
 });
 
 test("whole-story resolution joins a chain across two bookmark pairs", () => {
   const marked = (text: string, id: number) =>
     schema.node(
       "paragraph",
-      { pPrMark: { kind: "del", info: { id, author: "Reviewer", date: "2026-09-09" } } },
+      {
+        pPrMark: {
+          kind: "del",
+          info: { id, author: "Reviewer", date: "2026-09-09" },
+        },
+      },
       schema.text(text),
     );
   const source = schema.node("doc", null, [
@@ -163,13 +190,19 @@ test("whole-story resolution joins a chain across two bookmark pairs", () => {
     schema.node("paragraph", null, schema.text("C")),
     boundary("end", 3),
   ]);
-  const { doc, mapping } = resolve(EditorState.create({ schema, doc: source }), acceptAllChanges());
+  const { doc, mapping } = resolve(
+    EditorState.create({ schema, doc: source }),
+    acceptAllChanges(),
+  );
   expect(() => doc.check()).not.toThrow();
   expect(doc.childCount).toBe(3);
   expect(doc.child(1).textContent).toBe("ABC");
   let sourceThirdText = 1;
-  for (let index = 0; index < 7; index++) sourceThirdText += source.child(index).nodeSize;
-  expect(mapping.map(sourceThirdText)).toBe(doc.child(0).nodeSize + doc.child(1).nodeSize - 2);
+  for (let index = 0; index < 7; index++)
+    sourceThirdText += source.child(index).nodeSize;
+  expect(mapping.map(sourceThirdText)).toBe(
+    doc.child(0).nodeSize + doc.child(1).nodeSize - 2,
+  );
   expect(
     doc
       .child(1)

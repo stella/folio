@@ -15,7 +15,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type {
   ComplexField,
   Paragraph,
@@ -23,6 +26,7 @@ import type {
   PreservedInline,
   Run,
 } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import {
   foldedListNumberOf,
   foldListNumberFields,
@@ -33,20 +37,24 @@ import {
   planListNumberFold,
   unfoldedListNumberContent,
 } from "./foldedListNumberFields";
-import { createEmptyDocument } from "../utils/createDocument";
 import { createDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const textRun = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
 const tabRun = (): Run => ({ type: "run", content: [{ type: "tab" }] });
 
 const field = (instruction: string, result: string): ComplexField => ({
   type: "complexField",
   instruction,
-  fieldType: instruction.trim().toUpperCase().startsWith("LISTNUM") ? "LISTNUM" : "PAGE",
+  fieldType: instruction.trim().toUpperCase().startsWith("LISTNUM")
+    ? "LISTNUM"
+    : "PAGE",
   fieldCode: [],
   fieldResult: result === "" ? [] : [textRun(result)],
 });
@@ -60,18 +68,32 @@ const MARKER_TYPES = [
 
 const contentArbitrary: fc.Arbitrary<ParagraphContent[]> = fc.array(
   fc.oneof(
-    { weight: 2, arbitrary: fc.constantFrom("a", "bc", "%1", "x y", "50%").map(textRun) },
+    {
+      weight: 2,
+      arbitrary: fc.constantFrom("a", "bc", "%1", "x y", "50%").map(textRun),
+    },
     { weight: 3, arbitrary: fc.constant(null).map(tabRun) },
     {
       weight: 5,
       arbitrary: fc
         .tuple(
-          fc.constantFrom(" LISTNUM ", "LISTNUM \\l 3", " listnum LegalDefault "),
+          fc.constantFrom(
+            " LISTNUM ",
+            "LISTNUM \\l 3",
+            " listnum LegalDefault ",
+          ),
           fc.constantFrom("(a)", "(ii)", "%", ""),
         )
-        .map(([instruction, result]): ParagraphContent => field(instruction, result)),
+        .map(([instruction, result]): ParagraphContent =>
+          field(instruction, result),
+        ),
     },
-    { weight: 1, arbitrary: fc.constant(null).map((): ParagraphContent => field(" PAGE ", "3")) },
+    {
+      weight: 1,
+      arbitrary: fc
+        .constant(null)
+        .map((): ParagraphContent => field(" PAGE ", "3")),
+    },
     {
       weight: 4,
       arbitrary: fc
@@ -156,7 +178,9 @@ describe("the reader's fold of the LISTNUM fields that open a paragraph", () => 
               cached.push(
                 ...item.fieldResult
                   .flatMap((run) => run.content)
-                  .flatMap((piece) => (piece.type === "text" ? [piece.text] : [])),
+                  .flatMap((piece) =>
+                    piece.type === "text" ? [piece.text] : [],
+                  ),
               );
             }
             afterField = true;
@@ -192,7 +216,10 @@ describe("the reader's fold of the LISTNUM fields that open a paragraph", () => 
         expect(fold.cached).toEqual([]);
         expect(fold.fieldCount).toBe(content.filter(isListNumberField).length);
       }),
-      { numRuns: 100, id: "an item with no markup to stand for it is left as it is" },
+      {
+        numRuns: 100,
+        id: "an item with no markup to stand for it is left as it is",
+      },
     );
   });
 });
@@ -224,7 +251,9 @@ const carriedOut = (
     if (!item) {
       return [];
     }
-    return isCapture(item) && !plan.hidden.has(index) ? [{ kind: "shown" }] : [item];
+    return isCapture(item) && !plan.hidden.has(index)
+      ? [{ kind: "shown" }]
+      : [item];
   });
 
 describe("the rule for which captures stay hidden", () => {
@@ -246,9 +275,13 @@ describe("the rule for which captures stay hidden", () => {
       fc.property(itemsArbitrary, (items) => {
         const plan = planListNumberFold(items, true);
 
-        expect(plan.order.toSorted((a, b) => a - b)).toEqual(items.map((_, index) => index));
+        expect(plan.order.toSorted((a, b) => a - b)).toEqual(
+          items.map((_, index) => index),
+        );
         // What the line shows never changes order.
-        const shown = plan.order.filter((index) => items[index]?.kind === "shown");
+        const shown = plan.order.filter(
+          (index) => items[index]?.kind === "shown",
+        );
         expect(shown).toEqual(shown.toSorted((a, b) => a - b));
         const captures = plan.order.filter((index) => isCapture(items[index]));
         expect(captures).toEqual(captures.toSorted((a, b) => a - b));
@@ -267,14 +300,18 @@ describe("the rule for which captures stay hidden", () => {
         const after = carriedOut(items, plan);
 
         const lastHidden = after.findLastIndex((item) => isCapture(item));
-        expect(after.slice(0, lastHidden + 1).some((item) => item.kind === "shown")).toBe(false);
+        expect(
+          after.slice(0, lastHidden + 1).some((item) => item.kind === "shown"),
+        ).toBe(false);
         for (const index of plan.hidden) {
           expect(isCapture(items[index])).toBe(true);
         }
         const cached = after.flatMap((item) =>
           item.kind === "field" && item.cached !== "" ? [item.cached] : [],
         );
-        expect(plan.suffix).toBe(cached.length === 0 ? undefined : cached.join(" "));
+        expect(plan.suffix).toBe(
+          cached.length === 0 ? undefined : cached.join(" "),
+        );
         // A marker with nothing to show hides nothing at all.
         if (plan.suffix === undefined) {
           expect(after.some((item) => isCapture(item))).toBe(false);
@@ -282,7 +319,9 @@ describe("the rule for which captures stay hidden", () => {
         // A tab is hidden only right behind its field.
         for (const [index, item] of after.entries()) {
           if (item.kind === "tab") {
-            const before = after.slice(0, index).findLast((earlier) => earlier.kind !== "hidden");
+            const before = after
+              .slice(0, index)
+              .findLast((earlier) => earlier.kind !== "hidden");
             expect(before?.kind).toBe("field");
           }
         }
@@ -351,9 +390,15 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
   const listNumber = field(" LISTNUM ", "(a)");
   const tab = tabRun();
   const captures = (): ParagraphContent[] =>
-    foldListNumberFields([listNumber, tab], (item) => `<w:r data-type="${item.type}"/>`).content;
+    foldListNumberFields(
+      [listNumber, tab],
+      (item) => `<w:r data-type="${item.type}"/>`,
+    ).content;
 
-  const paragraph = (content: ParagraphContent[], marker: string | undefined): Paragraph => ({
+  const paragraph = (
+    content: ParagraphContent[],
+    marker: string | undefined,
+  ): Paragraph => ({
     type: "paragraph",
     content,
     ...(marker === undefined
@@ -405,12 +450,17 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
   });
 
   test("text ahead of the captures goes behind them", () => {
-    const typed = paragraph([textRun("X"), ...captures(), textRun("Body")], "7.1\t(a)");
+    const typed = paragraph(
+      [textRun("X"), ...captures(), textRun("Body")],
+      "7.1\t(a)",
+    );
 
     normalizeFoldedListNumbers(typed);
 
     expect(
-      typed.content.map((item) => (isFoldedListNumberCapture(item) ? "capture" : item)),
+      typed.content.map((item) =>
+        isFoldedListNumberCapture(item) ? "capture" : item,
+      ),
     ).toEqual(["capture", "capture", textRun("X"), textRun("Body")]);
     expect(typed.listRendering?.marker).toBe("7.1\t(a)");
   });
@@ -421,7 +471,9 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
         {
           type: "deletion",
           info: { id: 1, author: "Reviewer" },
-          content: captures().flatMap((item) => (item.type === "preservedInline" ? [item] : [])),
+          content: captures().flatMap((item) =>
+            item.type === "preservedInline" ? [item] : [],
+          ),
         },
         textRun("Body"),
       ],
@@ -431,7 +483,10 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
     normalizeFoldedListNumbers(deleted);
 
     const [wrapper] = deleted.content;
-    expect(wrapper?.type === "deletion" ? wrapper.content : []).toEqual([listNumber, tab]);
+    expect(wrapper?.type === "deletion" ? wrapper.content : []).toEqual([
+      listNumber,
+      tab,
+    ]);
     // Nothing is hidden any more, so the marker shows no field.
     expect(deleted.listRendering?.marker).toBe("7.1");
     const xml = serializeParagraph(deleted);
@@ -455,7 +510,13 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
 
   const deleting = (capture: PreservedInline): Paragraph => ({
     type: "paragraph",
-    content: [{ type: "deletion", info: { id: 1, author: "Reviewer" }, content: [capture] }],
+    content: [
+      {
+        type: "deletion",
+        info: { id: 1, author: "Reviewer" },
+        content: [capture],
+      },
+    ],
   });
 
   test("the writer respells a capture it finds inside a removal, whoever left it there", () => {
@@ -481,7 +542,9 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
     const document = createEmptyDocument();
     document.package.document.content = [
       deleting(
-        rawCapture(`<w:r><w:drawing/></w:r><w:r><w:instrText> LISTNUM </w:instrText></w:r>`),
+        rawCapture(
+          `<w:r><w:drawing/></w:r><w:r><w:instrText> LISTNUM </w:instrText></w:r>`,
+        ),
       ),
     ];
 

@@ -1,24 +1,22 @@
 import { panic, Result } from "better-result";
-import {
-  DOCUMENT_OP_TYPES,
-  DOCUMENT_OP_REFUSAL_REASONS,
-  DocumentOpRefusal,
-} from "@stll/docx-core/ops";
+
 import {
   BODY_TEXT_OUTLINE_LEVEL,
-  NO_PARAGRAPH_NUMBERING,
   isThemeColor,
+  NO_PARAGRAPH_NUMBERING,
   themeColorSlot,
 } from "@stll/docx-core/model";
-import { isValidHexColor, resolveColorToHex } from "../utils/colorResolver";
-import { resolveThemeFont } from "../utils/fontResolver";
-import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
-import { createStyleEngine } from "../style-engine/styleEngine";
-import { resolveStyleInheritance } from "../docx/styleParser";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DOCUMENT_OP_TYPES,
+  DocumentOpRefusal,
+} from "@stll/docx-core/ops";
+
 import { visitParagraphRuns } from "../docx/paragraphTraversal";
-import { FONT_THEME_VALUES } from "../types/documentEnumValues";
+import { resolveStyleInheritance } from "../docx/styleParser";
 import { resolveParagraphBodyRunFormatting } from "../prosemirror/runStyleFormatting";
 import { cascadeStyleTextFormatting } from "../prosemirror/styles/styleToggleCascade";
+import { createStyleEngine } from "../style-engine/styleEngine";
 import type {
   Document,
   Paragraph,
@@ -27,6 +25,10 @@ import type {
   StyleDefinitions,
   TextFormatting,
 } from "../types/document";
+import { FONT_THEME_VALUES } from "../types/documentEnumValues";
+import { isValidHexColor, resolveColorToHex } from "../utils/colorResolver";
+import { resolveThemeFont } from "../utils/fontResolver";
+import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 
 const STYLE_REFERENCE_FIELDS = new Set([
   "styleId",
@@ -54,7 +56,9 @@ const visitReferences = (value: unknown, visitor: ReferenceVisitor): void => {
 };
 
 /** Normalized HTML states effective CSS; foreign style names carry no package ownership. */
-export const flattenClipboardStyleReferences = (paragraphs: readonly Paragraph[]): void => {
+export const flattenClipboardStyleReferences = (
+  paragraphs: readonly Paragraph[],
+): void => {
   visitReferences(paragraphs, (key, _value, owner) => {
     if (STYLE_REFERENCE_FIELDS.has(key)) Reflect.deleteProperty(owner, key);
   });
@@ -99,7 +103,8 @@ const lowerSourceTheme = ({
       const resolved = THEME_FONT_REFERENCES.has(item)
         ? resolveThemeFont(item, source.package.theme?.fontScheme)
         : null;
-      const font = resolved || (typeof explicit === "string" ? explicit : undefined);
+      const font =
+        resolved || (typeof explicit === "string" ? explicit : undefined);
       if (font === undefined || font.length === 0) {
         unavailable = `The source package does not resolve theme font ${item}.`;
         return;
@@ -121,7 +126,8 @@ const lowerSourceTheme = ({
     const shade = Reflect.get(owner, "themeShade");
     if (typeof item !== "string" || !isThemeColor(item)) {
       if (typeof rgb !== "string" || !isValidHexColor(rgb)) {
-        unavailable = "A source theme colour has no known slot or explicit RGB value.";
+        unavailable =
+          "A source theme colour has no known slot or explicit RGB value.";
         return;
       }
       Reflect.deleteProperty(owner, "themeColor");
@@ -130,7 +136,10 @@ const lowerSourceTheme = ({
       return;
     }
     const slot = themeColorSlot(item);
-    const schemeColour = slot === undefined ? undefined : source.package.theme?.colorScheme?.[slot];
+    const schemeColour =
+      slot === undefined
+        ? undefined
+        : source.package.theme?.colorScheme?.[slot];
     if (schemeColour === undefined || !isValidHexColor(schemeColour)) {
       unavailable = `The source package does not resolve theme colour ${item}.`;
       return;
@@ -151,7 +160,9 @@ const lowerSourceTheme = ({
     Reflect.deleteProperty(owner, "themeTint");
     Reflect.deleteProperty(owner, "themeShade");
   });
-  return unavailable === undefined ? Result.ok(undefined) : refused(unavailable);
+  return unavailable === undefined
+    ? Result.ok(undefined)
+    : refused(unavailable);
 };
 
 type ImportClipboardStylesOptions = {
@@ -217,18 +228,26 @@ const materializeClipboardDefaults = ({
 }: MaterializeClipboardDefaultsOptions): Result<void, DocumentOpRefusal> => {
   const sourceDefinitions = structuredClone(source.package.styles);
   if (sourceDefinitions !== undefined) {
-    const sourceMap = new Map(sourceDefinitions.styles.map((style) => [style.styleId, style]));
+    const sourceMap = new Map(
+      sourceDefinitions.styles.map((style) => [style.styleId, style]),
+    );
     sourceDefinitions.styles = sourceDefinitions.styles.map((style) =>
       resolveStyleInheritance(style, sourceMap),
     );
   }
   const engine = createStyleEngine(sourceDefinitions);
-  const destinationDefaults = createStyleEngine(destination.package.styles).resolveParagraphStyle(
-    undefined,
-  );
-  const neutralizeBooleanDefaults = (formatting: object, defaults: object | undefined): void => {
+  const destinationDefaults = createStyleEngine(
+    destination.package.styles,
+  ).resolveParagraphStyle(undefined);
+  const neutralizeBooleanDefaults = (
+    formatting: object,
+    defaults: object | undefined,
+  ): void => {
     for (const [key, value] of Object.entries(defaults ?? {})) {
-      if (typeof value === "boolean" && Reflect.get(formatting, key) === undefined)
+      if (
+        typeof value === "boolean" &&
+        Reflect.get(formatting, key) === undefined
+      )
         Reflect.set(formatting, key, false);
     }
   };
@@ -247,11 +266,18 @@ const materializeClipboardDefaults = ({
     if (formatting !== undefined) {
       // Style numbering must remain inherited: writing it directly changes
       // OOXML precedence between level and style indentation.
-      if (authored?.numPr === undefined && sourceDefinitions?.docDefaults?.pPr?.numPr === undefined)
+      if (
+        authored?.numPr === undefined &&
+        sourceDefinitions?.docDefaults?.pPr?.numPr === undefined
+      )
         delete formatting.numPr;
-      if (authored?.numPrFromStyle === undefined) delete formatting.numPrFromStyle;
-      if (authored?.preserved !== undefined) formatting.preserved = authored.preserved;
-      for (const [key, value] of Object.entries(destinationDefaults.paragraphFormatting ?? {})) {
+      if (authored?.numPrFromStyle === undefined)
+        delete formatting.numPrFromStyle;
+      if (authored?.preserved !== undefined)
+        formatting.preserved = authored.preserved;
+      for (const [key, value] of Object.entries(
+        destinationDefaults.paragraphFormatting ?? {},
+      )) {
         if (
           key === "preserved" ||
           key === "styleId" ||
@@ -265,7 +291,9 @@ const materializeClipboardDefaults = ({
           continue;
         const neutral = Reflect.get(NEUTRAL_PARAGRAPH_PROPERTIES, key);
         if (neutral === undefined) {
-          recordRefusal(`The source package does not resolve inherited paragraph property ${key}.`);
+          recordRefusal(
+            `The source package does not resolve inherited paragraph property ${key}.`,
+          );
           continue;
         }
         Reflect.set(formatting, key, structuredClone(neutral));
@@ -278,18 +306,28 @@ const materializeClipboardDefaults = ({
         formatting.styleId = implicitStyle.styleId;
       paragraph.formatting = formatting;
     }
-    const inherited = resolveParagraphBodyRunFormatting({ styleId, styleResolver: engine });
-    const materializeRun = (direct: TextFormatting | undefined): TextFormatting | undefined => {
+    const inherited = resolveParagraphBodyRunFormatting({
+      styleId,
+      styleResolver: engine,
+    });
+    const materializeRun = (
+      direct: TextFormatting | undefined,
+    ): TextFormatting | undefined => {
       const named = direct?.styleId;
       const cascade =
         cascadeStyleTextFormatting([
           {
             cascade:
-              named === undefined ? inherited.defaultToggleCascade : inherited.baseToggleCascade,
+              named === undefined
+                ? inherited.defaultToggleCascade
+                : inherited.baseToggleCascade,
             type: "carried",
           },
           {
-            formatting: named === undefined ? undefined : engine.getRunStyleOwnProperties(named),
+            formatting:
+              named === undefined
+                ? undefined
+                : engine.getRunStyleOwnProperties(named),
             type: "style",
           },
           { formatting: direct, type: "direct" },
@@ -312,9 +350,13 @@ const materializeClipboardDefaults = ({
         }
         // A missing source script font is application/environment dependent;
         // adopting the destination's explicit font would change the paste.
-        recordRefusal(`The source package does not resolve inherited font slot ${slot}.`);
+        recordRefusal(
+          `The source package does not resolve inherited font slot ${slot}.`,
+        );
       }
-      for (const [key, value] of Object.entries(destinationDefaults.runFormatting ?? {})) {
+      for (const [key, value] of Object.entries(
+        destinationDefaults.runFormatting ?? {},
+      )) {
         if (
           key === "preserved" ||
           key === "styleId" ||
@@ -324,7 +366,9 @@ const materializeClipboardDefaults = ({
           continue;
         const neutral = Reflect.get(NEUTRAL_RUN_PROPERTIES, key);
         if (neutral === undefined) {
-          recordRefusal(`The source package does not resolve inherited run property ${key}.`);
+          recordRefusal(
+            `The source package does not resolve inherited run property ${key}.`,
+          );
           continue;
         }
         Reflect.set(cascade, key, structuredClone(neutral));
@@ -351,17 +395,25 @@ const materializeClipboardDefaults = ({
       );
       if (before !== undefined) {
         if (previous?.numPr === undefined) delete before.numPr;
-        if (previous?.preserved !== undefined) before.preserved = previous.preserved;
+        if (previous?.preserved !== undefined)
+          before.preserved = previous.preserved;
         change.previousFormatting = before;
       }
     }
     if (paragraph.content.length === 0) {
-      const markFormatting = materializeRun(paragraph.formatting?.runProperties);
+      const markFormatting = materializeRun(
+        paragraph.formatting?.runProperties,
+      );
       if (markFormatting !== undefined)
-        paragraph.formatting = { ...paragraph.formatting, runProperties: markFormatting };
+        paragraph.formatting = {
+          ...paragraph.formatting,
+          runProperties: markFormatting,
+        };
     }
   }
-  return unavailable === undefined ? Result.ok(undefined) : refused(unavailable);
+  return unavailable === undefined
+    ? Result.ok(undefined)
+    : refused(unavailable);
 };
 
 /** Import the transitive style/numbering dependencies of the clipboard, retaining destination defaults. */
@@ -369,7 +421,10 @@ export const importClipboardStyles = ({
   destination,
   source,
   paragraphs,
-}: ImportClipboardStylesOptions): Result<ImportedClipboardStyles, DocumentOpRefusal> => {
+}: ImportClipboardStylesOptions): Result<
+  ImportedClipboardStyles,
+  DocumentOpRefusal
+> => {
   const clonedParagraphs = structuredClone([...paragraphs]);
   const materialized = materializeClipboardDefaults({
     source,
@@ -396,38 +451,61 @@ export const importClipboardStyles = ({
       selectedStyles.add(value);
       styleQueue.push(value);
     }
-    if (key === "numId" && typeof value === "number" && !numberingIds.has(value)) {
+    if (
+      key === "numId" &&
+      typeof value === "number" &&
+      !numberingIds.has(value)
+    ) {
       numberingIds.add(value);
       numberingQueue.push(value);
     }
   };
-  for (const paragraph of clonedParagraphs) visitReferences(paragraph, selectReferences);
+  for (const paragraph of clonedParagraphs)
+    visitReferences(paragraph, selectReferences);
   const sourceNums = source.package.numbering?.nums ?? [];
   const sourceAbstracts = source.package.numbering?.abstractNums ?? [];
   const nums = new Map(sourceNums.map((num) => [num.numId, num]));
-  const abstracts = new Map(sourceAbstracts.map((abstract) => [abstract.abstractNumId, abstract]));
-  if (nums.size !== sourceNums.length || abstracts.size !== sourceAbstracts.length)
-    return refused("The source package contains duplicate numbering identities.");
+  const abstracts = new Map(
+    sourceAbstracts.map((abstract) => [abstract.abstractNumId, abstract]),
+  );
+  if (
+    nums.size !== sourceNums.length ||
+    abstracts.size !== sourceAbstracts.length
+  )
+    return refused(
+      "The source package contains duplicate numbering identities.",
+    );
   let styleIndex = 0;
   let numberingIndex = 0;
-  while (styleIndex < styleQueue.length || numberingIndex < numberingQueue.length) {
+  while (
+    styleIndex < styleQueue.length ||
+    numberingIndex < numberingQueue.length
+  ) {
     while (styleIndex < styleQueue.length) {
       const id = styleQueue.at(styleIndex++);
-      if (id === undefined) return refused("A clipboard style dependency was lost.");
+      if (id === undefined)
+        return refused("A clipboard style dependency was lost.");
       const style = sourceStyles.get(id);
       if (style === undefined)
-        return refused(`The source package does not define clipboard style ${id}.`);
+        return refused(
+          `The source package does not define clipboard style ${id}.`,
+        );
       visitReferences(style, selectReferences);
     }
     while (numberingIndex < numberingQueue.length) {
       const id = numberingQueue.at(numberingIndex++);
-      if (id === undefined) return refused("A clipboard numbering dependency was lost.");
+      if (id === undefined)
+        return refused("A clipboard numbering dependency was lost.");
       const num = nums.get(id);
       if (num === undefined)
-        return refused(`The source package does not define clipboard numbering ${id}.`);
+        return refused(
+          `The source package does not define clipboard numbering ${id}.`,
+        );
       const abstract = abstracts.get(num.abstractNumId);
       if (abstract === undefined)
-        return refused("A clipboard numbering instance has no abstract definition.");
+        return refused(
+          "A clipboard numbering instance has no abstract definition.",
+        );
       visitReferences(num, selectReferences);
       visitReferences(abstract, selectReferences);
     }
@@ -437,12 +515,16 @@ export const importClipboardStyles = ({
     let ancestor: string | undefined = id;
     while (ancestor !== undefined) {
       if (ancestors.has(ancestor))
-        return refused("The source clipboard style inheritance contains a cycle.");
+        return refused(
+          "The source clipboard style inheritance contains a cycle.",
+        );
       ancestors.add(ancestor);
       ancestor = sourceStyles.get(ancestor)?.basedOn;
     }
   }
-  const occupied = new Set(destination.package.styles?.styles.map(({ styleId }) => styleId));
+  const occupied = new Set(
+    destination.package.styles?.styles.map(({ styleId }) => styleId),
+  );
   // Reserve every source name before minting, so an allocated suffix cannot steal a later source name.
   const reserved = new Set([...occupied, ...selectedStyles]);
   const styleIds = new Map<string, string>();
@@ -461,13 +543,16 @@ export const importClipboardStyles = ({
     if (!STYLE_REFERENCE_FIELDS.has(key) || typeof value !== "string") return;
     const mapped = styleIds.get(value);
     if (mapped === undefined)
-      panic("A selected clipboard style has no allocated destination identity.");
+      panic(
+        "A selected clipboard style has no allocated destination identity.",
+      );
     Reflect.set(owner, key, mapped);
   };
   const importedStyles: Style[] = [];
   for (const id of [...selectedStyles].toSorted()) {
     const style = sourceStyles.get(id);
-    if (style === undefined) return refused("A selected clipboard style has no source definition.");
+    if (style === undefined)
+      return refused("A selected clipboard style has no source definition.");
     const imported = structuredClone(style);
     visitReferences(imported, remap);
     const lowered = lowerSourceTheme({ value: imported, source });
@@ -489,5 +574,10 @@ export const importClipboardStyles = ({
           ...prior,
           styles: [...(prior?.styles ?? []), ...importedStyles],
         };
-  return Result.ok({ styles, paragraphs: clonedParagraphs, styleIds, numberingIds });
+  return Result.ok({
+    styles,
+    paragraphs: clonedParagraphs,
+    styleIds,
+    numberingIds,
+  });
 };

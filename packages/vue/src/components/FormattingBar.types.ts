@@ -7,6 +7,7 @@
  */
 
 import type { ColorValue, Theme } from "@stll/folio-core/types/document";
+
 import type { ListState } from "../utils/listState";
 import type { ParagraphAlignment } from "./ui/AlignmentButtons.types";
 import type { StyleOption } from "./ui/StylePicker.types";

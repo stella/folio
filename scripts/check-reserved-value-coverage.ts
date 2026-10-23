@@ -36,18 +36,6 @@ import { RESERVED_VALUE_NAMESPACE_URIS } from "../specifications/reserved-values
 import { reservedValueSlotKeys } from "../specifications/reserved-values/registry";
 import { keyDifferences } from "./lib/exact-object";
 import {
-  attributesOf,
-  buildIndex,
-  elementTypes,
-  type Index,
-  INLINE_NAMESPACES,
-  type SchemaGraph,
-  loadSchemaGraph,
-  localName,
-  REBUILT_PART_ROOTS,
-  slotKey,
-} from "./lib/ooxml-schema-graph";
-import {
   expandSimpleType,
   narrowedEnumOptions,
   narrowedEnumSiteByType,
@@ -55,11 +43,25 @@ import {
   type SlotEnumerationDecision,
 } from "./lib/narrowed-enum-schema-types";
 import {
+  attributesOf,
+  buildIndex,
+  elementTypes,
+  type Index,
+  INLINE_NAMESPACES,
+  loadSchemaGraph,
+  localName,
+  REBUILT_PART_ROOTS,
+  type SchemaGraph,
+  slotKey,
+} from "./lib/ooxml-schema-graph";
+import {
   RESERVED_VALUE_EXCLUSIONS,
   type ReservedValueExclusionGroup,
 } from "./lib/reserved-value-exclusions";
 
-class ReservedValueCoverageError extends TaggedError("ReservedValueCoverageError")<{
+class ReservedValueCoverageError extends TaggedError(
+  "ReservedValueCoverageError",
+)<{
   message: string;
 }> {}
 
@@ -91,7 +93,11 @@ const RESERVED_ENUM_TOKENS = new Set([
  * be decided wherever folio *reads* one, which also takes in the numbering and
  * style definitions it resolves against.
  */
-const RESERVED_VALUE_PART_ROOTS: readonly string[] = [...REBUILT_PART_ROOTS, "numbering", "styles"];
+const RESERVED_VALUE_PART_ROOTS: readonly string[] = [
+  ...REBUILT_PART_ROOTS,
+  "numbering",
+  "styles",
+];
 
 /**
  * Numeric sentinels the schema cannot express: `w:numId`, `w:ilvl`,
@@ -137,7 +143,11 @@ const PROSE_SLOTS: readonly string[] = [
   "w:styleLink@val",
 ];
 
-type Candidate = { slot: string; kind: "enum" | "default" | "prose"; detail: string };
+type Candidate = {
+  slot: string;
+  kind: "enum" | "default" | "prose";
+  detail: string;
+};
 
 /** Every enum token a type accepts, following union members and restriction bases. */
 const enumTokensOf = (
@@ -156,7 +166,9 @@ const enumTokensOf = (
   if (symbol.enumValues && symbol.enumValues.length > 0) {
     return symbol.enumValues;
   }
-  const tokens = (symbol.memberTypes ?? []).flatMap((member) => enumTokensOf(index, member, seen));
+  const tokens = (symbol.memberTypes ?? []).flatMap((member) =>
+    enumTokensOf(index, member, seen),
+  );
   return tokens.length > 0 ? tokens : enumTokensOf(index, symbol.base, seen);
 };
 
@@ -168,7 +180,11 @@ const collectCandidates = (graph: SchemaGraph, index: Index): Candidate[] => {
     }
   };
 
-  for (const [key, types] of elementTypes(graph, index, RESERVED_VALUE_PART_ROOTS)) {
+  for (const [key, types] of elementTypes(
+    graph,
+    index,
+    RESERVED_VALUE_PART_ROOTS,
+  )) {
     const separator = key.lastIndexOf(" ");
     const namespace = key.slice(0, separator);
     const element = key.slice(separator + 1);
@@ -187,12 +203,18 @@ const collectCandidates = (graph: SchemaGraph, index: Index): Candidate[] => {
           continue;
         }
         if (attribute.default !== undefined) {
-          add({ slot, kind: "default", detail: `default "${attribute.default}"` });
+          add({
+            slot,
+            kind: "default",
+            detail: `default "${attribute.default}"`,
+          });
         }
       }
     }
   }
-  return [...candidates.values()].toSorted((left, right) => left.slot.localeCompare(right.slot));
+  return [...candidates.values()].toSorted((left, right) =>
+    left.slot.localeCompare(right.slot),
+  );
 };
 
 /** `"w:tcW@type"` -> `"<wml uri> tcW @type"`. */
@@ -207,7 +229,9 @@ const expandSlot = (slot: string): string => {
   }
   const rest = slot.slice(colon + 1);
   const at = rest.indexOf("@");
-  return at < 0 ? slotKey(uri, rest, null) : slotKey(uri, rest.slice(0, at), rest.slice(at + 1));
+  return at < 0
+    ? slotKey(uri, rest, null)
+    : slotKey(uri, rest.slice(0, at), rest.slice(at + 1));
 };
 
 /**
@@ -240,15 +264,22 @@ const declaredSlots = (graph: SchemaGraph, index: Index): Set<string> => {
     if (child.kind !== "element") {
       continue;
     }
-    const element = child.ref ? index.byId.get(`element:${child.ref}`) : undefined;
+    const element = child.ref
+      ? index.byId.get(`element:${child.ref}`)
+      : undefined;
     const namespace = element?.namespace ?? child.namespace;
     const name = element?.name ?? child.name;
     const type = element?.type ?? child.type;
-    if (name === undefined || namespace === undefined || !INLINE_NAMESPACES.has(namespace)) {
+    if (
+      name === undefined ||
+      namespace === undefined ||
+      !INLINE_NAMESPACES.has(namespace)
+    ) {
       continue;
     }
     declared.add(slotKey(namespace, name, null));
-    const complex = type === undefined ? undefined : index.byId.get(`complexType:${type}`);
+    const complex =
+      type === undefined ? undefined : index.byId.get(`complexType:${type}`);
     if (complex) {
       for (const attribute of attributesOf(index, complex.id)) {
         declared.add(slotKey(namespace, name, attribute.name));
@@ -258,7 +289,9 @@ const declaredSlots = (graph: SchemaGraph, index: Index): Set<string> => {
   return declared;
 };
 
-const excludedSlots = (groups: readonly ReservedValueExclusionGroup[]): Map<string, string> => {
+const excludedSlots = (
+  groups: readonly ReservedValueExclusionGroup[],
+): Map<string, string> => {
   const excluded = new Map<string, string>();
   for (const group of groups) {
     for (const slot of group.slots) {
@@ -287,8 +320,15 @@ const enumeratingTypesOfRegisteredSlots = (
   index: Index,
   registered: ReadonlySet<string>,
 ): Map<string, { slots: Set<string>; tokens: readonly string[] }> => {
-  const reached = new Map<string, { slots: Set<string>; tokens: readonly string[] }>();
-  for (const [key, types] of elementTypes(graph, index, RESERVED_VALUE_PART_ROOTS)) {
+  const reached = new Map<
+    string,
+    { slots: Set<string>; tokens: readonly string[] }
+  >();
+  for (const [key, types] of elementTypes(
+    graph,
+    index,
+    RESERVED_VALUE_PART_ROOTS,
+  )) {
     const separator = key.lastIndexOf(" ");
     const namespace = key.slice(0, separator);
     const element = key.slice(separator + 1);
@@ -306,7 +346,10 @@ const enumeratingTypesOfRegisteredSlots = (
         if (tokens.length === 0) {
           continue;
         }
-        const entry = reached.get(attribute.type) ?? { slots: new Set<string>(), tokens };
+        const entry = reached.get(attribute.type) ?? {
+          slots: new Set<string>(),
+          tokens,
+        };
         entry.slots.add(slot);
         reached.set(attribute.type, entry);
       }
@@ -315,8 +358,10 @@ const enumeratingTypesOfRegisteredSlots = (
   return reached;
 };
 
-const difference = (left: readonly string[], right: readonly string[]): string[] =>
-  left.filter((value) => !right.includes(value)).toSorted();
+const difference = (
+  left: readonly string[],
+  right: readonly string[],
+): string[] => left.filter((value) => !right.includes(value)).toSorted();
 
 /**
  * The model's accepted token set against the schema's, for every enumerating
@@ -327,15 +372,17 @@ const difference = (left: readonly string[], right: readonly string[]): string[]
  * bound to nothing, which is the failure this check exists for.
  */
 const enumerationMismatches = (
-  reached: ReadonlyMap<string, { slots: Set<string>; tokens: readonly string[] }>,
+  reached: ReadonlyMap<
+    string,
+    { slots: Set<string>; tokens: readonly string[] }
+  >,
 ): string[] => {
   const problems: string[] = [];
   const bySite = narrowedEnumSiteByType();
   const decisions = new Map<string, SlotEnumerationDecision>(
-    Object.entries(RESERVED_VALUE_SLOT_ENUMERATIONS).map(([qualified, decision]) => [
-      expandSimpleType(qualified),
-      decision,
-    ]),
+    Object.entries(RESERVED_VALUE_SLOT_ENUMERATIONS).map(
+      ([qualified, decision]) => [expandSimpleType(qualified), decision],
+    ),
   );
 
   for (const [type, { slots, tokens }] of [...reached.entries()].toSorted()) {
@@ -347,7 +394,10 @@ const enumerationMismatches = (
       const missing = difference(tokens, options);
       const extra = difference(options, tokens);
       const { binding } = picklist;
-      if (binding.kind === "matches" && (missing.length > 0 || extra.length > 0)) {
+      if (
+        binding.kind === "matches" &&
+        (missing.length > 0 || extra.length > 0)
+      ) {
         problems.push(
           `  ${named}: ${picklist.site} is recorded as matching ${binding.simpleType}, ` +
             `but omits ${missing.join(", ") || "nothing"} and adds ${extra.join(", ") || "nothing"}.`,
@@ -407,7 +457,11 @@ const main = async (): Promise<void> => {
   for (const slot of PROSE_SLOTS) {
     const expanded = expandSlot(slot);
     if (!candidateSlots.has(expanded)) {
-      candidates.push({ slot: expanded, kind: "prose", detail: "numeric sentinel" });
+      candidates.push({
+        slot: expanded,
+        kind: "prose",
+        detail: "numeric sentinel",
+      });
       candidateSlots.add(expanded);
     }
   }
@@ -419,17 +473,28 @@ const main = async (): Promise<void> => {
   // compiler cannot see; an exclusion for a slot that is no longer a candidate
   // is dead weight.
   const declared = declaredSlots(graph, index);
-  const undeclared = [...registered].filter((slot) => !declared.has(slot)).toSorted();
+  const undeclared = [...registered]
+    .filter((slot) => !declared.has(slot))
+    .toSorted();
 
   const covered = [...new Set([...registered, ...excluded.keys()])].toSorted();
-  const { missing, extra } = keyDifferences(covered, [...candidateSlots].toSorted());
-  const detailOf = new Map(candidates.map((candidate) => [candidate.slot, candidate]));
+  const { missing, extra } = keyDifferences(
+    covered,
+    [...candidateSlots].toSorted(),
+  );
+  const detailOf = new Map(
+    candidates.map((candidate) => [candidate.slot, candidate]),
+  );
   const uncovered = missing
     .map((slot) => detailOf.get(slot))
     .filter((candidate): candidate is Candidate => candidate !== undefined);
   const strayExcluded = extra.filter((slot) => excluded.has(slot));
 
-  const reachedEnumerations = enumeratingTypesOfRegisteredSlots(graph, index, registered);
+  const reachedEnumerations = enumeratingTypesOfRegisteredSlots(
+    graph,
+    index,
+    registered,
+  );
   const mismatched = enumerationMismatches(reachedEnumerations);
 
   const byKind = (kind: Candidate["kind"]): number =>
@@ -455,7 +520,9 @@ const main = async (): Promise<void> => {
   if (uncovered.length > 0) {
     lines.push(
       `${uncovered.length} slot(s) carry a reserved value that no registry entry names and no exclusion covers:`,
-      ...uncovered.map(({ slot, kind, detail }) => `  [${kind}] ${slot} (${detail})`),
+      ...uncovered.map(
+        ({ slot, kind, detail }) => `  [${kind}] ${slot} (${detail})`,
+      ),
       "",
       "Record the decision on the model field that carries the slot, or add the slot to a group",
       "in scripts/lib/reserved-value-exclusions.ts with a reason folio can be held to.",

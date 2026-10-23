@@ -1,14 +1,18 @@
-import { encodeUtf8, decodeText } from "../utils/textEncoding";
 /** Canonical snapshots own explicit section references; the PM projection does not. */
 import JSZip from "jszip";
-import { parseDocx } from "./parser";
+
 import { withTrackedSectionEndpointRemoval } from "../internal/sectionEndpointResolution";
-import { withSectionReferenceResolution } from "../internal/sectionReferenceResolution";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
+import { withSectionReferenceResolution } from "../internal/sectionReferenceResolution";
 import type { Document } from "../types/document";
-import { readDocumentSectionFacts, type HeaderFooterReference } from "./documentSectionFacts";
-import { serializeDocument } from "./serializer/documentSerializer";
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
+import {
+  type HeaderFooterReference,
+  readDocumentSectionFacts,
+} from "./documentSectionFacts";
+import { parseDocx } from "./parser";
 import { assertSectionCarriersMatchModel } from "./rezip";
+import { serializeDocument } from "./serializer/documentSerializer";
 
 const referenceKey = ({ element, type, rId }: HeaderFooterReference): string =>
   `${element}:${type}:${rId}`;
@@ -16,7 +20,8 @@ const referenceKey = ({ element, type, rId }: HeaderFooterReference): string =>
 const xmlFingerprint = async (xml: string): Promise<string> => {
   const digest = await crypto.subtle.digest("SHA-256", encodeUtf8(xml));
   let fingerprint = "";
-  for (const byte of new Uint8Array(digest)) fingerprint += byte.toString(16).padStart(2, "0");
+  for (const byte of new Uint8Array(digest))
+    fingerprint += byte.toString(16).padStart(2, "0");
   return fingerprint;
 };
 

@@ -9,7 +9,7 @@
 import { panic } from "better-result";
 import { keymap } from "prosemirror-keymap";
 import { Schema } from "prosemirror-model";
-import type { NodeSpec, MarkSpec } from "prosemirror-model";
+import type { MarkSpec, NodeSpec } from "prosemirror-model";
 import type { Plugin as PMPlugin } from "prosemirror-state";
 
 import {
@@ -17,15 +17,14 @@ import {
   createTransactionInvariantPlugin,
 } from "../plugins/transactionInvariants";
 import { createTextInputPlugin } from "../textInput";
-
 import type {
   AnyExtension,
   CommandFactory,
   CommandMap,
   ExtensionCommandMap,
   ExtensionContext,
-  FolioCommandName,
   FolioCommandArguments,
+  FolioCommandName,
   KeyboardShortcutMap,
 } from "./types";
 
@@ -37,7 +36,9 @@ export class ExtensionManager {
 
   constructor(extensions: AnyExtension[]) {
     // Sort by priority (lower number = higher priority)
-    this.extensions = [...extensions].toSorted((a, b) => a.config.priority - b.config.priority);
+    this.extensions = [...extensions].toSorted(
+      (a, b) => a.config.priority - b.config.priority,
+    );
   }
 
   /**
@@ -64,7 +65,9 @@ export class ExtensionManager {
    */
   initializeRuntime(): void {
     if (!this.schema) {
-      panic("ExtensionManager: buildSchema() must be called before initializeRuntime()");
+      panic(
+        "ExtensionManager: buildSchema() must be called before initializeRuntime()",
+      );
     }
 
     const ctx: ExtensionContext = { schema: this.schema };
@@ -99,7 +102,9 @@ export class ExtensionManager {
       createTextInputPlugin(),
       ...allPlugins,
       ...allKeyboardShortcuts.map((shortcuts) => keymap(shortcuts)),
-      ...(areTransactionInvariantsEnabled() ? [createTransactionInvariantPlugin()] : []),
+      ...(areTransactionInvariantsEnabled()
+        ? [createTransactionInvariantPlugin()]
+        : []),
     ];
 
     this.commands = allCommands;

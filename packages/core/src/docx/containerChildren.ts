@@ -25,9 +25,15 @@
  */
 
 import type { PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
-import { SEQUENCE_CHILDREN, type SequenceContainer } from "@stll/docx-core/schema";
+import {
+  SEQUENCE_CHILDREN,
+  type SequenceContainer,
+} from "@stll/docx-core/schema";
 
-import { type DeclaredChild, type DispatchedContainer } from "./containerChildren.gen";
+import {
+  type DeclaredChild,
+  type DispatchedContainer,
+} from "./containerChildren.gen";
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
@@ -113,7 +119,9 @@ const CLAIMS = new Map<string, ChildOwnerClaim>();
  * the claiming modules first, by scanning the sources for the call rather than
  * by keeping a list beside them.
  */
-export const ownedElsewhereClaims = (): readonly ChildOwnerClaim[] => [...CLAIMS.values()];
+export const ownedElsewhereClaims = (): readonly ChildOwnerClaim[] => [
+  ...CLAIMS.values(),
+];
 
 /** State that another reader takes this child, and who. */
 export const ownedElsewhere = <
@@ -177,11 +185,21 @@ export type ChildDisposition<
  * type is keyed by the child it is filed under, so an {@link ownedElsewhere}
  * entry cannot name a different child than the one it decides.
  */
-export type ChildHandlers<Container extends DispatchedContainer, Context = undefined> = Readonly<{
-  [Child in DeclaredChild<Container>]: ChildDisposition<Container, Child, Context>;
+export type ChildHandlers<
+  Container extends DispatchedContainer,
+  Context = undefined,
+> = Readonly<{
+  [Child in DeclaredChild<Container>]: ChildDisposition<
+    Container,
+    Child,
+    Context
+  >;
 }>;
 
-type DispatchChildrenOptions<Container extends DispatchedContainer, Context = undefined> = {
+type DispatchChildrenOptions<
+  Container extends DispatchedContainer,
+  Context = undefined,
+> = {
   /** The container element, as the source wrote it. */
   element: XmlElement;
   /** Which container's declared-child set the handler map must be total over. */
@@ -212,7 +230,9 @@ type DispatchChildrenOptions<Container extends DispatchedContainer, Context = un
    *
    * Each entry is a claim that folio reads this name in this container.
    */
-  undeclared?: Readonly<Record<string, ChildDisposition<DispatchedContainer, string, Context>>>;
+  undeclared?: Readonly<
+    Record<string, ChildDisposition<DispatchedContainer, string, Context>>
+  >;
   /**
    * Dispositions for whole namespaces the declared set does not cover, by
    * namespace URI, consulted after {@link undeclared} and before the sink.
@@ -253,7 +273,9 @@ export const transitionalNamespaceOf = (namespace: string): string =>
  */
 const ownDisposition = <Context>(
   table:
-    | Readonly<Record<string, ChildDisposition<DispatchedContainer, string, Context>>>
+    | Readonly<
+        Record<string, ChildDisposition<DispatchedContainer, string, Context>>
+      >
     | undefined,
   key: string,
 ): ChildDisposition<DispatchedContainer, string, Context> | undefined =>
@@ -269,13 +291,17 @@ const ownDisposition = <Context>(
  */
 export const dispatchChildren = <Container extends DispatchedContainer>(
   options: DispatchChildrenOptions<Container>,
-): PreservedMarkup | undefined => dispatchChildrenWithContext({ ...options, context: undefined });
+): PreservedMarkup | undefined =>
+  dispatchChildrenWithContext({ ...options, context: undefined });
 
 /**
  * {@link dispatchChildren} for a handler table that reads into a value it is
  * handed rather than one it closes over, so the table is built once.
  */
-export const dispatchChildrenWithContext = <Container extends DispatchedContainer, Context>({
+export const dispatchChildrenWithContext = <
+  Container extends DispatchedContainer,
+  Context,
+>({
   element,
   handlers,
   capturePosition,
@@ -283,15 +309,18 @@ export const dispatchChildrenWithContext = <Container extends DispatchedContaine
   undeclaredNamespaces,
   context,
 }: DispatchChildrenOptions<Container, Context> & { context: Context }):
-  | PreservedMarkup
-  | undefined => {
+  PreservedMarkup | undefined => {
   const children: PreservedChild[] = [];
   const capture = (child: XmlElement): void => {
-    children.push({ index: capturePosition(child), xml: captureVerbatimXml(child) });
+    children.push({
+      index: capturePosition(child),
+      xml: captureVerbatimXml(child),
+    });
   };
 
-  const declared: Readonly<Record<string, ChildDisposition<DispatchedContainer, string, Context>>> =
-    handlers;
+  const declared: Readonly<
+    Record<string, ChildDisposition<DispatchedContainer, string, Context>>
+  > = handlers;
   for (const child of getChildElements(element)) {
     // The generated set names one namespace's children, so a child is
     // declared only when it is in that namespace. Matching on the local name
@@ -310,9 +339,13 @@ export const dispatchChildrenWithContext = <Container extends DispatchedContaine
     const isDeclaredNamespace =
       namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
     const disposition = isDeclaredNamespace
-      ? (ownDisposition(declared, localName) ?? ownDisposition(undeclared, localName))
+      ? (ownDisposition(declared, localName) ??
+        ownDisposition(undeclared, localName))
       : (ownDisposition(undeclared, localName) ??
-        ownDisposition(undeclaredNamespaces, transitionalNamespaceOf(namespace)));
+        ownDisposition(
+          undeclaredNamespaces,
+          transitionalNamespaceOf(namespace),
+        ));
     if (disposition === undefined || disposition === CAPTURE) {
       capture(child);
       continue;
@@ -340,7 +373,10 @@ export const dispatchChildrenWithContext = <Container extends DispatchedContaine
  *
  * @param wrap turns one capture's markup into whatever the caller's list holds
  */
-export const withPreservedChildren = <Item, Child extends PreservedChild = PreservedChild>(
+export const withPreservedChildren = <
+  Item,
+  Child extends PreservedChild = PreservedChild,
+>(
   modelled: readonly Item[],
   preserved: { children?: Child[] } | undefined,
   wrap: (xml: string, child: Child) => Item,
@@ -407,9 +443,14 @@ export const sequencePositions = <Container extends SequenceContainer>(
   };
 };
 
-const SEQUENCE_ORDINALS = new Map<SequenceContainer, ReadonlyMap<string, number>>();
+const SEQUENCE_ORDINALS = new Map<
+  SequenceContainer,
+  ReadonlyMap<string, number>
+>();
 
-const sequenceOrdinals = (container: SequenceContainer): ReadonlyMap<string, number> => {
+const sequenceOrdinals = (
+  container: SequenceContainer,
+): ReadonlyMap<string, number> => {
   const cached = SEQUENCE_ORDINALS.get(container);
   if (cached !== undefined) {
     return cached;
@@ -437,7 +478,9 @@ const computeSequencePositions = (
     const namespace = getNamespaceUri(child);
     const isDeclaredNamespace =
       namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
-    const at = isDeclaredNamespace ? (ordinals.get(getLocalName(child.name)) ?? -1) : -1;
+    const at = isDeclaredNamespace
+      ? (ordinals.get(getLocalName(child.name)) ?? -1)
+      : -1;
     if (at !== -1) {
       previous = at;
     }

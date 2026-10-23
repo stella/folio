@@ -48,7 +48,10 @@
 // Re-exported for parity with React's FontSizePicker, which exposes these
 // half-point/point unit helpers from the same module as the component.
 // `<script setup>` can't carry re-exports, so they live in a plain block.
-export { halfPointsToPoints, pointsToHalfPoints } from "@stll/folio-core/utils/units";
+export {
+  halfPointsToPoints,
+  pointsToHalfPoints,
+} from "@stll/folio-core/utils/units";
 </script>
 
 <script setup lang="ts">
@@ -78,7 +81,9 @@ const emit = defineEmits<{
 const DEFAULT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
 
 const resolvedSizes = computed(() => props.sizes ?? DEFAULT_SIZES);
-const currentValue = computed(() => props.value ?? parseInt(props.placeholder, 10) ?? 11);
+const currentValue = computed(
+  () => props.value ?? parseInt(props.placeholder, 10) ?? 11,
+);
 const displayValue = computed(() =>
   props.value !== undefined ? String(props.value) : props.placeholder,
 );

@@ -6,16 +6,21 @@ import { applyBatch } from "./applyBatch";
 import {
   BATCH_REJECTION_REASONS,
   BatchRejection,
-  validateDocumentBatch,
   type DocumentBatch,
   type SequencedBatch,
+  validateDocumentBatch,
 } from "./envelope";
 import { transformBatch } from "./transform";
 
 const SUBMISSION_TYPES = { ACK: "ack", REJECT: "reject" } as const;
 
 export type BatchAck = { type: "ack"; opId: string; rev: number };
-export type BatchReject = { type: "reject"; opId: string; reason: BatchRejection; headRev: number };
+export type BatchReject = {
+  type: "reject";
+  opId: string;
+  reason: BatchRejection;
+  headRev: number;
+};
 export type BatchSubmission = BatchAck | BatchReject;
 
 /** Deterministic append-only authority; the caller supplies delivery and storage. */
@@ -58,16 +63,23 @@ export const createSequencer = (document: Document) => {
     }
     if (
       batch.baseRev < journal.length &&
-      batch.ops.some((op) => op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK && op.newHalf === undefined)
+      batch.ops.some(
+        (op) =>
+          op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK && op.newHalf === undefined,
+      )
     ) {
       return reject(
         new BatchRejection({
           reason: BATCH_REJECTION_REASONS.CONFLICT,
-          message: "Stale split must state which half receives the new identity.",
+          message:
+            "Stale split must state which half receives the new identity.",
         }),
       );
     }
-    const transformed = transformBatch(validated.value, journal.slice(batch.baseRev));
+    const transformed = transformBatch(
+      validated.value,
+      journal.slice(batch.baseRev),
+    );
     if (transformed.isErr()) {
       return reject(transformed.error);
     }
@@ -112,7 +124,11 @@ export const createSequencer = (document: Document) => {
     };
     journal.push(sequenced);
     current = applied.value.document;
-    const ack: BatchAck = { type: SUBMISSION_TYPES.ACK, opId: batch.opId, rev: revision };
+    const ack: BatchAck = {
+      type: SUBMISSION_TYPES.ACK,
+      opId: batch.opId,
+      rev: revision,
+    };
     results.set(batch.opId, ack);
     return ack;
   };

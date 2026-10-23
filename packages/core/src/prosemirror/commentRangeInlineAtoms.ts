@@ -38,12 +38,16 @@ export const COMMENT_RANGE_INLINE_ATOM_PARTICIPATION = Object.freeze({
   text: "extends",
   textBoxAnchor: "extends",
 } as const satisfies Readonly<
-  Record<keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS, CommentRangeInlineAtomParticipation>
+  Record<
+    keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS,
+    CommentRangeInlineAtomParticipation
+  >
 >);
 
-const participationByName = new Map<string, CommentRangeInlineAtomParticipation>(
-  Object.entries(COMMENT_RANGE_INLINE_ATOM_PARTICIPATION),
-);
+const participationByName = new Map<
+  string,
+  CommentRangeInlineAtomParticipation
+>(Object.entries(COMMENT_RANGE_INLINE_ATOM_PARTICIPATION));
 
 /** Whether a node is an inline atom that must never carry or extend a comment range. */
 export const isCommentRangeInertAtom = (node: PMNode): boolean => {
@@ -52,7 +56,9 @@ export const isCommentRangeInertAtom = (node: PMNode): boolean => {
   }
   const participation = participationByName.get(node.type.name);
   if (!participation) {
-    panic(`Inline atom ${JSON.stringify(node.type.name)} has no comment-range participation`);
+    panic(
+      `Inline atom ${JSON.stringify(node.type.name)} has no comment-range participation`,
+    );
   }
   return participation === "inert";
 };

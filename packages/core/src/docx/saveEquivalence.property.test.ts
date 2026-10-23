@@ -31,8 +31,10 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph, Run } from "../types/document";
 import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
 import { parseDocx } from "./parser";
@@ -44,7 +46,10 @@ import { findParagraphOffsets } from "./selectiveXmlPatch";
 // CORPUS — a minimal, bounded sample of real fixtures
 // ============================================================================
 
-const FIXTURES_DIR = path.resolve(import.meta.dir, "../../../../tests/visual/fixtures");
+const FIXTURES_DIR = path.resolve(
+  import.meta.dir,
+  "../../../../tests/visual/fixtures",
+);
 
 // sample.docx           — plain paragraphs + one table + header/footer.
 // docx-editor-demo.docx — lists, tables, header/footer, footnotes, comments.
@@ -52,7 +57,11 @@ const FIXTURES_DIR = path.resolve(import.meta.dir, "../../../../tests/visual/fix
 //                         headers/footers, footnotes AND endnotes. Only this
 //                         fixture carries paraIds, so it is the only one on
 //                         which selective save can engage its patch path.
-const FIXTURES = ["sample.docx", "docx-editor-demo.docx", "podily-bps.docx"] as const;
+const FIXTURES = [
+  "sample.docx",
+  "docx-editor-demo.docx",
+  "podily-bps.docx",
+] as const;
 const EDIT_FIXTURE = "podily-bps.docx";
 
 // A fixed seed keeps the shrunk counterexamples reproducible across runs.
@@ -66,7 +75,10 @@ const readFixture = (name: string): ArrayBuffer => {
     return cached;
   }
   const bytes = readFileSync(path.join(FIXTURES_DIR, name));
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
   fixtureCache.set(name, buffer);
   return buffer;
 };
@@ -77,10 +89,13 @@ const parse = (buffer: ArrayBuffer): Promise<Document> =>
 let parsedEditFixture: Promise<Document> | undefined;
 
 // Parse once; each generated edit gets an isolated model with save provenance intact.
-const readEditModel = () => (parsedEditFixture ??= parse(readFixture(EDIT_FIXTURE)));
+const readEditModel = () =>
+  (parsedEditFixture ??= parse(readFixture(EDIT_FIXTURE)));
 
-const fullRepack = (doc: Document, originalBuffer: ArrayBuffer): Promise<ArrayBuffer> =>
-  repackDocx({ ...doc, originalBuffer });
+const fullRepack = (
+  doc: Document,
+  originalBuffer: ArrayBuffer,
+): Promise<ArrayBuffer> => repackDocx({ ...doc, originalBuffer });
 
 // ============================================================================
 // MODEL NORMALIZATION — strip save-volatile fields for model-level comparison
@@ -241,7 +256,8 @@ const applyEdit = (doc: Document, spec: EditSpec): string | null => {
       bold: !(target.run.formatting?.bold ?? false),
     };
   } else if (content?.type === "text") {
-    content.text = spec.kind === "append" ? `${content.text} ${spec.text}` : spec.text;
+    content.text =
+      spec.kind === "append" ? `${content.text} ${spec.text}` : spec.text;
   }
   return target.para.paraId;
 };
@@ -311,7 +327,9 @@ describe("invariant 1: no-op save fidelity", () => {
       if (!saved) {
         return;
       }
-      expect(normalizedPackage(await parse(saved))).toEqual(normalizedPackage(doc));
+      expect(normalizedPackage(await parse(saved))).toEqual(
+        normalizedPackage(doc),
+      );
     },
     propertyTestTimeout(20_000),
   );
@@ -338,7 +356,9 @@ describe("invariant 1: no-op save fidelity", () => {
       const buffer = readFixture(name);
       const doc = await parse(buffer);
       const repacked = await fullRepack(doc, buffer);
-      expect(normalizedPackage(await parse(repacked))).toEqual(normalizedPackage(doc));
+      expect(normalizedPackage(await parse(repacked))).toEqual(
+        normalizedPackage(doc),
+      );
     },
     propertyTestTimeout(20_000),
   );
@@ -356,7 +376,11 @@ describe("invariant 2: selective equals full repack", () => {
   test("parse(selective) deep-equals parse(full) for an edited doc", async () => {
     const buffer = readFixture(EDIT_FIXTURE);
     const doc = await parse(buffer);
-    const paraId = applyEdit(doc, { targetSelector: 0, kind: "append", text: "EDIT" });
+    const paraId = applyEdit(doc, {
+      targetSelector: 0,
+      kind: "append",
+      text: "EDIT",
+    });
     expect(paraId).not.toBeNull();
     if (!paraId) {
       return;
@@ -373,7 +397,9 @@ describe("invariant 2: selective equals full repack", () => {
     }
     const full = await fullRepack(doc, buffer);
 
-    expect(normalizedPackage(await parse(selective))).toEqual(normalizedPackage(await parse(full)));
+    expect(normalizedPackage(await parse(selective))).toEqual(
+      normalizedPackage(await parse(full)),
+    );
   });
 });
 
@@ -440,13 +466,17 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
       const originalUntouched = await Promise.all(
         untouchedParts.map(async (part) => ({
           part,
-          bytes: new Uint8Array(await originalZip.file(part)!.async("arraybuffer")),
+          bytes: new Uint8Array(
+            await originalZip.file(part)!.async("arraybuffer"),
+          ),
         })),
       );
       const sampledSlices = [...new Set(paragraphIds(originalXml))]
         .flatMap((id) => {
           const offsets = findParagraphOffsets(originalXml, id);
-          return offsets ? [{ id, slice: originalXml.slice(offsets.start, offsets.end) }] : [];
+          return offsets
+            ? [{ id, slice: originalXml.slice(offsets.start, offsets.end) }]
+            : [];
         })
         .slice(0, 40);
 
@@ -479,7 +509,10 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
               const savedBytes = savedFile
                 ? new Uint8Array(await savedFile.async("arraybuffer"))
                 : null;
-              return { part, equal: savedBytes !== null && bytesEqual(bytes, savedBytes) };
+              return {
+                part,
+                equal: savedBytes !== null && bytesEqual(bytes, savedBytes),
+              };
             }),
           );
           for (const { part, equal } of comparisons) {
@@ -488,7 +521,9 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
 
           // Every sampled UNEDITED paragraph keeps its exact original XML slice;
           // the edited paragraph is the only one allowed to change.
-          const savedXml = await savedZip.file("word/document.xml")!.async("text");
+          const savedXml = await savedZip
+            .file("word/document.xml")!
+            .async("text");
           for (const { id, slice } of sampledSlices) {
             if (id === paraId) {
               continue;

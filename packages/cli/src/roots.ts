@@ -25,8 +25,15 @@ export const resolveRoots = async (
   const resolved: string[] = [];
   for (const root of roots) {
     const real = await Result.tryPromise(() => realpath(path.resolve(root)));
-    const info = real.isOk() ? await Result.tryPromise(() => stat(real.value)) : null;
-    if (!real.isOk() || info === null || !info.isOk() || !info.value.isDirectory()) {
+    const info = real.isOk()
+      ? await Result.tryPromise(() => stat(real.value))
+      : null;
+    if (
+      !real.isOk() ||
+      info === null ||
+      !info.isOk() ||
+      !info.value.isDirectory()
+    ) {
       return Result.err(
         cliError({
           code: FOLIO_CLI_ERROR_CODES.usage,
@@ -41,7 +48,10 @@ export const resolveRoots = async (
 
 const isWithin = (root: string, candidate: string): boolean => {
   const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 };
 
 /** The real path of `target`, or of its parent joined with its name when it does not exist. */

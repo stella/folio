@@ -7,9 +7,9 @@ import type { Command, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
 import {
-  acceptChange,
-  acceptAllChanges,
   acceptAIEditRevision,
+  acceptAllChanges,
+  acceptChange,
   findChangeAtPosition,
   findNextChange,
   findPreviousChange,
@@ -169,7 +169,10 @@ describe("AI revision accept/reject scoping", () => {
 
     expect(insertionRevisionsAt(view.state)).toEqual([1, 2]);
 
-    const ok = acceptAIEditRevision(REV_A_ATTRS.revisionId)(view.state, view.dispatch);
+    const ok = acceptAIEditRevision(REV_A_ATTRS.revisionId)(
+      view.state,
+      view.dispatch,
+    );
 
     expect(ok).toBe(true);
     // After accepting revision A, revision B's mark must still be
@@ -180,7 +183,10 @@ describe("AI revision accept/reject scoping", () => {
   test("rejectAIEditRevision only deletes text covered by the matching revisionId", () => {
     const view = dispatcher(makeStateWithMarks());
 
-    const ok = rejectAIEditRevision(REV_A_ATTRS.revisionId)(view.state, view.dispatch);
+    const ok = rejectAIEditRevision(REV_A_ATTRS.revisionId)(
+      view.state,
+      view.dispatch,
+    );
 
     expect(ok).toBe(true);
     // Reject drops "alpha" (its inserted text) but must leave the
@@ -229,7 +235,9 @@ describe("bulk revision resolution cost", () => {
     }
     const resolvedState = state.apply(transaction);
     expect(transaction.steps).toHaveLength(1);
-    expect(resolvedState.doc.textContent).toBe("plainboldplain".repeat(paragraphCount));
+    expect(resolvedState.doc.textContent).toBe(
+      "plainboldplain".repeat(paragraphCount),
+    );
     expect(insertionRevisionsAt(resolvedState)).toEqual([]);
   });
 
@@ -275,7 +283,10 @@ describe("table row structural revision resolution", () => {
     EditorState.create({
       schema: tableSchema,
       doc: tableSchema.node("doc", null, [
-        tableSchema.node("table", null, [row("Original", undefined), row("Changed", marker)]),
+        tableSchema.node("table", null, [
+          row("Original", undefined),
+          row("Changed", marker),
+        ]),
       ]),
     });
 
@@ -304,7 +315,11 @@ describe("table row structural revision resolution", () => {
       EditorState.create({
         schema: tableSchema,
         doc: tableSchema.node("doc", null, [
-          tableSchema.node("table", null, [row("Original", undefined), inserted, pending]),
+          tableSchema.node("table", null, [
+            row("Original", undefined),
+            inserted,
+            pending,
+          ]),
         ]),
       }),
     );
@@ -326,11 +341,15 @@ describe("table row structural revision resolution", () => {
       trDel: { revisionId: 41, author: "Reviewer", date: "2026-07-16" },
     };
     const accepting = dispatcher(stateWithRows(marker));
-    expect(acceptAIEditRevision(41)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(acceptAIEditRevision(41)(accepting.state, accepting.dispatch)).toBe(
+      true,
+    );
     expect(accepting.state.doc.firstChild?.textContent).toBe("Original");
 
     const rejecting = dispatcher(stateWithRows(marker));
-    expect(rejectAIEditRevision(41)(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(rejectAIEditRevision(41)(rejecting.state, rejecting.dispatch)).toBe(
+      true,
+    );
     expect(rejecting.state.doc.firstChild?.textContent).toBe("OriginalChanged");
     expect(rejecting.state.doc.firstChild?.child(1).attrs["trDel"]).toBeNull();
   });
@@ -465,7 +484,11 @@ describe("table cell structural revision resolution", () => {
               cell("Changed", {
                 cellMarker: {
                   kind: "ins",
-                  info: { revisionId: 72, author: "Reviewer", date: "2026-07-16" },
+                  info: {
+                    revisionId: 72,
+                    author: "Reviewer",
+                    date: "2026-07-16",
+                  },
                 },
               }),
               pending,
@@ -493,20 +516,28 @@ describe("table cell structural revision resolution", () => {
       },
     };
     const accepting = dispatcher(stateWithCells(marker));
-    expect(acceptAIEditRevision(74)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(acceptAIEditRevision(74)(accepting.state, accepting.dispatch)).toBe(
+      true,
+    );
     const acceptedTable = accepting.state.doc.firstChild;
     expect(acceptedTable?.firstChild?.textContent).toBe("Original");
     expect(acceptedTable?.attrs["columnWidths"]).toEqual([1200]);
-    expect(acceptedTable?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(acceptedTable?.attrs["_originalFormatting"]).toEqual({
+      sourceXml: "<w:tblPr/>",
+    });
 
     const rejecting = dispatcher(stateWithCells(marker));
-    expect(rejectAIEditRevision(74)(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(rejectAIEditRevision(74)(rejecting.state, rejecting.dispatch)).toBe(
+      true,
+    );
     const rejectedTable = rejecting.state.doc.firstChild;
     const row = rejectedTable?.firstChild;
     expect(row?.textContent).toBe("OriginalChanged");
     expect(row?.child(1).attrs["cellMarker"]).toBeNull();
     expect(rejectedTable?.attrs["columnWidths"]).toEqual([1200, 1800]);
-    expect(rejectedTable?.attrs["_originalFormatting"]).toEqual(TABLE_GRID_FORMATTING);
+    expect(rejectedTable?.attrs["_originalFormatting"]).toEqual(
+      TABLE_GRID_FORMATTING,
+    );
     expect(TABLE_GRID_FORMATTING).toEqual({
       sourceXml: "<w:tblPr/>",
       gridSourceXml: "<w:tblGrid/>",
@@ -531,7 +562,8 @@ describe("table cell structural revision resolution", () => {
               columnWidths: [1200, 1800, 2400, 4680],
               _originalFormatting: {
                 sourceXml: "<w:tblPr/>",
-                gridSourceXml: "<w:tblGrid>stale after a structural edit</w:tblGrid>",
+                gridSourceXml:
+                  "<w:tblGrid>stale after a structural edit</w:tblGrid>",
               },
             },
             [
@@ -551,7 +583,9 @@ describe("table cell structural revision resolution", () => {
 
     const table = view.state.doc.firstChild;
     expect(table?.attrs["columnWidths"]).toEqual([4680]);
-    expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(table?.attrs["_originalFormatting"]).toEqual({
+      sourceXml: "<w:tblPr/>",
+    });
     expect(table?.firstChild?.textContent).toBe("Survivor");
     expect(() => view.state.doc.check()).not.toThrow();
   });
@@ -597,8 +631,12 @@ describe("table cell structural revision resolution", () => {
 
       const table = view.state.doc.firstChild;
       expect(table?.attrs["columnWidths"]).toEqual(expectedWidths);
-      expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
-      expect(table?.textContent).toBe(labels.filter((_, index) => index !== removedIndex).join(""));
+      expect(table?.attrs["_originalFormatting"]).toEqual({
+        sourceXml: "<w:tblPr/>",
+      });
+      expect(table?.textContent).toBe(
+        labels.filter((_, index) => index !== removedIndex).join(""),
+      );
     });
   }
 
@@ -622,10 +660,18 @@ describe("table cell structural revision resolution", () => {
                     colwidth: [900, 1100],
                     cellMarker: {
                       kind: "del",
-                      info: { revisionId: 88, author: "Reviewer", date: "2026-07-16" },
+                      info: {
+                        revisionId: 88,
+                        author: "Reviewer",
+                        date: "2026-07-16",
+                      },
                     },
                   },
-                  [tableSchema.node("paragraph", null, [tableSchema.text("Removed")])],
+                  [
+                    tableSchema.node("paragraph", null, [
+                      tableSchema.text("Removed"),
+                    ]),
+                  ],
                 ),
                 cell("Survivor", undefined),
               ]),
@@ -642,7 +688,9 @@ describe("table cell structural revision resolution", () => {
       throw new Error("expected a table");
     }
     expect(table.attrs["columnWidths"]).toEqual([2400]);
-    expect(table.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(table.attrs["_originalFormatting"]).toEqual({
+      sourceXml: "<w:tblPr/>",
+    });
     expect(TableMap.get(table).width).toBe(1);
   });
 
@@ -663,7 +711,11 @@ describe("table cell structural revision resolution", () => {
                 cell("Removed", {
                   cellMarker: {
                     kind: "del",
-                    info: { revisionId: 85, author: "Reviewer", date: "2026-07-16" },
+                    info: {
+                      revisionId: 85,
+                      author: "Reviewer",
+                      date: "2026-07-16",
+                    },
                   },
                 }),
                 cell("Last", undefined),
@@ -681,7 +733,9 @@ describe("table cell structural revision resolution", () => {
       throw new Error("expected a table");
     }
     expect(table?.attrs["columnWidths"]).toBeNull();
-    expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(table?.attrs["_originalFormatting"]).toEqual({
+      sourceXml: "<w:tblPr/>",
+    });
     expect(TableMap.get(table).width).toBe(2);
   });
 
@@ -707,7 +761,11 @@ describe("table cell structural revision resolution", () => {
                 cell("Removed", {
                   cellMarker: {
                     kind: "del",
-                    info: { revisionId: 86, author: "Reviewer", date: "2026-07-16" },
+                    info: {
+                      revisionId: 86,
+                      author: "Reviewer",
+                      date: "2026-07-16",
+                    },
                   },
                 }),
                 cell("F", undefined),
@@ -763,7 +821,9 @@ describe("table cell structural revision resolution", () => {
             [
               tableSchema.node("tableRow", null, [
                 tableSchema.node("tableCell", null, [
-                  tableSchema.node("paragraph", null, [tableSchema.text("Outer")]),
+                  tableSchema.node("paragraph", null, [
+                    tableSchema.text("Outer"),
+                  ]),
                   nestedTable,
                 ]),
               ]),
@@ -794,11 +854,15 @@ describe("table cell structural revision resolution", () => {
     };
     const accepting = dispatcher(stateWithCells(marker));
     expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
-    expect(accepting.state.doc.firstChild?.firstChild?.child(1).attrs["cellMarker"]).toBeNull();
+    expect(
+      accepting.state.doc.firstChild?.firstChild?.child(1).attrs["cellMarker"],
+    ).toBeNull();
 
     const rejecting = dispatcher(stateWithCells(marker));
     expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
-    expect(rejecting.state.doc.firstChild?.firstChild?.textContent).toBe("Original");
+    expect(rejecting.state.doc.firstChild?.firstChild?.textContent).toBe(
+      "Original",
+    );
   });
 
   test("reject removes multiple inserted cells across rows", () => {
@@ -834,19 +898,26 @@ describe("table cell structural revision resolution", () => {
       }),
     );
 
-    expect(rejectAIEditRevision([78, 79])(view.state, view.dispatch)).toBe(true);
+    expect(rejectAIEditRevision([78, 79])(view.state, view.dispatch)).toBe(
+      true,
+    );
     const table = view.state.doc.firstChild;
     expect(table?.child(0).textContent).toBe("First");
     expect(table?.child(1).textContent).toBe("Second");
     expect(table?.attrs["columnWidths"]).toEqual([1200]);
-    expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(table?.attrs["_originalFormatting"]).toEqual({
+      sourceXml: "<w:tblPr/>",
+    });
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
   test("reject restores every cell removed by a pending vertical merge", () => {
     const formattedContinuationCell = {
       type: "tableCell" as const,
-      formatting: { vMerge: "continue" as const, verticalAlign: "bottom" as const },
+      formatting: {
+        vMerge: "continue" as const,
+        verticalAlign: "bottom" as const,
+      },
       propertyChanges: [
         {
           type: "tableCellPropertyChange" as const,
@@ -899,9 +970,16 @@ describe("table cell structural revision resolution", () => {
                 {
                   rowspan: 3,
                   _originalFormatting: { vMerge: "restart" },
-                  _docxVMergeContinuationCells: [formattedContinuationCell, emptyContinuationCell],
+                  _docxVMergeContinuationCells: [
+                    formattedContinuationCell,
+                    emptyContinuationCell,
+                  ],
                 },
-                [tableSchema.node("paragraph", null, [tableSchema.text("Top")])],
+                [
+                  tableSchema.node("paragraph", null, [
+                    tableSchema.text("Top"),
+                  ]),
+                ],
               ),
             ]),
             tableSchema.node("tableRow"),
@@ -961,7 +1039,11 @@ describe("table cell structural revision resolution", () => {
                   rowspan: 2,
                   _docxVMergeContinuationCells: [continuationCell],
                 },
-                [tableSchema.node("paragraph", null, [tableSchema.text("Top")])],
+                [
+                  tableSchema.node("paragraph", null, [
+                    tableSchema.text("Top"),
+                  ]),
+                ],
               ),
             ]),
             tableSchema.node("tableRow"),
@@ -993,43 +1075,52 @@ describe("table cell structural revision resolution", () => {
   test.each([
     ["one revision", acceptAIEditRevision(90)],
     ["all changes", acceptAllChanges()],
-  ] as const)("accept keeps a pending vertical merge over text standing (%s)", (_label, accept) => {
-    const view = dispatcher(
-      EditorState.create({
-        schema: tableSchema,
-        doc: tableSchema.node("doc", null, [
-          tableSchema.node("table", null, [
-            tableSchema.node("tableRow", null, [
-              tableSchema.node("tableCell", null, [
-                tableSchema.node("paragraph", null, [tableSchema.text("Top")]),
+  ] as const)(
+    "accept keeps a pending vertical merge over text standing (%s)",
+    (_label, accept) => {
+      const view = dispatcher(
+        EditorState.create({
+          schema: tableSchema,
+          doc: tableSchema.node("doc", null, [
+            tableSchema.node("table", null, [
+              tableSchema.node("tableRow", null, [
+                tableSchema.node("tableCell", null, [
+                  tableSchema.node("paragraph", null, [
+                    tableSchema.text("Top"),
+                  ]),
+                ]),
+              ]),
+              tableSchema.node("tableRow", null, [
+                tableSchema.node(
+                  "tableCell",
+                  {
+                    cellMarker: {
+                      kind: "merge",
+                      info: { revisionId: 90, author: "Reviewer", date: null },
+                      verticalMerge: "continue",
+                      verticalMergeOriginal: "rest",
+                    },
+                  },
+                  [
+                    tableSchema.node("paragraph", null, [
+                      tableSchema.text("Below"),
+                    ]),
+                  ],
+                ),
               ]),
             ]),
-            tableSchema.node("tableRow", null, [
-              tableSchema.node(
-                "tableCell",
-                {
-                  cellMarker: {
-                    kind: "merge",
-                    info: { revisionId: 90, author: "Reviewer", date: null },
-                    verticalMerge: "continue",
-                    verticalMergeOriginal: "rest",
-                  },
-                },
-                [tableSchema.node("paragraph", null, [tableSchema.text("Below")])],
-              ),
-            ]),
           ]),
-        ]),
-      }),
-    );
+        }),
+      );
 
-    expect(accept(view.state, view.dispatch)).toBe(true);
-    const table = view.state.doc.firstChild;
-    expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(1);
-    expect(table?.child(1).firstChild?.textContent).toBe("Below");
-    expect(table?.child(1).firstChild?.attrs["cellMarker"]).toBeNull();
-    expect(() => view.state.doc.check()).not.toThrow();
-  });
+      expect(accept(view.state, view.dispatch)).toBe(true);
+      const table = view.state.doc.firstChild;
+      expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(1);
+      expect(table?.child(1).firstChild?.textContent).toBe("Below");
+      expect(table?.child(1).firstChild?.attrs["cellMarker"]).toBeNull();
+      expect(() => view.state.doc.check()).not.toThrow();
+    },
+  );
 
   test("reject restores a vertical merge removed by a pending split", () => {
     const view = dispatcher(
@@ -1088,7 +1179,9 @@ describe("table cell structural revision resolution", () => {
         doc: tableSchema.node("doc", null, [
           tableSchema.node("table", null, [
             tableSchema.node("tableRow", null, [
-              tableSchema.node("tableCell", null, [tableSchema.node("paragraph")]),
+              tableSchema.node("tableCell", null, [
+                tableSchema.node("paragraph"),
+              ]),
             ]),
             tableSchema.node("tableRow", null, [
               tableSchema.node(
@@ -1100,7 +1193,11 @@ describe("table cell structural revision resolution", () => {
                     verticalMergeOriginal: "continue",
                   },
                 },
-                [tableSchema.node("paragraph", null, [tableSchema.text("Restored")])],
+                [
+                  tableSchema.node("paragraph", null, [
+                    tableSchema.text("Restored"),
+                  ]),
+                ],
               ),
             ]),
           ]),
@@ -1155,7 +1252,9 @@ describe("table cell structural revision resolution", () => {
     );
 
     expect(rejectAIEditRevision(83)(view.state, view.dispatch)).toBe(false);
-    expect(view.state.doc.firstChild?.firstChild?.firstChild?.attrs["cellMarker"]).toEqual(marker);
+    expect(
+      view.state.doc.firstChild?.firstChild?.firstChild?.attrs["cellMarker"],
+    ).toEqual(marker);
   });
 
   test("failed split resolution does not apply compatible cells from the same revision", () => {
@@ -1167,7 +1266,9 @@ describe("table cell structural revision resolution", () => {
     const doc = tableSchema.node("doc", null, [
       tableSchema.node("table", null, [
         tableSchema.node("tableRow", null, [
-          tableSchema.node("tableCell", { cellMarker: marker }, [tableSchema.node("paragraph")]),
+          tableSchema.node("tableCell", { cellMarker: marker }, [
+            tableSchema.node("paragraph"),
+          ]),
           cell("Top", undefined),
         ]),
         tableSchema.node("tableRow", null, [
@@ -1203,16 +1304,24 @@ describe("table cell structural revision resolution", () => {
       });
 
     const rejectingInsertion = dispatcher(stateWithOnlyCell("ins", 75));
-    expect(rejectAIEditRevision(75)(rejectingInsertion.state, rejectingInsertion.dispatch)).toBe(
-      true,
+    expect(
+      rejectAIEditRevision(75)(
+        rejectingInsertion.state,
+        rejectingInsertion.dispatch,
+      ),
+    ).toBe(true);
+    expect(rejectingInsertion.state.doc.firstChild?.type.name).toBe(
+      "paragraph",
     );
-    expect(rejectingInsertion.state.doc.firstChild?.type.name).toBe("paragraph");
     expect(() => rejectingInsertion.state.doc.check()).not.toThrow();
 
     const acceptingDeletion = dispatcher(stateWithOnlyCell("del", 76));
-    expect(acceptAIEditRevision(76)(acceptingDeletion.state, acceptingDeletion.dispatch)).toBe(
-      true,
-    );
+    expect(
+      acceptAIEditRevision(76)(
+        acceptingDeletion.state,
+        acceptingDeletion.dispatch,
+      ),
+    ).toBe(true);
     expect(acceptingDeletion.state.doc.firstChild?.type.name).toBe("paragraph");
     expect(() => acceptingDeletion.state.doc.check()).not.toThrow();
   });
@@ -1220,7 +1329,8 @@ describe("table cell structural revision resolution", () => {
   test("removing a final table cell cannot transfer its grid onto an adjacent table", () => {
     const adjacentFormatting = {
       sourceXml: '<w:tblPr><w:tblStyle w:val="Adjacent"/></w:tblPr>',
-      gridSourceXml: '<w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="7000"/></w:tblGrid>',
+      gridSourceXml:
+        '<w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="7000"/></w:tblGrid>',
     };
     const view = dispatcher(
       EditorState.create({
@@ -1241,17 +1351,28 @@ describe("table cell structural revision resolution", () => {
                     colwidth: [900, 1000, 1100],
                     cellMarker: {
                       kind: "del",
-                      info: { revisionId: 89, author: "Reviewer", date: "2026-07-16" },
+                      info: {
+                        revisionId: 89,
+                        author: "Reviewer",
+                        date: "2026-07-16",
+                      },
                     },
                   },
-                  [tableSchema.node("paragraph", null, [tableSchema.text("Removed table")])],
+                  [
+                    tableSchema.node("paragraph", null, [
+                      tableSchema.text("Removed table"),
+                    ]),
+                  ],
                 ),
               ]),
             ],
           ),
           tableSchema.node(
             "table",
-            { columnWidths: [3000, 7000], _originalFormatting: adjacentFormatting },
+            {
+              columnWidths: [3000, 7000],
+              _originalFormatting: adjacentFormatting,
+            },
             [
               tableSchema.node("tableRow", null, [
                 cell("Adjacent left", undefined),
@@ -1269,7 +1390,9 @@ describe("table cell structural revision resolution", () => {
     expect(adjacentTable?.type.name).toBe("table");
     expect(adjacentTable?.textContent).toBe("Adjacent leftAdjacent right");
     expect(adjacentTable?.attrs["columnWidths"]).toEqual([3000, 7000]);
-    expect(adjacentTable?.attrs["_originalFormatting"]).toEqual(adjacentFormatting);
+    expect(adjacentTable?.attrs["_originalFormatting"]).toEqual(
+      adjacentFormatting,
+    );
     expect(() => view.state.doc.check()).not.toThrow();
   });
 });
@@ -1384,7 +1507,9 @@ describe("findChangeAtPosition", () => {
     const range = findChangeAtPosition(initial, 3, 3);
     const view = dispatcher(initial);
 
-    expect(acceptChange(range.from, range.to)(view.state, view.dispatch)).toBe(true);
+    expect(acceptChange(range.from, range.to)(view.state, view.dispatch)).toBe(
+      true,
+    );
 
     expect(view.state.doc.child(0).attrs["_propertyChanges"]).toBeNull();
   });
@@ -1422,7 +1547,9 @@ describe("findChangeAtPosition", () => {
     });
     const view = dispatcher(initial);
 
-    expect(rejectChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, initial.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["alignment"]).toBe("center");
@@ -1448,7 +1575,9 @@ describe("findChangeAtPosition", () => {
                 type: "paragraphPropertyChange",
                 info: { id: 11, author: "Alice", date: "2026-01-01" },
                 // Old pPr only carried numbering — no alignment.
-                previousFormatting: { numPr: { kind: "reference", numId: 4, ilvl: 0 } },
+                previousFormatting: {
+                  numPr: { kind: "reference", numId: 4, ilvl: 0 },
+                },
               },
             ],
           },
@@ -1458,7 +1587,9 @@ describe("findChangeAtPosition", () => {
     });
     const view = dispatcher(initial);
 
-    expect(rejectChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, initial.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["alignment"]).toBeNull();
@@ -1488,7 +1619,9 @@ describe("findChangeAtPosition", () => {
     });
     const view = dispatcher(initial);
 
-    expect(acceptChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      acceptChange(0, initial.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["alignment"]).toBe("center");
@@ -1515,7 +1648,10 @@ describe("findChangeAtPosition", () => {
                 {
                   type: "sectionPropertyChange",
                   info: { id: 21, author: "Alice", date: "2026-01-01" },
-                  previousProperties: { sectionStart: "continuous", pageWidth: 15_840 },
+                  previousProperties: {
+                    sectionStart: "continuous",
+                    pageWidth: 15_840,
+                  },
                 },
               ],
             },
@@ -1526,7 +1662,9 @@ describe("findChangeAtPosition", () => {
     });
     const view = dispatcher(initial);
 
-    expect(rejectChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, initial.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
       sectionStart: "continuous",
@@ -1549,7 +1687,10 @@ describe("findChangeAtPosition", () => {
                 {
                   type: "sectionPropertyChange",
                   info: { id: 21, author: "Alice", date: "2026-01-01" },
-                  previousProperties: { sectionStart: "continuous", pageWidth: 15_840 },
+                  previousProperties: {
+                    sectionStart: "continuous",
+                    pageWidth: 15_840,
+                  },
                 },
               ],
             },
@@ -1560,7 +1701,9 @@ describe("findChangeAtPosition", () => {
     });
     const view = dispatcher(initial);
 
-    expect(acceptChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      acceptChange(0, initial.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
       sectionStart: "nextPage",
@@ -1599,7 +1742,9 @@ describe("findChangeAtPosition", () => {
           },
           [schema.text("one", [insertion.create(revisionAttrs)])],
         ),
-        schema.node("paragraph", null, [schema.text("two", [insertion.create(revisionAttrs)])]),
+        schema.node("paragraph", null, [
+          schema.text("two", [insertion.create(revisionAttrs)]),
+        ]),
       ]),
     });
     const view = dispatcher(initial);

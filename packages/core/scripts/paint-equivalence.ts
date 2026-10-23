@@ -86,26 +86,41 @@
  * long document; every other failure of a tool that is present exits 1.
  */
 
-import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-
 import { chromium } from "@playwright/test";
 import { Result } from "better-result";
+import { existsSync } from "node:fs";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { comparePageRasters } from "../../../parity/rasterCompare";
 import type { RasterPageComparison } from "../../../parity/types";
 import { buildDisplayList } from "../src/display-list/build/buildDisplayList";
 import { renderDisplayListToHtml } from "../src/display-list/html/renderDisplayListToHtml";
-import type { DisplayFontFace, DisplayUnsupported } from "../src/display-list/types";
+import type {
+  DisplayFontFace,
+  DisplayUnsupported,
+} from "../src/display-list/types";
 import type { HeadlessFontSubstitution } from "../src/fonts/headlessMeasure";
 import { installHeadlessMeasureProvider } from "../src/fonts/headlessMeasure";
-import type { HeadlessLayoutError, HeadlessLayoutGap } from "../src/headless-layout";
+import type {
+  HeadlessLayoutError,
+  HeadlessLayoutGap,
+} from "../src/headless-layout";
 import { layoutDocxHeadless } from "../src/headless-layout";
 import type { PdfSubstitution, WritePdfError } from "../src/pdf/writePdf";
 import { writePdf } from "../src/pdf/writePdf";
-import { bundledFontFaceCss, createBundledFontSource } from "./bundledFontSource";
+import {
+  bundledFontFaceCss,
+  createBundledFontSource,
+} from "./bundledFontSource";
 
 const USAGE = [
   "usage: bun packages/core/scripts/paint-equivalence.ts [fixture.docx | directory] " +
@@ -138,7 +153,10 @@ const RASTER_DPI = 96;
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const DEFAULT_OUTPUT_DIR = path.join(REPO_ROOT, ".cache", "paint-equivalence");
-const BASELINE_PATH = path.join(import.meta.dir, "paint-equivalence.baseline.json");
+const BASELINE_PATH = path.join(
+  import.meta.dir,
+  "paint-equivalence.baseline.json",
+);
 
 /**
  * The default corpus: one small, one medium and one large real document, so a
@@ -242,7 +260,13 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
   if (positional.length > 1) {
     return null;
   }
-  return { target: positional.at(0) ?? null, json, outputDir, threshold, updateBaseline };
+  return {
+    target: positional.at(0) ?? null,
+    json,
+    outputDir,
+    threshold,
+    updateBaseline,
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -260,7 +284,9 @@ const describeError = (value: unknown): string => {
 };
 
 const readCause = (value: unknown): unknown =>
-  typeof value === "object" && value !== null && "cause" in value ? value.cause : undefined;
+  typeof value === "object" && value !== null && "cause" in value
+    ? value.cause
+    : undefined;
 
 const causeChain = (error: unknown): string[] => {
   const lines: string[] = [];
@@ -385,7 +411,10 @@ type RasterizePdfOptions = {
   readonly pagesDir: string;
 };
 
-const rasterizePdf = async ({ pdfPath, pagesDir }: RasterizePdfOptions): Promise<RasterArm> => {
+const rasterizePdf = async ({
+  pdfPath,
+  pagesDir,
+}: RasterizePdfOptions): Promise<RasterArm> => {
   if (Bun.which("mutool") === null) {
     return {
       status: ARM_DISPOSITION.unavailable,
@@ -407,7 +436,10 @@ const rasterizePdf = async ({ pdfPath, pagesDir }: RasterizePdfOptions): Promise
     ],
     { stdout: "ignore", stderr: "pipe" },
   );
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  const [exitCode, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stderr).text(),
+  ]);
   if (exitCode !== 0) {
     // mutool is installed and rejected the PDF this run wrote: a result about
     // the writer, not a missing tool.
@@ -476,7 +508,11 @@ const screenshotDom = async ({
         // viewport's, so its painted width is not comparable to a declared
         // extent. Watermark text is the case in the corpus.
         const isAxisAligned = (element: HTMLElement): boolean => {
-          for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+          for (
+            let node: HTMLElement | null = element;
+            node;
+            node = node.parentElement
+          ) {
             const transform = getComputedStyle(node).transform;
             if (transform !== "none" && transform !== "") {
               return false;
@@ -484,7 +520,9 @@ const screenshotDom = async ({
           }
           return true;
         };
-        for (const run of document.querySelectorAll<HTMLElement>("[data-advance-sum]")) {
+        for (const run of document.querySelectorAll<HTMLElement>(
+          "[data-advance-sum]",
+        )) {
           if (!isAxisAligned(run)) {
             continue;
           }
@@ -508,12 +546,15 @@ const screenshotDom = async ({
         }
         deltas.sort((left, right) => left - right);
         const at = (fraction: number) =>
-          deltas[Math.min(deltas.length - 1, Math.floor(deltas.length * fraction))] ?? 0;
+          deltas[
+            Math.min(deltas.length - 1, Math.floor(deltas.length * fraction))
+          ] ?? 0;
         return {
           runs: deltas.length,
           medianPx: at(0.5),
           p90Px: at(0.9),
-          overOnePxRatio: deltas.filter((delta) => delta > 1).length / deltas.length,
+          overOnePxRatio:
+            deltas.filter((delta) => delta > 1).length / deltas.length,
           worstPx: deltas.at(-1) ?? 0,
         };
       });
@@ -525,7 +566,10 @@ const screenshotDom = async ({
         // oxlint-disable-next-line no-await-in-loop -- pages are captured in order so filenames stay page-aligned
         await locator.scrollIntoViewIfNeeded();
         // oxlint-disable-next-line no-await-in-loop -- one capture at a time keeps the rendered layout stable
-        await locator.screenshot({ path: pngPath, timeout: SCREENSHOT_TIMEOUT_MS });
+        await locator.screenshot({
+          path: pngPath,
+          timeout: SCREENSHOT_TIMEOUT_MS,
+        });
         pagePngs.push(pngPath);
       }
       return { pagePngs, drift };
@@ -583,14 +627,23 @@ type FixtureReport = {
   readonly drift: AdvanceDrift | null;
 };
 
-const problemOf = (source: ProblemSource, arm: RasterArm): readonly RunProblem[] =>
-  arm.status === "rendered" ? [] : [{ source, disposition: arm.status, reason: arm.reason }];
+const problemOf = (
+  source: ProblemSource,
+  arm: RasterArm,
+): readonly RunProblem[] =>
+  arm.status === "rendered"
+    ? []
+    : [{ source, disposition: arm.status, reason: arm.reason }];
 
 const slugOf = (fixturePath: string): string =>
-  path.basename(fixturePath, path.extname(fixturePath)).replaceAll(/[^\w.-]+/gu, "-");
+  path
+    .basename(fixturePath, path.extname(fixturePath))
+    .replaceAll(/[^\w.-]+/gu, "-");
 
 const meanOf = (values: readonly number[]): number | null =>
-  values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
+  values.length === 0
+    ? null
+    : values.reduce((sum, value) => sum + value, 0) / values.length;
 
 const toFontRequest = ({ family, weight, italic }: DisplayFontFace) => ({
   family,
@@ -603,7 +656,10 @@ type RunFixtureOptions = {
   readonly outputDir: string;
 };
 
-type RunFixtureResult = Result<FixtureReport, HeadlessLayoutError | WritePdfError>;
+type RunFixtureResult = Result<
+  FixtureReport,
+  HeadlessLayoutError | WritePdfError
+>;
 
 const runFixture = async ({
   fixturePath,
@@ -616,7 +672,9 @@ const runFixture = async ({
   const headless = installHeadlessMeasureProvider(fonts);
 
   const startedAt = performance.now();
-  const laidOut = await layoutDocxHeadless(await readFile(fixturePath), { pageGap: 0 });
+  const laidOut = await layoutDocxHeadless(await readFile(fixturePath), {
+    pageGap: 0,
+  });
   if (laidOut.isErr()) {
     return Result.err(laidOut.error);
   }
@@ -655,7 +713,9 @@ const runFixture = async ({
       title: "paint equivalence",
       // The list's own families, so a face the source resolved through the
       // fallback chain is declared under the name the DOM backend emits.
-      fontFaceCss: bundledFontFaceCss({ families: list.fonts.map((face) => face.family) }),
+      fontFaceCss: bundledFontFaceCss({
+        families: list.fonts.map((face) => face.family),
+      }),
     }),
   );
 
@@ -747,7 +807,8 @@ const runFixture = async ({
 
 type Baseline = Record<string, number>;
 
-const round = (value: number): number => Number(value.toFixed(BASELINE_DECIMALS));
+const round = (value: number): number =>
+  Number(value.toFixed(BASELINE_DECIMALS));
 
 const readBaseline = async (): Promise<Baseline | null> => {
   const file = Bun.file(BASELINE_PATH);
@@ -802,7 +863,10 @@ const findRegressions = (
  * every targeted run and teach the same "ignore the exit code" habit the
  * baseline gate exists to avoid.
  */
-const findMissing = (reports: readonly FixtureReport[], baseline: Baseline): readonly string[] => {
+const findMissing = (
+  reports: readonly FixtureReport[],
+  baseline: Baseline,
+): readonly string[] => {
   const ran = new Set(reports.map((report) => report.fixture));
   return Object.keys(baseline).filter((fixture) => !ran.has(fixture));
 };
@@ -827,7 +891,10 @@ const formatDelta = (value: number): string => {
 };
 
 /** `0.9419 (baseline 0.9419, +0.0000)`, so movement is visible either way. */
-const formatMean = (mean: number | null, baseline: number | undefined): string => {
+const formatMean = (
+  mean: number | null,
+  baseline: number | undefined,
+): string => {
   if (mean === null) {
     return "n/a";
   }
@@ -837,7 +904,10 @@ const formatMean = (mean: number | null, baseline: number | undefined): string =
   return `${formatSimilarity(mean)} (baseline ${formatSimilarity(baseline)}, ${formatDelta(mean - baseline)})`;
 };
 
-const printReport = (report: FixtureReport, baseline: Baseline | null): void => {
+const printReport = (
+  report: FixtureReport,
+  baseline: Baseline | null,
+): void => {
   console.log(report.fixture);
   for (const page of report.pages) {
     console.log(
@@ -863,7 +933,9 @@ const printReport = (report: FixtureReport, baseline: Baseline | null): void => 
     );
   }
   for (const problem of report.problems) {
-    console.log(`  ${PROBLEM_LABEL[problem.disposition]} (${problem.source}): ${problem.reason}`);
+    console.log(
+      `  ${PROBLEM_LABEL[problem.disposition]} (${problem.source}): ${problem.reason}`,
+    );
   }
   for (const gap of report.layoutGaps) {
     console.log(`  layout gap: ${gap.story} (${gap.detail})`);
@@ -933,7 +1005,10 @@ for (const fixturePath of fixtures) {
 const baseline = await readBaseline();
 const regressions = baseline === null ? [] : findRegressions(reports, baseline);
 // Only the default corpus is the set the baseline describes; see findMissing.
-const missing = baseline === null || args.target !== null ? [] : findMissing(reports, baseline);
+const missing =
+  baseline === null || args.target !== null
+    ? []
+    : findMissing(reports, baseline);
 const newFixtures =
   baseline === null
     ? []
@@ -961,13 +1036,19 @@ const failures = reports.flatMap((report): readonly FixtureFailure[] =>
 if (args.updateBaseline) {
   // The file is rewritten whole, so a partial run would delete the entries it
   // did not measure. Only a complete default-corpus run may write it.
-  const unscoredFixtures = reports.filter((report) => report.meanSimilarity === null);
+  const unscoredFixtures = reports.filter(
+    (report) => report.meanSimilarity === null,
+  );
   const refusals = [
     ...(args.target === null
       ? []
-      : ["a named fixture or directory covers less than the baseline describes"]),
+      : [
+          "a named fixture or directory covers less than the baseline describes",
+        ]),
     ...unscoredFixtures.map((report) => `${report.fixture} was not scored`),
-    ...missing.map((fixture) => `${fixture} is in the baseline but did not run`),
+    ...missing.map(
+      (fixture) => `${fixture} is in the baseline but did not run`,
+    ),
   ];
   if (refusals.length > 0) {
     console.error(
@@ -981,7 +1062,9 @@ if (args.updateBaseline) {
   }
   const next: Baseline = Object.fromEntries(
     reports.flatMap((report) =>
-      report.meanSimilarity === null ? [] : [[report.fixture, round(report.meanSimilarity)]],
+      report.meanSimilarity === null
+        ? []
+        : [[report.fixture, round(report.meanSimilarity)]],
     ),
   );
   await writeFile(BASELINE_PATH, `${JSON.stringify(next, null, 2)}\n`);
@@ -995,7 +1078,9 @@ const belowThreshold =
   args.threshold === null
     ? []
     : reports.filter(
-        (report) => report.meanSimilarity !== null && report.meanSimilarity < args.threshold,
+        (report) =>
+          report.meanSimilarity !== null &&
+          report.meanSimilarity < args.threshold,
       );
 
 if (args.json) {
@@ -1031,7 +1116,9 @@ if (args.json) {
     console.log(`missing: ${fixture} is in the baseline but did not run`);
   }
   for (const fixture of newFixtures) {
-    console.log(`new: ${fixture} has no baseline entry; run --update-baseline to record it`);
+    console.log(
+      `new: ${fixture} has no baseline entry; run --update-baseline to record it`,
+    );
   }
   for (const report of belowThreshold) {
     console.log(
@@ -1053,7 +1140,10 @@ if (args.json) {
 }
 
 process.exit(
-  regressions.length > 0 || missing.length > 0 || belowThreshold.length > 0 || failures.length > 0
+  regressions.length > 0 ||
+    missing.length > 0 ||
+    belowThreshold.length > 0 ||
+    failures.length > 0
     ? 1
     : 0,
 );

@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { canonicalFieldModel } from "./field-model.ts";
+
 import { openReviewer } from "./documents.ts";
+import { canonicalFieldModel } from "./field-model.ts";
 import { projectContentPair } from "./identity.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
-type ReviewSource = Pick<Reviewer, "getContent" | "getChanges" | "toResolvedDocument">;
+type ReviewSource = Pick<
+  Reviewer,
+  "getContent" | "getChanges" | "toResolvedDocument"
+>;
 type Change = ReturnType<Reviewer["getChanges"]>[number];
 type Coverage = Pick<Change, "type" | "author" | "date" | "text" | "blockId">;
 
@@ -29,29 +33,52 @@ export const revisionCoverage = (
   return [...streams.keys()].sort().flatMap((key) => streams.get(key) ?? []);
 };
 
-export const assertRevisionCoverage = (left: readonly Change[], right: readonly Change[]) =>
-  assert.deepEqual(revisionCoverage(right), revisionCoverage(left));
+export const assertRevisionCoverage = (
+  left: readonly Change[],
+  right: readonly Change[],
+) => assert.deepEqual(revisionCoverage(right), revisionCoverage(left));
 
 // Source replay hints are not authored document properties. Every such field
 // needs an explicit disposition; unknown capture fields or symbols fail closed.
 const SOURCE_FIELDS = new Map(
   Object.entries({
-    requiredFonts: { disposition: "exclude", reason: "Derived font-loading inventory" },
+    requiredFonts: {
+      disposition: "exclude",
+      reason: "Derived font-loading inventory",
+    },
     templateVariables: {
       disposition: "exclude",
       reason: "Derived template-token inventory; authored text stays strict",
     },
     warnings: { disposition: "exclude", reason: "Source parse diagnostics" },
-    parseWarnings: { disposition: "exclude", reason: "Source parse diagnostics" },
+    parseWarnings: {
+      disposition: "exclude",
+      reason: "Source parse diagnostics",
+    },
     modified: {
       disposition: "exclude",
       reason: "Package save bookkeeping; revision dates remain strict",
     },
-    originalBuffer: { disposition: "exclude", reason: "Original ZIP replay source" },
-    verbatimXml: { disposition: "exclude", reason: "Replay bytes for a modeled carrier" },
-    verbatimFingerprint: { disposition: "exclude", reason: "Replay cache validity" },
-    namespaceDeclarations: { disposition: "exclude", reason: "Lexical namespace spelling" },
-    namespaceBindings: { disposition: "exclude", reason: "Lexical namespace spelling" },
+    originalBuffer: {
+      disposition: "exclude",
+      reason: "Original ZIP replay source",
+    },
+    verbatimXml: {
+      disposition: "exclude",
+      reason: "Replay bytes for a modeled carrier",
+    },
+    verbatimFingerprint: {
+      disposition: "exclude",
+      reason: "Replay cache validity",
+    },
+    namespaceDeclarations: {
+      disposition: "exclude",
+      reason: "Lexical namespace spelling",
+    },
+    namespaceBindings: {
+      disposition: "exclude",
+      reason: "Lexical namespace spelling",
+    },
     sourceXml: {
       disposition: "exclude",
       reason: "Source property XML replay; modeled properties stay strict",
@@ -60,9 +87,18 @@ const SOURCE_FIELDS = new Map(
       disposition: "exclude",
       reason: "Source grid XML replay; modeled grid columns stay strict",
     },
-    rawWatermarkXml: { disposition: "keep", reason: "Watermark content not fully modeled" },
-    rawImageXml: { disposition: "keep", reason: "Drawing content not fully modeled" },
-    rawImageFingerprint: { disposition: "exclude", reason: "Drawing replay cache validity" },
+    rawWatermarkXml: {
+      disposition: "keep",
+      reason: "Watermark content not fully modeled",
+    },
+    rawImageXml: {
+      disposition: "keep",
+      reason: "Drawing content not fully modeled",
+    },
+    rawImageFingerprint: {
+      disposition: "exclude",
+      reason: "Drawing replay cache validity",
+    },
   } as const),
 );
 const SOURCE_SYMBOLS = {
@@ -86,7 +122,11 @@ const EMPTY_PART_RELATIONSHIPS = new Map([
   ],
 ]);
 const hasModeledComments = (value: object): boolean => {
-  if (!("document" in value) || typeof value.document !== "object" || value.document === null)
+  if (
+    !("document" in value) ||
+    typeof value.document !== "object" ||
+    value.document === null
+  )
     return true;
   return (
     "comments" in value.document &&
@@ -103,12 +143,18 @@ export const canonicalReviewModel = (
   const project = (current: unknown, modelPath: string): unknown => {
     const value = current;
     if (Array.isArray(value))
-      return value.map((entry, index) => project(entry, `${modelPath}/${index}`));
+      return value.map((entry, index) =>
+        project(entry, `${modelPath}/${index}`),
+      );
     if (value instanceof Map)
       return new Map(
-        [...value].map(([key, entry]) => [key, project(entry, `${modelPath}/${String(key)}`)]),
+        [...value].map(([key, entry]) => [
+          key,
+          project(entry, `${modelPath}/${String(key)}`),
+        ]),
       );
-    if (value instanceof Set) return new Set([...value].map((entry) => project(entry, modelPath)));
+    if (value instanceof Set)
+      return new Set([...value].map((entry) => project(entry, modelPath)));
     if (value === null || typeof value !== "object") return value;
     if (Object.getPrototypeOf(value) !== Object.prototype) return value;
     for (const symbol of Object.getOwnPropertySymbols(value))
@@ -130,9 +176,12 @@ export const canonicalReviewModel = (
         );
       }
       if (entry === undefined) continue;
-      if (key === "comments" && Array.isArray(entry) && entry.length === 0) continue;
+      if (key === "comments" && Array.isArray(entry) && entry.length === 0)
+        continue;
       if (
-        (key === "formatting" || key === "previousFormatting" || key === "currentFormatting") &&
+        (key === "formatting" ||
+          key === "previousFormatting" ||
+          key === "currentFormatting") &&
         typeof entry === "object" &&
         entry !== null &&
         Object.getPrototypeOf(entry) === Object.prototype
@@ -149,7 +198,11 @@ export const canonicalReviewModel = (
         )
           continue;
       }
-      if (key === "relationships" && entry instanceof Map && !hasModeledComments(value)) {
+      if (
+        key === "relationships" &&
+        entry instanceof Map &&
+        !hasModeledComments(value)
+      ) {
         const meaningful = new Map(
           [...entry].filter(
             ([, relationship]) =>
@@ -187,7 +240,11 @@ export const canonicalReviewModel = (
   return project(model, "");
 };
 
-type ReviewRoundTripOptions = { live: ReviewSource; reopened: ReviewSource; context: string };
+type ReviewRoundTripOptions = {
+  live: ReviewSource;
+  reopened: ReviewSource;
+  context: string;
+};
 
 /** The save invariant and reader stability share coverage and both resolution outcomes. */
 export const assertReviewRoundTrip = ({

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import type { DirectEditorProps, EditorView } from "prosemirror-view";
@@ -63,9 +63,15 @@ class TestElement {
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import { createNoteEditorManager } from "./noteEditorManager";
 
-const createTestEditorView = (mountNode: HTMLElement, props: DirectEditorProps): EditorView => {
+const createTestEditorView = (
+  mountNode: HTMLElement,
+  props: DirectEditorProps,
+): EditorView => {
   // SAFETY: The managers only use the EditorView members implemented by this focused fake.
-  return new TestEditorView(mountNode as unknown as TestElement, props) as unknown as EditorView;
+  return new TestEditorView(
+    mountNode as unknown as TestElement,
+    props,
+  ) as unknown as EditorView;
 };
 
 const assignOwnerSource = (paragraph: Paragraph, owner: string): void => {
@@ -76,7 +82,11 @@ const assignOwnerSource = (paragraph: Paragraph, owner: string): void => {
   );
 };
 
-const paragraphWithSource = (text: string, owner: string, paraId?: string): Paragraph => {
+const paragraphWithSource = (
+  text: string,
+  owner: string,
+  paraId?: string,
+): Paragraph => {
   const paragraph: Paragraph = {
     type: "paragraph",
     ...(paraId ? { paraId } : {}),
@@ -90,7 +100,11 @@ const editParagraphText = (view: TestEditorView, text: string): void => {
   let paragraph: PMNode | undefined;
   let position = -1;
   view.state.doc.descendants((node, pos) => {
-    if (paragraph || node.type.name !== "paragraph" || node.textContent !== text) {
+    if (
+      paragraph ||
+      node.type.name !== "paragraph" ||
+      node.textContent !== text
+    ) {
       return true;
     }
     paragraph = node;
@@ -100,7 +114,9 @@ const editParagraphText = (view: TestEditorView, text: string): void => {
   if (!paragraph || position < 0) {
     panic(`The test editor has no paragraph containing ${text}.`);
   }
-  view.dispatch(view.state.tr.insertText(" edited", position + paragraph.nodeSize - 1));
+  view.dispatch(
+    view.state.tr.insertText(" edited", position + paragraph.nodeSize - 1),
+  );
 };
 
 const asHtmlElement = (element: TestElement): HTMLElement => {
@@ -123,16 +139,30 @@ describe("secondary-story paragraph property ownership", () => {
     assignOwnerSource(body, "body");
     const header = paragraphWithSource("header source", "header", "22222222");
     const footer = paragraphWithSource("footer source", "footer", "33333333");
-    const footnote = paragraphWithSource("footnote source", "footnote", "44444444");
-    const endnote = paragraphWithSource("endnote source", "endnote", "55555555");
+    const footnote = paragraphWithSource(
+      "footnote source",
+      "footnote",
+      "44444444",
+    );
+    const endnote = paragraphWithSource(
+      "endnote source",
+      "endnote",
+      "55555555",
+    );
     const document: Document = {
       package: {
         document: { content: [body] },
         headers: new Map([
-          ["rId-header", { type: "header", hdrFtrType: "default", content: [header] }],
+          [
+            "rId-header",
+            { type: "header", hdrFtrType: "default", content: [header] },
+          ],
         ]),
         footers: new Map([
-          ["rId-footer", { type: "footer", hdrFtrType: "default", content: [footer] }],
+          [
+            "rId-footer",
+            { type: "footer", hdrFtrType: "default", content: [footer] },
+          ],
         ]),
         footnotes: [{ type: "footnote", id: 1, content: [footnote] }],
         endnotes: [{ type: "endnote", id: 1, content: [endnote] }],
@@ -176,7 +206,9 @@ describe("secondary-story paragraph property ownership", () => {
       if (!proseDocument || source?.type !== "paragraph") {
         panic(`The ${owner} conversion fixture is incomplete.`);
       }
-      const rebuiltProseDocument = proseDocument.type.schema.nodeFromJSON(proseDocument.toJSON());
+      const rebuiltProseDocument = proseDocument.type.schema.nodeFromJSON(
+        proseDocument.toJSON(),
+      );
       const converted = proseDocToBlocks(rebuiltProseDocument, [source]).at(0);
       if (converted?.type !== "paragraph") {
         panic(`The ${owner} conversion lost its paragraph.`);
@@ -188,15 +220,21 @@ describe("secondary-story paragraph property ownership", () => {
   test("omitting a detached story's base loses its captured properties", () => {
     const source = paragraphWithSource("header source", "header", "12345678");
     const proseDocument = headerFooterToProseDoc([source]);
-    const rebuiltProseDocument = proseDocument.type.schema.nodeFromJSON(proseDocument.toJSON());
+    const rebuiltProseDocument = proseDocument.type.schema.nodeFromJSON(
+      proseDocument.toJSON(),
+    );
 
     const convertedWithoutBase = proseDocToBlocks(rebuiltProseDocument).at(0);
     if (convertedWithoutBase?.type !== "paragraph") {
       panic("The omitted-base mutation lost its paragraph.");
     }
-    expect(serializeParagraph(convertedWithoutBase)).not.toContain('x:owner="header"');
+    expect(serializeParagraph(convertedWithoutBase)).not.toContain(
+      'x:owner="header"',
+    );
 
-    const convertedWithBase = proseDocToBlocks(rebuiltProseDocument, [source]).at(0);
+    const convertedWithBase = proseDocToBlocks(rebuiltProseDocument, [
+      source,
+    ]).at(0);
     if (convertedWithBase?.type !== "paragraph") {
       panic("The base-aware mutation lost its paragraph.");
     }
@@ -301,7 +339,10 @@ describe("secondary-story paragraph property ownership", () => {
           : snapshot.package.footers?.get(relationshipId);
       const savedFirst = savedPart?.content.at(0);
       const savedSecond = savedPart?.content.at(1);
-      if (savedFirst?.type !== "paragraph" || savedSecond?.type !== "paragraph") {
+      if (
+        savedFirst?.type !== "paragraph" ||
+        savedSecond?.type !== "paragraph"
+      ) {
         panic("The duplicate-id snapshot lost a header/footer paragraph.");
       }
       expectOwner(savedFirst, kind);
@@ -323,8 +364,16 @@ describe("secondary-story paragraph property ownership", () => {
         package: {
           document: { content: [] },
           ...(kind === "footnote"
-            ? { footnotes: [{ type: "footnote", id: 1, content: [arabic, source] }] }
-            : { endnotes: [{ type: "endnote", id: 1, content: [arabic, source] }] }),
+            ? {
+                footnotes: [
+                  { type: "footnote", id: 1, content: [arabic, source] },
+                ],
+              }
+            : {
+                endnotes: [
+                  { type: "endnote", id: 1, content: [arabic, source] },
+                ],
+              }),
         },
       };
       const manager = createNoteEditorManager({
@@ -343,7 +392,9 @@ describe("secondary-story paragraph property ownership", () => {
 
       const snapshot = manager.snapshotDocument(document);
       const savedStory =
-        kind === "footnote" ? snapshot.package.footnotes?.at(0) : snapshot.package.endnotes?.at(0);
+        kind === "footnote"
+          ? snapshot.package.footnotes?.at(0)
+          : snapshot.package.endnotes?.at(0);
       const saved = savedStory?.content.at(1);
       if (saved?.type !== "paragraph") {
         panic("The snapshot lost its edited note paragraph.");
@@ -363,8 +414,16 @@ describe("secondary-story paragraph property ownership", () => {
         package: {
           document: { content: [] },
           ...(kind === "footnote"
-            ? { footnotes: [{ type: "footnote", id: 1, content: [first, second] }] }
-            : { endnotes: [{ type: "endnote", id: 1, content: [first, second] }] }),
+            ? {
+                footnotes: [
+                  { type: "footnote", id: 1, content: [first, second] },
+                ],
+              }
+            : {
+                endnotes: [
+                  { type: "endnote", id: 1, content: [first, second] },
+                ],
+              }),
         },
       };
       const manager = createNoteEditorManager({
@@ -383,10 +442,15 @@ describe("secondary-story paragraph property ownership", () => {
 
       const snapshot = manager.snapshotDocument(document);
       const savedStory =
-        kind === "footnote" ? snapshot.package.footnotes?.at(0) : snapshot.package.endnotes?.at(0);
+        kind === "footnote"
+          ? snapshot.package.footnotes?.at(0)
+          : snapshot.package.endnotes?.at(0);
       const savedFirst = savedStory?.content.at(0);
       const savedSecond = savedStory?.content.at(1);
-      if (savedFirst?.type !== "paragraph" || savedSecond?.type !== "paragraph") {
+      if (
+        savedFirst?.type !== "paragraph" ||
+        savedSecond?.type !== "paragraph"
+      ) {
         panic("The duplicate-id snapshot lost a note paragraph.");
       }
       expectOwner(savedFirst, kind);

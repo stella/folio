@@ -1,26 +1,35 @@
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { modelParagraphFormattingEmission } from "../internal/paragraphFormattingSerialization";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Paragraph, ParagraphFormatting } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  ParagraphFormatting,
+} from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
-import { parseDocx } from "./parser";
 import {
   assignParagraphPropertySource,
   copyParagraphPropertyCapture,
   getParagraphPropertySource,
   paragraphPropertySourceMatchesEmission,
 } from "./paragraphPropertySource";
+import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createEmptyDocx, repackDocx } from "./rezip";
-import { serializeParagraph, serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { attemptSelectiveSave } from "./selectiveSave";
+import {
+  serializeParagraph,
+  serializeParagraphFormatting,
+} from "./serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -182,7 +191,11 @@ const CASES = [
     sourceNumbering: "absent",
     mutate: (formatting) => {
       formatting.runProperties = {
-        fontFamily: { ascii: "Arial", hint: "default", asciiTheme: "minorAscii" },
+        fontFamily: {
+          ascii: "Arial",
+          hint: "default",
+          asciiTheme: "minorAscii",
+        },
         color: { themeColor: "accent3", themeTint: "20" },
         underline: {
           style: "single",
@@ -206,15 +219,22 @@ const CASES = [
 
 const paragraphProperties = (numbering: SourceNumbering): string => {
   const numberingXml =
-    numbering === "direct" ? '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' : "";
-  const styleXml = numbering === "style-sourced" ? '<w:pStyle w:val="Numbered"/>' : "";
+    numbering === "direct"
+      ? '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>'
+      : "";
+  const styleXml =
+    numbering === "style-sourced" ? '<w:pStyle w:val="Numbered"/>' : "";
   return `<w:pPr xmlns:x="urn:folio:unknown-property">${styleXml}${numberingXml}${UNKNOWN_PROPERTY}</w:pPr>`;
 };
 
-const generatedDocument = async (numbering: SourceNumbering): Promise<ArrayBuffer> => {
+const generatedDocument = async (
+  numbering: SourceNumbering,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
-  const documentRelationships = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const documentRelationships = await zip
+    .file("word/_rels/document.xml.rels")
+    ?.async("text");
   const documentXml = await zip.file("word/document.xml")?.async("text");
   const stylesXml = await zip.file("word/styles.xml")?.async("text");
   if (!contentTypes || !documentRelationships || !documentXml || !stylesXml) {
@@ -267,16 +287,24 @@ const firstParagraph = (document: Document): Paragraph => {
   return paragraph;
 };
 
-const firstParagraphPropertiesXml = async (buffer: ArrayBuffer): Promise<string> => {
+const firstParagraphPropertiesXml = async (
+  buffer: ArrayBuffer,
+): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
   const documentXml = await zip.file("word/document.xml")?.async("text");
   if (!documentXml) {
     panic("The saved package has no main document part.");
   }
-  return /<w:pPr(?:\s[^>]*)?(?:\/>|>[\s\S]*?<\/w:pPr>)/u.exec(documentXml)?.at(0) ?? "";
+  return (
+    /<w:pPr(?:\s[^>]*)?(?:\/>|>[\s\S]*?<\/w:pPr>)/u.exec(documentXml)?.at(0) ??
+    ""
+  );
 };
 
-const mutateParsedParagraph = (document: Document, fixture: ProvenanceCase): Paragraph => {
+const mutateParsedParagraph = (
+  document: Document,
+  fixture: ProvenanceCase,
+): Paragraph => {
   const paragraph = firstParagraph(document);
   paragraph.formatting ??= {};
   fixture.mutate(paragraph.formatting);
@@ -299,36 +327,49 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
     });
 
     fc.assert(
-      fc.property(formattingArbitrary, fc.boolean(), (baseFormatting, keepsEmission) => {
-        const paragraph: Paragraph = {
-          type: "paragraph",
-          formatting: baseFormatting,
-          content: [{ type: "run", content: [{ type: "text", text: "Text" }] }],
-        };
-        const fallbackProperties = serializeParagraphFormatting(baseFormatting);
-        const sourceProperties = fallbackProperties.replace(
-          "<w:pPr>",
-          `<w:pPr xmlns:x="urn:folio:unknown-property">${UNKNOWN_PROPERTY}`,
-        );
-        assignParagraphPropertySource(paragraph, sourceProperties);
-        const source = getParagraphPropertySource(paragraph);
-        if (!source) {
-          panic("The generated paragraph has no owned property source.");
-        }
+      fc.property(
+        formattingArbitrary,
+        fc.boolean(),
+        (baseFormatting, keepsEmission) => {
+          const paragraph: Paragraph = {
+            type: "paragraph",
+            formatting: baseFormatting,
+            content: [
+              { type: "run", content: [{ type: "text", text: "Text" }] },
+            ],
+          };
+          const fallbackProperties =
+            serializeParagraphFormatting(baseFormatting);
+          const sourceProperties = fallbackProperties.replace(
+            "<w:pPr>",
+            `<w:pPr xmlns:x="urn:folio:unknown-property">${UNKNOWN_PROPERTY}`,
+          );
+          assignParagraphPropertySource(paragraph, sourceProperties);
+          const source = getParagraphPropertySource(paragraph);
+          if (!source) {
+            panic("The generated paragraph has no owned property source.");
+          }
 
-        paragraph.formatting = keepsEmission
-          ? { ...baseFormatting, spacingExplicit: { before: true } }
-          : { ...baseFormatting, keepNext: !baseFormatting.keepNext };
-        const currentEmission = modelParagraphFormattingEmission(paragraph.formatting);
+          paragraph.formatting = keepsEmission
+            ? { ...baseFormatting, spacingExplicit: { before: true } }
+            : { ...baseFormatting, keepNext: !baseFormatting.keepNext };
+          const currentEmission = modelParagraphFormattingEmission(
+            paragraph.formatting,
+          );
 
-        expect(Object.isFrozen(source)).toBe(true);
-        expect(paragraphPropertySourceMatchesEmission(source, currentEmission)).toBe(keepsEmission);
-        const serialized = serializeParagraph(paragraph);
-        expect(serialized.includes(UNKNOWN_PROPERTY)).toBe(keepsEmission);
-        if (!keepsEmission) {
-          expect(serialized).toContain(serializeParagraphFormatting(paragraph.formatting));
-        }
-      }),
+          expect(Object.isFrozen(source)).toBe(true);
+          expect(
+            paragraphPropertySourceMatchesEmission(source, currentEmission),
+          ).toBe(keepsEmission);
+          const serialized = serializeParagraph(paragraph);
+          expect(serialized.includes(UNKNOWN_PROPERTY)).toBe(keepsEmission);
+          if (!keepsEmission) {
+            expect(serialized).toContain(
+              serializeParagraphFormatting(paragraph.formatting),
+            );
+          }
+        },
+      ),
       propertyConfig({ numRuns: 128 }),
     );
   });
@@ -370,7 +411,9 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
   test.each(CASES)("$name", async (fixture) => {
     const sourceBuffer = await generatedDocument(fixture.sourceNumbering);
     const fullDocument = await parseDocx(sourceBuffer, { preloadFonts: false });
-    const selectiveDocument = await parseDocx(sourceBuffer, { preloadFonts: false });
+    const selectiveDocument = await parseDocx(sourceBuffer, {
+      preloadFonts: false,
+    });
     const fullParagraph = firstParagraph(fullDocument);
     const selectiveParagraph = firstParagraph(selectiveDocument);
     const source = getParagraphPropertySource(fullParagraph);
@@ -384,15 +427,23 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
     expect(Object.isFrozen(selectiveSource)).toBe(true);
 
     const beforeFormattingJson = canonicalJson(fullParagraph.formatting ?? {});
-    const beforeEmission = modelParagraphFormattingEmission(fullParagraph.formatting);
-    expect(paragraphPropertySourceMatchesEmission(source, beforeEmission)).toBe(true);
+    const beforeEmission = modelParagraphFormattingEmission(
+      fullParagraph.formatting,
+    );
+    expect(paragraphPropertySourceMatchesEmission(source, beforeEmission)).toBe(
+      true,
+    );
 
     mutateParsedParagraph(fullDocument, fixture);
     mutateParsedParagraph(selectiveDocument, fixture);
     const afterFormattingJson = canonicalJson(fullParagraph.formatting ?? {});
-    const afterEmission = modelParagraphFormattingEmission(fullParagraph.formatting);
+    const afterEmission = modelParagraphFormattingEmission(
+      fullParagraph.formatting,
+    );
     expect(afterFormattingJson).not.toBe(beforeFormattingJson);
-    expect(modelParagraphFormattingEmission(selectiveParagraph.formatting)).toEqual(afterEmission);
+    expect(
+      modelParagraphFormattingEmission(selectiveParagraph.formatting),
+    ).toEqual(afterEmission);
     if (fixture.preservesCapture) {
       expect(afterEmission).toEqual(beforeEmission);
     } else {
@@ -420,8 +471,12 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
       firstParagraphPropertiesXml(selective),
     ]);
     expect(selectiveProperties).toBe(fullProperties);
-    expect(fullProperties.includes(UNKNOWN_PROPERTY)).toBe(fixture.preservesCapture);
-    expect(fullProperties.includes("<w:numPr")).toBe(fixture.emitsDirectNumbering);
+    expect(fullProperties.includes(UNKNOWN_PROPERTY)).toBe(
+      fixture.preservesCapture,
+    );
+    expect(fullProperties.includes("<w:numPr")).toBe(
+      fixture.emitsDirectNumbering,
+    );
     for (const fragment of fixture.expectedFragments ?? []) {
       expect(fullProperties).toContain(fragment);
     }
@@ -430,20 +485,29 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
       parseDocx(full, { preloadFonts: false }),
       parseDocx(selective, { preloadFonts: false }),
     ]);
-    const fullEmission = modelParagraphFormattingEmission(firstParagraph(parsedFull).formatting);
+    const fullEmission = modelParagraphFormattingEmission(
+      firstParagraph(parsedFull).formatting,
+    );
     const selectiveEmission = modelParagraphFormattingEmission(
       firstParagraph(parsedSelective).formatting,
     );
     expect(fullEmission).toEqual(afterEmission);
     expect(selectiveEmission).toEqual(afterEmission);
 
-    const fixedPointBuffer = await repackDocx(parsedFull, { updateModifiedDate: false });
-    const fixedPointProperties = await firstParagraphPropertiesXml(fixedPointBuffer);
-    const fixedPointDocument = await parseDocx(fixedPointBuffer, { preloadFonts: false });
+    const fixedPointBuffer = await repackDocx(parsedFull, {
+      updateModifiedDate: false,
+    });
+    const fixedPointProperties =
+      await firstParagraphPropertiesXml(fixedPointBuffer);
+    const fixedPointDocument = await parseDocx(fixedPointBuffer, {
+      preloadFonts: false,
+    });
     expect(fixedPointProperties).toBe(fullProperties);
-    expect(modelParagraphFormattingEmission(firstParagraph(fixedPointDocument).formatting)).toEqual(
-      fullEmission,
-    );
+    expect(
+      modelParagraphFormattingEmission(
+        firstParagraph(fixedPointDocument).formatting,
+      ),
+    ).toEqual(fullEmission);
   });
 
   test("editable conversion restores style-numbering provenance through the shared model", async () => {
@@ -453,11 +517,15 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
     const sourceParagraph = firstParagraph(parsed);
     const source = getParagraphPropertySource(sourceParagraph);
     if (!source) {
-      panic("The generated style-numbered paragraph has no captured property source.");
+      panic(
+        "The generated style-numbered paragraph has no captured property source.",
+      );
     }
 
     const restored = firstParagraph(
-      fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     );
 
     expect(sourceParagraph.formatting?.numPr).toBeUndefined();

@@ -13,8 +13,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { TableBlock, TableWidthType } from "../types";
 import { resolveTableWidthPx } from "../types";
 import { measureTableBlock } from "./measureBlocks";
@@ -66,8 +68,14 @@ describe("resolveTableWidthPx", () => {
 
 describe("ST_TblWidth auto", () => {
   test('w:type="auto" leaves the table at its content width instead of pinning it', () => {
-    const autoFit = measureTableBlock(tableBlock(LEFTOVER_TWIPS, "auto"), CONTENT_WIDTH);
-    const pinned = measureTableBlock(tableBlock(LEFTOVER_TWIPS, "dxa"), CONTENT_WIDTH);
+    const autoFit = measureTableBlock(
+      tableBlock(LEFTOVER_TWIPS, "auto"),
+      CONTENT_WIDTH,
+    );
+    const pinned = measureTableBlock(
+      tableBlock(LEFTOVER_TWIPS, "dxa"),
+      CONTENT_WIDTH,
+    );
 
     expect(autoFit.totalWidth).toBeLessThanOrEqual(CONTENT_WIDTH);
     expect(pinned.totalWidth).toBeGreaterThan(CONTENT_WIDTH);
@@ -81,7 +89,11 @@ describe("ST_TblWidth auto", () => {
           fc.constantFrom(...TABLE_WIDTH_TYPES),
           fc.integer({ min: 1, max: 20_000 }),
           (widthType, width) => {
-            const resolved = resolveTableWidthPx(width, widthType, CONTENT_WIDTH);
+            const resolved = resolveTableWidthPx(
+              width,
+              widthType,
+              CONTENT_WIDTH,
+            );
 
             if (widthType === "auto" || widthType === "nil") {
               expect(resolved).toBeUndefined();
@@ -102,7 +114,11 @@ describe("ST_TblWidth auto", () => {
       fc.assert(
         fc.property(fc.constantFrom(...TABLE_WIDTH_TYPES), (widthType) => {
           const block = tableBlock(LEFTOVER_TWIPS, widthType);
-          const resolved = resolveTableWidthPx(block.width, widthType, CONTENT_WIDTH);
+          const resolved = resolveTableWidthPx(
+            block.width,
+            widthType,
+            CONTENT_WIDTH,
+          );
           const measured = measureTableBlock(block, CONTENT_WIDTH);
 
           if (resolved === undefined) {

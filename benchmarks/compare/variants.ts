@@ -22,11 +22,11 @@
 import {
   blockText,
   documentPartOf,
+  type DocxPackage,
+  type PackagePart,
   replaceBodyChildren,
   splitBodyChildren,
   withBlockText,
-  type DocxPackage,
-  type PackagePart,
 } from "./package-xml";
 
 export const EDIT_VARIANTS = Object.freeze([
@@ -63,22 +63,33 @@ const isParagraph = (blockXml: string): boolean =>
 type ParagraphTransform = (paragraphXml: string, ordinal: number) => string;
 
 /** Rewrite every paragraph in `children`, numbering them across the whole body. */
-const mapParagraphs = (children: readonly string[], transform: ParagraphTransform): string[] => {
+const mapParagraphs = (
+  children: readonly string[],
+  transform: ParagraphTransform,
+): string[] => {
   let ordinal = 0;
   return children.map((child) =>
-    child.replaceAll(PARAGRAPH_PATTERN, (paragraph) => transform(paragraph, ordinal++)),
+    child.replaceAll(PARAGRAPH_PATTERN, (paragraph) =>
+      transform(paragraph, ordinal++),
+    ),
   );
 };
 
 /** Replace every nth word of a paragraph's text, leaving the rest identical. */
-const editWords = (paragraphXml: string, stride: number, suffix: string): string => {
+const editWords = (
+  paragraphXml: string,
+  stride: number,
+  suffix: string,
+): string => {
   const words = blockText(paragraphXml).split(" ");
   if (words.length === 0) {
     return paragraphXml;
   }
   return withBlockText(
     paragraphXml,
-    words.map((word, index) => (index % stride === 0 ? `${word}${suffix}` : word)).join(" "),
+    words
+      .map((word, index) => (index % stride === 0 ? `${word}${suffix}` : word))
+      .join(" "),
   );
 };
 
@@ -113,7 +124,10 @@ const churn: BodyRewrite = (children) => {
     }
     const step = ordinal++ % 7;
     if (step === 0) {
-      rewritten.push(withBlockText(child, "A newly added obligation of the counterparty."), child);
+      rewritten.push(
+        withBlockText(child, "A newly added obligation of the counterparty."),
+        child,
+      );
       continue;
     }
     if (step === 3) {
@@ -126,7 +140,9 @@ const churn: BodyRewrite = (children) => {
 
 /** Relocate a contiguous run of top-level paragraphs later in the document. */
 const reorder: BodyRewrite = (children) => {
-  const indexes = children.flatMap((child, index) => (isParagraph(child) ? [index] : []));
+  const indexes = children.flatMap((child, index) =>
+    isParagraph(child) ? [index] : [],
+  );
   const runLength = Math.max(1, Math.floor(indexes.length / 12));
   const from = Math.floor(indexes.length / 6);
   const anchor = indexes[Math.floor((indexes.length * 2) / 3)];
@@ -158,7 +174,8 @@ const splitParagraph = (paragraphXml: string): [string, string] => {
 const changeListLevel = (paragraphXml: string): string =>
   paragraphXml.replaceAll(
     /<w:ilvl w:val="(\d+)"\/>/gu,
-    (_match, level: string) => `<w:ilvl w:val="${String(Math.min(2, Number(level) + 1))}"/>`,
+    (_match, level: string) =>
+      `<w:ilvl w:val="${String(Math.min(2, Number(level) + 1))}"/>`,
   );
 
 const deleteFirstTableRow = (blockXml: string): string => {
@@ -187,7 +204,12 @@ const structural: BodyRewrite = (children) => {
       continue;
     }
     if (pendingMerge !== null) {
-      rewritten.push(withBlockText(pendingMerge, `${blockText(pendingMerge)} ${blockText(child)}`));
+      rewritten.push(
+        withBlockText(
+          pendingMerge,
+          `${blockText(pendingMerge)} ${blockText(child)}`,
+        ),
+      );
       pendingMerge = null;
       ordinal += 1;
       continue;
@@ -206,7 +228,10 @@ const structural: BodyRewrite = (children) => {
       continue;
     }
     if (step === 9) {
-      rewritten.push(child, withBlockText(child, "An added item in the same list."));
+      rewritten.push(
+        child,
+        withBlockText(child, "An added item in the same list."),
+      );
       continue;
     }
     rewritten.push(child);
@@ -287,7 +312,8 @@ const PROMOTED_HEADING_PROPERTIES =
 
 /** A heading by its style or by an outline level the paragraph states itself. */
 const isHeading = (paragraphXml: string): boolean =>
-  paragraphXml.includes('<w:pStyle w:val="Heading1"/>') || paragraphXml.includes("<w:outlineLvl ");
+  paragraphXml.includes('<w:pStyle w:val="Heading1"/>') ||
+  paragraphXml.includes("<w:outlineLvl ");
 
 /** A paragraph with no properties of its own, so a promotion writes all of them. */
 const hasNoParagraphProperties = (paragraphXml: string): boolean =>
@@ -321,7 +347,10 @@ const restyle: BodyRewrite = (children) => {
       const step = headingOrdinal++ % 3;
       if (step === 0) {
         const added = withoutParagraphProperties(child);
-        rewritten.push(withBlockText(added, "A newly added paragraph before the heading."), child);
+        rewritten.push(
+          withBlockText(added, "A newly added paragraph before the heading."),
+          child,
+        );
         continue;
       }
       rewritten.push(step === 1 ? withoutParagraphProperties(child) : child);
@@ -334,7 +363,10 @@ const restyle: BodyRewrite = (children) => {
     const step = bodyOrdinal++ % 7;
     if (step === 2) {
       rewritten.push(
-        child.replace(/^<w:p(\s[^>]*)?>/u, (open) => `${open}${PROMOTED_HEADING_PROPERTIES}`),
+        child.replace(
+          /^<w:p(\s[^>]*)?>/u,
+          (open) => `${open}${PROMOTED_HEADING_PROPERTIES}`,
+        ),
       );
       continue;
     }
@@ -355,7 +387,10 @@ const rewrite: BodyRewrite = (children) =>
     const text = blockText(paragraph);
     return text.length === 0
       ? paragraph
-      : withBlockText(paragraph, `Restated: ${text.split(" ").toReversed().join(" ")}`);
+      : withBlockText(
+          paragraph,
+          `Restated: ${text.split(" ").toReversed().join(" ")}`,
+        );
   });
 
 const BODY_REWRITES = {
@@ -377,16 +412,23 @@ const BODY_REWRITES = {
 
 /** Cloned paragraphs need fresh identities for their drawings and prior revisions. */
 const reassignCopiedIds = (xml: string, pattern: RegExp): string => {
-  let nextId = Math.max(0, ...[...xml.matchAll(pattern)].map((match) => Number(match[2]))) + 1;
+  let nextId =
+    Math.max(
+      0,
+      ...[...xml.matchAll(pattern)].map((match) => Number(match[2])),
+    ) + 1;
   const seen = new Set<number>();
-  return xml.replaceAll(pattern, (_match, prefix: string, value: string, suffix: string) => {
-    const id = Number(value);
-    if (!seen.has(id)) {
-      seen.add(id);
-      return `${prefix}${value}${suffix}`;
-    }
-    return `${prefix}${String(nextId++)}${suffix}`;
-  });
+  return xml.replaceAll(
+    pattern,
+    (_match, prefix: string, value: string, suffix: string) => {
+      const id = Number(value);
+      if (!seen.has(id)) {
+        seen.add(id);
+        return `${prefix}${value}${suffix}`;
+      }
+      return `${prefix}${String(nextId++)}${suffix}`;
+    },
+  );
 };
 
 const uniqueCopiedIds = (xml: string): string =>
@@ -395,7 +437,10 @@ const uniqueCopiedIds = (xml: string): string =>
     /(<w:(?:ins|del)\b[^>]*?\bw:id=")(\d+)(")/gu,
   );
 
-const NOTE_PARTS = Object.freeze(["word/footnotes.xml", "word/endnotes.xml"] as const);
+const NOTE_PARTS = Object.freeze([
+  "word/footnotes.xml",
+  "word/endnotes.xml",
+] as const);
 
 const NUMBERING_PART = "word/numbering.xml";
 
@@ -420,7 +465,10 @@ const rewriteNumberingPart = (parts: Map<string, PackagePart>): boolean => {
   return true;
 };
 
-const CHROME_PARTS = Object.freeze(["word/header1.xml", "word/footer1.xml"] as const);
+const CHROME_PARTS = Object.freeze([
+  "word/header1.xml",
+  "word/footer1.xml",
+] as const);
 
 /**
  * The stories that are not the body. `notes` rewrites the footnote and endnote
@@ -453,8 +501,12 @@ const rewriteStoryParts = (
     let index = 0;
     parts.set(
       name,
-      part.replaceAll(/<w:t(?:\s[^>]*?)?>([\s\S]*?)<\/w:t>/gu, (match, text: string) =>
-        index++ % stride === 0 ? `<w:t xml:space="preserve">${text} as amended</w:t>` : match,
+      part.replaceAll(
+        /<w:t(?:\s[^>]*?)?>([\s\S]*?)<\/w:t>/gu,
+        (match, text: string) =>
+          index++ % stride === 0
+            ? `<w:t xml:space="preserve">${text} as amended</w:t>`
+            : match,
       ),
     );
   }
@@ -471,13 +523,20 @@ export type ApplyVariantOptions = {
  * be an identical pair wearing another name, and would quietly inflate the
  * suite's apparent coverage).
  */
-export const applyVariant = ({ parts, variant }: ApplyVariantOptions): DocxPackage | null => {
+export const applyVariant = ({
+  parts,
+  variant,
+}: ApplyVariantOptions): DocxPackage | null => {
   const target = new Map(parts);
   if (variant === "numbering") {
     return rewriteNumberingPart(target) ? target : null;
   }
 
-  if (variant === "notes" || variant === "headers" || variant === "everywhere") {
+  if (
+    variant === "notes" ||
+    variant === "headers" ||
+    variant === "everywhere"
+  ) {
     const names = SECONDARY_STORY_PARTS[variant];
     if (!names.some((name) => typeof parts.get(name) === "string")) {
       return null;
@@ -496,6 +555,9 @@ export const applyVariant = ({ parts, variant }: ApplyVariantOptions): DocxPacka
   if (variant !== "identical" && rewritten.join("") === children.join("")) {
     return null;
   }
-  target.set("word/document.xml", uniqueCopiedIds(replaceBodyChildren(documentXml, rewritten)));
+  target.set(
+    "word/document.xml",
+    uniqueCopiedIds(replaceBodyChildren(documentXml, rewritten)),
+  );
   return target;
 };

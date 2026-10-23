@@ -12,11 +12,21 @@ import type {
   TextBoxBlock,
   TextRun,
 } from "../../layout-engine/types";
-import { applyTemplatePreviewToBlocks, templatePreviewDirtyRange } from "./templatePreviewFlow";
-import type { TemplatePreviewFlowEntry, TemplatePreviewFlowState } from "./templatePreviewFlow";
 import type { TemplatePreviewHiddenRange } from "../../prosemirror/plugins/templatePreviewValues";
+import {
+  applyTemplatePreviewToBlocks,
+  templatePreviewDirtyRange,
+} from "./templatePreviewFlow";
+import type {
+  TemplatePreviewFlowEntry,
+  TemplatePreviewFlowState,
+} from "./templatePreviewFlow";
 
-const textRun = (text: string, pmStart: number, extra: Partial<TextRun> = {}): TextRun => ({
+const textRun = (
+  text: string,
+  pmStart: number,
+  extra: Partial<TextRun> = {},
+): TextRun => ({
   kind: "text",
   text,
   pmStart,
@@ -24,7 +34,11 @@ const textRun = (text: string, pmStart: number, extra: Partial<TextRun> = {}): T
   ...extra,
 });
 
-const paragraph = (id: string, pmStart: number, runs: ParagraphBlock["runs"]): ParagraphBlock => {
+const paragraph = (
+  id: string,
+  pmStart: number,
+  runs: ParagraphBlock["runs"],
+): ParagraphBlock => {
   const last = runs.at(-1);
   return {
     kind: "paragraph",
@@ -85,7 +99,9 @@ describe("applyTemplatePreviewToBlocks", () => {
   });
 
   test("a rich value emits one run per span, layering bold/italic over the host formatting", () => {
-    const source = paragraph("p1", 0, [textRun("{{company}}", 1, { bold: true, fontSize: 14 })]);
+    const source = paragraph("p1", 0, [
+      textRun("{{company}}", 1, { bold: true, fontSize: 14 }),
+    ]);
     const [block] = applyTemplatePreviewToBlocks([source], {
       entries: [
         {
@@ -248,7 +264,9 @@ describe("applyTemplatePreviewToBlocks", () => {
   test("keeps a block the hidden span only partly covers", () => {
     // An inline `{% if %}` inside running text: dropping the paragraph would
     // take the authored text around it, so the flow leaves it as written.
-    const inline = paragraph("p1", 0, [textRun("Fee {% if waived %}waived{% endif %} due.", 1)]);
+    const inline = paragraph("p1", 0, [
+      textRun("Fee {% if waived %}waived{% endif %} due.", 1),
+    ]);
     const blocks = applyTemplatePreviewToBlocks([inline], {
       entries: [],
       hidden: [{ from: 5, to: 37, expr: "waived" }],
@@ -260,7 +278,11 @@ describe("applyTemplatePreviewToBlocks", () => {
   });
 
   test("keeps a block that carries no PM positions", () => {
-    const orphan: ParagraphBlock = { kind: "paragraph", id: "p1", runs: [textRun("Text", 1)] };
+    const orphan: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p1",
+      runs: [textRun("Text", 1)],
+    };
     const blocks = applyTemplatePreviewToBlocks([orphan], {
       entries: [],
       hidden: [{ from: 0, to: 999, expr: "premium" }],
@@ -300,7 +322,9 @@ describe("applyTemplatePreviewToBlocks", () => {
         // Long value: the paragraph wraps onto a second line instead of
         // overlapping the following text.
         const [long] = applyTemplatePreviewToBlocks([source], {
-          entries: [{ from: 7, to: 22, value: "An Unusually Long Company Name Ltd." }],
+          entries: [
+            { from: 7, to: 22, value: "An Unusually Long Company Name Ltd." },
+          ],
           hidden: [],
           mode: "plain",
         });
@@ -365,14 +389,24 @@ describe("applyTemplatePreviewToBlocks", () => {
         {
           from: 1,
           to: 10,
-          value: { runs: [{ text: "Bold first.\nBold second.", bold: true }, { text: " tail" }] },
+          value: {
+            runs: [
+              { text: "Bold first.\nBold second.", bold: true },
+              { text: " tail" },
+            ],
+          },
         },
       ],
       hidden: [],
       mode: "plain",
     });
 
-    expect(runTexts(block!)).toEqual(["Bold first.", "lineBreak", "Bold second.", " tail"]);
+    expect(runTexts(block!)).toEqual([
+      "Bold first.",
+      "lineBreak",
+      "Bold second.",
+      " tail",
+    ]);
     if (block!.kind !== "paragraph") {
       throw new Error("expected paragraph");
     }
@@ -389,7 +423,12 @@ describe("applyTemplatePreviewToBlocks", () => {
         {
           from: 1,
           to: 10,
-          value: { runs: [{ text: "First line.\r", bold: true }, { text: "\nSecond line." }] },
+          value: {
+            runs: [
+              { text: "First line.\r", bold: true },
+              { text: "\nSecond line." },
+            ],
+          },
         },
       ],
       hidden: [],
@@ -398,7 +437,11 @@ describe("applyTemplatePreviewToBlocks", () => {
 
     // The spans are one text stream, so the halves of the pair do not become a
     // break each with a blank line between them.
-    expect(runTexts(block!)).toEqual(["First line.", "lineBreak", "Second line."]);
+    expect(runTexts(block!)).toEqual([
+      "First line.",
+      "lineBreak",
+      "Second line.",
+    ]);
   });
 
   test("a multi-line value measures one line per value line", () => {
@@ -406,7 +449,13 @@ describe("applyTemplatePreviewToBlocks", () => {
       () => {
         const source = paragraph("p1", 0, [textRun("{{terms}}", 1)]);
         const [block] = applyTemplatePreviewToBlocks([source], {
-          entries: [{ from: 1, to: 10, value: "First line.\nSecond line.\nThird line." }],
+          entries: [
+            {
+              from: 1,
+              to: 10,
+              value: "First line.\nSecond line.\nThird line.",
+            },
+          ],
           hidden: [],
           mode: "plain",
         });
@@ -425,7 +474,11 @@ describe("applyTemplatePreviewToBlocks", () => {
 describe("templatePreviewDirtyRange", () => {
   const entryA = { from: 5, to: 12, value: "a" };
   const entryB = { from: 40, to: 55, value: "b" };
-  const hiddenA: TemplatePreviewHiddenRange = { from: 60, to: 90, expr: "premium" };
+  const hiddenA: TemplatePreviewHiddenRange = {
+    from: 60,
+    to: 90,
+    expr: "premium",
+  };
 
   const previewOf = (
     entries: readonly TemplatePreviewFlowEntry[],
@@ -434,7 +487,10 @@ describe("templatePreviewDirtyRange", () => {
 
   test("returns null when the substituted content is identical", () => {
     expect(
-      templatePreviewDirtyRange(previewOf([entryA, entryB]), previewOf([entryA, entryB])),
+      templatePreviewDirtyRange(
+        previewOf([entryA, entryB]),
+        previewOf([entryA, entryB]),
+      ),
     ).toBe(null);
   });
 
@@ -453,12 +509,16 @@ describe("templatePreviewDirtyRange", () => {
       to: 12,
       value: { runs: [{ text: "Acme", bold: true }] },
     };
-    expect(templatePreviewDirtyRange(previewOf([richBold]), previewOf([richBold]))).toBe(null);
+    expect(
+      templatePreviewDirtyRange(previewOf([richBold]), previewOf([richBold])),
+    ).toBe(null);
     // Same text, different formatting → the marker's blocks must re-lay out.
     expect(
       templatePreviewDirtyRange(
         previewOf([richBold]),
-        previewOf([{ ...richBold, value: { runs: [{ text: "Acme", italic: true }] } }]),
+        previewOf([
+          { ...richBold, value: { runs: [{ text: "Acme", italic: true }] } },
+        ]),
       ),
     ).toEqual({ from: 5, to: 12 });
     // A plain string and a rich value with the same text are not identical.
@@ -471,29 +531,45 @@ describe("templatePreviewDirtyRange", () => {
   });
 
   test("covers added and removed entries", () => {
-    expect(templatePreviewDirtyRange(previewOf([]), previewOf([entryA]))).toEqual({
+    expect(
+      templatePreviewDirtyRange(previewOf([]), previewOf([entryA])),
+    ).toEqual({
       from: 5,
       to: 12,
     });
-    expect(templatePreviewDirtyRange(previewOf([entryA, entryB]), previewOf([entryB]))).toEqual({
+    expect(
+      templatePreviewDirtyRange(
+        previewOf([entryA, entryB]),
+        previewOf([entryB]),
+      ),
+    ).toEqual({
       from: 5,
       to: 12,
     });
-    expect(templatePreviewDirtyRange(previewOf([entryA]), previewOf([entryB]))).toEqual({
+    expect(
+      templatePreviewDirtyRange(previewOf([entryA]), previewOf([entryB])),
+    ).toEqual({
       from: 5,
       to: 55,
     });
   });
 
   test("covers a hidden span that appears, disappears, or moves", () => {
-    expect(templatePreviewDirtyRange(previewOf([], [hiddenA]), previewOf([], [hiddenA]))).toBe(
-      null,
-    );
-    expect(templatePreviewDirtyRange(previewOf([]), previewOf([], [hiddenA]))).toEqual({
+    expect(
+      templatePreviewDirtyRange(
+        previewOf([], [hiddenA]),
+        previewOf([], [hiddenA]),
+      ),
+    ).toBe(null);
+    expect(
+      templatePreviewDirtyRange(previewOf([]), previewOf([], [hiddenA])),
+    ).toEqual({
       from: 60,
       to: 90,
     });
-    expect(templatePreviewDirtyRange(previewOf([], [hiddenA]), previewOf([]))).toEqual({
+    expect(
+      templatePreviewDirtyRange(previewOf([], [hiddenA]), previewOf([])),
+    ).toEqual({
       from: 60,
       to: 90,
     });
@@ -505,7 +581,9 @@ describe("templatePreviewDirtyRange", () => {
       ),
     ).toEqual({ from: 60, to: 90 });
     // Entry and hidden changes widen one range together.
-    expect(templatePreviewDirtyRange(previewOf([entryA]), previewOf([], [hiddenA]))).toEqual({
+    expect(
+      templatePreviewDirtyRange(previewOf([entryA]), previewOf([], [hiddenA])),
+    ).toEqual({
       from: 5,
       to: 90,
     });

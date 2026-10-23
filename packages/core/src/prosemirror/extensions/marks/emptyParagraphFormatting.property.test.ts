@@ -1,21 +1,25 @@
+import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
-import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
-import { createEmptyDocument } from "../../../utils/createDocument";
-import { createDocx } from "../../../docx/rezip";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
 import {
   createHarnessState,
   HeadlessEditorView,
   parseShapeDocument,
   saveHarnessState,
 } from "../../../__tests__/editorHarness";
+import { createDocx } from "../../../docx/rezip";
+import { createEmptyDocument } from "../../../utils/createDocument";
+import { expectParagraphAttrs } from "../../attrs";
 import { toggleBold, toggleItalic } from "../../commands/formatting";
 import { singletonManager } from "../../schema";
 import { clearFormatting } from "./markUtils";
-import { expectParagraphAttrs } from "../../attrs";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
@@ -46,7 +50,9 @@ const formattedClipboard = async () => {
       ],
     },
   ];
-  const parsed = await parseShapeDocument(new Uint8Array(await createDocx(source)));
+  const parsed = await parseShapeDocument(
+    new Uint8Array(await createDocx(source)),
+  );
   const text = createHarnessState(parsed, "editing").doc.firstChild?.firstChild;
   if (!text?.isText) return panic("Missing parser-produced clipboard text.");
   return new Slice(Fragment.from(text), 0, 0);
@@ -69,7 +75,9 @@ const tokens = (doc: PMNode) => {
           ? {
               type: revision.type.name,
               author: revision.attrs.author,
-              date: revision.attrs.date ? new Date(revision.attrs.date).toISOString() : null,
+              date: revision.attrs.date
+                ? new Date(revision.attrs.date).toISOString()
+                : null,
             }
           : null,
       });
@@ -82,7 +90,10 @@ const assertRoundtrip = async (
   base: Awaited<ReturnType<typeof sourceDocument>>,
 ) => {
   const saved = await saveHarnessState(view.state, base);
-  const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "editing");
+  const reopened = createHarnessState(
+    await parseShapeDocument(saved.bytes),
+    "editing",
+  );
   expect(tokens(reopened.doc)).toEqual(tokens(view.state.doc));
   return saved;
 };
@@ -96,7 +107,8 @@ const paragraphMetadata = (doc: PMNode) => {
       _originalFormatting,
       ...attrs
     } = expectParagraphAttrs(node);
-    const { runProperties: _runProperties, ...original } = _originalFormatting ?? {};
+    const { runProperties: _runProperties, ...original } =
+      _originalFormatting ?? {};
     result.push({ attrs, original });
     return false;
   });
@@ -132,8 +144,11 @@ test("empty paragraph formatting and explicit clearing survive typing, paste, sa
         );
         const saved = await assertRoundtrip(view, base);
         const paragraph = saved.model.package.document.content.at(0);
-        if (paragraph?.type !== "paragraph") return panic("Missing saved paragraph.");
-        expect(paragraph.formatting?.runProperties?.bold).toBe(clear ? undefined : true);
+        if (paragraph?.type !== "paragraph")
+          return panic("Missing saved paragraph.");
+        expect(paragraph.formatting?.runProperties?.bold).toBe(
+          clear ? undefined : true,
+        );
         expect(paragraph.formatting).toMatchObject({
           alignment: "right",
           keepNext: true,
@@ -159,7 +174,9 @@ test("clearing a loaded paragraph default emits a run cancellation without an em
       content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
     },
   ];
-  const base = await parseShapeDocument(new Uint8Array(await createDocx(source)));
+  const base = await parseShapeDocument(
+    new Uint8Array(await createDocx(source)),
+  );
   const view = new HeadlessEditorView(createHarnessState(base, "editing"));
   const before = view.state.doc.firstChild?.firstChild;
   expect(before?.marks.some(({ type }) => type.name === "bold")).toBe(true);
@@ -169,9 +186,11 @@ test("clearing a loaded paragraph default emits a run cancellation without an em
   );
   expect(clearFormatting(view.state, view.dispatch)).toBe(true);
   const text = view.state.doc.firstChild?.firstChild;
-  expect(text?.marks.some(({ type }) => type.name === "bold" || type.name === "italic")).toBe(
-    false,
-  );
+  expect(
+    text?.marks.some(
+      ({ type }) => type.name === "bold" || type.name === "italic",
+    ),
+  ).toBe(false);
   const saved = await assertRoundtrip(view, base);
   const paragraph = saved.model.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") return panic("Missing saved paragraph.");
@@ -216,10 +235,15 @@ test("random formatting and text edit sequences preserve authored paragraph defa
           });
           const left = positions.at(action.left % positions.length);
           const right = positions.at(action.right % positions.length);
-          if (left === undefined || right === undefined) return panic("Missing edit endpoint.");
+          if (left === undefined || right === undefined)
+            return panic("Missing edit endpoint.");
           view.state = view.state.apply(
             view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, Math.min(left, right), Math.max(left, right)),
+              TextSelection.create(
+                view.state.doc,
+                Math.min(left, right),
+                Math.max(left, right),
+              ),
             ),
           );
           const metadata = paragraphMetadata(view.state.doc);
@@ -249,15 +273,25 @@ test("random formatting and text edit sequences preserve authored paragraph defa
               view.pressKey("Backspace");
               break;
             case "undo":
-              singletonManager.requireCommand("undo")()(view.state, view.dispatch);
+              singletonManager.requireCommand("undo")()(
+                view.state,
+                view.dispatch,
+              );
               break;
             case "redo":
-              singletonManager.requireCommand("redo")()(view.state, view.dispatch);
+              singletonManager.requireCommand("redo")()(
+                view.state,
+                view.dispatch,
+              );
               break;
             default:
               panic(String(action.kind satisfies never));
           }
-          if (action.kind === "bold" || action.kind === "italic" || action.kind === "clear")
+          if (
+            action.kind === "bold" ||
+            action.kind === "italic" ||
+            action.kind === "clear"
+          )
             expect(paragraphMetadata(view.state.doc)).toEqual(metadata);
           await assertRoundtrip(view, base);
         }

@@ -22,7 +22,8 @@
         :key="`${cell.r}-${cell.c}`"
         class="docx-table-grid-inline__cell"
         :class="{
-          'docx-table-grid-inline__cell--active': cell.r <= hoverRows && cell.c <= hoverCols,
+          'docx-table-grid-inline__cell--active':
+            cell.r <= hoverRows && cell.c <= hoverCols,
         }"
         role="gridcell"
         :aria-selected="cell.r <= hoverRows && cell.c <= hoverCols"
@@ -34,13 +35,17 @@
       />
     </div>
     <div class="docx-table-grid-inline__label">
-      {{ hoverRows > 0 && hoverCols > 0 ? `${hoverCols} × ${hoverRows}` : "Select size" }}
+      {{
+        hoverRows > 0 && hoverCols > 0
+          ? `${hoverCols} × ${hoverRows}`
+          : "Select size"
+      }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { computed, ref } from "vue";
 
 const props = withDefaults(
   defineProps<{

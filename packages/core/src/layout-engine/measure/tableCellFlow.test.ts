@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import { getTableCellFloatingImages } from "./tableCellFloating";
 import type {
   ImageRun,
   ParagraphBlock,
@@ -10,6 +9,7 @@ import type {
   TextBoxBlock,
   TextBoxMeasure,
 } from "../types";
+import { getTableCellFloatingImages } from "./tableCellFloating";
 import {
   createTableCellFlowState,
   finishTableCellFlow,
@@ -80,7 +80,11 @@ const textBoxMeasure: TextBoxMeasure = {
 describe("table cell block flow", () => {
   test("collapses adjacent paragraph spacing to the larger side", () => {
     const state = createTableCellFlowState();
-    placeTableCellBlock(state, paragraph("first", "first", { after: 8 }), measure(10, 8));
+    placeTableCellBlock(
+      state,
+      paragraph("first", "first", { after: 8 }),
+      measure(10, 8),
+    );
     const second = placeTableCellBlock(
       state,
       paragraph("second", "second", { before: 8 }),
@@ -121,10 +125,15 @@ describe("table cell block flow", () => {
     };
     let pageResolverCalled = false;
 
-    const images = getTableCellFloatingImages(cell, cellMeasure, 100, (_run, paragraphY) => {
-      pageResolverCalled = true;
-      return { side: "left", x: 0, y: paragraphY };
-    });
+    const images = getTableCellFloatingImages(
+      cell,
+      cellMeasure,
+      100,
+      (_run, paragraphY) => {
+        pageResolverCalled = true;
+        return { side: "left", x: 0, y: paragraphY };
+      },
+    );
 
     expect(pageResolverCalled).toBe(false);
     expect(images.at(0)?.y).toBe(10);
@@ -151,11 +160,16 @@ describe("table cell block flow", () => {
       height: 10,
     };
 
-    const images = getTableCellFloatingImages(cell, cellMeasure, 100, (_run, paragraphY) => ({
-      side: "right",
-      x: -40,
-      y: paragraphY + 5,
-    }));
+    const images = getTableCellFloatingImages(
+      cell,
+      cellMeasure,
+      100,
+      (_run, paragraphY) => ({
+        side: "right",
+        x: -40,
+        y: paragraphY + 5,
+      }),
+    );
 
     expect(images.at(0)).toMatchObject({ x: -40, y: 5, side: "right" });
   });
@@ -224,8 +238,16 @@ describe("table cell block flow", () => {
 
   test("keeps consecutive authored empty paragraphs as independent spacers", () => {
     const state = createTableCellFlowState();
-    placeTableCellBlock(state, paragraph("body", "body", { after: 8 }), measure(10, 8));
-    placeTableCellBlock(state, paragraph("blank-1", "", { before: 8, after: 8 }), measure(10, 16));
+    placeTableCellBlock(
+      state,
+      paragraph("body", "body", { after: 8 }),
+      measure(10, 8),
+    );
+    placeTableCellBlock(
+      state,
+      paragraph("blank-1", "", { before: 8, after: 8 }),
+      measure(10, 16),
+    );
     const secondBlank = placeTableCellBlock(
       state,
       paragraph("blank-2", "", { before: 8, after: 8 }),
@@ -238,7 +260,11 @@ describe("table cell block flow", () => {
 
   test("includes final authored paragraph spacing in the cell height", () => {
     const state = createTableCellFlowState();
-    placeTableCellBlock(state, paragraph("body", "body", { after: 8 }), measure(10, 8));
+    placeTableCellBlock(
+      state,
+      paragraph("body", "body", { after: 8 }),
+      measure(10, 8),
+    );
 
     expect(state.height).toBe(10);
     expect(finishTableCellFlow(state)).toBe(18);
@@ -275,10 +301,21 @@ describe("table cell block flow", () => {
   test("keeps a floating text box outside cell flow and preserves the leading boundary", () => {
     const state = createTableCellFlowState();
     const automatic = paragraph("body", "body", { before: 14 });
-    automatic.attrs = { ...automatic.attrs, automaticSpacing: { before: true } };
+    automatic.attrs = {
+      ...automatic.attrs,
+      automaticSpacing: { before: true },
+    };
 
-    const floatingPlacement = placeTableCellBlock(state, textBox("float"), textBoxMeasure);
-    const paragraphPlacement = placeTableCellBlock(state, automatic, measure(10, 14));
+    const floatingPlacement = placeTableCellBlock(
+      state,
+      textBox("float"),
+      textBoxMeasure,
+    );
+    const paragraphPlacement = placeTableCellBlock(
+      state,
+      automatic,
+      measure(10, 14),
+    );
 
     expect(floatingPlacement.contentHeight).toBe(0);
     expect(paragraphPlacement.leadingSpacing).toBe(0);
@@ -288,10 +325,21 @@ describe("table cell block flow", () => {
   test("an in-flow text box consumes the cell boundary", () => {
     const state = createTableCellFlowState();
     const automatic = paragraph("body", "body", { before: 14 });
-    automatic.attrs = { ...automatic.attrs, automaticSpacing: { before: true } };
+    automatic.attrs = {
+      ...automatic.attrs,
+      automaticSpacing: { before: true },
+    };
 
-    const boxPlacement = placeTableCellBlock(state, textBox("block"), textBoxMeasure);
-    const paragraphPlacement = placeTableCellBlock(state, automatic, measure(10, 14));
+    const boxPlacement = placeTableCellBlock(
+      state,
+      textBox("block"),
+      textBoxMeasure,
+    );
+    const paragraphPlacement = placeTableCellBlock(
+      state,
+      automatic,
+      measure(10, 14),
+    );
 
     expect(boxPlacement.contentHeight).toBe(20);
     expect(paragraphPlacement.leadingSpacing).toBe(14);
@@ -303,16 +351,26 @@ describe("table cell block flow", () => {
     const block = paragraph("marker", "", { before: 8, after: 8 });
     block.attrs = { ...block.attrs, suppressEmptyParagraphHeight: true };
 
-    expect(placeTableCellBlock(state, block, suppressedMeasure).leadingSpacing).toBe(0);
+    expect(
+      placeTableCellBlock(state, block, suppressedMeasure).leadingSpacing,
+    ).toBe(0);
     expect(finishTableCellFlow(state)).toBe(0);
   });
 
   test("collapses surrounding spacing across a suppressed empty paragraph", () => {
     const state = createTableCellFlowState();
-    placeTableCellBlock(state, paragraph("first", "first", { after: 8 }), measure(10, 8));
+    placeTableCellBlock(
+      state,
+      paragraph("first", "first", { after: 8 }),
+      measure(10, 8),
+    );
     const marker = paragraph("marker", "", { before: 8, after: 8 });
     marker.attrs = { ...marker.attrs, suppressEmptyParagraphHeight: true };
-    const markerPlacement = placeTableCellBlock(state, marker, suppressedMeasure);
+    const markerPlacement = placeTableCellBlock(
+      state,
+      marker,
+      suppressedMeasure,
+    );
     const third = placeTableCellBlock(
       state,
       paragraph("third", "third", { before: 8 }),

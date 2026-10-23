@@ -1,22 +1,33 @@
 import { test } from "@playwright/test";
 
-import { ensureLiveView, expect, openEditor, type AdapterFixture } from "./parity-fixture";
+import {
+  type AdapterFixture,
+  ensureLiveView,
+  expect,
+  openEditor,
+} from "./parity-fixture";
 
 const VUE_ADAPTER = {
   name: "vue",
   baseUrl: "http://localhost:4201",
 } as const satisfies AdapterFixture;
 
-test("Vue applies table properties from the table options menu", async ({ page }) => {
+test("Vue applies table properties from the table options menu", async ({
+  page,
+}) => {
   await openEditor(page, VUE_ADAPTER);
   await ensureLiveView(page);
-  expect(await page.evaluate(() => window.__folioParity?.insertTable(2, 2) ?? false)).toBe(true);
+  expect(
+    await page.evaluate(() => window.__folioParity?.insertTable(2, 2) ?? false),
+  ).toBe(true);
 
   const tableOptions = page.getByTitle("Table options");
   await tableOptions.scrollIntoViewIfNeeded();
   await tableOptions.click();
 
-  const tableProperties = page.getByRole("button", { name: "Table properties" });
+  const tableProperties = page.getByRole("button", {
+    name: "Table properties",
+  });
   await expect(tableProperties).toBeVisible();
   await tableProperties.scrollIntoViewIfNeeded();
   await tableProperties.click();
@@ -30,6 +41,10 @@ test("Vue applies table properties from the table options menu", async ({ page }
 
   await expect(dialog).toBeHidden();
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getCurrentTableProperties() ?? null))
+    .poll(() =>
+      page.evaluate(
+        () => window.__folioParity?.getCurrentTableProperties() ?? null,
+      ),
+    )
     .toEqual({ width: 2500, widthType: "pct", justification: "center" });
 });

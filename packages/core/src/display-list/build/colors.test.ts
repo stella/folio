@@ -10,7 +10,12 @@ import { parseDisplayColor } from "./colors";
 describe("parseDisplayColor: inherited keys are not colours", () => {
   // `Object.prototype` members: an object-keyed palette answers all three with
   // a function or an object, which the hex parser then calls `.replace` on.
-  const INHERITED_KEYS = ["constructor", "toString", "__proto__", "hasOwnProperty"] as const;
+  const INHERITED_KEYS = [
+    "constructor",
+    "toString",
+    "__proto__",
+    "hasOwnProperty",
+  ] as const;
 
   for (const key of INHERITED_KEYS) {
     test(`\`${key}\` is an unknown colour, not an inherited value`, () => {
@@ -33,6 +38,11 @@ describe("parseDisplayColor: inherited keys are not colours", () => {
 
   test("a real named colour still resolves", () => {
     expect(parseDisplayColor("red")).toEqual({ r: 255, g: 0, b: 0, a: 1 });
-    expect(parseDisplayColor("DarkYellow")).toEqual({ r: 128, g: 128, b: 0, a: 1 });
+    expect(parseDisplayColor("DarkYellow")).toEqual({
+      r: 128,
+      g: 128,
+      b: 0,
+      a: 1,
+    });
   });
 });

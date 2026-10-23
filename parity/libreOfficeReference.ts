@@ -18,7 +18,8 @@ import {
 } from "./pdfReference";
 import type { DocGeom, ReviewView } from "./types";
 
-const LIBREOFFICE_APP_BINARY = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
+const LIBREOFFICE_APP_BINARY =
+  "/Applications/LibreOffice.app/Contents/MacOS/soffice";
 const EXPORT_TIMEOUT_MS = 180_000;
 
 const PDF_FILENAME = "libreoffice.pdf";
@@ -41,7 +42,9 @@ export class LibreOfficeReferenceError extends Error {
 const getLibreOfficeBinary = async (): Promise<string | null> => {
   const fromPath = Bun.which("soffice") ?? Bun.which("libreoffice");
   if (fromPath !== null) return fromPath;
-  return (await Bun.file(LIBREOFFICE_APP_BINARY).exists()) ? LIBREOFFICE_APP_BINARY : null;
+  return (await Bun.file(LIBREOFFICE_APP_BINARY).exists())
+    ? LIBREOFFICE_APP_BINARY
+    : null;
 };
 
 export const isLibreOfficeAvailable = async (): Promise<boolean> =>
@@ -62,7 +65,10 @@ export const getLibreOfficeVersion = async (): Promise<string | null> => {
     stdout: "pipe",
     stderr: "ignore",
   });
-  const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+  const [exitCode, stdout] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+  ]);
   const version = stdout.trim().replace(/^LibreOffice\s+/u, "");
   cachedLibreOfficeVersion = exitCode === 0 && version !== "" ? version : null;
   return cachedLibreOfficeVersion;
@@ -95,7 +101,10 @@ export const buildLibreOfficeExportArgs = ({
   inputPath,
 ];
 
-const exportViaLibreOffice = async (docxPath: string, destPdfPath: string): Promise<void> => {
+const exportViaLibreOffice = async (
+  docxPath: string,
+  destPdfPath: string,
+): Promise<void> => {
   const binary = await getLibreOfficeBinary();
   if (binary === null) {
     throw new LibreOfficeReferenceError(

@@ -1,5 +1,10 @@
 import fc from "fast-check";
-import { assertKnownProperty, assertPinnedProperty, assertProperty } from "../property-testing";
+
+import {
+  assertKnownProperty,
+  assertPinnedProperty,
+  assertProperty,
+} from "../property-testing";
 
 // Compiled by typecheck:tooling, outside production package budgets; never executed.
 export const propertyDriverIdsProof = () => {

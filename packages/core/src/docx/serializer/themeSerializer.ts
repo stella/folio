@@ -1,6 +1,7 @@
+import { escapeXmlAttribute } from "@stll/docx-core";
+
 import type { Theme, ThemeColorScheme, ThemeFont } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
-import { escapeXmlAttribute } from "@stll/docx-core";
 
 export const serializeThemeXml = (theme: Theme): string => {
   const name = escapeXmlAttribute(theme.name ?? "Folio Theme");
@@ -35,15 +36,24 @@ const serializeColorScheme = (colors: ThemeColorScheme | undefined): string => {
   };
   const entries = Object.entries(values)
     .map(
-      ([slot, value]) => `<a:${slot}><a:srgbClr val="${escapeXmlAttribute(value)}"/></a:${slot}>`,
+      ([slot, value]) =>
+        `<a:${slot}><a:srgbClr val="${escapeXmlAttribute(value)}"/></a:${slot}>`,
     )
     .join("");
   return `<a:clrScheme name="Folio">${entries}</a:clrScheme>`;
 };
 
 const serializeFontScheme = (theme: Theme): string => {
-  const major = serializeThemeFont(theme.fontScheme?.majorFont, "majorFont", "Arial");
-  const minor = serializeThemeFont(theme.fontScheme?.minorFont, "minorFont", "Arial");
+  const major = serializeThemeFont(
+    theme.fontScheme?.majorFont,
+    "majorFont",
+    "Arial",
+  );
+  const minor = serializeThemeFont(
+    theme.fontScheme?.minorFont,
+    "minorFont",
+    "Arial",
+  );
   return `<a:fontScheme name="Folio">${major}${minor}</a:fontScheme>`;
 };
 

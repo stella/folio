@@ -31,8 +31,12 @@ describe("comment anchor attributes", () => {
     const root = paintedRuns();
     const [, overlapping] = [...root.children];
 
-    expect([...root.querySelectorAll(commentAnchorSelector(7))]).toContain(overlapping);
-    expect([...root.querySelectorAll(commentAnchorSelector(9))]).toContain(overlapping);
+    expect([...root.querySelectorAll(commentAnchorSelector(7))]).toContain(
+      overlapping,
+    );
+    expect([...root.querySelectorAll(commentAnchorSelector(9))]).toContain(
+      overlapping,
+    );
   });
 
   test("the index answers for every comment a run is in, first run first", () => {

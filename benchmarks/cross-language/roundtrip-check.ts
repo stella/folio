@@ -85,7 +85,9 @@ for (const fixture of FIXTURES) {
   const rtXml = documentXml(rtPath);
   const origText = visibleText(origXml);
   const rtText = visibleText(rtXml);
-  const textPct = origText.length ? Math.round((rtText.length / origText.length) * 100) : 0;
+  const textPct = origText.length
+    ? Math.round((rtText.length / origText.length) * 100)
+    : 0;
 
   console.log(`\n=== ${fixture.size} · ${fixture.path.split("/").pop()} ===`);
   console.log(
@@ -99,7 +101,8 @@ for (const fixture of FIXTURES) {
       element: tag,
       original,
       "round-trip": roundTrip,
-      kept: original === 0 ? "—" : `${Math.round((roundTrip / original) * 100)}%`,
+      kept:
+        original === 0 ? "—" : `${Math.round((roundTrip / original) * 100)}%`,
     };
   }).filter((row) => row.original > 0 || row["round-trip"] > 0);
   console.table(rows);

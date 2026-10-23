@@ -83,7 +83,11 @@ describe("automatic numbered-list spacing", () => {
       automaticSpacing: { before: true },
     });
 
-    layoutDocument([first, second], [paragraphMeasure, paragraphMeasure], layoutOptions);
+    layoutDocument(
+      [first, second],
+      [paragraphMeasure, paragraphMeasure],
+      layoutOptions,
+    );
 
     expect(first.attrs?.spacing).toEqual({ before: 18, after: 18 });
     expect(second.attrs?.spacing).toEqual({ before: 18, after: 18 });
@@ -93,7 +97,11 @@ describe("automatic numbered-list spacing", () => {
     const first = numberedParagraph({ id: "first", numId: 4 });
     const second = numberedParagraph({ id: "second", numId: 4 });
 
-    layoutDocument([first, second], [paragraphMeasure, paragraphMeasure], layoutOptions);
+    layoutDocument(
+      [first, second],
+      [paragraphMeasure, paragraphMeasure],
+      layoutOptions,
+    );
 
     expect(first.attrs?.spacing).toEqual({ before: 18, after: 18 });
     expect(second.attrs?.spacing).toEqual({ before: 18, after: 18 });

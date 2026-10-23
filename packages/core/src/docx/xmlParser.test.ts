@@ -77,18 +77,24 @@ describe("OOXML parsing", () => {
     // Written back as a literal newline, XML 1.0 §3.3.3 attribute-value
     // normalisation flattens it to a space in every conformant reader, so the
     // replay must restore the character reference.
-    const document = parseXmlDocument('<wp:docPr descr="two&#xA;lines&#x9;wide"/>');
+    const document = parseXmlDocument(
+      '<wp:docPr descr="two&#xA;lines&#x9;wide"/>',
+    );
     const serialized = document ? elementToXml(document) : "";
 
     expect(serialized).toBe('<wp:docPr descr="two&#10;lines&#9;wide"/>');
-    expect(parseXmlDocument(serialized)?.attributes?.["descr"]).toBe("two\nlines\twide");
+    expect(parseXmlDocument(serialized)?.attributes?.["descr"]).toBe(
+      "two\nlines\twide",
+    );
   });
 
   test("supplies canonical bindings for known unbound OOXML prefixes", () => {
     const document = parseXmlDocument(
       '<w:pict><v:shape><v:imagedata r:id="image"/></v:shape></w:pict>',
     );
-    const selfContained = document ? cloneWithXmlnsDeclarations(document, {}) : null;
+    const selfContained = document
+      ? cloneWithXmlnsDeclarations(document, {})
+      : null;
     const serialized = selfContained ? elementToXml(selfContained) : "";
 
     expect(serialized).toContain(`xmlns:w="${NAMESPACES.w}"`);
@@ -136,7 +142,9 @@ describe("collectXmlnsDeclarations", () => {
       },
     };
 
-    expect(collectXmlnsDeclarations(element)).toEqual({ "xmlns:a": "urn:example:a" });
+    expect(collectXmlnsDeclarations(element)).toEqual({
+      "xmlns:a": "urn:example:a",
+    });
   });
 
   test("stops once the collected set reaches the chain budget", () => {
@@ -145,7 +153,8 @@ describe("collectXmlnsDeclarations", () => {
     // within it — including the root set a capture inherits unchanged.
     const attributes: Record<string, string> = {};
     for (let i = 0; i < 60; i++) {
-      attributes[`xmlns:ns${String(i)}`] = `urn:${"y".repeat(400)}:${String(i)}`;
+      attributes[`xmlns:ns${String(i)}`] =
+        `urn:${"y".repeat(400)}:${String(i)}`;
     }
     const element: XmlElement = { type: "element", name: "w:pict", attributes };
 
@@ -168,10 +177,12 @@ describe("mergeXmlnsDeclarations", () => {
       attributes: { "xmlns:w": "urn:w:new", "xmlns:v": "urn:v" },
     };
 
-    expect(mergeXmlnsDeclarations({ "xmlns:w": "urn:w:old" }, element)).toEqual({
-      "xmlns:w": "urn:w:new",
-      "xmlns:v": "urn:v",
-    });
+    expect(mergeXmlnsDeclarations({ "xmlns:w": "urn:w:old" }, element)).toEqual(
+      {
+        "xmlns:w": "urn:w:new",
+        "xmlns:v": "urn:v",
+      },
+    );
   });
 
   test("keeps the inherited set when merging would exceed the chain budget", () => {
@@ -183,7 +194,8 @@ describe("mergeXmlnsDeclarations", () => {
     }
     const attributes: Record<string, string> = {};
     for (let i = 0; i < 40; i++) {
-      attributes[`xmlns:own${String(i)}`] = `urn:${"z".repeat(200)}:${String(i)}`;
+      attributes[`xmlns:own${String(i)}`] =
+        `urn:${"z".repeat(200)}:${String(i)}`;
     }
     const element: XmlElement = { type: "element", name: "w:p", attributes };
 

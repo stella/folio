@@ -55,7 +55,10 @@ function walkBlocks(
   }
 }
 
-function paragraphText(block: ParagraphBlock, inputs: BookmarkTextInputs): string {
+function paragraphText(
+  block: ParagraphBlock,
+  inputs: BookmarkTextInputs,
+): string {
   let text = "";
   for (const run of block.runs) {
     if (run.kind === "text") {
@@ -74,7 +77,10 @@ function bookmarkFieldText(
   if (run.kind !== "field") {
     return "";
   }
-  const resolved = run.pmStart === undefined ? undefined : inputs.fieldValues?.get(run.pmStart);
+  const resolved =
+    run.pmStart === undefined
+      ? undefined
+      : inputs.fieldValues?.get(run.pmStart);
   if (resolved !== undefined) {
     return resolved;
   }
@@ -110,5 +116,7 @@ function visibleListMarker(block: ParagraphBlock): string {
   if (!normalized) {
     return "";
   }
-  return block.attrs?.listMarkerSuffix === "nothing" ? normalized : `${normalized} `;
+  return block.attrs?.listMarkerSuffix === "nothing"
+    ? normalized
+    : `${normalized} `;
 }

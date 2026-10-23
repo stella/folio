@@ -1,4 +1,9 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "@playwright/test";
 import { TaggedError } from "better-result";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -162,7 +167,10 @@ const EDIT_PARAGRAPH_COUNT = 1500;
 const port = Number(process.env["FOLIO_PERF_PORT"] ?? DEFAULT_PORT);
 const baseUrl = process.env["FOLIO_PERF_URL"] ?? `http://${HOST}:${port}`;
 const skipBuild = process.env["FOLIO_PERF_SKIP_BUILD"] === "1";
-const repetitions = readPositiveInteger(process.env["FOLIO_PERF_REPETITIONS"], DEFAULT_REPETITIONS);
+const repetitions = readPositiveInteger(
+  process.env["FOLIO_PERF_REPETITIONS"],
+  DEFAULT_REPETITIONS,
+);
 const instrumentation: InstrumentationMode =
   process.env["FOLIO_PERF_DIAGNOSTICS"] === "1" ? "detailed" : "standard";
 const suite = readSuite(process.env["FOLIO_PERF_SUITE"]);
@@ -191,7 +199,11 @@ const scenarioCatalog = {
     name: "open podily-bps.docx",
     path: "/?file=podily-bps.docx",
   },
-  sample: { minimumPages: 1, name: "open sample.docx", path: "/?file=sample.docx" },
+  sample: {
+    minimumPages: 1,
+    name: "open sample.docx",
+    path: "/?file=sample.docx",
+  },
   paragraphs: {
     minimumPages: 20,
     name: "open generated 1500-paragraph DOCX",
@@ -199,7 +211,11 @@ const scenarioCatalog = {
   },
 } as const satisfies Record<string, OpenScenario>;
 const openScenariosBySuite: Record<PerfSuite, readonly OpenScenario[]> = {
-  baseline: [scenarioCatalog.demo, scenarioCatalog.podily, scenarioCatalog.paragraphs],
+  baseline: [
+    scenarioCatalog.demo,
+    scenarioCatalog.podily,
+    scenarioCatalog.paragraphs,
+  ],
   corpus: [
     scenarioCatalog.sample,
     scenarioCatalog.demo,
@@ -245,7 +261,15 @@ async function main(): Promise<void> {
 
       previewProcess = spawn(
         "bun",
-        ["--filter", "@stll/playground", "preview", "--host", HOST, "--port", String(port)],
+        [
+          "--filter",
+          "@stll/playground",
+          "preview",
+          "--host",
+          HOST,
+          "--port",
+          String(port),
+        ],
         {
           cwd: rootDir(),
           stdio: ["ignore", "pipe", "pipe"],
@@ -314,7 +338,11 @@ type CommandOptions = {
   cwd: string;
 };
 
-async function runCommand({ command, args, cwd }: CommandOptions): Promise<void> {
+async function runCommand({
+  command,
+  args,
+  cwd,
+}: CommandOptions): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
@@ -337,9 +365,16 @@ async function runCommand({ command, args, cwd }: CommandOptions): Promise<void>
   });
 }
 
-function readCommandOutput({ command, args, cwd }: CommandOptions): Promise<string> {
+function readCommandOutput({
+  command,
+  args,
+  cwd,
+}: CommandOptions): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -383,14 +418,18 @@ async function waitForServer(url: string): Promise<void> {
   throw new FolioPerfError({ message: `Timed out waiting for ${url}` });
 }
 
-async function profileScenarios(browser: Browser): Promise<PerfScenarioResult[]> {
+async function profileScenarios(
+  browser: Browser,
+): Promise<PerfScenarioResult[]> {
   const results: PerfScenarioResult[] = [];
 
   for (const scenario of openScenarios) {
     for (const cacheState of ["cold", "warm"] as const) {
       process.stderr.write(`Measuring ${scenario.name} (${cacheState})...\n`);
       // oxlint-disable-next-line no-await-in-loop -- benchmark scenarios run sequentially to avoid contention
-      results.push(await profileOpenScenario({ browser, cacheState, scenario }));
+      results.push(
+        await profileOpenScenario({ browser, cacheState, scenario }),
+      );
     }
   }
 
@@ -444,7 +483,9 @@ async function profileOpenScenario({
   };
 }
 
-async function profileTypingScenario(browser: Browser): Promise<PerfScenarioResult> {
+async function profileTypingScenario(
+  browser: Browser,
+): Promise<PerfScenarioResult> {
   const context = await createContext(browser);
   const samples: PerfSample[] = [];
 
@@ -467,11 +508,16 @@ async function profileTypingScenario(browser: Browser): Promise<PerfScenarioResu
         // oxlint-disable-next-line no-await-in-loop -- flush click-driven paint before resetting action counters
         await waitForTwoFrames(page);
         // oxlint-disable-next-line no-await-in-loop -- capture the visible content before the measured edit
-        const visibleTextBefore = await page.locator(".layout-page-content").first().textContent();
+        const visibleTextBefore = await page
+          .locator(".layout-page-content")
+          .first()
+          .textContent();
         // oxlint-disable-next-line no-await-in-loop -- metrics bracket the measured action
         const before = await readMetrics(cdp);
         // oxlint-disable-next-line no-await-in-loop -- reset browser counters immediately before the action
-        await page.evaluate(() => globalThis.__resetFolioPerfCounters?.("edit"));
+        await page.evaluate(() =>
+          globalThis.__resetFolioPerfCounters?.("edit"),
+        );
         const startedAt = performance.now();
         // oxlint-disable-next-line no-await-in-loop -- one user-like key event is the measured action
         await page.keyboard.press("a");
@@ -479,7 +525,9 @@ async function profileTypingScenario(browser: Browser): Promise<PerfScenarioResu
         await page.waitForFunction(
           (previousText) => {
             const pageContent = document.querySelector(".layout-page-content");
-            return pageContent !== null && pageContent.textContent !== previousText;
+            return (
+              pageContent !== null && pageContent.textContent !== previousText
+            );
           },
           visibleTextBefore,
           { timeout: 20_000 },
@@ -493,8 +541,10 @@ async function profileTypingScenario(browser: Browser): Promise<PerfScenarioResu
         // oxlint-disable-next-line no-await-in-loop -- wait for transaction layout and paint
         await page.waitForFunction(
           () =>
-            (globalThis.__folioPerfCounters?.layoutReasons.transaction ?? 0) > 0 &&
-            globalThis.__folioPerfCounters?.milestones["complete-layout"] !== undefined,
+            (globalThis.__folioPerfCounters?.layoutReasons.transaction ?? 0) >
+              0 &&
+            globalThis.__folioPerfCounters?.milestones["complete-layout"] !==
+              undefined,
           undefined,
           { timeout: 20_000 },
         );
@@ -537,7 +587,10 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
   return context;
 }
 
-async function primeContext(context: BrowserContext, path: string): Promise<void> {
+async function primeContext(
+  context: BrowserContext,
+  path: string,
+): Promise<void> {
   const page = await context.newPage();
   try {
     await page.goto(`${baseUrl}${path}`);
@@ -582,16 +635,30 @@ async function profileLoad({
 
 async function readMetrics(cdp: CDPSession): Promise<BrowserMetrics> {
   const result = await cdp.send("Performance.getMetrics");
-  return Object.fromEntries(result.metrics.map((metric) => [metric.name, metric.value]));
+  return Object.fromEntries(
+    result.metrics.map((metric) => [metric.name, metric.value]),
+  );
 }
 
-function metricDelta(before: BrowserMetrics, after: BrowserMetrics): PerfSample["browser"] {
+function metricDelta(
+  before: BrowserMetrics,
+  after: BrowserMetrics,
+): PerfSample["browser"] {
   return {
     heapUsedMb: round((after.JSHeapUsedSize ?? 0) / 1024 / 1024),
-    layoutMs: round(((after.LayoutDuration ?? 0) - (before.LayoutDuration ?? 0)) * 1000),
-    scriptMs: round(((after.ScriptDuration ?? 0) - (before.ScriptDuration ?? 0)) * 1000),
-    styleMs: round(((after.RecalcStyleDuration ?? 0) - (before.RecalcStyleDuration ?? 0)) * 1000),
-    taskMs: round(((after.TaskDuration ?? 0) - (before.TaskDuration ?? 0)) * 1000),
+    layoutMs: round(
+      ((after.LayoutDuration ?? 0) - (before.LayoutDuration ?? 0)) * 1000,
+    ),
+    scriptMs: round(
+      ((after.ScriptDuration ?? 0) - (before.ScriptDuration ?? 0)) * 1000,
+    ),
+    styleMs: round(
+      ((after.RecalcStyleDuration ?? 0) - (before.RecalcStyleDuration ?? 0)) *
+        1000,
+    ),
+    taskMs: round(
+      ((after.TaskDuration ?? 0) - (before.TaskDuration ?? 0)) * 1000,
+    ),
   };
 }
 
@@ -643,7 +710,9 @@ async function readStats(page: Page): Promise<PerfStats> {
     }
     return {
       createElement: roundBucket(perf.createElement),
-      documentLoadPhases: { "docx-parse": roundBucket(perf.documentLoadPhases["docx-parse"]) },
+      documentLoadPhases: {
+        "docx-parse": roundBucket(perf.documentLoadPhases["docx-parse"]),
+      },
       elements: document.querySelectorAll("*").length,
       getBoundingClientRect: roundBucket(perf.getBoundingClientRect),
       hiddenEditorPhases: {
@@ -652,7 +721,9 @@ async function readStats(page: Page): Promise<PerfStats> {
         "to-prose-doc": roundBucket(perf.hiddenEditorPhases["to-prose-doc"]),
         "update-state": roundBucket(perf.hiddenEditorPhases["update-state"]),
       },
-      hiddenPmElements: document.querySelectorAll(".paged-editor__hidden-pm-wrapper *").length,
+      hiddenPmElements: document.querySelectorAll(
+        ".paged-editor__hidden-pm-wrapper *",
+      ).length,
       hiddenStateCreations: perf.hiddenStateCreations,
       layoutCompletions: perf.layoutCompletions,
       layoutErrors: perf.layoutErrors,
@@ -676,12 +747,16 @@ async function readStats(page: Page): Promise<PerfStats> {
       measureText: roundBucket(perf.measureText),
       measuredBlockRange: perf.measuredBlockRange,
       milestones: Object.fromEntries(
-        Object.entries(perf.milestones).map(([name, value]) => [name, roundInBrowser(value)]),
+        Object.entries(perf.milestones).map(([name, value]) => [
+          name,
+          roundInBrowser(value),
+        ]),
       ),
       pages: document.querySelectorAll(".layout-page").length,
       renderedPages: document.querySelectorAll(".layout-page-content").length,
       uniqueMeasuredBlocks: perf.measuredBlockIndexes.size,
-      visiblePageElements: document.querySelectorAll(".paged-editor__pages *").length,
+      visiblePageElements: document.querySelectorAll(".paged-editor__pages *")
+        .length,
     };
 
     function roundInBrowser(value: number): number {
@@ -694,12 +769,17 @@ async function readStats(page: Page): Promise<PerfStats> {
   });
 
   if (!stats) {
-    throw new FolioPerfError({ message: "Folio performance counters were not installed" });
+    throw new FolioPerfError({
+      message: "Folio performance counters were not installed",
+    });
   }
   return stats;
 }
 
-async function installCounters(context: BrowserContext, detailed: boolean): Promise<void> {
+async function installCounters(
+  context: BrowserContext,
+  detailed: boolean,
+): Promise<void> {
   await context.addInitScript((enableDetailedCounters) => {
     const makeBucket = (): CounterBucket => ({ count: 0, totalMs: 0 });
     const makeLayoutPhaseCounters = (): Record<LayoutPhase, CounterBucket> => ({
@@ -710,13 +790,19 @@ async function installCounters(context: BrowserContext, detailed: boolean): Prom
       "measure-blocks": makeBucket(),
       "render-pages": makeBucket(),
     });
-    const makeHiddenEditorPhaseCounters = (): Record<HiddenEditorPhase, CounterBucket> => ({
+    const makeHiddenEditorPhaseCounters = (): Record<
+      HiddenEditorPhase,
+      CounterBucket
+    > => ({
       "editor-state": makeBucket(),
       "editor-view": makeBucket(),
       "to-prose-doc": makeBucket(),
       "update-state": makeBucket(),
     });
-    const makeHiddenStateCreationCounters = (): Record<HiddenEditorStateReason, number> => ({
+    const makeHiddenStateCreationCounters = (): Record<
+      HiddenEditorStateReason,
+      number
+    > => ({
       "external-document": 0,
       mount: 0,
     });
@@ -754,12 +840,16 @@ async function installCounters(context: BrowserContext, detailed: boolean): Prom
       uniqueMeasuredBlocks: 0,
       visiblePageElements: 0,
     });
-    const recordMilestone = (name: PerfMilestone, explicitTime?: number): void => {
+    const recordMilestone = (
+      name: PerfMilestone,
+      explicitTime?: number,
+    ): void => {
       const perf = globalThis.__folioPerfCounters;
       if (!perf || perf.milestones[name] !== undefined) {
         return;
       }
-      perf.milestones[name] = (explicitTime ?? performance.now()) - perf.sampleStartedAt;
+      perf.milestones[name] =
+        (explicitTime ?? performance.now()) - perf.sampleStartedAt;
     };
 
     globalThis.__folioPerfCounters = makeCounters();
@@ -858,7 +948,9 @@ async function installCounters(context: BrowserContext, detailed: boolean): Prom
         if (!globalThis.__folioPerfCounters?.trackAutomaticPagePaint) {
           return;
         }
-        const hasContent = document.querySelector(".layout-page-content [data-pm-start]") !== null;
+        const hasContent =
+          document.querySelector(".layout-page-content [data-pm-start]") !==
+          null;
         if (!hasContent || frameScheduled) {
           return;
         }
@@ -866,11 +958,16 @@ async function installCounters(context: BrowserContext, detailed: boolean): Prom
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             frameScheduled = false;
-            if (document.querySelector(".layout-page-content [data-pm-start]") === null) {
+            if (
+              document.querySelector(".layout-page-content [data-pm-start]") ===
+              null
+            ) {
               return;
             }
             recordMilestone("visible-pages-painted");
-            const editor = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef();
+            const editor = globalThis.__folioPlayground
+              ?.getEditorRef()
+              ?.getEditorRef();
             if (editor) {
               recordMilestone("first-usable-page");
               return;
@@ -884,7 +981,9 @@ async function installCounters(context: BrowserContext, detailed: boolean): Prom
       check();
     };
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", observeUsablePage, { once: true });
+      document.addEventListener("DOMContentLoaded", observeUsablePage, {
+        once: true,
+      });
     } else {
       observeUsablePage();
     }
@@ -920,8 +1019,16 @@ async function installCounters(context: BrowserContext, detailed: boolean): Prom
     if (!enableDetailedCounters) {
       return;
     }
-    wrapMethod(CanvasRenderingContext2D.prototype, "measureText", "measureText");
-    wrapMethod(Element.prototype, "getBoundingClientRect", "getBoundingClientRect");
+    wrapMethod(
+      CanvasRenderingContext2D.prototype,
+      "measureText",
+      "measureText",
+    );
+    wrapMethod(
+      Element.prototype,
+      "getBoundingClientRect",
+      "getBoundingClientRect",
+    );
     wrapMethod(Document.prototype, "createElement", "createElement");
 
     function addToBucket(bucket: CounterBucket, durationMs: number): void {
@@ -979,8 +1086,12 @@ function aggregateSamples(
     const proseMirror = sample.stats.hiddenEditorPhases["to-prose-doc"];
     const hiddenEditorPhaseTotal = sumBucketMs(sample.stats.hiddenEditorPhases);
     const layoutPhaseTotal = sumBucketMs(sample.stats.layoutPhases);
-    const layoutPipelinePhaseTotal = sumBucketMs(sample.stats.layoutPhases, "initial-fonts");
-    const accountedPhaseMs = parse.totalMs + hiddenEditorPhaseTotal + layoutPhaseTotal;
+    const layoutPipelinePhaseTotal = sumBucketMs(
+      sample.stats.layoutPhases,
+      "initial-fonts",
+    );
+    const accountedPhaseMs =
+      parse.totalMs + hiddenEditorPhaseTotal + layoutPhaseTotal;
     add("wallMs", sample.wallMs);
     add("browser.heapUsedMb", sample.browser.heapUsedMb);
     add("browser.layoutMs", sample.browser.layoutMs);
@@ -989,37 +1100,71 @@ function aggregateSamples(
     add("browser.taskMs", sample.browser.taskMs);
     addBucket("docxParseMs", parse);
     addBucket("proseMirrorConversionMs", proseMirror);
-    addBucket("editorStateCreationMs", sample.stats.hiddenEditorPhases["editor-state"]);
-    addBucket("editorViewCreationMs", sample.stats.hiddenEditorPhases["editor-view"]);
+    addBucket(
+      "editorStateCreationMs",
+      sample.stats.hiddenEditorPhases["editor-state"],
+    );
+    addBucket(
+      "editorViewCreationMs",
+      sample.stats.hiddenEditorPhases["editor-view"],
+    );
     addBucket("fontReadinessMs", sample.stats.layoutPhases["initial-fonts"]);
-    addBucket("flowBlockGenerationMs", sample.stats.layoutPhases["flow-blocks"]);
+    addBucket(
+      "flowBlockGenerationMs",
+      sample.stats.layoutPhases["flow-blocks"],
+    );
     addBucket("measurementMs", sample.stats.layoutPhases["measure-blocks"]);
     addBucket("paginationMs", sample.stats.layoutPhases["layout-document"]);
     addBucket("renderPagesMs", sample.stats.layoutPhases["render-pages"]);
     if (scenarioKind === "open") {
       add("firstUsablePageMs", sample.stats.milestones["first-usable-page"]);
     } else {
-      add("keyToVisibleUpdateMs", sample.stats.milestones["visible-pages-painted"]);
+      add(
+        "keyToVisibleUpdateMs",
+        sample.stats.milestones["visible-pages-painted"],
+      );
     }
     add("completeLayoutMs", sample.stats.milestones["complete-layout"]);
     add("bytesAvailableMs", sample.stats.milestones["bytes-available"]);
-    add("visiblePagesPaintedMs", sample.stats.milestones["visible-pages-painted"]);
+    add(
+      "visiblePagesPaintedMs",
+      sample.stats.milestones["visible-pages-painted"],
+    );
     const renderPagesReadyMs = sample.stats.milestones["render-pages-ready"];
-    const visiblePagesPaintedMs = sample.stats.milestones["visible-pages-painted"];
-    if (renderPagesReadyMs !== undefined && visiblePagesPaintedMs !== undefined) {
-      add("pagePaintingMs", Math.max(0, visiblePagesPaintedMs - renderPagesReadyMs));
+    const visiblePagesPaintedMs =
+      sample.stats.milestones["visible-pages-painted"];
+    if (
+      renderPagesReadyMs !== undefined &&
+      visiblePagesPaintedMs !== undefined
+    ) {
+      add(
+        "pagePaintingMs",
+        Math.max(0, visiblePagesPaintedMs - renderPagesReadyMs),
+      );
     }
     add("accountedPhaseMs", accountedPhaseMs);
     const layoutStartMs = sample.stats.milestones["layout-start"];
-    add(scenarioKind === "edit" ? "inputToLayoutStartMs" : "layoutStartMs", layoutStartMs);
+    add(
+      scenarioKind === "edit" ? "inputToLayoutStartMs" : "layoutStartMs",
+      layoutStartMs,
+    );
     const completeLayoutMs = sample.stats.milestones["complete-layout"];
     if (completeLayoutMs !== undefined) {
-      add("unaccountedToCompleteMs", Math.max(0, completeLayoutMs - accountedPhaseMs));
+      add(
+        "unaccountedToCompleteMs",
+        Math.max(0, completeLayoutMs - accountedPhaseMs),
+      );
       const bytesAvailableMs = sample.stats.milestones["bytes-available"];
       if (bytesAvailableMs !== undefined) {
-        const pipelineAfterBytesMs = Math.max(0, completeLayoutMs - bytesAvailableMs);
+        const pipelineAfterBytesMs = Math.max(
+          0,
+          completeLayoutMs - bytesAvailableMs,
+        );
         add("pipelineAfterBytesMs", pipelineAfterBytesMs);
-        add("unaccountedAfterBytesMs", Math.max(0, pipelineAfterBytesMs - accountedPhaseMs));
+        add(
+          "unaccountedAfterBytesMs",
+          Math.max(0, pipelineAfterBytesMs - accountedPhaseMs),
+        );
       }
       if (layoutStartMs !== undefined) {
         const layoutPipelineMs = Math.max(0, completeLayoutMs - layoutStartMs);
@@ -1039,7 +1184,10 @@ function aggregateSamples(
   }
 
   return Object.fromEntries(
-    Object.entries(metrics).map(([name, values]) => [name, calculateDistribution(values)]),
+    Object.entries(metrics).map(([name, values]) => [
+      name,
+      calculateDistribution(values),
+    ]),
   );
 }
 
@@ -1068,7 +1216,10 @@ function calculateDistribution(values: readonly number[]): Distribution {
   };
 }
 
-function readPositiveInteger(value: string | undefined, fallback: number): number {
+function readPositiveInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

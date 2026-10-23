@@ -8,7 +8,11 @@
  */
 
 import { hasComplexScript, hasRightToLeft } from "../utils/scriptSegments";
-import { SHAPING_DIRECTION, type Shaper, type ShapingDirection } from "./shaper";
+import {
+  type Shaper,
+  SHAPING_DIRECTION,
+  type ShapingDirection,
+} from "./shaper";
 
 /**
  * One glyph, placed. Advances and offsets are in CSS pixels at the run's size;
@@ -41,14 +45,18 @@ export type PlaceRunOptions = {
 export const needsShaping = (text: string): boolean => hasComplexScript(text);
 
 export const directionOf = (text: string): ShapingDirection =>
-  hasRightToLeft(text) ? SHAPING_DIRECTION.rightToLeft : SHAPING_DIRECTION.leftToRight;
+  hasRightToLeft(text)
+    ? SHAPING_DIRECTION.rightToLeft
+    : SHAPING_DIRECTION.leftToRight;
 
 /**
  * Code-point index for each UTF-8 byte offset the shaper can report as a
  * cluster. Only cluster starts are ever looked up, so offsets inside a
  * character are left absent rather than filled in with a neighbour's index.
  */
-const codePointIndexByByteOffset = (text: string): ReadonlyMap<number, number> => {
+const codePointIndexByByteOffset = (
+  text: string,
+): ReadonlyMap<number, number> => {
   const byOffset = new Map<number, number>();
   let offset = 0;
   let index = 0;
@@ -100,13 +108,15 @@ export const placeRun = ({
   }
   const scale = fontSizePx / shaped.unitsPerEm;
   const indexByOffset = codePointIndexByByteOffset(text);
-  return shaped.glyphs.map(({ glyphId, cluster, xAdvance, xOffset, yOffset }) => ({
-    glyphId,
-    clusterIndex: indexByOffset.get(cluster) ?? 0,
-    xAdvancePx: xAdvance * scale,
-    xOffsetPx: xOffset * scale,
-    yOffsetPx: yOffset * scale,
-  }));
+  return shaped.glyphs.map(
+    ({ glyphId, cluster, xAdvance, xOffset, yOffset }) => ({
+      glyphId,
+      clusterIndex: indexByOffset.get(cluster) ?? 0,
+      xAdvancePx: xAdvance * scale,
+      xOffsetPx: xOffset * scale,
+      yOffsetPx: yOffset * scale,
+    }),
+  );
 };
 
 /**

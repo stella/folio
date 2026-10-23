@@ -1,16 +1,19 @@
 import { CanonicalSessionRefusalError } from "../../packages/core/src/controller/hiddenEditorManager";
-import type { CanonicalGap } from "../../packages/core/src/types/canonicalCapabilities";
-
 /** Private error sink: retain repeated refusals even when the status text is unchanged. */
 import { CanonicalSaveDiagnosticError } from "../../packages/core/src/docx/canonicalSave";
 import type { SaveDiagnostic } from "../../packages/core/src/docx/saveDiagnostics";
-import type { BrowserInputAction } from "../visual/browserInputTrace";
+import type { CanonicalGap } from "../../packages/core/src/types/canonicalCapabilities";
 import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
 import { CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS } from "../../test/canonicalSaveDiagnostics";
+import type { BrowserInputAction } from "../visual/browserInputTrace";
 
 export type CanonicalFuzzPhase =
   | { type: "load" | "finalSave" | "reload" }
-  | { type: "input" | "undo" | "redo" | "save"; index: number; action: BrowserInputAction["kind"] };
+  | {
+      type: "input" | "undo" | "redo" | "save";
+      index: number;
+      action: BrowserInputAction["kind"];
+    };
 
 type CanonicalFuzzErrorDetails =
   | {
@@ -39,7 +42,8 @@ export type CanonicalFuzzObservation = {
 /** The adapter reports a successful full-save fallback through its error channel. */
 export const isCanonicalSaveFallback = (error: CanonicalFuzzError) => {
   if (error.status !== "saveDiagnostic") return false;
-  const disposition = CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS[error.diagnostic.type];
+  const disposition =
+    CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS[error.diagnostic.type];
   return (
     disposition.status === "permitted" &&
     error.gap === CANONICAL_GAP.save &&

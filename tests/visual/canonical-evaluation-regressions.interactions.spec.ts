@@ -1,29 +1,33 @@
 import { expect } from "@playwright/test";
 import { Result } from "better-result";
 import { readFileSync } from "node:fs";
-import { test } from "./canonicalTimerProbe";
-import { waitForCanonicalPageReady } from "./canonicalPageNavigation";
+
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
-import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import {
-  MODIFIER,
-  reactPort,
-  vuePort,
-  snapshot,
   clearRefusals,
   expectNoRefusals,
-  select,
   loadReady,
+  MODIFIER,
+  reactPort,
+  select,
+  snapshot,
+  vuePort,
 } from "../parity/canonicalInteractionAssertions";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 import {
   checkCanonicalBrowserHistory,
   initializeCanonicalBrowserHistory,
 } from "./canonicalBrowserHistoryOracle";
 import { CANONICAL_EVALUATION_HISTORY_REPLAY } from "./canonicalBrowserTrace";
-import { canonicalHistoryReplayActions, runCanonicalHistoryReplay } from "./canonicalHistoryReplay";
+import {
+  canonicalHistoryReplayActions,
+  runCanonicalHistoryReplay,
+} from "./canonicalHistoryReplay";
+import { waitForCanonicalPageReady } from "./canonicalPageNavigation";
+import { test } from "./canonicalTimerProbe";
 
 test("canonical structural gestures and toolbar operations preserve each intermediate history state", async ({
   page,
@@ -39,7 +43,9 @@ test("canonical structural gestures and toolbar operations preserve each interme
       await loadReady(page, source);
       await select(page, 2);
     };
-    const undoExactly = async (before: Awaited<ReturnType<typeof snapshot>>) => {
+    const undoExactly = async (
+      before: Awaited<ReturnType<typeof snapshot>>,
+    ) => {
       const after = await snapshot(page);
       expect(after?.document).not.toEqual(before?.document);
       expect(after?.projectionMatchesCanonical).toBe(true);
@@ -64,9 +70,12 @@ test("canonical structural gestures and toolbar operations preserve each interme
       const inserted = await snapshot(page);
       expect(inserted?.document?.package.document.content).toHaveLength(1);
       const paragraph = inserted?.document?.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") throw new TypeError("Expected break paragraph.");
+      if (paragraph?.type !== "paragraph")
+        throw new TypeError("Expected break paragraph.");
       const breaks = paragraph.content.flatMap((run) =>
-        run.type === "run" ? run.content.filter((leaf) => leaf.type === "break") : [],
+        run.type === "run"
+          ? run.content.filter((leaf) => leaf.type === "break")
+          : [],
       );
       expect(breaks).toHaveLength(1);
       expect(breaks.at(0)).toMatchObject({
@@ -81,7 +90,9 @@ test("canonical structural gestures and toolbar operations preserve each interme
     await select(page, 2);
     const split = await snapshot(page);
     await page.keyboard.press("Delete");
-    expect((await snapshot(page))?.document?.package.document.content).toHaveLength(1);
+    expect(
+      (await snapshot(page))?.document?.package.document.content,
+    ).toHaveLength(1);
     await undoExactly(split);
 
     await reload();
@@ -93,7 +104,9 @@ test("canonical structural gestures and toolbar operations preserve each interme
     await select(page, 1, 3);
     const beforeToolbar = await snapshot(page);
     await page.getByRole("button", { name: "Bold", exact: true }).click();
-    const bold = (await snapshot(page))?.document?.package.document.content.at(0);
+    const bold = (await snapshot(page))?.document?.package.document.content.at(
+      0,
+    );
     expect(
       bold?.type === "paragraph" &&
         bold.content.some((run) => run.type === "run" && run.formatting?.bold),
@@ -107,7 +120,9 @@ test("canonical structural gestures and toolbar operations preserve each interme
     await page.keyboard.press("Tab");
     const nested = await snapshot(page);
     await page.keyboard.press("Shift+Tab");
-    const outdented = (await snapshot(page))?.document?.package.document.content.at(0);
+    const outdented = (
+      await snapshot(page)
+    )?.document?.package.document.content.at(0);
     expect(
       outdented?.type === "paragraph" &&
         outdented.formatting?.numPr?.kind === "reference" &&
@@ -118,10 +133,13 @@ test("canonical structural gestures and toolbar operations preserve each interme
     await select(page, 1);
     const beforeListBackspace = await snapshot(page);
     await page.keyboard.press("Backspace");
-    const removed = (await snapshot(page))?.document?.package.document.content.at(0);
-    expect(removed?.type === "paragraph" && removed.formatting?.numPr?.kind === "reference").toBe(
-      false,
-    );
+    const removed = (
+      await snapshot(page)
+    )?.document?.package.document.content.at(0);
+    expect(
+      removed?.type === "paragraph" &&
+        removed.formatting?.numPr?.kind === "reference",
+    ).toBe(false);
     await undoExactly(beforeListBackspace);
 
     await reload();
@@ -131,8 +149,12 @@ test("canonical structural gestures and toolbar operations preserve each interme
     await page.keyboard.type("-");
     const beforeRule = await snapshot(page);
     await page.keyboard.type(" ");
-    const ruled = (await snapshot(page))?.document?.package.document.content.at(0);
-    expect(ruled?.type === "paragraph" && ruled.formatting?.numPr?.kind).toBe("reference");
+    const ruled = (await snapshot(page))?.document?.package.document.content.at(
+      0,
+    );
+    expect(ruled?.type === "paragraph" && ruled.formatting?.numPr?.kind).toBe(
+      "reference",
+    );
     await page.keyboard.press("Backspace");
     const ruleUndone = await snapshot(page);
     expect(ruleUndone?.document).toEqual(beforeRule?.document);
@@ -152,11 +174,19 @@ test("canonical structural gestures and toolbar operations preserve each interme
     const beforeSecondTyping = await snapshot(page);
     await page.keyboard.type("y");
     await page.keyboard.press(`${MODIFIER}+z`);
-    expect((await snapshot(page))?.document).toEqual(beforeSecondTyping?.document);
-    expect((await snapshot(page))?.selection).toEqual(beforeSecondTyping?.selection);
+    expect((await snapshot(page))?.document).toEqual(
+      beforeSecondTyping?.document,
+    );
+    expect((await snapshot(page))?.selection).toEqual(
+      beforeSecondTyping?.selection,
+    );
     await page.keyboard.press(`${MODIFIER}+z`);
-    expect((await snapshot(page))?.document).toEqual(beforeFormatting?.document);
-    expect((await snapshot(page))?.selection).toEqual(formattingSelection?.selection);
+    expect((await snapshot(page))?.document).toEqual(
+      beforeFormatting?.document,
+    );
+    expect((await snapshot(page))?.selection).toEqual(
+      formattingSelection?.selection,
+    );
   }
 });
 
@@ -184,19 +214,26 @@ type CollectedTransportEvidenceOptions = {
   frameId: string;
 };
 
-const assertCollectedTransportEvidence = ({ path, frameId }: CollectedTransportEvidenceOptions) => {
+const assertCollectedTransportEvidence = ({
+  path,
+  frameId,
+}: CollectedTransportEvidenceOptions) => {
   const events = readFileSync(path, "utf8")
     .trim()
     .split("\n")
     .map((line) => {
       const event: unknown = JSON.parse(line);
-      if (!isProtocolRecord(event)) throw new TypeError("Malformed canonical protocol evidence");
+      if (!isProtocolRecord(event))
+        throw new TypeError("Malformed canonical protocol evidence");
       return event;
     });
   const sessions = new Set(
     events.flatMap((event) => {
       const params = event["params"];
-      if (event["method"] !== "Runtime.executionContextCreated" || !isProtocolRecord(params))
+      if (
+        event["method"] !== "Runtime.executionContextCreated" ||
+        !isProtocolRecord(params)
+      )
         return [];
       const context = params["context"];
       if (!isProtocolRecord(context)) return [];
@@ -209,15 +246,28 @@ const assertCollectedTransportEvidence = ({ path, frameId }: CollectedTransportE
         : [];
     }),
   );
-  expect(sessions.size, "protocol evidence must identify this test frame").toBeGreaterThan(0);
+  expect(
+    sessions.size,
+    "protocol evidence must identify this test frame",
+  ).toBeGreaterThan(0);
   const errors = events.filter((event) => {
     const sessionId = event["sessionId"];
-    return typeof sessionId === "string" && sessions.has(sessionId) && event["error"] !== undefined;
+    return (
+      typeof sessionId === "string" &&
+      sessions.has(sessionId) &&
+      event["error"] !== undefined
+    );
   });
-  expect(errors, "both unrooted calls must produce correlated raw CDP failures").toHaveLength(2);
+  expect(
+    errors,
+    "both unrooted calls must produce correlated raw CDP failures",
+  ).toHaveLength(2);
   const methods = [];
   for (const error of errors) {
-    expect(error["error"]).toEqual({ code: -32000, message: "Promise was collected" });
+    expect(error["error"]).toEqual({
+      code: -32000,
+      message: "Promise was collected",
+    });
     const requests = events.filter(
       (event) =>
         event["id"] === error["id"] &&
@@ -228,7 +278,10 @@ const assertCollectedTransportEvidence = ({ path, frameId }: CollectedTransportE
     expect(requests.at(0)).toMatchObject({ awaitPromise: true });
     methods.push(requests.at(0)?.["method"]);
   }
-  expect(methods.sort()).toEqual(["Runtime.callFunctionOn", "Runtime.evaluate"]);
+  expect(methods.sort()).toEqual([
+    "Runtime.callFunctionOn",
+    "Runtime.evaluate",
+  ]);
 };
 
 test("canonical load roots the awaited transport promise across forced collection", async ({
@@ -243,11 +296,19 @@ test("canonical load roots the awaited transport promise across forced collectio
   await waitForCanonicalPageReady(page);
   const cdp = await page.context().newCDPSession(page);
   let entered = Promise.withResolvers<void>();
-  await page.exposeFunction("__folioTransportEvaluationStarted", () => entered.resolve());
+  await page.exposeFunction("__folioTransportEvaluationStarted", () =>
+    entered.resolve(),
+  );
   try {
     await cdp.send("Runtime.enable");
     const { frameTree } = await cdp.send("Page.getFrameTree");
-    for (const transport of ["unrooted", "bridge", "handle", "handle-released", "cdp"] as const) {
+    for (const transport of [
+      "unrooted",
+      "bridge",
+      "handle",
+      "handle-released",
+      "cdp",
+    ] as const) {
       entered = Promise.withResolvers<void>();
       await page.evaluate((fixtureTransport) => {
         const bridge = globalThis.__folioCanonical;
@@ -287,7 +348,9 @@ test("canonical load roots the awaited transport promise across forced collectio
           await operation.evaluate(() => true);
           if (transport === "handle-released") await operation.dispose();
           await cdp.send("HeapProfiler.collectGarbage");
-          const retained = await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
+          const retained = await page.evaluate(() =>
+            globalThis.__folioCompleteTransportLoad?.(),
+          );
           const result = await loaded;
           if (transport === "handle") {
             expect(retained).toBe(true);
@@ -297,7 +360,9 @@ test("canonical load roots the awaited transport promise across forced collectio
             expect(retained).toBe(false);
             expect(result.isErr()).toBe(true);
             if (result.isErr())
-              expect(String(result.error)).toContain("Execution context was destroyed");
+              expect(String(result.error)).toContain(
+                "Execution context was destroyed",
+              );
           }
         } finally {
           await operation.dispose();
@@ -321,19 +386,25 @@ test("canonical load roots the awaited transport promise across forced collectio
       await entered.promise;
       // One forced collection, after the load has returned across a protocol boundary.
       await cdp.send("HeapProfiler.collectGarbage");
-      const retained = await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
+      const retained = await page.evaluate(() =>
+        globalThis.__folioCompleteTransportLoad?.(),
+      );
       const result = await loaded;
       if (transport === "unrooted") {
         expect(retained).toBe(false);
         expect(result.isErr()).toBe(true);
-        if (result.isErr()) expect(String(result.error)).toContain("Promise was collected");
+        if (result.isErr())
+          expect(String(result.error)).toContain("Promise was collected");
         continue;
       }
       expect(retained).toBe(true);
       expect(result.isOk()).toBe(true);
       if (result.isOk()) expect(result.value).toBe(true);
     }
-    assertCollectedTransportEvidence({ path: protocolPath, frameId: frameTree.frame.id });
+    assertCollectedTransportEvidence({
+      path: protocolPath,
+      frameId: frameTree.frame.id,
+    });
   } finally {
     const evidence = readFileSync(protocolPath, "utf8");
     console.log(`Canonical transport protocol evidence:\n${evidence}`);
@@ -354,7 +425,9 @@ test("canonical history load survives browser collection while its evaluation is
   const collections: Promise<void>[] = [];
   const lostOwner = Promise.withResolvers<never>();
   await page.exposeFunction("__folioReportCollectedCanonicalLoad", () => {
-    lostOwner.reject(new TypeError("Canonical load promise lost its transport owner"));
+    lostOwner.reject(
+      new TypeError("Canonical load promise lost its transport owner"),
+    );
   });
   await page.exposeFunction("__folioCollectPendingCanonicalLoad", () => {
     const collect = async () => {
@@ -371,7 +444,8 @@ test("canonical history load survives browser collection while its evaluation is
     const collect = globalThis.__folioCollectPendingCanonicalLoad;
     if (!collect) throw new TypeError("Canonical collection probe unavailable");
     const report = globalThis.__folioReportCollectedCanonicalLoad;
-    if (!report) throw new TypeError("Canonical collection observer unavailable");
+    if (!report)
+      throw new TypeError("Canonical collection observer unavailable");
     const load = bridge.load;
     const createOperation = () => {
       const completion = Promise.withResolvers<boolean>();
@@ -402,7 +476,11 @@ test("canonical history load survives browser collection while its evaluation is
   });
   const runCases = async () => {
     const source = [
-      ...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }))),
+      ...new Uint8Array(
+        await createDocx(
+          createEmptyDocument({ initialText: "alpha😀café東京" }),
+        ),
+      ),
     ];
     const loadedFixture = await canonicalLoadFixture(
       await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" })),
@@ -424,7 +502,9 @@ test("canonical history load survives browser collection while its evaluation is
       await expectNoRefusals(page);
     }
     await initializeCanonicalBrowserHistory(page, source);
-    const actions = canonicalHistoryReplayActions(CANONICAL_EVALUATION_HISTORY_REPLAY);
+    const actions = canonicalHistoryReplayActions(
+      CANONICAL_EVALUATION_HISTORY_REPLAY,
+    );
     expect(
       await checkCanonicalBrowserHistory({
         page,

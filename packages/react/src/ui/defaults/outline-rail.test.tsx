@@ -2,9 +2,10 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
 import { act, createRef, Profiler } from "react";
 import { createRoot } from "react-dom/client";
+
+import { afterAll, expect, test } from "bun:test";
 
 import { createBuiltInStyleIndex } from "@stll/folio-core/docx/builtInStyles";
 import {
@@ -16,7 +17,10 @@ import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import type { FolioOutlineRailProps, OutlineItem } from "../folio-ui";
 import { DefaultOutlineRail } from "./outline-rail";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -40,7 +44,10 @@ test("shrinking the outline keeps one valid tab stop and ArrowUp moves from it",
   document.body.append(container);
   const root = createRoot(container);
   const scrollContainerRef = createRef<HTMLElement>();
-  const render = async (presentation: "panel" | "rail", visibleItems: OutlineItem[]) => {
+  const render = async (
+    presentation: "panel" | "rail",
+    visibleItems: OutlineItem[],
+  ) => {
     const props = {
       items: visibleItems,
       scrollContainerRef,
@@ -63,16 +70,22 @@ test("shrinking the outline keeps one valid tab stop and ArrowUp moves from it",
 
         const list = container.querySelector("ol");
         const buttons = container.querySelectorAll("button");
-        expect([...buttons].filter((button) => button.tabIndex === 0)).toHaveLength(1);
+        expect(
+          [...buttons].filter((button) => button.tabIndex === 0),
+        ).toHaveLength(1);
         expect(buttons.item(remainingCount - 1)?.tabIndex).toBe(0);
 
         await act(async () => {
-          list?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+          list?.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+          );
         });
 
         expect(buttons.item(remainingCount - 2)?.tabIndex).toBe(0);
         expect(document.activeElement).toBe(buttons.item(remainingCount - 2));
-        expect([...buttons].filter((button) => button.tabIndex === 0)).toHaveLength(1);
+        expect(
+          [...buttons].filter((button) => button.tabIndex === 0),
+        ).toHaveLength(1);
       }
     }
   } finally {
@@ -104,15 +117,17 @@ test("the outline panel renders only headings classified from the DOCX model", a
   try {
     await act(async () => root.render(<DefaultOutlineRail {...props} />));
 
-    const labels = [...container.querySelectorAll(".folio-outline-item-label")].map(
-      (label) => label.textContent ?? "",
-    );
+    const labels = [
+      ...container.querySelectorAll(".folio-outline-item-label"),
+    ].map((label) => label.textContent ?? "");
     expect(labels).toHaveLength(66);
     expect(labels).toEqual(headings.map(({ text }) => text));
     expect(labels).not.toContain(
       '"Synthetic Term" means a term used only by this synthetic document fixture.',
     );
-    expect(labels).not.toContain("The parties agree that this ordinary clause remains body text.");
+    expect(labels).not.toContain(
+      "The parties agree that this ordinary clause remains body text.",
+    );
     expect(labels).not.toContain("Numbered list item at level 0");
     expect(labels).not.toContain("Numbered list item at level 1");
     expect(labels).not.toContain("Numbered list item at level 2");
@@ -151,7 +166,8 @@ test.each(["panel", "rail"] as const)(
         );
       });
     };
-    const tabStop = () => container.querySelector<HTMLButtonElement>('button[tabindex="0"]');
+    const tabStop = () =>
+      container.querySelector<HTMLButtonElement>('button[tabindex="0"]');
     try {
       await render("heading-0");
       const buttons = container.querySelectorAll<HTMLButtonElement>("button");
@@ -177,7 +193,9 @@ test.each(["panel", "rail"] as const)(
         await act(async () => {
           container
             .querySelector("ol")
-            ?.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+            ?.dispatchEvent(
+              new KeyboardEvent("keydown", { key, bubbles: true }),
+            );
         });
         expect(tabStop()).toBe(buttons.item(index));
         expect(document.activeElement).toBe(buttons.item(index));
@@ -185,7 +203,9 @@ test.each(["panel", "rail"] as const)(
       await act(async () => outside.focus());
       expect(tabStop()).toBe(buttons.item(1));
       expect(document.activeElement).toBe(outside);
-      expect(container.querySelectorAll('button[tabindex="0"]')).toHaveLength(1);
+      expect(container.querySelectorAll('button[tabindex="0"]')).toHaveLength(
+        1,
+      );
     } finally {
       await act(async () => root.unmount());
       container.remove();

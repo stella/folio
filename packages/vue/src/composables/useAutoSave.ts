@@ -12,16 +12,24 @@
  * promise.
  */
 
-import { onBeforeUnmount, ref, unref, watch, type MaybeRef, type Ref } from "vue";
+import {
+  type MaybeRef,
+  onBeforeUnmount,
+  type Ref,
+  ref,
+  unref,
+  watch,
+} from "vue";
+
 import {
   AutoSaveManager,
-  formatLastSaveTime,
-  getAutoSaveStatusLabel,
-  getAutoSaveStorageSize,
-  formatStorageSize,
-  isAutoSaveSupported,
   type AutoSaveManagerOptions,
   type AutoSaveStatus,
+  formatLastSaveTime,
+  formatStorageSize,
+  getAutoSaveStatusLabel,
+  getAutoSaveStorageSize,
+  isAutoSaveSupported,
   type SavedDocumentData,
 } from "@stll/folio-core/managers/AutoSaveManager";
 import type { Document } from "@stll/folio-core/types/document";

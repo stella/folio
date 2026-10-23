@@ -36,13 +36,14 @@ import { panic } from "better-result";
 
 import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes";
 import { bytesToDataUrl } from "../../utils/base64";
+import { imageLuminanceFilter } from "../../utils/imageLuminance";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import {
   DOUBLE_STROKE_GAP_FACTOR,
   STROKE_DASH_FACTORS,
   strokeCrossExtentPx,
-  WAVY_STROKE_PERIOD_FACTOR,
   walkRegions,
+  WAVY_STROKE_PERIOD_FACTOR,
 } from "../primitives";
 import type {
   DisplayClipGroup,
@@ -53,26 +54,25 @@ import type {
   DisplayGlyphRun,
   DisplayHitRegion,
   DisplayHitRegionKind,
-  DisplayRunAdjustments,
   DisplayImagePrimitive,
   DisplayImageRef,
   DisplayImageSource,
   DisplayLine,
-  DisplayPolyline,
   DisplayLink,
   DisplayLinkTarget,
-  DisplayModelRange,
   DisplayList,
+  DisplayModelRange,
   DisplayOpacityGroup,
   DisplayPage,
+  DisplayPolyline,
   DisplayPrimitive,
   DisplayRect,
   DisplayRectPrimitive,
   DisplayRotateGroup,
+  DisplayRunAdjustments,
   DisplayStroke,
   DisplayStrokePattern,
 } from "../types";
-import { imageLuminanceFilter } from "../../utils/imageLuminance";
 
 const PAGE_CLASS_NAME = "layout-page";
 
@@ -121,7 +121,8 @@ const px = (value: number) => `${value}px`;
 const cssColor = ({ r, g, b, a }: DisplayColor) =>
   a === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
 
-const quoteFontFamily = (family: string) => `"${family.replaceAll('"', '\\"')}"`;
+const quoteFontFamily = (family: string) =>
+  `"${family.replaceAll('"', '\\"')}"`;
 
 /**
  * An embedded face wins over any installed face of the same name by being
@@ -134,24 +135,41 @@ const quoteFontFamily = (family: string) => `"${family.replaceAll('"', '\\"')}"`
  * and so did the measurement. A shorter stack here paints a different face on
  * any host missing the first one.
  */
-const fontFamilyStack = ({ family, fallbacks, generic, embedded }: DisplayFontFace) => {
+const fontFamilyStack = ({
+  family,
+  fallbacks,
+  generic,
+  embedded,
+}: DisplayFontFace) => {
   const names = [family, ...fallbacks].map(quoteFontFamily).join(", ");
   const resolved = `${names}, ${generic}`;
-  return embedded === undefined ? resolved : `${quoteFontFamily(embedded.id)}, ${resolved}`;
+  return embedded === undefined
+    ? resolved
+    : `${quoteFontFamily(embedded.id)}, ${resolved}`;
 };
 
-const resolveFont = (ref: DisplayFontRef, fonts: readonly DisplayFontFace[]) => {
+const resolveFont = (
+  ref: DisplayFontRef,
+  fonts: readonly DisplayFontFace[],
+) => {
   const face = ref < 0 ? undefined : fonts.at(ref);
   if (face === undefined) {
-    panic(`renderDisplayListToDom: font ref ${ref} is out of range (${fonts.length} faces)`);
+    panic(
+      `renderDisplayListToDom: font ref ${ref} is out of range (${fonts.length} faces)`,
+    );
   }
   return face;
 };
 
-const resolveImage = (ref: DisplayImageRef, images: readonly DisplayImageSource[]) => {
+const resolveImage = (
+  ref: DisplayImageRef,
+  images: readonly DisplayImageSource[],
+) => {
   const source = ref < 0 ? undefined : images.at(ref);
   if (source === undefined) {
-    panic(`renderDisplayListToDom: image ref ${ref} is out of range (${images.length} images)`);
+    panic(
+      `renderDisplayListToDom: image ref ${ref} is out of range (${images.length} images)`,
+    );
   }
   return source;
 };
@@ -168,7 +186,11 @@ const isBlobPart = (bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> =>
  */
 export type DisplayBinaryUrls = "objectUrl" | "dataUrl";
 
-const binarySrc = (bytes: Uint8Array, mimeType: string, urls: DisplayBinaryUrls) => {
+const binarySrc = (
+  bytes: Uint8Array,
+  mimeType: string,
+  urls: DisplayBinaryUrls,
+) => {
   if (
     urls === "objectUrl" &&
     isBlobPart(bytes) &&
@@ -181,7 +203,11 @@ const binarySrc = (bytes: Uint8Array, mimeType: string, urls: DisplayBinaryUrls)
   return bytesToDataUrl(bytes, mimeType);
 };
 
-const fontFaceRule = (face: DisplayFontFace, embedded: DisplayEmbeddedFont, src: string) =>
+const fontFaceRule = (
+  face: DisplayFontFace,
+  embedded: DisplayEmbeddedFont,
+  src: string,
+) =>
   `@font-face { font-family: ${quoteFontFamily(embedded.id)}; src: url("${src}"); font-weight: ${face.weight}; font-style: ${face.italic ? "italic" : "normal"}; }`;
 
 /**
@@ -189,7 +215,10 @@ const fontFaceRule = (face: DisplayFontFace, embedded: DisplayEmbeddedFont, src:
  * once per render and shared by every page: an id maps to one blob, so the
  * bytes are held once and one revoke releases them.
  */
-const embeddedFontFaceCss = (fonts: readonly DisplayFontFace[], urls: DisplayBinaryUrls) => {
+const embeddedFontFaceCss = (
+  fonts: readonly DisplayFontFace[],
+  urls: DisplayBinaryUrls,
+) => {
   const srcById = new Map<string, string>();
   const rules: string[] = [];
   for (const face of fonts) {
@@ -268,7 +297,12 @@ type BarAxes = {
 const HORIZONTAL_BAR_AXES = { main: "to right", cross: "to bottom" } as const;
 const VERTICAL_BAR_AXES = { main: "to bottom", cross: "to right" } as const;
 
-const repeatingBars = (color: string, axis: string, barPx: number, gapPx: number) =>
+const repeatingBars = (
+  color: string,
+  axis: string,
+  barPx: number,
+  gapPx: number,
+) =>
   `repeating-linear-gradient(${axis}, ${color} 0px, ${color} ${barPx}px, transparent ${barPx}px, transparent ${barPx + gapPx}px)`;
 
 const strokeBackground = (stroke: DisplayStroke, axes: BarAxes) => {
@@ -281,7 +315,12 @@ const strokeBackground = (stroke: DisplayStroke, axes: BarAxes) => {
       // Dotted dots are square: a round dot needs a repeating radial gradient,
       // whose period a PDF dash array cannot reproduce.
       const { dash, gap } = STROKE_DASH_FACTORS[stroke.pattern];
-      return repeatingBars(color, axes.main, stroke.thicknessPx * dash, stroke.thicknessPx * gap);
+      return repeatingBars(
+        color,
+        axes.main,
+        stroke.thicknessPx * dash,
+        stroke.thicknessPx * gap,
+      );
     }
     case "double": {
       // Two lines and one gap fill the cross extent, so each is one third of it
@@ -298,7 +337,9 @@ const strokeBackground = (stroke: DisplayStroke, axes: BarAxes) => {
     }
     default: {
       const unreachable: never = stroke.pattern;
-      panic(`renderDisplayListToDom: unhandled stroke pattern ${JSON.stringify(unreachable)}`);
+      panic(
+        `renderDisplayListToDom: unhandled stroke pattern ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -339,7 +380,10 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
   context.parent.append(element);
 };
 
-const paintPolyline = ({ points, stroke }: DisplayPolyline, context: PaintContext) => {
+const paintPolyline = (
+  { points, stroke }: DisplayPolyline,
+  context: PaintContext,
+) => {
   for (let index = 1; index < points.length; index += 1) {
     const from = points[index - 1];
     const to = points[index];
@@ -412,8 +456,12 @@ const applyModelRange = (
     return;
   }
   if (purpose === "editing") span.className = "layout-run-text";
-  span.dataset[purpose === "editing" ? "pmStart" : "decorationStart"] = String(range.start);
-  span.dataset[purpose === "editing" ? "pmEnd" : "decorationEnd"] = String(range.end);
+  span.dataset[purpose === "editing" ? "pmStart" : "decorationStart"] = String(
+    range.start,
+  );
+  span.dataset[purpose === "editing" ? "pmEnd" : "decorationEnd"] = String(
+    range.end,
+  );
   const { story } = range;
   span.dataset["story"] = story.kind;
   switch (story.kind) {
@@ -432,7 +480,9 @@ const applyModelRange = (
       break;
     default: {
       const unreachable: never = story;
-      panic(`renderDisplayListToDom: unhandled story ${JSON.stringify(unreachable)}`);
+      panic(
+        `renderDisplayListToDom: unhandled story ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -444,7 +494,10 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
     );
   }
   const face = resolveFont(run.font, context.fonts);
-  const advanceSum = run.advancesPx.reduce((total, advance) => total + advance, 0);
+  const advanceSum = run.advancesPx.reduce(
+    (total, advance) => total + advance,
+    0,
+  );
   const ascentPx = face.fontBoxAscentRatio * run.fontSizePx;
   const descentPx = face.fontBoxDescentRatio * run.fontSizePx;
 
@@ -499,15 +552,21 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   applyModelRange(span, run.pmRange);
   applyModelRange(span, run.decorationRange, "decoration");
   if (run.decorationRange)
-    span.dataset["decorationTextOffset"] = String(run.decorationRange.textOffset);
+    span.dataset["decorationTextOffset"] = String(
+      run.decorationRange.textOffset,
+    );
   if (run.collapsedEdge !== undefined) {
     // Addressable and painted at no width, as the line was fitted: the browser
     // must not advance the spaces this run holds, and a surface steps the caret
     // by the advance the producer states instead.
     span.dataset[
-      run.collapsedEdge.side === "leading" ? "collapsedLeadingSpaces" : "collapsedTrailingSpaces"
+      run.collapsedEdge.side === "leading"
+        ? "collapsedLeadingSpaces"
+        : "collapsedTrailingSpaces"
     ] = "true";
-    span.dataset["collapsedSpaceAdvance"] = String(run.collapsedEdge.spaceAdvancePx);
+    span.dataset["collapsedSpaceAdvance"] = String(
+      run.collapsedEdge.spaceAdvancePx,
+    );
     span.style.fontSize = "0";
     span.style.letterSpacing = "0";
     span.style.wordSpacing = "0";
@@ -541,7 +600,10 @@ const rectEdges = ({ xPx, yPx, widthPx, heightPx }: DisplayRect) => {
   ];
 };
 
-const paintRect = ({ rect, fill, stroke }: DisplayRectPrimitive, context: PaintContext) => {
+const paintRect = (
+  { rect, fill, stroke }: DisplayRectPrimitive,
+  context: PaintContext,
+) => {
   if (stroke === undefined) {
     context.parent.append(createFilledDiv(context, rect, fill));
     return;
@@ -551,7 +613,11 @@ const paintRect = ({ rect, fill, stroke }: DisplayRectPrimitive, context: PaintC
   switch (painter) {
     case "border": {
       // Grown by the thickness so a border-box border straddles the path.
-      const element = createFilledDiv(context, grownRect(rect, stroke.thicknessPx), fill);
+      const element = createFilledDiv(
+        context,
+        grownRect(rect, stroke.thicknessPx),
+        fill,
+      );
       element.style.boxSizing = "border-box";
       element.style.border = `${px(stroke.thicknessPx)} solid ${cssColor(stroke.color)}`;
       context.parent.append(element);
@@ -566,7 +632,9 @@ const paintRect = ({ rect, fill, stroke }: DisplayRectPrimitive, context: PaintC
     }
     default: {
       const unreachable: never = painter;
-      panic(`renderDisplayListToDom: unhandled rect stroke painter ${JSON.stringify(unreachable)}`);
+      panic(
+        `renderDisplayListToDom: unhandled rect stroke painter ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -598,7 +666,9 @@ const paintImage = (
     const visibleWidth = 1 - crop.l - crop.r;
     const visibleHeight = 1 - crop.t - crop.b;
     if (visibleWidth <= 0 || visibleHeight <= 0) {
-      panic(`renderDisplayListToDom: image crop leaves nothing visible (${JSON.stringify(crop)})`);
+      panic(
+        `renderDisplayListToDom: image crop leaves nothing visible (${JSON.stringify(crop)})`,
+      );
     }
     // Oversize the image so the destination box shows exactly the crop.
     const fullWidth = rect.widthPx / visibleWidth;
@@ -611,12 +681,19 @@ const paintImage = (
 
   // The display list carries no description for an image.
   element.alt = "";
-  element.src = binarySrc(source.bytes, IMAGE_MIME_TYPES[source.format], context.binaryUrls);
+  element.src = binarySrc(
+    source.bytes,
+    IMAGE_MIME_TYPES[source.format],
+    context.binaryUrls,
+  );
   clip.append(element);
   context.parent.append(clip);
 };
 
-const paintClipGroup = ({ rect, children, regions }: DisplayClipGroup, context: PaintContext) => {
+const paintClipGroup = (
+  { rect, children, regions }: DisplayClipGroup,
+  context: PaintContext,
+) => {
   const element = createAbsoluteDiv(context, rect);
   element.style.overflow = "hidden";
   context.parent.append(element);
@@ -631,7 +708,14 @@ const paintClipGroup = ({ rect, children, regions }: DisplayClipGroup, context: 
 };
 
 const paintRotateGroup = (
-  { degrees, originXPx, originYPx, scaleX, scaleY, children }: DisplayRotateGroup,
+  {
+    degrees,
+    originXPx,
+    originYPx,
+    scaleX,
+    scaleY,
+    children,
+  }: DisplayRotateGroup,
   context: PaintContext,
 ) => {
   const element = createTransparentGroupDiv(context);
@@ -652,7 +736,10 @@ const paintRotateGroup = (
   }
 };
 
-const paintOpacityGroup = ({ opacity, children }: DisplayOpacityGroup, context: PaintContext) => {
+const paintOpacityGroup = (
+  { opacity, children }: DisplayOpacityGroup,
+  context: PaintContext,
+) => {
   const element = createTransparentGroupDiv(context);
   element.style.opacity = String(opacity);
   context.parent.append(element);
@@ -663,7 +750,10 @@ const paintOpacityGroup = ({ opacity, children }: DisplayOpacityGroup, context: 
   }
 };
 
-const paintPrimitive = (primitive: DisplayPrimitive, context: PaintContext): void => {
+const paintPrimitive = (
+  primitive: DisplayPrimitive,
+  context: PaintContext,
+): void => {
   switch (primitive.kind) {
     case "glyphRun":
       return paintGlyphRun(primitive, context);
@@ -678,7 +768,10 @@ const paintPrimitive = (primitive: DisplayPrimitive, context: PaintContext): voi
       element.style.width = "100%";
       element.style.height = "100%";
       element.style.clipPath = `polygon(${primitive.points
-        .map(({ xPx, yPx }) => `${px(xPx - context.originXPx)} ${px(yPx - context.originYPx)}`)
+        .map(
+          ({ xPx, yPx }) =>
+            `${px(xPx - context.originXPx)} ${px(yPx - context.originYPx)}`,
+        )
         .join(", ")})`;
       element.style.background = cssColor(primitive.fill);
       context.parent.append(element);
@@ -696,7 +789,9 @@ const paintPrimitive = (primitive: DisplayPrimitive, context: PaintContext): voi
       return paintOpacityGroup(primitive, context);
     default: {
       const unreachable: never = primitive;
-      panic(`renderDisplayListToDom: unhandled display primitive ${JSON.stringify(unreachable)}`);
+      panic(
+        `renderDisplayListToDom: unhandled display primitive ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -713,12 +808,17 @@ const linkHref = (target: DisplayLinkTarget) => {
       return `#${PAGE_ELEMENT_ID_PREFIX}${target.pageIndex}`;
     default: {
       const unreachable: never = target;
-      panic(`renderDisplayListToDom: unhandled link target ${JSON.stringify(unreachable)}`);
+      panic(
+        `renderDisplayListToDom: unhandled link target ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
 
-const paintLink = ({ rect, target, tooltip }: DisplayLink, context: PaintContext) => {
+const paintLink = (
+  { rect, target, tooltip }: DisplayLink,
+  context: PaintContext,
+) => {
   const element = context.doc.createElement("a");
   element.style.position = "absolute";
   element.style.left = px(rect.xPx - context.originXPx);
@@ -831,7 +931,10 @@ const REGION_CLASS = {
 } as const satisfies Record<DisplayHitRegionKind, string>;
 
 /** Model facts a surface reads off the element, as the painter wrote them. */
-const applyRegionModel = (element: HTMLElement, region: DisplayHitRegion): void => {
+const applyRegionModel = (
+  element: HTMLElement,
+  region: DisplayHitRegion,
+): void => {
   const model = region.model;
   if (model === undefined) {
     return;
@@ -884,7 +987,9 @@ const applyRegionModel = (element: HTMLElement, region: DisplayHitRegion): void 
       break;
     default: {
       const unreachable: never = story;
-      panic(`renderDisplayListToDom: unhandled story ${JSON.stringify(unreachable)}`);
+      panic(
+        `renderDisplayListToDom: unhandled story ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -898,7 +1003,10 @@ const applyRegionModel = (element: HTMLElement, region: DisplayHitRegion): void 
  */
 type RegionTree = Pick<DisplayPage, "primitives" | "regions">;
 
-const paintRegionTree = ({ primitives, regions }: RegionTree, context: PaintContext): void => {
+const paintRegionTree = (
+  { primitives, regions }: RegionTree,
+  context: PaintContext,
+): void => {
   let current = context;
   const stack: PaintContext[] = [];
   walkRegions(primitives, regions, {
@@ -935,7 +1043,10 @@ export const renderDisplayPageToDom = (
 ): HTMLElement =>
   renderPage(page, {
     ...options,
-    fontFaceCss: embeddedFontFaceCss(options.fonts, options.binaryUrls ?? "objectUrl"),
+    fontFaceCss: embeddedFontFaceCss(
+      options.fonts,
+      options.binaryUrls ?? "objectUrl",
+    ),
   });
 
 /** One `div.layout-page` per display page, in page order. */
@@ -943,7 +1054,10 @@ export const renderDisplayListToDom = (
   list: DisplayList,
   options: RenderDisplayListOptions,
 ): HTMLElement[] => {
-  const fontFaceCss = embeddedFontFaceCss(list.fonts, options.binaryUrls ?? "objectUrl");
+  const fontFaceCss = embeddedFontFaceCss(
+    list.fonts,
+    options.binaryUrls ?? "objectUrl",
+  );
   return list.pages.map((page, pageIndex) =>
     renderPage(page, {
       ...options,

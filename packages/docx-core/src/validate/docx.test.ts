@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { RESERVED_NOTE_REFERENCE_IDS } from "../model/content";
 import type {
   BlockContent,
   Comment,
@@ -8,7 +9,6 @@ import type {
   ParagraphContent,
   Run,
 } from "../model/document";
-import { RESERVED_NOTE_REFERENCE_IDS } from "../model/content";
 import { assertValidDocumentModel, validateDocumentModel } from "./docx";
 
 const textRun = (text = "Text"): Run => ({
@@ -214,7 +214,12 @@ describe("canonical DOCX document model validation", () => {
   test("warns but accepts unbalanced bookmarks from real-world DOCX files", () => {
     const result = validateDocumentModel(
       createDocument({
-        content: [paragraph([{ type: "bookmarkStart", id: 1, name: "orphaned" }, textRun()])],
+        content: [
+          paragraph([
+            { type: "bookmarkStart", id: 1, name: "orphaned" },
+            textRun(),
+          ]),
+        ],
       }),
     );
 
@@ -379,7 +384,11 @@ describe("canonical DOCX document model validation", () => {
   test("rejects missing footnote packages", () => {
     const result = validateDocumentModel(
       createDocument({
-        content: [paragraph([{ type: "run", content: [{ type: "footnoteRef", id: 12 }] }])],
+        content: [
+          paragraph([
+            { type: "run", content: [{ type: "footnoteRef", id: 12 }] },
+          ]),
+        ],
       }),
     );
 
@@ -397,7 +406,9 @@ describe("canonical DOCX document model validation", () => {
     const referenceType = kind === "footnote" ? "footnoteRef" : "endnoteRef";
     const result = validateDocumentModel(
       createDocument({
-        content: [paragraph([{ type: "run", content: [{ type: referenceType, id }] }])],
+        content: [
+          paragraph([{ type: "run", content: [{ type: referenceType, id }] }]),
+        ],
         ...(kind === "footnote"
           ? { footnotes: [{ type: "footnote", id, content: [paragraph()] }] }
           : { endnotes: [{ type: "endnote", id, content: [paragraph()] }] }),

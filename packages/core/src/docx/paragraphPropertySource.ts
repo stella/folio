@@ -1,28 +1,33 @@
 import { panic, TaggedError } from "better-result";
-import type { Fragment, Mark, Node as PMNode, NodeType } from "prosemirror-model";
+import type {
+  Fragment,
+  Mark,
+  Node as PMNode,
+  NodeType,
+} from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
+import {
+  type ModeledParagraphFormattingEmission,
+  modelParagraphFormattingEmission,
+} from "../internal/paragraphFormattingSerialization";
 import type {
   BlockContent,
   Document,
   Paragraph,
-  ParagraphFormatting,
   ParagraphContent,
+  ParagraphFormatting,
   RunContent,
   TableCell,
 } from "../types/document";
-import {
-  modelParagraphFormattingEmission,
-  type ModeledParagraphFormattingEmission,
-} from "../internal/paragraphFormattingSerialization";
-import { parseParagraphProperties } from "./paragraphProperties";
-import { parseXmlDocument } from "./xmlParser";
 import { canonicalJson } from "../utils/canonicalJson";
-import { visitDocxParagraphs } from "./paragraphTraversal";
 import {
   copyHeaderFooterBaselineHandles,
   copyHeaderFooterPackageBaselines,
 } from "./headerFooterVerbatim";
+import { parseParagraphProperties } from "./paragraphProperties";
+import { visitDocxParagraphs } from "./paragraphTraversal";
+import { parseXmlDocument } from "./xmlParser";
 
 // The private symbol makes a source factory-only at the type boundary. Keep it
 // enumerable so sanctioned immutable object copies retain the exact fingerprint.
@@ -50,12 +55,18 @@ type ParagraphPropertySource = Readonly<{
 
 const paragraphPropertyCapture = Symbol("paragraphPropertyCapture");
 const paragraphIndentationProjection = Symbol("paragraphIndentationProjection");
-type IndentationFormatting = Pick<ParagraphFormatting, (typeof INDENTATION_FIELDS)[number]>;
+type IndentationFormatting = Pick<
+  ParagraphFormatting,
+  (typeof INDENTATION_FIELDS)[number]
+>;
 type ParagraphIndentationProjection = Readonly<{
   effective: Readonly<IndentationFormatting>;
   authored: Readonly<IndentationFormatting>;
 }>;
-const indentationProjections = new WeakMap<object, ParagraphIndentationProjection>();
+const indentationProjections = new WeakMap<
+  object,
+  ParagraphIndentationProjection
+>();
 // An explicit clear must not be overwritten when source captures follow a derivation.
 const assignedIndentationProjections = new WeakSet<Paragraph>();
 
@@ -69,7 +80,10 @@ const indentationProjectionFor = (paragraph: Paragraph) => {
     : undefined;
 };
 
-type SameParagraphIndentationProjectionOptions = { left: Paragraph; right: Paragraph };
+type SameParagraphIndentationProjectionOptions = {
+  left: Paragraph;
+  right: Paragraph;
+};
 
 /** Fixed points retain both authored indentation and its effective baseline. */
 export const sameParagraphIndentationProjection = ({
@@ -80,11 +94,16 @@ export const sameParagraphIndentationProjection = ({
   const b = indentationProjectionFor(right);
   if (a === undefined || b === undefined) return a === b;
   return INDENTATION_FIELDS.every(
-    (key) => a.effective[key] === b.effective[key] && a.authored[key] === b.authored[key],
+    (key) =>
+      a.effective[key] === b.effective[key] &&
+      a.authored[key] === b.authored[key],
   );
 };
 
-type CopyParagraphIndentationProjectionOptions = { target: Paragraph; source: Paragraph };
+type CopyParagraphIndentationProjectionOptions = {
+  target: Paragraph;
+  source: Paragraph;
+};
 
 /** Retain effective-value provenance without copying a durable source identity. */
 export const copyParagraphIndentationProjection = ({
@@ -96,7 +115,10 @@ export const copyParagraphIndentationProjection = ({
     Object.hasOwn(target, paragraphIndentationProjection)
   )
     return;
-  const descriptor = Object.getOwnPropertyDescriptor(source, paragraphIndentationProjection);
+  const descriptor = Object.getOwnPropertyDescriptor(
+    source,
+    paragraphIndentationProjection,
+  );
   if (descriptor && indentationProjectionFor(source)) {
     Object.defineProperty(target, paragraphIndentationProjection, descriptor);
   }
@@ -113,7 +135,9 @@ export const restoreParagraphIndentationProjection = ({
   assignedIndentationProjections.add(target);
 };
 
-const indentationFields = (formatting: ParagraphFormatting | undefined): IndentationFormatting => ({
+const indentationFields = (
+  formatting: ParagraphFormatting | undefined,
+): IndentationFormatting => ({
   indentLeft: formatting?.indentLeft,
   indentRight: formatting?.indentRight,
   indentFirstLine: formatting?.indentFirstLine,
@@ -142,11 +166,15 @@ export const assignParagraphIndentationProjection = ({
       else Object.assign(effective, { [key]: value });
     }
   }
-  if (authored?.indentFirstLine !== undefined && authored.hangingIndent === undefined) {
+  if (
+    authored?.indentFirstLine !== undefined &&
+    authored.hangingIndent === undefined
+  ) {
     Reflect.deleteProperty(effective, "hangingIndent");
   }
   paragraph.formatting = { ...authored, ...effective };
-  if (Object.keys(paragraph.formatting).length === 0) delete paragraph.formatting;
+  if (Object.keys(paragraph.formatting).length === 0)
+    delete paragraph.formatting;
   if (
     Object.values(effective).every((value) => value === undefined) ||
     (getParagraphPropertySource(paragraph) === undefined &&
@@ -174,13 +202,21 @@ type ParagraphPropertyCapture = Readonly<{
   source: ParagraphPropertySource;
   owner: Paragraph;
 }>;
-const paragraphPropertyCaptures = new WeakMap<object, ParagraphPropertyCapture>();
+const paragraphPropertyCaptures = new WeakMap<
+  object,
+  ParagraphPropertyCapture
+>();
 type ParagraphSourceRecordKind = "durable" | "capture-only";
-const paragraphSourceRecordKinds = new WeakMap<Paragraph, ParagraphSourceRecordKind>();
+const paragraphSourceRecordKinds = new WeakMap<
+  Paragraph,
+  ParagraphSourceRecordKind
+>();
 
 // Opaque handles follow immutable model operations without giving copies a
 // durable paragraph identity. JSON and structuredClone omit this private symbol.
-const captureForParagraph = (paragraph: Paragraph): ParagraphPropertyCapture | undefined => {
+const captureForParagraph = (
+  paragraph: Paragraph,
+): ParagraphPropertyCapture | undefined => {
   const handle: unknown = Object.getOwnPropertyDescriptor(
     paragraph,
     paragraphPropertyCapture,
@@ -192,7 +228,10 @@ const captureForParagraph = (paragraph: Paragraph): ParagraphPropertyCapture | u
     : undefined;
 };
 
-const attachParagraphCapture = (paragraph: Paragraph, capture: ParagraphPropertyCapture): void => {
+const attachParagraphCapture = (
+  paragraph: Paragraph,
+  capture: ParagraphPropertyCapture,
+): void => {
   const handle = Object.freeze({});
   paragraphPropertyCaptures.set(handle, capture);
   Object.defineProperty(paragraph, paragraphPropertyCapture, {
@@ -218,9 +257,10 @@ const ownedParagraphPropertySource = (
       indentFirstLine: paragraph.formatting?.indentFirstLine,
       hangingIndent: paragraph.formatting?.hangingIndent,
     }),
-    [paragraphPropertySourceEmissionFingerprint]: paragraphFormattingEmissionFingerprint(
-      modelParagraphFormattingEmission(paragraph.formatting),
-    ),
+    [paragraphPropertySourceEmissionFingerprint]:
+      paragraphFormattingEmissionFingerprint(
+        modelParagraphFormattingEmission(paragraph.formatting),
+      ),
   } satisfies ParagraphPropertySource);
 };
 
@@ -235,7 +275,9 @@ const documentParagraphPropertySourceBindingBrand = Symbol(
 // while JSON and other string-key serialization cannot expose the contract.
 // `structuredClone` deliberately drops symbols, so the one sanctioned deep
 // clone path transfers this value explicitly below.
-const documentParagraphPropertySourceBinding = Symbol("paragraphPropertySourceBinding");
+const documentParagraphPropertySourceBinding = Symbol(
+  "paragraphPropertySourceBinding",
+);
 
 type DocumentParagraphPropertySourceBinding = Readonly<{
   [documentParagraphPropertySourceBindingBrand]: true;
@@ -245,9 +287,11 @@ type DocumentParagraphPropertySourceBinding = Readonly<{
 }>;
 
 export const PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR = "_docxParagraphSourceToken";
-export const PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR = "_docxParagraphSourceContract";
+export const PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR =
+  "_docxParagraphSourceContract";
 /** Durable identity nested inside opaque collapsed-cell ProseMirror attrs; stripped on restore. */
-export const TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR = "_docxParagraphSourceBinding";
+export const TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR =
+  "_docxParagraphSourceBinding";
 
 const PARAGRAPH_SOURCE_TOKEN_VERSION = "folio-ppr-v1";
 const PARAGRAPH_SOURCE_TOKEN_PREFIX = "p1d";
@@ -306,14 +350,18 @@ const contractForDigest = (sourceDigest: string): string => {
 
 const fingerprintFromContract = (contract: string): string | null => {
   const prefix = `${PARAGRAPH_SOURCE_TOKEN_VERSION}:`;
-  const digest = contract.startsWith(prefix) ? contract.slice(prefix.length) : "";
+  const digest = contract.startsWith(prefix)
+    ? contract.slice(prefix.length)
+    : "";
   return SHA256_HEX.test(digest) ? digest.slice(0, 32) : null;
 };
 
 const tokenForOrdinal = (contract: string, ordinal: number): string => {
   const fingerprint = fingerprintFromContract(contract);
   if (!fingerprint) {
-    panic("Cannot mint a paragraph-property token for an invalid source contract");
+    panic(
+      "Cannot mint a paragraph-property token for an invalid source contract",
+    );
   }
   return `${PARAGRAPH_SOURCE_TOKEN_PREFIX}:${fingerprint}:${ordinal.toString(36)}`;
 };
@@ -339,7 +387,10 @@ const setDocumentParagraphPropertySourceBinding = (
   if (!fingerprintFromContract(binding.contract)) {
     panic("Cannot attach an invalid paragraph-property source contract");
   }
-  const existing: unknown = Object.hasOwn(document, documentParagraphPropertySourceBinding)
+  const existing: unknown = Object.hasOwn(
+    document,
+    documentParagraphPropertySourceBinding,
+  )
     ? Reflect.get(document, documentParagraphPropertySourceBinding)
     : undefined;
   if (existing === binding) {
@@ -351,12 +402,15 @@ const setDocumentParagraphPropertySourceBinding = (
       value: binding,
     })
   ) {
-    panic("Cannot attach the paragraph-property source contract to the document");
+    panic(
+      "Cannot attach the paragraph-property source contract to the document",
+    );
   }
 };
 
-export const isParagraphPropertySourceToken = (token: unknown): token is string =>
-  typeof token === "string" && SOURCE_TOKEN.test(token);
+export const isParagraphPropertySourceToken = (
+  token: unknown,
+): token is string => typeof token === "string" && SOURCE_TOKEN.test(token);
 
 /** True only for a body-story token derived from the exact source contract. */
 export const paragraphPropertySourceTokenMatchesContract = (
@@ -379,7 +433,10 @@ export const visitDocumentStoryParagraphs = (
   visitDocxParagraphs({ documentBody: { content } }, visit);
 };
 
-export const assignParagraphPropertySource = (paragraph: Paragraph, xml: string): void => {
+export const assignParagraphPropertySource = (
+  paragraph: Paragraph,
+  xml: string,
+): void => {
   attachParagraphCapture(paragraph, {
     source: ownedParagraphPropertySource(paragraph, xml),
     owner: paragraph,
@@ -388,7 +445,8 @@ export const assignParagraphPropertySource = (paragraph: Paragraph, xml: string)
 
 export const getParagraphPropertySource = (
   paragraph: Paragraph,
-): ParagraphPropertySource | undefined => captureForParagraph(paragraph)?.source;
+): ParagraphPropertySource | undefined =>
+  captureForParagraph(paragraph)?.source;
 
 const directFormattingBySource = new WeakMap<
   ParagraphPropertySource,
@@ -401,21 +459,31 @@ export const paragraphFormattingWithAuthoredIndentation = (
 ): ParagraphFormatting | undefined => {
   const source = getParagraphPropertySource(paragraph);
   const projection = indentationProjectionFor(paragraph);
-  if (source === undefined && projection === undefined) return paragraph.formatting;
-  let direct = source === undefined ? undefined : directFormattingBySource.get(source);
+  if (source === undefined && projection === undefined)
+    return paragraph.formatting;
+  let direct =
+    source === undefined ? undefined : directFormattingBySource.get(source);
   if (source !== undefined && direct === undefined) {
-    direct = { formatting: parseParagraphProperties(parseXmlDocument(source.xml), null) };
+    direct = {
+      formatting: parseParagraphProperties(parseXmlDocument(source.xml), null),
+    };
     directFormattingBySource.set(source, direct);
   }
   const result = { ...paragraph.formatting };
-  const baseline = projection?.effective ?? source?.[paragraphPropertySourceIndentationBaseline];
+  const baseline =
+    projection?.effective ??
+    source?.[paragraphPropertySourceIndentationBaseline];
   if (baseline === undefined) return paragraph.formatting;
   const authored = projection?.authored ?? direct?.formatting;
   const firstLineChanged =
     paragraph.formatting?.indentFirstLine !== baseline.indentFirstLine ||
     paragraph.formatting?.hangingIndent !== baseline.hangingIndent;
   for (const key of INDENTATION_FIELDS) {
-    if ((key === "indentFirstLine" || key === "hangingIndent") && firstLineChanged) continue;
+    if (
+      (key === "indentFirstLine" || key === "hangingIndent") &&
+      firstLineChanged
+    )
+      continue;
     if (paragraph.formatting?.[key] !== baseline[key]) continue;
     Reflect.deleteProperty(result, key);
     const value = authored?.[key];
@@ -441,7 +509,8 @@ export const paragraphPropertySourceMatchesAuthoredIndentation = (
     return modelParagraphFormattingEmission(indentation);
   };
   return (
-    canonicalJson(indentationEmission(authored)) === canonicalJson(indentationEmission(original))
+    canonicalJson(indentationEmission(authored)) ===
+    canonicalJson(indentationEmission(original))
   );
 };
 
@@ -453,7 +522,10 @@ export const paragraphPropertySourceMatchesEmission = (
   paragraphFormattingEmissionFingerprint(emission);
 
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
-export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
+export const copyParagraphPropertyCapture = (
+  target: Paragraph,
+  source: Paragraph,
+): void => {
   copyParagraphIndentationProjection({ target, source });
   const capture = captureForParagraph(source);
   if (capture) attachParagraphCapture(target, capture);
@@ -462,17 +534,24 @@ export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragrap
     paragraphSourceRecordKinds.get(source) === "durable"
       ? "durable"
       : "capture-only";
-  if (!paragraphSourceRecordKinds.has(target)) paragraphSourceRecordKinds.set(target, kind);
+  if (!paragraphSourceRecordKinds.has(target))
+    paragraphSourceRecordKinds.set(target, kind);
 };
 
-const copyParagraphCaptureForTransport = (target: Paragraph, source: Paragraph): void => {
+const copyParagraphCaptureForTransport = (
+  target: Paragraph,
+  source: Paragraph,
+): void => {
   // Transport graphs contain string keys only; keep this in-memory capture
   // off the wire while the explicit token carries its durable identity.
   const capture = captureForParagraph(source);
   if (capture) paragraphPropertyCaptures.set(target, capture);
 };
 
-export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph): void => {
+export const copyParagraphPropertySource = (
+  target: Paragraph,
+  source: Paragraph,
+): void => {
   copyParagraphPropertyCapture(target, source);
   const transferId = paragraphPropertySourceTransferIds.get(source);
   if (transferId) {
@@ -498,13 +577,16 @@ export const assignDocumentParagraphPropertySourceContract = (
   let ordinal = 0;
   // The traversal is part of the v1 durable identity contract. Any ordering
   // change requires a token-version bump and collaboration reseed.
-  visitDocumentStoryParagraphs(document.package.document.content, (paragraph) => {
-    const token = tokenForOrdinal(contract, ordinal);
-    paragraphPropertySourceTokens.set(paragraph, token);
-    paragraphSourceRecordKinds.set(paragraph, "durable");
-    sources.set(token, paragraph);
-    ordinal += 1;
-  });
+  visitDocumentStoryParagraphs(
+    document.package.document.content,
+    (paragraph) => {
+      const token = tokenForOrdinal(contract, ordinal);
+      paragraphPropertySourceTokens.set(paragraph, token);
+      paragraphSourceRecordKinds.set(paragraph, "durable");
+      sources.set(token, paragraph);
+      ordinal += 1;
+    },
+  );
   setDocumentParagraphPropertySourceBinding(
     document,
     Object.freeze({
@@ -522,7 +604,10 @@ const getDocumentParagraphPropertySourceBinding = (
   if (!Object.hasOwn(document, documentParagraphPropertySourceBinding)) {
     return undefined;
   }
-  const binding: unknown = Reflect.get(document, documentParagraphPropertySourceBinding);
+  const binding: unknown = Reflect.get(
+    document,
+    documentParagraphPropertySourceBinding,
+  );
   if (
     !isDocumentParagraphPropertySourceBinding(binding) ||
     !fingerprintFromContract(binding.contract)
@@ -534,7 +619,8 @@ const getDocumentParagraphPropertySourceBinding = (
 
 export const getDocumentParagraphPropertySourceContract = (
   document: Document,
-): string | undefined => getDocumentParagraphPropertySourceBinding(document)?.contract;
+): string | undefined =>
+  getDocumentParagraphPropertySourceBinding(document)?.contract;
 
 export const copyDocumentParagraphPropertySources = (
   document: Document,
@@ -549,18 +635,25 @@ export const paragraphPropertySourceBelongsToDocument = (
 ): boolean => {
   const owner = captureForParagraph(paragraph)?.owner;
   const binding = getDocumentParagraphPropertySourceBinding(document);
-  return owner !== undefined && binding !== undefined && binding.sourceOwners.has(owner);
+  return (
+    owner !== undefined &&
+    binding !== undefined &&
+    binding.sourceOwners.has(owner)
+  );
 };
 
 export const getProseDocumentParagraphPropertySourceContract = (
   document: PMNode,
 ): string | null => {
   const contract = document.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR];
-  return typeof contract === "string" && fingerprintFromContract(contract) ? contract : null;
+  return typeof contract === "string" && fingerprintFromContract(contract)
+    ? contract
+    : null;
 };
 
-export const getProseParagraphPropertySourceToken = (paragraph: PMNode): unknown =>
-  paragraph.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
+export const getProseParagraphPropertySourceToken = (
+  paragraph: PMNode,
+): unknown => paragraph.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
 
 export const copyDocumentParagraphPropertySourceContract = (
   target: Document,
@@ -572,8 +665,9 @@ export const copyDocumentParagraphPropertySourceContract = (
   }
 };
 
-export const getParagraphPropertySourceToken = (paragraph: Paragraph): string | undefined =>
-  paragraphPropertySourceTokens.get(paragraph);
+export const getParagraphPropertySourceToken = (
+  paragraph: Paragraph,
+): string | undefined => paragraphPropertySourceTokens.get(paragraph);
 
 type ParagraphSourceIdentity =
   | { type: "durable"; token: string }
@@ -590,14 +684,17 @@ export const inspectParagraphSourceIdentity = (
   const binding = getDocumentParagraphPropertySourceBinding(document);
   if (!binding) return { type: "invalid" };
   const capture = captureForParagraph(paragraph);
-  if (Object.hasOwn(paragraph, paragraphPropertyCapture) && !capture) return { type: "invalid" };
+  if (Object.hasOwn(paragraph, paragraphPropertyCapture) && !capture)
+    return { type: "invalid" };
   const token = getParagraphPropertySourceToken(paragraph);
   if (token !== undefined) {
-    if (capture && !binding.sourceOwners.has(capture.owner)) return { type: "invalid" };
+    if (capture && !binding.sourceOwners.has(capture.owner))
+      return { type: "invalid" };
     return { type: "durable", token };
   }
   const kind = paragraphSourceRecordKinds.get(paragraph);
-  if (kind === "durable" || binding.sourceOwners.has(paragraph)) return { type: "missing-token" };
+  if (kind === "durable" || binding.sourceOwners.has(paragraph))
+    return { type: "missing-token" };
   if (!capture) return { type: "authored" };
   if (kind === "capture-only" || binding.sourceOwners.has(capture.owner))
     return { type: "capture-only" };
@@ -647,7 +744,9 @@ const paragraphsIn = (document: Document): Paragraph[] => {
  * exact graph clone. `structuredClone` preserves graph topology, so any count
  * mismatch is an internal invariant failure rather than a position heuristic.
  */
-export const cloneDocumentWithParagraphPropertySources = (document: Document): Document => {
+export const cloneDocumentWithParagraphPropertySources = (
+  document: Document,
+): Document => {
   const cloned = structuredClone(document);
   const sources = paragraphsIn(document);
   const targets = paragraphsIn(cloned);
@@ -670,16 +769,16 @@ export const cloneDocumentWithParagraphPropertySources = (document: Document): D
 const paragraphsInTableCells = (cells: readonly TableCell[]): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   for (const cell of cells) {
-    visitDocxParagraphs({ documentBody: { content: cell.content } }, (paragraph) =>
-      paragraphs.push(paragraph),
+    visitDocxParagraphs(
+      { documentBody: { content: cell.content } },
+      (paragraph) => paragraphs.push(paragraph),
     );
   }
   return paragraphs;
 };
 
 export type TableCellParagraphPropertySourceBinding =
-  | Readonly<{ type: "authored" }>
-  | Readonly<{ token: string; type: "source" }>;
+  Readonly<{ type: "authored" }> | Readonly<{ token: string; type: "source" }>;
 
 type TableCellParagraphPropertySourceBindingInspection =
   | { status: "absent" }
@@ -687,7 +786,9 @@ type TableCellParagraphPropertySourceBindingInspection =
   | { binding: Readonly<{ token: string; type: "source" }>; status: "source" }
   | { status: "invalid" };
 
-const isPropertySourceBindingRecord = (value: unknown): value is Record<string, unknown> =>
+const isPropertySourceBindingRecord = (
+  value: unknown,
+): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const inspectTableCellParagraphPropertySourceBinding = (
@@ -696,7 +797,10 @@ const inspectTableCellParagraphPropertySourceBinding = (
   if (!Object.hasOwn(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)) {
     return { status: "absent" };
   }
-  const value: unknown = Reflect.get(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR);
+  const value: unknown = Reflect.get(
+    paragraph,
+    TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+  );
   if (!isPropertySourceBindingRecord(value)) {
     return { status: "invalid" };
   }
@@ -718,7 +822,10 @@ const inspectTableCellParagraphPropertySourceBinding = (
     Object.hasOwn(value, "token") &&
     typeof value["token"] === "string"
   ) {
-    return { binding: { token: value["token"], type: "source" }, status: "source" };
+    return {
+      binding: { token: value["token"], type: "source" },
+      status: "source",
+    };
   }
   return { status: "invalid" };
 };
@@ -728,26 +835,40 @@ const TABLE_CELL_PARAGRAPH_SOURCE_MAX_VALUES = 100_000;
 const ARRAY_INDEX = /^(?:0|[1-9][0-9]*)$/;
 
 const tableCellParagraphSourcePayloadMessages = {
-  complexity_limit: "The hidden table-cell payload exceeds its complexity limit.",
-  cyclic_or_aliased_graph: "The hidden table-cell payload contains a cyclic or aliased graph.",
+  complexity_limit:
+    "The hidden table-cell payload exceeds its complexity limit.",
+  cyclic_or_aliased_graph:
+    "The hidden table-cell payload contains a cyclic or aliased graph.",
   depth_limit: "The hidden table-cell payload exceeds its nesting limit.",
   expected_array: "The hidden table-cell payload field must be an array.",
   expected_block: "The hidden table-cell payload contains a malformed block.",
   expected_cell: "The hidden table-cell payload contains a malformed cell.",
-  expected_inline_content: "The hidden table-cell payload contains malformed inline content.",
-  expected_paragraph: "The hidden table-cell payload contains a malformed paragraph.",
+  expected_inline_content:
+    "The hidden table-cell payload contains malformed inline content.",
+  expected_paragraph:
+    "The hidden table-cell payload contains a malformed paragraph.",
   expected_record: "The hidden table-cell payload contains a malformed object.",
   expected_row: "The hidden table-cell payload contains a malformed row.",
-  invalid_binding: "A hidden table-cell paragraph has an invalid source binding.",
-  invalid_block_type: "The hidden table-cell payload contains an unsupported block type.",
-  invalid_cell_type: "The hidden table-cell payload contains an invalid cell type.",
-  invalid_graph_value: "The hidden table-cell payload contains an invalid graph value.",
+  invalid_binding:
+    "A hidden table-cell paragraph has an invalid source binding.",
+  invalid_block_type:
+    "The hidden table-cell payload contains an unsupported block type.",
+  invalid_cell_type:
+    "The hidden table-cell payload contains an invalid cell type.",
+  invalid_graph_value:
+    "The hidden table-cell payload contains an invalid graph value.",
   invalid_inline_content_type:
     "The hidden table-cell payload contains an unsupported inline content type.",
-  invalid_paragraph_type: "The hidden table-cell payload contains an invalid paragraph type.",
-  invalid_row_type: "The hidden table-cell payload contains an invalid row type.",
-  malformed_source_token: "A hidden table-cell paragraph has a malformed source token.",
-} as const satisfies Record<TableCellParagraphSourcePayloadErrorClassification, string>;
+  invalid_paragraph_type:
+    "The hidden table-cell payload contains an invalid paragraph type.",
+  invalid_row_type:
+    "The hidden table-cell payload contains an invalid row type.",
+  malformed_source_token:
+    "A hidden table-cell paragraph has a malformed source token.",
+} as const satisfies Record<
+  TableCellParagraphSourcePayloadErrorClassification,
+  string
+>;
 const tableCellParagraphSourceValidationErrors =
   new WeakSet<ParagraphPropertySourceValidationError>();
 
@@ -791,7 +912,8 @@ const tableCellBlockTraversalByType = {
   table: "table",
 } as const satisfies Record<BlockContent["type"], TableCellBlockTraversal>;
 
-type TableCellParagraphContentTraversal = "children" | "complexField" | "content" | "leaf" | "run";
+type TableCellParagraphContentTraversal =
+  "children" | "complexField" | "content" | "leaf" | "run";
 
 const tableCellParagraphContentTraversalByType = {
   inlineWrapper: "content",
@@ -815,7 +937,10 @@ const tableCellParagraphContentTraversalByType = {
   preservedInline: "leaf",
   run: "run",
   simpleField: "content",
-} as const satisfies Record<ParagraphContent["type"], TableCellParagraphContentTraversal>;
+} as const satisfies Record<
+  ParagraphContent["type"],
+  TableCellParagraphContentTraversal
+>;
 
 type TableCellRunContentTraversal = "leaf" | "shape";
 
@@ -840,17 +965,20 @@ const tableCellRunContentTraversalByType = {
 const isTableCellBlockContentType = (
   value: unknown,
 ): value is keyof typeof tableCellBlockTraversalByType =>
-  typeof value === "string" && Object.hasOwn(tableCellBlockTraversalByType, value);
+  typeof value === "string" &&
+  Object.hasOwn(tableCellBlockTraversalByType, value);
 
 const isTableCellParagraphContentType = (
   value: unknown,
 ): value is keyof typeof tableCellParagraphContentTraversalByType =>
-  typeof value === "string" && Object.hasOwn(tableCellParagraphContentTraversalByType, value);
+  typeof value === "string" &&
+  Object.hasOwn(tableCellParagraphContentTraversalByType, value);
 
 const isTableCellRunContentType = (
   value: unknown,
 ): value is keyof typeof tableCellRunContentTraversalByType =>
-  typeof value === "string" && Object.hasOwn(tableCellRunContentTraversalByType, value);
+  typeof value === "string" &&
+  Object.hasOwn(tableCellRunContentTraversalByType, value);
 
 const inspectTableCellParagraphSourceGraph = (
   value: unknown,
@@ -878,13 +1006,20 @@ const inspectTableCellParagraphSourceGraph = (
     return invalidTableCellParagraphSourcePayload("invalid_graph_value", path);
   }
   if (context.seen.has(value)) {
-    return invalidTableCellParagraphSourcePayload("cyclic_or_aliased_graph", path);
+    return invalidTableCellParagraphSourcePayload(
+      "cyclic_or_aliased_graph",
+      path,
+    );
   }
   context.seen.add(value);
   context.objects.push(value);
 
   const prototype = Object.getPrototypeOf(value);
-  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+  if (
+    !Array.isArray(value) &&
+    prototype !== Object.prototype &&
+    prototype !== null
+  ) {
     return invalidTableCellParagraphSourcePayload("invalid_graph_value", path);
   }
 
@@ -898,22 +1033,43 @@ const inspectTableCellParagraphSourceGraph = (
     let childPath = `${path}.*`;
     if (Array.isArray(value)) {
       if (typeof key !== "string" || !ARRAY_INDEX.test(key)) {
-        return invalidTableCellParagraphSourcePayload("invalid_graph_value", `${path}[*]`);
+        return invalidTableCellParagraphSourcePayload(
+          "invalid_graph_value",
+          `${path}[*]`,
+        );
       }
       childPath = `${path}[${key}]`;
     }
     if (typeof key !== "string") {
-      return invalidTableCellParagraphSourcePayload("invalid_graph_value", childPath);
+      return invalidTableCellParagraphSourcePayload(
+        "invalid_graph_value",
+        childPath,
+      );
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) {
-      return invalidTableCellParagraphSourcePayload("invalid_graph_value", childPath);
+    if (
+      descriptor === undefined ||
+      !descriptor.enumerable ||
+      !("value" in descriptor)
+    ) {
+      return invalidTableCellParagraphSourcePayload(
+        "invalid_graph_value",
+        childPath,
+      );
     }
-    inspectTableCellParagraphSourceGraph(descriptor.value, childPath, depth + 1, context);
+    inspectTableCellParagraphSourceGraph(
+      descriptor.value,
+      childPath,
+      depth + 1,
+      context,
+    );
   }
 };
 
-const tableCellParagraphSourceArray = (value: unknown, path: string): unknown[] => {
+const tableCellParagraphSourceArray = (
+  value: unknown,
+  path: string,
+): unknown[] => {
   if (!Array.isArray(value)) {
     return invalidTableCellParagraphSourcePayload("expected_array", path);
   }
@@ -954,25 +1110,47 @@ const visitDecodedTableCellRunContent = (
   path: string,
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
-  const content = tableCellParagraphSourceRecord(value, path, "expected_inline_content");
+  const content = tableCellParagraphSourceRecord(
+    value,
+    path,
+    "expected_inline_content",
+  );
   const contentType = content["type"];
   if (!isTableCellRunContentType(contentType)) {
-    return invalidTableCellParagraphSourcePayload("invalid_inline_content_type", path);
+    return invalidTableCellParagraphSourcePayload(
+      "invalid_inline_content_type",
+      path,
+    );
   }
   const traversal = tableCellRunContentTraversalByType[contentType];
   switch (traversal) {
     case "shape": {
       const shapePath = `${path}.shape`;
-      const shape = tableCellParagraphSourceRecord(content["shape"], shapePath, "expected_record");
+      const shape = tableCellParagraphSourceRecord(
+        content["shape"],
+        shapePath,
+        "expected_record",
+      );
       const rawTextBody = shape["textBody"];
       if (rawTextBody === undefined || rawTextBody === null) {
         return;
       }
       const textBodyPath = `${shapePath}.textBody`;
-      const textBody = tableCellParagraphSourceRecord(rawTextBody, textBodyPath, "expected_record");
-      const blocks = tableCellParagraphSourceArray(textBody["content"], `${textBodyPath}.content`);
+      const textBody = tableCellParagraphSourceRecord(
+        rawTextBody,
+        textBodyPath,
+        "expected_record",
+      );
+      const blocks = tableCellParagraphSourceArray(
+        textBody["content"],
+        `${textBodyPath}.content`,
+      );
       for (const [index, block] of blocks.entries()) {
-        visitDecodedTableCellBlock(block, `${textBodyPath}.content[${index}]`, context);
+        visitDecodedTableCellBlock(
+          block,
+          `${textBodyPath}.content[${index}]`,
+          context,
+        );
       }
       return;
     }
@@ -990,7 +1168,10 @@ const visitDecodedTableCellRun = (
   path: string,
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
-  const content = tableCellParagraphSourceArray(run["content"], `${path}.content`);
+  const content = tableCellParagraphSourceArray(
+    run["content"],
+    `${path}.content`,
+  );
   for (const [index, item] of content.entries()) {
     visitDecodedTableCellRunContent(item, `${path}.content[${index}]`, context);
   }
@@ -1001,10 +1182,17 @@ const visitDecodedTableCellInlineContent = (
   path: string,
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
-  const content = tableCellParagraphSourceRecord(value, path, "expected_inline_content");
+  const content = tableCellParagraphSourceRecord(
+    value,
+    path,
+    "expected_inline_content",
+  );
   const contentType = content["type"];
   if (!isTableCellParagraphContentType(contentType)) {
-    return invalidTableCellParagraphSourcePayload("invalid_inline_content_type", path);
+    return invalidTableCellParagraphSourcePayload(
+      "invalid_inline_content_type",
+      path,
+    );
   }
   const traversal = tableCellParagraphContentTraversalByType[contentType];
   switch (traversal) {
@@ -1012,27 +1200,51 @@ const visitDecodedTableCellInlineContent = (
       visitDecodedTableCellRun(content, path, context);
       return;
     case "children": {
-      const children = tableCellParagraphSourceArray(content["children"], `${path}.children`);
+      const children = tableCellParagraphSourceArray(
+        content["children"],
+        `${path}.children`,
+      );
       for (const [index, child] of children.entries()) {
-        visitDecodedTableCellInlineContent(child, `${path}.children[${index}]`, context);
+        visitDecodedTableCellInlineContent(
+          child,
+          `${path}.children[${index}]`,
+          context,
+        );
       }
       return;
     }
     case "content": {
-      const children = tableCellParagraphSourceArray(content["content"], `${path}.content`);
+      const children = tableCellParagraphSourceArray(
+        content["content"],
+        `${path}.content`,
+      );
       for (const [index, child] of children.entries()) {
-        visitDecodedTableCellInlineContent(child, `${path}.content[${index}]`, context);
+        visitDecodedTableCellInlineContent(
+          child,
+          `${path}.content[${index}]`,
+          context,
+        );
       }
       return;
     }
     case "complexField": {
       for (const field of ["fieldCode", "fieldResult"] as const) {
-        const runs = tableCellParagraphSourceArray(content[field], `${path}.${field}`);
+        const runs = tableCellParagraphSourceArray(
+          content[field],
+          `${path}.${field}`,
+        );
         for (const [index, runValue] of runs.entries()) {
           const runPath = `${path}.${field}[${index}]`;
-          const run = tableCellParagraphSourceRecord(runValue, runPath, "expected_inline_content");
+          const run = tableCellParagraphSourceRecord(
+            runValue,
+            runPath,
+            "expected_inline_content",
+          );
           if (run["type"] !== "run") {
-            return invalidTableCellParagraphSourcePayload("invalid_inline_content_type", runPath);
+            return invalidTableCellParagraphSourcePayload(
+              "invalid_inline_content_type",
+              runPath,
+            );
           }
           visitDecodedTableCellRun(run, runPath, context);
         }
@@ -1054,7 +1266,10 @@ const visitDecodedTableCellParagraph = (
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
   if (paragraph["type"] !== "paragraph") {
-    return invalidTableCellParagraphSourcePayload("invalid_paragraph_type", path);
+    return invalidTableCellParagraphSourcePayload(
+      "invalid_paragraph_type",
+      path,
+    );
   }
   if (!isDecodedTableCellParagraph(paragraph)) {
     return invalidTableCellParagraphSourcePayload("expected_paragraph", path);
@@ -1089,9 +1304,16 @@ const visitDecodedTableCellParagraph = (
       return exhaustiveInspection;
     }
   }
-  const content = tableCellParagraphSourceArray(paragraph.content, `${path}.content`);
+  const content = tableCellParagraphSourceArray(
+    paragraph.content,
+    `${path}.content`,
+  );
   for (const [index, item] of content.entries()) {
-    visitDecodedTableCellInlineContent(item, `${path}.content[${index}]`, context);
+    visitDecodedTableCellInlineContent(
+      item,
+      `${path}.content[${index}]`,
+      context,
+    );
   }
 };
 
@@ -1104,7 +1326,10 @@ const visitDecodedTableCell = (
   if (cell["type"] !== "tableCell") {
     return invalidTableCellParagraphSourcePayload("invalid_cell_type", path);
   }
-  const content = tableCellParagraphSourceArray(cell["content"], `${path}.content`);
+  const content = tableCellParagraphSourceArray(
+    cell["content"],
+    `${path}.content`,
+  );
   for (const [index, block] of content.entries()) {
     visitDecodedTableCellBlock(block, `${path}.content[${index}]`, context);
   }
@@ -1152,7 +1377,10 @@ function visitDecodedTableCellBlock(
       return;
     }
     case "blockSdt": {
-      const content = tableCellParagraphSourceArray(block["content"], `${path}.content`);
+      const content = tableCellParagraphSourceArray(
+        block["content"],
+        `${path}.content`,
+      );
       for (const [index, child] of content.entries()) {
         visitDecodedTableCellBlock(child, `${path}.content[${index}]`, context);
       }
@@ -1211,7 +1439,12 @@ const decodeTableCellParagraphSourcePayloadUnchecked = (
     seen: new WeakSet(),
     values: 0,
   };
-  inspectTableCellParagraphSourceGraph(value, "continuationCells", 0, graphContext);
+  inspectTableCellParagraphSourceGraph(
+    value,
+    "continuationCells",
+    0,
+    graphContext,
+  );
 
   const context: TableCellParagraphSourceDecodeContext = {
     paragraphs: [],
@@ -1219,7 +1452,9 @@ const decodeTableCellParagraphSourcePayloadUnchecked = (
   const rawCells = tableCellParagraphSourceArray(value, "continuationCells");
   const cells: TableCell[] = [];
   for (const [index, rawCell] of rawCells.entries()) {
-    cells.push(visitDecodedTableCell(rawCell, `continuationCells[${index}]`, context));
+    cells.push(
+      visitDecodedTableCell(rawCell, `continuationCells[${index}]`, context),
+    );
   }
 
   let object = graphContext.objects.pop();
@@ -1234,7 +1469,9 @@ const decodeTableCellParagraphSourcePayloadUnchecked = (
   decodedTableCellParagraphSourcePayloadStates.set(
     payload,
     Object.freeze({
-      paragraphs: Object.freeze(context.paragraphs.map((entry) => Object.freeze(entry))),
+      paragraphs: Object.freeze(
+        context.paragraphs.map((entry) => Object.freeze(entry)),
+      ),
     } satisfies DecodedTableCellParagraphSourcePayloadState),
   );
   decodedTableCellParagraphSourcePayloads.set(payload.cells, payload);
@@ -1264,7 +1501,10 @@ export const decodeTableCellParagraphSourcePayload = (
     ) {
       throw error;
     }
-    return invalidTableCellParagraphSourcePayload("invalid_graph_value", "continuationCells");
+    return invalidTableCellParagraphSourcePayload(
+      "invalid_graph_value",
+      "continuationCells",
+    );
   }
 };
 
@@ -1272,8 +1512,16 @@ const setTableCellParagraphPropertySourceBinding = (
   paragraph: Paragraph,
   binding: TableCellParagraphPropertySourceBinding,
 ): void => {
-  if (!Reflect.set(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR, Object.freeze(binding))) {
-    panic("Cannot attach paragraph-property transport identity to a table cell.");
+  if (
+    !Reflect.set(
+      paragraph,
+      TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+      Object.freeze(binding),
+    )
+  ) {
+    panic(
+      "Cannot attach paragraph-property transport identity to a table cell.",
+    );
   }
 };
 
@@ -1284,20 +1532,28 @@ const tableCellParagraphPropertySourceBindingForTransport = (
   const directToken = paragraphPropertySourceTokens.get(paragraph);
   if (directToken !== undefined) {
     if (!isParagraphPropertySourceToken(directToken)) {
-      panic("Cannot transport a malformed private paragraph-property source token.");
+      panic(
+        "Cannot transport a malformed private paragraph-property source token.",
+      );
     }
     switch (inspection.status) {
       case "absent":
         return { token: directToken, type: "source" };
       case "authored":
-        panic("A hidden paragraph-property source binding conflicts with its private owner.");
+        panic(
+          "A hidden paragraph-property source binding conflicts with its private owner.",
+        );
       case "source":
         if (inspection.binding.token !== directToken) {
-          panic("A hidden paragraph-property source binding conflicts with its private owner.");
+          panic(
+            "A hidden paragraph-property source binding conflicts with its private owner.",
+          );
         }
         return inspection.binding;
       case "invalid":
-        panic("Cannot transport a malformed hidden paragraph-property source binding.");
+        panic(
+          "Cannot transport a malformed hidden paragraph-property source binding.",
+        );
       default: {
         const exhaustiveInspection: never = inspection;
         return exhaustiveInspection;
@@ -1313,11 +1569,15 @@ const tableCellParagraphPropertySourceBindingForTransport = (
       return inspection.binding;
     case "source":
       if (!isParagraphPropertySourceToken(inspection.binding.token)) {
-        panic("Cannot transport a malformed hidden paragraph-property source token.");
+        panic(
+          "Cannot transport a malformed hidden paragraph-property source token.",
+        );
       }
       return inspection.binding;
     case "invalid":
-      panic("Cannot transport a malformed hidden paragraph-property source binding.");
+      panic(
+        "Cannot transport a malformed hidden paragraph-property source binding.",
+      );
     default: {
       const exhaustiveInspection: never = inspection;
       return exhaustiveInspection;
@@ -1356,7 +1616,8 @@ export const transportTableCellsWithParagraphPropertySources = (
 export const restoreTableCellsWithParagraphPropertySources = (
   payload: DecodedTableCellParagraphSourcePayload,
 ): TableCell[] => {
-  const sourceEntries = decodedTableCellParagraphSourcePayloadState(payload).paragraphs;
+  const sourceEntries =
+    decodedTableCellParagraphSourcePayloadState(payload).paragraphs;
   const cloned = structuredClone([...payload.cells]);
   const targets = paragraphsInTableCells(cloned);
   if (sourceEntries.length !== targets.length) {
@@ -1369,8 +1630,12 @@ export const restoreTableCellsWithParagraphPropertySources = (
     }
     const { paragraph: source } = sourceEntry;
     copyParagraphPropertyCapture(target, source);
-    if (!Reflect.deleteProperty(target, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)) {
-      panic("Cannot detach paragraph-property transport identity from a table cell.");
+    if (
+      !Reflect.deleteProperty(target, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)
+    ) {
+      panic(
+        "Cannot detach paragraph-property transport identity from a table cell.",
+      );
     }
     switch (sourceEntry.binding.type) {
       case "authored":
@@ -1392,9 +1657,14 @@ export const restoreTableCellsWithParagraphPropertySources = (
 /** Visit every transported hidden paragraph in canonical cell-story order. */
 export const visitTableCellParagraphPropertySourceBindings = (
   payload: DecodedTableCellParagraphSourcePayload,
-  visit: (binding: TableCellParagraphPropertySourceBinding, path: string) => void,
+  visit: (
+    binding: TableCellParagraphPropertySourceBinding,
+    path: string,
+  ) => void,
 ): void => {
-  for (const { binding, path } of decodedTableCellParagraphSourcePayloadState(payload).paragraphs) {
+  for (const { binding, path } of decodedTableCellParagraphSourcePayloadState(
+    payload,
+  ).paragraphs) {
     visit(binding, path);
   }
 };
@@ -1406,7 +1676,8 @@ export const visitTableCellParagraphPropertySourceBindings = (
 export const cloneTableCellsWithParagraphPropertyCaptures = (
   payload: DecodedTableCellParagraphSourcePayload,
 ): TableCell[] => {
-  const sourceEntries = decodedTableCellParagraphSourcePayloadState(payload).paragraphs;
+  const sourceEntries =
+    decodedTableCellParagraphSourcePayloadState(payload).paragraphs;
   const cloned = structuredClone([...payload.cells]);
   const targets = paragraphsInTableCells(cloned);
   if (sourceEntries.length !== targets.length) {
@@ -1464,7 +1735,8 @@ export type ParagraphPropertySourceTransfer = {
   selectedToken: string | null;
 };
 
-const paragraphPropertySourceTransfersKey = "stll.folio.meta.paragraphPropertySourceTransfers";
+const paragraphPropertySourceTransfersKey =
+  "stll.folio.meta.paragraphPropertySourceTransfers";
 
 type JoinProseParagraphsWithRightPropertySourceOptions = {
   attrs: PMNode["attrs"];
@@ -1481,7 +1753,12 @@ export const joinProseParagraphsWithRightPropertySource = ({
   const $pos = transaction.doc.resolve(pos);
   const left = $pos.nodeBefore;
   const right = $pos.nodeAfter;
-  if (!left || !right || left.type.name !== "paragraph" || right.type.name !== "paragraph") {
+  if (
+    !left ||
+    !right ||
+    left.type.name !== "paragraph" ||
+    right.type.name !== "paragraph"
+  ) {
     panic("Paragraph-property ownership can only join adjacent paragraphs");
   }
   const leftToken = getProseParagraphPropertySourceToken(left);
@@ -1498,7 +1775,8 @@ export const joinProseParagraphsWithRightPropertySource = ({
     { ...attrs, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: rightToken ?? null },
     joined.marks,
   );
-  const transfers = transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
+  const transfers =
+    transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
   transaction.setMeta(paragraphPropertySourceTransfersKey, [
     ...transfers,
     {
@@ -1527,7 +1805,10 @@ export const getExplicitParagraphPropertySourceTransfers = (
   transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
 
 /** Carry a parser-linked paragraph owner across an immutable PM node rebuild. */
-const copyProseParagraphPropertySource = (target: PMNode, source: PMNode): void => {
+const copyProseParagraphPropertySource = (
+  target: PMNode,
+  source: PMNode,
+): void => {
   if (target.type.name !== "paragraph" || source.type.name !== "paragraph") {
     return;
   }
@@ -1646,7 +1927,10 @@ export const transferProseParagraphPropertySource = (
   paragraphPropertySourceTransferIds.set(sourceOwner, paraId);
 };
 
-export const linkParagraphPropertySourceCandidate = (target: Paragraph, source: PMNode): void => {
+export const linkParagraphPropertySourceCandidate = (
+  target: Paragraph,
+  source: PMNode,
+): void => {
   const token = source.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
   if (typeof token === "string") {
     paragraphPropertySourceTokens.set(target, token);
@@ -1660,8 +1944,10 @@ export const linkParagraphPropertySourceCandidate = (target: Paragraph, source: 
   }
 };
 
-export const getParagraphPropertySourceCandidate = (paragraph: Paragraph): Paragraph | undefined =>
-  paragraphPropertySourceCandidates.get(paragraph);
+export const getParagraphPropertySourceCandidate = (
+  paragraph: Paragraph,
+): Paragraph | undefined => paragraphPropertySourceCandidates.get(paragraph);
 
-export const getParagraphPropertySourceTransferId = (paragraph: Paragraph): string | undefined =>
-  paragraphPropertySourceTransferIds.get(paragraph);
+export const getParagraphPropertySourceTransferId = (
+  paragraph: Paragraph,
+): string | undefined => paragraphPropertySourceTransferIds.get(paragraph);

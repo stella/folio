@@ -25,8 +25,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { SdtProperties } from "../types/document";
 import { parseSdtProperties } from "./sdtProperties";
 import {
@@ -73,7 +75,10 @@ function parseSdtPr(xml: string): SdtProperties {
   return parseSdtProperties(sdtPr);
 }
 
-function parseSdtPrPair(sdtPrXml: string, sdtEndPrXml: string | null): SdtProperties {
+function parseSdtPrPair(
+  sdtPrXml: string,
+  sdtEndPrXml: string | null,
+): SdtProperties {
   const sdtPrRoot = parseXml(sdtPrXml);
   const sdtPrEl = sdtPrRoot.elements?.[0];
   if (!sdtPrEl) {
@@ -195,7 +200,12 @@ type TagValue = { wire: string; decoded: string };
 /** OpenDoPE v2.3 — bare `od:`-prefixed payloads (no XML metacharacters). */
 const arbOpenDopeTag: fc.Arbitrary<TagValue> = fc
   .tuple(
-    fc.constantFrom("od:repeat=x", "od:condition=c", "od:xpath=x", "od:component=c"),
+    fc.constantFrom(
+      "od:repeat=x",
+      "od:condition=c",
+      "od:xpath=x",
+      "od:component=c",
+    ),
     fc.integer({ min: 0, max: 999 }),
   )
   .map(([prefix, n]) => {
@@ -211,7 +221,11 @@ const arbOpenDopeTag: fc.Arbitrary<TagValue> = fc
 const arbAmpersandTag: fc.Arbitrary<TagValue> = fc
   .tuple(
     fc.integer({ min: 0, max: 99 }),
-    fc.constantFrom("od:continuousBefore=true", "od:continuousAfter=true", "od:after=true"),
+    fc.constantFrom(
+      "od:continuousBefore=true",
+      "od:continuousAfter=true",
+      "od:after=true",
+    ),
   )
   .map(([n, tail]) => {
     const decoded = `od:component=c${n}&${tail}`;
@@ -227,7 +241,10 @@ const arbAmpersandTag: fc.Arbitrary<TagValue> = fc
  * decoded.
  */
 const arbBoundaryLengthTag: fc.Arbitrary<TagValue> = fc
-  .tuple(fc.constantFrom(63, 64, 65, 100, 200), fc.constantFrom("a", "b", "0", "1", "-", "_", "."))
+  .tuple(
+    fc.constantFrom(63, 64, 65, 100, 200),
+    fc.constantFrom("a", "b", "0", "1", "-", "_", "."),
+  )
   .map(([len, ch]) => {
     const value = ch.repeat(len);
     return { wire: value, decoded: value };
@@ -250,12 +267,8 @@ const arbTagValue: fc.Arbitrary<TagValue> = fc.oneof(
   arbBoundaryLengthTag,
 );
 
-const arbLockValue: fc.Arbitrary<NonNullable<SdtProperties["lock"]>> = fc.constantFrom(
-  "sdtLocked",
-  "contentLocked",
-  "sdtContentLocked",
-  "unlocked",
-);
+const arbLockValue: fc.Arbitrary<NonNullable<SdtProperties["lock"]>> =
+  fc.constantFrom("sdtLocked", "contentLocked", "sdtContentLocked", "unlocked");
 
 /** Spec-permitted OnOff val attribute forms, including absent. */
 const arbOnOffForm = fc.constantFrom(
@@ -285,7 +298,12 @@ const arbDateFullDate = fc.oneof(
   fc.constant("2026-06-02"),
 );
 
-const arbDateFormat = fc.constantFrom("yyyy-MM-dd", "d MMMM yyyy", "M/d/yyyy", "dd.MM.yyyy");
+const arbDateFormat = fc.constantFrom(
+  "yyyy-MM-dd",
+  "d MMMM yyyy",
+  "M/d/yyyy",
+  "dd.MM.yyyy",
+);
 
 /**
  * Generate a list of {displayText, value} items with at least one duplicate-
@@ -400,9 +418,14 @@ function buildTypeFragment(
   // dropdown / comboBox.
   const tag = kind === "dropdown" ? "dropDownList" : "comboBox";
   const lastValueAttr =
-    rng.dropdownLastValue !== undefined ? ` ${w}:lastValue="${rng.dropdownLastValue}"` : "";
+    rng.dropdownLastValue !== undefined
+      ? ` ${w}:lastValue="${rng.dropdownLastValue}"`
+      : "";
   const items = rng.listItems
-    .map(([dt, val]) => `<${w}:listItem ${w}:displayText="${dt}" ${w}:value="${val}"/>`)
+    .map(
+      ([dt, val]) =>
+        `<${w}:listItem ${w}:displayText="${dt}" ${w}:value="${val}"/>`,
+    )
     .join("");
   // Both displayText and value carried verbatim; parser falls back if one
   // is absent, but we always emit both for round-trip stability.
@@ -415,7 +438,9 @@ function buildTypeFragment(
     expected: {
       sdtType: kind === "dropdown" ? "dropdown" : "comboBox",
       listItems: expectedItems,
-      ...(rng.dropdownLastValue !== undefined ? { dropdownLastValue: rng.dropdownLastValue } : {}),
+      ...(rng.dropdownLastValue !== undefined
+        ? { dropdownLastValue: rng.dropdownLastValue }
+        : {}),
     },
   };
 }
@@ -481,10 +506,14 @@ function buildSpec(
   prefixes: PrefixMap,
 ): SdtSpec {
   const w = prefixes.w;
-  const idFrag = spec.id !== undefined ? `<${w}:id ${w}:val="${spec.id}"/>` : null;
-  const aliasFrag = spec.alias !== undefined ? `<${w}:alias ${w}:val="${spec.alias}"/>` : null;
-  const tagFrag = spec.tag !== undefined ? `<${w}:tag ${w}:val="${spec.tag.wire}"/>` : null;
-  const lockFrag = spec.lock !== undefined ? `<${w}:lock ${w}:val="${spec.lock}"/>` : null;
+  const idFrag =
+    spec.id !== undefined ? `<${w}:id ${w}:val="${spec.id}"/>` : null;
+  const aliasFrag =
+    spec.alias !== undefined ? `<${w}:alias ${w}:val="${spec.alias}"/>` : null;
+  const tagFrag =
+    spec.tag !== undefined ? `<${w}:tag ${w}:val="${spec.tag.wire}"/>` : null;
+  const lockFrag =
+    spec.lock !== undefined ? `<${w}:lock ${w}:val="${spec.lock}"/>` : null;
   const placeholderFrag =
     spec.placeholder !== undefined
       ? `<${w}:placeholder><${w}:docPart ${w}:val="${spec.placeholder}"/></${w}:placeholder>`
@@ -508,7 +537,9 @@ function buildSpec(
   ]);
 
   const sdtPrXml = buildSdtPrXml(body, prefixes);
-  const sdtEndPrXml = spec.includeSdtEndPr ? buildSdtEndPrXml("", prefixes) : null;
+  const sdtEndPrXml = spec.includeSdtEndPr
+    ? buildSdtEndPrXml("", prefixes)
+    : null;
 
   const expected: Partial<SdtProperties> = {
     ...typeSpec.expected,
@@ -573,7 +604,10 @@ describe("sdtPr property tests", () => {
     fc.assert(
       fc.property(arbOnOffForm, (form) => {
         const valAttr = renderOnOffAttr(form, "w");
-        const xml = buildSdtPrXml(`<w:showingPlcHdr${valAttr}/>`, canonicalPrefixes);
+        const xml = buildSdtPrXml(
+          `<w:showingPlcHdr${valAttr}/>`,
+          canonicalPrefixes,
+        );
         const props = parseSdtPr(xml);
         expect(props.showingPlaceholder).toBe(form.expected);
       }),

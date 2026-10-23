@@ -14,13 +14,15 @@ import type { SectionProperties, TextFormatting } from "../../types/document";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../runParser";
 import { parseXmlDocument } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
-import { serializeTextFormatting } from "./textFormattingSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const parseRPr = (rPrXml: string): TextFormatting | undefined => {
-  const root = parseXmlDocument(`<w:rPr xmlns:w="${W_NS}">${rPrXml}</w:rPr>`) as XmlElement | null;
+  const root = parseXmlDocument(
+    `<w:rPr xmlns:w="${W_NS}">${rPrXml}</w:rPr>`,
+  ) as XmlElement | null;
   return parseRunProperties(root, null, RUN_PROPERTY_OWNERS.standalone);
 };
 
@@ -78,7 +80,9 @@ describe("theme font references", () => {
     expect(xml).not.toContain('w:hAnsi="Injected');
     expect(xml).toContain("&quot;");
     expect(xml).toContain("&amp;");
-    expect(parseXmlDocument(`<w:rPr xmlns:w="${W_NS}">${xml}</w:rPr>`)).not.toBeNull();
+    expect(
+      parseXmlDocument(`<w:rPr xmlns:w="${W_NS}">${xml}</w:rPr>`),
+    ).not.toBeNull();
   });
 });
 
@@ -99,6 +103,8 @@ describe("section property attributes", () => {
     expect(xml).not.toContain('w:start="9"');
     expect(xml).toContain("&quot;");
     expect(xml).toContain("&amp;");
-    expect(parseXmlDocument(`<w:body xmlns:w="${W_NS}">${xml}</w:body>`)).not.toBeNull();
+    expect(
+      parseXmlDocument(`<w:body xmlns:w="${W_NS}">${xml}</w:body>`),
+    ).not.toBeNull();
   });
 });

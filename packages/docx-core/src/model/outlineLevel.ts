@@ -34,16 +34,14 @@ export const BODY_TEXT_OUTLINE_LEVEL: OutlineLevel = { kind: "bodyText" };
 /** The `w:val` the body-text arm is written as. */
 const BODY_TEXT_OUTLINE_LEVEL_VALUE = 9;
 
-const OUTLINE_LEVEL_BY_STATED_VALUE: ReadonlyMap<number, OutlineLevel> = new Map<
-  number,
-  OutlineLevel
->([
-  ...HEADING_OUTLINE_LEVELS.map((level): readonly [number, OutlineLevel] => [
-    level,
-    { kind: "heading", level },
-  ]),
-  [BODY_TEXT_OUTLINE_LEVEL_VALUE, BODY_TEXT_OUTLINE_LEVEL],
-]);
+const OUTLINE_LEVEL_BY_STATED_VALUE: ReadonlyMap<number, OutlineLevel> =
+  new Map<number, OutlineLevel>([
+    ...HEADING_OUTLINE_LEVELS.map((level): readonly [number, OutlineLevel] => [
+      level,
+      { kind: "heading", level },
+    ]),
+    [BODY_TEXT_OUTLINE_LEVEL_VALUE, BODY_TEXT_OUTLINE_LEVEL],
+  ]);
 
 /**
  * The one reader over a stated `w:outlineLvl w:val`.
@@ -53,11 +51,14 @@ const OUTLINE_LEVEL_BY_STATED_VALUE: ReadonlyMap<number, OutlineLevel> = new Map
  * parse boundary drops them and warns instead, because a corpus document that
  * Word opens must still open here.
  */
-export const outlineLevelFromStatedValue = (value: number): OutlineLevel | undefined =>
-  OUTLINE_LEVEL_BY_STATED_VALUE.get(value);
+export const outlineLevelFromStatedValue = (
+  value: number,
+): OutlineLevel | undefined => OUTLINE_LEVEL_BY_STATED_VALUE.get(value);
 
 /** The heading arm for a zero-based level, or undefined outside 0..8. */
-export const headingOutlineLevel = (level: number): OutlineLevel | undefined => {
+export const headingOutlineLevel = (
+  level: number,
+): OutlineLevel | undefined => {
   const outlineLevel = OUTLINE_LEVEL_BY_STATED_VALUE.get(level);
   return outlineLevel?.kind === "heading" ? outlineLevel : undefined;
 };

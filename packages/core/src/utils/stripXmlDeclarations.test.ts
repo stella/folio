@@ -9,7 +9,9 @@ describe("stripXmlDeclarations", () => {
   });
 
   test("preserves unterminated openers", () => {
-    expect(stripXmlDeclarations("keep<?xml dangling")).toBe("keep<?xml dangling");
+    expect(stripXmlDeclarations("keep<?xml dangling")).toBe(
+      "keep<?xml dangling",
+    );
   });
 
   test("strips many unterminated openers in linear time", () => {

@@ -41,9 +41,15 @@
         <span class="image-ctx-menu__icon">
           <MaterialSymbol name="settings" :size="ICON_SIZE" />
         </span>
-        <span class="image-ctx-menu__label">{{ t("imageWrap.menu.imageProperties") }}</span>
+        <span class="image-ctx-menu__label">{{
+          t("imageWrap.menu.imageProperties")
+        }}</span>
       </button>
-      <div v-if="canOpenProperties" class="image-ctx-menu__divider" role="separator" />
+      <div
+        v-if="canOpenProperties"
+        class="image-ctx-menu__divider"
+        role="separator"
+      />
 
       <button
         v-for="option in options"
@@ -82,7 +88,10 @@
            on a selected image. -->
       <template v-if="textActions && textActions.length > 0">
         <div class="image-ctx-menu__divider" role="separator" />
-        <template v-for="(action, i) in textActions" :key="`${action.action}-${i}`">
+        <template
+          v-for="(action, i) in textActions"
+          :key="`${action.action}-${i}`"
+        >
           <button
             type="button"
             role="menuitem"
@@ -96,7 +105,11 @@
               {{ action.shortcut }}
             </span>
           </button>
-          <div v-if="action.dividerAfter" class="image-ctx-menu__divider" role="separator" />
+          <div
+            v-if="action.dividerAfter"
+            class="image-ctx-menu__divider"
+            role="separator"
+          />
         </template>
       </template>
     </div>
@@ -105,24 +118,28 @@
 
 <script setup lang="ts">
 import { computed, type CSSProperties } from "vue";
-import MaterialSymbol from "./ui/MaterialSymbol.vue";
-import { useDocxPortalClass } from "../composables/usePortalClass";
-import { useTranslation } from "../i18n";
+
 // Rewired: our core keeps the image-layout helpers in
 // `layout-painter/imageLayout.ts` (the `layout-painter` barrel does not
 // re-export them). The package `"./*"` file-wildcard resolves this deep path.
 // `ImageLayoutTarget` also lives here (upstream imported it from
 // `prosemirror/commands`, which our core does not expose it from).
 import {
-  IMAGE_LAYOUT_OPTIONS,
   deriveLayoutChoice,
-  isImageLayoutOptionEnabled,
+  IMAGE_LAYOUT_OPTIONS,
   type ImageLayoutIconHint,
   type ImageLayoutOptionDef,
   type ImageLayoutTarget,
+  isImageLayoutOptionEnabled,
 } from "@stll/folio-core/layout-painter/imageLayout";
 
-import type { ImageContextMenuState, ImageContextMenuTextAction } from "./imageContextMenuTypes";
+import { useDocxPortalClass } from "../composables/usePortalClass";
+import { useTranslation } from "../i18n";
+import type {
+  ImageContextMenuState,
+  ImageContextMenuTextAction,
+} from "./imageContextMenuTypes";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
 export type { ImageContextMenuState, ImageContextMenuTextAction };
 
@@ -160,7 +177,10 @@ const options = IMAGE_LAYOUT_OPTIONS;
 
 const currentChoice = computed(() => {
   if (!props.state) return null;
-  return deriveLayoutChoice(props.state.currentWrapType, props.state.currentCssFloat ?? null);
+  return deriveLayoutChoice(
+    props.state.currentWrapType,
+    props.state.currentCssFloat ?? null,
+  );
 });
 
 const ICON_BY_HINT: Record<ImageLayoutIconHint, string> = {
@@ -182,8 +202,10 @@ const menuStyle = computed<CSSProperties>(() => {
   let x = props.state.position.x;
   let y = props.state.position.y;
   if (typeof window !== "undefined") {
-    if (x + MENU_WIDTH > window.innerWidth) x = window.innerWidth - MENU_WIDTH - MARGIN;
-    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - MARGIN;
+    if (x + MENU_WIDTH > window.innerWidth)
+      x = window.innerWidth - MENU_WIDTH - MARGIN;
+    if (y + menuHeight > window.innerHeight)
+      y = window.innerHeight - menuHeight - MARGIN;
     if (x < MARGIN) x = MARGIN;
     if (y < MARGIN) y = MARGIN;
   }

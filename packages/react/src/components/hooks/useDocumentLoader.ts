@@ -7,7 +7,13 @@
  * callbacks each render.
  */
 
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { DocumentLoaderManager } from "@stll/folio-core/managers/DocumentLoaderManager";
@@ -15,6 +21,7 @@ import type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoader
 import type { Document } from "@stll/folio-core/types/document";
 import { getDocumentLoadSource } from "@stll/folio-core/utils/documentLoaderBehavior";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
+
 import type { UseHistoryReturn } from "../../hooks/useHistory";
 
 export type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoaderManager";
@@ -36,7 +43,8 @@ type UseDocumentLoaderParams = {
   /** Called when an unrecoverable parse error occurs. */
   onError: ((error: Error) => void) | undefined;
   /** Called after parsing to report whether editing can preserve fidelity. */
-  onCompatibilityChange: ((compatibility: DocxCompatibility) => void) | undefined;
+  onCompatibilityChange:
+    ((compatibility: DocxCompatibility) => void) | undefined;
   /**
    * Callback invoked at the start of every load to let the host component
    * clear UI state that is coupled to the previous document (comments,
@@ -49,7 +57,10 @@ type UseDocumentLoaderParams = {
 
 type UseDocumentLoaderReturn = {
   /** Parse and load a raw DOCX buffer. */
-  loadBuffer: (buffer: DocxInput, options?: { password?: string | undefined }) => Promise<void>;
+  loadBuffer: (
+    buffer: DocxInput,
+    options?: { password?: string | undefined },
+  ) => Promise<void>;
   /** Load a pre-parsed Document. */
   loadParsedDocument: (doc: Document) => void;
   /** Reset internal + UI state for a fresh document. */
@@ -174,7 +185,8 @@ export const useDocumentLoader = ({
       originalBufferRef.current = history.state.originalBuffer;
       return;
     }
-    originalBufferRef.current = documentBuffer instanceof ArrayBuffer ? documentBuffer : null;
+    originalBufferRef.current =
+      documentBuffer instanceof ArrayBuffer ? documentBuffer : null;
   }, [history.state, documentBuffer, loadedDocumentIdentity]);
 
   return {

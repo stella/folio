@@ -18,8 +18,8 @@ import {
   footnoteToProseDoc,
   headerFooterToProseDoc,
   standaloneTableCellToProseMirror,
-  type ToProseDocOptions,
   toProseDoc,
+  type ToProseDocOptions,
 } from "./toProseDoc";
 
 const REVISION = {
@@ -61,7 +61,10 @@ const pageBreakRun = (content: readonly RunContent[] = []): Run => ({
   content: [...content, { type: "break", breakType: "page" }],
 });
 
-const pageBreakParagraph = (): Paragraph => ({ type: "paragraph", content: [pageBreakRun()] });
+const pageBreakParagraph = (): Paragraph => ({
+  type: "paragraph",
+  content: [pageBreakRun()],
+});
 
 type InlineWrapper = {
   name: string;
@@ -72,7 +75,11 @@ const INLINE_WRAPPERS = [
   { name: "direct run", wrap: (run) => run },
   {
     name: "hyperlink",
-    wrap: (run) => ({ type: "hyperlink", href: "https://example.test", children: [run] }),
+    wrap: (run) => ({
+      type: "hyperlink",
+      href: "https://example.test",
+      children: [run],
+    }),
   },
   {
     name: "simple field",
@@ -204,7 +211,8 @@ const CONTAINER_CONTEXTS = [
     name: "repeating-header table cell",
     owner: "table-cell",
     supportsLeadingBreak: true,
-    build: (paragraph) => documentWithContent([tableWithParagraph(paragraph, true)]),
+    build: (paragraph) =>
+      documentWithContent([tableWithParagraph(paragraph, true)]),
   },
   {
     name: "nested table cell",
@@ -238,13 +246,15 @@ const CONTAINER_CONTEXTS = [
     name: "table nested in a text box",
     owner: "text-box",
     supportsLeadingBreak: false,
-    build: (paragraph) => documentWithContent([textBoxHost([tableWithParagraph(paragraph)])]),
+    build: (paragraph) =>
+      documentWithContent([textBoxHost([tableWithParagraph(paragraph)])]),
   },
   {
     name: "text box nested in a table cell",
     owner: "table-cell",
     supportsLeadingBreak: false,
-    build: (paragraph) => documentWithContent([tableWithParagraph(textBoxHost([paragraph]))]),
+    build: (paragraph) =>
+      documentWithContent([tableWithParagraph(textBoxHost([paragraph]))]),
   },
 ] as const satisfies readonly ContainerContext[];
 
@@ -259,7 +269,10 @@ describe("page-break run source-container ownership", () => {
     test.each(INLINE_WRAPPERS)(
       `classifies a leading page break in a ${context.name} through $name`,
       ({ wrap }) => {
-        const paragraph: Paragraph = { type: "paragraph", content: [wrap(pageBreakRun())] };
+        const paragraph: Paragraph = {
+          type: "paragraph",
+          content: [wrap(pageBreakRun())],
+        };
         const source = context.build(paragraph);
         const before = structuredClone(source.package.document.content);
 
@@ -320,24 +333,27 @@ describe("page-break run source-container ownership", () => {
     name: string;
     supported: boolean;
     content: readonly RunContent[];
-  }[])("classifies a $name authored page break by its run position", ({ content, supported }) => {
-    const source = documentWithContent([
-      tableWithParagraph({
-        type: "paragraph",
-        content: [{ type: "run", content: [...content] }],
-      }),
-    ]);
+  }[])(
+    "classifies a $name authored page break by its run position",
+    ({ content, supported }) => {
+      const source = documentWithContent([
+        tableWithParagraph({
+          type: "paragraph",
+          content: [{ type: "run", content: [...content] }],
+        }),
+      ]);
 
-    if (supported) {
-      expect(() => toProseDoc(source)).not.toThrow();
-      return;
-    }
+      if (supported) {
+        expect(() => toProseDoc(source)).not.toThrow();
+        return;
+      }
 
-    expectProjectionWarning(
-      (options) => toProseDoc(source, options),
-      CONTAINER_MESSAGES["table-cell"],
-    );
-  });
+      expectProjectionWarning(
+        (options) => toProseDoc(source, options),
+        CONTAINER_MESSAGES["table-cell"],
+      );
+    },
+  );
 
   test.each([
     { content: [{ type: "renderedPageBreak" }] },
@@ -371,15 +387,20 @@ describe("page-break run source-container ownership", () => {
     {
       name: "standalone table-cell conversion",
       convert: (paragraph: Paragraph) =>
-        standaloneTableCellToProseMirror({ type: "tableCell", content: [paragraph] }, "tableCell"),
+        standaloneTableCellToProseMirror(
+          { type: "tableCell", content: [paragraph] },
+          "tableCell",
+        ),
     },
     {
       name: "header or footer conversion",
-      convert: (paragraph: Paragraph) => headerFooterToProseDoc([tableWithParagraph(paragraph)]),
+      convert: (paragraph: Paragraph) =>
+        headerFooterToProseDoc([tableWithParagraph(paragraph)]),
     },
     {
       name: "footnote or endnote conversion",
-      convert: (paragraph: Paragraph) => footnoteToProseDoc([tableWithParagraph(paragraph)]),
+      convert: (paragraph: Paragraph) =>
+        footnoteToProseDoc([tableWithParagraph(paragraph)]),
     },
   ])("supports a leading row boundary through $name", ({ convert }) => {
     expect(() => convert(pageBreakParagraph())).not.toThrow();
@@ -407,7 +428,9 @@ describe("page-break run source-container ownership", () => {
       stylesheetSource: { type: "package" },
     });
 
-    expect(restored.package.document.content).toEqual(source.package.document.content);
+    expect(restored.package.document.content).toEqual(
+      source.package.document.content,
+    );
   });
 
   test.each([
@@ -469,7 +492,12 @@ describe("page-break run source-container ownership", () => {
                   { type: "paragraph", content: [] },
                   {
                     type: "paragraph",
-                    content: [{ type: "run", content: [{ type: "text", text: "after" }] }],
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "after" }],
+                      },
+                    ],
                   },
                 ],
               },
@@ -498,7 +526,10 @@ describe("page-break run source-container ownership", () => {
             cells: [
               {
                 type: "tableCell",
-                content: [{ type: "paragraph", content: [] }, pageBreakParagraph()],
+                content: [
+                  { type: "paragraph", content: [] },
+                  pageBreakParagraph(),
+                ],
               },
             ],
           },
@@ -516,7 +547,9 @@ describe("page-break run source-container ownership", () => {
     const source = documentWithContent([
       tableWithParagraph({
         type: "paragraph",
-        content: [{ type: "deletion", info: REVISION, content: [pageBreakRun()] }],
+        content: [
+          { type: "deletion", info: REVISION, content: [pageBreakRun()] },
+        ],
       }),
     ]);
 
@@ -580,16 +613,25 @@ describe("page-break run source-container ownership", () => {
   test.each([
     {
       name: "table cell around a text box",
-      source: () => documentWithContent([tableWithParagraph(textBoxHost([pageBreakParagraph()]))]),
+      source: () =>
+        documentWithContent([
+          tableWithParagraph(textBoxHost([pageBreakParagraph()])),
+        ]),
       owner: "table-cell" as const,
     },
     {
       name: "text box around a table cell",
-      source: () => documentWithContent([textBoxHost([tableWithParagraph(pageBreakParagraph())])]),
+      source: () =>
+        documentWithContent([
+          textBoxHost([tableWithParagraph(pageBreakParagraph())]),
+        ]),
       owner: "text-box" as const,
     },
   ])("reports the outermost $name owner", ({ source, owner }) => {
-    expectProjectionWarning((options) => toProseDoc(source(), options), CONTAINER_MESSAGES[owner]);
+    expectProjectionWarning(
+      (options) => toProseDoc(source(), options),
+      CONTAINER_MESSAGES[owner],
+    );
   });
 
   test("does not query synthesized cells outside the source index", () => {
@@ -711,7 +753,10 @@ describe("page-break run source-paragraph ownership", () => {
         };
         const before = structuredClone(paragraph);
 
-        expectProjectionWarning((options) => surface.convert(paragraph, options), message);
+        expectProjectionWarning(
+          (options) => surface.convert(paragraph, options),
+          message,
+        );
         expect(paragraph).toEqual(before);
       },
     );
@@ -722,7 +767,10 @@ describe("page-break run source-paragraph ownership", () => {
   test("projects a page break that follows a text-box anchor in its paragraph", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
-      content: [textBoxRun([{ type: "paragraph", content: [] }]), pageBreakRun()],
+      content: [
+        textBoxRun([{ type: "paragraph", content: [] }]),
+        pageBreakRun(),
+      ],
     };
 
     const prose = toProseDoc(documentWithContent([paragraph]));
@@ -741,7 +789,11 @@ describe("page-break run source-paragraph ownership", () => {
   test("projects a text-box anchor before the break with a plain shape after it", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
-      content: [textBoxRun([{ type: "paragraph", content: [] }]), pageBreakRun(), plainShapeRun()],
+      content: [
+        textBoxRun([{ type: "paragraph", content: [] }]),
+        pageBreakRun(),
+        plainShapeRun(),
+      ],
     };
 
     const prose = toProseDoc(documentWithContent([paragraph]));
@@ -758,7 +810,10 @@ describe("page-break run source-paragraph ownership", () => {
   test("reports a page break sharing a paragraph with a text-box anchor", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
-      content: [pageBreakRun(), ...textBoxHost([{ type: "paragraph", content: [] }]).content],
+      content: [
+        pageBreakRun(),
+        ...textBoxHost([{ type: "paragraph", content: [] }]).content,
+      ],
     };
 
     expectProjectionWarning(
@@ -772,7 +827,10 @@ describe("page-break run source-paragraph ownership", () => {
     ({ wrap }) => {
       const paragraph: Paragraph = {
         type: "paragraph",
-        content: [pageBreakRun(), wrap(textBoxRun([{ type: "paragraph", content: [] }]))],
+        content: [
+          pageBreakRun(),
+          wrap(textBoxRun([{ type: "paragraph", content: [] }])),
+        ],
       };
 
       expectProjectionWarning(
@@ -812,7 +870,13 @@ describe("page-break run source-paragraph ownership", () => {
       },
     ]);
     source.package.styles = {
-      styles: [{ styleId: "Framed", type: "paragraph", pPr: { frame: { width: 720 } } }],
+      styles: [
+        {
+          styleId: "Framed",
+          type: "paragraph",
+          pPr: { frame: { width: 720 } },
+        },
+      ],
     };
 
     expect(() => toProseDoc(source)).not.toThrow();
@@ -823,7 +887,13 @@ describe("page-break run source-paragraph ownership", () => {
     table.formatting = { styleId: "FramedTable" };
     const source = documentWithContent([table]);
     source.package.styles = {
-      styles: [{ styleId: "FramedTable", type: "table", pPr: { frame: { width: 720 } } }],
+      styles: [
+        {
+          styleId: "FramedTable",
+          type: "table",
+          pPr: { frame: { width: 720 } },
+        },
+      ],
     };
 
     expect(() => toProseDoc(source)).not.toThrow();

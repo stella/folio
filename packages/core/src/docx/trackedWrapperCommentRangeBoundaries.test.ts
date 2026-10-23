@@ -8,18 +8,22 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { applyDocumentOps, OP_STORIES, REVISION_DECISIONS } from "@stll/docx-core/ops";
 import fc from "fast-check";
 import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import {
+  applyDocumentOps,
+  OP_STORIES,
+  REVISION_DECISIONS,
+} from "@stll/docx-core/ops";
+
+import {
   assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-
 import {
   acceptAllChanges,
   rejectAllChanges,
@@ -29,14 +33,14 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
-
 import { parseParagraph } from "./paragraphParser";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORDPROCESSINGML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const TRACKED_WRAPPERS = [
   { tag: "ins", type: "insertion" },
@@ -49,14 +53,16 @@ const COMMENT_MARKERS = ["commentRangeStart", "commentRangeEnd"] as const;
 
 const parseParagraphXml = (xml: string): Paragraph => {
   const element = parseXmlDocument(xml);
-  if (!element) throw new Error("Failed to parse the tracked comment boundary fixture");
+  if (!element)
+    throw new Error("Failed to parse the tracked comment boundary fixture");
   return parseParagraph(element, null, null, null, null, null);
 };
 
 const REVISION_ATTRIBUTES = 'w:id="7" w:author="Reviewer"';
 const COMMENT_REFERENCE =
   '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="5"/></w:r>';
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const COMMENTS_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 const COMMENTS_RELATIONSHIP =
@@ -64,13 +70,17 @@ const COMMENTS_RELATIONSHIP =
 
 const serializeInnerXml = (inner: string): string =>
   serializeParagraph(
-    parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${inner}</w:p>`),
+    parseParagraphXml(
+      `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${inner}</w:p>`,
+    ),
   ).replace(/^<w:p>|<\/w:p>$/g, "");
 
 const wrapParagraph = (paragraph: Paragraph): Document => ({
   package: {
     document: {
-      comments: [{ id: 5, anchorKind: "range", author: "Reviewer", content: [] }],
+      comments: [
+        { id: 5, anchorKind: "range", author: "Reviewer", content: [] },
+      ],
       content: [{ ...paragraph, paraId: "A1B2C3D4" }],
     },
   },
@@ -109,7 +119,10 @@ const textLength = (content: Paragraph["content"]): number => {
   return length;
 };
 
-const commentStartOffset = (content: Paragraph["content"], id: number): number | undefined => {
+const commentStartOffset = (
+  content: Paragraph["content"],
+  id: number,
+): number | undefined => {
   let offset = 0;
   for (const item of content) {
     if (item.type === "commentRangeStart" && item.id === id) return offset;
@@ -131,13 +144,17 @@ const commentStartOffset = (content: Paragraph["content"], id: number): number |
   return undefined;
 };
 
-const markedText = (document: ReturnType<typeof toProseDoc>, commentId: number): string => {
+const markedText = (
+  document: ReturnType<typeof toProseDoc>,
+  commentId: number,
+): string => {
   let text = "";
   document.descendants((node) => {
     if (
       node.isText &&
       node.marks.some(
-        (mark) => mark.type.name === "comment" && mark.attrs["commentId"] === commentId,
+        (mark) =>
+          mark.type.name === "comment" && mark.attrs["commentId"] === commentId,
       )
     ) {
       text += node.text ?? "";
@@ -150,13 +167,17 @@ describe("comment-range boundaries inside tracked changes", () => {
   test("an unedited range crossing an insertion saves its affected parts byte for byte", async () => {
     const zip = await JSZip.loadAsync(await createEmptyDocx());
     const emptyDocumentXml = await zip.file("word/document.xml")?.async("text");
-    if (emptyDocumentXml === undefined) throw new Error("The empty package lost document.xml");
+    if (emptyDocumentXml === undefined)
+      throw new Error("The empty package lost document.xml");
     const bodyXml =
       `<w:body><w:p>` +
       `<w:commentRangeStart w:id="5"/><w:ins ${REVISION_ATTRIBUTES}>` +
       '<w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
       `${COMMENT_REFERENCE}</w:p><w:sectPr/></w:body>`;
-    const documentXml = emptyDocumentXml.replace(/<w:body>[\s\S]*<\/w:body>/u, bodyXml);
+    const documentXml = emptyDocumentXml.replace(
+      /<w:body>[\s\S]*<\/w:body>/u,
+      bodyXml,
+    );
     const commentsXml =
       `${XML_DECLARATION}<w:comments xmlns:w="${WORDPROCESSINGML_NAMESPACE}">` +
       '<w:comment w:id="5" w:author="Reviewer"><w:p><w:r><w:t>Note</w:t></w:r></w:p></w:comment>' +
@@ -164,7 +185,9 @@ describe("comment-range boundaries inside tracked changes", () => {
     zip.file("word/document.xml", documentXml);
     zip.file("word/comments.xml", commentsXml);
     const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
-    const relationships = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const relationships = await zip
+      .file("word/_rels/document.xml.rels")
+      ?.async("text");
     if (contentTypes === undefined || relationships === undefined) {
       throw new Error("The empty package lost its packaging parts");
     }
@@ -183,18 +206,25 @@ describe("comment-range boundaries inside tracked changes", () => {
       ),
     );
     const seeded = await zip.generateAsync({ type: "arraybuffer" });
-    const source = await repackDocx(await parseDocx(seeded, { preloadFonts: false }), {
-      updateModifiedDate: false,
-    });
+    const source = await repackDocx(
+      await parseDocx(seeded, { preloadFonts: false }),
+      {
+        updateModifiedDate: false,
+      },
+    );
     const sourceZip = await JSZip.loadAsync(source);
     const loaded = await parseDocx(source, { preloadFonts: false });
     const unedited = fromProseDoc(toProseDoc(loaded), loaded, {
       stylesheetSource: { type: "package" },
     });
-    const saved = await JSZip.loadAsync(await repackDocx(unedited, { updateModifiedDate: false }));
+    const saved = await JSZip.loadAsync(
+      await repackDocx(unedited, { updateModifiedDate: false }),
+    );
 
     for (const part of ["word/document.xml", "word/comments.xml"]) {
-      expect(await saved.file(part)?.async("text")).toBe(await sourceZip.file(part)?.async("text"));
+      expect(await saved.file(part)?.async("text")).toBe(
+        await sourceZip.file(part)?.async("text"),
+      );
     }
   });
 
@@ -239,15 +269,24 @@ describe("comment-range boundaries inside tracked changes", () => {
     },
   ]) {
     test(`${name} survives parse, projection, and serialization`, () => {
-      const parsed = parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`);
-      const reopened = fromProseDoc(toProseDoc(wrapParagraph(parsed)), wrapParagraph(parsed), {
-        stylesheetSource: { type: "package" },
-      });
+      const parsed = parseParagraphXml(
+        `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+      );
+      const reopened = fromProseDoc(
+        toProseDoc(wrapParagraph(parsed)),
+        wrapParagraph(parsed),
+        {
+          stylesheetSource: { type: "package" },
+        },
+      );
       const paragraph = reopened.package.document.content.at(0);
-      if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+      if (paragraph?.type !== "paragraph")
+        throw new Error("Expected a paragraph");
 
       expect(serializeInnerXml(xml)).toBe(xml);
-      expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+      expect(
+        serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+      ).toBe(xml);
     });
   }
 
@@ -257,7 +296,10 @@ describe("comment-range boundaries inside tracked changes", () => {
       assertProperty(
         fc.property(
           fc
-            .tuple(fc.integer({ min: 1, max: 12 }), fc.integer({ min: 2, max: 15 }))
+            .tuple(
+              fc.integer({ min: 1, max: 12 }),
+              fc.integer({ min: 2, max: 15 }),
+            )
             .filter(([start, end]) => start < end),
           ([start, end]) => {
             const source = "0123456789abcdef";
@@ -276,20 +318,26 @@ describe("comment-range boundaries inside tracked changes", () => {
                         {
                           type: "run",
                           formatting: {},
-                          content: [{ type: "text", text: source.slice(0, start) }],
+                          content: [
+                            { type: "text", text: source.slice(0, start) },
+                          ],
                         },
                         { type: "commentRangeStart", id: 5 },
                         {
                           type: "run",
                           formatting: {},
-                          content: [{ type: "text", text: source.slice(start, split) }],
+                          content: [
+                            { type: "text", text: source.slice(start, split) },
+                          ],
                         },
                       ],
                     },
                     {
                       type: "run",
                       formatting: {},
-                      content: [{ type: "text", text: source.slice(split, end) }],
+                      content: [
+                        { type: "text", text: source.slice(split, end) },
+                      ],
                     },
                     { type: "commentRangeEnd", id: 5 },
                     {
@@ -307,7 +355,9 @@ describe("comment-range boundaries inside tracked changes", () => {
             });
 
             expect(markedText(projected, 5)).toBe(source.slice(start, end));
-            expect(markedText(toProseDoc(reopened), 5)).toBe(markedText(projected, 5));
+            expect(markedText(toProseDoc(reopened), 5)).toBe(
+              markedText(projected, 5),
+            );
           },
         ),
         {
@@ -323,9 +373,17 @@ describe("comment-range boundaries inside tracked changes", () => {
     {
       name: "between identically formatted runs",
       content: [
-        { type: "run", formatting: {}, content: [{ type: "text", text: "before" }] },
+        {
+          type: "run",
+          formatting: {},
+          content: [{ type: "text", text: "before" }],
+        },
         { type: "commentRangeStart", id: 5 },
-        { type: "run", formatting: {}, content: [{ type: "text", text: "anchor" }] },
+        {
+          type: "run",
+          formatting: {},
+          content: [{ type: "text", text: "anchor" }],
+        },
         { type: "commentRangeEnd", id: 5 },
       ],
     },
@@ -336,9 +394,17 @@ describe("comment-range boundaries inside tracked changes", () => {
           type: "deletion",
           info: { id: 7, author: "Reviewer" },
           content: [
-            { type: "run", formatting: {}, content: [{ type: "text", text: "before" }] },
+            {
+              type: "run",
+              formatting: {},
+              content: [{ type: "text", text: "before" }],
+            },
             { type: "commentRangeStart", id: 5 },
-            { type: "run", formatting: {}, content: [{ type: "text", text: "anchor" }] },
+            {
+              type: "run",
+              formatting: {},
+              content: [{ type: "text", text: "anchor" }],
+            },
             { type: "commentRangeEnd", id: 5 },
           ],
         },
@@ -352,7 +418,11 @@ describe("comment-range boundaries inside tracked changes", () => {
           info: { id: 7, author: "Reviewer" },
           content: [
             { type: "commentRangeStart", id: 5 },
-            { type: "run", formatting: {}, content: [{ type: "text", text: "anchor" }] },
+            {
+              type: "run",
+              formatting: {},
+              content: [{ type: "text", text: "anchor" }],
+            },
             { type: "commentRangeEnd", id: 5 },
           ],
         },
@@ -360,7 +430,10 @@ describe("comment-range boundaries inside tracked changes", () => {
     },
   ] satisfies { name: string; content: Paragraph["content"] }[]) {
     test(`projection keeps a range start ${fixture.name}`, () => {
-      const input = wrapParagraph({ type: "paragraph", content: fixture.content });
+      const input = wrapParagraph({
+        type: "paragraph",
+        content: fixture.content,
+      });
       const projected = toProseDoc(input);
       const paragraph = projected.firstChild;
       if (!paragraph) throw new Error("Expected a projected paragraph");
@@ -374,7 +447,8 @@ describe("comment-range boundaries inside tracked changes", () => {
         stylesheetSource: { type: "package" },
       });
       const reopenedParagraph = reopened.package.document.content.at(0);
-      if (reopenedParagraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+      if (reopenedParagraph?.type !== "paragraph")
+        throw new Error("Expected a paragraph");
 
       expect(projectedOffset).toBe(commentStartOffset(fixture.content, 5));
       expect(commentStartOffset(reopenedParagraph.content, 5)).toBe(
@@ -397,13 +471,19 @@ describe("comment-range boundaries inside tracked changes", () => {
 
         const tracked = paragraph.content.at(0);
         expect(tracked?.type).toBe(wrapper.type);
-        if (tracked?.type !== wrapper.type) throw new Error(`Expected ${wrapper.type}`);
-        expect(tracked.content.map(({ type }) => type)).toEqual(["run", marker, "run"]);
+        if (tracked?.type !== wrapper.type)
+          throw new Error(`Expected ${wrapper.type}`);
+        expect(tracked.content.map(({ type }) => type)).toEqual([
+          "run",
+          marker,
+          "run",
+        ]);
 
         const serialized = serializeParagraph(paragraph);
         const wrapperXml = serialized.slice(
           serialized.indexOf(`<w:${wrapper.tag} `),
-          serialized.indexOf(`</w:${wrapper.tag}>`) + `</w:${wrapper.tag}>`.length,
+          serialized.indexOf(`</w:${wrapper.tag}>`) +
+            `</w:${wrapper.tag}>`.length,
         );
         expect(wrapperXml.indexOf("> </")).toBeLessThan(
           wrapperXml.indexOf(`<w:${marker} w:id="5"/>`),
@@ -433,7 +513,10 @@ describe("comment-range boundaries inside tracked changes", () => {
           {
             type: "resolveRevision",
             story: OP_STORIES.MAIN,
-            decision: decision === "accept" ? REVISION_DECISIONS.ACCEPT : REVISION_DECISIONS.REJECT,
+            decision:
+              decision === "accept"
+                ? REVISION_DECISIONS.ACCEPT
+                : REVISION_DECISIONS.REJECT,
             revisionIds: [7],
           },
         ]);
@@ -480,9 +563,11 @@ describe("comment-range boundaries inside tracked changes", () => {
       stylesheetSource: { type: "package" },
     });
     const paragraph = reopened.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new Error("Expected a paragraph");
     const insertion = paragraph.content.at(0);
-    if (insertion?.type !== "insertion") throw new Error("Expected an insertion");
+    if (insertion?.type !== "insertion")
+      throw new Error("Expected an insertion");
 
     expect(insertion.content.map(({ type }) => type)).toEqual([
       "commentRangeStart",
@@ -497,7 +582,9 @@ describe("comment-range boundaries inside tracked changes", () => {
       '<w:commentRangeStart w:id="5"/><w:commentRangeEnd w:id="5"/>' +
       `${COMMENT_REFERENCE}</w:ins></w:fldSimple>`;
     const input = wrapParagraph(
-      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+      parseParagraphXml(
+        `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+      ),
     );
     input.package.document.comments = [
       { id: 5, anchorKind: "point", author: "Reviewer", content: [] },
@@ -505,11 +592,16 @@ describe("comment-range boundaries inside tracked changes", () => {
 
     const loaded = toProseDoc(input);
     expect(() => loaded.check()).not.toThrow();
-    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(loaded, input, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = saved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new Error("Expected a paragraph");
 
-    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+    expect(
+      serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+    ).toBe(xml);
   });
 
   test.each([
@@ -524,34 +616,46 @@ describe("comment-range boundaries inside tracked changes", () => {
         `<w:sdt><w:sdtPr><w:id w:val="42"/><w:richText/></w:sdtPr><w:sdtContent>` +
         `<w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins></w:sdtContent></w:sdt>`,
     },
-  ])("$name keeps a range start after its uncovered tracked content", ({ container }) => {
-    const xml =
-      container(
-        '<w:r><w:t>before</w:t></w:r><w:commentRangeStart w:id="5"/>' +
-          "<w:r><w:t>covered</w:t></w:r>",
-      ) + `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}`;
-    const input = wrapParagraph(
-      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
-    );
+  ])(
+    "$name keeps a range start after its uncovered tracked content",
+    ({ container }) => {
+      const xml =
+        container(
+          '<w:r><w:t>before</w:t></w:r><w:commentRangeStart w:id="5"/>' +
+            "<w:r><w:t>covered</w:t></w:r>",
+        ) + `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}`;
+      const input = wrapParagraph(
+        parseParagraphXml(
+          `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+        ),
+      );
 
-    const loaded = toProseDoc(input);
-    const structuredContainers: PMNode[] = [];
-    loaded.descendants((node) => {
-      if (node.type.name === "structuredField" || node.type.name === "sdt") {
-        structuredContainers.push(node);
-      }
-    });
-    expect(structuredContainers).toHaveLength(1);
-    expect(structuredContainers[0]?.marks.some((mark) => mark.type.name === "comment")).toBe(false);
+      const loaded = toProseDoc(input);
+      const structuredContainers: PMNode[] = [];
+      loaded.descendants((node) => {
+        if (node.type.name === "structuredField" || node.type.name === "sdt") {
+          structuredContainers.push(node);
+        }
+      });
+      expect(structuredContainers).toHaveLength(1);
+      expect(
+        structuredContainers[0]?.marks.some(
+          (mark) => mark.type.name === "comment",
+        ),
+      ).toBe(false);
 
-    const saved = fromProseDoc(loaded, input, {
-      stylesheetSource: { type: "package" },
-    });
-    const paragraph = saved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+      const saved = fromProseDoc(loaded, input, {
+        stylesheetSource: { type: "package" },
+      });
+      const paragraph = saved.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph")
+        throw new Error("Expected a paragraph");
 
-    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
-  });
+      expect(
+        serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+      ).toBe(xml);
+    },
+  );
 
   test("a field wholly inside a comment keeps the range outside the field", () => {
     const xml =
@@ -560,16 +664,21 @@ describe("comment-range boundaries inside tracked changes", () => {
       "<w:r><w:t>covered</w:t></w:r></w:ins></w:fldSimple>" +
       `<w:commentRangeEnd w:id="5"/>${COMMENT_REFERENCE}`;
     const input = wrapParagraph(
-      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+      parseParagraphXml(
+        `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+      ),
     );
 
     const saved = fromProseDoc(toProseDoc(input), input, {
       stylesheetSource: { type: "package" },
     });
     const paragraph = saved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new Error("Expected a paragraph");
 
-    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+    expect(
+      serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+    ).toBe(xml);
   });
 
   test.each([
@@ -592,36 +701,53 @@ describe("comment-range boundaries inside tracked changes", () => {
     },
   ])("$name stays between them", ({ xml }) => {
     const input = wrapParagraph(
-      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+      parseParagraphXml(
+        `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+      ),
     );
 
     const loaded = toProseDoc(input);
-    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(loaded, input, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = saved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new Error("Expected a paragraph");
 
-    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+    expect(
+      serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+    ).toBe(xml);
   });
 
   test.each([
     { name: "a hard break", atom: "<w:r><w:br/></w:r>" },
     { name: "a tab", atom: "<w:r><w:tab/></w:r>" },
-  ])("a range start before an insertion that begins with $name stays outside it", ({ atom }) => {
-    const xml =
-      `<w:commentRangeStart w:id="5"/><w:ins ${REVISION_ATTRIBUTES}>${atom}` +
-      '<w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
-      COMMENT_REFERENCE;
-    const input = wrapParagraph(
-      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
-    );
+  ])(
+    "a range start before an insertion that begins with $name stays outside it",
+    ({ atom }) => {
+      const xml =
+        `<w:commentRangeStart w:id="5"/><w:ins ${REVISION_ATTRIBUTES}>${atom}` +
+        '<w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
+        COMMENT_REFERENCE;
+      const input = wrapParagraph(
+        parseParagraphXml(
+          `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+        ),
+      );
 
-    const loaded = toProseDoc(input);
-    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
-    const paragraph = saved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+      const loaded = toProseDoc(input);
+      const saved = fromProseDoc(loaded, input, {
+        stylesheetSource: { type: "package" },
+      });
+      const paragraph = saved.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph")
+        throw new Error("Expected a paragraph");
 
-    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
-  });
+      expect(
+        serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+      ).toBe(xml);
+    },
+  );
 
   test("a range end before an untracked comment reference stays inside its insertion", () => {
     const xml =
@@ -629,15 +755,22 @@ describe("comment-range boundaries inside tracked changes", () => {
       '<w:r><w:t>anchor</w:t></w:r><w:commentRangeEnd w:id="5"/></w:ins>' +
       COMMENT_REFERENCE;
     const input = wrapParagraph(
-      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+      parseParagraphXml(
+        `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+      ),
     );
 
     const loaded = toProseDoc(input);
-    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(loaded, input, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = saved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new Error("Expected a paragraph");
 
-    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
+    expect(
+      serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+    ).toBe(xml);
   });
 
   test.each([
@@ -669,23 +802,35 @@ describe("comment-range boundaries inside tracked changes", () => {
         '<w:r><w:t>A</w:t></w:r></w:ins><w:commentRangeEnd w:id="5"/>' +
         COMMENT_REFERENCE,
     },
-  ])("tracked insertion keeps $name at its authored wrapper level", ({ xml }) => {
-    const input = wrapParagraph(
-      parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
-    );
+  ])(
+    "tracked insertion keeps $name at its authored wrapper level",
+    ({ xml }) => {
+      const input = wrapParagraph(
+        parseParagraphXml(
+          `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+        ),
+      );
 
-    const loaded = toProseDoc(input);
-    const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
-    const paragraph = saved.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+      const loaded = toProseDoc(input);
+      const saved = fromProseDoc(loaded, input, {
+        stylesheetSource: { type: "package" },
+      });
+      const paragraph = saved.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph")
+        throw new Error("Expected a paragraph");
 
-    expect(serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, "")).toBe(xml);
-  });
+      expect(
+        serializeParagraph(paragraph).replace(/^<w:p[^>]*>|<\/w:p>$/g, ""),
+      ).toBe(xml);
+    },
+  );
 
   const runXml = (text: string, deleted = false) =>
     `<w:r><w:${deleted ? "delText" : "t"}>${text}</w:${deleted ? "delText" : "t"}></w:r>`;
-  const insertionXml = (content: string) => `<w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins>`;
-  const deletionXml = (content: string) => `<w:del ${REVISION_ATTRIBUTES}>${content}</w:del>`;
+  const insertionXml = (content: string) =>
+    `<w:ins ${REVISION_ATTRIBUTES}>${content}</w:ins>`;
+  const deletionXml = (content: string) =>
+    `<w:del ${REVISION_ATTRIBUTES}>${content}</w:del>`;
   const hyperlinkInsertionXml = (content: string) =>
     insertionXml(
       content.replaceAll(/<w:r>[\s\S]*?<\/w:r>/gu, (run) =>
@@ -716,13 +861,19 @@ describe("comment-range boundaries inside tracked changes", () => {
       name: "point comment inside",
       expectedText: "",
       place: (wrap: (content: string) => string, deleted: boolean) =>
-        wrap(`${runXml("A", deleted)}${COMMENT_REFERENCE}${runXml("B", deleted)}`),
+        wrap(
+          `${runXml("A", deleted)}${COMMENT_REFERENCE}${runXml("B", deleted)}`,
+        ),
     },
   ];
   const containerCases = [
     { name: "tracked insertion", wrap: insertionXml, deleted: false },
     { name: "tracked deletion", wrap: deletionXml, deleted: true },
-    { name: "hyperlink inside a tracked insertion", wrap: hyperlinkInsertionXml, deleted: false },
+    {
+      name: "hyperlink inside a tracked insertion",
+      wrap: hyperlinkInsertionXml,
+      deleted: false,
+    },
     {
       name: "simple field containing a tracked insertion",
       wrap: fieldInsertionXml,
@@ -744,7 +895,13 @@ describe("comment-range boundaries inside tracked changes", () => {
         expectedOrder:
           boundary.name === "point comment inside"
             ? ["A", "commentReference", "B"]
-            : ["commentRangeStart", "A", "commentRangeEnd", "commentReference", "B"],
+            : [
+                "commentRangeStart",
+                "A",
+                "commentRangeEnd",
+                "commentReference",
+                "B",
+              ],
       };
     }),
   );
@@ -753,7 +910,9 @@ describe("comment-range boundaries inside tracked changes", () => {
     "$name preserves covered text and marker order through load, save, and reopen",
     ({ xml, expectedText, expectedOrder }) => {
       const input = wrapParagraph(
-        parseParagraphXml(`<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`),
+        parseParagraphXml(
+          `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">${xml}</w:p>`,
+        ),
       );
       input.package.document.comments = [
         {
@@ -762,7 +921,9 @@ describe("comment-range boundaries inside tracked changes", () => {
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Comment" }] },
+              ],
             },
           ],
         },
@@ -770,9 +931,12 @@ describe("comment-range boundaries inside tracked changes", () => {
       const loaded = toProseDoc(input);
       expect(markedText(loaded, 5)).toBe(expectedText);
 
-      const saved = fromProseDoc(loaded, input, { stylesheetSource: { type: "package" } });
+      const saved = fromProseDoc(loaded, input, {
+        stylesheetSource: { type: "package" },
+      });
       const savedParagraph = saved.package.document.content.at(0);
-      if (savedParagraph?.type !== "paragraph") throw new Error("Expected a saved paragraph");
+      if (savedParagraph?.type !== "paragraph")
+        throw new Error("Expected a saved paragraph");
       const markerOrder = serializeParagraph(savedParagraph)
         .match(
           /<w:(?:commentRangeStart|commentRangeEnd|commentReference)\b[^>]*\/>|<w:(?:t|delText)>[^<]*<\/w:(?:t|delText)>/gu,
@@ -783,7 +947,9 @@ describe("comment-range boundaries inside tracked changes", () => {
             ? serializeParagraph(savedParagraph)
                 .match(/<w:(?:t|delText)>([^<]*)<\/w:(?:t|delText)>/gu)
                 ?.at(
-                  tokens.slice(0, index).filter((entry) => entry === "t" || entry === "delText")
+                  tokens
+                    .slice(0, index)
+                    .filter((entry) => entry === "t" || entry === "delText")
                     .length,
                 )
                 ?.replace(/^<w:(?:t|delText)>|<\/w:(?:t|delText)>$/gu, "")
@@ -810,7 +976,9 @@ describe("comment-range boundaries inside tracked changes", () => {
         {
           type: "insertion",
           info: { id: 8, author: "Other reviewer" },
-          content: [{ type: "run", content: [{ type: "text", text: "second" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "second" }] },
+          ],
         },
         { type: "commentReference", id: 5 },
       ],
@@ -820,7 +988,8 @@ describe("comment-range boundaries inside tracked changes", () => {
       stylesheetSource: { type: "package" },
     });
     const paragraph = reopened.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new Error("Expected a paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new Error("Expected a paragraph");
 
     expect(paragraph.content.map(({ type }) => type)).toEqual([
       "insertion",
@@ -829,8 +998,12 @@ describe("comment-range boundaries inside tracked changes", () => {
       "commentReference",
     ]);
     const first = paragraph.content.at(0);
-    if (first?.type !== "insertion") throw new Error("Expected the first insertion");
-    expect(first.content.map(({ type }) => type)).toEqual(["commentRangeStart", "run"]);
+    if (first?.type !== "insertion")
+      throw new Error("Expected the first insertion");
+    expect(first.content.map(({ type }) => type)).toEqual([
+      "commentRangeStart",
+      "run",
+    ]);
   });
 
   for (const wrapper of TRACKED_WRAPPERS) {
@@ -839,7 +1012,9 @@ describe("comment-range boundaries inside tracked changes", () => {
         decision === "accept"
           ? wrapper.type === "deletion" || wrapper.type === "moveFrom"
           : wrapper.type === "insertion" || wrapper.type === "moveTo";
-      const outcome = removesCoveredText ? "its text is removed" : "its text is kept";
+      const outcome = removesCoveredText
+        ? "its text is removed"
+        : "its text is kept";
       test(`${decision} ${wrapper.type} follows the comment lifecycle when ${outcome}`, () => {
         const paragraph = parseParagraphXml(
           `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:${wrapper.tag} w:id="7" w:author="Reviewer">` +
@@ -853,14 +1028,18 @@ describe("comment-range boundaries inside tracked changes", () => {
           {
             type: "resolveRevision",
             story: OP_STORIES.MAIN,
-            decision: decision === "accept" ? REVISION_DECISIONS.ACCEPT : REVISION_DECISIONS.REJECT,
+            decision:
+              decision === "accept"
+                ? REVISION_DECISIONS.ACCEPT
+                : REVISION_DECISIONS.REJECT,
             revisionIds: [7],
           },
         ]);
         if (operation.isErr()) throw operation.error;
 
         let state = EditorState.create({ schema, doc: toProseDoc(input) });
-        const command = decision === "accept" ? acceptAllChanges() : rejectAllChanges();
+        const command =
+          decision === "accept" ? acceptAllChanges() : rejectAllChanges();
         command(state, (transaction) => {
           state = state.apply(transaction);
         });
@@ -870,19 +1049,29 @@ describe("comment-range boundaries inside tracked changes", () => {
 
         if (removesCoveredText) {
           expect(markerTypes(operation.value.document)).toEqual([]);
-          expect(operation.value.document.package.document.comments).toBeUndefined();
+          expect(
+            operation.value.document.package.document.comments,
+          ).toBeUndefined();
           expect(markerTypes(editor)).toEqual([]);
           expect(editor.package.document.comments).toBeUndefined();
           return;
         }
         // The decision keeps the covered text, so the comment keeps its range and reference.
-        const kept = ["commentRangeStart", "commentRangeEnd", "commentReference"];
+        const kept = [
+          "commentRangeStart",
+          "commentRangeEnd",
+          "commentReference",
+        ];
         expect(markerTypes(operation.value.document)).toEqual(kept);
-        expect(operation.value.document.package.document.comments?.map(({ id }) => id)).toEqual([
+        expect(
+          operation.value.document.package.document.comments?.map(
+            ({ id }) => id,
+          ),
+        ).toEqual([5]);
+        expect(markerTypes(editor)).toEqual(kept);
+        expect(editor.package.document.comments?.map(({ id }) => id)).toEqual([
           5,
         ]);
-        expect(markerTypes(editor)).toEqual(kept);
-        expect(editor.package.document.comments?.map(({ id }) => id)).toEqual([5]);
       });
     }
   }

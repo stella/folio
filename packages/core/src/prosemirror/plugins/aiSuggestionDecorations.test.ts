@@ -23,7 +23,9 @@ const docOf = (...paragraphs: string[]): PMNode =>
   schema.node(
     "doc",
     null,
-    paragraphs.map((text) => schema.node("paragraph", null, text ? [schema.text(text)] : null)),
+    paragraphs.map((text) =>
+      schema.node("paragraph", null, text ? [schema.text(text)] : null),
+    ),
   );
 
 const suggestionAt = (
@@ -52,7 +54,9 @@ const makeState = (doc: PMNode, suggestions: AISuggestion[]): EditorState => {
 };
 
 const getRanges = (state: EditorState): { from: number; to: number }[] =>
-  (aiSuggestionDecorationsKey.getState(state)?.suggestions ?? []).map((s) => s.range);
+  (aiSuggestionDecorationsKey.getState(state)?.suggestions ?? []).map(
+    (s) => s.range,
+  );
 
 const sliceFromTo = (doc: PMNode, from: number, to: number): string =>
   doc.textBetween(from, to, "");
@@ -116,22 +120,29 @@ describe("aiSuggestionDecorations: decoration building", () => {
     const { key, payload } = setFocusedSuggestionMeta("s1");
     state = state.apply(state.tr.setMeta(key, payload));
 
-    const decorationsAfter = aiSuggestionDecorationsKey.getState(state)?.decorationSet.find() ?? [];
+    const decorationsAfter =
+      aiSuggestionDecorationsKey.getState(state)?.decorationSet.find() ?? [];
     expect(decorationsAfter).toHaveLength(2);
   });
 
   test("a focused pure deletion (empty suggestedText) adds no widget", () => {
-    let state = makeState(baseDoc, [suggestionAt(5, 11, { suggestedText: "" })]);
+    let state = makeState(baseDoc, [
+      suggestionAt(5, 11, { suggestedText: "" }),
+    ]);
     const { key, payload } = setFocusedSuggestionMeta("s1");
     state = state.apply(state.tr.setMeta(key, payload));
 
-    const decorations = aiSuggestionDecorationsKey.getState(state)?.decorationSet.find() ?? [];
+    const decorations =
+      aiSuggestionDecorationsKey.getState(state)?.decorationSet.find() ?? [];
     expect(decorations).toHaveLength(1);
   });
 
   test("non-pending suggestions are not decorated", () => {
-    const state = makeState(baseDoc, [suggestionAt(5, 11, { status: "accepted" })]);
-    const decorations = aiSuggestionDecorationsKey.getState(state)?.decorationSet.find() ?? [];
+    const state = makeState(baseDoc, [
+      suggestionAt(5, 11, { status: "accepted" }),
+    ]);
+    const decorations =
+      aiSuggestionDecorationsKey.getState(state)?.decorationSet.find() ?? [];
     expect(decorations).toHaveLength(0);
   });
 });

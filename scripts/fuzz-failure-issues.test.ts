@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { extractFailureMarkers } from "./failure-fingerprints";
-import type { Issue } from "./fuzz-issue-classes";
-import { fileClasses, type IssueStore } from "./fuzz-issue-classes";
 
 import {
   failureMarker,
@@ -18,35 +21,38 @@ import {
   consumerScenarioInputs,
   parseConsumerArgs,
 } from "./consumer-scenario-args";
+import { extractFailureMarkers } from "./failure-fingerprints";
 import {
+  artifactInputs,
   AUTO_CLOSE_CLEAN_RUNS,
+  cliRepro,
   type CloseReason,
   collectFindings,
   type Context,
+  fileFindings,
   type Finding,
   type IssueContent,
+  LABEL,
   MAX_LISTED_SEEDS,
-  parseCommentPages,
   parseClosingCommitPages,
+  parseCommentPages,
   parseFailureRecord,
   parseIssuePages,
   parseIssueResponse,
   parseSignatureState,
-  fileFindings,
   readFindings,
   renderSignatureIssue,
   requireFindings,
-  artifactInputs,
   RUN_TRIGGER,
-  type SignatureIssueStore,
-  type SignatureState,
-  signatureOf,
-  LABEL,
-  TITLE_PREFIX,
-  TITLE_FORMAT,
-  cliRepro,
   shellWords,
+  type SignatureIssueStore,
+  signatureOf,
+  type SignatureState,
+  TITLE_FORMAT,
+  TITLE_PREFIX,
 } from "./fuzz-failure-issues";
+import type { Issue } from "./fuzz-issue-classes";
+import { fileClasses, type IssueStore } from "./fuzz-issue-classes";
 
 const marker = (seed: number, message = "step 3: no comment") =>
   failureMarker({
@@ -67,15 +73,16 @@ describe("fuzz failure issues", () => {
       shrink: { steps: 1, from: 12, attempts: 55 },
     });
     const other = marker(3, "block texts differ");
-    const findings = collectFindings([long, short], [marker(1), marker(4), other]);
+    const findings = collectFindings(
+      [long, short],
+      [marker(1), marker(4), other],
+    );
     expect(findings).toHaveLength(2);
     expect(findings[0]?.record).toBe(short);
     expect(findings[0]?.seeds).toEqual([1, 2, 4]);
-    expect(findings[0]?.records?.map(({ marker: item }) => item.repro)).toEqual([
-      marker(1).repro,
-      marker(2).repro,
-      marker(4).repro,
-    ]);
+    expect(findings[0]?.records?.map(({ marker: item }) => item.repro)).toEqual(
+      [marker(1).repro, marker(2).repro, marker(4).repro],
+    );
     expect(findings[1]?.record.marker.fingerprint).toBe(other.fingerprint);
     expect(findings[1]?.record.replays).toEqual([other.repro]);
   });
@@ -96,7 +103,9 @@ describe("fuzz failure issues", () => {
     expect(findings).toHaveLength(2);
     expect(findings[0]?.seeds).toEqual([1]);
     expect(findings[0]?.record.marker.primary).toBe(marker(5).fingerprint);
-    expect(findings[0]?.records?.map(({ marker: item }) => item.seed)).toEqual([1]);
+    expect(findings[0]?.records?.map(({ marker: item }) => item.seed)).toEqual([
+      1,
+    ]);
     expect(findings[1]?.seeds).toEqual([5]);
   });
 
@@ -116,24 +125,37 @@ describe("fuzz failure issues", () => {
 
   test("records are validated before they reach an issue", () => {
     const record = failureRecord(marker(1), new Error("step 3: no comment"));
-    expect(parseFailureRecord(JSON.parse(JSON.stringify(record)))).toEqual(record);
-    expect(parseFailureRecord({ ...record, replays: ["one\nline"] })).toBeNull();
+    expect(parseFailureRecord(JSON.parse(JSON.stringify(record)))).toEqual(
+      record,
+    );
+    expect(
+      parseFailureRecord({ ...record, replays: ["one\nline"] }),
+    ).toBeNull();
     expect(parseFailureRecord({ ...record, replays: [] })).toBeNull();
-    expect(parseFailureRecord({ ...record, marker: { fingerprint: 1 } })).toBeNull();
+    expect(
+      parseFailureRecord({ ...record, marker: { fingerprint: 1 } }),
+    ).toBeNull();
     expect(parseFailureRecord({ ...record, version: 2 })).toBeNull();
   });
 });
 
 test("GitHub REST and CLI issue identities validate before filing", () => {
-  const fields = { number: 20, title: "List numbering: listLevel mismatch", body: null };
-  expect(parseIssueResponse({ ...fields, state: "open", closed_at: null })).toEqual({
+  const fields = {
+    number: 20,
+    title: "List numbering: listLevel mismatch",
+    body: null,
+  };
+  expect(
+    parseIssueResponse({ ...fields, state: "open", closed_at: null }),
+  ).toEqual({
     ...fields,
     state: "open",
     closedAt: null,
   });
-  expect(parseIssueResponse({ ...fields, state: "CLOSED", closedAt: "2026-10-01" }).state).toBe(
-    "closed",
-  );
+  expect(
+    parseIssueResponse({ ...fields, state: "CLOSED", closedAt: "2026-10-01" })
+      .state,
+  ).toBe("closed");
   expect(
     parseIssueResponse({
       ...fields,
@@ -170,16 +192,22 @@ test("GitHub REST and CLI issue identities validate before filing", () => {
   expect(() => dispositionOf(3)).toThrow("Unknown close reason");
   // An open issue's close reason ("reopened") does not apply.
   expect(
-    parseIssueResponse({ ...fields, state: "open", closed_at: null, state_reason: "reopened" }),
+    parseIssueResponse({
+      ...fields,
+      state: "open",
+      closed_at: null,
+      state_reason: "reopened",
+    }),
   ).toEqual({ ...fields, state: "open", closedAt: null });
-  expect(parseCommentPages([[{ body: "Duplicate of #7" }], [{ body: "later" }]])).toEqual([
-    "Duplicate of #7",
-    "later",
-  ]);
+  expect(
+    parseCommentPages([[{ body: "Duplicate of #7" }], [{ body: "later" }]]),
+  ).toEqual(["Duplicate of #7", "later"]);
   expect(() => parseCommentPages([[{ body: null }]])).toThrow();
   expect(() => parseCommentPages({})).toThrow();
   expect(() => parseIssueResponse({ ...fields, state: "unknown" })).toThrow();
-  expect(() => parseIssueResponse({ ...fields, number: "20", state: "open" })).toThrow();
+  expect(() =>
+    parseIssueResponse({ ...fields, number: "20", state: "open" }),
+  ).toThrow();
 });
 
 test("paginated issue responses fail before matching malformed issue data", () => {
@@ -209,12 +237,16 @@ test("the latest close event supplies the commit used for recurrence checks", ()
       [{ event: "closed", commit_id: latest }],
     ]),
   ).toBe(latest);
-  expect(parseClosingCommitPages([[{ event: "closed", commit_id: null }]])).toBeNull();
+  expect(
+    parseClosingCommitPages([[{ event: "closed", commit_id: null }]]),
+  ).toBeNull();
   expect(parseClosingCommitPages([[{ event: "commented" }]])).toBeNull();
-  expect(() => parseClosingCommitPages({})).toThrow("Invalid GitHub issue event pages");
-  expect(() => parseClosingCommitPages([[{ event: "closed", commit_id: "short" }]])).toThrow(
-    "Invalid GitHub closing commit",
+  expect(() => parseClosingCommitPages({})).toThrow(
+    "Invalid GitHub issue event pages",
   );
+  expect(() =>
+    parseClosingCommitPages([[{ event: "closed", commit_id: "short" }]]),
+  ).toThrow("Invalid GitHub closing commit");
 });
 
 test("failure records retain the deepest comparison diff without terminal styling", () => {
@@ -235,7 +267,13 @@ test("a second signature in one invariant edits the open class issue", async () 
   const store = {
     list: async () => issues,
     create: async (title: string, body: string) => {
-      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      const issue = {
+        number: 1,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      } satisfies Issue;
       issues.push(issue);
       created.push(issue.number);
       return issue;
@@ -253,7 +291,12 @@ test("a second signature in one invariant edits the open class issue", async () 
       `step ${seed}: comment ${JSON.stringify(testName)} outlived the block it anchored`,
     );
     const record = failureRecord(
-      failureMarker({ test: testName, seed, repro: `bun replay.ts ${seed}`, failure: error }),
+      failureMarker({
+        test: testName,
+        seed,
+        repro: `bun replay.ts ${seed}`,
+        failure: error,
+      }),
       error,
     );
     return { record, records: [record], seeds: [seed] };
@@ -282,7 +325,13 @@ test("an absent class keeps its regression note and legacy report", async () => 
   const store = {
     list: async () => issues,
     create: async (title: string, body: string) => {
-      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      const issue = {
+        number: 1,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      } satisfies Issue;
       issues.push(issue);
       return issue;
     },
@@ -296,14 +345,20 @@ test("an absent class keeps its regression note and legacy report", async () => 
   const finding = flowFinding(1, "deleteBlock");
   await fileClasses({ findings: [finding], context, store, known: new Map() });
   const issue = issues.at(0);
-  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
+  if (issue === undefined || issue.body === null)
+    throw new Error("missing issue body");
   issue.body = `${issue.body.replace(
     "\n\n| Fingerprint",
     "\nRegressed: preserved regression evidence.\n\n| Fingerprint",
   )}\n\n<details><summary>Legacy report</summary>\n\nPreserved reproduction evidence.\n\n<details><summary>Nested evidence</summary>\n\nNested reproduction.\n\n</details>\n\n</details>`;
   const failure = /^Failure: .*$/mu.exec(issue.body)?.at(0);
 
-  await fileClasses({ findings: [], context: runContext(124), store, known: new Map() });
+  await fileClasses({
+    findings: [],
+    context: runContext(124),
+    store,
+    known: new Map(),
+  });
 
   expect(issue.body).toContain("Regressed: preserved regression evidence.");
   expect(issue.body).toContain("Preserved reproduction evidence.");
@@ -316,7 +371,13 @@ test("a class filed before signatures were tracked closes only on clean runs of 
   const store = {
     list: async () => issues,
     create: async (title: string, body: string) => {
-      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      const issue = {
+        number: 1,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      } satisfies Issue;
       issues.push(issue);
       return issue;
     },
@@ -339,11 +400,18 @@ test("a class filed before signatures were tracked closes only on clean runs of 
     known: new Map(),
   });
   const issue = issues.at(0);
-  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
-  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
-    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
-    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
-  });
+  if (issue === undefined || issue.body === null)
+    throw new Error("missing issue body");
+  issue.body = issue.body.replace(
+    /<!-- fuzz-class-state (\{[^\n]*\}) -->/u,
+    (_, json: string) => {
+      const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<
+        string,
+        unknown
+      >;
+      return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+    },
+  );
 
   // Its originating lane is unknown, so clean runs of another lane prove nothing.
   const unrelated = { lane: "continuous-fuzz" };
@@ -386,7 +454,13 @@ test("reproducing one fingerprint of a legacy class keeps its other fingerprints
   const store = {
     list: async () => issues,
     create: async (title: string, body: string) => {
-      const issue = { number: 1, title, body, state: "open", closedAt: null } satisfies Issue;
+      const issue = {
+        number: 1,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      } satisfies Issue;
       issues.push(issue);
       return issue;
     },
@@ -404,23 +478,48 @@ test("reproducing one fingerprint of a legacy class keeps its other fingerprints
   } satisfies IssueStore;
   const reproduced = flowFinding(1, "deleteBlock");
   const historical = flowFinding(2, "insertAfterBlock");
-  await fileClasses({ findings: [reproduced, historical], context, store, known: new Map() });
+  await fileClasses({
+    findings: [reproduced, historical],
+    context,
+    store,
+    known: new Map(),
+  });
   expect(issues).toHaveLength(1);
   const issue = issues.at(0);
-  if (issue === undefined || issue.body === null) throw new Error("missing issue body");
-  issue.body = issue.body.replace(/<!-- fuzz-class-state (\{[^\n]*\}) -->/u, (_, json: string) => {
-    const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<string, unknown>;
-    return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
-  });
+  if (issue === undefined || issue.body === null)
+    throw new Error("missing issue body");
+  issue.body = issue.body.replace(
+    /<!-- fuzz-class-state (\{[^\n]*\}) -->/u,
+    (_, json: string) => {
+      const { signatures: _signatures, ...legacy } = JSON.parse(json) as Record<
+        string,
+        unknown
+      >;
+      return `<!-- fuzz-class-state ${JSON.stringify(legacy)} -->`;
+    },
+  );
 
-  await fileClasses({ findings: [reproduced], context: runContext(400), store, known: new Map() });
+  await fileClasses({
+    findings: [reproduced],
+    context: runContext(400),
+    store,
+    known: new Map(),
+  });
   for (let run = 401; run < 401 + AUTO_CLOSE_CLEAN_RUNS * 2; run += 1) {
-    await fileClasses({ findings: [], context: runContext(run), store, known: new Map() });
+    await fileClasses({
+      findings: [],
+      context: runContext(run),
+      store,
+      known: new Map(),
+    });
   }
   expect(issue.state).toBe("open");
 });
 
-const fixtureLog = readFileSync(new URL("./fixtures/fuzz-failures.log", import.meta.url), "utf8");
+const fixtureLog = readFileSync(
+  new URL("./fixtures/fuzz-failures.log", import.meta.url),
+  "utf8",
+);
 const fixtureMarkers = extractFailureMarkers(fixtureLog);
 const fixtureFindings = collectFindings([], fixtureMarkers);
 const RUN = "https://github.com/example/project/actions/runs/";
@@ -500,7 +599,8 @@ const fakeClient = (
       }));
       return Promise.resolve();
     },
-    closingCommit: (number) => Promise.resolve(closingCommits.get(number) ?? null),
+    closingCommit: (number) =>
+      Promise.resolve(closingCommits.get(number) ?? null),
   } satisfies SignatureIssueStore;
   return { store, issues, creates, edits, reopens, closes };
 };
@@ -508,11 +608,16 @@ const fakeClient = (
 const stateOf = (issue: Issue | undefined) => {
   if (issue === undefined) throw new Error("Missing issue");
   const state = parseSignatureState(issue);
-  if (state === null) throw new Error(`Issue #${issue.number} has no signature state`);
+  if (state === null)
+    throw new Error(`Issue #${issue.number} has no signature state`);
   return state;
 };
 
-const flowFinding = (seed: number, flow: string, message = "step 3: no comment") => {
+const flowFinding = (
+  seed: number,
+  flow: string,
+  message = "step 3: no comment",
+) => {
   const failure = new Error(message);
   const record = failureRecord(
     failureMarker({
@@ -533,9 +638,15 @@ test("a new signature opens one issue for every fingerprint and seed that share 
     flowFinding(2, "deleteBlock+insertAfterBlock"),
     flowFinding(3, "commentOnBlock > accept all"),
   ];
-  expect(new Set(findings.map(({ record }) => record.marker.fingerprint)).size).toBe(3);
+  expect(
+    new Set(findings.map(({ record }) => record.marker.fingerprint)).size,
+  ).toBe(3);
   const fake = fakeClient();
-  const { filed, closed } = await fileFindings({ findings, context, store: fake.store });
+  const { filed, closed } = await fileFindings({
+    findings,
+    context,
+    store: fake.store,
+  });
   expect(fake.creates).toHaveLength(1);
   expect(fake.edits).toHaveLength(0);
   expect(closed).toEqual([]);
@@ -550,25 +661,45 @@ test("a new signature opens one issue for every fingerprint and seed that share 
   expect(state.signature).toEqual(signature);
   expect(state.occurrences).toBe(3);
   expect(state.seeds).toEqual([1, 2, 3]);
-  expect(state.lanes).toEqual([{ lane: "nightly-swarm-fuzz", lastRun: `${RUN}123`, cleanRuns: 0 }]);
-  expect(state.lastSeen).toEqual({ lane: "nightly-swarm-fuzz", run: `${RUN}123` });
+  expect(state.lanes).toEqual([
+    { lane: "nightly-swarm-fuzz", lastRun: `${RUN}123`, cleanRuns: 0 },
+  ]);
+  expect(state.lastSeen).toEqual({
+    lane: "nightly-swarm-fuzz",
+    run: `${RUN}123`,
+  });
   expect(state.repro.command).toContain("--seed '1'");
   expect(state.repro.command).not.toContain("FOLIO_SCENARIO_");
 });
 
 test("signatures split by flow, mode and failure class, never by seed or label text", () => {
-  const of = (name: string, assertion: string) => signatureOf({ test: name, assertion }).id;
+  const of = (name: string, assertion: string) =>
+    signatureOf({ test: name, assertion }).id;
   const flow = "consumer flow directNumbered / tracked-changes";
   expect(of(flow, "Missing numbering format for displayed label (<n>)")).toBe(
     of(flow, "Missing numbering format for displayed label •"),
   );
-  expect(of(flow, "[batchSequential] the batch (direct: deleteBlock) leaves otherwise")).toBe(
-    of(flow, "[batchSequential] the batch (direct: replaceBlock, insertTableRow) leaves otherwise"),
+  expect(
+    of(
+      flow,
+      "[batchSequential] the batch (direct: deleteBlock) leaves otherwise",
+    ),
+  ).toBe(
+    of(
+      flow,
+      "[batchSequential] the batch (direct: replaceBlock, insertTableRow) leaves otherwise",
+    ),
   );
   expect(of(flow, "block texts differ:")).not.toBe(of(flow, "comment"));
-  expect(of(flow, "comment")).not.toBe(of("consumer flow directNumbered / direct", "comment"));
-  expect(of(flow, "comment")).not.toBe(of("consumer flow lists / tracked-changes", "comment"));
-  const fixtureSignatures = new Set(fixtureMarkers.map((item) => signatureOf(item).id));
+  expect(of(flow, "comment")).not.toBe(
+    of("consumer flow directNumbered / direct", "comment"),
+  );
+  expect(of(flow, "comment")).not.toBe(
+    of("consumer flow lists / tracked-changes", "comment"),
+  );
+  const fixtureSignatures = new Set(
+    fixtureMarkers.map((item) => signatureOf(item).id),
+  );
   expect(fixtureSignatures.size).toBeLessThanOrEqual(
     new Set(fixtureMarkers.map(({ fingerprint }) => fingerprint)).size,
   );
@@ -576,14 +707,26 @@ test("signatures split by flow, mode and failure class, never by seed or label t
 
 test("fixture findings file one issue per signature, each exactly once", async () => {
   const fake = fakeClient();
-  const { filed } = await fileFindings({ findings: fixtureFindings, context, store: fake.store });
-  const signatures = new Set(fixtureMarkers.map((item) => signatureOf(item).id));
+  const { filed } = await fileFindings({
+    findings: fixtureFindings,
+    context,
+    store: fake.store,
+  });
+  const signatures = new Set(
+    fixtureMarkers.map((item) => signatureOf(item).id),
+  );
   expect(fake.creates).toHaveLength(signatures.size);
-  expect(new Set(fake.issues.map((issue) => stateOf(issue).signature.id))).toEqual(signatures);
+  expect(
+    new Set(fake.issues.map((issue) => stateOf(issue).signature.id)),
+  ).toEqual(signatures);
   expect(new Set(filed.map(({ fingerprint }) => fingerprint))).toEqual(
     new Set(fixtureMarkers.map(({ fingerprint }) => fingerprint)),
   );
-  const again = await fileFindings({ findings: fixtureFindings, context, store: fake.store });
+  const again = await fileFindings({
+    findings: fixtureFindings,
+    context,
+    store: fake.store,
+  });
   expect(fake.creates).toHaveLength(signatures.size);
   expect(fake.edits).toHaveLength(0);
   expect(again.filed).toEqual(filed);
@@ -597,8 +740,14 @@ test("a repeat signature updates its issue in place with the run's seeds and cou
     store: fake.store,
   });
   await fileFindings({
-    findings: [flowFinding(2, "replaceBlock"), flowFinding(5, "insertAfterBlock")],
-    context: runContext(124, { trigger: RUN_TRIGGER.manual, lane: "continuous-fuzz" }),
+    findings: [
+      flowFinding(2, "replaceBlock"),
+      flowFinding(5, "insertAfterBlock"),
+    ],
+    context: runContext(124, {
+      trigger: RUN_TRIGGER.manual,
+      lane: "continuous-fuzz",
+    }),
     store: fake.store,
   });
   expect(fake.creates).toHaveLength(1);
@@ -611,7 +760,10 @@ test("a repeat signature updates its issue in place with the run's seeds and cou
   expect(state.lanes.map(({ lane }) => lane)).toEqual(["nightly-swarm-fuzz"]);
   await fileFindings({
     findings: [flowFinding(5, "insertAfterBlock")],
-    context: runContext(124, { trigger: RUN_TRIGGER.manual, lane: "continuous-fuzz" }),
+    context: runContext(124, {
+      trigger: RUN_TRIGGER.manual,
+      lane: "continuous-fuzz",
+    }),
     store: fake.store,
   });
   expect(fake.edits).toHaveLength(1);
@@ -624,11 +776,20 @@ test("a fixed signature reopens when it recurs; one closed without a fix only re
     ["duplicate", false],
   ] as const) {
     const created = fakeClient();
-    await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+    await fileFindings({
+      findings: [flowFinding(1, "a")],
+      context,
+      store: created.store,
+    });
     const issue = created.issues.at(0);
     if (issue === undefined) throw new Error("Missing issue");
     const fake = fakeClient([
-      { ...issue, state: "closed", closedAt: "2026-10-10", disposition: { type: disposition } },
+      {
+        ...issue,
+        state: "closed",
+        closedAt: "2026-10-10",
+        disposition: { type: disposition },
+      },
     ]);
     await fileFindings({
       findings: [flowFinding(9, "b")],
@@ -643,13 +804,24 @@ test("a fixed signature reopens when it recurs; one closed without a fix only re
 
 test("a fixed signature ignores occurrences from commits before its closing commit", async () => {
   const created = fakeClient();
-  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  await fileFindings({
+    findings: [flowFinding(1, "a")],
+    context,
+    store: created.store,
+  });
   const issue = created.issues.at(0);
   if (issue === undefined) throw new Error("Missing issue");
   const closingCommit = "2".repeat(40);
   const runCommit = "1".repeat(40);
   const fake = fakeClient(
-    [{ ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } }],
+    [
+      {
+        ...issue,
+        state: "closed",
+        closedAt: "2026-10-20",
+        disposition: { type: "fixed" },
+      },
+    ],
     new Map([[1, closingCommit]]),
   );
   const ancestry: [string, string][] = [];
@@ -676,11 +848,22 @@ test("a fixed signature ignores occurrences from commits before its closing comm
 
 test("a fixed signature reopens for a run commit containing its closing commit", async () => {
   const created = fakeClient();
-  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  await fileFindings({
+    findings: [flowFinding(1, "a")],
+    context,
+    store: created.store,
+  });
   const issue = created.issues.at(0);
   if (issue === undefined) throw new Error("Missing issue");
   const fake = fakeClient(
-    [{ ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } }],
+    [
+      {
+        ...issue,
+        state: "closed",
+        closedAt: "2026-10-20",
+        disposition: { type: "fixed" },
+      },
+    ],
     new Map([[1, "2".repeat(40)]]),
   );
 
@@ -698,11 +881,20 @@ test("a fixed signature reopens for a run commit containing its closing commit",
 
 test("a fixed signature closed without a closing commit keeps reopening", async () => {
   const created = fakeClient();
-  await fileFindings({ findings: [flowFinding(1, "a")], context, store: created.store });
+  await fileFindings({
+    findings: [flowFinding(1, "a")],
+    context,
+    store: created.store,
+  });
   const issue = created.issues.at(0);
   if (issue === undefined) throw new Error("Missing issue");
   const fake = fakeClient([
-    { ...issue, state: "closed", closedAt: "2026-10-20", disposition: { type: "fixed" } },
+    {
+      ...issue,
+      state: "closed",
+      closedAt: "2026-10-20",
+      disposition: { type: "fixed" },
+    },
   ]);
 
   await fileFindings({
@@ -720,16 +912,29 @@ test("a fixed signature closed without a closing commit keeps reopening", async 
 
 test(`a signature closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs`, async () => {
   const fake = fakeClient();
-  await fileFindings({ findings: [flowFinding(1, "a")], context, store: fake.store });
-  const clean = (run: number, overrides: Partial<Pick<Context, "lane" | "trigger">> = {}) =>
-    fileFindings({ findings: [], context: runContext(run, overrides), store: fake.store });
+  await fileFindings({
+    findings: [flowFinding(1, "a")],
+    context,
+    store: fake.store,
+  });
+  const clean = (
+    run: number,
+    overrides: Partial<Pick<Context, "lane" | "trigger">> = {},
+  ) =>
+    fileFindings({
+      findings: [],
+      context: runContext(run, overrides),
+      store: fake.store,
+    });
   for (let run = 1; run < AUTO_CLOSE_CLEAN_RUNS; run += 1) {
     expect((await clean(1000 + run)).closed).toEqual([]);
     await clean(1000 + run);
     await clean(2000 + run, { trigger: RUN_TRIGGER.manual });
     await clean(3000 + run, { lane: "nightly-property-test" });
   }
-  expect(stateOf(fake.issues.at(0)).lanes.at(0)?.cleanRuns).toBe(AUTO_CLOSE_CLEAN_RUNS - 1);
+  expect(stateOf(fake.issues.at(0)).lanes.at(0)?.cleanRuns).toBe(
+    AUTO_CLOSE_CLEAN_RUNS - 1,
+  );
   expect(fake.issues.at(0)?.state).toBe("open");
   await fileFindings({
     findings: [flowFinding(2, "b")],
@@ -737,7 +942,8 @@ test(`a signature closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean schedu
     store: fake.store,
   });
   expect(stateOf(fake.issues.at(0)).lanes.at(0)?.cleanRuns).toBe(0);
-  for (let run = 1; run < AUTO_CLOSE_CLEAN_RUNS; run += 1) await clean(5000 + run);
+  for (let run = 1; run < AUTO_CLOSE_CLEAN_RUNS; run += 1)
+    await clean(5000 + run);
   expect(fake.closes).toEqual([]);
   expect((await clean(6000)).closed).toEqual([1]);
   expect(fake.closes).toEqual([{ number: 1, reason: "completed" }]);
@@ -753,7 +959,11 @@ test(`a signature closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean schedu
 
 test("a signature seen by several lanes closes only once every lane ran clean", async () => {
   const fake = fakeClient();
-  await fileFindings({ findings: [flowFinding(1, "a")], context, store: fake.store });
+  await fileFindings({
+    findings: [flowFinding(1, "a")],
+    context,
+    store: fake.store,
+  });
   const other = { lane: "nightly-property-test" };
   await fileFindings({
     findings: [flowFinding(2, "a")],
@@ -761,11 +971,16 @@ test("a signature seen by several lanes closes only once every lane ran clean", 
     store: fake.store,
   });
   const clean = (run: number, lane: string) =>
-    fileFindings({ findings: [], context: runContext(run, { lane }), store: fake.store });
+    fileFindings({
+      findings: [],
+      context: runContext(run, { lane }),
+      store: fake.store,
+    });
   for (let run = 0; run < AUTO_CLOSE_CLEAN_RUNS; run += 1)
     await clean(1000 + run, "nightly-swarm-fuzz");
   expect(fake.closes).toEqual([]);
-  for (let run = 0; run < AUTO_CLOSE_CLEAN_RUNS; run += 1) await clean(2000 + run, other.lane);
+  for (let run = 0; run < AUTO_CLOSE_CLEAN_RUNS; run += 1)
+    await clean(2000 + run, other.lane);
   expect(fake.closes).toEqual([{ number: 1, reason: "completed" }]);
 });
 
@@ -773,12 +988,19 @@ test("only scheduled runs register a lane; a merge-group repro never blocks clos
   const fake = fakeClient();
   await fileFindings({
     findings: [flowFinding(1, "a")],
-    context: runContext(1, { trigger: RUN_TRIGGER.mergeGroup, lane: "merge-queue-replay" }),
+    context: runContext(1, {
+      trigger: RUN_TRIGGER.mergeGroup,
+      lane: "merge-queue-replay",
+    }),
     store: fake.store,
   });
   expect(stateOf(fake.issues.at(0)).lanes).toEqual([]);
   for (let run = 0; run < AUTO_CLOSE_CLEAN_RUNS * 2; run += 1) {
-    await fileFindings({ findings: [], context: runContext(100 + run), store: fake.store });
+    await fileFindings({
+      findings: [],
+      context: runContext(100 + run),
+      store: fake.store,
+    });
   }
   expect(fake.closes).toEqual([]);
   expect(fake.edits).toHaveLength(0);
@@ -795,21 +1017,42 @@ const signatureState = fc
       maxLength: MAX_LISTED_SEEDS,
     }),
     lastSeen: fc.record({ lane, run: freeText }),
-    lanes: fc.uniqueArray(fc.record({ lane, lastRun: freeText, cleanRuns: fc.nat({ max: 99 }) }), {
-      selector: ({ lane: name }) => name,
-      maxLength: 4,
-    }),
+    lanes: fc.uniqueArray(
+      fc.record({ lane, lastRun: freeText, cleanRuns: fc.nat({ max: 99 }) }),
+      {
+        selector: ({ lane: name }) => name,
+        maxLength: 4,
+      },
+    ),
     assertion: fc.oneof(
       fc.string({ maxLength: 120 }),
       fc
-        .tuple(lane, freeText, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
-        .map(([name, at, count, tail]) => `| ${name} | ${at} | ${count} |\n${tail}`),
+        .tuple(
+          lane,
+          freeText,
+          fc.nat({ max: 99 }),
+          fc.string({ maxLength: 40 }),
+        )
+        .map(
+          ([name, at, count, tail]) =>
+            `| ${name} | ${at} | ${count} |\n${tail}`,
+        ),
     ),
     seed: fc.integer({ min: -(2 ** 31), max: 2 ** 31 }),
     command: fc.string({ minLength: 1, maxLength: 120 }),
   })
   .map(
-    ({ test: name, failure, occurrences, seeds, lastSeen, lanes, assertion, seed, command }) =>
+    ({
+      test: name,
+      failure,
+      occurrences,
+      seeds,
+      lastSeen,
+      lanes,
+      assertion,
+      seed,
+      command,
+    }) =>
       ({
         signature: signatureOf({ test: name, assertion: failure }),
         occurrences,
@@ -861,7 +1104,13 @@ test.each([
     "https://example.test/runs/1",
     "legacy failure",
   ],
-  ["quoted failure", "example", '"failure"', "https://example.test/runs/2", "legacy failure"],
+  [
+    "quoted failure",
+    "example",
+    '"failure"',
+    "https://example.test/runs/2",
+    "legacy failure",
+  ],
   [
     "JSON-looking fields and run URL",
     '"example"',
@@ -889,7 +1138,8 @@ test.each([
       repro: { seed: 5, command: "bun test legacy" },
     };
     // This is the exact free-text normalization used by the previous renderer.
-    const previousLine = (value: string): string => value.replaceAll(/\s+/gu, " ").trim();
+    const previousLine = (value: string): string =>
+      value.replaceAll(/\s+/gu, " ").trim();
     const legacyBody = [
       `Signature: ${state.signature.id}`,
       `Test: ${previousLine(state.signature.test)}`,
@@ -920,11 +1170,15 @@ test.each([
       },
     };
 
-    expect(parseSignatureState({ number: 1, body: legacyBody })).toEqual(expected);
+    expect(parseSignatureState({ number: 1, body: legacyBody })).toEqual(
+      expected,
+    );
     const canonicalBody = renderSignatureIssue(expected).body;
     expect(canonicalBody).not.toBe(legacyBody);
     expect(canonicalBody).toContain("<!-- fuzz-issue-format: 2 -->");
-    expect(parseSignatureState({ number: 1, body: canonicalBody })).toEqual(expected);
+    expect(parseSignatureState({ number: 1, body: canonicalBody })).toEqual(
+      expected,
+    );
   },
 );
 
@@ -942,7 +1196,10 @@ test("legacy parser census excludes every body the canonical writer produces", (
 
   expect(parseSignatureState({ number: 1, body })).toEqual(state);
   expect(() =>
-    parseSignatureState({ number: 1, body: body.replace(/^Failure: .*$/mu, "Failure: legacy") }),
+    parseSignatureState({
+      number: 1,
+      body: body.replace(/^Failure: .*$/mu, "Failure: legacy"),
+    }),
   ).toThrow("malformed signature");
 });
 
@@ -974,7 +1231,10 @@ test("bodies stay bounded for large evidence and seed sets", async () => {
 test("a 20 KB flow is emitted whole and its embedded JSON is unchanged", () => {
   const flow = {
     version: 1,
-    steps: Array.from({ length: 800 }, (_, index) => ({ index, text: `step ${index}` })),
+    steps: Array.from({ length: 800 }, (_, index) => ({
+      index,
+      text: `step ${index}`,
+    })),
   };
   const json = JSON.stringify(flow);
   expect(json.length).toBeGreaterThan(20_000);
@@ -993,7 +1253,9 @@ test("a 20 KB flow is emitted whole and its embedded JSON is unchanged", () => {
   const { body } = renderSignatureIssue(state);
   const embedded = /--flow '([^']+)'/u.exec(body)?.at(1);
   expect(JSON.parse(embedded ?? "null")).toEqual(flow);
-  expect(parseSignatureState({ number: 1, body })?.repro.command).toBe(state.repro.command);
+  expect(parseSignatureState({ number: 1, body })?.repro.command).toBe(
+    state.repro.command,
+  );
 });
 
 test("a huge assertion yields to the whole repro while the issue stays bounded", () => {
@@ -1045,7 +1307,8 @@ test("every legacy filer replay template is converted to CLI flags", () => {
     "FOLIO_SCENARIO_SEED=1 FOLIO_SCENARIO_FUZZ_STEPS=2 FOLIO_SCENARIO_FUZZ_RUNS=3 FOLIO_SCENARIO_COLLISION_RUNS=4 FOLIO_SCENARIO_SWARM=1 bun scripts/consumer-scenarios.ts -- fuzz.test.ts",
     `FOLIO_SCENARIO_FLOW='{"steps":[]}' FOLIO_SCENARIO_PUBLIC_CORPUS_DIR='/tmp/corpus' bun scripts/consumer-scenarios.ts -- flow-corpus.test.ts`,
   ];
-  for (const template of templates) expect(cliRepro(template)).not.toContain("FOLIO_SCENARIO_");
+  for (const template of templates)
+    expect(cliRepro(template)).not.toContain("FOLIO_SCENARIO_");
 });
 
 const replayArgv = (command: string): string[] =>
@@ -1055,7 +1318,9 @@ test("legacy replay conversion follows shell quoting rules", () => {
   const doubleQuoted = cliRepro(
     'FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only "^fuzz \\("',
   );
-  expect(parseConsumerArgs(replayArgv(doubleQuoted), "/repo").only).toBe("^fuzz \\(");
+  expect(parseConsumerArgs(replayArgv(doubleQuoted), "/repo").only).toBe(
+    "^fuzz \\(",
+  );
 
   const quoted = cliRepro(
     "FOLIO_SCENARIO_SEED='1' bun scripts/consumer-scenarios.ts --only one\\ two --flow pre' literal 'mid\" quoted\"post",
@@ -1084,9 +1349,11 @@ test(
   () => {
     assertProperty(
       fc.property(fc.array(fc.string(), { maxLength: 20 }), (values) => {
-        expect(shellWords(values.map(shellQuote).join(" "))?.map(({ value }) => value)).toEqual(
-          values,
-        );
+        expect(
+          shellWords(values.map(shellQuote).join(" "))?.map(
+            ({ value }) => value,
+          ),
+        ).toEqual(values);
       }),
       { numRuns: 500, id: "scenario shell quoting round trips" },
     );
@@ -1113,12 +1380,16 @@ test("legacy environment-only and flags-only replays resolve through the shared 
   const environmentOnly = cliRepro(
     "FOLIO_SCENARIO_SEED=1 bun scripts/consumer-scenarios.ts --only focused",
   );
-  const flagsOnly = cliRepro("bun scripts/consumer-scenarios.ts --seed 2 --only focused");
+  const flagsOnly = cliRepro(
+    "bun scripts/consumer-scenarios.ts --seed 2 --only focused",
+  );
 
-  expect(parseConsumerArgs(replayArgv(environmentOnly), "/repo")).toMatchObject({
-    seed: "1",
-    only: "focused",
-  });
+  expect(parseConsumerArgs(replayArgv(environmentOnly), "/repo")).toMatchObject(
+    {
+      seed: "1",
+      only: "focused",
+    },
+  );
   expect(parseConsumerArgs(replayArgv(flagsOnly), "/repo")).toMatchObject({
     seed: "2",
     only: "focused",
@@ -1128,43 +1399,58 @@ test("legacy environment-only and flags-only replays resolve through the shared 
 test(
   "converted legacy replays resolve to the runner's merged inputs",
   () => {
-    const replayInputs = CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ env, flag }) => ({
-      env,
-      flag,
-      option: flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()),
-    }));
+    const replayInputs = CONSUMER_SCENARIO_REPLAY_INPUTS.map(
+      ({ env, flag }) => ({
+        env,
+        flag,
+        option: flag
+          .slice(2)
+          .replaceAll(/-([a-z])/gu, (_, letter: string) =>
+            letter.toUpperCase(),
+          ),
+      }),
+    );
     const options = replayInputs.map(({ option }) => option);
     const generatedInputs = fc.dictionary(
       fc.constantFrom(...options),
       fc.stringMatching(/^\/[a-zA-Z0-9_-]{1,20}$/u),
     );
     assertProperty(
-      fc.property(generatedInputs, generatedInputs, (environmentValues, flagValues) => {
-        const environment = Object.fromEntries(
-          replayInputs.flatMap(({ env, option }) =>
-            environmentValues[option] === undefined ? [] : [[env, environmentValues[option]]],
-          ),
-        );
-        const environmentPrefix = Object.entries(environment)
-          .map(([name, value]) => `${name}=${value}`)
-          .join(" ");
-        const legacyArgv = replayInputs.flatMap(({ flag, option }) =>
-          flagValues[option] === undefined ? [] : [flag, flagValues[option]],
-        );
-        const legacy = `${environmentPrefix}${environmentPrefix === "" ? "" : " "}bun scripts/consumer-scenarios.ts --only focused ${legacyArgv.join(" ")}`;
-        const converted = cliRepro(legacy);
-        const resolvedBefore = consumerScenarioInputs(
-          parseConsumerArgs(["--only", "focused", ...legacyArgv], "/repo"),
-          environment,
-        );
-        const resolvedAfter = consumerScenarioInputs(
-          parseConsumerArgs(replayArgv(converted), "/repo"),
-          {},
-        );
+      fc.property(
+        generatedInputs,
+        generatedInputs,
+        (environmentValues, flagValues) => {
+          const environment = Object.fromEntries(
+            replayInputs.flatMap(({ env, option }) =>
+              environmentValues[option] === undefined
+                ? []
+                : [[env, environmentValues[option]]],
+            ),
+          );
+          const environmentPrefix = Object.entries(environment)
+            .map(([name, value]) => `${name}=${value}`)
+            .join(" ");
+          const legacyArgv = replayInputs.flatMap(({ flag, option }) =>
+            flagValues[option] === undefined ? [] : [flag, flagValues[option]],
+          );
+          const legacy = `${environmentPrefix}${environmentPrefix === "" ? "" : " "}bun scripts/consumer-scenarios.ts --only focused ${legacyArgv.join(" ")}`;
+          const converted = cliRepro(legacy);
+          const resolvedBefore = consumerScenarioInputs(
+            parseConsumerArgs(["--only", "focused", ...legacyArgv], "/repo"),
+            environment,
+          );
+          const resolvedAfter = consumerScenarioInputs(
+            parseConsumerArgs(replayArgv(converted), "/repo"),
+            {},
+          );
 
-        expect(resolvedAfter).toEqual(resolvedBefore);
-      }),
-      { numRuns: 100, id: "converted legacy replay inputs preserve runner resolution" },
+          expect(resolvedAfter).toEqual(resolvedBefore);
+        },
+      ),
+      {
+        numRuns: 100,
+        id: "converted legacy replay inputs preserve runner resolution",
+      },
     );
   },
   propertyTestTimeout(5_000),
@@ -1172,16 +1458,24 @@ test(
 
 test("a malformed signature body fails instead of opening a duplicate", async () => {
   const fake = fakeClient([
-    { number: 1, title: "x", body: "Signature: 0123456789abcdef\n", state: "open", closedAt: null },
+    {
+      number: 1,
+      title: "x",
+      body: "Signature: 0123456789abcdef\n",
+      state: "open",
+      closedAt: null,
+    },
   ]);
-  await expect(fileFindings({ findings: [], context, store: fake.store })).rejects.toThrow(
-    "Issue #1 has a malformed",
-  );
+  await expect(
+    fileFindings({ findings: [], context, store: fake.store }),
+  ).rejects.toThrow("Issue #1 has a malformed");
 });
 
 test("failed runs without markers fail; malformed marker lines carry a clear location", () => {
   expect(() =>
-    requireFindings(collectFindings([], extractFailureMarkers("ordinary failure"))),
+    requireFindings(
+      collectFindings([], extractFailureMarkers("ordinary failure")),
+    ),
   ).toThrow("0 FOLIO_FAILURE fingerprints");
   expect(() => requireFindings(fixtureFindings)).not.toThrow();
   for (const line of [
@@ -1220,7 +1514,9 @@ test("artifact discovery keeps matrix logs separate and scopes shared browser ar
     expect(readFindings(all.logs, all.records)).toHaveLength(19);
     const scoped = artifactInputs(root, "**/canonical/*.log");
     expect(scoped.logs).toHaveLength(1);
-    expect(scoped.records).toEqual([path.join(root, "browser/fuzz-artifacts/canonical")]);
+    expect(scoped.records).toEqual([
+      path.join(root, "browser/fuzz-artifacts/canonical"),
+    ]);
     const empty = path.join(root, "empty.log");
     writeFileSync(empty, "failed before emitting a marker");
     const cli = Bun.spawnSync(
@@ -1237,7 +1533,11 @@ test("artifact discovery keeps matrix logs separate and scopes shared browser ar
         "scheduled",
         "--dry-run",
       ],
-      { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
+      {
+        cwd: path.resolve(import.meta.dir, ".."),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
     );
     expect(cli.exitCode).not.toBe(0);
     expect(cli.stderr.toString()).toContain("0 FOLIO_FAILURE fingerprints");

@@ -1,8 +1,9 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import fc from "fast-check";
+
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { renderApiReportDrift } from "./lib/api-report-drift";
 
@@ -15,7 +16,10 @@ test("new API entries report their commit path and full generated surface withou
   try {
     assertProperty(
       fc.property(
-        fc.array(fc.string({ minLength: 1, maxLength: 30 }), { minLength: 2, maxLength: 40 }),
+        fc.array(fc.string({ minLength: 1, maxLength: 30 }), {
+          minLength: 2,
+          maxLength: 40,
+        }),
         fc.integer({ min: 1, max: 10 }),
         (lines, maxLines) => {
           const candidate = `## API Report File for "@stll/docx-core"\n\n${lines.join("\n")}\n`;
@@ -27,7 +31,9 @@ test("new API entries report their commit path and full generated surface withou
               reportPath: "api-reports/docx-core/zip.api.md",
               maxLines,
             }),
-          ).toBe(`new entry: commit api-reports/docx-core/zip.api.md\n${candidate}`);
+          ).toBe(
+            `new entry: commit api-reports/docx-core/zip.api.md\n${candidate}`,
+          );
         },
       ),
       {
@@ -41,7 +47,9 @@ test("new API entries report their commit path and full generated surface withou
 });
 
 test("existing API entries retain the bounded drift diagnostic", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "folio-existing-api-report-"));
+  const directory = mkdtempSync(
+    path.join(tmpdir(), "folio-existing-api-report-"),
+  );
   const baselinePath = path.join(directory, "committed.api.md");
   const candidatePath = path.join(directory, "generated.api.md");
   try {

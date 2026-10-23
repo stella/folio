@@ -1,23 +1,30 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  type BuildTree,
   firstBuildTreeMismatch,
   renderBuildTreeMismatch,
-  type BuildTree,
 } from "./lib/build-tree-diff";
 
-const tree = (files: Record<string, string>): BuildTree => new Map(Object.entries(files));
+const tree = (files: Record<string, string>): BuildTree =>
+  new Map(Object.entries(files));
 
 const mismatchOf = (
   baseline: Record<string, string>,
   candidate: Record<string, string>,
 ): ReturnType<typeof firstBuildTreeMismatch> =>
-  firstBuildTreeMismatch({ baseline: tree(baseline), candidate: tree(candidate) });
+  firstBuildTreeMismatch({
+    baseline: tree(baseline),
+    candidate: tree(candidate),
+  });
 
 describe("firstBuildTreeMismatch", () => {
   test("accepts two builds that emitted the same files", () => {
     expect(
-      mismatchOf({ "index.js": "a", "index.d.ts": "b" }, { "index.d.ts": "b", "index.js": "a" }),
+      mismatchOf(
+        { "index.js": "a", "index.d.ts": "b" },
+        { "index.d.ts": "b", "index.js": "a" },
+      ),
     ).toBeNull();
   });
 
@@ -35,7 +42,10 @@ describe("firstBuildTreeMismatch", () => {
   });
 
   test("reports a declaration difference, not only JavaScript", () => {
-    const mismatch = mismatchOf({ "types.d.ts": "type A = 1;" }, { "types.d.ts": "type A = 2;" });
+    const mismatch = mismatchOf(
+      { "types.d.ts": "type A = 1;" },
+      { "types.d.ts": "type A = 2;" },
+    );
     expect(mismatch?.kind).toBe("content");
     expect(mismatch?.path).toBe("types.d.ts");
   });
@@ -50,9 +60,10 @@ describe("firstBuildTreeMismatch", () => {
   });
 
   test("sorts by path, not by the order either tree was walked", () => {
-    expect(mismatchOf({ "b.js": "x", "a.js": "1" }, { "b.js": "y", "a.js": "2" })?.path).toBe(
-      "a.js",
-    );
+    expect(
+      mismatchOf({ "b.js": "x", "a.js": "1" }, { "b.js": "y", "a.js": "2" })
+        ?.path,
+    ).toBe("a.js");
   });
 
   test("reports a file only the first build emitted", () => {
@@ -83,14 +94,27 @@ describe("renderBuildTreeMismatch", () => {
 
   test("prints the path, then the diff of its two versions", () => {
     expect(
-      render({ "index.js": "export const a = 1;" }, { "index.js": "export const a = 2;" }),
+      render(
+        { "index.js": "export const a = 1;" },
+        { "index.js": "export const a = 2;" },
+      ),
     ).toBe("index.js\n-export const a = 1;\n+export const a = 2;");
   });
 
   test("caps the diff and says how many lines it dropped", () => {
-    const baseline = Array.from({ length: 30 }, (_, index) => `old ${index}`).join("\n");
-    const candidate = Array.from({ length: 30 }, (_, index) => `new ${index}`).join("\n");
-    const lines = render({ "index.d.ts": baseline }, { "index.d.ts": candidate }, 6).split("\n");
+    const baseline = Array.from(
+      { length: 30 },
+      (_, index) => `old ${index}`,
+    ).join("\n");
+    const candidate = Array.from(
+      { length: 30 },
+      (_, index) => `new ${index}`,
+    ).join("\n");
+    const lines = render(
+      { "index.d.ts": baseline },
+      { "index.d.ts": candidate },
+      6,
+    ).split("\n");
 
     expect(lines.at(0)).toBe("index.d.ts");
     expect(lines).toHaveLength(8);

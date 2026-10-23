@@ -42,7 +42,12 @@
       ]
     }
   ],
-  "swarm": ["insertAfterBlock", "insertBeforeBlock", "insertTableRow", "deleteTableRow"],
+  "swarm": [
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "insertTableRow",
+    "deleteTableRow"
+  ],
   "origin": "shrunk from random flow seed 774176091",
   "title": "heading numbering does not come from reader sample"
 }

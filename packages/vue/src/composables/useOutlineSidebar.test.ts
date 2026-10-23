@@ -1,8 +1,9 @@
-import { describe, test, expect, mock } from "bun:test";
-import { ref } from "vue";
+import { describe, expect, mock, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { ref } from "vue";
+
 import { useOutlineSidebar } from "./useOutlineSidebar";
 
 /**

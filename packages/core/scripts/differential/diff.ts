@@ -22,15 +22,18 @@ import path from "node:path";
 import { parseDocx } from "../../src/docx/parser";
 import {
   diffProjections,
-  projectFolioDocument,
   type Divergence,
+  projectFolioDocument,
   type StructuralProjection,
 } from "./projection";
 
 const HERE = import.meta.dirname;
 const PYTHON_SCRIPT = path.join(HERE, "python_docx_project.py");
 const OPENXML_PROJECT = path.join(HERE, "dotnet");
-const OPENXML_DLL = path.join(OPENXML_PROJECT, "bin/Release/net8.0/OpenXmlProjector.dll");
+const OPENXML_DLL = path.join(
+  OPENXML_PROJECT,
+  "bin/Release/net8.0/OpenXmlProjector.dll",
+);
 
 const EXIT_OK = 0;
 const EXIT_DIVERGED = 1;
@@ -51,14 +54,19 @@ export type DifferentialResult =
     }
   | { ok: false; reason: "infra"; message: string };
 
-const isDifferentialReference = (value: string): value is DifferentialReference =>
+const isDifferentialReference = (
+  value: string,
+): value is DifferentialReference =>
   (DIFFERENTIAL_REFERENCES as readonly string[]).includes(value);
 
 const resolveOpenXmlProjector = (): string | null => {
   if (existsSync(OPENXML_DLL)) {
     return OPENXML_DLL;
   }
-  const debugDll = path.join(OPENXML_PROJECT, "bin/Debug/net8.0/OpenXmlProjector.dll");
+  const debugDll = path.join(
+    OPENXML_PROJECT,
+    "bin/Debug/net8.0/OpenXmlProjector.dll",
+  );
   if (existsSync(debugDll)) {
     return debugDll;
   }
@@ -192,9 +200,16 @@ export async function runDifferential(
     };
   }
 
-  const divergences = diffProjections(folioProjection, referenceResult.reference);
+  const divergences = diffProjections(
+    folioProjection,
+    referenceResult.reference,
+  );
   if (divergences.length === 0) {
-    return { ok: true, folio: folioProjection, reference: referenceResult.reference };
+    return {
+      ok: true,
+      folio: folioProjection,
+      reference: referenceResult.reference,
+    };
   }
   return {
     ok: false,

@@ -1,13 +1,16 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { propertyConfig, propertyTestTimeout } from "../../../test/property-testing";
 
 import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../test/property-testing";
+import {
   COMMENTS_TRACK_WIDTH,
-  PANEL_METRICS,
-  computePanelLayout,
   type CommentsPresentation,
+  computePanelLayout,
   type OutlinePresentation,
+  PANEL_METRICS,
   type PanelLayoutInput,
 } from "./panel-layout";
 
@@ -28,10 +31,11 @@ const OUTLINE_RANK = {
   column: 3,
   expanded: 4,
 } as const satisfies Record<OutlinePresentation, number>;
-const COMMENTS_RANK = { hidden: 0, drawer: 1, column: 2 } as const satisfies Record<
-  CommentsPresentation,
-  number
->;
+const COMMENTS_RANK = {
+  hidden: 0,
+  drawer: 1,
+  column: 2,
+} as const satisfies Record<CommentsPresentation, number>;
 
 describe("computePanelLayout", () => {
   test("an explicitly opened outline reserves a track and leaves room for the document", () => {
@@ -43,10 +47,17 @@ describe("computePanelLayout", () => {
         comments: "closed",
       });
       expect(layout.outline).toBe("expanded");
-      expect(layout.outlineTrackWidth).toBeLessThanOrEqual(PANEL_METRICS.outlineColumnWidth);
-      expect(layout.outlineTrackWidth).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
       expect(layout.outlineTrackWidth).toBeLessThanOrEqual(
-        Math.max(PANEL_METRICS.controlMinimumSize, (availableWidth - layout.commentsGutter) / 2),
+        PANEL_METRICS.outlineColumnWidth,
+      );
+      expect(layout.outlineTrackWidth).toBeGreaterThanOrEqual(
+        PANEL_METRICS.controlMinimumSize,
+      );
+      expect(layout.outlineTrackWidth).toBeLessThanOrEqual(
+        Math.max(
+          PANEL_METRICS.controlMinimumSize,
+          (availableWidth - layout.commentsGutter) / 2,
+        ),
       );
     }
   });
@@ -70,7 +81,10 @@ describe("computePanelLayout", () => {
     });
     expect(columnsFit.comments).toBe("column");
     const totalTrackWidth =
-      columnsFit.outlineTrackWidth + 816 + 2 * PANEL_METRICS.pageMargin + columnsFit.commentsGutter;
+      columnsFit.outlineTrackWidth +
+      816 +
+      2 * PANEL_METRICS.pageMargin +
+      columnsFit.commentsGutter;
     expect(totalTrackWidth).toBeLessThanOrEqual(1500);
   });
 
@@ -83,9 +97,12 @@ describe("computePanelLayout", () => {
           layoutInput.pageWidth +
           2 * PANEL_METRICS.pageMargin +
           layout.commentsGutter;
-        const anyTrack = layout.outlineTrackWidth > 0 || layout.commentsGutter > 0;
+        const anyTrack =
+          layout.outlineTrackWidth > 0 || layout.commentsGutter > 0;
         expect(!anyTrack || taken <= layoutInput.availableWidth).toBe(true);
-        expect(layout.commentsGutter).toBe(layout.comments === "column" ? COMMENTS_TRACK_WIDTH : 0);
+        expect(layout.commentsGutter).toBe(
+          layout.comments === "column" ? COMMENTS_TRACK_WIDTH : 0,
+        );
       }),
       propertyConfig(),
     );
@@ -95,8 +112,12 @@ describe("computePanelLayout", () => {
     fc.assert(
       fc.property(input, (layoutInput) => {
         const layout = computePanelLayout(layoutInput);
-        expect(layout.outline === "none").toBe(layoutInput.outline === "absent");
-        expect(layout.comments === "hidden").toBe(layoutInput.comments === "closed");
+        expect(layout.outline === "none").toBe(
+          layoutInput.outline === "absent",
+        );
+        expect(layout.comments === "hidden").toBe(
+          layoutInput.comments === "closed",
+        );
       }),
       propertyConfig(),
     );
@@ -112,7 +133,9 @@ describe("computePanelLayout", () => {
           ...layoutInput,
           availableWidth: layoutInput.availableWidth + extra,
         });
-        expect(OUTLINE_RANK[wider.outline]).toBeGreaterThanOrEqual(OUTLINE_RANK[narrower.outline]);
+        expect(OUTLINE_RANK[wider.outline]).toBeGreaterThanOrEqual(
+          OUTLINE_RANK[narrower.outline],
+        );
         expect(COMMENTS_RANK[wider.comments]).toBeGreaterThanOrEqual(
           COMMENTS_RANK[narrower.comments],
         );

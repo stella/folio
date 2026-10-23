@@ -6,7 +6,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
+import type {
+  TableBlock,
+  TableFragment,
+  TableMeasure,
+} from "../layout-engine/types";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
@@ -23,7 +27,9 @@ class FakeElement {
   }
 
   get textContent(): string {
-    return this.ownText + this.children.map((child) => child.textContent).join("");
+    return (
+      this.ownText + this.children.map((child) => child.textContent).join("")
+    );
   }
 
   set textContent(value: string) {
@@ -73,7 +79,10 @@ function findCells(element: FakeElement): FakeElement[] {
 
 function buildSingleCellTable(
   noWrap?: boolean,
-  tableProps?: { widthType?: TableBlock["widthType"]; layout?: TableBlock["layout"] },
+  tableProps?: {
+    widthType?: TableBlock["widthType"];
+    layout?: TableBlock["layout"];
+  },
 ): {
   fragment: TableFragment;
   block: TableBlock;
@@ -163,9 +172,15 @@ describe("renderTable cell w:noWrap (eigenpal #424 gap 14)", () => {
   test("emits white-space: nowrap on the cell element when cell.noWrap is true", () => {
     const { fragment, block, measure } = buildSingleCellTable(true);
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const cells = findCells(tableEl);
     expect(cells.length).toBe(1);
@@ -175,9 +190,15 @@ describe("renderTable cell w:noWrap (eigenpal #424 gap 14)", () => {
   test("does NOT set white-space on the cell element when cell.noWrap is absent", () => {
     const { fragment, block, measure } = buildSingleCellTable(undefined);
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const cells = findCells(tableEl);
     expect(cells.length).toBe(1);
@@ -187,9 +208,15 @@ describe("renderTable cell w:noWrap (eigenpal #424 gap 14)", () => {
   test("does NOT set white-space on the cell element when cell.noWrap is false", () => {
     const { fragment, block, measure } = buildSingleCellTable(false);
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const cells = findCells(tableEl);
     expect(cells.length).toBe(1);
@@ -201,11 +228,19 @@ describe("renderTable cell w:noWrap (eigenpal #424 gap 14)", () => {
   // the cell, so the painter must NOT emit `white-space: nowrap` (that would
   // collapse the wrapped lines and desync painted vs measured height).
   test("does NOT set white-space on a noWrap cell when an explicit dxa width pins the column", () => {
-    const { fragment, block, measure } = buildSingleCellTable(true, { widthType: "dxa" });
+    const { fragment, block, measure } = buildSingleCellTable(true, {
+      widthType: "dxa",
+    });
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const cells = findCells(tableEl);
     expect(cells.length).toBe(1);
@@ -213,11 +248,19 @@ describe("renderTable cell w:noWrap (eigenpal #424 gap 14)", () => {
   });
 
   test("does NOT set white-space on a noWrap cell under a fixed table layout", () => {
-    const { fragment, block, measure } = buildSingleCellTable(true, { layout: "fixed" });
+    const { fragment, block, measure } = buildSingleCellTable(true, {
+      layout: "fixed",
+    });
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const cells = findCells(tableEl);
     expect(cells.length).toBe(1);
@@ -225,11 +268,19 @@ describe("renderTable cell w:noWrap (eigenpal #424 gap 14)", () => {
   });
 
   test("still sets white-space: nowrap on a noWrap cell in an auto-width table", () => {
-    const { fragment, block, measure } = buildSingleCellTable(true, { widthType: "auto" });
+    const { fragment, block, measure } = buildSingleCellTable(true, {
+      widthType: "auto",
+    });
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const cells = findCells(tableEl);
     expect(cells.length).toBe(1);

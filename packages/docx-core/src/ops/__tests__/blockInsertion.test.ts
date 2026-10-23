@@ -1,28 +1,33 @@
 import { expect, test } from "bun:test";
 
 import {
-  paragraphNumberingReference,
   type BlockContent,
   type Document,
   type Paragraph,
+  paragraphNumberingReference,
 } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
 import { storyParagraphs } from "../blocks";
 import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
-  OP_STORIES,
-  REVISION_DECISIONS,
   type DocumentOp,
   type InsertBlocksOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
   type RevisionDecision,
 } from "../types";
 
 const makeParagraph = (paraId: string, text: string): Paragraph => ({
   type: "paragraph",
   paraId,
-  content: text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+  content:
+    text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
 });
 
 const baseDocument: Document = {
@@ -72,7 +77,9 @@ const undo = (applied: AppliedDocumentOp) => {
   return restored.value.document;
 };
 
-const documentOf = (content: BlockContent[]): Document => ({ package: { document: { content } } });
+const documentOf = (content: BlockContent[]): Document => ({
+  package: { document: { content } },
+});
 
 const inCell = (content: BlockContent[]): BlockContent => ({
   type: "table",
@@ -93,18 +100,28 @@ test.each(["body", "cell"] as const)(
   (container) => {
     const original = makeParagraph("00000001", "kept");
     const content = [original];
-    const document = documentOf(container === "body" ? content : [inCell(content)]);
-    const listed = [makeParagraph("00000002", "first"), makeParagraph("00000003", "second")].map(
-      (paragraph) =>
-        Object.assign({}, paragraph, {
-          formatting: { numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }) },
-        }),
+    const document = documentOf(
+      container === "body" ? content : [inCell(content)],
+    );
+    const listed = [
+      makeParagraph("00000002", "first"),
+      makeParagraph("00000003", "second"),
+    ].map((paragraph) =>
+      Object.assign({}, paragraph, {
+        formatting: {
+          numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+        },
+      }),
     );
     const op = insertion(listed);
     const tracked = apply(document, op);
     const direct = apply(document, { ...op, revision: undefined });
-    expect(resolve(tracked, REVISION_DECISIONS.ACCEPT).document).toEqual(direct.document);
-    expect(resolve(tracked, REVISION_DECISIONS.REJECT).document).toEqual(document);
+    expect(resolve(tracked, REVISION_DECISIONS.ACCEPT).document).toEqual(
+      direct.document,
+    );
+    expect(resolve(tracked, REVISION_DECISIONS.REJECT).document).toEqual(
+      document,
+    );
     expect(undo(tracked)).toEqual(document);
     const demand = revisionIdDemand(document, op);
     if (demand.isErr()) throw demand.error;
@@ -119,14 +136,22 @@ test.each(["", "kept"])(
       ...makeParagraph("00000001", text),
       formatting: { alignment: "end" },
     } satisfies Paragraph;
-    const document = documentOf([inCell([final]), makeParagraph("00000004", "outside")]);
-    const tracked = apply(document, insertion([makeParagraph("00000002", "new")]));
+    const document = documentOf([
+      inCell([final]),
+      makeParagraph("00000004", "outside"),
+    ]);
+    const tracked = apply(
+      document,
+      insertion([makeParagraph("00000002", "new")]),
+    );
     const finalAfter = storyParagraphs(tracked.document.package.document).find(
       ({ paragraph }) => paragraph.paraId === final.paraId,
     );
     expect(finalAfter?.paragraph).toBe(final);
     expect(finalAfter?.paragraph.pPrMark).toBeUndefined();
-    expect(resolve(tracked, REVISION_DECISIONS.REJECT).document).toEqual(document);
+    expect(resolve(tracked, REVISION_DECISIONS.REJECT).document).toEqual(
+      document,
+    );
   },
 );
 
@@ -142,7 +167,11 @@ test("direct insertion after a final paragraph is exactly reversible", () => {
     ...op.blocks,
   ]);
   expect(undo(inserted)).toEqual(baseDocument);
-  expect(inserted.touched).toEqual({ modified: [], inserted: ["00000002"], removed: [] });
+  expect(inserted.touched).toEqual({
+    modified: [],
+    inserted: ["00000002"],
+    removed: [],
+  });
 });
 
 test("tracked insertion refuses terminal positions and non-paragraph boundaries", () => {
@@ -152,10 +181,15 @@ test("tracked insertion refuses terminal positions and non-paragraph boundaries"
   } as const;
   for (const document of [
     documentOf([makeParagraph("00000001", "kept")]),
-    documentOf([makeParagraph("00000001", "kept"), inCell([makeParagraph("00000003", "cell")])]),
+    documentOf([
+      makeParagraph("00000001", "kept"),
+      inCell([makeParagraph("00000003", "cell")]),
+    ]),
   ]) {
     const result = applyDocumentOp(document, op);
-    expect(result.isErr() && result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    expect(result.isErr() && result.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    );
   }
 });
 
@@ -172,10 +206,17 @@ test("insertion validates identities, review conflicts and section boundaries", 
     pPrMark: { kind: "ins", info: { id: 9, author: "A" } },
   } satisfies Paragraph;
   const conflict = applyDocumentOp(baseDocument, insertion([changed]));
-  expect(conflict.isErr() && conflict.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
-  const section = { ...makeParagraph("00000002", "section"), sectionProperties: {} };
+  expect(conflict.isErr() && conflict.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  );
+  const section = {
+    ...makeParagraph("00000002", "section"),
+    sectionProperties: {},
+  };
   const boundary = applyDocumentOp(baseDocument, insertion([section]));
-  expect(boundary.isErr() && boundary.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+  expect(boundary.isErr() && boundary.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  );
   const insufficient = applyDocumentOp(baseDocument, {
     ...insertion([makeParagraph("00000002", "new")]),
     newIds: {},

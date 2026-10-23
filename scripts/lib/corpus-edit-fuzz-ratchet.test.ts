@@ -36,7 +36,10 @@ const original: EditCase = {
   ],
 };
 
-const report = (cases: EditCase[], incomplete: EditReport["incomplete"] = []): EditReport => ({
+const report = (
+  cases: EditCase[],
+  incomplete: EditReport["incomplete"] = [],
+): EditReport => ({
   schemaVersion: 1,
   lockDigest: "pinned-lock",
   shard: null,
@@ -67,13 +70,16 @@ test("a new failure cannot replace an old one under the same class and count", (
 });
 
 test("volatile SDK diagnostic hashes do not change a failure identity", () => {
-  expect(caseIdentity({ ...original, observed: "another diagnostic SHA-256" })).toBe(
-    caseIdentity(original),
-  );
+  expect(
+    caseIdentity({ ...original, observed: "another diagnostic SHA-256" }),
+  ).toBe(caseIdentity(original));
 });
 
 test("a duplicate case is not hidden by the identity set", () => {
-  const result = compareBaseline([report([original, original])], baseline([original]));
+  const result = compareBaseline(
+    [report([original, original])],
+    baseline([original]),
+  );
   expect(result.duplicates).toEqual([caseIdentity(original)]);
 });
 
@@ -86,16 +92,20 @@ test("unknown timeouts fail and exact known timeouts require later removal", () 
     detail: "120000ms deadline",
   };
   expect(
-    compareBaseline([report([original], [timeout])], baseline([original])).unexpectedIncomplete,
+    compareBaseline([report([original], [timeout])], baseline([original]))
+      .unexpectedIncomplete,
   ).toEqual([timeout]);
   const known: EditBaseline = {
     ...baseline([original]),
     knownIncomplete: [{ ...timeout, finding: "CORPUS_EDIT_FUZZ_TIMEOUT" }],
   };
-  expect(compareBaseline([report([original], [timeout])], known).unexpectedIncomplete).toEqual([]);
-  expect(compareBaseline([report([original])], known).recoveredIncomplete).toEqual(
-    known.knownIncomplete,
-  );
+  expect(
+    compareBaseline([report([original], [timeout])], known)
+      .unexpectedIncomplete,
+  ).toEqual([]);
+  expect(
+    compareBaseline([report([original])], known).recoveredIncomplete,
+  ).toEqual(known.knownIncomplete);
 });
 
 test("a partial shard set cannot claim a full corpus result", () => {

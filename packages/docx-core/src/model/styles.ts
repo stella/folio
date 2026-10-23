@@ -5,11 +5,11 @@
  */
 
 import type {
-  TextFormatting,
   ParagraphFormatting,
+  TableCellFormatting,
   TableFormatting,
   TableRowFormatting,
-  TableCellFormatting,
+  TextFormatting,
 } from "./formatting";
 import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
 

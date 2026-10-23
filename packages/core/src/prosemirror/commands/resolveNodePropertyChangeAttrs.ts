@@ -7,11 +7,11 @@ import type {
   TableRowFormatting,
 } from "../../types/document";
 import {
+  type NodeAttrsPropertyRevisionKind,
+  type NodeAttrsPropertyRevisionSite,
   nodePropertyRevisionSites,
   propertyRevisionMetadata,
   propertyRevisionRecords,
-  type NodeAttrsPropertyRevisionKind,
-  type NodeAttrsPropertyRevisionSite,
 } from "../revisionCarriers";
 import {
   tableCellRejectAttrPatch,
@@ -20,7 +20,10 @@ import {
   tableRowRejectAttrPatch,
 } from "./propertyChangeScope";
 
-type NodeAttrsRejectPatch = (previousFormatting: unknown, node: PMNode) => Record<string, unknown>;
+type NodeAttrsRejectPatch = (
+  previousFormatting: unknown,
+  node: PMNode,
+) => Record<string, unknown>;
 
 /** The old property set each node-attr revision restores on rejection. */
 const NODE_ATTRS_REJECT_PATCHES = {
@@ -31,13 +34,19 @@ const NODE_ATTRS_REJECT_PATCHES = {
       previousFormatting as TablePropertyExceptionFormatting | undefined,
     ),
   tableRowPropertyChange: (previousFormatting) =>
-    tableRowRejectAttrPatch(previousFormatting as TableRowFormatting | undefined),
+    tableRowRejectAttrPatch(
+      previousFormatting as TableRowFormatting | undefined,
+    ),
   tableCellPropertyChange: (previousFormatting, node) =>
     tableCellRejectAttrPatch(
       previousFormatting as TableCellFormatting | undefined,
-      node.attrs["_originalFormatting"] as TableCellFormatting | null | undefined,
+      node.attrs["_originalFormatting"] as
+        TableCellFormatting | null | undefined,
     ),
-} as const satisfies Record<NodeAttrsPropertyRevisionKind, NodeAttrsRejectPatch>;
+} as const satisfies Record<
+  NodeAttrsPropertyRevisionKind,
+  NodeAttrsRejectPatch
+>;
 
 /** Resolve one property-change site without a transaction. */
 type ResolveNodePropertyChangeAttrsOptions = {
@@ -58,13 +67,18 @@ export const resolveNodePropertyChangeAttrs = ({
   }
   const matches = changes.filter((change) => {
     const metadata = propertyRevisionMetadata(change.info);
-    return revisionSet === null || (metadata !== null && revisionSet.has(metadata.id));
+    return (
+      revisionSet === null ||
+      (metadata !== null && revisionSet.has(metadata.id))
+    );
   });
   if (matches.length === 0) {
     return null;
   }
   const remaining =
-    revisionSet === null ? [] : changes.filter((change) => !matches.includes(change));
+    revisionSet === null
+      ? []
+      : changes.filter((change) => !matches.includes(change));
   const nextAttrs: Record<string, unknown> = {
     ...node.attrs,
     [site.attr]: remaining.length > 0 ? remaining : null,
@@ -88,7 +102,12 @@ export const resolveAllNodePropertyChangeAttrs = (
     if (site.resolution !== "node-attrs") {
       continue;
     }
-    const attrs = resolveNodePropertyChangeAttrs({ node: current, site, mode, revisionSet: null });
+    const attrs = resolveNodePropertyChangeAttrs({
+      node: current,
+      site,
+      mode,
+      revisionSet: null,
+    });
     if (attrs !== null) {
       current = current.type.create(attrs, current.content, current.marks);
     }

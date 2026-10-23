@@ -4,20 +4,20 @@
  */
 
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
-import type { Run, TextRun, FieldRun, MathRun } from "../types";
+import type { FieldRun, MathRun, Run, TextRun } from "../types";
 import { isFloatingImageRun } from "../types";
 import { measureTextWidth } from "./measureProvider";
 import {
-  WIDTH_TOLERANCE,
-  runToFontStyle,
-  isTextRun,
-  isTabRun,
+  fieldMeasureText,
+  isBlockLayoutImageRun,
+  isFieldRun,
   isImageRun,
   isLineBreakRun,
-  isFieldRun,
-  fieldMeasureText,
   isMathRun,
-  isBlockLayoutImageRun,
+  isTabRun,
+  isTextRun,
+  runToFontStyle,
+  WIDTH_TOLERANCE,
 } from "./paragraphMeasureShared";
 
 export function measureInlineWidthAfterTab(
@@ -43,9 +43,15 @@ export function measureInlineWidthAfterTab(
     if (isTextRun(next)) {
       width += measureTextWidth(next.text || "", runToFontStyle(next));
     } else if (isFieldRun(next)) {
-      width += measureTextWidth(fieldMeasureText(next, fieldValues), runToFontStyle(next));
+      width += measureTextWidth(
+        fieldMeasureText(next, fieldValues),
+        runToFontStyle(next),
+      );
     } else if (isMathRun(next)) {
-      width += measureTextWidth(next.plainText || "[equation]", runToFontStyle(next));
+      width += measureTextWidth(
+        next.plainText || "[equation]",
+        runToFontStyle(next),
+      );
     }
   }
   return width;
@@ -70,7 +76,11 @@ export function hasFollowingTabOnLine(runs: Run[], tabIndex: number): boolean {
 export function hasPriorTabOnLine(runs: Run[], tabIndex: number): boolean {
   for (let i = tabIndex - 1; i >= 0; i--) {
     const prior = runs[i];
-    if (!prior || isLineBreakRun(prior) || (isImageRun(prior) && isBlockLayoutImageRun(prior))) {
+    if (
+      !prior ||
+      isLineBreakRun(prior) ||
+      (isImageRun(prior) && isBlockLayoutImageRun(prior))
+    ) {
       break;
     }
     if (isTabRun(prior)) {
@@ -88,7 +98,10 @@ export function canClampTabToRightEdge(
   availableWidth: number,
 ): boolean {
   if (alignment === "start" || alignment === "default") {
-    return currentLineWidth > WIDTH_TOLERANCE && (hasPriorTab || followingWidth <= availableWidth);
+    return (
+      currentLineWidth > WIDTH_TOLERANCE &&
+      (hasPriorTab || followingWidth <= availableWidth)
+    );
   }
   return true;
 }
@@ -129,5 +142,8 @@ export function measureDecimalPrefixWidthAfterTab(
   if (decimalIndex === -1 || !firstRun) {
     return 0;
   }
-  return measureTextWidth(text.slice(0, decimalIndex), runToFontStyle(firstRun));
+  return measureTextWidth(
+    text.slice(0, decimalIndex),
+    runToFontStyle(firstRun),
+  );
 }

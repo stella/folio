@@ -13,6 +13,16 @@
  * `{ error: { code, message, hint, retryable } }`.
  */
 
+import {
+  type JSONObject,
+  type JSONValue,
+  ProtocolError,
+  ProtocolErrorCode,
+  type ReadResourceResult,
+  Server,
+  type Tool,
+} from "@modelcontextprotocol/server";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { panic, Result } from "better-result";
 import type { Readable, Writable } from "node:stream";
 
@@ -22,38 +32,32 @@ import {
   SUGGEST_CHANGES_OPERATION_TYPES,
 } from "@stll/folio-agents/tools";
 import { FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE } from "@stll/folio-core/server";
-import {
-  ProtocolError,
-  ProtocolErrorCode,
-  Server,
-  type JSONObject,
-  type JSONValue,
-  type ReadResourceResult,
-  type Tool,
-} from "@modelcontextprotocol/server";
-import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 
 import packageJson from "../package.json" with { type: "json" };
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
-import { executeReadTool, type FileToolCall, type FolioReadBounds } from "./execute-read";
+import {
+  executeReadTool,
+  type FileToolCall,
+  type FolioReadBounds,
+} from "./execute-read";
 import { executeWriteTool, type WriteDestination } from "./execute-write";
 import {
   compactSchema,
   createToolSurface,
   failure,
   hoistRepeatedSchemas,
-  success,
   type JsonSchema,
+  success,
   type ToolDefinition,
   type ToolOutcome,
 } from "./mcp-kit";
 import {
   FOLIO_FILE_TOOLS,
-  toolAccess,
   type FolioFileToolSpec,
   type JsonObjectSchema,
+  toolAccess,
 } from "./registry";
-import { checkWithinRoots, type AllowedRoots } from "./roots";
+import { type AllowedRoots, checkWithinRoots } from "./roots";
 
 /** Limits on what one MCP tool call returns. */
 export const MCP_READ_BOUNDS: FolioReadBounds = {
@@ -87,12 +91,15 @@ const instructionsFor = (author: string | undefined): string =>
 
 const PATH_PROPERTY = {
   type: "string",
-  description: "The .docx file, absolute or relative to the first allowed root.",
+  description:
+    "The .docx file, absolute or relative to the first allowed root.",
 };
 
 const FILE_VERSION_PATTERN = "^[0-9a-f]{64}$";
 
-const envelopeProperties = (tool: FolioFileToolSpec): Record<string, unknown> => {
+const envelopeProperties = (
+  tool: FolioFileToolSpec,
+): Record<string, unknown> => {
   const access = toolAccess(tool);
   const properties: Record<string, unknown> = {
     path: PATH_PROPERTY,
@@ -125,12 +132,14 @@ const envelopeProperties = (tool: FolioFileToolSpec): Record<string, unknown> =>
     expectedDestinationVersion: {
       type: "string",
       pattern: FILE_VERSION_PATTERN,
-      description: "The fileVersion of the existing file `destination` replaces.",
+      description:
+        "The fileVersion of the existing file `destination` replaces.",
     },
     txId: {
       type: "string",
       pattern: "^[\\w.-]{1,128}$",
-      description: "Idempotency key: repeating a committed call returns its original result.",
+      description:
+        "Idempotency key: repeating a committed call returns its original result.",
     },
   });
   if (access === "write") {
@@ -147,7 +156,8 @@ const envelopeProperties = (tool: FolioFileToolSpec): Record<string, unknown> =>
       mode: {
         type: "string",
         enum: ["tracked", "direct"],
-        description: "tracked (default) records tracked changes; direct edits the text.",
+        description:
+          "tracked (default) records tracked changes; direct edits the text.",
       },
     });
   }
@@ -155,7 +165,9 @@ const envelopeProperties = (tool: FolioFileToolSpec): Record<string, unknown> =>
 };
 
 /** Arguments only the MCP surface takes, beside the registry's. */
-const MCP_ONLY_PROPERTIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+const MCP_ONLY_PROPERTIES: Readonly<
+  Record<string, Readonly<Record<string, unknown>>>
+> = {
   read_document: {
     formatting: {
       type: "boolean",
@@ -181,7 +193,11 @@ export const mcpInputSchema = (tool: FolioFileToolSpec): JsonObjectSchema => {
       ...tool.argsSchema.properties,
       ...MCP_ONLY_PROPERTIES[tool.name],
     },
-    required: ["path", ...(access === "write" ? ["fileVersion"] : []), ...tool.argsSchema.required],
+    required: [
+      "path",
+      ...(access === "write" ? ["fileVersion"] : []),
+      ...tool.argsSchema.required,
+    ],
     additionalProperties: false,
   };
 };
@@ -217,7 +233,12 @@ const DIRECT_TOOLS: Readonly<Record<string, DirectTool>> = {
   find_text: {
     summary:
       "Find text. Each match has its blockId, a `range` to pass to replaceRange or commentOnRange, and context.",
-    properties: { path: STRING, query: STRING, matchCase: BOOLEAN, wholeWord: BOOLEAN },
+    properties: {
+      path: STRING,
+      query: STRING,
+      matchCase: BOOLEAN,
+      wholeWord: BOOLEAN,
+    },
     required: ["path", "query"],
   },
   suggest_changes: {
@@ -232,7 +253,11 @@ const DIRECT_TOOLS: Readonly<Record<string, DirectTool>> = {
       fileVersion: STRING,
       operations: {
         type: "array",
-        items: { type: "object", properties: { type: STRING }, required: ["type"] },
+        items: {
+          type: "object",
+          properties: { type: STRING },
+          required: ["type"],
+        },
       },
     },
     required: ["path", "fileVersion", "operations"],
@@ -240,7 +265,13 @@ const DIRECT_TOOLS: Readonly<Record<string, DirectTool>> = {
   add_comment: {
     summary:
       "Comment on a block; `quote` anchors it to exact text in the block. Returns the new fileVersion.",
-    properties: { path: STRING, fileVersion: STRING, blockId: STRING, text: STRING, quote: STRING },
+    properties: {
+      path: STRING,
+      fileVersion: STRING,
+      blockId: STRING,
+      text: STRING,
+      quote: STRING,
+    },
     required: ["path", "fileVersion", "blockId", "text"],
   },
   read_changes: {
@@ -250,20 +281,40 @@ const DIRECT_TOOLS: Readonly<Record<string, DirectTool>> = {
   },
   read_comments: {
     summary: "List comment threads.",
-    properties: { path: STRING, filter: { type: "string", enum: ["all", "open", "resolved"] } },
+    properties: {
+      path: STRING,
+      filter: { type: "string", enum: ["all", "open", "resolved"] },
+    },
     required: ["path"],
   },
 };
 
 /** One-line summaries for the tools reached through the capability tools. */
-const LAZY_SUMMARIES: Readonly<Record<string, { summary: string; domain: string }>> = {
-  get_document_outline: { summary: "Heading outline with section handles.", domain: "read" },
-  read_section: { summary: "Read one section by its outline handle.", domain: "read" },
-  list_stories: { summary: "List header, footer and note stories.", domain: "read" },
+const LAZY_SUMMARIES: Readonly<
+  Record<string, { summary: string; domain: string }>
+> = {
+  get_document_outline: {
+    summary: "Heading outline with section handles.",
+    domain: "read",
+  },
+  read_section: {
+    summary: "Read one section by its outline handle.",
+    domain: "read",
+  },
+  list_stories: {
+    summary: "List header, footer and note stories.",
+    domain: "read",
+  },
   read_story: { summary: "Read one story by its handle.", domain: "read" },
   reply_comment: { summary: "Reply to a comment thread.", domain: "comments" },
-  resolve_comment: { summary: "Resolve or reopen a comment thread.", domain: "comments" },
-  resolve_changes: { summary: "Accept or reject tracked changes.", domain: "changes" },
+  resolve_comment: {
+    summary: "Resolve or reopen a comment thread.",
+    domain: "comments",
+  },
+  resolve_changes: {
+    summary: "Accept or reject tracked changes.",
+    domain: "changes",
+  },
   compare_documents: {
     summary: "Diff two .docx files, or write their redline to a destination.",
     domain: "compare",
@@ -282,7 +333,10 @@ const ENVELOPE_KEYS: ReadonlySet<string> = new Set([
   "formatting",
 ]);
 
-type ToolCallContext = FolioMcpServerOptions & { bounds: FolioReadBounds; now: () => Date };
+type ToolCallContext = FolioMcpServerOptions & {
+  bounds: FolioReadBounds;
+  now: () => Date;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -290,12 +344,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const invalidInput = (message: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.invalidInput, message });
 
-const optionalString = (value: unknown, name: string): Result<string | undefined, FolioCliError> =>
+const optionalString = (
+  value: unknown,
+  name: string,
+): Result<string | undefined, FolioCliError> =>
   value === undefined || typeof value === "string"
     ? Result.ok(value)
     : Result.err(invalidInput(`${name} must be a string.`));
 
-const toRevisionDate = (date: Date): string => date.toISOString().replace(/\.\d{3}Z$/u, "Z");
+const toRevisionDate = (date: Date): string =>
+  date.toISOString().replace(/\.\d{3}Z$/u, "Z");
 
 const runTool = async (
   tool: FolioFileToolSpec,
@@ -325,7 +383,8 @@ const runTool = async (
 
   if (tool.type === "compare") {
     const revised = args["revisedPath"];
-    if (typeof revised !== "string") return Result.err(invalidInput("revisedPath is required."));
+    if (typeof revised !== "string")
+      return Result.err(invalidInput("revisedPath is required."));
     const revisedPath = await checkWithinRoots({
       roots: context.roots,
       target: revised,
@@ -335,9 +394,16 @@ const runTool = async (
     args["revisedPath"] = revisedPath.value;
   }
 
-  const call: FileToolCall = { path: filePath.value, fileVersion: fileVersion.value, args };
+  const call: FileToolCall = {
+    path: filePath.value,
+    fileVersion: fileVersion.value,
+    args,
+  };
   const access = toolAccess(tool);
-  if (access === "read" || (access === "readOrWrite" && destination.value === undefined)) {
+  if (
+    access === "read" ||
+    (access === "readOrWrite" && destination.value === undefined)
+  ) {
     return await executeReadTool(tool, call, context.bounds);
   }
   if (context.author === undefined) {
@@ -385,9 +451,11 @@ const runTool = async (
 
 // --- compact results ---------------------------------------------------------
 
-const arrayOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+const arrayOf = (value: unknown): unknown[] =>
+  Array.isArray(value) ? value : [];
 
-const recordOf = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {});
+const recordOf = (value: unknown): Record<string, unknown> =>
+  isRecord(value) ? value : {};
 
 /**
  * A number or bullet worth showing. An unnumbered heading's label is its
@@ -415,7 +483,8 @@ export const blockLines = (blocks: readonly unknown[]): string => {
   const lines: string[] = [];
   let row: { key: string; cells: string[][]; cell: unknown } | undefined;
   const flush = (): void => {
-    if (row !== undefined) lines.push(`| ${row.cells.map((cell) => cell.join(" ")).join(" | ")} |`);
+    if (row !== undefined)
+      lines.push(`| ${row.cells.map((cell) => cell.join(" ")).join(" | ")} |`);
     row = undefined;
   };
   for (const block of blocks) {
@@ -488,10 +557,16 @@ const commentIdsOf = (receipts: unknown): string[] =>
     }),
   );
 
-type CompactOptions = { tool: FolioFileToolSpec; input: Readonly<Record<string, unknown>> };
+type CompactOptions = {
+  tool: FolioFileToolSpec;
+  input: Readonly<Record<string, unknown>>;
+};
 
 /** A read's result, cut to what the next call needs. */
-const compactRead = ({ tool, input }: CompactOptions, data: Record<string, unknown>): unknown => {
+const compactRead = (
+  { tool, input }: CompactOptions,
+  data: Record<string, unknown>,
+): unknown => {
   const { fileVersion } = data;
   const result = data["result"];
   switch (tool.name) {
@@ -519,11 +594,20 @@ const compactRead = ({ tool, input }: CompactOptions, data: Record<string, unkno
       };
     }
     case "read_changes":
-      return { fileVersion, changes: arrayOf(result).map(changeLine).join("\n") };
+      return {
+        fileVersion,
+        changes: arrayOf(result).map(changeLine).join("\n"),
+      };
     case "compare_documents":
-      return { fileVersion, revised: data["revised"], diff: recordOf(result)["text"] };
+      return {
+        fileVersion,
+        revised: data["revised"],
+        diff: recordOf(result)["text"],
+      };
     default:
-      return isRecord(result) ? { fileVersion, ...result } : { fileVersion, result };
+      return isRecord(result)
+        ? { fileVersion, ...result }
+        : { fileVersion, result };
   }
 };
 
@@ -557,7 +641,11 @@ const compactWrite = (
     case "reply_comment":
       return { ...base, commentId: commentIdsOf(result["receipts"]).at(0) };
     case "resolve_changes":
-      return { ...base, resolved: result["resolved"], remaining: result["remaining"] };
+      return {
+        ...base,
+        resolved: result["resolved"],
+        remaining: result["remaining"],
+      };
     case "compare_documents":
       return { ...base, ...result };
     default:
@@ -593,7 +681,9 @@ const toOutcome = (
   }
   const data = recordOf(result.value);
   const wrote = "txId" in data;
-  return success(wrote ? compactWrite(options, data) : compactRead(options, data));
+  return success(
+    wrote ? compactWrite(options, data) : compactRead(options, data),
+  );
 };
 
 // --- the surface -------------------------------------------------------------
@@ -602,7 +692,8 @@ const toOutcome = (
 const withFullRanges = (operations: unknown): unknown =>
   Array.isArray(operations)
     ? operations.map((operation) => {
-        if (!isRecord(operation) || !isRecord(operation["range"])) return operation;
+        if (!isRecord(operation) || !isRecord(operation["range"]))
+          return operation;
         return {
           ...operation,
           range: { type: "textRange", story: "main", ...operation["range"] },
@@ -611,7 +702,10 @@ const withFullRanges = (operations: unknown): unknown =>
     : operations;
 
 /** Operation keys the model never writes. */
-const HIDDEN_OPERATION_KEYS: ReadonlySet<string> = new Set(["type", "suggestionId"]);
+const HIDDEN_OPERATION_KEYS: ReadonlySet<string> = new Set([
+  "type",
+  "suggestionId",
+]);
 
 /**
  * The fields each operation type accepts, one line per type. The described
@@ -647,8 +741,18 @@ const SUGGEST_CHANGES_EXAMPLE = {
   path: "contract.docx",
   fileVersion: "<from read_document>",
   operations: [
-    { type: "replaceAll", find: "Supplier", replace: "Provider", matchCase: true, wholeWord: true },
-    { type: "addComment", quote: "total liability", comment: "Is this cap acceptable?" },
+    {
+      type: "replaceAll",
+      find: "Supplier",
+      replace: "Provider",
+      matchCase: true,
+      wholeWord: true,
+    },
+    {
+      type: "addComment",
+      quote: "total liability",
+      comment: "Is this cap acceptable?",
+    },
   ],
 };
 
@@ -657,10 +761,15 @@ const guideOf = (tool: FolioFileToolSpec): string =>
     ? `${describeSuggestChangesCapabilities()}\nFields by operation type:\n${OPERATION_FIELDS}`
     : tool.description;
 
-const toKitTool = (tool: FolioFileToolSpec): ToolDefinition<ToolCallContext> => {
+const toKitTool = (
+  tool: FolioFileToolSpec,
+): ToolDefinition<ToolCallContext> => {
   const direct = DIRECT_TOOLS[tool.name];
   const lazy = LAZY_SUMMARIES[tool.name];
-  const summary = direct?.summary ?? lazy?.summary ?? panic(`${tool.name} has no MCP summary`);
+  const summary =
+    direct?.summary ??
+    lazy?.summary ??
+    panic(`${tool.name} has no MCP summary`);
   const access = toolAccess(tool);
   return {
     name: tool.name,
@@ -708,23 +817,32 @@ const toKitTool = (tool: FolioFileToolSpec): ToolDefinition<ToolCallContext> => 
 const surface = createToolSurface({ tools: FOLIO_FILE_TOOLS.map(toKitTool) });
 
 const isJsonValue = (value: unknown): value is JSONValue => {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
   return typeof value === "object" && Object.values(value).every(isJsonValue);
 };
 
 /** The schemas are JSON by construction; a value that is not is a registry bug. */
-const toJsonObject = (properties: Readonly<Record<string, unknown>>): JSONObject => {
+const toJsonObject = (
+  properties: Readonly<Record<string, unknown>>,
+): JSONObject => {
   const object: JSONObject = {};
   for (const [key, value] of Object.entries(properties)) {
-    object[key] = isJsonValue(value) ? value : panic(`Schema property ${key} is not JSON`);
+    object[key] = isJsonValue(value)
+      ? value
+      : panic(`Schema property ${key} is not JSON`);
   }
   return object;
 };
 
-const toMcpInputSchema = (schema: Readonly<Record<string, unknown>>): Tool["inputSchema"] => {
-  const required = arrayOf(schema["required"]).filter((key) => typeof key === "string");
+const toMcpInputSchema = (
+  schema: Readonly<Record<string, unknown>>,
+): Tool["inputSchema"] => {
+  const required = arrayOf(schema["required"]).filter(
+    (key) => typeof key === "string",
+  );
   return {
     type: "object",
     properties: toJsonObject(recordOf(schema["properties"])),
@@ -734,12 +852,14 @@ const toMcpInputSchema = (schema: Readonly<Record<string, unknown>>): Tool["inpu
 
 /** What `tools/list` returns. */
 export const listMcpTools = (): Tool[] =>
-  surface.listTools().map(({ name, description, inputSchema, annotations }) => ({
-    name,
-    description,
-    inputSchema: toMcpInputSchema(inputSchema),
-    annotations,
-  }));
+  surface
+    .listTools()
+    .map(({ name, description, inputSchema, annotations }) => ({
+      name,
+      description,
+      inputSchema: toMcpInputSchema(inputSchema),
+      annotations,
+    }));
 
 const aboutText = (roots: AllowedRoots): string =>
   [
@@ -759,9 +879,14 @@ const aboutText = (roots: AllowedRoots): string =>
     "",
   ].join("\n");
 
-const readResource = (uri: string, roots: AllowedRoots): ReadResourceResult | null => {
+const readResource = (
+  uri: string,
+  roots: AllowedRoots,
+): ReadResourceResult | null => {
   if (uri === ABOUT_URI) {
-    return { contents: [{ uri, mimeType: "text/markdown", text: aboutText(roots) }] };
+    return {
+      contents: [{ uri, mimeType: "text/markdown", text: aboutText(roots) }],
+    };
   }
   if (uri === OPERATIONS_SCHEMA_URI) {
     return {
@@ -778,7 +903,9 @@ const readResource = (uri: string, roots: AllowedRoots): ReadResourceResult | nu
 };
 
 /** A low-level MCP server exposing the file tools; connect it to a transport. */
-export const createFolioMcpServer = (options: FolioMcpServerOptions): Server => {
+export const createFolioMcpServer = (
+  options: FolioMcpServerOptions,
+): Server => {
   const context: ToolCallContext = {
     ...options,
     bounds: options.bounds ?? MCP_READ_BOUNDS,
@@ -786,7 +913,10 @@ export const createFolioMcpServer = (options: FolioMcpServerOptions): Server => 
   };
   const server = new Server(
     { name: "folio", version: packageJson.version },
-    { capabilities: { tools: {}, resources: {} }, instructions: instructionsFor(options.author) },
+    {
+      capabilities: { tools: {}, resources: {} },
+      instructions: instructionsFor(options.author),
+    },
   );
   server.setRequestHandler("tools/list", () => ({ tools: listMcpTools() }));
   server.setRequestHandler("tools/call", (request) =>
@@ -816,10 +946,17 @@ export const createFolioMcpServer = (options: FolioMcpServerOptions): Server => 
   return server;
 };
 
-type ServeOptions = FolioMcpServerOptions & { input: Readable; output: Writable };
+type ServeOptions = FolioMcpServerOptions & {
+  input: Readable;
+  output: Writable;
+};
 
 /** Serve the file tools over stdio until the client disconnects. */
-export const serveFolioMcp = async ({ input, output, ...options }: ServeOptions): Promise<void> => {
+export const serveFolioMcp = async ({
+  input,
+  output,
+  ...options
+}: ServeOptions): Promise<void> => {
   const server = createFolioMcpServer(options);
   const closed = new Promise<void>((resolve) => {
     server.onclose = () => resolve();

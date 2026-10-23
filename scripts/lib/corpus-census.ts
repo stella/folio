@@ -7,15 +7,15 @@
  * of one unsharded run over the same files.
  */
 
+import { NOT_A_DOCX_REASONS, type NotADocxReason } from "./corpus-classify";
 import {
-  emptyDeclaredRefusalCounts,
   countDeclaredRefusals,
+  type DeclaredRefusalCounts,
+  emptyDeclaredRefusalCounts,
   mergeDeclaredRefusalCounts,
   renderDeclaredRefusals,
-  type DeclaredRefusalCounts,
 } from "./corpus-declared-refusals";
 import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
-import { NOT_A_DOCX_REASONS, type NotADocxReason } from "./corpus-classify";
 import { isGatingFailure, isZeroFailure } from "./corpus-invariants/contract";
 import {
   type CorpusFailure,
@@ -65,7 +65,8 @@ export const CORPUS_EVIDENCE = {
   reportOnly: "report-only",
 } as const;
 
-export type CorpusEvidence = (typeof CORPUS_EVIDENCE)[keyof typeof CORPUS_EVIDENCE];
+export type CorpusEvidence =
+  (typeof CORPUS_EVIDENCE)[keyof typeof CORPUS_EVIDENCE];
 
 /**
  * The one rule that says whether a result's findings gate.
@@ -106,8 +107,13 @@ export type CorpusFileId = {
  * match on this string, so two spellings of it would silently stop agreeing
  * about which file is which.
  */
-export const fileIdOf = ({ sourceId, path }: { sourceId: string; path: string }): string =>
-  `${sourceId}/${path}`;
+export const fileIdOf = ({
+  sourceId,
+  path,
+}: {
+  sourceId: string;
+  path: string;
+}): string => `${sourceId}/${path}`;
 
 export type CensusSignature = {
   signature: string;
@@ -154,7 +160,10 @@ const emptyReasonRecord = <T>(value: () => T): Record<NotADocxReason, T> => {
   return record as Record<NotADocxReason, T>;
 };
 
-export const emptyCensus = (lockDigest: string, reportOnlyDigest: string): CorpusCensus => ({
+export const emptyCensus = (
+  lockDigest: string,
+  reportOnlyDigest: string,
+): CorpusCensus => ({
   schemaVersion: 1,
   lockDigest,
   reportOnlyDigest,
@@ -183,7 +192,10 @@ const assertNever = (value: never): never => {
   throw new Error(`unhandled corpus file result: ${JSON.stringify(value)}`);
 };
 
-const compareSignatures = (left: CensusSignature, right: CensusSignature): number => {
+const compareSignatures = (
+  left: CensusSignature,
+  right: CensusSignature,
+): number => {
   if (left.files !== right.files) {
     return right.files - left.files;
   }
@@ -220,8 +232,12 @@ export class CensusBuilder {
    */
   add(file: CorpusFileId, result: CorpusFileResult): void {
     if (result.kind !== "not-a-docx") {
-      countDeclaredRefusals(this.#census.declaredRefusals, result.declaredRefusals);
-      if (result.declaredRefusals.length > 0) this.#census.declaredRefusedFiles += 1;
+      countDeclaredRefusals(
+        this.#census.declaredRefusals,
+        result.declaredRefusals,
+      );
+      if (result.declaredRefusals.length > 0)
+        this.#census.declaredRefusedFiles += 1;
     }
     switch (result.kind) {
       case "not-a-docx": {
@@ -236,7 +252,9 @@ export class CensusBuilder {
         }
         // Ratcheted findings depend on how far a loaded run reached. Fixed-zero
         // failures already observed remain defects even when later work is skipped.
-        this.addChecked(file, result.failures.filter(survivesMissingEvidence), { counted: false });
+        this.addChecked(file, result.failures.filter(survivesMissingEvidence), {
+          counted: false,
+        });
         return;
       }
       case "report-only": {
@@ -244,12 +262,17 @@ export class CensusBuilder {
         this.#census.reportOnly += 1;
         // Listed files contribute no ratchet evidence. Fixed-zero defects are
         // still counted: a file exemption cannot grant an operation allowance.
-        this.addChecked(file, result.failures.filter(survivesMissingEvidence), { counted: false });
+        this.addChecked(file, result.failures.filter(survivesMissingEvidence), {
+          counted: false,
+        });
         return;
       }
       case "complete": {
         this.addChecked(file, result.failures, {
-          verdict: result.declaredRefusals.length > 0 ? "declared-refusal" : "evaluated",
+          verdict:
+            result.declaredRefusals.length > 0
+              ? "declared-refusal"
+              : "evaluated",
         });
         return;
       }
@@ -308,7 +331,9 @@ export class CensusBuilder {
   }
 }
 
-export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus => {
+export const mergeCensuses = (
+  censuses: readonly CorpusCensus[],
+): CorpusCensus => {
   const first = censuses.at(0);
   if (first === undefined) {
     throw new Error("A census merge needs at least one census");
@@ -316,7 +341,10 @@ export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus =
   const merged = emptyCensus(first.lockDigest, first.reportOnlyDigest);
   const bySignature = new Map<string, CensusSignature>();
   for (const census of censuses) {
-    mergeDeclaredRefusalCounts(merged.declaredRefusals, census.declaredRefusals);
+    mergeDeclaredRefusalCounts(
+      merged.declaredRefusals,
+      census.declaredRefusals,
+    );
     merged.declaredRefusedFiles += census.declaredRefusedFiles;
     merged.files += census.files;
     merged.duplicates += census.duplicates;
@@ -347,17 +375,25 @@ export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus =
       (reason) => !(reason in merged.notADocxByReason),
     );
     if (unknown.length > 0) {
-      throw new Error(`Unknown not-a-docx reasons in census: ${unknown.join(", ")}`);
+      throw new Error(
+        `Unknown not-a-docx reasons in census: ${unknown.join(", ")}`,
+      );
     }
     for (const signature of census.signatures) {
       const existing = bySignature.get(signature.signature);
       if (existing === undefined) {
-        bySignature.set(signature.signature, { ...signature, examples: [...signature.examples] });
+        bySignature.set(signature.signature, {
+          ...signature,
+          examples: [...signature.examples],
+        });
         continue;
       }
       existing.files += signature.files;
       existing.examples.push(
-        ...signature.examples.slice(0, MAX_EXAMPLES_PER_SIGNATURE - existing.examples.length),
+        ...signature.examples.slice(
+          0,
+          MAX_EXAMPLES_PER_SIGNATURE - existing.examples.length,
+        ),
       );
     }
   }
@@ -365,7 +401,10 @@ export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus =
   return merged;
 };
 
-export const renderCensus = (census: CorpusCensus, topSignatures: number): string => {
+export const renderCensus = (
+  census: CorpusCensus,
+  topSignatures: number,
+): string => {
   const lines = [
     `files ${census.files} (${census.duplicates} duplicate content skipped)`,
     `  not-a-docx ${census.notADocx}: ${NOT_A_DOCX_REASON_LIST.filter(

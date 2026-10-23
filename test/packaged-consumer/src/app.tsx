@@ -13,25 +13,27 @@
 // repo source, so this exercises the published artifacts a downstream app gets.
 
 import { createRoot } from "react-dom/client";
+
 import { IntlProvider } from "use-intl";
 
-import { DocxEditor } from "@stll/folio-react";
-import type { DocxEditorRef } from "@stll/folio-react";
-import { getFolioMessages } from "@stll/folio-react/messages";
+import {
+  docxProjectionSchemaVersion,
+  type DocxProjectionWire,
+  projectCompressedDocx,
+} from "@stll/docx-core/projection";
+import { getCachedTextWidth } from "@stll/folio-core/layout-engine/measure/cache";
 import {
   canPrefetchMeasurement,
   prefetchMeasurement,
 } from "@stll/folio-core/layout-engine/measure/measureWorker";
-import { getCachedTextWidth } from "@stll/folio-core/layout-engine/measure/cache";
-import {
-  docxProjectionSchemaVersion,
-  projectCompressedDocx,
-  type DocxProjectionWire,
-} from "@stll/docx-core/projection";
+import { DocxEditor } from "@stll/folio-react";
+import type { DocxEditorRef } from "@stll/folio-react";
+import { getFolioMessages } from "@stll/folio-react/messages";
 
 import "@stll/folio-react/editor.css";
 
 import { useEffect, useRef, useState } from "react";
+
 import { mountHostEditor } from "./host-editor";
 
 const hostContainer = document.createElement("section");
@@ -105,7 +107,9 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error("Worker did not return a width for the smoke probe within 8 seconds");
+  throw new Error(
+    "Worker did not return a width for the smoke probe within 8 seconds",
+  );
 }
 
 declare global {
@@ -133,7 +137,9 @@ function App() {
       // The thrown rejection surfaces as a pageerror, which the smoke's
       // console net turns into a clear failure.
       if (!response.ok) {
-        throw new Error(`fixture fetch failed: HTTP ${response.status} for /fixture.docx`);
+        throw new Error(
+          `fixture fetch failed: HTTP ${response.status} for /fixture.docx`,
+        );
       }
       const documentBuffer = await response.arrayBuffer();
       projectionPromise = projectCompressedDocx(new Uint8Array(documentBuffer));

@@ -9,18 +9,30 @@
     @close="$emit('close')"
     @keydown.enter="apply"
   >
-    <div class="tpd-dialog__header">{{ t("dialogs.tableProperties.title") }}</div>
+    <div class="tpd-dialog__header">
+      {{ t("dialogs.tableProperties.title") }}
+    </div>
     <div class="tpd-dialog__body">
       <div class="tpd-row">
-        <label class="tpd-label">{{ t("dialogs.tableProperties.widthType") }}</label>
+        <label class="tpd-label">{{
+          t("dialogs.tableProperties.widthType")
+        }}</label>
         <select v-model="widthType" class="tpd-select">
-          <option value="auto">{{ t("dialogs.tableProperties.widthTypes.auto") }}</option>
-          <option value="dxa">{{ t("dialogs.tableProperties.widthTypes.fixed") }}</option>
-          <option value="pct">{{ t("dialogs.tableProperties.widthTypes.percentage") }}</option>
+          <option value="auto">
+            {{ t("dialogs.tableProperties.widthTypes.auto") }}
+          </option>
+          <option value="dxa">
+            {{ t("dialogs.tableProperties.widthTypes.fixed") }}
+          </option>
+          <option value="pct">
+            {{ t("dialogs.tableProperties.widthTypes.percentage") }}
+          </option>
         </select>
       </div>
       <div v-if="widthType !== 'auto'" class="tpd-row">
-        <label class="tpd-label">{{ t("dialogs.tableProperties.widthLabel") }}</label>
+        <label class="tpd-label">{{
+          t("dialogs.tableProperties.widthLabel")
+        }}</label>
         <input
           v-model.number="width"
           type="number"
@@ -35,28 +47,40 @@
         }}</span>
       </div>
       <div class="tpd-row">
-        <label class="tpd-label">{{ t("dialogs.tableProperties.alignmentLabel") }}</label>
+        <label class="tpd-label">{{
+          t("dialogs.tableProperties.alignmentLabel")
+        }}</label>
         <select v-model="justification" class="tpd-select">
-          <option v-for="value in TABLE_PROPERTY_JUSTIFICATIONS" :key="value" :value="value">
+          <option
+            v-for="value in TABLE_PROPERTY_JUSTIFICATIONS"
+            :key="value"
+            :value="value"
+          >
             {{ t(TABLE_JUSTIFICATION_LABEL_KEYS[value]) }}
           </option>
         </select>
       </div>
     </div>
     <div class="tpd-dialog__footer">
-      <button class="tpd-btn" @click="$emit('close')">{{ t("common.cancel") }}</button>
-      <button class="tpd-btn tpd-btn--primary" @click="apply">{{ t("common.apply") }}</button>
+      <button class="tpd-btn" @click="$emit('close')">
+        {{ t("common.cancel") }}
+      </button>
+      <button class="tpd-btn tpd-btn--primary" @click="apply">
+        {{ t("common.apply") }}
+      </button>
     </div>
   </FolioDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+
 import {
   TABLE_PROPERTY_JUSTIFICATIONS,
-  toTablePropertyJustification,
   type TablePropertiesCommand,
+  toTablePropertyJustification,
 } from "@stll/folio-core/utils/tableOperations";
+
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -90,7 +114,9 @@ const emit = defineEmits<{
 }>();
 
 const width = ref(0);
-const editableWidthType = (value: string): NonNullable<TableProperties["widthType"]> => {
+const editableWidthType = (
+  value: string,
+): NonNullable<TableProperties["widthType"]> => {
   switch (value) {
     case "dxa":
     case "pct":
@@ -100,16 +126,24 @@ const editableWidthType = (value: string): NonNullable<TableProperties["widthTyp
   }
 };
 
-const widthType = ref(editableWidthType(props.currentProps?.widthType ?? "auto"));
-const justification = ref(toTablePropertyJustification(props.currentProps?.justification));
+const widthType = ref(
+  editableWidthType(props.currentProps?.widthType ?? "auto"),
+);
+const justification = ref(
+  toTablePropertyJustification(props.currentProps?.justification),
+);
 
 watch(
   () => props.isOpen,
   (open) => {
     if (open) {
       width.value = props.currentProps?.width ?? 0;
-      widthType.value = editableWidthType(props.currentProps?.widthType ?? "auto");
-      justification.value = toTablePropertyJustification(props.currentProps?.justification);
+      widthType.value = editableWidthType(
+        props.currentProps?.widthType ?? "auto",
+      );
+      justification.value = toTablePropertyJustification(
+        props.currentProps?.justification,
+      );
     }
   },
 );
@@ -118,7 +152,11 @@ function apply() {
   const result: TableProperties =
     widthType.value === "auto"
       ? { justification: justification.value, width: null, widthType: "auto" }
-      : { justification: justification.value, width: width.value, widthType: widthType.value };
+      : {
+          justification: justification.value,
+          width: width.value,
+          widthType: widthType.value,
+        };
   emit("apply", result);
   emit("close");
 }

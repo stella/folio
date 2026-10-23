@@ -4,10 +4,10 @@
  * package parts unrelated to the body edit were preserved.
  */
 
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -18,8 +18,15 @@ import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
-const REGRESSION_FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "regressions");
-const VISUAL_FIXTURES_DIR = path.resolve(import.meta.dir, "../../../../../tests/visual/fixtures");
+const REGRESSION_FIXTURES_DIR = path.join(
+  import.meta.dir,
+  "__fixtures__",
+  "regressions",
+);
+const VISUAL_FIXTURES_DIR = path.resolve(
+  import.meta.dir,
+  "../../../../../tests/visual/fixtures",
+);
 const EDIT_MARKER_PREFIX = "Folio corpus edit: ";
 const BODY_PART = "word/document.xml";
 const REVIEW_MARK_TYPES = new Set(["comment", "deletion", "insertion"]);
@@ -33,7 +40,10 @@ type ReadFixtureOptions = {
   filename: string;
 };
 
-const readFixture = ({ directory = FIXTURES_DIR, filename }: ReadFixtureOptions): ArrayBuffer => {
+const readFixture = ({
+  directory = FIXTURES_DIR,
+  filename,
+}: ReadFixtureOptions): ArrayBuffer => {
   const bytes = readFileSync(path.join(directory, filename));
   return new Uint8Array(bytes).buffer;
 };
@@ -116,7 +126,11 @@ const replaceUniqueText = ({
   const replacementNode = doc.type.schema.text(replacement, match.node.marks);
   const state = EditorState.create({ doc });
   return state.apply(
-    state.tr.replaceWith(match.from, match.from + match.node.nodeSize, replacementNode),
+    state.tr.replaceWith(
+      match.from,
+      match.from + match.node.nodeSize,
+      replacementNode,
+    ),
   ).doc;
 };
 
@@ -155,12 +169,14 @@ const editFixtureText = async ({
     originalComments: parsed.package.document.comments ?? [],
     originalPm,
     originalSectionProperties:
-      parsed.package.document.sections?.map(({ properties }) => properties) ?? [],
+      parsed.package.document.sections?.map(({ properties }) => properties) ??
+      [],
     savedBytes,
     reopenedPm: toProseDoc(reopened),
     reopenedComments: reopened.package.document.comments ?? [],
     reopenedSectionProperties:
-      reopened.package.document.sections?.map(({ properties }) => properties) ?? [],
+      reopened.package.document.sections?.map(({ properties }) => properties) ??
+      [],
   };
 };
 
@@ -200,7 +216,11 @@ const reviewMarkSnapshots = (doc: ProseMirrorNode): ReviewMarkSnapshot[] => {
 
     for (const mark of node.marks) {
       if (REVIEW_MARK_TYPES.has(mark.type.name)) {
-        snapshots.push({ attrs: mark.attrs, text: node.text, type: mark.type.name });
+        snapshots.push({
+          attrs: mark.attrs,
+          text: node.text,
+          type: mark.type.name,
+        });
       }
     }
   });
@@ -212,30 +232,41 @@ describe("corpus edit/save/reopen", () => {
     expect(FIXTURE_FILES.length).toBeGreaterThan(0);
   });
 
-  test.each(FIXTURE_FILES)("preserves package content after a body edit (%s)", async (filename) => {
-    const originalBytes = readFixture({ filename });
-    const parsed = await parseDocx(originalBytes);
-    if (!parsed.originalBuffer) panic("parser must retain the imported package");
-    const originalPm = toProseDoc(parsed);
-    const marker = `${EDIT_MARKER_PREFIX}${filename}`;
-    const markerParagraph = originalPm.type.schema.nodes.paragraph.create(
-      null,
-      originalPm.type.schema.text(marker),
-    );
-    const state = EditorState.create({ doc: originalPm });
-    const editedPm = state.apply(state.tr.insert(state.doc.content.size, markerParagraph)).doc;
-    const savedBytes = await repackDocx(
-      fromProseDoc(editedPm, parsed, { stylesheetSource: { type: "package" } }),
-      {
-        updateModifiedDate: false,
-      },
-    );
-    const reopenedPm = toProseDoc(await parseDocx(savedBytes));
+  test.each(FIXTURE_FILES)(
+    "preserves package content after a body edit (%s)",
+    async (filename) => {
+      const originalBytes = readFixture({ filename });
+      const parsed = await parseDocx(originalBytes);
+      if (!parsed.originalBuffer)
+        panic("parser must retain the imported package");
+      const originalPm = toProseDoc(parsed);
+      const marker = `${EDIT_MARKER_PREFIX}${filename}`;
+      const markerParagraph = originalPm.type.schema.nodes.paragraph.create(
+        null,
+        originalPm.type.schema.text(marker),
+      );
+      const state = EditorState.create({ doc: originalPm });
+      const editedPm = state.apply(
+        state.tr.insert(state.doc.content.size, markerParagraph),
+      ).doc;
+      const savedBytes = await repackDocx(
+        fromProseDoc(editedPm, parsed, {
+          stylesheetSource: { type: "package" },
+        }),
+        {
+          updateModifiedDate: false,
+        },
+      );
+      const reopenedPm = toProseDoc(await parseDocx(savedBytes));
 
-    expect(reopenedPm.textContent).toBe(`${originalPm.textContent}${marker}`);
-    expect(reopenedPm.childCount).toBe(originalPm.childCount + 1);
-    await expectUnrelatedPartsPreserved({ importedBytes: parsed.originalBuffer, savedBytes });
-  });
+      expect(reopenedPm.textContent).toBe(`${originalPm.textContent}${marker}`);
+      expect(reopenedPm.childCount).toBe(originalPm.childCount + 1);
+      await expectUnrelatedPartsPreserved({
+        importedBytes: parsed.originalBuffer,
+        savedBytes,
+      });
+    },
+  );
 });
 
 describe("structured corpus edits", () => {
@@ -290,8 +321,13 @@ describe("structured corpus edits", () => {
     expect(originalSections).toHaveLength(1);
     expect(sectionBreakProperties(result.reopenedPm)).toEqual(originalSections);
     expect(result.originalSectionProperties).toHaveLength(2);
-    expect(result.reopenedSectionProperties).toEqual(result.originalSectionProperties);
-    findUniqueText(result.reopenedPm, "Možnosti odstoupení objednatele od objednávky: upraveno");
+    expect(result.reopenedSectionProperties).toEqual(
+      result.originalSectionProperties,
+    );
+    findUniqueText(
+      result.reopenedPm,
+      "Možnosti odstoupení objednatele od objednávky: upraveno",
+    );
     await expectUnrelatedPartsPreserved(result);
   });
 
@@ -309,7 +345,9 @@ describe("structured corpus edits", () => {
     expect(originalSections).toHaveLength(7);
     expect(sectionBreakProperties(result.reopenedPm)).toEqual(originalSections);
     expect(result.originalSectionProperties).toHaveLength(8);
-    expect(result.reopenedSectionProperties).toEqual(result.originalSectionProperties);
+    expect(result.reopenedSectionProperties).toEqual(
+      result.originalSectionProperties,
+    );
     findUniqueText(result.reopenedPm, "2026-PU-036A");
     await expectUnrelatedPartsPreserved(result);
   });
@@ -323,13 +361,22 @@ describe("structured corpus edits", () => {
     });
     const originalReviewMarks = reviewMarkSnapshots(result.originalPm);
 
-    expect(originalReviewMarks.filter(({ type }) => type === "comment")).toHaveLength(1);
-    expect(originalReviewMarks.filter(({ type }) => type === "deletion")).toHaveLength(3);
-    expect(originalReviewMarks.filter(({ type }) => type === "insertion")).toHaveLength(3);
+    expect(
+      originalReviewMarks.filter(({ type }) => type === "comment"),
+    ).toHaveLength(1);
+    expect(
+      originalReviewMarks.filter(({ type }) => type === "deletion"),
+    ).toHaveLength(3);
+    expect(
+      originalReviewMarks.filter(({ type }) => type === "insertion"),
+    ).toHaveLength(3);
     expect(reviewMarkSnapshots(result.reopenedPm)).toEqual(originalReviewMarks);
     expect(result.originalComments).toHaveLength(5);
     expect(result.reopenedComments).toEqual(result.originalComments);
-    findUniqueText(result.reopenedPm, "Project Charter & Contributor Agreement updated");
+    findUniqueText(
+      result.reopenedPm,
+      "Project Charter & Contributor Agreement updated",
+    );
     await expectUnrelatedPartsPreserved(result);
   });
 
@@ -345,7 +392,9 @@ describe("structured corpus edits", () => {
     expect(originalWrappers).toHaveLength(1);
     expect(reopenedWrappers).toHaveLength(1);
     expect(reopenedWrappers[0].attrs).toEqual(originalWrappers[0].attrs);
-    expect(reopenedWrappers[0].textContent).toBe("Inside edited commented sdt.");
+    expect(reopenedWrappers[0].textContent).toBe(
+      "Inside edited commented sdt.",
+    );
     await expectUnrelatedPartsPreserved(result);
   });
 });

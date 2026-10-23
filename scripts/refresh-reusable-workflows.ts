@@ -1,12 +1,13 @@
-import { Result, TaggedError, panic } from "better-result";
+import { panic, Result, TaggedError } from "better-result";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+
 import {
-  REUSABLE_WORKFLOW_FIXTURES,
   parsePermissionWorkflow,
+  REUSABLE_WORKFLOW_FIXTURES,
   workflowFixturePath,
-  workflowReference,
   type WorkflowReference,
+  workflowReference,
 } from "./lib/reusable-workflow-permissions";
 
 class WorkflowRefreshError extends TaggedError("WorkflowRefreshError")<{
@@ -33,7 +34,9 @@ const refresh = async (reference: WorkflowReference): Promise<void> => {
       source = (
         await Result.tryPromise({
           try: async () => {
-            const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+            const response = await fetch(url, {
+              signal: AbortSignal.timeout(30_000),
+            });
             if (!response.ok)
               throw new WorkflowRefreshError({
                 message: `Cannot refresh ${reference.key}: HTTP ${response.status}`,
@@ -41,7 +44,10 @@ const refresh = async (reference: WorkflowReference): Promise<void> => {
             return response.text();
           },
           catch: (cause) =>
-            new WorkflowRefreshError({ message: `Cannot refresh ${reference.key}`, cause }),
+            new WorkflowRefreshError({
+              message: `Cannot refresh ${reference.key}`,
+              cause,
+            }),
         })
       ).unwrap();
       sources.set(destination, source);
@@ -62,8 +68,12 @@ const refresh = async (reference: WorkflowReference): Promise<void> => {
   }
 };
 
-for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({ cwd: root })) {
-  const workflow = parsePermissionWorkflow(readFileSync(path.join(root, file), "utf8"));
+for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({
+  cwd: root,
+})) {
+  const workflow = parsePermissionWorkflow(
+    readFileSync(path.join(root, file), "utf8"),
+  );
   for (const job of workflow.jobs) {
     if (job.uses === undefined) continue;
     const reference = workflowReference(job.uses);
@@ -78,7 +88,9 @@ for (const [file, source] of sources) {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, source);
 }
-for (const file of new Bun.Glob(`${REUSABLE_WORKFLOW_FIXTURES}/**/*.{yml,yaml}`).scanSync({
+for (const file of new Bun.Glob(
+  `${REUSABLE_WORKFLOW_FIXTURES}/**/*.{yml,yaml}`,
+).scanSync({
   cwd: root,
   dot: true,
 })) {
@@ -87,13 +99,18 @@ for (const file of new Bun.Glob(`${REUSABLE_WORKFLOW_FIXTURES}/**/*.{yml,yaml}`)
 }
 // Use the repository format without changing the pinned declarations.
 if (sources.size > 0) {
-  const formatted = Bun.spawnSync([path.join(root, "node_modules/.bin/oxfmt"), ...sources.keys()], {
-    cwd: root,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+  const formatted = Bun.spawnSync(
+    [process.execPath, "fmt", ...sources.keys()],
+    {
+      cwd: root,
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  );
   if (formatted.exitCode !== 0)
-    throw new WorkflowRefreshError({ message: "Cannot format pinned reusable workflows." });
+    throw new WorkflowRefreshError({
+      message: "Cannot format pinned reusable workflows.",
+    });
   for (const [file, source] of sources) {
     if (
       JSON.stringify(Bun.YAML.parse(source)) !==

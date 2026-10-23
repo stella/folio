@@ -8,13 +8,18 @@
  * Extracted from Toolbar.vue to keep it lean.
  */
 import { computed, type ComputedRef } from "vue";
+
+import type { Style } from "@stll/folio-core/types/document";
+
+import {
+  paragraphStyles,
+  type TranslationKey,
+} from "../components/Toolbar/presets";
 import {
   getStylePreviewProps,
   resolveParagraphStyleOptions,
   type StylePreviewProps,
 } from "../utils/stylePreview";
-import type { Style } from "@stll/folio-core/types/document";
-import { paragraphStyles, type TranslationKey } from "../components/Toolbar/presets";
 
 export type ResolvedStyle = {
   id: string;

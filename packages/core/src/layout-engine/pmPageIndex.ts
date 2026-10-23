@@ -33,7 +33,10 @@ export function assertExhaustiveFlowBlock(block: never, site: string): never {
  * fragment wins (avoids returning the previous page for the start of the
  * next paragraph).
  */
-export function findPageIndexContainingPmPos(layout: Layout, pmPos: number): number | null {
+export function findPageIndexContainingPmPos(
+  layout: Layout,
+  pmPos: number,
+): number | null {
   for (let pi = 0; pi < layout.pages.length; pi++) {
     const page = layout.pages[pi];
     if (!page) continue;

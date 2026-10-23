@@ -6,72 +6,84 @@
  */
 
 import { panic } from "better-result";
+
 import { statesNoBorder } from "@stll/docx-core/model";
 
+import { embeddedFontFingerprint } from "../fonts/embeddedFontFingerprint";
 import {
   measureParagraph,
   rectsToFloatingZones,
   resolveFloatingTableX,
 } from "../layout-engine/measure";
-import type { FloatingExclusionRect, FloatingImageZone } from "../layout-engine/measure";
+import type {
+  FloatingExclusionRect,
+  FloatingImageZone,
+} from "../layout-engine/measure";
+import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import { MIN_WRAP_SEGMENT_WIDTH } from "../layout-engine/measure/measureParagraph";
 import { resolveTableInlineOffset } from "../layout-engine/measure/tableInlinePlacement";
 import {
+  floatingTextBoxReservesBand,
+  floatingTextBoxWrapsText,
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
   FOOTNOTE_FALLBACK_LINE_HEIGHT,
   FOOTNOTE_SEPARATOR_HEIGHT,
+  isFloatingTextBoxBlock,
   NOTE_SEPARATOR_RULE_THICKNESS,
   NOTE_SEPARATOR_WIDTH_FRACTION,
-  floatingTextBoxReservesBand,
-  floatingTextBoxWrapsText,
-  isFloatingTextBoxBlock,
   stripFlowBlockPmAnchors,
 } from "../layout-engine/types";
 import type {
-  Page,
-  Fragment,
   FlowBlock,
-  Measure,
-  ParagraphBlock,
-  ParagraphMeasure,
-  ParagraphFragment,
-  ParagraphBorders,
-  TableBlock,
-  TableMeasure,
-  TableFragment,
-  ImageBlock,
-  ImageMeasure,
-  ImageFragment,
-  ImageRun,
-  Run,
-  TextBoxBlock,
-  TextBoxMeasure,
-  TextBoxFragment,
   FootnoteContent,
+  Fragment,
   HeaderFooterContent,
+  ImageBlock,
+  ImageFragment,
+  ImageMeasure,
+  ImageRun,
+  Measure,
+  Page,
   PageMargins,
+  ParagraphBlock,
+  ParagraphBorders,
+  ParagraphFragment,
+  ParagraphMeasure,
+  Run,
+  TableBlock,
+  TableFragment,
+  TableMeasure,
+  TextBoxBlock,
+  TextBoxFragment,
+  TextBoxMeasure,
 } from "../layout-engine/types";
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { cssBorderStyle } from "../utils/borderCss";
-import { embeddedFontFingerprint } from "../fonts/embeddedFontFingerprint";
 import { resolveFontFamily } from "../utils/fontResolver";
-import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import { borderToStyle } from "../utils/formatToStyle";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { eighthsToPixels, pointsToPixels } from "../utils/units";
 import {
-  resolveAnchoredImagePosition as resolveAnchoredImagePositionShared,
   type AnchoredImagePosition,
   type PageGeometry,
+  resolveAnchoredImagePosition as resolveAnchoredImagePositionShared,
 } from "./anchoredImagePosition";
 import type { BlockLookup } from "./index";
 import { renderFragment } from "./renderFragment";
-import { applyImageVisualAttrs, hasImageVisualAttrs, renderImageFragment } from "./renderImage";
+import {
+  applyImageVisualAttrs,
+  hasImageVisualAttrs,
+  renderImageFragment,
+} from "./renderImage";
 import { renderParagraphFragment } from "./renderParagraph";
 import { renderNestedTable, renderTableFragment } from "./renderTable";
 import { renderTextBoxFragment } from "./renderTextBox";
-import { emuToPixels, isFloatingImageRun, isTextWrappingFloatingImageRun } from "./renderUtils";
+import {
+  emuToPixels,
+  isFloatingImageRun,
+  isTextWrappingFloatingImageRun,
+} from "./renderUtils";
 import type { RenderContext } from "./renderUtils";
 import { renderWatermarkLayer } from "./renderWatermark";
 
@@ -142,7 +154,10 @@ export const floatingTableReservesBand = ({
   distRight,
 }: FloatingTableBandOptions): boolean => {
   const leftClearance = Math.max(0, contentX - distLeft);
-  const rightClearance = Math.max(0, contentWidth - contentX - tableWidth - distRight);
+  const rightClearance = Math.max(
+    0,
+    contentWidth - contentX - tableWidth - distRight,
+  );
   return Math.max(leftClearance, rightClearance) < MIN_WRAP_SEGMENT_WIDTH;
 };
 
@@ -323,7 +338,8 @@ function applyPageStyles(
   element.style.position = "relative";
   element.style.width = `${width}px`;
   element.style.height = `${height}px`;
-  element.style.backgroundColor = options.backgroundColor ?? "var(--doc-canvas, #ffffff)";
+  element.style.backgroundColor =
+    options.backgroundColor ?? "var(--doc-canvas, #ffffff)";
   element.style.color = "var(--doc-canvas-text, #1f2937)";
   element.style.overflow = "hidden";
   element.style.border = "none";
@@ -333,7 +349,10 @@ function applyPageStyles(
   // Set default font styles (matches Word default: 11pt Calibri).
   // Keep this fallback chain aligned with canvas measurement so text widths
   // do not drift when Calibri is unavailable and Carlito is used instead.
-  element.style.fontFamily = resolveFontFamily(DEFAULT_FONT_FAMILY, options).cssFallback;
+  element.style.fontFamily = resolveFontFamily(
+    DEFAULT_FONT_FAMILY,
+    options,
+  ).cssFallback;
   // Use pixels to match Canvas-based measurements (11pt = 11 * 96/72 ≈ 14.67px)
   element.style.fontSize = `${(11 * 96) / 72}px`;
   element.style.color = "var(--doc-canvas-text, #000)";
@@ -370,12 +389,17 @@ function pageBorderWidthPx(border: BorderSpec | undefined): number {
   if (!border || statesNoBorder(border.style)) {
     return 0;
   }
-  const widthPx = border.size !== undefined && border.size !== 0 ? eighthsToPixels(border.size) : 1;
+  const widthPx =
+    border.size !== undefined && border.size !== 0
+      ? eighthsToPixels(border.size)
+      : 1;
   const floored = Math.max(1, widthPx);
   // Every member that paints as a CSS `double` takes the 3px floor, not just
   // `w:val="double"`: `triple` and the nine thin/thick gap styles render the
   // same way, and a 2px one collapsed to a single line on screen.
-  return cssBorderStyle(border.style) === "double" ? Math.max(3, floored) : floored;
+  return cssBorderStyle(border.style) === "double"
+    ? Math.max(3, floored)
+    : floored;
 }
 
 function applyPageBorderSide(
@@ -396,7 +420,9 @@ function applyPageBorderSide(
   // Browsers collapse double borders narrower than 3px into a single line.
   const styleKey = `border${side}Style`;
   const widthKey = `border${side}Width`;
-  const styleValue = (element.style as unknown as Record<string, string>)[styleKey];
+  const styleValue = (element.style as unknown as Record<string, string>)[
+    styleKey
+  ];
   if (styleValue === "double") {
     const widthValue = Number.parseFloat(
       (element.style as unknown as Record<string, string>)[widthKey] ?? "",
@@ -557,7 +583,9 @@ function syncPageWatermarkOverlay(
   }
 
   const overlay = renderWatermarkLayer(watermark, page, doc, {
-    ...(options.watermarkImageSrc !== undefined ? { imageSrc: options.watermarkImageSrc } : {}),
+    ...(options.watermarkImageSrc !== undefined
+      ? { imageSrc: options.watermarkImageSrc }
+      : {}),
     ...(options.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
       : {}),
@@ -566,7 +594,9 @@ function syncPageWatermarkOverlay(
     return;
   }
 
-  const contentEl = pageEl.querySelector<HTMLElement>(`:scope > .${PAGE_CLASS_NAMES.content}`);
+  const contentEl = pageEl.querySelector<HTMLElement>(
+    `:scope > .${PAGE_CLASS_NAMES.content}`,
+  );
   if (contentEl) {
     contentEl.before(overlay);
     return;
@@ -648,7 +678,8 @@ function resolveHeaderFooterHorizontalAnchorPoint(
     align = "right";
   }
   const alignment = align === "center" || align === "right" ? align : "left";
-  const frameWidth = h.relativeTo === "page" ? layout.pageWidth : layout.contentWidth;
+  const frameWidth =
+    h.relativeTo === "page" ? layout.pageWidth : layout.contentWidth;
   const frameLeft = h.relativeTo === "page" ? -layout.flowLeft : 0;
   if (alignment === "center") {
     return { left: frameLeft + frameWidth / 2, alignment };
@@ -680,7 +711,8 @@ function resolveHeaderFooterFloatTop(
   }
 
   const align = getPositionAlignment(v);
-  const offsetPx = v.posOffset !== undefined ? emuToPixels(v.posOffset) : undefined;
+  const offsetPx =
+    v.posOffset !== undefined ? emuToPixels(v.posOffset) : undefined;
 
   if (v.relativeTo === "page") {
     if (offsetPx !== undefined) {
@@ -699,7 +731,8 @@ function resolveHeaderFooterFloatTop(
 
   if (v.relativeTo === "margin") {
     const marginTop = layout.margins.top;
-    const marginHeight = layout.pageHeight - layout.margins.top - layout.margins.bottom;
+    const marginHeight =
+      layout.pageHeight - layout.margins.top - layout.margins.bottom;
     if (offsetPx !== undefined) {
       return marginTop + offsetPx - layout.flowTop;
     }
@@ -739,20 +772,28 @@ function resolveHeaderFooterFloatingTablePosition(
   // anchor subtracts the HF flow origin (`flowLeft` / `flowTop`).
   const horzAnchor = floating.horzAnchor ?? "margin";
   const vertAnchor = floating.vertAnchor ?? "margin";
-  const horzFrameWidth = horzAnchor === "page" ? layout.pageWidth : layout.contentWidth;
+  const horzFrameWidth =
+    horzAnchor === "page" ? layout.pageWidth : layout.contentWidth;
   const horzFrameOffset = horzAnchor === "page" ? -layout.flowLeft : 0;
   const vertFrameHeight =
     vertAnchor === "page"
       ? layout.pageHeight
       : layout.pageHeight - layout.margins.top - layout.margins.bottom;
   const vertFrameOffset =
-    vertAnchor === "page" ? -layout.flowTop : layout.margins.top - layout.flowTop;
+    vertAnchor === "page"
+      ? -layout.flowTop
+      : layout.margins.top - layout.flowTop;
 
   // Horizontal. Match the body's resolveFloatingTableX order (§17.4.57):
   // tblpXSpec supersedes tblpX; inside/outside alias left/right (no facing pages).
   const left =
     horzFrameOffset +
-    resolveFloatingTableX(floating, undefined, measure.totalWidth, horzFrameWidth);
+    resolveFloatingTableX(
+      floating,
+      undefined,
+      measure.totalWidth,
+      horzFrameWidth,
+    );
 
   // Vertical
   let top = sourceY;
@@ -910,7 +951,11 @@ function extractFloatingImagesFromParagraph(
     const distLeft = imgRun.distLeft ?? 12;
     const distRight = imgRun.distRight ?? 12;
 
-    const { x, y, side } = resolveAnchoredImagePosition(imgRun, fragmentY, geometry);
+    const { x, y, side } = resolveAnchoredImagePosition(
+      imgRun,
+      fragmentY,
+      geometry,
+    );
 
     // Derive wrapText from cssFloat:
     // cssFloat='left' → image floats left → text on right → wrapText='right'
@@ -930,7 +975,9 @@ function extractFloatingImagesFromParagraph(
       width: imgRun.width,
       height: imgRun.height,
       ...(imgRun.alt !== undefined ? { alt: imgRun.alt } : {}),
-      ...(imgRun.transform !== undefined ? { transform: imgRun.transform } : {}),
+      ...(imgRun.transform !== undefined
+        ? { transform: imgRun.transform }
+        : {}),
       // eigenpal #424 (opacity render pipeline). `!= null` so a PM null
       // schema default doesn't leak into PageFloatingImage.opacity.
       ...(imgRun.opacity != null ? { opacity: imgRun.opacity } : {}),
@@ -1172,8 +1219,11 @@ function renderHeaderFooterContent(
       // (#380), so totalHeight already excludes it; offsetting by inherited
       // spaceBefore would shift the line below its reserved space and break
       // cursorY accumulation for following paragraphs.
-      const explicitBefore = paragraphBlock.attrs?.spacingExplicit?.before === true;
-      const spaceBefore = explicitBefore ? (paragraphBlock.attrs?.spacing?.before ?? 0) : 0;
+      const explicitBefore =
+        paragraphBlock.attrs?.spacingExplicit?.before === true;
+      const spaceBefore = explicitBefore
+        ? (paragraphBlock.attrs?.spacing?.before ?? 0)
+        : 0;
       fragEl.style.position = "absolute";
       fragEl.style.top = `${cursorY + spaceBefore}px`;
       fragEl.style.left = "0";
@@ -1195,9 +1245,15 @@ function renderHeaderFooterContent(
         ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
         ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
       };
-      const fragEl = renderTableFragment(syntheticFragment, block, measure, hfContext, {
-        document: doc,
-      });
+      const fragEl = renderTableFragment(
+        syntheticFragment,
+        block,
+        measure,
+        hfContext,
+        {
+          document: doc,
+        },
+      );
 
       // Floating tables (`<w:tblpPr>`) opt out of the cursorY flow. They
       // anchor at (tblpX, tblpY) per ECMA-376 §17.4.57 and don't advance
@@ -1254,13 +1310,20 @@ function renderHeaderFooterContent(
         ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
         ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
       };
-      const fragEl = renderTextBoxFragment(syntheticFragment, block, measure, hfContext, {
-        document: doc,
-        renderTable: renderNestedTable,
-      });
+      const fragEl = renderTextBoxFragment(
+        syntheticFragment,
+        block,
+        measure,
+        hfContext,
+        {
+          document: doc,
+          renderTable: renderNestedTable,
+        },
+      );
       const anchorBlockId = Reflect.get(block, TEXT_BOX_ANCHOR_BLOCK_ID);
       const paragraphY =
-        block.position?.vertical?.relativeTo === "paragraph" && typeof anchorBlockId === "string"
+        block.position?.vertical?.relativeTo === "paragraph" &&
+        typeof anchorBlockId === "string"
           ? (paragraphStartYByBlockId.get(anchorBlockId) ?? cursorY)
           : cursorY;
       const textBoxTop = block.position
@@ -1284,10 +1347,11 @@ function renderHeaderFooterContent(
         layout,
       );
       if (block.widthMode === "intrinsic") {
-        const horizontalPosition = resolveHeaderFooterIntrinsicFrameHorizontalPosition(
-          block.position?.horizontal,
-          layout,
-        );
+        const horizontalPosition =
+          resolveHeaderFooterIntrinsicFrameHorizontalPosition(
+            block.position?.horizontal,
+            layout,
+          );
         fragEl.style.width = "max-content";
         fragEl.style.left = horizontalPosition.left;
         fragEl.style.transform = horizontalPosition.transform ?? "";
@@ -1368,24 +1432,35 @@ function isPositionedHeaderFooterTextBoxBlock(block: TextBoxBlock): boolean {
  * from eigenpal/docx-editor#485, extended for folio's fallback rendering
  * and any wrapper margin so the helper matches the painted stack.
  */
-export function calculateFootnoteAreaRenderHeight(footnotes: FootnoteRenderItem[]): number {
+export function calculateFootnoteAreaRenderHeight(
+  footnotes: FootnoteRenderItem[],
+): number {
   let height = FOOTNOTE_SEPARATOR_HEIGHT;
   for (const fn of footnotes) {
-    const entryHeight = fn.content ? fn.content.height : FOOTNOTE_FALLBACK_LINE_HEIGHT;
+    const entryHeight = fn.content
+      ? fn.content.height
+      : FOOTNOTE_FALLBACK_LINE_HEIGHT;
     height += entryHeight + FOOTNOTE_ENTRY_MARGIN_BOTTOM;
   }
   return height;
 }
 
 /** A note separator rule: the canvas ink colour, `NOTE_SEPARATOR_RULE_THICKNESS` high. */
-function applyNoteSeparatorRuleStyles(element: HTMLElement, width: number): void {
+function applyNoteSeparatorRuleStyles(
+  element: HTMLElement,
+  width: number,
+): void {
   element.style.width = `${width}px`;
   element.style.height = `${NOTE_SEPARATOR_RULE_THICKNESS}px`;
   element.style.backgroundColor = "var(--doc-canvas-text, #000)";
 }
 
 /** The separator rules of a note area that flows with the body (endnotes). */
-function renderFlowedNoteSeparators(page: Page, contentEl: HTMLElement, doc: Document): void {
+function renderFlowedNoteSeparators(
+  page: Page,
+  contentEl: HTMLElement,
+  doc: Document,
+): void {
   for (const rule of page.noteSeparators ?? []) {
     const ruleEl = doc.createElement("div");
     ruleEl.className = "layout-note-separator";
@@ -1416,8 +1491,12 @@ export function renderFootnoteArea(
   // FOOTNOTE_SEPARATOR_HEIGHT so the painted separator slot matches the
   // paginator's reservation byte-for-byte. eigenpal/docx-editor#485.
   const separator = doc.createElement("div");
-  const separatorMargin = (FOOTNOTE_SEPARATOR_HEIGHT - NOTE_SEPARATOR_RULE_THICKNESS) / 2;
-  applyNoteSeparatorRuleStyles(separator, contentWidth * NOTE_SEPARATOR_WIDTH_FRACTION);
+  const separatorMargin =
+    (FOOTNOTE_SEPARATOR_HEIGHT - NOTE_SEPARATOR_RULE_THICKNESS) / 2;
+  applyNoteSeparatorRuleStyles(
+    separator,
+    contentWidth * NOTE_SEPARATOR_WIDTH_FRACTION,
+  );
   separator.style.marginTop = `${separatorMargin}px`;
   separator.style.marginBottom = `${separatorMargin}px`;
   container.append(separator);
@@ -1490,7 +1569,14 @@ function renderFootnoteContent(
       continue;
     }
 
-    const blockEl = renderFootnoteBlock(block, measure, contentWidth, y, renderContext, doc);
+    const blockEl = renderFootnoteBlock(
+      block,
+      measure,
+      contentWidth,
+      y,
+      renderContext,
+      doc,
+    );
     if (!blockEl) {
       continue;
     }
@@ -1522,9 +1608,15 @@ function renderFootnoteBlock(
       fromLine: 0,
       toLine: measure.lines.length,
     };
-    const element = renderParagraphFragment(fragment, renderBlock, measure, context, {
-      document: doc,
-    });
+    const element = renderParagraphFragment(
+      fragment,
+      renderBlock,
+      measure,
+      context,
+      {
+        document: doc,
+      },
+    );
     positionFootnoteBlock(element, y, contentWidth, measure.totalHeight);
     return element;
   }
@@ -1540,9 +1632,15 @@ function renderFootnoteBlock(
       fromRow: 0,
       toRow: renderBlock.rows.length,
     };
-    const element = renderTableFragment(fragment, renderBlock, measure, context, {
-      document: doc,
-    });
+    const element = renderTableFragment(
+      fragment,
+      renderBlock,
+      measure,
+      context,
+      {
+        document: doc,
+      },
+    );
     positionFootnoteBlock(element, y, measure.totalWidth, measure.totalHeight);
     return element;
   }
@@ -1556,9 +1654,15 @@ function renderFootnoteBlock(
       width: measure.width,
       height: measure.height,
     };
-    const element = renderImageFragment(fragment, renderBlock, measure, context, {
-      document: doc,
-    });
+    const element = renderImageFragment(
+      fragment,
+      renderBlock,
+      measure,
+      context,
+      {
+        document: doc,
+      },
+    );
     positionFootnoteBlock(element, y, measure.width, measure.height);
     return element;
   }
@@ -1572,10 +1676,16 @@ function renderFootnoteBlock(
       width: measure.width,
       height: measure.height,
     };
-    const element = renderTextBoxFragment(fragment, renderBlock, measure, context, {
-      document: doc,
-      renderTable: renderNestedTable,
-    });
+    const element = renderTextBoxFragment(
+      fragment,
+      renderBlock,
+      measure,
+      context,
+      {
+        document: doc,
+        renderTable: renderNestedTable,
+      },
+    );
     positionFootnoteBlock(element, y, measure.width, measure.height);
     return element;
   }
@@ -1638,7 +1748,9 @@ export function renderPage(
   }
   if (options.watermark) {
     const watermarkEl = renderWatermarkLayer(options.watermark, page, doc, {
-      ...(options.watermarkImageSrc !== undefined ? { imageSrc: options.watermarkImageSrc } : {}),
+      ...(options.watermarkImageSrc !== undefined
+        ? { imageSrc: options.watermarkImageSrc }
+        : {}),
       ...(options.embeddedFontFamilyMap
         ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
         : {}),
@@ -1717,7 +1829,11 @@ export function renderPage(
 
   // Collect floating table exclusion rectangles
   if (options.blockLookup) {
-    for (let fragmentIndex = 0; fragmentIndex < page.fragments.length; fragmentIndex++) {
+    for (
+      let fragmentIndex = 0;
+      fragmentIndex < page.fragments.length;
+      fragmentIndex++
+    ) {
       const fragment = page.fragments[fragmentIndex]!; // SAFETY: bounded by page.fragments.length
       if (fragment.kind !== "table") {
         continue;
@@ -1765,7 +1881,10 @@ export function renderPage(
         rect.wrapType = "topAndBottom";
       }
       if (floating.vertAnchor === "text") {
-        scopedFloatingRects.push({ startsAtFragmentIndex: fragmentIndex, rect });
+        scopedFloatingRects.push({
+          startsAtFragmentIndex: fragmentIndex,
+          rect,
+        });
       } else {
         floatingRects.push(rect);
       }
@@ -1777,7 +1896,11 @@ export function renderPage(
   // contribution so body text wraps around anchored boxes instead of
   // running underneath them.
   if (options.blockLookup) {
-    for (let fragmentIndex = 0; fragmentIndex < page.fragments.length; fragmentIndex++) {
+    for (
+      let fragmentIndex = 0;
+      fragmentIndex < page.fragments.length;
+      fragmentIndex++
+    ) {
       const fragment = page.fragments[fragmentIndex]!; // SAFETY: fragmentIndex < page.fragments.length
       if (fragment.kind !== "textBox") {
         continue;
@@ -1809,7 +1932,8 @@ export function renderPage(
       // Side hints which margin the rect blocks when `wrapText` falls back to
       // `rect.side`. Prefer the explicit cssFloat over the X heuristic so a
       // right-floated box hugging the centre still produces a right-side rect.
-      let side: "left" | "right" = contentX < contentWidth / 2 ? "left" : "right";
+      let side: "left" | "right" =
+        contentX < contentWidth / 2 ? "left" : "right";
       if (textBoxBlock.cssFloat === "left") {
         side = "left";
       } else if (textBoxBlock.cssFloat === "right") {
@@ -1846,7 +1970,9 @@ export function renderPage(
 
   // PHASE 2: Convert floating rects to per-image measurement zones
   const floatingZones: FloatingImageZone[] =
-    floatingRects.length > 0 ? rectsToFloatingZones(floatingRects, contentWidth) : [];
+    floatingRects.length > 0
+      ? rectsToFloatingZones(floatingRects, contentWidth)
+      : [];
   const scopedFloatingZones: ScopedFloatingZone[] = scopedFloatingRects.flatMap(
     ({ startsAtFragmentIndex, rect }) =>
       rectsToFloatingZones([rect], contentWidth).map((zone) => ({
@@ -1862,7 +1988,11 @@ export function renderPage(
   const behindFloatingImages = allFloatingImages.filter((img) => img.behindDoc);
   const frontFloatingImages = allFloatingImages.filter((img) => !img.behindDoc);
   if (behindFloatingImages.length > 0) {
-    const behindLayer = renderFloatingImagesLayer(behindFloatingImages, doc, "behind");
+    const behindLayer = renderFloatingImagesLayer(
+      behindFloatingImages,
+      doc,
+      "behind",
+    );
     contentEl.append(behindLayer);
   }
 
@@ -1909,7 +2039,8 @@ export function renderPage(
             ? getParaBorders(page.fragments[i + 1]!) // SAFETY: guarded by length check
             : undefined;
         const blockKey = String(fragment.blockId);
-        let renderedInlineImageKeys = renderedInlineImageKeysByBlock.get(blockKey);
+        let renderedInlineImageKeys =
+          renderedInlineImageKeysByBlock.get(blockKey);
         if (!renderedInlineImageKeys) {
           renderedInlineImageKeys = new Set<string>();
           renderedInlineImageKeysByBlock.set(blockKey, renderedInlineImageKeys);
@@ -1937,7 +2068,9 @@ export function renderPage(
           {
             document: doc,
             fragmentContentY,
-            ...(prevParagraphBorders !== undefined ? { prevBorders: prevParagraphBorders } : {}),
+            ...(prevParagraphBorders !== undefined
+              ? { prevBorders: prevParagraphBorders }
+              : {}),
             ...(nextBorders !== undefined ? { nextBorders } : {}),
             renderedInlineImageKeys,
           },
@@ -2000,7 +2133,9 @@ export function renderPage(
       top: page.margins.top,
     });
     // A flowed endnote is its own story: a double-click on it edits the note.
-    const noteStory = options.blockLookup?.get(String(fragment.blockId))?.noteStory;
+    const noteStory = options.blockLookup?.get(
+      String(fragment.blockId),
+    )?.noteStory;
     if (noteStory) {
       fragmentEl.dataset["noteKind"] = noteStory.kind;
       fragmentEl.dataset["noteId"] = String(noteStory.noteId);
@@ -2012,7 +2147,11 @@ export function renderPage(
   // wrapNone `inFront` images and side-wrapped images paint above body text
   // — matching Word's anchor stacking semantics.
   if (frontFloatingImages.length > 0) {
-    const frontLayer = renderFloatingImagesLayer(frontFloatingImages, doc, "front");
+    const frontLayer = renderFloatingImagesLayer(
+      frontFloatingImages,
+      doc,
+      "front",
+    );
     contentEl.append(frontLayer);
   }
 
@@ -2041,7 +2180,12 @@ export function renderPage(
 
   // Render footnote area at the bottom of the content area (above footer)
   if (options.footnoteArea && options.footnoteArea.length > 0) {
-    const fnAreaEl = renderFootnoteArea(options.footnoteArea, contentWidth, doc, context);
+    const fnAreaEl = renderFootnoteArea(
+      options.footnoteArea,
+      contentWidth,
+      doc,
+      context,
+    );
     fnAreaEl.style.position = "absolute";
     // Position at page bottom minus bottom margin (bottom of content
     // area). Clamp the reservation upward to the painter's calculated
@@ -2054,7 +2198,8 @@ export function renderPage(
       page.footnoteReservedHeight ?? 0,
       calculateFootnoteAreaRenderHeight(options.footnoteArea),
     );
-    const contentAreaBottom = page.size.h - page.margins.bottom - page.margins.top;
+    const contentAreaBottom =
+      page.size.h - page.margins.bottom - page.margins.top;
     fnAreaEl.style.top = `${Math.max(-page.margins.top, contentAreaBottom - reservedHeight)}px`;
     fnAreaEl.style.left = "0";
     fnAreaEl.style.right = "0";
@@ -2066,9 +2211,14 @@ export function renderPage(
   // Render header area (always rendered for hover hint / double-click target)
   {
     const defaultHeaderDistance = 48;
-    const headerDistance = options.headerDistance ?? page.margins.header ?? defaultHeaderDistance;
-    const headerContentWidth = page.size.w - page.margins.left - page.margins.right;
-    const availableHeaderHeight = Math.max(page.margins.top - headerDistance, 48);
+    const headerDistance =
+      options.headerDistance ?? page.margins.header ?? defaultHeaderDistance;
+    const headerContentWidth =
+      page.size.w - page.margins.left - page.margins.right;
+    const availableHeaderHeight = Math.max(
+      page.margins.top - headerDistance,
+      48,
+    );
     const headerVisualTop = options.headerContent?.visualTop ?? 0;
     const headerVisualBottom =
       options.headerContent?.visualBottom ?? options.headerContent?.height ?? 0;
@@ -2080,13 +2230,17 @@ export function renderPage(
     // and is made non-interactive in normal mode via CSS (eigenpal/docx-editor#869).
     // Normal headers (visualBottom === height, visualTop === 0) are unaffected.
     const headerFlowHeight = options.headerContent?.height ?? 0;
-    const interactiveHeaderHeight = Math.max(headerFlowHeight - Math.min(0, headerVisualTop), 24);
+    const interactiveHeaderHeight = Math.max(
+      headerFlowHeight - Math.min(0, headerVisualTop),
+      24,
+    );
     // Clip overflow only when the content fits both the page margin AND the
     // (shrunk) interactive box. Content that extends past the flow band — a
     // floating table, positioned text box, or image — must stay visible rather
     // than be cut off by the smaller box (eigenpal/docx-editor#869).
     const headerOverflows = headerVisualBottom > availableHeaderHeight;
-    const headerContentFitsBox = headerVisualBottom - headerVisualTop <= interactiveHeaderHeight;
+    const headerContentFitsBox =
+      headerVisualBottom - headerVisualTop <= interactiveHeaderHeight;
 
     const headerEl = doc.createElement("div");
     headerEl.className = PAGE_CLASS_NAMES.header;
@@ -2131,19 +2285,33 @@ export function renderPage(
     }
     pageEl.append(headerEl);
 
-    moveBehindHeaderFooterElementsToPage(headerEl, pageEl, headerDistance, page.margins.left);
+    moveBehindHeaderFooterElementsToPage(
+      headerEl,
+      pageEl,
+      headerDistance,
+      page.margins.left,
+    );
   }
 
   // Render footer area (always rendered for hover hint / double-click target)
   {
     const defaultFooterDistance = 48;
-    const footerDistance = options.footerDistance ?? page.margins.footer ?? defaultFooterDistance;
-    const footerContentWidth = page.size.w - page.margins.left - page.margins.right;
-    const availableFooterHeight = Math.max(page.margins.bottom - footerDistance, 48);
+    const footerDistance =
+      options.footerDistance ?? page.margins.footer ?? defaultFooterDistance;
+    const footerContentWidth =
+      page.size.w - page.margins.left - page.margins.right;
+    const availableFooterHeight = Math.max(
+      page.margins.bottom - footerDistance,
+      48,
+    );
     const footerFlowHeight = options.footerContent?.height ?? 0;
     const footerVisualTop = options.footerContent?.visualTop ?? 0;
-    const footerVisualBottom = options.footerContent?.visualBottom ?? footerFlowHeight;
-    const actualFooterHeight = Math.max(footerVisualBottom - footerVisualTop, 24);
+    const footerVisualBottom =
+      options.footerContent?.visualBottom ?? footerFlowHeight;
+    const actualFooterHeight = Math.max(
+      footerVisualBottom - footerVisualTop,
+      24,
+    );
     const footerOverflows = actualFooterHeight > availableFooterHeight;
     // Like the header, the interactive box tracks the in-flow band, not a
     // floating shape's extent — otherwise a footer object anchored above the
@@ -2177,7 +2345,8 @@ export function renderPage(
     // As with the header, only clip when the content fits the shrunk box; a
     // floating object extending past the flow band must stay visible
     // (eigenpal/docx-editor#869).
-    const footerContentFitsBox = footerVisualBottom - footerVisualTop <= interactiveFooterHeight;
+    const footerContentFitsBox =
+      footerVisualBottom - footerVisualTop <= interactiveFooterHeight;
     let shouldClipFooter = !footerOverflows && footerContentFitsBox;
     if (options.footerContent && options.footerContent.blocks.length > 0) {
       const footerContentEl = renderHeaderFooterContent(
@@ -2209,7 +2378,12 @@ export function renderPage(
       footerEl.style.overflowClipMargin = `${HEADER_FOOTER_RULE_CLIP_MARGIN}px`;
     }
     pageEl.append(footerEl);
-    moveBehindHeaderFooterElementsToPage(footerEl, pageEl, footerNaturalTop, page.margins.left);
+    moveBehindHeaderFooterElementsToPage(
+      footerEl,
+      pageEl,
+      footerNaturalTop,
+      page.margins.left,
+    );
   }
 
   if (pageBorderEl && options.pageBorders?.zOrder !== "back") {
@@ -2286,7 +2460,8 @@ export function selectSectionHeaderFooterRIds(page: Page): {
     return { headerRId: undefined, footerRId: undefined };
   }
   const useFirst = refs.titlePg === true && page.sectionPageNumber === 1;
-  const useEven = refs.evenAndOddHeaders === true && page.logicalNumber % 2 === 0;
+  const useEven =
+    refs.evenAndOddHeaders === true && page.logicalNumber % 2 === 0;
   const pick = (variants: {
     first: string | undefined;
     even: string | undefined;
@@ -2403,7 +2578,11 @@ function buildPageRenderArgs(
     ...sectionPagesContext(page, options.sectionPageCounts),
   };
   const pageOptions: RenderPageOptions = { ...options };
-  const hasSectionHeaderFooter = applySectionHeaderFooterOptions(page, pageOptions, options);
+  const hasSectionHeaderFooter = applySectionHeaderFooterOptions(
+    page,
+    pageOptions,
+    options,
+  );
   // Per-page header/footer selection when titlePg is enabled
   if (!hasSectionHeaderFooter && options.titlePg && page.number === 1) {
     if (options.firstPageHeaderContent !== undefined) {
@@ -2447,7 +2626,10 @@ type PageContainerState = {
   totalPages: number;
   optionsHash: string;
   fieldContextHash: string;
-  pageDataMap: Map<HTMLElement, { page: Page; index: number; rendered: boolean }>;
+  pageDataMap: Map<
+    HTMLElement,
+    { page: Page; index: number; rendered: boolean }
+  >;
   /** Current render options — kept up-to-date so the observer closure always reads fresh values. */
   currentOptions: FullPageOptions;
 };
@@ -2464,13 +2646,19 @@ type PageContainer = {
  * Compute a fingerprint string for a page that changes when its content changes.
  * Used to detect which pages need re-rendering on incremental updates.
  */
-export function computePageFingerprint(page: Page, blockLookup?: BlockLookup): string {
+export function computePageFingerprint(
+  page: Page,
+  blockLookup?: BlockLookup,
+): string {
   return computePageFingerprintInternal(page, blockLookup, {
     includePmPositions: true,
   });
 }
 
-function computePageRenderFingerprint(page: Page, blockLookup?: BlockLookup): string {
+function computePageRenderFingerprint(
+  page: Page,
+  blockLookup?: BlockLookup,
+): string {
   return computePageFingerprintInternal(page, blockLookup, {
     includePmPositions: false,
   });
@@ -2564,7 +2752,10 @@ function computePageFingerprintInternal(
   return parts.join("|");
 }
 
-function computeAnnotationFingerprint(block: FlowBlock, includePmPositions: boolean): string {
+function computeAnnotationFingerprint(
+  block: FlowBlock,
+  includePmPositions: boolean,
+): string {
   const parts: string[] = [];
   collectAnnotationFingerprint(block, parts, includePmPositions);
   return parts.join(";");
@@ -2846,7 +3037,9 @@ function headerFooterContentFingerprint(
 function computeOptionsHash(options: RenderPageOptions): string {
   const parts: string[] = [];
   if (options.embeddedFontFamilyMap) {
-    parts.push(`embedded-fonts:${embeddedFontFingerprint(options.embeddedFontFamilyMap)}`);
+    parts.push(
+      `embedded-fonts:${embeddedFontFingerprint(options.embeddedFontFamilyMap)}`,
+    );
   }
 
   // Header/footer content changes affect all pages. Include `textSig` so
@@ -2874,8 +3067,12 @@ function computeOptionsHash(options: RenderPageOptions): string {
       },${options.footerContent.textSig ?? ""}`,
     );
   }
-  parts.push(...headerFooterContentFingerprint("hdr-map", options.headerContentByRId));
-  parts.push(...headerFooterContentFingerprint("ftr-map", options.footerContentByRId));
+  parts.push(
+    ...headerFooterContentFingerprint("hdr-map", options.headerContentByRId),
+  );
+  parts.push(
+    ...headerFooterContentFingerprint("ftr-map", options.footerContentByRId),
+  );
 
   if (options.firstPageHeaderContent) {
     parts.push(
@@ -2939,7 +3136,10 @@ function computeOptionsHash(options: RenderPageOptions): string {
   return parts.join("|");
 }
 
-function sortedMapFingerprint<K, V>(prefix: string, map: ReadonlyMap<K, V> | undefined): string[] {
+function sortedMapFingerprint<K, V>(
+  prefix: string,
+  map: ReadonlyMap<K, V> | undefined,
+): string[] {
   if (!map || map.size === 0) {
     return [];
   }
@@ -2957,7 +3157,9 @@ function computeFieldContextHash(options: RenderPageOptions): string {
   parts.push(...sortedMapFingerprint("bm-page", options.bookmarkPages));
   parts.push(...sortedMapFingerprint("bm-text", options.bookmarkText));
   parts.push(...sortedMapFingerprint("seq", options.seqValues));
-  parts.push(...sortedMapFingerprint("section-pages", options.sectionPageCounts));
+  parts.push(
+    ...sortedMapFingerprint("section-pages", options.sectionPageCounts),
+  );
   return parts.join("|");
 }
 
@@ -3016,7 +3218,9 @@ export function renderPages(
 
   // Determine if we can do an incremental update
   const canIncremental =
-    prevState && prevState.optionsHash === currentOptionsHash && useVirtualization;
+    prevState &&
+    prevState.optionsHash === currentOptionsHash &&
+    useVirtualization;
 
   if (canIncremental) {
     // --- INCREMENTAL UPDATE PATH ---
@@ -3027,7 +3231,8 @@ export function renderPages(
     // If total page count changed, NUMPAGES fields in headers/footers are stale.
     // Force re-render of all currently-rendered pages.
     const totalPagesChanged = prevState.totalPages !== totalPages;
-    const fieldContextChanged = prevState.fieldContextHash !== currentFieldContextHash;
+    const fieldContextChanged =
+      prevState.fieldContextHash !== currentFieldContextHash;
 
     // Update existing pages
     const commonCount = Math.min(prevShells.length, pages.length);
@@ -3046,15 +3251,29 @@ export function renderPages(
         prev.fingerprint = null;
         prev.renderFingerprint = null;
         applyPageStyles(prev.element, page.size.w, page.size.h, options);
-        syncPageBorderOverlay(prev.element, page, options, options.document ?? document);
-        syncPageMarginGuideOverlay(prev.element, page, options, options.document ?? document);
+        syncPageBorderOverlay(
+          prev.element,
+          page,
+          options,
+          options.document ?? document,
+        );
+        syncPageMarginGuideOverlay(
+          prev.element,
+          page,
+          options,
+          options.document ?? document,
+        );
         prev.element.dataset["pageNumber"] = String(page.number);
         continue;
       }
 
       const newFp = computePageFingerprint(page, options.blockLookup);
 
-      if (prev.fingerprint === newFp && !totalPagesChanged && !fieldContextChanged) {
+      if (
+        prev.fingerprint === newFp &&
+        !totalPagesChanged &&
+        !fieldContextChanged
+      ) {
         // Page unchanged — data map already points at the fresh page object.
         continue;
       }
@@ -3067,13 +3286,26 @@ export function renderPages(
         data.rendered = false;
         populatePageShell(shell, prevDataMap, totalPages, options);
         applyPageStyles(shell, page.size.w, page.size.h, options);
-        syncPageBorderOverlay(shell, page, options, options.document ?? document);
-        syncPageMarginGuideOverlay(shell, page, options, options.document ?? document);
+        syncPageBorderOverlay(
+          shell,
+          page,
+          options,
+          options.document ?? document,
+        );
+        syncPageMarginGuideOverlay(
+          shell,
+          page,
+          options,
+          options.document ?? document,
+        );
         shell.dataset["pageNumber"] = String(page.number);
         continue;
       }
 
-      const newRenderFp = computePageRenderFingerprint(page, options.blockLookup);
+      const newRenderFp = computePageRenderFingerprint(
+        page,
+        options.blockLookup,
+      );
 
       const renderChanged = prev.renderFingerprint !== newRenderFp;
       const positionsSynced =
@@ -3091,7 +3323,12 @@ export function renderPages(
       // Update page styles in case size changed
       applyPageStyles(shell, page.size.w, page.size.h, options);
       syncPageBorderOverlay(shell, page, options, options.document ?? document);
-      syncPageMarginGuideOverlay(shell, page, options, options.document ?? document);
+      syncPageMarginGuideOverlay(
+        shell,
+        page,
+        options,
+        options.document ?? document,
+      );
       shell.dataset["pageNumber"] = String(page.number);
     }
 
@@ -3172,7 +3409,8 @@ export function renderPages(
   // before the first one so the overlay stays above the repainted pages
   // (unchanged z-order).
   const pageShellClass = options.pageClassName ?? PAGE_CLASS_NAMES.page;
-  const isPageShell = (el: Element): boolean => el.className.split(/\s+/u).includes(pageShellClass);
+  const isPageShell = (el: Element): boolean =>
+    el.className.split(/\s+/u).includes(pageShellClass);
   const existingChildren = Array.from(container.children);
   const overlayBefore = existingChildren.find((el) => !isPageShell(el)) ?? null;
   for (const el of existingChildren) {
@@ -3193,7 +3431,11 @@ export function renderPages(
 
     if (!useVirtualization) {
       // Small document: render all pages eagerly
-      const { context, pageOptions } = buildPageRenderArgs(page, totalPages, options);
+      const { context, pageOptions } = buildPageRenderArgs(
+        page,
+        totalPages,
+        options,
+      );
       pageEl = renderPage(page, context, pageOptions);
     } else {
       // Large document: create lightweight shell with correct dimensions
@@ -3224,7 +3466,10 @@ export function renderPages(
   // --- Virtualization via IntersectionObserver ---
 
   // Store page data for lazy rendering
-  const pageDataMap = new Map<HTMLElement, { page: Page; index: number; rendered: boolean }>();
+  const pageDataMap = new Map<
+    HTMLElement,
+    { page: Page; index: number; rendered: boolean }
+  >();
   for (let i = 0; i < pages.length; i++) {
     pageDataMap.set(pageShells[i]!, {
       // SAFETY: pageShells built with same indices
@@ -3264,7 +3509,11 @@ export function renderPages(
           populatePageShell(shell, liveDataMap, liveTotalPages, liveOptions);
 
           // Also render buffer pages above and below
-          for (let offset = -VIRTUALIZATION_BUFFER; offset <= VIRTUALIZATION_BUFFER; offset++) {
+          for (
+            let offset = -VIRTUALIZATION_BUFFER;
+            offset <= VIRTUALIZATION_BUFFER;
+            offset++
+          ) {
             const neighborIdx = data.index + offset;
             if (
               neighborIdx >= 0 &&
@@ -3293,7 +3542,10 @@ export function renderPages(
           continue;
         }
         const rect = el.getBoundingClientRect();
-        if (rect.bottom > -nearThreshold && rect.top < viewportHeight + nearThreshold) {
+        if (
+          rect.bottom > -nearThreshold &&
+          rect.top < viewportHeight + nearThreshold
+        ) {
           nearIndices.add(data.index);
         }
       }
@@ -3375,7 +3627,9 @@ export type PainterPaintedDetail = {
 };
 
 function emitPainterPainted(container: HTMLElement): void {
-  const pageCount = container.querySelectorAll(`.${PAGE_CLASS_NAMES.page}`).length;
+  const pageCount = container.querySelectorAll(
+    `.${PAGE_CLASS_NAMES.page}`,
+  ).length;
   const event = new CustomEvent<PainterPaintedDetail>(PAINTER_PAINTED_EVENT, {
     detail: { container, pageCount },
     bubbles: true,
@@ -3389,7 +3643,10 @@ function emitPainterPainted(container: HTMLElement): void {
  */
 function populatePageShell(
   shell: HTMLElement,
-  pageDataMap: Map<HTMLElement, { page: Page; index: number; rendered: boolean }>,
+  pageDataMap: Map<
+    HTMLElement,
+    { page: Page; index: number; rendered: boolean }
+  >,
   totalPages: number,
   options: FullPageOptions,
 ): void {
@@ -3398,7 +3655,11 @@ function populatePageShell(
     return;
   }
 
-  const { context, pageOptions } = buildPageRenderArgs(data.page, totalPages, options);
+  const { context, pageOptions } = buildPageRenderArgs(
+    data.page,
+    totalPages,
+    options,
+  );
   const fullPageEl = renderPage(data.page, context, pageOptions);
 
   // Strip any overlay left behind by the lightweight virtualized shell setup,
@@ -3470,7 +3731,10 @@ export function renderAllPagesNow(container: HTMLElement): number {
  */
 function repopulatePageContent(
   shell: HTMLElement,
-  pageDataMap: Map<HTMLElement, { page: Page; index: number; rendered: boolean }>,
+  pageDataMap: Map<
+    HTMLElement,
+    { page: Page; index: number; rendered: boolean }
+  >,
   totalPages: number,
   options: FullPageOptions,
 ): void {
@@ -3479,7 +3743,11 @@ function repopulatePageContent(
     return;
   }
 
-  const { context, pageOptions } = buildPageRenderArgs(data.page, totalPages, options);
+  const { context, pageOptions } = buildPageRenderArgs(
+    data.page,
+    totalPages,
+    options,
+  );
 
   // Render a full page off-screen
   const fullPageEl = renderPage(data.page, context, pageOptions);
@@ -3491,7 +3759,12 @@ function repopulatePageContent(
   if (newContentEl && oldContentEl) {
     // Replace only the content area — header/footer stay untouched
     oldContentEl.replaceWith(newContentEl);
-    syncPageWatermarkOverlay(shell, data.page, pageOptions, options.document ?? document);
+    syncPageWatermarkOverlay(
+      shell,
+      data.page,
+      pageOptions,
+      options.document ?? document,
+    );
     return;
   }
 
@@ -3501,7 +3774,11 @@ function repopulatePageContent(
   populatePageShell(shell, pageDataMap, totalPages, options);
 }
 
-function syncRenderedPmPositionData(shell: HTMLElement, oldPage: Page, newPage: Page): boolean {
+function syncRenderedPmPositionData(
+  shell: HTMLElement,
+  oldPage: Page,
+  newPage: Page,
+): boolean {
   const delta = getUniformPagePositionDelta(oldPage, newPage);
   if (delta === null) {
     return false;
@@ -3520,7 +3797,10 @@ function syncRenderedPmPositionData(shell: HTMLElement, oldPage: Page, newPage: 
   return true;
 }
 
-function getUniformPagePositionDelta(oldPage: Page, newPage: Page): number | null {
+function getUniformPagePositionDelta(
+  oldPage: Page,
+  newPage: Page,
+): number | null {
   if (oldPage.fragments.length !== newPage.fragments.length) {
     return null;
   }
@@ -3532,11 +3812,17 @@ function getUniformPagePositionDelta(oldPage: Page, newPage: Page): number | nul
     if (!oldFragment || !newFragment) {
       return null;
     }
-    if (oldFragment.kind !== newFragment.kind || oldFragment.blockId !== newFragment.blockId) {
+    if (
+      oldFragment.kind !== newFragment.kind ||
+      oldFragment.blockId !== newFragment.blockId
+    ) {
       return null;
     }
 
-    const startDelta = readPositionDelta(oldFragment.pmStart, newFragment.pmStart);
+    const startDelta = readPositionDelta(
+      oldFragment.pmStart,
+      newFragment.pmStart,
+    );
     if (startDelta !== null) {
       if (delta !== null && delta !== startDelta) {
         return null;
@@ -3556,7 +3842,10 @@ function getUniformPagePositionDelta(oldPage: Page, newPage: Page): number | nul
   return delta;
 }
 
-function readPositionDelta(previous: number | undefined, next: number | undefined): number | null {
+function readPositionDelta(
+  previous: number | undefined,
+  next: number | undefined,
+): number | null {
   if (previous === undefined && next === undefined) {
     return null;
   }
@@ -3595,8 +3884,14 @@ function syncPageShellFingerprints(
     return;
   }
 
-  pageState.fingerprint = computePageFingerprint(data.page, options.blockLookup);
-  pageState.renderFingerprint = computePageRenderFingerprint(data.page, options.blockLookup);
+  pageState.fingerprint = computePageFingerprint(
+    data.page,
+    options.blockLookup,
+  );
+  pageState.renderFingerprint = computePageRenderFingerprint(
+    data.page,
+    options.blockLookup,
+  );
 }
 
 /**
@@ -3654,7 +3949,10 @@ export function findPageShellForPmPos(
  */
 function depopulatePageShell(
   shell: HTMLElement,
-  pageDataMap: Map<HTMLElement, { page: Page; index: number; rendered: boolean }>,
+  pageDataMap: Map<
+    HTMLElement,
+    { page: Page; index: number; rendered: boolean }
+  >,
 ): void {
   const data = pageDataMap.get(shell);
   if (!data || !data.rendered) {

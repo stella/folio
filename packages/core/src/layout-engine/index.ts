@@ -5,17 +5,28 @@
  */
 
 import { panic } from "better-result";
+
 import { reflowFootnoteColumns } from "./footnoteColumnReflow";
+import { layoutImage } from "./imageLayout";
 import {
-  computeKeepNextChains,
   calculateChainHeight,
+  computeKeepNextChains,
   getMidChainIndices,
   hasPageBreakBefore,
 } from "./keep-together";
+import { RENDERED_BREAK_REFLOW_TOLERANCE_LINES } from "./layoutFlowShared";
 import { measuredLineAdvance } from "./lineFlow";
-import { annotateNoteAreas, continuesNoteArea, createNoteAreaContinuation } from "./noteAreaFlow";
+import {
+  annotateNoteAreas,
+  continuesNoteArea,
+  createNoteAreaContinuation,
+} from "./noteAreaFlow";
 import { createPaginator } from "./paginator";
-import { paragraphsShareStyle, resolveEffectiveParagraphSpacingTree } from "./paragraphSpacing";
+import { layoutParagraph } from "./paragraphLayout";
+import {
+  paragraphsShareStyle,
+  resolveEffectiveParagraphSpacingTree,
+} from "./paragraphSpacing";
 import {
   INITIAL_RENDERED_BREAK_STATE,
   PAGE_ADVANCE,
@@ -24,34 +35,31 @@ import {
   recordReflowBoundary,
 } from "./renderedBreakReconciliation";
 import { normalizeSectionBreakType } from "./section-breaks";
-import { applySectionVerticalAlignment } from "./sectionVerticalAlignment";
-import { tableKeepNextOpeningHeight } from "./tableRowBreak";
-import type {
-  FlowBlock,
-  Measure,
-  Layout,
-  LayoutOptions,
-  PageMargins,
-  ParagraphMeasure,
-  TableMeasure,
-  ImageMeasure,
-  TextBoxBlock,
-  TextBoxMeasure,
-  SectionBreakBlock,
-} from "./types";
-import { RENDERED_BREAK_REFLOW_TOLERANCE_LINES } from "./layoutFlowShared";
 import {
-  DEFAULT_COLUMNS,
-  CONTINUE_PAGE_NUMBERING,
-  collectSectionConfigs,
   balancedParagraphSectionHeight,
+  collectSectionConfigs,
+  CONTINUE_PAGE_NUMBERING,
+  DEFAULT_COLUMNS,
   handleSectionBreak,
 } from "./sectionLayout";
 import type { SectionLayoutConfig } from "./sectionLayout";
-import { layoutParagraph } from "./paragraphLayout";
-import { layoutTable, layoutFloatingTable } from "./tableLayout";
-import { layoutImage } from "./imageLayout";
+import { applySectionVerticalAlignment } from "./sectionVerticalAlignment";
+import { layoutFloatingTable, layoutTable } from "./tableLayout";
+import { tableKeepNextOpeningHeight } from "./tableRowBreak";
 import { layoutTextBox } from "./textBoxLayout";
+import type {
+  FlowBlock,
+  ImageMeasure,
+  Layout,
+  LayoutOptions,
+  Measure,
+  PageMargins,
+  ParagraphMeasure,
+  SectionBreakBlock,
+  TableMeasure,
+  TextBoxBlock,
+  TextBoxMeasure,
+} from "./types";
 
 export * from "./types";
 export { createPaginator } from "./paginator";
@@ -74,7 +82,10 @@ export {
   getEffectiveColumns,
 } from "./section-breaks";
 export type { SectionState, BreakDecision } from "./section-breaks";
-export { assertExhaustiveFlowBlock, findPageIndexContainingPmPos } from "./pmPageIndex";
+export {
+  assertExhaustiveFlowBlock,
+  findPageIndexContainingPmPos,
+} from "./pmPageIndex";
 export { collectSectionConfigs } from "./sectionLayout";
 export type { SectionLayoutConfig } from "./sectionLayout";
 export { getHeaderRowsHeight } from "./tableLayout";
@@ -227,7 +238,9 @@ function layoutDocumentPass(
     bodyConfig,
     finalConfig,
   );
-  const sectionBreakTypes = breakIndices.map((index) => (blocks[index] as SectionBreakBlock).type);
+  const sectionBreakTypes = breakIndices.map(
+    (index) => (blocks[index] as SectionBreakBlock).type,
+  );
   const initialConfig = sectionConfigs.at(0) ?? bodyConfig;
 
   // Create paginator with first section's columns
@@ -276,17 +289,23 @@ function layoutDocumentPass(
   let activeSectionPageHeight = initialConfig.pageSize.h;
   let activeSectionMarginBottom = initialConfig.margins.bottom;
   let renderedBreakState = INITIAL_RENDERED_BREAK_STATE;
-  const noteAreaContinuation = createNoteAreaContinuation(options.noteAreas, paginator);
+  const noteAreaContinuation = createNoteAreaContinuation(
+    options.noteAreas,
+    paginator,
+  );
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
     if (noteAreaContinuation !== undefined) {
       paginator.setPageTopContinuation(
-        continuesNoteArea(options.noteAreas, block) ? noteAreaContinuation : undefined,
+        continuesNoteArea(options.noteAreas, block)
+          ? noteAreaContinuation
+          : undefined,
       );
     }
 
-    const firstLine = measure.kind === "paragraph" ? measure.lines.at(0) : undefined;
+    const firstLine =
+      measure.kind === "paragraph" ? measure.lines.at(0) : undefined;
     const firstLineAdvance = firstLine ? measuredLineAdvance(firstLine) : 0;
     const renderedBreakNeedsSnap =
       measure.kind === "paragraph" &&
@@ -294,7 +313,8 @@ function layoutDocumentPass(
         (firstLineAdvance > 0 &&
           paginator.getAvailableHeight() <=
             firstLineAdvance * RENDERED_BREAK_REFLOW_TOLERANCE_LINES));
-    const hasExplicitPageBreak = block.kind === "pageBreak" || hasPageBreakBefore(block);
+    const hasExplicitPageBreak =
+      block.kind === "pageBreak" || hasPageBreakBefore(block);
     const breakDecision = reconcileBreakBeforeBlock({
       state: renderedBreakState,
       block,
@@ -310,7 +330,9 @@ function layoutDocumentPass(
         // that holds nothing yet but zero-height carriers (such as the mark
         // of a paragraph that ended in a page break) already satisfies that,
         // so the paragraph starts there instead of leaving it blank.
-        paginator.forcePageBreak({ coalesceBlankPage: hasPageBreakBefore(block) });
+        paginator.forcePageBreak({
+          coalesceBlankPage: hasPageBreakBefore(block),
+        });
       } else if (breakDecision.pageAdvance === PAGE_ADVANCE.COALESCED) {
         paginator.coalescePageBreak();
       }
@@ -358,7 +380,12 @@ function layoutDocumentPass(
             paginator.getContentWidth(),
           );
         } else {
-          layoutTable(block, measure as TableMeasure, paginator, options.footnoteHeightById);
+          layoutTable(
+            block,
+            measure as TableMeasure,
+            paginator,
+            options.footnoteHeightById,
+          );
         }
         break;
 
@@ -388,8 +415,11 @@ function layoutDocumentPass(
         break;
 
       case "sectionBreak": {
-        const nextSectionConfig = sectionConfigs[sectionIdx + 1] ?? initialConfig;
-        const nextType = normalizeSectionBreakType(sectionBreakTypes[sectionIdx]);
+        const nextSectionConfig =
+          sectionConfigs[sectionIdx + 1] ?? initialConfig;
+        const nextType = normalizeSectionBreakType(
+          sectionBreakTypes[sectionIdx],
+        );
         handleSectionBreak(
           block as SectionBreakBlock,
           paginator,
@@ -402,7 +432,8 @@ function layoutDocumentPass(
         const nextBreak = blocks[nextBreakIndex];
         const sectionEndsContinuously =
           nextBreakIndex === blocks.length ||
-          (nextBreak?.kind === "sectionBreak" && nextBreak.type === "continuous");
+          (nextBreak?.kind === "sectionBreak" &&
+            nextBreak.type === "continuous");
         if (nextColumns && sectionEndsContinuously) {
           const state = paginator.getCurrentState();
           const balancedHeight = balancedParagraphSectionHeight({
@@ -415,7 +446,10 @@ function layoutDocumentPass(
             availableHeight: paginator.getAvailableHeight(),
           });
           if (balancedHeight !== undefined) {
-            state.contentBottom = Math.min(state.contentBottom, state.cursorY + balancedHeight);
+            state.contentBottom = Math.min(
+              state.contentBottom,
+              state.cursorY + balancedHeight,
+            );
           }
         }
         activeSectionMarginTop = nextSectionConfig.margins.top;

@@ -22,7 +22,7 @@
 </template>
 
 <script lang="ts">
-import type { ZoomLevel, ZoomControlProps } from "./ZoomControl.types";
+import type { ZoomControlProps, ZoomLevel } from "./ZoomControl.types";
 
 const DEFAULT_ZOOM_LEVELS: ZoomLevel[] = [
   { value: 0.5, label: "50%" },
@@ -36,6 +36,7 @@ const DEFAULT_ZOOM_LEVELS: ZoomLevel[] = [
 
 <script setup lang="ts">
 import { computed } from "vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
 import type { FolioSelectItem } from "../../ui/folio-ui";
 
@@ -56,11 +57,15 @@ const emit = defineEmits<{
 const resolvedLevels = computed(() => props.levels ?? DEFAULT_ZOOM_LEVELS);
 
 const matchingLevel = computed(() =>
-  resolvedLevels.value.find((level) => Math.abs(level.value - props.value) < 0.001),
+  resolvedLevels.value.find(
+    (level) => Math.abs(level.value - props.value) < 0.001,
+  ),
 );
 
 const displayLabel = computed(() =>
-  matchingLevel.value ? matchingLevel.value.label : `${Math.round(props.value * 100)}%`,
+  matchingLevel.value
+    ? matchingLevel.value.label
+    : `${Math.round(props.value * 100)}%`,
 );
 
 // Use the matched preset's exact string so the active item highlights even

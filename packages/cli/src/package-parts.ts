@@ -1,17 +1,16 @@
-import { decodeText } from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * Package-level facts a transaction reports and checks: which parts a save
  * changed, the first revision id free for new revisions, and whether the
  * parts it changed are well formed with every relationship reference
  * resolved.
  */
-
-import { Result } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";
 import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
+import { decodeText } from "@stll/folio-core/utils/textEncoding";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { checkWordprocessingPackage } from "./main-document-part";
@@ -77,15 +76,23 @@ export const diffPackages = async (
       changes.push({ part, change: "removed" });
     }
   }
-  return Result.ok(changes.toSorted((left, right) => left.part.localeCompare(right.part)));
+  return Result.ok(
+    changes.toSorted((left, right) => left.part.localeCompare(right.part)),
+  );
 };
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 /** Prefixes a part's namespace declarations bind to any of `namespaces`. */
-const prefixesBoundTo = (xml: string, namespaces: readonly string[]): Set<string> => {
+const prefixesBoundTo = (
+  xml: string,
+  namespaces: readonly string[],
+): Set<string> => {
   const prefixes = new Set<string>();
-  for (const match of xml.matchAll(/\sxmlns:([A-Za-z_][\w.-]*)\s*=\s*"([^"]*)"/gu)) {
+  for (const match of xml.matchAll(
+    /\sxmlns:([A-Za-z_][\w.-]*)\s*=\s*"([^"]*)"/gu,
+  )) {
     const [, prefix, uri] = match;
     if (prefix !== undefined && uri !== undefined && namespaces.includes(uri)) {
       prefixes.add(prefix);
@@ -110,7 +117,10 @@ export const nextRevisionIdSeed = async (
       .async("uint8array")
       .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
     for (const prefix of prefixesBoundTo(xml, WORDPROCESSINGML_NAMESPACES)) {
-      const pattern = new RegExp(`\\s${escapeRegExp(prefix)}:id\\s*=\\s*"(\\d+)"`, "gu");
+      const pattern = new RegExp(
+        `\\s${escapeRegExp(prefix)}:id\\s*=\\s*"(\\d+)"`,
+        "gu",
+      );
       for (const [, id] of xml.matchAll(pattern)) {
         highest = Math.max(highest, Number(id));
       }
@@ -147,7 +157,9 @@ const parseRelationships = (xml: string): Relationship[] => {
 const relationshipsPartFor = (part: string): string => {
   const directory = path.posix.dirname(part);
   const base = path.posix.basename(part);
-  return directory === "." ? `_rels/${base}.rels` : `${directory}/_rels/${base}.rels`;
+  return directory === "."
+    ? `_rels/${base}.rels`
+    : `${directory}/_rels/${base}.rels`;
 };
 
 /** The part a `.rels` part describes (`""` for the package-level `_rels/.rels`). */
@@ -174,9 +186,16 @@ type CheckPartOptions = {
   part: string;
 };
 
-const checkChangedPart = async ({ zip, parts, part }: CheckPartOptions): Promise<string | null> => {
+const checkChangedPart = async ({
+  zip,
+  parts,
+  part,
+}: CheckPartOptions): Promise<string | null> => {
   const entry = parts.get(part);
-  if (entry === undefined || !(part.endsWith(".xml") || part.endsWith(".rels"))) {
+  if (
+    entry === undefined ||
+    !(part.endsWith(".xml") || part.endsWith(".rels"))
+  ) {
     return null;
   }
   const xml = await entry
@@ -186,7 +205,9 @@ const checkChangedPart = async ({ zip, parts, part }: CheckPartOptions): Promise
     return `${part} is not well-formed XML.`;
   }
   if (part.endsWith(".rels")) {
-    const lowerCaseParts = new Set([...parts.keys()].map((name) => name.toLowerCase()));
+    const lowerCaseParts = new Set(
+      [...parts.keys()].map((name) => name.toLowerCase()),
+    );
     for (const { id, target, external } of parseRelationships(xml)) {
       if (external) continue;
       const resolved = resolveTarget(part, target);
@@ -204,7 +225,10 @@ const checkChangedPart = async ({ zip, parts, part }: CheckPartOptions): Promise
     .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
   const ids = new Set(parseRelationships(relsXml ?? "").map(({ id }) => id));
   for (const prefix of prefixes) {
-    const pattern = new RegExp(`\\s${escapeRegExp(prefix)}:[A-Za-z]+\\s*=\\s*"([^"]*)"`, "gu");
+    const pattern = new RegExp(
+      `\\s${escapeRegExp(prefix)}:[A-Za-z]+\\s*=\\s*"([^"]*)"`,
+      "gu",
+    );
     for (const [, id] of xml.matchAll(pattern)) {
       if (id !== undefined && !ids.has(id)) {
         return `${part} references relationship ${id}, which ${relationshipsPartFor(part)} does not define.`;
@@ -232,7 +256,9 @@ export const checkPackageIntegrity = async (
     if (change === "removed") continue;
     const problem = await checkChangedPart({ zip: zip.value, parts, part });
     if (problem !== null) {
-      return Result.err(integrityError(`The saved package failed validation: ${problem}`));
+      return Result.err(
+        integrityError(`The saved package failed validation: ${problem}`),
+      );
     }
   }
   const mainPart = await checkWordprocessingPackage("The saved package", bytes);

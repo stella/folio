@@ -4,5 +4,7 @@ import config from "./oxlint.config.ts";
 // --no-ignore does not override config-level ignorePatterns in oxlint.
 export default {
   ...config,
-  ignorePatterns: config.ignorePatterns?.filter((pattern) => pattern !== "test/__fixtures__/**"),
+  ignorePatterns: config.ignorePatterns?.filter(
+    (pattern) => pattern !== "test/__fixtures__/**",
+  ),
 };

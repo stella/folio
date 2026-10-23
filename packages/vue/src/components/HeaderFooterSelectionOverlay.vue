@@ -1,8 +1,8 @@
 <template></template>
 
 <script setup lang="ts">
-import { onScopeDispose, watch } from "vue";
 import type { EditorView } from "prosemirror-view";
+import { onScopeDispose, watch } from "vue";
 
 import {
   resetImeCaretAnchor,
@@ -24,12 +24,16 @@ const overlay = new HeaderFooterSelectionOverlay();
 const sync = (): void => {
   if (!props.pagesContainer) return;
   overlay.sync(props.pagesContainer, props.selection, props.zoom);
-  const paintedCaret = props.pagesContainer.querySelector<HTMLElement>("[data-testid='hf-caret']");
+  const paintedCaret = props.pagesContainer.querySelector<HTMLElement>(
+    "[data-testid='hf-caret']",
+  );
   const caretRect = paintedCaret?.getBoundingClientRect();
   syncImeCaretAnchor({
     hiddenHost: props.hiddenContainer,
     editorView: props.editorView,
-    visibleCaret: caretRect ? { left: caretRect.left, top: caretRect.top } : null,
+    visibleCaret: caretRect
+      ? { left: caretRect.left, top: caretRect.top }
+      : null,
   });
 };
 

@@ -14,6 +14,7 @@
  * lent them is re-read in the next paragraph's style.
  */
 
+import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
@@ -23,10 +24,12 @@ import {
   markParagraphPropertySourceTransfers,
 } from "../docx/paragraphPropertySource";
 import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
-import { panic } from "better-result";
 import { JOINED_RUNS_RESTYLED_META } from "./extensions/features/JoinedRunStyleExtension";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
-import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
+import {
+  paragraphRunStyleContext,
+  type RunStyleResolver,
+} from "./runStyleFormatting";
 
 type JoinAtParagraphMarkOptions = {
   tr: Transaction;
@@ -52,7 +55,8 @@ export const joinAtParagraphMark = ({
 }: JoinAtParagraphMarkOptions): void => {
   const boundary = paragraphPos + paragraph.nodeSize;
   const join = paragraphJoinAfter(tr.doc, boundary);
-  if (!join || join.next !== next) panic("A paragraph-mark join lost its next paragraph");
+  if (!join || join.next !== next)
+    panic("A paragraph-mark join lost its next paragraph");
   if (join.inlineBookmarks.length > 0) {
     const leftToken = getProseParagraphPropertySourceToken(paragraph);
     const rightToken = getProseParagraphPropertySourceToken(next);

@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -11,9 +10,9 @@ import {
   GitHubPause,
   identityOf,
   lanesOfWorkflow,
+  pauseOnGitHubRefusal,
   planConsolidation,
   reproOf,
-  pauseOnGitHubRefusal,
   summarize,
 } from "./consolidate-fuzz-issues";
 import {
@@ -29,14 +28,20 @@ const TEST = "consumer flow directNumbered / tracked-changes";
 const REPRO = (seed: number) =>
   `bun scripts/consumer-scenarios.ts --seed ${seed} --steps 20 --runs 1 --collision-runs 0 --swarm 1 --only '^fuzz run 0 \\(' -- fuzz.test.ts`;
 
-const fingerprintBody = (seeds: readonly number[], run: number, assertion: string) =>
+const fingerprintBody = (
+  seeds: readonly number[],
+  run: number,
+  assertion: string,
+) =>
   [
     `Run: ${RUN}${run}`,
     `Seeds: ${seeds.join(", ")}`,
     "Fingerprint: 7d8e8fd28bc8c8d8",
     `Test: ${TEST}`,
     `Assertion:\n\`\`\`\n${assertion}\n\`\`\``,
-    ...seeds.map((seed) => `Seed: ${seed}\nRepro command:\n\`\`\`\n${REPRO(seed)}\n\`\`\``),
+    ...seeds.map(
+      (seed) => `Seed: ${seed}\nRepro command:\n\`\`\`\n${REPRO(seed)}\n\`\`\``,
+    ),
   ].join("\n\n");
 
 const markdownBody = (seed: number, run: number, symptom: string) =>
@@ -90,15 +95,17 @@ test("apply resumes from its checkpoint without repeating completed writes", asy
     },
     close: fake.store.close,
   };
-  await expect(applyConsolidation(plan, interrupted, checkpoint)).rejects.toThrow(
-    "simulated interruption",
-  );
+  await expect(
+    applyConsolidation(plan, interrupted, checkpoint),
+  ).rejects.toThrow("simulated interruption");
   const completedCalls = calls;
   await applyConsolidation(plan, interrupted, checkpoint);
   expect(calls).toBeGreaterThan(completedCalls);
-  expect(fake.edits.filter(({ number }) => number === plan.groups.at(0)?.keep.number)).toHaveLength(
-    1,
-  );
+  expect(
+    fake.edits.filter(
+      ({ number }) => number === plan.groups.at(0)?.keep.number,
+    ),
+  ).toHaveLength(1);
   rmSync(directory, { recursive: true });
 });
 
@@ -117,30 +124,38 @@ test("a changed retry plan folds new evidence into the keeper before closing it"
       await fake.store.close(number, reason);
     },
   };
-  await expect(applyConsolidation(originalPlan, interrupted, checkpoint)).rejects.toThrow(
-    "simulated interruption",
-  );
+  await expect(
+    applyConsolidation(originalPlan, interrupted, checkpoint),
+  ).rejects.toThrow("simulated interruption");
 
   const newDuplicate = open(
     1910,
     `Fuzz failure [1910191019101910]: ${TEST}`,
-    fingerprintBody([1910], 31, "Missing numbering format for displayed label <n>"),
+    fingerprintBody(
+      [1910],
+      31,
+      "Missing numbering format for displayed label <n>",
+    ),
   );
   issues.push(newDuplicate);
   const retryPlan = await planConsolidation(fake.store);
   await applyConsolidation(retryPlan, interrupted, checkpoint);
 
-  const keeper = issues.find(({ number }) => number === retryPlan.groups.at(0)?.keep.number);
+  const keeper = issues.find(
+    ({ number }) => number === retryPlan.groups.at(0)?.keep.number,
+  );
   if (keeper === undefined) throw new Error("The retry plan has no keeper");
   expect(parseSignatureState(keeper)?.seeds).toContain(1910);
-  expect(issues.find(({ number }) => number === newDuplicate.number)?.state).toBe("closed");
+  expect(
+    issues.find(({ number }) => number === newDuplicate.number)?.state,
+  ).toBe("closed");
   rmSync(directory, { recursive: true });
 });
 
 test("a GitHub refusal becomes a typed pause", () => {
-  expect(() => pauseOnGitHubRefusal(new Error("HTTP 429 secondary rate limit"))).toThrow(
-    "HTTP 429",
-  );
+  expect(() =>
+    pauseOnGitHubRefusal(new Error("HTTP 429 secondary rate limit")),
+  ).toThrow("HTTP 429");
 });
 
 test("a permission refusal remains a failure", () => {
@@ -149,14 +164,19 @@ test("a permission refusal remains a failure", () => {
   expect(() => pauseOnGitHubRefusal(refusal)).not.toThrow(GitHubPause);
 });
 
-const fakeStore = (issues: Issue[], comments: Record<number, string[]> = {}) => {
+const fakeStore = (
+  issues: Issue[],
+  comments: Record<number, string[]> = {},
+) => {
   const edits: { number: number; content: IssueContent }[] = [];
   const closes: { number: number; reason: CloseReason }[] = [];
   const store = {
     list: () => Promise.resolve(issues),
     comments: (number) => Promise.resolve(comments[number] ?? []),
     lanesOfRun: (runUrl) =>
-      Promise.resolve(runUrl.endsWith("/9") ? ["continuous-fuzz"] : ["nightly-swarm-fuzz"]),
+      Promise.resolve(
+        runUrl.endsWith("/9") ? ["continuous-fuzz"] : ["nightly-swarm-fuzz"],
+      ),
     edit: (number, content) => {
       edits.push({ number, content });
       const index = issues.findIndex((issue) => issue.number === number);
@@ -188,17 +208,29 @@ const fixture = () => [
   open(
     1863,
     `Fuzz failure [7d8e8fd28bc8c8d8]: ${TEST}`,
-    fingerprintBody([740097491], 30, "Missing numbering format for displayed label (<n>)"),
+    fingerprintBody(
+      [740097491],
+      30,
+      "Missing numbering format for displayed label (<n>)",
+    ),
   ),
   open(
     1746,
     `Fuzz failure [87ac1418886c9a57]: ${TEST}`,
-    fingerprintBody([1809930746, 1809931056], 10, "Missing numbering format for displayed label •"),
+    fingerprintBody(
+      [1809930746, 1809931056],
+      10,
+      "Missing numbering format for displayed label •",
+    ),
   ),
   open(
     1410,
     `Fuzz failure [35240f905441125f]: ${TEST}: Missing numbering format for displayed label <n>.`,
-    markdownBody(1576446700, 9, "Missing numbering format for displayed label <n>."),
+    markdownBody(
+      1576446700,
+      9,
+      "Missing numbering format for displayed label <n>.",
+    ),
   ),
   open(
     1415,
@@ -220,15 +252,27 @@ test("legacy bodies yield their identity, seeds and repro", () => {
     test: TEST,
     assertion: "Missing numbering format for displayed label (<n>)",
   });
-  expect(identityOf(markdown)?.assertion).toBe("Missing numbering format for displayed label <n>.");
-  expect(identityOf(table)?.assertion).toBe("Missing numbering format for displayed label •");
-  expect(evidenceOf(fingerprint.body ?? "")).toEqual({ seeds: [740097491], occurrences: 1 });
-  expect(evidenceOf("Seeds: 1, 2\n\n3 more seeds; see run artifacts.")).toEqual({
-    seeds: [1, 2],
-    occurrences: 5,
+  expect(identityOf(markdown)?.assertion).toBe(
+    "Missing numbering format for displayed label <n>.",
+  );
+  expect(identityOf(table)?.assertion).toBe(
+    "Missing numbering format for displayed label •",
+  );
+  expect(evidenceOf(fingerprint.body ?? "")).toEqual({
+    seeds: [740097491],
+    occurrences: 1,
   });
+  expect(evidenceOf("Seeds: 1, 2\n\n3 more seeds; see run artifacts.")).toEqual(
+    {
+      seeds: [1, 2],
+      occurrences: 5,
+    },
+  );
   expect(evidenceOf(table.body ?? "").seeds).toEqual([1026397300, 1026398879]);
-  expect(reproOf(markdown.body ?? "")).toEqual({ seed: 1576446700, command: REPRO(1576446700) });
+  expect(reproOf(markdown.body ?? "")).toEqual({
+    seed: 1576446700,
+    command: REPRO(1576446700),
+  });
   expect(reproOf(table.body ?? "")?.command).toBe(
     `bun scripts/consumer-scenarios.ts --flow '{"a":"b|c"}'`,
   );
@@ -236,7 +280,9 @@ test("legacy bodies yield their identity, seeds and repro", () => {
 
 test("consolidation keeps the oldest issue per signature and closes the rest as duplicates", async () => {
   const issues = fixture();
-  const comments = { 1746: [`Run: ${RUN}20\n\nSeeds: 1809931334\n\nFingerprint: x`] };
+  const comments = {
+    1746: [`Run: ${RUN}20\n\nSeeds: 1809931334\n\nFingerprint: x`],
+  };
   const fake = fakeStore(issues, comments);
   const plan = await planConsolidation(fake.store);
   expect(plan.open).toBe(6);
@@ -245,9 +291,14 @@ test("consolidation keeps the oldest issue per signature and closes the rest as 
   expect(plan.unparsed.map(({ number }) => number)).toEqual([1900]);
   const [numbering, acceptAll] = plan.groups;
   expect(numbering?.keep.number).toBe(1410);
-  expect(numbering?.duplicates.map(({ number }) => number)).toEqual([1415, 1746, 1863]);
+  expect(numbering?.duplicates.map(({ number }) => number)).toEqual([
+    1415, 1746, 1863,
+  ]);
   expect(numbering?.signature).toEqual(
-    signatureOf({ test: TEST, assertion: "Missing numbering format for displayed label" }),
+    signatureOf({
+      test: TEST,
+      assertion: "Missing numbering format for displayed label",
+    }),
   );
   expect(acceptAll?.keep.number).toBe(1874);
   expect(acceptAll?.duplicates).toEqual([]);
@@ -265,17 +316,23 @@ test("consolidation keeps the oldest issue per signature and closes the rest as 
   const kept = issues.find(({ number }) => number === 1410);
   const state = kept === undefined ? null : parseSignatureState(kept);
   expect(state?.seeds).toEqual([
-    1576446700, 1026397300, 1026398879, 1809930746, 1809931056, 1809931334, 740097491,
+    1576446700, 1026397300, 1026398879, 1809930746, 1809931056, 1809931334,
+    740097491,
   ]);
   expect(state?.occurrences).toBe(7);
   expect(state?.repro).toEqual({ seed: 740097491, command: REPRO(740097491) });
   expect(kept?.body).not.toContain("FOLIO_SCENARIO_");
-  expect(state?.assertion).toBe("Missing numbering format for displayed label (<n>)");
+  expect(state?.assertion).toBe(
+    "Missing numbering format for displayed label (<n>)",
+  );
   expect(state?.lanes.map(({ lane, cleanRuns }) => [lane, cleanRuns])).toEqual([
     ["nightly-swarm-fuzz", 0],
     ["continuous-fuzz", 0],
   ]);
-  expect(state?.lastSeen).toEqual({ lane: "nightly-swarm-fuzz", run: `${RUN}30` });
+  expect(state?.lastSeen).toEqual({
+    lane: "nightly-swarm-fuzz",
+    run: `${RUN}30`,
+  });
   expect(issues.find(({ number }) => number === 1900)?.state).toBe("open");
 
   const rerun = fakeStore(issues);
@@ -286,7 +343,11 @@ test("consolidation keeps the oldest issue per signature and closes the rest as 
 
 test("an issue with a legacy summary and a fresh failure consolidate into one invariant class", async () => {
   const issues = [
-    open(1838, `Fuzz failure [0bdfe57beea291ae]: ${TEST}: listLevel mismatch`, ""),
+    open(
+      1838,
+      `Fuzz failure [0bdfe57beea291ae]: ${TEST}: listLevel mismatch`,
+      "",
+    ),
     open(
       1990,
       `Fuzz failure [4626ec0e549c5464]: ${TEST}`,
@@ -298,13 +359,22 @@ test("an issue with a legacy summary and a fresh failure consolidate into one in
   expect(plan.unparsed).toEqual([]);
   expect(plan.groups).toHaveLength(1);
   expect(plan.groups[0]?.keep.number).toBe(1838);
-  expect(plan.groups[0]?.duplicates.map(({ number }) => number)).toEqual([1990]);
+  expect(plan.groups[0]?.duplicates.map(({ number }) => number)).toEqual([
+    1990,
+  ]);
 });
 
 test("lanes come from the reporter jobs and inline filer runs of a workflow", () => {
   const workflows = path.resolve(import.meta.dir, "../.github/workflows");
-  const read = (file: string) => readFileSync(path.join(workflows, file), "utf8");
-  expect(lanesOfWorkflow(read("nightly-swarm-fuzz.yml"))).toEqual(["nightly-swarm-fuzz"]);
-  expect(lanesOfWorkflow(read("continuous-fuzz.yml"))).toEqual(["continuous-fuzz"]);
-  expect(lanesOfWorkflow(read("nightly-browser-input-fuzzer.yml"))).toHaveLength(4);
+  const read = (file: string) =>
+    readFileSync(path.join(workflows, file), "utf8");
+  expect(lanesOfWorkflow(read("nightly-swarm-fuzz.yml"))).toEqual([
+    "nightly-swarm-fuzz",
+  ]);
+  expect(lanesOfWorkflow(read("continuous-fuzz.yml"))).toEqual([
+    "continuous-fuzz",
+  ]);
+  expect(
+    lanesOfWorkflow(read("nightly-browser-input-fuzzer.yml")),
+  ).toHaveLength(4);
 });

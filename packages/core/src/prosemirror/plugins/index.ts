@@ -12,7 +12,10 @@ export {
   selectionTrackerKey,
 } from "./selectionTracker";
 
-export type { SelectionContext, SelectionChangeCallback } from "./selectionTracker";
+export type {
+  SelectionContext,
+  SelectionChangeCallback,
+} from "./selectionTracker";
 
 export {
   documentStylesKey,

@@ -154,7 +154,11 @@ export function eastAsiaHintApplies(run: {
   readonly forceComplexScript?: boolean | undefined;
   readonly rtl?: boolean | undefined;
 }): boolean {
-  return run.eastAsiaHint === true && run.forceComplexScript !== true && run.rtl !== true;
+  return (
+    run.eastAsiaHint === true &&
+    run.forceComplexScript !== true &&
+    run.rtl !== true
+  );
 }
 
 /**
@@ -234,7 +238,10 @@ export function hasComplexScript(text: string): boolean {
  * True when some code point of the text selects the `w:eastAsia` slot: a CJK
  * code point, or under an effective `w:hint="eastAsia"` one the hint moves.
  */
-export function hasEastAsiaSlotText(text: string, eastAsiaHint = false): boolean {
+export function hasEastAsiaSlotText(
+  text: string,
+  eastAsiaHint = false,
+): boolean {
   if (!eastAsiaHint) {
     return hasCjk(text);
   }
@@ -253,7 +260,10 @@ export function hasEastAsiaSlotText(text: string, eastAsiaHint = false): boolean
  * fonts. Empty input yields no segments; single-class input yields one.
  * `eastAsiaHint` is the run's effective `w:hint="eastAsia"`.
  */
-export function segmentByScript(text: string, eastAsiaHint = false): ScriptSegment[] {
+export function segmentByScript(
+  text: string,
+  eastAsiaHint = false,
+): ScriptSegment[] {
   const segments: ScriptSegment[] = [];
   let current = "";
   let currentScript: ScriptClass = SCRIPT_CLASS.western;

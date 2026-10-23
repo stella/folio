@@ -1,10 +1,11 @@
+import { Result } from "better-result";
+
 import {
   base64ToBytes,
   bytesToBase64Url,
   decodeText,
   encodeUtf8,
 } from "@stll/folio-core/utils/textEncoding";
-import { Result } from "better-result";
 /**
  * A tool surface with lazy discovery. The frequent tools are listed directly
  * with compact schemas; the rest stay out of `tools/list` and are reached
@@ -83,7 +84,11 @@ const INVOKE_SCHEMA = {
   required: ["capability"],
 } as const;
 
-const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+const READ_ONLY = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  openWorldHint: false,
+};
 
 export type ToolSurfaceOptions<Context> = {
   readonly tools: readonly ToolDefinition<Context>[];
@@ -92,15 +97,20 @@ export type ToolSurfaceOptions<Context> = {
 export type ToolSurface<Context> = {
   /** What `tools/list` returns: the direct tools, then the capability tools. */
   readonly listTools: () => ListedTool[];
-  readonly callTool: (name: string, args: unknown, context: Context) => Promise<ToolCallResult>;
+  readonly callTool: (
+    name: string,
+    args: unknown,
+    context: Context,
+  ) => Promise<ToolCallResult>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Takes only the fields it reads, so a tool of any context type fits. */
-const destructiveOf = (tool: Pick<ToolDefinition<never>, "destructive" | "access">): boolean =>
-  tool.destructive ?? tool.access === "write";
+const destructiveOf = (
+  tool: Pick<ToolDefinition<never>, "destructive" | "access">,
+): boolean => tool.destructive ?? tool.access === "write";
 
 const listedSchema = (schema: JsonSchema): ListedTool["inputSchema"] => ({
   ...compactSchema(schema),
@@ -118,14 +128,17 @@ const typeOutline = (schema: unknown): string => {
   if (typeof type === "string") return type;
   if (Array.isArray(type)) return type.join(" | ");
   const variants = schema["oneOf"] ?? schema["anyOf"];
-  if (Array.isArray(variants)) return [...new Set(variants.map(typeOutline))].join(" | ");
+  if (Array.isArray(variants))
+    return [...new Set(variants.map(typeOutline))].join(" | ");
   return "any";
 };
 
 /** Each parameter's type, required ones marked: what a compact description shows. */
 const parameterOutline = (schema: JsonSchema): Record<string, string> => {
   const properties = isRecord(schema["properties"]) ? schema["properties"] : {};
-  const required = new Set(Array.isArray(schema["required"]) ? schema["required"] : []);
+  const required = new Set(
+    Array.isArray(schema["required"]) ? schema["required"] : [],
+  );
   return Object.fromEntries(
     Object.entries(properties).map(([key, property]) => [
       key,
@@ -146,10 +159,14 @@ const compareIds = (a: string, b: string): number => {
 const encodeCursor = (id: string): string => bytesToBase64Url(encodeUtf8(id));
 
 const decodeCursor = (cursor: string): string | null => {
-  const parsed = Result.try(() => decodeText(base64ToBytes(cursor), { ignoreBOM: true }));
+  const parsed = Result.try(() =>
+    decodeText(base64ToBytes(cursor), { ignoreBOM: true }),
+  );
   if (parsed.isErr()) return null;
   const decoded = parsed.value;
-  return decoded.length > 0 && encodeCursor(decoded) === cursor ? decoded : null;
+  return decoded.length > 0 && encodeCursor(decoded) === cursor
+    ? decoded
+    : null;
 };
 
 const hasJsonType = (value: unknown, type: string): boolean => {
@@ -158,7 +175,9 @@ const hasJsonType = (value: unknown, type: string): boolean => {
   return typeof value === type;
 };
 
-type MetaArgs = { ok: true; args: Record<string, unknown> } | { ok: false; outcome: ToolOutcome };
+type MetaArgs =
+  | { ok: true; args: Record<string, unknown> }
+  | { ok: false; outcome: ToolOutcome };
 
 /**
  * The capability tools' own arguments, read strictly: a misspelt flag or a
@@ -181,7 +200,9 @@ const readMetaArgs = (
   const args: Record<string, unknown> = {};
   const issues: { path: string; message: string }[] = [];
   for (const [key, entry] of Object.entries(value ?? {})) {
-    const property = Object.hasOwn(schema.properties, key) ? schema.properties[key] : undefined;
+    const property = Object.hasOwn(schema.properties, key)
+      ? schema.properties[key]
+      : undefined;
     if (property === undefined) {
       issues.push({ path: key, message: `Unknown parameter: ${key}` });
       continue;
@@ -253,10 +274,15 @@ export const createToolSurface = <Context>({
       exactProperties: tool.exactProperties,
     });
     if (!read.ok) {
-      return toCallResult(validationError(read.message, read.issues, read.hint));
+      return toCallResult(
+        validationError(read.message, read.issues, read.hint),
+      );
     }
     if (validateOnly) {
-      return toCallResult(success({ valid: true, input: read.value }), read.notes);
+      return toCallResult(
+        success({ valid: true, input: read.value }),
+        read.notes,
+      );
     }
     let outcome: ToolOutcome;
     try {
@@ -273,7 +299,12 @@ export const createToolSurface = <Context>({
   const listCapabilities = (value: unknown): ToolOutcome => {
     const read = readMetaArgs(CAPABILITY_TOOL_NAMES.list, LIST_SCHEMA, value);
     if (!read.ok) return read.outcome;
-    const { domain, access = "all", cursor, limit = DEFAULT_LIST_LIMIT } = read.args;
+    const {
+      domain,
+      access = "all",
+      cursor,
+      limit = DEFAULT_LIST_LIMIT,
+    } = read.args;
     if (typeof limit !== "number" || limit < 1 || limit > MAX_LIST_LIMIT) {
       return validationError("limit is out of range.", [
         { path: "limit", message: `Expected 1 to ${MAX_LIST_LIMIT}.` },
@@ -281,9 +312,10 @@ export const createToolSurface = <Context>({
     }
     const after = typeof cursor === "string" ? decodeCursor(cursor) : undefined;
     if (after === null) {
-      return validationError("cursor is not a nextCursor from list_capabilities.", [
-        { path: "cursor", message: "Unrecognised cursor." },
-      ]);
+      return validationError(
+        "cursor is not a nextCursor from list_capabilities.",
+        [{ path: "cursor", message: "Unrecognised cursor." }],
+      );
     }
     const matching = lazy.filter(
       (tool) =>
@@ -301,12 +333,18 @@ export const createToolSurface = <Context>({
         ...(destructiveOf(tool) && { destructive: true }),
       })),
       nextCursor:
-        last !== undefined && matching.length > page.length ? encodeCursor(last.name) : null,
+        last !== undefined && matching.length > page.length
+          ? encodeCursor(last.name)
+          : null,
     });
   };
 
   const describeCapability = (value: unknown): ToolOutcome => {
-    const read = readMetaArgs(CAPABILITY_TOOL_NAMES.describe, DESCRIBE_SCHEMA, value);
+    const read = readMetaArgs(
+      CAPABILITY_TOOL_NAMES.describe,
+      DESCRIBE_SCHEMA,
+      value,
+    );
     if (!read.ok) return read.outcome;
     const id = String(read.args["capability"]);
     const tool = byName.get(id);
@@ -314,7 +352,10 @@ export const createToolSurface = <Context>({
     if (read.args["detail"] === "full") {
       return success({
         id: tool.name,
-        description: tool.guide === undefined ? tool.summary : `${tool.summary}\n${tool.guide}`,
+        description:
+          tool.guide === undefined
+            ? tool.summary
+            : `${tool.summary}\n${tool.guide}`,
         access: tool.access,
         destructive: destructiveOf(tool),
         inputSchema: tool.describedSchema ?? tool.inputSchema,
@@ -322,7 +363,10 @@ export const createToolSurface = <Context>({
     }
     return success({
       id: tool.name,
-      description: tool.brief === undefined ? tool.summary : `${tool.summary}\n${tool.brief}`,
+      description:
+        tool.brief === undefined
+          ? tool.summary
+          : `${tool.summary}\n${tool.brief}`,
       access: tool.access,
       destructive: destructiveOf(tool),
       parameters: parameterOutline(tool.inputSchema),
@@ -331,13 +375,25 @@ export const createToolSurface = <Context>({
     });
   };
 
-  const invokeCapability = async (value: unknown, context: Context): Promise<ToolCallResult> => {
-    const read = readMetaArgs(CAPABILITY_TOOL_NAMES.invoke, INVOKE_SCHEMA, value);
+  const invokeCapability = async (
+    value: unknown,
+    context: Context,
+  ): Promise<ToolCallResult> => {
+    const read = readMetaArgs(
+      CAPABILITY_TOOL_NAMES.invoke,
+      INVOKE_SCHEMA,
+      value,
+    );
     if (!read.ok) return toCallResult(read.outcome);
     const id = String(read.args["capability"]);
     const tool = byName.get(id);
     if (tool === undefined) return toCallResult(unknownCapability(id));
-    return await run(tool, read.args["input"] ?? {}, context, read.args["validate_only"] === true);
+    return await run(
+      tool,
+      read.args["input"] ?? {},
+      context,
+      read.args["validate_only"] === true,
+    );
   };
 
   const listTools = (): ListedTool[] => {

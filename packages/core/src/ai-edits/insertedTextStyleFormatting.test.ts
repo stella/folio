@@ -7,11 +7,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { createDocx } from "../docx/rezip";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationMode,
 } from "../document-operations";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
@@ -30,23 +30,34 @@ const insertedRuns = async (
     await createDocx(fromMarkdown("# Agreement\n\n## Scope\n\nBody text.")),
     { author: "AI" },
   );
-  const blockId = reviewer.getContent().find((block) => block.text === "Agreement")?.id;
+  const blockId = reviewer
+    .getContent()
+    .find((block) => block.text === "Agreement")?.id;
   const result = reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       mode,
       operations: [
-        { id: "op", type: "insertAfterBlock", blockId, text, ...(styleId && { styleId }) } as never,
+        {
+          id: "op",
+          type: "insertAfterBlock",
+          blockId,
+          text,
+          ...(styleId && { styleId }),
+        } as never,
       ],
     },
     { undefinedReferences: "refuse" },
   );
   expect(result.skipped).toEqual([]);
   if (mode !== "direct") reviewer.acceptAll();
-  const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
   return [reviewer, reopened].map(
     (current) =>
-      current.getContent().find((block) => block.text.startsWith("Inserted"))?.previewRuns ?? [],
+      current.getContent().find((block) => block.text.startsWith("Inserted"))
+        ?.previewRuns ?? [],
   );
 };
 
@@ -65,9 +76,15 @@ describe("an inserted paragraph's words follow its style", () => {
     }
 
     test(`emphasis the operation asks for stays its own (${mode})`, async () => {
-      for (const runs of await insertedRuns(mode, "Heading2", "Inserted ***heading***.")) {
+      for (const runs of await insertedRuns(
+        mode,
+        "Heading2",
+        "Inserted ***heading***.",
+      )) {
         expect(runs.find((run) => run.text === "heading")?.italic).toBe(true);
-        expect(runs.find((run) => run.text === "Inserted ")?.directFormatting).toBeUndefined();
+        expect(
+          runs.find((run) => run.text === "Inserted ")?.directFormatting,
+        ).toBeUndefined();
       }
     });
   }

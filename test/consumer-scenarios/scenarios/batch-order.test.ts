@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import {
+  type BatchOrderAddress,
+  compareBatchOrder,
+  orderBatchOperations,
+} from "@stll/docx-core/ops";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "@stll/folio-core/server";
-import {
-  compareBatchOrder,
-  orderBatchOperations,
-  type BatchOrderAddress,
-} from "@stll/docx-core/ops";
 
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { restate, sequentialGroups } from "../support/metamorphic.ts";
@@ -27,7 +27,11 @@ const ORDERS = [
 ] as const;
 
 const view = (reviewer: Awaited<ReturnType<typeof openReviewer>>) =>
-  reviewer.getContent().map(({ text, styleId, headingLevel }) => ({ text, styleId, headingLevel }));
+  reviewer.getContent().map(({ text, styleId, headingLevel }) => ({
+    text,
+    styleId,
+    headingLevel,
+  }));
 
 type MixOptions = {
   mode: (typeof MODES)[number];
@@ -39,7 +43,9 @@ type MixOptions = {
 /** Apply a batch and the contract's right-to-left replay to independent copies. */
 const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
   const fixture = await packDocument(
-    fromMarkdown(["Alpha.", "Bravo.", "Charlie.", "Delta.", "Echo."].join("\n\n")),
+    fromMarkdown(
+      ["Alpha.", "Bravo.", "Charlie.", "Delta.", "Echo."].join("\n\n"),
+    ),
   );
   const batch = await openReviewer(fixture);
   const sequential = await openReviewer(fixture);
@@ -52,14 +58,44 @@ const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
   const mix = (
     mirrored
       ? [
-          { id: "insert", type: "insertAfterBlock", blockId: block(2).id, text: inserted },
-          { id: "merge", type: "mergeBlockWithNext", blockId: block(0).id, separator: " " },
-          { id: "replace", type: "replaceBlock", blockId: block(3).id, text: "Replaced delta." },
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: block(2).id,
+            text: inserted,
+          },
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: block(0).id,
+            separator: " ",
+          },
+          {
+            id: "replace",
+            type: "replaceBlock",
+            blockId: block(3).id,
+            text: "Replaced delta.",
+          },
         ]
       : [
-          { id: "insert", type: "insertAfterBlock", blockId: block(0).id, text: inserted },
-          { id: "merge", type: "mergeBlockWithNext", blockId: block(2).id, separator: " " },
-          { id: "replace", type: "replaceBlock", blockId: block(1).id, text: "Replaced bravo." },
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: block(0).id,
+            text: inserted,
+          },
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: block(2).id,
+            separator: " ",
+          },
+          {
+            id: "replace",
+            type: "replaceBlock",
+            blockId: block(1).id,
+            text: "Replaced bravo.",
+          },
         ]
   ) satisfies FolioDocumentOperation[];
   const operations = order.flatMap((index) => mix.at(index) ?? []);
@@ -68,7 +104,9 @@ const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
     mode,
     operations,
   } as const;
-  const result = batch.applyDocumentOperations(request, { undefinedReferences: "refuse" });
+  const result = batch.applyDocumentOperations(request, {
+    undefinedReferences: "refuse",
+  });
   assert.deepEqual(result.skipped, []);
 
   const groups = orderBatchOperations(
@@ -76,7 +114,8 @@ const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
     ({ operation, inputIndex }) => {
       const anchor = rows.findIndex(({ id }) => id === operation.blockId);
       const position =
-        operation.type === "mergeBlockWithNext" || operation.type === "insertAfterBlock"
+        operation.type === "mergeBlockWithNext" ||
+        operation.type === "insertAfterBlock"
           ? anchor + 1
           : anchor;
       return { type: "content" as const, position, rank: 1, inputIndex };
@@ -109,22 +148,44 @@ const compareMix = async ({ mode, order, mirrored, inserted }: MixOptions) => {
 test("pinned adjacent insertion, merge and replacement batches replay from pre-batch positions", async () => {
   // Fuzz seed 1101252753 (run 128 from base seed 1101252625).
   for (const mode of MODES) {
-    await compareMix({ mode, order: ORDERS[0], mirrored: false, inserted: "Added 👍🏽 clause." });
+    await compareMix({
+      mode,
+      order: ORDERS[0],
+      mirrored: false,
+      inserted: "Added 👍🏽 clause.",
+    });
   }
 });
 
 test("insertions separated by a merge stay in separate replay runs in every input order", async () => {
   for (const order of ORDERS) {
-    const fixture = await packDocument(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie."));
+    const fixture = await packDocument(
+      fromMarkdown("Alpha.\n\nBravo.\n\nCharlie."),
+    );
     const batch = await openReviewer(fixture);
     const sequential = await openReviewer(fixture);
     const rows = batch.getContent() as Row[];
     const anchor = rows.at(0);
     assert.ok(anchor);
     const operations: FolioDocumentOperation[] = [
-      { id: "insert-a", type: "insertAfterBlock", blockId: anchor.id, text: "Inserted A." },
-      { id: "merge", type: "mergeBlockWithNext", blockId: anchor.id, separator: " " },
-      { id: "insert-b", type: "insertAfterBlock", blockId: anchor.id, text: "Inserted B." },
+      {
+        id: "insert-a",
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: "Inserted A.",
+      },
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: anchor.id,
+        separator: " ",
+      },
+      {
+        id: "insert-b",
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: "Inserted B.",
+      },
     ];
     const ordered = order.flatMap((index) => operations.at(index) ?? []);
     const request = {
@@ -132,17 +193,27 @@ test("insertions separated by a merge stay in separate replay runs in every inpu
       mode: "direct" as const,
       operations: ordered,
     };
-    const allGroups = sequentialGroups({ applied: ordered, preRows: rows, mode: "direct" });
+    const allGroups = sequentialGroups({
+      applied: ordered,
+      preRows: rows,
+      mode: "direct",
+    });
     if (order === ORDERS[0]) {
       assert.deepEqual(
         allGroups.map((group) => group.map(({ id }) => id)),
         [["insert-b"], ["merge"], ["insert-a"]],
       );
     }
-    const result = batch.applyDocumentOperations(request, { undefinedReferences: "refuse" });
+    const result = batch.applyDocumentOperations(request, {
+      undefinedReferences: "refuse",
+    });
     const appliedIds = new Set(result.applied.map(({ id }) => id));
     const applied = ordered.filter(({ id }) => appliedIds.has(id));
-    for (const group of sequentialGroups({ applied, preRows: rows, mode: "direct" })) {
+    for (const group of sequentialGroups({
+      applied,
+      preRows: rows,
+      mode: "direct",
+    })) {
       const replayed = sequential.applyDocumentOperations(
         { ...request, operations: group as FolioDocumentOperation[] },
         { undefinedReferences: "refuse" },
@@ -156,11 +227,22 @@ test("insertions separated by a merge stay in separate replay runs in every inpu
 test("restate refuses replaceBlock forms whose formatting semantics cannot become a range", () => {
   const preRows = [{ id: "block", text: "Original." }] as Row[];
   const rows = [{ id: "block", text: "Prefix Original." }] as Row[];
-  const base = { id: "replace", type: "replaceBlock", blockId: "block", text: "Replacement." };
+  const base = {
+    id: "replace",
+    type: "replaceBlock",
+    blockId: "block",
+    text: "Replacement.",
+  };
   const textHashOf = () => undefined;
 
-  assert.equal(restate({ ...base, styleId: "Heading1" }, preRows, rows, textHashOf), null);
-  assert.equal(restate({ ...base, preserveFormatting: false }, preRows, rows, textHashOf), null);
+  assert.equal(
+    restate({ ...base, styleId: "Heading1" }, preRows, rows, textHashOf),
+    null,
+  );
+  assert.equal(
+    restate({ ...base, preserveFormatting: false }, preRows, rows, textHashOf),
+    null,
+  );
   assert.equal(restate(base, preRows, rows, textHashOf)?.type, "replaceRange");
 });
 
@@ -172,7 +254,13 @@ test("the batch comparator defines one total order", () => {
       for (let rank = 0; rank < 3; rank++) {
         addresses.push({ type: "content", position, rank, inputIndex });
       }
-      addresses.push({ type: "cell", tablePosition: position, bottom: 1, right: 2, inputIndex });
+      addresses.push({
+        type: "cell",
+        tablePosition: position,
+        bottom: 1,
+        right: 2,
+        inputIndex,
+      });
       addresses.push({
         type: "column",
         tablePosition: position,
@@ -187,7 +275,9 @@ test("the batch comparator defines one total order", () => {
     for (const right of addresses) {
       const comparison = compareBatchOrder(left, right);
       const reverse = sign(compareBatchOrder(right, left));
-      assert.ok(sign(comparison) === -reverse || (comparison === 0 && reverse === 0));
+      assert.ok(
+        sign(comparison) === -reverse || (comparison === 0 && reverse === 0),
+      );
       if (comparison === 0) assert.deepEqual(left, right);
       for (const last of addresses) {
         if (comparison <= 0 && compareBatchOrder(right, last) <= 0) {
@@ -200,13 +290,21 @@ test("the batch comparator defines one total order", () => {
 
 test("the batch comparator preserves phases within a table and visits nested tables first", () => {
   const sameTable: BatchOrderAddress[] = [
-    { type: "column", tablePosition: 10, columnIndex: 0, insertion: false, inputIndex: 3 },
+    {
+      type: "column",
+      tablePosition: 10,
+      columnIndex: 0,
+      insertion: false,
+      inputIndex: 3,
+    },
     { type: "cell", tablePosition: 10, bottom: 1, right: 1, inputIndex: 2 },
     { type: "content", position: 10, rank: 1, inputIndex: 1 },
     { type: "annotation", position: 10, inputIndex: 0 },
   ];
   assert.deepEqual(
-    orderBatchOperations(sameTable, (address) => address).map(({ type }) => type),
+    orderBatchOperations(sameTable, (address) => address).map(
+      ({ type }) => type,
+    ),
     ["annotation", "content", "cell", "column"],
   );
 
@@ -242,7 +340,9 @@ test("deletion precedes a table insertion through every three-operation permutat
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
-        operations: [{ id: "split", type: "splitBlock", blockId: anchor.id, offset: 5 }],
+        operations: [
+          { id: "split", type: "splitBlock", blockId: anchor.id, offset: 5 },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -284,11 +384,17 @@ test("deletion precedes a table insertion through every three-operation permutat
     reviewer.acceptAll();
     outcomes.push(view(reviewer));
   }
-  for (const outcome of outcomes.slice(1)) assert.deepEqual(outcome, outcomes.at(0));
+  for (const outcome of outcomes.slice(1))
+    assert.deepEqual(outcome, outcomes.at(0));
 });
 
 test("generated adjacent insertion, merge and replacement mixes equal contract replay", async () => {
-  const insertedTexts = ["Added clause.", "Added 👍🏽 clause.", "Cláusula añadida.", "סעיף נוסף."];
+  const insertedTexts = [
+    "Added clause.",
+    "Added 👍🏽 clause.",
+    "Cláusula añadida.",
+    "סעיף נוסף.",
+  ];
   for (const [index, order] of ORDERS.entries()) {
     await compareMix({
       mode: MODES[index % MODES.length] ?? "direct",

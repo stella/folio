@@ -8,16 +8,26 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import fc from "fast-check";
+import JSZip from "jszip";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import {
+  type PrefixVariant,
+  rewritePackagePrefixes,
+} from "./__tests__/namespacePrefixVariants";
 import { ensureParaIds, EnsureParaIdsError } from "./ensureParaIds";
-import { rewritePackagePrefixes, type PrefixVariant } from "./__tests__/namespacePrefixVariants";
 import { createDocx } from "./rezip";
+import {
+  PARAGRAPH_SCAN_NAMES,
+  resolveWordprocessingPrefixes,
+  splicesAsCanonical,
+} from "./wordprocessingPrefixes";
 import {
   getChildElements,
   getLocalName,
@@ -27,37 +37,48 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import {
-  PARAGRAPH_SCAN_NAMES,
-  resolveWordprocessingPrefixes,
-  splicesAsCanonical,
-} from "./wordprocessingPrefixes";
 
 const W_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const STRICT_W_URI = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 const MC_URI = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-const PACKAGE_REL_URI = "http://schemas.openxmlformats.org/package/2006/relationships";
+const PACKAGE_REL_URI =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 const W14_URI = "http://schemas.microsoft.com/office/word/2010/wordml";
 
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 
 const twoParagraphs = async (): Promise<Uint8Array> =>
-  new Uint8Array(await createDocx(fromMarkdown("Alpha clause.\n\nBeta clause.")));
+  new Uint8Array(
+    await createDocx(fromMarkdown("Alpha clause.\n\nBeta clause.")),
+  );
 
 const documentPart = async (docx: Uint8Array): Promise<string> => {
-  const text = await (await JSZip.loadAsync(docx)).file("word/document.xml")?.async("text");
+  const text = await (
+    await JSZip.loadAsync(docx)
+  )
+    .file("word/document.xml")
+    ?.async("text");
   if (text === undefined) throw new Error("word/document.xml missing");
   return text;
 };
 
-const withDocumentPart = async (docx: Uint8Array, xml: string): Promise<Uint8Array> => {
+const withDocumentPart = async (
+  docx: Uint8Array,
+  xml: string,
+): Promise<Uint8Array> => {
   const zip = await JSZip.loadAsync(docx);
   zip.file("word/document.xml", xml);
   return zip.generateAsync({ type: "uint8array" });
 };
 
-const respelled = async (docx: Uint8Array, variant: PrefixVariant): Promise<Uint8Array> => {
+const respelled = async (
+  docx: Uint8Array,
+  variant: PrefixVariant,
+): Promise<Uint8Array> => {
   const result = await rewritePackagePrefixes(docx, variant);
   if (!result) throw new Error(`fixture cannot be respelled as ${variant}`);
   return result.docx;
@@ -77,11 +98,18 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
       expect(result.alreadyComplete).toBe(false);
       expect(result.assigned).toBe(2);
 
-      const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(result.docx));
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        toArrayBuffer(result.docx),
+      );
       const blocks = reviewer.getContent();
-      expect(blocks.map((block) => block.idStability)).toEqual([undefined, undefined]);
+      expect(blocks.map((block) => block.idStability)).toEqual([
+        undefined,
+        undefined,
+      ]);
 
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
       expect(reopened.getContent().map((block) => block.id)).toEqual(
         blocks.map((block) => block.id),
       );
@@ -98,7 +126,9 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
       `xmlns:m2="http://schemas.openxmlformats.org/markup-compatibility/2006" m2:Ignorable="x14">` +
       `<x:body><x:p x14:paraId="1A2B3C4D"><x:r><x:t>Kept</x:t></x:r></x:p>` +
       `<x:p><x:r><x:t>Stamped</x:t></x:r></x:p><x:sectPr/></x:body></x:document>`;
-    const result = await ensureParaIds(await withDocumentPart(await twoParagraphs(), xml));
+    const result = await ensureParaIds(
+      await withDocumentPart(await twoParagraphs(), xml),
+    );
     expect(result.assigned).toBe(1);
 
     const out = await documentPart(result.docx);
@@ -116,7 +146,9 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
       `<x:body><x:p><x:r><m2:AlternateContent><m2:Choice Requires="x"><x:t>c</x:t></m2:Choice>` +
       `<m2:Fallback><x:p><x:r><x:t>f</x:t></x:r></x:p></m2:Fallback></m2:AlternateContent></x:r></x:p>` +
       `<x:sectPr/></x:body></x:document>`;
-    const result = await ensureParaIds(await withDocumentPart(await twoParagraphs(), xml));
+    const result = await ensureParaIds(
+      await withDocumentPart(await twoParagraphs(), xml),
+    );
     expect(result.assigned).toBe(1);
     const out = await documentPart(result.docx);
     expect(out).toContain("<m2:Fallback><x:p><x:r>");
@@ -174,7 +206,10 @@ describe("resolveWordprocessingPrefixes", () => {
     const resolution = resolveWordprocessingPrefixes(
       `<w:document xmlns:w="${W_URI}"><w:body><w:p xmlns:w="${W_URI}"/></w:body></w:document>`,
     );
-    expect(resolution).toMatchObject({ type: "resolved", prefixes: { canonical: true } });
+    expect(resolution).toMatchObject({
+      type: "resolved",
+      prefixes: { canonical: true },
+    });
   });
 
   test("reports a nested WordprocessingML binding under a new prefix as unsupported", () => {
@@ -187,12 +222,15 @@ describe("resolveWordprocessingPrefixes", () => {
   test("a second WordprocessingML alias blocks a paragraph splice only where it spells a paragraph", () => {
     const root = `<w:document xmlns:w="${W_URI}" xmlns:x="${W_URI}"><w:body>`;
     expect(
-      splicesAsCanonical(`${root}<w:p><x:date x:val="d"/></w:p></w:body></w:document>`, [
-        ...PARAGRAPH_SCAN_NAMES,
-      ]),
+      splicesAsCanonical(
+        `${root}<w:p><x:date x:val="d"/></w:p></w:body></w:document>`,
+        [...PARAGRAPH_SCAN_NAMES],
+      ),
     ).toBe(true);
     expect(
-      splicesAsCanonical(`${root}<x:p/></w:body></w:document>`, [...PARAGRAPH_SCAN_NAMES]),
+      splicesAsCanonical(`${root}<x:p/></w:body></w:document>`, [
+        ...PARAGRAPH_SCAN_NAMES,
+      ]),
     ).toBe(false);
   });
 
@@ -200,7 +238,10 @@ describe("resolveWordprocessingPrefixes", () => {
     const resolution = resolveWordprocessingPrefixes(
       `<w:document xmlns:w="${W_URI}"><!-- <w:p xmlns:w="urn:x"/> --><w:body/></w:document>`,
     );
-    expect(resolution).toMatchObject({ type: "resolved", prefixes: { canonical: true } });
+    expect(resolution).toMatchObject({
+      type: "resolved",
+      prefixes: { canonical: true },
+    });
   });
 });
 
@@ -280,17 +321,24 @@ test(
               ? `xmlns=${quote}${namespace}${quote}`
               : `xmlns:${prefix}=${quote}${namespace}${quote}`;
           const idDeclaration = `xmlns:${idPrefix}=${quote}${extensionBinding === "foreign" ? "urn:foreign:ids" : W14_URI}${quote}`;
-          const rootIdDeclaration = extensionBinding === "nested" ? "" : idDeclaration;
+          const rootIdDeclaration =
+            extensionBinding === "nested" ? "" : idDeclaration;
           const nestedIdDeclaration =
             extensionBinding === "nested"
               ? idDeclaration
               : `xmlns:${idPrefix}="urn:foreign:nested"`;
-          const existingPrefix = extensionBinding === "nested" ? idPrefix : "old";
+          const existingPrefix =
+            extensionBinding === "nested" ? idPrefix : "old";
           const nestedWordDeclaration =
-            prefix === "" ? 'xmlns="urn:foreign:word"' : `xmlns:${prefix}="urn:foreign:word"`;
+            prefix === ""
+              ? 'xmlns="urn:foreign:word"'
+              : `xmlns:${prefix}="urn:foreign:word"`;
           const foreign = `<foreign:p xmlns:foreign="urn:foreign" foreign:paraId="FEED0002" data="a&gt;b"/>`;
           const fallback = `<local:Fallback xmlns:local="${MC_URI}"><actual:p xmlns:actual="${namespace}" xmlns:kept="${W14_URI}" kept:paraId="FEED0001"/></local:Fallback>`;
-          const repeated = Array.from({ length: paragraphCount }, () => `<${q("p")} />`).join("");
+          const repeated = Array.from(
+            { length: paragraphCount },
+            () => `<${q("p")} />`,
+          ).join("");
           const xml = `<${q("document")} ${rootDeclaration} ${rootIdDeclaration} xmlns:${mcPrefix}="${MC_URI}" ${mcPrefix}:Ignorable=""><${q("body")}>${repeated}<scope ${nestedWordDeclaration} ${nestedIdDeclaration} xmlns:${mcPrefix}="urn:foreign:compat"><actual:p xmlns:actual="${namespace}" xmlns:old="${W14_URI}" ${existingPrefix}:paraId = ${quote}FEED0001${quote} ${existingPrefix}:textId="00000000"/><actual:p xmlns:actual="${namespace}" xmlns:other="${namespace}"><other:r><other:t>Unchanged</other:t></other:r></actual:p>${foreign}${fallback}</scope><${q("p")}/></${q("body")}></${q("document")}>`;
           const target = {
             relative: mainPart,
@@ -326,11 +374,16 @@ test(
           const ids = allParagraphs(root).map(paragraphIds);
           expect(ids).toHaveLength(paragraphCount + 4);
           expect(ids.every((values) => values.length === 1)).toBe(true);
-          const editable = ids.filter((values) => values.at(0) !== "FEED0001").flat();
+          const editable = ids
+            .filter((values) => values.at(0) !== "FEED0001")
+            .flat();
           expect(new Set(editable).size).toBe(paragraphCount + 3);
           expect(
             editable.every(
-              (id) => /^[0-9A-F]{8}$/u.test(id) && id !== "00000000" && id !== "FEED0003",
+              (id) =>
+                /^[0-9A-F]{8}$/u.test(id) &&
+                id !== "00000000" &&
+                id !== "FEED0003",
             ),
           ).toBe(true);
           expect(output).toContain(foreign);
@@ -344,9 +397,13 @@ test(
           expect(again.docx).toBe(normalized.docx);
           expect(again.mintedParaIds).toEqual([]);
           const repeat = await ensureParaIds(input);
-          expect(await (await JSZip.loadAsync(repeat.docx)).file(mainPart)?.async("text")).toBe(
-            output,
-          );
+          expect(
+            await (
+              await JSZip.loadAsync(repeat.docx)
+            )
+              .file(mainPart)
+              ?.async("text"),
+          ).toBe(output);
         },
       ),
       {

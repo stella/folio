@@ -33,11 +33,14 @@ import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operation
 import type { FolioContentFormatRange } from "./content-types";
 import {
   CompareDocxParseError,
-  compareDocxSerializeError,
   type CompareDocxSerializeError,
+  compareDocxSerializeError,
 } from "./types";
 
-type InsertTableRowOperation = Extract<FolioAIEditOperation, { type: "insertTableRow" }>;
+type InsertTableRowOperation = Extract<
+  FolioAIEditOperation,
+  { type: "insertTableRow" }
+>;
 type TableRowPosition = NonNullable<InsertTableRowOperation["position"]>;
 
 export const EDIT_SCRIPT_TABLE_ROW_POSITION = {
@@ -84,7 +87,8 @@ export const EDIT_SCRIPT_UNRESOLVED_REASONS = Object.freeze([
   "refused",
 ] as const);
 
-export type EditScriptUnresolvedReason = (typeof EDIT_SCRIPT_UNRESOLVED_REASONS)[number];
+export type EditScriptUnresolvedReason =
+  (typeof EDIT_SCRIPT_UNRESOLVED_REASONS)[number];
 
 export type EditScriptUnresolvedStep = {
   step: EditScriptStep;
@@ -108,10 +112,15 @@ type StepPlan =
   | { status: "planned"; operations: readonly FolioAIEditOperation[] }
   | { status: "unresolved"; reason: EditScriptUnresolvedReason };
 
-const blockAt = (blocks: readonly FolioAIBlock[], index: number): FolioAIBlock | undefined =>
+const blockAt = (
+  blocks: readonly FolioAIBlock[],
+  index: number,
+): FolioAIBlock | undefined =>
   Number.isInteger(index) && index >= 0 ? blocks.at(index) : undefined;
 
-const statedNumberingOf = (block: FolioAIBlock): FolioAIBlockParagraphProperties["numbering"] => {
+const statedNumberingOf = (
+  block: FolioAIBlock,
+): FolioAIBlockParagraphProperties["numbering"] => {
   switch (block.kind) {
     case "paragraph":
     case "heading":
@@ -132,7 +141,11 @@ type PlanStepOptions = {
   nextOperationId: () => string;
 };
 
-const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan => {
+const planStep = ({
+  step,
+  blocks,
+  nextOperationId,
+}: PlanStepOptions): StepPlan => {
   const block = blockAt(blocks, step.blockIndex);
   if (!block) {
     return { status: "unresolved", reason: "block-out-of-range" };
@@ -143,13 +156,20 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
       return {
         status: "planned",
         operations: [
-          { id: nextOperationId(), type: "insertAfterBlock", blockId: block.id, text: step.text },
+          {
+            id: nextOperationId(),
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: step.text,
+          },
         ],
       };
     case "deleteParagraph":
       return {
         status: "planned",
-        operations: [{ id: nextOperationId(), type: "deleteBlock", blockId: block.id }],
+        operations: [
+          { id: nextOperationId(), type: "deleteBlock", blockId: block.id },
+        ],
       };
     case "replaceWords":
       return block.text.includes(step.find)
@@ -182,7 +202,9 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
             blockId: destination.id,
             text: block.text,
             styleId: block.styleId ?? null,
-            ...(statedNumbering !== undefined && { numbering: statedNumbering }),
+            ...(statedNumbering !== undefined && {
+              numbering: statedNumbering,
+            }),
           },
         ],
       };
@@ -240,7 +262,12 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
         ? {
             status: "planned",
             operations: [
-              { id: nextOperationId(), type: "formatRange", range, formatting: step.formatting },
+              {
+                id: nextOperationId(),
+                type: "formatRange",
+                range,
+                formatting: step.formatting,
+              },
             ],
           }
         : { status: "unresolved", reason: "range-out-of-bounds" };
@@ -264,7 +291,13 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
       return block.table
         ? {
             status: "planned",
-            operations: [{ id: nextOperationId(), type: "deleteTableRow", blockId: block.id }],
+            operations: [
+              {
+                id: nextOperationId(),
+                type: "deleteTableRow",
+                blockId: block.id,
+              },
+            ],
           }
         : { status: "unresolved", reason: "block-not-in-table" };
     case "editTableCell":
@@ -272,7 +305,12 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
         ? {
             status: "planned",
             operations: [
-              { id: nextOperationId(), type: "replaceBlock", blockId: block.id, text: step.text },
+              {
+                id: nextOperationId(),
+                type: "replaceBlock",
+                blockId: block.id,
+                text: step.text,
+              },
             ],
           }
         : { status: "unresolved", reason: "block-not-in-table" };
@@ -289,7 +327,9 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
 export const applyEditScript = async (
   base: ArrayBuffer,
   script: EditScript,
-): Promise<Result<EditScriptResult, CompareDocxParseError | CompareDocxSerializeError>> => {
+): Promise<
+  Result<EditScriptResult, CompareDocxParseError | CompareDocxSerializeError>
+> => {
   const parsed = await Result.tryPromise({
     try: async () => await FolioDocxReviewer.fromBuffer(base),
     catch: (cause) =>
@@ -352,7 +392,10 @@ export const applyEditScript = async (
   const serialized = await Result.tryPromise({
     try: async () => await reviewer.toBuffer(),
     catch: (cause) =>
-      compareDocxSerializeError("The edit script's target document could not be serialized", cause),
+      compareDocxSerializeError(
+        "The edit script's target document could not be serialized",
+        cause,
+      ),
   });
   return serialized.isErr()
     ? Result.err(serialized.error)

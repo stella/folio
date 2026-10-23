@@ -1,23 +1,24 @@
 import type { Node as PMNode } from "prosemirror-model";
-import type { SectionProperties } from "../../types/document";
+
 import type { NumberingMap } from "../../docx/numberingParser";
+import { resolveParagraphNumbering } from "../../docx/numberingReference";
+import type { SectionProperties } from "../../types/document";
+import { expectParagraphAttrs } from "../attrs";
+import { rejectedListRenderingPatch } from "../listRendering";
 import {
-  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumbering,
   paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
 } from "../numberingAttr";
-import { resolveParagraphNumbering } from "../../docx/numberingReference";
-import { expectParagraphAttrs } from "../attrs";
-import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
-import { rejectedListRenderingPatch } from "../listRendering";
-import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
 import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
 import type { RunStyleResolver } from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
+import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
+import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
 import {
-  removeParagraphPropertyChanges,
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
+  removeParagraphPropertyChanges,
   sectionRejectProperties,
 } from "./propertyChangeScope";
 
@@ -44,17 +45,26 @@ export const resolveParagraphChangeAttrs = ({
   // Process paragraph property changes (w:pPrChange)
   const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
 
-  if (Array.isArray(propertyChanges) && propertyChanges.length > 0 && boundaryCovered) {
+  if (
+    Array.isArray(propertyChanges) &&
+    propertyChanges.length > 0 &&
+    boundaryCovered
+  ) {
     const matchesPropertyChange = (change: ParagraphPropertyChangeAttrs) =>
       revisionSet === null || revisionSet.has(change.info.id);
     if (propertyChanges.some(matchesPropertyChange)) {
       const rejection =
         mode === "reject"
-          ? removeParagraphPropertyChanges(propertyChanges, matchesPropertyChange)
+          ? removeParagraphPropertyChanges(
+              propertyChanges,
+              matchesPropertyChange,
+            )
           : null;
       let remaining: ParagraphPropertyChangeAttrs[];
       if (rejection === null) {
-        remaining = propertyChanges.filter((change) => !matchesPropertyChange(change));
+        remaining = propertyChanges.filter(
+          (change) => !matchesPropertyChange(change),
+        );
       } else if (rejection.type === "unchanged") {
         remaining = propertyChanges;
       } else {
@@ -74,14 +84,18 @@ export const resolveParagraphChangeAttrs = ({
         // run changes the live properties now.
         const currentAttrs = expectParagraphAttrs(node);
         const inheritedAlignment = currentAttrs.alignmentFromStyle;
-        const restoredStyleId = rejection.previousFormatting?.styleId ?? undefined;
-        const sameStyle = restoredStyleId === (currentAttrs.styleId ?? undefined);
+        const restoredStyleId =
+          rejection.previousFormatting?.styleId ?? undefined;
+        const sameStyle =
+          restoredStyleId === (currentAttrs.styleId ?? undefined);
         let previousFormattingFromStyle = sameStyle
           ? currentAttrs._styleResolvedFormatting
           : undefined;
         if (styleResolver) {
           previousFormattingFromStyle =
-            styleResolver.resolveParagraphStyle(restoredStyleId).paragraphFormatting;
+            styleResolver.resolveParagraphStyle(
+              restoredStyleId,
+            ).paragraphFormatting;
         } else if (inheritedAlignment !== undefined) {
           previousFormattingFromStyle = {
             ...previousFormattingFromStyle,
@@ -98,7 +112,8 @@ export const resolveParagraphChangeAttrs = ({
             : paragraphNumberingAttr(resolveParagraphNumbering(styleNumbering));
         const recordedNumbering = rejection.previousFormatting?.numPr;
         const restoredNumPrFromStyle =
-          recordedNumbering?.kind === "reference" || recordedNumbering?.kind === "none"
+          recordedNumbering?.kind === "reference" ||
+          recordedNumbering?.kind === "none"
             ? null
             : inheritedNumbering;
         const effectiveNumbering = effectiveParagraphNumbering(
@@ -108,18 +123,26 @@ export const resolveParagraphChangeAttrs = ({
           }),
         );
         const restoredNumbering =
-          effectiveNumbering === undefined ? null : paragraphNumberingAttr(effectiveNumbering);
+          effectiveNumbering === undefined
+            ? null
+            : paragraphNumberingAttr(effectiveNumbering);
         const restoredFormatting = paragraphRejectOriginalFormatting(
           rejection.previousFormatting,
           node.attrs["_originalFormatting"],
         );
         const indentation = listIndentationProvenancePatch({
-          direct: paragraphIndentationFromFormatting(restoredFormatting ?? undefined),
+          direct: paragraphIndentationFromFormatting(
+            restoredFormatting ?? undefined,
+          ),
           styleFormatting: previousFormattingFromStyle,
-          numberingSource: recordedNumbering?.kind === "reference" ? "paragraph" : "style",
+          numberingSource:
+            recordedNumbering?.kind === "reference" ? "paragraph" : "style",
           numPr:
             restoredNumbering?.kind === "reference"
-              ? { numId: restoredNumbering.numId, ilvl: restoredNumbering.ilvl ?? 0 }
+              ? {
+                  numId: restoredNumbering.numId,
+                  ilvl: restoredNumbering.ilvl ?? 0,
+                }
               : undefined,
           numbering,
         });
@@ -129,7 +152,10 @@ export const resolveParagraphChangeAttrs = ({
         };
         Object.assign(
           nextAttrs,
-          paragraphRejectAttrPatch(rejection.previousFormatting, inheritedFormatting),
+          paragraphRejectAttrPatch(
+            rejection.previousFormatting,
+            inheritedFormatting,
+          ),
           rejectedListRenderingPatch({
             current: expectParagraphAttrs(node),
             previousFormatting: rejection.previousFormatting,
@@ -190,7 +216,9 @@ export const resolveParagraphChangeAttrs = ({
       }
       nextAttrs = nextAttrs ?? { ...node.attrs };
       nextAttrs["_sectionProperties"] =
-        mode === "reject" && Object.keys(restored).length === 0 ? null : restored;
+        mode === "reject" && Object.keys(restored).length === 0
+          ? null
+          : restored;
     }
   }
   return nextAttrs;

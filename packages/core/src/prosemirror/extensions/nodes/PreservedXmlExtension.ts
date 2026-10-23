@@ -54,7 +54,8 @@ export const PreservedXmlExtension = createNodeExtension({
       },
     ],
     toDOM(node) {
-      const { xml, text, level, foldedListNumber } = expectPreservedXmlAttrs(node);
+      const { xml, text, level, foldedListNumber } =
+        expectPreservedXmlAttrs(node);
       // A folded list-number capture writes none of its markup to the DOM, so
       // a copy or a cut carries no hidden field: the element holds nothing
       // the rule above reads, and parses back to nothing.

@@ -10,8 +10,8 @@
 
 import { useCallback, useMemo } from "react";
 
-import { useFolioUI } from "../../ui/folio-ui";
 import { cn } from "../../lib/utils";
+import { useFolioUI } from "../../ui/folio-ui";
 
 // ============================================================================
 // TYPES
@@ -68,11 +68,17 @@ export function ZoomControl({
     Item: SelectItem,
   } = useFolioUI().Select;
 
-  const matchingLevel = levels.find((level) => Math.abs(level.value - value) < 0.001);
-  const displayLabel = matchingLevel ? matchingLevel.label : `${Math.round(value * 100)}%`;
+  const matchingLevel = levels.find(
+    (level) => Math.abs(level.value - value) < 0.001,
+  );
+  const displayLabel = matchingLevel
+    ? matchingLevel.label
+    : `${Math.round(value * 100)}%`;
   // Use the matched preset's exact string so the active item highlights even
   // when `value` is a near-preset float (e.g. 0.9999 from continuous zoom).
-  const selectValue = matchingLevel ? matchingLevel.value.toString() : value.toString();
+  const selectValue = matchingLevel
+    ? matchingLevel.value.toString()
+    : value.toString();
   const handleValueChange = useCallback(
     (newValue: string | null) => {
       if (typeof newValue !== "string") {
@@ -91,7 +97,11 @@ export function ZoomControl({
   );
 
   return (
-    <Select value={selectValue} onValueChange={handleValueChange} disabled={disabled}>
+    <Select
+      value={selectValue}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         size="sm"
         className={cn(

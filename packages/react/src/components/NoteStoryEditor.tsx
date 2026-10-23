@@ -1,21 +1,30 @@
-import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
-/** Thin React surface over core's persistent note-story editor manager. */
-
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
+
+import type { Plugin } from "prosemirror-state";
+/** Thin React surface over core's persistent note-story editor manager. */
+import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
 
-import type { EditorView } from "prosemirror-view";
-import type { Plugin } from "prosemirror-state";
-
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {
   createNoteEditorManager,
   type NoteEditorManager,
   type NoteStoryKey,
 } from "@stll/folio-core/controller/noteEditorManager";
 import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
-import type { Document, StyleDefinitions, Theme } from "@stll/folio-core/types/document";
-import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
+import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
+import type {
+  Document,
+  StyleDefinitions,
+  Theme,
+} from "@stll/folio-core/types/document";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -33,7 +42,11 @@ export type NoteStoryEditorProps = {
   onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
   onActiveChange: (story: NoteStoryKey | null) => void;
   onDocumentChange: (document: Document) => void;
-  onStoryChange: (view: EditorView, docChanged: boolean, selectionChanged: boolean) => void;
+  onStoryChange: (
+    view: EditorView,
+    docChanged: boolean,
+    selectionChanged: boolean,
+  ) => void;
   plugins?: Plugin[];
   suggestionAuthor?: string;
   suggestionModeActive?: boolean;
@@ -74,171 +87,190 @@ const hostStyle: CSSProperties = { padding: "12px 16px", minHeight: 72 };
 const EMPTY_PLUGINS: Plugin[] = [];
 
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools. */
-export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorProps>(
-  function NoteStoryEditor(
-    {
-      document,
-      experimentalSession,
-      getCanonicalApi,
-      onSessionRefusal,
-      onActiveChange,
-      onDocumentChange,
-      onStoryChange,
-      plugins,
-      styles,
-      suggestionAuthor,
-      suggestionModeActive,
-      theme,
-    },
-    ref,
-  ) {
-    const t = useTranslations("folio");
-    const resolvedPlugins = plugins ?? EMPTY_PLUGINS;
-    const isSuggestionModeActive = suggestionModeActive ?? false;
-    const hostRef = useRef<HTMLDivElement>(null);
-    const documentRef = useRef(document);
-    const canonicalApiRef = useRef(getCanonicalApi);
-    const sessionRef = useRef(experimentalSession);
-    const refusalRef = useRef(onSessionRefusal);
-    const stylesRef = useRef(styles);
-    const themeRef = useRef(theme);
-    const pluginsRef = useRef(resolvedPlugins);
-    const onDocumentChangeRef = useRef(onDocumentChange);
-    const onActiveChangeRef = useRef(onActiveChange);
-    const onStoryChangeRef = useRef(onStoryChange);
-    const [active, setActive] = useState<NoteStoryKey | null>(null);
-    const managerRef = useRef<NoteEditorManager | null>(null);
+export const NoteStoryEditor = forwardRef<
+  NoteStoryEditorRef,
+  NoteStoryEditorProps
+>(function NoteStoryEditor(
+  {
+    document,
+    experimentalSession,
+    getCanonicalApi,
+    onSessionRefusal,
+    onActiveChange,
+    onDocumentChange,
+    onStoryChange,
+    plugins,
+    styles,
+    suggestionAuthor,
+    suggestionModeActive,
+    theme,
+  },
+  ref,
+) {
+  const t = useTranslations("folio");
+  const resolvedPlugins = plugins ?? EMPTY_PLUGINS;
+  const isSuggestionModeActive = suggestionModeActive ?? false;
+  const hostRef = useRef<HTMLDivElement>(null);
+  const documentRef = useRef(document);
+  const canonicalApiRef = useRef(getCanonicalApi);
+  const sessionRef = useRef(experimentalSession);
+  const refusalRef = useRef(onSessionRefusal);
+  const stylesRef = useRef(styles);
+  const themeRef = useRef(theme);
+  const pluginsRef = useRef(resolvedPlugins);
+  const onDocumentChangeRef = useRef(onDocumentChange);
+  const onActiveChangeRef = useRef(onActiveChange);
+  const onStoryChangeRef = useRef(onStoryChange);
+  const [active, setActive] = useState<NoteStoryKey | null>(null);
+  const managerRef = useRef<NoteEditorManager | null>(null);
 
-    useEffect(() => {
-      documentRef.current = document;
-      canonicalApiRef.current = getCanonicalApi;
-      sessionRef.current = experimentalSession;
-      refusalRef.current = onSessionRefusal;
-      stylesRef.current = styles;
-      themeRef.current = theme;
-      pluginsRef.current = resolvedPlugins;
-      onDocumentChangeRef.current = onDocumentChange;
-      onActiveChangeRef.current = onActiveChange;
-      onStoryChangeRef.current = onStoryChange;
-      if (managerRef.current === null) {
-        managerRef.current = createNoteEditorManager({
-          getDocument: () => documentRef.current,
-          getHost: () => hostRef.current,
-          getPlugins: () => pluginsRef.current,
-          getStyles: () => stylesRef.current,
-          getTheme: () => themeRef.current,
-          getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
-          getExperimentalSession: () => sessionRef.current,
-          onSessionRefusal: (reason, gap, error) => refusalRef.current?.(reason, gap, error),
-          onTransaction: ({ docChanged, selectionChanged, view }) => {
-            if (docChanged) {
-              const current =
-                canonicalApiRef.current?.()?.getCanonicalDocument() ?? documentRef.current;
-              if (current)
-                onDocumentChangeRef.current(
-                  managerRef.current?.snapshotDocument(current) ?? current,
-                );
-            }
-            onStoryChangeRef.current(view, docChanged, selectionChanged);
-          },
-        });
-      }
-      const manager = managerRef.current;
-      manager.sync();
-      if (active && !manager?.getActive()) {
-        setActive(null);
-        onActiveChangeRef.current(null);
-      }
-    }, [
-      active,
-      document,
-      experimentalSession,
-      getCanonicalApi,
-      onActiveChange,
-      onDocumentChange,
-      onSessionRefusal,
-      onStoryChange,
-      resolvedPlugins,
-      styles,
-      theme,
-    ]);
-
-    useEffect(() => {
-      const manager = managerRef.current;
-      if (!manager) return;
-      for (const story of manager.listStories()) {
-        const view = manager.getView(story);
-        if (view) {
-          setSuggestionMode(isSuggestionModeActive, view.state, view.dispatch, suggestionAuthor);
-        }
-      }
-    }, [isSuggestionModeActive, suggestionAuthor]);
-
-    useEffect(
-      () => () => {
-        managerRef.current?.destroy();
-      },
-      [],
-    );
-
-    const closeEditor = (): void => {
-      managerRef.current?.activate(null);
+  useEffect(() => {
+    documentRef.current = document;
+    canonicalApiRef.current = getCanonicalApi;
+    sessionRef.current = experimentalSession;
+    refusalRef.current = onSessionRefusal;
+    stylesRef.current = styles;
+    themeRef.current = theme;
+    pluginsRef.current = resolvedPlugins;
+    onDocumentChangeRef.current = onDocumentChange;
+    onActiveChangeRef.current = onActiveChange;
+    onStoryChangeRef.current = onStoryChange;
+    if (managerRef.current === null) {
+      managerRef.current = createNoteEditorManager({
+        getDocument: () => documentRef.current,
+        getHost: () => hostRef.current,
+        getPlugins: () => pluginsRef.current,
+        getStyles: () => stylesRef.current,
+        getTheme: () => themeRef.current,
+        getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
+        getExperimentalSession: () => sessionRef.current,
+        onSessionRefusal: (reason, gap, error) =>
+          refusalRef.current?.(reason, gap, error),
+        onTransaction: ({ docChanged, selectionChanged, view }) => {
+          if (docChanged) {
+            const current =
+              canonicalApiRef.current?.()?.getCanonicalDocument() ??
+              documentRef.current;
+            if (current)
+              onDocumentChangeRef.current(
+                managerRef.current?.snapshotDocument(current) ?? current,
+              );
+          }
+          onStoryChangeRef.current(view, docChanged, selectionChanged);
+        },
+      });
+    }
+    const manager = managerRef.current;
+    manager.sync();
+    if (active && !manager?.getActive()) {
       setActive(null);
       onActiveChangeRef.current(null);
-    };
+    }
+  }, [
+    active,
+    document,
+    experimentalSession,
+    getCanonicalApi,
+    onActiveChange,
+    onDocumentChange,
+    onSessionRefusal,
+    onStoryChange,
+    resolvedPlugins,
+    styles,
+    theme,
+  ]);
 
-    useImperativeHandle(ref, () => ({
-      close: closeEditor,
-      getActiveView: () => {
-        const story = managerRef.current?.getActive();
-        return story ? (managerRef.current?.getView(story) ?? null) : null;
-      },
-      open: (story) => {
-        const view = managerRef.current?.activate(story);
-        if (!view) return;
-        setSuggestionMode(isSuggestionModeActive, view.state, view.dispatch, suggestionAuthor);
-        setActive(story);
-        onActiveChangeRef.current(story);
-        requestAnimationFrame(() => view.focus());
-      },
-      snapshotDocument: (current) => managerRef.current?.snapshotDocument(current) ?? current,
-    }));
+  useEffect(() => {
+    const manager = managerRef.current;
+    if (!manager) return;
+    for (const story of manager.listStories()) {
+      const view = manager.getView(story);
+      if (view) {
+        setSuggestionMode(
+          isSuggestionModeActive,
+          view.state,
+          view.dispatch,
+          suggestionAuthor,
+        );
+      }
+    }
+  }, [isSuggestionModeActive, suggestionAuthor]);
 
-    const title = active
-      ? t(
-          active.kind === "footnote"
-            ? "dialogs.footnoteProperties.footnotes"
-            : "dialogs.footnoteProperties.endnotes",
-        )
-      : "";
+  useEffect(
+    () => () => {
+      managerRef.current?.destroy();
+    },
+    [],
+  );
 
-    return (
-      <aside
-        style={{ ...panelStyle, display: active ? "block" : "none" }}
-        aria-label={title}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.preventDefault();
-          event.stopPropagation();
-          closeEditor();
-        }}
-      >
-        <div style={headerStyle}>
-          <span>{title}</span>
-          <button
-            type="button"
-            aria-label={t("common.closeDialog")}
-            onClick={closeEditor}
-            style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer" }}
-          >
-            ×
-          </button>
-        </div>
-        <div ref={hostRef} style={hostStyle} />
-      </aside>
-    );
-  },
-);
+  const closeEditor = (): void => {
+    managerRef.current?.activate(null);
+    setActive(null);
+    onActiveChangeRef.current(null);
+  };
+
+  useImperativeHandle(ref, () => ({
+    close: closeEditor,
+    getActiveView: () => {
+      const story = managerRef.current?.getActive();
+      return story ? (managerRef.current?.getView(story) ?? null) : null;
+    },
+    open: (story) => {
+      const view = managerRef.current?.activate(story);
+      if (!view) return;
+      setSuggestionMode(
+        isSuggestionModeActive,
+        view.state,
+        view.dispatch,
+        suggestionAuthor,
+      );
+      setActive(story);
+      onActiveChangeRef.current(story);
+      requestAnimationFrame(() => view.focus());
+    },
+    snapshotDocument: (current) =>
+      managerRef.current?.snapshotDocument(current) ?? current,
+  }));
+
+  const title = active
+    ? t(
+        active.kind === "footnote"
+          ? "dialogs.footnoteProperties.footnotes"
+          : "dialogs.footnoteProperties.endnotes",
+      )
+    : "";
+
+  return (
+    <aside
+      style={{ ...panelStyle, display: active ? "block" : "none" }}
+      aria-label={title}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        closeEditor();
+      }}
+    >
+      <div style={headerStyle}>
+        <span>{title}</span>
+        <button
+          type="button"
+          aria-label={t("common.closeDialog")}
+          onClick={closeEditor}
+          style={{
+            border: 0,
+            background: "transparent",
+            color: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          ×
+        </button>
+      </div>
+      <div ref={hostRef} style={hostStyle} />
+    </aside>
+  );
+});
 /* eslint-enable prefer-arrow-callback */
 
 NoteStoryEditor.displayName = "NoteStoryEditor";

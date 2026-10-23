@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIEditSnapshot, FolioAIParagraphBlock } from "../ai-edits/types";
+import type {
+  FolioAIBlock,
+  FolioAIEditSnapshot,
+  FolioAIParagraphBlock,
+} from "../ai-edits/types";
+import { alignFolioBlocks } from "../version-comparison";
 import {
   compareContent,
   createContentComparisonWorkSession,
@@ -10,7 +15,6 @@ import type { FolioContentAlignmentStep } from "./content-alignment";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 import { planStoryCompare } from "./plan";
-import { alignFolioBlocks } from "../version-comparison";
 
 const block = (id: string, text: string): FolioContentBlock => ({
   id,
@@ -51,8 +55,14 @@ const tableBlock = ({
   },
 });
 
-const successfulComparison = (base: FolioContentBlock[], revised: FolioContentBlock[]) => {
-  const result = compareContent({ base: { blocks: base }, revised: { blocks: revised } });
+const successfulComparison = (
+  base: FolioContentBlock[],
+  revised: FolioContentBlock[],
+) => {
+  const result = compareContent({
+    base: { blocks: base },
+    revised: { blocks: revised },
+  });
   if (result.isErr()) {
     throw result.error;
   }
@@ -100,7 +110,12 @@ describe("neutral move scope", () => {
       paragraphIndex: 2,
     });
     const base = [
-      tableBlock({ id: "header", text: "Header row", rowIndex: 0, paragraphIndex: 0 }),
+      tableBlock({
+        id: "header",
+        text: "Header row",
+        rowIndex: 0,
+        paragraphIndex: 0,
+      }),
       baseMoved,
       tableBlock({
         id: "anchor-a",
@@ -123,7 +138,12 @@ describe("neutral move scope", () => {
         paragraphIndex: 0,
         containerId: "inserted-cell",
       }),
-      tableBlock({ id: "header", text: "Header row", rowIndex: 1, paragraphIndex: 0 }),
+      tableBlock({
+        id: "header",
+        text: "Header row",
+        rowIndex: 1,
+        paragraphIndex: 0,
+      }),
       tableBlock({
         id: "anchor-a",
         text: "First durable anchor text",
@@ -140,7 +160,9 @@ describe("neutral move scope", () => {
     ];
 
     const comparison = successfulComparison(base, revised);
-    const movedFrom = comparison.events.find(({ type }) => type === "movedFrom");
+    const movedFrom = comparison.events.find(
+      ({ type }) => type === "movedFrom",
+    );
     const movedTo = comparison.events.find(({ type }) => type === "movedTo");
 
     expect(movedFrom).toMatchObject({

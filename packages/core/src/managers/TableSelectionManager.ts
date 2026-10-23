@@ -64,7 +64,9 @@ export function findTableFromClick(
         let tableElement: Element | null = current;
         while (tableElement && tableElement !== container) {
           if (tableElement.tagName === "TABLE") {
-            const tableIndexAttr = tableElement.getAttribute(TABLE_DATA_ATTRIBUTES.TABLE_INDEX);
+            const tableIndexAttr = tableElement.getAttribute(
+              TABLE_DATA_ATTRIBUTES.TABLE_INDEX,
+            );
             if (tableIndexAttr !== null) {
               return {
                 tableIndex: Number.parseInt(tableIndexAttr, 10),
@@ -86,7 +88,10 @@ export function findTableFromClick(
 }
 
 /** Get a table from the document by index. */
-export function getTableFromDocument(doc: Document, tableIndex: number): Table | null {
+export function getTableFromDocument(
+  doc: Document,
+  tableIndex: number,
+): Table | null {
   let currentTableIndex = 0;
   for (const block of doc.package.document.content) {
     if (block.type === "table") {
@@ -130,7 +135,10 @@ export function updateTableInDocument(
 }
 
 /** Delete a table from the document immutably. */
-export function deleteTableFromDocument(doc: Document, tableIndex: number): Document {
+export function deleteTableFromDocument(
+  doc: Document,
+  tableIndex: number,
+): Document {
   let currentTableIndex = 0;
   const newContent = doc.package.document.content.filter((block) => {
     if (block.type === "table") {
@@ -242,7 +250,11 @@ export class TableSelectionManager extends Subscribable<TableSelectionState> {
   }
 
   /** Check if a specific cell is the current selection. */
-  isCellSelected(tableIndex: number, rowIndex: number, columnIndex: number): boolean {
+  isCellSelected(
+    tableIndex: number,
+    rowIndex: number,
+    columnIndex: number,
+  ): boolean {
     const snapshot = this.getSnapshot();
     return (
       snapshot.tableIndex === tableIndex &&
@@ -258,7 +270,8 @@ export class TableSelectionManager extends Subscribable<TableSelectionState> {
    * actions are routed through the toolbar's own handlers and resolve to `noop`.
    */
   handleAction(doc: Document, action: TableAction): TableActionResult {
-    const { context, table, tableIndex, rowIndex, columnIndex } = this.getSnapshot();
+    const { context, table, tableIndex, rowIndex, columnIndex } =
+      this.getSnapshot();
     if (
       context === null ||
       table === null ||

@@ -13,12 +13,15 @@
  * `appendTransaction` runs exactly as it would in the browser).
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { createSuggestionModePlugin, suggestionModeKey } from "./suggestionMode";
+import {
+  createSuggestionModePlugin,
+  suggestionModeKey,
+} from "./suggestionMode";
 
 const schema = new Schema({
   nodes: {
@@ -93,18 +96,32 @@ type DomEvents = Record<string, (view: unknown, event?: unknown) => boolean>;
 function setup(text: string): {
   view: MockView;
   domEvents: DomEvents;
-  handleTextInput: (v: unknown, from: number, to: number, text: string) => boolean;
+  handleTextInput: (
+    v: unknown,
+    from: number,
+    to: number,
+    text: string,
+  ) => boolean;
 } {
   const plugin = createSuggestionModePlugin(true, "TestUser");
-  const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [schema.text(text)]),
+  ]);
   const state = EditorState.create({ doc, plugins: [plugin] });
   const view = makeMockView(
-    state.apply(state.tr.setSelection(TextSelection.create(state.doc, text.length + 1))),
+    state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, text.length + 1)),
+    ),
   );
   // SAFETY: handleDOMEvents and handleTextInput are present on this plugin.
   const props = plugin.props as {
     handleDOMEvents: DomEvents;
-    handleTextInput: (v: unknown, from: number, to: number, text: string) => boolean;
+    handleTextInput: (
+      v: unknown,
+      from: number,
+      to: number,
+      text: string,
+    ) => boolean;
   };
   return {
     view,
@@ -188,7 +205,9 @@ describe("SuggestionMode IME composition", () => {
   test("composing over a selection records the replaced text as a tracked deletion (eigenpal/docx-editor#938)", async () => {
     const { view, domEvents } = setup("Hello World");
     // Select "World" (positions 7..12) and start composing over it.
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 7, 12)));
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 7, 12)),
+    );
 
     domEvents.compositionstart(view);
     // The editor must leave the composing DOM alone. Chromium can emit another
@@ -210,11 +229,15 @@ describe("SuggestionMode IME composition", () => {
 
   test("composition revisions wait for the native final flush queued after compositionend", async () => {
     const { view, domEvents } = setup("Hello World");
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 7, 12)));
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 7, 12)),
+    );
     domEvents.compositionstart(view);
     domEvents.compositionend(view);
     // ProseMirror queues this flush after plugin DOM handlers have returned.
-    queueMicrotask(() => view.dispatch(view.state.tr.insertText("世界", 7, 12)));
+    queueMicrotask(() =>
+      view.dispatch(view.state.tr.insertText("世界", 7, 12)),
+    );
     await Promise.resolve();
     await Promise.resolve();
     expect(view.state.doc.textContent).toBe("Hello World世界");

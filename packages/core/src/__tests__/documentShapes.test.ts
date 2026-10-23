@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
 import { DOCUMENT_SHAPES } from "./documentShapes";
-import { createHarnessState, findTextblock, parseShapeDocument } from "./editorHarness";
+import {
+  createHarnessState,
+  findTextblock,
+  parseShapeDocument,
+} from "./editorHarness";
 
 describe("document shapes", () => {
   test("ids are unique", () => {

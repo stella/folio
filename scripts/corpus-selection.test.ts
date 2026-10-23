@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  CorpusSelectionError,
   corpusFileId,
+  CorpusSelectionError,
   parseOnlySelection,
   selectOnly,
 } from "./lib/corpus-selection";
@@ -14,7 +14,9 @@ const ENTRIES = [
 ];
 
 const select = (patterns: readonly string[]) =>
-  selectOnly({ entries: ENTRIES, patterns, idOf: corpusFileId }).map(corpusFileId);
+  selectOnly({ entries: ENTRIES, patterns, idOf: corpusFileId }).map(
+    corpusFileId,
+  );
 
 describe("parseOnlySelection", () => {
   test("absent means the whole corpus", () => {
@@ -22,7 +24,10 @@ describe("parseOnlySelection", () => {
   });
 
   test("splits a comma-separated list and collapses repeats", () => {
-    expect(parseOnlySelection(["a.docx,b.docx", " a.docx "])).toEqual(["a.docx", "b.docx"]);
+    expect(parseOnlySelection(["a.docx,b.docx", " a.docx "])).toEqual([
+      "a.docx",
+      "b.docx",
+    ]);
   });
 
   test("refuses a flag with nothing in it", () => {
@@ -45,12 +50,14 @@ describe("selectOnly", () => {
   });
 
   test("returns each file once when two patterns select it", () => {
-    expect(select(["apache-poi/test-data/document/moves.docx", "moves"])).toEqual([
-      "apache-poi/test-data/document/moves.docx",
-    ]);
+    expect(
+      select(["apache-poi/test-data/document/moves.docx", "moves"]),
+    ).toEqual(["apache-poi/test-data/document/moves.docx"]);
   });
 
   test("refuses a pattern that matches nothing, so a typo is not an empty run", () => {
-    expect(() => select(["apache-poi", "no-such-file.docx"])).toThrow(CorpusSelectionError);
+    expect(() => select(["apache-poi", "no-such-file.docx"])).toThrow(
+      CorpusSelectionError,
+    );
   });
 });

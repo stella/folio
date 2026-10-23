@@ -50,10 +50,17 @@ describe("table bidiVisual style cascade", () => {
   });
 
   test("direct explicit LTR overrides an RTL table style", () => {
-    const attrs = tableAttrs(tableDocument({ styleId: "RtlTable", bidi: false }));
+    const attrs = tableAttrs(
+      tableDocument({ styleId: "RtlTable", bidi: false }),
+    );
 
     expect(attrs?._resolvedBidi).toBe(false);
-    expect(attrs?._originalFormatting).toEqual({ styleId: "RtlTable", bidi: false });
-    expect(tableBidi(tableDocument({ styleId: "RtlTable", bidi: false }))).toBeUndefined();
+    expect(attrs?._originalFormatting).toEqual({
+      styleId: "RtlTable",
+      bidi: false,
+    });
+    expect(
+      tableBidi(tableDocument({ styleId: "RtlTable", bidi: false })),
+    ).toBeUndefined();
   });
 });

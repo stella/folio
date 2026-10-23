@@ -1,6 +1,11 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
+
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
-import { expectFieldAttrs, expectPreservedXmlAttrs, expectSymbolAttrs } from "./attrs";
+import {
+  expectFieldAttrs,
+  expectPreservedXmlAttrs,
+  expectSymbolAttrs,
+} from "./attrs";
 
 /** Native note-reference labels are navigation anchors, outside searchable text. */
 export const isNoteReferenceText = (node: ProseMirrorNode): boolean =>
@@ -10,7 +15,8 @@ export const isNoteReferenceText = (node: ProseMirrorNode): boolean =>
 export const getInlineDisplayToken = (node: ProseMirrorNode): string | null => {
   if (isNoteReferenceText(node)) return "";
   if (node.type.name === "field") return expectFieldAttrs(node).displayText;
-  if (node.type.name === "preservedXml") return expectPreservedXmlAttrs(node).text;
+  if (node.type.name === "preservedXml")
+    return expectPreservedXmlAttrs(node).text;
   if (node.isText) return node.text ?? "";
   if (node.type.name === "tab") return "\t";
   if (node.type.name === "hardBreak") return "\n";

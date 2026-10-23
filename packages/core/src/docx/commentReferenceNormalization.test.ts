@@ -70,11 +70,18 @@ describe("comment reference normalization", () => {
     if (paragraph?.type !== "paragraph") {
       return;
     }
-    expect(paragraph.content.map((content) => content.type)).toEqual(["run", "commentReference"]);
-    expect(comments[0]?.content[0]?.content.map((content) => content.type)).toEqual(["run"]);
-    expect(headers.get("rIdHeader")?.content[0]?.content.map((content) => content.type)).toEqual(
-      [],
-    );
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "run",
+      "commentReference",
+    ]);
+    expect(
+      comments[0]?.content[0]?.content.map((content) => content.type),
+    ).toEqual(["run"]);
+    expect(
+      headers
+        .get("rIdHeader")
+        ?.content[0]?.content.map((content) => content.type),
+    ).toEqual([]);
   });
 
   test("re-anchors unbalanced valid ranges as point comments", () => {

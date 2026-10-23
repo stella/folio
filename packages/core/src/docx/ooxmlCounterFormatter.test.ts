@@ -51,7 +51,9 @@ describe("formatOoxmlCounter", () => {
 
   test("rejects non-finite internal counters", () => {
     expect(formatOoxmlCounter(Number.NaN, "decimal")).toBe("");
-    expect(formatOoxmlCounter(Number.POSITIVE_INFINITY, "arabicAlpha")).toBe("");
+    expect(formatOoxmlCounter(Number.POSITIVE_INFINITY, "arabicAlpha")).toBe(
+      "",
+    );
   });
 
   test("bounds repeated-letter output for hostile external counter starts", () => {
@@ -103,7 +105,9 @@ test("block parsing renders Arabic numbering formats through the shared formatte
     block.type === "paragraph" ? block.listRendering?.marker : undefined,
   );
   const markerTemplates = blocks.map((block) =>
-    block.type === "paragraph" ? block.listRendering?.markerTemplate : undefined,
+    block.type === "paragraph"
+      ? block.listRendering?.markerTemplate
+      : undefined,
   );
 
   expect(markers).toEqual(["ي\u200c.", "أأ\u200c.", "\u200cغ.", "\u200cأأ."]);

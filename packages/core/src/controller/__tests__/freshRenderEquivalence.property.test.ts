@@ -12,25 +12,30 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { withFakeTextMeasure } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import { schema } from "../../prosemirror/schema";
 import { createEmptyDocument } from "../../utils/createDocument";
 import {
   baseFreshRenderEventKinds,
-  FRESH_RENDER_MUTANT,
   createFreshRenderRig,
+  FRESH_RENDER_MUTANT,
   freshRenderScenarioArbitrary,
-  runFreshRenderScenario,
   type FreshRenderVerdict,
+  runFreshRenderScenario,
 } from "./freshRenderHarness";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
-const scenarios = freshRenderScenarioArbitrary(baseFreshRenderEventKinds<null>());
+const scenarios = freshRenderScenarioArbitrary(
+  baseFreshRenderEventKinds<null>(),
+);
 
-const noStaleCommit = (verdict: FreshRenderVerdict): boolean => verdict.staleCommits.length === 0;
+const noStaleCommit = (verdict: FreshRenderVerdict): boolean =>
+  verdict.staleCommits.length === 0;
 
 const committedIsFresh = (verdict: FreshRenderVerdict): boolean =>
   JSON.stringify(verdict.committed) === JSON.stringify(verdict.fresh);
@@ -53,7 +58,9 @@ describe("fresh-render equivalence", () => {
       schema.node(
         "doc",
         null,
-        paragraphs.map((text) => schema.node("paragraph", null, [schema.text(text, [fontFamily])])),
+        paragraphs.map((text) =>
+          schema.node("paragraph", null, [schema.text(text, [fontFamily])]),
+        ),
       );
     const makeDocument = (altName: string) => {
       const document = createEmptyDocument();
@@ -78,7 +85,10 @@ describe("fresh-render equivalence", () => {
               document: makeDocument(newAlternate),
             });
             rig.edit((state) =>
-              state.tr.insertText(" revised", state.doc.child(0).nodeSize + 1 + 6),
+              state.tr.insertText(
+                " revised",
+                state.doc.child(0).nodeSize + 1 + 6,
+              ),
             );
             rig.tick(100);
             expect(rig.staleCommits).toEqual([]);
@@ -115,7 +125,9 @@ describe("fresh-render equivalence", () => {
   });
 
   describe("oracle self-check against the #1142 mutant", () => {
-    const mutantIsCaught = (oracle: (verdict: FreshRenderVerdict) => boolean): boolean => {
+    const mutantIsCaught = (
+      oracle: (verdict: FreshRenderVerdict) => boolean,
+    ): boolean => {
       let caught = false;
       withFakeTextMeasure(() => {
         const result = fc.check(

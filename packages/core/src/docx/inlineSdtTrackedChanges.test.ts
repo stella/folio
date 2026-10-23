@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { Document, InlineSdt, Paragraph } from "../types/document";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import type { Document, InlineSdt, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
@@ -31,13 +31,25 @@ const reviewedDocument = (): Document => {
                   { type: "run", content: [{ type: "text", text: "Clause " }] },
                   {
                     type: "deletion",
-                    info: { id: 1, author: "Reviewer", date: "2026-07-14T08:00:00Z" },
-                    content: [{ type: "run", content: [{ type: "text", text: "old" }] }],
+                    info: {
+                      id: 1,
+                      author: "Reviewer",
+                      date: "2026-07-14T08:00:00Z",
+                    },
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "old" }] },
+                    ],
                   },
                   {
                     type: "insertion",
-                    info: { id: 2, author: "Reviewer", date: "2026-07-14T08:01:00Z" },
-                    content: [{ type: "run", content: [{ type: "text", text: "new" }] }],
+                    info: {
+                      id: 2,
+                      author: "Reviewer",
+                      date: "2026-07-14T08:01:00Z",
+                    },
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "new" }] },
+                    ],
                   },
                 ],
               },
@@ -70,13 +82,25 @@ const movedDocument = (): Document => {
                 content: [
                   {
                     type: "moveFrom",
-                    info: { id: 3, author: "Reviewer", date: "2026-07-16T08:00:00Z" },
-                    content: [{ type: "run", content: [{ type: "text", text: "old" }] }],
+                    info: {
+                      id: 3,
+                      author: "Reviewer",
+                      date: "2026-07-16T08:00:00Z",
+                    },
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "old" }] },
+                    ],
                   },
                   {
                     type: "moveTo",
-                    info: { id: 4, author: "Reviewer", date: "2026-07-16T08:01:00Z" },
-                    content: [{ type: "run", content: [{ type: "text", text: "new" }] }],
+                    info: {
+                      id: 4,
+                      author: "Reviewer",
+                      date: "2026-07-16T08:01:00Z",
+                    },
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "new" }] },
+                    ],
                   },
                 ],
               },
@@ -112,7 +136,9 @@ const inlineSdtText = (sdt: InlineSdt): string =>
         return content.content;
       }
       if (content.type === "insertion" || content.type === "deletion") {
-        return content.content.flatMap((run) => (run.type === "run" ? run.content : []));
+        return content.content.flatMap((run) =>
+          run.type === "run" ? run.content : [],
+        );
       }
       return [];
     })
@@ -120,7 +146,10 @@ const inlineSdtText = (sdt: InlineSdt): string =>
     .join("");
 
 const parsedInlineSdt = async (buffer: ArrayBuffer): Promise<InlineSdt> => {
-  const parsed = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
+  const parsed = await parseDocx(buffer, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   const paragraph = parsed.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") {
     throw new Error("missing paragraph");
@@ -132,25 +161,34 @@ describe("inline content-control tracked changes", () => {
   test("round-trips wrappers inside w:sdtContent", async () => {
     const buffer = await createDocx(reviewedDocument());
     const xml = await documentXml(buffer);
-    const sdtContent = xml.match(/<w:sdtContent>([\s\S]*?)<\/w:sdtContent>/u)?.at(1) ?? "";
+    const sdtContent =
+      xml.match(/<w:sdtContent>([\s\S]*?)<\/w:sdtContent>/u)?.at(1) ?? "";
 
     expect(sdtContent).toContain("<w:del ");
     expect(sdtContent).toContain("<w:ins ");
 
     const parsed = await parsedInlineSdt(buffer);
-    expect(parsed.content.map((content) => content.type)).toEqual(["run", "deletion", "insertion"]);
+    expect(parsed.content.map((content) => content.type)).toEqual([
+      "run",
+      "deletion",
+      "insertion",
+    ]);
   });
 
   test("round-trips move wrappers inside w:sdtContent", async () => {
     const buffer = await createDocx(movedDocument());
     const xml = await documentXml(buffer);
-    const sdtContent = xml.match(/<w:sdtContent>([\s\S]*?)<\/w:sdtContent>/u)?.at(1) ?? "";
+    const sdtContent =
+      xml.match(/<w:sdtContent>([\s\S]*?)<\/w:sdtContent>/u)?.at(1) ?? "";
 
     expect(sdtContent).toContain("<w:moveFrom ");
     expect(sdtContent).toContain("<w:moveTo ");
 
     const parsed = await parsedInlineSdt(buffer);
-    expect(parsed.content.map((content) => content.type)).toEqual(["moveFrom", "moveTo"]);
+    expect(parsed.content.map((content) => content.type)).toEqual([
+      "moveFrom",
+      "moveTo",
+    ]);
   });
 
   test("accept and reject keep the content control with the correct text", async () => {
@@ -162,7 +200,9 @@ describe("inline content-control tracked changes", () => {
     const accepted = await accepting.toBuffer();
     const acceptedSdt = await parsedInlineSdt(accepted);
     expect(inlineSdtText(acceptedSdt)).toBe("Clause new");
-    expect(acceptedSdt.content.every((content) => content.type === "run")).toBe(true);
+    expect(acceptedSdt.content.every((content) => content.type === "run")).toBe(
+      true,
+    );
 
     const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
     expect(rejecting.getChanges()).toHaveLength(2);
@@ -170,6 +210,8 @@ describe("inline content-control tracked changes", () => {
     const rejected = await rejecting.toBuffer();
     const rejectedSdt = await parsedInlineSdt(rejected);
     expect(inlineSdtText(rejectedSdt)).toBe("Clause old");
-    expect(rejectedSdt.content.every((content) => content.type === "run")).toBe(true);
+    expect(rejectedSdt.content.every((content) => content.type === "run")).toBe(
+      true,
+    );
   });
 });

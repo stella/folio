@@ -16,7 +16,6 @@ import { describe, expect, test } from "bun:test";
 import { TABLE_ALIGNMENTS } from "@stll/docx-core/model";
 
 import { TABLE_JUSTIFICATION_VALUES } from "../types/documentEnumValues";
-
 import {
   serializeTableFormatting,
   serializeTableRowFormatting,
@@ -24,7 +23,8 @@ import {
 import { parseTableProperties, parseTableRowProperties } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const element = (markup: string) => {
   const parsed = parseXmlDocument(markup);
@@ -35,12 +35,14 @@ const element = (markup: string) => {
 };
 
 const parseTableAlignment = (value: string) =>
-  parseTableProperties(element(`<w:tblPr ${WORD_NAMESPACE}><w:jc w:val="${value}"/></w:tblPr>`))
-    ?.justification;
+  parseTableProperties(
+    element(`<w:tblPr ${WORD_NAMESPACE}><w:jc w:val="${value}"/></w:tblPr>`),
+  )?.justification;
 
 const parseRowAlignment = (value: string) =>
-  parseTableRowProperties(element(`<w:trPr ${WORD_NAMESPACE}><w:jc w:val="${value}"/></w:trPr>`))
-    ?.justification;
+  parseTableRowProperties(
+    element(`<w:trPr ${WORD_NAMESPACE}><w:jc w:val="${value}"/></w:trPr>`),
+  )?.justification;
 
 describe("ST_JcTable", () => {
   // `scripts/narrowed-enum-schema-types.test.ts` is what holds the picklist to

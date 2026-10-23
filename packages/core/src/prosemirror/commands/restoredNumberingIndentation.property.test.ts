@@ -1,25 +1,35 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
+import { EditorState } from "prosemirror-state";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { createNumberingMap } from "../../docx/numberingParser";
+import { paragraphFormattingWithAuthoredIndentation } from "../../docx/paragraphPropertySource";
+import { parseDocx } from "../../docx/parser";
+import { createDocx, repackDocx } from "../../docx/rezip";
 import type {
   Document,
   Paragraph,
   ParagraphFormatting,
   StyleDefinitions,
 } from "../../types/document";
-import { EditorState } from "prosemirror-state";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import { parseDocx } from "../../docx/parser";
-import { createDocx } from "../../docx/rezip";
-import { createNumberingMap } from "../../docx/numberingParser";
-import { repackDocx } from "../../docx/rezip";
 import { expectParagraphAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
-import { createDocumentStylesPlugin, getDocumentStyleResolver } from "../plugins/documentStyles";
-import { paragraphFormattingWithAuthoredIndentation } from "../../docx/paragraphPropertySource";
+import {
+  createDocumentStylesPlugin,
+  getDocumentStyleResolver,
+} from "../plugins/documentStyles";
 import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
 
-const CHANGE_INFO = { id: 42, author: "Reviewer", date: "2026-09-01T00:00:00Z" };
+const CHANGE_INFO = {
+  id: 42,
+  author: "Reviewer",
+  date: "2026-09-01T00:00:00Z",
+};
 
 const SCENARIOS = [
   { type: "style-numbering-full" },
@@ -44,7 +54,8 @@ type Indents = {
   restoredLevelFirstLine: number;
 };
 
-const reference = (numId: number) => ({ kind: "reference", numId, ilvl: 0 }) as const;
+const reference = (numId: number) =>
+  ({ kind: "reference", numId, ilvl: 0 }) as const;
 
 const currentNumberingForScenario = ({ type }: Scenario) => {
   switch (type) {
@@ -68,7 +79,9 @@ const makeDocument = (scenario: Scenario, indents: Indents): Document => {
     scenario.type === "resolver-free-style-numbering";
   const styleFormatting: ParagraphFormatting = {
     indentLeft:
-      scenario.type === "resolver-free-remove-numbering" ? indents.oldLevelLeft : indents.styleLeft,
+      scenario.type === "resolver-free-remove-numbering"
+        ? indents.oldLevelLeft
+        : indents.styleLeft,
     ...(scenario.type === "style-numbering-partial" ||
     scenario.type === "resolver-free-remove-numbering"
       ? {}
@@ -95,7 +108,11 @@ const makeDocument = (scenario: Scenario, indents: Indents): Document => {
       previousFormatting = { styleId: "Styled", numPr: reference(1) };
       break;
     case "direct-numbering-zero-left":
-      previousFormatting = { styleId: "Styled", numPr: reference(1), indentLeft: 0 };
+      previousFormatting = {
+        styleId: "Styled",
+        numPr: reference(1),
+        indentLeft: 0,
+      };
       break;
     case "direct-numbering-direct-first-line":
       previousFormatting = {
@@ -105,7 +122,10 @@ const makeDocument = (scenario: Scenario, indents: Indents): Document => {
       };
       break;
     case "style-numbering-level-only":
-      previousFormatting = { styleId: "Styled", numPr: { kind: "levelOnly", ilvl: 0 } };
+      previousFormatting = {
+        styleId: "Styled",
+        numPr: { kind: "levelOnly", ilvl: 0 },
+      };
       break;
     case "resolver-free-remove-numbering":
       previousFormatting = { styleId: "Styled" };
@@ -185,7 +205,10 @@ const makeDocument = (scenario: Scenario, indents: Indents): Document => {
   };
 };
 
-const resolveAndRoundtrip = async (scenario: Scenario, indents: Indents): Promise<void> => {
+const resolveAndRoundtrip = async (
+  scenario: Scenario,
+  indents: Indents,
+): Promise<void> => {
   const source = makeDocument(scenario, indents);
   const parsed = await parseDocx(await createDocx(source));
   const doc = toProseDoc(parsed);
@@ -204,19 +227,27 @@ const resolveAndRoundtrip = async (scenario: Scenario, indents: Indents): Promis
     boundaryCovered: true,
     mode: "reject",
     revisionSet: null,
-    styleResolver: useResolver ? (getDocumentStyleResolver(state) ?? null) : null,
-    numbering: parsed.package.numbering ? createNumberingMap(parsed.package.numbering) : null,
+    styleResolver: useResolver
+      ? (getDocumentStyleResolver(state) ?? null)
+      : null,
+    numbering: parsed.package.numbering
+      ? createNumberingMap(parsed.package.numbering)
+      : null,
   });
   expect(patch).not.toBeNull();
-  if (patch === null) throw new Error("Expected paragraph property restoration");
+  if (patch === null)
+    throw new Error("Expected paragraph property restoration");
 
   const restored = node.type.create({ ...node.attrs, ...patch }, node.content);
   const outputDoc = doc.type.create(doc.attrs, [restored]);
-  const saved = fromProseDoc(outputDoc, parsed, { stylesheetSource: { type: "package" } });
+  const saved = fromProseDoc(outputDoc, parsed, {
+    stylesheetSource: { type: "package" },
+  });
   const reopened = await parseDocx(await repackDocx(saved));
   const reopenedParagraph = reopened.package.document.content.at(0);
   expect(reopenedParagraph?.type).toBe("paragraph");
-  if (reopenedParagraph?.type !== "paragraph") throw new Error("Expected a paragraph after save");
+  if (reopenedParagraph?.type !== "paragraph")
+    throw new Error("Expected a paragraph after save");
   const reopenedAttrs = expectParagraphAttrs(toProseDoc(reopened).child(0));
   const restoredAttrs = expectParagraphAttrs(restored);
   expect(restoredAttrs.indentLeft).toEqual(reopenedAttrs.indentLeft);
@@ -231,28 +262,41 @@ const resolveAndRoundtrip = async (scenario: Scenario, indents: Indents): Promis
     case "style-numbering-level-only":
       expect(restoredAttrs.numPr).toEqual({ kind: "levelOnly", ilvl: 0 });
       expect(restoredAttrs.numPrFromStyle).toEqual(reference(1));
-      expect(reopenedParagraph.formatting?.numPr).toEqual({ kind: "levelOnly", ilvl: 0 });
-      expect(reopenedParagraph.formatting?.numPrFromStyle).toEqual(reference(1));
+      expect(reopenedParagraph.formatting?.numPr).toEqual({
+        kind: "levelOnly",
+        ilvl: 0,
+      });
+      expect(reopenedParagraph.formatting?.numPrFromStyle).toEqual(
+        reference(1),
+      );
       expect(reopenedAttrs.indentLeft).toBe(indents.styleLeft);
       expect(reopenedAttrs.indentFirstLine).toBe(indents.styleFirstLine);
       break;
     case "style-numbering-partial":
       expect(reopenedAttrs.indentLeft).toBe(indents.styleLeft);
-      expect(reopenedAttrs.indentFirstLine).toBe(indents.restoredLevelFirstLine);
+      expect(reopenedAttrs.indentFirstLine).toBe(
+        indents.restoredLevelFirstLine,
+      );
       break;
     case "direct-numbering-full":
       expect(reopenedAttrs.indentLeft).toBe(indents.restoredLevelLeft);
-      expect(reopenedAttrs.indentFirstLine).toBe(indents.restoredLevelFirstLine);
+      expect(reopenedAttrs.indentFirstLine).toBe(
+        indents.restoredLevelFirstLine,
+      );
       break;
     case "direct-numbering-zero-left":
       expect(reopenedAttrs.indentLeft).toBe(0);
-      expect(reopenedAttrs.indentFirstLine).toBe(indents.restoredLevelFirstLine);
+      expect(reopenedAttrs.indentFirstLine).toBe(
+        indents.restoredLevelFirstLine,
+      );
       expect(reopenedParagraph.formatting?.indentLeft).toBe(0);
       break;
     case "direct-numbering-direct-first-line":
       expect(reopenedAttrs.indentLeft).toBe(indents.restoredLevelLeft);
       expect(reopenedAttrs.indentFirstLine).toBe(indents.styleFirstLine);
-      expect(reopenedParagraph.formatting?.indentFirstLine).toBe(indents.styleFirstLine);
+      expect(reopenedParagraph.formatting?.indentFirstLine).toBe(
+        indents.styleFirstLine,
+      );
       break;
     case "resolver-free-remove-numbering":
       expect(attrs["_styleResolvedFormatting"]).toMatchObject({
@@ -262,18 +306,23 @@ const resolveAndRoundtrip = async (scenario: Scenario, indents: Indents): Promis
       expect(reopenedAttrs.indentLeft).toBe(indents.oldLevelLeft);
       expect(reopenedAttrs.indentFirstLine).toBeUndefined();
       expect(
-        paragraphFormattingWithAuthoredIndentation(reopenedParagraph)?.indentLeft,
+        paragraphFormattingWithAuthoredIndentation(reopenedParagraph)
+          ?.indentLeft,
       ).toBeUndefined();
       expect(
-        paragraphFormattingWithAuthoredIndentation(reopenedParagraph)?.indentFirstLine,
+        paragraphFormattingWithAuthoredIndentation(reopenedParagraph)
+          ?.indentFirstLine,
       ).toBeUndefined();
       break;
     case "resolver-free-change-numbering":
       expect(reopenedAttrs.numPr).toEqual(reference(1));
       expect(reopenedAttrs.indentLeft).toBe(indents.restoredLevelLeft);
-      expect(reopenedAttrs.indentFirstLine).toBe(indents.restoredLevelFirstLine);
+      expect(reopenedAttrs.indentFirstLine).toBe(
+        indents.restoredLevelFirstLine,
+      );
       expect(
-        paragraphFormattingWithAuthoredIndentation(reopenedParagraph)?.indentLeft,
+        paragraphFormattingWithAuthoredIndentation(reopenedParagraph)
+          ?.indentLeft,
       ).toBeUndefined();
       break;
     case "resolver-free-style-numbering":

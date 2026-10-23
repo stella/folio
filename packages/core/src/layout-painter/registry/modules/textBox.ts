@@ -2,8 +2,8 @@
  * Text-box feature module — renders `TextBoxFragment`.
  */
 
-import { renderTextBoxFragment } from "../../renderTextBox";
 import { renderNestedTable } from "../../renderTable";
+import { renderTextBoxFragment } from "../../renderTextBox";
 import type { FeatureModule } from "../types";
 
 export const textBoxModule: FeatureModule<"textBox"> = {

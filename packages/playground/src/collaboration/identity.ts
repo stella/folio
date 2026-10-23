@@ -33,7 +33,8 @@ export type CollabUser = {
 
 const STORAGE_KEY = "folio-playground-collab-user";
 
-const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
+const pick = <T>(arr: readonly T[]): T =>
+  arr[Math.floor(Math.random() * arr.length)]!;
 
 export const loadOrCreateUser = (): CollabUser => {
   try {

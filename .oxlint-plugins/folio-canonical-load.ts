@@ -2,7 +2,10 @@
 // Canonical loads must use the shared transport owner.
 type AstNode = Record<string, unknown> & { type: string };
 type RuleContext = {
-  report: (descriptor: { node: unknown; messageId: "canonicalLoadOwner" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "canonicalLoadOwner";
+  }) => void;
 };
 
 const FUNCTION_TYPES = new Set([
@@ -20,7 +23,10 @@ const EXPRESSION_WRAPPERS = new Set([
 ]);
 
 const isAstNode = (value: unknown): value is AstNode =>
-  typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  typeof value.type === "string";
 
 const unwrap = (value: unknown): AstNode | null => {
   if (!isAstNode(value)) return null;
@@ -30,7 +36,9 @@ const unwrap = (value: unknown): AstNode | null => {
 
 const identifierName = (value: unknown): string | null => {
   const node = unwrap(value);
-  return node?.type === "Identifier" && typeof node["name"] === "string" ? node["name"] : null;
+  return node?.type === "Identifier" && typeof node["name"] === "string"
+    ? node["name"]
+    : null;
 };
 
 const propertyName = (value: unknown): string | null => {
@@ -43,7 +51,10 @@ const propertyName = (value: unknown): string | null => {
     : null;
 };
 
-const visitChildren = (node: AstNode, visit: (child: AstNode) => void): void => {
+const visitChildren = (
+  node: AstNode,
+  visit: (child: AstNode) => void,
+): void => {
   for (const [key, value] of Object.entries(node)) {
     if (SKIP_KEYS.has(key)) continue;
     if (Array.isArray(value)) {
@@ -70,13 +81,17 @@ const aliasKind = (
   }
   if (node.type === "CallExpression") {
     const callee = unwrap(node["callee"]);
-    if (propertyName(callee) === "bind" && aliasKind(callee?.["object"], aliases) === "load")
+    if (
+      propertyName(callee) === "bind" &&
+      aliasKind(callee?.["object"], aliases) === "load"
+    )
       return "load";
     return null;
   }
   const property = propertyName(node);
   if (property === "__folioCanonical") return "bridge";
-  if (property === "load" && aliasKind(node["object"], aliases) === "bridge") return "load";
+  if (property === "load" && aliasKind(node["object"], aliases) === "bridge")
+    return "load";
   return null;
 };
 
@@ -148,7 +163,8 @@ const checkCanonicalLoads = (program: AstNode, context: RuleContext): void => {
       if (FUNCTION_TYPES.has(node.type)) {
         shadowBindings(node["id"], scope);
         const params = node["params"];
-        if (Array.isArray(params)) for (const param of params) shadowBindings(param, scope);
+        if (Array.isArray(params))
+          for (const param of params) shadowBindings(param, scope);
       }
       visitChildren(node, (child) => visit(child, scope));
       return;

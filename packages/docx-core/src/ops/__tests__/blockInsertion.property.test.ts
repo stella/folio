@@ -2,23 +2,30 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import {
-  paragraphNumberingReference,
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import {
   type BlockContent,
   type Document,
   type Paragraph,
+  paragraphNumberingReference,
 } from "../../model/document";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
 import { endsItsContainer, storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { revisionIdDemand } from "../plan";
 import {
   DOCUMENT_OP_TYPES,
-  OP_STORIES,
-  REVISION_DECISIONS,
   type DocumentOp,
   type InsertBlocksOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
   type RevisionDecision,
 } from "../types";
 
@@ -46,7 +53,10 @@ const undo = (applied: AppliedDocumentOp) => {
 
 const paragraphArbitrary = fc
   .record({
-    text: fc.string({ unit: fc.constantFrom("a", "b", " ", "ž", "😀"), maxLength: 16 }),
+    text: fc.string({
+      unit: fc.constantFrom("a", "b", " ", "ž", "😀"),
+      maxLength: 16,
+    }),
     alignment: fc.constantFrom("start", "end", "center"),
     bold: fc.boolean(),
     listed: fc.boolean(),
@@ -57,12 +67,20 @@ const paragraphArbitrary = fc
         type: "paragraph",
         formatting: {
           alignment,
-          ...(listed ? { numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }) } : {}),
+          ...(listed
+            ? { numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }) }
+            : {}),
         },
         content:
           text === ""
             ? []
-            : [{ type: "run", formatting: { bold }, content: [{ type: "text", text }] }],
+            : [
+                {
+                  type: "run",
+                  formatting: { bold },
+                  content: [{ type: "text", text }],
+                },
+              ],
       }) satisfies Paragraph,
   );
 
@@ -75,7 +93,10 @@ const wrap = (
       return content;
     case "cell":
       return [
-        { type: "table", rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }] },
+        {
+          type: "table",
+          rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }],
+        },
       ];
     case "sdt":
       return [{ type: "blockSdt", properties: {}, content }];
@@ -97,10 +118,13 @@ const wrap = (
 
 const caseArbitrary = fc.record({
   originals: fc.array(paragraphArbitrary, { minLength: 2, maxLength: 4 }),
-  batches: fc.array(fc.array(paragraphArbitrary, { minLength: 1, maxLength: 3 }), {
-    minLength: 1,
-    maxLength: 3,
-  }),
+  batches: fc.array(
+    fc.array(paragraphArbitrary, { minLength: 1, maxLength: 3 }),
+    {
+      minLength: 1,
+      maxLength: 3,
+    },
+  ),
   container: fc.constantFrom("body", "cell", "sdt", "customXml"),
   after: fc.boolean(),
 });
@@ -113,9 +137,15 @@ test("block insertion satisfies L1–L7 and idempotent review", () => {
           paraId: (index + 1).toString(16).padStart(8, "0"),
         }),
       );
-      const outside: Paragraph = { type: "paragraph", paraId: "00000100", content: [] };
+      const outside: Paragraph = {
+        type: "paragraph",
+        paraId: "00000100",
+        content: [],
+      };
       const document: Document = {
-        package: { document: { content: [...wrap(paragraphs, container), outside] } },
+        package: {
+          document: { content: [...wrap(paragraphs, container), outside] },
+        },
       };
       const original = structuredClone(document);
       let trackedDocument = document;
@@ -138,7 +168,10 @@ test("block insertion satisfies L1–L7 and idempotent review", () => {
             date: `2026-02-03T04:05:0${batch}Z`,
           },
           newIds: {
-            revision: Array.from({ length: 16 }, (_, index) => 1001 + batch * 100 + index),
+            revision: Array.from(
+              { length: 16 },
+              (_, index) => 1001 + batch * 100 + index,
+            ),
           },
         } satisfies InsertBlocksOp;
         const tracked = apply(trackedDocument, op);
@@ -150,51 +183,73 @@ test("block insertion satisfies L1–L7 and idempotent review", () => {
         expect(undo(tracked)).toStrictEqual(trackedDocument); // L4
         expect(undo(accepted)).toStrictEqual(tracked.document);
         expect(undo(rejected)).toStrictEqual(tracked.document);
-        expect(apply(structuredClone(trackedDocument), structuredClone(op))).toStrictEqual(tracked); // L5
+        expect(
+          apply(structuredClone(trackedDocument), structuredClone(op)),
+        ).toStrictEqual(tracked); // L5
         const byId = new Map(
-          storyParagraphs(tracked.document.package.document).map(({ paragraph }) => [
-            paragraph.paraId,
-            paragraph,
-          ]),
+          storyParagraphs(tracked.document.package.document).map(
+            ({ paragraph }) => [paragraph.paraId, paragraph],
+          ),
         );
-        for (const { paragraph } of storyParagraphs(trackedDocument.package.document)) {
+        for (const { paragraph } of storyParagraphs(
+          trackedDocument.package.document,
+        )) {
           expect(byId.get(paragraph.paraId)).toBe(paragraph); // L6
         }
         const body = tracked.document.package.document;
         expect(
           storyParagraphs(body).filter(
-            (at) => endsItsContainer(body, at) && at.paragraph.pPrMark !== undefined,
+            (at) =>
+              endsItsContainer(body, at) && at.paragraph.pPrMark !== undefined,
           ),
         ).toEqual([]); // L7
         expect(contractViolation(tracked.document)).toBeUndefined();
         expect(
-          resolve({ ...tracked, document: accepted.document }, REVISION_DECISIONS.ACCEPT).document,
+          resolve(
+            { ...tracked, document: accepted.document },
+            REVISION_DECISIONS.ACCEPT,
+          ).document,
         ).toBe(accepted.document);
         expect(
-          resolve({ ...tracked, document: rejected.document }, REVISION_DECISIONS.REJECT).document,
+          resolve(
+            { ...tracked, document: rejected.document },
+            REVISION_DECISIONS.REJECT,
+          ).document,
         ).toBe(rejected.document);
         const demand = revisionIdDemand(trackedDocument, op);
         if (demand.isErr()) throw demand.error;
         expect(demand.value).toBe(tracked.revisions.length - 1);
         trackedDocument = tracked.document;
-        directDocument = apply(directDocument, { ...op, revision: undefined }).document;
+        directDocument = apply(directDocument, {
+          ...op,
+          revision: undefined,
+        }).document;
         appliedBatches.push(tracked);
         ops.push(op);
       }
       // L3: batch acceptance agrees with direct application; rejection agrees
       // with reverse per-operation review and restores every original identity.
-      const revisions = appliedBatches.flatMap(({ revisions: recorded }) => recorded);
+      const revisions = appliedBatches.flatMap(
+        ({ revisions: recorded }) => recorded,
+      );
       const all = {
         document: trackedDocument,
         revisions,
         inverse: [],
         touched: { modified: [], inserted: [], removed: [] },
       };
-      expect(resolve(all, REVISION_DECISIONS.ACCEPT).document).toStrictEqual(directDocument);
-      expect(resolve(all, REVISION_DECISIONS.REJECT).document).toStrictEqual(document);
+      expect(resolve(all, REVISION_DECISIONS.ACCEPT).document).toStrictEqual(
+        directDocument,
+      );
+      expect(resolve(all, REVISION_DECISIONS.REJECT).document).toStrictEqual(
+        document,
+      );
       let reversed = trackedDocument;
       for (const applied of appliedBatches.toReversed()) {
-        reversed = resolve({ ...applied, document: reversed }, REVISION_DECISIONS.REJECT).document;
+        reversed = resolve(
+          { ...applied, document: reversed },
+          REVISION_DECISIONS.REJECT,
+        ).document;
       }
       expect(reversed).toStrictEqual(document);
       const batch = applyDocumentOps(document, ops);
@@ -203,6 +258,9 @@ test("block insertion satisfies L1–L7 and idempotent review", () => {
       expect(undo(batch.value)).toStrictEqual(document);
       expect(document).toStrictEqual(original);
     }),
-    { numRuns: 1_000, id: "block insertion satisfies L1–L7 and idempotent review" },
+    {
+      numRuns: 1_000,
+      id: "block insertion satisfies L1–L7 and idempotent review",
+    },
   );
 });

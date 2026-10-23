@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { FIXTURES, openReviewer } from "../support/documents.ts";
+import { sequentialGroups } from "../support/metamorphic.ts";
+import {
+  coreBatch,
+  GENERATORS,
+  MODES,
+  supports,
+} from "../support/operations.ts";
 import {
   assertRequestedOutcome,
   capture,
@@ -10,12 +18,14 @@ import {
   modelOf,
   type Row,
 } from "../support/oracle.ts";
-import { sequentialGroups } from "../support/metamorphic.ts";
-import { FIXTURES, openReviewer } from "../support/documents.ts";
-import { coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
 
-type CellLocation = { rowIndex: number; column: number; columnSpan?: number; tableIndex?: number };
+type CellLocation = {
+  rowIndex: number;
+  column: number;
+  columnSpan?: number;
+  tableIndex?: number;
+};
 
 const row = (
   id: string,
@@ -46,17 +56,28 @@ describe("table operation source coordinates", () => {
       if (!operation) continue;
       const pre = await capture(reviewer, "tracked-changes");
       const result = reviewer.applyDocumentOperations(
-        coreBatch([{ ...operation, id: `op-${type}` }], "tracked-changes") as never,
+        coreBatch(
+          [{ ...operation, id: `op-${type}` }],
+          "tracked-changes",
+        ) as never,
         { undefinedReferences: "refuse" },
       );
       if (type !== "deleteTable") continue;
       assert.equal(result.applied.length, 1);
       const acceptedIds = new Set(pre.rows.map(({ id }) => id));
       const outside = pre.liveRows.filter(
-        ({ id, text, table }) => !acceptedIds.has(id) && text.length > 0 && table === undefined,
+        ({ id, text, table }) =>
+          !acceptedIds.has(id) && text.length > 0 && table === undefined,
       );
-      assert.equal(outside.length, 1, "the pinned generator must reach the outside join");
-      assert.ok(pre.comments.length >= 2, "the pinned generator must reach table comments");
+      assert.equal(
+        outside.length,
+        1,
+        "the pinned generator must reach the outside join",
+      );
+      assert.ok(
+        pre.comments.length >= 2,
+        "the pinned generator must reach table comments",
+      );
       await assertRequestedOutcome(
         reviewer,
         pre,
@@ -71,12 +92,19 @@ describe("table operation source coordinates", () => {
   test("table removals retain outside join sources and remove only owned cell comments", () => {
     for (let width = 2; width <= 4; width++) {
       for (let sourceCount = 0; sourceCount <= 3; sourceCount++) {
-        for (const type of ["deleteTable", "deleteTableRow", "deleteTableColumn"] as const) {
-          const outside = Array.from({ length: sourceCount }, (_, index): Row => ({
-            id: `outside-${index}`,
-            text: "Shared ",
-            kind: "paragraph",
-          }));
+        for (const type of [
+          "deleteTable",
+          "deleteTableRow",
+          "deleteTableColumn",
+        ] as const) {
+          const outside = Array.from(
+            { length: sourceCount },
+            (_, index): Row => ({
+              id: `outside-${index}`,
+              text: "Shared ",
+              kind: "paragraph",
+            }),
+          );
           const cells = Array.from({ length: width * 2 }, (_, index) =>
             row(
               `r${Math.floor(index / width)}c${index % width}`,
@@ -86,9 +114,17 @@ describe("table operation source coordinates", () => {
           );
           const first = cells.at(0);
           assert.ok(first);
-          const tail: Row = { id: "tail", text: "Following paragraph.", kind: "paragraph" };
+          const tail: Row = {
+            id: "tail",
+            text: "Following paragraph.",
+            kind: "paragraph",
+          };
           const prefix = outside.map(({ text }) => text).join("");
-          const accepted = [{ ...first, text: prefix + first.text }, ...cells.slice(1), tail];
+          const accepted = [
+            { ...first, text: prefix + first.text },
+            ...cells.slice(1),
+            tail,
+          ];
           const model = modelOf(accepted, [...outside, ...cells, tail]);
           model.mode = "tracked-changes";
           // Either the joined destination or a sibling cell may anchor the removal.
@@ -113,7 +149,10 @@ describe("table operation source coordinates", () => {
           const following = [...keptCells, tail];
           const next = following.at(0);
           assert.ok(next);
-          const expected = [{ ...next, text: prefix + next.text }, ...following.slice(1)];
+          const expected = [
+            { ...next, text: prefix + next.text },
+            ...following.slice(1),
+          ];
           assert.deepEqual(
             compareWithModel(model, expected),
             [],
@@ -126,7 +165,12 @@ describe("table operation source coordinates", () => {
               ),
             );
           }
-          const cellComment = { id: 1, text: "Cell comment", anchor: "Shared", blockId: first.id };
+          const cellComment = {
+            id: 1,
+            text: "Cell comment",
+            anchor: "Shared",
+            blockId: first.id,
+          };
           const sourceComment = {
             id: 2,
             text: "Outside comment",
@@ -134,13 +178,24 @@ describe("table operation source coordinates", () => {
             blockId: first.id,
           };
           const outsideFirst = outside.at(0);
-          const before = outsideFirst ? [cellComment, sourceComment] : [cellComment];
+          const before = outsideFirst
+            ? [cellComment, sourceComment]
+            : [cellComment];
           const liveBefore = outsideFirst
             ? [cellComment, { ...sourceComment, blockId: outsideFirst.id }]
             : before;
-          const after = outsideFirst ? [{ ...sourceComment, blockId: next.id }] : [];
+          const after = outsideFirst
+            ? [{ ...sourceComment, blockId: next.id }]
+            : [];
           assert.deepEqual(
-            compareComments(model, before, after, following, liveBefore, "tracked-changes"),
+            compareComments(
+              model,
+              before,
+              after,
+              following,
+              liveBefore,
+              "tracked-changes",
+            ),
             [],
           );
           assert.ok(
@@ -172,7 +227,10 @@ describe("table operation source coordinates", () => {
     );
     for (const blockId of ["c0", "c1"])
       expectOperation(model, { type: "deleteTableColumn", blockId });
-    assert.deepEqual(compareWithModel(model, [{ ...last, text: outside.text + last.text }]), []);
+    assert.deepEqual(
+      compareWithModel(model, [{ ...last, text: outside.text + last.text }]),
+      [],
+    );
   });
 
   test("column removal then table removal carries the outside prefix exactly once", () => {
@@ -186,12 +244,24 @@ describe("table operation source coordinates", () => {
     );
     const firstModelRow = model.rows.at(0);
     assert.ok(firstModelRow);
-    assert.equal(model.pendingJoins.get(firstModelRow)?.sources.at(0)?.id, outside.id);
+    assert.equal(
+      model.pendingJoins.get(firstModelRow)?.sources.at(0)?.id,
+      outside.id,
+    );
     expectOperation(model, { type: "deleteTableColumn", blockId: first.id });
-    assert.deepEqual(compareWithModel(model, [{ ...second, text: "Prefix Cell two" }, tail]), []);
+    assert.deepEqual(
+      compareWithModel(model, [{ ...second, text: "Prefix Cell two" }, tail]),
+      [],
+    );
     expectOperation(model, { type: "deleteTable", blockId: second.id });
-    assert.deepEqual(compareWithModel(model, [{ ...tail, text: "Prefix Tail." }]), []);
-    assert.ok(compareWithModel(model, [{ ...tail, text: "Prefix Prefix Tail." }]).length > 0);
+    assert.deepEqual(
+      compareWithModel(model, [{ ...tail, text: "Prefix Tail." }]),
+      [],
+    );
+    assert.ok(
+      compareWithModel(model, [{ ...tail, text: "Prefix Prefix Tail." }])
+        .length > 0,
+    );
   });
 
   test("multi-operation table removals consume each outside join contribution once", () => {
@@ -207,25 +277,36 @@ describe("table operation source coordinates", () => {
       for (let height = 3; height <= 5; height++) {
         for (let sourceCount = 1; sourceCount <= 3; sourceCount++) {
           for (const sequence of sequences) {
-            const sources = Array.from({ length: sourceCount }, (_, index): Row => ({
-              id: `outside-${index}`,
-              text: `Source ${index}. `,
-              kind: "paragraph",
-            }));
+            const sources = Array.from(
+              { length: sourceCount },
+              (_, index): Row => ({
+                id: `outside-${index}`,
+                text: `Source ${index}. `,
+                kind: "paragraph",
+              }),
+            );
             const outsideSource = sources.at(0);
             assert.ok(outsideSource);
             const prefix = sources.map(({ text }) => text).join("");
             const cells = Array.from({ length: width * height }, (_, index) =>
-              row(`r${Math.floor(index / width)}c${index % width}`, `Cell ${index}`, {
-                rowIndex: Math.floor(index / width),
-                column: index % width,
-              }),
+              row(
+                `r${Math.floor(index / width)}c${index % width}`,
+                `Cell ${index}`,
+                {
+                  rowIndex: Math.floor(index / width),
+                  column: index % width,
+                },
+              ),
             );
             const first = cells.at(0);
             assert.ok(first);
             const tail: Row = { id: "tail", text: "Tail.", kind: "paragraph" };
             const model = modelOf(
-              [{ ...first, text: prefix + first.text }, ...cells.slice(1), tail],
+              [
+                { ...first, text: prefix + first.text },
+                ...cells.slice(1),
+                tail,
+              ],
               [...sources, ...cells, tail],
             );
             let kept = cells;
@@ -253,7 +334,10 @@ describe("table operation source coordinates", () => {
             const anchor = kept.at(0);
             assert.ok(anchor);
             expectOperation(model, { type: "deleteTable", blockId: anchor.id });
-            assert.deepEqual(compareWithModel(model, [{ ...tail, text: prefix + tail.text }]), []);
+            assert.deepEqual(
+              compareWithModel(model, [{ ...tail, text: prefix + tail.text }]),
+              [],
+            );
             assert.equal(model.pendingJoins.size, 0);
             assert.deepEqual(
               [...model.preservedJoinPrefixes.keys()],
@@ -277,7 +361,10 @@ describe("table operation source coordinates", () => {
                 [...cellComments, outsideComment],
                 [{ ...outsideComment, blockId: tail.id }],
                 [{ ...tail, text: prefix + tail.text }],
-                [...cellComments, { ...outsideComment, blockId: outsideSource.id }],
+                [
+                  ...cellComments,
+                  { ...outsideComment, blockId: outsideSource.id },
+                ],
                 "tracked-changes",
               ),
               [],
@@ -297,10 +384,15 @@ describe("table operation source coordinates", () => {
       }));
       const cell = row("cell", "Owned cell", { rowIndex: 0, column: 0 });
       const prefix = sources.map(({ text }) => text).join("");
-      const model = modelOf([{ ...cell, text: prefix + cell.text }], [...sources, cell]);
+      const model = modelOf(
+        [{ ...cell, text: prefix + cell.text }],
+        [...sources, cell],
+      );
       expectOperation(model, { type: "deleteTable", blockId: cell.id });
       assert.deepEqual(
-        compareWithModel(model, [{ id: "retained", text: prefix, kind: "paragraph" }]),
+        compareWithModel(model, [
+          { id: "retained", text: prefix, kind: "paragraph" },
+        ]),
         [],
       );
     }
@@ -310,7 +402,10 @@ describe("table operation source coordinates", () => {
     const source: Row = { id: "outside", text: "Prefix ", kind: "paragraph" };
     const cell = row("cell", "Owned cell", { rowIndex: 0, column: 0 });
     const tail: Row = { id: "tail", text: "Tail.", kind: "paragraph" };
-    const model = modelOf([{ ...cell, text: source.text + cell.text }, tail], [source, cell, tail]);
+    const model = modelOf(
+      [{ ...cell, text: source.text + cell.text }, tail],
+      [source, cell, tail],
+    );
     expectOperation(model, {
       type: "replaceInBlock",
       blockId: tail.id,
@@ -318,10 +413,17 @@ describe("table operation source coordinates", () => {
       replace: "Updated tail",
     });
     expectOperation(model, { type: "deleteTable", blockId: cell.id });
-    assert.deepEqual(compareWithModel(model, [{ ...tail, text: "Prefix Updated tail." }]), []);
-    const malformed = modelOf([{ ...cell, text: "Unowned text" }, tail], [source, cell, tail]);
+    assert.deepEqual(
+      compareWithModel(model, [{ ...tail, text: "Prefix Updated tail." }]),
+      [],
+    );
+    const malformed = modelOf(
+      [{ ...cell, text: "Unowned text" }, tail],
+      [source, cell, tail],
+    );
     assert.throws(
-      () => expectOperation(malformed, { type: "deleteTable", blockId: cell.id }),
+      () =>
+        expectOperation(malformed, { type: "deleteTable", blockId: cell.id }),
       /does not reconstruct/u,
     );
   });
@@ -332,7 +434,13 @@ describe("table operation source coordinates", () => {
         const cells: Row[] = [];
         for (let column = 0; column < width;) {
           const columnSpan = rowIndex === 0 && column === 0 ? 2 : 1;
-          cells.push(row(`t0r${rowIndex}c${column}`, "cell", { rowIndex, column, columnSpan }));
+          cells.push(
+            row(`t0r${rowIndex}c${column}`, "cell", {
+              rowIndex,
+              column,
+              columnSpan,
+            }),
+          );
           column += columnSpan;
         }
         return cells;
@@ -344,21 +452,35 @@ describe("table operation source coordinates", () => {
       );
       const operations = [
         { id: "delete-col-0", type: "deleteTableColumn", blockId: "t0r0c0" },
-        { id: "insert-col-last", type: "insertTableColumn", blockId: `t0r0c${width - 1}` },
+        {
+          id: "insert-col-last",
+          type: "insertTableColumn",
+          blockId: `t0r0c${width - 1}`,
+        },
         {
           id: "row",
           type: "insertTableRow",
           blockId: "t0r1c0",
-          cellTexts: Array.from({ length: width }, (_, index) => `cell ${index}`),
+          cellTexts: Array.from(
+            { length: width },
+            (_, index) => `cell ${index}`,
+          ),
         },
         { id: "delete-col-2", type: "deleteTableColumn", blockId: "t0r0c2" },
         { id: "insert-col-tie", type: "insertTableColumn", blockId: "t0r0c0" },
-        { id: "insert-other-table", type: "insertTableColumn", blockId: "t1c0", position: "after" },
+        {
+          id: "insert-other-table",
+          type: "insertTableColumn",
+          blockId: "t1c0",
+          position: "after",
+        },
       ];
       for (const mode of MODES) {
-        const ordered = sequentialGroups({ applied: operations, preRows: rows, mode }).flatMap(
-          (group) => group,
-        );
+        const ordered = sequentialGroups({
+          applied: operations,
+          preRows: rows,
+          mode,
+        }).flatMap((group) => group);
         assert.deepEqual(
           ordered.map(({ id }) => id),
           [
@@ -379,21 +501,30 @@ describe("table operation source coordinates", () => {
     for (let rowCount = 2; rowCount <= 5; rowCount += 1) {
       for (let deletedRow = 0; deletedRow < rowCount; deletedRow += 1) {
         const live = Array.from({ length: rowCount }, (_, rowIndex) => [
-          row(`r${rowIndex}c0`, `Row ${rowIndex} cell 1`, { rowIndex, column: 0 }),
-          row(`r${rowIndex}c1`, `Row ${rowIndex} cell 2`, { rowIndex, column: 1 }),
+          row(`r${rowIndex}c0`, `Row ${rowIndex} cell 1`, {
+            rowIndex,
+            column: 0,
+          }),
+          row(`r${rowIndex}c1`, `Row ${rowIndex} cell 2`, {
+            rowIndex,
+            column: 1,
+          }),
         ]).flat();
         const accepted = live
           .filter((cell) => cell.table?.rowIndex !== deletedRow)
           .map((cell) => {
             assert.ok(cell.table);
             return row(cell.id, cell.text, {
-              rowIndex: cell.table.rowIndex - Number(cell.table.rowIndex > deletedRow),
+              rowIndex:
+                cell.table.rowIndex - Number(cell.table.rowIndex > deletedRow),
               column: cell.table.gridColumnIndex,
             });
           });
         const pending = live.map((cell) => {
           assert.ok(cell.table);
-          return cell.table.rowIndex === deletedRow ? Object.assign({}, cell, { text: "" }) : cell;
+          return cell.table.rowIndex === deletedRow
+            ? Object.assign({}, cell, { text: "" })
+            : cell;
         });
         const model = modelOf(accepted, pending);
         model.mode = "tracked-changes";
@@ -450,7 +581,8 @@ describe("table operation source coordinates", () => {
           for (let sourceColumn = 0; sourceColumn < width; sourceColumn += 1) {
             if ((columnMask & (1 << sourceColumn)) === 0) continue;
             expectOperation(model, {
-              type: edit === "insert" ? "insertTableColumn" : "deleteTableColumn",
+              type:
+                edit === "insert" ? "insertTableColumn" : "deleteTableColumn",
               blockId: `r0c${sourceColumn}`,
               position: "after",
             });
@@ -466,7 +598,10 @@ describe("table operation source coordinates", () => {
             type: "insertTableRow",
             blockId: `r1c${rowAnchorColumn}`,
             position: "after",
-            cellTexts: Array.from({ length: width }, (_, column) => `New cell ${column + 1}`),
+            cellTexts: Array.from(
+              { length: width },
+              (_, column) => `New cell ${column + 1}`,
+            ),
           });
 
           const table = model.tables.tables[0];
@@ -478,7 +613,8 @@ describe("table operation source coordinates", () => {
           const expectedRow: [number, string[]][] = [];
           let finalColumn = 0;
           for (let sourceColumn = 0; sourceColumn < width; sourceColumn += 1) {
-            if (edit === "delete" && (columnMask & (1 << sourceColumn)) !== 0) continue;
+            if (edit === "delete" && (columnMask & (1 << sourceColumn)) !== 0)
+              continue;
             expectedRow.push([finalColumn, [`New cell ${sourceColumn + 1}`]]);
             finalColumn += 1;
             if (edit === "insert" && (columnMask & (1 << sourceColumn)) !== 0) {
@@ -486,7 +622,11 @@ describe("table operation source coordinates", () => {
               finalColumn += 1;
             }
           }
-          assert.deepEqual(actualRow, expectedRow, `${edit}, width ${width}, mask ${columnMask}`);
+          assert.deepEqual(
+            actualRow,
+            expectedRow,
+            `${edit}, width ${width}, mask ${columnMask}`,
+          );
         }
       }
     }

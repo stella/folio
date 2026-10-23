@@ -1,13 +1,9 @@
-import type { Document } from "../model/document";
 import type { Buffer } from "node:buffer";
 
+import type { Document } from "../model/document";
+
 export type LegalDocumentKind =
-  | "agreement"
-  | "letter"
-  | "memo"
-  | "checklist"
-  | "pleading"
-  | "other";
+  "agreement" | "letter" | "memo" | "checklist" | "pleading" | "other";
 
 export type LegalNumberingProfile = "legal" | "none" | "checklist";
 

@@ -1,15 +1,11 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
+
 import {
   NO_PARAGRAPH_NUMBERING,
-  paragraphNumberingReference,
   type ParagraphNumberingOverride,
+  paragraphNumberingReference,
 } from "@stll/docx-core/model";
-import { createEmptyDocument } from "../../utils/createDocument";
-import { LIST_RENDERING_ATTR_KEYS, type ListRenderingAttrKey } from "../listRenderingAttrs";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
-import { paragraphNumberingAttr } from "../numberingAttr";
-import type { ParagraphAttrs } from "../schema/nodes";
 
 import type {
   Paragraph,
@@ -17,6 +13,14 @@ import type {
   Run,
   RunPropertyChange,
 } from "../../types/content";
+import { createEmptyDocument } from "../../utils/createDocument";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import {
+  LIST_RENDERING_ATTR_KEYS,
+  type ListRenderingAttrKey,
+} from "../listRenderingAttrs";
+import { paragraphNumberingAttr } from "../numberingAttr";
+import type { ParagraphAttrs } from "../schema/nodes";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -135,8 +139,9 @@ describe("paragraph propertyChanges PM round-trip", () => {
       },
     };
     const pmDoc = toProseDoc(document as never);
-    const roundtripped = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })
-      .package.document.content[0] as Paragraph | undefined;
+    const roundtripped = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Paragraph | undefined;
 
     expect(roundtripped?.propertyChanges).toEqual([samplePropertyChange]);
   });
@@ -144,7 +149,10 @@ describe("paragraph propertyChanges PM round-trip", () => {
   test.each(historicalRenderingStates)(
     "keeps historical rendering state $state separate from numbering source tiers",
     ({ attrs: renderingAttrs, model: modelRendering }) => {
-      for (const inherited of [undefined, paragraphNumberingReference({ numId: 41, ilvl: 2 })]) {
+      for (const inherited of [
+        undefined,
+        paragraphNumberingReference({ numId: 41, ilvl: 2 }),
+      ]) {
         for (const authored of authoredNumberingStates) {
           const source = createEmptyDocument();
           source.package.document.content = [paragraphWithPropertyChange()];
@@ -154,15 +162,21 @@ describe("paragraph propertyChanges PM round-trip", () => {
           const previousFormatting = {
             ...samplePropertyChange.previousFormatting,
             ...renderingAttrs,
-            numPr: authored === undefined ? null : paragraphNumberingAttr(authored),
-            numPrFromStyle: inherited === undefined ? null : paragraphNumberingAttr(inherited),
+            numPr:
+              authored === undefined ? null : paragraphNumberingAttr(authored),
+            numPrFromStyle:
+              inherited === undefined
+                ? null
+                : paragraphNumberingAttr(inherited),
           };
           const changed = pmDoc.type.create(
             pmDoc.attrs,
             paragraph.type.create(
               {
                 ...paragraph.attrs,
-                _propertyChanges: [{ ...samplePropertyChange, previousFormatting }],
+                _propertyChanges: [
+                  { ...samplePropertyChange, previousFormatting },
+                ],
               },
               paragraph.content,
             ),
@@ -170,7 +184,8 @@ describe("paragraph propertyChanges PM round-trip", () => {
           const restored = fromProseDoc(changed, undefined, {
             stylesheetSource: { type: "package" },
           }).package.document.content.at(0);
-          if (restored?.type !== "paragraph") panic("expected a restored paragraph");
+          if (restored?.type !== "paragraph")
+            panic("expected a restored paragraph");
           expect(restored.propertyChanges).toEqual([
             {
               ...samplePropertyChange,
@@ -178,13 +193,18 @@ describe("paragraph propertyChanges PM round-trip", () => {
                 ...samplePropertyChange.previousFormatting,
                 ...modelRendering,
                 ...(authored === undefined ? {} : { numPr: authored }),
-                ...(inherited === undefined ? {} : { numPrFromStyle: inherited }),
+                ...(inherited === undefined
+                  ? {}
+                  : { numPrFromStyle: inherited }),
               },
             },
           ]);
           for (const key of LIST_RENDERING_ATTR_KEYS) {
             expect(
-              Object.hasOwn(restored.propertyChanges?.at(0)?.previousFormatting ?? {}, key),
+              Object.hasOwn(
+                restored.propertyChanges?.at(0)?.previousFormatting ?? {},
+                key,
+              ),
             ).toBe(Object.hasOwn(modelRendering, key));
           }
         }
@@ -243,8 +263,9 @@ describe("paragraph propertyChanges PM round-trip", () => {
       },
     };
     const pmDoc = toProseDoc(document as never);
-    const roundtripped = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })
-      .package.document.content[0] as Paragraph | undefined;
+    const roundtripped = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Paragraph | undefined;
     // No phantom propertyChanges should be attached.
     expect(roundtripped?.propertyChanges).toBeUndefined();
   });
@@ -280,7 +301,9 @@ describe("run propertyChanges PM round-trip", () => {
 
     const pmDoc = toProseDoc(document as never);
     const text = pmDoc.firstChild?.firstChild;
-    expect(text?.marks.find((mark) => mark.type.name === "runPropertyChange")?.attrs).toEqual({
+    expect(
+      text?.marks.find((mark) => mark.type.name === "runPropertyChange")?.attrs,
+    ).toEqual({
       changes: [sampleRunPropertyChange],
       // Provenance defaults: a parsed run-property change is always a user change.
       provenance: "user",
@@ -318,9 +341,13 @@ describe("run propertyChanges PM round-trip", () => {
       },
     };
 
-    const roundtripped = fromProseDoc(toProseDoc(document as never), undefined, {
-      stylesheetSource: { type: "package" },
-    }).package.document.content.at(0);
+    const roundtripped = fromProseDoc(
+      toProseDoc(document as never),
+      undefined,
+      {
+        stylesheetSource: { type: "package" },
+      },
+    ).package.document.content.at(0);
     const run =
       roundtripped?.type === "paragraph"
         ? roundtripped.content.find((content) => content.type === "run")

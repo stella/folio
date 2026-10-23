@@ -45,14 +45,21 @@ describe("run identity", () => {
     expect(result.ok).toBe(false);
   });
 
-  test.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])("rejects non-safe model identity %p", (id) => {
-    const result = readRunIdentityMarkAttrs(schema.marks.runIdentity.create({ id }));
+  test.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects non-safe model identity %p",
+    (id) => {
+      const result = readRunIdentityMarkAttrs(
+        schema.marks.runIdentity.create({ id }),
+      );
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.issues.map((issue) => issue.path)).toContain("runIdentity.attrs.id");
-    }
-  });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.issues.map((issue) => issue.path)).toContain(
+          "runIdentity.attrs.id",
+        );
+      }
+    },
+  );
 
   test("refuses a remainder entry that is not a resolved name and a string value", () => {
     const result = readRunIdentityMarkAttrs(

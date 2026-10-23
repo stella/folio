@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { getAdjacentFindIndex, getFindEnterAction } from "./findReplaceInteraction";
+import {
+  getAdjacentFindIndex,
+  getFindEnterAction,
+} from "./findReplaceInteraction";
 import type { FindResult } from "./findReplaceUtils";
 
 const emptyResult: FindResult = {

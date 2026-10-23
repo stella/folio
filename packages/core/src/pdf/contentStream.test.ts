@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { collectResources, createContentStream, renderContentStream } from "./contentStream";
 
-const render = (build: (stream: ReturnType<typeof createContentStream>) => void): string => {
+import {
+  collectResources,
+  createContentStream,
+  renderContentStream,
+} from "./contentStream";
+
+const render = (
+  build: (stream: ReturnType<typeof createContentStream>) => void,
+): string => {
   const stream = createContentStream();
   build(stream);
   const parts = stream.parts();
@@ -51,9 +58,9 @@ describe("glyph runs", () => {
 
 describe("operators", () => {
   test("writes colours as fractions of one", () => {
-    expect(render((stream) => stream.setFillColor({ r: 255, g: 0, b: 51, a: 1 }))).toBe(
-      "1 0 0.2 rg\n",
-    );
+    expect(
+      render((stream) => stream.setFillColor({ r: 255, g: 0, b: 51, a: 1 })),
+    ).toBe("1 0 0.2 rg\n");
   });
 
   test("escapes a byte string shown with a simple font", () => {

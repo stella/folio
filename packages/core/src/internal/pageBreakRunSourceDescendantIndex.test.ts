@@ -42,9 +42,15 @@ const observeTraversalRead = <T extends object>({
   new Proxy(node, {
     get: (target, property, receiver) => {
       if (property === observedProperty) {
-        observation.nodeReads.set(label, (observation.nodeReads.get(label) ?? 0) + 1);
+        observation.nodeReads.set(
+          label,
+          (observation.nodeReads.get(label) ?? 0) + 1,
+        );
         if (kind === "run") {
-          observation.runReads.set(label, (observation.runReads.get(label) ?? 0) + 1);
+          observation.runReads.set(
+            label,
+            (observation.runReads.get(label) ?? 0) + 1,
+          );
         }
       }
       return Reflect.get(target, property, receiver);
@@ -56,7 +62,10 @@ const pageBreakRun = (): Run => ({
   content: [{ type: "break", breakType: "page" }],
 });
 
-const pageBreakParagraph = (): Paragraph => ({ type: "paragraph", content: [pageBreakRun()] });
+const pageBreakParagraph = (): Paragraph => ({
+  type: "paragraph",
+  content: [pageBreakRun()],
+});
 
 const textBoxRun = (content: BlockContent[]): Run => ({
   type: "run",
@@ -175,11 +184,19 @@ const nestedSource = (depth: number): NestedSource => {
     const content = [nested];
     ownerContents.push(content);
     if (index % 2 === 0) {
-      nested = observedTableWithCellContent(content, observation, `layer-${String(index)}`);
+      nested = observedTableWithCellContent(
+        content,
+        observation,
+        `layer-${String(index)}`,
+      );
       continue;
     }
     textBoxLayers += 1;
-    nested = observedTextBoxParagraph(content, observation, `layer-${String(index)}`);
+    nested = observedTextBoxParagraph(
+      content,
+      observation,
+      `layer-${String(index)}`,
+    );
   }
 
   return {
@@ -198,10 +215,18 @@ const measureNestedSource = (depth: number) => {
   const index = buildPageBreakRunSourceDescendantIndex(source.content);
 
   expect(source.observation.nodeReads.size).toBe(source.expectedNodeReads);
-  expect([...source.observation.nodeReads.values()].every((count) => count === 1)).toBe(true);
+  expect(
+    [...source.observation.nodeReads.values()].every((count) => count === 1),
+  ).toBe(true);
   expect(source.observation.runReads.size).toBe(source.expectedRunReads);
-  expect([...source.observation.runReads.values()].every((count) => count === 1)).toBe(true);
-  expect(source.ownerContents.every((content) => index.containsPageBreakRun(content))).toBe(true);
+  expect(
+    [...source.observation.runReads.values()].every((count) => count === 1),
+  ).toBe(true);
+  expect(
+    source.ownerContents.every((content) =>
+      index.containsPageBreakRun(content),
+    ),
+  ).toBe(true);
   return {
     nodeReads: source.observation.nodeReads.size,
     runReads: source.observation.runReads.size,
@@ -214,14 +239,21 @@ describe("page-break source descendant index", () => {
     const visitsAtDepth = measureNestedSource(depth);
     const visitsAtDoubleDepth = measureNestedSource(depth * 2);
 
-    expect(visitsAtDoubleDepth.nodeReads - visitsAtDepth.nodeReads).toBe(depth * 3);
-    expect(visitsAtDoubleDepth.runReads - visitsAtDepth.runReads).toBe(depth / 2);
+    expect(visitsAtDoubleDepth.nodeReads - visitsAtDepth.nodeReads).toBe(
+      depth * 3,
+    );
+    expect(visitsAtDoubleDepth.runReads - visitsAtDepth.runReads).toBe(
+      depth / 2,
+    );
   });
 
   test("indexes later and unrelated containers after finding an earlier break", () => {
     const firstContent: BlockContent[] = [pageBreakParagraph()];
     const unrelatedContent: BlockContent[] = [
-      { type: "paragraph", content: [{ type: "run", content: [{ type: "text", text: "safe" }] }] },
+      {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text: "safe" }] }],
+      },
     ];
     const laterContent: BlockContent[] = [pageBreakParagraph()];
     const content: BlockContent[] = [
@@ -270,7 +302,10 @@ describe("page-break source descendant index", () => {
       content: [
         {
           type: "run",
-          content: [{ type: "break", breakType: "page" }, ...textBoxRun([]).content],
+          content: [
+            { type: "break", breakType: "page" },
+            ...textBoxRun([]).content,
+          ],
         },
       ],
     };

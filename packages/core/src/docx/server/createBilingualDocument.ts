@@ -20,20 +20,10 @@
  * independently editable text for a translation row to address.
  */
 
-import { createBookmarkIdAllocator } from "../bookmarkIds";
-import { createNumberingIdAllocator } from "../numberingIds";
-
 import { panic, TaggedError } from "better-result";
+
 import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 
-import {
-  mergeParagraphNumbering,
-  paragraphNumberingReference,
-  paragraphNumberingReferenceId,
-  type ParagraphNumberingOverride,
-} from "../numberingReference";
-import { getParagraphText } from "../paragraphParser";
-import { getRunText } from "../runParser";
 import type {
   AbstractNumbering,
   BlockContent,
@@ -50,13 +40,23 @@ import type {
   TableBorders,
   TableCell,
 } from "../../types/document";
+import { deterministicHexId } from "../../utils/hexId";
+import { createBookmarkIdAllocator } from "../bookmarkIds";
 import {
   type BuiltInStyleIndex,
   createBuiltInStyleIndex,
   resolveHeadingLevel,
 } from "../builtInStyles";
+import { createNumberingIdAllocator } from "../numberingIds";
+import {
+  mergeParagraphNumbering,
+  type ParagraphNumberingOverride,
+  paragraphNumberingReference,
+  paragraphNumberingReferenceId,
+} from "../numberingReference";
+import { getParagraphText } from "../paragraphParser";
 import { cloneParagraphWithoutPropertySource } from "../paragraphPropertySource";
-import { deterministicHexId } from "../../utils/hexId";
+import { getRunText } from "../runParser";
 
 export type BilingualRowKind = "paragraph" | "heading" | "listItem";
 
@@ -144,7 +144,9 @@ export class InvalidBilingualDocumentOptionsError extends TaggedError(
   message: string;
   option: "tableLayout" | "targetStyleSuffix";
 }> {}
-class UneditableBilingualManifestError extends TaggedError("UneditableBilingualManifestError")<{
+class UneditableBilingualManifestError extends TaggedError(
+  "UneditableBilingualManifestError",
+)<{
   message: string;
   missingHandleCount: number;
 }> {}
@@ -177,8 +179,11 @@ const TABLE_BORDERS: Record<BilingualBorders, TableBorders> = {
   },
 };
 
-const isBilingualTableLayout = (value: unknown): value is BilingualTableLayout =>
-  typeof value === "string" && BILINGUAL_TABLE_LAYOUTS.some((layout) => layout === value);
+const isBilingualTableLayout = (
+  value: unknown,
+): value is BilingualTableLayout =>
+  typeof value === "string" &&
+  BILINGUAL_TABLE_LAYOUTS.some((layout) => layout === value);
 
 export function createBilingualDocument(
   source: Document,
@@ -190,7 +195,10 @@ export function createBilingualDocument(
       option: "targetStyleSuffix",
     });
   }
-  if (options.tableLayout !== undefined && !isBilingualTableLayout(options.tableLayout)) {
+  if (
+    options.tableLayout !== undefined &&
+    !isBilingualTableLayout(options.tableLayout)
+  ) {
     throw new InvalidBilingualDocumentOptionsError({
       message: `tableLayout must be one of ${BILINGUAL_TABLE_LAYOUTS.join(", ")}; received ${JSON.stringify(options.tableLayout)}`,
       option: "tableLayout",
@@ -202,8 +210,13 @@ export function createBilingualDocument(
 
   const styles = source.package.styles;
   const numbering = source.package.numbering;
-  const styleById = new Map((styles?.styles ?? []).map((style) => [style.styleId, style]));
-  const builtInStyles = createBuiltInStyleIndex(styleById.values(), styles?.docDefaults);
+  const styleById = new Map(
+    (styles?.styles ?? []).map((style) => [style.styleId, style]),
+  );
+  const builtInStyles = createBuiltInStyleIndex(
+    styleById.values(),
+    styles?.docDefaults,
+  );
 
   const blocks = flattenBlocks(source.package.document.content);
   const cloner = createNumberingCloner({ numbering, styleById, warnings });
@@ -227,9 +240,17 @@ export function createBilingualDocument(
     sectionRows = [];
   };
 
-  const copyParagraph = (paragraph: Paragraph): { copy: Paragraph; ref: BilingualParagraphRef } => {
+  const copyParagraph = (
+    paragraph: Paragraph,
+  ): { copy: Paragraph; ref: BilingualParagraphRef } => {
     const targetParaId = paraIds.mint(paragraph.paraId);
-    const copy = cloneParagraphForTarget(paragraph, targetParaId, styleCloner, cloner, bookmarkIds);
+    const copy = cloneParagraphForTarget(
+      paragraph,
+      targetParaId,
+      styleCloner,
+      cloner,
+      bookmarkIds,
+    );
     return {
       copy,
       ref: {
@@ -270,7 +291,9 @@ export function createBilingualDocument(
       continue;
     }
     const paragraphs = collectTableParagraphs(block)
-      .filter((paragraph) => isTranslatableParagraph(paragraph, options.editableParagraphIds))
+      .filter((paragraph) =>
+        isTranslatableParagraph(paragraph, options.editableParagraphIds),
+      )
       .map((paragraph) => ({
         paraId: paragraph.paraId,
         sourceText: getParagraphText(paragraph),
@@ -303,10 +326,13 @@ export function createBilingualDocument(
       rows.push({
         kind: "table",
         layout: "stacked",
-        rowId: target.paragraphs.at(0)?.targetParaId ?? tableRowHandle(rows.length),
+        rowId:
+          target.paragraphs.at(0)?.targetParaId ?? tableRowHandle(rows.length),
         paragraphs: target.paragraphs,
       });
-      sectionRows.push(buildStackedTableRow({ source: block, target: target.table }));
+      sectionRows.push(
+        buildStackedTableRow({ source: block, target: target.table }),
+      );
       continue;
     }
     tableLayout satisfies never;
@@ -322,7 +348,8 @@ export function createBilingualDocument(
         content: content.map(canonicalizeBlockParagraphFormatting),
       },
       ...(cloner.hasClones() && { numbering: cloner.toDefinitions() }),
-      ...(styleCloner.hasClones() && styles && { styles: styleCloner.toDefinitions(styles) }),
+      ...(styleCloner.hasClones() &&
+        styles && { styles: styleCloner.toDefinitions(styles) }),
     },
   };
 
@@ -335,7 +362,9 @@ export function createBilingualDocument(
 
 type BodyBlock = Exclude<BlockContent, { type: "blockSdt" | "blockCustomXml" }>;
 
-const canonicalizeBlockParagraphFormatting = (block: BlockContent): BlockContent => {
+const canonicalizeBlockParagraphFormatting = (
+  block: BlockContent,
+): BlockContent => {
   if (block.type === "paragraph") {
     const formatting = finalizeParagraphFormatting(block.formatting);
     const paragraph = cloneParagraphWithoutPropertySource(block, {
@@ -357,7 +386,10 @@ const canonicalizeBlockParagraphFormatting = (block: BlockContent): BlockContent
     };
   }
   if (block.type === "blockSdt" || block.type === "blockCustomXml") {
-    return { ...block, content: block.content.map(canonicalizeBlockParagraphFormatting) };
+    return {
+      ...block,
+      content: block.content.map(canonicalizeBlockParagraphFormatting),
+    };
   }
   return block;
 };
@@ -469,7 +501,10 @@ const classifyParagraph = (
 /**
  * The one arm that names a numbering definition after the cascade is folded.
  */
-type NumberingReference = Extract<ParagraphNumberingOverride, { kind: "reference" }>;
+type NumberingReference = Extract<
+  ParagraphNumberingOverride,
+  { kind: "reference" }
+>;
 
 /** The numbering a paragraph renders with after style and direct tiers fold. */
 const effectiveNumPr = (
@@ -477,8 +512,13 @@ const effectiveNumPr = (
   styleById: Map<string, Style>,
 ): NumberingReference | undefined => {
   const styleId = paragraph.formatting?.styleId;
-  const inherited = styleId ? styleNumPr(styleById.get(styleId), styleById) : undefined;
-  const effective = mergeParagraphNumbering(inherited, paragraph.formatting?.numPr);
+  const inherited = styleId
+    ? styleNumPr(styleById.get(styleId), styleById)
+    : undefined;
+  const effective = mergeParagraphNumbering(
+    inherited,
+    paragraph.formatting?.numPr,
+  );
   return effective?.kind === "reference" ? effective : undefined;
 };
 
@@ -529,9 +569,14 @@ const createNumberingCloner = ({
 }: CreateNumberingClonerOptions): NumberingCloner => {
   const abstractNums = numbering?.abstractNums ?? [];
   const nums = numbering?.nums ?? [];
-  const abstractById = new Map(abstractNums.map((item) => [item.abstractNumId, item]));
+  const abstractById = new Map(
+    abstractNums.map((item) => [item.abstractNumId, item]),
+  );
   const numById = new Map(nums.map((item) => [item.numId, item]));
-  const abstractIds = createNumberingIdAllocator("abstract", abstractById.keys());
+  const abstractIds = createNumberingIdAllocator(
+    "abstract",
+    abstractById.keys(),
+  );
   const instanceIds = createNumberingIdAllocator("num", numById.keys());
 
   const clonedAbstract = new Map<number, AbstractNumbering>();
@@ -554,7 +599,11 @@ const createNumberingCloner = ({
       return undefined;
     }
     const resolved = resolveLinkedAbstract(source);
-    const { numStyleLink: _numStyleLink, styleLink: _styleLink, ...rest } = resolved;
+    const {
+      numStyleLink: _numStyleLink,
+      styleLink: _styleLink,
+      ...rest
+    } = resolved;
     const clone: AbstractNumbering = {
       ...rest,
       abstractNumId: abstractIds.next(),
@@ -564,15 +613,22 @@ const createNumberingCloner = ({
     return clone;
   };
 
-  const resolveLinkedAbstract = (abstract: AbstractNumbering): AbstractNumbering => {
+  const resolveLinkedAbstract = (
+    abstract: AbstractNumbering,
+  ): AbstractNumbering => {
     const seen = new Set<number>();
     let current = abstract;
     while (current.numStyleLink && !seen.has(current.abstractNumId)) {
       seen.add(current.abstractNumId);
       const linkedStyle = styleById.get(current.numStyleLink);
-      const linkedNumId = paragraphNumberingReferenceId(linkedStyle?.pPr?.numPr);
-      const linkedNum = linkedNumId === undefined ? undefined : numById.get(linkedNumId);
-      const linkedAbstract = linkedNum ? abstractById.get(linkedNum.abstractNumId) : undefined;
+      const linkedNumId = paragraphNumberingReferenceId(
+        linkedStyle?.pPr?.numPr,
+      );
+      const linkedNum =
+        linkedNumId === undefined ? undefined : numById.get(linkedNumId);
+      const linkedAbstract = linkedNum
+        ? abstractById.get(linkedNum.abstractNumId)
+        : undefined;
       if (!linkedAbstract) {
         warnings.push(
           `Numbering style link "${current.numStyleLink}" on abstractNum ${current.abstractNumId} could not be resolved; the clone keeps the link.`,
@@ -613,7 +669,8 @@ const createNumberingCloner = ({
 
   return {
     cloneNumId,
-    clonedAbstractNumId: (abstractNumId) => clonedAbstract.get(abstractNumId)?.abstractNumId,
+    clonedAbstractNumId: (abstractNumId) =>
+      clonedAbstract.get(abstractNumId)?.abstractNumId,
     hasClones: () => clonedNum.size > 0,
     toDefinitions: () => ({
       abstractNums: [...abstractNums, ...clonedAbstract.values()],
@@ -673,7 +730,9 @@ const createStyleCloner = ({
       ...style,
       styleId: cloneId,
       name: `${style.name ?? style.styleId} (${suffix})`,
-      ...(style.next !== undefined && { next: style.next === styleId ? cloneId : style.next }),
+      ...(style.next !== undefined && {
+        next: style.next === styleId ? cloneId : style.next,
+      }),
       default: false,
       pPr: {
         ...style.pPr,
@@ -690,7 +749,10 @@ const createStyleCloner = ({
   return {
     styleIdFor,
     hasClones: () => clones.size > 0,
-    toDefinitions: (styles) => ({ ...styles, styles: [...styles.styles, ...clones.values()] }),
+    toDefinitions: (styles) => ({
+      ...styles,
+      styles: [...styles.styles, ...clones.values()],
+    }),
   };
 };
 
@@ -713,7 +775,10 @@ const cloneParagraphForTarget = (
         styleId: styleCloner.styleIdFor(formatting.styleId),
       }),
       ...(formatting.numPr?.kind === "reference" && {
-        numPr: { ...formatting.numPr, numId: cloner.cloneNumId(formatting.numPr.numId) },
+        numPr: {
+          ...formatting.numPr,
+          numId: cloner.cloneNumId(formatting.numPr.numId),
+        },
       }),
       ...(formatting.numPrFromStyle?.kind === "reference" && {
         numPrFromStyle: {
@@ -726,7 +791,10 @@ const cloneParagraphForTarget = (
   const cloned = cloneParagraphWithoutPropertySource(paragraph, {
     // Own content nodes: repacking assigns rIds to images and hyperlinks in
     // place, which must not hit one shared node graph twice.
-    content: remapClonedBookmarkIds(structuredClone(paragraph.content), bookmarkIds),
+    content: remapClonedBookmarkIds(
+      structuredClone(paragraph.content),
+      bookmarkIds,
+    ),
     paraId: targetParaId,
     ...(nextFormatting && { formatting: nextFormatting }),
     ...(paragraph.listRendering && {
@@ -754,7 +822,10 @@ const createBookmarkIdMinter = (source: unknown): BookmarkIdMinter => {
       return;
     }
     const record = value as Record<string, unknown>;
-    if (record["type"] === "bookmarkStart" || record["type"] === "bookmarkEnd") {
+    if (
+      record["type"] === "bookmarkStart" ||
+      record["type"] === "bookmarkEnd"
+    ) {
       const id = record["id"];
       if (typeof id === "number") reservedIds.push(id);
     }
@@ -773,7 +844,10 @@ const createBookmarkIdMinter = (source: unknown): BookmarkIdMinter => {
   };
 };
 
-const remapClonedBookmarkIds = <T>(value: T, bookmarkIds: BookmarkIdMinter): T => {
+const remapClonedBookmarkIds = <T>(
+  value: T,
+  bookmarkIds: BookmarkIdMinter,
+): T => {
   const visit = (item: unknown, seen: Set<object>): void => {
     if (typeof item !== "object" || item === null || seen.has(item)) return;
     seen.add(item);
@@ -782,7 +856,10 @@ const remapClonedBookmarkIds = <T>(value: T, bookmarkIds: BookmarkIdMinter): T =
       return;
     }
     const record = item as Record<string, unknown>;
-    if (record["type"] === "bookmarkStart" || record["type"] === "bookmarkEnd") {
+    if (
+      record["type"] === "bookmarkStart" ||
+      record["type"] === "bookmarkEnd"
+    ) {
       const id = record["id"];
       if (typeof id === "number") record["id"] = bookmarkIds.mint(id);
     }
@@ -792,7 +869,10 @@ const remapClonedBookmarkIds = <T>(value: T, bookmarkIds: BookmarkIdMinter): T =
   return value;
 };
 
-const remapListRendering = (rendering: ListRendering, cloner: NumberingCloner): ListRendering => {
+const remapListRendering = (
+  rendering: ListRendering,
+  cloner: NumberingCloner,
+): ListRendering => {
   const clonedAbstract =
     rendering.abstractNumId === undefined
       ? undefined
@@ -860,7 +940,13 @@ const cloneTableForTarget = ({
         return structuredClone(item);
       }
       const targetParaId = paraIds.mint(item.paraId);
-      const copy = cloneParagraphForTarget(item, targetParaId, styleCloner, cloner, bookmarkIds);
+      const copy = cloneParagraphForTarget(
+        item,
+        targetParaId,
+        styleCloner,
+        cloner,
+        bookmarkIds,
+      );
       if (isTranslatableParagraph(item, editableParagraphIds)) {
         paragraphs.push({
           sourceParaId: item.paraId,
@@ -900,8 +986,12 @@ const buildRow = (
     type: "tableRow",
     formatting: { cantSplit: true },
     cells: [
-      buildCell(projectParagraphIntoColumn(left, geometry, textWidth, columnWidth)),
-      buildCell(projectParagraphIntoColumn(right, geometry, textWidth, columnWidth)),
+      buildCell(
+        projectParagraphIntoColumn(left, geometry, textWidth, columnWidth),
+      ),
+      buildCell(
+        projectParagraphIntoColumn(right, geometry, textWidth, columnWidth),
+      ),
     ],
   };
 };
@@ -966,27 +1056,40 @@ const projectParagraphIntoColumn = (
   const scale = columnWidth / sourceWidth;
   const maxSideIndent = Math.max(0, columnWidth - MIN_COLUMN_TEXT_WIDTH_TWIPS);
   let indentLeft = projectSideIndent(geometry.indentLeft, scale, maxSideIndent);
-  let indentRight = projectSideIndent(geometry.indentRight, scale, maxSideIndent);
+  let indentRight = projectSideIndent(
+    geometry.indentRight,
+    scale,
+    maxSideIndent,
+  );
   const indentFirstLine =
     geometry.indentFirstLine === undefined
       ? undefined
       : Math.max(-maxSideIndent, Math.round(geometry.indentFirstLine * scale));
-  const minimumLeftIndent = Math.min(maxSideIndent, Math.max(0, -(indentFirstLine ?? 0)));
+  const minimumLeftIndent = Math.min(
+    maxSideIndent,
+    Math.max(0, -(indentFirstLine ?? 0)),
+  );
   indentLeft = Math.max(indentLeft, minimumLeftIndent);
   const flexibleLeft = indentLeft - minimumLeftIndent;
   const flexibleTotal = flexibleLeft + indentRight;
   const flexibleMaximum = maxSideIndent - minimumLeftIndent;
   if (flexibleTotal > flexibleMaximum) {
-    indentLeft = minimumLeftIndent + Math.round((flexibleLeft / flexibleTotal) * flexibleMaximum);
+    indentLeft =
+      minimumLeftIndent +
+      Math.round((flexibleLeft / flexibleTotal) * flexibleMaximum);
     indentRight = maxSideIndent - indentLeft;
   }
 
   const formatting = finalizeParagraphFormatting({
     ...paragraph.formatting,
-    ...((geometry.indentLeft !== undefined || minimumLeftIndent > 0) && { indentLeft }),
+    ...((geometry.indentLeft !== undefined || minimumLeftIndent > 0) && {
+      indentLeft,
+    }),
     ...(geometry.indentRight !== undefined && { indentRight }),
     ...(indentFirstLine !== undefined && { indentFirstLine }),
-    ...(geometry.hangingIndent !== undefined && { hangingIndent: geometry.hangingIndent }),
+    ...(geometry.hangingIndent !== undefined && {
+      hangingIndent: geometry.hangingIndent,
+    }),
     ...(geometry.tabs !== undefined && {
       tabs: geometry.tabs.map((tab) => ({
         ...tab,
@@ -1005,12 +1108,18 @@ const projectParagraphIntoColumn = (
   return projected;
 };
 
-const projectSideIndent = (value: number | undefined, scale: number, maximum: number): number =>
-  Math.min(Math.max(0, Math.round((value ?? 0) * scale)), maximum);
+const projectSideIndent = (
+  value: number | undefined,
+  scale: number,
+  maximum: number,
+): number => Math.min(Math.max(0, Math.round((value ?? 0) * scale)), maximum);
 
 const buildCell = (paragraph: Paragraph): TableCell => ({
   type: "tableCell",
-  formatting: { width: { value: HALF_WIDTH_PCT, type: "pct" }, verticalAlign: "top" },
+  formatting: {
+    width: { value: HALF_WIDTH_PCT, type: "pct" },
+    verticalAlign: "top",
+  },
   content: [paragraph],
 });
 
@@ -1059,7 +1168,11 @@ const buildStackedTableRow = ({
   ],
 });
 
-const buildTable = (rows: Table["rows"], borders: BilingualBorders, textWidth: number): Table => ({
+const buildTable = (
+  rows: Table["rows"],
+  borders: BilingualBorders,
+  textWidth: number,
+): Table => ({
   type: "table",
   formatting: {
     width: { value: FULL_WIDTH_PCT, type: "pct" },
@@ -1074,11 +1187,13 @@ const buildTable = (rows: Table["rows"], borders: BilingualBorders, textWidth: n
 
 const resolveTextWidthTwips = (doc: Document): number => {
   const section: SectionProperties | undefined =
-    doc.package.document.finalSectionProperties ?? doc.package.document.sections?.at(0)?.properties;
+    doc.package.document.finalSectionProperties ??
+    doc.package.document.sections?.at(0)?.properties;
   if (!section?.pageWidth) {
     return A4_TEXT_WIDTH_TWIPS;
   }
-  const width = section.pageWidth - (section.marginLeft ?? 0) - (section.marginRight ?? 0);
+  const width =
+    section.pageWidth - (section.marginLeft ?? 0) - (section.marginRight ?? 0);
   return width > 0 ? width : A4_TEXT_WIDTH_TWIPS;
 };
 
@@ -1164,7 +1279,10 @@ export function readBilingualDocument(
   editableParagraphIds: ReadonlySet<string>,
 ): BilingualRow[] {
   const styleById = new Map(
-    (document.package.styles?.styles ?? []).map((style) => [style.styleId, style]),
+    (document.package.styles?.styles ?? []).map((style) => [
+      style.styleId,
+      style,
+    ]),
   );
   const builtInStyles = createBuiltInStyleIndex(
     styleById.values(),
@@ -1182,7 +1300,9 @@ export function readBilingualDocument(
         continue;
       }
       if (!right) {
-        const nestedTables = left.content.filter((item): item is Table => item.type === "table");
+        const nestedTables = left.content.filter(
+          (item): item is Table => item.type === "table",
+        );
         const sourceTable = nestedTables.at(0);
         if (!sourceTable) {
           missingHandleCount += 1;
@@ -1222,7 +1342,8 @@ export function readBilingualDocument(
           rows.push({
             kind: "table",
             layout: "stacked",
-            rowId: paragraphs.at(0)?.targetParaId ?? tableRowHandle(rows.length),
+            rowId:
+              paragraphs.at(0)?.targetParaId ?? tableRowHandle(rows.length),
             paragraphs,
           });
           continue;
@@ -1232,7 +1353,9 @@ export function readBilingualDocument(
           continue;
         }
         const paragraphs = collectTableParagraphs(sourceTable)
-          .filter((paragraph) => isTranslatableParagraph(paragraph, editableParagraphIds))
+          .filter((paragraph) =>
+            isTranslatableParagraph(paragraph, editableParagraphIds),
+          )
           .map((paragraph) => ({
             paraId: paragraph.paraId,
             sourceText: getParagraphText(paragraph),
@@ -1254,7 +1377,8 @@ export function readBilingualDocument(
         missingHandleCount += 1;
         continue;
       }
-      const sourceMissing = source.paraId === undefined || !editableParagraphIds.has(source.paraId);
+      const sourceMissing =
+        source.paraId === undefined || !editableParagraphIds.has(source.paraId);
       const targetMissing = !editableParagraphIds.has(target.paraId);
       if (sourceMissing) {
         missingHandleCount += 1;
@@ -1276,7 +1400,8 @@ export function readBilingualDocument(
   }
   if (missingHandleCount > 0) {
     throw new UneditableBilingualManifestError({
-      message: "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
+      message:
+        "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
       missingHandleCount,
     });
   }
@@ -1291,7 +1416,8 @@ const isBilingualTable = (table: Table): boolean => {
     const cells = row.cells;
     if (cells.length === 2) {
       const singleParagraphCells = cells.every(
-        (cell) => cell.content.length === 1 && cell.content[0]?.type === "paragraph",
+        (cell) =>
+          cell.content.length === 1 && cell.content[0]?.type === "paragraph",
       );
       if (!singleParagraphCells) {
         return false;
@@ -1306,7 +1432,9 @@ const isBilingualTable = (table: Table): boolean => {
   return table.rows.length > 0;
 };
 
-const isParagraphWithId = (value: object): value is { type: "paragraph"; paraId: string } =>
+const isParagraphWithId = (
+  value: object,
+): value is { type: "paragraph"; paraId: string } =>
   "type" in value &&
   value.type === "paragraph" &&
   "paraId" in value &&

@@ -20,8 +20,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import type { Document, Style } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -50,7 +52,15 @@ type StylePackage = {
  * already holds it exercises the collision path.
  */
 const styleIdArbitrary = fc.oneof(
-  fc.constantFrom("Normal", "Standard", "Normln", "style0", "Default", "BodyText", "berschrift1"),
+  fc.constantFrom(
+    "Normal",
+    "Standard",
+    "Normln",
+    "style0",
+    "Default",
+    "BodyText",
+    "berschrift1",
+  ),
   fc.stringMatching(/^[A-Za-z][A-Za-z0-9]{0,15}$/u),
 );
 
@@ -100,25 +110,36 @@ const documentFor = ({ styles, defaultIndex }: StylePackage): Document => ({
   },
 });
 
-const styleWithId = (styles: readonly Style[], styleId: string): Style | undefined =>
-  styles.find((style) => style.styleId === styleId);
+const styleWithId = (
+  styles: readonly Style[],
+  styleId: string,
+): Style | undefined => styles.find((style) => style.styleId === styleId);
 
 describe("extracted initial paragraph style (property)", () => {
   test("is always a paragraph style the set contains", () => {
     fc.assert(
       fc.property(stylePackageArbitrary, (stylePackage) => {
-        const styleSet = extractDocumentStyleSet(documentFor(stylePackage), { name: "Extracted" });
+        const styleSet = extractDocumentStyleSet(documentFor(stylePackage), {
+          name: "Extracted",
+        });
 
-        const initial = styleWithId(styleSet.styles.styles, styleSet.initialParagraphStyleId);
+        const initial = styleWithId(
+          styleSet.styles.styles,
+          styleSet.initialParagraphStyleId,
+        );
         expect(initial?.type).toBe("paragraph");
 
         const { styles, defaultIndex } = stylePackage;
         if (defaultIndex !== null) {
-          expect(styleSet.initialParagraphStyleId).toBe(styles[defaultIndex]?.styleId);
+          expect(styleSet.initialParagraphStyleId).toBe(
+            styles[defaultIndex]?.styleId,
+          );
         }
         // Minting a default may add a style; it may never remove one.
         for (const style of styles) {
-          expect(styleWithId(styleSet.styles.styles, style.styleId)?.type).toBe(style.type);
+          expect(styleWithId(styleSet.styles.styles, style.styleId)?.type).toBe(
+            style.type,
+          );
         }
       }),
       propertyConfig({ numRuns: 200 }),

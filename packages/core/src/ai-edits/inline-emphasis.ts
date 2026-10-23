@@ -31,7 +31,10 @@ const MARKERS: readonly { marker: string; bold: boolean; italic: boolean }[] = [
 const isSpace = (ch: string | undefined): boolean =>
   ch === undefined || ch === " " || ch === "\t" || ch === "\n";
 
-const matchMarkerAt = (input: string, at: number): (typeof MARKERS)[number] | undefined =>
+const matchMarkerAt = (
+  input: string,
+  at: number,
+): (typeof MARKERS)[number] | undefined =>
   MARKERS.find((m) => input.startsWith(m.marker, at));
 
 const appendLiteral = (runs: InlineEmphasisRun[], text: string): void => {
@@ -69,7 +72,10 @@ export const parseInlineEmphasisRuns = (input: string): InlineEmphasisRun[] => {
     const closeIdx = input.indexOf(matched.marker, contentStart);
     const content = closeIdx === -1 ? "" : input.slice(contentStart, closeIdx);
     const isSpan =
-      closeIdx !== -1 && content.length > 0 && !isSpace(content[0]) && !isSpace(content.at(-1));
+      closeIdx !== -1 &&
+      content.length > 0 &&
+      !isSpace(content[0]) &&
+      !isSpace(content.at(-1));
 
     if (!isSpan) {
       // Not a real span (no close, or space-flanked): emit the marker's first

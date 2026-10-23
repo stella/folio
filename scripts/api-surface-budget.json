@@ -38,8 +38,8 @@
   "vue": {
     "reportBytes": 57793,
     "reportLines": 1650,
-    "declarationBytes": 267485,
-    "declarationLines": 5489
+    "declarationBytes": 271743,
+    "declarationLines": 5574
   },
   "nuxt": {
     "reportBytes": 442,

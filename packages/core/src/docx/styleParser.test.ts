@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import { serializeStylesXml } from "./serializer/stylesSerializer";
-import { getDefaultParagraphStyle, parseStyleDefinitions, parseStyles } from "./styleParser";
+import {
+  getDefaultParagraphStyle,
+  parseStyleDefinitions,
+  parseStyles,
+} from "./styleParser";
 
-const STYLES_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const STYLES_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 describe("docDefaults presence (#909)", () => {
   test("an empty but present docDefaults parses to a defined object", () => {
@@ -20,7 +25,10 @@ describe("docDefaults presence (#909)", () => {
   });
 
   test("a document with no docDefaults element leaves docDefaults undefined", () => {
-    const defs = parseStyleDefinitions(`<w:styles ${STYLES_NS}></w:styles>`, null);
+    const defs = parseStyleDefinitions(
+      `<w:styles ${STYLES_NS}></w:styles>`,
+      null,
+    );
     expect(defs.docDefaults).toBeUndefined();
   });
 
@@ -149,7 +157,9 @@ describe("style tab leader normalization", () => {
       { position: 1440, alignment: "right", leader: "dot" },
     ]);
 
-    expect(parseStyleDefinitions(serializeStylesXml(parsed), null)).toEqual(parsed);
+    expect(parseStyleDefinitions(serializeStylesXml(parsed), null)).toEqual(
+      parsed,
+    );
   });
 });
 
@@ -368,8 +378,14 @@ describe("table style basedOn merges borders and margins per side", () => {
   });
 
   test("w:tcBorders and w:tcMar keep the sides the child does not state", () => {
-    expect(child?.tcPr?.borders?.left).toMatchObject({ style: "single", size: 8 });
-    expect(child?.tcPr?.borders?.right).toMatchObject({ style: "single", size: 8 });
+    expect(child?.tcPr?.borders?.left).toMatchObject({
+      style: "single",
+      size: 8,
+    });
+    expect(child?.tcPr?.borders?.right).toMatchObject({
+      style: "single",
+      size: 8,
+    });
     expect(child?.tcPr?.margins).toEqual({
       top: { value: 40, type: "dxa" },
       bottom: { value: 30, type: "dxa" },
@@ -377,7 +393,9 @@ describe("table style basedOn merges borders and margins per side", () => {
   });
 
   test("the parent style is left unchanged", () => {
-    expect(styles.get("Parent")?.tblPr?.borders?.top).toMatchObject({ style: "single" });
+    expect(styles.get("Parent")?.tblPr?.borders?.top).toMatchObject({
+      style: "single",
+    });
     expect(styles.get("Parent")?.tblPr?.cellMargins?.left?.value).toBe(108);
   });
 });

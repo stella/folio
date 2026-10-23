@@ -1,7 +1,12 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+
 import { applyDocumentOps, validateOpsDocument } from "@stll/docx-core/ops";
+
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import {
   createCanonicalHeaderFooterOperation,
@@ -20,7 +25,10 @@ const documentWithStories = (): Document => ({
     headers: new Map([
       [
         "rId_new_header_default",
-        { type: "header", content: [{ type: "paragraph", paraId: "00000002", content: [] }] },
+        {
+          type: "header",
+          content: [{ type: "paragraph", paraId: "00000002", content: [] }],
+        },
       ],
     ]),
     footnotes: [
@@ -65,9 +73,12 @@ test("command allocation repairs collisions across stories and invalid identifie
           referenceType: "default",
         });
         expect(operation.story.rId).toBe("rId_new_header_default_2");
-        const applied = applyDocumentOps(document, [{ ...operation, content: allocated }]);
+        const applied = applyDocumentOps(document, [
+          { ...operation, content: allocated },
+        ]);
         expect(applied.isOk()).toBe(true);
-        if (applied.isOk()) expect(validateOpsDocument(applied.value.document).isOk()).toBe(true);
+        if (applied.isOk())
+          expect(validateOpsDocument(applied.value.document).isOk()).toBe(true);
       },
     ),
     propertyConfig(),
@@ -90,9 +101,12 @@ test("removal addresses every explicit binding of a shared header part", () => {
   const applied = applyDocumentOps(document, operations);
   expect(applied.isOk()).toBe(true);
   if (applied.isOk()) {
-    expect(applied.value.document.package.headers?.has("rId_new_header_default")).toBe(false);
     expect(
-      applied.value.document.package.document.finalSectionProperties?.headerReferences,
+      applied.value.document.package.headers?.has("rId_new_header_default"),
+    ).toBe(false);
+    expect(
+      applied.value.document.package.document.finalSectionProperties
+        ?.headerReferences,
     ).toEqual([]);
   }
 });

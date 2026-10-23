@@ -74,10 +74,16 @@ const main = async (): Promise<void> => {
   try {
     const page = await extractor.inspectPage(doc, flags.page);
     const matchesText = flags.text
-      ? createLiteralSearchScope().createLiteralSearch(flags.text.toLocaleLowerCase())
+      ? createLiteralSearchScope().createLiteralSearch(
+          flags.text.toLocaleLowerCase(),
+        )
       : undefined;
     const lines = page.lines
-      .filter((line) => matchesText === undefined || matchesText(line.text.toLocaleLowerCase()))
+      .filter(
+        (line) =>
+          matchesText === undefined ||
+          matchesText(line.text.toLocaleLowerCase()),
+      )
       .map((line) => ({
         index: line.index,
         text: line.text,
@@ -100,13 +106,16 @@ const main = async (): Promise<void> => {
             height: round(span.rect.height),
           },
           fontFamilyRaw: span.fontFamilyRaw,
-          fontSizePx: span.fontSizePx === undefined ? undefined : round(span.fontSizePx),
+          fontSizePx:
+            span.fontSizePx === undefined ? undefined : round(span.fontSizePx),
           fontWeight: span.fontWeight,
           fontStyle: span.fontStyle,
           fontKerning: span.fontKerning,
           letterSpacing: span.letterSpacing,
           canvasAdvanceWidthPx:
-            span.canvasAdvanceWidthPx === undefined ? undefined : round(span.canvasAdvanceWidthPx),
+            span.canvasAdvanceWidthPx === undefined
+              ? undefined
+              : round(span.canvasAdvanceWidthPx),
           fontLoaded: span.fontLoaded,
           textTransform: span.textTransform,
         })),

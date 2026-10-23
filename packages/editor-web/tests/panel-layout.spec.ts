@@ -8,10 +8,10 @@
 import { expect, test } from "@playwright/test";
 
 import {
-  PANEL_LAYOUT_CASES,
   afterPanelDrawersDismissed,
   expectPanelDrawers,
   expectPanelsDoNotOverlap,
+  PANEL_LAYOUT_CASES,
   readPanelState,
   waitForPanels,
 } from "../../../tests/support/panelLayoutAssertions";
@@ -23,7 +23,9 @@ const VIEWPORT_HEIGHT = 900;
 
 for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
   if (!WEBVIEW_WIDTHS.has(width)) continue;
-  test(`webview ${String(width)}px, review ${review}: ${expected.tier} tier`, async ({ page }) => {
+  test(`webview ${String(width)}px, review ${review}: ${expected.tier} tier`, async ({
+    page,
+  }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
@@ -82,7 +84,11 @@ test("panel geometry waits for the first paint when document fonts are delayed",
     });
     await waitForSent(page, { type: "loaded", fileVersion: "delayed-fonts" });
     await expect.poll(() => pendingFonts).toBeGreaterThan(0);
-    const expected = { tier: "medium", outline: "rail", comments: "hidden" } as const;
+    const expected = {
+      tier: "medium",
+      outline: "rail",
+      comments: "hidden",
+    } as const;
     await expect.poll(() => readPanelState(page)).toEqual(expected);
     expect(await page.locator(".layout-page").count()).toBe(0);
 
@@ -100,14 +106,25 @@ test("panel geometry waits for the first paint when document fonts are delayed",
 });
 
 const ZOOMED_WIDTHS = [
-  { width: 1590, expected: { tier: "wide", outline: "column", comments: "column" } },
-  { width: 1100, expected: { tier: "medium", outline: "rail", comments: "column" } },
-  { width: 800, expected: { tier: "narrow", outline: "rail", comments: "drawer" } },
+  {
+    width: 1590,
+    expected: { tier: "wide", outline: "column", comments: "column" },
+  },
+  {
+    width: 1100,
+    expected: { tier: "medium", outline: "rail", comments: "column" },
+  },
+  {
+    width: 800,
+    expected: { tier: "narrow", outline: "rail", comments: "drawer" },
+  },
 ] as const;
 
 for (const { width, expected } of ZOOMED_WIDTHS) {
   for (const review of ["changes-only", "comment-and-changes"] as const) {
-    test(`webview ${String(width)}px at 80% CSS zoom, review ${review}`, async ({ page }) => {
+    test(`webview ${String(width)}px at 80% CSS zoom, review ${review}`, async ({
+      page,
+    }) => {
       const pageErrors: string[] = [];
       page.on("pageerror", (error) => pageErrors.push(error.message));
       await page.setViewportSize({ width, height: 1550 });
@@ -139,8 +156,12 @@ for (const { width, expected } of ZOOMED_WIDTHS) {
       await expectPanelsDoNotOverlap(page, expected);
       await page.getByTestId("toolbar-toggle-ruler").click();
       const rulerAndViewport = await page.evaluate(() => {
-        const ruler = document.querySelector<HTMLElement>('[data-testid="folio-horizontal-ruler"]');
-        const scroll = document.querySelector<HTMLElement>("[data-folio-scroll]");
+        const ruler = document.querySelector<HTMLElement>(
+          '[data-testid="folio-horizontal-ruler"]',
+        );
+        const scroll = document.querySelector<HTMLElement>(
+          "[data-folio-scroll]",
+        );
         if (!ruler || !scroll) return null;
         const rulerBox = ruler.getBoundingClientRect();
         const scrollBox = scroll.getBoundingClientRect();

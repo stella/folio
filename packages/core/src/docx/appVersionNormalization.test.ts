@@ -2,8 +2,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   appVersionInSchemaForm,
   normalizeAppVersionInExtendedProperties,
@@ -64,12 +66,17 @@ describe("normalizeAppVersionInExtendedProperties", () => {
     fc.assert(
       fc.property(fc.string(), (value) => {
         const normalized = normalizeAppVersionInExtendedProperties(
-          extendedProperties(`<AppVersion>${value.replaceAll(/[<&]/gu, "")}</AppVersion>`),
+          extendedProperties(
+            `<AppVersion>${value.replaceAll(/[<&]/gu, "")}</AppVersion>`,
+          ),
         );
-        const written = /<AppVersion>([^<]*)<\/AppVersion>/u.exec(normalized)?.[1] ?? "";
+        const written =
+          /<AppVersion>([^<]*)<\/AppVersion>/u.exec(normalized)?.[1] ?? "";
 
         expect(written).toMatch(SCHEMA_FORM);
-        expect(normalizeAppVersionInExtendedProperties(normalized)).toBe(normalized);
+        expect(normalizeAppVersionInExtendedProperties(normalized)).toBe(
+          normalized,
+        );
       }),
       propertyConfig({ numRuns: 500 }),
     );
@@ -88,9 +95,14 @@ const extendedPropertiesOf = async (buffer: ArrayBuffer): Promise<string> => {
 };
 
 /** A package that states a version the schema form rejects. */
-const packageStatingAppVersion = async (value: string): Promise<ArrayBuffer> => {
+const packageStatingAppVersion = async (
+  value: string,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(EXTENDED_PROPERTIES_PATH, extendedProperties(`<AppVersion>${value}</AppVersion>`));
+  zip.file(
+    EXTENDED_PROPERTIES_PATH,
+    extendedProperties(`<AppVersion>${value}</AppVersion>`),
+  );
   return await zip.generateAsync({ type: "arraybuffer" });
 };
 
@@ -120,8 +132,12 @@ describe("a saved package states a version of the schema form", () => {
   test("a package that already fits keeps the version it stated", async () => {
     const source = await packageStatingAppVersion("16.0000");
 
-    expect(await appVersionOf(await repackDocx(await parseDocx(source)))).toBe("16.0000");
-    expect(await appVersionOf(await updateMultipleFiles(source, new Map()))).toBe("16.0000");
+    expect(await appVersionOf(await repackDocx(await parseDocx(source)))).toBe(
+      "16.0000",
+    );
+    expect(
+      await appVersionOf(await updateMultipleFiles(source, new Map())),
+    ).toBe("16.0000");
   });
 
   test("a package that carries no extended properties gains none", async () => {
@@ -131,6 +147,8 @@ describe("a saved package states a version of the schema form", () => {
 
     const saved = await updateMultipleFiles(source, new Map());
 
-    expect((await JSZip.loadAsync(saved)).file(EXTENDED_PROPERTIES_PATH)).toBeNull();
+    expect(
+      (await JSZip.loadAsync(saved)).file(EXTENDED_PROPERTIES_PATH),
+    ).toBeNull();
   });
 });

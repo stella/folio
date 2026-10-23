@@ -31,7 +31,9 @@ export const resolveEditorAuthor = ({
   FALLBACK_AUTHOR;
 
 /** `git config user.name` as seen from `cwd`, or `undefined`. */
-export const readGitUserName = (cwd: string | undefined): Promise<string | undefined> =>
+export const readGitUserName = (
+  cwd: string | undefined,
+): Promise<string | undefined> =>
   new Promise((resolve) => {
     execFile(
       "git",
@@ -53,7 +55,10 @@ export const osUserName = (): string | undefined => {
  * `editing` writes directly and `suggesting` records tracked changes, from
  * `folio.editor.trackChanges`. A file the CLI cannot save opens read-only.
  */
-export const initialMode = (trackChanges: unknown, saveable: boolean): FolioEditingMode => {
+export const initialMode = (
+  trackChanges: unknown,
+  saveable: boolean,
+): FolioEditingMode => {
   if (!saveable) return "viewing";
   return trackChanges === "on" ? "suggesting" : "editing";
 };

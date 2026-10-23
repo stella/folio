@@ -99,14 +99,21 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-export type FolioProbe = { sent: EditorMessage[]; violations: string[]; workers: number };
+export type FolioProbe = {
+  sent: EditorMessage[];
+  violations: string[];
+  workers: number;
+};
 
 declare global {
   var __folio: FolioProbe;
 }
 
 /** Serve the shell and the built bundle from the webview origin, then open the shell. */
-export const openWebview = async (page: Page, theme: WebviewTheme = "light"): Promise<void> => {
+export const openWebview = async (
+  page: Page,
+  theme: WebviewTheme = "light",
+): Promise<void> => {
   await page.route(`${ORIGIN}/**`, async (route) => {
     const { pathname } = new URL(route.request().url());
     if (pathname === "/index.html") {
@@ -119,7 +126,8 @@ export const openWebview = async (page: Page, theme: WebviewTheme = "light"): Pr
       return;
     }
     await route.fulfill({
-      contentType: CONTENT_TYPES[path.extname(file)] ?? "application/octet-stream",
+      contentType:
+        CONTENT_TYPES[path.extname(file)] ?? "application/octet-stream",
       body: await readFile(file),
     });
   });
@@ -127,24 +135,35 @@ export const openWebview = async (page: Page, theme: WebviewTheme = "light"): Pr
 };
 
 /** Wait until the webview has posted a message with every field of `expected`. */
-export const waitForSent = (page: Page, expected: Record<string, string | number>) =>
+export const waitForSent = (
+  page: Page,
+  expected: Record<string, string | number>,
+) =>
   page.waitForFunction(
     (fields) =>
       globalThis.__folio.sent.some((message) =>
-        Object.entries(fields).every(([key, value]) => Reflect.get(message, key) === value),
+        Object.entries(fields).every(
+          ([key, value]) => Reflect.get(message, key) === value,
+        ),
       ),
     expected,
   );
 
 /** Post `load` or `reload`; the document bytes arrive as a `Uint8Array`, as from the extension. */
-export const postDocument = (page: Page, message: Extract<HostMessage, { document: unknown }>) => {
+export const postDocument = (
+  page: Page,
+  message: Extract<HostMessage, { document: unknown }>,
+) => {
   const {
     document: { bytes, ...document },
     ...fields
   } = message;
   return page.evaluate(
     ({ fields: rest, document: file, bytes: array }) =>
-      window.postMessage({ ...rest, document: { ...file, bytes: new Uint8Array(array) } }, "*"),
+      window.postMessage(
+        { ...rest, document: { ...file, bytes: new Uint8Array(array) } },
+        "*",
+      ),
     { fields, document, bytes: [...bytes] },
   );
 };

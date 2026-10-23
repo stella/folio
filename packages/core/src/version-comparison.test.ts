@@ -20,17 +20,21 @@ import { FolioDocxReviewer } from "./ai-edits/headless";
 import type { FolioAIParagraphBlock } from "./ai-edits/types";
 import { compareContent } from "./compare/content";
 import { parseDocx } from "./docx/parser";
-import { createDocx } from "./docx/rezip";
-import { repackDocx } from "./docx/rezip";
-import type { HeaderFooter, Paragraph, ParagraphAlignment, Table } from "./types/document";
+import { createDocx, repackDocx } from "./docx/rezip";
+import type {
+  HeaderFooter,
+  Paragraph,
+  ParagraphAlignment,
+  Table,
+} from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import {
   alignFolioBlocks,
   applyFolioVersionDiffPrivacy,
   compareDocxVersions,
   exceedsLcsBudget,
+  InvalidFolioVersionComparisonOptionsError,
 } from "./version-comparison";
-import { InvalidFolioVersionComparisonOptionsError } from "./version-comparison";
 import type { FolioBlockDiff } from "./version-comparison";
 
 type ParagraphSpec = {
@@ -41,7 +45,9 @@ type ParagraphSpec = {
   paragraphStyleId?: string;
 };
 
-const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuffer> => {
+const buildDocxBuffer = (
+  paragraphs: readonly ParagraphSpec[],
+): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
   return createDocx({
     ...template,
@@ -50,7 +56,13 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
       document: {
         ...template.package.document,
         content: paragraphs.map(
-          ({ text, paraId, formatting, paragraphAlignment, paragraphStyleId }) => ({
+          ({
+            text,
+            paraId,
+            formatting,
+            paragraphAlignment,
+            paragraphStyleId,
+          }) => ({
             type: "paragraph",
             content: [
               {
@@ -59,10 +71,15 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
                 content: [{ type: "text", text }],
               },
             ],
-            ...((paragraphAlignment !== undefined || paragraphStyleId !== undefined) && {
+            ...((paragraphAlignment !== undefined ||
+              paragraphStyleId !== undefined) && {
               formatting: {
-                ...(paragraphAlignment !== undefined && { alignment: paragraphAlignment }),
-                ...(paragraphStyleId !== undefined && { styleId: paragraphStyleId }),
+                ...(paragraphAlignment !== undefined && {
+                  alignment: paragraphAlignment,
+                }),
+                ...(paragraphStyleId !== undefined && {
+                  styleId: paragraphStyleId,
+                }),
               },
             }),
             ...(paraId !== undefined && { paraId }),
@@ -91,7 +108,9 @@ const withCoreProperties = async (
 ): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(buffer);
   const elements = [
-    properties.title === undefined ? "" : `<dc:title>${escapeXmlText(properties.title)}</dc:title>`,
+    properties.title === undefined
+      ? ""
+      : `<dc:title>${escapeXmlText(properties.title)}</dc:title>`,
     properties.subject === undefined
       ? ""
       : `<dc:subject>${escapeXmlText(properties.subject)}</dc:subject>`,
@@ -107,7 +126,9 @@ const withCoreProperties = async (
     properties.lastModifiedBy === undefined
       ? ""
       : `<cp:lastModifiedBy>${escapeXmlText(properties.lastModifiedBy)}</cp:lastModifiedBy>`,
-    properties.revision === undefined ? "" : `<cp:revision>${properties.revision}</cp:revision>`,
+    properties.revision === undefined
+      ? ""
+      : `<cp:revision>${properties.revision}</cp:revision>`,
     properties.created === undefined
       ? ""
       : `<dcterms:created>${escapeXmlText(properties.created)}</dcterms:created>`,
@@ -179,8 +200,13 @@ const buildStoryDocument = async ({
   footnoteText,
   footerText,
 }: StoryDocumentOptions): Promise<ArrayBuffer> => {
-  const source = await buildDocxBuffer([{ text: bodyText, paraId: "21000001" }]);
-  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+  const source = await buildDocxBuffer([
+    { text: bodyText, paraId: "21000001" },
+  ]);
+  const document = await parseDocx(source, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   document.package.headers = new Map([
     ["rIdHeader", headerFooterStory("header", headerText, "31000001")],
   ]);
@@ -196,7 +222,9 @@ const buildStoryDocument = async ({
       { type: "default", rId: "rIdFooter" },
     ];
   }
-  const materialized = await repackDocx(document, { updateModifiedDate: false });
+  const materialized = await repackDocx(document, {
+    updateModifiedDate: false,
+  });
   const zip = await JSZip.loadAsync(materialized);
   const contentTypesFile = zip.file("[Content_Types].xml");
   const relationshipsFile = zip.file("word/_rels/document.xml.rels");
@@ -226,7 +254,10 @@ const buildStoryDocument = async ({
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const findChange = (changes: readonly FolioBlockDiff[], blockId: string): FolioBlockDiff => {
+const findChange = (
+  changes: readonly FolioBlockDiff[],
+  blockId: string,
+): FolioBlockDiff => {
   const change = changes.find((c) => c.blockId === blockId);
   if (!change) {
     throw new Error(`no change for block ${blockId}`);
@@ -287,7 +318,11 @@ describe("compareDocxVersions: real w14:paraId alignment", () => {
     });
     // Unchanged blocks (Alpha, Zeta) never appear in `changes`.
     expect(diff.changes).toHaveLength(3);
-    expect(diff.changes.map((c) => c.type)).toEqual(["modified", "deleted", "added"]);
+    expect(diff.changes.map((c) => c.type)).toEqual([
+      "modified",
+      "deleted",
+      "added",
+    ]);
 
     const modified = findChange(diff.changes, "00000002");
     if (modified.type !== "modified") {
@@ -347,9 +382,17 @@ describe("compareDocxVersions: document stories", () => {
     });
     expect(diff.stories).toHaveLength(4);
 
-    const header = diff.stories.find(({ revisedStory }) => revisedStory?.type === "header");
-    expect(header?.baseStory).toEqual({ type: "header", relationshipId: "rIdHeader" });
-    expect(header?.revisedStory).toEqual({ type: "header", relationshipId: "rIdHeader" });
+    const header = diff.stories.find(
+      ({ revisedStory }) => revisedStory?.type === "header",
+    );
+    expect(header?.baseStory).toEqual({
+      type: "header",
+      relationshipId: "rIdHeader",
+    });
+    expect(header?.revisedStory).toEqual({
+      type: "header",
+      relationshipId: "rIdHeader",
+    });
     const headerChange = header?.changes.at(0);
     if (!headerChange || headerChange.type !== "modified") {
       throw new Error("expected a modified header block");
@@ -363,7 +406,9 @@ describe("compareDocxVersions: document stories", () => {
       blockId: "31000001",
     });
 
-    const footer = diff.stories.find(({ revisedStory }) => revisedStory?.type === "footer");
+    const footer = diff.stories.find(
+      ({ revisedStory }) => revisedStory?.type === "footer",
+    );
     expect(footer?.baseStory).toBeNull();
     expect(footer?.summaryCounts.added).toBe(1);
     const footerChange = footer?.changes.at(0);
@@ -378,9 +423,9 @@ describe("compareDocxVersions: document stories", () => {
 
   test("shares one inline-alignment allowance across every story", async () => {
     const alternating = (first: string, second: string): string =>
-      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
-        " ",
-      );
+      Array.from({ length: 2000 }, (_unused, index) =>
+        index % 2 === 0 ? first : second,
+      ).join(" ");
     const before = alternating("a", "b");
     const after = alternating("b", "a");
     const base = await buildStoryDocument({
@@ -400,10 +445,14 @@ describe("compareDocxVersions: document stories", () => {
     );
     expect(modified).toHaveLength(3);
     expect(
-      modified.filter(({ segments }) => segments.some(({ type }) => type === "equal")),
+      modified.filter(({ segments }) =>
+        segments.some(({ type }) => type === "equal"),
+      ),
     ).toHaveLength(1);
     expect(
-      modified.filter(({ segments }) => segments.every(({ type }) => type !== "equal")),
+      modified.filter(({ segments }) =>
+        segments.every(({ type }) => type !== "equal"),
+      ),
     ).toHaveLength(2);
   });
 });
@@ -432,9 +481,10 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
       FolioDocxReviewer.fromBuffer(revised),
     ]);
     expect(
-      [...baseReviewer.snapshot().blocks, ...revisedReviewer.snapshot().blocks].every(
-        ({ idStability }) => idStability === "positional",
-      ),
+      [
+        ...baseReviewer.snapshot().blocks,
+        ...revisedReviewer.snapshot().blocks,
+      ].every(({ idStability }) => idStability === "positional"),
     ).toBe(true);
 
     const diff = await compareDocxVersions(base, revised);
@@ -475,7 +525,10 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
 
 describe("compareDocxVersions: no-op", () => {
   test("identical documents produce zero changes and every block counts as unchanged", async () => {
-    const paragraphs: ParagraphSpec[] = [{ text: "Alpha paragraph." }, { text: "Beta paragraph." }];
+    const paragraphs: ParagraphSpec[] = [
+      { text: "Alpha paragraph." },
+      { text: "Beta paragraph." },
+    ];
     const base = await buildDocxBuffer(paragraphs);
     const revised = await buildDocxBuffer(paragraphs);
 
@@ -519,10 +572,16 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(defaultDiff.summaryCounts.metadataChanged).toBe(0);
     expect(defaultDiff.changes.map(({ type }) => type)).toEqual(["modified"]);
 
-    const metadataDiff = await compareDocxVersions(base, revised, { include: ["metadata"] });
+    const metadataDiff = await compareDocxVersions(base, revised, {
+      include: ["metadata"],
+    });
     expect(metadataDiff.changes).toEqual([]);
     expect(metadataDiff.metadataChanges).toEqual([
-      { property: "title", baseValue: "Initial title", revisedValue: "Revised title" },
+      {
+        property: "title",
+        baseValue: "Initial title",
+        revisedValue: "Revised title",
+      },
       { property: "creator", baseValue: "Initial author", revisedValue: null },
       { property: "revision", baseValue: 1, revisedValue: 2 },
     ]);
@@ -547,7 +606,9 @@ describe("compareDocxVersions: selected scopes", () => {
       { text: "Stable text.", paraId: "00000002", formatting: { bold: true } },
     ]);
 
-    const textDiff = await compareDocxVersions(base, revised, { include: ["text"] });
+    const textDiff = await compareDocxVersions(base, revised, {
+      include: ["text"],
+    });
     expect(textDiff.changes.map(({ type }) => type)).toEqual(["modified"]);
     expect(textDiff.summaryCounts.modified).toBe(1);
     expect(textDiff.summaryCounts.formatChanged).toBe(0);
@@ -556,7 +617,9 @@ describe("compareDocxVersions: selected scopes", () => {
     const formattingDiff = await compareDocxVersions(base, revised, {
       include: ["formatting"],
     });
-    expect(formattingDiff.changes.map(({ type }) => type)).toEqual(["formatChanged"]);
+    expect(formattingDiff.changes.map(({ type }) => type)).toEqual([
+      "formatChanged",
+    ]);
     expect(formattingDiff.summaryCounts.modified).toBe(0);
     expect(formattingDiff.summaryCounts.formatChanged).toBe(1);
     expect(formattingDiff.summaryCounts.unchanged).toBe(1);
@@ -616,7 +679,9 @@ describe("compareDocxVersions: selected scopes", () => {
         buildDocxBuffer(fixture.base),
         buildDocxBuffer(fixture.revised),
       ]);
-      const textDiff = await compareDocxVersions(base, revised, { include: ["text"] });
+      const textDiff = await compareDocxVersions(base, revised, {
+        include: ["text"],
+      });
       expect(
         textDiff.changes.map(({ type }) => type),
         fixture.name,
@@ -668,7 +733,9 @@ describe("compareDocxVersions: selected scopes", () => {
       }),
     ]);
 
-    const formatting = await compareDocxVersions(base, revised, { include: ["formatting"] });
+    const formatting = await compareDocxVersions(base, revised, {
+      include: ["formatting"],
+    });
     expect(formatting.changes).toEqual([
       expect.objectContaining({
         type: "formatChanged",
@@ -711,14 +778,24 @@ describe("compareDocxVersions: selected scopes", () => {
     const diff = await compareDocxVersions(base, revised, {
       include: ["metadata"],
       privacy: {
-        transforms: ["remove-descriptive-metadata", "remove-timestamps", "remove-attribution"],
+        transforms: [
+          "remove-descriptive-metadata",
+          "remove-timestamps",
+          "remove-attribution",
+        ],
       },
     });
 
-    expect(diff.metadataChanges).toEqual([{ property: "revision", baseValue: 1, revisedValue: 2 }]);
+    expect(diff.metadataChanges).toEqual([
+      { property: "revision", baseValue: 1, revisedValue: 2 },
+    ]);
     expect(diff.summaryCounts.metadataChanged).toBe(1);
     expect(diff.privacyReport).toEqual({
-      appliedTransforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],
+      appliedTransforms: [
+        "remove-attribution",
+        "remove-timestamps",
+        "remove-descriptive-metadata",
+      ],
       removedMetadataProperties: [
         "title",
         "creator",
@@ -730,16 +807,19 @@ describe("compareDocxVersions: selected scopes", () => {
     });
 
     expect(
-      applyFolioVersionDiffPrivacy(diff, { transforms: ["remove-attribution"] }).privacyReport,
+      applyFolioVersionDiffPrivacy(diff, { transforms: ["remove-attribution"] })
+        .privacyReport,
     ).toEqual(diff.privacyReport);
   });
 
   test("rejects an empty scope selection", async () => {
-    const buffer = await buildDocxBuffer([{ text: "Text.", paraId: "00000001" }]);
+    const buffer = await buildDocxBuffer([
+      { text: "Text.", paraId: "00000001" },
+    ]);
 
-    await expect(compareDocxVersions(buffer, buffer, { include: [] })).rejects.toBeInstanceOf(
-      InvalidFolioVersionComparisonOptionsError,
-    );
+    await expect(
+      compareDocxVersions(buffer, buffer, { include: [] }),
+    ).rejects.toBeInstanceOf(InvalidFolioVersionComparisonOptionsError);
   });
 });
 
@@ -769,7 +849,12 @@ describe("compareDocxVersions: move detection", () => {
     });
     const movedTo = diff.changes.find((c) => c.type === "movedTo");
     const movedFrom = diff.changes.find((c) => c.type === "movedFrom");
-    if (!movedTo || movedTo.type !== "movedTo" || !movedFrom || movedFrom.type !== "movedFrom") {
+    if (
+      !movedTo ||
+      movedTo.type !== "movedTo" ||
+      !movedFrom ||
+      movedFrom.type !== "movedFrom"
+    ) {
       throw new Error("expected a movedTo + movedFrom pair");
     }
     expect(movedTo.moveGroupId).toBe(movedFrom.moveGroupId);
@@ -806,7 +891,10 @@ describe("compareDocxVersions: move detection", () => {
       metadataChanged: 0,
       unchanged: 2,
     });
-    expect(diff.changes.map((c) => c.type).toSorted()).toEqual(["added", "deleted"]);
+    expect(diff.changes.map((c) => c.type).toSorted()).toEqual([
+      "added",
+      "deleted",
+    ]);
   });
 
   test("two simultaneous relocations pair independently, exercising the per-text FIFO queue for two keys", async () => {
@@ -842,7 +930,10 @@ describe("compareDocxVersions: move detection", () => {
       .map((c) => c.text)
       .toSorted();
     expect(movedTexts).toEqual(
-      ["Confidentiality survives termination.", "Notices must be delivered in writing."].toSorted(),
+      [
+        "Confidentiality survives termination.",
+        "Notices must be delivered in writing.",
+      ].toSorted(),
     );
     // Each movedFrom must share its moveGroupId with the matching movedTo of
     // the SAME text, not the other relocated block's.
@@ -898,8 +989,12 @@ describe("compareDocxVersions: move detection", () => {
     expect(neutralChanges).toEqual(["movedFrom", "movedTo"]);
     const versionDiff = await compareDocxVersions(base, revised);
     expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
-    const neutralMovedTo = neutral.value.events.find(({ type }) => type === "movedTo");
-    const versionMovedTo = versionDiff.changes.find(({ type }) => type === "movedTo");
+    const neutralMovedTo = neutral.value.events.find(
+      ({ type }) => type === "movedTo",
+    );
+    const versionMovedTo = versionDiff.changes.find(
+      ({ type }) => type === "movedTo",
+    );
     expect(neutralMovedTo).toMatchObject({
       type: "movedTo",
       segments: [
@@ -920,7 +1015,13 @@ describe("compareDocxVersions: move detection", () => {
         { type: "del", text: " epsilon" },
         { type: "ins", text: " zeta" },
       ],
-      changedProperties: ["kind", "headingLevel", "displayLabel", "styleId", "alignment"],
+      changedProperties: [
+        "kind",
+        "headingLevel",
+        "displayLabel",
+        "styleId",
+        "alignment",
+      ],
     });
     expect(versionDiff.summaryCounts).toMatchObject({
       added: 0,
@@ -968,7 +1069,9 @@ describe("compareDocxVersions: move detection", () => {
     const baseBlocks = baseReviewer.snapshot().blocks;
     const revisedBlocks = revisedReviewer.snapshot().blocks;
     expect(
-      [...baseBlocks, ...revisedBlocks].every(({ idStability }) => idStability === "positional"),
+      [...baseBlocks, ...revisedBlocks].every(
+        ({ idStability }) => idStability === "positional",
+      ),
     ).toBe(true);
     const neutral = compareContent({
       base: { blocks: baseBlocks },
@@ -981,7 +1084,12 @@ describe("compareDocxVersions: move detection", () => {
       .filter(({ type }) => type !== "unchanged")
       .map(({ type }) => type);
 
-    expect(neutralChanges).toEqual(["movedFrom", "movedFrom", "movedTo", "movedTo"]);
+    expect(neutralChanges).toEqual([
+      "movedFrom",
+      "movedFrom",
+      "movedTo",
+      "movedTo",
+    ]);
     const versionDiff = await compareDocxVersions(base, revised);
     expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
     expect(versionDiff.summaryCounts).toMatchObject({
@@ -1027,9 +1135,15 @@ describe("compareDocxVersions: neutral structural classification", () => {
 
 describe("compareDocxVersions: format-only changes", () => {
   test("equal text with different run formatting reports formatChanged with the changed properties", async () => {
-    const base = await buildDocxBuffer([{ text: "Payment is due.", paraId: "00000001" }]);
+    const base = await buildDocxBuffer([
+      { text: "Payment is due.", paraId: "00000001" },
+    ]);
     const revised = await buildDocxBuffer([
-      { text: "Payment is due.", paraId: "00000001", formatting: { bold: true, italic: true } },
+      {
+        text: "Payment is due.",
+        paraId: "00000001",
+        formatting: { bold: true, italic: true },
+      },
     ]);
 
     const diff = await compareDocxVersions(base, revised);
@@ -1054,7 +1168,11 @@ describe("compareDocxVersions: format-only changes", () => {
 
   test("identical formatting on both sides stays unchanged", async () => {
     const paragraphs: ParagraphSpec[] = [
-      { text: "Payment is due.", paraId: "00000001", formatting: { bold: true } },
+      {
+        text: "Payment is due.",
+        paraId: "00000001",
+        formatting: { bold: true },
+      },
     ];
     const base = await buildDocxBuffer(paragraphs);
     const revised = await buildDocxBuffer(paragraphs);
@@ -1161,7 +1279,9 @@ describe("compareDocxVersions: as-accepted semantics", () => {
     // Build the revised buffer by applying a tracked-changes (default mode)
     // replace against a fresh reviewer over `base` — the revised buffer still
     // carries real w:ins/w:del marks on disk.
-    const revisedReviewer = await FolioDocxReviewer.fromBuffer(base, { author: "AI" });
+    const revisedReviewer = await FolioDocxReviewer.fromBuffer(base, {
+      author: "AI",
+    });
     const target = revisedReviewer.snapshot().blocks.at(0);
     if (!target) {
       throw new Error("expected a block in the base document");
@@ -1181,7 +1301,9 @@ describe("compareDocxVersions: as-accepted semantics", () => {
     const revised = await revisedReviewer.toBuffer();
 
     // Sanity: the revised snapshot's clean text is already the accepted view.
-    expect(revisedReviewer.snapshot().blocks.at(0)?.text).toBe("Payment is due promptly.");
+    expect(revisedReviewer.snapshot().blocks.at(0)?.text).toBe(
+      "Payment is due promptly.",
+    );
 
     const diff = await compareDocxVersions(base, revised);
 
@@ -1206,6 +1328,10 @@ describe("compareDocxVersions: as-accepted semantics", () => {
       .map((s) => s.text)
       .join("");
     expect(reconstructedRevised).toBe("Payment is due promptly.");
-    expect(change.segments.some((s) => s.type === "ins" && s.text.includes("promptly"))).toBe(true);
+    expect(
+      change.segments.some(
+        (s) => s.type === "ins" && s.text.includes("promptly"),
+      ),
+    ).toBe(true);
   });
 });

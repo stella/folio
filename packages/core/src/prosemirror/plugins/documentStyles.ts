@@ -15,15 +15,15 @@
  * style-agnostic behavior.
  */
 
-import { Mark } from "prosemirror-model";
 import { isHistoryTransaction } from "prosemirror-history";
+import { Mark } from "prosemirror-model";
+import { type EditorState, Plugin, type Transaction } from "prosemirror-state";
 import { Mapping, ReplaceStep } from "prosemirror-transform";
-import { rebaseParagraphRuns } from "../rebaseParagraphRuns";
-import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
-import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
 
 import type { StyleDefinitions } from "../../types/document";
-import { StyleResolver, createStyleResolver } from "../styles/styleResolver";
+import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
+import { rebaseParagraphRuns } from "../rebaseParagraphRuns";
+import { createStyleResolver, StyleResolver } from "../styles/styleResolver";
 import { documentStylesKey } from "./documentStyleState";
 
 export {
@@ -73,7 +73,11 @@ const rebaseEditedParagraphJoins = (
           if (targetPosition === mapping.map(position, 1)) return false;
           const surviving = tr.doc.nodeAt(from);
           const original = before.nodeAt(mapping.invert().map(from, 1));
-          if (!surviving || !original || !Mark.sameSet(surviving.marks, original.marks))
+          if (
+            !surviving ||
+            !original ||
+            !Mark.sameSet(surviving.marks, original.marks)
+          )
             return false;
           rebaseParagraphRuns({
             tr,
@@ -114,8 +118,9 @@ const documentStyleContextSpec = (styles: DocumentStylesInput) => {
 };
 
 /** Canonical projections own formatting; expose the resolver without PM repair transactions. */
-export const createDocumentStyleContextPlugin = (styles: DocumentStylesInput): Plugin =>
-  new Plugin(documentStyleContextSpec(styles));
+export const createDocumentStyleContextPlugin = (
+  styles: DocumentStylesInput,
+): Plugin => new Plugin(documentStyleContextSpec(styles));
 
 /**
  * Create the plugin holding a StyleResolver for the document's `styles` for
@@ -133,10 +138,14 @@ export function createDocumentStylesPlugin(
     // one does, so it paints its inherited formatting before any reopen.
     // A package without a styles part loads against the built-in defaults.
     appendTransaction: (transactions, _oldState, newState) => {
-      const styleResolver = documentStylesKey.getState(newState) ?? bareResolver();
+      const styleResolver =
+        documentStylesKey.getState(newState) ?? bareResolver();
       const tr =
-        resolveEditedParagraphStyles(transactions, newState, styleResolver, () =>
-          getDocumentNumbering(newState),
+        resolveEditedParagraphStyles(
+          transactions,
+          newState,
+          styleResolver,
+          () => getDocumentNumbering(newState),
         ) ?? newState.tr;
       rebaseEditedParagraphJoins(transactions, tr, styleResolver);
       return tr.docChanged ? tr : null;

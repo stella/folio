@@ -4,7 +4,8 @@ import type { EmbeddedFont } from "@stll/folio-core/fonts/embeddedFonts";
 
 // The mock replaces the module registry entry for every later importer in the
 // test process, so it must keep the real exports and only stub extraction.
-const actualEmbeddedFonts = await import("@stll/folio-core/fonts/embeddedFonts");
+const actualEmbeddedFonts =
+  await import("@stll/folio-core/fonts/embeddedFonts");
 
 let extractImpl: (buffer: ArrayBuffer) => Promise<EmbeddedFont[]>;
 void mock.module("@stll/folio-core/fonts/embeddedFonts", () => ({
@@ -48,10 +49,18 @@ class FakeFontFace {
 }
 
 function stubGlobal(prop: StubbedGlobal, value: unknown): void {
-  Object.defineProperty(globalThis, prop, { value, configurable: true, writable: true });
+  Object.defineProperty(globalThis, prop, {
+    value,
+    configurable: true,
+    writable: true,
+  });
 }
 
-function restoreGlobal(prop: StubbedGlobal, had: boolean, original: unknown): void {
+function restoreGlobal(
+  prop: StubbedGlobal,
+  had: boolean,
+  original: unknown,
+): void {
   if (had) {
     Object.defineProperty(globalThis, prop, {
       value: original,
@@ -98,11 +107,15 @@ afterEach(() => {
 
 describe("loadEmbeddedFontFaces", () => {
   test("registers faces extracted from the document", async () => {
-    const { faces, familyMap } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    const { faces, familyMap } = await loadEmbeddedFontFaces(
+      new ArrayBuffer(8),
+    );
     expect(faces).toHaveLength(1);
     expect(addedFaces).toHaveLength(1);
     expect(deletedFaces).toHaveLength(0);
-    expect(familyMap.get("Document Sans")).toBe("folio-embedded-test-nonce-Document Sans");
+    expect(familyMap.get("Document Sans")).toBe(
+      "folio-embedded-test-nonce-Document Sans",
+    );
   });
 
   test("falls back when extraction fails", async () => {

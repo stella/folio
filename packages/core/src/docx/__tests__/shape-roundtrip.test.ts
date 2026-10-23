@@ -1,9 +1,14 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import { serializeRun } from "../serializer/runSerializer";
 import { parseShapeFromDrawing } from "../shapeParser";
-import { findDeep, OOXML_NAMESPACE_SCOPE, parseXml, parseXmlDocument } from "../xmlParser";
+import {
+  findDeep,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+  parseXmlDocument,
+} from "../xmlParser";
 
 const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
 
@@ -21,7 +26,9 @@ function shapeDrawingXml({
   distances?: "absent" | "explicit-zero";
 }): string {
   const distanceAttrs =
-    distances === "explicit-zero" ? ' distT="0" distB="0" distL="0" distR="0"' : "";
+    distances === "explicit-zero"
+      ? ' distT="0" distB="0" distL="0" distR="0"'
+      : "";
   const container = anchor
     ? `<wp:anchor${distanceAttrs} simplePos="0" relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">
         <wp:simplePos x="0" y="0"/>
@@ -154,7 +161,9 @@ describe("shape parse → serialize round-trip", () => {
 
     const reopenedRoot = parseXmlDocument(xml);
     const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
-    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    const reopenedShape = reopenedDrawing
+      ? parseShapeFromDrawing(reopenedDrawing)
+      : null;
     expect(reopenedShape?.fill?.color?.themeColor).toBe("background1");
   });
 
@@ -200,10 +209,14 @@ describe("shape parse → serialize round-trip", () => {
 
     const reopenedRoot = parseXmlDocument(xml);
     const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
-    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    const reopenedShape = reopenedDrawing
+      ? parseShapeFromDrawing(reopenedDrawing)
+      : null;
     expect(reopenedShape?.fill).toBeUndefined();
 
-    const noFillRoot = parseXmlDocument(shapeDrawingXml({ prst: "rect", fill: "<a:noFill/>" }));
+    const noFillRoot = parseXmlDocument(
+      shapeDrawingXml({ prst: "rect", fill: "<a:noFill/>" }),
+    );
     const noFillShape = noFillRoot ? parseShapeFromDrawing(noFillRoot) : null;
     expect(noFillShape?.fill).toEqual({ type: "none" });
     if (!noFillShape) {
@@ -217,7 +230,9 @@ describe("shape parse → serialize round-trip", () => {
   });
 
   test("preserves anchored wrap type", () => {
-    const root = parseXmlDocument(shapeDrawingXml({ prst: "rightArrow", anchor: true }));
+    const root = parseXmlDocument(
+      shapeDrawingXml({ prst: "rightArrow", anchor: true }),
+    );
     const shape = root ? parseShapeFromDrawing(root) : null;
     expect(shape).not.toBeNull();
     if (!shape) {
@@ -238,7 +253,10 @@ describe("shape parse → serialize round-trip", () => {
       shapeDrawingXml({ prst: "rect", anchor: true, distances: "absent" }),
     );
     const absentShape = absentRoot ? parseShapeFromDrawing(absentRoot) : null;
-    expect(absentShape?.wrap).toEqual({ type: "square", wrapText: "bothSides" });
+    expect(absentShape?.wrap).toEqual({
+      type: "square",
+      wrapText: "bothSides",
+    });
     if (!absentShape) {
       return;
     }
@@ -257,12 +275,24 @@ describe("shape parse → serialize round-trip", () => {
     // a part root declares is what the package does when it replays a capture.
     const reopenedRoot = parseXml(absentXml, OOXML_NAMESPACE_SCOPE);
     const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
-    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
-    expect(reopenedShape?.wrap).toEqual({ type: "square", wrapText: "bothSides" });
+    const reopenedShape = reopenedDrawing
+      ? parseShapeFromDrawing(reopenedDrawing)
+      : null;
+    expect(reopenedShape?.wrap).toEqual({
+      type: "square",
+      wrapText: "bothSides",
+    });
 
-    const zeroRoot = parseXmlDocument(shapeDrawingXml({ prst: "rect", anchor: true }));
+    const zeroRoot = parseXmlDocument(
+      shapeDrawingXml({ prst: "rect", anchor: true }),
+    );
     const zeroShape = zeroRoot ? parseShapeFromDrawing(zeroRoot) : null;
-    expect(zeroShape?.wrap).toMatchObject({ distT: 0, distB: 0, distL: 0, distR: 0 });
+    expect(zeroShape?.wrap).toMatchObject({
+      distT: 0,
+      distB: 0,
+      distL: 0,
+      distR: 0,
+    });
     if (!zeroShape) {
       return;
     }
@@ -316,7 +346,9 @@ describe("shape parse → serialize round-trip", () => {
 
     const reopenedRoot = parseXmlDocument(xml);
     const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
-    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    const reopenedShape = reopenedDrawing
+      ? parseShapeFromDrawing(reopenedDrawing)
+      : null;
     expect(reopenedShape?.outline?.dash).toBe("solid");
   });
 
@@ -337,13 +369,20 @@ describe("shape parse → serialize round-trip", () => {
     // required attribute stays empty.
     const xml = serializeRun({
       type: "run",
-      content: [{ type: "shape", shape: shape ?? panic("The drawing did not parse to a shape.") }],
+      content: [
+        {
+          type: "shape",
+          shape: shape ?? panic("The drawing did not parse to a shape."),
+        },
+      ],
     });
     expect(xml).toContain('<wp:docPr id="9" name=""/>');
 
     const reopenedRoot = parseXmlDocument(xml);
     const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
-    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    const reopenedShape = reopenedDrawing
+      ? parseShapeFromDrawing(reopenedDrawing)
+      : null;
     expect(reopenedShape).not.toBeNull();
     expect(reopenedShape?.name).toBeUndefined();
   });

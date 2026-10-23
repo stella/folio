@@ -19,8 +19,10 @@ export function stripXmlDeclarations(html: string): string {
 
     const isXmlDeclaration =
       html.charCodeAt(start + 1) === 63 &&
-      (html.charCodeAt(start + 2) === 88 || html.charCodeAt(start + 2) === 120) &&
-      (html.charCodeAt(start + 3) === 77 || html.charCodeAt(start + 3) === 109) &&
+      (html.charCodeAt(start + 2) === 88 ||
+        html.charCodeAt(start + 2) === 120) &&
+      (html.charCodeAt(start + 3) === 77 ||
+        html.charCodeAt(start + 3) === 109) &&
       (html.charCodeAt(start + 4) === 76 || html.charCodeAt(start + 4) === 108);
     if (!isXmlDeclaration) {
       searchFrom = start + 1;

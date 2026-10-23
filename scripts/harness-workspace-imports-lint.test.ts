@@ -4,7 +4,8 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const RULE_MARKER = "folio-harness-workspaces(no-undeclared-workspace-runtime-import)";
+const RULE_MARKER =
+  "folio-harness-workspaces(no-undeclared-workspace-runtime-import)";
 
 setDefaultTimeout(30_000);
 
@@ -23,7 +24,9 @@ const lintFixture = (fixture: string): number => {
   );
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
   if (result.exitCode !== 0 && !output.includes(RULE_MARKER)) {
-    throw new Error(`oxlint failed without the expected rule diagnostic:\n${output}`);
+    throw new Error(
+      `oxlint failed without the expected rule diagnostic:\n${output}`,
+    );
   }
   return output.split(RULE_MARKER).length - 1;
 };

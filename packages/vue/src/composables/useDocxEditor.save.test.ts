@@ -2,16 +2,16 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
 
 const { createApp, defineComponent, h, shallowRef } = await import("vue");
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
-import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
-import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
+import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
 const { useDocxEditor } = await import("./useDocxEditor");
 
@@ -28,7 +28,9 @@ test.each(["settled", "overlapping"])(
     document.body.append(container, hidden, pages);
     const errors: Error[] = [];
     let hostInputs = 0;
-    const holder: { editor: ReturnType<typeof import("./useDocxEditor").useDocxEditor> | null } = {
+    const holder: {
+      editor: ReturnType<typeof import("./useDocxEditor").useDocxEditor> | null;
+    } = {
       editor: null,
     };
     const app = createApp(
@@ -50,23 +52,33 @@ test.each(["settled", "overlapping"])(
     );
     app.mount(container);
     try {
-      const rendered = container.firstElementChild ?? panic("Expected mounted Vue DOM");
+      const rendered =
+        container.firstElementChild ?? panic("Expected mounted Vue DOM");
       expect(rendered.ownerDocument).toBe(document);
       expect(rendered instanceof HTMLElement).toBe(true);
       rendered.dispatchEvent(new InputEvent("input", { bubbles: true }));
       expect(hostInputs).toBe(1);
       const editor = holder.editor ?? panic("Expected mounted Vue editor");
-      const bytes = await createDocx(createEmptyDocument({ initialText: "Start" }));
+      const bytes = await createDocx(
+        createEmptyDocument({ initialText: "Start" }),
+      );
       await editor.loadBuffer(bytes);
-      const view = editor.editorView.value ?? panic("Expected body editor view");
+      const view =
+        editor.editorView.value ?? panic("Expected body editor view");
       dispatchEditorTextInput(view, { from: 6, to: 6, text: " edited" });
       expect(view.state.doc.textContent).toBe("Start edited");
-      const snapshot = editor.getDocument() ?? panic("Expected live document snapshot");
+      const snapshot =
+        editor.getDocument() ?? panic("Expected live document snapshot");
       expect(toProseDoc(snapshot).textContent).toBe(view.state.doc.textContent);
       expect(editor.isDirty.value).toBe(true);
       const saving = editor.save();
       if (timing === "overlapping") {
-        view.dispatch(view.state.tr.insertText(" concurrent", view.state.doc.content.size - 1));
+        view.dispatch(
+          view.state.tr.insertText(
+            " concurrent",
+            view.state.doc.content.size - 1,
+          ),
+        );
       }
       const saved = await saving;
       expect(errors).toEqual([]);
@@ -79,8 +91,11 @@ test.each(["settled", "overlapping"])(
       expect(editor.isDirty.value).toBe(timing === "overlapping");
       if (timing === "overlapping") {
         const latestSnapshot =
-          editor.getDocument() ?? panic("Expected concurrent document snapshot");
-        expect(toProseDoc(latestSnapshot).textContent).toBe(view.state.doc.textContent);
+          editor.getDocument() ??
+          panic("Expected concurrent document snapshot");
+        expect(toProseDoc(latestSnapshot).textContent).toBe(
+          view.state.doc.textContent,
+        );
         expect(view.state.doc.textContent).toBe("Start edited concurrent");
         const completed = await editor.save();
         if (!completed) panic("Expected completed save");

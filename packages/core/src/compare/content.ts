@@ -8,6 +8,7 @@
  */
 
 import { panic, Result, TaggedError } from "better-result";
+
 import { isNumberingReference } from "@stll/docx-core/model";
 
 import {
@@ -16,9 +17,8 @@ import {
   type WordDiffGranularity,
   type WordDiffSegment,
 } from "../ai-edits/word-diff";
-import { inlineFormattingSegments } from "./formatting";
-import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
 import { outlineLevelFromAttrValue } from "../prosemirror/outlineLevelAttr";
+import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../types/documentEnumValues";
 import {
   alignFolioContentStructure,
@@ -38,6 +38,7 @@ import type {
   FolioContentStatedNumbering,
 } from "./content-types";
 import { sameFolioContentStatedNumbering } from "./content-types";
+import { inlineFormattingSegments } from "./formatting";
 
 export type { FolioContentFormatRange } from "./content-types";
 
@@ -55,7 +56,8 @@ export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
   attributeCodeUnitsPerSnapshot: 8_000_000,
 } as const);
 
-export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
+export type FolioContentComparisonLimit =
+  keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
 
 /** Words a one-sided block needs before it may be classified as a move. */
 const MOVE_MINIMUM_WORD_COUNT = 3;
@@ -140,7 +142,8 @@ export const sameFolioContentOutlineLevel = (
   right: FolioContentBlock["directOutlineLevel"],
 ): boolean =>
   left?.kind === right?.kind &&
-  (left?.kind !== "heading" || (right?.kind === "heading" && left.level === right.level));
+  (left?.kind !== "heading" ||
+    (right?.kind === "heading" && left.level === right.level));
 
 /** Presentation differences for one text-aligned block pair. */
 export type FolioContentFormattingChange = {
@@ -149,7 +152,8 @@ export type FolioContentFormattingChange = {
 };
 
 /** Non-presentation block fields that changed on a paired block. */
-export type FolioContentBlockProperty = "kind" | "headingLevel" | "displayLabel";
+export type FolioContentBlockProperty =
+  "kind" | "headingLevel" | "displayLabel";
 
 type PairedEvent<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly [Block];
@@ -180,8 +184,14 @@ export type FolioContentComparisonEvent<
       changedProperties: readonly FolioContentBlockProperty[];
       formatting?: FolioContentFormattingChange;
     } & PairedEvent<Block>)
-  | ({ type: "formatting"; formatting: FolioContentFormattingChange } & PairedEvent<Block>)
-  | ({ type: "inserted"; structuralChangeId?: number } & RevisedOnlyEvent<Block>)
+  | ({
+      type: "formatting";
+      formatting: FolioContentFormattingChange;
+    } & PairedEvent<Block>)
+  | ({
+      type: "inserted";
+      structuralChangeId?: number;
+    } & RevisedOnlyEvent<Block>)
   | ({ type: "deleted"; structuralChangeId?: number } & BaseOnlyEvent<Block>)
   | ({ type: "movedFrom"; moveId: number } & BaseOnlyEvent<Block>)
   | ({
@@ -220,8 +230,16 @@ type RevisedStructuralChange = {
 export type FolioContentStructuralChange =
   | ({ type: "table-delete"; tableIndex: number } & BaseStructuralChange)
   | ({ type: "table-insert"; tableIndex: number } & RevisedStructuralChange)
-  | ({ type: "table-row-delete"; tableIndex: number; rowIndex: number } & BaseStructuralChange)
-  | ({ type: "table-row-insert"; tableIndex: number; rowIndex: number } & RevisedStructuralChange)
+  | ({
+      type: "table-row-delete";
+      tableIndex: number;
+      rowIndex: number;
+    } & BaseStructuralChange)
+  | ({
+      type: "table-row-insert";
+      tableIndex: number;
+      rowIndex: number;
+    } & RevisedStructuralChange)
   | ({
       type: "table-column-delete";
       tableIndex: number;
@@ -234,13 +252,17 @@ export type FolioContentStructuralChange =
     } & RevisedStructuralChange);
 
 /** Result of one representation-neutral story comparison. */
-export type FolioContentComparison<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
+export type FolioContentComparison<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> = {
   events: readonly FolioContentComparisonEvent<Block>[];
   structuralChanges: readonly FolioContentStructuralChange[];
 };
 
 /** Inputs to {@link compareContent}. */
-export type CompareContentOptions<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
+export type CompareContentOptions<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> = {
   base: FolioContentSnapshot<Block>;
   revised: FolioContentSnapshot<Block>;
   /** Token size for modified-block segments; defaults to `"word"`. */
@@ -313,7 +335,9 @@ const isFiniteNumber = (value: unknown): value is number =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const validStatedNumbering = (value: unknown): value is FolioContentStatedNumbering => {
+const validStatedNumbering = (
+  value: unknown,
+): value is FolioContentStatedNumbering => {
   if (!isRecord(value) || typeof value["kind"] !== "string") return false;
   switch (value["kind"]) {
     case "inherit":
@@ -325,7 +349,8 @@ const validStatedNumbering = (value: unknown): value is FolioContentStatedNumber
       return (
         isNonNegativeInteger(value["numId"]) &&
         isNumberingReference(value["numId"]) &&
-        (value["ilvl"] === undefined || (isFiniteInteger(value["ilvl"]) && value["ilvl"] >= 0))
+        (value["ilvl"] === undefined ||
+          (isFiniteInteger(value["ilvl"]) && value["ilvl"] >= 0))
       );
     default:
       return false;
@@ -338,9 +363,13 @@ const hasRecordShape = (value: unknown): boolean => isRecord(value);
 
 // `ST_Jc`, from the one list the schema generates: a hand-kept copy here would
 // refuse a member the model carries.
-const PARAGRAPH_ALIGNMENTS: ReadonlySet<string> = new Set(PARAGRAPH_ALIGNMENT_VALUES);
+const PARAGRAPH_ALIGNMENTS: ReadonlySet<string> = new Set(
+  PARAGRAPH_ALIGNMENT_VALUES,
+);
 
-const isParagraphContentBlock = (block: FolioContentBlockIdentity): block is FolioContentBlock => {
+const isParagraphContentBlock = (
+  block: FolioContentBlockIdentity,
+): block is FolioContentBlock => {
   switch (block.kind) {
     case "paragraph":
     case "heading":
@@ -396,7 +425,11 @@ const validateRunFormatting = (
         );
       }
       const direct = run.directFormatting?.[property];
-      if (direct !== undefined && direct !== null && typeof direct !== "string") {
+      if (
+        direct !== undefined &&
+        direct !== null &&
+        typeof direct !== "string"
+      ) {
         return invalidInput(
           side,
           `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].directFormatting.${property}`,
@@ -405,7 +438,10 @@ const validateRunFormatting = (
         );
       }
     }
-    if (run.fontSizePt !== undefined && (!isFiniteNumber(run.fontSizePt) || run.fontSizePt < 0)) {
+    if (
+      run.fontSizePt !== undefined &&
+      (!isFiniteNumber(run.fontSizePt) || run.fontSizePt < 0)
+    ) {
       return invalidInput(
         side,
         `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].fontSizePt`,
@@ -468,7 +504,10 @@ const validateParagraphFormatting = (
     }
     return null;
   }
-  if (!isParagraphContentBlock(block) || !validStatedNumbering(block.statedNumbering)) {
+  if (
+    !isParagraphContentBlock(block) ||
+    !validStatedNumbering(block.statedNumbering)
+  ) {
     return invalidInput(
       side,
       `blocks[${String(blockIndex)}].statedNumbering`,
@@ -476,7 +515,10 @@ const validateParagraphFormatting = (
       blockIndex,
     );
   }
-  if (block.directAlignment !== undefined && !PARAGRAPH_ALIGNMENTS.has(block.directAlignment)) {
+  if (
+    block.directAlignment !== undefined &&
+    !PARAGRAPH_ALIGNMENTS.has(block.directAlignment)
+  ) {
     return invalidInput(
       side,
       `blocks[${String(blockIndex)}].directAlignment`,
@@ -505,7 +547,11 @@ const validateParagraphFormatting = (
       blockIndex,
     );
   }
-  for (const property of ["spaceBefore", "spaceAfter", "lineSpacing"] as const) {
+  for (const property of [
+    "spaceBefore",
+    "spaceAfter",
+    "lineSpacing",
+  ] as const) {
     if (spacing[property] !== undefined && !isFiniteNumber(spacing[property])) {
       return invalidInput(
         side,
@@ -516,7 +562,10 @@ const validateParagraphFormatting = (
     }
   }
   for (const property of ["beforeAutospacing", "afterAutospacing"] as const) {
-    if (spacing[property] !== undefined && typeof spacing[property] !== "boolean") {
+    if (
+      spacing[property] !== undefined &&
+      typeof spacing[property] !== "boolean"
+    ) {
       return invalidInput(
         side,
         `blocks[${String(blockIndex)}].directSpacing.${property}`,
@@ -598,7 +647,9 @@ const validateTableLocation = (
   const rowIndex = table["rowIndex"];
   const rowSpan = table["rowSpan"];
   const bottom =
-    typeof rowIndex === "number" && typeof rowSpan === "number" ? rowIndex + rowSpan : Number.NaN;
+    typeof rowIndex === "number" && typeof rowSpan === "number"
+      ? rowIndex + rowSpan
+      : Number.NaN;
   if (!Number.isSafeInteger(bottom)) {
     return invalidInput(
       side,
@@ -625,13 +676,17 @@ type TableCellRectangle = {
   bottom: number;
 };
 
-const overlappingTableCellBlockIndex = (cells: readonly TableCellRectangle[]): number | null => {
+const overlappingTableCellBlockIndex = (
+  cells: readonly TableCellRectangle[],
+): number | null => {
   if (cells.length < 2) return null;
-  const columns = [...new Set(cells.flatMap(({ left, right }) => [left, right]))].toSorted(
-    (left, right) => left - right,
-  );
+  const columns = [
+    ...new Set(cells.flatMap(({ left, right }) => [left, right])),
+  ].toSorted((left, right) => left - right);
   if (columns.length < 2) return null;
-  const columnIndex = new Map(columns.map((column, index) => [column, index] as const));
+  const columnIndex = new Map(
+    columns.map((column, index) => [column, index] as const),
+  );
   const intervalCount = columns.length - 1;
   const maximum = new Int32Array(intervalCount * 4);
   const pending = new Int32Array(intervalCount * 4);
@@ -656,7 +711,8 @@ const overlappingTableCellBlockIndex = (cells: readonly TableCellRectangle[]): n
       add(node * 2 + 1, middle + 1, nodeRight, rangeLeft, rangeRight, amount);
     }
     maximum[node] =
-      (pending[node] ?? 0) + Math.max(maximum[node * 2] ?? 0, maximum[node * 2 + 1] ?? 0);
+      (pending[node] ?? 0) +
+      Math.max(maximum[node * 2] ?? 0, maximum[node * 2 + 1] ?? 0);
   };
   const events = cells.flatMap((cell) => [
     { row: cell.top, amount: 1, cell },
@@ -673,7 +729,9 @@ const overlappingTableCellBlockIndex = (cells: readonly TableCellRectangle[]): n
     const left = columnIndex.get(cell.left);
     const right = columnIndex.get(cell.right);
     if (left === undefined || right === undefined || left >= right) {
-      return panic("A validated table cell has no coordinate-compression interval");
+      return panic(
+        "A validated table cell has no coordinate-compression interval",
+      );
     }
     add(1, 0, intervalCount - 1, left, right - 1, amount);
     if (amount > 0 && (maximum[1] ?? 0) > 1) {
@@ -710,7 +768,10 @@ const chargeAttributeString = ({
     });
   }
   usage.attributeCodeUnits += value.length;
-  if (usage.attributeCodeUnits > FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot) {
+  if (
+    usage.attributeCodeUnits >
+    FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot
+  ) {
     return limitExceeded({
       input: side,
       limit: "attributeCodeUnitsPerSnapshot",
@@ -726,11 +787,20 @@ const chargeAttributeString = ({
 const validateSnapshot = <Block extends FolioContentBlockIdentity>(
   snapshot: FolioContentSnapshot<Block>,
   side: "base" | "revised",
-): InvalidFolioContentComparisonError | FolioContentComparisonLimitError | null => {
+):
+  | InvalidFolioContentComparisonError
+  | FolioContentComparisonLimitError
+  | null => {
   if (!snapshot || !Array.isArray(snapshot.blocks)) {
-    return invalidInput(side, "blocks", "A content snapshot must contain an ordered blocks array.");
+    return invalidInput(
+      side,
+      "blocks",
+      "A content snapshot must contain an ordered blocks array.",
+    );
   }
-  if (snapshot.blocks.length > FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot) {
+  if (
+    snapshot.blocks.length > FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot
+  ) {
     return limitExceeded({
       input: side,
       limit: "blocksPerSnapshot",
@@ -746,7 +816,10 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
     attributeCodeUnits: 0,
   };
   const ids = new Set<string>();
-  const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
+  const lastCoordinateByTable = new Map<
+    string,
+    readonly [number, number, number]
+  >();
   const geometryByCell = new Map<string, readonly [number, number, number]>();
   const cellsByTable = new Map<string, TableCellRectangle[]>();
   const outerTableByTableIndex = new Map<number, number>();
@@ -821,7 +894,10 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
       });
     }
     usage.textCodeUnits += block.text.length;
-    if (usage.textCodeUnits > FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot) {
+    if (
+      usage.textCodeUnits >
+      FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot
+    ) {
       return limitExceeded({
         input: side,
         limit: "textCodeUnitsPerSnapshot",
@@ -852,7 +928,10 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
           blockIndex,
         );
       }
-      if (block.previewRuns.length > FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerBlock) {
+      if (
+        block.previewRuns.length >
+        FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerBlock
+      ) {
         return limitExceeded({
           input: side,
           limit: "previewRunsPerBlock",
@@ -863,7 +942,10 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
         });
       }
       usage.previewRuns += block.previewRuns.length;
-      if (usage.previewRuns > FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot) {
+      if (
+        usage.previewRuns >
+        FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot
+      ) {
         return limitExceeded({
           input: side,
           limit: "previewRunsPerSnapshot",
@@ -944,7 +1026,10 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
           blockIndex,
         );
       }
-      if (block.containerPath.length > FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth) {
+      if (
+        block.containerPath.length >
+        FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth
+      ) {
         return limitExceeded({
           input: side,
           limit: "containerDepth",
@@ -955,7 +1040,10 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
         });
       }
       usage.containerEntries += block.containerPath.length;
-      if (usage.containerEntries > FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot) {
+      if (
+        usage.containerEntries >
+        FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot
+      ) {
         return limitExceeded({
           input: side,
           limit: "containerEntriesPerSnapshot",
@@ -1007,7 +1095,10 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
         );
       }
       const knownOuterTableIndex = outerTableByTableIndex.get(table.tableIndex);
-      if (knownOuterTableIndex !== undefined && knownOuterTableIndex !== table.outerTableIndex) {
+      if (
+        knownOuterTableIndex !== undefined &&
+        knownOuterTableIndex !== table.outerTableIndex
+      ) {
         return invalidInput(
           side,
           `blocks[${String(blockIndex)}].table.tableIndex`,
@@ -1032,7 +1123,11 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
       activeOuterTableIndex = table.outerTableIndex;
       const tableKey = `${String(table.outerTableIndex)}:${String(table.tableIndex)}`;
       const cellKey = `${tableKey}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
-      const geometry = [table.gridColumnIndex, table.columnSpan, table.rowSpan] as const;
+      const geometry = [
+        table.gridColumnIndex,
+        table.columnSpan,
+        table.rowSpan,
+      ] as const;
       const priorGeometry = geometryByCell.get(cellKey);
       if (
         priorGeometry !== undefined &&
@@ -1063,7 +1158,11 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
           cellsByTable.set(tableKey, [rectangle]);
         }
       }
-      const coordinate = [table.rowIndex, table.cellIndex, table.paragraphIndex] as const;
+      const coordinate = [
+        table.rowIndex,
+        table.cellIndex,
+        table.paragraphIndex,
+      ] as const;
       const previous = lastCoordinateByTable.get(tableKey);
       if (
         previous &&
@@ -1099,7 +1198,9 @@ const validateSnapshot = <Block extends FolioContentBlockIdentity>(
   return null;
 };
 
-const withTextOffsets = (segments: readonly WordDiffSegment[]): FolioContentTextSegment[] => {
+const withTextOffsets = (
+  segments: readonly WordDiffSegment[],
+): FolioContentTextSegment[] => {
   const positioned: FolioContentTextSegment[] = [];
   let baseOffset = 0;
   let revisedOffset = 0;
@@ -1141,10 +1242,20 @@ export const changedFolioContentParagraphFormatting = (
   if ((base.styleId ?? null) !== (revised.styleId ?? null)) {
     patch.styleId = revised.styleId ?? null;
   }
-  if (!sameFolioContentOutlineLevel(base.directOutlineLevel, revised.directOutlineLevel)) {
+  if (
+    !sameFolioContentOutlineLevel(
+      base.directOutlineLevel,
+      revised.directOutlineLevel,
+    )
+  ) {
     patch.outlineLevel = revised.directOutlineLevel ?? null;
   }
-  if (!sameFolioContentStatedNumbering(base.statedNumbering, revised.statedNumbering)) {
+  if (
+    !sameFolioContentStatedNumbering(
+      base.statedNumbering,
+      revised.statedNumbering,
+    )
+  ) {
     patch.numbering = revised.statedNumbering;
   }
   if (base.directAlignment !== revised.directAlignment) {
@@ -1153,7 +1264,12 @@ export const changedFolioContentParagraphFormatting = (
   if (!paragraphSpacingEqual(base.directSpacing, revised.directSpacing)) {
     patch.spacing = revised.directSpacing ?? null;
   }
-  if (!paragraphIndentationEqual(base.directIndentation, revised.directIndentation)) {
+  if (
+    !paragraphIndentationEqual(
+      base.directIndentation,
+      revised.directIndentation,
+    )
+  ) {
     patch.indentation = revised.directIndentation ?? null;
   }
   return Object.keys(patch).length > 0 ? patch : null;
@@ -1185,8 +1301,16 @@ type ParagraphMarkPlan<Block extends FolioContentBlockIdentity> =
       separator: string;
     };
 
-const separatorBetween = (whole: string, head: string, tail: string): string | null => {
-  if (head.length === 0 || tail.length === 0 || whole.length < head.length + tail.length) {
+const separatorBetween = (
+  whole: string,
+  head: string,
+  tail: string,
+): string | null => {
+  if (
+    head.length === 0 ||
+    tail.length === 0 ||
+    whole.length < head.length + tail.length
+  ) {
     return null;
   }
   if (!whole.startsWith(head) || !whole.endsWith(tail)) {
@@ -1209,7 +1333,13 @@ const splitPlan = <Block extends FolioContentBlockIdentity>({
 }: SplitPlanOptions<Block>): ParagraphMarkPlan<Block> | null => {
   const separator = separatorBetween(baseBlock.text, head.text, tail.text);
   return separator !== null && contentBlocksShareContainer(head, tail)
-    ? { type: "split", baseBlock, revisedBlocks: [head, tail], offset: head.text.length, separator }
+    ? {
+        type: "split",
+        baseBlock,
+        revisedBlocks: [head, tail],
+        offset: head.text.length,
+        separator,
+      }
     : null;
 };
 
@@ -1240,22 +1370,40 @@ const paragraphMarkPlan = <Block extends FolioContentBlockIdentity>(
   next: FolioContentAlignmentStep<Block>,
 ): ParagraphMarkPlan<Block> | null => {
   if (step.type === "pair" && next.type === "revisedOnly") {
-    return splitPlan({ baseBlock: step.baseBlock, head: step.revisedBlock, tail: next.block });
+    return splitPlan({
+      baseBlock: step.baseBlock,
+      head: step.revisedBlock,
+      tail: next.block,
+    });
   }
   if (step.type === "pair" && next.type === "baseOnly") {
-    return mergePlan({ revisedBlock: step.revisedBlock, head: step.baseBlock, tail: next.block });
+    return mergePlan({
+      revisedBlock: step.revisedBlock,
+      head: step.baseBlock,
+      tail: next.block,
+    });
   }
   if (step.type === "revisedOnly" && next.type === "pair") {
-    return splitPlan({ baseBlock: next.baseBlock, head: step.block, tail: next.revisedBlock });
+    return splitPlan({
+      baseBlock: next.baseBlock,
+      head: step.block,
+      tail: next.revisedBlock,
+    });
   }
   if (step.type === "baseOnly" && next.type === "pair") {
-    return mergePlan({ revisedBlock: next.revisedBlock, head: step.block, tail: next.baseBlock });
+    return mergePlan({
+      revisedBlock: next.revisedBlock,
+      head: step.block,
+      tail: next.baseBlock,
+    });
   }
   return null;
 };
 
 /** Plans keyed by their first step; each consumes the step after it. */
-export const detectFolioContentParagraphMarkPlans = <Block extends FolioContentBlockIdentity>(
+export const detectFolioContentParagraphMarkPlans = <
+  Block extends FolioContentBlockIdentity,
+>(
   steps: readonly FolioContentAlignmentStep<Block>[],
 ): ReadonlyMap<number, ParagraphMarkPlan<Block>> => {
   const plans = new Map<number, ParagraphMarkPlan<Block>>();
@@ -1314,24 +1462,36 @@ type MovePair<Block extends FolioContentBlockIdentity> = {
 
 type MoveCandidate<Block extends FolioContentBlockIdentity> = {
   block: Block;
-  moveScope: Extract<FolioContentAlignmentStep<Block>, { type: "baseOnly" }>["moveScope"];
+  moveScope: Extract<
+    FolioContentAlignmentStep<Block>,
+    { type: "baseOnly" }
+  >["moveScope"];
   profile: TokenProfile;
   order: number;
 };
 
-export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>({
+export const detectFolioContentMoves = <
+  Block extends FolioContentBlockIdentity,
+>({
   steps,
   consumedStepIndexes,
   workSession,
-  idStability = (block): FolioContentIdStability => block.idStability ?? "stable",
+  idStability = (block): FolioContentIdStability =>
+    block.idStability ?? "stable",
 }: {
   steps: readonly FolioContentAlignmentStep<Block>[];
   consumedStepIndexes: ReadonlySet<number>;
   workSession: FolioContentComparisonWorkSession;
   idStability?: (block: Block) => FolioContentIdStability;
 }): readonly MovePair<Block>[] => {
-  const stableBaseById = new Map<string, Pick<MoveCandidate<Block>, "block" | "moveScope">>();
-  const exactCandidatesByBucket = new Map<number, Map<string, MoveCandidate<Block>[]>>();
+  const stableBaseById = new Map<
+    string,
+    Pick<MoveCandidate<Block>, "block" | "moveScope">
+  >();
+  const exactCandidatesByBucket = new Map<
+    number,
+    Map<string, MoveCandidate<Block>[]>
+  >();
   const similarityCandidatesByBucket = new Map<
     number,
     Map<number, Map<string, MoveCandidate<Block>>>
@@ -1364,7 +1524,9 @@ export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>
     } else if (queue.length < MAX_MOVE_CANDIDATES_PER_TEXT) {
       queue.push(candidate);
     }
-    let candidatesByGap = similarityCandidatesByBucket.get(step.moveScope.bucket);
+    let candidatesByGap = similarityCandidatesByBucket.get(
+      step.moveScope.bucket,
+    );
     if (!candidatesByGap) {
       candidatesByGap = new Map();
       similarityCandidatesByBucket.set(step.moveScope.bucket, candidatesByGap);
@@ -1384,7 +1546,9 @@ export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>
     block: Block;
     moveScope: MoveCandidate<Block>["moveScope"];
   }): void => {
-    const candidatesByGap = similarityCandidatesByBucket.get(candidate.moveScope.bucket);
+    const candidatesByGap = similarityCandidatesByBucket.get(
+      candidate.moveScope.bucket,
+    );
     const gapCandidates = candidatesByGap?.get(candidate.moveScope.gap);
     gapCandidates?.delete(candidate.block.id);
     if (gapCandidates?.size === 0) {
@@ -1401,7 +1565,9 @@ export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "revisedOnly") continue;
     const candidate =
-      idStability(step.block) === "stable" ? stableBaseById.get(step.block.id) : undefined;
+      idStability(step.block) === "stable"
+        ? stableBaseById.get(step.block.id)
+        : undefined;
     if (!candidate || taken.has(candidate.block.id)) continue;
     taken.add(candidate.block.id);
     takenRevised.add(step.block.id);
@@ -1422,10 +1588,13 @@ export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>
     ) {
       continue;
     }
-    const exactQueue = exactCandidatesByBucket.get(step.moveScope.bucket)?.get(step.block.text);
+    const exactQueue = exactCandidatesByBucket
+      .get(step.moveScope.bucket)
+      ?.get(step.block.text);
     const exact = exactQueue?.find(
       (candidate) =>
-        !taken.has(candidate.block.id) && candidate.moveScope.gap !== step.moveScope.gap,
+        !taken.has(candidate.block.id) &&
+        candidate.moveScope.gap !== step.moveScope.gap,
     );
     if (exact) {
       taken.add(exact.block.id);
@@ -1445,8 +1614,11 @@ export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>
     }
     const revisedProfile = tokenProfile(step.block.text);
     if (!revisedProfile) continue;
-    let best: { candidate: MoveCandidate<Block>; similarity: number } | null = null;
-    const candidatesByGap = similarityCandidatesByBucket.get(step.moveScope.bucket);
+    let best: { candidate: MoveCandidate<Block>; similarity: number } | null =
+      null;
+    const candidatesByGap = similarityCandidatesByBucket.get(
+      step.moveScope.bucket,
+    );
     candidateGroups: for (const [gap, candidates] of candidatesByGap ?? []) {
       if (gap === step.moveScope.gap) continue;
       for (const candidate of candidates.values()) {
@@ -1464,7 +1636,8 @@ export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>
           similarity >= MOVE_SIMILARITY_THRESHOLD &&
           (best === null ||
             similarity > best.similarity ||
-            (similarity === best.similarity && candidate.order < best.candidate.order))
+            (similarity === best.similarity &&
+              candidate.order < best.candidate.order))
         ) {
           best = { candidate, similarity };
         }
@@ -1546,7 +1719,10 @@ const structuralChangeForStep = <Block extends FolioContentBlockIdentity>(
 type FormattingChangeResult =
   | { status: "compared"; formatting: FolioContentFormattingChange | null }
   | { status: "budget-exceeded" }
-  | { status: "unalignable"; error: FolioContentInlinePresentationProjectionError };
+  | {
+      status: "unalignable";
+      error: FolioContentInlinePresentationProjectionError;
+    };
 
 const formattingChange = (
   base: FolioContentBlockIdentity,
@@ -1568,7 +1744,9 @@ const formattingChange = (
       return {
         status: "compared",
         formatting:
-          paragraph || ranges.length > 0 ? { ...(paragraph && { paragraph }), ranges } : null,
+          paragraph || ranges.length > 0
+            ? { ...(paragraph && { paragraph }), ranges }
+            : null,
       };
     }
     case "budget-exceeded":
@@ -1577,7 +1755,8 @@ const formattingChange = (
       return {
         status: "unalignable",
         error: new FolioContentInlinePresentationProjectionError({
-          message: "Inline formatting runs cannot be aligned to their block text.",
+          message:
+            "Inline formatting runs cannot be aligned to their block text.",
           side: inlineComparison.side,
           baseBlockId: base.id,
           revisedBlockId: revised.id,
@@ -1585,7 +1764,9 @@ const formattingChange = (
       };
     default: {
       const unreachable: never = inlineComparison;
-      return panic("Unhandled inline formatting comparison result", { result: unreachable });
+      return panic("Unhandled inline formatting comparison result", {
+        result: unreachable,
+      });
     }
   }
 };
@@ -1599,7 +1780,9 @@ type CompareAlignedContentOptions<Block extends FolioContentBlockIdentity> = {
   idStability?: (block: Block) => FolioContentIdStability;
 };
 
-export const compareAlignedFolioContent = <Block extends FolioContentBlockIdentity>({
+export const compareAlignedFolioContent = <
+  Block extends FolioContentBlockIdentity,
+>({
   baseBlocks,
   revisedBlocks,
   steps,
@@ -1608,10 +1791,13 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
   idStability,
 }: CompareAlignedContentOptions<Block>): Result<
   FolioContentComparison<Block>,
-  FolioContentComparisonLimitError | FolioContentInlinePresentationProjectionError
+  | FolioContentComparisonLimitError
+  | FolioContentInlinePresentationProjectionError
 > => {
   const paragraphPlans = detectFolioContentParagraphMarkPlans(steps);
-  const consumed = new Set([...paragraphPlans.keys()].map((index) => index + 1));
+  const consumed = new Set(
+    [...paragraphPlans.keys()].map((index) => index + 1),
+  );
   const moves = detectFolioContentMoves({
     steps,
     consumedStepIndexes: consumed,
@@ -1619,10 +1805,16 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
     ...(idStability && { idStability }),
   });
   const moveByBaseId = new Map(
-    moves.map((move, index) => [move.baseBlock.id, { ...move, moveId: index + 1 }] as const),
+    moves.map(
+      (move, index) =>
+        [move.baseBlock.id, { ...move, moveId: index + 1 }] as const,
+    ),
   );
   const moveByRevisedId = new Map(
-    moves.map((move, index) => [move.revisedBlock.id, { ...move, moveId: index + 1 }] as const),
+    moves.map(
+      (move, index) =>
+        [move.revisedBlock.id, { ...move, moveId: index + 1 }] as const,
+    ),
   );
   const { diffText } = workSession;
   const relations: Relation<Block>[] = [];
@@ -1652,20 +1844,27 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
     relations.push(relation);
     for (const block of relationBaseBlocks) {
       if (baseRelation.has(block.id)) {
-        panic("Content alignment assigned one base block more than once", { blockId: block.id });
+        panic("Content alignment assigned one base block more than once", {
+          blockId: block.id,
+        });
       }
       baseRelation.set(block.id, relation);
     }
     for (const block of relationRevisedBlocks) {
       if (revisedRelation.has(block.id)) {
-        panic("Content alignment assigned one revised block more than once", { blockId: block.id });
+        panic("Content alignment assigned one revised block more than once", {
+          blockId: block.id,
+        });
       }
       revisedRelation.set(block.id, relation);
     }
     return true;
   };
 
-  const changeLimitExceeded = (): Result<never, FolioContentComparisonLimitError> =>
+  const changeLimitExceeded = (): Result<
+    never,
+    FolioContentComparisonLimitError
+  > =>
     Result.err(
       limitExceeded({
         input: "result",
@@ -1708,7 +1907,11 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
       const base = step.baseBlock;
       const revised = step.revisedBlock;
       const properties = changedBlockProperties(base, revised);
-      const formattingResult = formattingChange(base, revised, remainingFormattingRanges);
+      const formattingResult = formattingChange(
+        base,
+        revised,
+        remainingFormattingRanges,
+      );
       let formatting: FolioContentFormattingChange | null;
       switch (formattingResult.status) {
         case "compared":
@@ -1727,7 +1930,9 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
           return Result.err(formattingResult.error);
         default: {
           const unreachable: never = formattingResult;
-          return panic("Unhandled formatting comparison result", { result: unreachable });
+          return panic("Unhandled formatting comparison result", {
+            result: unreachable,
+          });
         }
       }
       remainingFormattingRanges -= formatting?.ranges.length ?? 0;
@@ -1742,9 +1947,18 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
           ...(formatting && { formatting }),
         };
       } else if (formatting) {
-        event = { type: "formatting", baseBlocks: [base], revisedBlocks: [revised], formatting };
+        event = {
+          type: "formatting",
+          baseBlocks: [base],
+          revisedBlocks: [revised],
+          formatting,
+        };
       } else {
-        event = { type: "unchanged", baseBlocks: [base], revisedBlocks: [revised] };
+        event = {
+          type: "unchanged",
+          baseBlocks: [base],
+          revisedBlocks: [revised],
+        };
       }
       if (!addRelation(event, [base], [revised])) {
         return changeLimitExceeded();
@@ -1755,7 +1969,12 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
     if (step.type === "baseOnly") {
       const move = moveByBaseId.get(step.block.id);
       const event: FolioContentComparisonEvent<Block> = move
-        ? { type: "movedFrom", baseBlocks: [step.block], revisedBlocks: [], moveId: move.moveId }
+        ? {
+            type: "movedFrom",
+            baseBlocks: [step.block],
+            revisedBlocks: [],
+            moveId: move.moveId,
+          }
         : { type: "deleted", baseBlocks: [step.block], revisedBlocks: [] };
       if (!addRelation(event, [step.block], [])) {
         return changeLimitExceeded();
@@ -1765,7 +1984,11 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
     if (step.type === "revisedOnly") {
       const move = moveByRevisedId.get(step.block.id);
       const moveFormattingResult = move
-        ? formattingChange(move.baseBlock, step.block, remainingFormattingRanges)
+        ? formattingChange(
+            move.baseBlock,
+            step.block,
+            remainingFormattingRanges,
+          )
         : ({ status: "compared", formatting: null } as const);
       let moveFormatting: FolioContentFormattingChange | null;
       switch (moveFormattingResult.status) {
@@ -1785,11 +2008,15 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
           return Result.err(moveFormattingResult.error);
         default: {
           const unreachable: never = moveFormattingResult;
-          return panic("Unhandled formatting comparison result", { result: unreachable });
+          return panic("Unhandled formatting comparison result", {
+            result: unreachable,
+          });
         }
       }
       remainingFormattingRanges -= moveFormatting?.ranges.length ?? 0;
-      const moveProperties = move ? changedBlockProperties(move.baseBlock, step.block) : [];
+      const moveProperties = move
+        ? changedBlockProperties(move.baseBlock, step.block)
+        : [];
       const event: FolioContentComparisonEvent<Block> = move
         ? {
             type: "movedTo",
@@ -1798,9 +2025,13 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
             moveId: move.moveId,
             baseBlockId: move.baseBlock.id,
             ...(move.baseBlock.text !== step.block.text && {
-              segments: withTextOffsets(diffText(move.baseBlock.text, step.block.text)),
+              segments: withTextOffsets(
+                diffText(move.baseBlock.text, step.block.text),
+              ),
             }),
-            ...(moveProperties.length > 0 && { changedProperties: moveProperties }),
+            ...(moveProperties.length > 0 && {
+              changedProperties: moveProperties,
+            }),
             ...(moveFormatting && { formatting: moveFormatting }),
           }
         : { type: "inserted", baseBlocks: [], revisedBlocks: [step.block] };
@@ -1866,10 +2097,13 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
       relation = fromRevised;
     }
     if (!relation) {
-      return panic("Content alignment did not produce one monotone projection", {
-        baseBlockId: base?.id,
-        revisedBlockId: revised?.id,
-      });
+      return panic(
+        "Content alignment did not produce one monotone projection",
+        {
+          baseBlockId: base?.id,
+          revisedBlockId: revised?.id,
+        },
+      );
     }
     emitted.add(relation.id);
     ordered.push(relation.event);
@@ -1877,18 +2111,28 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlockIdenti
     revisedIndex += relation.revisedBlocks.length;
   }
   if (emitted.size !== relations.length) {
-    return panic("Content alignment left relations outside the ordered projection");
+    return panic(
+      "Content alignment left relations outside the ordered projection",
+    );
   }
 
   return Result.ok({ events: ordered, structuralChanges });
 };
 
 /** Compare two representation-neutral ordered content snapshots. */
-export const compareContent = <Block extends FolioContentBlockIdentity = FolioContentBlock>(
+export const compareContent = <
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+>(
   options: CompareContentOptions<Block>,
 ): Result<FolioContentComparison<Block>, FolioContentComparisonError> => {
   if (!isRecord(options)) {
-    return Result.err(invalidInput("options", "options", "Comparison options must be an object."));
+    return Result.err(
+      invalidInput(
+        "options",
+        "options",
+        "Comparison options must be an object.",
+      ),
+    );
   }
   const { base, revised, granularity } = options;
   if (
@@ -1896,7 +2140,11 @@ export const compareContent = <Block extends FolioContentBlockIdentity = FolioCo
     !WORD_DIFF_GRANULARITIES.some((candidate) => candidate === granularity)
   ) {
     return Result.err(
-      invalidInput("options", "granularity", "Comparison granularity must be word or character."),
+      invalidInput(
+        "options",
+        "granularity",
+        "Comparison granularity must be word or character.",
+      ),
     );
   }
   const baseError = validateSnapshot(base, "base");

@@ -7,7 +7,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { compareDocxVersions, formatVersionDiffForLLM } from "@stll/folio-agents";
+import {
+  compareDocxVersions,
+  formatVersionDiffForLLM,
+} from "@stll/folio-agents";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { generateRedlineDocx } from "@stll/folio-core/server";
 
@@ -20,7 +23,11 @@ import {
 } from "../support/documents.ts";
 import { labelsOf } from "../support/editor.ts";
 import { assertHealthy, assertReadersAgree } from "../support/invariants.ts";
-import { type Block, coreBatch, randomOperation } from "../support/operations.ts";
+import {
+  type Block,
+  coreBatch,
+  randomOperation,
+} from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
 import { resolvedText } from "../support/review.ts";
 
@@ -43,13 +50,21 @@ const edited = async (bytes: Uint8Array, seed: number): Promise<Uint8Array> => {
     "insertTableRow",
   ];
   for (let step = 0; step < 4; step += 1) {
-    const operation = randomOperation(reviewer.getContent() as Block[], "direct", random, {
-      types,
-    });
+    const operation = randomOperation(
+      reviewer.getContent() as Block[],
+      "direct",
+      random,
+      {
+        types,
+      },
+    );
     if (operation) {
-      reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never, {
-        undefinedReferences: "refuse",
-      });
+      reviewer.applyDocumentOperations(
+        coreBatch([operation], "direct") as never,
+        {
+          undefinedReferences: "refuse",
+        },
+      );
     }
   }
   return new Uint8Array(await reviewer.toBuffer());
@@ -61,13 +76,24 @@ describe("compare round trips", () => {
       const before = await settled(await FIXTURES[name]());
       const after = await edited(before, 1000 + index);
 
-      const redline = await generateRedlineDocx(toArrayBuffer(before), toArrayBuffer(after), {
-        author: "Comparison",
-      });
-      assert.deepEqual(redline.unprocessedStories, [], "the comparison skipped a story");
+      const redline = await generateRedlineDocx(
+        toArrayBuffer(before),
+        toArrayBuffer(after),
+        {
+          author: "Comparison",
+        },
+      );
+      assert.deepEqual(
+        redline.unprocessedStories,
+        [],
+        "the comparison skipped a story",
+      );
       const redlineBytes = new Uint8Array(redline.buffer);
       await assertReadersAgree(redlineBytes, `${name} redline`);
-      await assertHealthy(await openReviewer(redlineBytes), `${name} redline saved`);
+      await assertHealthy(
+        await openReviewer(redlineBytes),
+        `${name} redline saved`,
+      );
 
       assert.deepEqual(
         await resolvedText(redlineBytes, "accept"),
@@ -80,15 +106,23 @@ describe("compare round trips", () => {
         `${name}: rejecting the redline does not give the original version`,
       );
 
-      const diff = await compareDocxVersions(toArrayBuffer(before), toArrayBuffer(after));
+      const diff = await compareDocxVersions(
+        toArrayBuffer(before),
+        toArrayBuffer(after),
+      );
       assert.equal(typeof formatVersionDiffForLLM(diff), "string");
     });
   }
 
   test("accepting a redline keeps an inserted bullet a bullet", async () => {
     const before = await packDocument(fromMarkdown("Intro.\n\nOutro."));
-    const after = await packDocument(fromMarkdown("Intro.\n\n- new bullet\n\nOutro."));
-    const redline = await generateRedlineDocx(toArrayBuffer(before), toArrayBuffer(after));
+    const after = await packDocument(
+      fromMarkdown("Intro.\n\n- new bullet\n\nOutro."),
+    );
+    const redline = await generateRedlineDocx(
+      toArrayBuffer(before),
+      toArrayBuffer(after),
+    );
     const reviewer = await openReviewer(new Uint8Array(redline.buffer));
     reviewer.acceptAll();
     assert.deepEqual(

@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const paragraphBlocksOf = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map(expectParagraphBlock);
@@ -15,8 +15,12 @@ const paragraph = (text: string, paraId: string, numId?: number) => ({
   textId: paraId,
   ...(numId === undefined
     ? {}
-    : { formatting: { numPr: { kind: "reference" as const, numId, ilvl: 0 } } }),
-  content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
+    : {
+        formatting: { numPr: { kind: "reference" as const, numId, ilvl: 0 } },
+      }),
+  content: [
+    { type: "run" as const, content: [{ type: "text" as const, text }] },
+  ],
 });
 
 const document = (introduced: boolean) => {
@@ -28,7 +32,10 @@ const document = (introduced: boolean) => {
   if (introduced) {
     result.package.numbering = {
       abstractNums: [
-        { abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+        {
+          abstractNumId: 5,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
       ],
       nums: [{ numId: 5, abstractNumId: 5 }],
     };
@@ -45,7 +52,9 @@ const retainedListLevelDocument = (hasExplicitLevel: boolean) => {
       textId: "88888888",
       formatting: {
         styleId: "RetainedNumbered",
-        ...(hasExplicitLevel ? { numPr: { kind: "reference", numId: 5, ilvl: 0 } } : {}),
+        ...(hasExplicitLevel
+          ? { numPr: { kind: "reference", numId: 5, ilvl: 0 } }
+          : {}),
       },
       content: [
         {
@@ -67,7 +76,12 @@ const retainedListLevelDocument = (hasExplicitLevel: boolean) => {
     ],
   };
   result.package.numbering = {
-    abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] }],
+    abstractNums: [
+      {
+        abstractNumId: 5,
+        levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+      },
+    ],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   return createDocx(result);
@@ -101,7 +115,12 @@ const restyledAbsentLevelDocument = (numbered: boolean) => {
     ],
   };
   result.package.numbering = {
-    abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] }],
+    abstractNums: [
+      {
+        abstractNumId: 5,
+        levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+      },
+    ],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   return createDocx(result);
@@ -121,7 +140,12 @@ const styleSourcedIntroducedListDocument = (introduced: boolean) => {
             content: [
               {
                 type: "run" as const,
-                content: [{ type: "text" as const, text: "Style-sourced introduced item." }],
+                content: [
+                  {
+                    type: "text" as const,
+                    text: "Style-sourced introduced item.",
+                  },
+                ],
               },
             ],
           },
@@ -141,12 +165,23 @@ const styleSourcedIntroducedListDocument = (introduced: boolean) => {
   };
   result.package.numbering = {
     abstractNums: [
-      { abstractNumId: 3, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+      {
+        abstractNumId: 3,
+        levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+      },
       ...(introduced
-        ? [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "lowerRoman", lvlText: "%1." }] }]
+        ? [
+            {
+              abstractNumId: 5,
+              levels: [{ ilvl: 0, numFmt: "lowerRoman", lvlText: "%1." }],
+            },
+          ]
         : []),
     ],
-    nums: [{ numId: 3, abstractNumId: 3 }, ...(introduced ? [{ numId: 5, abstractNumId: 5 }] : [])],
+    nums: [
+      { numId: 3, abstractNumId: 3 },
+      ...(introduced ? [{ numId: 5, abstractNumId: 5 }] : []),
+    ],
   };
   return createDocx(result);
 };
@@ -159,13 +194,20 @@ const collisionDocument = ({
   numFmt: "decimal" | "lowerRoman";
 }) => {
   const result = createEmptyDocument();
-  result.package.document.content = [paragraph("Shared list item.", "33333333", 5)];
+  result.package.document.content = [
+    paragraph("Shared list item.", "33333333", 5),
+  ];
   result.package.numbering = {
     abstractNums: [
       {
         abstractNumId: 5,
         levels: [
-          { ilvl: 0, numFmt, lvlText: "%1.", ...(markerBold ? { rPr: { bold: true } } : {}) },
+          {
+            ilvl: 0,
+            numFmt,
+            lvlText: "%1.",
+            ...(markerBold ? { rPr: { bold: true } } : {}),
+          },
         ],
       },
     ],
@@ -174,7 +216,10 @@ const collisionDocument = ({
   return createDocx(result);
 };
 
-const collisionTableDocument = (withInsertedRow: boolean, numFmt: "decimal" | "lowerRoman") => {
+const collisionTableDocument = (
+  withInsertedRow: boolean,
+  numFmt: "decimal" | "lowerRoman",
+) => {
   const result = createEmptyDocument();
   result.package.document.content = [
     {
@@ -196,7 +241,9 @@ const collisionTableDocument = (withInsertedRow: boolean, numFmt: "decimal" | "l
                 cells: [
                   {
                     type: "tableCell" as const,
-                    content: [paragraph("Inserted table list item.", "55555555", 5)],
+                    content: [
+                      paragraph("Inserted table list item.", "55555555", 5),
+                    ],
                   },
                 ],
               },
@@ -206,27 +253,38 @@ const collisionTableDocument = (withInsertedRow: boolean, numFmt: "decimal" | "l
     },
   ];
   result.package.numbering = {
-    abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt, lvlText: "%1." }] }],
+    abstractNums: [
+      { abstractNumId: 5, levels: [{ ilvl: 0, numFmt, lvlText: "%1." }] },
+    ],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   return createDocx(result);
 };
 
 test("imports target-only numbering for an introduced list and preserves rejection", async () => {
-  const result = await compareDocx(await document(false), await document(true), {
-    author: "compare",
-    timestamp: "2026-09-13T00:00:00.000Z",
-  });
+  const result = await compareDocx(
+    await document(false),
+    await document(true),
+    {
+      author: "compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    },
+  );
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  expect(paragraphBlocksOf(accepting).at(1)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(paragraphBlocksOf(accepting).at(1)?.listReference).toEqual({
+    numId: 5,
+    level: 0,
+  });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual(["Anchor paragraph."]);
+  expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual([
+    "Anchor paragraph.",
+  ]);
 });
 
 test("preserves an absent authored list level on a retained paragraph", async () => {
@@ -243,24 +301,44 @@ test("preserves an absent authored list level on a retained paragraph", async ()
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
-  const acceptedParagraph = accepted.toDocument().package.document.content.at(0);
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    await accepting.toBuffer(),
+  );
+  const acceptedParagraph = accepted
+    .toDocument()
+    .package.document.content.at(0);
   if (acceptedParagraph?.type !== "paragraph") {
     throw new Error("Expected the retained paragraph after acceptance");
   }
   expect(acceptedParagraph.formatting?.numPr).toBeUndefined();
-  expect(acceptedParagraph.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 5 });
-  expect(paragraphBlocksOf(accepted).at(0)?.statedNumbering).toEqual({ kind: "inherit" });
-  expect(paragraphBlocksOf(accepted).at(0)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(acceptedParagraph.formatting?.numPrFromStyle).toEqual({
+    kind: "reference",
+    numId: 5,
+  });
+  expect(paragraphBlocksOf(accepted).at(0)?.statedNumbering).toEqual({
+    kind: "inherit",
+  });
+  expect(paragraphBlocksOf(accepted).at(0)?.listReference).toEqual({
+    numId: 5,
+    level: 0,
+  });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
-  const rejectedParagraph = rejected.toDocument().package.document.content.at(0);
+  const rejected = await FolioDocxReviewer.fromBuffer(
+    await rejecting.toBuffer(),
+  );
+  const rejectedParagraph = rejected
+    .toDocument()
+    .package.document.content.at(0);
   if (rejectedParagraph?.type !== "paragraph") {
     throw new Error("Expected the retained paragraph after rejection");
   }
-  expect(rejectedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5, ilvl: 0 });
+  expect(rejectedParagraph.formatting?.numPr).toEqual({
+    kind: "reference",
+    numId: 5,
+    ilvl: 0,
+  });
   expect(rejectedParagraph.formatting?.numPrFromStyle).toBeUndefined();
   expect(paragraphBlocksOf(rejected).at(0)?.statedNumbering).toEqual({
     kind: "reference",
@@ -283,21 +361,37 @@ test("preserves an absent list level when restyling a retained paragraph into a 
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
-  const acceptedParagraph = accepted.toDocument().package.document.content.at(0);
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    await accepting.toBuffer(),
+  );
+  const acceptedParagraph = accepted
+    .toDocument()
+    .package.document.content.at(0);
   if (acceptedParagraph?.type !== "paragraph") {
     throw new Error("Expected the restyled paragraph after acceptance");
   }
   expect(acceptedParagraph.formatting?.styleId).toBe("RetainedNumbered");
   expect(acceptedParagraph.formatting?.numPr).toBeUndefined();
-  expect(acceptedParagraph.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 5 });
-  expect(paragraphBlocksOf(accepted).at(0)?.listReference).toEqual({ numId: 5, level: 0 });
-  expect(paragraphBlocksOf(accepted).at(0)?.statedNumbering).toEqual({ kind: "inherit" });
+  expect(acceptedParagraph.formatting?.numPrFromStyle).toEqual({
+    kind: "reference",
+    numId: 5,
+  });
+  expect(paragraphBlocksOf(accepted).at(0)?.listReference).toEqual({
+    numId: 5,
+    level: 0,
+  });
+  expect(paragraphBlocksOf(accepted).at(0)?.statedNumbering).toEqual({
+    kind: "inherit",
+  });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
-  const rejectedParagraph = rejected.toDocument().package.document.content.at(0);
+  const rejected = await FolioDocxReviewer.fromBuffer(
+    await rejecting.toBuffer(),
+  );
+  const rejectedParagraph = rejected
+    .toDocument()
+    .package.document.content.at(0);
   if (rejectedParagraph?.type !== "paragraph") {
     throw new Error("Expected the restyled paragraph after rejection");
   }
@@ -321,7 +415,9 @@ test("preserves a style-sourced introduced list instance without materializing l
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    await accepting.toBuffer(),
+  );
   const introduced = accepted.toDocument().package.document.content.at(1);
   if (introduced?.type !== "paragraph") {
     throw new Error("Expected the introduced paragraph after acceptance");
@@ -329,17 +425,30 @@ test("preserves a style-sourced introduced list instance without materializing l
   const importedStyleId = introduced.formatting?.styleId;
   expect(importedStyleId).not.toBe("TargetNumbered");
   expect(
-    accepted.toDocument().package.styles?.styles.find(({ styleId }) => styleId === importedStyleId)
+    accepted
+      .toDocument()
+      .package.styles?.styles.find(({ styleId }) => styleId === importedStyleId)
       ?.pPr?.numPr,
   ).toEqual({ kind: "reference", numId: 5 });
   expect(
-    accepted.toDocument().package.styles?.styles.find(({ styleId }) => styleId === "TargetNumbered")
-      ?.pPr?.numPr,
+    accepted
+      .toDocument()
+      .package.styles?.styles.find(
+        ({ styleId }) => styleId === "TargetNumbered",
+      )?.pPr?.numPr,
   ).toEqual({ kind: "reference", numId: 3 });
   expect(introduced.formatting?.numPr).toBeUndefined();
-  expect(introduced.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 5 });
-  expect(paragraphBlocksOf(accepted).at(1)?.listReference).toEqual({ numId: 5, level: 0 });
-  expect(paragraphBlocksOf(accepted).at(1)?.statedNumbering).toEqual({ kind: "inherit" });
+  expect(introduced.formatting?.numPrFromStyle).toEqual({
+    kind: "reference",
+    numId: 5,
+  });
+  expect(paragraphBlocksOf(accepted).at(1)?.listReference).toEqual({
+    numId: 5,
+    level: 0,
+  });
+  expect(paragraphBlocksOf(accepted).at(1)?.statedNumbering).toEqual({
+    kind: "inherit",
+  });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
@@ -362,18 +471,26 @@ test("rebinds a colliding target numbering definition through a tracked paragrap
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  expect(paragraphBlocksOf(accepting).at(0)?.listReference).toEqual({ numId: 6, level: 0 });
+  expect(paragraphBlocksOf(accepting).at(0)?.listReference).toEqual({
+    numId: 6,
+    level: 0,
+  });
   expect(
-    accepting.readNumberingDefinitions().find(({ numId, level }) => numId === 6 && level === 0)
-      ?.format,
+    accepting
+      .readNumberingDefinitions()
+      .find(({ numId, level }) => numId === 6 && level === 0)?.format,
   ).toBe("lowerRoman");
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  expect(paragraphBlocksOf(rejecting).at(0)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(paragraphBlocksOf(rejecting).at(0)?.listReference).toEqual({
+    numId: 5,
+    level: 0,
+  });
   expect(
-    rejecting.readNumberingDefinitions().find(({ numId, level }) => numId === 5 && level === 0)
-      ?.format,
+    rejecting
+      .readNumberingDefinitions()
+      .find(({ numId, level }) => numId === 5 && level === 0)?.format,
   ).toBe("decimal");
 });
 
@@ -424,24 +541,40 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    await accepting.toBuffer(),
+  );
   expect(
-    paragraphBlocksOf(accepted).map(({ text, listReference }) => ({ text, listReference })),
+    paragraphBlocksOf(accepted).map(({ text, listReference }) => ({
+      text,
+      listReference,
+    })),
   ).toEqual([
     { text: "Shared table list item.", listReference: { numId: 6, level: 0 } },
-    { text: "Inserted table list item.", listReference: { numId: 6, level: 0 } },
+    {
+      text: "Inserted table list item.",
+      listReference: { numId: 6, level: 0 },
+    },
   ]);
   expect(
-    accepted.readNumberingDefinitions().find(({ numId, level }) => numId === 6 && level === 0)
-      ?.format,
+    accepted
+      .readNumberingDefinitions()
+      .find(({ numId, level }) => numId === 6 && level === 0)?.format,
   ).toBe("lowerRoman");
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  const rejected = await FolioDocxReviewer.fromBuffer(
+    await rejecting.toBuffer(),
+  );
   expect(
-    paragraphBlocksOf(rejected).map(({ text, listReference }) => ({ text, listReference })),
-  ).toEqual([{ text: "Shared table list item.", listReference: { numId: 5, level: 0 } }]);
+    paragraphBlocksOf(rejected).map(({ text, listReference }) => ({
+      text,
+      listReference,
+    })),
+  ).toEqual([
+    { text: "Shared table list item.", listReference: { numId: 5, level: 0 } },
+  ]);
 });
 
 /**
@@ -462,7 +595,12 @@ const unresolvableLevelDocument = (indented: boolean) => {
         numPr: { kind: "reference", numId: 5, ilvl: 1 },
         ...(indented ? { indentLeft: 720, hangingIndent: true } : {}),
       },
-      content: [{ type: "run", content: [{ type: "text", text: "Clause with no level." }] }],
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "Clause with no level." }],
+        },
+      ],
     },
   ];
   result.package.numbering = {

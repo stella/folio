@@ -4,12 +4,6 @@
 // is no decision for a host to learn about. A normalisation added here would
 // need the context; the guard above is the reminder.
 
-import {
-  DocxArchiveError,
-  type DocxArchive,
-  type DocxArchiveOptions,
-  loadDocxArchive,
-} from "./boundedArchive";
 import { escapeTableCell } from "../../markdown/escape";
 import { parseRelationships, RELATIONSHIP_TYPES } from "../relsParser";
 import {
@@ -24,6 +18,12 @@ import {
   parseXml,
   type XmlElement,
 } from "../xmlParser";
+import {
+  type DocxArchive,
+  DocxArchiveError,
+  type DocxArchiveOptions,
+  loadDocxArchive,
+} from "./boundedArchive";
 
 const DOCUMENT_RELS_PATH = "word/_rels/document.xml.rels";
 const ARCHIVE_LIMIT_REASON = "total-too-large" as const;
@@ -124,13 +124,18 @@ const findWordChild = (
   if (!parent) {
     return null;
   }
-  return childElements(parent).find((child) => wordElementName(child) === localName) ?? null;
+  return (
+    childElements(parent).find(
+      (child) => wordElementName(child) === localName,
+    ) ?? null
+  );
 };
 
 const getWordAttribute = (
   element: XmlElement | null | undefined,
   localName: string,
-): string | null => getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACES, localName);
+): string | null =>
+  getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACES, localName);
 
 const collectText = (element: XmlElement): string => {
   let text = "";
@@ -149,7 +154,11 @@ const collectText = (element: XmlElement): string => {
       text += "\t";
       return;
     }
-    if (localName === "del" || localName === "delText" || localName === "moveFrom") {
+    if (
+      localName === "del" ||
+      localName === "delText" ||
+      localName === "moveFrom"
+    ) {
       return;
     }
     for (const child of childElements(node)) {
@@ -170,7 +179,11 @@ const countAcceptedTextChars = (element: XmlElement): number => {
       chars += getTextContent(node).length;
       return;
     }
-    if (localName === "del" || localName === "delText" || localName === "moveFrom") {
+    if (
+      localName === "del" ||
+      localName === "delText" ||
+      localName === "moveFrom"
+    ) {
       return;
     }
     for (const child of childElements(node)) {
@@ -182,7 +195,9 @@ const countAcceptedTextChars = (element: XmlElement): number => {
   return chars;
 };
 
-const readParagraphProperties = (paragraph: XmlElement): ParagraphProperties => {
+const readParagraphProperties = (
+  paragraph: XmlElement,
+): ParagraphProperties => {
   const properties = findWordChild(paragraph, "pPr");
   if (!properties) {
     return {};
@@ -223,8 +238,10 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
 
     const sizeProperty = findWordChild(properties, "sz");
     const sizeValue = getWordAttribute(sizeProperty, "val");
-    const parsedSize = sizeValue === null ? Number.NaN : Number.parseInt(sizeValue, 10);
-    const fontSize = Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : undefined;
+    const parsedSize =
+      sizeValue === null ? Number.NaN : Number.parseInt(sizeValue, 10);
+    const fontSize =
+      Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : undefined;
 
     const chars = countAcceptedTextChars(run);
     if (chars === 0) {
@@ -241,8 +258,12 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
   return metrics;
 };
 
-const readParagraph = (paragraph: XmlElement): ExtractedDocxTableCellParagraph => {
-  const entry: ExtractedDocxTableCellParagraph = { text: collectText(paragraph) };
+const readParagraph = (
+  paragraph: XmlElement,
+): ExtractedDocxTableCellParagraph => {
+  const entry: ExtractedDocxTableCellParagraph = {
+    text: collectText(paragraph),
+  };
   const { style, alignment } = readParagraphProperties(paragraph);
   if (style !== undefined) {
     entry.style = style;
@@ -256,11 +277,16 @@ const readParagraph = (paragraph: XmlElement): ExtractedDocxTableCellParagraph =
     return entry;
   }
   const totalChars = runs.reduce((sum, run) => sum + run.chars, 0);
-  const boldChars = runs.reduce((sum, run) => sum + (run.bold ? run.chars : 0), 0);
+  const boldChars = runs.reduce(
+    (sum, run) => sum + (run.bold ? run.chars : 0),
+    0,
+  );
   if (boldChars > totalChars / 2) {
     entry.bold = true;
   }
-  const firstFontSize = runs.find((run) => run.fontSize !== undefined)?.fontSize;
+  const firstFontSize = runs.find(
+    (run) => run.fontSize !== undefined,
+  )?.fontSize;
   if (firstFontSize !== undefined) {
     entry.fontSize = firstFontSize;
   }
@@ -322,7 +348,9 @@ const chargeTableCharacters = ({
   kind,
 }: ChargeTableCharactersOptions): void => {
   const remaining =
-    kind === "source" ? budget.remainingSourceCharacters : budget.remainingRenderedCharacters;
+    kind === "source"
+      ? budget.remainingSourceCharacters
+      : budget.remainingRenderedCharacters;
   if (characters > remaining) {
     throw new DocxArchiveError({
       message: `Extracted DOCX table ${kind} text exceeded the ${MAX_TABLE_CHARACTERS}-character limit`,
@@ -424,7 +452,10 @@ const readCellSourceParagraphs = (
             localName: "tc",
             limit: MAX_TABLE_COLUMNS,
           })) {
-            for (const paragraph of readCellSourceParagraphs(nestedCell, depth + 1)) {
+            for (const paragraph of readCellSourceParagraphs(
+              nestedCell,
+              depth + 1,
+            )) {
               paragraphs.push(paragraph);
             }
           }
@@ -455,7 +486,11 @@ const readCellRenderedLines = (
       const childName = wordElementName(child);
       if (childName === "p") {
         const text = collectText(child);
-        chargeTableCharacters({ budget, characters: text.length, kind: "source" });
+        chargeTableCharacters({
+          budget,
+          characters: text.length,
+          kind: "source",
+        });
         if (text.length > 0) {
           lines.push(text);
         }
@@ -463,7 +498,10 @@ const readCellRenderedLines = (
       }
       if (childName === "tbl") {
         if (depth < MAX_NESTED_TABLE_DEPTH) {
-          for (const line of flattenNestedTable(child, { depth: depth + 1, budget })) {
+          for (const line of flattenNestedTable(child, {
+            depth: depth + 1,
+            budget,
+          })) {
             lines.push(line);
           }
         }
@@ -483,7 +521,11 @@ const flattenNestedTable = (
 ): string[] => {
   const lines: string[] = [];
 
-  for (const row of collectTableParts({ parent: table, localName: "tr", limit: MAX_TABLE_ROWS })) {
+  for (const row of collectTableParts({
+    parent: table,
+    localName: "tr",
+    limit: MAX_TABLE_ROWS,
+  })) {
     const cells = collectTableParts({
       parent: row,
       localName: "tc",
@@ -518,9 +560,14 @@ const readTableCell = (
 ): ExtractedTableCell => {
   const properties = findWordChild(cell, "tcPr");
 
-  const gridSpanValue = getWordAttribute(findWordChild(properties, "gridSpan"), "val");
-  const parsedGridSpan = gridSpanValue === null ? 1 : Number.parseInt(gridSpanValue, 10);
-  const gridSpan = Number.isFinite(parsedGridSpan) && parsedGridSpan > 1 ? parsedGridSpan : 1;
+  const gridSpanValue = getWordAttribute(
+    findWordChild(properties, "gridSpan"),
+    "val",
+  );
+  const parsedGridSpan =
+    gridSpanValue === null ? 1 : Number.parseInt(gridSpanValue, 10);
+  const gridSpan =
+    Number.isFinite(parsedGridSpan) && parsedGridSpan > 1 ? parsedGridSpan : 1;
 
   // A `w:vMerge` without `w:val="restart"` continues the cell above it. Word
   // renders no content of its own there, so emit an empty grid column: it holds
@@ -559,11 +606,16 @@ const declaresHeaderRow = (row: XmlElement): boolean => {
   return parseOnOffValue(getWordAttribute(header, "val")) ?? true;
 };
 
-const readRowGridOffset = (row: XmlElement, localName: "gridBefore" | "gridAfter"): number => {
+const readRowGridOffset = (
+  row: XmlElement,
+  localName: "gridBefore" | "gridAfter",
+): number => {
   const properties = findWordChild(row, "trPr");
   const value = getWordAttribute(findWordChild(properties, localName), "val");
   const parsed = value === null ? 0 : Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, MAX_TABLE_COLUMNS) : 0;
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.min(parsed, MAX_TABLE_COLUMNS)
+    : 0;
 };
 
 type TableGrid = {
@@ -573,7 +625,10 @@ type TableGrid = {
   firstRowIsHeader: boolean;
 };
 
-const readTableGrid = (table: XmlElement, budget: TableExtractionBudget): TableGrid => {
+const readTableGrid = (
+  table: XmlElement,
+  budget: TableExtractionBudget,
+): TableGrid => {
   const rows: ExtractedTableCell[][] = [];
   let columnCount = 0;
   let firstRowIsHeader = false;
@@ -603,7 +658,10 @@ const readTableGrid = (table: XmlElement, budget: TableExtractionBudget): TableG
       columns.push(extractedCell);
       // A horizontally merged cell holds its text in the first column it spans;
       // the rest stay empty so every row keeps the same column boundaries.
-      const padding = Math.min(extractedCell.gridSpan - 1, MAX_TABLE_COLUMNS - columns.length);
+      const padding = Math.min(
+        extractedCell.gridSpan - 1,
+        MAX_TABLE_COLUMNS - columns.length,
+      );
       for (let index = 0; index < padding; index++) {
         columns.push(emptyTableCell());
       }
@@ -625,7 +683,10 @@ const readTableGrid = (table: XmlElement, budget: TableExtractionBudget): TableG
 };
 
 /** Pad a row to the table's column count and escape each cell into a pipe row. */
-const toRowLine = (columns: readonly ExtractedTableCell[], columnCount: number): string => {
+const toRowLine = (
+  columns: readonly ExtractedTableCell[],
+  columnCount: number,
+): string => {
   const cells: string[] = [];
   for (let column = 0; column < columnCount; column++) {
     cells.push(escapeTableCell(columns[column]?.text ?? ""));
@@ -657,13 +718,24 @@ const renderTableRows = ({
   }
 
   const rendered: RenderedTableRow[] = [];
-  const pushScaffolding = (text: string, kind: "syntheticHeader" | "delimiter") => {
-    chargeTableCharacters({ budget, characters: text.length, kind: "rendered" });
+  const pushScaffolding = (
+    text: string,
+    kind: "syntheticHeader" | "delimiter",
+  ) => {
+    chargeTableCharacters({
+      budget,
+      characters: text.length,
+      kind: "rendered",
+    });
     rendered.push({ text, position: { table: tableIndex, kind } });
   };
   const pushCells = (cells: readonly ExtractedTableCell[]) => {
     const text = toRowLine(cells, columnCount);
-    chargeTableCharacters({ budget, characters: text.length, kind: "rendered" });
+    chargeTableCharacters({
+      budget,
+      characters: text.length,
+      kind: "rendered",
+    });
     rendered.push({
       text,
       position: {
@@ -897,7 +969,10 @@ const resolveReferencedHeaderFooterParts = async (
     }
   }
 
-  const resolvePaths = (rIds: Set<string>, relationshipType: string): string[] => {
+  const resolvePaths = (
+    rIds: Set<string>,
+    relationshipType: string,
+  ): string[] => {
     const paths = new Set<string>();
     for (const rId of rIds) {
       const relationship = relationships.get(rId);
@@ -948,7 +1023,10 @@ export const extractDocxText = async (
     return createEmptyResult();
   }
 
-  const referencedParts = await resolveReferencedHeaderFooterParts(archive, root);
+  const referencedParts = await resolveReferencedHeaderFooterParts(
+    archive,
+    root,
+  );
   const budget = createCharBudget();
   const tableBudget = createTableExtractionBudget();
 
@@ -982,7 +1060,11 @@ export const extractDocxText = async (
   });
 
   return {
-    paragraphs: [...headers.paragraphs, ...bodyResult.paragraphs, ...footers.paragraphs],
+    paragraphs: [
+      ...headers.paragraphs,
+      ...bodyResult.paragraphs,
+      ...footers.paragraphs,
+    ],
     charCount: headers.charCount + bodyResult.charCount + footers.charCount,
     view: "accepted",
   };

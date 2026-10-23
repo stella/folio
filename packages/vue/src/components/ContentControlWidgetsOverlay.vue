@@ -14,8 +14,15 @@
       @mousedown.stop
       @pointerdown.stop
     >
-      <div v-if="snapshot.status === 'dropdown'" class="content-control-picker__items" role="menu">
-        <div v-if="snapshot.items.length === 0" class="content-control-picker__empty">
+      <div
+        v-if="snapshot.status === 'dropdown'"
+        class="content-control-picker__items"
+        role="menu"
+      >
+        <div
+          v-if="snapshot.items.length === 0"
+          class="content-control-picker__empty"
+        >
           {{ t("contentControlDropdownNoOptions") }}
         </div>
         <template v-else>
@@ -45,10 +52,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, shallowRef, watch, type CSSProperties } from "vue";
 import type { EditorView } from "prosemirror-view";
+import {
+  computed,
+  type CSSProperties,
+  onBeforeUnmount,
+  shallowRef,
+  watch,
+} from "vue";
 
 import { ContentControlWidgetController } from "@stll/folio-core/controller/contentControlWidgetController";
+
 import { useDocxPortalClass } from "../composables/usePortalClass";
 import { useTranslation } from "../i18n";
 import { useFolioUI } from "../ui/folio-ui";

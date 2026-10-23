@@ -27,7 +27,10 @@
 type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
-  report: (descriptor: { node: unknown; messageId: "handRolledBase64" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "handRolledBase64";
+  }) => void;
 };
 
 const isAstNode = (value: unknown): value is AstNode =>
@@ -49,7 +52,11 @@ const callsBtoa = (callee: unknown): boolean => {
     return false;
   }
   const property = callee["property"];
-  return isAstNode(property) && property.type === "Identifier" && property["name"] === "btoa";
+  return (
+    isAstNode(property) &&
+    property.type === "Identifier" &&
+    property["name"] === "btoa"
+  );
 };
 
 export default {

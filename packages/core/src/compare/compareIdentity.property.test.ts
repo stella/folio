@@ -20,15 +20,22 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { compareDocx } from "./compare";
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const PACKAGE_RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
-const OFFICE_RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-const COMPARE_OPTIONS = { author: "corpus-gate", timestamp: "2026-01-01T00:00:00.000Z" } as const;
+const COMPARE_OPTIONS = {
+  author: "corpus-gate",
+  timestamp: "2026-01-01T00:00:00.000Z",
+} as const;
 
 const NAMESPACES = [
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
@@ -85,9 +92,10 @@ const tableXml = (rows: number, cellText: string): string => {
           `<w:tc><w:tcPr><w:tcW w:w="1870" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">r${String(row)}c${String(column)} ${cellText}</w:t></w:r></w:p></w:tc>`,
       )
       .join("");
-  const body = Array.from({ length: rows }, (_unused, row) => `<w:tr>${cells(row)}</w:tr>`).join(
-    "",
-  );
+  const body = Array.from(
+    { length: rows },
+    (_unused, row) => `<w:tr>${cells(row)}</w:tr>`,
+  ).join("");
   return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="1870"/><w:gridCol w:w="1870"/></w:tblGrid>${body}</w:tbl>`;
 };
 
@@ -118,7 +126,10 @@ const bodyItemXml = (item: BodyItem): string => {
 
 type PackageSpec = { items: readonly BodyItem[]; styleDefinitions: boolean };
 
-const buildPackage = async ({ items, styleDefinitions }: PackageSpec): Promise<ArrayBuffer> => {
+const buildPackage = async ({
+  items,
+  styleDefinitions,
+}: PackageSpec): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   const stylesOverride = styleDefinitions
     ? `<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>`
@@ -149,7 +160,9 @@ const buildPackage = async ({ items, styleDefinitions }: PackageSpec): Promise<A
     "word/document.xml",
     `${XML_DECL}<w:document ${NAMESPACES}><w:body>${items
       .map(bodyItemXml)
-      .join("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>`,
+      .join(
+        "",
+      )}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>`,
   );
   return await zip.generateAsync({ type: "arraybuffer" });
 };
@@ -219,7 +232,11 @@ describe("compare(x, x) (property)", () => {
           const buffer = await buildPackage(spec);
           // Two independent copies: a single buffer passed twice would let
           // either side's handling alias the other's bytes.
-          const compared = await compareDocx(buffer.slice(0), buffer.slice(0), COMPARE_OPTIONS);
+          const compared = await compareDocx(
+            buffer.slice(0),
+            buffer.slice(0),
+            COMPARE_OPTIONS,
+          );
           if (compared.isErr()) {
             throw new Error(`compare(x, x) failed: ${compared.error.message}`);
           }
@@ -247,7 +264,11 @@ describe("compare(x, x) (property)", () => {
       styleDefinitions: true,
     });
 
-    const compared = await compareDocx(buffer.slice(0), buffer.slice(0), COMPARE_OPTIONS);
+    const compared = await compareDocx(
+      buffer.slice(0),
+      buffer.slice(0),
+      COMPARE_OPTIONS,
+    );
 
     if (compared.isErr()) {
       throw new Error(`compare(x, x) failed: ${compared.error.message}`);
@@ -285,13 +306,23 @@ describe("compare(x, x) (property)", () => {
   // by making everything past a profile cap compare equal: the digest that
   // carries identity across the cap has to separate different content too.
   test("still reports an edit inside a table past the profile cap", async () => {
-    const closing = { kind: "paragraph", text: "Executed as a deed.", indent: "" } as const;
+    const closing = {
+      kind: "paragraph",
+      text: "Executed as a deed.",
+      indent: "",
+    } as const;
     const base = await buildPackage({
-      items: [{ kind: "table", rows: 65, cellText: "as originally drafted" }, closing],
+      items: [
+        { kind: "table", rows: 65, cellText: "as originally drafted" },
+        closing,
+      ],
       styleDefinitions: true,
     });
     const revised = await buildPackage({
-      items: [{ kind: "table", rows: 65, cellText: "as subsequently amended" }, closing],
+      items: [
+        { kind: "table", rows: 65, cellText: "as subsequently amended" },
+        closing,
+      ],
       styleDefinitions: true,
     });
 

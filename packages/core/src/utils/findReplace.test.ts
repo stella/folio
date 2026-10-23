@@ -1,19 +1,25 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
-import {
-  SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
-  CONDITIONAL_SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
-} from "../../../../test/findReplacementBoundaryFixtures";
+import { describe, expect, test } from "bun:test";
 
-import type { Document } from "../types/document";
-import type { ComplexField, HeaderFooter, Paragraph, Run, SimpleField } from "../types/content";
+import {
+  CONDITIONAL_SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
+  SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
+} from "../../../../test/findReplacementBoundaryFixtures";
 import { FindReplaceManager } from "../managers/FindReplaceManager";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { findInProseMirrorDocument } from "../prosemirror/findReplaceSelection";
-import { resolveDocumentFindRanges } from "./findMatchView";
-import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import { expectFieldAttrs } from "../prosemirror/attrs";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
+import { findInProseMirrorDocument } from "../prosemirror/findReplaceSelection";
+import type {
+  ComplexField,
+  HeaderFooter,
+  Paragraph,
+  Run,
+  SimpleField,
+} from "../types/content";
+import type { Document } from "../types/document";
+import { resolveDocumentFindRanges } from "./findMatchView";
 import {
   createDefaultFindOptions,
   findAllMatches,
@@ -27,7 +33,9 @@ const document: Document = {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Outside stock" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Outside stock" }] },
+          ],
         },
         {
           type: "table",
@@ -38,7 +46,12 @@ const document: Document = {
                   content: [
                     {
                       type: "paragraph",
-                      content: [{ type: "run", content: [{ type: "text", text: "Inside stock" }] }],
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "Inside stock" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -56,7 +69,10 @@ const paragraph = (text: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const textRun = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
 const FIELD_KINDS = new Set(["simpleField", "complexField"]);
 
@@ -76,24 +92,40 @@ describe("hidden source replacement boundaries", () => {
     ...CONDITIONAL_SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
   };
   for (const [kind, content] of Object.entries(fixtures)) {
-    test.each(views)(`${kind} in hidden $type ($displayMode) preserves its boundary`, (view) => {
-      expect(getFindParagraphText({ type: "paragraph", content })).toBe("");
-      const source: Paragraph = {
-        type: "paragraph",
-        content: [textRun("A"), { type: view.type, info: { id: 1701037 }, content }, textRun("B")],
-      };
-      const options = { ...createDefaultFindOptions(), displayMode: view.displayMode };
-      expect(
-        findInDocument({ package: { document: { content: [source] } } }, "AB", options).at(0)
-          ?.replacement,
-      ).toEqual({ status: "blocked", reason: "hidden-content" });
-      for (const text of ["A", "B"]) {
+    test.each(views)(
+      `${kind} in hidden $type ($displayMode) preserves its boundary`,
+      (view) => {
+        expect(getFindParagraphText({ type: "paragraph", content })).toBe("");
+        const source: Paragraph = {
+          type: "paragraph",
+          content: [
+            textRun("A"),
+            { type: view.type, info: { id: 1701037 }, content },
+            textRun("B"),
+          ],
+        };
+        const options = {
+          ...createDefaultFindOptions(),
+          displayMode: view.displayMode,
+        };
         expect(
-          findInDocument({ package: { document: { content: [source] } } }, text, options).at(0)
-            ?.replacement,
-        ).toEqual({ status: "allowed" });
-      }
-    });
+          findInDocument(
+            { package: { document: { content: [source] } } },
+            "AB",
+            options,
+          ).at(0)?.replacement,
+        ).toEqual({ status: "blocked", reason: "hidden-content" });
+        for (const text of ["A", "B"]) {
+          expect(
+            findInDocument(
+              { package: { document: { content: [source] } } },
+              text,
+              options,
+            ).at(0)?.replacement,
+          ).toEqual({ status: "allowed" });
+        }
+      },
+    );
     test(`${kind} remains a replacement barrier when visible`, () => {
       const source: Paragraph = {
         type: "paragraph",
@@ -115,43 +147,50 @@ describe("hidden source replacement boundaries", () => {
   // Empty fields and empty preserved inline markup put no character on the
   // line; each view's projection must still keep their replacement barrier.
   test.each(
-    (["simpleField", "complexField", "preservedInline"] as const).flatMap((kind) =>
-      (["all-markup", "simple-markup", "no-markup", "original"] as const).map(
-        (displayMode) => [kind, displayMode] as const,
-      ),
+    (["simpleField", "complexField", "preservedInline"] as const).flatMap(
+      (kind) =>
+        (["all-markup", "simple-markup", "no-markup", "original"] as const).map(
+          (displayMode) => [kind, displayMode] as const,
+        ),
     ),
-  )("visible empty %s blocks replacing across it in %s", (kind, displayMode) => {
-    const content = fixtures[kind] ?? panic(`Missing ${kind} fixture`);
-    const source: Paragraph = {
-      type: "paragraph",
-      content: [textRun("A"), ...content, textRun("B")],
-    };
-    const doc: Document = { package: { document: { content: [source] } } };
-    const options = { ...createDefaultFindOptions(), displayMode };
-    const [match, ...rest] = findInDocument(doc, "AB", options);
-    expect(rest).toEqual([]);
-    expect(match?.text).toBe("AB");
-    expect(match?.replacement).toEqual({
-      status: "blocked",
-      reason: FIELD_KINDS.has(kind) ? "field-result" : "atomic-content",
-    });
-  });
-  test.each(views)("empty hidden $type ($displayMode) retains revision ownership", (view) => {
-    const source: Paragraph = {
-      type: "paragraph",
-      content: [
-        textRun("A"),
-        { type: view.type, info: { id: 1701037 }, content: [] },
-        textRun("B"),
-      ],
-    };
-    expect(
-      findInDocument({ package: { document: { content: [source] } } }, "AB", {
-        ...createDefaultFindOptions(),
-        displayMode: view.displayMode,
-      }).at(0)?.replacement,
-    ).toEqual({ status: "blocked", reason: "hidden-content" });
-  });
+  )(
+    "visible empty %s blocks replacing across it in %s",
+    (kind, displayMode) => {
+      const content = fixtures[kind] ?? panic(`Missing ${kind} fixture`);
+      const source: Paragraph = {
+        type: "paragraph",
+        content: [textRun("A"), ...content, textRun("B")],
+      };
+      const doc: Document = { package: { document: { content: [source] } } };
+      const options = { ...createDefaultFindOptions(), displayMode };
+      const [match, ...rest] = findInDocument(doc, "AB", options);
+      expect(rest).toEqual([]);
+      expect(match?.text).toBe("AB");
+      expect(match?.replacement).toEqual({
+        status: "blocked",
+        reason: FIELD_KINDS.has(kind) ? "field-result" : "atomic-content",
+      });
+    },
+  );
+  test.each(views)(
+    "empty hidden $type ($displayMode) retains revision ownership",
+    (view) => {
+      const source: Paragraph = {
+        type: "paragraph",
+        content: [
+          textRun("A"),
+          { type: view.type, info: { id: 1701037 }, content: [] },
+          textRun("B"),
+        ],
+      };
+      expect(
+        findInDocument({ package: { document: { content: [source] } } }, "AB", {
+          ...createDefaultFindOptions(),
+          displayMode: view.displayMode,
+        }).at(0)?.replacement,
+      ).toEqual({ status: "blocked", reason: "hidden-content" });
+    },
+  );
 });
 
 describe("note reference search offsets", () => {
@@ -198,13 +237,21 @@ describe("note reference search offsets", () => {
         { startOffset: 0, endOffset: 3, text: "hit" },
         { startOffset: 4, endOffset: 7, text: "hit" },
       ]);
-      expect(findInProseMirrorDocument(pmDoc, "hit", options).map(project)).toEqual(
-        matches.map(project),
-      );
-      const ranges = resolveDocumentFindRanges({ document: source, bodyDoc: pmDoc, matches });
+      expect(
+        findInProseMirrorDocument(pmDoc, "hit", options).map(project),
+      ).toEqual(matches.map(project));
+      const ranges = resolveDocumentFindRanges({
+        document: source,
+        bodyDoc: pmDoc,
+        matches,
+      });
       expect(ranges).toHaveLength(2);
-      expect(ranges.map(({ from, to }) => pmDoc.textBetween(from, to))).toEqual(["hit", "hit"]);
-      expect(findInProseMirrorDocument(pmDoc, String(id), options)).toHaveLength(0);
+      expect(ranges.map(({ from, to }) => pmDoc.textBetween(from, to))).toEqual(
+        ["hit", "hit"],
+      );
+      expect(
+        findInProseMirrorDocument(pmDoc, String(id), options),
+      ).toHaveLength(0);
     },
   );
 
@@ -238,17 +285,23 @@ describe("note reference search offsets", () => {
       const pmDoc = toProseDoc(source);
       const options = createDefaultFindOptions();
       const matches = findInDocument(source, "hit", options);
-      expect(matches.map(({ startOffset }) => startOffset)).toEqual([7, 19, 30]);
-      expect(
-        findInProseMirrorDocument(pmDoc, "hit", options).map(({ startOffset }) => startOffset),
-      ).toEqual([7, 19, 30]);
-      const ranges = resolveDocumentFindRanges({ document: source, bodyDoc: pmDoc, matches });
-      expect(ranges).toHaveLength(3);
-      expect(ranges.map(({ from, to }) => pmDoc.textBetween(from, to))).toEqual([
-        "hit",
-        "hit",
-        "hit",
+      expect(matches.map(({ startOffset }) => startOffset)).toEqual([
+        7, 19, 30,
       ]);
+      expect(
+        findInProseMirrorDocument(pmDoc, "hit", options).map(
+          ({ startOffset }) => startOffset,
+        ),
+      ).toEqual([7, 19, 30]);
+      const ranges = resolveDocumentFindRanges({
+        document: source,
+        bodyDoc: pmDoc,
+        matches,
+      });
+      expect(ranges).toHaveLength(3);
+      expect(ranges.map(({ from, to }) => pmDoc.textBetween(from, to))).toEqual(
+        ["hit", "hit", "hit"],
+      );
     },
   );
 });
@@ -358,7 +411,11 @@ const fieldProjectionFixtures = {
     fieldType: "REF",
     instruction: "REF bookmark",
     content: [
-      { type: "hyperlink", href: "https://example.test", children: [textRun("Linked HIT")] },
+      {
+        type: "hyperlink",
+        href: "https://example.test",
+        children: [textRun("Linked HIT")],
+      },
     ],
   },
   opaqueRun: {
@@ -394,7 +451,12 @@ const fieldProjectionFixtures = {
 } as const satisfies Record<string, SimpleField | ComplexField>;
 
 describe("page-dependent field search exclusion", () => {
-  const pageFieldTypes = ["PAGE", "NUMPAGES", "SECTIONPAGES", "PAGEREF"] as const;
+  const pageFieldTypes = [
+    "PAGE",
+    "NUMPAGES",
+    "SECTIONPAGES",
+    "PAGEREF",
+  ] as const;
   const fixtures = pageFieldTypes.flatMap((fieldType) =>
     ["simpleField", "complexField"].flatMap((type) =>
       (
@@ -487,7 +549,11 @@ describe("page-dependent field search exclusion", () => {
         },
       };
       const pageOnlyPm = toProseDoc(pageOnly);
-      for (const displayMode of [undefined, "all-markup", "no-markup"] as const) {
+      for (const displayMode of [
+        undefined,
+        "all-markup",
+        "no-markup",
+      ] as const) {
         const options = {
           ...createDefaultFindOptions(),
           ...(displayMode === undefined ? {} : { displayMode }),
@@ -512,17 +578,30 @@ describe("page-dependent field search exclusion", () => {
         const onlyPageField: Document = {
           package: {
             document: {
-              content: [{ type: "paragraph", content: [makeField(parsedType, instruction)] }],
+              content: [
+                {
+                  type: "paragraph",
+                  content: [makeField(parsedType, instruction)],
+                },
+              ],
             },
           },
         };
         expect(findInDocument(onlyPageField, "3", options)).toEqual([]);
-        expect(findInDocument(source, "3", options).map(project)).toEqual(expected);
-        expect(findInProseMirrorDocument(pmDoc, "3", options).map(project)).toEqual(expected);
+        expect(findInDocument(source, "3", options).map(project)).toEqual(
+          expected,
+        );
+        expect(
+          findInProseMirrorDocument(pmDoc, "3", options).map(project),
+        ).toEqual(expected);
         expect(findInDocument(source, "head 3", options)).toHaveLength(0);
-        expect(findInProseMirrorDocument(pmDoc, "head 3", options)).toHaveLength(0);
+        expect(
+          findInProseMirrorDocument(pmDoc, "head 3", options),
+        ).toHaveLength(0);
         expect(findInDocument(pageOnly, "3", options)).toHaveLength(0);
-        expect(findInProseMirrorDocument(pageOnlyPm, "3", options)).toHaveLength(0);
+        expect(
+          findInProseMirrorDocument(pageOnlyPm, "3", options),
+        ).toHaveLength(0);
         expect(findInDocument(source, "tail", options).map(project)).toEqual([
           { paragraphIndex: 0, startOffset: 9, endOffset: 13, text: "tail" },
         ]);
@@ -539,7 +618,9 @@ describe("field and native text search projection parity", () => {
         type: "paragraph",
         content: [textRun("before "), field, textRun(" tail HIT hit")],
       };
-      const source: Document = { package: { document: { content: [sourceParagraph] } } };
+      const source: Document = {
+        package: { document: { content: [sourceParagraph] } },
+      };
       const pmDoc = toProseDoc(source);
       const fieldNode = pmDoc.child(0).child(1);
       if (fieldNode.type.name === "structuredField") {
@@ -549,12 +630,23 @@ describe("field and native text search projection parity", () => {
         );
         expect(canonicalFieldNode(normalized)).toBe(normalized);
       }
-      const saved = fromProseDoc(pmDoc, source, { stylesheetSource: { type: "package" } });
+      const saved = fromProseDoc(pmDoc, source, {
+        stylesheetSource: { type: "package" },
+      });
       const savedParagraph = saved.package.document.content.at(0);
-      if (savedParagraph?.type !== "paragraph") panic("Roundtrip paragraph missing");
+      if (savedParagraph?.type !== "paragraph")
+        panic("Roundtrip paragraph missing");
       const visibleText = getFindParagraphText(sourceParagraph);
       expect(getFindParagraphText(savedParagraph)).toBe(visibleText);
-      const queries = new Set([...visibleText, "tail", "HIT", "hit", "42", "Cached", "before "]);
+      const queries = new Set([
+        ...visibleText,
+        "tail",
+        "HIT",
+        "hit",
+        "42",
+        "Cached",
+        "before ",
+      ]);
       for (const options of [
         createDefaultFindOptions(),
         { matchCase: true, matchWholeWord: false },
@@ -571,15 +663,21 @@ describe("field and native text search projection parity", () => {
             endOffset: number;
             text: string;
           }) => ({ paragraphIndex, startOffset, endOffset, text });
-          const modelMatches = findInDocument(source, query, options).map(project);
-          expect(findInProseMirrorDocument(pmDoc, query, options).map(project)).toEqual(
+          const modelMatches = findInDocument(source, query, options).map(
+            project,
+          );
+          expect(
+            findInProseMirrorDocument(pmDoc, query, options).map(project),
+          ).toEqual(modelMatches);
+          expect(findInDocument(saved, query, options).map(project)).toEqual(
             modelMatches,
           );
-          expect(findInDocument(saved, query, options).map(project)).toEqual(modelMatches);
           if (query === "tail") expect(modelMatches).toHaveLength(1);
         }
       }
-      expect(findInDocument(source, "REF bookmark", createDefaultFindOptions())).toHaveLength(0);
+      expect(
+        findInDocument(source, "REF bookmark", createDefaultFindOptions()),
+      ).toHaveLength(0);
       if (
         [
           "simpleDigit",
@@ -594,7 +692,11 @@ describe("field and native text search projection parity", () => {
       ) {
         expect(pmDoc.child(0).child(1).type.name).toBe("field");
       }
-      if (["simpleTokens", "transparent", "hyperlink", "opaqueInline"].includes(name)) {
+      if (
+        ["simpleTokens", "transparent", "hyperlink", "opaqueInline"].includes(
+          name,
+        )
+      ) {
         expect(pmDoc.child(0).child(1).type.name).toBe("structuredField");
       }
     },
@@ -666,7 +768,12 @@ const allStoriesDocument = (): Document => ({
       ]),
     ),
     footnotes: [
-      { type: "footnote", id: -1, noteType: "separator", content: [paragraph("separator hit")] },
+      {
+        type: "footnote",
+        id: -1,
+        noteType: "separator",
+        content: [paragraph("separator hit")],
+      },
       { type: "footnote", id: 1, content: [paragraph("footnote hit")] },
     ],
     endnotes: [{ type: "endnote", id: 2, content: [paragraph("endnote hit")] }],
@@ -679,7 +786,9 @@ describe("document-wide story search", () => {
     const before = structuredClone(doc);
     const matches = findInDocument(doc, "hit", createDefaultFindOptions());
     expect(matches).toHaveLength(11);
-    expect(matches.map(({ story, textBoxIndex }) => ({ story, textBoxIndex }))).toEqual([
+    expect(
+      matches.map(({ story, textBoxIndex }) => ({ story, textBoxIndex })),
+    ).toEqual([
       { story: "main", textBoxIndex: undefined },
       { story: "main", textBoxIndex: 0 },
       { story: "main", textBoxIndex: undefined },
@@ -701,7 +810,8 @@ describe("document-wide story search", () => {
     });
     const manager = new FindReplaceManager<(typeof matches)[number]>();
     manager.setMatches(matches);
-    for (const match of matches.slice(1)) expect(manager.navigate("next")?.match).toEqual(match);
+    for (const match of matches.slice(1))
+      expect(manager.navigate("next")?.match).toEqual(match);
     expect(manager.navigate("next")?.match).toEqual(matches.at(0));
     expect(manager.navigate("previous")?.match).toEqual(matches.at(-1));
     expect(doc).toEqual(before);
@@ -710,7 +820,10 @@ describe("document-wide story search", () => {
   test.each(["all-markup", "simple-markup", "no-markup", "original"] as const)(
     "%s respects revision visibility without shifting authored offsets",
     (displayMode) => {
-      const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+      const run = (text: string): Run => ({
+        type: "run",
+        content: [{ type: "text", text }],
+      });
       const doc: Document = {
         package: {
           document: {
@@ -763,18 +876,25 @@ describe("document-wide story search", () => {
       replacedCount: 2,
       skippedCount: 9,
     });
-    expect(findInDocument(doc, "hit", createDefaultFindOptions())).toHaveLength(11);
+    expect(findInDocument(doc, "hit", createDefaultFindOptions())).toHaveLength(
+      11,
+    );
   });
 
   test("only rendered variants count when the view supplies story eligibility", () => {
-    const matches = findInDocument(allStoriesDocument(), "hit", createDefaultFindOptions(), {
-      renderedStories: [
-        "main",
-        { kind: "header", rId: "hd" },
-        { kind: "header", rId: "hd" },
-        { kind: "footer", rId: "fd" },
-      ],
-    });
+    const matches = findInDocument(
+      allStoriesDocument(),
+      "hit",
+      createDefaultFindOptions(),
+      {
+        renderedStories: [
+          "main",
+          { kind: "header", rId: "hd" },
+          { kind: "header", rId: "hd" },
+          { kind: "footer", rId: "fd" },
+        ],
+      },
+    );
     expect(matches).toHaveLength(7);
     expect(matches.map(({ story }) => story)).toEqual([
       "main",
@@ -789,23 +909,36 @@ describe("document-wide story search", () => {
 
   test("every story keeps case and whole-word behavior", () => {
     const doc = allStoriesDocument();
-    expect(findInDocument(doc, "HIT", { matchCase: false, matchWholeWord: true })).toHaveLength(11);
-    expect(findInDocument(doc, "HIT", { matchCase: true, matchWholeWord: true })).toHaveLength(0);
-    expect(findInDocument(doc, "hi", { matchCase: false, matchWholeWord: true })).toHaveLength(0);
-    expect(findInDocument(doc, "hi", { matchCase: false, matchWholeWord: false })).toHaveLength(11);
+    expect(
+      findInDocument(doc, "HIT", { matchCase: false, matchWholeWord: true }),
+    ).toHaveLength(11);
+    expect(
+      findInDocument(doc, "HIT", { matchCase: true, matchWholeWord: true }),
+    ).toHaveLength(0);
+    expect(
+      findInDocument(doc, "hi", { matchCase: false, matchWholeWord: true }),
+    ).toHaveLength(0);
+    expect(
+      findInDocument(doc, "hi", { matchCase: false, matchWholeWord: false }),
+    ).toHaveLength(11);
   });
 
   test("hidden shapes retain authored numbering for later visible shape addresses", () => {
     const doc = allStoriesDocument();
     const shapeAnchor = doc.package.document.content.at(1);
-    if (shapeAnchor?.type !== "paragraph") panic("Fixture shape anchor missing");
+    if (shapeAnchor?.type !== "paragraph")
+      panic("Fixture shape anchor missing");
     const shapeRun = shapeAnchor.content.at(0);
     if (shapeRun?.type !== "run") panic("Fixture shape run missing");
     doc.package.document.content = [
       {
         type: "paragraph",
         content: [
-          { type: "deletion", info: { id: 1, author: "Author" }, content: [shapeRun] },
+          {
+            type: "deletion",
+            info: { id: 1, author: "Author" },
+            content: [shapeRun],
+          },
           shapeRun,
         ],
       },
@@ -815,7 +948,12 @@ describe("document-wide story search", () => {
       displayMode: "no-markup",
     });
     expect(matches).toMatchObject([
-      { story: "main", textBoxIndex: 1, anchorParagraphIndex: 0, paragraphIndex: 0 },
+      {
+        story: "main",
+        textBoxIndex: 1,
+        anchorParagraphIndex: 0,
+        paragraphIndex: 0,
+      },
     ]);
   });
 
@@ -824,7 +962,9 @@ describe("document-wide story search", () => {
     doc.package.document.comments = [
       { id: 7, author: "Author", content: [paragraph("comment hit")] },
     ];
-    expect(findInDocument(doc, "comment", createDefaultFindOptions())).toHaveLength(0);
+    expect(
+      findInDocument(doc, "comment", createDefaultFindOptions()),
+    ).toHaveLength(0);
     const matches = findInDocument(doc, "comment", {
       ...createDefaultFindOptions(),
       includeComments: true,
@@ -858,7 +998,12 @@ describe("document-wide story search", () => {
                       type: "tableRowDeletion",
                       info: { id: 1, author: "Author" },
                     },
-                    cells: [{ type: "tableCell", content: [paragraph("deleted row hit")] }],
+                    cells: [
+                      {
+                        type: "tableCell",
+                        content: [paragraph("deleted row hit")],
+                      },
+                    ],
                   },
                   {
                     type: "tableRow",
@@ -871,7 +1016,10 @@ describe("document-wide story search", () => {
                         },
                         content: [paragraph("inserted cell hit")],
                       },
-                      { type: "tableCell", content: [paragraph("visible hit")] },
+                      {
+                        type: "tableCell",
+                        content: [paragraph("visible hit")],
+                      },
                     ],
                   },
                 ],
@@ -880,14 +1028,19 @@ describe("document-wide story search", () => {
           },
         },
       };
-      const matches = findInDocument(doc, "hit", { ...createDefaultFindOptions(), displayMode });
+      const matches = findInDocument(doc, "hit", {
+        ...createDefaultFindOptions(),
+        displayMode,
+      });
       const expected = {
         "all-markup": [0, 1, 2],
         original: [0, 2],
         "no-markup": [1, 2],
         "simple-markup": [1, 2],
       };
-      expect(matches.map(({ paragraphIndex }) => paragraphIndex)).toEqual(expected[displayMode]);
+      expect(matches.map(({ paragraphIndex }) => paragraphIndex)).toEqual(
+        expected[displayMode],
+      );
     },
   );
 });
@@ -915,7 +1068,11 @@ describe("regex matching", () => {
       { start: 14, end: 17 },
     ]);
     expect(
-      findAllMatches("hit", "[", { matchCase: false, matchWholeWord: false, useRegex: true }),
+      findAllMatches("hit", "[", {
+        matchCase: false,
+        matchWholeWord: false,
+        useRegex: true,
+      }),
     ).toEqual([]);
   });
 
@@ -933,7 +1090,11 @@ describe("regex matching", () => {
 
 describe("findInDocument", () => {
   test("finds matches in body and table paragraphs with stable paragraph offsets", () => {
-    const matches = findInDocument(document, "stock", createDefaultFindOptions());
+    const matches = findInDocument(
+      document,
+      "stock",
+      createDefaultFindOptions(),
+    );
 
     expect(
       matches.map(({ paragraphIndex, startOffset, text }) => ({
@@ -967,10 +1128,16 @@ describe("findInDocument", () => {
     };
 
     expect(
-      findInDocument(caseDocument, "Stock", { matchCase: true, matchWholeWord: true }),
+      findInDocument(caseDocument, "Stock", {
+        matchCase: true,
+        matchWholeWord: true,
+      }),
     ).toHaveLength(1);
     expect(
-      findInDocument(caseDocument, "stock", { matchCase: false, matchWholeWord: true }),
+      findInDocument(caseDocument, "stock", {
+        matchCase: false,
+        matchWholeWord: true,
+      }),
     ).toHaveLength(2);
   });
 
@@ -996,23 +1163,33 @@ describe("findInDocument", () => {
         },
       },
     };
-    expect(findInDocument(doc, "A§B", createDefaultFindOptions())).toMatchObject([
-      { startOffset: 0, endOffset: 3 },
-    ]);
+    expect(
+      findInDocument(doc, "A§B", createDefaultFindOptions()),
+    ).toMatchObject([{ startOffset: 0, endOffset: 3 }]);
     expect(findInDocument(doc, "B", createDefaultFindOptions())).toMatchObject([
       { startOffset: 2, endOffset: 3 },
     ]);
     const pmDoc = toProseDoc(doc);
     for (const query of ["A§B", "§", "B"]) {
-      const modelMatches = findInDocument(doc, query, createDefaultFindOptions());
-      const pmMatches = findInProseMirrorDocument(pmDoc, query, createDefaultFindOptions());
+      const modelMatches = findInDocument(
+        doc,
+        query,
+        createDefaultFindOptions(),
+      );
+      const pmMatches = findInProseMirrorDocument(
+        pmDoc,
+        query,
+        createDefaultFindOptions(),
+      );
       expect(
-        modelMatches.map(({ paragraphIndex, startOffset, endOffset, text }) => ({
-          paragraphIndex,
-          startOffset,
-          endOffset,
-          text,
-        })),
+        modelMatches.map(
+          ({ paragraphIndex, startOffset, endOffset, text }) => ({
+            paragraphIndex,
+            startOffset,
+            endOffset,
+            text,
+          }),
+        ),
       ).toEqual(
         pmMatches.map(({ paragraphIndex, startOffset, endOffset, text }) => ({
           paragraphIndex,
@@ -1047,9 +1224,19 @@ describe("findInDocument", () => {
       },
     };
 
-    expect(findInDocument(pageBreakDocument, "left", createDefaultFindOptions())).toHaveLength(1);
-    expect(findInDocument(pageBreakDocument, "right", createDefaultFindOptions())).toHaveLength(1);
-    expect(findInDocument(pageBreakDocument, "leftright", createDefaultFindOptions())).toEqual([]);
+    expect(
+      findInDocument(pageBreakDocument, "left", createDefaultFindOptions()),
+    ).toHaveLength(1);
+    expect(
+      findInDocument(pageBreakDocument, "right", createDefaultFindOptions()),
+    ).toHaveLength(1);
+    expect(
+      findInDocument(
+        pageBreakDocument,
+        "leftright",
+        createDefaultFindOptions(),
+      ),
+    ).toEqual([]);
   });
 
   test.each([undefined, "textWrapping"] as const)(
@@ -1080,9 +1267,13 @@ describe("findInDocument", () => {
         },
       };
 
-      expect(findInDocument(lineBreakDocument, "A\nB", createDefaultFindOptions())).toHaveLength(1);
       expect(
-        findInDocument(lineBreakDocument, "B", createDefaultFindOptions()).at(0),
+        findInDocument(lineBreakDocument, "A\nB", createDefaultFindOptions()),
+      ).toHaveLength(1);
+      expect(
+        findInDocument(lineBreakDocument, "B", createDefaultFindOptions()).at(
+          0,
+        ),
       ).toMatchObject({ startOffset: 2 });
     },
   );

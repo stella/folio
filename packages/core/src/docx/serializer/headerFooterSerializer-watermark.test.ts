@@ -9,10 +9,13 @@
  *   matching what Word writes.
  */
 
-import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { HeaderFooter } from "../../types/document";
 import { parseHeader } from "../headerFooterParser";
 import { clearHeaderFooterVerbatimXml } from "../headerFooterVerbatim";
@@ -134,7 +137,9 @@ describe("serializeHeaderFooter — watermark replay", () => {
       },
     };
     const out = serializeHeaderFooter(hf);
-    expect(out).toContain('string="A &amp; B &quot;draft&quot; &lt;internal&gt;"');
+    expect(out).toContain(
+      'string="A &amp; B &quot;draft&quot; &lt;internal&gt;"',
+    );
   });
 
   test("emits the synthesized watermark at the recorded block index", () => {
@@ -147,11 +152,15 @@ describe("serializeHeaderFooter — watermark replay", () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "preceding" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "preceding" }] },
+          ],
         },
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "following" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "following" }] },
+          ],
         },
       ],
       watermark: { kind: "text", text: "DRAFT" },
@@ -290,7 +299,11 @@ describe("serializeHeaderFooter — watermark replay", () => {
   <w:p><w:r><w:t>following</w:t></w:r></w:p>
 </w:hdr>`;
     const header = parseHeader(sourceXml);
-    expect(header.content.map(({ type }) => type)).toEqual(["blockSdt", "paragraph", "paragraph"]);
+    expect(header.content.map(({ type }) => type)).toEqual([
+      "blockSdt",
+      "paragraph",
+      "paragraph",
+    ]);
     expect(header.watermarkBlockIndex).toBe(1);
     clearHeaderFooterVerbatimXml(header);
 
@@ -317,15 +330,19 @@ test(
           const empty = "<w:p><w:pPr><w:keepNext/></w:pPr></w:p>";
           const host =
             '<w:p><w:r><w:pict><v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136"><v:textpath string="DRAFT"/></v:shape></w:pict></w:r></w:p>';
-          const header = parseHeader(`<w:hdr ${NS}>${empty.repeat(before)}${host}${empty}</w:hdr>`);
+          const header = parseHeader(
+            `<w:hdr ${NS}>${empty.repeat(before)}${host}${empty}</w:hdr>`,
+          );
           const index = header.watermarkBlockIndex;
-          if (index === undefined) throw new TypeError("Missing watermark host");
+          if (index === undefined)
+            throw new TypeError("Missing watermark host");
           if (edit === "insert")
             header.content.splice(index, 0, { type: "paragraph", content: [] });
           else if (edit === "delete") header.content.splice(index, 1);
           else {
             const paragraph = header.content.at(index);
-            if (paragraph?.type !== "paragraph") throw new TypeError("Expected host paragraph");
+            if (paragraph?.type !== "paragraph")
+              throw new TypeError("Expected host paragraph");
             paragraph.formatting = { alignment: "center" };
           }
           const xml = serializeHeaderFooter(header);

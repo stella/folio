@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import type { Document } from "../../model/document";
 import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
 
@@ -27,7 +28,10 @@ const fixture = (ids: number[]): Document => ({
 });
 
 test("fresh identity equivalence preserves original slots and uses a single bijection", () => {
-  const options = { original: fixture([7]), allocated: { revision: [2, 3, 4] } };
+  const options = {
+    original: fixture([7]),
+    allocated: { revision: [2, 3, 4] },
+  };
   expect(() =>
     assertFreshIdentityEquivalent({
       ...options,
@@ -50,7 +54,11 @@ test("fresh identity equivalence preserves original slots and uses a single bije
     }),
   ).toThrow();
   expect(() =>
-    assertFreshIdentityEquivalent({ ...options, actual: fixture([7]), expected: fixture([2]) }),
+    assertFreshIdentityEquivalent({
+      ...options,
+      actual: fixture([7]),
+      expected: fixture([2]),
+    }),
   ).toThrow();
   expect(() =>
     assertFreshIdentityEquivalent({

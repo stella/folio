@@ -17,11 +17,19 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const PROJECT_DIR = path.join(import.meta.dir, "../../packages/core/scripts/differential/dotnet");
+const PROJECT_DIR = path.join(
+  import.meta.dir,
+  "../../packages/core/scripts/differential/dotnet",
+);
 
 const resolveProjector = (): string | null => {
   for (const configuration of ["Release", "Debug"]) {
-    const dll = path.join(PROJECT_DIR, "bin", configuration, "net8.0/OpenXmlProjector.dll");
+    const dll = path.join(
+      PROJECT_DIR,
+      "bin",
+      configuration,
+      "net8.0/OpenXmlProjector.dll",
+    );
     if (existsSync(dll)) {
       return dll;
     }
@@ -50,7 +58,9 @@ export const resolvePackageValidator = (): PackageValidator | null => {
   }
 
   return (buffer: ArrayBuffer): string[] => {
-    const directory = mkdtempSync(path.join(tmpdir(), "folio-compare-validate-"));
+    const directory = mkdtempSync(
+      path.join(tmpdir(), "folio-compare-validate-"),
+    );
     const file = path.join(directory, "candidate.docx");
     try {
       writeFileSync(file, new Uint8Array(buffer));

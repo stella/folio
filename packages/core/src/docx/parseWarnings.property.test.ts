@@ -19,15 +19,22 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
-import { PARSE_WARNING_CODES, type ParseWarningCode } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  PARSE_WARNING_CODES,
+  type ParseWarningCode,
+} from "@stll/docx-core/model";
 
-import { formatParseWarnings } from "./parseWarningMessage";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
+import { formatParseWarnings } from "./parseWarningMessage";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** The defect kinds this property seeds, each with the code it must report. */
 const SEEDED_DEFECTS = {
@@ -63,7 +70,8 @@ const repeat = (count: number, build: (index: number) => string): string =>
 const sectionXml = (seed: Seed): string =>
   `<w:sectPr>${repeat(
     seed.headerFooterType,
-    (index) => `<w:headerReference w:type="odd${String(index)}" r:id="rIdHdr"/>`,
+    (index) =>
+      `<w:headerReference w:type="odd${String(index)}" r:id="rIdHdr"/>`,
   )}${
     seed.borderWithoutValue > 0
       ? `<w:pgBorders>${["top", "bottom", "left", "right"]
@@ -85,7 +93,8 @@ const footnotesXml = (seed: Seed): string =>
   <w:footnote w:id="1"><w:p><w:r><w:t>First</w:t></w:r></w:p></w:footnote>
   ${repeat(
     seed.duplicateNoteId,
-    () => '<w:footnote w:id="1"><w:p><w:r><w:t>Repeat</w:t></w:r></w:p></w:footnote>',
+    () =>
+      '<w:footnote w:id="1"><w:p><w:r><w:t>Repeat</w:t></w:r></w:p></w:footnote>',
   )}
 </w:footnotes>`;
 
@@ -97,11 +106,13 @@ const commentsXml = (seed: Seed, comments?: string): string =>
     `<w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Kept</w:t></w:r></w:p></w:comment>
   ${repeat(
     seed.duplicateCommentId,
-    () => '<w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Repeat</w:t></w:r></w:p></w:comment>',
+    () =>
+      '<w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Repeat</w:t></w:r></w:p></w:comment>',
   )}
   ${repeat(
     seed.missingCommentId,
-    () => '<w:comment w:author="R"><w:p><w:r><w:t>No id</w:t></w:r></w:p></w:comment>',
+    () =>
+      '<w:comment w:author="R"><w:p><w:r><w:t>No id</w:t></w:r></w:p></w:comment>',
   )}`
   }
 </w:comments>`;
@@ -144,8 +155,9 @@ const docxFor = async (seed: Seed, comments?: string): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const codesIn = (warnings: readonly { code: ParseWarningCode }[]): ParseWarningCode[] =>
-  warnings.map((warning) => warning.code);
+const codesIn = (
+  warnings: readonly { code: ParseWarningCode }[],
+): ParseWarningCode[] => warnings.map((warning) => warning.code);
 
 describe("parse warnings (property)", () => {
   test(
@@ -153,7 +165,9 @@ describe("parse warnings (property)", () => {
     async () => {
       await fc.assert(
         fc.asyncProperty(seedArbitrary, async (seed) => {
-          const document = await parseDocx(await docxFor(seed), { preloadFonts: false });
+          const document = await parseDocx(await docxFor(seed), {
+            preloadFonts: false,
+          });
           const warnings = document.parseWarnings ?? [];
           const codes = codesIn(warnings);
 
@@ -164,13 +178,17 @@ describe("parse warnings (property)", () => {
           const collisions = warnings.filter(
             ({ code }) => code === PARSE_WARNING_CODES.duplicateImportedId,
           );
-          expect(collisions.filter(({ identityKind }) => identityKind === "comment")).toHaveLength(
-            seed.duplicateCommentId,
+          expect(
+            collisions.filter(({ identityKind }) => identityKind === "comment"),
+          ).toHaveLength(seed.duplicateCommentId);
+          expect(
+            collisions.filter(
+              ({ identityKind }) => identityKind === "footnote",
+            ),
+          ).toHaveLength(seed.duplicateNoteId);
+          expect(collisions).toHaveLength(
+            seed.duplicateCommentId + seed.duplicateNoteId,
           );
-          expect(collisions.filter(({ identityKind }) => identityKind === "footnote")).toHaveLength(
-            seed.duplicateNoteId,
-          );
-          expect(collisions).toHaveLength(seed.duplicateCommentId + seed.duplicateNoteId);
           for (const warning of warnings) {
             expect(warning.location.part.length).toBeGreaterThan(0);
             expect(warning.count).toBeGreaterThanOrEqual(1);
@@ -178,7 +196,9 @@ describe("parse warnings (property)", () => {
           // Prose is rendered from the data, never written beside it. Both
           // fields stay absent when there is nothing to say, which the
           // clean-package test below pins down.
-          expect(document.warnings ?? []).toEqual(formatParseWarnings(warnings));
+          expect(document.warnings ?? []).toEqual(
+            formatParseWarnings(warnings),
+          );
         }),
         propertyConfig({ numRuns: 40 }),
       );
@@ -194,13 +214,17 @@ describe("parse warnings (property)", () => {
       SEEDED_DEFECT_NAMES.map((name) => [name, 1]),
     ) as Seed;
 
-    const document = await parseDocx(await docxFor(everything), { preloadFonts: false });
+    const document = await parseDocx(await docxFor(everything), {
+      preloadFonts: false,
+    });
 
     expect(codesIn(document.parseWarnings ?? []).toSorted()).toEqual(
       [
         ...SEEDED_DEFECT_NAMES.map((name) => SEEDED_DEFECTS[name]),
         ...Array.from(
-          { length: everything.duplicateCommentId + everything.duplicateNoteId },
+          {
+            length: everything.duplicateCommentId + everything.duplicateNoteId,
+          },
           () => PARSE_WARNING_CODES.duplicateImportedId,
         ),
       ].toSorted(),
@@ -209,10 +233,15 @@ describe("parse warnings (property)", () => {
 
   test("a duplicate comment id is reported against the comments part", async () => {
     const seeded: Seed = Object.fromEntries(
-      SEEDED_DEFECT_NAMES.map((name) => [name, name === "duplicateCommentId" ? 1 : 0]),
+      SEEDED_DEFECT_NAMES.map((name) => [
+        name,
+        name === "duplicateCommentId" ? 1 : 0,
+      ]),
     ) as Seed;
 
-    const document = await parseDocx(await docxFor(seeded), { preloadFonts: false });
+    const document = await parseDocx(await docxFor(seeded), {
+      preloadFonts: false,
+    });
     const duplicate = (document.parseWarnings ?? []).find(
       ({ code }) => code === PARSE_WARNING_CODES.duplicateCommentId,
     );
@@ -224,23 +253,31 @@ describe("parse warnings (property)", () => {
     // `parseInt("7invalid")` is 7, which is the id the kept comment holds.
     const document = await parseDocx(
       await docxFor(
-        Object.fromEntries(SEEDED_DEFECT_NAMES.map((name) => [name, 0])) as Seed,
+        Object.fromEntries(
+          SEEDED_DEFECT_NAMES.map((name) => [name, 0]),
+        ) as Seed,
         `<w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Kept</w:t></w:r></w:p></w:comment>
          <w:comment w:id="7invalid" w:author="R"><w:p><w:r><w:t>Malformed</w:t></w:r></w:p></w:comment>`,
       ),
       { preloadFonts: false },
     );
 
-    expect(codesIn(document.parseWarnings ?? [])).toContain(PARSE_WARNING_CODES.missingCommentId);
+    expect(codesIn(document.parseWarnings ?? [])).toContain(
+      PARSE_WARNING_CODES.missingCommentId,
+    );
     expect(codesIn(document.parseWarnings ?? [])).not.toContain(
       PARSE_WARNING_CODES.duplicateCommentId,
     );
   });
 
   test("a package with none of the defects warns about nothing", async () => {
-    const clean: Seed = Object.fromEntries(SEEDED_DEFECT_NAMES.map((name) => [name, 0])) as Seed;
+    const clean: Seed = Object.fromEntries(
+      SEEDED_DEFECT_NAMES.map((name) => [name, 0]),
+    ) as Seed;
 
-    const document = await parseDocx(await docxFor(clean), { preloadFonts: false });
+    const document = await parseDocx(await docxFor(clean), {
+      preloadFonts: false,
+    });
 
     expect(document.parseWarnings).toBeUndefined();
     expect(document.warnings).toBeUndefined();
@@ -252,8 +289,12 @@ describe("parse warnings (property)", () => {
       await fc.assert(
         fc.asyncProperty(seedArbitrary, async (seed) => {
           const bytes = await docxFor(seed);
-          const first = await parseDocx(bytes.slice(0), { preloadFonts: false });
-          const second = await parseDocx(bytes.slice(0), { preloadFonts: false });
+          const first = await parseDocx(bytes.slice(0), {
+            preloadFonts: false,
+          });
+          const second = await parseDocx(bytes.slice(0), {
+            preloadFonts: false,
+          });
 
           expect(second.parseWarnings).toEqual(first.parseWarnings);
         }),

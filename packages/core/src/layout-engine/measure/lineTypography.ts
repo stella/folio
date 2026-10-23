@@ -9,8 +9,12 @@ import {
   DEFAULT_SINGLE_LINE_RATIO,
   isCjkFont,
 } from "../../utils/fontResolver";
-import { hasCjk, hasComplexScript, hasEastAsiaSlotText } from "../../utils/scriptSegments";
-import type { TextRun, ParagraphSpacing, ParagraphAttrs } from "../types";
+import {
+  hasCjk,
+  hasComplexScript,
+  hasEastAsiaSlotText,
+} from "../../utils/scriptSegments";
+import type { ParagraphAttrs, ParagraphSpacing, TextRun } from "../types";
 import {
   applyComplexScriptFormatting,
   hasComplexScriptFormatting,
@@ -18,7 +22,10 @@ import {
 import { DEFAULT_FONT_FAMILY, ptToPx } from "./measureHelpers";
 import { getFontMetrics } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
-import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_MULTIPLIER } from "./paragraphMeasureShared";
+import {
+  DEFAULT_FONT_SIZE,
+  DEFAULT_LINE_HEIGHT_MULTIPLIER,
+} from "./paragraphMeasureShared";
 import type { LineTypography } from "./paragraphMeasureShared";
 
 /**
@@ -37,7 +44,10 @@ import type { LineTypography } from "./paragraphMeasureShared";
  * The result feeds `updateMaxFont` (line height) ONLY — width measurement
  * keeps the base style so wrapping is untouched.
  */
-export function cjkLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyle {
+export function cjkLineHeightStyle(
+  run: TextRun,
+  baseStyle: FontStyle,
+): FontStyle {
   if (!run.text) {
     return baseStyle;
   }
@@ -66,7 +76,10 @@ export function cjkLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyl
 }
 
 /** Pick the dominant typography metrics for a run containing complex script. */
-export function complexScriptLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyle {
+export function complexScriptLineHeightStyle(
+  run: TextRun,
+  baseStyle: FontStyle,
+): FontStyle {
   if (
     !hasComplexScriptFormatting(run) ||
     (!run.forceComplexScript && !hasComplexScript(run.text))
@@ -74,7 +87,8 @@ export function complexScriptLineHeightStyle(run: TextRun, baseStyle: FontStyle)
     return baseStyle;
   }
   const complexStyle = applyComplexScriptFormatting(baseStyle, run);
-  return (complexStyle.fontSize ?? DEFAULT_FONT_SIZE) >= (baseStyle.fontSize ?? DEFAULT_FONT_SIZE)
+  return (complexStyle.fontSize ?? DEFAULT_FONT_SIZE) >=
+    (baseStyle.fontSize ?? DEFAULT_FONT_SIZE)
     ? complexStyle
     : baseStyle;
 }
@@ -161,7 +175,9 @@ export function calculateEmptyParagraphMetrics(
   attrs?: ParagraphAttrs,
 ): LineTypography {
   const metrics = getFontMetrics({
-    ...(attrs?.embeddedFontFamilyMap ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap } : {}),
+    ...(attrs?.embeddedFontFamilyMap
+      ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap }
+      : {}),
     fontSize,
     fontFamily: fontFamily ?? DEFAULT_FONT_FAMILY,
     ...(attrs?.defaultAlternateFontFamily !== undefined
@@ -175,7 +191,11 @@ export function calculateEmptyParagraphMetrics(
     const fontSizePx = ptToPx(fontSize);
     const floor = fontSizePx * WORD_SINGLE_LINE_FLOOR;
     if (result.lineHeight < floor) {
-      return applyDocumentGrid({ ...result, lineHeight: floor }, attrs, spacing);
+      return applyDocumentGrid(
+        { ...result, lineHeight: floor },
+        attrs,
+        spacing,
+      );
     }
   }
   return applyDocumentGrid(result, attrs, spacing);
@@ -194,5 +214,7 @@ export function applyDocumentGrid(
     return typography;
   }
   const lineHeight = Math.ceil(typography.lineHeight / pitch - 1e-9) * pitch;
-  return lineHeight === typography.lineHeight ? typography : { ...typography, lineHeight };
+  return lineHeight === typography.lineHeight
+    ? typography
+    : { ...typography, lineHeight };
 }

@@ -4,19 +4,23 @@
  */
 
 import { hasKeepLines } from "./keep-together";
+import {
+  projectedFootnoteReserveGrowth,
+  RENDERED_BREAK_REFLOW_TOLERANCE_LINES,
+} from "./layoutFlowShared";
 import { measuredLineAdvance, measuredLineRangeHeight } from "./lineFlow";
-import { FOOTNOTE_SEPARATOR_HEIGHT, createPaginator } from "./paginator";
+import { createPaginator, FOOTNOTE_SEPARATOR_HEIGHT } from "./paginator";
 import { getParagraphFragmentPmRange } from "./paragraphFragmentRange";
 import {
   collapseParagraphSpacing,
   getParagraphSpacingAfter,
   getParagraphSpacingBefore,
 } from "./paragraphSpacing";
-import type { ParagraphBlock, ParagraphMeasure, ParagraphFragment } from "./types";
-import {
-  RENDERED_BREAK_REFLOW_TOLERANCE_LINES,
-  projectedFootnoteReserveGrowth,
-} from "./layoutFlowShared";
+import type {
+  ParagraphBlock,
+  ParagraphFragment,
+  ParagraphMeasure,
+} from "./types";
 
 function hasWidowControl(block: ParagraphBlock): boolean {
   return block.attrs?.widowControl !== false;
@@ -90,7 +94,9 @@ export function layoutParagraph({
   const lines = measure.lines;
   if (lines.length === 0) {
     // Empty paragraph - still takes up space based on spacing
-    const spaceBefore = suppressSpaceBefore ? 0 : getParagraphSpacingBefore(block);
+    const spaceBefore = suppressSpaceBefore
+      ? 0
+      : getParagraphSpacingBefore(block);
     const spaceAfter = getParagraphSpacingAfter(block);
     const state = paginator.getCurrentState();
 
@@ -116,12 +122,15 @@ export function layoutParagraph({
     return;
   }
 
-  const spaceBefore = suppressSpaceBefore ? 0 : getParagraphSpacingBefore(block);
+  const spaceBefore = suppressSpaceBefore
+    ? 0
+    : getParagraphSpacingBefore(block);
   const spaceAfter = getParagraphSpacingAfter(block);
 
   // `w:keepLines` (§17.3.1.14) needs the whole paragraph's line and footnote
   // demand. Sum it once so the column retries below stay constant-time.
-  let keepLinesDemand: { linesHeight: number; footnoteHeight: number } | undefined;
+  let keepLinesDemand:
+    { linesHeight: number; footnoteHeight: number } | undefined;
   if (lines.length > 1 && hasKeepLines(block)) {
     let footnoteHeight = 0;
     for (const line of lines) {
@@ -153,7 +162,8 @@ export function layoutParagraph({
     if (
       currentLine?.renderedPageBreakBefore === true &&
       !markerAlreadySatisfied &&
-      availableHeight <= measuredLineAdvance(currentLine) * RENDERED_BREAK_REFLOW_TOLERANCE_LINES
+      availableHeight <=
+        measuredLineAdvance(currentLine) * RENDERED_BREAK_REFLOW_TOLERANCE_LINES
     ) {
       paginator.forcePageBreak();
       continue;
@@ -172,7 +182,11 @@ export function layoutParagraph({
     // so the re-entry takes the normal path. At a fresh page top, `ensureFits`
     // deliberately does not advance oversized content, so continuing there
     // would loop forever — fall through and let the fallback place the line.
-    if (currentLineIndex === 0 && state.trailingSpacing > 0 && state.cursorY !== state.topMargin) {
+    if (
+      currentLineIndex === 0 &&
+      state.trailingSpacing > 0 &&
+      state.cursorY !== state.topMargin
+    ) {
       const firstLine = lines[0]!; // SAFETY: lines.length > 0 in while guard
       const firstLineRefs = getLineFootnoteRefs(
         block,
@@ -249,7 +263,10 @@ export function layoutParagraph({
     // preceding `spaceAfter` repeats the same over-count (eigenpal/docx-editor#782).
     const firstFragmentSpaceBefore =
       currentLineIndex === 0
-        ? collapseParagraphSpacing({ before: spaceBefore, after: state.trailingSpacing })
+        ? collapseParagraphSpacing({
+            before: spaceBefore,
+            after: state.trailingSpacing,
+          })
         : 0;
 
     for (let j = currentLineIndex; j < lines.length; j++) {
@@ -258,16 +275,26 @@ export function layoutParagraph({
       if (
         j > currentLineIndex &&
         line.renderedPageBreakBefore === true &&
-        availableHeight - (linesHeight + firstFragmentSpaceBefore + linesFnHeight) <=
+        availableHeight -
+          (linesHeight + firstFragmentSpaceBefore + linesFnHeight) <=
           lineAdvance * RENDERED_BREAK_REFLOW_TOLERANCE_LINES
       ) {
         forcePageBreakAfterFragment = true;
         break;
       }
-      const lineRefs = getLineFootnoteRefs(block, line.fromRun, line.toRun, footnoteHeightById);
+      const lineRefs = getLineFootnoteRefs(
+        block,
+        line.fromRun,
+        line.toRun,
+        footnoteHeightById,
+      );
       const totalWithLine = linesHeight + lineAdvance;
-      const footnoteGrowth = projectedFootnoteReserveGrowth(state, linesFnHeight + lineRefs.height);
-      const withSpacing = totalWithLine + firstFragmentSpaceBefore + footnoteGrowth;
+      const footnoteGrowth = projectedFootnoteReserveGrowth(
+        state,
+        linesFnHeight + lineRefs.height,
+      );
+      const withSpacing =
+        totalWithLine + firstFragmentSpaceBefore + footnoteGrowth;
 
       if (withSpacing <= availableHeight || fittingLines === 0) {
         linesHeight = totalWithLine;
@@ -285,7 +312,11 @@ export function layoutParagraph({
     if (hasWidowControl(block)) {
       const remainingAfter = lines.length - (currentLineIndex + fittingLines);
       if (fittingLines > 1 && remainingAfter === 1) {
-        if (currentLineIndex === 0 && fittingLines === 2 && state.cursorY !== state.topMargin) {
+        if (
+          currentLineIndex === 0 &&
+          fittingLines === 2 &&
+          state.cursorY !== state.topMargin
+        ) {
           paginator.forceColumnBreak();
           continue;
         }
@@ -294,10 +325,19 @@ export function layoutParagraph({
         linesHeight = 0;
         linesFnHeight = 0;
         linesFnIds.length = 0;
-        for (let j = currentLineIndex; j < currentLineIndex + fittingLines; j++) {
+        for (
+          let j = currentLineIndex;
+          j < currentLineIndex + fittingLines;
+          j++
+        ) {
           const line = lines[j]!; // SAFETY: j is within adjusted fitting range
           linesHeight += measuredLineAdvance(line);
-          const lineRefs = getLineFootnoteRefs(block, line.fromRun, line.toRun, footnoteHeightById);
+          const lineRefs = getLineFootnoteRefs(
+            block,
+            line.fromRun,
+            line.toRun,
+            footnoteHeightById,
+          );
           linesFnHeight += lineRefs.height;
           for (const id of lineRefs.ids) {
             linesFnIds.push(id);
@@ -369,7 +409,10 @@ export function layoutParagraph({
         paginator.ensureFits(
           effectiveSpaceBefore +
             linesHeight +
-            projectedFootnoteReserveGrowth(stateAfter, linesFnHeight + FOOTNOTE_SEPARATOR_HEIGHT),
+            projectedFootnoteReserveGrowth(
+              stateAfter,
+              linesFnHeight + FOOTNOTE_SEPARATOR_HEIGHT,
+            ),
         );
       }
     }

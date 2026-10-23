@@ -5,15 +5,20 @@
 // and the shape text (e.g. "Organisation Chart" cards) was silently dropped.
 
 import { describe, expect, test } from "bun:test";
+
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
-import type { MediaFile, RelationshipMap } from "../types/document";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { MediaFile, RelationshipMap } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
-import { canReplayEditableImageRawXml, classifyDrawingSafety } from "./imageRawXml";
+import {
+  canReplayEditableImageRawXml,
+  classifyDrawingSafety,
+} from "./imageRawXml";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const textBoxDrawingXml = (text: string) => `
   <w:drawing>
@@ -89,9 +94,13 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
       },
     });
 
-    const converted = fromProseDoc(toProseDoc({ package: { document: body } }), undefined, {
-      stylesheetSource: { type: "package" },
-    });
+    const converted = fromProseDoc(
+      toProseDoc({ package: { document: body } }),
+      undefined,
+      {
+        stylesheetSource: { type: "package" },
+      },
+    );
     const convertedParagraph = converted.package.document.content.at(0);
     if (convertedParagraph?.type !== "paragraph") {
       throw new Error("Expected converted paragraph");
@@ -101,7 +110,9 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
       .flatMap((run) => run.content)
       .find((content) => content.type === "shape");
     expect(
-      convertedShape?.type === "shape" ? convertedShape.shape.outline?.color : undefined,
+      convertedShape?.type === "shape"
+        ? convertedShape.shape.outline?.color
+        : undefined,
     ).toEqual({ themeColor: "accent1" });
   });
 
@@ -186,7 +197,9 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
     expect(drawing.image.mimeType).toBe("image/svg+xml");
     expect(drawing.image.size).toEqual({ width: 2_000_000, height: 1_000_000 });
     expect(decodeURIComponent(drawing.image.src ?? "")).toContain("Y2hvaWNl");
-    expect(decodeURIComponent(drawing.image.src ?? "")).not.toContain("ZmFsbGJhY2s=");
+    expect(decodeURIComponent(drawing.image.src ?? "")).not.toContain(
+      "ZmFsbGJhY2s=",
+    );
     expect(drawing.rawXml).toContain("<mc:Fallback>");
     expect(drawing.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
     expect(canReplayEditableImageRawXml(drawing)).toBe(true);
@@ -367,7 +380,9 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
 
     const shapes = paragraph.content
       .filter((content) => content.type === "run")
-      .flatMap((run) => run.content.filter((content) => content.type === "shape"));
+      .flatMap((run) =>
+        run.content.filter((content) => content.type === "shape"),
+      );
 
     expect(shapes).toHaveLength(2);
   });
@@ -399,7 +414,9 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
 
     const cardTitles = paragraph.content
       .filter((content) => content.type === "run")
-      .flatMap((run) => run.content.filter((content) => content.type === "shape"))
+      .flatMap((run) =>
+        run.content.filter((content) => content.type === "shape"),
+      )
       .map((shape) => {
         const innerParagraph = shape.shape.textBody?.content.at(0);
         if (innerParagraph?.type !== "paragraph") {

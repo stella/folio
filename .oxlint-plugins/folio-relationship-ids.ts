@@ -25,7 +25,10 @@
 type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
-  report: (descriptor: { node: unknown; messageId: "emptyRelationshipId" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "emptyRelationshipId";
+  }) => void;
 };
 
 /** Every model and attr field whose value is a relationship reference. */
@@ -60,7 +63,10 @@ const yieldsEmptyString = (value: unknown): boolean => {
 };
 
 /** The name a property or member access is written with, ignoring computed keys. */
-const staticKeyName = (node: AstNode, keyField: "key" | "property"): string | undefined => {
+const staticKeyName = (
+  node: AstNode,
+  keyField: "key" | "property",
+): string | undefined => {
   if (node["computed"] === true) {
     return undefined;
   }
@@ -71,7 +77,9 @@ const staticKeyName = (node: AstNode, keyField: "key" | "property"): string | un
   if (key.type === "Identifier" && typeof key["name"] === "string") {
     return key["name"];
   }
-  return key.type === "Literal" && typeof key["value"] === "string" ? key["value"] : undefined;
+  return key.type === "Literal" && typeof key["value"] === "string"
+    ? key["value"]
+    : undefined;
 };
 
 export default {

@@ -19,10 +19,10 @@ import {
   FOLIO_LINE_SPACING_RULE_VALUES,
   FOLIO_PAGE_BREAK_CLEAR_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
+  type FolioDocumentOperationBatch,
   InvalidFolioDocumentOperationBatchError,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
-  type FolioDocumentOperationBatch,
 } from "@stll/folio-core/server";
 
 /** Compact public shape for the runtime JSON Schema projections. */
@@ -69,7 +69,11 @@ export const FOLIO_TEXT_RANGE_JSON_SCHEMA: FolioJsonSchema = {
     type: { type: "string", enum: ["textRange"] },
     story: { type: "string", enum: ["main"] },
     blockId: { type: "string", minLength: 1 },
-    startOffset: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+    startOffset: {
+      type: "integer",
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+    },
     endOffset: {
       type: "integer",
       minimum: 1,
@@ -79,10 +83,18 @@ export const FOLIO_TEXT_RANGE_JSON_SCHEMA: FolioJsonSchema = {
     selectedTextHash: {
       type: "string",
       pattern: NORMALIZED_TEXT_HASH_PATTERN,
-      description: "Normalized hash of the selected text, used to detect stale ranges.",
+      description:
+        "Normalized hash of the selected text, used to detect stale ranges.",
     },
   },
-  required: ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"],
+  required: [
+    "type",
+    "story",
+    "blockId",
+    "startOffset",
+    "endOffset",
+    "selectedTextHash",
+  ],
   additionalProperties: false,
 };
 
@@ -103,7 +115,8 @@ export const FOLIO_PRECONDITION_JSON_SCHEMA: FolioJsonSchema = {
     blockTextHash: {
       type: "string",
       pattern: NORMALIZED_TEXT_HASH_PATTERN,
-      description: "Normalized hash of the target block's text, from a prior document read.",
+      description:
+        "Normalized hash of the target block's text, from a prior document read.",
     },
   },
   required: ["blockTextHash"],
@@ -140,7 +153,8 @@ const operationMetaProperties = {
   },
   area: {
     type: "string",
-    description: 'Optional review area label (e.g. "Penalty") for structured-review workflows.',
+    description:
+      'Optional review area label (e.g. "Penalty") for structured-review workflows.',
   },
   precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
 } as const;
@@ -263,7 +277,11 @@ export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA = {
       type: "object",
       properties: {
         kind: { type: "string", enum: ["reference"] },
-        numId: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+        numId: {
+          type: "integer",
+          minimum: 1,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
         ilvl: { type: "integer", minimum: 0, maximum: 8 },
       },
       required: ["kind", "numId"],
@@ -289,14 +307,19 @@ export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA = {
 
 export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
   type: "object",
-  properties: { clear: { type: "string", enum: FOLIO_PAGE_BREAK_CLEAR_VALUES } },
+  properties: {
+    clear: { type: "string", enum: FOLIO_PAGE_BREAK_CLEAR_VALUES },
+  },
   additionalProperties: false,
   description:
     "Insert an empty hard page-break run; it cannot be combined with text, pageBreakBefore, or lineBreakMode.",
 } as const satisfies FolioJsonSchema;
 
 /** Shared cross-field constraint for insertion and suggest-changes projections. */
-export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT: Pick<FolioJsonSchema, "oneOf"> = {
+export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT: Pick<
+  FolioJsonSchema,
+  "oneOf"
+> = {
   oneOf: [
     { not: { required: ["hardPageBreak"] } },
     {
@@ -333,7 +356,8 @@ export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {
           type: "integer",
           minimum: Number.MIN_SAFE_INTEGER,
           maximum: Number.MAX_SAFE_INTEGER,
-          description: "Signed line spacing: 240ths of a line with the auto rule, otherwise twips.",
+          description:
+            "Signed line spacing: 240ths of a line with the auto rule, otherwise twips.",
         },
         lineSpacingRule: {
           type: "string",
@@ -342,11 +366,13 @@ export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {
         },
         beforeAutospacing: {
           type: "boolean",
-          description: "Whether the application determines spacing before automatically.",
+          description:
+            "Whether the application determines spacing before automatically.",
         },
         afterAutospacing: {
           type: "boolean",
-          description: "Whether the application determines spacing after automatically.",
+          description:
+            "Whether the application determines spacing after automatically.",
         },
       },
       minProperties: 1,
@@ -367,8 +393,12 @@ export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA = {
     numbering: FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
     indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
     alignment: {
-      oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
-      description: "Direct paragraph alignment; null restores style inheritance.",
+      oneOf: [
+        { type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES },
+        { type: "null" },
+      ],
+      description:
+        "Direct paragraph alignment; null restores style inheritance.",
     },
     spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   },
@@ -398,7 +428,10 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         ...suggestionIdProperty,
         type: { type: "string", enum: ["replaceInBlock"] },
         blockId: blockIdProperty,
-        find: { type: "string", description: "The exact text to find within the block." },
+        find: {
+          type: "string",
+          description: "The exact text to find within the block.",
+        },
         replace: { type: "string", description: "The replacement text." },
         comment: commentJsonSchema,
       },
@@ -442,7 +475,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         range: FOLIO_TEXT_RANGE_JSON_SCHEMA,
         formatting: {
           type: "object",
-          description: "Inline formatting to apply; at least one property is required.",
+          description:
+            "Inline formatting to apply; at least one property is required.",
           properties: {
             bold: { type: "boolean" },
             italic: { type: "boolean" },
@@ -476,17 +510,23 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         },
         inheritFormatting: {
           type: "boolean",
-          description: "Inherit the anchor block's formatting for the inserted paragraph.",
+          description:
+            "Inherit the anchor block's formatting for the inserted paragraph.",
         },
         pageBreakBefore: {
           type: "boolean",
-          description: "Start the inserted paragraph on a new page (`pageBreakBefore`).",
+          description:
+            "Start the inserted paragraph on a new page (`pageBreakBefore`).",
         },
         styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
         outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
         alignment: {
-          oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
-          description: "Direct paragraph alignment; null restores style inheritance.",
+          oneOf: [
+            { type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES },
+            { type: "null" },
+          ],
+          description:
+            "Direct paragraph alignment; null restores style inheritance.",
         },
         spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
         indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
@@ -527,17 +567,23 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         },
         inheritFormatting: {
           type: "boolean",
-          description: "Inherit the anchor block's formatting for the inserted paragraph.",
+          description:
+            "Inherit the anchor block's formatting for the inserted paragraph.",
         },
         pageBreakBefore: {
           type: "boolean",
-          description: "Start the inserted paragraph on a new page (`pageBreakBefore`).",
+          description:
+            "Start the inserted paragraph on a new page (`pageBreakBefore`).",
         },
         styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
         outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
         alignment: {
-          oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
-          description: "Direct paragraph alignment; null restores style inheritance.",
+          oneOf: [
+            { type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES },
+            { type: "null" },
+          ],
+          description:
+            "Direct paragraph alignment; null restores style inheritance.",
         },
         spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
         indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
@@ -568,7 +614,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         text: { type: "string", description: "The new block text." },
         preserveFormatting: {
           type: "boolean",
-          description: "Keep the block's existing formatting for the replacement text.",
+          description:
+            "Keep the block's existing formatting for the replacement text.",
         },
         styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
         comment: commentJsonSchema,
@@ -614,7 +661,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         },
         separator: {
           type: "string",
-          description: "Text at `offset` the break replaces, usually the space between the halves.",
+          description:
+            "Text at `offset` the break replaces, usually the space between the halves.",
         },
         firstParagraphProperties: {
           ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
@@ -641,7 +689,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         blockId: blockIdProperty,
         separator: {
           type: "string",
-          description: "Text the join inserts between the two halves, usually a space.",
+          description:
+            "Text the join inserts between the two halves, usually a space.",
         },
         mergedParagraphProperties: {
           ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
@@ -677,11 +726,13 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         position: {
           type: "string",
           enum: ["after", "before"],
-          description: "Place the table after the anchor (default) or before it.",
+          description:
+            "Place the table after the anchor (default) or before it.",
         },
         rows: {
           type: "array",
-          description: "Cell texts row by row; every row must hold the same number of cells.",
+          description:
+            "Cell texts row by row; every row must hold the same number of cells.",
           items: { type: "array", items: { type: "string" } },
         },
       },
@@ -702,7 +753,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
     },
     {
       type: "object",
-      description: "Attach a comment to one block, optionally quoting text within it.",
+      description:
+        "Attach a comment to one block, optionally quoting text within it.",
       properties: {
         ...operationMetaProperties,
         ...suggestionIdProperty,
@@ -730,7 +782,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         position: {
           type: "string",
           enum: ["after", "before"],
-          description: 'Insert after the anchor block (default) or before it. Defaults to "after".',
+          description:
+            'Insert after the anchor block (default) or before it. Defaults to "after".',
         },
         parties: {
           type: "array",
@@ -738,9 +791,18 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           items: {
             type: "object",
             properties: {
-              name: { type: "string", description: "Party name (rendered bold)." },
-              signatory: { type: "string", description: "Name of the person signing." },
-              title: { type: "string", description: "Signatory title (rendered in italics)." },
+              name: {
+                type: "string",
+                description: "Party name (rendered bold).",
+              },
+              signatory: {
+                type: "string",
+                description: "Name of the person signing.",
+              },
+              title: {
+                type: "string",
+                description: "Signatory title (rendered in italics).",
+              },
             },
             required: ["name"],
             additionalProperties: false,
@@ -762,11 +824,13 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         position: {
           type: "string",
           enum: ["after", "before"],
-          description: 'Insert after the anchor row (default) or before it. Defaults to "after".',
+          description:
+            'Insert after the anchor row (default) or before it. Defaults to "after".',
         },
         cellTexts: {
           type: "array",
-          description: "Initial text for physical cells in source order; omitted cells stay empty.",
+          description:
+            "Initial text for physical cells in source order; omitted cells stay empty.",
           items: { type: "string" },
         },
       },
@@ -787,7 +851,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
     },
     {
       type: "object",
-      description: "Insert a column next to the column containing the anchor block.",
+      description:
+        "Insert a column next to the column containing the anchor block.",
       properties: {
         ...operationMetaProperties,
         ...suggestionIdProperty,
@@ -801,7 +866,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         },
         cellTexts: {
           type: "array",
-          description: "Initial text for newly created physical cells in row order.",
+          description:
+            "Initial text for newly created physical cells in row order.",
           items: { type: "string" },
         },
       },
@@ -832,13 +898,15 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         endBlockId: {
           type: "string",
           minLength: 1,
-          description: "Stable paragraph anchor inside the opposite corner cell.",
+          description:
+            "Stable paragraph anchor inside the opposite corner cell.",
         },
         rowCount: {
           type: "integer",
           minimum: 2,
           maximum: Number.MAX_SAFE_INTEGER,
-          description: "Number of grid rows to merge downward from the anchored cell.",
+          description:
+            "Number of grid rows to merge downward from the anchored cell.",
         },
       },
       required: ["id", "type", "blockId"],
@@ -895,7 +963,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: FolioJsonSchema = {
     },
     atomic: {
       type: "boolean",
-      description: "Reject the whole batch when any operation would be skipped.",
+      description:
+        "Reject the whole batch when any operation would be skipped.",
     },
     dryRun: {
       type: "boolean",
@@ -911,7 +980,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: FolioJsonSchema = {
         documentVersion: {
           type: "string",
           minLength: 1,
-          description: "Opaque host version token (an entity version id, a checkpoint).",
+          description:
+            "Opaque host version token (an entity version id, a checkpoint).",
         },
       },
       required: ["documentVersion"],
@@ -943,11 +1013,15 @@ type StandardSchemaV1<Input = unknown, Output = Input> = {
     readonly version: 1;
     readonly vendor: string;
     readonly validate: (value: unknown) => StandardSchemaV1Result<Output>;
-    readonly types?: { readonly input: Input; readonly output: Output } | undefined;
+    readonly types?:
+      { readonly input: Input; readonly output: Output } | undefined;
   };
 };
 
-type FolioDocumentOperationBatchSchema = StandardSchemaV1<unknown, FolioDocumentOperationBatch> & {
+type FolioDocumentOperationBatchSchema = StandardSchemaV1<
+  unknown,
+  FolioDocumentOperationBatch
+> & {
   /**
    * The batch envelope's JSON Schema
    * ({@link FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA}), attached so tool
@@ -962,7 +1036,9 @@ type FolioDocumentOperationBatchSchema = StandardSchemaV1<unknown, FolioDocument
  * into a Standard Schema issue path (`["operations", 0, "blockId"]`).
  * Returns `undefined` for the root path so root-level issues carry no path.
  */
-const toStandardSchemaPath = (path: string): readonly PropertyKey[] | undefined => {
+const toStandardSchemaPath = (
+  path: string,
+): readonly PropertyKey[] | undefined => {
   const segments: PropertyKey[] = [];
   for (const match of path.matchAll(/\.(?<key>[^.[\]]+)|\[(?<index>\d+)\]/gu)) {
     const { key, index } = match.groups ?? {};
@@ -996,19 +1072,20 @@ const toStandardSchemaIssue = (error: unknown): StandardSchemaV1Issue => {
  * reported one) on failure. The matching LLM-facing JSON schema is attached
  * as {@link FolioDocumentOperationBatchSchema.jsonSchema}.
  */
-export const folioDocumentOperationBatchSchema: FolioDocumentOperationBatchSchema = {
-  "~standard": {
-    version: 1,
-    vendor: "folio",
-    validate: (value) => {
-      // Boundary adapter: the Standard Schema spec mandates a non-throwing
-      // result surface over the intentionally throwing core parser.
-      try {
-        return { value: parseFolioDocumentOperationBatch(value) };
-      } catch (error) {
-        return { issues: [toStandardSchemaIssue(error)] };
-      }
+export const folioDocumentOperationBatchSchema: FolioDocumentOperationBatchSchema =
+  {
+    "~standard": {
+      version: 1,
+      vendor: "folio",
+      validate: (value) => {
+        // Boundary adapter: the Standard Schema spec mandates a non-throwing
+        // result surface over the intentionally throwing core parser.
+        try {
+          return { value: parseFolioDocumentOperationBatch(value) };
+        } catch (error) {
+          return { issues: [toStandardSchemaIssue(error)] };
+        }
+      },
     },
-  },
-  jsonSchema: FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,
-};
+    jsonSchema: FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,
+  };

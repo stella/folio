@@ -6,10 +6,10 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 import {
@@ -24,16 +24,23 @@ const buildReviewer = async (): Promise<FolioDocxReviewer> => {
     paragraph("Second clause."),
     paragraph("Third clause."),
   ];
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
   return FolioDocxReviewer.fromBuffer(
-    docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength) as ArrayBuffer,
+    docx.buffer.slice(
+      docx.byteOffset,
+      docx.byteOffset + docx.byteLength,
+    ) as ArrayBuffer,
   );
 };
 
 describe("a batch that removes a block and then formats it", () => {
   test("refuses the formatting and leaves the next paragraph alone", async () => {
     const reviewer = await buildReviewer();
-    const second = reviewer.getContent().find(({ text }) => text === "Second clause.");
+    const second = reviewer
+      .getContent()
+      .find(({ text }) => text === "Second clause.");
     if (!second) {
       throw new Error("the fixture paragraph is missing");
     }
@@ -59,7 +66,8 @@ describe("a batch that removes a block and then formats it", () => {
       {
         id: "center",
         reason: "overlappingOperation",
-        message: 'operation "delete", earlier in this batch, already claims its target.',
+        message:
+          'operation "delete", earlier in this batch, already claims its target.',
       },
     ]);
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
@@ -88,14 +96,20 @@ describe("a batch that removes a block and then formats it", () => {
   test("refuses an edit of the block an earlier direct merge removes", async () => {
     const reviewer = await buildReviewer();
     const [first, second] = reviewer.getContent();
-    if (!first || !second) throw new Error("the fixture paragraphs are missing");
+    if (!first || !second)
+      throw new Error("the fixture paragraphs are missing");
 
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "direct",
         operations: [
-          { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: first.id,
+            separator: " ",
+          },
           {
             id: "format-removed",
             type: "setBlockParagraphProperties",
@@ -112,7 +126,8 @@ describe("a batch that removes a block and then formats it", () => {
       {
         id: "format-removed",
         reason: "overlappingOperation",
-        message: 'operation "merge", earlier in this batch, already claims its target.',
+        message:
+          'operation "merge", earlier in this batch, already claims its target.',
       },
     ]);
   });
@@ -120,14 +135,20 @@ describe("a batch that removes a block and then formats it", () => {
   test("allows an edit of the neighbor preserved by a tracked merge", async () => {
     const reviewer = await buildReviewer();
     const [first, second] = reviewer.getContent();
-    if (!first || !second) throw new Error("the fixture paragraphs are missing");
+    if (!first || !second)
+      throw new Error("the fixture paragraphs are missing");
 
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
         operations: [
-          { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: first.id,
+            separator: " ",
+          },
           {
             id: "format-neighbor",
             type: "setBlockParagraphProperties",
@@ -139,7 +160,10 @@ describe("a batch that removes a block and then formats it", () => {
       { undefinedReferences: "refuse" },
     );
 
-    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["format-neighbor", "merge"]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "format-neighbor",
+      "merge",
+    ]);
     expect(result.skipped).toEqual([]);
   });
 
@@ -148,7 +172,8 @@ describe("a batch that removes a block and then formats it", () => {
     const blocks = reviewer.getContent();
     const beforeCarrier = blocks.at(-2);
     const carrier = blocks.at(-1);
-    if (!beforeCarrier || !carrier) throw new Error("the fixture carrier is missing");
+    if (!beforeCarrier || !carrier)
+      throw new Error("the fixture carrier is missing");
 
     const result = reviewer.applyDocumentOperations(
       {
@@ -156,7 +181,11 @@ describe("a batch that removes a block and then formats it", () => {
         mode: "tracked-changes",
         operations: [
           { id: "delete-content", type: "deleteBlock", blockId: carrier.id },
-          { id: "merge-into-carrier", type: "mergeBlockWithNext", blockId: beforeCarrier.id },
+          {
+            id: "merge-into-carrier",
+            type: "mergeBlockWithNext",
+            blockId: beforeCarrier.id,
+          },
           {
             id: "format-carrier",
             type: "setBlockParagraphProperties",

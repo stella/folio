@@ -27,13 +27,22 @@ type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
   filename: string;
-  report: (descriptor: { node: unknown; messageId: "handRolledXmlEscape" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "handRolledXmlEscape";
+  }) => void;
 };
 
 const OWNER = "packages/docx-core/src/serialize/xmlEscape.ts";
 
 /** The five predefined XML entities, spelled as a replacement. */
-const XML_ENTITY_REPLACEMENTS = new Set(["&amp;", "&lt;", "&gt;", "&quot;", "&apos;"]);
+const XML_ENTITY_REPLACEMENTS = new Set([
+  "&amp;",
+  "&lt;",
+  "&gt;",
+  "&quot;",
+  "&apos;",
+]);
 
 const REPLACE_METHODS = new Set(["replace", "replaceAll"]);
 
@@ -48,10 +57,15 @@ const xmlEntityLiteral = (node: unknown): boolean => {
     return false;
   }
   if (node.type === "Literal") {
-    return typeof node.value === "string" && XML_ENTITY_REPLACEMENTS.has(node.value);
+    return (
+      typeof node.value === "string" && XML_ENTITY_REPLACEMENTS.has(node.value)
+    );
   }
   // An untagged template with no substitutions is still a string literal.
-  if (node.type !== "TemplateLiteral" || (node.expressions as unknown[])?.length !== 0) {
+  if (
+    node.type !== "TemplateLiteral" ||
+    (node.expressions as unknown[])?.length !== 0
+  ) {
     return false;
   }
   const quasis = node.quasis;

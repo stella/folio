@@ -43,8 +43,18 @@ describe("parseStextXml", () => {
   test("parses multiple pages in document order with page dimensions", () => {
     const xml = documentEl(
       [
-        pageEl(1, "612", "792", lineEl({ bbox: "10 10 50 20", chars: "Hello" })),
-        pageEl(2, "612", "792", lineEl({ bbox: "10 10 50 20", chars: "World" })),
+        pageEl(
+          1,
+          "612",
+          "792",
+          lineEl({ bbox: "10 10 50 20", chars: "Hello" }),
+        ),
+        pageEl(
+          2,
+          "612",
+          "792",
+          lineEl({ bbox: "10 10 50 20", chars: "World" }),
+        ),
       ].join("\n"),
     );
 
@@ -190,7 +200,12 @@ describe("parseStextXml", () => {
 
   test("reconstructs text from <char> elements when the line has no text attribute", () => {
     const xml = documentEl(
-      pageEl(1, "612", "792", lineEl({ bbox: "0 0 60 10", chars: "NoTextAttr" })),
+      pageEl(
+        1,
+        "612",
+        "792",
+        lineEl({ bbox: "0 0 60 10", chars: "NoTextAttr" }),
+      ),
     );
 
     const pages = parseStextXml(xml);
@@ -230,7 +245,11 @@ describe("parseStextXml", () => {
 
     const pages = parseStextXml(xml);
 
-    expect(pages[0]?.lines.map((line) => line.direction)).toEqual(["rtl", "ltr", "unknown"]);
+    expect(pages[0]?.lines.map((line) => line.direction)).toEqual([
+      "rtl",
+      "ltr",
+      "unknown",
+    ]);
   });
 
   test("uses the median non-whitespace character origin as the line baseline", () => {

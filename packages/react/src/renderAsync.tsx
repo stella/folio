@@ -21,13 +21,17 @@
 
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
+
 import { IntlProvider } from "use-intl";
 
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import { DocxEditor } from "./components/DocxEditor";
-import type { DocxEditorProps, DocxEditorRef } from "./components/DocxEditor.props";
+import type {
+  DocxEditorProps,
+  DocxEditorRef,
+} from "./components/DocxEditor.props";
 import { getFolioMessages } from "./i18n/messages";
 
 /** Framework-agnostic handle for an imperatively mounted editor instance. */
@@ -53,7 +57,10 @@ export type DocxEditorHandle = EditorHandle & {
 };
 
 /** Options for {@link renderAsync}. */
-export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {
+export type RenderAsyncOptions = Omit<
+  DocxEditorProps,
+  "documentBuffer" | "document"
+> & {
   /** BCP-47 locale for bundled folio UI strings (default: `en`). */
   locale?: string;
 };

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+
 import config from "../playwright.config";
 
 const requireRecord = (value: unknown): Record<string, unknown> => {
@@ -15,10 +16,12 @@ test("random interleaving is isolated from the PR browser and interaction projec
   const projects = config.projects;
   if (!projects) throw new Error("Playwright projects unavailable");
   const random = projects.find(({ name }) => name === "interleaving-fuzzer");
-  if (!(random?.testMatch instanceof RegExp)) throw new Error("Interleaving project match missing");
+  if (!(random?.testMatch instanceof RegExp))
+    throw new Error("Interleaving project match missing");
   expect(random.testMatch.test(file)).toBe(true);
   const browser = projects.find(({ name }) => name === "browser-fuzzer");
-  if (!(browser?.testMatch instanceof RegExp)) throw new Error("Browser project match missing");
+  if (!(browser?.testMatch instanceof RegExp))
+    throw new Error("Browser project match missing");
   expect(browser.testMatch.test(file)).toBe(false);
   const interactions = projects.find(({ name }) => name === "interactions");
   if (!(interactions?.testIgnore instanceof RegExp))
@@ -28,18 +31,30 @@ test("random interleaving is isolated from the PR browser and interaction projec
 
 test("interleaving random lane uses a bounded scheduled workflow with issue filing", () => {
   const workflow = requireRecord(
-    Bun.YAML.parse(readFileSync(".github/workflows/nightly-browser-input-fuzzer.yml", "utf8")),
+    Bun.YAML.parse(
+      readFileSync(
+        ".github/workflows/nightly-browser-input-fuzzer.yml",
+        "utf8",
+      ),
+    ),
   );
   expect(Object.keys(requireRecord(workflow["on"])).sort()).toEqual([
     "schedule",
     "workflow_dispatch",
   ]);
-  const job = requireRecord(requireRecord(workflow["jobs"])["browser-input-fuzzer"]);
-  const source = readFileSync(".github/workflows/nightly-browser-input-fuzzer.yml", "utf8");
+  const job = requireRecord(
+    requireRecord(workflow["jobs"])["browser-input-fuzzer"],
+  );
+  const source = readFileSync(
+    ".github/workflows/nightly-browser-input-fuzzer.yml",
+    "utf8",
+  );
   expect(source.match(/^    outputs:$/gmu)).toHaveLength(1);
   const outputs = requireRecord(job["outputs"]);
   expect(outputs["fuzz_outcome"]).toBe("${{ steps.fuzz.outcome }}");
-  expect(outputs["interleaving_outcome"]).toBe("${{ steps.interleaving.outcome }}");
+  expect(outputs["interleaving_outcome"]).toBe(
+    "${{ steps.interleaving.outcome }}",
+  );
   expect(job["permissions"]).toEqual({ contents: "read" });
   for (const [name, output] of [
     ["report", "fuzz_outcome"],
@@ -49,7 +64,9 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
     expect(reporter["if"]).toBe(
       `always() && github.ref == 'refs/heads/main' && (needs.browser-input-fuzzer.outputs.${output} == 'failure' || (needs.browser-input-fuzzer.outputs.${output} == 'success' && github.event_name == 'schedule'))`,
     );
-    expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+    expect(reporter["uses"]).toBe(
+      "./.github/workflows/fuzz-failure-report.yml",
+    );
   }
   const rawSteps = job["steps"];
   if (!Array.isArray(rawSteps)) throw new Error("Workflow steps unavailable");
@@ -78,8 +95,11 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
     const specSource = readFileSync(`tests/visual/${spec}`, "utf8");
     expect(specSource).toContain(`"fuzz-artifacts/${lane}/findings"`);
     const reporterName = id === "fuzz" ? "report" : "interleaving-report";
-    const reporter = requireRecord(requireRecord(workflow["jobs"])[reporterName]);
-    const artifactName = id === "fuzz" ? "browser-input-fuzzer" : "interleaving-findings";
+    const reporter = requireRecord(
+      requireRecord(workflow["jobs"])[reporterName],
+    );
+    const artifactName =
+      id === "fuzz" ? "browser-input-fuzzer" : "interleaving-findings";
     expect(reporter["with"]).toEqual({
       "artifact-pattern": artifactName,
       "log-pattern": `**/fuzz-artifacts/${lane}/*.log`,
@@ -92,7 +112,8 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
         step["uses"].startsWith("actions/upload-artifact@") &&
         requireRecord(step["with"])["name"] === artifactName,
     );
-    const canonicalArtifacts = id === "fuzz" ? "fuzz-artifacts/canonical\n" : "";
+    const canonicalArtifacts =
+      id === "fuzz" ? "fuzz-artifacts/canonical\n" : "";
     expect(requireRecord(upload?.["with"])["path"]).toBe(
       `fuzz-artifacts/${lane}\n${canonicalArtifacts}fuzz-playwright/${lane}\n`,
     );
@@ -102,7 +123,9 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
   expect(random["continue-on-error"]).toBe(true);
   expect(random["timeout-minutes"]).toBeLessThanOrEqual(12);
   expect(random["run"]).toContain("--project=interleaving-fuzzer");
-  const reporter = requireRecord(requireRecord(workflow["jobs"])["interleaving-report"]);
+  const reporter = requireRecord(
+    requireRecord(workflow["jobs"])["interleaving-report"],
+  );
   expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
 });
 
@@ -110,7 +133,12 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
 // New lanes must publish their step outcome and have a serialized main reporter.
 test("every scheduled fuzz step has exactly one outcome output and finding reporter", () => {
   const workflow = requireRecord(
-    Bun.YAML.parse(readFileSync(".github/workflows/nightly-browser-input-fuzzer.yml", "utf8")),
+    Bun.YAML.parse(
+      readFileSync(
+        ".github/workflows/nightly-browser-input-fuzzer.yml",
+        "utf8",
+      ),
+    ),
   );
   const jobs = requireRecord(workflow["jobs"]);
   const job = requireRecord(jobs["browser-input-fuzzer"]);
@@ -127,8 +155,11 @@ test("every scheduled fuzz step has exactly one outcome output and finding repor
   expect(fuzzStepIds.length).toBeGreaterThan(0);
   const outputs = requireRecord(job["outputs"]);
   const outputStepIds = Object.values(outputs).map((expression) => {
-    if (typeof expression !== "string") throw new Error("Fuzz output expression unavailable");
-    const id = /^\$\{\{ steps\.([\w-]+)\.outcome \}\}$/u.exec(expression)?.at(1);
+    if (typeof expression !== "string")
+      throw new Error("Fuzz output expression unavailable");
+    const id = /^\$\{\{ steps\.([\w-]+)\.outcome \}\}$/u
+      .exec(expression)
+      ?.at(1);
     if (!id) throw new Error("Fuzz output must report its step outcome");
     return id;
   });
@@ -138,13 +169,17 @@ test("every scheduled fuzz step has exactly one outcome output and finding repor
     .filter((candidate) => candidate["needs"] === "browser-input-fuzzer")
     .map((reporter) => {
       const condition = reporter["if"];
-      if (typeof condition !== "string") throw new Error("Reporter condition unavailable");
+      if (typeof condition !== "string")
+        throw new Error("Reporter condition unavailable");
       const output =
         /^always\(\) && github\.ref == 'refs\/heads\/main' && \(needs\.browser-input-fuzzer\.outputs\.(\w+_outcome) == 'failure' \|\| \(needs\.browser-input-fuzzer\.outputs\.\1 == 'success' && github\.event_name == 'schedule'\)\)$/u
           .exec(condition)
           ?.at(1);
-      if (!output) throw new Error("Reporter must consume one outcome output on main");
-      expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+      if (!output)
+        throw new Error("Reporter must consume one outcome output on main");
+      expect(reporter["uses"]).toBe(
+        "./.github/workflows/fuzz-failure-report.yml",
+      );
       expect(requireRecord(reporter["with"])["result"]).toBe(
         `\${{ needs.browser-input-fuzzer.outputs.${output} }}`,
       );

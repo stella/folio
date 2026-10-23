@@ -2,8 +2,8 @@
  * Doc Extension — top-level document node
  */
 
-import { createNodeExtension } from "../create";
 import { PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR } from "../../../docx/paragraphPropertySource";
+import { createNodeExtension } from "../create";
 
 export const DocExtension = createNodeExtension({
   name: "doc",

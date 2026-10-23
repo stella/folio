@@ -11,13 +11,12 @@
  * reach, because a package's `typecheck` never reads a test file.
  */
 
+import { paragraphRejectOriginalFormatting } from "../../src/prosemirror/commands/propertyChangeScope";
 import {
   effectiveParagraphNumbering,
   effectiveParagraphNumberingReference,
   paragraphNumberingSourcesFromBoundary,
 } from "../../src/prosemirror/numberingAttr";
-
-import { paragraphRejectOriginalFormatting } from "../../src/prosemirror/commands/propertyChangeScope";
 
 const REJECTS_THE_PRE_UNION_SLOT_PAIR = paragraphRejectOriginalFormatting(
   {
@@ -27,7 +26,8 @@ const REJECTS_THE_PRE_UNION_SLOT_PAIR = paragraphRejectOriginalFormatting(
   null,
 );
 
-export type ParagraphSnapshotNumberingProof = typeof REJECTS_THE_PRE_UNION_SLOT_PAIR;
+export type ParagraphSnapshotNumberingProof =
+  typeof REJECTS_THE_PRE_UNION_SLOT_PAIR;
 
 // Both tiers must be stated even when absent; null belongs only to the attrs boundary.
 const COMPLETE_SOURCES = { numPr: undefined, numPrFromStyle: undefined };

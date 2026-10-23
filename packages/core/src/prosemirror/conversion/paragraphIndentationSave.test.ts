@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { fromMarkdown } from "../../markdown/fromMarkdown";
-import { createDocx } from "../../docx/rezip";
-import { ensureParaIds } from "../../docx/ensureParaIds";
+
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { documentShape } from "../../__tests__/documentShapes";
 import {
   createHarnessState,
@@ -18,6 +18,10 @@ import {
   saveHarnessState,
   summarizeState,
 } from "../../__tests__/editorHarness";
+import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { ensureParaIds } from "../../docx/ensureParaIds";
+import { createDocx } from "../../docx/rezip";
+import { fromMarkdown } from "../../markdown/fromMarkdown";
 import type { Document, Paragraph } from "../../types/document";
 
 const paragraphHolding = (document: Document, text: string): Paragraph => {
@@ -38,12 +42,21 @@ const indentAndSave = async (
   args: readonly unknown[] = [],
 ) => {
   const base = await parseShapeDocument(await documentShape(shapeId).build());
-  const before = placeSelection(createHarnessState(base, "editing"), focus, "caret-middle");
+  const before = placeSelection(
+    createHarnessState(base, "editing"),
+    focus,
+    "caret-middle",
+  );
   if (!before) {
     throw new Error("the shape has no focus paragraph");
   }
   const view = new HeadlessEditorView(before);
-  expect(harnessManager().requireCommand(command)(...args)(view.state, view.dispatch)).toBe(true);
+  expect(
+    harnessManager().requireCommand(command)(...args)(
+      view.state,
+      view.dispatch,
+    ),
+  ).toBe(true);
   const saved = await saveHarnessState(view.state, base);
   return { view, saved, reopened: await parseShapeDocument(saved.bytes) };
 };
@@ -59,9 +72,15 @@ describe("paragraph indentation on save", () => {
   ] as const)(
     "an indent the editor applied to a paragraph with its own w:pPr is saved (%s)",
     async (shapeId, focus, expected) => {
-      const { reopened } = await indentAndSave(shapeId, focus, "increaseIndent");
+      const { reopened } = await indentAndSave(
+        shapeId,
+        focus,
+        "increaseIndent",
+      );
 
-      expect(paragraphHolding(reopened, focus).formatting?.indentLeft).toBe(expected);
+      expect(paragraphHolding(reopened, focus).formatting?.indentLeft).toBe(
+        expected,
+      );
     },
   );
 
@@ -73,24 +92,33 @@ describe("paragraph indentation on save", () => {
       [720],
     );
 
-    const live = summarizeState(view.state).find((block) => block["text"] === "First item");
+    const live = summarizeState(view.state).find(
+      (block) => block["text"] === "First item",
+    );
     const reopened = (await readBack(saved.bytes)).summary.find(
       (block) => block["text"] === "First item",
     );
     expect(live?.["directIndentation"]).toEqual({ indentLeft: 720 });
-    expect(reopened?.["directIndentation"]).toEqual(live?.["directIndentation"]);
+    expect(reopened?.["directIndentation"]).toEqual(
+      live?.["directIndentation"],
+    );
   });
 
   test("a hanging indent reads with a negative first line, as the model states it", async () => {
-    const { view, reopened } = await indentAndSave("rtl-cjk", "مرحبا", "setIndentFirstLine", [
-      360,
-      true,
-    ]);
+    const { view, reopened } = await indentAndSave(
+      "rtl-cjk",
+      "مرحبا",
+      "setIndentFirstLine",
+      [360, true],
+    );
 
     const live = summarizeState(view.state).find((block) =>
       String(block["text"]).startsWith("مرحبا"),
     );
-    expect(live?.["directIndentation"]).toEqual({ indentFirstLine: -360, hangingIndent: true });
+    expect(live?.["directIndentation"]).toEqual({
+      indentFirstLine: -360,
+      hangingIndent: true,
+    });
     expect(paragraphHolding(reopened, "مرحبا").formatting).toMatchObject({
       indentFirstLine: -360,
       hangingIndent: true,
@@ -130,9 +158,14 @@ test(
             (candidate) => candidate.styleId === "Heading2",
           );
           if (!style) throw new Error("Heading2 is missing");
-          style.pPr = { ...style.pPr, numPr: paragraphNumberingFromSlots({ numId, ilvl: 0 }) };
+          style.pPr = {
+            ...style.pPr,
+            numPr: paragraphNumberingFromSlots({ numId, ilvl: 0 }),
+          };
           const bytes = (await ensureParaIds(await createDocx(document))).docx;
-          const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+          const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+            author: "Test",
+          });
           const block = reviewer
             .getContent()
             .find((candidate) => candidate.text === "Body clause.");
@@ -152,10 +185,15 @@ test(
             },
             { undefinedReferences: "refuse" },
           );
-          const live = reviewer.getContent().find((candidate) => candidate.text === "Body clause.");
-          const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-            author: "Test",
-          });
+          const live = reviewer
+            .getContent()
+            .find((candidate) => candidate.text === "Body clause.");
+          const saved = await FolioDocxReviewer.fromBuffer(
+            await reviewer.toBuffer(),
+            {
+              author: "Test",
+            },
+          );
           const reopened = saved
             .getContent()
             .find((candidate) => candidate.text === "Body clause.");

@@ -11,7 +11,9 @@ import { openReviewer, plainDocument } from "../support/documents.ts";
 test("pending suggestions round-trip through the packed public API", async () => {
   const reviewer = await openReviewer(await plainDocument());
   const original = reviewer.getContent().map(({ text }) => text);
-  const target = reviewer.getContent().find(({ text }) => text.includes("thirty days"));
+  const target = reviewer
+    .getContent()
+    .find(({ text }) => text.includes("thirty days"));
   assert.ok(target);
 
   const applied = reviewer.applyDocumentOperations(
@@ -40,7 +42,9 @@ test("pending suggestions round-trip through the packed public API", async () =>
   const stored: unknown = JSON.parse(JSON.stringify(records));
   assert.ok(Array.isArray(stored));
 
-  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  const reopened = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
   assert.deepEqual(
     reopened.getContent().map(({ text }) => text),
     original,
@@ -58,22 +62,32 @@ test("pending suggestions round-trip through the packed public API", async () =>
     proposed,
   );
 
-  const stillPending = await openReviewer(new Uint8Array(await reopened.toBuffer()));
+  const stillPending = await openReviewer(
+    new Uint8Array(await reopened.toBuffer()),
+  );
   assert.deepEqual(
     stillPending.getContent().map(({ text }) => text),
     original,
   );
   assert.equal(reopened.acceptSuggestion("payment-proposal"), true);
-  const accepted = await openReviewer(new Uint8Array(await reopened.toBuffer()));
+  const accepted = await openReviewer(
+    new Uint8Array(await reopened.toBuffer()),
+  );
   assert.deepEqual(
     accepted.getContent().map(({ text }) => text),
     proposed,
   );
 
-  const unsupported = records.map((record) => Object.assign({}, record, { version: 999 }));
+  const unsupported = records.map((record) =>
+    Object.assign({}, record, { version: 999 }),
+  );
   const clean = await openReviewer(await plainDocument());
   assert.deepEqual(clean.loadPendingSuggestions(unsupported), [
-    { status: "stale", suggestionId: "payment-proposal", reason: "unsupportedVersion" },
+    {
+      status: "stale",
+      suggestionId: "payment-proposal",
+      reason: "unsupportedVersion",
+    },
   ]);
   assert.deepEqual(
     clean.getContent().map(({ text }) => text),

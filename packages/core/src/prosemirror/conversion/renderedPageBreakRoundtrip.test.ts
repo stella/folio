@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
 import { schema } from "../schema";
@@ -7,12 +7,16 @@ import { fromProseDoc } from "./fromProseDoc";
 
 describe("renderedPageBreakBefore round-trip", () => {
   test("attr survives PM to Document to XML", () => {
-    const paragraph = schema.node("paragraph", { renderedPageBreakBefore: true }, [
-      schema.text("Attachment 1"),
-    ]);
+    const paragraph = schema.node(
+      "paragraph",
+      { renderedPageBreakBefore: true },
+      [schema.text("Attachment 1")],
+    );
     const doc = schema.node("doc", null, [paragraph]);
 
-    const document = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(doc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const parsed = document.package.document.content.at(0);
     if (parsed?.type !== "paragraph") {
       panic("Expected the converted paragraph");
@@ -21,7 +25,9 @@ describe("renderedPageBreakBefore round-trip", () => {
 
     const xml = serializeParagraph(parsed);
     expect(xml).toMatch(/<w:lastRenderedPageBreak\/>/u);
-    expect(xml).toMatch(/<w:r[^>]*>(?:<w:rPr>.*<\/w:rPr>)?<w:lastRenderedPageBreak\/>/u);
+    expect(xml).toMatch(
+      /<w:r[^>]*>(?:<w:rPr>.*<\/w:rPr>)?<w:lastRenderedPageBreak\/>/u,
+    );
     expect(xml.match(/<w:lastRenderedPageBreak\/>/gu)).toHaveLength(1);
   });
 
@@ -55,9 +61,13 @@ describe("renderedPageBreakBefore round-trip", () => {
       schema.node("renderedPageBreak"),
       schema.text("Next page"),
     ]);
-    const document = fromProseDoc(schema.node("doc", null, [paragraph]), undefined, {
-      stylesheetSource: { type: "package" },
-    });
+    const document = fromProseDoc(
+      schema.node("doc", null, [paragraph]),
+      undefined,
+      {
+        stylesheetSource: { type: "package" },
+      },
+    );
     const parsed = document.package.document.content.at(0);
 
     expect(parsed).toMatchObject({
@@ -68,7 +78,9 @@ describe("renderedPageBreakBefore round-trip", () => {
         { type: "run", content: [{ type: "text", text: "Next page" }] },
       ],
     });
-    expect(serializeParagraph(parsed).match(/<w:lastRenderedPageBreak\/>/gu)).toHaveLength(1);
+    expect(
+      serializeParagraph(parsed).match(/<w:lastRenderedPageBreak\/>/gu),
+    ).toHaveLength(1);
   });
 
   test("serializer injects marker into the first run inside a hyperlink wrapper", () => {
@@ -90,6 +102,8 @@ describe("renderedPageBreakBefore round-trip", () => {
     };
 
     const xml = serializeParagraph(paragraph as never);
-    expect(xml).toMatch(/<w:hyperlink[^>]*>[^<]*<w:r[^>]*><w:lastRenderedPageBreak\/>/u);
+    expect(xml).toMatch(
+      /<w:hyperlink[^>]*>[^<]*<w:r[^>]*><w:lastRenderedPageBreak\/>/u,
+    );
   });
 });

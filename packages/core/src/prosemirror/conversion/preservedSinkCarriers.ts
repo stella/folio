@@ -20,7 +20,12 @@
  * writes from, and the round trip carries it untouched.
  */
 
-import type { BlockContent, PreservedMarkup, TableCell, TableRow } from "../../types/document";
+import type {
+  BlockContent,
+  PreservedMarkup,
+  TableCell,
+  TableRow,
+} from "../../types/document";
 
 /**
  * `Record_` when it declares `preserved`, `never` when it does not.
@@ -43,7 +48,9 @@ type DeclaresSink<Record_> = Record_ extends { preserved?: infer Sink }
  * cells — so a sink added anywhere along it joins the union rather than
  * slipping past a hand-listed pair.
  */
-export type SinkBearingBlock = DeclaresSink<BlockContent | TableRow | TableCell>;
+export type SinkBearingBlock = DeclaresSink<
+  BlockContent | TableRow | TableCell
+>;
 
 /**
  * The editor carries a sink on the node's own attrs, by reference.
@@ -59,9 +66,13 @@ export const SINK_ON_NODE_ATTRS = "carried-on-node-attrs";
 export const PRESERVED_SINK_CARRIERS = {
   table: SINK_ON_NODE_ATTRS,
   tableRow: SINK_ON_NODE_ATTRS,
-} as const satisfies Record<SinkBearingBlock["type"], typeof SINK_ON_NODE_ATTRS>;
+} as const satisfies Record<
+  SinkBearingBlock["type"],
+  typeof SINK_ON_NODE_ATTRS
+>;
 
 /** A sink worth carrying: an empty record is never written. */
 export const hasSinkChildren = (
   preserved: PreservedMarkup | undefined,
-): preserved is PreservedMarkup => preserved !== undefined && (preserved.children?.length ?? 0) > 0;
+): preserved is PreservedMarkup =>
+  preserved !== undefined && (preserved.children?.length ?? 0) > 0;

@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
@@ -20,8 +21,9 @@ export type HarnessRefusalRow = {
   message: string;
 };
 
-export const canonicalActivationRefusalRow = (_source: Document): HarnessRefusalRow | undefined =>
-  undefined;
+export const canonicalActivationRefusalRow = (
+  _source: Document,
+): HarnessRefusalRow | undefined => undefined;
 
 /** Rows are created by the attempted input, rather than mirroring ledger membership. */
 export const validateHarnessRefusalRows = (
@@ -30,21 +32,28 @@ export const validateHarnessRefusalRows = (
 ) => {
   for (const row of rows)
     if (!Object.hasOwn(capabilities, row.gap))
-      panic(`Retired canonical refusal row must become strict: ${row.id} (${row.gap})`);
+      panic(
+        `Retired canonical refusal row must become strict: ${row.id} (${row.gap})`,
+      );
 };
 
 type HarnessRefusalProblemsOptions = {
   rows: readonly HarnessRefusalRow[];
   refusals: readonly HarnessRefusal[];
 };
-export const harnessRefusalProblems = ({ rows, refusals }: HarnessRefusalProblemsOptions) => {
+export const harnessRefusalProblems = ({
+  rows,
+  refusals,
+}: HarnessRefusalProblemsOptions) => {
   validateHarnessRefusalRows(rows);
   return refusals
     .filter(
       (refusal) =>
         !rows.some(
           (row) =>
-            row.id === refusal.row && row.gap === refusal.gap && row.message === refusal.message,
+            row.id === refusal.row &&
+            row.gap === refusal.gap &&
+            row.message === refusal.message,
         ),
     )
     .map(({ gap, message }) => `${gap}: ${message}`);
@@ -59,12 +68,14 @@ export const canonicalBrowserRefusalRows = (
     {
       id: "clipboard-table",
       gap: CANONICAL_GAP.dispatch,
-      message: "Clipboard tables and embedded blocks require canonical table editing.",
+      message:
+        "Clipboard tables and embedded blocks require canonical table editing.",
     },
     {
       id: "clipboard-nested-blocks",
       gap: CANONICAL_GAP.dispatch,
-      message: "Clipboard tables and nested block containers require canonical table editing.",
+      message:
+        "Clipboard tables and nested block containers require canonical table editing.",
     },
   ];
 };
@@ -73,7 +84,12 @@ type MatchCanonicalRefusalOptions = {
   rows: readonly HarnessRefusalRow[];
   refusal: { gap: CanonicalGap; message: string };
 };
-export const matchCanonicalRefusalRow = ({ rows, refusal }: MatchCanonicalRefusalOptions) => {
+export const matchCanonicalRefusalRow = ({
+  rows,
+  refusal,
+}: MatchCanonicalRefusalOptions) => {
   validateHarnessRefusalRows(rows);
-  return rows.find((row) => row.gap === refusal.gap && row.message === refusal.message);
+  return rows.find(
+    (row) => row.gap === refusal.gap && row.message === refusal.message,
+  );
 };

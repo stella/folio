@@ -25,7 +25,8 @@ const PREVIEW_BACKGROUND: DisplayColor = { r: 0xee, g: 0xf2, b: 0xf7, a: 1 };
 /** A shape whose `a:srgbClr` was missing or is not a colour. */
 const PREVIEW_SHAPE_FILL: DisplayColor = { r: 0xe8, g: 0xee, b: 0xf7, a: 1 };
 
-const clampFraction = (value: number): number => Math.min(1, Math.max(0, value));
+const clampFraction = (value: number): number =>
+  Math.min(1, Math.max(0, value));
 
 type ShapeRectOptions = {
   readonly shape: PreviewShape;
@@ -38,7 +39,11 @@ type ShapeRectOptions = {
  * image's box. `undefined` for a shape the box keeps nothing of, which is the
  * clip the raster did by clamping to its own bounds.
  */
-const shapeRect = ({ shape, extent, box }: ShapeRectOptions): DisplayRect | undefined => {
+const shapeRect = ({
+  shape,
+  extent,
+  box,
+}: ShapeRectOptions): DisplayRect | undefined => {
   if (shape.type === "polygon" || shape.type === "polyline") return undefined;
   const left = clampFraction(shape.x / extent.width);
   const right = clampFraction((shape.x + shape.width) / extent.width);
@@ -98,7 +103,10 @@ export const paintPreview = (
             color,
             thicknessPx:
               shape.strokeWidth *
-              Math.min(box.widthPx / extent.width, box.heightPx / extent.height),
+              Math.min(
+                box.widthPx / extent.width,
+                box.heightPx / extent.height,
+              ),
             pattern: "solid" as const,
           };
           primitives.push({ kind: "polyline", points, stroke });

@@ -20,7 +20,9 @@ describe("table cell diagonal border conversion", () => {
       [schema.node("paragraph", null, [schema.text("Cell")])],
     );
     const doc = schema.node("doc", null, [
-      schema.node("table", { columnWidths: [1200] }, [schema.node("tableRow", null, [cell])]),
+      schema.node("table", { columnWidths: [1200] }, [
+        schema.node("tableRow", null, [cell]),
+      ]),
     ]);
 
     const table = toFlowBlocks(doc).find((block) => block.kind === "table");
@@ -29,11 +31,15 @@ describe("table cell diagonal border conversion", () => {
       return;
     }
 
-    expect(table.rows.at(0)?.cells.at(0)?.borders?.topLeftToBottomRight).toEqual({
+    expect(
+      table.rows.at(0)?.cells.at(0)?.borders?.topLeftToBottomRight,
+    ).toEqual({
       color: "#123456",
       style: "dashed",
       width: 2,
     });
-    expect(table.rows.at(0)?.cells.at(0)?.borders?.topRightToBottomLeft).toBeUndefined();
+    expect(
+      table.rows.at(0)?.cells.at(0)?.borders?.topRightToBottomLeft,
+    ).toBeUndefined();
   });
 });

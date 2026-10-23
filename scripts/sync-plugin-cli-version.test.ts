@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { cliVersion, PLUGIN_VERSION_FILES, pluginVersions } from "./sync-plugin-cli-version";
+import {
+  cliVersion,
+  PLUGIN_VERSION_FILES,
+  pluginVersions,
+} from "./sync-plugin-cli-version";
 
 describe("plugin CLI versions", () => {
   test("every plugin manifest and CLI spec names the CLI package's version", async () => {
@@ -10,10 +14,15 @@ describe("plugin CLI versions", () => {
 
     const found = await pluginVersions();
 
-    expect(found.map(({ file }) => file)).toContain("plugins/vscode/package.json");
+    expect(found.map(({ file }) => file)).toContain(
+      "plugins/vscode/package.json",
+    );
     expect(found.length).toBe(5);
     for (const { file, versions } of found) {
-      expect([file, versions.every((entry) => entry === version)]).toEqual([file, true]);
+      expect([file, versions.every((entry) => entry === version)]).toEqual([
+        file,
+        true,
+      ]);
     }
   });
 
@@ -30,10 +39,15 @@ describe("plugin CLI versions", () => {
   // paths; every synced plugin file must be one of them.
   test("the version PR policy allows every synced file", async () => {
     const repoRoot = path.resolve(import.meta.dir, "..");
-    const ci = await readFile(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+    const ci = await readFile(
+      path.join(repoRoot, ".github", "workflows", "ci.yml"),
+      "utf8",
+    );
     // The block scalar's entries are the lines indented past its key.
     const lines = ci.split("\n");
-    const key = lines.findIndex((line) => line.trimStart() === "generated-paths: |");
+    const key = lines.findIndex(
+      (line) => line.trimStart() === "generated-paths: |",
+    );
     const keyIndent = (lines[key] ?? "").search(/\S/u);
     const allowed = new Set<string>();
     for (const line of lines.slice(key + 1)) {

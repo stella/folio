@@ -6,11 +6,10 @@
  * content>/` so a second call never reopens Word or re-runs mutool.
  */
 
+import JSZip from "jszip";
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-
-import JSZip from "jszip";
 
 import {
   cacheDirFor,
@@ -47,15 +46,21 @@ const wordArtifactNames = (reviewView: WordReviewView) => ({
   pages: `word-${reviewView}-pages`,
 });
 
-const requireWordReviewView = (reviewView: ReviewView | undefined): WordReviewView => {
+const requireWordReviewView = (
+  reviewView: ReviewView | undefined,
+): WordReviewView => {
   const resolved = reviewView ?? DEFAULT_WORD_REVIEW_VIEW;
   if (resolved === "default") {
-    throw new WordTruthError("Microsoft Word requires final or all-markup review view", "export");
+    throw new WordTruthError(
+      "Microsoft Word requires final or all-markup review view",
+      "export",
+    );
   }
   return resolved;
 };
 
-const GET_WORD_VERSION_SCRIPT = 'tell application "Microsoft Word" to get version';
+const GET_WORD_VERSION_SCRIPT =
+  'tell application "Microsoft Word" to get version';
 
 export type WordTruthStage = "availability" | "export" | "extract";
 
@@ -73,7 +78,9 @@ export class WordTruthError extends Error {
  * PATH. Never launches Word. */
 export const isWordAvailable = async (): Promise<boolean> => {
   if (Bun.which("mutool") === null) return false;
-  return await Bun.file(path.join(WORD_APP_PATH, "Contents", "Info.plist")).exists();
+  return await Bun.file(
+    path.join(WORD_APP_PATH, "Contents", "Info.plist"),
+  ).exists();
 };
 
 // Cached across calls in-process: querying Word's version launches it, so we
@@ -228,7 +235,9 @@ const EDIT_RESTRICTION_ELEMENT_PATTERN =
 
 /** Remove edit restrictions from a settings part, or return undefined when it
  * carries none. */
-export const stripEditRestrictions = (settingsXml: string): string | undefined => {
+export const stripEditRestrictions = (
+  settingsXml: string,
+): string | undefined => {
   const stripped = settingsXml.replace(EDIT_RESTRICTION_ELEMENT_PATTERN, "");
   return stripped === settingsXml ? undefined : stripped;
 };
@@ -237,14 +246,19 @@ export const stripEditRestrictions = (settingsXml: string): string | undefined =
  * document with edit restrictions is staged as a copy whose settings part
  * omits them, so both review views can be selected. The source file and its
  * content hash (the cache key) are never changed. */
-export const stageableDocxBytes = async (source: Uint8Array): Promise<Uint8Array> => {
+export const stageableDocxBytes = async (
+  source: Uint8Array,
+): Promise<Uint8Array> => {
   const zip = await JSZip.loadAsync(source);
   const settings = zip.file(SETTINGS_PART);
   if (settings === null) return source;
   const stripped = stripEditRestrictions(await settings.async("string"));
   if (stripped === undefined) return source;
   zip.file(SETTINGS_PART, stripped);
-  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  return await zip.generateAsync({
+    type: "uint8array",
+    compression: "DEFLATE",
+  });
 };
 
 /** Export `docxPath` to `destPdfPath` by scripting Word. Both sides of the
@@ -261,11 +275,23 @@ const exportViaWord = async (
   const stagedDocxPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.docx`);
   const tmpPdfPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.pdf`);
   await mkdir(WORD_CONTAINER_TMP, { recursive: true });
-  await Bun.write(stagedDocxPath, await stageableDocxBytes(await Bun.file(docxPath).bytes()));
+  await Bun.write(
+    stagedDocxPath,
+    await stageableDocxBytes(await Bun.file(docxPath).bytes()),
+  );
   try {
-    await runWordExportScript({ docxPath, stagedDocxPath, tmpPdfPath, destPdfPath, reviewView });
+    await runWordExportScript({
+      docxPath,
+      stagedDocxPath,
+      tmpPdfPath,
+      destPdfPath,
+      reviewView,
+    });
   } finally {
-    await Promise.all([rm(stagedDocxPath, { force: true }), rm(tmpPdfPath, { force: true })]);
+    await Promise.all([
+      rm(stagedDocxPath, { force: true }),
+      rm(tmpPdfPath, { force: true }),
+    ]);
   }
 };
 
@@ -283,41 +309,63 @@ type AppleScriptResult =
   | { status: "timed-out" }
   | { status: "failed"; exitCode: number; stderr: string };
 
-const runAppleScript = async (script: string, timeoutMs: number): Promise<AppleScriptResult> => {
-  const proc = Bun.spawn(["osascript", "-e", script], { stdout: "ignore", stderr: "pipe" });
+const runAppleScript = async (
+  script: string,
+  timeoutMs: number,
+): Promise<AppleScriptResult> => {
+  const proc = Bun.spawn(["osascript", "-e", script], {
+    stdout: "ignore",
+    stderr: "pipe",
+  });
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     proc.kill();
   }, timeoutMs);
 
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  const [exitCode, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stderr).text(),
+  ]);
   clearTimeout(timer);
 
   if (timedOut) return { status: "timed-out" };
-  if (exitCode !== 0) return { status: "failed", exitCode, stderr: stderr.trim() };
+  if (exitCode !== 0)
+    return { status: "failed", exitCode, stderr: stderr.trim() };
   return { status: "success" };
 };
 
-const describeAppleScriptFailure = (result: Exclude<AppleScriptResult, { status: "success" }>) => {
+const describeAppleScriptFailure = (
+  result: Exclude<AppleScriptResult, { status: "success" }>,
+) => {
   if (result.status === "timed-out") return "timed out";
   return `failed (exit ${result.exitCode}): ${result.stderr}`;
 };
 
-const closeStagedDocument = async (stagedDocxPath: string): Promise<AppleScriptResult> => {
+const closeStagedDocument = async (
+  stagedDocxPath: string,
+): Promise<AppleScriptResult> => {
   if (!isParityStagedDocumentPath(stagedDocxPath)) {
-    throw new WordTruthError("Refusing to close a document outside parity staging", "export");
+    throw new WordTruthError(
+      "Refusing to close a document outside parity staging",
+      "export",
+    );
   }
   const script = buildCloseStagedDocumentScript(stagedDocxPath);
   let result = await runAppleScript(script, CLOSE_TIMEOUT_MS);
-  for (let attempt = 1; attempt < CLOSE_ATTEMPTS && result.status !== "success"; attempt += 1) {
+  for (
+    let attempt = 1;
+    attempt < CLOSE_ATTEMPTS && result.status !== "success";
+    attempt += 1
+  ) {
     result = await runAppleScript(script, CLOSE_TIMEOUT_MS);
   }
   return result;
 };
 
 const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
-  const { docxPath, stagedDocxPath, tmpPdfPath, destPdfPath, reviewView } = args;
+  const { docxPath, stagedDocxPath, tmpPdfPath, destPdfPath, reviewView } =
+    args;
   const script = buildExportScript({
     docxPath: stagedDocxPath,
     pdfPath: tmpPdfPath,
@@ -359,7 +407,10 @@ const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
     if (attempt < EXPORT_ATTEMPTS) continue;
 
     if (exportResult.status === "success") {
-      throw new WordTruthError(`Word export produced an empty PDF for ${docxPath}`, "export");
+      throw new WordTruthError(
+        `Word export produced an empty PDF for ${docxPath}`,
+        "export",
+      );
     }
     throw new WordTruthError(
       `Word export ${describeAppleScriptFailure(exportResult)} for ${docxPath}`,
@@ -409,9 +460,15 @@ export const getWordTruth = async (
     throw new WordTruthError(message, "extract");
   }
 
-  await rm(path.join(dir, artifactNames.pages), { recursive: true, force: true });
+  await rm(path.join(dir, artifactNames.pages), {
+    recursive: true,
+    force: true,
+  });
 
-  const [wordVersion, mutoolVersion] = await Promise.all([getWordVersion(), getMutoolVersion()]);
+  const [wordVersion, mutoolVersion] = await Promise.all([
+    getWordVersion(),
+    getMutoolVersion(),
+  ]);
   const geom: DocGeom = {
     source: "word",
     file: absDocxPath,

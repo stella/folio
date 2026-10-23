@@ -14,8 +14,13 @@ import {
   type ShapingTestScript,
 } from "../fonts/sfnt/__tests__/testFonts";
 import { toSfntBytes } from "../fonts/sfnt/woff";
-import { advancesPerCodePointPx, directionOf, needsShaping, placeRun } from "./placeRun";
-import { getShaper, SHAPING_DIRECTION, type Shaper } from "./shaper";
+import {
+  advancesPerCodePointPx,
+  directionOf,
+  needsShaping,
+  placeRun,
+} from "./placeRun";
+import { getShaper, type Shaper, SHAPING_DIRECTION } from "./shaper";
 
 const FONT_SIZE_PX = 16;
 
@@ -39,8 +44,14 @@ const faceOf = async (script: ShapingTestScript): Promise<Uint8Array> => {
   return sfnt.value;
 };
 
-const glyphIdsOf = (shaper: Shaper, font: Uint8Array, text: string): readonly number[] =>
-  placeRun({ shaper, font, text, fontSizePx: FONT_SIZE_PX }).map(({ glyphId }) => glyphId);
+const glyphIdsOf = (
+  shaper: Shaper,
+  font: Uint8Array,
+  text: string,
+): readonly number[] =>
+  placeRun({ shaper, font, text, fontSizePx: FONT_SIZE_PX }).map(
+    ({ glyphId }) => glyphId,
+  );
 
 describe("which script a run is in", () => {
   test("Latin, Cyrillic and Greek need no shaping", () => {
@@ -94,7 +105,9 @@ describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
       // Clusters index the source text, so a run painted left to right walks
       // them backwards: the first glyph on the page is the last character read.
       const clusters = placed.map(({ clusterIndex }) => clusterIndex);
-      expect(clusters).toEqual([...clusters].sort((left, right) => right - left));
+      expect(clusters).toEqual(
+        [...clusters].sort((left, right) => right - left),
+      );
     });
 
     test("a Devanagari conjunct is one cluster over several characters", async () => {
@@ -108,8 +121,13 @@ describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
 
       // Three characters, one cluster: the conjunct is a glyph no single
       // character maps to, and the whole cluster's width belongs to it.
-      expect(new Set(placed.map(({ clusterIndex }) => clusterIndex)).size).toBe(1);
-      const advances = advancesPerCodePointPx(placed, [...DEVANAGARI_CLUSTER].length);
+      expect(new Set(placed.map(({ clusterIndex }) => clusterIndex)).size).toBe(
+        1,
+      );
+      const advances = advancesPerCodePointPx(
+        placed,
+        [...DEVANAGARI_CLUSTER].length,
+      );
       expect(advances).toHaveLength(3);
       expect(advances.at(0)).toBeGreaterThan(0);
       expect(advances.at(1)).toBe(0);
@@ -129,9 +147,11 @@ describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
       // which is what makes it a point rather than a following character.
       const marks = placed.filter(({ xAdvancePx }) => xAdvancePx === 0);
       expect(marks.length).toBeGreaterThan(0);
-      expect(marks.some(({ xOffsetPx, yOffsetPx }) => xOffsetPx !== 0 || yOffsetPx !== 0)).toBe(
-        true,
-      );
+      expect(
+        marks.some(
+          ({ xOffsetPx, yOffsetPx }) => xOffsetPx !== 0 || yOffsetPx !== 0,
+        ),
+      ).toBe(true);
     });
 
     test("advances sum to the run's own width whatever the clusters", async () => {
@@ -143,11 +163,14 @@ describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
         fontSizePx: FONT_SIZE_PX,
       });
 
-      const shaped = placed.reduce((total, { xAdvancePx }) => total + xAdvancePx, 0);
-      const perCodePoint = advancesPerCodePointPx(placed, [...ARABIC_WORD].length).reduce(
-        (total, advance) => total + advance,
+      const shaped = placed.reduce(
+        (total, { xAdvancePx }) => total + xAdvancePx,
         0,
       );
+      const perCodePoint = advancesPerCodePointPx(
+        placed,
+        [...ARABIC_WORD].length,
+      ).reduce((total, advance) => total + advance, 0);
       // Line breaking reads the per-code-point numbers, so they have to add up
       // to what the run actually occupies.
       expect(perCodePoint).toBeCloseTo(shaped, 10);

@@ -15,22 +15,30 @@ import type {
   MarkupRangeMarker,
   MoveBookmarkMarker,
 } from "../types/document";
-import { getAttribute, parseNumericAttribute, type XmlElement } from "./xmlParser";
+import {
+  getAttribute,
+  parseNumericAttribute,
+  type XmlElement,
+} from "./xmlParser";
 
 /** ST_DisplacedByCustomXml. A value outside it is not a placement folio can honour. */
-const DISPLACED_BY_CUSTOM_XML: ReadonlySet<string> = new Set<DisplacedByCustomXml>([
-  "next",
-  "prev",
-]);
+const DISPLACED_BY_CUSTOM_XML: ReadonlySet<string> =
+  new Set<DisplacedByCustomXml>(["next", "prev"]);
 
-const parseDisplacedByCustomXml = (node: XmlElement): DisplacedByCustomXml | undefined => {
+const parseDisplacedByCustomXml = (
+  node: XmlElement,
+): DisplacedByCustomXml | undefined => {
   const value = getAttribute(node, "w", "displacedByCustomXml") ?? "";
   // SAFETY: membership in the set is membership in the union.
-  return DISPLACED_BY_CUSTOM_XML.has(value) ? (value as DisplacedByCustomXml) : undefined;
+  return DISPLACED_BY_CUSTOM_XML.has(value)
+    ? (value as DisplacedByCustomXml)
+    : undefined;
 };
 
 export const parseMarkupRangeMarker = (node: XmlElement): MarkupRangeMarker => {
-  const marker: MarkupRangeMarker = { id: parseNumericAttribute(node, "w", "id") ?? 0 };
+  const marker: MarkupRangeMarker = {
+    id: parseNumericAttribute(node, "w", "id") ?? 0,
+  };
   const displacedByCustomXml = parseDisplacedByCustomXml(node);
   if (displacedByCustomXml !== undefined) {
     marker.displacedByCustomXml = displacedByCustomXml;
@@ -38,7 +46,9 @@ export const parseMarkupRangeMarker = (node: XmlElement): MarkupRangeMarker => {
   return marker;
 };
 
-export const parseBookmarkRangeMarker = (node: XmlElement): BookmarkRangeMarker => {
+export const parseBookmarkRangeMarker = (
+  node: XmlElement,
+): BookmarkRangeMarker => {
   const marker: BookmarkRangeMarker = {
     ...parseMarkupRangeMarker(node),
     name: getAttribute(node, "w", "name") ?? "",
@@ -61,7 +71,9 @@ export const parseBookmarkRangeMarker = (node: XmlElement): BookmarkRangeMarker 
  * but inventing a timestamp would state a fact about the document that is not
  * true, so an absent date stays absent.
  */
-export const parseMoveBookmarkMarker = (node: XmlElement): MoveBookmarkMarker => {
+export const parseMoveBookmarkMarker = (
+  node: XmlElement,
+): MoveBookmarkMarker => {
   const author = (getAttribute(node, "w", "author") ?? "").trim();
   const marker: MoveBookmarkMarker = {
     ...parseBookmarkRangeMarker(node),

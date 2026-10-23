@@ -18,13 +18,16 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import type { Comment } from "../types/document";
 
 /** The code this normalisation is reported under, owned here, not at the caller. */
-export const DUPLICATE_COMMENT_ID_WARNING = PARSE_WARNING_CODES.duplicateCommentId;
+export const DUPLICATE_COMMENT_ID_WARNING =
+  PARSE_WARNING_CODES.duplicateCommentId;
 
 export type NormalizeCommentIdsResult = {
   droppedDuplicateComments: number;
 };
 
-export const normalizeCommentIds = (comments: Comment[]): NormalizeCommentIdsResult => {
+export const normalizeCommentIds = (
+  comments: Comment[],
+): NormalizeCommentIdsResult => {
   const seen = new Set<number>();
   let kept = 0;
   for (const comment of comments) {

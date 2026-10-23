@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 import type { TableBlock } from "../types";
-import { resolveTableInlineOffset, resolveTableInlinePlacement } from "./tableInlinePlacement";
+import {
+  resolveTableInlineOffset,
+  resolveTableInlinePlacement,
+} from "./tableInlinePlacement";
 
-const tableWithLeadingPadding = (bidi: boolean, padding: number): TableBlock => ({
+const tableWithLeadingPadding = (
+  bidi: boolean,
+  padding: number,
+): TableBlock => ({
   kind: "table",
   id: "table",
   bidi,
@@ -26,20 +32,45 @@ describe("resolveTableInlinePlacement", () => {
   test.each([
     { bidi: false, alignment: "left" as const },
     { bidi: true, alignment: "right" as const },
-  ])("anchors a $alignment table border independently of cell padding", ({ bidi, alignment }) => {
-    for (const padding of [0, 7, 12, 96]) {
-      expect(resolveTableInlinePlacement(tableWithLeadingPadding(bidi, padding))).toEqual({
-        alignment,
-        offset: 12,
-      });
-    }
-  });
+  ])(
+    "anchors a $alignment table border independently of cell padding",
+    ({ bidi, alignment }) => {
+      for (const padding of [0, 7, 12, 96]) {
+        expect(
+          resolveTableInlinePlacement(tableWithLeadingPadding(bidi, padding)),
+        ).toEqual({
+          alignment,
+          offset: 12,
+        });
+      }
+    },
+  );
 
   test.each([
-    { bidi: false, justification: "left" as const, alignment: "left" as const, offset: 12 },
-    { bidi: false, justification: "right" as const, alignment: "right" as const, offset: 0 },
-    { bidi: true, justification: "left" as const, alignment: "right" as const, offset: 12 },
-    { bidi: true, justification: "right" as const, alignment: "left" as const, offset: 0 },
+    {
+      bidi: false,
+      justification: "left" as const,
+      alignment: "left" as const,
+      offset: 12,
+    },
+    {
+      bidi: false,
+      justification: "right" as const,
+      alignment: "right" as const,
+      offset: 0,
+    },
+    {
+      bidi: true,
+      justification: "left" as const,
+      alignment: "right" as const,
+      offset: 12,
+    },
+    {
+      bidi: true,
+      justification: "right" as const,
+      alignment: "left" as const,
+      offset: 0,
+    },
   ])(
     "maps $justification to physical $alignment when bidi=$bidi",
     ({ bidi, justification, alignment, offset }) => {
@@ -62,7 +93,9 @@ describe("resolveTableInlinePlacement", () => {
       delete table.indent;
       table.justification = justification;
 
-      expect(resolveTableInlineOffset({ table, frameWidth: 100, tableWidth: 40 })).toBe(expected);
+      expect(
+        resolveTableInlineOffset({ table, frameWidth: 100, tableWidth: 40 }),
+      ).toBe(expected);
     },
   );
 
@@ -87,27 +120,38 @@ describe("resolveTableInlinePlacement with a text-edge indent", () => {
   test.each([
     { bidi: false, alignment: "left" as const },
     { bidi: true, alignment: "right" as const },
-  ])("pulls the $alignment border back by the leading cell margin", ({ bidi, alignment }) => {
-    for (const padding of [0, 7, 12, 96]) {
-      expect(resolveTableInlinePlacement(legacyTable(bidi, padding))).toEqual({
-        alignment,
-        offset: 12 - padding,
-      });
-    }
-  });
+  ])(
+    "pulls the $alignment border back by the leading cell margin",
+    ({ bidi, alignment }) => {
+      for (const padding of [0, 7, 12, 96]) {
+        expect(resolveTableInlinePlacement(legacyTable(bidi, padding))).toEqual(
+          {
+            alignment,
+            offset: 12 - padding,
+          },
+        );
+      }
+    },
+  );
 
   test("moves an unindented table border out by the default leading cell margin", () => {
     const table = legacyTable(false, 7);
     delete table.indent;
 
-    expect(resolveTableInlinePlacement(table)).toEqual({ alignment: "left", offset: -7 });
+    expect(resolveTableInlinePlacement(table)).toEqual({
+      alignment: "left",
+      offset: -7,
+    });
   });
 
   test("leaves the trailing edge of a right-justified table alone", () => {
     const table = legacyTable(false, 7);
     table.justification = "right";
 
-    expect(resolveTableInlinePlacement(table)).toEqual({ alignment: "right", offset: 0 });
+    expect(resolveTableInlinePlacement(table)).toEqual({
+      alignment: "right",
+      offset: 0,
+    });
   });
 
   test("leaves a centered table alone", () => {

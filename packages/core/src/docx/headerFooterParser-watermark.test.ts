@@ -278,7 +278,9 @@ describe("parseHeader watermark detection", () => {
 </w:hdr>`;
     const header = parseHeader(xml);
     if (!header.watermark || header.watermark.kind !== "text") {
-      throw new TypeError("expected text watermark, background should not shadow");
+      throw new TypeError(
+        "expected text watermark, background should not shadow",
+      );
     }
     expect(header.watermark.text).toBe("CONFIDENTIAL");
   });

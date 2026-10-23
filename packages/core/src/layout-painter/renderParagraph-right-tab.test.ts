@@ -7,7 +7,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MeasuredLine, ParagraphBlock, TabStop } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TabStop,
+} from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 class FakeElement {
@@ -318,7 +322,11 @@ describe("renderLine right-tab flex anchor", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "indented-authored-end-tab",
-      runs: [{ kind: "text", text: "Title" }, { kind: "tab" }, { kind: "text", text: "7" }],
+      runs: [
+        { kind: "text", text: "Title" },
+        { kind: "tab" },
+        { kind: "text", text: "7" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -384,7 +392,10 @@ describe("renderLine right-tab flex anchor", () => {
     }) as unknown as FakeElement;
 
     // "Title" ends at 100 + 35 px; the second stop sits at 380 px.
-    expect(findTabEls(lineEl).map((tab) => tab.style["width"])).toEqual(["79px", "245px"]);
+    expect(findTabEls(lineEl).map((tab) => tab.style["width"])).toEqual([
+      "79px",
+      "245px",
+    ]);
   });
 
   test("clamps an explicit start tab whose content wraps onto the next line", () => {
@@ -426,14 +437,21 @@ describe("renderLine right-tab flex anchor", () => {
 
     // More tabbed text follows on the next line, so the tab keeps the clamp
     // to the indented edge, as the measurer decided.
-    expect(findTabEls(lineEl).map((tab) => tab.style["width"])).toEqual(["79px", "208px"]);
+    expect(findTabEls(lineEl).map((tab) => tab.style["width"])).toEqual([
+      "79px",
+      "208px",
+    ]);
   });
 
   test("pins an authored end tab outside the content box to the indented edge", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "bounded-indented-authored-end-tab",
-      runs: [{ kind: "text", text: "Title" }, { kind: "tab" }, { kind: "text", text: "7" }],
+      runs: [
+        { kind: "text", text: "Title" },
+        { kind: "tab" },
+        { kind: "text", text: "7" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -464,7 +482,11 @@ describe("renderLine right-tab flex anchor", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "header-end-tab-in-page-margin",
-      runs: [{ kind: "text", text: "Title" }, { kind: "tab" }, { kind: "text", text: "7" }],
+      runs: [
+        { kind: "text", text: "Title" },
+        { kind: "tab" },
+        { kind: "text", text: "7" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -498,7 +520,11 @@ describe("renderLine right-tab flex anchor", () => {
       kind: "paragraph",
       id: "rtl-toc",
       attrs: { bidi: true },
-      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+      runs: [
+        { kind: "text", text: "عنوان عربي" },
+        { kind: "tab" },
+        { kind: "text", text: "1" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -534,7 +560,11 @@ describe("renderLine right-tab flex anchor", () => {
       kind: "paragraph",
       id: "rtl-toc-level-2",
       attrs: { bidi: true },
-      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+      runs: [
+        { kind: "text", text: "عنوان عربي" },
+        { kind: "tab" },
+        { kind: "text", text: "1" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -572,7 +602,11 @@ describe("renderLine right-tab flex anchor", () => {
       kind: "paragraph",
       id: "rtl-toc-out-of-bounds",
       attrs: { bidi: true },
-      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+      runs: [
+        { kind: "text", text: "عنوان عربي" },
+        { kind: "tab" },
+        { kind: "text", text: "1" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -599,7 +633,9 @@ describe("renderLine right-tab flex anchor", () => {
     }) as unknown as FakeElement;
 
     expect(lineEl.dataset["flexLine"]).toBeUndefined();
-    expect(Number.parseFloat(findTabEl(lineEl)?.style["width"] ?? "Infinity")).toBeLessThan(624);
+    expect(
+      Number.parseFloat(findTabEl(lineEl)?.style["width"] ?? "Infinity"),
+    ).toBeLessThan(624);
   });
 
   test("bounds an RTL end tab at a right-side floating exclusion", () => {
@@ -607,7 +643,11 @@ describe("renderLine right-tab flex anchor", () => {
       kind: "paragraph",
       id: "rtl-toc-right-float",
       attrs: { bidi: true },
-      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+      runs: [
+        { kind: "text", text: "عنوان عربي" },
+        { kind: "tab" },
+        { kind: "text", text: "1" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -644,7 +684,11 @@ describe("renderLine right-tab flex anchor", () => {
       kind: "paragraph",
       id: "rtl-toc-left-float",
       attrs: { bidi: true },
-      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+      runs: [
+        { kind: "text", text: "عنوان عربي" },
+        { kind: "tab" },
+        { kind: "text", text: "1" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -732,7 +776,11 @@ describe("renderLine right-tab flex anchor", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "no-edge",
-      runs: [{ kind: "text", text: "title" }, { kind: "tab" }, { kind: "text", text: "5" }],
+      runs: [
+        { kind: "text", text: "title" },
+        { kind: "tab" },
+        { kind: "text", text: "5" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -806,7 +854,11 @@ describe("renderTabRun leader rendering", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "leader-only",
-      runs: [{ kind: "text", text: "x" }, { kind: "tab" }, { kind: "text", text: "y" }],
+      runs: [
+        { kind: "text", text: "x" },
+        { kind: "tab" },
+        { kind: "text", text: "y" },
+      ],
     };
     const line: MeasuredLine = {
       fromRun: 0,

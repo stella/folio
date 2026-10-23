@@ -30,10 +30,15 @@ test("rejecting an added adjacent boundary keeps both sections after save and re
   const reviewer = await openReviewer(await adjacentSectionRevisionDocument());
 
   reviewer.rejectAll();
-  const { reopened } = await saveAndReopen(reviewer, "rejected adjacent section boundary");
+  const { reopened } = await saveAndReopen(
+    reviewer,
+    "rejected adjacent section boundary",
+  );
 
   assert.deepEqual(
-    sectionPropertiesOf(reopened).map(({ properties }) => properties?.pageWidth),
+    sectionPropertiesOf(reopened).map(
+      ({ properties }) => properties?.pageWidth,
+    ),
     [10_000, 12_000, 14_000],
   );
 });
@@ -64,10 +69,16 @@ test("seed 1346488347: rejecting a deleted section boundary survives save and re
     { undefinedReferences: "refuse" },
   );
   assert.equal(result.applied.length, 2);
-  const pending = await saveAndReopen(reviewer, "pending section boundary deletion");
+  const pending = await saveAndReopen(
+    reviewer,
+    "pending section boundary deletion",
+  );
   reviewer.rejectAll();
   pending.reopened.rejectAll();
-  const { reopened } = await saveAndReopen(pending.reopened, "rejected section boundary deletion");
+  const { reopened } = await saveAndReopen(
+    pending.reopened,
+    "rejected section boundary deletion",
+  );
   assert.deepEqual(sectionPropertiesOf(reviewer), original);
   assert.deepEqual(sectionPropertiesOf(reopened), original);
 });
@@ -80,7 +91,9 @@ test("random tracked paragraph-range deletions restore every section after a rea
       await randomMultiSectionDocument(random.state(), sectionCount),
     );
     const original = sectionPropertiesOf(reviewer);
-    const paragraphs = reviewer.getContent().filter(({ table }) => table === undefined);
+    const paragraphs = reviewer
+      .getContent()
+      .filter(({ table }) => table === undefined);
     const start = random.int(paragraphs.length);
     const length = 1 + random.int(Math.min(3, paragraphs.length - start));
     const selected = paragraphs.slice(start, start + length);
@@ -102,7 +115,10 @@ test("random tracked paragraph-range deletions restore every section after a rea
       `pending section property run ${run}`,
     );
     pending.rejectAll();
-    const { reopened } = await saveAndReopen(pending, `section property run ${run}`);
+    const { reopened } = await saveAndReopen(
+      pending,
+      `section property run ${run}`,
+    );
     assert.deepEqual(sectionPropertiesOf(reopened), original);
   }
 });

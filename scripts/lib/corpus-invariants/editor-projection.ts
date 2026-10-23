@@ -14,21 +14,25 @@
  * if ordinary editor round trips later begin reusing matched base records.
  */
 
+import { Result } from "better-result";
+
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Document } from "@stll/folio-core/types/document";
-import { Result } from "better-result";
 
 import { failureFromError } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
-import { describePackageDifferences, differenceFailures } from "./model-equality";
+import {
+  describePackageDifferences,
+  differenceFailures,
+} from "./model-equality";
 
 const DIFFERENCE_PREFIX = "editor projection changed";
 
@@ -43,7 +47,10 @@ export const projectedWithoutReuse = (
   pmDoc: ReturnType<typeof toProseDoc>,
   baseDocument: Document,
 ): Document =>
-  fromProseDoc(pmDoc, baseDocument, { reuse: "none", stylesheetSource: { type: "package" } });
+  fromProseDoc(pmDoc, baseDocument, {
+    reuse: "none",
+    stylesheetSource: { type: "package" },
+  });
 
 export const runEditorProjectionInvariant = async ({
   parsed,
@@ -56,18 +63,30 @@ export const runEditorProjectionInvariant = async ({
   if (proseDoc.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, proseDoc.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorProjection,
+          proseDoc.error,
+        ),
+      ],
       timings,
     };
   }
 
   const back = await timeStage(timings, "from-prose", () =>
-    Promise.resolve(Result.try(() => projectedWithoutReuse(proseDoc.value, parsed))),
+    Promise.resolve(
+      Result.try(() => projectedWithoutReuse(proseDoc.value, parsed)),
+    ),
   );
   if (back.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, back.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorProjection,
+          back.error,
+        ),
+      ],
       timings,
     };
   }
@@ -81,7 +100,12 @@ export const runEditorProjectionInvariant = async ({
   if (saved.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, saved.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorProjection,
+          saved.error,
+        ),
+      ],
       timings,
     };
   }
@@ -95,7 +119,12 @@ export const runEditorProjectionInvariant = async ({
   if (reparsed.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, reparsed.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorProjection,
+          reparsed.error,
+        ),
+      ],
       timings,
     };
   }

@@ -43,8 +43,12 @@ export const STRIKETHROUGH_OFFSET_RATIO = 0.28;
 export const underlineThicknessPx = (fontSizePx: number): number =>
   Math.max(MIN_DECORATION_THICKNESS_PX, fontSizePx * UNDERLINE_THICKNESS_RATIO);
 
-export const underlineCenterYPx = (baselineYPx: number, fontSizePx: number): number =>
-  baselineYPx + fontSizePx * UNDERLINE_OFFSET_RATIO;
+export const underlineCenterYPx = (
+  baselineYPx: number,
+  fontSizePx: number,
+): number => baselineYPx + fontSizePx * UNDERLINE_OFFSET_RATIO;
 
-export const strikethroughCenterYPx = (baselineYPx: number, fontSizePx: number): number =>
-  baselineYPx - fontSizePx * STRIKETHROUGH_OFFSET_RATIO;
+export const strikethroughCenterYPx = (
+  baselineYPx: number,
+  fontSizePx: number,
+): number => baselineYPx - fontSizePx * STRIKETHROUGH_OFFSET_RATIO;

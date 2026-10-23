@@ -24,8 +24,16 @@ describe("ownedRowBottomBorderOffsets", () => {
     for (const origin of origins) {
       for (const rowHeights of partitions) {
         const snapAfterRow = rowHeights.slice(0, -1).map(() => true);
-        const once = ownedRowBottomBorderOffsets({ origin, rowHeights, snapAfterRow });
-        const twice = ownedRowBottomBorderOffsets({ origin, rowHeights, snapAfterRow });
+        const once = ownedRowBottomBorderOffsets({
+          origin,
+          rowHeights,
+          snapAfterRow,
+        });
+        const twice = ownedRowBottomBorderOffsets({
+          origin,
+          rowHeights,
+          snapAfterRow,
+        });
 
         expect(twice).toEqual(once);
         expect(once.at(-1)).toBe(0);

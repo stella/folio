@@ -4,7 +4,12 @@ import path from "node:path";
 import { readLineEndpointManifest } from "../lineEndpoints";
 import { sha256OfFile } from "../pdfReference";
 
-const FIXTURE_PATH = path.join(import.meta.dir, "..", "fixtures", "word-hyphenation-hanging.docx");
+const FIXTURE_PATH = path.join(
+  import.meta.dir,
+  "..",
+  "fixtures",
+  "word-hyphenation-hanging.docx",
+);
 const MANIFEST_PATH = path.join(
   import.meta.dir,
   "..",
@@ -30,7 +35,9 @@ describe("Word hyphenation and hanging-punctuation baseline", () => {
 
   test("retains endpoints for every control under test", async () => {
     const manifest = await readLineEndpointManifest(MANIFEST_PATH);
-    const pages = manifest.pages.map(({ lines }) => lines.map(({ text }) => text));
+    const pages = manifest.pages.map(({ lines }) =>
+      lines.map(({ text }) => text),
+    );
 
     expect(pages).toHaveLength(20);
     expect(pages[0]?.some((text) => text.endsWith("-"))).toBe(true);
@@ -39,8 +46,12 @@ describe("Word hyphenation and hanging-punctuation baseline", () => {
     expect(pages[3]?.filter((text) => text.endsWith("-"))).toHaveLength(1);
     expect(pages[4]?.some((text) => text.endsWith("-"))).toBe(true);
     expect(pages[5]?.some((text) => text.endsWith("-"))).toBe(true);
-    expect(pages[6]?.slice(1).every((text) => !/^[、。）］]/u.test(text))).toBe(true);
-    expect(pages[7]?.slice(1).every((text) => !text.startsWith("※"))).toBe(true);
+    expect(pages[6]?.slice(1).every((text) => !/^[、。）］]/u.test(text))).toBe(
+      true,
+    );
+    expect(pages[7]?.slice(1).every((text) => !text.startsWith("※"))).toBe(
+      true,
+    );
     expect(pages[8]?.some((text) => text.endsWith("-"))).toBe(true);
     expect(pages[9]?.at(1)).toBe("甲乙丙丁戊己庚辛壬癸子丑");
     expect(pages[10]?.at(1)).toBe("甲乙丙丁戊己庚辛壬癸子丑寅。");
@@ -58,7 +69,9 @@ describe("Word hyphenation and hanging-punctuation baseline", () => {
       "parties and describe notice requirements, payment",
       "timing, remedies, and termination rights.",
     ]);
-    expect(pages[15]?.at(1)).toBe("Service item Annual renewal and support plan 1,250.00");
+    expect(pages[15]?.at(1)).toBe(
+      "Service item Annual renewal and support plan 1,250.00",
+    );
     expect(pages[16]?.slice(1)).toEqual([
       "1. The supplier must preserve records, provide audit",
       "access, and notify the customer before deleting",

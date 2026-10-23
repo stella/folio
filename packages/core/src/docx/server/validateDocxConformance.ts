@@ -1,10 +1,16 @@
-import { decodeText } from "../../utils/textEncoding";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
 import type { DocxConformanceClass } from "../../types/document";
+import { decodeText } from "../../utils/textEncoding";
 import { detectDocxConformanceClass } from "../conformance";
-import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "../encryption/containerFormat";
-import { DocxModelValidationError, validateFolioDocumentModel } from "../modelValidation";
+import {
+  detectDocxContainerType,
+  DOCX_CONTAINER_TYPES,
+} from "../encryption/containerFormat";
+import {
+  DocxModelValidationError,
+  validateFolioDocumentModel,
+} from "../modelValidation";
 import { DocxParseError, parseDocx } from "../parser";
 import {
   findChildByLocalName,
@@ -14,7 +20,7 @@ import {
   parseXmlDocument,
 } from "../xmlParser";
 import { XmlResourceLimitError } from "../xmlResourceLimits";
-import { getDocxXmlSafetyIssue, type DocxXmlSafetyIssue } from "../xmlSafety";
+import { type DocxXmlSafetyIssue, getDocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchive, DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 
@@ -54,10 +60,14 @@ export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES = Object.freeze([
   "container-not-zip",
 ] as const);
 
-export type FolioDocxConformanceCheckId = (typeof FOLIO_DOCX_CONFORMANCE_CHECKS)[number];
-export type FolioDocxConformanceIssueCode = (typeof FOLIO_DOCX_CONFORMANCE_ISSUE_CODES)[number];
-export type FolioDocxConformanceCheckStatus = "passed" | "failed" | "indeterminate" | "not-run";
-export type FolioDocxConformanceStatus = "invalid" | "conformant" | "indeterminate";
+export type FolioDocxConformanceCheckId =
+  (typeof FOLIO_DOCX_CONFORMANCE_CHECKS)[number];
+export type FolioDocxConformanceIssueCode =
+  (typeof FOLIO_DOCX_CONFORMANCE_ISSUE_CODES)[number];
+export type FolioDocxConformanceCheckStatus =
+  "passed" | "failed" | "indeterminate" | "not-run";
+export type FolioDocxConformanceStatus =
+  "invalid" | "conformant" | "indeterminate";
 
 export type FolioDocxConformanceIssue = {
   readonly check: FolioDocxConformanceCheckId;
@@ -100,8 +110,10 @@ const REQUIRED_PARTS = Object.freeze([
 const XML_PART_PATTERN = /(?:\.xml|\.rels)$/u;
 const DOCUMENT_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
-const CONTENT_TYPES_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/content-types";
-const RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
+const CONTENT_TYPES_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/content-types";
+const RELATIONSHIPS_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 const UNVERIFIED_STANDARDS_DIMENSIONS = Object.freeze([
   "complete-schema-constraints",
   "markup-compatibility-processing",
@@ -116,11 +128,16 @@ type MutableReport = {
 
 const createMutableReport = (): MutableReport => ({
   conformanceClass: DOCX_CONFORMANCE_CLASSES.UNKNOWN,
-  checks: new Map(FOLIO_DOCX_CONFORMANCE_CHECKS.map((id) => [id, "not-run"] as const)),
+  checks: new Map(
+    FOLIO_DOCX_CONFORMANCE_CHECKS.map((id) => [id, "not-run"] as const),
+  ),
   issues: [],
 });
 
-const addIssue = (report: MutableReport, issue: FolioDocxConformanceIssue): void => {
+const addIssue = (
+  report: MutableReport,
+  issue: FolioDocxConformanceIssue,
+): void => {
   report.issues.push(issue);
 };
 
@@ -130,7 +147,9 @@ const finishReport = (report: MutableReport): FolioDocxConformanceReport => {
     status: report.checks.get(id) ?? "not-run",
   }));
   const hasFailedCheck = checks.some(({ status }) => status === "failed");
-  const hasIndeterminateCheck = checks.some(({ status }) => status === "indeterminate");
+  const hasIndeterminateCheck = checks.some(
+    ({ status }) => status === "indeterminate",
+  );
   let status: FolioDocxConformanceStatus = "conformant";
   if (hasFailedCheck) {
     status = "invalid";
@@ -152,7 +171,10 @@ const finishReport = (report: MutableReport): FolioDocxConformanceReport => {
   };
 };
 
-const validateRequiredParts = (archive: DocxArchive, report: MutableReport): boolean => {
+const validateRequiredParts = (
+  archive: DocxArchive,
+  report: MutableReport,
+): boolean => {
   const entries = new Set(archive.entries);
   const missingParts = REQUIRED_PARTS.filter((path) => !entries.has(path));
   if (missingParts.length === 0) {
@@ -230,7 +252,9 @@ const validateXmlParts = async (
   const xmlByPath = new Map<string, string>();
   let hasInvalidXml = false;
 
-  for (const part of archive.entries.filter((path) => XML_PART_PATTERN.test(path)).toSorted()) {
+  for (const part of archive.entries
+    .filter((path) => XML_PART_PATTERN.test(path))
+    .toSorted()) {
     // oxlint-disable-next-line no-await-in-loop -- serialized reads enforce the archive byte budget
     const xml = await readPartForInspection(archive, part);
     if (xml === null) {
@@ -285,7 +309,11 @@ type HasRootNamespaceOptions = {
   expected: string;
 };
 
-const hasRootNamespace = ({ name, attributes, expected }: HasRootNamespaceOptions): boolean => {
+const hasRootNamespace = ({
+  name,
+  attributes,
+  expected,
+}: HasRootNamespaceOptions): boolean => {
   const prefix = getNamespacePrefix(name);
   const attribute = prefix === null ? "xmlns" : `xmlns:${prefix}`;
   return attributes?.[attribute] === expected;
@@ -316,7 +344,9 @@ const hasDocumentContentType = (contentTypesXml: string): boolean => {
   );
 };
 
-const hasMainDocumentRelationship = (packageRelationshipsXml: string): boolean => {
+const hasMainDocumentRelationship = (
+  packageRelationshipsXml: string,
+): boolean => {
   const root = parseXmlDocument(packageRelationshipsXml);
   if (
     root === null ||
@@ -332,11 +362,17 @@ const hasMainDocumentRelationship = (packageRelationshipsXml: string): boolean =
 
   return (
     root.elements?.some((element) => {
-      if (element.type !== "element" || getLocalName(element.name ?? "") !== "Relationship") {
+      if (
+        element.type !== "element" ||
+        getLocalName(element.name ?? "") !== "Relationship"
+      ) {
         return false;
       }
       const type = getAttributeAnyPrefix(element, "Type");
-      const target = getAttributeAnyPrefix(element, "Target")?.replace(/^\.?\//u, "");
+      const target = getAttributeAnyPrefix(element, "Target")?.replace(
+        /^\.?\//u,
+        "",
+      );
       return (
         type?.endsWith("/officeDocument") === true &&
         target === "word/document.xml" &&
@@ -355,7 +391,10 @@ const hasDocumentRoot = (documentXml: string): boolean => {
   );
 };
 
-const validatePackageRoots = (xml: XmlPartsResult, report: MutableReport): boolean => {
+const validatePackageRoots = (
+  xml: XmlPartsResult,
+  report: MutableReport,
+): boolean => {
   const invalidParts: string[] = [];
   if (!hasDocumentContentType(xml.contentTypesXml)) {
     invalidParts.push("[Content_Types].xml");
@@ -386,7 +425,10 @@ const validatePackageRoots = (xml: XmlPartsResult, report: MutableReport): boole
   return false;
 };
 
-const validateConformanceClass = (documentXml: string, report: MutableReport): void => {
+const validateConformanceClass = (
+  documentXml: string,
+  report: MutableReport,
+): void => {
   report.conformanceClass = detectDocxConformanceClass(documentXml);
   if (report.conformanceClass !== DOCX_CONFORMANCE_CLASSES.UNKNOWN) {
     report.checks.set("conformance-class", "passed");
@@ -397,13 +439,16 @@ const validateConformanceClass = (documentXml: string, report: MutableReport): v
   addIssue(report, {
     check: "conformance-class",
     code: "conformance-class-unknown",
-    message: "The main document namespace does not identify a supported conformance class.",
+    message:
+      "The main document namespace does not identify a supported conformance class.",
     severity: "warning",
     part: "word/document.xml",
   });
 };
 
-const findModelValidationError = (error: unknown): DocxModelValidationError | null => {
+const findModelValidationError = (
+  error: unknown,
+): DocxModelValidationError | null => {
   let current = error;
   while (current instanceof Error) {
     if (current instanceof DocxModelValidationError) {
@@ -432,7 +477,8 @@ const validateCanonicalModel = async (
       addIssue(report, {
         check: "canonical-model",
         code: "parser-recovery",
-        message: "The canonical parser reported recovery or preservation warnings.",
+        message:
+          "The canonical parser reported recovery or preservation warnings.",
         severity: "warning",
         count: warningCount,
       });
@@ -468,7 +514,10 @@ const validateCanonicalModel = async (
     report.checks.set("canonical-model", "indeterminate");
     addIssue(report, {
       check: "canonical-model",
-      code: error instanceof DocxParseError ? "parser-unsupported" : "parser-failed",
+      code:
+        error instanceof DocxParseError
+          ? "parser-unsupported"
+          : "parser-failed",
       message: "The canonical document model could not be assessed.",
       severity: "warning",
     });
@@ -487,7 +536,8 @@ export const validateDocxConformance = async (
     addIssue(report, {
       check: "archive-safety",
       code: "encrypted-container",
-      message: "Encrypted containers require decryption before this profile can assess them.",
+      message:
+        "Encrypted containers require decryption before this profile can assess them.",
       severity: "warning",
     });
     return finishReport(report);
@@ -511,8 +561,12 @@ export const validateDocxConformance = async (
     report.checks.set("archive-safety", "failed");
     addIssue(report, {
       check: "archive-safety",
-      code: error instanceof DocxArchiveError ? `archive-${error.reason}` : "archive-load-failed",
-      message: "The DOCX package could not be loaded within the configured safety limits.",
+      code:
+        error instanceof DocxArchiveError
+          ? `archive-${error.reason}`
+          : "archive-load-failed",
+      message:
+        "The DOCX package could not be loaded within the configured safety limits.",
       severity: "error",
     });
     return finishReport(report);
@@ -529,8 +583,12 @@ export const validateDocxConformance = async (
     report.checks.set("xml-well-formedness", "indeterminate");
     addIssue(report, {
       check: "xml-well-formedness",
-      code: error instanceof DocxArchiveError ? `archive-${error.reason}` : "xml-read-failed",
-      message: "The XML package parts could not be read within the configured safety limits.",
+      code:
+        error instanceof DocxArchiveError
+          ? `archive-${error.reason}`
+          : "xml-read-failed",
+      message:
+        "The XML package parts could not be read within the configured safety limits.",
       severity: "warning",
     });
     return finishReport(report);

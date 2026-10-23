@@ -9,7 +9,13 @@
     {
       "action": "story batch",
       "seed": 3518069453,
-      "operations": [{ "type": "insertTableColumn", "blockId": "5CFDAD72", "position": "after" }],
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "5CFDAD72",
+          "position": "after"
+        }
+      ],
       "atomic": true
     },
     { "action": "accept one", "seed": 294949906 }

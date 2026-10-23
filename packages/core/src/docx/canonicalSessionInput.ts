@@ -1,10 +1,15 @@
 import { Result, TaggedError } from "better-result";
 
+import { type DocxInput, toArrayBuffer } from "../utils/docxInput";
+import {
+  detectDocxContainerType,
+  DOCX_CONTAINER_TYPES,
+} from "./encryption/containerFormat";
 import { ensureParaIds } from "./ensureParaIds";
-import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
-import { toArrayBuffer, type DocxInput } from "../utils/docxInput";
 
-export class CanonicalDocxInputError extends TaggedError("CanonicalDocxInputError")<{
+export class CanonicalDocxInputError extends TaggedError(
+  "CanonicalDocxInputError",
+)<{
   message: string;
   cause?: unknown;
 }> {}
@@ -14,7 +19,10 @@ export const prepareCanonicalDocxInput = async (input: DocxInput) => {
   const bytes = await Result.tryPromise({
     try: () => toArrayBuffer(input),
     catch: (cause) =>
-      new CanonicalDocxInputError({ message: "Cannot read canonical document bytes.", cause }),
+      new CanonicalDocxInputError({
+        message: "Cannot read canonical document bytes.",
+        cause,
+      }),
   });
   if (bytes.isErr()) return bytes;
   if (detectDocxContainerType(bytes.value) === DOCX_CONTAINER_TYPES.CFB) {
@@ -30,7 +38,9 @@ export const prepareCanonicalDocxInput = async (input: DocxInput) => {
     catch: (cause) =>
       new CanonicalDocxInputError({
         message:
-          cause instanceof Error ? cause.message : "Canonical document normalization failed.",
+          cause instanceof Error
+            ? cause.message
+            : "Canonical document normalization failed.",
         cause,
       }),
   });

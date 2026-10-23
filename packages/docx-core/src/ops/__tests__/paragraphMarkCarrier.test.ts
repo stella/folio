@@ -23,12 +23,19 @@ const table = {
     {
       type: "tableRow",
       cells: [
-        { type: "tableCell", content: [{ type: "paragraph", paraId: "00000002", content: [] }] },
+        {
+          type: "tableCell",
+          content: [{ type: "paragraph", paraId: "00000002", content: [] }],
+        },
       ],
     },
   ],
 } as const;
-const finalParagraph = { type: "paragraph", paraId: "00000003", content: [] } as const;
+const finalParagraph = {
+  type: "paragraph",
+  paraId: "00000003",
+  content: [],
+} as const;
 
 test("accepting an emptied paragraph-mark deletion removes its paragraph before a table", () => {
   const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
@@ -39,7 +46,9 @@ test("accepting an emptied paragraph-mark deletion removes its paragraph before 
       {
         type: "deletion",
         info: { ...info, id: 8 },
-        content: [{ type: "run", content: [{ type: "deletedText", text: "removed" }] }],
+        content: [
+          { type: "run", content: [{ type: "deletedText", text: "removed" }] },
+        ],
       },
     ],
     pPrMark: { kind: "del", info },
@@ -74,7 +83,11 @@ test("rejecting an empty inserted final paragraph after a table keeps it", () =>
   });
   if (result.isErr()) throw result.error;
 
-  expect(result.value.document.package.document.content).toEqual([first, table, finalParagraph]);
+  expect(result.value.document.package.document.content).toEqual([
+    first,
+    table,
+    finalParagraph,
+  ]);
 });
 
 test("rejecting an empty inserted final paragraph in a cell keeps the cell terminator", () => {
@@ -94,7 +107,12 @@ test("rejecting an empty inserted final paragraph in a cell keeps the cell termi
         content: [
           cell([
             kept,
-            { type: "paragraph", paraId: "00000004", content: [], pPrMark: { kind: "ins", info } },
+            {
+              type: "paragraph",
+              paraId: "00000004",
+              content: [],
+              pPrMark: { kind: "ins", info },
+            },
           ]),
           finalParagraph,
         ],
@@ -130,9 +148,43 @@ test("accepting a mark deletion before a table keeps a bookmark the paragraph ho
     package: { document: { content: [paragraph, table, finalParagraph] } },
   };
 
-  const content = JSON.stringify(resolveAccepted(document).package.document.content);
+  const content = JSON.stringify(
+    resolveAccepted(document).package.document.content,
+  );
   expect(content).toContain('"bookmarkStart"');
   expect(content).toContain('"bookmarkEnd"');
+});
+
+test("accepting a mark deletion before a table runs a comment anchor into the first cell and touches only those paragraphs", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [{ type: "commentRangeEnd", id: 1 }],
+    pPrMark: { kind: "del", info },
+  };
+  const document: Document = {
+    package: { document: { content: [paragraph, table, finalParagraph] } },
+  };
+  // A range boundary is content to keep, so the paragraph runs on into the table.
+  expect(paragraphHoldsContent(paragraph)).toBe(true);
+
+  const applied = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.ACCEPT,
+  });
+  if (applied.isErr()) throw applied.error;
+  expect(applied.value.touched).toEqual({
+    modified: ["00000002"],
+    inserted: [],
+    removed: ["00000001"],
+  });
+  const [first, ...rest] = applied.value.document.package.document.content;
+  expect(first?.type).toBe("table");
+  expect(JSON.stringify(first)).toContain('"commentRangeEnd"');
+  expect(rest).toEqual([finalParagraph]);
 });
 
 test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
@@ -140,7 +192,10 @@ test("accepting a non-empty paragraph-mark deletion runs it into the first cell 
     type: "paragraph",
     paraId: "00000001",
     content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
-    pPrMark: { kind: "del", info: { id: 7, author: "Reviewer", date: "2026-10-19" } },
+    pPrMark: {
+      kind: "del",
+      info: { id: 7, author: "Reviewer", date: "2026-10-19" },
+    },
   };
   const document: Document = {
     package: { document: { content: [paragraph, table, finalParagraph] } },
@@ -159,7 +214,9 @@ test("accepting a non-empty paragraph-mark deletion runs it into the first cell 
                 {
                   type: "paragraph",
                   paraId: "00000002",
-                  content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "kept" }] },
+                  ],
                 },
               ],
             },
@@ -209,7 +266,9 @@ test("rejecting a marker-only inline content control does not touch the followin
     ],
   } as const;
   const document: Document = {
-    package: { document: { content: [paragraph, followingTable, finalParagraph] } },
+    package: {
+      document: { content: [paragraph, followingTable, finalParagraph] },
+    },
   };
 
   const result = applyDocumentOp(document, {
@@ -220,7 +279,10 @@ test("rejecting a marker-only inline content control does not touch the followin
   });
   if (result.isErr()) throw result.error;
 
-  expect(result.value.document.package.document.content).toEqual([followingTable, finalParagraph]);
+  expect(result.value.document.package.document.content).toEqual([
+    followingTable,
+    finalParagraph,
+  ]);
   expect(result.value.touched.modified).not.toContain("00000002");
 });
 
@@ -232,7 +294,9 @@ test("only atomic fields make marker-only inline containers paragraph content", 
     children: [marker],
   } as const;
 
-  expect(paragraphHoldsContent({ type: "paragraph", content: [hyperlink] })).toBe(false);
+  expect(
+    paragraphHoldsContent({ type: "paragraph", content: [hyperlink] }),
+  ).toBe(false);
   expect(
     paragraphHoldsContent({
       type: "paragraph",
@@ -269,10 +333,13 @@ test("refuses one owned reason when an empty mark precedes a section-ending tabl
   };
   const sectionTable = structuredClone(table);
   const target = sectionTable.rows[0]?.cells[0]?.content[0];
-  if (target?.type !== "paragraph") throw new Error("The fixture has a first-cell paragraph.");
+  if (target?.type !== "paragraph")
+    throw new Error("The fixture has a first-cell paragraph.");
   target.sectionProperties = { pageWidth: 11_906 };
   const document: Document = {
-    package: { document: { content: [paragraph, sectionTable, finalParagraph] } },
+    package: {
+      document: { content: [paragraph, sectionTable, finalParagraph] },
+    },
   };
 
   const result = applyDocumentOp(document, {

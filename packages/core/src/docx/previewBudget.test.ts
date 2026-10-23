@@ -12,14 +12,20 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import JSZip from "jszip";
 
-import type { Document, DrawingContent, MediaFile, Run } from "../types/document";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+
+import type {
+  Document,
+  DrawingContent,
+  MediaFile,
+  Run,
+} from "../types/document";
 import { parseDiagramPreview } from "./diagramPreview";
 import { parseDocx, parseDocxWithPreviewBudget } from "./parser";
 import { createPackagePreviewBudget } from "./previewBudget";
-import { RELATIONSHIP_TYPES, parseRelationships } from "./relsParser";
+import { parseRelationships, RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx, validateDocx } from "./rezip";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -102,20 +108,32 @@ type PackageParts = {
 };
 
 const PART_TYPES = {
-  header: "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
-  footer: "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
-  footnotes: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
-  endnotes: "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
-  comments: "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+  header:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+  footer:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+  footnotes:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+  endnotes:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+  comments:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
 } as const;
 
 const packageOf = async (parts: PackageParts): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   const overrides: string[] = [];
   const relationships: string[] = [];
-  const addPart = (name: string, type: string, relationshipType: string, xml: string): void => {
+  const addPart = (
+    name: string,
+    type: string,
+    relationshipType: string,
+    xml: string,
+  ): void => {
     zip.file(`word/${name}`, `${XML}${xml}`);
-    overrides.push(`<Override PartName="/word/${name}" ContentType="${type}"/>`);
+    overrides.push(
+      `<Override PartName="/word/${name}" ContentType="${type}"/>`,
+    );
     relationships.push(
       `<Relationship Id="rId${String(relationships.length + 1)}" Type="${relationshipType}" Target="${name}"/>`,
     );
@@ -205,7 +223,9 @@ const previewDrawings = (document: Document): DrawingContent[] => {
     if (isPreviewDrawing(value)) {
       found.push(value);
     }
-    for (const child of value instanceof Map ? value.values() : Object.values(value)) {
+    for (const child of value instanceof Map
+      ? value.values()
+      : Object.values(value)) {
       visit(child);
     }
   };
@@ -221,7 +241,9 @@ const labelOf = (drawing: DrawingContent): string | undefined =>
     ?.toUpperCase();
 
 const svgKindOf = (drawing: DrawingContent): "vmlShape" | "wpGroup" =>
-  drawing.image.filename === "wordprocessing-group.svg" ? "wpGroup" : "vmlShape";
+  drawing.image.filename === "wordprocessing-group.svg"
+    ? "wpGroup"
+    : "vmlShape";
 
 /**
  * One preview in every container a parse reaches a producer from, each
@@ -251,7 +273,10 @@ const EVERY_CONTAINER = {
 } as const satisfies PackageParts;
 
 const EVERY_LABEL = [
-  ...Array.from({ length: 16 }, (_, index) => `A${(index + 1).toString(16).padStart(5, "0")}`),
+  ...Array.from(
+    { length: 16 },
+    (_, index) => `A${(index + 1).toString(16).padStart(5, "0")}`,
+  ),
   "B00001",
   "B00002",
   "B00003",
@@ -271,7 +296,10 @@ describe("package preview budget", () => {
 
   test("the ledger charges what it built, and one kind's allowance does not spend another's", () => {
     const budget = createPackagePreviewBudget();
-    const frame = { size: { width: 1, height: 1 }, wrap: { type: "inline" } } as const;
+    const frame = {
+      size: { width: 1, height: 1 },
+      wrap: { type: "inline" },
+    } as const;
     const vml = budget.ledger.svgImage("vmlShape", "<svg/>", frame);
     const group = budget.ledger.svgImage("wpGroup", "<svg/>", frame);
     const vmlSrc = vml.src;
@@ -287,7 +315,10 @@ describe("package preview budget", () => {
 
   test("a package's retained preview text is bounded however many previews it has", () => {
     const budget = createPackagePreviewBudget();
-    const frame = { size: { width: 1, height: 1 }, wrap: { type: "inline" } } as const;
+    const frame = {
+      size: { width: 1, height: 1 },
+      wrap: { type: "inline" },
+    } as const;
     const previews = Array.from({ length: 8 }, () =>
       budget.ledger.svgImage("vmlShape", "<svg/>", frame),
     );
@@ -309,7 +340,9 @@ describe("package preview budget", () => {
   });
 
   test("the package reaches a producer from every container", async () => {
-    const document = await parseDocx(await packageOf(EVERY_CONTAINER), { preloadFonts: false });
+    const document = await parseDocx(await packageOf(EVERY_CONTAINER), {
+      preloadFonts: false,
+    });
     expect(labels(previewDrawings(document))).toEqual([...EVERY_LABEL].sort());
   });
 
@@ -325,7 +358,9 @@ describe("package preview budget", () => {
     );
     const drawings = previewDrawings(document);
     expect(drawings).toHaveLength(EVERY_LABEL.length);
-    expect(drawings.filter((drawing) => drawing.image.src !== undefined)).toEqual([]);
+    expect(
+      drawings.filter((drawing) => drawing.image.src !== undefined),
+    ).toEqual([]);
   });
 
   /**
@@ -335,7 +370,9 @@ describe("package preview budget", () => {
    */
   test("nothing the model does not carry spends allowance", async () => {
     const source = await packageOf(EVERY_CONTAINER);
-    const retained = previewDrawings(await parseDocx(source, { preloadFonts: false }));
+    const retained = previewDrawings(
+      await parseDocx(source, { preloadFonts: false }),
+    );
     const spent = { vmlShape: 0, wpGroup: 0 };
     for (const drawing of retained) {
       spent[svgKindOf(drawing)] += drawing.image.src?.length ?? 0;
@@ -344,7 +381,9 @@ describe("package preview budget", () => {
     const exact = previewDrawings(
       await parseDocxWithPreviewBudget(source, { preloadFonts: false }, spent),
     );
-    expect(exact.filter((drawing) => drawing.image.src === undefined)).toEqual([]);
+    expect(exact.filter((drawing) => drawing.image.src === undefined)).toEqual(
+      [],
+    );
   });
 
   /**
@@ -366,14 +405,25 @@ describe("package preview budget", () => {
       comment: vmlRun("E00009"),
       commentsAfter: `<w:comment w:id="0" w:author="B"><w:p>${vmlRun("E0000A")}</w:p></w:comment><w:comment w:id="1" w:author="C"><w:p>${vmlRun("E0000B")}</w:p></w:comment>`,
     });
-    const retained = previewDrawings(await parseDocx(source, { preloadFonts: false }));
-    const spent = retained.reduce((sum, drawing) => sum + (drawing.image.src?.length ?? 0), 0);
+    const retained = previewDrawings(
+      await parseDocx(source, { preloadFonts: false }),
+    );
+    const spent = retained.reduce(
+      (sum, drawing) => sum + (drawing.image.src?.length ?? 0),
+      0,
+    );
 
     const exact = previewDrawings(
-      await parseDocxWithPreviewBudget(source, { preloadFonts: false }, { vmlShape: spent }),
+      await parseDocxWithPreviewBudget(
+        source,
+        { preloadFonts: false },
+        { vmlShape: spent },
+      ),
     );
     expect(labels(exact)).toEqual(labels(retained));
-    expect(exact.filter((drawing) => drawing.image.src === undefined)).toEqual([]);
+    expect(exact.filter((drawing) => drawing.image.src === undefined)).toEqual(
+      [],
+    );
   });
 
   /**
@@ -384,7 +434,9 @@ describe("package preview budget", () => {
    */
   test("a package over its allowance drops the previews built last", async () => {
     const source = await packageOf(EVERY_CONTAINER);
-    const retained = previewDrawings(await parseDocx(source, { preloadFonts: false }));
+    const retained = previewDrawings(
+      await parseDocx(source, { preloadFonts: false }),
+    );
     const vmlCharacters = retained
       .filter((drawing) => svgKindOf(drawing) === "vmlShape")
       .reduce((sum, drawing) => sum + (drawing.image.src?.length ?? 0), 0);
@@ -396,7 +448,9 @@ describe("package preview budget", () => {
         { vmlShape: vmlCharacters - 1 },
       ),
     );
-    const dropped = retained.filter((_, index) => short[index]?.image.src === undefined);
+    const dropped = retained.filter(
+      (_, index) => short[index]?.image.src === undefined,
+    );
     expect(labels(dropped)).toEqual(["A00010"]);
   });
 
@@ -404,13 +458,17 @@ describe("package preview budget", () => {
     const source = await packageOf({
       body: `<w:p>${textBoxRun(`<w:p>${vmlRun("C00001")}</w:p>`)}${vmlRun("C00002")}</w:p>`,
     });
-    const [single] = previewDrawings(await parseDocx(source, { preloadFonts: false }));
+    const [single] = previewDrawings(
+      await parseDocx(source, { preloadFonts: false }),
+    );
     const document = await parseDocxWithPreviewBudget(
       source,
       { preloadFonts: false },
       { vmlShape: single?.image.src?.length ?? 0 },
     );
-    const kept = previewDrawings(document).filter((drawing) => drawing.image.src !== undefined);
+    const kept = previewDrawings(document).filter(
+      (drawing) => drawing.image.src !== undefined,
+    );
     expect(labels(kept)).toEqual(["C00002"]);
   });
 
@@ -422,16 +480,24 @@ describe("package preview budget", () => {
    * the model and never a loss from the file.
    */
   test("drops a group preview past its allowance and still saves the group", async () => {
-    const original = await packageOf({ body: `<w:p>${groupRun("DBEDF3")}</w:p>` });
+    const original = await packageOf({
+      body: `<w:p>${groupRun("DBEDF3")}</w:p>`,
+    });
     const firstDrawing = (document: Document): DrawingContent | undefined => {
       const block = document.package.document.content.at(0);
       if (block?.type !== "paragraph") {
         return undefined;
       }
-      const run = block.content.find((item): item is Run => item.type === "run");
-      return run?.content.find((item): item is DrawingContent => item.type === "drawing");
+      const run = block.content.find(
+        (item): item is Run => item.type === "run",
+      );
+      return run?.content.find(
+        (item): item is DrawingContent => item.type === "drawing",
+      );
     };
-    const preview = firstDrawing(await parseDocx(original, { preloadFonts: false }))?.image.src;
+    const preview = firstDrawing(
+      await parseDocx(original, { preloadFonts: false }),
+    )?.image.src;
     expect(preview).toStartWith("data:image/svg+xml");
 
     const document = await parseDocxWithPreviewBudget(
@@ -442,11 +508,18 @@ describe("package preview budget", () => {
     const drawing = firstDrawing(document);
     expect(drawing?.rawXmlMode).toBe("previewOnly");
     expect(drawing?.image.src).toBeUndefined();
-    expect(drawing?.image.size).toEqual({ width: 2_000_000, height: 1_000_000 });
+    expect(drawing?.image.size).toEqual({
+      width: 2_000_000,
+      height: 1_000_000,
+    });
 
     const saved = await repackDocx(document, { updateModifiedDate: false });
     expect((await validateDocx(saved)).valid).toBe(true);
-    const savedXml = await (await JSZip.loadAsync(saved)).file("word/document.xml")!.async("text");
+    const savedXml = await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")!
+      .async("text");
     expect(savedXml).toContain("<wpg:wgp>");
     expect(savedXml).toContain('<a:srgbClr val="DBEDF3"/>');
     expect(savedXml).not.toContain("svg");

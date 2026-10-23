@@ -2,12 +2,20 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { FlowError, runFlowFile, unstableFixtureRefs } from "../support/fuzz.ts";
 import { failureMarker } from "../support/failure-fingerprints.ts";
-import { flowShape, parseFlowFile, type FlowFile } from "../support/flow-file.ts";
+import {
+  type FlowFile,
+  flowShape,
+  parseFlowFile,
+} from "../support/flow-file.ts";
+import {
+  FlowError,
+  runFlowFile,
+  unstableFixtureRefs,
+} from "../support/fuzz.ts";
 
 type ConsumerAcceptance = {
   fingerprint: string;
@@ -24,7 +32,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const registryPath =
   process.env["FOLIO_SCENARIO_KNOWN_FAILURE_REGISTRY"] ??
-  fileURLToPath(new URL("../../known-failure-fingerprints.json", import.meta.url));
+  fileURLToPath(
+    new URL("../../known-failure-fingerprints.json", import.meta.url),
+  );
 const registry: unknown = JSON.parse(readFileSync(registryPath, "utf8"));
 
 const readAcceptanceEntries = (value: unknown): ConsumerAcceptance[] => {
@@ -37,14 +47,25 @@ const readAcceptanceEntries = (value: unknown): ConsumerAcceptance[] => {
     if (!isRecord(candidate) || !("acceptance" in candidate)) continue;
     const metadata = candidate["acceptance"];
     if (!isRecord(metadata)) {
-      throw new TypeError("known failure acceptance metadata must be an object");
+      throw new TypeError(
+        "known failure acceptance metadata must be an object",
+      );
     }
     if (metadata["type"] === "browser") continue;
     if (metadata["type"] !== "consumer") {
-      throw new TypeError("known failure acceptance metadata has an unknown type");
+      throw new TypeError(
+        "known failure acceptance metadata has an unknown type",
+      );
     }
     const { fingerprint, issueOrPr, firstSeen } = candidate;
-    const { issue, primary, reportSeed, title, flow: flowValue, causeMessage } = metadata;
+    const {
+      issue,
+      primary,
+      reportSeed,
+      title,
+      flow: flowValue,
+      causeMessage,
+    } = metadata;
     if (
       typeof fingerprint !== "string" ||
       typeof issueOrPr !== "string" ||
@@ -64,7 +85,10 @@ const readAcceptanceEntries = (value: unknown): ConsumerAcceptance[] => {
         entry["issueOrPr"] === issueOrPr &&
         entry["firstSeen"] === firstSeen,
     );
-    assert.ok(primaryEntry, `#${issue} primary fingerprint is absent from the registry`);
+    assert.ok(
+      primaryEntry,
+      `#${issue} primary fingerprint is absent from the registry`,
+    );
     acceptanceEntries.push({
       fingerprint,
       issue,
@@ -112,7 +136,11 @@ for (const {
     } catch (error) {
       failure = error;
     }
-    assert.notEqual(failure, undefined, `#${issue} acceptance flow unexpectedly passed`);
+    assert.notEqual(
+      failure,
+      undefined,
+      `#${issue} acceptance flow unexpectedly passed`,
+    );
     assert.ok(
       failure instanceof FlowError,
       `#${issue} acceptance replay failed outside the flow: ${String(failure)}`,
@@ -124,7 +152,11 @@ for (const {
         cause = cause.cause;
         seen.add(cause);
       }
-      assert.equal(cause.message, causeMessage, `#${issue} exact failure cause changed`);
+      assert.equal(
+        cause.message,
+        causeMessage,
+        `#${issue} exact failure cause changed`,
+      );
     }
 
     const marker = failureMarker({
@@ -134,7 +166,15 @@ for (const {
       failure,
       flow: flowShape(flow),
     });
-    assert.equal(marker.primary, primary, `#${issue} no longer reproduces its recorded failure`);
-    assert.equal(marker.fingerprint, fingerprint, `#${issue} minimized flow fingerprint changed`);
+    assert.equal(
+      marker.primary,
+      primary,
+      `#${issue} no longer reproduces its recorded failure`,
+    );
+    assert.equal(
+      marker.fingerprint,
+      fingerprint,
+      `#${issue} minimized flow fingerprint changed`,
+    );
   });
 }

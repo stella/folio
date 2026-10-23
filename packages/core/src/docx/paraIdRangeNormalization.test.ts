@@ -1,10 +1,15 @@
 import { expect, test } from "bun:test";
 
-import { normalizeParaIdRangeInXmlParts, paraIdInRange } from "./paraIdRangeNormalization";
+import {
+  normalizeParaIdRangeInXmlParts,
+  paraIdInRange,
+} from "./paraIdRangeNormalization";
 
-const PARA_ID = /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)="([0-9A-Fa-f]{8})"/gu;
+const PARA_ID =
+  /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)="([0-9A-Fa-f]{8})"/gu;
 
-const paraIdsOf = (xml: string): string[] => [...xml.matchAll(PARA_ID)].map(([, id]) => id ?? "");
+const paraIdsOf = (xml: string): string[] =>
+  [...xml.matchAll(PARA_ID)].map(([, id]) => id ?? "");
 
 const inRange = (id: string): boolean => Number.parseInt(id, 16) < 0x8000_0000;
 
@@ -17,7 +22,12 @@ test("leaves a package whose ids already fit byte-identical", () => {
 
 test("brings an out-of-range paragraph id inside the 31-bit range", () => {
   const normalized = normalizeParaIdRangeInXmlParts(
-    new Map([["word/document.xml", `<w:p w14:paraId="FFAABBCC" w14:textId="FFAABBCC"/>`]]),
+    new Map([
+      [
+        "word/document.xml",
+        `<w:p w14:paraId="FFAABBCC" w14:textId="FFAABBCC"/>`,
+      ],
+    ]),
   ).get("word/document.xml");
 
   const ids = paraIdsOf(normalized ?? "");
@@ -60,7 +70,10 @@ test("maps one value to one id wherever it is read", () => {
 
 test("is idempotent", () => {
   const parts = new Map([
-    ["word/document.xml", `<w:p w14:paraId="FFFFFFF0"/><w:p w14:paraId="F0000000"/>`],
+    [
+      "word/document.xml",
+      `<w:p w14:paraId="FFFFFFF0"/><w:p w14:paraId="F0000000"/>`,
+    ],
   ]);
   const once = normalizeParaIdRangeInXmlParts(parts);
   expect(normalizeParaIdRangeInXmlParts(once)).toEqual(once);

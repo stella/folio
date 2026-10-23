@@ -1,9 +1,10 @@
 import fc from "fast-check";
-import regressionSeeds from "../../test/property-seeds/scripts%2Fhost-api-flow.test.ts.json" with { type: "json" };
+
 import {
   PAGED_SCROLL_NAVIGATION_CASES,
   SCROLL_NAVIGATION_CASES,
 } from "../../packages/playground/src/scrollParityBridge";
+import regressionSeeds from "../../test/property-seeds/scripts%2Fhost-api-flow.test.ts.json" with { type: "json" };
 
 export const HOST_NAVIGATION_CASES = [
   ...Object.values(SCROLL_NAVIGATION_CASES).map(({ method }) => ({
@@ -22,11 +23,17 @@ export const hostApiFlowArbitrary = fc.record({
     minLength: HOST_NAVIGATION_CASES.length,
     maxLength: HOST_NAVIGATION_CASES.length,
   }),
-  edits: fc.array(fc.constantFrom("café", "東京", "e\u0301", "مرحبا", "👩🏽‍⚖️", "<&>"), {
-    minLength: HOST_NAVIGATION_CASES.length,
-    maxLength: HOST_NAVIGATION_CASES.length,
+  edits: fc.array(
+    fc.constantFrom("café", "東京", "e\u0301", "مرحبا", "👩🏽‍⚖️", "<&>"),
+    {
+      minLength: HOST_NAVIGATION_CASES.length,
+      maxLength: HOST_NAVIGATION_CASES.length,
+    },
+  ),
+  replacementAfter: fc.integer({
+    min: 1,
+    max: HOST_NAVIGATION_CASES.length - 1,
   }),
-  replacementAfter: fc.integer({ min: 1, max: HOST_NAVIGATION_CASES.length - 1 }),
 });
 
 export type ScrollObservation = {
@@ -63,7 +70,8 @@ const hostFlowRegression =
   regressionSeeds[
     "host flow fixtures remain schema valid through replacement and headless edits"
   ].at(0);
-if (!hostFlowRegression) throw new Error("Missing host-flow standing regression seed");
+if (!hostFlowRegression)
+  throw new Error("Missing host-flow standing regression seed");
 export const HOST_FLOW_REGRESSION = {
   seed: hostFlowRegression.seed,
   path: hostFlowRegression.path,

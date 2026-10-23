@@ -18,8 +18,10 @@ import fc from "fast-check";
 
 import { serializeDocumentToDocx } from "@stll/docx-core";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { buildParagraphsDocx } from "../../ai-edits/__fixtures__/paragraphs";
 import type { Document, Image, Paragraph, Run } from "../../types/document";
 import { parseDocx } from "../parser";
@@ -79,7 +81,12 @@ const documentCarrying = (parsed: Document, value: string): Document => {
         type: "hyperlink",
         anchor: "top",
         tooltip: value,
-        children: [{ type: "run", content: [{ type: "text", text: value }] } satisfies Run],
+        children: [
+          {
+            type: "run",
+            content: [{ type: "text", text: value }],
+          } satisfies Run,
+        ],
       },
       { type: "bookmarkEnd", id: 1 },
       { type: "commentRangeStart", id: 1 },
@@ -95,7 +102,9 @@ const documentCarrying = (parsed: Document, value: string): Document => {
       styles: {
         ...parsed.package.styles,
         styles: [
-          ...(parsed.package.styles?.styles ?? []).filter((style) => style.styleId !== "Marked"),
+          ...(parsed.package.styles?.styles ?? []).filter(
+            (style) => style.styleId !== "Marked",
+          ),
           { styleId: "Marked", type: "paragraph", name: value },
         ],
       },
@@ -105,8 +114,15 @@ const documentCarrying = (parsed: Document, value: string): Document => {
           paragraph,
           {
             type: "blockSdt",
-            properties: { sdtType: "richText", tag: value, alias: value, placeholder: value },
-            content: [{ type: "paragraph", content: [{ type: "run", content: [] }] }],
+            properties: {
+              sdtType: "richText",
+              tag: value,
+              alias: value,
+              placeholder: value,
+            },
+            content: [
+              { type: "paragraph", content: [{ type: "run", content: [] }] },
+            ],
           },
         ],
         comments: [
@@ -116,7 +132,9 @@ const documentCarrying = (parsed: Document, value: string): Document => {
             // of its own; the letter keeps the value inside it.
             author: `A${value}`,
             initials: `A${value}`,
-            content: [{ type: "paragraph", content: [{ type: "run", content: [] }] }],
+            content: [
+              { type: "paragraph", content: [{ type: "run", content: [] }] },
+            ],
           },
         ],
       },
@@ -139,7 +157,9 @@ const valuesIn = (parsed: Document): CarriedValues => {
   const drawingRun =
     paragraph?.type === "paragraph"
       ? paragraph.content.find(
-          (child) => child.type === "run" && child.content.some((c) => c.type === "drawing"),
+          (child) =>
+            child.type === "run" &&
+            child.content.some((c) => c.type === "drawing"),
         )
       : undefined;
   const drawing =
@@ -156,17 +176,22 @@ const valuesIn = (parsed: Document): CarriedValues => {
   const comment = parsed.package.document.comments?.at(0);
 
   return {
-    bookmarkName: bookmark?.type === "bookmarkStart" ? bookmark.name : undefined,
-    hyperlinkTooltip: hyperlink?.type === "hyperlink" ? hyperlink.tooltip : undefined,
+    bookmarkName:
+      bookmark?.type === "bookmarkStart" ? bookmark.name : undefined,
+    hyperlinkTooltip:
+      hyperlink?.type === "hyperlink" ? hyperlink.tooltip : undefined,
     drawingAlt: drawing?.type === "drawing" ? drawing.image.alt : undefined,
     drawingTitle: drawing?.type === "drawing" ? drawing.image.title : undefined,
     runText,
     commentAuthor: comment?.author,
     commentInitials: comment?.initials,
-    styleName: parsed.package.styles?.styles?.find((style) => style.styleId === "Marked")?.name,
+    styleName: parsed.package.styles?.styles?.find(
+      (style) => style.styleId === "Marked",
+    )?.name,
     sdtTag: sdt?.type === "blockSdt" ? sdt.properties?.tag : undefined,
     sdtAlias: sdt?.type === "blockSdt" ? sdt.properties?.alias : undefined,
-    sdtPlaceholder: sdt?.type === "blockSdt" ? sdt.properties?.placeholder : undefined,
+    sdtPlaceholder:
+      sdt?.type === "blockSdt" ? sdt.properties?.placeholder : undefined,
   };
 };
 
@@ -188,9 +213,13 @@ describe("a value written into a package comes back out of it", () => {
           });
           const reopened = await parseDocx(saved);
           const expected = legalCharactersOf(value);
-          const { commentAuthor, commentInitials, ...fields } = valuesIn(reopened);
+          const { commentAuthor, commentInitials, ...fields } =
+            valuesIn(reopened);
           for (const [field, actual] of Object.entries(fields)) {
-            expect({ field, value: actual }).toEqual({ field, value: expected });
+            expect({ field, value: actual }).toEqual({
+              field,
+              value: expected,
+            });
           }
           expect(commentInitials).toBe(`A${expected}`);
           // `parseCommentAuthor` trims the author, a normalisation that predates
@@ -216,12 +245,19 @@ describe("a value written into a package comes back out of it", () => {
             package: {
               properties: { title: value },
               document: {
-                content: [{ type: "paragraph", content: [{ type: "run", content: [] }] }],
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "run", content: [] }],
+                  },
+                ],
               },
             },
           });
           const reopened = await parseDocx(saved);
-          expect(reopened.package.properties?.title).toBe(legalCharactersOf(value));
+          expect(reopened.package.properties?.title).toBe(
+            legalCharactersOf(value),
+          );
         }),
         propertyConfig({ numRuns: 40 }),
       );

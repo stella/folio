@@ -7,7 +7,10 @@ import { panic } from "better-result";
 import { expectFontSizeMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { clearFontSizeForAllScripts, setFontSizeForAllScripts } from "./markUtils";
+import {
+  clearFontSizeForAllScripts,
+  setFontSizeForAllScripts,
+} from "./markUtils";
 
 export const FontSizeExtension = createMarkExtension({
   name: "fontSize",
@@ -31,7 +34,9 @@ export const FontSizeExtension = createMarkExtension({
           if (ptMatch) {
             // SAFETY: capture group always present when regex matches
             return {
-              size: Math.round(Number.parseFloat(ptMatch.groups?.["value"] ?? "0") * 2),
+              size: Math.round(
+                Number.parseFloat(ptMatch.groups?.["value"] ?? "0") * 2,
+              ),
             };
           }
           return false;
@@ -42,7 +47,11 @@ export const FontSizeExtension = createMarkExtension({
       const { size } = expectFontSizeMarkAttrs(mark);
       const pt = size / 2;
       const lineHeight = (pt * 1.15).toFixed(2);
-      return ["span", { style: `font-size: ${pt}pt; line-height: ${lineHeight}pt` }, 0];
+      return [
+        "span",
+        { style: `font-size: ${pt}pt; line-height: ${lineHeight}pt` },
+        0,
+      ];
     },
   },
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
@@ -52,7 +61,8 @@ export const FontSizeExtension = createMarkExtension({
     }
     return {
       commands: {
-        setFontSize: (size: number) => setFontSizeForAllScripts(fontSizeType, size),
+        setFontSize: (size: number) =>
+          setFontSizeForAllScripts(fontSizeType, size),
         clearFontSize: () => clearFontSizeForAllScripts(fontSizeType),
       },
     };

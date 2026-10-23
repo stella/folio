@@ -43,7 +43,9 @@ describe("preserved sequence children", () => {
         modelled: [],
         preserved: { children: [{ index: 26, xml }] },
       }),
-    ).toThrow("Preserved container markup must be one bounded, well-formed XML element");
+    ).toThrow(
+      "Preserved container markup must be one bounded, well-formed XML element",
+    );
   });
 
   test.each([
@@ -59,7 +61,10 @@ describe("preserved sequence children", () => {
     const child = { index: 0, xml: "<w:mirrorIndents/>" };
     const tooMany = Array.from({ length: 4097 }, () => child);
     const largeXml = `<w:mirrorIndents>${"x".repeat(1024 * 1024 - 40)}</w:mirrorIndents>`;
-    const tooWide = Array.from({ length: 5 }, () => ({ index: 0, xml: largeXml }));
+    const tooWide = Array.from({ length: 5 }, () => ({
+      index: 0,
+      xml: largeXml,
+    }));
 
     expect(isWithinPreservedMarkupBudget(tooMany)).toBe(false);
     expect(isWithinPreservedMarkupBudget(tooWide)).toBe(false);
@@ -72,7 +77,9 @@ describe("preserved sequence children", () => {
         modelled: [],
         preserved: { children: tooMany },
       }),
-    ).toThrow("Preserved container markup exceeds its aggregate resource budget");
+    ).toThrow(
+      "Preserved container markup exceeds its aggregate resource budget",
+    );
   });
 
   test("stops consuming a capture collection at the count boundary", () => {

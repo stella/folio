@@ -58,7 +58,8 @@ export type DisplayRect = {
  * what the other did. Dash and gap lengths live in `primitives.ts` and are
  * imported by both backends, so neither invents a period of its own.
  */
-export type DisplayStrokePattern = "solid" | "dashed" | "dotted" | "double" | "wavy";
+export type DisplayStrokePattern =
+  "solid" | "dashed" | "dotted" | "double" | "wavy";
 
 /**
  * A stroke is centred on its path: half the thickness falls on each side.
@@ -96,7 +97,8 @@ export type DisplayFontFace = {
   readonly weight: number;
   readonly italic: boolean;
   /** Category to fall back on when the family itself is unavailable. */
-  readonly generic: "serif" | "sans-serif" | "monospace" | "cursive" | "fantasy";
+  readonly generic:
+    "serif" | "sans-serif" | "monospace" | "cursive" | "fantasy";
   /**
    * The concrete families between `family` and `generic`, in the order the
    * measurer would fall through them.
@@ -284,7 +286,9 @@ export type DisplayGlyphRun = {
    */
   readonly pmRange?: DisplayModelRange;
   /** Source atom for view-only decorations; never used for editing positions. */
-  readonly decorationRange?: DisplayModelRange & { readonly textOffset: number };
+  readonly decorationRange?: DisplayModelRange & {
+    readonly textOffset: number;
+  };
 };
 
 /** An axis-aligned rectangle, filled and/or stroked. At least one is set. */

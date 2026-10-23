@@ -1,12 +1,15 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-
 import { REPORT_DIR } from "../config";
 import type { DocAssets } from "../report";
-import { comparisonAssetKey, fontEnvironmentNotes, writeHtmlReport } from "../report";
+import {
+  comparisonAssetKey,
+  fontEnvironmentNotes,
+  writeHtmlReport,
+} from "../report";
 import type { CorpusReport, DocGeom, FeatureAttributedResult } from "../types";
 
 // A minimal valid 1x1 transparent PNG, used as a stand-in for real page
@@ -132,7 +135,11 @@ describe("writeHtmlReport", () => {
       ],
       attributed: [
         {
-          divergence: { kind: "missing-line", page: 1, text: "<script>missing</script>" },
+          divergence: {
+            kind: "missing-line",
+            page: 1,
+            text: "<script>missing</script>",
+          },
           features: ["table"],
         },
       ],
@@ -171,7 +178,11 @@ describe("writeHtmlReport", () => {
           meanMagnitudePt: 1.5,
           examples: [
             {
-              divergence: { kind: "missing-line", page: 1, text: "<script>example</script>" },
+              divergence: {
+                kind: "missing-line",
+                page: 1,
+                text: "<script>example</script>",
+              },
               features: ["table"],
             },
           ],
@@ -377,7 +388,12 @@ describe("fontEnvironmentNotes", () => {
     expect(
       fontEnvironmentNotes({
         ...baseResult,
-        fontEnvironment: { status: "native", tags: [], comparedLines: 41, matchingLines: 41 },
+        fontEnvironment: {
+          status: "native",
+          tags: [],
+          comparedLines: 41,
+          matchingLines: 41,
+        },
       }),
     ).toEqual([]);
   });

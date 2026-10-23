@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
@@ -12,18 +12,29 @@ import {
   saveHarnessState,
 } from "../../__tests__/editorHarness";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { createCellDragTracker, findCellPosFromPmPos } from "../cellDragSelection";
+import {
+  createCellDragTracker,
+  findCellPosFromPmPos,
+} from "../cellDragSelection";
 
 const project = (reviewer: FolioDocxReviewer) =>
-  reviewer.snapshot().blocks.map(({ kind, text, table }) => ({ kind, text, table }));
+  reviewer
+    .snapshot()
+    .blocks.map(({ kind, text, table }) => ({ kind, text, table }));
 
 const tableSlice = (view: HeadlessEditorView) => {
   const { schema } = view.state;
   const cell = (text: string) =>
-    schema.node("tableCell", null, schema.node("paragraph", null, schema.text(text)));
+    schema.node(
+      "tableCell",
+      null,
+      schema.node("paragraph", null, schema.text(text)),
+    );
   return new Slice(
     Fragment.from(
-      schema.node("table", null, [schema.node("tableRow", null, [cell("A"), cell("B")])]),
+      schema.node("table", null, [
+        schema.node("tableRow", null, [cell("A"), cell("B")]),
+      ]),
     ),
     0,
     0,
@@ -40,7 +51,11 @@ const outsideText = (view: HeadlessEditorView) => {
 
 const cases = [0, 8, 17].flatMap((offset) =>
   (["enter", "pasteMultiBlock"] as const).flatMap((prefix) =>
-    (["delete", "pasteTable"] as const).map((operation) => ({ offset, prefix, operation })),
+    (["delete", "pasteTable"] as const).map((operation) => ({
+      offset,
+      prefix,
+      operation,
+    })),
   ),
 );
 
@@ -49,7 +64,9 @@ describe("table drag input traces", () => {
   // input. Cross both delete keys with replacement and repeated cell deletion.
   test.each(
     (["Delete", "Backspace"] as const).flatMap((key) =>
-      (["repeatDelete", "pasteMultiBlock", "pasteTable"] as const).map((next) => ({ key, next })),
+      (["repeatDelete", "pasteMultiBlock", "pasteTable"] as const).map(
+        (next) => ({ key, next }),
+      ),
     ),
   )(
     "cell $key followed by $next preserves cell routing and review equivalence",
@@ -57,8 +74,12 @@ describe("table drag input traces", () => {
       const source = await shapeArrayBuffer("tables");
       const base = await parseShapeDocument(new Uint8Array(source));
       const baseline = await FolioDocxReviewer.fromBuffer(source);
-      const editing = new HeadlessEditorView(createHarnessState(base, "editing"));
-      const suggesting = new HeadlessEditorView(createHarnessState(base, "suggesting"));
+      const editing = new HeadlessEditorView(
+        createHarnessState(base, "editing"),
+      );
+      const suggesting = new HeadlessEditorView(
+        createHarnessState(base, "suggesting"),
+      );
       for (const view of [editing, suggesting]) {
         const selectCells = () => {
           const cells: number[] = [];
@@ -67,9 +88,12 @@ describe("table drag input traces", () => {
             return node.type.name !== "tableCell";
           });
           const [first, second] = cells;
-          if (first === undefined || second === undefined) panic("Missing table cells");
+          if (first === undefined || second === undefined)
+            panic("Missing table cells");
           view.dispatch(
-            view.state.tr.setSelection(CellSelection.create(view.state.doc, first, second)),
+            view.state.tr.setSelection(
+              CellSelection.create(view.state.doc, first, second),
+            ),
           );
         };
         selectCells();
@@ -100,11 +124,23 @@ describe("table drag input traces", () => {
             break;
         }
       }
-      const { bytes: editedBytes } = await saveHarnessState(editing.state, base);
-      const edited = await FolioDocxReviewer.fromBuffer(editedBytes.slice().buffer);
-      const { bytes: suggestedBytes } = await saveHarnessState(suggesting.state, base);
-      const accepted = await FolioDocxReviewer.fromBuffer(suggestedBytes.slice().buffer);
-      const rejected = await FolioDocxReviewer.fromBuffer(suggestedBytes.slice().buffer);
+      const { bytes: editedBytes } = await saveHarnessState(
+        editing.state,
+        base,
+      );
+      const edited = await FolioDocxReviewer.fromBuffer(
+        editedBytes.slice().buffer,
+      );
+      const { bytes: suggestedBytes } = await saveHarnessState(
+        suggesting.state,
+        base,
+      );
+      const accepted = await FolioDocxReviewer.fromBuffer(
+        suggestedBytes.slice().buffer,
+      );
+      const rejected = await FolioDocxReviewer.fromBuffer(
+        suggestedBytes.slice().buffer,
+      );
       accepted.acceptAll();
       rejected.rejectAll();
       expect(project(accepted)).toEqual(project(edited));
@@ -118,11 +154,19 @@ describe("table drag input traces", () => {
       const source = await shapeArrayBuffer("tables");
       const base = await parseShapeDocument(new Uint8Array(source));
       const baseline = await FolioDocxReviewer.fromBuffer(source);
-      const editing = new HeadlessEditorView(createHarnessState(base, "editing"));
-      const suggesting = new HeadlessEditorView(createHarnessState(base, "suggesting"));
+      const editing = new HeadlessEditorView(
+        createHarnessState(base, "editing"),
+      );
+      const suggesting = new HeadlessEditorView(
+        createHarnessState(base, "suggesting"),
+      );
 
       for (const view of [editing, suggesting]) {
-        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, offset + 1)));
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, offset + 1),
+          ),
+        );
         switch (prefix) {
           case "enter":
             expect(view.pressKey("Enter")).toBe(true);
@@ -145,7 +189,8 @@ describe("table drag input traces", () => {
         const beforeDrag = outsideText(view);
         const cells: number[] = [];
         view.state.doc.descendants((node, pos) => {
-          if (node.type.name === "tableCell" && cells.length < 2) cells.push(pos);
+          if (node.type.name === "tableCell" && cells.length < 2)
+            cells.push(pos);
         });
         const first = cells.at(0);
         const second = cells.at(1);
@@ -171,11 +216,23 @@ describe("table drag input traces", () => {
         expect(outsideText(view)).toBe(beforeDrag);
       }
 
-      const { bytes: editedBytes } = await saveHarnessState(editing.state, base);
-      const edited = await FolioDocxReviewer.fromBuffer(editedBytes.slice().buffer);
-      const { bytes: suggestedBytes } = await saveHarnessState(suggesting.state, base);
-      const accepted = await FolioDocxReviewer.fromBuffer(suggestedBytes.slice().buffer);
-      const rejected = await FolioDocxReviewer.fromBuffer(suggestedBytes.slice().buffer);
+      const { bytes: editedBytes } = await saveHarnessState(
+        editing.state,
+        base,
+      );
+      const edited = await FolioDocxReviewer.fromBuffer(
+        editedBytes.slice().buffer,
+      );
+      const { bytes: suggestedBytes } = await saveHarnessState(
+        suggesting.state,
+        base,
+      );
+      const accepted = await FolioDocxReviewer.fromBuffer(
+        suggestedBytes.slice().buffer,
+      );
+      const rejected = await FolioDocxReviewer.fromBuffer(
+        suggestedBytes.slice().buffer,
+      );
       accepted.acceptAll();
       rejected.rejectAll();
       expect(project(accepted)).toEqual(project(edited));

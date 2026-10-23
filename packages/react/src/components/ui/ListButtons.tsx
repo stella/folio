@@ -2,10 +2,19 @@
  * List formatting buttons: bullet, numbered, indent, outdent.
  */
 
-import { IndentDecreaseIcon, IndentIncreaseIcon, ListIcon, ListOrderedIcon } from "lucide-react";
+import {
+  IndentDecreaseIcon,
+  IndentIncreaseIcon,
+  ListIcon,
+  ListOrderedIcon,
+} from "lucide-react";
 import { useTranslations } from "use-intl";
 
-import { listStateLevel, NO_LIST_STATE, type ListState } from "@stll/folio-core/prosemirror";
+import {
+  type ListState,
+  listStateLevel,
+  NO_LIST_STATE,
+} from "@stll/folio-core/prosemirror";
 
 import { cn } from "../../lib/utils";
 
@@ -58,7 +67,11 @@ export function ListButtons({
   const canOutdent = listStateLevel(listState) > 0 || hasIndent;
 
   return (
-    <div className="inline-flex items-center gap-1" role="group" aria-label={t("listFormatting")}>
+    <div
+      className="inline-flex items-center gap-1"
+      role="group"
+      aria-label={t("listFormatting")}
+    >
       <button
         aria-label={t("bulletList")}
         aria-pressed={isBullet}
@@ -85,7 +98,10 @@ export function ListButtons({
       </button>
       {showIndentButtons && (
         <>
-          <span className="mx-1.5 h-5 w-px bg-[var(--doc-border)]" role="separator" />
+          <span
+            className="mx-1.5 h-5 w-px bg-[var(--doc-border)]"
+            role="separator"
+          />
           <button
             aria-label={t("decreaseIndent")}
             className={btnCls(false, disabled || !canOutdent, compact)}

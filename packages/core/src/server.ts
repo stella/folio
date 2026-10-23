@@ -39,7 +39,10 @@ export {
   isFolioAIContentBlock,
   normalizeFolioAIBlockText,
 } from "./ai-edits/snapshot";
-export { getFolioDocumentOutline, readFolioDocumentSection } from "./ai-edits/scoped-reading";
+export {
+  getFolioDocumentOutline,
+  readFolioDocumentSection,
+} from "./ai-edits/scoped-reading";
 export {
   getFolioDocumentOperationRemovedBlockIds,
   getTrackedFolioDocumentOperationRemovedBlockIds,
@@ -60,8 +63,14 @@ export {
   type EnsureParaIdsOptions,
   type EnsureParaIdsResult,
 } from "./docx/ensureParaIds";
-export { replyToComment, type CreateCommentReplyInput } from "./docx/replyToComment";
-export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
+export {
+  replyToComment,
+  type CreateCommentReplyInput,
+} from "./docx/replyToComment";
+export {
+  createEmptyDocument,
+  type CreateEmptyDocumentOptions,
+} from "./utils/createDocument";
 export {
   bookmark,
   createTableOfContentsField,
@@ -270,7 +279,10 @@ export {
   type CreateBilingualDocxOptions,
   type CreateBilingualDocxResult,
 } from "./docx/server/createBilingualDocx";
-export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";
+export {
+  DocxArchiveError,
+  type DocxArchiveOptions,
+} from "./docx/server/boundedArchive";
 export {
   applyDocxXmlPatchProposal,
   FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE,

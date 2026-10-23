@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../../test/property-testing";
-import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
-import { createDocx } from "../../packages/core/src/docx/rezip";
+
 import { prepareCanonicalDocxInput } from "../../packages/core/src/docx/canonicalSessionInput";
 import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
+import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
+import { assertProperty } from "../../test/property-testing";
 import { canonicalLoadFixture } from "./canonicalLoadFixture";
 
 test("canonical load fixtures match the loader across paragraph identity input classes", async () => {
@@ -14,14 +15,18 @@ test("canonical load fixtures match the loader across paragraph identity input c
   const exercised = new Set<(typeof identities)[number]>();
   await assertProperty(
     fc.asyncProperty(
-      fc.string({ unit: fc.constantFrom("a", "b", " ", "é", "😀"), maxLength: 20 }),
+      fc.string({
+        unit: fc.constantFrom("a", "b", " ", "é", "😀"),
+        maxLength: 20,
+      }),
       async (text) => {
         for (const identity of identities) {
           cases += 1;
           exercised.add(identity);
           const document = createEmptyDocument({ initialText: text });
           const first = document.package.document.content.at(0);
-          if (first?.type !== "paragraph") throw new TypeError("Expected fixture paragraph.");
+          if (first?.type !== "paragraph")
+            throw new TypeError("Expected fixture paragraph.");
           if (identity !== "missing") {
             first.paraId = "12345678";
             first.textId = "12345678";
@@ -33,10 +38,17 @@ test("canonical load fixtures match the loader across paragraph identity input c
               textId: "12345678",
               content: [{ type: "run", content: [{ type: "text", text }] }],
             });
-          const fixture = await canonicalLoadFixture(await createDocx(document));
+          const fixture = await canonicalLoadFixture(
+            await createDocx(document),
+          );
           // The real loader prepares the already-prepared browser fixture again.
-          const input = (await prepareCanonicalDocxInput(new Uint8Array(fixture.bytes))).unwrap();
-          const loaded = await parseDocx(input, { preloadFonts: false, detectVariables: false });
+          const input = (
+            await prepareCanonicalDocxInput(new Uint8Array(fixture.bytes))
+          ).unwrap();
+          const loaded = await parseDocx(input, {
+            preloadFonts: false,
+            detectVariables: false,
+          });
           const content = normalizeForOps(loaded).package.document.content;
           expect(JSON.stringify(content)).toBe(fixture.content);
           const ids = content.flatMap((paragraph) => {

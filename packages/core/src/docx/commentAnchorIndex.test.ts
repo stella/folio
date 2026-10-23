@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 
 import type { BlockContent } from "../types/document";
-import { removeCommentMarkers, visitCommentMarkers } from "./commentAnchorIndex";
+import {
+  removeCommentMarkers,
+  visitCommentMarkers,
+} from "./commentAnchorIndex";
 
 test("removeCommentMarkers rebuilds nested marker paths without changing its input", () => {
   const blocks: BlockContent[] = [
@@ -26,7 +29,10 @@ test("removeCommentMarkers rebuilds nested marker paths without changing its inp
                           info: { id: 7, author: "Reviewer" },
                           content: [
                             { type: "commentRangeStart", id: 12 },
-                            { type: "run", content: [{ type: "text", text: "Clause" }] },
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "Clause" }],
+                            },
                             { type: "commentRangeEnd", id: 12 },
                             { type: "commentReference", id: 12 },
                           ],
@@ -41,7 +47,10 @@ test("removeCommentMarkers rebuilds nested marker paths without changing its inp
         },
       ],
     },
-    { type: "paragraph", content: [{ type: "run", content: [{ type: "text", text: "Stable" }] }] },
+    {
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "text", text: "Stable" }] }],
+    },
   ];
   const before = structuredClone(blocks);
 

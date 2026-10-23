@@ -3,31 +3,39 @@
  * paragraph visibility and payload predicates.
  */
 
-import type { Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
+
 import { statesNoBorder } from "@stll/docx-core/model";
+
 import { getFontAlternate } from "../../fonts/fontAlternates";
-import type { ParagraphBlock, Run, ParagraphAttrs } from "../../layout-engine/types";
 import { setParagraphFrame } from "../../layout-engine/paragraphFrame";
+import type {
+  ParagraphAttrs,
+  ParagraphBlock,
+  Run,
+} from "../../layout-engine/types";
+import { expectParagraphAttrs } from "../../prosemirror/attrs";
+import { expectBookmarkBoundaryAttrs } from "../../prosemirror/bookmarkBoundaryAttrs";
+import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
+import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
+import type { TextFormatting } from "../../types/document";
+import { nextBlockId, twipsToPixels } from "./flowConversionShared";
+import type { FlowConversionOptions } from "./flowConversionShared";
+import { convertParagraphAttrs } from "./paragraphAttrs";
 import {
   resolveParagraphMarkFormatting,
   resolveParagraphMarkOwnFormatting,
 } from "./paragraphMarkFormatting";
-import { expectParagraphAttrs } from "../../prosemirror/attrs";
-import { expectBookmarkBoundaryAttrs } from "../../prosemirror/bookmarkBoundaryAttrs";
-import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
-import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
-import type { TextFormatting } from "../../types/document";
-import { twipsToPixels, nextBlockId } from "./flowConversionShared";
-import type { FlowConversionOptions } from "./flowConversionShared";
-import { resolveWesternThemeFont } from "./textFormattingConversion";
 import { paragraphToRuns } from "./paragraphRuns";
 import type { PageBreakRunProjection } from "./paragraphRuns";
-import { convertParagraphAttrs } from "./paragraphAttrs";
+import { resolveWesternThemeFont } from "./textFormattingConversion";
 
 const DETACHED_WATERMARK_HOST_ATTR = "_detachedWatermarkHost";
 
-const expectDetachedWatermarkHostAttr = (attrs: Readonly<Record<string, unknown>>): boolean => {
+const expectDetachedWatermarkHostAttr = (
+  attrs: Readonly<Record<string, unknown>>,
+): boolean => {
   const value = Reflect.get(attrs, DETACHED_WATERMARK_HOST_ATTR);
   if (value === null || value === undefined) {
     return false;
@@ -47,13 +55,18 @@ function hasOnlyVisuallyEmptyTextRuns(runs: Run[]): boolean {
   return (
     runs.length > 0 &&
     runs.every(
-      (run) => run.kind === "text" && run.text.replace(/\u00a0/gu, " ").trim().length === 0,
+      (run) =>
+        run.kind === "text" &&
+        run.text.replace(/\u00a0/gu, " ").trim().length === 0,
     )
   );
 }
 
 function hasOnlyHiddenTextRuns(runs: Run[]): boolean {
-  return runs.length > 0 && runs.every((run) => run.kind === "text" && run.hidden === true);
+  return (
+    runs.length > 0 &&
+    runs.every((run) => run.kind === "text" && run.hidden === true)
+  );
 }
 
 export function hasVisibleParagraphPayload(attrs: ParagraphAttrs): boolean {
@@ -70,7 +83,9 @@ export function hasVisibleParagraphPayload(attrs: ParagraphAttrs): boolean {
 }
 
 /** Whether any `w:pBdr` side draws a rule (`none`/`nil` sides draw nothing). */
-export function drawsParagraphBorder(borders: PMParagraphAttrs["borders"]): boolean {
+export function drawsParagraphBorder(
+  borders: PMParagraphAttrs["borders"],
+): boolean {
   if (!borders) {
     return false;
   }
@@ -81,7 +96,9 @@ export function drawsParagraphBorder(borders: PMParagraphAttrs["borders"]): bool
     borders.right,
     borders.between,
     borders.bar,
-  ].some((border) => border?.style !== undefined && !statesNoBorder(border.style));
+  ].some(
+    (border) => border?.style !== undefined && !statesNoBorder(border.style),
+  );
 }
 
 export function convertParagraph(
@@ -97,7 +114,8 @@ export function convertParagraph(
     fontAlternates: options.fontAlternates,
     listCounterStreams: options.listCounterStreams,
     defaultTabStopTwips: options.defaultTabStopTwips,
-    paragraphMarkFormatting: () => resolveParagraphMarkFormatting(pmAttrs, options.styleResolver),
+    paragraphMarkFormatting: () =>
+      resolveParagraphMarkFormatting(pmAttrs, options.styleResolver),
   });
   if (options.numberingTabIgnoresIndent && attrs.listMarker !== undefined) {
     attrs.listNumberingTabIgnoresIndent = true;
@@ -117,17 +135,20 @@ export function convertParagraph(
   if (options.automaticHyphenation) {
     attrs.automaticHyphenation = options.automaticHyphenation;
   }
-  const defaultTextFormatting = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
+  const defaultTextFormatting = pmAttrs.defaultTextFormatting as
+    TextFormatting | undefined;
   if (runs.length === 0 || hasOnlyVisuallyEmptyTextRuns(runs)) {
     const hasDirectParagraphFormatting =
       pmAttrs._originalFormatting &&
       Object.entries(pmAttrs._originalFormatting).some(
-        ([key, value]) => key !== "runProperties" && value !== undefined && value !== null,
+        ([key, value]) =>
+          key !== "runProperties" && value !== undefined && value !== null,
       );
     if (hasDirectParagraphFormatting) {
       attrs.hasDirectParagraphFormatting = true;
     }
-    const directParagraphMarkFormatting = pmAttrs._originalFormatting?.runProperties;
+    const directParagraphMarkFormatting =
+      pmAttrs._originalFormatting?.runProperties;
     if (
       directParagraphMarkFormatting &&
       Object.values(directParagraphMarkFormatting).some(
@@ -146,18 +167,25 @@ export function convertParagraph(
       attrs.defaultFontSize = paragraphMarkFormatting.fontSize / 2;
     }
     const paragraphMarkFontFamily = paragraphMarkFormatting?.fontFamily
-      ? resolveWesternThemeFont(paragraphMarkFormatting.fontFamily, options.theme)
+      ? resolveWesternThemeFont(
+          paragraphMarkFormatting.fontFamily,
+          options.theme,
+        )
       : undefined;
     if (paragraphMarkFontFamily) {
       attrs.defaultFontFamily = paragraphMarkFontFamily;
-      const alternate = getFontAlternate(paragraphMarkFontFamily, options.fontAlternates);
+      const alternate = getFontAlternate(
+        paragraphMarkFontFamily,
+        options.fontAlternates,
+      );
       if (alternate) {
         attrs.defaultAlternateFontFamily = alternate;
       }
     }
   }
   const isFullyHiddenParagraph =
-    defaultTextFormatting?.hidden === true && (runs.length === 0 || hasOnlyHiddenTextRuns(runs));
+    defaultTextFormatting?.hidden === true &&
+    (runs.length === 0 || hasOnlyHiddenTextRuns(runs));
   if (isFullyHiddenParagraph && attrs.listMarker !== undefined) {
     attrs.listMarkerHidden = true;
   }
@@ -189,17 +217,31 @@ export function convertParagraph(
     runs,
     attrs,
     ...(pmAttrs.paraId ? { paraId: pmAttrs.paraId } : {}),
-    ...(bookmarkNames && bookmarkNames.length > 0 ? { bookmarks: bookmarkNames } : {}),
+    ...(bookmarkNames && bookmarkNames.length > 0
+      ? { bookmarks: bookmarkNames }
+      : {}),
     pmStart: startPos,
     pmEnd: startPos + node.nodeSize,
   };
   const frame = pmAttrs._originalFormatting?.frame;
-  if (frame !== undefined && frame.dropCap !== "drop" && frame.dropCap !== "margin") {
+  if (
+    frame !== undefined &&
+    frame.dropCap !== "drop" &&
+    frame.dropCap !== "margin"
+  ) {
     setParagraphFrame(block, {
-      ...(frame.width !== undefined ? { width: twipsToPixels(frame.width) } : {}),
-      ...(frame.height !== undefined ? { height: twipsToPixels(frame.height) } : {}),
-      ...(frame.hSpace !== undefined ? { hSpace: twipsToPixels(frame.hSpace) } : {}),
-      ...(frame.vSpace !== undefined ? { vSpace: twipsToPixels(frame.vSpace) } : {}),
+      ...(frame.width !== undefined
+        ? { width: twipsToPixels(frame.width) }
+        : {}),
+      ...(frame.height !== undefined
+        ? { height: twipsToPixels(frame.height) }
+        : {}),
+      ...(frame.hSpace !== undefined
+        ? { hSpace: twipsToPixels(frame.hSpace) }
+        : {}),
+      ...(frame.vSpace !== undefined
+        ? { vSpace: twipsToPixels(frame.vSpace) }
+        : {}),
       ...(frame.hAnchor !== undefined ? { hAnchor: frame.hAnchor } : {}),
       ...(frame.vAnchor !== undefined ? { vAnchor: frame.vAnchor } : {}),
       ...(frame.x !== undefined ? { x: twipsToPixels(frame.x) } : {}),
@@ -213,7 +255,10 @@ export function convertParagraph(
     if (child.type.name !== "textBoxAnchor") {
       return true;
     }
-    options.textBoxAnchorBlockIds.set(expectTextBoxAnchorAttrs(child).anchorId, block.id);
+    options.textBoxAnchorBlockIds.set(
+      expectTextBoxAnchorAttrs(child).anchorId,
+      block.id,
+    );
     return false;
   });
   return block;

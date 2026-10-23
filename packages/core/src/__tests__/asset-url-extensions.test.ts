@@ -50,11 +50,16 @@ const isSourceExtensionAsset = (spec: string): boolean => {
 // The line-comment pattern keeps the character before `//` so it does not eat a
 // `:` from a `https://` URL.
 const stripComments = (source: string): string =>
-  source.replaceAll(/\/\*[\s\S]*?\*\//gu, "").replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
+  source
+    .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+    .replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
 
 type AssetUrl = { importer: string; specifier: string };
 
-const sourceExtensionUrlsForSource = (filePath: string, source: string): AssetUrl[] => {
+const sourceExtensionUrlsForSource = (
+  filePath: string,
+  source: string,
+): AssetUrl[] => {
   const found: AssetUrl[] = [];
   for (const match of stripComments(source).matchAll(URL_IMPORT_META_REGEX)) {
     const specifier = match.groups?.["spec"];
@@ -89,7 +94,10 @@ describe("no source-extension URL build assets", () => {
     );
     if (violations.length > 0) {
       const formatted = violations
-        .map((v) => `  ${v.importer.replace(PACKAGES_DIR, "<packages>")} -> "${v.specifier}"`)
+        .map(
+          (v) =>
+            `  ${v.importer.replace(PACKAGES_DIR, "<packages>")} -> "${v.specifier}"`,
+        )
         .join("\n");
       throw new Error(
         "A `new URL(..., import.meta.url)` build asset points at a source " +
@@ -103,7 +111,10 @@ describe("no source-extension URL build assets", () => {
 });
 
 describe("source-extension URL — synthetic fixtures", () => {
-  const importer = path.resolve(PACKAGES_DIR, "core/src/layout-engine/measure/measureWorker.ts");
+  const importer = path.resolve(
+    PACKAGES_DIR,
+    "core/src/layout-engine/measure/measureWorker.ts",
+  );
 
   test("a worker URL at a .ts target is flagged", () => {
     const violations = sourceExtensionUrlsForSource(

@@ -23,7 +23,11 @@ test("consumer scenario relative imports stay inside the copied tree", async () 
     const source = await Bun.file(path.join(scenarioRoot, file)).text();
     for (const imported of transpiler.scanImports(source)) {
       if (!imported.path.startsWith(".")) continue;
-      const resolved = path.resolve(scenarioRoot, path.dirname(file), imported.path);
+      const resolved = path.resolve(
+        scenarioRoot,
+        path.dirname(file),
+        imported.path,
+      );
       const relative = path.relative(scenarioRoot, resolved);
       if (relative === ".." || relative.startsWith(`..${path.sep}`)) {
         escapingImports.push(`${file}: ${imported.path}`);
@@ -36,7 +40,9 @@ test("consumer scenario relative imports stay inside the copied tree", async () 
 
 const argvOf = (command: string): string[] =>
   [...command.matchAll(/'(?:'\\''|[^'])*'|\S+/gu)]
-    .map(([word]) => (word.startsWith("'") ? word.slice(1, -1).replaceAll("'\\''", "'") : word))
+    .map(([word]) =>
+      word.startsWith("'") ? word.slice(1, -1).replaceAll("'\\''", "'") : word,
+    )
     .slice(2);
 
 test("flow replays put relation flags after the executable and parse them back", () => {
@@ -48,7 +54,10 @@ test("flow replays put relation flags after the executable and parse them back",
   process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] = "3";
   try {
     const command = consumerScenarioReplay({
-      inputs: { ...consumerScenarioReplayInputs(process.env), flow: "flow.json" },
+      inputs: {
+        ...consumerScenarioReplayInputs(process.env),
+        flow: "flow.json",
+      },
       files: ["flow-corpus.test.ts"],
     });
     expect(command.split(" ").at(0)).toBe("bun");
@@ -56,9 +65,11 @@ test("flow replays put relation flags after the executable and parse them back",
     expect(parsed.relations).toBe("preserve-comments,round-trip");
     expect(parsed.relationsDepth).toBe("3");
   } finally {
-    if (previous.relations === undefined) delete process.env["FOLIO_SCENARIO_RELATIONS"];
+    if (previous.relations === undefined)
+      delete process.env["FOLIO_SCENARIO_RELATIONS"];
     else process.env["FOLIO_SCENARIO_RELATIONS"] = previous.relations;
-    if (previous.depth === undefined) delete process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"];
+    if (previous.depth === undefined)
+      delete process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"];
     else process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] = previous.depth;
   }
 });
@@ -73,26 +84,40 @@ test("the replay input table drives parsing, environment mapping and rendering",
       .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
     const expected = value;
     expect(parsedFlag[option as keyof typeof parsedFlag]).toBe(expected);
-    expect(consumerScenarioInputs(parseConsumerArgs([], "/repo"), environment)[option]).toBe(value);
+    expect(
+      consumerScenarioInputs(parseConsumerArgs([], "/repo"), environment)[
+        option
+      ],
+    ).toBe(value);
 
     const replay = consumerScenarioReplay({
       inputs: consumerScenarioReplayInputs(environment),
     });
-    expect(parseConsumerArgs(argvOf(replay), "/repo")[option as keyof typeof parsedFlag]).toBe(
-      expected,
-    );
+    expect(
+      parseConsumerArgs(argvOf(replay), "/repo")[
+        option as keyof typeof parsedFlag
+      ],
+    ).toBe(expected);
   }
 });
 
 test("every environment name embedded in a scenario replay is in the input table", async () => {
-  const replayInputs = new Set(CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ env }) => env));
+  const replayInputs = new Set(
+    CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ env }) => env),
+  );
   const usedInReplays = new Set<string>();
   for (const root of ["scripts", "test/consumer-scenarios"]) {
     const glob = new Bun.Glob(`${root}/**/*`);
-    for await (const file of glob.scan({ cwd: import.meta.dir + "/..", onlyFiles: true })) {
+    for await (const file of glob.scan({
+      cwd: import.meta.dir + "/..",
+      onlyFiles: true,
+    })) {
       const source = await Bun.file(import.meta.dir + "/../" + file).text();
-      for (const [replay] of source.matchAll(/[^\n]*bun scripts\/consumer-scenarios\.ts[^\n]*/gu)) {
-        for (const [name] of replay.matchAll(/FOLIO_SCENARIO_[A-Z_]+/gu)) usedInReplays.add(name);
+      for (const [replay] of source.matchAll(
+        /[^\n]*bun scripts\/consumer-scenarios\.ts[^\n]*/gu,
+      )) {
+        for (const [name] of replay.matchAll(/FOLIO_SCENARIO_[A-Z_]+/gu))
+          usedInReplays.add(name);
       }
     }
   }
@@ -133,9 +158,9 @@ test("generated replay settings round-trip entirely through CLI flags", () => {
 });
 
 test("repeated replay flags are rejected", () => {
-  expect(() => parseConsumerArgs(["--seed", "1", "--seed", "2"], "/repo")).toThrow(
-    "consumer-scenarios: repeated replay flag --seed",
-  );
+  expect(() =>
+    parseConsumerArgs(["--seed", "1", "--seed", "2"], "/repo"),
+  ).toThrow("consumer-scenarios: repeated replay flag --seed");
 });
 
 test("replay flags accept dash-leading values joined with an equals sign", () => {
@@ -149,7 +174,9 @@ test("replay flags accept dash-leading values joined with an equals sign", () =>
 test("flow replay inputs override overlapping run inputs", () => {
   const runInputs = { seed: "792792449", runs: "12", collisionRuns: "8" };
   const flowInputs = { seed: "20260933", runs: "0", collisionRuns: "0" };
-  const command = consumerScenarioReplay({ inputs: { ...runInputs, ...flowInputs } });
+  const command = consumerScenarioReplay({
+    inputs: { ...runInputs, ...flowInputs },
+  });
 
   expect(command.match(/--seed/gu)).toHaveLength(1);
   expect(command.match(/--runs/gu)).toHaveLength(1);
@@ -159,7 +186,9 @@ test("flow replay inputs override overlapping run inputs", () => {
 
 test("merged run and flow replay inputs round-trip without repeated flags", () => {
   const inputNames = CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ flag }) =>
-    flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()),
+    flag
+      .slice(2)
+      .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()),
   );
   const inputs = fc.dictionary(
     fc.constantFrom(...inputNames),
@@ -178,12 +207,16 @@ test("merged run and flow replay inputs round-trip without repeated flags", () =
             ({ flag }) =>
               flag
                 .slice(2)
-                .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase()) === option,
+                .replaceAll(/-([a-z])/gu, (_, letter: string) =>
+                  letter.toUpperCase(),
+                ) === option,
           );
           return [option, input?.kind === "path" ? path.resolve(value) : value];
         }),
       );
-      expect(consumerScenarioInputs(parseConsumerArgs(argv, "/repo"), {})).toMatchObject(expected);
+      expect(
+        consumerScenarioInputs(parseConsumerArgs(argv, "/repo"), {}),
+      ).toMatchObject(expected);
     }),
     { numRuns: 100, id: "merged replay inputs round-trip once" },
   );

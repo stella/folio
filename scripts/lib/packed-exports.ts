@@ -4,7 +4,8 @@ const targets = (value: unknown): string[] => {
   if (typeof value === "string") return [value];
   if (value === null) return [];
   if (Array.isArray(value)) return value.flatMap(targets);
-  if (typeof value !== "object") throw new TypeError("Invalid package export target");
+  if (typeof value !== "object")
+    throw new TypeError("Invalid package export target");
   return Object.values(value).flatMap(targets);
 };
 
@@ -23,13 +24,20 @@ const patternMatch = (pattern: string, value: string) => {
 const hasCondition = (value: unknown, condition: string): boolean => {
   if (typeof value === "string") {
     if (condition === "types") return /\.d\.[cm]?ts$/u.test(value);
-    return condition === "import" || (condition === "require" && value.endsWith(".cjs"));
+    return (
+      condition === "import" ||
+      (condition === "require" && value.endsWith(".cjs"))
+    );
   }
   if (!value || typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.some((entry) => hasCondition(entry, condition));
+  if (Array.isArray(value))
+    return value.some((entry) => hasCondition(entry, condition));
   return Object.entries(value).some(([key, entry]) => {
     if (key === condition) return targets(entry).length > 0;
-    if (key === "default" && (condition === "import" || condition === "require"))
+    if (
+      key === "default" &&
+      (condition === "import" || condition === "require")
+    )
       return targets(entry).length > 0;
     // Loader-specific conditions cannot activate another loader or type-only branch.
     if (["types", "import", "require", "default"].includes(key)) return false;
@@ -44,7 +52,11 @@ type PublicEntriesOptions = {
 };
 
 /** Expand wildcard exports against packed files, respecting exact and null overrides. */
-export const publicEntries = ({ name, exports, files }: PublicEntriesOptions) => {
+export const publicEntries = ({
+  name,
+  exports,
+  files,
+}: PublicEntriesOptions) => {
   const candidates = new Set<string>();
   for (const [subpath, value] of Object.entries(exports)) {
     if (value === null) continue;

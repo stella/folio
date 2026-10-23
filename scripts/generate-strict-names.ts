@@ -20,11 +20,10 @@
  *   bun scripts/generate-strict-names.ts check
  */
 
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 
 import sourceManifest from "../specifications/sources.json";
 import { STRICT_NAME_RENAMES } from "../specifications/strict-names/renames";
@@ -32,14 +31,17 @@ import {
   attributesOf,
   buildIndex,
   type Index,
-  localName,
   loadSchemaGraph,
+  localName,
   type SchemaGraph,
   WML_NAMESPACE,
 } from "./lib/ooxml-schema-graph";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/core/src/docx/strictNames.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/core/src/docx/strictNames.gen.ts",
+);
 
 class GenerateStrictNamesError extends TaggedError("GenerateStrictNamesError")<{
   message: string;
@@ -67,17 +69,26 @@ const wmlLocalName = (qualifiedName: string | undefined): string | undefined =>
  * A child reached through a `ref` carries its type on the global declaration,
  * so both forms resolve here rather than at each caller.
  */
-const wmlChildTypes = (graph: SchemaGraph, index: Index): Map<string, Map<string, string>> => {
+const wmlChildTypes = (
+  graph: SchemaGraph,
+  index: Index,
+): Map<string, Map<string, string>> => {
   const byOwner = new Map<string, Map<string, string>>();
   for (const child of graph.children) {
     if (child.kind !== "element") {
       continue;
     }
-    const declared = child.ref ? index.byId.get(`element:${child.ref}`) : undefined;
+    const declared = child.ref
+      ? index.byId.get(`element:${child.ref}`)
+      : undefined;
     const namespace = declared?.namespace ?? child.namespace;
     const name = declared?.name ?? child.name;
     const type = wmlLocalName(declared?.type ?? child.type);
-    if (namespace !== WML_NAMESPACE || name === undefined || type === undefined) {
+    if (
+      namespace !== WML_NAMESPACE ||
+      name === undefined ||
+      type === undefined
+    ) {
       continue;
     }
     const children = byOwner.get(child.owner) ?? new Map<string, string>();
@@ -132,7 +143,10 @@ const collectSites = (graph: SchemaGraph, index: Index): Site[] => {
       continue;
     }
     const declared = new Map(
-      attributesOf(index, symbol.id).map((attribute) => [attribute.name, attribute.type]),
+      attributesOf(index, symbol.id).map((attribute) => [
+        attribute.name,
+        attribute.type,
+      ]),
     );
     bothSpellings(declared, (rename, strictType, transitionalType) => {
       if (strictType !== transitionalType) {
@@ -198,7 +212,9 @@ const collectEntries = (sites: readonly Site[]): Entry[] => {
     }
   }
 
-  return [...byKey.values()].toSorted((left, right) => (left.key < right.key ? -1 : 1));
+  return [...byKey.values()].toSorted((left, right) =>
+    left.key < right.key ? -1 : 1,
+  );
 };
 
 /** A rename's direction is only as good as the source it cites. */
@@ -225,11 +241,17 @@ const renderModule = (entries: readonly Entry[]): string => {
   );
   const byTransitional = new Map<string, string[]>();
   for (const { strict, transitionalKey } of entries) {
-    byTransitional.set(transitionalKey, [...(byTransitional.get(transitionalKey) ?? []), strict]);
+    byTransitional.set(transitionalKey, [
+      ...(byTransitional.get(transitionalKey) ?? []),
+      strict,
+    ]);
   }
   const transitionalNames = [...byTransitional.entries()]
     .toSorted(([left], [right]) => (left < right ? -1 : 1))
-    .map(([key, spellings]) => `  "${key}": [${spellings.map((name) => `"${name}"`).join(", ")}],`);
+    .map(
+      ([key, spellings]) =>
+        `  "${key}": [${spellings.map((name) => `"${name}"`).join(", ")}],`,
+    );
 
   return `/**
  * GENERATED FILE — do not edit.
@@ -269,7 +291,8 @@ export type RenamedSlot = keyof typeof STRICT_NAMES_BY_TRANSITIONAL_NAME;
 `;
 };
 
-const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+const digest = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
 
 const main = async (): Promise<void> => {
   const mode = process.argv.at(2) ?? "write";
@@ -297,14 +320,17 @@ const main = async (): Promise<void> => {
   const rendered = renderModule(entries);
   if (mode === "write") {
     await writeFile(OUTPUT_PATH, rendered, "utf8");
-    process.stdout.write(`strictNames.gen.ts written (${entries.length} renamed slots)\n`);
+    process.stdout.write(
+      `strictNames.gen.ts written (${entries.length} renamed slots)\n`,
+    );
     return;
   }
 
   const existing = await readFile(OUTPUT_PATH, "utf8").catch(() => null);
   if (existing === null || digest(existing) !== digest(rendered)) {
     throw new GenerateStrictNamesError({
-      message: "strictNames.gen.ts is stale. Run `bun run generate:strict-names`.",
+      message:
+        "strictNames.gen.ts is stale. Run `bun run generate:strict-names`.",
     });
   }
   process.stdout.write("strictNames.gen.ts is up to date\n");

@@ -1,14 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { DocumentBody, HeaderFooter, SectionProperties } from "../types/document";
+import type {
+  DocumentBody,
+  HeaderFooter,
+  SectionProperties,
+} from "../types/document";
 import { normalizeHeaderFooterReferences } from "./headerFooterReferenceNormalization";
 import { getParagraphText } from "./paragraphParser";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 describe("normalizeHeaderFooterReferences", () => {
   test("removes dangling section header and footer references", () => {
@@ -42,8 +47,12 @@ describe("normalizeHeaderFooterReferences", () => {
       removedDanglingHeaderReferences: 1,
       removedDanglingFooterReferences: 1,
     });
-    expect(sectionProperties.headerReferences).toEqual([{ type: "default", rId: "rIdHeader" }]);
-    expect(sectionProperties.footerReferences).toEqual([{ type: "default", rId: "rIdFooter" }]);
+    expect(sectionProperties.headerReferences).toEqual([
+      { type: "default", rId: "rIdHeader" },
+    ]);
+    expect(sectionProperties.footerReferences).toEqual([
+      { type: "default", rId: "rIdFooter" },
+    ]);
   });
 
   test("parses and saves documents with dangling footer references", async () => {
@@ -55,7 +64,9 @@ describe("normalizeHeaderFooterReferences", () => {
     if (block?.type !== "paragraph") {
       throw new Error("Expected first block to be a paragraph");
     }
-    expect(block.sectionProperties?.footerReferences).toEqual([{ type: "default", rId: "rId1" }]);
+    expect(block.sectionProperties?.footerReferences).toEqual([
+      { type: "default", rId: "rId1" },
+    ]);
     expect(doc.warnings).toContain(
       "Removed 1 dangling footer reference whose footer parts are missing.",
     );
@@ -84,8 +95,12 @@ describe("normalizeHeaderFooterReferences", () => {
     if (block?.type !== "paragraph") {
       throw new Error("Expected first block to be a paragraph");
     }
-    expect(block.sectionProperties?.headerReferences).toEqual([{ type: "default", rId: "rId1" }]);
-    expect(block.sectionProperties?.footerReferences).toEqual([{ type: "default", rId: "rId2" }]);
+    expect(block.sectionProperties?.headerReferences).toEqual([
+      { type: "default", rId: "rId1" },
+    ]);
+    expect(block.sectionProperties?.footerReferences).toEqual([
+      { type: "default", rId: "rId2" },
+    ]);
     expect(doc.warnings ?? []).not.toContain(
       "Removed 1 dangling header reference whose header parts are missing.",
     );
@@ -197,11 +212,12 @@ const createDanglingFooterReferenceFixture = async (): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const createNonNumberedHeaderFooterReferenceFixture = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
-    "[Content_Types].xml",
-    `${XML_DECLARATION}
+const createNonNumberedHeaderFooterReferenceFixture =
+  async (): Promise<ArrayBuffer> => {
+    const zip = new JSZip();
+    zip.file(
+      "[Content_Types].xml",
+      `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
@@ -209,25 +225,25 @@ const createNonNumberedHeaderFooterReferenceFixture = async (): Promise<ArrayBuf
   <Override PartName="/word/customHeaders/defaultHeader.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
   <Override PartName="/word/customFooters/defaultFooter.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>`,
-  );
-  zip.file(
-    "_rels/.rels",
-    `${XML_DECLARATION}
+    );
+    zip.file(
+      "_rels/.rels",
+      `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
-  );
-  zip.file(
-    "word/_rels/document.xml.rels",
-    `${XML_DECLARATION}
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.header}" Target="customHeaders/defaultHeader.xml"/>
   <Relationship Id="rId2" Type="${RELATIONSHIP_TYPES.footer}" Target="customFooters/defaultFooter.xml"/>
 </Relationships>`,
-  );
-  zip.file(
-    "word/document.xml",
-    `${XML_DECLARATION}
+    );
+    zip.file(
+      "word/document.xml",
+      `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
     <w:p>
@@ -241,23 +257,23 @@ const createNonNumberedHeaderFooterReferenceFixture = async (): Promise<ArrayBuf
     </w:p>
   </w:body>
 </w:document>`,
-  );
-  zip.file(
-    "word/customHeaders/defaultHeader.xml",
-    `${XML_DECLARATION}
+    );
+    zip.file(
+      "word/customHeaders/defaultHeader.xml",
+      `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p><w:r><w:t>Header</w:t></w:r></w:p>
 </w:hdr>`,
-  );
-  zip.file(
-    "word/customFooters/defaultFooter.xml",
-    `${XML_DECLARATION}
+    );
+    zip.file(
+      "word/customFooters/defaultFooter.xml",
+      `${XML_DECLARATION}
 <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p><w:r><w:t>Footer</w:t></w:r></w:p>
 </w:ftr>`,
-  );
-  return zip.generateAsync({ type: "arraybuffer" });
-};
+    );
+    return zip.generateAsync({ type: "arraybuffer" });
+  };
 
 const createCollidingHeaderBasenameFixture = async (): Promise<ArrayBuffer> => {
   const zip = new JSZip();

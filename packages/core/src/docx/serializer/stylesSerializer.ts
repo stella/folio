@@ -1,13 +1,14 @@
+import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
+
 import type { Style, StyleDefinitions } from "../../types/document";
-import { serializePartElement } from "./partNamespaces";
 import { serializeParagraphFormatting } from "./paragraphSerializer";
-import { serializeTextFormatting } from "./textFormattingSerializer";
+import { serializePartElement } from "./partNamespaces";
 import {
   serializeTableCellFormatting,
   serializeTableFormatting,
   serializeTableRowFormatting,
 } from "./tableSerializer";
-import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 
 export const serializeStylesXml = (definitions: StyleDefinitions): string => {
   const docDefaults = serializeDocumentDefaults(definitions);
@@ -27,8 +28,10 @@ export const serializeStylesXml = (definitions: StyleDefinitions): string => {
 
 const serializeDocumentDefaults = (definitions: StyleDefinitions): string => {
   const rPr = serializeTextFormatting(definitions.docDefaults?.rPr);
-  const rPrDefault = rPr === "" ? "<w:rPrDefault/>" : `<w:rPrDefault>${rPr}</w:rPrDefault>`;
-  const pPr = serializeParagraphFormatting(definitions.docDefaults?.pPr) || "<w:pPr/>";
+  const rPrDefault =
+    rPr === "" ? "<w:rPrDefault/>" : `<w:rPrDefault>${rPr}</w:rPrDefault>`;
+  const pPr =
+    serializeParagraphFormatting(definitions.docDefaults?.pPr) || "<w:pPr/>";
   return `<w:docDefaults>${rPrDefault}<w:pPrDefault>${pPr}</w:pPrDefault></w:docDefaults>`;
 };
 
@@ -49,11 +52,16 @@ const serializeLatentStyles = (definitions: StyleDefinitions): string => {
 };
 
 export const serializeStyle = (style: Style): string => {
-  const attrs = [`w:type="${style.type}"`, `w:styleId="${escapeXmlAttribute(style.styleId)}"`];
+  const attrs = [
+    `w:type="${style.type}"`,
+    `w:styleId="${escapeXmlAttribute(style.styleId)}"`,
+  ];
   if (style.default) {
     attrs.push('w:default="1"');
   }
-  const parts = [`<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`];
+  const parts = [
+    `<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`,
+  ];
   if (style.basedOn) {
     parts.push(`<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>`);
   }
@@ -84,7 +92,11 @@ export const serializeStyle = (style: Style): string => {
   return `<w:style ${attrs.join(" ")}>${parts.join("")}</w:style>`;
 };
 
-const pushBooleanAttr = (attrs: string[], name: string, value: boolean | undefined): void => {
+const pushBooleanAttr = (
+  attrs: string[],
+  name: string,
+  value: boolean | undefined,
+): void => {
   if (value !== undefined) {
     attrs.push(`${name}="${value ? 1 : 0}"`);
   }

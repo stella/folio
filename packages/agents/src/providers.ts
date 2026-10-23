@@ -28,7 +28,9 @@ export type OpenAIToolDefinition = {
 };
 
 /** Map folio's provider-neutral tool definitions onto OpenAI's function-tool shape. */
-export const toOpenAITools = (definitions: FolioAgentToolDefinition[]): OpenAIToolDefinition[] =>
+export const toOpenAITools = (
+  definitions: FolioAgentToolDefinition[],
+): OpenAIToolDefinition[] =>
   definitions.map((definition) => ({
     type: "function",
     function: {

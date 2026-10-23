@@ -42,7 +42,10 @@ export const normalizeFontName = (name: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
 
-export const observedSatisfiesRequested = (observed: string, requested: string): boolean => {
+export const observedSatisfiesRequested = (
+  observed: string,
+  requested: string,
+): boolean => {
   if (!observed.startsWith(requested)) return false;
   return PDF_FONT_STYLE_SUFFIXES.has(observed.slice(requested.length));
 };
@@ -50,9 +53,15 @@ export const observedSatisfiesRequested = (observed: string, requested: string):
 /** Whether two renderer-reported names identify the same font family. PDF
  * PostScript names commonly carry style suffixes (`ArialMT`,
  * `Calibri-Bold`), while CSS reports the undecorated family. */
-export const fontFamiliesMatch = (leftRaw: string, rightRaw: string): boolean => {
+export const fontFamiliesMatch = (
+  leftRaw: string,
+  rightRaw: string,
+): boolean => {
   const left = normalizeFontName(leftRaw);
   const right = normalizeFontName(rightRaw);
   if (left.length === 0 || right.length === 0) return false;
-  return observedSatisfiesRequested(left, right) || observedSatisfiesRequested(right, left);
+  return (
+    observedSatisfiesRequested(left, right) ||
+    observedSatisfiesRequested(right, left)
+  );
 };

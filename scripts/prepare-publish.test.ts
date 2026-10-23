@@ -1,19 +1,30 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 test("publish preparation maps source, asset and private exports to dist", async () => {
-  const packageRoot = await realpath(await mkdtemp(path.join(tmpdir(), "folio-prepare-publish-")));
+  const packageRoot = await realpath(
+    await mkdtemp(path.join(tmpdir(), "folio-prepare-publish-")),
+  );
   try {
     await mkdir(path.join(packageRoot, "dist"));
     await writeFile(path.join(packageRoot, "dist/index.js"), "export {};\n");
     await writeFile(path.join(packageRoot, "dist/index.d.ts"), "export {};\n");
-    await writeFile(path.join(packageRoot, "dist/documentClone.js"), "export {};\n");
-    await writeFile(path.join(packageRoot, "dist/documentClone.d.ts"), "export {};\n");
+    await writeFile(
+      path.join(packageRoot, "dist/documentClone.js"),
+      "export {};\n",
+    );
+    await writeFile(
+      path.join(packageRoot, "dist/documentClone.d.ts"),
+      "export {};\n",
+    );
     await mkdir(path.join(packageRoot, "dist/generated"));
-    await writeFile(path.join(packageRoot, "dist/generated/artifact_bg.wasm"), "");
+    await writeFile(
+      path.join(packageRoot, "dist/generated/artifact_bg.wasm"),
+      "",
+    );
     await writeFile(
       path.join(packageRoot, "package.json"),
       `${JSON.stringify(
@@ -35,11 +46,17 @@ test("publish preparation maps source, asset and private exports to dist", async
     );
 
     const result = Bun.spawnSync(
-      [process.execPath, path.join(import.meta.dir, "prepare-publish.ts"), packageRoot],
+      [
+        process.execPath,
+        path.join(import.meta.dir, "prepare-publish.ts"),
+        packageRoot,
+      ],
       { stderr: "pipe", stdout: "pipe" },
     );
     expect(result.exitCode).toBe(0);
-    const manifest = await Bun.file(path.join(packageRoot, "package.json")).json();
+    const manifest = await Bun.file(
+      path.join(packageRoot, "package.json"),
+    ).json();
 
     expect(manifest.exports["./private"]).toBeNull();
     expect(manifest.exports["./document-clone"]).toEqual({
@@ -52,8 +69,12 @@ test("publish preparation maps source, asset and private exports to dist", async
     expect(require.resolve("@stll/fixture/document-clone")).toBe(
       path.join(packageRoot, "dist/documentClone.js"),
     );
-    expect(require.resolve("@stll/fixture/index")).toBe(path.join(packageRoot, "dist/index.js"));
-    expect(manifest.exports["./artifact/wasm"]).toBe("./dist/generated/artifact_bg.wasm");
+    expect(require.resolve("@stll/fixture/index")).toBe(
+      path.join(packageRoot, "dist/index.js"),
+    );
+    expect(manifest.exports["./artifact/wasm"]).toBe(
+      "./dist/generated/artifact_bg.wasm",
+    );
     expect(manifest.exports["./*"]).toEqual({
       types: "./dist/*.d.ts",
       import: "./dist/*.js",

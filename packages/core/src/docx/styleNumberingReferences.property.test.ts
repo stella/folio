@@ -25,12 +25,17 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { extractDocumentStyleSet } from "../style-sets/extract";
 import type { Document, Style } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { NO_NUMBERING_NUM_ID, NO_PARAGRAPH_NUMBERING } from "./numberingReference";
+import {
+  NO_NUMBERING_NUM_ID,
+  NO_PARAGRAPH_NUMBERING,
+} from "./numberingReference";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx } from "./rezip";
@@ -69,7 +74,9 @@ const numberingArbitrary = (
   fc.oneof(
     ...kinds.map((kind) =>
       kind === "reference"
-        ? fc.constantFrom(...numIds).map<StyleNumbering>((numId) => ({ kind: "reference", numId }))
+        ? fc
+            .constantFrom(...numIds)
+            .map<StyleNumbering>((numId) => ({ kind: "reference", numId }))
         : fc.constant<StyleNumbering>({ kind }),
     ),
   );
@@ -99,7 +106,10 @@ const stylePackageArbitrary = (
  * The numbering a style ends up with. `w:numId` and `w:ilvl` inherit per field
  * through `w:basedOn`, so a style that states no `w:numPr` carries its parent's.
  */
-const effectiveNumbering = (styles: StylePackage["styles"], index: number): StyleNumbering => {
+const effectiveNumbering = (
+  styles: StylePackage["styles"],
+  index: number,
+): StyleNumbering => {
   const entry = styles[index];
   if (entry === undefined) {
     throw new Error("style index is outside the generated package");
@@ -152,14 +162,19 @@ const documentFor = ({ numIds, styles }: StylePackage): Document => ({
         return {
           styleId: styleIdAt(index),
           type: "paragraph",
-          ...(basedOnIndex === null ? {} : { basedOn: styleIdAt(basedOnIndex) }),
+          ...(basedOnIndex === null
+            ? {}
+            : { basedOn: styleIdAt(basedOnIndex) }),
           ...(pPr === undefined ? {} : { pPr }),
         };
       }),
     },
     numbering: {
       abstractNums: [
-        { abstractNumId: 0, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+        {
+          abstractNumId: 0,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
       ],
       nums: numIds.map((numId) => ({ numId, abstractNumId: 0 })),
     },
@@ -175,7 +190,9 @@ const styleIdsWhere = (
   { styles }: StylePackage,
   predicate: (style: StylePackage["styles"][number], index: number) => boolean,
 ): string[] =>
-  styles.flatMap((style, index) => (predicate(style, index) ? [styleIdAt(index)] : []));
+  styles.flatMap((style, index) =>
+    predicate(style, index) ? [styleIdAt(index)] : [],
+  );
 
 /** The serialized `<w:style>` element for one style id. */
 const styleElement = (stylesXml: string, styleId: string): string => {
@@ -191,39 +208,51 @@ describe("createDocx style numbering (property)", () => {
     "carries every style numbering through unchanged, sentinel included",
     async () => {
       await fc.assert(
-        fc.asyncProperty(stylePackageArbitrary(FOLIO_BUILT_KINDS), async (stylePackage) => {
-          const zip = await JSZip.loadAsync(await createDocx(documentFor(stylePackage)));
-          const stylesXml = await zip.file("word/styles.xml")?.async("text");
-          const numberingXml = await zip.file("word/numbering.xml")?.async("text");
-          expect(stylesXml).toBeDefined();
-          expect(numberingXml).toBeDefined();
+        fc.asyncProperty(
+          stylePackageArbitrary(FOLIO_BUILT_KINDS),
+          async (stylePackage) => {
+            const zip = await JSZip.loadAsync(
+              await createDocx(documentFor(stylePackage)),
+            );
+            const stylesXml = await zip.file("word/styles.xml")?.async("text");
+            const numberingXml = await zip
+              .file("word/numbering.xml")
+              ?.async("text");
+            expect(stylesXml).toBeDefined();
+            expect(numberingXml).toBeDefined();
 
-          for (const [index, { numbering }] of stylePackage.styles.entries()) {
-            const element = styleElement(stylesXml ?? "", styleIdAt(index));
-            switch (numbering.kind) {
-              case "none": {
-                expect(element).not.toContain("<w:numPr>");
-                break;
-              }
-              case "sentinel": {
-                expect(element).toContain('<w:numId w:val="0"/>');
-                break;
-              }
-              case "reference": {
-                const numId = String(numbering.numId);
-                expect(element).toContain(`<w:numId w:val="${numId}"/>`);
-                expect(numberingXml).toContain(`<w:num w:numId="${numId}">`);
-                break;
-              }
-              case "dangling": {
-                throw new Error("a Folio-built package cannot carry a dangling reference");
-              }
-              default: {
-                numbering satisfies never;
+            for (const [
+              index,
+              { numbering },
+            ] of stylePackage.styles.entries()) {
+              const element = styleElement(stylesXml ?? "", styleIdAt(index));
+              switch (numbering.kind) {
+                case "none": {
+                  expect(element).not.toContain("<w:numPr>");
+                  break;
+                }
+                case "sentinel": {
+                  expect(element).toContain('<w:numId w:val="0"/>');
+                  break;
+                }
+                case "reference": {
+                  const numId = String(numbering.numId);
+                  expect(element).toContain(`<w:numId w:val="${numId}"/>`);
+                  expect(numberingXml).toContain(`<w:num w:numId="${numId}">`);
+                  break;
+                }
+                case "dangling": {
+                  throw new Error(
+                    "a Folio-built package cannot carry a dangling reference",
+                  );
+                }
+                default: {
+                  numbering satisfies never;
+                }
               }
             }
-          }
-        }),
+          },
+        ),
         propertyConfig({ numRuns: 60 }),
       );
     },
@@ -236,54 +265,71 @@ describe("source style numbering through parse and extraction (property)", () =>
     "unnumbers every dangling style once and saves without a panic",
     async () => {
       await fc.assert(
-        fc.asyncProperty(stylePackageArbitrary(SOURCE_KINDS), async (stylePackage) => {
-          const document = await parseDocx(await docxFor(stylePackage), { preloadFonts: false });
+        fc.asyncProperty(
+          stylePackageArbitrary(SOURCE_KINDS),
+          async (stylePackage) => {
+            const document = await parseDocx(await docxFor(stylePackage), {
+              preloadFonts: false,
+            });
 
-          // Sound and complete, once each: a style that states a dangling
-          // reference is reported, no style is reported twice, and nothing is
-          // reported whose numbering resolves. A style that only inherits a
-          // dangling reference shares its parent's properties, so whether it is
-          // reported on its own is an implementation detail, not an invariant.
-          const reported = (document.warnings ?? []).filter((warning) =>
-            warning.startsWith(UNNUMBERED_STYLE_PREFIX),
-          );
-          expect(reported).toEqual([...new Set(reported)]);
-          expect(reported).toEqual(
-            expect.arrayContaining(
-              styleIdsWhere(stylePackage, ({ numbering }) => numbering.kind === "dangling").map(
-                unnumberedStyleWarning,
+            // Sound and complete, once each: a style that states a dangling
+            // reference is reported, no style is reported twice, and nothing is
+            // reported whose numbering resolves. A style that only inherits a
+            // dangling reference shares its parent's properties, so whether it is
+            // reported on its own is an implementation detail, not an invariant.
+            const reported = (document.warnings ?? []).filter((warning) =>
+              warning.startsWith(UNNUMBERED_STYLE_PREFIX),
+            );
+            expect(reported).toEqual([...new Set(reported)]);
+            expect(reported).toEqual(
+              expect.arrayContaining(
+                styleIdsWhere(
+                  stylePackage,
+                  ({ numbering }) => numbering.kind === "dangling",
+                ).map(unnumberedStyleWarning),
               ),
-            ),
-          );
-          const reportable = styleIdsWhere(
-            stylePackage,
-            (_style, index) => effectiveNumbering(stylePackage.styles, index).kind === "dangling",
-          ).map(unnumberedStyleWarning);
-          for (const warning of reported) {
-            expect(reportable).toContain(warning);
-          }
-
-          const styleSet = extractDocumentStyleSet(document, { name: "Extracted" });
-          const zip = await JSZip.loadAsync(await createDocx(createEmptyDocument({ styleSet })));
-          const stylesXml = (await zip.file("word/styles.xml")?.async("text")) ?? "";
-          const numberingXml = (await zip.file("word/numbering.xml")?.async("text")) ?? "";
-
-          for (const [index] of stylePackage.styles.entries()) {
-            const numbering = effectiveNumbering(stylePackage.styles, index);
-            const element = styleElement(stylesXml, styleIdAt(index));
-            if (numbering.kind === "none") {
-              expect(element).not.toContain("<w:numPr>");
-              continue;
+            );
+            const reportable = styleIdsWhere(
+              stylePackage,
+              (_style, index) =>
+                effectiveNumbering(stylePackage.styles, index).kind ===
+                "dangling",
+            ).map(unnumberedStyleWarning);
+            for (const warning of reported) {
+              expect(reportable).toContain(warning);
             }
-            // A dangling reference comes out as the sentinel: unnumbered, and
-            // not reopened to the parent's list by a deleted <w:numPr>.
-            const numId = numbering.kind === "dangling" ? 0 : numIdFor(numbering, index);
-            expect(element).toContain(`<w:numId w:val="${String(numId)}"/>`);
-            if (numId !== NO_NUMBERING_NUM_ID) {
-              expect(numberingXml).toContain(`<w:num w:numId="${String(numId)}">`);
+
+            const styleSet = extractDocumentStyleSet(document, {
+              name: "Extracted",
+            });
+            const zip = await JSZip.loadAsync(
+              await createDocx(createEmptyDocument({ styleSet })),
+            );
+            const stylesXml =
+              (await zip.file("word/styles.xml")?.async("text")) ?? "";
+            const numberingXml =
+              (await zip.file("word/numbering.xml")?.async("text")) ?? "";
+
+            for (const [index] of stylePackage.styles.entries()) {
+              const numbering = effectiveNumbering(stylePackage.styles, index);
+              const element = styleElement(stylesXml, styleIdAt(index));
+              if (numbering.kind === "none") {
+                expect(element).not.toContain("<w:numPr>");
+                continue;
+              }
+              // A dangling reference comes out as the sentinel: unnumbered, and
+              // not reopened to the parent's list by a deleted <w:numPr>.
+              const numId =
+                numbering.kind === "dangling" ? 0 : numIdFor(numbering, index);
+              expect(element).toContain(`<w:numId w:val="${String(numId)}"/>`);
+              if (numId !== NO_NUMBERING_NUM_ID) {
+                expect(numberingXml).toContain(
+                  `<w:num w:numId="${String(numId)}">`,
+                );
+              }
             }
-          }
-        }),
+          },
+        ),
         propertyConfig({ numRuns: 40 }),
       );
     },
@@ -291,7 +337,8 @@ describe("source style numbering through parse and extraction (property)", () =>
   );
 });
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const stylesXmlFor = ({ styles }: StylePackage): string =>
   `${XML_DECLARATION}
@@ -300,7 +347,9 @@ const stylesXmlFor = ({ styles }: StylePackage): string =>
   ${styles
     .map(({ basedOnIndex, numbering }, index) => {
       const basedOn =
-        basedOnIndex === null ? "" : `<w:basedOn w:val="${styleIdAt(basedOnIndex)}"/>`;
+        basedOnIndex === null
+          ? ""
+          : `<w:basedOn w:val="${styleIdAt(basedOnIndex)}"/>`;
       const pPr =
         numbering.kind === "none"
           ? ""
@@ -317,7 +366,10 @@ const numberingXmlFor = ({ numIds }: StylePackage): string =>
     <w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
   </w:abstractNum>
   ${numIds
-    .map((numId) => `<w:num w:numId="${String(numId)}"><w:abstractNumId w:val="0"/></w:num>`)
+    .map(
+      (numId) =>
+        `<w:num w:numId="${String(numId)}"><w:abstractNumId w:val="0"/></w:num>`,
+    )
     .join("")}
 </w:numbering>`;
 

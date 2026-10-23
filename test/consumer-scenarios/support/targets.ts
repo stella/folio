@@ -10,12 +10,15 @@
  * existed, so a flow on the legacy generator replays its seed unchanged.
  */
 
+import type {
+  FolioAIBlock,
+  FolioAIParagraphBlock,
+} from "@stll/folio-core/ai-edits";
 import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
-import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
 import type { openReviewer } from "./documents.ts";
-import type { Random } from "./random.ts";
 import { weightedChoice } from "./feature-coverage.ts";
+import type { Random } from "./random.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -65,14 +68,24 @@ export const FEATURES: readonly Feature[] = [
 export type TargetBlock =
   | Pick<
       FolioAIParagraphBlock,
-      "id" | "text" | "table" | "previewRuns" | "kind" | "listReference" | "structuralBoundaries"
+      | "id"
+      | "text"
+      | "table"
+      | "previewRuns"
+      | "kind"
+      | "listReference"
+      | "structuralBoundaries"
     >
   | Pick<
       Extract<FolioAIBlock, { kind: "diagnostic" }>,
       "id" | "text" | "table" | "previewRuns" | "kind"
     >;
 
-type TableLocation = { tableIndex: number; rowIndex: number; cellIndex: number };
+type TableLocation = {
+  tableIndex: number;
+  rowIndex: number;
+  cellIndex: number;
+};
 
 /** Every block's features, for one story of one reviewer state. */
 export type FeatureIndex = {
@@ -86,7 +99,10 @@ export type FeatureIndex = {
   inTextBox: ReadonlySet<string>;
 };
 
-const collectNoteReferences = (node: unknown, into: FolioDocumentStoryHandle[]): void => {
+const collectNoteReferences = (
+  node: unknown,
+  into: FolioDocumentStoryHandle[],
+): void => {
   if (Array.isArray(node)) {
     for (const item of node) collectNoteReferences(item, into);
     return;
@@ -103,7 +119,8 @@ const collectNoteReferences = (node: unknown, into: FolioDocumentStoryHandle[]):
   }
   for (const [key, value] of Object.entries(node)) {
     if (key === "rawXml" || key === "verbatimXml") continue;
-    if (isRecord(value) || Array.isArray(value)) collectNoteReferences(value, into);
+    if (isRecord(value) || Array.isArray(value))
+      collectNoteReferences(value, into);
   }
 };
 
@@ -180,13 +197,20 @@ const collectFeatures = (node: unknown, into: Set<Feature>): void => {
     return;
   }
   if (!isRecord(node)) return;
-  const feature = typeof node["type"] === "string" ? NODE_FEATURES[node["type"]] : undefined;
+  const feature =
+    typeof node["type"] === "string" ? NODE_FEATURES[node["type"]] : undefined;
   if (feature) into.add(feature);
   if (node["pPrMark"] !== undefined) into.add("pendingRevision");
-  if (Array.isArray(node["contentControls"]) && node["contentControls"].length > 0) {
+  if (
+    Array.isArray(node["contentControls"]) &&
+    node["contentControls"].length > 0
+  ) {
     into.add("contentControl");
   }
-  if (Array.isArray(node["propertyChanges"]) && node["propertyChanges"].length > 0) {
+  if (
+    Array.isArray(node["propertyChanges"]) &&
+    node["propertyChanges"].length > 0
+  ) {
     into.add("pendingRevision");
   }
   for (const [key, value] of Object.entries(node)) {
@@ -217,10 +241,14 @@ export const paragraphFeatures = (
       collectFeatures(node["content"], features);
       if (controlled) features.add("contentControl");
       if (node["pPrMark"] !== undefined) features.add("pendingRevision");
-      if (Array.isArray(node["propertyChanges"]) && node["propertyChanges"].length > 0) {
+      if (
+        Array.isArray(node["propertyChanges"]) &&
+        node["propertyChanges"].length > 0
+      ) {
         features.add("pendingRevision");
       }
-      if (node["sectionProperties"] !== undefined) features.add("sectionCarrier");
+      if (node["sectionProperties"] !== undefined)
+        features.add("sectionCarrier");
       into.set(node["paraId"].toUpperCase(), features);
     }
     const box = boxed || node["type"] === "shape" || node["type"] === "textBox";
@@ -233,7 +261,10 @@ export const paragraphFeatures = (
 };
 
 /** The model content of one story. */
-const storyContent = (reviewer: Reviewer, story: FolioDocumentStoryHandle): unknown => {
+const storyContent = (
+  reviewer: Reviewer,
+  story: FolioDocumentStoryHandle,
+): unknown => {
   const pkg = reviewer.toDocument().package;
   switch (story.type) {
     case "main":
@@ -256,14 +287,21 @@ export const blocksOfStory = (
   reviewer: Reviewer,
   story: FolioDocumentStoryHandle = { type: "main" },
 ): readonly FolioAIBlock[] =>
-  story.type === "main" ? reviewer.getContent() : (reviewer.snapshotStory(story)?.blocks ?? []);
+  story.type === "main"
+    ? reviewer.getContent()
+    : (reviewer.snapshotStory(story)?.blocks ?? []);
 
-const tableEdge = (block: TargetBlock, blocks: readonly TargetBlock[]): boolean => {
+const tableEdge = (
+  block: TargetBlock,
+  blocks: readonly TargetBlock[],
+): boolean => {
   const at = block.table as TableLocation | undefined;
   if (!at) return false;
   const same = blocks
     .map((candidate) => candidate.table as TableLocation | undefined)
-    .filter((location) => location?.tableIndex === at.tableIndex) as TableLocation[];
+    .filter(
+      (location) => location?.tableIndex === at.tableIndex,
+    ) as TableLocation[];
   const rows = same.map((location) => location.rowIndex);
   const cells = same
     .filter((location) => location.rowIndex === at.rowIndex)
@@ -288,7 +326,8 @@ export const featureIndex = (
   const pending = new Set<string>();
   const anchored = new Set<string>();
   if (story.type === "main") {
-    for (const change of reviewer.getChanges()) if (change.blockId) pending.add(change.blockId);
+    for (const change of reviewer.getChanges())
+      if (change.blockId) pending.add(change.blockId);
     for (const comment of reviewer.getComments())
       if (comment.blockId) anchored.add(comment.blockId);
   }
@@ -309,7 +348,11 @@ export const featureIndex = (
         if (block.listReference !== undefined || block.kind === "listItem") {
           found.add("listItem");
         }
-        if (block.structuralBoundaries?.some((boundary) => boundary.type === "noteReference")) {
+        if (
+          block.structuralBoundaries?.some(
+            (boundary) => boundary.type === "noteReference",
+          )
+        ) {
           found.add("noteReference");
         }
         break;
@@ -335,7 +378,8 @@ export const featureIndex = (
   ] as const) {
     for (const note of notes ?? []) {
       const handle = { type, noteId: note.id };
-      for (const blockId of paragraphIds(note.content)) noteStoryByBlockId.set(blockId, handle);
+      for (const blockId of paragraphIds(note.content))
+        noteStoryByBlockId.set(blockId, handle);
     }
   }
   return {
@@ -360,10 +404,15 @@ export const wordsOf = (text: string): Span[] =>
   }));
 
 /** The UTF-16 ranges of the user-perceived characters that hold an astral code point. */
-export const astralGraphemes = (text: string): { start: number; end: number }[] =>
+export const astralGraphemes = (
+  text: string,
+): { start: number; end: number }[] =>
   [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(text)]
     .filter(({ segment }) => ASTRAL.test(segment))
-    .map(({ segment, index }) => ({ start: index, end: index + segment.length }));
+    .map(({ segment, index }) => ({
+      start: index,
+      end: index + segment.length,
+    }));
 
 /**
  * The offsets of `block` where something ends and something else starts: run
@@ -379,9 +428,12 @@ export const boundariesOf = (block: TargetBlock): number[] => {
       points.add(offset);
     }
   }
-  for (const boundary of block.kind === "diagnostic" ? [] : (block.structuralBoundaries ?? [])) {
+  for (const boundary of block.kind === "diagnostic"
+    ? []
+    : (block.structuralBoundaries ?? [])) {
     points.add(boundary.offset);
-    if (boundary.type === "noteReference") points.add(boundary.offset + boundary.length);
+    if (boundary.type === "noteReference")
+      points.add(boundary.offset + boundary.length);
   }
   for (const { start, end } of astralGraphemes(block.text)) {
     points.add(start);
@@ -393,7 +445,11 @@ export const boundariesOf = (block: TargetBlock): number[] => {
 };
 
 /** Whether `[start, end)` begins or ends right beside an astral character. */
-export const touchesSurrogate = (text: string, start: number, end: number): boolean =>
+export const touchesSurrogate = (
+  text: string,
+  start: number,
+  end: number,
+): boolean =>
   astralGraphemes(text).some(
     (grapheme) =>
       grapheme.start === start ||
@@ -407,10 +463,15 @@ const edgeSpans = (block: TargetBlock): Span[] => {
   const words = wordsOf(block.text);
   const spans: Span[] = [];
   for (const point of boundariesOf(block)) {
-    const before = words.findLast((word) => word.start + word.word.length <= point);
+    const before = words.findLast(
+      (word) => word.start + word.word.length <= point,
+    );
     const after = words.find((word) => word.start >= point);
     if (before)
-      spans.push(before, { word: block.text.slice(before.start, point), start: before.start });
+      spans.push(before, {
+        word: block.text.slice(before.start, point),
+        start: before.start,
+      });
     if (after) {
       spans.push(after, {
         word: block.text.slice(point, after.start + after.word.length),
@@ -418,10 +479,15 @@ const edgeSpans = (block: TargetBlock): Span[] => {
       });
     }
   }
-  for (const boundary of block.kind === "diagnostic" ? [] : (block.structuralBoundaries ?? [])) {
+  for (const boundary of block.kind === "diagnostic"
+    ? []
+    : (block.structuralBoundaries ?? [])) {
     if (boundary.type === "noteReference" && boundary.length) {
       spans.push({
-        word: block.text.slice(boundary.offset, boundary.offset + boundary.length),
+        word: block.text.slice(
+          boundary.offset,
+          boundary.offset + boundary.length,
+        ),
         start: boundary.offset,
       });
     }
@@ -471,7 +537,8 @@ export const biasedPicker = (random: Random, options: BiasOptions): Picker => {
   const share = options.uniform ?? 0.25;
   const recent = new Set(options.recent.slice(-6));
   const featured = (block: TargetBlock) =>
-    (options.index.features.get(block.id)?.size ?? 0) > 0 || options.index.inTextBox.has(block.id);
+    (options.index.features.get(block.id)?.size ?? 0) > 0 ||
+    options.index.inTextBox.has(block.id);
   return {
     block: (candidates) => {
       if (random.chance(share)) return uniform.block(candidates);
@@ -479,20 +546,26 @@ export const biasedPicker = (random: Random, options: BiasOptions): Picker => {
         return weightedChoice(candidates, random, options.coverageWeight);
       }
       const touched = candidates.filter((block) => recent.has(block.id));
-      if (touched.length > 0 && random.chance(0.35)) return random.pick(touched);
+      if (touched.length > 0 && random.chance(0.35))
+        return random.pick(touched);
       const hot = candidates.filter(featured);
       return hot.length > 0 ? random.pick(hot) : uniform.block(candidates);
     },
     span: (block) => {
       const edges = edgeSpans(block);
-      if (edges.length === 0 || random.chance(share)) return uniform.span(block);
+      if (edges.length === 0 || random.chance(share))
+        return uniform.span(block);
       return random.pick(edges);
     },
     split: (block) => {
       const words = wordsOf(block.text);
-      const firstWordEnd = (words[0]?.start ?? 0) + (words[0]?.word.length ?? 0);
-      const points = boundariesOf(block).filter((point) => point >= firstWordEnd);
-      if (points.length === 0 || random.chance(share)) return uniform.split(block);
+      const firstWordEnd =
+        (words[0]?.start ?? 0) + (words[0]?.word.length ?? 0);
+      const points = boundariesOf(block).filter(
+        (point) => point >= firstWordEnd,
+      );
+      if (points.length === 0 || random.chance(share))
+        return uniform.split(block);
       return random.pick(points);
     },
   };

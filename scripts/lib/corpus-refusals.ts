@@ -16,7 +16,7 @@
  * stops reproducing has to be removed.
  */
 
-import type { CorpusCensus, CensusSignature } from "./corpus-census";
+import type { CensusSignature, CorpusCensus } from "./corpus-census";
 
 export type ExpectedRefusalEntry = {
   signature: string;
@@ -44,7 +44,10 @@ export const partitionExpectedRefusals = (
   const defectSignatures: CensusSignature[] = [];
   const refusalSignatures: CensusSignature[] = [];
   for (const signature of census.signatures) {
-    (expected.has(signature.signature) ? refusalSignatures : defectSignatures).push(signature);
+    (expected.has(signature.signature)
+      ? refusalSignatures
+      : defectSignatures
+    ).push(signature);
   }
   return {
     defects: { ...census, signatures: defectSignatures },
@@ -62,11 +65,16 @@ export const refreshedExpectedRefusals = (
   refusals: ExpectedRefusals,
   observed: readonly CensusSignature[],
 ): ExpectedRefusals => {
-  const filesBySignature = new Map(observed.map((entry) => [entry.signature, entry.files]));
+  const filesBySignature = new Map(
+    observed.map((entry) => [entry.signature, entry.files]),
+  );
   return {
     schemaVersion: 1,
     entries: refusals.entries
-      .map((entry) => ({ ...entry, files: filesBySignature.get(entry.signature) ?? 0 }))
+      .map((entry) => ({
+        ...entry,
+        files: filesBySignature.get(entry.signature) ?? 0,
+      }))
       .sort((left, right) => (left.signature < right.signature ? -1 : 1)),
   };
 };
@@ -81,7 +89,9 @@ export const compareToExpectedRefusals = (
   refusals: ExpectedRefusals,
   observed: readonly CensusSignature[],
 ): ExpectedRefusalViolation[] => {
-  const filesBySignature = new Map(observed.map((entry) => [entry.signature, entry.files]));
+  const filesBySignature = new Map(
+    observed.map((entry) => [entry.signature, entry.files]),
+  );
   const violations: ExpectedRefusalViolation[] = [];
   for (const entry of refusals.entries) {
     const files = filesBySignature.get(entry.signature) ?? 0;
@@ -120,7 +130,9 @@ export const renderExpectedRefusals = (
   if (refusals.entries.length === 0) {
     return "";
   }
-  const filesBySignature = new Map(observed.map((entry) => [entry.signature, entry.files]));
+  const filesBySignature = new Map(
+    observed.map((entry) => [entry.signature, entry.files]),
+  );
   return [
     `  expected refusals ${refusals.entries.length}:`,
     ...refusals.entries.flatMap((entry) => [

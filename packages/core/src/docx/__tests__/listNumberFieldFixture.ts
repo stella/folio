@@ -3,10 +3,11 @@
  * reading of saved paragraph markup that does not go through the parser.
  */
 
-import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
+
+import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 import { createHarnessState } from "../../__tests__/editorHarness";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -17,7 +18,8 @@ import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 import { attemptSelectiveSave } from "../selectiveSave";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const CONTENT_TYPES = `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -47,12 +49,17 @@ const CORE_PROPERTIES = `${XML_DECLARATION}
   <dcterms:modified xsi:type="dcterms:W3CDTF">2024-01-01T00:00:00.000Z</dcterms:modified>
 </cp:coreProperties>`;
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** How the host paragraph's own level draws its marker. */
 export type MarkerKind = "decimal" | "percent" | "symbol";
 
-export const MARKER_KINDS: readonly MarkerKind[] = ["decimal", "percent", "symbol"];
+export const MARKER_KINDS: readonly MarkerKind[] = [
+  "decimal",
+  "percent",
+  "symbol",
+];
 
 /** The level-1 marker each kind declares, before any field is folded in. */
 const LEVEL_MARKER: Record<MarkerKind, string> = {
@@ -86,7 +93,8 @@ const numberingXml = (): string => {
       `</w:abstractNum>`,
   ).join("");
   const instances = MARKER_KINDS.map(
-    (_, index) => `<w:num w:numId="${index + 1}"><w:abstractNumId w:val="${index}"/></w:num>`,
+    (_, index) =>
+      `<w:num w:numId="${index + 1}"><w:abstractNumId w:val="${index}"/></w:num>`,
   ).join("");
   return `${XML_DECLARATION}<w:numbering ${W}>${abstracts}${instances}</w:numbering>`;
 };
@@ -125,7 +133,9 @@ const RESULT_PROPERTIES: Record<ResultFormatting, string> = {
 };
 
 const textRun = (text: string): string =>
-  text === "" ? "" : `<w:r><w:t xml:space="preserve">${escapeXmlText(text)}</w:t></w:r>`;
+  text === ""
+    ? ""
+    : `<w:r><w:t xml:space="preserve">${escapeXmlText(text)}</w:t></w:r>`;
 
 const resultRun = (field: FieldSpec): string => {
   // A field that cached nothing has no result run at all.
@@ -134,14 +144,21 @@ const resultRun = (field: FieldSpec): string => {
   }
   const pieces = field.result
     .split("\t")
-    .map((piece) => (piece === "" ? "" : `<w:t xml:space="preserve">${escapeXmlText(piece)}</w:t>`))
+    .map((piece) =>
+      piece === ""
+        ? ""
+        : `<w:t xml:space="preserve">${escapeXmlText(piece)}</w:t>`,
+    )
     .join("<w:tab/>");
   return `<w:r>${RESULT_PROPERTIES[field.formatting]}${pieces}</w:r>`;
 };
 
 type MarkupIds = { next: number; comments: number[] };
 
-const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing: string } => {
+const fieldXml = (
+  field: FieldSpec,
+  ids: MarkupIds,
+): { inline: string; trailing: string } => {
   let gap = "";
   let comment = "";
   let trailing = "";
@@ -196,7 +213,9 @@ export const foldedFieldsOf = (spec: ParagraphSpec): FieldSpec[] => {
     }
     opening.push(field);
   }
-  return opening.some((field) => field.result.replaceAll("\t", "") !== "") ? opening : [];
+  return opening.some((field) => field.result.replaceAll("\t", "") !== "")
+    ? opening
+    : [];
 };
 
 type ParagraphMarkupOptions = {
@@ -268,7 +287,11 @@ export const listNumberFieldDocx = (
 };
 
 export const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
-  const text = await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text");
+  const text = await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/document.xml")
+    ?.async("text");
   if (text === undefined) {
     throw new Error("The package has no word/document.xml");
   }
@@ -310,7 +333,10 @@ export const inlineTokens = (paragraphMarkup: string): string[] => {
 };
 
 /** The markup of the `w:p` carrying `paraId`. */
-export const paragraphMarkupOf = (documentXml: string, paraId: string): string => {
+export const paragraphMarkupOf = (
+  documentXml: string,
+  paraId: string,
+): string => {
   const paragraph = documentXml
     .match(/<w:p[ >].*?<\/w:p>/gsu)
     ?.find((markup) => markup.includes(`w14:paraId="${paraId}"`));
@@ -350,13 +376,19 @@ export const fieldResultsInFile = (tokens: readonly string[]): string => {
 
 const resultOf = (field: ComplexField): string =>
   field.fieldResult
-    .flatMap((run) => run.content.flatMap((piece) => (piece.type === "text" ? [piece.text] : [])))
+    .flatMap((run) =>
+      run.content.flatMap((piece) =>
+        piece.type === "text" ? [piece.text] : [],
+      ),
+    )
     .join("");
 
 const markerSuffixOf = (paragraph: Paragraph): string => {
   const marker = paragraph.listRendering?.marker ?? "";
   const tab = marker.indexOf("\t");
-  return tab === -1 || paragraph.listRendering?.isBullet ? "" : marker.slice(tab + 1);
+  return tab === -1 || paragraph.listRendering?.isBullet
+    ? ""
+    : marker.slice(tab + 1);
 };
 
 /**
@@ -410,7 +442,9 @@ export const foldFaults = (paragraph: Paragraph): string[] => {
       item.type === "moveFrom" ||
       item.type === "moveTo"
     ) {
-      if (item.content.some((child) => foldedListNumberOf(child) !== undefined)) {
+      if (
+        item.content.some((child) => foldedListNumberOf(child) !== undefined)
+      ) {
         faults.push("a capture stands under a tracked change");
       }
     }
@@ -420,7 +454,9 @@ export const foldFaults = (paragraph: Paragraph): string[] => {
   }
   const cached = hidden.filter((text) => text !== "").join(" ");
   if (cached !== markerSuffixOf(paragraph)) {
-    faults.push(`hides "${cached}" and its marker shows "${markerSuffixOf(paragraph)}"`);
+    faults.push(
+      `hides "${cached}" and its marker shows "${markerSuffixOf(paragraph)}"`,
+    );
   }
   return faults;
 };
@@ -437,7 +473,9 @@ export const openDocx = (buffer: ArrayBuffer): Promise<Document> =>
   parseDocx(buffer, { preloadFonts: false, detectVariables: false });
 
 export const bodyParagraphs = (model: Document): Paragraph[] =>
-  model.package.document.content.filter((block): block is Paragraph => block.type === "paragraph");
+  model.package.document.content.filter(
+    (block): block is Paragraph => block.type === "paragraph",
+  );
 
 /** The marker each paragraph is laid out with. */
 export const layoutMarkers = (model: Document): (string | null)[] =>
@@ -447,7 +485,9 @@ export const layoutMarkers = (model: Document): (string | null)[] =>
 
 /** The marker each paragraph's model carries. */
 export const modelMarkers = (model: Document): (string | null)[] =>
-  bodyParagraphs(model).map((paragraph) => paragraph.listRendering?.marker ?? null);
+  bodyParagraphs(model).map(
+    (paragraph) => paragraph.listRendering?.marker ?? null,
+  );
 
 /**
  * What each paragraph's content holds, by kind and in order, with the fold's
@@ -468,17 +508,25 @@ export const contentShapes = (model: Document): string[][] =>
   });
 
 /** The fold's captures in a ProseMirror document, in document order. */
-export const foldedCaptureNodes = (doc: PMNode): { node: PMNode; position: number }[] => {
+export const foldedCaptureNodes = (
+  doc: PMNode,
+): { node: PMNode; position: number }[] => {
   const found: { node: PMNode; position: number }[] = [];
   doc.descendants((node, position) => {
-    if (node.type.name === "preservedXml" && node.attrs["foldedListNumber"] != null) {
+    if (
+      node.type.name === "preservedXml" &&
+      node.attrs["foldedListNumber"] != null
+    ) {
       found.push({ node, position });
     }
   });
   return found;
 };
 
-export const paragraphNode = (doc: PMNode, paraId: string): { node: PMNode; position: number } => {
+export const paragraphNode = (
+  doc: PMNode,
+  paraId: string,
+): { node: PMNode; position: number } => {
   const found: { node: PMNode; position: number }[] = [];
   doc.descendants((node, position) => {
     if (node.type.name === "paragraph" && node.attrs["paraId"] === paraId) {
@@ -494,7 +542,11 @@ export const paragraphNode = (doc: PMNode, paraId: string): { node: PMNode; posi
 };
 
 /** Where `text` starts inside the paragraph `paraId`. */
-export const positionOfText = (doc: PMNode, paraId: string, text: string): number => {
+export const positionOfText = (
+  doc: PMNode,
+  paraId: string,
+  text: string,
+): number => {
   const { node, position } = paragraphNode(doc, paraId);
   const found: number[] = [];
   node.descendants((child, offset) => {
@@ -517,7 +569,9 @@ export const typeInto = (
   text: string,
   inserted: string,
 ): EditorState =>
-  state.apply(state.tr.insertText(inserted, positionOfText(state.doc, paraId, text) + 1));
+  state.apply(
+    state.tr.insertText(inserted, positionOfText(state.doc, paraId, text) + 1),
+  );
 
 /** What {@link typeInto} leaves of `text`. */
 export const typedInto = (text: string, inserted: string): string =>
@@ -541,7 +595,10 @@ export const saveDocx = async (
     hasUntrackedChanges: false,
   });
   if (patched) {
-    return { bytes: patched, rewritten: (paraId) => changedParaIds.includes(paraId) };
+    return {
+      bytes: patched,
+      rewritten: (paraId) => changedParaIds.includes(paraId),
+    };
   }
   return {
     bytes: await repackDocx(document, { updateModifiedDate: false }),

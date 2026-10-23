@@ -39,11 +39,15 @@ export function parseHorizontalScalePercent(
     return undefined;
   }
 
-  const numericValue = lexicalValue.endsWith("%") ? lexicalValue.slice(0, -1) : lexicalValue;
+  const numericValue = lexicalValue.endsWith("%")
+    ? lexicalValue.slice(0, -1)
+    : lexicalValue;
   return normalizeHorizontalScalePercent(Number(numericValue));
 }
 
-export function getHorizontalScaleFactor(horizontalScale: number | null | undefined): number {
+export function getHorizontalScaleFactor(
+  horizontalScale: number | null | undefined,
+): number {
   return (normalizeHorizontalScalePercent(horizontalScale) ?? 100) / 100;
 }
 

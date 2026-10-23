@@ -1,16 +1,20 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
-import { expect, test, type Page } from "@playwright/test";
-import { createDocx } from "../../packages/core/src/docx/rezip";
+import { expect, type Page, test } from "@playwright/test";
+
 import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
+import type { Document } from "../../packages/core/src/types/document";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createEmptyHeaderFooter } from "../../packages/core/src/utils/headerFooter";
-import type { Document } from "../../packages/core/src/types/document";
 import type {} from "../parity/canonicalBridge";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const adapters = [
   { name: "React", port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200 },
-  { name: "Vue", port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201 },
+  {
+    name: "Vue",
+    port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201,
+  },
 ] as const;
 
 type SetHeaderFooterTextOptions = {
@@ -19,36 +23,53 @@ type SetHeaderFooterTextOptions = {
   text: string;
 };
 
-const setHeaderFooterText = ({ document, position, text }: SetHeaderFooterTextOptions): string => {
-  const parts = position === "header" ? document.package.headers : document.package.footers;
+const setHeaderFooterText = ({
+  document,
+  position,
+  text,
+}: SetHeaderFooterTextOptions): string => {
+  const parts =
+    position === "header" ? document.package.headers : document.package.footers;
   const identity = [...(parts?.keys() ?? [])].at(0);
   if (!identity || !parts) throw new TypeError(`Missing ${position} fixture.`);
   const part = parts.get(identity);
   if (!part) throw new TypeError(`Missing ${position} part.`);
   parts.set(identity, {
     ...part,
-    content: [{ type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] }],
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text }] }],
+      },
+    ],
   });
   return identity;
 };
 
 const canonicalSnapshot = async (page: Page) => {
   await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
-  const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+  const current = await page.evaluate(() =>
+    globalThis.__folioCanonical?.snapshot(),
+  );
   expect(current?.active).toBe(true);
   expect(current?.projectionMatchesCanonical).toBe(true);
-  if (!current?.document) throw new TypeError("Canonical document unavailable.");
+  if (!current?.document)
+    throw new TypeError("Canonical document unavailable.");
   return { ...current, document: current.document };
 };
 
 const canonicalVersion = async (page: Page) => {
-  const version = await page.evaluate(() => globalThis.__folioCanonical?.committedVersion());
-  if (typeof version !== "number") throw new TypeError("Canonical version unavailable.");
+  const version = await page.evaluate(() =>
+    globalThis.__folioCanonical?.committedVersion(),
+  );
+  if (typeof version !== "number")
+    throw new TypeError("Canonical version unavailable.");
   return version;
 };
 
 const hasTrackedInsertion = (value: unknown, author: string): boolean => {
-  if (Array.isArray(value)) return value.some((entry) => hasTrackedInsertion(entry, author));
+  if (Array.isArray(value))
+    return value.some((entry) => hasTrackedInsertion(entry, author));
   if (value === null || typeof value !== "object") return false;
   if (
     "type" in value &&
@@ -61,7 +82,9 @@ const hasTrackedInsertion = (value: unknown, author: string): boolean => {
   ) {
     return true;
   }
-  return Object.values(value).some((entry) => hasTrackedInsertion(entry, author));
+  return Object.values(value).some((entry) =>
+    hasTrackedInsertion(entry, author),
+  );
 };
 
 for (const adapter of adapters) {
@@ -107,11 +130,13 @@ for (const adapter of adapters) {
     const bodyModel = bodyAfterTyping.document.package.document.content;
     expect(hasTrackedInsertion(bodyModel, "Folio User")).toBe(true);
     await page.keyboard.press(`${MODIFIER}+z`);
-    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(
-      initial.document.package.document.content,
-    );
+    expect(
+      (await canonicalSnapshot(page)).document.package.document.content,
+    ).toEqual(initial.document.package.document.content);
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
-    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyModel);
+    expect(
+      (await canonicalSnapshot(page)).document.package.document.content,
+    ).toEqual(bodyModel);
 
     const header = page.locator(".layout-page-header").first();
     await header.dblclick();
@@ -130,7 +155,9 @@ for (const adapter of adapters) {
       hasTrackedInsertion(
         await page.evaluate(
           (rId) =>
-            globalThis.__folioCanonical?.snapshot().document?.package.headers?.get(rId)?.content,
+            globalThis.__folioCanonical
+              ?.snapshot()
+              .document?.package.headers?.get(rId)?.content,
           headerRId,
         ),
         "Folio User",
@@ -140,11 +167,15 @@ for (const adapter of adapters) {
     await expect(header).not.toContainText("header tracked");
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     await expect(header).toContainText("header tracked");
-    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyModel);
+    expect(
+      (await canonicalSnapshot(page)).document.package.document.content,
+    ).toEqual(bodyModel);
     await page.getByRole("button", { name: "Options", exact: false }).click();
     await page.getByRole("button", { name: "Close header editing" }).click();
 
-    const footer = page.locator(`.layout-page-footer[data-rid="${footerRId}"]`).first();
+    const footer = page
+      .locator(`.layout-page-footer[data-rid="${footerRId}"]`)
+      .first();
     // dblclick scrolls and retries actionability after the painter replaces slots on header close.
     await footer.dblclick();
     await expect(page.locator(".hf-inline-editor")).toBeVisible();
@@ -161,7 +192,9 @@ for (const adapter of adapters) {
       hasTrackedInsertion(
         await page.evaluate(
           (rId) =>
-            globalThis.__folioCanonical?.snapshot().document?.package.footers?.get(rId)?.content,
+            globalThis.__folioCanonical
+              ?.snapshot()
+              .document?.package.footers?.get(rId)?.content,
           footerRId,
         ),
         "Folio User",
@@ -174,13 +207,17 @@ for (const adapter of adapters) {
     const beforeSave = await canonicalSnapshot(page);
     expect(beforeSave.document.package.document.content).toEqual(bodyModel);
 
-    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    const saved = await page.evaluate(() =>
+      globalThis.__folioCanonical?.save(),
+    );
     if (!saved) throw new TypeError("Canonical save unavailable.");
     const reopened = await parseDocx(new Uint8Array(saved).buffer, {
       preloadFonts: false,
       detectVariables: false,
     });
-    expect(hasTrackedInsertion(reopened.package.document.content, "Folio User")).toBe(true);
+    expect(
+      hasTrackedInsertion(reopened.package.document.content, "Folio User"),
+    ).toBe(true);
     const savedHeader = reopened.package.headers?.get(headerRId);
     const savedFooter = reopened.package.footers?.get(footerRId);
     expect(savedHeader?.content).toEqual(
@@ -189,6 +226,8 @@ for (const adapter of adapters) {
     expect(hasTrackedInsertion(savedHeader?.content, "Folio User")).toBe(true);
     expect(hasTrackedInsertion(savedFooter?.content, "Folio User")).toBe(true);
     // Parsed source captures are symbol properties outside the snapshot wire model.
-    expect(JSON.parse(JSON.stringify(reopened.package.document.content))).toEqual(bodyModel);
+    expect(
+      JSON.parse(JSON.stringify(reopened.package.document.content)),
+    ).toEqual(bodyModel);
   });
 }

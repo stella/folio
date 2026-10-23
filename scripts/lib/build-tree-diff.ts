@@ -39,7 +39,8 @@ export const firstBuildTreeMismatch = ({
     const after = candidate.get(path);
     if (before === undefined) return { kind: "only-in-candidate", path };
     if (after === undefined) return { kind: "only-in-baseline", path };
-    if (before !== after) return { kind: "content", path, baseline: before, candidate: after };
+    if (before !== after)
+      return { kind: "content", path, baseline: before, candidate: after };
   }
   return null;
 };
@@ -67,6 +68,8 @@ export const renderBuildTreeMismatch = ({
         maxLines: maxDiffLines,
       })}`;
     default:
-      return panic(`Unhandled build-tree mismatch: ${JSON.stringify(mismatch)}`);
+      return panic(
+        `Unhandled build-tree mismatch: ${JSON.stringify(mismatch)}`,
+      );
   }
 };

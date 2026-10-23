@@ -8,6 +8,7 @@
  */
 
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -49,7 +50,12 @@ export function ImagePositionDialog(props: ImagePositionDialogProps) {
   if (!props.isOpen) {
     return null;
   }
-  return <ImagePositionDialogForm key={JSON.stringify(props.currentData)} {...props} />;
+  return (
+    <ImagePositionDialogForm
+      key={JSON.stringify(props.currentData)}
+      {...props}
+    />
+  );
 }
 
 function ImagePositionDialogForm({
@@ -70,21 +76,31 @@ function ImagePositionDialogForm({
   const t = useTranslations("folio");
   const id = useId();
   const [hMode, setHMode] = useState<"align" | "offset">(
-    currentData?.horizontal?.align || currentData?.horizontal?.posOffset === undefined
+    currentData?.horizontal?.align ||
+      currentData?.horizontal?.posOffset === undefined
       ? "align"
       : "offset",
   );
-  const [hAlign, setHAlign] = useState(currentData?.horizontal?.align ?? "center");
-  const [hRelativeTo, setHRelativeTo] = useState(currentData?.horizontal?.relativeTo ?? "column");
-  const [hOffset, setHOffset] = useState(currentData?.horizontal?.posOffset ?? 0);
+  const [hAlign, setHAlign] = useState(
+    currentData?.horizontal?.align ?? "center",
+  );
+  const [hRelativeTo, setHRelativeTo] = useState(
+    currentData?.horizontal?.relativeTo ?? "column",
+  );
+  const [hOffset, setHOffset] = useState(
+    currentData?.horizontal?.posOffset ?? 0,
+  );
 
   const [vMode, setVMode] = useState<"align" | "offset">(
-    currentData?.vertical?.align || currentData?.vertical?.posOffset === undefined
+    currentData?.vertical?.align ||
+      currentData?.vertical?.posOffset === undefined
       ? "align"
       : "offset",
   );
   const [vAlign, setVAlign] = useState(currentData?.vertical?.align ?? "top");
-  const [vRelativeTo, setVRelativeTo] = useState(currentData?.vertical?.relativeTo ?? "paragraph");
+  const [vRelativeTo, setVRelativeTo] = useState(
+    currentData?.vertical?.relativeTo ?? "paragraph",
+  );
   const [vOffset, setVOffset] = useState(currentData?.vertical?.posOffset ?? 0);
 
   const [distTop, setDistTop] = useState(currentData?.distTop ?? 0);
@@ -142,7 +158,9 @@ function ImagePositionDialogForm({
           <div className="flex flex-col gap-4 px-5 py-4">
             {/* Horizontal positioning */}
             <div className="flex flex-col gap-2">
-              <div className={sectionLabelCls}>{t("dialogs.imagePosition.horizontal")}</div>
+              <div className={sectionLabelCls}>
+                {t("dialogs.imagePosition.horizontal")}
+              </div>
               <div className="flex items-center gap-2">
                 <label className={labelCls} htmlFor={fieldIds.hMode}>
                   {t("dialogs.imagePosition.position")}
@@ -151,10 +169,16 @@ function ImagePositionDialogForm({
                   className={inputCls}
                   id={fieldIds.hMode}
                   value={hMode}
-                  onChange={(e) => setHMode(e.target.value as "align" | "offset")}
+                  onChange={(e) =>
+                    setHMode(e.target.value as "align" | "offset")
+                  }
                 >
-                  <option value="align">{t("dialogs.imagePosition.alignment")}</option>
-                  <option value="offset">{t("dialogs.imagePosition.offset")}</option>
+                  <option value="align">
+                    {t("dialogs.imagePosition.alignment")}
+                  </option>
+                  <option value="offset">
+                    {t("dialogs.imagePosition.offset")}
+                  </option>
                 </select>
               </div>
               {hMode === "align" ? (
@@ -168,9 +192,15 @@ function ImagePositionDialogForm({
                     value={hAlign}
                     onChange={(e) => setHAlign(e.target.value)}
                   >
-                    <option value="left">{t("dialogs.imagePosition.alignOptions.left")}</option>
-                    <option value="center">{t("dialogs.imagePosition.alignOptions.center")}</option>
-                    <option value="right">{t("dialogs.imagePosition.alignOptions.right")}</option>
+                    <option value="left">
+                      {t("dialogs.imagePosition.alignOptions.left")}
+                    </option>
+                    <option value="center">
+                      {t("dialogs.imagePosition.alignOptions.center")}
+                    </option>
+                    <option value="right">
+                      {t("dialogs.imagePosition.alignOptions.right")}
+                    </option>
                   </select>
                 </div>
               ) : (
@@ -197,7 +227,9 @@ function ImagePositionDialogForm({
                   value={hRelativeTo}
                   onChange={(e) => setHRelativeTo(e.target.value)}
                 >
-                  <option value="page">{t("dialogs.imagePosition.relativeOptions.page")}</option>
+                  <option value="page">
+                    {t("dialogs.imagePosition.relativeOptions.page")}
+                  </option>
                   <option value="column">
                     {t("dialogs.imagePosition.relativeOptions.column")}
                   </option>
@@ -213,7 +245,9 @@ function ImagePositionDialogForm({
 
             {/* Vertical positioning */}
             <div className="flex flex-col gap-2">
-              <div className={sectionLabelCls}>{t("dialogs.imagePosition.vertical")}</div>
+              <div className={sectionLabelCls}>
+                {t("dialogs.imagePosition.vertical")}
+              </div>
               <div className="flex items-center gap-2">
                 <label className={labelCls} htmlFor={fieldIds.vMode}>
                   {t("dialogs.imagePosition.position")}
@@ -222,10 +256,16 @@ function ImagePositionDialogForm({
                   className={inputCls}
                   id={fieldIds.vMode}
                   value={vMode}
-                  onChange={(e) => setVMode(e.target.value as "align" | "offset")}
+                  onChange={(e) =>
+                    setVMode(e.target.value as "align" | "offset")
+                  }
                 >
-                  <option value="align">{t("dialogs.imagePosition.alignment")}</option>
-                  <option value="offset">{t("dialogs.imagePosition.offset")}</option>
+                  <option value="align">
+                    {t("dialogs.imagePosition.alignment")}
+                  </option>
+                  <option value="offset">
+                    {t("dialogs.imagePosition.offset")}
+                  </option>
                 </select>
               </div>
               {vMode === "align" ? (
@@ -239,9 +279,15 @@ function ImagePositionDialogForm({
                     value={vAlign}
                     onChange={(e) => setVAlign(e.target.value)}
                   >
-                    <option value="top">{t("dialogs.imagePosition.alignOptions.top")}</option>
-                    <option value="center">{t("dialogs.imagePosition.alignOptions.center")}</option>
-                    <option value="bottom">{t("dialogs.imagePosition.alignOptions.bottom")}</option>
+                    <option value="top">
+                      {t("dialogs.imagePosition.alignOptions.top")}
+                    </option>
+                    <option value="center">
+                      {t("dialogs.imagePosition.alignOptions.center")}
+                    </option>
+                    <option value="bottom">
+                      {t("dialogs.imagePosition.alignOptions.bottom")}
+                    </option>
                   </select>
                 </div>
               ) : (
@@ -268,21 +314,27 @@ function ImagePositionDialogForm({
                   value={vRelativeTo}
                   onChange={(e) => setVRelativeTo(e.target.value)}
                 >
-                  <option value="page">{t("dialogs.imagePosition.relativeOptions.page")}</option>
+                  <option value="page">
+                    {t("dialogs.imagePosition.relativeOptions.page")}
+                  </option>
                   <option value="margin">
                     {t("dialogs.imagePosition.relativeOptions.margin")}
                   </option>
                   <option value="paragraph">
                     {t("dialogs.imagePosition.relativeOptions.paragraph")}
                   </option>
-                  <option value="line">{t("dialogs.imagePosition.relativeOptions.line")}</option>
+                  <option value="line">
+                    {t("dialogs.imagePosition.relativeOptions.line")}
+                  </option>
                 </select>
               </div>
             </div>
 
             {/* Distance from text */}
             <div className="flex flex-col gap-2">
-              <div className={sectionLabelCls}>{t("dialogs.imagePosition.distanceFromText")}</div>
+              <div className={sectionLabelCls}>
+                {t("dialogs.imagePosition.distanceFromText")}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-2">
                   <label className={distLabelCls} htmlFor={fieldIds.distTop}>

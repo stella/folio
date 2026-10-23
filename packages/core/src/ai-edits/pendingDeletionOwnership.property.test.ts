@@ -2,13 +2,16 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createDocx } from "../docx/rezip";
-import { paragraph, table } from "../docx/server/build";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
+import { createDocx } from "../docx/rezip";
+import { paragraph, table } from "../docx/server/build";
 import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
@@ -16,7 +19,11 @@ import { createFolioAITextRangeHandle, sourceDocumentOf } from "./snapshot";
 
 type OperationContext = { blockId: string; text: string };
 const operations = {
-  deleteBlock: ({ blockId }: OperationContext) => ({ id: "delete", type: "deleteBlock", blockId }),
+  deleteBlock: ({ blockId }: OperationContext) => ({
+    id: "delete",
+    type: "deleteBlock",
+    blockId,
+  }),
   replaceBlock: ({ blockId }: OperationContext) => ({
     id: "replace",
     type: "replaceBlock",
@@ -51,7 +58,11 @@ const operations = {
     type: "mergeBlockWithNext",
     blockId,
   }),
-  deleteTable: ({ blockId }: OperationContext) => ({ id: "delete", type: "deleteTable", blockId }),
+  deleteTable: ({ blockId }: OperationContext) => ({
+    id: "delete",
+    type: "deleteTable",
+    blockId,
+  }),
   deleteTableRow: ({ blockId }: OperationContext) => ({
     id: "delete",
     type: "deleteTableRow",
@@ -62,12 +73,16 @@ const operations = {
     type: "deleteTableColumn",
     blockId,
   }),
-} as const satisfies Record<string, (context: OperationContext) => FolioDocumentOperation>;
+} as const satisfies Record<
+  string,
+  (context: OperationContext) => FolioDocumentOperation
+>;
 
 const hiddenMarks = (doc: PMNode) => {
   const marks: unknown[] = [];
   doc.descendants((node) => {
-    if (node.text === "hidden") marks.push(node.marks.map((mark) => mark.toJSON()));
+    if (node.text === "hidden")
+      marks.push(node.marks.map((mark) => mark.toJSON()));
   });
   return marks;
 };
@@ -92,19 +107,40 @@ for (const [kind, operation] of Object.entries(operations)) {
             const p = {
               type: "paragraph",
               content: [
-                { type: "run", content: [{ type: "text", text: "a".repeat(prefix) }] },
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "a".repeat(prefix) }],
+                },
                 {
                   type: ancestor,
-                  info: { id: 11, author: "First Reviewer", date: "2026-01-02T03:04:05Z" },
+                  info: {
+                    id: 11,
+                    author: "First Reviewer",
+                    date: "2026-01-02T03:04:05Z",
+                  },
                   content: [
                     {
                       type: "deletion",
-                      info: { id: 12, author: "Second Reviewer", date: "2026-01-03T03:04:05Z" },
-                      content: [{ type: "run", content: [{ type: "text", text: "hidden" }] }],
+                      info: {
+                        id: 12,
+                        author: "Second Reviewer",
+                        date: "2026-01-03T03:04:05Z",
+                      },
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "hidden" }],
+                        },
+                      ],
                     },
                   ],
                 },
-                { type: "run", content: [{ type: "text", text: "z".repeat(suffix) + " end" }] },
+                {
+                  type: "run",
+                  content: [
+                    { type: "text", text: "z".repeat(suffix) + " end" },
+                  ],
+                },
               ],
             } as const satisfies Paragraph;
             const document = createEmptyDocument();
@@ -119,33 +155,53 @@ for (const [kind, operation] of Object.entries(operations)) {
               expect(cell).toBeDefined();
               if (!cell) throw new Error("fixture cell missing");
               cell.content = [p];
-              document.package.document.content = [grid, paragraph("following")];
-            } else document.package.document.content = [p, paragraph("following")];
-            const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
-              author,
-            });
-            const before = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+              document.package.document.content = [
+                grid,
+                paragraph("following"),
+              ];
+            } else
+              document.package.document.content = [p, paragraph("following")];
+            const reviewer = await FolioDocxReviewer.fromBuffer(
+              await createDocx(document),
+              {
+                author,
+              },
+            );
+            const before = await FolioDocxReviewer.fromBuffer(
+              await reviewer.toBuffer(),
+            );
             before.rejectAll();
             const block = reviewer.getContent().at(0);
             if (!block) throw new Error("fixture block missing");
-            const originalMarks = hiddenMarks(sourceDocumentOf(reviewer.snapshot()));
+            const originalMarks = hiddenMarks(
+              sourceDocumentOf(reviewer.snapshot()),
+            );
             expect(originalMarks).toHaveLength(1);
             const result = reviewer.applyDocumentOperations(
               {
                 version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
                 mode: "tracked-changes",
-                operations: [operation({ blockId: block.id, text: block.text })],
+                operations: [
+                  operation({ blockId: block.id, text: block.text }),
+                ],
               },
               { undefinedReferences: "refuse" },
             );
             expect(result.applied).toHaveLength(1);
-            expect(hiddenMarks(sourceDocumentOf(reviewer.snapshot()))).toEqual(originalMarks);
-            const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+            expect(hiddenMarks(sourceDocumentOf(reviewer.snapshot()))).toEqual(
+              originalMarks,
+            );
+            const saved = await FolioDocxReviewer.fromBuffer(
+              await reviewer.toBuffer(),
+            );
             saved.rejectAll();
             expect(content(saved)).toEqual(content(before));
           },
         ),
-        { numRuns: 20, id: "${kind} preserves pending deletion ownership across saves" },
+        {
+          numRuns: 20,
+          id: "${kind} preserves pending deletion ownership across saves",
+        },
       );
     },
     propertyTestTimeout(30_000),

@@ -1,6 +1,9 @@
 import { validateDocumentModel } from "@stll/docx-core";
+import type {
+  ValidateDocumentModelIssue,
+  ValidateDocumentModelResult,
+} from "@stll/docx-core";
 import { isCanonicallyEmptyParagraphFormatting } from "@stll/docx-core/model";
-import type { ValidateDocumentModelIssue, ValidateDocumentModelResult } from "@stll/docx-core";
 
 import type { Document } from "../types/document";
 
@@ -14,7 +17,9 @@ export class DocxModelValidationError extends Error {
   }
 }
 
-export const validateFolioDocumentModel = (document: Document): ValidateDocumentModelResult => {
+export const validateFolioDocumentModel = (
+  document: Document,
+): ValidateDocumentModelResult => {
   const issues: ValidateDocumentModelIssue[] = [];
   try {
     issues.push(...validateDocumentModel(document).issues);
@@ -48,7 +53,10 @@ export const validateFolioDocumentModel = (document: Document): ValidateDocument
     return { valid: false, issues };
   }
 
-  if (Array.isArray(documentBody["comments"]) && documentBody["comments"].length === 0) {
+  if (
+    Array.isArray(documentBody["comments"]) &&
+    documentBody["comments"].length === 0
+  ) {
     issues.push({
       path: "package.document.comments",
       message: "Empty comment lists must be absent.",
@@ -67,7 +75,10 @@ export const validateFolioDocumentModel = (document: Document): ValidateDocument
         continue;
       }
       if (block["type"] === "paragraph") {
-        if (block["formatting"] !== undefined && !isRecord(block["formatting"])) {
+        if (
+          block["formatting"] !== undefined &&
+          !isRecord(block["formatting"])
+        ) {
           addMalformedIssue(`${blockPath}.formatting`, "an object");
         } else if (
           block["formatting"] !== undefined &&
@@ -106,7 +117,10 @@ export const validateFolioDocumentModel = (document: Document): ValidateDocument
             validateBlocks(cell["content"], `${cellPath}.content`);
           }
         }
-      } else if (block["type"] === "blockSdt" || block["type"] === "blockCustomXml") {
+      } else if (
+        block["type"] === "blockSdt" ||
+        block["type"] === "blockCustomXml"
+      ) {
         validateBlocks(block["content"], `${blockPath}.content`);
       }
     }
@@ -156,10 +170,16 @@ export const validateFolioDocumentModel = (document: Document): ValidateDocument
       validateBlocks(comment["content"], `${commentPath}.content`);
     }
   }
-  return { valid: issues.every(({ severity }) => severity !== "error"), issues };
+  return {
+    valid: issues.every(({ severity }) => severity !== "error"),
+    issues,
+  };
 };
 
-export const assertValidFolioDocumentModel = (document: Document, context: string): void => {
+export const assertValidFolioDocumentModel = (
+  document: Document,
+  context: string,
+): void => {
   const validation = validateFolioDocumentModel(document);
   if (validation.valid) {
     return;
@@ -168,8 +188,11 @@ export const assertValidFolioDocumentModel = (document: Document, context: strin
   throw new DocxModelValidationError(context, validation.issues);
 };
 
-export const formatDocumentModelIssues = (issues: ValidateDocumentModelIssue[]): string[] =>
+export const formatDocumentModelIssues = (
+  issues: ValidateDocumentModelIssue[],
+): string[] =>
   issues.map((issue) => {
-    const prefix = issue.severity === "warning" ? "DOCX model warning" : "DOCX model error";
+    const prefix =
+      issue.severity === "warning" ? "DOCX model warning" : "DOCX model error";
     return `${prefix} at ${issue.path}: ${issue.message}`;
   });

@@ -34,12 +34,17 @@ import { EditorState, type Plugin, type Transaction } from "prosemirror-state";
 import type { LayoutRunReason } from "../../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../../layout-engine/measure/cache";
 import { resetCanvasContext } from "../../layout-engine/measure/measureContainer";
-import type { FlowBlock, Layout, Measure, Run } from "../../layout-engine/types";
+import type {
+  FlowBlock,
+  Layout,
+  Measure,
+  Run,
+} from "../../layout-engine/types";
 import { LayoutSelectionGate } from "../../paged-layout/LayoutSelectionGate";
 import { schema } from "../../prosemirror/schema";
 import type { Document } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
-import { runLayoutPipeline, type LayoutOutcome } from "../layoutPipeline";
+import { type LayoutOutcome, runLayoutPipeline } from "../layoutPipeline";
 import type { LayoutPipelineDeps } from "../layoutPipeline";
 import type { LayoutRunOptions } from "../layoutRunOptions";
 import { createLayoutScheduler, type SchedulerClock } from "../layoutScheduler";
@@ -91,7 +96,10 @@ const createPausableClock = () => {
     for (;;) {
       let nextDue: [number, FakeTimer] | null = null;
       for (const entry of timers) {
-        if (entry[1].due <= now && (nextDue === null || entry[1].due < nextDue[1].due)) {
+        if (
+          entry[1].due <= now &&
+          (nextDue === null || entry[1].due < nextDue[1].due)
+        ) {
           nextDue = entry;
         }
       }
@@ -158,7 +166,8 @@ export type LayoutArtifactsView = {
   layout: Layout;
 };
 
-const runText = (run: Run): string => (run.kind === "text" ? run.text : `[${run.kind}]`);
+const runText = (run: Run): string =>
+  run.kind === "text" ? run.text : `[${run.kind}]`;
 
 /** The text a measured line covers, sliced out of its block's runs. */
 const lineText = (
@@ -186,7 +195,11 @@ const lineText = (
  * lines in the same places project equal; a measure reused for another block's
  * text shows up as a line whose text differs.
  */
-export const projectLayout = ({ blocks, measures, layout }: LayoutArtifactsView): LaidOutPage[] => {
+export const projectLayout = ({
+  blocks,
+  measures,
+  layout,
+}: LayoutArtifactsView): LaidOutPage[] => {
   const blockIndex = new Map<string | number, number>();
   for (const [index, block] of blocks.entries()) {
     blockIndex.set(block.id, index);
@@ -208,14 +221,19 @@ export const projectLayout = ({ blocks, measures, layout }: LayoutArtifactsView)
       const block = index === undefined ? undefined : blocks[index];
       const measure = index === undefined ? undefined : measures[index];
       if (block?.kind !== "paragraph" || measure?.kind !== "paragraph") {
-        return { ...base, lines: [{ text: "[unmeasured paragraph]", width: 0 }] };
+        return {
+          ...base,
+          lines: [{ text: "[unmeasured paragraph]", width: 0 }],
+        };
       }
       return {
         ...base,
-        lines: measure.lines.slice(fragment.fromLine, fragment.toLine).map((line) => ({
-          text: lineText(block.runs, line),
-          width: line.width,
-        })),
+        lines: measure.lines
+          .slice(fragment.fromLine, fragment.toLine)
+          .map((line) => ({
+            text: lineText(block.runs, line),
+            width: line.width,
+          })),
       };
     }),
   }));
@@ -270,7 +288,8 @@ export const FRESH_RENDER_MUTANT = {
   scheduledState: "scheduled-state",
 } as const;
 
-export type FreshRenderMutant = (typeof FRESH_RENDER_MUTANT)[keyof typeof FRESH_RENDER_MUTANT];
+export type FreshRenderMutant =
+  (typeof FRESH_RENDER_MUTANT)[keyof typeof FRESH_RENDER_MUTANT];
 
 export type FreshRenderRig<TExt> = {
   readonly state: EditorState;
@@ -279,7 +298,10 @@ export type FreshRenderRig<TExt> = {
   /** Dispatch a transaction the way the adapters' `handleTransaction` does. */
   edit: (build: (state: EditorState) => Transaction | null) => void;
   /** `ref.loadDocument`: replace the state wholesale; lay it out now or on the next render. */
-  loadDocument: (doc: PMNode, options: { layout: LoadLayout; document?: Document }) => void;
+  loadDocument: (
+    doc: PMNode,
+    options: { layout: LoadLayout; document?: Document },
+  ) => void;
   /** Change layout inputs (a prop change); the adapter re-renders at once. */
   setInputs: (patch: Partial<FreshRenderInputs>) => void;
   /**
@@ -423,14 +445,21 @@ export const createFreshRenderRig = <TExt>(
   const apply = (outcome: LayoutOutcome, passSignature: string): void => {
     // The adapters keep the previous layout when a pass produced none.
     if (outcome.layout && outcome.blocks && outcome.measures) {
-      committed = { blocks: outcome.blocks, measures: outcome.measures, layout: outcome.layout };
+      committed = {
+        blocks: outcome.blocks,
+        measures: outcome.measures,
+        layout: outcome.layout,
+      };
       laidOutSignature = passSignature;
     }
   };
 
   // Every pass goes through here, whoever asked for it: the product's contract
   // is that the laid-out state is the editor's state at that moment.
-  const runPass = (laidOut: EditorState, runOptions: LayoutRunOptions): void => {
+  const runPass = (
+    laidOut: EditorState,
+    runOptions: LayoutRunOptions,
+  ): void => {
     if (laidOut !== state) {
       staleCommits.push({
         reason: runOptions.reason,
@@ -441,7 +470,10 @@ export const createFreshRenderRig = <TExt>(
     const passSignature = signature();
     apply(
       runLayoutPipeline(
-        buildDeps({ layoutSession: session, previousLayout: committed?.layout ?? null }),
+        buildDeps({
+          layoutSession: session,
+          previousLayout: committed?.layout ?? null,
+        }),
         laidOut,
         runOptions,
       ),
@@ -454,7 +486,9 @@ export const createFreshRenderRig = <TExt>(
   let scheduledState = state;
   const scheduler = createLayoutScheduler({
     readState: () =>
-      options.mutant === FRESH_RENDER_MUTANT.scheduledState ? scheduledState : state,
+      options.mutant === FRESH_RENDER_MUTANT.scheduledState
+        ? scheduledState
+        : state,
     runLayout: runPass,
     debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
     leadingFrame: options.leadingFrame,
@@ -559,10 +593,15 @@ export const createFreshRenderRig = <TExt>(
       resetCanvasContext();
       clearAllCaches();
       const deps = {
-        ...buildDeps({ layoutSession: createLayoutSession(), previousLayout: null }),
+        ...buildDeps({
+          layoutSession: createLayoutSession(),
+          previousLayout: null,
+        }),
         ...override.deps,
       };
-      const outcome = runLayoutPipeline(deps, override.state ?? state, { reason: "initial" });
+      const outcome = runLayoutPipeline(deps, override.state ?? state, {
+        reason: "initial",
+      });
       if (!outcome.layout || !outcome.blocks || !outcome.measures) {
         return panic("fresh layout produced no layout");
       }
@@ -629,7 +668,11 @@ export const docFromParagraphs = (paragraphs: readonly string[]): PMNode =>
     "doc",
     null,
     paragraphs.map((text) =>
-      schema.node("paragraph", null, text.length > 0 ? [schema.text(text)] : []),
+      schema.node(
+        "paragraph",
+        null,
+        text.length > 0 ? [schema.text(text)] : [],
+      ),
     ),
   );
 
@@ -639,7 +682,10 @@ export const initialParagraphsArbitrary = fc.array(paragraphTextArbitrary, {
 });
 
 /** The first position inside the `index`-th top-level paragraph (wrapping), and its end. */
-const paragraphBounds = (doc: PMNode, index: number): { start: number; end: number } => {
+const paragraphBounds = (
+  doc: PMNode,
+  index: number,
+): { start: number; end: number } => {
   const target = index % doc.childCount;
   let pos = 0;
   for (let child = 0; child < target; child += 1) {
@@ -704,11 +750,17 @@ export const loadDocumentEventKind = <TExt>() =>
     kind: "loadDocument",
     arbitrary: fc.record({
       layout: fc.constantFrom(LOAD_LAYOUT.immediate, LOAD_LAYOUT.nextRender),
-      rewrite: fc.array(fc.record({ paragraph: fc.nat(20), text: paragraphTextArbitrary }), {
-        minLength: 1,
-        maxLength: 3,
+      rewrite: fc.array(
+        fc.record({ paragraph: fc.nat(20), text: paragraphTextArbitrary }),
+        {
+          minLength: 1,
+          maxLength: 3,
+        },
+      ),
+      replacement: fc.option(initialParagraphsArbitrary, {
+        nil: null,
+        freq: 4,
       }),
-      replacement: fc.option(initialParagraphsArbitrary, { nil: null, freq: 4 }),
     }),
     apply: (rig, event) => {
       const paragraphs: string[] = [];
@@ -767,7 +819,9 @@ export const rerenderEventKind = <TExt>() =>
   });
 
 /** The event kinds every rig understands; an issue adds its own alongside. */
-export const baseFreshRenderEventKinds = <TExt>(): fc.Arbitrary<FreshRenderEvent<TExt>>[] => [
+export const baseFreshRenderEventKinds = <TExt>(): fc.Arbitrary<
+  FreshRenderEvent<TExt>
+>[] => [
   editEventKind<TExt>(),
   loadDocumentEventKind<TExt>(),
   tickEventKind<TExt>(),
@@ -820,5 +874,9 @@ export const runFreshRenderScenario = <TExt>({
     event.apply(rig);
   }
   rig.settle();
-  return { staleCommits: rig.staleCommits, committed: rig.committed(), fresh: rig.fresh() };
+  return {
+    staleCommits: rig.staleCommits,
+    committed: rig.committed(),
+    fresh: rig.fresh(),
+  };
 };

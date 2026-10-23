@@ -6,7 +6,14 @@
  * at all, which a canvas-backed provider would quietly hide.
  */
 
-import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import JSZip from "jszip";
 
 import {
@@ -17,8 +24,6 @@ import {
 } from "./__tests__/styleToggleFlowFixture";
 import { buildDisplayList } from "./display-list/build/buildDisplayList";
 import type { DisplayPrimitive } from "./display-list/types";
-import type { Measure } from "./layout-engine/types";
-import type { Paragraph } from "./types/document";
 import { createDocx } from "./docx/rezip";
 import { installHeadlessMeasureProvider } from "./fonts/headlessMeasure";
 import { layoutDocxHeadless } from "./headless-layout";
@@ -26,16 +31,21 @@ import {
   hyphenationDictionaryStatus,
   resetHyphenationDictionaries,
 } from "./layout-engine/measure/hyphenationDictionaries";
+import { ptToPx } from "./layout-engine/measure/measureHelpers";
 import {
   getMeasureProvider,
   resetMeasureProvider,
   setMeasureProvider,
 } from "./layout-engine/measure/measureProvider";
+import type { Measure } from "./layout-engine/types";
 import { getPageTextFromLayout } from "./paged-layout/pageText";
-import { ptToPx } from "./layout-engine/measure/measureHelpers";
+import type { Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 
-const FIXTURE = new URL("../../../tests/visual/fixtures/sample.docx", import.meta.url);
+const FIXTURE = new URL(
+  "../../../tests/visual/fixtures/sample.docx",
+  import.meta.url,
+);
 
 /**
  * The provider is process-wide state installed once by the bun preload, so
@@ -87,7 +97,9 @@ const installFixedWidthProvider = (): void => {
     },
     measureRun: (text, style) => {
       const per = ptToPx(style.fontSize ?? 11) * FIXED_ADVANCE_RATIO;
-      const charWidths = [...text].flatMap((char) => (char.length === 2 ? [per, 0] : [per]));
+      const charWidths = [...text].flatMap((char) =>
+        char.length === 2 ? [per, 0] : [per],
+      );
       return {
         width: charWidths.reduce((a, b) => a + b, 0),
         charWidths,
@@ -104,30 +116,35 @@ const ARIMO_REGULAR = new URL(
 
 const loadFace = async (url: URL): Promise<Uint8Array | null> => {
   const file = Bun.file(url);
-  return (await file.exists()) ? new Uint8Array(await file.arrayBuffer()) : null;
+  return (await file.exists())
+    ? new Uint8Array(await file.arrayBuffer())
+    : null;
 };
 
 const arimo = await loadFace(ARIMO_REGULAR);
 
-describe.skipIf(arimo === null)("layoutDocxHeadless with parsed font metrics", () => {
-  test("paginates a real package with no canvas anywhere in the chain", async () => {
-    // SAFETY: the suite is skipped when the face is absent.
-    const face = arimo ?? new Uint8Array();
-    const headless = installHeadlessMeasureProvider({ load: () => [face] });
-    const bytes = await Bun.file(FIXTURE).arrayBuffer();
+describe.skipIf(arimo === null)(
+  "layoutDocxHeadless with parsed font metrics",
+  () => {
+    test("paginates a real package with no canvas anywhere in the chain", async () => {
+      // SAFETY: the suite is skipped when the face is absent.
+      const face = arimo ?? new Uint8Array();
+      const headless = installHeadlessMeasureProvider({ load: () => [face] });
+      const bytes = await Bun.file(FIXTURE).arrayBuffer();
 
-    const result = await layoutDocxHeadless(bytes);
+      const result = await layoutDocxHeadless(bytes);
 
-    expect(result.isErr()).toBe(false);
-    if (result.isErr()) {
-      return;
-    }
-    expect(result.value.layout.pages.length).toBeGreaterThan(0);
-    // Every face resolved, so the pagination is the authored one rather than
-    // one measured against a stand-in.
-    expect(headless.substitutions()).toHaveLength(0);
-  });
-});
+      expect(result.isErr()).toBe(false);
+      if (result.isErr()) {
+        return;
+      }
+      expect(result.value.layout.pages.length).toBeGreaterThan(0);
+      // Every face resolved, so the pagination is the authored one rather than
+      // one measured against a stand-in.
+      expect(headless.substitutions()).toHaveLength(0);
+    });
+  },
+);
 
 describe("layoutDocxHeadless", () => {
   test("paginates a real package with no DOM", async () => {
@@ -153,9 +170,9 @@ describe("layoutDocxHeadless", () => {
       }
     }
 
-    expect(getPageTextFromLayout({ layout, doc: proseDoc, page: 1 })?.length ?? 0).toBeGreaterThan(
-      0,
-    );
+    expect(
+      getPageTextFromLayout({ layout, doc: proseDoc, page: 1 })?.length ?? 0,
+    ).toBeGreaterThan(0);
   });
 
   test("resolves the complete character-style toggle cascade in body layout", async () => {
@@ -171,8 +188,12 @@ describe("layoutDocxHeadless", () => {
     if (result.isErr()) {
       return;
     }
-    const blocks = [...result.value.blockLookup.values()].map(({ block }) => block);
-    expect(findStyleToggleRun(blocks)).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    const blocks = [...result.value.blockLookup.values()].map(
+      ({ block }) => block,
+    );
+    expect(findStyleToggleRun(blocks)).toMatchObject(
+      EXPECTED_CANCELLED_STYLE_TOGGLES,
+    );
   });
 
   test("honors final-section vertical alignment after DOCX serialization", async () => {
@@ -252,13 +273,21 @@ describe("layoutDocxHeadless", () => {
       return;
     }
     expect(
-      findStyleToggleRun(result.value.furniture.headerContentByRId?.get("rIdHeader")?.blocks ?? []),
+      findStyleToggleRun(
+        result.value.furniture.headerContentByRId?.get("rIdHeader")?.blocks ??
+          [],
+      ),
     ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
     expect(
-      findStyleToggleRun(result.value.furniture.footerContentByRId?.get("rIdFooter")?.blocks ?? []),
+      findStyleToggleRun(
+        result.value.furniture.footerContentByRId?.get("rIdFooter")?.blocks ??
+          [],
+      ),
     ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
     expect(
-      findStyleToggleRun(result.value.furniture.footnoteContentById?.get(1)?.blocks ?? []),
+      findStyleToggleRun(
+        result.value.furniture.footnoteContentById?.get(1)?.blocks ?? [],
+      ),
     ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
   });
 
@@ -318,7 +347,9 @@ describe("layoutDocxHeadless furniture", () => {
     installFixedWidthProvider();
     const bytes = await Bun.file(STORY_FIXTURE).arrayBuffer();
 
-    const result = await layoutDocxHeadless(bytes, { now: new Date("2026-01-01T00:00:00Z") });
+    const result = await layoutDocxHeadless(bytes, {
+      now: new Date("2026-01-01T00:00:00Z"),
+    });
 
     expect(result.isErr()).toBe(false);
     if (result.isErr()) {
@@ -332,19 +363,24 @@ describe("layoutDocxHeadless furniture", () => {
       expect(content[1].height).toBeGreaterThan(0);
     }
     // The stories are selected per page from the layout's own section refs.
-    expect(layout.pages.every((page) => page.headerFooterRefs !== undefined)).toBe(true);
+    expect(
+      layout.pages.every((page) => page.headerFooterRefs !== undefined),
+    ).toBe(true);
   });
 
   test("the display list paints the header on every page and the footer's own page number", async () => {
     installFixedWidthProvider();
     const bytes = await Bun.file(STORY_FIXTURE).arrayBuffer();
 
-    const result = await layoutDocxHeadless(bytes, { now: new Date("2026-01-01T00:00:00Z") });
+    const result = await layoutDocxHeadless(bytes, {
+      now: new Date("2026-01-01T00:00:00Z"),
+    });
     expect(result.isErr()).toBe(false);
     if (result.isErr()) {
       return;
     }
-    const { layout, blockLookup, furniture, documentFeatures, embeddedFonts } = result.value;
+    const { layout, blockLookup, furniture, documentFeatures, embeddedFonts } =
+      result.value;
     const list = buildDisplayList({
       layout,
       blockLookup,
@@ -421,13 +457,21 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
       document.package.document.content = [HYPHENATED_PARAGRAPH];
     } else {
       document.package.headers = new Map([
-        ["rIdHeader", { type: "header", hdrFtrType: "default", content: [HYPHENATED_PARAGRAPH] }],
+        [
+          "rIdHeader",
+          {
+            type: "header",
+            hdrFtrType: "default",
+            content: [HYPHENATED_PARAGRAPH],
+          },
+        ],
       ]);
     }
     // The serializer does not write `w:autoHyphenation`; patch it into the part.
     document.package.settings = { ...document.package.settings };
     const zip = await JSZip.loadAsync(await createDocx(document));
-    const settings = (await zip.file("word/settings.xml")?.async("string")) ?? "";
+    const settings =
+      (await zip.file("word/settings.xml")?.async("string")) ?? "";
     expect(settings).toMatch(/<w:settings[^>]*>/u);
     zip.file(
       "word/settings.xml",
@@ -443,15 +487,21 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
       (count, measure) =>
         count +
         (measure.kind === "paragraph"
-          ? measure.lines.filter((line) => line.discretionaryHyphen !== undefined).length
+          ? measure.lines.filter(
+              (line) => line.discretionaryHyphen !== undefined,
+            ).length
           : 0),
       0,
     );
 
-  const hyphenatedLineCount = (result: Awaited<ReturnType<typeof layoutDocxHeadless>>): number =>
+  const hyphenatedLineCount = (
+    result: Awaited<ReturnType<typeof layoutDocxHeadless>>,
+  ): number =>
     result.isErr()
       ? -1
-      : countHyphenatedLines([...result.value.blockLookup.values()].map(({ measure }) => measure));
+      : countHyphenatedLines(
+          [...result.value.blockLookup.values()].map(({ measure }) => measure),
+        );
 
   beforeEach(() => {
     resetHyphenationDictionaries();
@@ -488,7 +538,8 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
     expect(hyphenationDictionaryStatus("cs")).toBe("loaded");
     expect(
       countHyphenatedLines(
-        result.value.furniture.headerContentByRId?.get("rIdHeader")?.measures ?? [],
+        result.value.furniture.headerContentByRId?.get("rIdHeader")?.measures ??
+          [],
       ),
     ).toBeGreaterThan(0);
   });

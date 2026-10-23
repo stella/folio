@@ -23,7 +23,9 @@ const BOLD_LABEL = {
 
 async function openPlayground(page: Page): Promise<void> {
   await page.goto("/");
-  await page.waitForSelector('[data-testid="folio-editor"]', { timeout: 15_000 });
+  await page.waitForSelector('[data-testid="folio-editor"]', {
+    timeout: 15_000,
+  });
   // Default locale renders the English label.
   await expect(page.locator(`[aria-label="${BOLD_LABEL.en}"]`)).toBeVisible();
 }
@@ -32,7 +34,9 @@ async function switchLocale(page: Page, locale: string): Promise<void> {
   await page.getByTestId("language-select").selectOption(locale);
 }
 
-test("toolbar localizes to German via the bundled catalog", async ({ page }) => {
+test("toolbar localizes to German via the bundled catalog", async ({
+  page,
+}) => {
   await openPlayground(page);
 
   await switchLocale(page, "de");
@@ -43,17 +47,25 @@ test("toolbar localizes to German via the bundled catalog", async ({ page }) => 
 });
 
 for (const locale of ["pt-BR", "zh-CN"] as const) {
-  test(`toolbar localizes to ${locale} via the bundled catalog`, async ({ page }) => {
+  test(`toolbar localizes to ${locale} via the bundled catalog`, async ({
+    page,
+  }) => {
     await openPlayground(page);
 
     await switchLocale(page, locale);
 
-    await expect(page.locator(`[aria-label="${BOLD_LABEL[locale]}"]`)).toBeVisible();
-    await expect(page.locator(`[aria-label="${BOLD_LABEL.en}"]`)).toHaveCount(0);
+    await expect(
+      page.locator(`[aria-label="${BOLD_LABEL[locale]}"]`),
+    ).toBeVisible();
+    await expect(page.locator(`[aria-label="${BOLD_LABEL.en}"]`)).toHaveCount(
+      0,
+    );
   });
 }
 
-test("toolbar localizes to Arabic and flips the shell to RTL", async ({ page }) => {
+test("toolbar localizes to Arabic and flips the shell to RTL", async ({
+  page,
+}) => {
   await openPlayground(page);
 
   await switchLocale(page, "ar");

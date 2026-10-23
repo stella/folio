@@ -1,5 +1,5 @@
-import { encodeUtf8, decodeText } from "../utils/textEncoding";
-import { writeZipPart } from "@stll/docx-core/zip";
+import { Result } from "better-result";
+import type JSZip from "jszip";
 /**
  * What a repack carries out of the source package, and the guarantee that
  * nothing in the output points at a part the output does not hold.
@@ -26,19 +26,26 @@ import { writeZipPart } from "@stll/docx-core/zip";
  * does not open.
  */
 
-import { Result } from "better-result";
-import type JSZip from "jszip";
+import { writeZipPart } from "@stll/docx-core/zip";
+
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 
 const CONTENT_TYPE_ELEMENT = /<(?:Default|Override)\b[^>]*?\/?>/giu;
-const PART_NAME_ATTRIBUTE = /\bPartName\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
-const RELATIONSHIP_ELEMENT = /<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship>)/giu;
-const RELATIONSHIP_ID_ATTRIBUTE = /\bId\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
-const TARGET_ATTRIBUTE = /\bTarget\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
-const TARGET_MODE_ATTRIBUTE = /\bTargetMode\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
+const PART_NAME_ATTRIBUTE =
+  /\bPartName\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
+const RELATIONSHIP_ELEMENT =
+  /<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship>)/giu;
+const RELATIONSHIP_ID_ATTRIBUTE =
+  /\bId\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
+const TARGET_ATTRIBUTE =
+  /\bTarget\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
+const TARGET_MODE_ATTRIBUTE =
+  /\bTargetMode\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
 const CONTENT_TYPES_PATTERN = /^\[Content_Types\]\.xml$/iu;
 
 /** Escape a string for literal use inside a `RegExp`. */
-const escapeRegExp = (value: string): string => value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+const escapeRegExp = (value: string): string =>
+  value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 /**
  * The XML part a `.rels` part describes: `word/_rels/header1.xml.rels` ->
@@ -52,8 +59,12 @@ const owningPartPath = (relsPath: string): string | undefined => {
     return undefined;
   }
   const directory = relsPath.slice(0, slash);
-  const fileName = relsPath.slice(slash + "/_rels/".length).replace(/\.rels$/iu, "");
-  return fileName ? `${directory ? `${directory}/` : ""}${fileName}` : undefined;
+  const fileName = relsPath
+    .slice(slash + "/_rels/".length)
+    .replace(/\.rels$/iu, "");
+  return fileName
+    ? `${directory ? `${directory}/` : ""}${fileName}`
+    : undefined;
 };
 
 /** Normalize a package path for comparison: lower case, no leading slash. */
@@ -62,7 +73,10 @@ const normalizePartPath = (path: string): string =>
 
 /** Decode URI escapes as UTF-8; malformed references cannot name a part. */
 const decodePartName = (name: string): string | undefined => {
-  const decoded = Result.try({ try: () => decodeURIComponent(name), catch: () => undefined });
+  const decoded = Result.try({
+    try: () => decodeURIComponent(name),
+    catch: () => undefined,
+  });
   return decoded.isOk() ? decoded.value : undefined;
 };
 
@@ -77,13 +91,20 @@ export const resolvePackageRelationshipTarget = (
     return owner === undefined ? undefined : normalizePartPath(owner);
   }
   const reference = fragment > 0 ? target.slice(0, fragment) : target;
-  if (!reference || reference.startsWith("//") || /[\\?:]/u.test(reference)) return undefined;
+  if (!reference || reference.startsWith("//") || /[\\?:]/u.test(reference))
+    return undefined;
   const owner = owningPartPath(relsPath);
   const segments =
-    reference.startsWith("/") || owner === undefined ? [] : owner.split("/").slice(0, -1);
+    reference.startsWith("/") || owner === undefined
+      ? []
+      : owner.split("/").slice(0, -1);
   for (const encoded of reference.split("/")) {
     const segment = decodePartName(encoded);
-    if (segment === undefined || /[/\\]/u.test(segment) || segment.includes(String.fromCharCode(0)))
+    if (
+      segment === undefined ||
+      /[/\\]/u.test(segment) ||
+      segment.includes(String.fromCharCode(0))
+    )
       return undefined;
     if (segment === "" || segment === ".") continue;
     if (segment === "..") {
@@ -137,7 +158,10 @@ const isPresent = (present: ReadonlySet<string>, partPath: string): boolean =>
   present.has(normalizePartPath(decodePartName(partPath) ?? ""));
 
 /** The part a relationship names, or null when it points outside the package. */
-const relationshipTarget = (element: string, relsPath: string): string | null => {
+const relationshipTarget = (
+  element: string,
+  relsPath: string,
+): string | null => {
   if (TARGET_MODE_ATTRIBUTE.exec(element)?.groups?.["value"] === "External") {
     return null;
   }
@@ -177,7 +201,9 @@ type RelationshipPart = {
  * `Promise.all`: a package holds a handful of tiny relationship parts, and the
  * sequential read keeps the output order stable.
  */
-const readRelationshipParts = async (zip: JSZip): Promise<RelationshipPart[]> => {
+const readRelationshipParts = async (
+  zip: JSZip,
+): Promise<RelationshipPart[]> => {
   const parts: RelationshipPart[] = [];
   for (const [path, file] of Object.entries(zip.files)) {
     if (file.dir || !normalizePartPath(path).endsWith(".rels")) {
@@ -186,7 +212,9 @@ const readRelationshipParts = async (zip: JSZip): Promise<RelationshipPart[]> =>
     // oxlint-disable-next-line no-await-in-loop -- a handful of tiny parts, read in package order
     parts.push({
       path,
-      xml: await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      xml: await file
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     });
   }
   return parts;
@@ -199,7 +227,12 @@ type WritePartOptions = {
   compressionLevel: number;
 };
 
-const writePart = ({ zip, path, xml, compressionLevel }: WritePartOptions): void => {
+const writePart = ({
+  zip,
+  path,
+  xml,
+  compressionLevel,
+}: WritePartOptions): void => {
   writeZipPart({
     zip,
     path,
@@ -304,24 +337,34 @@ export const reconcilePackageReferences = async (
   }
   let droppedOverride = false;
   const prunedContentTypes = (
-    await contentTypes.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+    await contentTypes
+      .async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
   ).replaceAll(CONTENT_TYPE_ELEMENT, (element) => {
     const partName = PART_NAME_ATTRIBUTE.exec(element)?.groups?.["value"];
     if (partName === undefined || isPresent(present, partName)) {
       return element;
     }
-    repair.danglingOverrides.push(normalizePartPath(decodePartName(partName) ?? partName));
+    repair.danglingOverrides.push(
+      normalizePartPath(decodePartName(partName) ?? partName),
+    );
     droppedOverride = true;
     return "";
   });
   if (droppedOverride) {
-    writePart({ zip, path: contentTypes.name, xml: prunedContentTypes, compressionLevel });
+    writePart({
+      zip,
+      path: contentTypes.name,
+      xml: prunedContentTypes,
+      compressionLevel,
+    });
   }
   return repair;
 };
 
 /** Every `r:*`-style attribute value found anywhere in an XML part's text. */
-const REFERENCE_ATTRIBUTE = /\br:[A-Za-z]+\s*=\s*(?<quote>["'])(?<id>[^"']*)\k<quote>/gu;
+const REFERENCE_ATTRIBUTE =
+  /\br:[A-Za-z]+\s*=\s*(?<quote>["'])(?<id>[^"']*)\k<quote>/gu;
 
 /**
  * What {@link checkPackageIntegrity} found wrong with a package. Both fields
@@ -357,7 +400,9 @@ export type PackageIntegrityReport = {
  * or a corpus-gate invariant: one pass over the `.rels` parts building an id
  * census, one pass over the XML parts checking references against it.
  */
-export const checkPackageIntegrity = async (zip: JSZip): Promise<PackageIntegrityReport> => {
+export const checkPackageIntegrity = async (
+  zip: JSZip,
+): Promise<PackageIntegrityReport> => {
   const present = presentPartPaths(zip);
   const report: PackageIntegrityReport = {
     unresolvedReferences: [],

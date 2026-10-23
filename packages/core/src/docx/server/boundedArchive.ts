@@ -1,7 +1,7 @@
-import { decodeText } from "../../utils/textEncoding";
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
+import { decodeText } from "../../utils/textEncoding";
 import {
   compressionRatioLimitFor,
   countCentralDirectoryRecords,
@@ -77,7 +77,10 @@ export type DocxArchive = {
   entries: readonly string[];
   entryMetadata: readonly DocxArchiveEntry[];
   readEntryString: (path: string) => Promise<string | null>;
-  readEntryUint8: (path: string, options?: DocxArchiveReadOptions) => Promise<Uint8Array | null>;
+  readEntryUint8: (
+    path: string,
+    options?: DocxArchiveReadOptions,
+  ) => Promise<Uint8Array | null>;
 };
 
 type ReadLimitErrorOptions = {
@@ -126,7 +129,11 @@ type ResolveByteLimitOptions = {
   name: string;
 };
 
-const resolveByteLimit = ({ value, fallback, name }: ResolveByteLimitOptions): number => {
+const resolveByteLimit = ({
+  value,
+  fallback,
+  name,
+}: ResolveByteLimitOptions): number => {
   const limit = value ?? fallback;
   if (!Number.isSafeInteger(limit) || limit < 0) {
     throw new DocxArchiveError({
@@ -256,7 +263,10 @@ export const loadDocxArchive = async (
     });
   }
 
-  const xmlLimits: XmlResourceLimits = { ...FOLIO_XML_RESOURCE_LIMITS, ...options.xmlLimits };
+  const xmlLimits: XmlResourceLimits = {
+    ...FOLIO_XML_RESOURCE_LIMITS,
+    ...options.xmlLimits,
+  };
   const xmlBudget = createXmlPackageBudget();
   const countedParts = new Set<string>();
   const inflationBudget = createInflationBudget(maxTotalBytes);
@@ -280,7 +290,10 @@ export const loadDocxArchive = async (
       const result = await inflateEntryWithinLimits({
         entry,
         maxEntryBytes: entryLimit,
-        maxCompressionRatio: compressionRatioLimitFor(path, maxCompressionRatio),
+        maxCompressionRatio: compressionRatioLimitFor(
+          path,
+          maxCompressionRatio,
+        ),
         budget: inflationBudget,
       });
       if (!result.ok) {

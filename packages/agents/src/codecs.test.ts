@@ -19,7 +19,9 @@ describe("boundary codecs", () => {
 
   test("decodeStoryHandle only accepts valid typed story handles", () => {
     expect(decodeStoryHandle({ type: "main" })).toEqual({ type: "main" });
-    expect(decodeStoryHandle({ type: "header", relationshipId: "rId7" })).toEqual({
+    expect(
+      decodeStoryHandle({ type: "header", relationshipId: "rId7" }),
+    ).toEqual({
       type: "header",
       relationshipId: "rId7",
     });

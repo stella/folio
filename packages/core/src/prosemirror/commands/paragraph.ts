@@ -9,10 +9,10 @@
 import type { Command } from "prosemirror-state";
 
 import type {
-  ParagraphAlignment,
   LineSpacingRule,
-  TabStopAlignment,
+  ParagraphAlignment,
   TabLeader,
+  TabStopAlignment,
 } from "../../types/document";
 // Re-export types and query helpers from extensions
 import type {
@@ -51,11 +51,15 @@ export const alignRight: Command = cmds.requireCommand("alignRight")();
 export const alignJustify: Command = cmds.requireCommand("alignJustify")();
 
 // Line spacing
-export function setLineSpacing(value: number, rule: LineSpacingRule = "auto"): Command {
+export function setLineSpacing(
+  value: number,
+  rule: LineSpacingRule = "auto",
+): Command {
   return cmds.requireCommand("setLineSpacing")(value, rule);
 }
 export const singleSpacing: Command = cmds.requireCommand("singleSpacing")();
-export const oneAndHalfSpacing: Command = cmds.requireCommand("oneAndHalfSpacing")();
+export const oneAndHalfSpacing: Command =
+  cmds.requireCommand("oneAndHalfSpacing")();
 export const doubleSpacing: Command = cmds.requireCommand("doubleSpacing")();
 
 // Indentation
@@ -76,15 +80,21 @@ export function setIndentFirstLine(twips: number, hanging?: boolean): Command {
 }
 
 // Lists
-export const toggleBulletList: Command = cmds.requireCommand("toggleBulletList")();
-export const toggleNumberedList: Command = cmds.requireCommand("toggleNumberedList")();
-export const increaseListLevel: Command = cmds.requireCommand("increaseListLevel")();
-export const decreaseListLevel: Command = cmds.requireCommand("decreaseListLevel")();
+export const toggleBulletList: Command =
+  cmds.requireCommand("toggleBulletList")();
+export const toggleNumberedList: Command =
+  cmds.requireCommand("toggleNumberedList")();
+export const increaseListLevel: Command =
+  cmds.requireCommand("increaseListLevel")();
+export const decreaseListLevel: Command =
+  cmds.requireCommand("decreaseListLevel")();
 export const removeList: Command = cmds.requireCommand("removeList")();
 /** *Restart at 1* on the selected list item. */
-export const restartNumbering: Command = cmds.requireCommand("restartNumbering")();
+export const restartNumbering: Command =
+  cmds.requireCommand("restartNumbering")();
 /** *Continue Numbering*: carry the selected list on from the previous one. */
-export const continueNumbering: Command = cmds.requireCommand("continueNumbering")();
+export const continueNumbering: Command =
+  cmds.requireCommand("continueNumbering")();
 /** *Set Numbering Value*: the selected item starts its list over at `value`. */
 export function setNumberingValue(value: number): Command {
   return cmds.requireCommand("setNumberingValue")(value);
@@ -99,7 +109,10 @@ export function setSpaceAfter(twips: number): Command {
 }
 
 // Paragraph styles
-export function applyStyle(styleId: string, resolvedAttrs?: ResolvedStyleAttrs): Command {
+export function applyStyle(
+  styleId: string,
+  resolvedAttrs?: ResolvedStyleAttrs,
+): Command {
   return cmds.requireCommand("applyStyle")(styleId, resolvedAttrs);
 }
 export const clearStyle: Command = cmds.requireCommand("clearStyle")();
@@ -108,7 +121,8 @@ export const clearStyle: Command = cmds.requireCommand("clearStyle")();
 export function insertSectionBreak(breakType: SectionBreakType): Command {
   return cmds.requireCommand("insertSectionBreak")(breakType);
 }
-export const removeSectionBreak: Command = cmds.requireCommand("removeSectionBreak")();
+export const removeSectionBreak: Command =
+  cmds.requireCommand("removeSectionBreak")();
 
 // Tab stops
 export function addTabStop(
@@ -128,5 +142,6 @@ export const setRtl: Command = cmds.requireCommand("setRtl")();
 export const setLtr: Command = cmds.requireCommand("setLtr")();
 
 // Table of Contents
-export const generateTableOfContents = (options: GenerateTableOfContentsOptions): Command =>
-  cmds.requireCommand("generateTOC")(options);
+export const generateTableOfContents = (
+  options: GenerateTableOfContentsOptions,
+): Command => cmds.requireCommand("generateTOC")(options);

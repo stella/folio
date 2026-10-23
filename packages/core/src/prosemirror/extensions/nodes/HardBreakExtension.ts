@@ -37,7 +37,12 @@ export const HardBreakExtension = createNodeExtension({
           if (breakType === "column" || breakType === "textWrapping") {
             attrs["breakType"] = breakType;
           }
-          if (clear === "none" || clear === "left" || clear === "right" || clear === "all") {
+          if (
+            clear === "none" ||
+            clear === "left" ||
+            clear === "right" ||
+            clear === "all"
+          ) {
             attrs["clear"] = clear;
           }
           return Object.keys(attrs).length > 0 ? attrs : null;
@@ -70,8 +75,13 @@ export const HardBreakExtension = createNodeExtension({
           if (dispatch) {
             // The document's own type: it may be of another schema instance.
             const hardBreakType =
-              state.schema.nodes["hardBreak"] ?? panic("Missing node type: hardBreak");
-            dispatch(state.tr.replaceSelectionWith(hardBreakType.create()).scrollIntoView());
+              state.schema.nodes["hardBreak"] ??
+              panic("Missing node type: hardBreak");
+            dispatch(
+              state.tr
+                .replaceSelectionWith(hardBreakType.create())
+                .scrollIntoView(),
+            );
           }
           return true;
         },

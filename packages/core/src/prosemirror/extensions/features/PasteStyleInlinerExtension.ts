@@ -48,7 +48,10 @@ function parseStyleDeclarations(cssText: string): Record<string, string> {
  * Merge style declarations onto an element's existing inline style.
  * Existing inline styles take precedence (they were explicitly set by the app).
  */
-function mergeStylesOntoElement(element: HTMLElement, declarations: Record<string, string>): void {
+function mergeStylesOntoElement(
+  element: HTMLElement,
+  declarations: Record<string, string>,
+): void {
   const existingStyle = element.getAttribute("style") || "";
   const existingDeclarations = parseStyleDeclarations(existingStyle);
 
@@ -125,7 +128,9 @@ function inlineStylesFromStyleBlocks(doc: Document): void {
         }
 
         const selector = cssText.slice(searchFrom, open).trim();
-        const declarations = parseStyleDeclarations(cssText.slice(open + 1, close));
+        const declarations = parseStyleDeclarations(
+          cssText.slice(open + 1, close),
+        );
         if (Object.keys(declarations).length > 0) {
           rulesWithSelectors.push({ selector, declarations });
         }
@@ -164,7 +169,9 @@ function inlineStylesFromStyleBlocks(doc: Document): void {
  * preventing ProseMirror's BoldExtension parseDOM from applying bold to all content.
  */
 function unwrapGoogleDocsStructuralB(doc: Document): void {
-  const structuralBs = doc.body.querySelectorAll('b[id^="docs-internal-guid-"]');
+  const structuralBs = doc.body.querySelectorAll(
+    'b[id^="docs-internal-guid-"]',
+  );
   for (const b of structuralBs) {
     const parent = b.parentNode;
     if (!parent) {

@@ -48,7 +48,14 @@ const CUSTOM_CLASS_PREFIXES = [
 // path generates a rule for: Tailwind state markers (`group`, `peer`) and
 // animation utilities that require a plugin folio does not enable (so they are
 // equally no-ops on both paths).
-const IGNORED_CLASSES = new Set(["group", "peer", "sr-only", "not-prose", "prose", "dark"]);
+const IGNORED_CLASSES = new Set([
+  "group",
+  "peer",
+  "sr-only",
+  "not-prose",
+  "prose",
+  "dark",
+]);
 const INERT_CLASS_RE =
   /^(?:animate-|slide-(?:in|out)|fade-(?:in|out)|zoom-(?:in|out)|spin$|pulse$)/u;
 
@@ -63,7 +70,8 @@ const TAILWIND_TOKEN_RE =
 const SCOPED_UTILITY_RE = /\.folio-root \.((?:\\.|[^\\{,:>~+\s[])+)/gu;
 const ANY_CLASS_RE = /\.((?:\\.|[^\s.,{}()>~+:#[\]])+)/gu;
 
-const unescapeClass = (escaped: string): string => escaped.replace(/\\(.)/gu, "$1");
+const unescapeClass = (escaped: string): string =>
+  escaped.replace(/\\(.)/gu, "$1");
 
 // Split a template-literal body into its static text (interpolations replaced
 // by a separator, so a partial class like `w-[${size}px]` never tokenizes as a
@@ -71,7 +79,9 @@ const unescapeClass = (escaped: string): string => escaped.replace(/\\(.)/gu, "$
 // string-aware). An unbalanced `${` means the outer literal regex chopped a
 // template that itself nests another template; the tail is dropped rather than
 // recursed, so half an expression cannot masquerade as a class token.
-const splitTemplate = (body: string): { staticText: string; interpolations: string[] } => {
+const splitTemplate = (
+  body: string,
+): { staticText: string; interpolations: string[] } => {
   let staticText = "";
   const interpolations: string[] = [];
   let i = 0;
@@ -223,6 +233,8 @@ export const findUncoveredUtilities = ({
     }
   }
 
-  const uncovered = [...candidates].filter((token) => !generated.has(token)).sort();
+  const uncovered = [...candidates]
+    .filter((token) => !generated.has(token))
+    .sort();
   return { candidates: candidates.size, uncovered };
 };

@@ -166,7 +166,7 @@ details unless they are already public in the repository.
   widening it or paying the annotation's instantiation cost.
 - Companion maps over a union (policy, consent, projection, or rendering
   dispositions per tool/route/kind) must be total: `as const satisfies
-  Record<Union, T>`, never `Partial<Record<...>>`; `Partial` lets a new union
+Record<Union, T>`, never `Partial<Record<...>>`; `Partial` lets a new union
   member land without a decision. Derive the union from the source of truth
   (`keyof typeof SOURCE_MAP`, or a mapped filter over it) instead of
   hand-listing names.
@@ -240,19 +240,6 @@ fixtures is vacuous. Where a map declares paths or cases, assert declared set
 equals exercised set in both directions, and pin fixture literals that stand in
 for a producer's output with `satisfies` against the producer's return type.
 
-A failing check is never switched off, made opt-in, or loosened to pass. Pin a
-known failure as an expected failure (the consumer suite's known-issues
-harness), which fails again once the bug is fixed; fix the check itself only
-when it is demonstrably wrong, and say why in the commit.
-
-Every bug fix names the test machinery that should have caught it and why it
-did not (fixture, generator, oracle, or sequence), and extends that machinery so
-it catches the class: a new generator dimension, target, fixture shape, or
-oracle check. A lone example regression is the fallback, not the fix.
-
-A property or fuzz failure seen on any seed is a real bug, not a flake: add its
-seed to the pinned regression seeds and fix it; never rerun until green.
-
 ## Linting
 
 oxlint + oxfmt. Suppress a rule only with the rule name and a reason:
@@ -288,7 +275,6 @@ editing. Its published packages have explicit ownership boundaries:
 - `bun run test`
 - `bun run test:property`
 - `bun run lint`
-- `bun run format:check`
 - `bun run validate-dist`
 - `bun run test:interactions`
 - `bun run test:e2e:vue`

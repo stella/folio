@@ -1,6 +1,7 @@
 /** Physical revision wrappers may split around hyperlinks without changing their meaning. */
 
-const ADJACENT_REVISION_SPANS = /(<(ins|del)\b[^>]*>)((?:(?!<\/?(?:ins|del)\b)[\s\S])*)<\/\2>\1/gu;
+const ADJACENT_REVISION_SPANS =
+  /(<(ins|del)\b[^>]*>)((?:(?!<\/?(?:ins|del)\b)[\s\S])*)<\/\2>\1/gu;
 
 /** Keep revision kinds, authors, dates, text and link targets; omit volatile IDs and wrapper splits. */
 export const comparableMarkdown = (markdown: string): string => {

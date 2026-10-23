@@ -1,22 +1,28 @@
 import {
+  type App,
   computed,
+  type ComputedRef,
   inject,
+  type InjectionKey,
+  type MaybeRefOrGetter,
   onMounted,
   provide,
   ref,
   toValue,
   watchEffect,
-  type App,
-  type ComputedRef,
-  type InjectionKey,
-  type MaybeRefOrGetter,
 } from "vue";
-import { resolveIsDark, subscribeSystemDark, type ColorMode } from "../utils/colorMode";
+
+import {
+  type ColorMode,
+  resolveIsDark,
+  subscribeSystemDark,
+} from "../utils/colorMode";
 
 /** Color mode used when a host does not provide one. */
 export const defaultColorMode: ColorMode = "light";
 
-const COLOR_MODE_KEY: InjectionKey<ComputedRef<ColorMode>> = Symbol("folioColorMode");
+const COLOR_MODE_KEY: InjectionKey<ComputedRef<ColorMode>> =
+  Symbol("folioColorMode");
 
 /**
  * Provide a reactive color mode to descendant folio components.
@@ -35,7 +41,10 @@ export const provideColorMode = (
 
 /** Vue plugin form: `app.use(colorModePlugin, "system")`. */
 export const colorModePlugin = {
-  install(app: App, colorMode: MaybeRefOrGetter<ColorMode> = defaultColorMode): void {
+  install(
+    app: App,
+    colorMode: MaybeRefOrGetter<ColorMode> = defaultColorMode,
+  ): void {
     app.provide(
       COLOR_MODE_KEY,
       computed(() => toValue(colorMode)),
@@ -65,7 +74,9 @@ export function useColorMode(): ComputedRef<boolean> {
       }),
     );
   });
-  return computed(() => resolveIsDark(colorMode.value, isMounted.value && systemDark.value));
+  return computed(() =>
+    resolveIsDark(colorMode.value, isMounted.value && systemDark.value),
+  );
 }
 
 export type { ColorMode } from "../utils/colorMode";

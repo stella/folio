@@ -1,8 +1,10 @@
 import { describe, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
 
@@ -62,7 +64,9 @@ const inlineMarkdown = fc.oneof(
   inlineText.map((value) => `**${value}**`),
   inlineText.map((value) => `*${value}*`),
   inlineText.map((value) => `\`${value.replaceAll("`", "")}\``),
-  inlineText.map((value) => `[${value}](https://example.com/${encodeURIComponent(value)})`),
+  inlineText.map(
+    (value) => `[${value}](https://example.com/${encodeURIComponent(value)})`,
+  ),
 );
 
 const looseListItemMarkdown = () =>
@@ -115,7 +119,12 @@ const itemFeatureArb = (depth: number): fc.Arbitrary<ItemFeature> => {
     fc.constant({ kind: "blockquote" }),
   ];
   if (depth > 0) {
-    options.push(listShapeArb(depth - 1).map((list): ItemFeature => ({ kind: "children", list })));
+    options.push(
+      listShapeArb(depth - 1).map((list): ItemFeature => ({
+        kind: "children",
+        list,
+      })),
+    );
   }
   return fc.oneof(...options);
 };
@@ -161,9 +170,16 @@ const buildList = (
       sentinels.push(text);
       lines.push("", `${pad}${text}`);
     } else if (feature.kind === "children") {
-      lines.push(...buildList(feature.list, childIndent, sentinels, nextSentinel));
+      lines.push(
+        ...buildList(feature.list, childIndent, sentinels, nextSentinel),
+      );
     } else if (feature.kind === "table") {
-      const cells = [nextSentinel(), nextSentinel(), nextSentinel(), nextSentinel()];
+      const cells = [
+        nextSentinel(),
+        nextSentinel(),
+        nextSentinel(),
+        nextSentinel(),
+      ];
       sentinels.push(...cells);
       lines.push(
         "",
@@ -185,7 +201,10 @@ const buildList = (
   return lines;
 };
 
-const nestedListShapeMarkdown = (): fc.Arbitrary<{ markdown: string; sentinels: string[] }> =>
+const nestedListShapeMarkdown = (): fc.Arbitrary<{
+  markdown: string;
+  sentinels: string[];
+}> =>
   listShapeArb(2).map((list) => {
     const sentinels: string[] = [];
     let counter = 0;
@@ -196,7 +215,8 @@ const nestedListShapeMarkdown = (): fc.Arbitrary<{ markdown: string; sentinels: 
     return { markdown, sentinels };
   });
 
-const occurrences = (needle: string, haystack: string): number => haystack.split(needle).length - 1;
+const occurrences = (needle: string, haystack: string): number =>
+  haystack.split(needle).length - 1;
 
 describe("markdown bridge — round-trip (properties)", () => {
   test("loose list items are idempotent after markdown bridge normalization", () => {

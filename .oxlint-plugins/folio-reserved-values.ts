@@ -83,13 +83,20 @@ const AMBIGUOUS_BARE_FIELDS = new Set([
   "separator",
 ]);
 
-type FieldRule = { literals: Set<string>; numbers: Set<number>; readers: Set<string> };
+type FieldRule = {
+  literals: Set<string>;
+  numbers: Set<number>;
+  readers: Set<string>;
+};
 
 /** Field name -> the sentinels recorded for it and the modules that own them. */
 const buildFieldRules = (): Map<string, FieldRule> => {
   const rules = new Map<string, FieldRule>();
   for (const { field, disposition } of reservedValueEntries()) {
-    if (disposition === "no-reserved-value" || disposition.disposition !== "reader-owned") {
+    if (
+      disposition === "no-reserved-value" ||
+      disposition.disposition !== "reader-owned"
+    ) {
       continue;
     }
     const sentinels = disposition.sentinel
@@ -204,12 +211,17 @@ const receiverName = (node: unknown): string | null => {
  * `throughProperty` is false for a bare identifier, which is what
  * {@link AMBIGUOUS_BARE_FIELDS} turns on.
  */
-const comparedFieldName = (node: unknown, throughProperty = false): string | null => {
+const comparedFieldName = (
+  node: unknown,
+  throughProperty = false,
+): string | null => {
   if (!isAstNode(node)) {
     return null;
   }
   if (node.type === "Identifier" && typeof node["name"] === "string") {
-    return throughProperty || !AMBIGUOUS_BARE_FIELDS.has(node["name"]) ? node["name"] : null;
+    return throughProperty || !AMBIGUOUS_BARE_FIELDS.has(node["name"])
+      ? node["name"]
+      : null;
   }
   if (node.type === "TSNonNullExpression" || node.type === "ChainExpression") {
     return comparedFieldName(node["expression"], throughProperty);
@@ -269,13 +281,19 @@ const literalOperand = (node: unknown): LiteralOperand | null => {
  * a bound: `outlineLevel <= 8`, `ilvl > 8` and `outlineLevel < 9` all ask
  * whether the value is the `9` sentinel.
  */
-const guardsNumericSentinel = (rule: FieldRule, literal: LiteralOperand): boolean =>
+const guardsNumericSentinel = (
+  rule: FieldRule,
+  literal: LiteralOperand,
+): boolean =>
   literal.value !== null &&
   [...rule.numbers].some(
     (sentinel) => sentinel === literal.value || sentinel - 1 === literal.value,
   );
 
-const checkComparison = (node: AstNode, context: ReservedCompareContext): void => {
+const checkComparison = (
+  node: AstNode,
+  context: ReservedCompareContext,
+): void => {
   const operator = node["operator"];
   if (typeof operator !== "string") {
     return;
@@ -336,7 +354,10 @@ export default {
             if (!isAstNode(node)) {
               return;
             }
-            if (isOwningModule(context.filename) || isRegistryModule(context.filename)) {
+            if (
+              isOwningModule(context.filename) ||
+              isRegistryModule(context.filename)
+            ) {
               return;
             }
             const visit = (child: AstNode): void => {

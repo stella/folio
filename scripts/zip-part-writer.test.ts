@@ -1,5 +1,4 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 /**
  * ZIP package entries have one write boundary. JSZip's `file()` and `folder()`
  * create parent directory entries by default; that changes a DOCX package's
@@ -7,10 +6,10 @@ import { scanTestTimeout } from "../test/scan-timeout";
  * production writer behind `writeZipPart`, which fixes both folder creation
  * and the ZIP date used for reproducible output.
  */
-
-import { setDefaultTimeout, describe, expect, test } from "bun:test";
-import ts from "typescript";
 import path from "node:path";
+import ts from "typescript";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -20,7 +19,9 @@ const WRITER = "utf8-boundaries/src/zip.ts";
 
 type Violation = { line: number; method: "file" | "folder" };
 
-const staticPropertyName = (expression: ts.Expression): "file" | "folder" | undefined => {
+const staticPropertyName = (
+  expression: ts.Expression,
+): "file" | "folder" | undefined => {
   if (ts.isPropertyAccessExpression(expression)) {
     return expression.name.text === "file" || expression.name.text === "folder"
       ? expression.name.text
@@ -30,7 +31,8 @@ const staticPropertyName = (expression: ts.Expression): "file" | "folder" | unde
   const argument = expression.argumentExpression;
   if (
     argument !== undefined &&
-    (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) &&
+    (ts.isStringLiteral(argument) ||
+      ts.isNoSubstitutionTemplateLiteral(argument)) &&
     (argument.text === "file" || argument.text === "folder")
   ) {
     return argument.text;
@@ -52,14 +54,19 @@ const unwrapExpression = (expression: ts.Expression): ts.Expression => {
   return expression;
 };
 
-const receiverExpression = (expression: ts.Expression): ts.Expression | undefined => {
+const receiverExpression = (
+  expression: ts.Expression,
+): ts.Expression | undefined => {
   const unwrapped = unwrapExpression(expression);
   if (ts.isPropertyAccessExpression(unwrapped)) return unwrapped.expression;
   if (ts.isElementAccessExpression(unwrapped)) return unwrapped.expression;
   return undefined;
 };
 
-const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] => {
+const findWrites = (
+  sourceText: string,
+  fileName = "fixture.ts",
+): Violation[] => {
   const source = ts.createSourceFile(
     fileName,
     sourceText,
@@ -70,7 +77,9 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
   const violations: Violation[] = [];
   const jszipBindings = new Set<string>();
   const declarations: ts.VariableDeclaration[] = [];
-  const typedDeclarations: Array<ts.ParameterDeclaration | ts.VariableDeclaration> = [];
+  const typedDeclarations: Array<
+    ts.ParameterDeclaration | ts.VariableDeclaration
+  > = [];
   const typedZipReceivers = new Set<string>();
   const directFileReceivers = new Set<string>();
 
@@ -81,13 +90,17 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
       node.moduleSpecifier.text === "jszip" &&
       node.importClause !== undefined
     ) {
-      if (node.importClause.name !== undefined) jszipBindings.add(node.importClause.name.text);
+      if (node.importClause.name !== undefined)
+        jszipBindings.add(node.importClause.name.text);
       const bindings = node.importClause.namedBindings;
       if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
         jszipBindings.add(bindings.name.text);
       } else if (bindings !== undefined && ts.isNamedImports(bindings)) {
         for (const element of bindings.elements) {
-          if (element.propertyName?.text === "JSZip" || element.name.text === "JSZip") {
+          if (
+            element.propertyName?.text === "JSZip" ||
+            element.name.text === "JSZip"
+          ) {
             jszipBindings.add(element.name.text);
           }
         }
@@ -107,7 +120,8 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
     ) {
       jszipBindings.add(node.name.text);
     }
-    if (ts.isParameter(node) || ts.isVariableDeclaration(node)) typedDeclarations.push(node);
+    if (ts.isParameter(node) || ts.isVariableDeclaration(node))
+      typedDeclarations.push(node);
   };
   const allNodes: ts.Node[] = [source];
   while (allNodes.length > 0) {
@@ -117,7 +131,11 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
     allNodes.push(...node.getChildren(source));
   }
   for (const declaration of typedDeclarations) {
-    if (declaration.type === undefined || !ts.isTypeReferenceNode(declaration.type)) continue;
+    if (
+      declaration.type === undefined ||
+      !ts.isTypeReferenceNode(declaration.type)
+    )
+      continue;
     if (!jszipBindings.has(declaration.type.typeName.getText(source))) continue;
     typedZipReceivers.add(declaration.name.getText(source));
   }
@@ -131,7 +149,10 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
     ) {
       return true;
     }
-    if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)) {
+    if (
+      !ts.isCallExpression(expression) ||
+      !ts.isPropertyAccessExpression(expression.expression)
+    ) {
       return false;
     }
     const callee = expression.expression;
@@ -147,9 +168,14 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
   while (addedReceiver) {
     addedReceiver = false;
     for (const declaration of declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
+      if (
+        !ts.isIdentifier(declaration.name) ||
+        declaration.initializer === undefined
+      )
+        continue;
       const initializer = unwrapExpression(declaration.initializer);
-      const isZipAlias = ts.isIdentifier(initializer) && knownZipReceivers.has(initializer.text);
+      const isZipAlias =
+        ts.isIdentifier(initializer) && knownZipReceivers.has(initializer.text);
       if (
         (isZipAlias || isJSZipConstruction(initializer)) &&
         !knownZipReceivers.has(declaration.name.text)
@@ -163,7 +189,11 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
   const receiverKey = (expression: ts.Expression): string =>
     unwrapExpression(expression).getText(source);
   const collectDirectFileReceivers = (node: ts.Node): void => {
-    if (!ts.isCallExpression(node) || staticPropertyName(node.expression) !== "file") return;
+    if (
+      !ts.isCallExpression(node) ||
+      staticPropertyName(node.expression) !== "file"
+    )
+      return;
     const receiver = receiverExpression(node.expression);
     if (receiver !== undefined) directFileReceivers.add(receiverKey(receiver));
   };
@@ -176,7 +206,9 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
   }
 
   const addViolation = (node: ts.Node, method: "file" | "folder"): void => {
-    const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+    const { line } = source.getLineAndCharacterOfPosition(
+      node.getStart(source),
+    );
     violations.push({ line: line + 1, method });
   };
   const inspect = (node: ts.Node): void => {
@@ -192,22 +224,29 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
       }
     }
 
-    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+    if (
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node)
+    ) {
       const method = staticPropertyName(node);
       if (method === undefined) return;
-      const directCall = ts.isCallExpression(node.parent) && node.parent.expression === node;
+      const directCall =
+        ts.isCallExpression(node.parent) && node.parent.expression === node;
       const receiver = receiverExpression(node);
-      const receiverId = receiver === undefined ? undefined : receiverKey(receiver);
+      const receiverId =
+        receiver === undefined ? undefined : receiverKey(receiver);
       const isKnownZipReceiver =
         receiverId !== undefined &&
-        (knownZipReceivers.has(receiverId) || directFileReceivers.has(receiverId));
+        (knownZipReceivers.has(receiverId) ||
+          directFileReceivers.has(receiverId));
       if (!directCall && isKnownZipReceiver) addViolation(node, method);
     }
 
     if (ts.isBindingElement(node)) {
       const propertyName = node.propertyName;
       let name: string | undefined;
-      if (propertyName === undefined && ts.isIdentifier(node.name)) name = node.name.text;
+      if (propertyName === undefined && ts.isIdentifier(node.name))
+        name = node.name.text;
       if (
         propertyName !== undefined &&
         (ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName))
@@ -216,10 +255,12 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
       if (name === "file" || name === "folder") {
         const declaration = node.parent.parent;
         const receiver =
-          ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
+          ts.isVariableDeclaration(declaration) &&
+          declaration.initializer !== undefined
             ? receiverKey(declaration.initializer)
             : undefined;
-        if (receiver !== undefined && knownZipReceivers.has(receiver)) addViolation(node, name);
+        if (receiver !== undefined && knownZipReceivers.has(receiver))
+          addViolation(node, name);
       }
     }
   };
@@ -234,20 +275,26 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
 const isExcludedSource = (relativePath: string): boolean => {
   const segments = relativePath.split(path.sep);
   return (
-    segments.some((segment) => /^(?:__tests__|__fixtures__|tests?|fixtures?)$/u.test(segment)) ||
-    /\.(?:test|spec|fixture)\.[cm]?[jt]sx?$/u.test(relativePath)
+    segments.some((segment) =>
+      /^(?:__tests__|__fixtures__|tests?|fixtures?)$/u.test(segment),
+    ) || /\.(?:test|spec|fixture)\.[cm]?[jt]sx?$/u.test(relativePath)
   );
 };
 
 const isGuardedSource = (relativePath: string): boolean =>
   relativePath !== WRITER && !isExcludedSource(relativePath);
 
-const sourceViolations = (relativePath: string, sourceText: string): Violation[] =>
+const sourceViolations = (
+  relativePath: string,
+  sourceText: string,
+): Violation[] =>
   isGuardedSource(relativePath) ? findWrites(sourceText, relativePath) : [];
 
 const productionViolations = async (): Promise<string[]> => {
   const offenders: string[] = [];
-  for await (const file of new Bun.Glob("*/src/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}").scan({
+  for await (const file of new Bun.Glob(
+    "*/src/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}",
+  ).scan({
     absolute: true,
     cwd: PACKAGES_DIR,
   })) {
@@ -255,7 +302,9 @@ const productionViolations = async (): Promise<string[]> => {
     if (!isGuardedSource(relative)) continue;
     const sourceText = await Bun.file(file).text();
     for (const violation of sourceViolations(relative, sourceText)) {
-      offenders.push(`${relative}:${violation.line}  raw JSZip ${violation.method} write`);
+      offenders.push(
+        `${relative}:${violation.line}  raw JSZip ${violation.method} write`,
+      );
     }
   }
   return offenders.sort();
@@ -303,15 +352,30 @@ describe("ZIP part writer", () => {
   });
 
   test("every package rejects direct string inputs before archive generation", async () => {
-    for await (const manifest of new Bun.Glob("*/package.json").scan({ cwd: PACKAGES_DIR })) {
+    for await (const manifest of new Bun.Glob("*/package.json").scan({
+      cwd: PACKAGES_DIR,
+    })) {
       const unsafeSource = `
         import JSZip from "jszip";
         const zip = new JSZip();
         zip.file("word/document.xml", "a".repeat(16383) + "👩");
         zip.generateAsync({ type: "uint8array" });
       `;
-      for (const extension of ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"]) {
-        const sourcePath = path.join(path.dirname(manifest), "src", `unsafe.${extension}`);
+      for (const extension of [
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "mts",
+        "cts",
+        "mjs",
+        "cjs",
+      ]) {
+        const sourcePath = path.join(
+          path.dirname(manifest),
+          "src",
+          `unsafe.${extension}`,
+        );
         expect(sourceViolations(sourcePath, unsafeSource)).toHaveLength(1);
       }
     }

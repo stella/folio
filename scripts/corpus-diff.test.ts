@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { SIGNATURE_DELTA_KINDS, diffFileSignatures, renderFamilyDeltas } from "./lib/corpus-diff";
+import {
+  diffFileSignatures,
+  renderFamilyDeltas,
+  SIGNATURE_DELTA_KINDS,
+} from "./lib/corpus-diff";
 import type { CorpusFileSignatures } from "./lib/corpus-file-signatures";
 import { fileSignatureRows } from "./lib/corpus-file-signatures";
 
@@ -22,7 +26,11 @@ const BEFORE = [
 const AFTER = [
   row("poi/one.docx", "editor-round-trip", ROUND_TRIP),
   row("poi/three.docx", "editor-round-trip", ROUND_TRIP),
-  row("poi/four.docx", "editor-round-trip", "editor-round-trip | a new loss | -"),
+  row(
+    "poi/four.docx",
+    "editor-round-trip",
+    "editor-round-trip | a new loss | -",
+  ),
 ];
 
 describe("a differential names the files, not an example", () => {
@@ -87,24 +95,34 @@ describe("a differential names the files, not an example", () => {
 describe("a file's rows are the census's own verdict", () => {
   test("failures are grouped by the family that counts them", () => {
     expect(
-      fileSignatureRows({ sourceId: "poi", path: "a.docx", sha256: "0".repeat(64) }, [
-        { invariant: "editor-round-trip", message: "b", frame: "-" },
-        { invariant: "reserialize", message: "a", frame: "-" },
-        { invariant: "editor-round-trip", message: "a", frame: "-" },
-      ]),
+      fileSignatureRows(
+        { sourceId: "poi", path: "a.docx", sha256: "0".repeat(64) },
+        [
+          { invariant: "editor-round-trip", message: "b", frame: "-" },
+          { invariant: "reserialize", message: "a", frame: "-" },
+          { invariant: "editor-round-trip", message: "a", frame: "-" },
+        ],
+      ),
     ).toEqual([
       {
         id: "poi/a.docx",
         family: "editor-round-trip",
         signatures: ["editor-round-trip | a | -", "editor-round-trip | b | -"],
       },
-      { id: "poi/a.docx", family: "reserialize", signatures: ["reserialize | a | -"] },
+      {
+        id: "poi/a.docx",
+        family: "reserialize",
+        signatures: ["reserialize | a | -"],
+      },
     ]);
   });
 
   test("a file with no findings contributes no row", () => {
     expect(
-      fileSignatureRows({ sourceId: "poi", path: "a.docx", sha256: "0".repeat(64) }, []),
+      fileSignatureRows(
+        { sourceId: "poi", path: "a.docx", sha256: "0".repeat(64) },
+        [],
+      ),
     ).toEqual([]);
   });
 });

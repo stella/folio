@@ -1,16 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { appendFile, mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  readFile,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
-import { buildDocx, CONTRACT_PARAGRAPHS, makeTempDir } from "./__tests__/fixtures";
+import {
+  buildDocx,
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+} from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
 import {
   appendJournal,
   findCommit,
+  type JournalCommit,
   journalPathFor,
   recoverStages,
   stagePathFor,
-  type JournalCommit,
 } from "./journal";
 
 let dir = "";
@@ -69,15 +80,22 @@ const listing = async () => (await readdir(dir)).toSorted();
 describe("recoverStages", () => {
   test("rolls a journaled stage forward while the destination is unchanged", async () => {
     await writeFile(stagePathFor(documentPath, "tx-1"), staged);
-    const line = commitLine({ txId: "tx-1", destinationVersionBefore: fileVersionOf(original) });
+    const line = commitLine({
+      txId: "tx-1",
+      destinationVersionBefore: fileVersionOf(original),
+    });
     (await appendJournal(journalPath, line)).unwrap();
 
     const actions = (await recover()).unwrap();
 
     expect(actions).toEqual([{ txId: "tx-1", action: "rolledForward" }]);
-    expect(fileVersionOf(new Uint8Array(await readFile(documentPath)))).toBe(fileVersionOf(staged));
+    expect(fileVersionOf(new Uint8Array(await readFile(documentPath)))).toBe(
+      fileVersionOf(staged),
+    );
     expect(await listing()).toEqual([".folio", "contract.docx"]);
-    expect((await findCommit(journalPath, "tx-1")).unwrap()?.toVersion).toBe(fileVersionOf(staged));
+    expect((await findCommit(journalPath, "tx-1")).unwrap()?.toVersion).toBe(
+      fileVersionOf(staged),
+    );
   });
 
   test("discards stages that are not journaled, name another document, or were outrun", async () => {
@@ -100,11 +118,15 @@ describe("recoverStages", () => {
 
     const actions = (await recover()).unwrap();
 
-    expect(actions.toSorted((left, right) => left.txId.localeCompare(right.txId))).toEqual([
+    expect(
+      actions.toSorted((left, right) => left.txId.localeCompare(right.txId)),
+    ).toEqual([
       { txId: "elsewhere", action: "discarded", reason: "otherDocument" },
       { txId: "outran", action: "discarded", reason: "destinationMoved" },
     ]);
-    expect(fileVersionOf(new Uint8Array(await readFile(documentPath)))).toBe(before);
+    expect(fileVersionOf(new Uint8Array(await readFile(documentPath)))).toBe(
+      before,
+    );
     expect(await listing()).toEqual([".folio", "contract.docx"]);
     expect((await findCommit(journalPath, "outran")).unwrap()).toBeUndefined();
   });
@@ -113,16 +135,25 @@ describe("recoverStages", () => {
     const target = path.join(dir, "planted.docx");
     await writeFile(target, staged);
     await symlink(target, stagePathFor(documentPath, "tx-link"));
-    const line = commitLine({ txId: "tx-link", destinationVersionBefore: fileVersionOf(original) });
+    const line = commitLine({
+      txId: "tx-link",
+      destinationVersionBefore: fileVersionOf(original),
+    });
     (await appendJournal(journalPath, line)).unwrap();
 
     const actions = (await recover()).unwrap();
 
-    expect(actions).toEqual([{ txId: "tx-link", action: "discarded", reason: "notRegularFile" }]);
+    expect(actions).toEqual([
+      { txId: "tx-link", action: "discarded", reason: "notRegularFile" },
+    ]);
     expect(fileVersionOf(new Uint8Array(await readFile(documentPath)))).toBe(
       fileVersionOf(original),
     );
-    expect(await listing()).toEqual([".folio", "contract.docx", "planted.docx"]);
+    expect(await listing()).toEqual([
+      ".folio",
+      "contract.docx",
+      "planted.docx",
+    ]);
   });
 
   test("discards a stage whose bytes are not a package", async () => {
@@ -144,7 +175,10 @@ describe("recoverStages", () => {
 describe("journal boundary", () => {
   test("skips a torn final line and other transactions", async () => {
     (
-      await appendJournal(journalPath, commitLine({ txId: "tx-1", destinationVersionBefore: null }))
+      await appendJournal(
+        journalPath,
+        commitLine({ txId: "tx-1", destinationVersionBefore: null }),
+      )
     ).unwrap();
     await appendFile(journalPath, '{"type":"commit","txId":"tx-2","requ');
 
@@ -153,7 +187,9 @@ describe("journal boundary", () => {
       status: "committed",
     });
     expect((await findCommit(journalPath, "tx-2")).unwrap()).toBeUndefined();
-    expect((await findCommit(path.join(dir, "missing.jsonl"), "tx-1")).unwrap()).toBeUndefined();
+    expect(
+      (await findCommit(path.join(dir, "missing.jsonl"), "tx-1")).unwrap(),
+    ).toBeUndefined();
   });
 
   test("refuses to write or read through a symlinked .folio or journal", async () => {
@@ -171,8 +207,14 @@ describe("journal boundary", () => {
 
       const separate = path.join(dir, "separate");
       await mkdir(separate);
-      await symlink(path.join(elsewhere, "journal.jsonl"), path.join(separate, "journal.jsonl"));
-      const redirected = await appendJournal(path.join(separate, "journal.jsonl"), line);
+      await symlink(
+        path.join(elsewhere, "journal.jsonl"),
+        path.join(separate, "journal.jsonl"),
+      );
+      const redirected = await appendJournal(
+        path.join(separate, "journal.jsonl"),
+        line,
+      );
       expect(redirected.isErr() && redirected.error.code).toBe("unsafe_path");
       expect(await readdir(elsewhere)).toEqual([]);
     } finally {

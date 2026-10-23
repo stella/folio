@@ -56,7 +56,10 @@ type Brush = { type: "brush"; fill: string | null };
 type GraphicsObject = Pen | Brush;
 type Point = { x: number; y: number };
 type State = {
-  mapMode: typeof MAP_MODE_TEXT | typeof MAP_MODE_ISOTROPIC | typeof MAP_MODE_ANISOTROPIC;
+  mapMode:
+    | typeof MAP_MODE_TEXT
+    | typeof MAP_MODE_ISOTROPIC
+    | typeof MAP_MODE_ANISOTROPIC;
   origin: Point;
   extent: Point | null;
   viewportOrigin: Point;
@@ -76,11 +79,23 @@ const cloneState = (state: State): State => ({
   current: { ...state.current },
 });
 
-const word = (view: DataView, offset: number, end: number): number | undefined =>
+const word = (
+  view: DataView,
+  offset: number,
+  end: number,
+): number | undefined =>
   offset >= 0 && offset + 2 <= end ? view.getUint16(offset, true) : undefined;
-const short = (view: DataView, offset: number, end: number): number | undefined =>
+const short = (
+  view: DataView,
+  offset: number,
+  end: number,
+): number | undefined =>
   offset >= 0 && offset + 2 <= end ? view.getInt16(offset, true) : undefined;
-const dword = (view: DataView, offset: number, end: number): number | undefined =>
+const dword = (
+  view: DataView,
+  offset: number,
+  end: number,
+): number | undefined =>
   offset >= 0 && offset + 4 <= end ? view.getUint32(offset, true) : undefined;
 
 const mappedPoint = (state: State, point: Point): Point | undefined => {
@@ -92,7 +107,8 @@ const mappedPoint = (state: State, point: Point): Point | undefined => {
   }
   const extent = state.extent;
   const viewportExtent = state.viewportExtent;
-  if (!extent || !viewportExtent || extent.x === 0 || extent.y === 0) return undefined;
+  if (!extent || !viewportExtent || extent.x === 0 || extent.y === 0)
+    return undefined;
   if (state.mapMode === MAP_MODE_ISOTROPIC) {
     const scale = Math.min(
       Math.abs(viewportExtent.x / extent.x),
@@ -101,10 +117,14 @@ const mappedPoint = (state: State, point: Point): Point | undefined => {
     return {
       x:
         state.viewportOrigin.x +
-        (point.x - state.origin.x) * Math.sign(viewportExtent.x / extent.x) * scale,
+        (point.x - state.origin.x) *
+          Math.sign(viewportExtent.x / extent.x) *
+          scale,
       y:
         state.viewportOrigin.y +
-        (point.y - state.origin.y) * Math.sign(viewportExtent.y / extent.y) * scale,
+        (point.y - state.origin.y) *
+          Math.sign(viewportExtent.y / extent.y) *
+          scale,
     };
   }
   return transformMetafilePoint({
@@ -124,11 +144,14 @@ const mappedPenWidth = (state: State, pen: Pen | null): number | undefined => {
   if (state.mapMode === MAP_MODE_TEXT) return width;
   const extent = state.extent;
   const viewportExtent = state.viewportExtent;
-  if (!extent || !viewportExtent || extent.x === 0 || extent.y === 0) return undefined;
+  if (!extent || !viewportExtent || extent.x === 0 || extent.y === 0)
+    return undefined;
   const xScale = Math.abs(viewportExtent.x / extent.x);
   const yScale = Math.abs(viewportExtent.y / extent.y);
   const scale =
-    state.mapMode === MAP_MODE_ISOTROPIC ? Math.min(xScale, yScale) : (xScale + yScale) / 2;
+    state.mapMode === MAP_MODE_ISOTROPIC
+      ? Math.min(xScale, yScale)
+      : (xScale + yScale) / 2;
   // WMF geometric pens have one logical width; average the device-axis scales for anisotropic maps.
   const mapped = width * scale;
   return Number.isFinite(mapped) ? mapped : undefined;
@@ -146,7 +169,11 @@ const paint = (state: State): string | undefined => {
   return `fill="${fill}" stroke="${stroke}" stroke-width="${metafileNumberText(width)}"`;
 };
 
-const readPoint = (view: DataView, offset: number, end: number): Point | undefined => {
+const readPoint = (
+  view: DataView,
+  offset: number,
+  end: number,
+): Point | undefined => {
   const x = short(view, offset, end);
   const y = short(view, offset + 2, end);
   return x === undefined || y === undefined ? undefined : { x, y };
@@ -167,7 +194,8 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
     const right = short(view, 10, 22);
     const bottom = short(view, 12, 22);
     let checksum = 0;
-    for (let offset = 0; offset < 20; offset += 2) checksum ^= view.getUint16(offset, true);
+    for (let offset = 0; offset < 20; offset += 2)
+      checksum ^= view.getUint16(offset, true);
     if (
       left === undefined ||
       top === undefined ||
@@ -259,9 +287,11 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
     if (records > MAX_WMF_RECORDS) return null;
     const sizeWords = dword(view, offset, bytes.byteLength);
     const fn = word(view, offset + 4, bytes.byteLength);
-    if (sizeWords === undefined || fn === undefined || sizeWords < 3) return null;
+    if (sizeWords === undefined || fn === undefined || sizeWords < 3)
+      return null;
     const size = sizeWords * 2;
-    if (size > bytes.byteLength - offset || sizeWords > maxRecordWords) return null;
+    if (size > bytes.byteLength - offset || sizeWords > maxRecordWords)
+      return null;
     const end = offset + size;
     const params = offset + 6;
 
@@ -274,7 +304,9 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         const mode = short(view, params, end);
         if (
           size !== 8 ||
-          (mode !== MAP_MODE_TEXT && mode !== MAP_MODE_ISOTROPIC && mode !== MAP_MODE_ANISOTROPIC)
+          (mode !== MAP_MODE_TEXT &&
+            mode !== MAP_MODE_ISOTROPIC &&
+            mode !== MAP_MODE_ANISOTROPIC)
         )
           return null;
         state.mapMode = mode;
@@ -287,7 +319,11 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
       }
       case META.setPolyFillMode: {
         const mode = word(view, params, end);
-        if (size !== 8 || (mode !== POLY_FILL_ALTERNATE && mode !== POLY_FILL_WINDING)) return null;
+        if (
+          size !== 8 ||
+          (mode !== POLY_FILL_ALTERNATE && mode !== POLY_FILL_WINDING)
+        )
+          return null;
         state.fillRule = mode === POLY_FILL_ALTERNATE ? "evenodd" : "nonzero";
         break;
       }
@@ -324,10 +360,16 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         break;
       case META.restoreDc: {
         const relative = short(view, params, end);
-        if (size !== 8 || relative === undefined || relative >= 0 || -relative > stack.length)
+        if (
+          size !== 8 ||
+          relative === undefined ||
+          relative >= 0 ||
+          -relative > stack.length
+        )
           return null;
         let restored: State | undefined;
-        for (let index = 0; index < -relative; index += 1) restored = stack.pop();
+        for (let index = 0; index < -relative; index += 1)
+          restored = stack.pop();
         if (!restored) return null;
         state = restored;
         break;
@@ -369,7 +411,12 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
           (style !== 0 && style !== 1)
         )
           return null;
-        if (!addObject({ type: "brush", fill: style === 1 ? null : metafileColorRefToCss(color) }))
+        if (
+          !addObject({
+            type: "brush",
+            fill: style === 1 ? null : metafileColorRefToCss(color),
+          })
+        )
           return null;
         break;
       }
@@ -421,7 +468,8 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
       case META.polygon:
       case META.polyline: {
         const count = word(view, params, end);
-        if (count === undefined || size !== 8 + count * 4 || !addPoints(count)) return null;
+        if (count === undefined || size !== 8 + count * 4 || !addPoints(count))
+          return null;
         const commands: string[] = [];
         for (let index = 0; index < count; index += 1) {
           const point = readPoint(view, params + 2 + index * 4, end);
@@ -442,7 +490,8 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         } else {
           shapeAttributes += ` fill-rule="${state.fillRule}"`;
         }
-        if (!append(`<path d="${commands.join(" ")}" ${shapeAttributes}/>`)) return null;
+        if (!append(`<path d="${commands.join(" ")}" ${shapeAttributes}/>`))
+          return null;
         break;
       }
       case META.polyPolygon: {
@@ -458,12 +507,17 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
           counts.push(count);
           total += count;
         }
-        if (size !== 8 + polygonCount * 2 + total * 4 || !addPoints(total)) return null;
+        if (size !== 8 + polygonCount * 2 + total * 4 || !addPoints(total))
+          return null;
         const commands: string[] = [];
         let consumed = 0;
         for (const count of counts) {
           for (let index = 0; index < count; index += 1) {
-            const point = readPoint(view, pointsStart + (consumed + index) * 4, end);
+            const point = readPoint(
+              view,
+              pointsStart + (consumed + index) * 4,
+              end,
+            );
             const mapped = point && mappedPoint(state, point);
             if (!mapped) return null;
             commands.push(pathPoint(index === 0 ? "M" : "L", mapped));
@@ -474,7 +528,9 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         const attributes = paint(state);
         if (
           !attributes ||
-          !append(`<path d="${commands.join(" ")}" ${attributes} fill-rule="${state.fillRule}"/>`)
+          !append(
+            `<path d="${commands.join(" ")}" ${attributes} fill-rule="${state.fillRule}"/>`,
+          )
         )
           return null;
         break;
@@ -517,7 +573,12 @@ export function renderWmfSvg(data: ArrayBuffer | Uint8Array): string | null {
   if (!sawEof || !outputExtent || output.length === 0) return null;
   const width = Math.abs(outputExtent.x);
   const height = Math.abs(outputExtent.y);
-  if (width <= 0 || height <= 0 || width > MAX_WMF_DIMENSION || height > MAX_WMF_DIMENSION)
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    width > MAX_WMF_DIMENSION ||
+    height > MAX_WMF_DIMENSION
+  )
     return null;
   return assembleMetafileSvg({
     width,

@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
+
 import { scanTestTimeout } from "../test/scan-timeout";
 
 setDefaultTimeout(scanTestTimeout(10_000));
@@ -14,7 +15,9 @@ const FLOATING_LABEL = /\bubuntu-latest\b/u;
 const floatingLabelLines = (file: string, text: string): string[] =>
   text
     .split("\n")
-    .flatMap((line, index) => (FLOATING_LABEL.test(line) ? [`${file}:${index + 1}`] : []));
+    .flatMap((line, index) =>
+      FLOATING_LABEL.test(line) ? [`${file}:${index + 1}`] : [],
+    );
 
 const workflowFiles = (): readonly string[] => {
   const result = Bun.spawnSync(["git", "ls-files", ".github"], {
@@ -34,7 +37,12 @@ test("no workflow or action names the floating Linux label", async () => {
   expect(files.length).toBeGreaterThan(0);
   const offenders: string[] = [];
   for (const file of files) {
-    offenders.push(...floatingLabelLines(file, await Bun.file(path.join(REPO_ROOT, file)).text()));
+    offenders.push(
+      ...floatingLabelLines(
+        file,
+        await Bun.file(path.join(REPO_ROOT, file)).text(),
+      ),
+    );
   }
   expect(offenders).toEqual([]);
 });
@@ -42,7 +50,7 @@ test("no workflow or action names the floating Linux label", async () => {
 test("a job on the floating label is reported with its line", () => {
   const workflow =
     "jobs:\n  build:\n    runs-on: ubuntu-latest\n  pinned:\n    runs-on: ubuntu-24.04\n";
-  expect(floatingLabelLines(".github/workflows/example.yml", workflow)).toEqual([
-    ".github/workflows/example.yml:3",
-  ]);
+  expect(floatingLabelLines(".github/workflows/example.yml", workflow)).toEqual(
+    [".github/workflows/example.yml:3"],
+  );
 });

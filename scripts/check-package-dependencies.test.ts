@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import {
   checkImports,
   checkRequiredPeers,
@@ -23,7 +24,9 @@ test("every module-specifier syntax rejects a phantom runtime import", () => {
     'import module = require("phantom");',
   ];
   for (const source of syntax) {
-    expect(checkImports({ manifest, source, fileName: "src/entry.ts" })).toHaveLength(1);
+    expect(
+      checkImports({ manifest, source, fileName: "src/entry.ts" }),
+    ).toHaveLength(1);
   }
   expect(
     checkImports({
@@ -33,7 +36,11 @@ test("every module-specifier syntax rejects a phantom runtime import", () => {
     }),
   ).toHaveLength(1);
   expect(
-    checkImports({ manifest, source: '@import "phantom/styles.css";', fileName: "src/styles.css" }),
+    checkImports({
+      manifest,
+      source: '@import "phantom/styles.css";',
+      fileName: "src/styles.css",
+    }),
   ).toHaveLength(1);
 });
 
@@ -46,8 +53,12 @@ test("type-only source imports allow development declarations; consumer types re
     'type Shape = import("build-types").Shape;',
     '/// <reference types="build-types" />',
   ]) {
-    expect(checkImports({ manifest, source, fileName: "src/entry.ts" })).toEqual([]);
-    expect(checkImports({ manifest, source, fileName: "dist/entry.d.ts" })).toHaveLength(1);
+    expect(
+      checkImports({ manifest, source, fileName: "src/entry.ts" }),
+    ).toEqual([]);
+    expect(
+      checkImports({ manifest, source, fileName: "dist/entry.d.ts" }),
+    ).toHaveLength(1);
   }
   expect(
     checkImports({
@@ -76,16 +87,26 @@ test("declared dependencies, peers, self imports, relative paths and builtins ar
     "fs",
   ]) {
     expect(
-      checkImports({ manifest, source: `import "${specifier}";`, fileName: "src/entry.ts" }),
+      checkImports({
+        manifest,
+        source: `import "${specifier}";`,
+        fileName: "src/entry.ts",
+      }),
     ).toEqual([]);
   }
 });
 
 test("a dependency required peer cannot be supplied by hoisting, development or optional dependencies", () => {
-  const dependency = { name: "model", peerDependencies: { integration: "^1.0.0" } };
+  const dependency = {
+    name: "model",
+    peerDependencies: { integration: "^1.0.0" },
+  };
   expect(checkRequiredPeers(manifest, dependency)).toHaveLength(1);
   expect(
-    checkRequiredPeers({ ...manifest, devDependencies: { integration: "^1.0.0" } }, dependency),
+    checkRequiredPeers(
+      { ...manifest, devDependencies: { integration: "^1.0.0" } },
+      dependency,
+    ),
   ).toHaveLength(1);
   expect(
     checkRequiredPeers(
@@ -94,10 +115,16 @@ test("a dependency required peer cannot be supplied by hoisting, development or 
     ),
   ).toHaveLength(1);
   expect(
-    checkRequiredPeers({ ...manifest, dependencies: { integration: "^1.0.0" } }, dependency),
+    checkRequiredPeers(
+      { ...manifest, dependencies: { integration: "^1.0.0" } },
+      dependency,
+    ),
   ).toEqual([]);
   expect(
-    checkRequiredPeers({ ...manifest, peerDependencies: { integration: "^1.0.0" } }, dependency),
+    checkRequiredPeers(
+      { ...manifest, peerDependencies: { integration: "^1.0.0" } },
+      dependency,
+    ),
   ).toEqual([]);
   expect(
     checkRequiredPeers(manifest, {
@@ -108,30 +135,45 @@ test("a dependency required peer cannot be supplied by hoisting, development or 
 });
 
 test("an optional parent peer does not satisfy a dependency required peer", () => {
-  const dependency = { name: "model", peerDependencies: { integration: "^1.0.0" } };
+  const dependency = {
+    name: "model",
+    peerDependencies: { integration: "^1.0.0" },
+  };
   const optionalPeer = {
     ...manifest,
     peerDependencies: { ...manifest.peerDependencies, integration: "^1.0.0" },
-    peerDependenciesMeta: { ...manifest.peerDependenciesMeta, integration: { optional: true } },
+    peerDependenciesMeta: {
+      ...manifest.peerDependenciesMeta,
+      integration: { optional: true },
+    },
   };
   expect(checkRequiredPeers(optionalPeer, dependency)).toEqual([
     "@example/editor: dependency model requires optional peer integration",
   ]);
   expect(
     checkRequiredPeers(
-      { ...optionalPeer, peerDependenciesMeta: { integration: { optional: false } } },
+      {
+        ...optionalPeer,
+        peerDependenciesMeta: { integration: { optional: false } },
+      },
       dependency,
     ),
   ).toEqual([]);
   expect(
-    checkRequiredPeers({ ...optionalPeer, dependencies: { integration: "^1.0.0" } }, dependency),
+    checkRequiredPeers(
+      { ...optionalPeer, dependencies: { integration: "^1.0.0" } },
+      dependency,
+    ),
   ).toEqual([]);
 });
 
 test("scoped ambient type dependencies own corresponding declaration imports", () => {
   expect(
     checkImports({
-      manifest: { name: "editor", dependencies: { "@types/example__host": "^1.0.0" } },
+      manifest: {
+        name: "editor",
+        dependencies: { "@types/example__host": "^1.0.0" },
+      },
       source: 'import type { Host } from "@example/host";',
       fileName: "dist/entry.d.ts",
     }),
@@ -140,11 +182,17 @@ test("scoped ambient type dependencies own corresponding declaration imports", (
 
 test("source build inputs use development dependencies; emitted assets require consumer dependencies", () => {
   const stylesheet = '@import "build-types/theme.css";';
-  expect(checkImports({ manifest, source: stylesheet, fileName: "src/style.css" })).toEqual([]);
-  expect(checkImports({ manifest, source: stylesheet, fileName: "dist/style.css" })).toHaveLength(
-    1,
-  );
+  expect(
+    checkImports({ manifest, source: stylesheet, fileName: "src/style.css" }),
+  ).toEqual([]);
+  expect(
+    checkImports({ manifest, source: stylesheet, fileName: "dist/style.css" }),
+  ).toHaveLength(1);
   const ambient = '/// <reference types="build-types" />';
-  expect(checkImports({ manifest, source: ambient, fileName: "src/env.d.ts" })).toEqual([]);
-  expect(checkImports({ manifest, source: ambient, fileName: "dist/env.d.ts" })).toHaveLength(1);
+  expect(
+    checkImports({ manifest, source: ambient, fileName: "src/env.d.ts" }),
+  ).toEqual([]);
+  expect(
+    checkImports({ manifest, source: ambient, fileName: "dist/env.d.ts" }),
+  ).toHaveLength(1);
 });

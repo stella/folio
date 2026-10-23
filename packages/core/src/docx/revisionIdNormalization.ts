@@ -3,15 +3,18 @@
 
 import { TaggedError } from "better-result";
 
+import { rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
 import {
   findAttributeByNamespaceUri,
   getLocalName,
   getNamespaceUri,
-  type XmlElement,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
 } from "./xmlParser";
-import { rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
-import { assertXmlResourceLimits, XmlResourceLimitError } from "./xmlResourceLimits";
+import {
+  assertXmlResourceLimits,
+  XmlResourceLimitError,
+} from "./xmlResourceLimits";
 
 /**
  * Two revision elements in one package claimed the same `w:id`.
@@ -21,7 +24,9 @@ import { assertXmlResourceLimits, XmlResourceLimitError } from "./xmlResourceLim
  * normalization below hands every id it emits to one choke point, which throws
  * this rather than letting the duplicate reach the ZIP.
  */
-export class RevisionIdCollisionError extends TaggedError("RevisionIdCollisionError")<{
+export class RevisionIdCollisionError extends TaggedError(
+  "RevisionIdCollisionError",
+)<{
   message: string;
   revisionId: number;
   part: string;
@@ -100,8 +105,14 @@ type IdKind = (typeof ID_KINDS)[keyof typeof ID_KINDS];
 
 /** One lookup for both halves of the space, so an element is classified once. */
 const ID_KIND_BY_ELEMENT_NAME: ReadonlyMap<string, IdKind> = new Map([
-  ...[...REVISION_ELEMENT_NAMES].map((name): [string, IdKind] => [name, ID_KINDS.revision]),
-  ...[...ANNOTATION_ELEMENT_NAMES].map((name): [string, IdKind] => [name, ID_KINDS.annotation]),
+  ...[...REVISION_ELEMENT_NAMES].map((name): [string, IdKind] => [
+    name,
+    ID_KINDS.revision,
+  ]),
+  ...[...ANNOTATION_ELEMENT_NAMES].map((name): [string, IdKind] => [
+    name,
+    ID_KINDS.annotation,
+  ]),
 ]);
 
 type IdentifiedElement = { kind: IdKind; name: string; id: number };
@@ -118,7 +129,10 @@ type IdentifiedElement = { kind: IdKind; name: string; id: number };
  * mint is not one it has to avoid.
  */
 const identifiedElement = (element: XmlElement): IdentifiedElement | null => {
-  if (!element.name || !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")) {
+  if (
+    !element.name ||
+    !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+  ) {
     return null;
   }
   const localName = getLocalName(element.name);
@@ -126,12 +140,18 @@ const identifiedElement = (element: XmlElement): IdentifiedElement | null => {
   if (kind === undefined) {
     return null;
   }
-  const attribute = findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id");
+  const attribute = findAttributeByNamespaceUri(
+    element,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "id",
+  );
   if (!attribute) {
     return null;
   }
   const id = Number(attribute.value);
-  return Number.isSafeInteger(id) && id >= 0 ? { kind, name: attribute.name, id } : null;
+  return Number.isSafeInteger(id) && id >= 0
+    ? { kind, name: attribute.name, id }
+    : null;
 };
 
 const revisionAttribute = (element: XmlElement): IdentifiedElement | null => {
@@ -150,7 +170,9 @@ const revisionAttribute = (element: XmlElement): IdentifiedElement | null => {
 export const normalizeRevisionIdsInXmlParts = (
   parts: ReadonlyMap<string, string>,
 ): Map<string, string> => {
-  const candidates = [...parts].filter(([, xml]) => REVISION_ELEMENT_CANDIDATE.test(xml));
+  const candidates = [...parts].filter(([, xml]) =>
+    REVISION_ELEMENT_CANDIDATE.test(xml),
+  );
   const occurrencesByPath = new Map<string, number[]>();
   const reserved = new Set<number>();
   for (const [path, xml] of candidates) {
@@ -199,7 +221,10 @@ export const normalizeRevisionIdsInXmlParts = (
   // nothing is allocated.
   if (repeatedPaths.size > 0) {
     for (const [path, xml] of parts) {
-      if (occurrencesByPath.has(path) || !ANNOTATION_ELEMENT_CANDIDATE.test(xml)) {
+      if (
+        occurrencesByPath.has(path) ||
+        !ANNOTATION_ELEMENT_CANDIDATE.test(xml)
+      ) {
         continue;
       }
       assertXmlResourceLimits({ xml, partPath: path });

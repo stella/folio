@@ -4,7 +4,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
+import {
+  bandFragmentX,
+  bandTopContentY,
+  isPageFrameRelativeAnchor,
+} from "./textBoxFlow";
 import {
   floatingTextBoxReservesBand,
   floatingTextBoxWrapsText,
@@ -34,9 +38,15 @@ describe("isFloatingTextBoxBlock", () => {
 
 describe("floatingTextBoxWrapsText", () => {
   test("wraps text for square/tight/through", () => {
-    expect(floatingTextBoxWrapsText({ displayMode: "float", wrapType: "square" })).toBe(true);
-    expect(floatingTextBoxWrapsText({ displayMode: "float", wrapType: "tight" })).toBe(true);
-    expect(floatingTextBoxWrapsText({ displayMode: "float", wrapType: "through" })).toBe(true);
+    expect(
+      floatingTextBoxWrapsText({ displayMode: "float", wrapType: "square" }),
+    ).toBe(true);
+    expect(
+      floatingTextBoxWrapsText({ displayMode: "float", wrapType: "tight" }),
+    ).toBe(true);
+    expect(
+      floatingTextBoxWrapsText({ displayMode: "float", wrapType: "through" }),
+    ).toBe(true);
   });
 
   test("does not wrap text for wrapNone (behind/inFront)", () => {
@@ -94,36 +104,56 @@ describe("bandFragmentX (eigenpal #694)", () => {
 
   test("margin-relative align=center centers within the content box", () => {
     // 96 + (624 - 600) / 2
-    expect(bandFragmentX({ relativeTo: "margin", align: "center" }, geometry)).toBe(108);
+    expect(
+      bandFragmentX({ relativeTo: "margin", align: "center" }, geometry),
+    ).toBe(108);
   });
 
   test("margin-relative align=right pins to the content right edge", () => {
     // (816 - 96) - 600
-    expect(bandFragmentX({ relativeTo: "margin", align: "right" }, geometry)).toBe(120);
+    expect(
+      bandFragmentX({ relativeTo: "margin", align: "right" }, geometry),
+    ).toBe(120);
   });
 
   test("page-relative align=center centers within the full page", () => {
     // (816 - 600) / 2
-    expect(bandFragmentX({ relativeTo: "page", align: "center" }, geometry)).toBe(108);
+    expect(
+      bandFragmentX({ relativeTo: "page", align: "center" }, geometry),
+    ).toBe(108);
   });
 
   test("page-relative align=right pins to the page right edge", () => {
     // 816 - 600
-    expect(bandFragmentX({ relativeTo: "page", align: "right" }, geometry)).toBe(216);
+    expect(
+      bandFragmentX({ relativeTo: "page", align: "right" }, geometry),
+    ).toBe(216);
   });
 
   test("align=outside aliases right, align=inside aliases left", () => {
-    expect(bandFragmentX({ relativeTo: "margin", align: "outside" }, geometry)).toBe(120);
-    expect(bandFragmentX({ relativeTo: "margin", align: "inside" }, geometry)).toBe(96);
+    expect(
+      bandFragmentX({ relativeTo: "margin", align: "outside" }, geometry),
+    ).toBe(120);
+    expect(
+      bandFragmentX({ relativeTo: "margin", align: "inside" }, geometry),
+    ).toBe(96);
   });
 
   test("explicit posOffset wins over align and is frame-relative", () => {
     // page frame: 0 + 96
     expect(
-      bandFragmentX({ relativeTo: "page", posOffset: EMU_PER_INCH, align: "center" }, geometry),
+      bandFragmentX(
+        { relativeTo: "page", posOffset: EMU_PER_INCH, align: "center" },
+        geometry,
+      ),
     ).toBe(96);
     // margin frame: 96 + 96
-    expect(bandFragmentX({ relativeTo: "margin", posOffset: EMU_PER_INCH }, geometry)).toBe(192);
+    expect(
+      bandFragmentX(
+        { relativeTo: "margin", posOffset: EMU_PER_INCH },
+        geometry,
+      ),
+    ).toBe(192);
   });
 
   test("resolves column-relative placement from the active column frame", () => {
@@ -134,10 +164,15 @@ describe("bandFragmentX (eigenpal #694)", () => {
       boxWidth: 120,
     };
 
-    expect(bandFragmentX({ relativeTo: "column", posOffset: EMU_PER_INCH }, secondColumn)).toBe(
-      516,
-    );
-    expect(bandFragmentX({ relativeTo: "column", align: "right" }, secondColumn)).toBe(600);
+    expect(
+      bandFragmentX(
+        { relativeTo: "column", posOffset: EMU_PER_INCH },
+        secondColumn,
+      ),
+    ).toBe(516);
+    expect(
+      bandFragmentX({ relativeTo: "column", align: "right" }, secondColumn),
+    ).toBe(600);
   });
 
   test("changing the active column cannot move anchors in any other frame", () => {
@@ -158,7 +193,9 @@ describe("bandFragmentX (eigenpal #694)", () => {
 
     for (const relativeTo of nonColumnFrames) {
       const horizontal = { relativeTo, align: "center" as const };
-      expect(bandFragmentX(horizontal, shiftedColumn)).toBe(bandFragmentX(horizontal, geometry));
+      expect(bandFragmentX(horizontal, shiftedColumn)).toBe(
+        bandFragmentX(horizontal, geometry),
+      );
     }
   });
 
@@ -170,7 +207,12 @@ describe("bandFragmentX (eigenpal #694)", () => {
     expect(bandFragmentX({ relativeTo: "rightMargin" }, geometry)).toBe(720);
     expect(bandFragmentX({ relativeTo: "outsideMargin" }, geometry)).toBe(720);
     // posOffset is measured from the strip's left edge, not the content box.
-    expect(bandFragmentX({ relativeTo: "leftMargin", posOffset: EMU_PER_INCH }, geometry)).toBe(96);
+    expect(
+      bandFragmentX(
+        { relativeTo: "leftMargin", posOffset: EMU_PER_INCH },
+        geometry,
+      ),
+    ).toBe(96);
   });
 });
 
@@ -211,17 +253,27 @@ describe("bandTopContentY (eigenpal #694)", () => {
 
   test("center align resolves to the middle of the anchor frame", () => {
     // margin frame [96, 1008]: 96 + (912 - 100) / 2 = 502 → content 406.
-    expect(bandTopContentY({ relativeTo: "margin", align: "center" }, geometry)).toBe(406);
+    expect(
+      bandTopContentY({ relativeTo: "margin", align: "center" }, geometry),
+    ).toBe(406);
     // page frame [0, 1056]: (1056 - 100) / 2 = 478 → content 382.
-    expect(bandTopContentY({ relativeTo: "page", align: "center" }, geometry)).toBe(382);
+    expect(
+      bandTopContentY({ relativeTo: "page", align: "center" }, geometry),
+    ).toBe(382);
   });
 
   test("bottom/outside align pins the box to the frame bottom", () => {
     // margin frame bottom 1008 - 100 = 908 → content 812.
-    expect(bandTopContentY({ relativeTo: "margin", align: "bottom" }, geometry)).toBe(812);
-    expect(bandTopContentY({ relativeTo: "margin", align: "outside" }, geometry)).toBe(812);
+    expect(
+      bandTopContentY({ relativeTo: "margin", align: "bottom" }, geometry),
+    ).toBe(812);
+    expect(
+      bandTopContentY({ relativeTo: "margin", align: "outside" }, geometry),
+    ).toBe(812);
     // inside aliases top: margin frame top 96 → content 0.
-    expect(bandTopContentY({ relativeTo: "margin", align: "inside" }, geometry)).toBe(0);
+    expect(
+      bandTopContentY({ relativeTo: "margin", align: "inside" }, geometry),
+    ).toBe(0);
   });
 
   test("margin-strip anchors resolve to their strip", () => {
@@ -230,15 +282,25 @@ describe("bandTopContentY (eigenpal #694)", () => {
     expect(bandTopContentY({ relativeTo: "insideMargin" }, geometry)).toBe(-96);
     // bottomMargin/outsideMargin → [1008, 1056] strip top → content 912.
     expect(bandTopContentY({ relativeTo: "bottomMargin" }, geometry)).toBe(912);
-    expect(bandTopContentY({ relativeTo: "outsideMargin" }, geometry)).toBe(912);
+    expect(bandTopContentY({ relativeTo: "outsideMargin" }, geometry)).toBe(
+      912,
+    );
     // bottom-aligned within the bottom strip: 1056 - 100 = 956 → content 860.
-    expect(bandTopContentY({ relativeTo: "bottomMargin", align: "bottom" }, geometry)).toBe(860);
+    expect(
+      bandTopContentY(
+        { relativeTo: "bottomMargin", align: "bottom" },
+        geometry,
+      ),
+    ).toBe(860);
   });
 
   test("explicit posOffset wins over align and is frame-relative", () => {
     // margin frame top 96 + 96 = 192 → content 96 (align ignored).
     expect(
-      bandTopContentY({ relativeTo: "margin", posOffset: EMU_PER_INCH, align: "center" }, geometry),
+      bandTopContentY(
+        { relativeTo: "margin", posOffset: EMU_PER_INCH, align: "center" },
+        geometry,
+      ),
     ).toBe(96);
   });
 });

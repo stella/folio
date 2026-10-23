@@ -43,7 +43,10 @@ const LAYER_NAMES: Record<Layer, string> = {
   engine: "layout-engine",
 };
 
-const ALLOWED_PAINTER_TO_ENGINE_SEAMS = ["layout-engine/types", "layout-engine/measure"];
+const ALLOWED_PAINTER_TO_ENGINE_SEAMS = [
+  "layout-engine/types",
+  "layout-engine/measure",
+];
 
 const LAYER_ORDER: readonly Layer[] = ["painter", "bridge", "engine"];
 
@@ -76,7 +79,9 @@ const IMPORT_REGEX =
 // line is preserved. The AST-based `no-upstream-import` rule remains the
 // authoritative check.
 const stripComments = (source: string): string =>
-  source.replaceAll(/\/\*[\s\S]*?\*\//gu, "").replaceAll(/^[ \t]*\/\/[^\n]*/gmu, "");
+  source
+    .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+    .replaceAll(/^[ \t]*\/\/[^\n]*/gmu, "");
 
 type EdgeViolation = {
   importer: string;
@@ -90,7 +95,10 @@ type EdgeViolation = {
 const violationsForFile = (filePath: string): EdgeViolation[] =>
   violationsForSource(filePath, readFileSync(filePath, "utf-8"));
 
-const violationsForSource = (filePath: string, source: string): EdgeViolation[] => {
+const violationsForSource = (
+  filePath: string,
+  source: string,
+): EdgeViolation[] => {
   const fromLayer = layerOfPath(filePath);
   if (fromLayer === null) {
     return [];
@@ -98,7 +106,9 @@ const violationsForSource = (filePath: string, source: string): EdgeViolation[] 
   const violations: EdgeViolation[] = [];
   for (const match of stripComments(source).matchAll(IMPORT_REGEX)) {
     const specifier =
-      match.groups?.["fromSpec"] ?? match.groups?.["importSpec"] ?? match.groups?.["dynImportSpec"];
+      match.groups?.["fromSpec"] ??
+      match.groups?.["importSpec"] ??
+      match.groups?.["dynImportSpec"];
     if (specifier === undefined || !specifier.startsWith(".")) {
       continue;
     }
@@ -125,7 +135,11 @@ const violationsForSource = (filePath: string, source: string): EdgeViolation[] 
   return violations;
 };
 
-const classifyEdge = (fromLayer: Layer, toLayer: Layer, resolvedTarget: string): string | null => {
+const classifyEdge = (
+  fromLayer: Layer,
+  toLayer: Layer,
+  resolvedTarget: string,
+): string | null => {
   if (fromLayer === "painter" && toLayer === "bridge") {
     return `${LAYER_NAMES.painter} must not import from ${LAYER_NAMES.bridge}`;
   }
@@ -201,7 +215,9 @@ describe("folio render-pipeline layer boundaries", () => {
       posix.join(dirname(fakePainter).replaceAll("\\", "/"), specifier),
     );
     expect(matchesAllowedPainterToEngineSeam(target)).toBe(true);
-    expect(classifyEdge("painter", layerOfPath(target) ?? "engine", target)).toBeNull();
+    expect(
+      classifyEdge("painter", layerOfPath(target) ?? "engine", target),
+    ).toBeNull();
   });
 
   test("painter is allowed to import from layout-engine/measure", () => {
@@ -211,7 +227,9 @@ describe("folio render-pipeline layer boundaries", () => {
       posix.join(dirname(fakePainter).replaceAll("\\", "/"), specifier),
     );
     expect(matchesAllowedPainterToEngineSeam(target)).toBe(true);
-    expect(classifyEdge("painter", layerOfPath(target) ?? "engine", target)).toBeNull();
+    expect(
+      classifyEdge("painter", layerOfPath(target) ?? "engine", target),
+    ).toBeNull();
   });
 });
 
@@ -223,16 +241,21 @@ describe("folio layer-boundaries — synthetic violation fixtures", () => {
 
   test("painter -> bridge is rejected", () => {
     const target = resolve(CORE_DIR, "layout-bridge/measuring/index.ts");
-    expect(classifyEdge("painter", layerOfPath(target) ?? "bridge", target)).toBe(
-      "layout-painter must not import from layout-bridge",
-    );
+    expect(
+      classifyEdge("painter", layerOfPath(target) ?? "bridge", target),
+    ).toBe("layout-painter must not import from layout-bridge");
   });
 
   test("painter -> bridge side-effect import is rejected", () => {
     const importer = resolve(CORE_DIR, "layout-painter/renderPage.ts");
-    const violations = violationsForSource(importer, 'import "../layout-bridge/setup";');
+    const violations = violationsForSource(
+      importer,
+      'import "../layout-bridge/setup";',
+    );
     expect(violations).toHaveLength(1);
-    expect(violations[0]?.reason).toBe("layout-painter must not import from layout-bridge");
+    expect(violations[0]?.reason).toBe(
+      "layout-painter must not import from layout-bridge",
+    );
   });
 
   test("painter -> bridge dynamic import is rejected", () => {
@@ -242,56 +265,66 @@ describe("folio layer-boundaries — synthetic violation fixtures", () => {
       'const module = await import("../layout-bridge/measuring");',
     );
     expect(violations).toHaveLength(1);
-    expect(violations[0]?.reason).toBe("layout-painter must not import from layout-bridge");
+    expect(violations[0]?.reason).toBe(
+      "layout-painter must not import from layout-bridge",
+    );
   });
 
   test("painter -> bridge barrel is rejected", () => {
     const target = resolve(CORE_DIR, "layout-bridge");
     expect(layerOfPath(target)).toBe("bridge");
-    expect(classifyEdge("painter", layerOfPath(target) ?? "bridge", target)).toBe(
-      "layout-painter must not import from layout-bridge",
-    );
+    expect(
+      classifyEdge("painter", layerOfPath(target) ?? "bridge", target),
+    ).toBe("layout-painter must not import from layout-bridge");
   });
 
   test("painter -> engine internals (non-seam) is rejected", () => {
     const target = resolve(CORE_DIR, "layout-engine/paginator.ts");
-    const reason = classifyEdge("painter", layerOfPath(target) ?? "engine", target);
+    const reason = classifyEdge(
+      "painter",
+      layerOfPath(target) ?? "engine",
+      target,
+    );
     expect(reason).toContain("may only reach layout-engine via");
   });
 
   test("painter -> engine textBoxFlow is rejected (must go through /types)", () => {
     const target = resolve(CORE_DIR, "layout-engine/textBoxFlow.ts");
-    const reason = classifyEdge("painter", layerOfPath(target) ?? "engine", target);
+    const reason = classifyEdge(
+      "painter",
+      layerOfPath(target) ?? "engine",
+      target,
+    );
     expect(reason).toContain("may only reach layout-engine via");
   });
 
   test("bridge -> painter is rejected", () => {
     const target = resolve(CORE_DIR, "layout-painter/renderPage.ts");
-    expect(classifyEdge("bridge", layerOfPath(target) ?? "painter", target)).toBe(
-      "layout-bridge must not import from layout-painter",
-    );
+    expect(
+      classifyEdge("bridge", layerOfPath(target) ?? "painter", target),
+    ).toBe("layout-bridge must not import from layout-painter");
   });
 
   test("engine -> painter is rejected", () => {
     const target = resolve(CORE_DIR, "layout-painter/renderPage.ts");
-    expect(classifyEdge("engine", layerOfPath(target) ?? "painter", target)).toBe(
-      "layout-engine must not import from layout-painter",
-    );
+    expect(
+      classifyEdge("engine", layerOfPath(target) ?? "painter", target),
+    ).toBe("layout-engine must not import from layout-painter");
   });
 
   test("engine -> bridge is rejected", () => {
     const target = resolve(CORE_DIR, "layout-bridge/footnoteLayout.ts");
-    expect(classifyEdge("engine", layerOfPath(target) ?? "bridge", target)).toBe(
-      "layout-engine must not import from layout-bridge",
-    );
+    expect(
+      classifyEdge("engine", layerOfPath(target) ?? "bridge", target),
+    ).toBe("layout-engine must not import from layout-bridge");
   });
 
   test("engine -> bridge barrel is rejected", () => {
     const target = resolve(CORE_DIR, "layout-bridge");
     expect(layerOfPath(target)).toBe("bridge");
-    expect(classifyEdge("engine", layerOfPath(target) ?? "bridge", target)).toBe(
-      "layout-engine must not import from layout-bridge",
-    );
+    expect(
+      classifyEdge("engine", layerOfPath(target) ?? "bridge", target),
+    ).toBe("layout-engine must not import from layout-bridge");
   });
 
   test("the file walker flags a synthetic painter -> bridge edge", () => {
@@ -312,9 +345,9 @@ describe("folio layer-boundaries — synthetic violation fixtures", () => {
     );
     const toLayer = layerOfPath(resolved);
     expect(toLayer).toBe("bridge");
-    expect(classifyEdge(fromLayer ?? "painter", toLayer ?? "bridge", resolved)).toBe(
-      "layout-painter must not import from layout-bridge",
-    );
+    expect(
+      classifyEdge(fromLayer ?? "painter", toLayer ?? "bridge", resolved),
+    ).toBe("layout-painter must not import from layout-bridge");
   });
 
   test("an import mentioned in a comment is ignored", () => {

@@ -2,20 +2,27 @@ import { describe, expect, test } from "bun:test";
 
 import {
   OOXML_NAMESPACES,
-  UnboundNamespacePrefixError,
   readRootNamespaceBindings,
   serializePartElement,
+  UnboundNamespacePrefixError,
 } from "./partNamespaces";
 
 const declaredPrefixes = (xml: string): string[] =>
-  [...xml.matchAll(/xmlns:(?<prefix>[\w.-]+)=/gu)].map((match) => match.groups?.prefix ?? "");
+  [...xml.matchAll(/xmlns:(?<prefix>[\w.-]+)=/gu)].map(
+    (match) => match.groups?.prefix ?? "",
+  );
 
 const ignorablePrefixes = (xml: string): string[] => {
   const attribute = /mc:Ignorable="(?<value>[^"]*)"/u.exec(xml);
-  return attribute ? (attribute.groups?.value ?? "").split(" ").filter(Boolean) : [];
+  return attribute
+    ? (attribute.groups?.value ?? "").split(" ").filter(Boolean)
+    : [];
 };
 
-const serialize = (body: string, sourceBindings?: ReadonlyMap<string, string>): string =>
+const serialize = (
+  body: string,
+  sourceBindings?: ReadonlyMap<string, string>,
+): string =>
   serializePartElement({
     partPath: "word/document.xml",
     rootName: "w:document",
@@ -26,18 +33,28 @@ const serialize = (body: string, sourceBindings?: ReadonlyMap<string, string>): 
 
 describe("serializePartElement", () => {
   test("declares the baseline even when the body uses none of it", () => {
-    expect(declaredPrefixes(serialize("<w:body/>"))).toEqual(["mc", "w", "w14"]);
+    expect(declaredPrefixes(serialize("<w:body/>"))).toEqual([
+      "mc",
+      "w",
+      "w14",
+    ]);
   });
 
   test("declares a prefix the body uses beyond the baseline", () => {
-    const xml = serialize("<w:body><wp:txbx><wne:txbxContent/></wp:txbx></w:body>");
+    const xml = serialize(
+      "<w:body><wp:txbx><wne:txbxContent/></wp:txbx></w:body>",
+    );
     expect(declaredPrefixes(xml)).toContain("wne");
     expect(xml).toContain(`xmlns:wne="${OOXML_NAMESPACES.wne.uri}"`);
   });
 
   test("declares a prefix carried only by an attribute name", () => {
     expect(
-      declaredPrefixes(serialize('<w:body><w:p w16du:dateUtc="2024-01-01T00:00:00Z"/></w:body>')),
+      declaredPrefixes(
+        serialize(
+          '<w:body><w:p w16du:dateUtc="2024-01-01T00:00:00Z"/></w:body>',
+        ),
+      ),
     ).toContain("w16du");
   });
 
@@ -57,11 +74,18 @@ describe("serializePartElement", () => {
 
   test("leaves a prefix the body binds for its own subtree to that binding", () => {
     const body = '<w:body><a14:x xmlns:a14="urn:inline"/></w:body>';
-    expect(declaredPrefixes(serialize(body))).toEqual(["mc", "w", "w14", "a14"]);
+    expect(declaredPrefixes(serialize(body))).toEqual([
+      "mc",
+      "w",
+      "w14",
+      "a14",
+    ]);
   });
 
   test("fails on a prefix nothing binds rather than writing it unbound", () => {
-    expect(() => serialize("<w:body><acme:marker/></w:body>")).toThrow(UnboundNamespacePrefixError);
+    expect(() => serialize("<w:body><acme:marker/></w:body>")).toThrow(
+      UnboundNamespacePrefixError,
+    );
   });
 
   test("reports every unbound prefix in the part", () => {
@@ -70,23 +94,33 @@ describe("serializePartElement", () => {
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(UnboundNamespacePrefixError);
-      expect((error as UnboundNamespacePrefixError).prefixes).toEqual(["acme", "zeta"]);
-      expect((error as UnboundNamespacePrefixError).partPath).toBe("word/document.xml");
+      expect((error as UnboundNamespacePrefixError).prefixes).toEqual([
+        "acme",
+        "zeta",
+      ]);
+      expect((error as UnboundNamespacePrefixError).partPath).toBe(
+        "word/document.xml",
+      );
     }
   });
 
   test("a colon inside an attribute value is not a namespace prefix", () => {
-    const xml = serialize('<w:body><w:p w:rsidR="see http://x/y note:this"/></w:body>');
+    const xml = serialize(
+      '<w:body><w:p w:rsidR="see http://x/y note:this"/></w:body>',
+    );
     expect(declaredPrefixes(xml)).toEqual(["mc", "w", "w14"]);
   });
 
   test("comments, CDATA and processing instructions carry no prefixes", () => {
-    const body = "<w:body><!-- acme:not-a-tag --><![CDATA[<zeta:nope/>]]><?pi acme:x?></w:body>";
+    const body =
+      "<w:body><!-- acme:not-a-tag --><![CDATA[<zeta:nope/>]]><?pi acme:x?></w:body>";
     expect(declaredPrefixes(serialize(body))).toEqual(["mc", "w", "w14"]);
   });
 
   test("mc:Ignorable lists exactly the declared prefixes marked ignorable", () => {
-    const xml = serialize('<w:body><w:p w16du:dateUtc="2024-01-01T00:00:00Z"/></w:body>');
+    const xml = serialize(
+      '<w:body><w:p w16du:dateUtc="2024-01-01T00:00:00Z"/></w:body>',
+    );
     const declared = new Set(declaredPrefixes(xml));
     const listed = ignorablePrefixes(xml);
     expect(listed).toEqual(["w14", "w16du"]);
@@ -94,7 +128,9 @@ describe("serializePartElement", () => {
       expect(declared.has(prefix)).toBe(true);
     }
     for (const prefix of declared) {
-      const entry = Object.entries(OOXML_NAMESPACES).find(([name]) => name === prefix)?.[1];
+      const entry = Object.entries(OOXML_NAMESPACES).find(
+        ([name]) => name === prefix,
+      )?.[1];
       expect(entry?.ignorable === true).toBe(listed.includes(prefix));
     }
   });

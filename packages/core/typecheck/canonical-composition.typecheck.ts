@@ -1,6 +1,8 @@
 import { createCanonicalInputBoundary } from "../src/controller/canonicalInput";
 
-type Replacement = Parameters<Parameters<typeof createCanonicalInputBoundary>[0]["replace"]>[0];
+type Replacement = Parameters<
+  Parameters<typeof createCanonicalInputBoundary>[0]["replace"]
+>[0];
 
 const correction = {
   from: 1,

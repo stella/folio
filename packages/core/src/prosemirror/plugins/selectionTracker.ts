@@ -8,15 +8,15 @@
  * - Selection range information
  */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { Plugin } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import type { ParagraphFormatting, TextFormatting } from "../../types/document";
 import { expectCommentMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { type ListState, sameListState } from "../listState";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { extractSelectionSnapshot } from "../selectionState";
-import type { TextFormatting, ParagraphFormatting } from "../../types/document";
 
 /**
  * Selection context for toolbar state
@@ -47,7 +47,8 @@ export type SelectionContext = {
 /**
  * Plugin key for accessing selection tracker state
  */
-export const selectionTrackerKey = createPluginKeyOwner<SelectionContext>("selectionTracker");
+export const selectionTrackerKey =
+  createPluginKeyOwner<SelectionContext>("selectionTracker");
 
 /**
  * Callback type for selection changes
@@ -104,7 +105,9 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
 /**
  * Create selection tracker plugin
  */
-export function createSelectionTrackerPlugin(onSelectionChange?: SelectionChangeCallback): Plugin {
+export function createSelectionTrackerPlugin(
+  onSelectionChange?: SelectionChangeCallback,
+): Plugin {
   return new Plugin({
     key: selectionTrackerKey.createKey(),
 
@@ -138,7 +141,10 @@ export function createSelectionTrackerPlugin(onSelectionChange?: SelectionChange
             return;
           }
           // Only emit on selection/doc changes
-          if (view.state.selection.eq(prevState.selection) && view.state.doc.eq(prevState.doc)) {
+          if (
+            view.state.selection.eq(prevState.selection) &&
+            view.state.doc.eq(prevState.doc)
+          ) {
             return;
           }
           // Reuse context already computed in state.apply() — avoid double doc walk
@@ -152,7 +158,10 @@ export function createSelectionTrackerPlugin(onSelectionChange?: SelectionChange
   });
 }
 
-function arraysEqual(a: number[] | undefined, b: number[] | undefined): boolean {
+function arraysEqual(
+  a: number[] | undefined,
+  b: number[] | undefined,
+): boolean {
   if (a === b) {
     return true;
   }
@@ -181,13 +190,16 @@ function contextsEqual(a: SelectionContext, b: SelectionContext): boolean {
     a.inDeletion === b.inDeletion &&
     arraysEqual(a.activeCommentIds, b.activeCommentIds) &&
     JSON.stringify(a.textFormatting) === JSON.stringify(b.textFormatting) &&
-    JSON.stringify(a.paragraphFormatting) === JSON.stringify(b.paragraphFormatting)
+    JSON.stringify(a.paragraphFormatting) ===
+      JSON.stringify(b.paragraphFormatting)
   );
 }
 
 /**
  * Get current selection context from editor state
  */
-export function getSelectionContext(state: EditorState): SelectionContext | null {
+export function getSelectionContext(
+  state: EditorState,
+): SelectionContext | null {
   return selectionTrackerKey.getState(state) || null;
 }

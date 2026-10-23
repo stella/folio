@@ -40,7 +40,9 @@ import { toProseDoc } from "@eigenpal/docx-editor-core/prosemirror/conversion";
     expect(result.text).toContain('from "@stll/folio-core/compat/eigenpal"');
     expect(result.text).toContain('from "@stll/folio-core/types/document"');
     expect(result.text).toContain('from "@stll/folio-core/prosemirror/schema"');
-    expect(result.text).toContain('from "@stll/folio-core/prosemirror/conversion"');
+    expect(result.text).toContain(
+      'from "@stll/folio-core/prosemirror/conversion"',
+    );
   });
 
   test("leaves incompatible subpaths untouched and reports them", () => {
@@ -55,7 +57,9 @@ import en from "@eigenpal/docx-editor-i18n/en";
 
     expect(result.changed).toBe(false);
     expect(result.text).toBe(input);
-    expect(result.findings.map((finding) => finding.line)).toEqual([2, 3, 4, 5]);
+    expect(result.findings.map((finding) => finding.line)).toEqual([
+      2, 3, 4, 5,
+    ]);
     expect(result.findings.map((finding) => finding.message)).toEqual([
       expect.stringContaining("React subpath has no direct folio equivalent"),
       expect.stringContaining("Agent API changed"),

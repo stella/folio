@@ -39,12 +39,15 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-
-import { SECTION, WORD_STYLES, buildRawPackage } from "../__tests__/documentShapes";
 import {
-  EDITOR_MODES,
+  buildRawPackage,
+  SECTION,
+  WORD_STYLES,
+} from "../__tests__/documentShapes";
+import {
   createHarnessDoc,
   createHarnessPlugins,
+  EDITOR_MODES,
   parseShapeDocument,
   resolveAllChanges,
 } from "../__tests__/editorHarness";
@@ -60,13 +63,16 @@ import {
   REVIEW_DISPLAY_MODES,
   reviewDisplayModeToDisplayMode,
 } from "../managers/reviewDisplayMode";
-import { projectMarkupView, visibleCaretPosition } from "../prosemirror/markupViewProjection";
+import {
+  projectMarkupView,
+  visibleCaretPosition,
+} from "../prosemirror/markupViewProjection";
 import { schema } from "../prosemirror/schema";
 import type { Document } from "../types/document";
 import {
-  LOAD_LAYOUT,
   createFreshRenderRig,
   defineFreshRenderEventKind,
+  LOAD_LAYOUT,
   loadDocumentEventKind,
   pageGeometryEventKind,
   rerenderEventKind,
@@ -74,7 +80,11 @@ import {
   visibilityEventKind,
   zoomEventKind,
 } from "./__tests__/freshRenderHarness";
-import type { FreshRenderEvent, FreshRenderRig, LoadLayout } from "./__tests__/freshRenderHarness";
+import type {
+  FreshRenderEvent,
+  FreshRenderRig,
+  LoadLayout,
+} from "./__tests__/freshRenderHarness";
 import type { LayoutPipelineDeps } from "./layoutPipeline";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
@@ -109,7 +119,12 @@ const phrase = fc
   .array(fc.constantFrom(...WORDS), { minLength: 1, maxLength: 14 })
   .map((words) => `${words.join(" ")} `);
 
-const SEGMENT_KINDS = ["plain", "insertion", "deletion", "format-change"] as const;
+const SEGMENT_KINDS = [
+  "plain",
+  "insertion",
+  "deletion",
+  "format-change",
+] as const;
 type Segment = { kind: (typeof SEGMENT_KINDS)[number]; text: string };
 
 const PARAGRAPH_MARKS = ["plain", "inserted", "deleted"] as const;
@@ -130,9 +145,16 @@ type TableSpec = {
   before: number;
   rows: { kind: (typeof ROW_KINDS)[number]; cells: [Segment[], Segment[]] }[];
 };
-type DocumentSpec = { paragraphs: ParagraphSpec[]; move: MoveSpec | null; table: TableSpec | null };
+type DocumentSpec = {
+  paragraphs: ParagraphSpec[];
+  move: MoveSpec | null;
+  table: TableSpec | null;
+};
 
-const segmentArb = fc.record({ kind: fc.constantFrom(...SEGMENT_KINDS), text: phrase });
+const segmentArb = fc.record({
+  kind: fc.constantFrom(...SEGMENT_KINDS),
+  text: phrase,
+});
 
 const paragraphArb = fc.record({
   segments: fc.array(segmentArb, { minLength: 1, maxLength: 6 }),
@@ -185,7 +207,8 @@ const buildBody = (
   review?: ReviewProperties,
 ): string => {
   let nextId = 1;
-  const revision = (): string => `w:id="${nextId++}" w:author="Reviewer" w:date="${FIXED_DATE}"`;
+  const revision = (): string =>
+    `w:id="${nextId++}" w:author="Reviewer" w:date="${FIXED_DATE}"`;
   const run = (text: string, rPr = ""): string =>
     `<w:r>${rPr === "" ? "" : `<w:rPr>${rPr}</w:rPr>`}<w:t xml:space="preserve">${escapeText(text)}</w:t></w:r>`;
   const segmentXml = ({ kind, text }: Segment): string => {
@@ -197,7 +220,10 @@ const buildBody = (
       case "deletion":
         return `<w:del ${revision()}><w:r><w:delText xml:space="preserve">${escapeText(text)}</w:delText></w:r></w:del>`;
       case "format-change":
-        return run(text, `<w:sz w:val="32"/><w:rPrChange ${revision()}><w:rPr/></w:rPrChange>`);
+        return run(
+          text,
+          `<w:sz w:val="32"/><w:rPrChange ${revision()}><w:rPr/></w:rPrChange>`,
+        );
       default: {
         const exhaustive: never = kind;
         return exhaustive;
@@ -255,7 +281,10 @@ const buildBody = (
             segmentXml(
               kind === "plain"
                 ? segment
-                : { kind: kind === "inserted" ? "insertion" : "deletion", text: segment.text },
+                : {
+                    kind: kind === "inserted" ? "insertion" : "deletion",
+                    text: segment.text,
+                  },
             ),
           )
           .join("");
@@ -272,7 +301,10 @@ const buildBody = (
   return xml.join("") + SECTION();
 };
 
-const buildDocument = async (spec: DocumentSpec, review?: ReviewProperties): Promise<Document> =>
+const buildDocument = async (
+  spec: DocumentSpec,
+  review?: ReviewProperties,
+): Promise<Document> =>
   parseShapeDocument(
     await buildRawPackage({
       body: buildBody(spec, review),
@@ -328,7 +360,8 @@ const textPositions = (state: EditorState): number[] => {
   const positions: number[] = [];
   state.doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
-    for (let offset = 0; offset <= node.content.size; offset++) positions.push(pos + 1 + offset);
+    for (let offset = 0; offset <= node.content.size; offset++)
+      positions.push(pos + 1 + offset);
     return false;
   });
   return positions;
@@ -343,7 +376,10 @@ type TextblockEdit =
  * included. The state's suggestion plugin tracks what is typed in suggesting
  * mode, as it does for a keystroke.
  */
-const textblockEditEventKind = defineFreshRenderEventKind<TextblockEdit, MarkupViewExt>({
+const textblockEditEventKind = defineFreshRenderEventKind<
+  TextblockEdit,
+  MarkupViewExt
+>({
   kind: "textblockEdit",
   arbitrary: fc.oneof(
     fc.record({
@@ -360,7 +396,10 @@ const textblockEditEventKind = defineFreshRenderEventKind<TextblockEdit, MarkupV
   apply: (rig, event) =>
     rig.edit((state) => {
       const positions = textPositions(state);
-      const index = Math.min(positions.length - 1, Math.floor(event.at * positions.length));
+      const index = Math.min(
+        positions.length - 1,
+        Math.floor(event.at * positions.length),
+      );
       const at = positions.at(index);
       if (at === undefined) return null;
       if (event.type === "insert") return state.tr.insertText(event.text, at);
@@ -419,21 +458,31 @@ const materialise = (state: EditorState, view: DisplayMode): EditorState => {
   }
 };
 
-const runText = (run: Run): string => (run.kind === "text" ? run.text : `[${run.kind}]`);
+const runText = (run: Run): string =>
+  run.kind === "text" ? run.text : `[${run.kind}]`;
 
 type Addressing = { text: string; reads: string; pmSpan: number };
 
 /** Text runs whose editor positions do not read the text they paint. */
-const misaddressedRuns = (blocks: readonly FlowBlock[], state: EditorState): Addressing[] => {
+const misaddressedRuns = (
+  blocks: readonly FlowBlock[],
+  state: EditorState,
+): Addressing[] => {
   const out: Addressing[] = [];
   const visit = (block: FlowBlock): void => {
     if (block.kind === "table") {
-      for (const row of block.rows) for (const cell of row.cells) cell.blocks.forEach(visit);
+      for (const row of block.rows)
+        for (const cell of row.cells) cell.blocks.forEach(visit);
       return;
     }
     if (block.kind !== "paragraph") return;
     for (const run of block.runs) {
-      if (run.kind !== "text" || run.pmStart === undefined || run.pmEnd === undefined) continue;
+      if (
+        run.kind !== "text" ||
+        run.pmStart === undefined ||
+        run.pmEnd === undefined
+      )
+        continue;
       const reads = state.doc.textBetween(run.pmStart, run.pmEnd);
       const pmSpan = run.pmEnd - run.pmStart;
       if (run.text.length !== pmSpan || reads !== run.text) {
@@ -458,10 +507,15 @@ const unpaintableCarets = (
   const ranges: PositionRange[] = [];
   const collect = (block: FlowBlock): void => {
     if (block.kind === "table") {
-      for (const row of block.rows) for (const cell of row.cells) cell.blocks.forEach(collect);
+      for (const row of block.rows)
+        for (const cell of row.cells) cell.blocks.forEach(collect);
       return;
     }
-    if (block.kind === "paragraph" && block.pmStart !== undefined && block.pmEnd !== undefined) {
+    if (
+      block.kind === "paragraph" &&
+      block.pmStart !== undefined &&
+      block.pmEnd !== undefined
+    ) {
       ranges.push({ from: block.pmStart, to: block.pmEnd });
     }
   };
@@ -499,10 +553,12 @@ const misplacedChangeBars = (
     let holdsRevision = false;
     state.doc.nodesBetween(pmStart, pmEnd, (node) => {
       holdsRevision ||=
-        node.isText && node.marks.some((mark) => REVISION_MARKS.has(mark.type.name));
+        node.isText &&
+        node.marks.some((mark) => REVISION_MARKS.has(mark.type.name));
       return !holdsRevision;
     });
-    if (holdsRevision && !marked) out.push(block.runs.map((run) => runText(run)).join(""));
+    if (holdsRevision && !marked)
+      out.push(block.runs.map((run) => runText(run)).join(""));
   }
   return out;
 };
@@ -529,7 +585,14 @@ type MarkupViewVerdict = {
 type ViewWiring = "as-input" | "all-markup";
 
 const runScenario = async (
-  { document: spec, mode, initialView, leadingFrame, events, review }: MarkupViewScenario,
+  {
+    document: spec,
+    mode,
+    initialView,
+    leadingFrame,
+    events,
+    review,
+  }: MarkupViewScenario,
   wiring: ViewWiring,
 ): Promise<MarkupViewVerdict> => {
   const document: Document = await buildDocument(spec, review?.properties);
@@ -599,8 +662,14 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
         },
         {
           segments: [
-            { kind: "insertion", text: "ten business ten ten notice confirmation " },
-            { kind: "insertion", text: "zboží goods business business days the of goods " },
+            {
+              kind: "insertion",
+              text: "ten business ten ten notice confirmation ",
+            },
+            {
+              kind: "insertion",
+              text: "zboží goods business business days the of goods ",
+            },
           ],
           mark: "plain",
           justified: false,
@@ -608,7 +677,10 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
         },
         {
           segments: [
-            { kind: "plain", text: "confirmation notice shall days deliver ten of " },
+            {
+              kind: "plain",
+              text: "confirmation notice shall days deliver ten of ",
+            },
             {
               kind: "plain",
               text: "confirmation writing writing Supplier confirmation deliver in of goods Supplier ",
@@ -630,7 +702,12 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           alignmentChange: true,
         },
         {
-          segments: [{ kind: "insertion", text: "days ten shall notice business goods " }],
+          segments: [
+            {
+              kind: "insertion",
+              text: "days ten shall notice business goods ",
+            },
+          ],
           mark: "inserted",
           justified: true,
           alignmentChange: false,
@@ -683,7 +760,8 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
     events: [
       {
         kind: "markupView",
-        apply: (rig) => rig.updateExt(() => ({ view: "no-markup" }), LOAD_LAYOUT.immediate),
+        apply: (rig) =>
+          rig.updateExt(() => ({ view: "no-markup" }), LOAD_LAYOUT.immediate),
       },
       { kind: "visible", apply: (rig) => rig.pauseFrames() },
     ],
@@ -704,7 +782,9 @@ describe("markup views lay out the text they show", () => {
       },
     ] satisfies FlowBlock[];
 
-    expect(misaddressedRuns(blocks, state)).toEqual([{ text: "abc", reads: "ab", pmSpan: 2 }]);
+    expect(misaddressedRuns(blocks, state)).toEqual([
+      { text: "abc", reads: "ab", pmSpan: 2 },
+    ]);
   });
 
   test("every view settles on the layout of the text it reads, through any event sequence", async () => {
@@ -738,7 +818,10 @@ describe("markup views lay out the text they show", () => {
               "all-markup": "all-markup",
               final: "no-markup",
               original: "original",
-            } as const satisfies Record<(typeof REVIEW_DISPLAY_MODES)[number], DisplayMode>;
+            } as const satisfies Record<
+              (typeof REVIEW_DISPLAY_MODES)[number],
+              DisplayMode
+            >;
             const verdict = await runScenario(
               {
                 ...scenario,
@@ -747,7 +830,8 @@ describe("markup views lay out the text they show", () => {
                   ...scenario.events,
                   {
                     kind: "markupView",
-                    apply: (rig) => rig.updateExt(() => ({ view }), LOAD_LAYOUT.immediate),
+                    apply: (rig) =>
+                      rig.updateExt(() => ({ view }), LOAD_LAYOUT.immediate),
                   },
                 ],
               },
@@ -773,7 +857,10 @@ describe("markup views lay out the text they show", () => {
     const result = await fc.check(
       fc.asyncProperty(scenarioArb, async (scenario) => {
         const verdict = await runScenario(scenario, "all-markup");
-        return JSON.stringify(verdict.committed) === JSON.stringify(verdict.materialised);
+        return (
+          JSON.stringify(verdict.committed) ===
+          JSON.stringify(verdict.materialised)
+        );
       }),
       propertyConfig({ numRuns: 100 }),
     );

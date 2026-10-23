@@ -1,4 +1,7 @@
-import { EntityDecoder as XmlEntityDecoder, ENTITY_ACTION } from "@nodable/entities";
+import {
+  ENTITY_ACTION,
+  EntityDecoder as XmlEntityDecoder,
+} from "@nodable/entities";
 
 // Match fast-xml-parser's existing processEntities expansion-length default.
 const MAX_XML_ENTITY_EXPANDED_LENGTH = 100_000;
@@ -9,5 +12,8 @@ export const createXmlEntityDecoder = () =>
     numericAllowed: true,
     // DOCX package XML cannot declare input entities.
     onInputEntity: () => ENTITY_ACTION.THROW,
-    limit: { maxExpandedLength: MAX_XML_ENTITY_EXPANDED_LENGTH, applyLimitsTo: "all" },
+    limit: {
+      maxExpandedLength: MAX_XML_ENTITY_EXPANDED_LENGTH,
+      applyLimitsTo: "all",
+    },
   });

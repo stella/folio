@@ -11,12 +11,22 @@ const root = path.resolve(import.meta.dir, "..");
 const floor = manifest.devDependencies["@types/vscode"];
 assert.equal(manifest.engines.vscode, `^${floor}`);
 const previous = "1.85.0";
-assert.equal(floor, "1.86.0", "Update the adjacent-version proof when changing the floor");
-assert.equal(manifest.devDependencies["vscode-previous-types"], `npm:@types/vscode@${previous}`);
+assert.equal(
+  floor,
+  "1.86.0",
+  "Update the adjacent-version proof when changing the floor",
+);
+assert.equal(
+  manifest.devDependencies["vscode-previous-types"],
+  `npm:@types/vscode@${previous}`,
+);
 const directory = await mkdtemp(path.join(root, ".engine-floor-"));
 
 try {
-  const previousTypes = path.join(root, "node_modules/vscode-previous-types/index.d.ts");
+  const previousTypes = path.join(
+    root,
+    "node_modules/vscode-previous-types/index.d.ts",
+  );
   for (const version of [floor, previous]) {
     const config = path.join(directory, `tsconfig-${version}.json`);
     await writeFile(
@@ -48,13 +58,24 @@ try {
     const diagnostics = result.stdout + result.stderr;
     if (version === floor) {
       assert.equal(result.status, 0, diagnostics);
-      console.log(`Editor without MCP compiles against @types/vscode ${version}.`);
+      console.log(
+        `Editor without MCP compiles against @types/vscode ${version}.`,
+      );
       continue;
     }
     assert.equal(result.status, 1, diagnostics);
-    assert.match(diagnostics, /Property 'save' does not exist on type 'typeof workspace'/u);
-    assert.equal((diagnostics.match(/error TS\d+:/gu) ?? []).length, 1, diagnostics);
-    console.log(`VS Code ${version} rejected only workspace.save; confirmed API floor ${floor}.`);
+    assert.match(
+      diagnostics,
+      /Property 'save' does not exist on type 'typeof workspace'/u,
+    );
+    assert.equal(
+      (diagnostics.match(/error TS\d+:/gu) ?? []).length,
+      1,
+      diagnostics,
+    );
+    console.log(
+      `VS Code ${version} rejected only workspace.save; confirmed API floor ${floor}.`,
+    );
   }
 } finally {
   await rm(directory, { recursive: true, force: true });

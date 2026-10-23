@@ -1,17 +1,18 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 import JSZip from "jszip";
+
+import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 
 import {
   assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import type { Document } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { normalizeImportedNumericIds } from "./numericIdNormalization";
 import { parseDocx } from "./parser";
-import { createEmptyDocument } from "../utils/createDocument";
-import type { Document } from "../types/document";
 import { createDocx, createEmptyDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import { parseXmlWithFastXmlParser, type XmlElement } from "./xmlParser";
@@ -93,62 +94,82 @@ test("the retained repair tree equals an independent parse of the normalized XML
 
 test("imported numeric identities stay paired, avoid occupied ids, and reach a fixed point across spaces", () => {
   fc.assert(
-    fc.property(invalidId, fc.constantFrom(...WORD_NAMESPACES), (id, namespace) => {
-      const parts = new Map([
-        [
-          "word/document.xml",
-          `<x:document xmlns:x="${namespace}"><x:body><x:bookmarkStart x:id="1" x:name="kept"/><x:bookmarkEnd x:id="1"/><x:commentRangeStart x:id="${id}"/><x:commentReference x:id="${id}"/><x:commentRangeEnd x:id="${id}"/><x:footnoteReference x:id="${id}"/><x:endnoteReference x:id="${id}"/><x:numId x:val="${id}"/><x:id x:val="${id}"/></x:body></x:document>`,
-        ],
-        [
-          "word/comments.xml",
-          `<x:comments xmlns:x="${namespace}"><x:comment x:id="${id}"><x:p/></x:comment></x:comments>`,
-        ],
-        [
-          "word/footnotes.xml",
-          `<x:footnotes xmlns:x="${namespace}"><x:footnote x:id="-1" x:type="separator"><x:p/></x:footnote><x:footnote x:id="0" x:type="continuationSeparator"><x:p/></x:footnote><x:footnote x:id="${id}"><x:p/></x:footnote></x:footnotes>`,
-        ],
-        [
-          "word/endnotes.xml",
-          `<x:endnotes xmlns:x="${namespace}"><x:endnote x:id="${id}"><x:p/></x:endnote></x:endnotes>`,
-        ],
-        [
-          "word/numbering.xml",
-          `<x:numbering xmlns:x="${namespace}"><x:abstractNum x:abstractNumId="${id}"><x:lvl x:ilvl="0"><x:lvlPicBulletId x:val="${id}"/></x:lvl></x:abstractNum><x:num x:numId="${id}"><x:abstractNumId x:val="${id}"/></x:num><x:numPicBullet x:numPicBulletId="${id}"/></x:numbering>`,
-        ],
-      ]);
-      const normalized = normalizeImportedNumericIds(parts);
-      for (const [path, xml] of normalized)
-        expect(() => assertValidOoxmlNumericIds(xml, path)).not.toThrow();
-      expect(normalized.get("word/document.xml")).toBe(
-        parts
-          .get("word/document.xml")
-          ?.replaceAll(`x:id="${id}"`, 'x:id="2"')
-          .replace('<x:footnoteReference x:id="2"/>', '<x:footnoteReference x:id="1"/>')
-          .replace('<x:endnoteReference x:id="2"/>', '<x:endnoteReference x:id="1"/>')
-          .replaceAll(`x:val="${id}"`, 'x:val="1"'),
-      );
-      expect(normalized.get("word/comments.xml")).toBe(
-        parts.get("word/comments.xml")?.replaceAll(`x:id="${id}"`, 'x:id="2"'),
-      );
-      expect(normalized.get("word/footnotes.xml")).toBe(
-        parts.get("word/footnotes.xml")?.replaceAll(`x:id="${id}"`, 'x:id="1"'),
-      );
-      expect(normalized.get("word/endnotes.xml")).toBe(
-        parts.get("word/endnotes.xml")?.replaceAll(`x:id="${id}"`, 'x:id="1"'),
-      );
-      expect(normalized.get("word/numbering.xml")).toBe(
-        parts.get("word/numbering.xml")?.replaceAll(id, "1"),
-      );
-      expect(normalizeImportedNumericIds(normalized)).toEqual(normalized);
-      expect(normalizeImportedNumericIds(new Map([...parts].toReversed()))).toEqual(normalized);
-    }),
+    fc.property(
+      invalidId,
+      fc.constantFrom(...WORD_NAMESPACES),
+      (id, namespace) => {
+        const parts = new Map([
+          [
+            "word/document.xml",
+            `<x:document xmlns:x="${namespace}"><x:body><x:bookmarkStart x:id="1" x:name="kept"/><x:bookmarkEnd x:id="1"/><x:commentRangeStart x:id="${id}"/><x:commentReference x:id="${id}"/><x:commentRangeEnd x:id="${id}"/><x:footnoteReference x:id="${id}"/><x:endnoteReference x:id="${id}"/><x:numId x:val="${id}"/><x:id x:val="${id}"/></x:body></x:document>`,
+          ],
+          [
+            "word/comments.xml",
+            `<x:comments xmlns:x="${namespace}"><x:comment x:id="${id}"><x:p/></x:comment></x:comments>`,
+          ],
+          [
+            "word/footnotes.xml",
+            `<x:footnotes xmlns:x="${namespace}"><x:footnote x:id="-1" x:type="separator"><x:p/></x:footnote><x:footnote x:id="0" x:type="continuationSeparator"><x:p/></x:footnote><x:footnote x:id="${id}"><x:p/></x:footnote></x:footnotes>`,
+          ],
+          [
+            "word/endnotes.xml",
+            `<x:endnotes xmlns:x="${namespace}"><x:endnote x:id="${id}"><x:p/></x:endnote></x:endnotes>`,
+          ],
+          [
+            "word/numbering.xml",
+            `<x:numbering xmlns:x="${namespace}"><x:abstractNum x:abstractNumId="${id}"><x:lvl x:ilvl="0"><x:lvlPicBulletId x:val="${id}"/></x:lvl></x:abstractNum><x:num x:numId="${id}"><x:abstractNumId x:val="${id}"/></x:num><x:numPicBullet x:numPicBulletId="${id}"/></x:numbering>`,
+          ],
+        ]);
+        const normalized = normalizeImportedNumericIds(parts);
+        for (const [path, xml] of normalized)
+          expect(() => assertValidOoxmlNumericIds(xml, path)).not.toThrow();
+        expect(normalized.get("word/document.xml")).toBe(
+          parts
+            .get("word/document.xml")
+            ?.replaceAll(`x:id="${id}"`, 'x:id="2"')
+            .replace(
+              '<x:footnoteReference x:id="2"/>',
+              '<x:footnoteReference x:id="1"/>',
+            )
+            .replace(
+              '<x:endnoteReference x:id="2"/>',
+              '<x:endnoteReference x:id="1"/>',
+            )
+            .replaceAll(`x:val="${id}"`, 'x:val="1"'),
+        );
+        expect(normalized.get("word/comments.xml")).toBe(
+          parts
+            .get("word/comments.xml")
+            ?.replaceAll(`x:id="${id}"`, 'x:id="2"'),
+        );
+        expect(normalized.get("word/footnotes.xml")).toBe(
+          parts
+            .get("word/footnotes.xml")
+            ?.replaceAll(`x:id="${id}"`, 'x:id="1"'),
+        );
+        expect(normalized.get("word/endnotes.xml")).toBe(
+          parts
+            .get("word/endnotes.xml")
+            ?.replaceAll(`x:id="${id}"`, 'x:id="1"'),
+        );
+        expect(normalized.get("word/numbering.xml")).toBe(
+          parts.get("word/numbering.xml")?.replaceAll(id, "1"),
+        );
+        expect(normalizeImportedNumericIds(normalized)).toEqual(normalized);
+        expect(
+          normalizeImportedNumericIds(new Map([...parts].toReversed())),
+        ).toEqual(normalized);
+      },
+    ),
     propertyConfig({ numRuns: 40 }),
   );
 });
 
 test("normalization follows nested namespace bindings and canonical integer aliases, preserving every other byte", () => {
   const xml = `<?xml version="1.0"?><root xmlns:x="${WORD_NAMESPACES[0]}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><!-- retained --><x:bookmarkStart x:id="2147483648" x:name="marker"/><x:bookmarkEnd x:id="+02147483648"/><wp:docPr id="4294967296"/><x:permStart x:id="everyone"/><foreign xmlns:x="urn:other"><x:bookmarkStart x:id="2147483648"/></foreign></root>`;
-  const normalized = normalizeImportedNumericIds(new Map([["word/document.xml", xml]]));
+  const normalized = normalizeImportedNumericIds(
+    new Map([["word/document.xml", xml]]),
+  );
   expect(normalized.get("word/document.xml")).toBe(
     xml
       .replace('x:id="2147483648"', 'x:id="1"')
@@ -163,7 +184,9 @@ test("normalization splices decoded integer aliases without changing surrounding
     [...value]
       .map((character) => {
         const codePoint = character.charCodeAt(0);
-        return spelling === "decimal" ? `&#${codePoint};` : `&#x${codePoint.toString(16)};`;
+        return spelling === "decimal"
+          ? `&#${codePoint};`
+          : `&#x${codePoint.toString(16)};`;
       })
       .join("");
   fc.assert(
@@ -206,7 +229,9 @@ test("range repair leaves malformed lexical identities for the parser's existing
         const xml = `<x:document xmlns:x="${namespace}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><x:comment x:id="${malformed}"/><x:bookmarkStart x:id="${malformed}"/><x:numId x:val="${malformed}"/><wp:docPr id="${malformed}"/><x:comment x:id="${id}"/></x:document>`;
         const parts = new Map([["word/document.xml", xml]]);
         const normalized = normalizeImportedNumericIds(parts);
-        expect(normalized.get("word/document.xml")).toBe(xml.replace(`x:id="${id}"`, 'x:id="1"'));
+        expect(normalized.get("word/document.xml")).toBe(
+          xml.replace(`x:id="${id}"`, 'x:id="1"'),
+        );
         expect(normalizeImportedNumericIds(normalized)).toEqual(normalized);
       },
     ),
@@ -226,13 +251,19 @@ test("invalid imported notes are readable and saveable through both save paths",
   const source = await zip.generateAsync({ type: "arraybuffer" });
   const document = await parseDocx(source, { preloadFonts: false });
   const raw = await JSZip.loadAsync(document.originalBuffer);
-  expect(await raw.file("word/footnotes.xml")?.async("text")).toContain('x:id="1"');
+  expect(await raw.file("word/footnotes.xml")?.async("text")).toContain(
+    'x:id="1"',
+  );
   const full = await repackDocx(document, { updateModifiedDate: false });
-  const selective = await attemptSelectiveSave(document, document.originalBuffer, {
-    changedParaIds: new Set(),
-    structuralChange: false,
-    hasUntrackedChanges: false,
-  });
+  const selective = await attemptSelectiveSave(
+    document,
+    document.originalBuffer,
+    {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    },
+  );
   expect(selective).not.toBeNull();
   for (const saved of [full, selective]) {
     if (saved === null) continue;
@@ -273,7 +304,9 @@ test("the same invalid source id in separate annotation families stays stable ac
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "Remark" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Remark" }] },
+              ],
             },
           ],
         },
@@ -287,7 +320,9 @@ test("the same invalid source id in separate annotation families stays stable ac
             {
               type: "insertion",
               info: { id: 1, author: "Reviewer" },
-              content: [{ type: "run", content: [{ type: "text", text: "Anchor" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Anchor" }] },
+              ],
             },
             { type: "commentRangeEnd", id: 1 },
             { type: "bookmarkEnd", id: 1 },
@@ -301,18 +336,28 @@ test("the same invalid source id in separate annotation families stays stable ac
         if (xml === undefined) return;
         zip.file(path, xml.replaceAll(/w:id="\d+"/gu, `w:id="${id}"`));
       }
-      const imported = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-        preloadFonts: false,
-      });
+      const imported = await parseDocx(
+        await zip.generateAsync({ type: "arraybuffer" }),
+        {
+          preloadFonts: false,
+        },
+      );
       const before = annotationCensus(imported);
       expect(new Set(before.markers).size).toBe(3);
-      const selective = await attemptSelectiveSave(imported, imported.originalBuffer, {
-        changedParaIds: new Set(),
-        structuralChange: false,
-        hasUntrackedChanges: false,
-      });
+      const selective = await attemptSelectiveSave(
+        imported,
+        imported.originalBuffer,
+        {
+          changedParaIds: new Set(),
+          structuralChange: false,
+          hasUntrackedChanges: false,
+        },
+      );
       expect(selective).not.toBeNull();
-      for (const saved of [await repackDocx(imported, { updateModifiedDate: false }), selective]) {
+      for (const saved of [
+        await repackDocx(imported, { updateModifiedDate: false }),
+        selective,
+      ]) {
         if (saved === null) continue;
         const reopened = await parseDocx(saved, { preloadFonts: false });
         expect(annotationCensus(reopened)).toEqual(before);

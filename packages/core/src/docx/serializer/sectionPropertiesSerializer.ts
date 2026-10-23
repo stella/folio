@@ -1,19 +1,20 @@
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
+
 import type {
   EndnoteProperties,
   FooterReference,
   FootnoteProperties,
   HeaderReference,
-  SectionPropertyChange,
   SectionProperties,
+  SectionPropertyChange,
 } from "../../types/document";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { serializeSectionReferenceHistory } from "../sectionReferenceHistory";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
-import { themeColorToken } from "@stll/docx-core/model";
-import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 const serializeHeaderReference = (ref: HeaderReference): string =>
   `<w:headerReference w:type="${ref.type}" r:id="${escapeXmlAttribute(ref.rId)}"/>`;
@@ -21,7 +22,9 @@ const serializeHeaderReference = (ref: HeaderReference): string =>
 const serializeFooterReference = (ref: FooterReference): string =>
   `<w:footerReference w:type="${ref.type}" r:id="${escapeXmlAttribute(ref.rId)}"/>`;
 
-function serializeFootnoteProperties(props: FootnoteProperties | undefined): string {
+function serializeFootnoteProperties(
+  props: FootnoteProperties | undefined,
+): string {
   if (!props) {
     return "";
   }
@@ -44,7 +47,9 @@ function serializeFootnoteProperties(props: FootnoteProperties | undefined): str
     parts.push(`<w:numRestart w:val="${props.numRestart}"/>`);
   }
 
-  return parts.length > 0 ? `<w:footnotePr>${parts.join("")}</w:footnotePr>` : "";
+  return parts.length > 0
+    ? `<w:footnotePr>${parts.join("")}</w:footnotePr>`
+    : "";
 }
 
 function serializeFootnoteColumns(props: SectionProperties): string {
@@ -53,7 +58,9 @@ function serializeFootnoteColumns(props: SectionProperties): string {
     : "";
 }
 
-function serializeEndnoteProperties(props: EndnoteProperties | undefined): string {
+function serializeEndnoteProperties(
+  props: EndnoteProperties | undefined,
+): string {
   if (!props) {
     return "";
   }
@@ -203,7 +210,9 @@ function serializeLineNumbers(props: SectionProperties): string {
   // a document folio must write back, the way `serializeDocGrid` writes its
   // own: the parser records the element itself, and only the source having had
   // one puts the record here.
-  return attrs.length > 0 ? `<w:lnNumType ${attrs.join(" ")}/>` : "<w:lnNumType/>";
+  return attrs.length > 0
+    ? `<w:lnNumType ${attrs.join(" ")}/>`
+    : "<w:lnNumType/>";
 }
 
 function serializePageNumbering(props: SectionProperties): string {
@@ -223,7 +232,9 @@ function serializePageNumbering(props: SectionProperties): string {
     attrs.push(`w:chapStyle="${intAttr(pageNumbering.chapterStyle)}"`);
   }
   if (pageNumbering.chapterSeparator) {
-    attrs.push(`w:chapSep="${escapeXmlAttribute(pageNumbering.chapterSeparator)}"`);
+    attrs.push(
+      `w:chapSep="${escapeXmlAttribute(pageNumbering.chapterSeparator)}"`,
+    );
   }
 
   return attrs.length > 0 ? `<w:pgNumType ${attrs.join(" ")}/>` : "";
@@ -282,9 +293,12 @@ function serializeBackground(props: SectionProperties): string {
   } else if (background.color?.rgb) {
     attrs.push(`w:color="${escapeXmlAttribute(background.color.rgb)}"`);
   }
-  const backgroundThemeColor = background.themeColor ?? background.color?.themeColor;
+  const backgroundThemeColor =
+    background.themeColor ?? background.color?.themeColor;
   if (backgroundThemeColor !== undefined) {
-    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(backgroundThemeColor))}"`);
+    attrs.push(
+      `w:themeColor="${escapeXmlAttribute(themeColorToken(backgroundThemeColor))}"`,
+    );
   }
   if (background.themeTint ?? background.color?.themeTint) {
     attrs.push(
@@ -328,12 +342,15 @@ function serializeSectionPropertyChange(change: SectionPropertyChange): string {
     footerReferences: _footers,
     ...previous
   } = change.previousProperties ?? {};
-  const previousSectPrXml = serializeSectionProperties(previous) || "<w:sectPr/>";
+  const previousSectPrXml =
+    serializeSectionProperties(previous) || "<w:sectPr/>";
   const history = serializeSectionReferenceHistory(change.previousReferences);
   return `<w:sectPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousSectPrXml}${history}</w:sectPrChange>`;
 }
 
-export function serializeSectionProperties(props: SectionProperties | undefined): string {
+export function serializeSectionProperties(
+  props: SectionProperties | undefined,
+): string {
   if (!props) {
     return "";
   }
@@ -346,14 +363,24 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
   const parts = serializeSequenceChildren({
     container: "section-properties",
     modelled: [
-      ["headerReference", (props.headerReferences ?? []).map(serializeHeaderReference).join("")],
-      ["footerReference", (props.footerReferences ?? []).map(serializeFooterReference).join("")],
+      [
+        "headerReference",
+        (props.headerReferences ?? []).map(serializeHeaderReference).join(""),
+      ],
+      [
+        "footerReference",
+        (props.footerReferences ?? []).map(serializeFooterReference).join(""),
+      ],
       [
         "footnotePr",
-        serializeFootnoteProperties(props.footnotePr) + serializeFootnoteColumns(props),
+        serializeFootnoteProperties(props.footnotePr) +
+          serializeFootnoteColumns(props),
       ],
       ["endnotePr", serializeEndnoteProperties(props.endnotePr)],
-      ["type", props.sectionStart ? `<w:type w:val="${props.sectionStart}"/>` : ""],
+      [
+        "type",
+        props.sectionStart ? `<w:type w:val="${props.sectionStart}"/>` : "",
+      ],
       ["pgSz", serializePageSize(props)],
       ["pgMar", serializePageMargins(props)],
       ["paperSrc", serializePaperSource(props)],
@@ -362,7 +389,10 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
       ["pgNumType", serializePageNumbering(props)],
       ["cols", serializeColumns(props)],
       ["formProt", serializeOnOffElement(props.formProtection, "formProt")],
-      ["vAlign", props.verticalAlign ? `<w:vAlign w:val="${props.verticalAlign}"/>` : ""],
+      [
+        "vAlign",
+        props.verticalAlign ? `<w:vAlign w:val="${props.verticalAlign}"/>` : "",
+      ],
       ["noEndnote", serializeOnOffElement(props.noEndnote, "noEndnote")],
       // `w:evenAndOddHeaders` belongs to `w:settings`, and the Transitional
       // content model does not declare it here. folio reads one a producer
@@ -372,7 +402,9 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
       ["titlePg", serializeOnOffElement(props.titlePg, "titlePg")],
       [
         "textDirection",
-        props.textDirection ? `<w:textDirection w:val="${props.textDirection}"/>` : "",
+        props.textDirection
+          ? `<w:textDirection w:val="${props.textDirection}"/>`
+          : "",
       ],
       ["bidi", serializeOnOffElement(props.bidi, "bidi")],
       ["rtlGutter", serializeOnOffElement(props.rtlGutter, "rtlGutter")],
@@ -383,15 +415,24 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
           ? `<w:printerSettings r:id="${escapeXmlAttribute(props.printerSettingsRelationshipId)}"/>`
           : "",
       ],
-      ["sectPrChange", (props.propertyChanges ?? []).map(serializeSectionPropertyChange).join("")],
+      [
+        "sectPrChange",
+        (props.propertyChanges ?? [])
+          .map(serializeSectionPropertyChange)
+          .join(""),
+      ],
     ],
     preserved: props.preserved,
   });
 
   // The record models no attribute of its own, so every one it writes comes
   // from the remainder the parser kept.
-  const attributes = serializePreservedAttributes([], props.preservedAttributes);
-  const startTag = attributes.length > 0 ? `<w:sectPr ${attributes.join(" ")}` : "<w:sectPr";
+  const attributes = serializePreservedAttributes(
+    [],
+    props.preservedAttributes,
+  );
+  const startTag =
+    attributes.length > 0 ? `<w:sectPr ${attributes.join(" ")}` : "<w:sectPr";
 
   if (parts.length > 0) {
     return `${startTag}>${parts.join("")}</w:sectPr>`;

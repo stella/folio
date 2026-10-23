@@ -24,12 +24,18 @@
  */
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import type { ValidateDocumentModelIssue } from "@stll/docx-core";
 
+import type { ValidateDocumentModelIssue } from "@stll/docx-core";
 import { validateDocumentModel } from "@stll/docx-core";
+
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
-import type { Comment, Document, HeaderFooter, NumberingDefinitions } from "../types/document";
+import type {
+  Comment,
+  Document,
+  HeaderFooter,
+  NumberingDefinitions,
+} from "../types/document";
 import { anchoredCommentIdsInProseDoc } from "./comment-lifecycle";
 
 /** What the story's package knows that the story itself does not. */
@@ -55,14 +61,21 @@ type ChangedWindow = { from: number; beforeTo: number; afterTo: number };
  * The top-level children that differ between two versions of one story,
  * found by node identity from both ends. `null` when every child is shared.
  */
-const changedTopLevelWindow = (before: PMNode, after: PMNode): ChangedWindow | null => {
+const changedTopLevelWindow = (
+  before: PMNode,
+  after: PMNode,
+): ChangedWindow | null => {
   if (before === after) {
     return null;
   }
   const beforeCount = before.childCount;
   const afterCount = after.childCount;
   let from = 0;
-  while (from < beforeCount && from < afterCount && before.child(from) === after.child(from)) {
+  while (
+    from < beforeCount &&
+    from < afterCount &&
+    before.child(from) === after.child(from)
+  ) {
     from += 1;
   }
   let beforeTo = beforeCount;
@@ -87,10 +100,15 @@ const TOP_LEVEL_PATH = /^package\.document\.content\[(\d+)\]/u;
 const rebasePath = (path: string, offset: number): string =>
   path.replace(
     TOP_LEVEL_PATH,
-    (_match, index: string) => `package.document.content[${String(Number(index) + offset)}]`,
+    (_match, index: string) =>
+      `package.document.content[${String(Number(index) + offset)}]`,
   );
 
-const syntheticComment = (id: number, author: string): Comment => ({ id, author, content: [] });
+const syntheticComment = (id: number, author: string): Comment => ({
+  id,
+  author,
+  content: [],
+});
 
 type KnownSectionParts = {
   headers: Map<string, HeaderFooter>;
@@ -169,7 +187,10 @@ const windowErrors = ({
       },
       ...(context.numbering !== null &&
         context.numbering !== undefined && { numbering: context.numbering }),
-      ...(knownParts && { headers: knownParts.headers, footers: knownParts.footers }),
+      ...(knownParts && {
+        headers: knownParts.headers,
+        footers: knownParts.footers,
+      }),
     },
   };
   return validateDocumentModel(document)
@@ -178,9 +199,15 @@ const windowErrors = ({
         issue.severity === "error" &&
         // Without the numbering plugin the story cannot say which instances
         // exist, so a reference is not something it can hold against a batch.
-        !(context.numbering === undefined && issue.path.endsWith(".numPr.numId")),
+        !(
+          context.numbering === undefined && issue.path.endsWith(".numPr.numId")
+        ),
     )
-    .map(({ path, message, severity }) => ({ path: rebasePath(path, from), message, severity }));
+    .map(({ path, message, severity }) => ({
+      path: rebasePath(path, from),
+      message,
+      severity,
+    }));
 };
 
 /**
@@ -197,16 +224,27 @@ export const findIntroducedModelErrors = (
   if (window === null) {
     return [];
   }
-  let afterErrors = windowErrors({ doc: after, from: window.from, to: window.afterTo, context });
+  let afterErrors = windowErrors({
+    doc: after,
+    from: window.from,
+    to: window.afterTo,
+    context,
+  });
   // The host owns section parts and comments outside the changed window. Use
   // only references already present before the batch; new dangling ones fail.
   let parts: KnownSectionParts | undefined;
-  if (afterErrors.some(({ message }) => message.startsWith("Section references missing "))) {
+  if (
+    afterErrors.some(({ message }) =>
+      message.startsWith("Section references missing "),
+    )
+  ) {
     parts = knownSectionParts(before);
   }
   let knownCommentIds: ReadonlySet<number> | undefined;
   if (
-    afterErrors.some(({ message }) => /^Comment \d+ is referenced but not present/u.test(message))
+    afterErrors.some(({ message }) =>
+      /^Comment \d+ is referenced but not present/u.test(message),
+    )
   ) {
     knownCommentIds = anchoredCommentIdsInProseDoc(before);
   }
@@ -245,5 +283,8 @@ export const findIntroducedModelErrors = (
   });
 };
 
-export const describeModelError = ({ path, message }: ValidateDocumentModelIssue): string =>
+export const describeModelError = ({
+  path,
+  message,
+}: ValidateDocumentModelIssue): string =>
   `The result would not save: ${path}: ${message}`;

@@ -1,6 +1,7 @@
-import { isDeepStrictEqual } from "node:util";
-import { applyDocumentOps } from "../../../packages/docx-core/src/ops/documentOps";
 import { Result } from "better-result";
+import { isDeepStrictEqual } from "node:util";
+
+import { applyDocumentOps } from "../../../packages/docx-core/src/ops/documentOps";
 import { failureFromAssertion } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
@@ -8,21 +9,20 @@ import {
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
+import { opErrorOutcome } from "./op-outcome";
+import { firstDifferingOpPart } from "./op-part-difference";
 import {
   exactOpModel,
   generateOpSequence,
   OP_SEQUENCE_SEEDS,
+  type OpSequence,
+  type OpSequenceStep,
   prepareOpDocument,
   sameOpModel,
   seedFromBytes,
-  serializeOpDocument,
   serializedOpParts,
-  type OpSequence,
-  type OpSequenceStep,
+  serializeOpDocument,
 } from "./op-sequences";
-import { firstDifferingOpPart } from "./op-part-difference";
-
-import { opErrorOutcome } from "./op-outcome";
 
 const INVARIANT = EXTENDED_CORPUS_INVARIANTS.opInverse;
 
@@ -41,14 +41,18 @@ export const serializedInverseStepFailures = ({
   const part = firstDifferingOpPart({ control, edited: restored });
   return part === undefined
     ? []
-    : [`${step.op.type} inverse changed the original serialized package parts: ${part}`];
+    : [
+        `${step.op.type} inverse changed the original serialized package parts: ${part}`,
+      ];
 };
 
 type SerializedInverseSequenceOptions = {
   sequence: OpSequence;
   control: ReadonlyMap<string, Uint8Array>;
   restored: ReadonlyMap<string, Uint8Array>;
-  serializeParts?: (document: OpSequence["document"]) => Promise<Map<string, Uint8Array>>;
+  serializeParts?: (
+    document: OpSequence["document"],
+  ) => Promise<Map<string, Uint8Array>>;
 };
 
 /** Diagnose only failing compound saves, stopping before one defect cascades into later undos. */
@@ -64,7 +68,9 @@ export const serializedInverseSequenceFailures = async ({
   for (const step of sequence.steps.toReversed()) {
     const undone = applyDocumentOps(current, step.edit.inverse);
     if (undone.isErr())
-      return [`${step.op.type} compound inverse refused: ${undone.error.reason}; part: ${part}`];
+      return [
+        `${step.op.type} compound inverse refused: ${undone.error.reason}; part: ${part}`,
+      ];
     // oxlint-disable-next-line no-await-in-loop -- diagnose each reverse-composed undo against its own original state
     const [beforeParts, restoredParts] = await Promise.all([
       serializeParts(step.before),
@@ -81,27 +87,40 @@ export const serializedInverseSequenceFailures = async ({
   // Each grouped undo passed: retain composition context without claiming an individual culprit.
   const kinds = [...new Set(sequence.steps.map(({ op }) => op.type))];
   if (kinds.length === 0)
-    return [`empty sequence composition changed the original serialized package parts: ${part}`];
+    return [
+      `empty sequence composition changed the original serialized package parts: ${part}`,
+    ];
   return kinds.map(
-    (type) => `${type} sequence composition changed the original serialized package parts: ${part}`,
+    (type) =>
+      `${type} sequence composition changed the original serialized package parts: ${part}`,
   );
 };
 
 /** Check individual inverses and the reverse composition, without erasing captures. */
-export const inverseStepFailures = ({ before, op, edit }: OpSequenceStep): string[] => {
+export const inverseStepFailures = ({
+  before,
+  op,
+  edit,
+}: OpSequenceStep): string[] => {
   const restored = applyDocumentOps(edit.document, edit.inverse);
-  if (restored.isErr()) return [`${op.type} inverse refused: ${restored.error.reason}`];
+  if (restored.isErr())
+    return [`${op.type} inverse refused: ${restored.error.reason}`];
   const failures: string[] = [];
   if (!sameOpModel(before, restored.value.document))
     failures.push(`${op.type} inverse changed the original records`);
-  if (serializeOpDocument(before) !== serializeOpDocument(restored.value.document))
+  if (
+    serializeOpDocument(before) !== serializeOpDocument(restored.value.document)
+  )
     failures.push(`${op.type} inverse changed the original serialized blocks`);
   return failures;
 };
 
 export const inverseSequenceFailures = (sequence: OpSequence): string[] => {
-  const failures = sequence.mutations.map((type) => `${type} mutated its input document`);
-  for (const step of sequence.steps) failures.push(...inverseStepFailures(step));
+  const failures = sequence.mutations.map(
+    (type) => `${type} mutated its input document`,
+  );
+  for (const step of sequence.steps)
+    failures.push(...inverseStepFailures(step));
   const restored = applyDocumentOps(sequence.document, sequence.inverse);
   failures.push(...inverseRestorationFailures(sequence, restored));
   return [...new Set(failures)];
@@ -116,7 +135,12 @@ const inverseRestorationFailures = (
     failures.push(`sequence inverse refused: ${restored.error.reason}`);
     return failures;
   }
-  if (!isDeepStrictEqual(sequence.originalModel, exactOpModel(restored.value.document)))
+  if (
+    !isDeepStrictEqual(
+      sequence.originalModel,
+      exactOpModel(restored.value.document),
+    )
+  )
     failures.push("sequence inverse changed the original records");
   if (sequence.originalXml !== serializeOpDocument(restored.value.document))
     failures.push("sequence inverse changed the original serialized blocks");
@@ -144,9 +168,16 @@ export const runOpInverseInvariant = async (
           for (const step of sequence.steps) {
             const stepFailures = inverseStepFailures(step);
             if (stepFailures.length === 0) continue;
-            const undone = applyDocumentOps(step.edit.document, step.edit.inverse);
+            const undone = applyDocumentOps(
+              step.edit.document,
+              step.edit.inverse,
+            );
             if (undone.isErr()) {
-              failures.push(...stepFailures.map((message) => `${message}; part: not-serialized`));
+              failures.push(
+                ...stepFailures.map(
+                  (message) => `${message}; part: not-serialized`,
+                ),
+              );
               continue;
             }
             // oxlint-disable-next-line no-await-in-loop -- save only a failed individual inverse to classify its first differing part
@@ -155,20 +186,34 @@ export const runOpInverseInvariant = async (
               serializedOpParts(undone.value.document),
             ]);
             const stepPart =
-              firstDifferingOpPart({ control: beforeParts, edited: undoneParts }) ?? "model-only";
-            failures.push(...stepFailures.map((message) => `${message}; part: ${stepPart}`));
+              firstDifferingOpPart({
+                control: beforeParts,
+                edited: undoneParts,
+              }) ?? "model-only";
+            failures.push(
+              ...stepFailures.map((message) => `${message}; part: ${stepPart}`),
+            );
           }
-          const restored = applyDocumentOps(sequence.document, sequence.inverse);
+          const restored = applyDocumentOps(
+            sequence.document,
+            sequence.inverse,
+          );
           const modelFailures = inverseRestorationFailures(sequence, restored);
           if (restored.isErr()) {
             for (const message of modelFailures) {
-              for (const type of new Set(sequence.steps.map(({ op }) => op.type)))
-                failures.push(`${type} composition context: ${message}; part: not-serialized`);
+              for (const type of new Set(
+                sequence.steps.map(({ op }) => op.type),
+              ))
+                failures.push(
+                  `${type} composition context: ${message}; part: not-serialized`,
+                );
             }
             continue;
           }
           // oxlint-disable-next-line no-await-in-loop -- compare each independently restored sequence with the shared control
-          const restoredParts = await serializedOpParts(restored.value.document);
+          const restoredParts = await serializedOpParts(
+            restored.value.document,
+          );
           // oxlint-disable-next-line no-await-in-loop -- only a failed compound package save triggers per-operation diagnosis
           const packageFailures = await serializedInverseSequenceFailures({
             sequence,
@@ -176,12 +221,16 @@ export const runOpInverseInvariant = async (
             restored: restoredParts,
           });
           failures.push(...packageFailures);
-          const part = firstDifferingOpPart({ control, edited: restoredParts }) ?? "model-only";
+          const part =
+            firstDifferingOpPart({ control, edited: restoredParts }) ??
+            "model-only";
           for (const message of modelFailures) {
             // A classified reverse undo replaces an unclassified compound assertion.
             if (packageFailures.length > 0) continue;
             for (const type of new Set(sequence.steps.map(({ op }) => op.type)))
-              failures.push(`${type} composition context: ${message}; part: ${part}`);
+              failures.push(
+                `${type} composition context: ${message}; part: ${part}`,
+              );
           }
         }
         return [...new Set(failures)];
@@ -190,10 +239,16 @@ export const runOpInverseInvariant = async (
     }),
   );
   if (outcome.isErr())
-    return opErrorOutcome({ invariant: INVARIANT, error: outcome.error, timings });
+    return opErrorOutcome({
+      invariant: INVARIANT,
+      error: outcome.error,
+      timings,
+    });
   return {
     status: "evaluated",
     timings,
-    failures: outcome.value.map((message) => failureFromAssertion(INVARIANT, message)),
+    failures: outcome.value.map((message) =>
+      failureFromAssertion(INVARIANT, message),
+    ),
   };
 };

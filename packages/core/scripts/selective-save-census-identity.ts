@@ -1,4 +1,7 @@
-import { paraIdAttribute, resolveParagraphIdentities } from "../src/docx/paraIdAttribute";
+import {
+  paraIdAttribute,
+  resolveParagraphIdentities,
+} from "../src/docx/paraIdAttribute";
 import {
   findWordprocessingChild,
   getChildElements,
@@ -32,7 +35,8 @@ export const censusParagraphOrdinals = (
   for (const identity of identities) {
     if (
       identity.type === "anonymous" ||
-      modelIds.indexOf(identity.paraId) !== modelIds.lastIndexOf(identity.paraId)
+      modelIds.indexOf(identity.paraId) !==
+        modelIds.lastIndexOf(identity.paraId)
     )
       continue;
     if (identity.type === "authored") {

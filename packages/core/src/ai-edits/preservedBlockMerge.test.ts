@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
-import { acceptAllChanges } from "../prosemirror/commands/comments";
+
 import { FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE } from "../document-operations";
+import { acceptAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
-import { createFolioAIEditSnapshot } from "./snapshot";
 import { applyFolioAIEditOperations } from "./apply";
+import { createFolioAIEditSnapshot } from "./snapshot";
 
 // Structural-edit fixtures had only joinable paragraphs, never opaque siblings.
 for (const xml of [
@@ -17,9 +18,13 @@ for (const xml of [
       for (const properties of [undefined, { styleId: null }]) {
         test(`merge preserves opaque sibling ${xml} ${mode} ${separator.length} ${properties !== undefined}`, () => {
           const doc = schema.node("doc", null, [
-            schema.node("paragraph", { paraId: "11000001" }, [schema.text("Left")]),
+            schema.node("paragraph", { paraId: "11000001" }, [
+              schema.text("Left"),
+            ]),
             schema.node("preservedBlock", { xml }),
-            schema.node("paragraph", { paraId: "11000002" }, [schema.text("Right")]),
+            schema.node("paragraph", { paraId: "11000002" }, [
+              schema.text("Right"),
+            ]),
           ]);
           const view = {
             state: EditorState.create({ doc }),
@@ -41,12 +46,16 @@ for (const xml of [
                 type: "mergeBlockWithNext",
                 blockId: first.id,
                 separator,
-                ...(properties === undefined ? {} : { mergedParagraphProperties: properties }),
+                ...(properties === undefined
+                  ? {}
+                  : { mergedParagraphProperties: properties }),
               },
             ],
           });
           expect(result.applied).toEqual([]);
-          expect(result.skipped).toMatchObject([{ id: "merge", reason: "unsupportedBlock" }]);
+          expect(result.skipped).toMatchObject([
+            { id: "merge", reason: "unsupportedBlock" },
+          ]);
           expect(view.state.doc.toJSON()).toEqual(before);
         });
       }
@@ -74,7 +83,11 @@ for (const mode of FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.mergeBlockWithNext) {
                   ? {
                       pPrMark: {
                         kind: "ins",
-                        info: { id: 900, author: "Reviewer", date: "2000-01-01" },
+                        info: {
+                          id: 900,
+                          author: "Reviewer",
+                          date: "2000-01-01",
+                        },
                       },
                     }
                   : {}),
@@ -82,7 +95,9 @@ for (const mode of FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.mergeBlockWithNext) {
               [schema.text("Left")],
             ),
             ...boundaries,
-            schema.node("paragraph", { paraId: "11000002" }, [schema.text("Right")]),
+            schema.node("paragraph", { paraId: "11000002" }, [
+              schema.text("Right"),
+            ]),
           ]);
           const view = {
             state: EditorState.create({ doc }),
@@ -97,7 +112,14 @@ for (const mode of FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.mergeBlockWithNext) {
             view,
             snapshot,
             mode,
-            operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator }],
+            operations: [
+              {
+                id: "merge",
+                type: "mergeBlockWithNext",
+                blockId: first.id,
+                separator,
+              },
+            ],
           });
           expect(result.skipped).toEqual([]);
           expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);

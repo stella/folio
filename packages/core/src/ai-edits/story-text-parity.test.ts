@@ -15,7 +15,8 @@ import JSZip from "jszip";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { FolioDocxReviewer } from "./headless";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const HEADER_RELATIONSHIP_ID = "rId20";
 const FOOTER_RELATIONSHIP_ID = "rId21";
@@ -26,7 +27,9 @@ const complexField = (instruction: string, result: string) =>
   `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
   `<w:r><w:instrText xml:space="preserve"> ${instruction} </w:instrText></w:r>` +
   `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
-  (result === "" ? "" : `<w:r><w:t xml:space="preserve">${result}</w:t></w:r>`) +
+  (result === ""
+    ? ""
+    : `<w:r><w:t xml:space="preserve">${result}</w:t></w:r>`) +
   `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
 
 /**
@@ -137,7 +140,9 @@ const createStoryDocx = async (): Promise<ArrayBuffer> => {
 };
 
 /** Secondary stories only: the body has no unloaded projection to differ from. */
-const secondaryStoryTexts = async (load: boolean): Promise<Map<string, string>> => {
+const secondaryStoryTexts = async (
+  load: boolean,
+): Promise<Map<string, string>> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await createStoryDocx());
   const handles = reviewer
     .listStories()
@@ -161,7 +166,12 @@ describe("story text parity", () => {
     const unloaded = await secondaryStoryTexts(false);
     const loaded = await secondaryStoryTexts(true);
 
-    expect([...loaded.keys()].toSorted()).toEqual(["endnote", "footer", "footnote", "header"]);
+    expect([...loaded.keys()].toSorted()).toEqual([
+      "endnote",
+      "footer",
+      "footnote",
+      "header",
+    ]);
     for (const [kind, text] of unloaded) {
       expect(loaded.get(kind)).toBe(text);
     }
@@ -173,6 +183,8 @@ describe("story text parity", () => {
     // A tab and a break separate words rather than gluing them, the stored
     // field result reads through, the result-less field adds nothing, and the
     // accepted view drops the deleted run.
-    expect(unloaded.get("footnote")).toBe("footnote after tab after break nested page 7 of end");
+    expect(unloaded.get("footnote")).toBe(
+      "footnote after tab after break nested page 7 of end",
+    );
   });
 });

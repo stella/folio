@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
-import { createParseWarningCollector } from "./parseContext";
-import { PARA_ID_NAMESPACE_URIS } from "./paraIdAttribute";
+
 import {
   diagnoseImportedIdCollisions,
   IMPORTED_ID_COLLISION_REGISTRY,
 } from "./importedIdCollisions";
+import { PARA_ID_NAMESPACE_URIS } from "./paraIdAttribute";
+import { createParseWarningCollector } from "./parseContext";
 
 test("every registered definition site diagnoses repetitions and ignores part boundaries", () => {
   const exercised = new Set<string>();
@@ -13,8 +14,13 @@ test("every registered definition site diagnoses repetitions and ignores part bo
       for (const element of site.elements) {
         const value = rule.encoding === "hex" ? "00abcdef" : "7";
         const namespace =
-          rule.attributeNamespace === null ? "" : ` xmlns:y="${rule.attributeNamespace}"`;
-        const attribute = rule.attributeNamespace === null ? rule.attribute : `y:${rule.attribute}`;
+          rule.attributeNamespace === null
+            ? ""
+            : ` xmlns:y="${rule.attributeNamespace}"`;
+        const attribute =
+          rule.attributeNamespace === null
+            ? rule.attribute
+            : `y:${rule.attribute}`;
         const node = `<x:${element} xmlns:x="${site.namespace}"${namespace} ${attribute}="${value}"/>`;
         const collector = createParseWarningCollector();
         diagnoseImportedIdCollisions(
@@ -24,7 +30,9 @@ test("every registered definition site diagnoses repetitions and ignores part bo
           ]),
           collector.context,
         );
-        expect(collector.warnings()).toHaveLength(rule.scope === "package" ? 3 : 2);
+        expect(collector.warnings()).toHaveLength(
+          rule.scope === "package" ? 3 : 2,
+        );
         expect(
           collector
             .warnings()
@@ -38,7 +46,9 @@ test("every registered definition site diagnoses repetitions and ignores part bo
       }
     }
   }
-  expect([...exercised].toSorted()).toEqual(Object.keys(IMPORTED_ID_COLLISION_REGISTRY).toSorted());
+  expect([...exercised].toSorted()).toEqual(
+    Object.keys(IMPORTED_ID_COLLISION_REGISTRY).toSorted(),
+  );
 });
 
 test("paragraph identity diagnostics share every namespace accepted by the paragraph reader", () => {
@@ -63,14 +73,20 @@ test("paragraph identity diagnostics share every namespace accepted by the parag
 test("equivalent AlternateContent branches do not claim the same identity twice", () => {
   const collector = createParseWarningCollector();
   const xml = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><w:body><mc:AlternateContent><mc:Choice Requires="w"><w:p><w:bookmarkStart w:id="37" w:name="target"/><w:bookmarkEnd w:id="37"/></w:p></mc:Choice><mc:Fallback><w:p><w:bookmarkStart w:id="37" w:name="target"/><w:bookmarkEnd w:id="37"/></w:p></mc:Fallback></mc:AlternateContent></w:body></w:document>`;
-  diagnoseImportedIdCollisions(new Map([["word/document.xml", xml]]), collector.context);
+  diagnoseImportedIdCollisions(
+    new Map([["word/document.xml", xml]]),
+    collector.context,
+  );
   expect(collector.warnings()).toEqual([]);
 });
 
 test("references and cNvPr do not claim definition identities", () => {
   const collector = createParseWarningCollector();
   const xml = `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:bookmarkStart w:id="7"/><w:bookmarkEnd w:id="7"/><w:footnoteReference w:id="7"/><wp:docPr id="7"/><pic:cNvPr id="7"/></root>`;
-  diagnoseImportedIdCollisions(new Map([["word/document.xml", xml]]), collector.context);
+  diagnoseImportedIdCollisions(
+    new Map([["word/document.xml", xml]]),
+    collector.context,
+  );
   expect(collector.warnings()).toEqual([]);
 });
 
@@ -89,7 +105,9 @@ test("comment metadata duplicate joins are diagnosed without counting wrapper an
   );
   const warnings = collector.warnings();
   expect(warnings).toHaveLength(2);
-  expect(warnings.every(({ identityKind }) => identityKind === "paraId")).toBe(true);
+  expect(warnings.every(({ identityKind }) => identityKind === "paraId")).toBe(
+    true,
+  );
   expect(warnings.map(({ location }) => location.part)).toEqual([
     "word/commentsExtended.xml",
     "word/commentsExtensible.xml",
@@ -99,7 +117,10 @@ test("comment metadata duplicate joins are diagnosed without counting wrapper an
 test("Strict namespace aliases and decimal spellings identify the same source definition", () => {
   const collector = createParseWarningCollector();
   const xml = `<root xmlns:a="http://purl.oclc.org/ooxml/wordprocessingml/main" xmlns:b="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:foreign="urn:foreign"><a:num a:numId="007"/><b:num b:numId="7"/><b:num foreign:numId="7"/></root>`;
-  diagnoseImportedIdCollisions(new Map([["word/numbering.xml", xml]]), collector.context);
+  diagnoseImportedIdCollisions(
+    new Map([["word/numbering.xml", xml]]),
+    collector.context,
+  );
   const warnings = collector.warnings();
   expect(warnings).toHaveLength(1);
   expect(warnings.at(0)?.location).toEqual({

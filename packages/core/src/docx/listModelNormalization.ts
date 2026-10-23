@@ -1,50 +1,65 @@
+import { panic } from "better-result";
+
+import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 // PARSE-WARNING-EXEMPT: Recomputes derived list rendering after edits; authored numbering and source XML are preserved.
 /** Canonical edits retain authored fields; list rendering follows the current numbering. */
 import {
-  withBodyContent,
-  registerParagraphPropertySnapshot,
-  OP_STORIES,
   DOCUMENT_OP_TYPES,
-  EMPTY_PROPERTY_SETS,
-  type OpStory,
   type DocumentOp,
+  EMPTY_PROPERTY_SETS,
+  OP_STORIES,
+  type OpStory,
+  registerParagraphPropertySnapshot,
+  withBodyContent,
 } from "@stll/docx-core/ops";
-import { panic } from "better-result";
-import { finalizeParagraphFormatting } from "@stll/docx-core/model";
-import type { Document, DocumentBody, Footnote, Endnote } from "../types/document";
-import { computeListRendering, getCachedNumberingMap } from "./numberingParser";
+
 import {
-  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
 } from "../prosemirror/numberingAttr";
-import { computeListMarker, type ComputeListMarkerOptions } from "./listMarkerComputation";
-import {
-  cloneParagraphWithPropertySource,
-  paragraphFormattingWithAuthoredIndentation,
-  assignParagraphIndentationProjection,
-  sameParagraphIndentationProjection,
-} from "./paragraphPropertySource";
 import { paragraphIndentationFromFormatting } from "../prosemirror/paragraphIndentation";
-import { listRenderingDefinitionsMatch } from "./listRendering";
-import { canonicalJson } from "../utils/canonicalJson";
-import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { listIndentationProvenancePatch } from "../prosemirror/styles/resolvedStyleAttrs";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import type {
+  Document,
+  DocumentBody,
+  Endnote,
+  Footnote,
+} from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import {
   foldListNumberFields,
-  unfoldedListNumberContent,
   planParagraphListNumberFold,
+  unfoldedListNumberContent,
 } from "./foldedListNumberFields";
+import {
+  computeListMarker,
+  type ComputeListMarkerOptions,
+} from "./listMarkerComputation";
+import { listRenderingDefinitionsMatch } from "./listRendering";
+import { computeListRendering, getCachedNumberingMap } from "./numberingParser";
+import {
+  assignParagraphIndentationProjection,
+  cloneParagraphWithPropertySource,
+  paragraphFormattingWithAuthoredIndentation,
+  sameParagraphIndentationProjection,
+} from "./paragraphPropertySource";
 
 type CanonicalListNormalization = { document: Document; inverse: DocumentOp[] };
 
-export const normalizeListModelRendering = (document: Document): CanonicalListNormalization => {
+export const normalizeListModelRendering = (
+  document: Document,
+): CanonicalListNormalization => {
   const inverse: DocumentOp[] = [];
   const styles = createStyleResolver(document.package.styles);
   const numbering =
     document.package.numbering === undefined
       ? null
       : getCachedNumberingMap(document.package.numbering);
-  const normalizeBody = <Body extends DocumentBody>(body: Body, story: OpStory): Body => {
+  const normalizeBody = <Body extends DocumentBody>(
+    body: Body,
+    story: OpStory,
+  ): Body => {
     const counters: ComputeListMarkerOptions = {
       numbering,
       listCounters: new Map(),
@@ -61,11 +76,13 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       const formatting = paragraph.formatting;
       const next = cloneParagraphWithPropertySource(paragraph, {});
       const styleNumbering = formatting?.styleId
-        ? styles.resolveParagraphStyle(formatting.styleId).paragraphFormatting?.numPr
+        ? styles.resolveParagraphStyle(formatting.styleId).paragraphFormatting
+            ?.numPr
         : undefined;
       if (
         styleNumbering !== undefined &&
-        (formatting?.numPr === undefined || formatting.numPr.kind === "levelOnly")
+        (formatting?.numPr === undefined ||
+          formatting.numPr.kind === "levelOnly")
       ) {
         next.formatting = { ...formatting, numPrFromStyle: styleNumbering };
       }
@@ -83,14 +100,20 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       }
       // Derived provenance still belongs to exact inverse preconditions.
       if (
-        canonicalJson(next.formatting?.numPrFromStyle) !== canonicalJson(formatting?.numPrFromStyle)
+        canonicalJson(next.formatting?.numPrFromStyle) !==
+        canonicalJson(formatting?.numPrFromStyle)
       ) {
         inverse.unshift({
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story,
-          blockId: paragraph.paraId ?? panic("List normalization requires paragraph identities."),
+          blockId:
+            paragraph.paraId ??
+            panic("List normalization requires paragraph identities."),
           patch: { numPrFromStyle: formatting?.numPrFromStyle ?? null },
-          whenEmpty: formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
+          whenEmpty:
+            formatting === undefined
+              ? EMPTY_PROPERTY_SETS.OMIT
+              : EMPTY_PROPERTY_SETS.KEEP,
         });
       }
       const numPr = effectiveParagraphNumberingReference(
@@ -119,24 +142,30 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
         listRenderingDefinitionsMatch(cached, definition)
           ? { ...cached }
           : definition;
-      const authoredFormatting = paragraphFormattingWithAuthoredIndentation(next);
+      const authoredFormatting =
+        paragraphFormattingWithAuthoredIndentation(next);
       const authored = paragraphIndentationFromFormatting(authoredFormatting);
       const inheritance = listIndentationProvenancePatch({
         direct: authored,
-        styleFormatting: styles.resolveParagraphStyle(next.formatting?.styleId).paragraphFormatting,
+        styleFormatting: styles.resolveParagraphStyle(next.formatting?.styleId)
+          .paragraphFormatting,
         numberingSource:
           next.formatting?.numPr?.kind === "reference" ||
           next.formatting?.numPrFromStyle === undefined
             ? "paragraph"
             : "style",
         numPr:
-          numPr?.kind === "reference" ? { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 } : undefined,
+          numPr?.kind === "reference"
+            ? { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 }
+            : undefined,
         numbering,
       });
       assignParagraphIndentationProjection({
         paragraph: next,
         authored: authoredFormatting,
-        inherited: paragraphIndentationFromFormatting(inheritance._resolvedFormatting) ?? {},
+        inherited:
+          paragraphIndentationFromFormatting(inheritance._resolvedFormatting) ??
+          {},
       });
       // Structural inverse preconditions capture the fields before rendering
       // normalization; undo its effective indentation before those inverses.
@@ -149,14 +178,19 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
           story,
           blockId:
             paragraph.paraId ??
-            panic("Canonical numbering normalization requires paragraph identities."),
+            panic(
+              "Canonical numbering normalization requires paragraph identities.",
+            ),
           patch: {
             indentLeft: formatting?.indentLeft ?? null,
             indentRight: formatting?.indentRight ?? null,
             indentFirstLine: formatting?.indentFirstLine ?? null,
             hangingIndent: formatting?.hangingIndent ?? null,
           },
-          whenEmpty: formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
+          whenEmpty:
+            formatting === undefined
+              ? EMPTY_PROPERTY_SETS.OMIT
+              : EMPTY_PROPERTY_SETS.KEEP,
         });
       }
       if (rendering === null) delete next.listRendering;
@@ -175,7 +209,10 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
         );
         if (fold.suffix === undefined) delete rendering.foldedMarkerSuffix;
         else rendering.foldedMarkerSuffix = fold.suffix;
-        const child = numbering?.getLevel(rendering.numId, rendering.level + 1)?.pPr;
+        const child = numbering?.getLevel(
+          rendering.numId,
+          rendering.level + 1,
+        )?.pPr;
         if (
           fold.suffix !== undefined &&
           child?.hangingIndent === true &&
@@ -191,7 +228,10 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
         next.listRendering = rendering;
       }
       computeListMarker(next, counters);
-      registerParagraphPropertySnapshot({ paragraph: next, snapshot: authoredFormatting });
+      registerParagraphPropertySnapshot({
+        paragraph: next,
+        snapshot: authoredFormatting,
+      });
       const finalizedFormatting = finalizeParagraphFormatting(next.formatting);
       if (finalizedFormatting === undefined) delete next.formatting;
       if (
@@ -204,7 +244,9 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       }
       return next;
     });
-    return content.every((paragraph, index) => paragraph === body.content[index])
+    return content.every(
+      (paragraph, index) => paragraph === body.content[index],
+    )
       ? body
       : { ...body, ...withBodyContent(body, content) };
   };
@@ -216,17 +258,26 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
   ) => {
     if (parts === undefined) return parts;
     const normalized = new Map(
-      [...parts].map(([id, part]) => [id, normalizeBody(part, { kind, rId: id })]),
+      [...parts].map(([id, part]) => [
+        id,
+        normalizeBody(part, { kind, rId: id }),
+      ]),
     );
-    return [...normalized].every(([id, part]) => part === parts.get(id)) ? parts : normalized;
+    return [...normalized].every(([id, part]) => part === parts.get(id))
+      ? parts
+      : normalized;
   };
   const normalizeNotes = <Body extends Footnote | Endnote>(
     notes: Body[] | undefined,
     kind: "footnote" | "endnote",
   ) => {
     if (notes === undefined) return notes;
-    const normalized = notes.map((note) => normalizeBody(note, { kind, id: note.id }));
-    return normalized.every((note, index) => note === notes[index]) ? notes : normalized;
+    const normalized = notes.map((note) =>
+      normalizeBody(note, { kind, id: note.id }),
+    );
+    return normalized.every((note, index) => note === notes[index])
+      ? notes
+      : normalized;
   };
   const headers = normalizeParts(pkg.headers, "header");
   const footers = normalizeParts(pkg.footers, "footer");

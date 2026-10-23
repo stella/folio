@@ -7,11 +7,18 @@ import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 export type MoveRangeMarker = Extract<
   ParagraphContent,
   {
-    type: "moveFromRangeStart" | "moveFromRangeEnd" | "moveToRangeStart" | "moveToRangeEnd";
+    type:
+      | "moveFromRangeStart"
+      | "moveFromRangeEnd"
+      | "moveToRangeStart"
+      | "moveToRangeEnd";
   }
 >;
 
-const MOVE_RANGE_START_TYPES = new Set(["moveFromRangeStart", "moveToRangeStart"]);
+const MOVE_RANGE_START_TYPES = new Set([
+  "moveFromRangeStart",
+  "moveToRangeStart",
+]);
 const MOVE_RANGE_END_TYPES = new Set(["moveFromRangeEnd", "moveToRangeEnd"]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -30,24 +37,39 @@ export const readMoveRangeMarker = (
 ): ReadProseMirrorAttrsResult<MoveRangeMarker> => {
   const issues: ProseMirrorAttrIssue[] = [];
   if (!isRecord(value)) {
-    return { ok: false, issues: [{ path, message: "Expected a move range marker object." }] };
+    return {
+      ok: false,
+      issues: [{ path, message: "Expected a move range marker object." }],
+    };
   }
 
   const type = value["type"];
   const isStart = typeof type === "string" && MOVE_RANGE_START_TYPES.has(type);
   const isEnd = typeof type === "string" && MOVE_RANGE_END_TYPES.has(type);
   if (!isStart && !isEnd) {
-    issues.push({ path: `${path}.type`, message: "Expected a move range marker type." });
+    issues.push({
+      path: `${path}.type`,
+      message: "Expected a move range marker type.",
+    });
   }
 
   const id = value["id"];
   if (!isNonNegativeSafeInteger(id)) {
-    issues.push({ path: `${path}.id`, message: "Expected a non-negative safe integer." });
+    issues.push({
+      path: `${path}.id`,
+      message: "Expected a non-negative safe integer.",
+    });
   }
 
   const displacedByCustomXml = displacementOf(value["displacedByCustomXml"]);
-  if (value["displacedByCustomXml"] !== undefined && displacedByCustomXml === undefined) {
-    issues.push({ path: `${path}.displacedByCustomXml`, message: 'Expected "next" or "prev".' });
+  if (
+    value["displacedByCustomXml"] !== undefined &&
+    displacedByCustomXml === undefined
+  ) {
+    issues.push({
+      path: `${path}.displacedByCustomXml`,
+      message: 'Expected "next" or "prev".',
+    });
   }
 
   const name = value["name"];
@@ -57,10 +79,16 @@ export const readMoveRangeMarker = (
   const colLast = value["colLast"];
   if (isStart) {
     if (typeof name !== "string" || name.trim().length === 0) {
-      issues.push({ path: `${path}.name`, message: "Expected a non-empty string." });
+      issues.push({
+        path: `${path}.name`,
+        message: "Expected a non-empty string.",
+      });
     }
     if (typeof author !== "string" || author.trim().length === 0) {
-      issues.push({ path: `${path}.author`, message: "Expected a non-empty string." });
+      issues.push({
+        path: `${path}.author`,
+        message: "Expected a non-empty string.",
+      });
     }
     if (date !== undefined && typeof date !== "string") {
       issues.push({ path: `${path}.date`, message: "Expected a string." });
@@ -70,15 +98,23 @@ export const readMoveRangeMarker = (
       ["colLast", colLast],
     ] as const) {
       if (column !== undefined && !isNonNegativeSafeInteger(column)) {
-        issues.push({ path: `${path}.${key}`, message: "Expected a non-negative safe integer." });
+        issues.push({
+          path: `${path}.${key}`,
+          message: "Expected a non-negative safe integer.",
+        });
       }
     }
   }
 
-  if (issues.length > 0 || !isNonNegativeSafeInteger(id) || (!isStart && !isEnd)) {
+  if (
+    issues.length > 0 ||
+    !isNonNegativeSafeInteger(id) ||
+    (!isStart && !isEnd)
+  ) {
     return { ok: false, issues };
   }
-  const displacement = displacedByCustomXml === undefined ? {} : { displacedByCustomXml };
+  const displacement =
+    displacedByCustomXml === undefined ? {} : { displacedByCustomXml };
   if (type === "moveFromRangeEnd" || type === "moveToRangeEnd") {
     return { ok: true, value: { type, id, ...displacement } };
   }
@@ -129,7 +165,9 @@ export const expectMoveRangeBoundaryAttrs = (node: PMNode): MoveRangeMarker => {
   }
   const result = readMoveRangeBoundaryAttrs(node);
   if (!result.ok) {
-    const details = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
+    const details = result.issues
+      .map((issue) => `${issue.path}: ${issue.message}`)
+      .join("\n");
     panic(`Invalid ProseMirror move range boundary attrs:\n${details}`);
   }
   attrsCache.set(node, result.value);

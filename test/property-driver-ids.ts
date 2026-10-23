@@ -1,8 +1,12 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
-const DRIVERS = ["assertProperty", "assertKnownProperty", "assertPinnedProperty"] as const;
+const DRIVERS = [
+  "assertProperty",
+  "assertKnownProperty",
+  "assertPinnedProperty",
+] as const;
 
 const SOURCE_ROOTS = ["packages", "scripts", "test", "tests"];
 const GENERATED_DIRECTORIES = new Set([
@@ -21,17 +25,30 @@ const GENERATED_DIRECTORIES = new Set([
 export const propertyDriverFiles = (root: string): string[] => {
   const files: string[] = [];
   const visit = (directory: string): void => {
-    for (const entry of readdirSync(path.join(root, directory), { withFileTypes: true })) {
-      if (entry.name.startsWith(".") || GENERATED_DIRECTORIES.has(entry.name)) continue;
+    for (const entry of readdirSync(path.join(root, directory), {
+      withFileTypes: true,
+    })) {
+      if (entry.name.startsWith(".") || GENERATED_DIRECTORIES.has(entry.name))
+        continue;
       const file = path.posix.join(directory, entry.name);
-      if (directory === "tests/visual/fixtures" && entry.name.startsWith("parity-tmp-")) continue;
+      if (
+        directory === "tests/visual/fixtures" &&
+        entry.name.startsWith("parity-tmp-")
+      )
+        continue;
       if (entry.isDirectory()) {
         visit(file);
         continue;
       }
-      if (!entry.isFile() || !/\.tsx?$/.test(entry.name) || entry.name.endsWith(".typecheck.ts"))
+      if (
+        !entry.isFile() ||
+        !/\.tsx?$/.test(entry.name) ||
+        entry.name.endsWith(".typecheck.ts")
+      )
         continue;
-      if (readFileSync(path.join(root, file), "utf8").includes("property-testing"))
+      if (
+        readFileSync(path.join(root, file), "utf8").includes("property-testing")
+      )
         files.push(file);
     }
   };
@@ -57,7 +74,8 @@ const propertyDriverImports = (source: ts.SourceFile) => {
     }
     for (const specifier of bindings.elements) {
       const name = specifier.propertyName?.text ?? specifier.name.text;
-      if (DRIVERS.some((driver) => driver === name)) imports.set(specifier.name.text, name);
+      if (DRIVERS.some((driver) => driver === name))
+        imports.set(specifier.name.text, name);
     }
   }
   return { imports, namespaces };
@@ -72,9 +90,11 @@ const propertyDriverSource = (source: ts.SourceFile) => {
   };
   const host = ts.createCompilerHost(options);
   const absoluteFile = ts.sys.resolvePath(source.fileName);
-  host.getSourceFile = (name) => (ts.sys.resolvePath(name) === absoluteFile ? source : undefined);
+  host.getSourceFile = (name) =>
+    ts.sys.resolvePath(name) === absoluteFile ? source : undefined;
   host.fileExists = (name) => ts.sys.resolvePath(name) === absoluteFile;
-  host.readFile = (name) => (ts.sys.resolvePath(name) === absoluteFile ? source.text : undefined);
+  host.readFile = (name) =>
+    ts.sys.resolvePath(name) === absoluteFile ? source.text : undefined;
   const program = ts.createProgram([absoluteFile], options, host);
   const checker = program.getTypeChecker();
   const importedSymbols = new Map<ts.Symbol, string>();
@@ -85,7 +105,8 @@ const propertyDriverSource = (source: ts.SourceFile) => {
     if (!bindings) continue;
     if (ts.isNamespaceImport(bindings)) {
       const symbol = checker.getSymbolAtLocation(bindings.name);
-      if (symbol && namespaces.has(bindings.name.text)) namespaceSymbols.add(symbol);
+      if (symbol && namespaces.has(bindings.name.text))
+        namespaceSymbols.add(symbol);
       continue;
     }
     if (ts.isNamedImports(bindings)) {
@@ -107,8 +128,12 @@ const callsFromSource = ({
   importedSymbols,
   namespaceSymbols,
 }: ReturnType<typeof propertyDriverSource>) => {
-  const calls: { driver: string; id: string | undefined; line: number; argumentCount: number }[] =
-    [];
+  const calls: {
+    driver: string;
+    id: string | undefined;
+    line: number;
+    argumentCount: number;
+  }[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const callee = node.expression;
@@ -131,7 +156,10 @@ const callsFromSource = ({
           const fields = options.properties.flatMap((property, index) => {
             if (ts.isSpreadAssignment(property)) return [];
             const name = property.name;
-            if (!(ts.isIdentifier(name) || ts.isStringLiteral(name)) || name.text !== "id")
+            if (
+              !(ts.isIdentifier(name) || ts.isStringLiteral(name)) ||
+              name.text !== "id"
+            )
               return [];
             return [{ property, index }];
           });
@@ -142,11 +170,13 @@ const callsFromSource = ({
               .slice(field.index + 1)
               .some(
                 (property) =>
-                  ts.isSpreadAssignment(property) || ts.isComputedPropertyName(property.name),
+                  ts.isSpreadAssignment(property) ||
+                  ts.isComputedPropertyName(property.name),
               );
             if (
               !canBeOverridden &&
-              (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value))
+              (ts.isStringLiteral(value) ||
+                ts.isNoSubstitutionTemplateLiteral(value))
             )
               id = value.text;
           }
@@ -154,7 +184,9 @@ const callsFromSource = ({
         calls.push({
           driver,
           id,
-          line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+          line:
+            source.getLineAndCharacterOfPosition(node.getStart(source)).line +
+            1,
           argumentCount: node.arguments.length,
         });
       }
@@ -184,8 +216,11 @@ const referenceProblemsFromSource = ({
   const isDirectCall = (node: ts.Identifier): boolean =>
     ts.isCallExpression(node.parent) && node.parent.expression === node;
   const report = (node: ts.Identifier, name: string): void => {
-    const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-    problems.push(`${name}: imported property driver value escapes a direct call at line ${line}`);
+    const line =
+      source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+    problems.push(
+      `${name}: imported property driver value escapes a direct call at line ${line}`,
+    );
   };
   const visit = (node: ts.Node): void => {
     if (ts.isIdentifier(node) && !isTypeOnlyReference(node)) {
@@ -201,12 +236,22 @@ const referenceProblemsFromSource = ({
         report(node, driver);
       }
       const namespace = symbol !== undefined && namespaceSymbols.has(symbol);
-      if (namespace && !ts.isImportClause(node.parent) && !ts.isNamespaceImport(node.parent)) {
+      if (
+        namespace &&
+        !ts.isImportClause(node.parent) &&
+        !ts.isNamespaceImport(node.parent)
+      ) {
         const parent = node.parent;
-        if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
+        if (
+          ts.isPropertyAccessExpression(parent) &&
+          parent.expression === node
+        ) {
           if (
             DRIVERS.some((name) => name === parent.name.text) &&
-            !(ts.isCallExpression(parent.parent) && parent.parent.expression === parent)
+            !(
+              ts.isCallExpression(parent.parent) &&
+              parent.parent.expression === parent
+            )
           )
             report(node, parent.name.text);
         } else {
@@ -221,14 +266,18 @@ const referenceProblemsFromSource = ({
 };
 
 /** A seed key must select exactly one assertion site within its source file. */
-export const duplicatePropertyDriverIds = (calls: ReturnType<typeof propertyDriverIds>) => {
+export const duplicatePropertyDriverIds = (
+  calls: ReturnType<typeof propertyDriverIds>,
+) => {
   const firstLines = new Map<string, number>();
   const problems: string[] = [];
   for (const { id, line } of calls) {
     if (id === undefined) continue;
     const first = firstLines.get(id);
     if (first !== undefined) {
-      problems.push(`${id}: duplicate property ID at lines ${first} and ${line}`);
+      problems.push(
+        `${id}: duplicate property ID at lines ${first} and ${line}`,
+      );
       continue;
     }
     firstLines.set(id, line);
@@ -241,9 +290,13 @@ export const propertyDriverAnalysis = (text: string, file: string) => {
   const parsed = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const { imports, namespaces } = propertyDriverImports(parsed);
   // Utility-only imports cannot contain assertion sites or escaped driver values.
-  if (imports.size === 0 && namespaces.size === 0) return { calls: [], problems: [] };
+  if (imports.size === 0 && namespaces.size === 0)
+    return { calls: [], problems: [] };
   const source = propertyDriverSource(parsed);
-  return { calls: callsFromSource(source), problems: referenceProblemsFromSource(source) };
+  return {
+    calls: callsFromSource(source),
+    problems: referenceProblemsFromSource(source),
+  };
 };
 
 export const propertyDriverIds = (text: string, file: string) =>

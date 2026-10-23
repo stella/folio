@@ -6,9 +6,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-
 import JSZip from "jszip";
-import { TextSelection, type EditorState } from "prosemirror-state";
+import { type EditorState, TextSelection } from "prosemirror-state";
 
 import { documentShape } from "../__tests__/documentShapes";
 import { CONFORMANCE_OPERATIONS } from "../__tests__/editorCommandConformance";
@@ -26,7 +25,10 @@ import {
 } from "../__tests__/editorHarness";
 import type { Document } from "../types/document";
 import { fromProseDoc } from "./conversion/fromProseDoc";
-import { createNoteReferenceFollower, withoutUnreferencedNotes } from "./noteReferenceReview";
+import {
+  createNoteReferenceFollower,
+  withoutUnreferencedNotes,
+} from "./noteReferenceReview";
 
 type Case = {
   shape: string;
@@ -36,16 +38,35 @@ type Case = {
 };
 
 const CASES: readonly Case[] = [
-  { shape: "fields-links-bookmarks", placement: "paragraph", command: "removeHyperlink", args: [] },
-  { shape: "notes", placement: "paragraph", command: "deleteNoteRef", args: [] },
-  { shape: "plain-markdown", placement: "caret-middle", command: "insertTable", args: [2, 2] },
+  {
+    shape: "fields-links-bookmarks",
+    placement: "paragraph",
+    command: "removeHyperlink",
+    args: [],
+  },
+  {
+    shape: "notes",
+    placement: "paragraph",
+    command: "deleteNoteRef",
+    args: [],
+  },
+  {
+    shape: "plain-markdown",
+    placement: "caret-middle",
+    command: "insertTable",
+    args: [2, 2],
+  },
 ];
 
 /**
  * Save as the editors do: the notes follow the body's references from
  * `before` to `after`, and a note nothing refers to is dropped.
  */
-const saveLikeEditors = async (before: EditorState, after: EditorState, base: Document) => {
+const saveLikeEditors = async (
+  before: EditorState,
+  after: EditorState,
+  base: Document,
+) => {
   const follower = createNoteReferenceFollower();
   follower.noteBase(before.doc);
   const written = follower.reconcile(
@@ -55,16 +76,27 @@ const saveLikeEditors = async (before: EditorState, after: EditorState, base: Do
   return saveHarnessState(after, withoutUnreferencedNotes(written));
 };
 
-const run = async ({ shape: shapeId, placement, command, args }: Case, mode: EditorMode) => {
+const run = async (
+  { shape: shapeId, placement, command, args }: Case,
+  mode: EditorMode,
+) => {
   const shape = documentShape(shapeId);
   const base = await parseShapeDocument(await shape.build());
-  const before = placeSelection(createHarnessState(base, mode), shape.focus, placement);
+  const before = placeSelection(
+    createHarnessState(base, mode),
+    shape.focus,
+    placement,
+  );
   if (!before) {
     throw new Error("No selection");
   }
   const view = new HeadlessEditorView(before);
   expect(
-    harnessManager().requireCommand(command)(...args)(view.state, view.dispatch, view as never),
+    harnessManager().requireCommand(command)(...args)(
+      view.state,
+      view.dispatch,
+      view as never,
+    ),
   ).toBe(true);
   expect(view.state.doc.eq(before.doc)).toBe(false);
   const saved = await saveLikeEditors(before, view.state, base);
@@ -79,13 +111,15 @@ const textRuns = (state: EditorState, text: string) => {
   const runs: { marks: string[]; previousStyle: unknown }[] = [];
   state.doc.descendants((node) => {
     if (node.isText && node.text === text) {
-      const change = node.marks.find(({ type }) => type.name === "runPropertyChange");
+      const change = node.marks.find(
+        ({ type }) => type.name === "runPropertyChange",
+      );
       const changes: unknown = change?.attrs["changes"];
       runs.push({
         marks: node.marks.map(({ type }) => type.name).toSorted(),
         previousStyle: Array.isArray(changes)
-          ? (changes[0] as { previousFormatting?: { styleId?: unknown } }).previousFormatting
-              ?.styleId
+          ? (changes[0] as { previousFormatting?: { styleId?: unknown } })
+              .previousFormatting?.styleId
           : undefined,
       });
     }
@@ -105,12 +139,12 @@ describe("structural edits in suggesting mode", () => {
     async (_command, entry) => {
       const editing = await run(entry, "editing");
       const suggesting = await run(entry, "suggesting");
-      expect(summarizeState(resolveAllChanges(suggesting.after, "reject"))).toEqual(
-        summarizeState(resolveAllChanges(suggesting.before, "reject")),
-      );
-      expect(summarizeState(resolveAllChanges(suggesting.after, "accept"))).toEqual(
-        summarizeState(resolveAllChanges(editing.after, "accept")),
-      );
+      expect(
+        summarizeState(resolveAllChanges(suggesting.after, "reject")),
+      ).toEqual(summarizeState(resolveAllChanges(suggesting.before, "reject")));
+      expect(
+        summarizeState(resolveAllChanges(suggesting.after, "accept")),
+      ).toEqual(summarizeState(resolveAllChanges(editing.after, "accept")));
     },
   );
 
@@ -161,9 +195,17 @@ describe("structural edits in suggesting mode", () => {
     }
 
     // Accepting removes the note; rejecting keeps it as it was.
-    const accepted = await saveLikeEditors(after, resolveAllChanges(after, "accept"), base);
+    const accepted = await saveLikeEditors(
+      after,
+      resolveAllChanges(after, "accept"),
+      base,
+    );
     expect(normalFootnotes(accepted.model)).toEqual([]);
-    const rejected = await saveLikeEditors(after, resolveAllChanges(after, "reject"), base);
+    const rejected = await saveLikeEditors(
+      after,
+      resolveAllChanges(after, "reject"),
+      base,
+    );
     expect(normalFootnotes(rejected.model)).toEqual(normalFootnotes(base));
 
     // An editor saves again against what its last save produced.
@@ -189,12 +231,18 @@ describe("structural edits in suggesting mode", () => {
   test("a note made in the editor is deleted with its own reference mark", async () => {
     const shape = documentShape("notes");
     const base = await parseShapeDocument(await shape.build());
-    const caret = placeSelection(createHarnessState(base, "suggesting"), shape.focus, "caret-end");
+    const caret = placeSelection(
+      createHarnessState(base, "suggesting"),
+      shape.focus,
+      "caret-end",
+    );
     if (!caret) {
       throw new Error("No caret");
     }
     const view = new HeadlessEditorView(caret);
-    const insertNote = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:insertFootnote");
+    const insertNote = CONFORMANCE_OPERATIONS.find(
+      ({ id }) => id === "command:insertFootnote",
+    );
     expect(insertNote?.run({ view, base, focus: shape.focus })).toBe(true);
     const added = normalFootnotes(base).at(-1);
     if (!added) {
@@ -206,7 +254,11 @@ describe("structural edits in suggesting mode", () => {
     let reference: { from: number; to: number } | null = null;
     view.state.doc.descendants((node, pos) => {
       const mark = node.marks.find(({ type }) => type.name === "footnoteRef");
-      if (node.isText && mark && String(mark.attrs["id"]) === String(added.id)) {
+      if (
+        node.isText &&
+        mark &&
+        String(mark.attrs["id"]) === String(added.id)
+      ) {
         reference = { from: pos, to: pos + node.nodeSize };
       }
     });
@@ -214,11 +266,18 @@ describe("structural edits in suggesting mode", () => {
       throw new Error("No reference to the new note");
     }
     const { from, to } = reference;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
-    const accepted = view.state;
-    expect(harnessManager().requireCommand("deleteNoteRef")()(view.state, view.dispatch)).toBe(
-      true,
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, from, to),
+      ),
     );
+    const accepted = view.state;
+    expect(
+      harnessManager().requireCommand("deleteNoteRef")()(
+        view.state,
+        view.dispatch,
+      ),
+    ).toBe(true);
 
     const { bytes } = await saveLikeEditors(accepted, view.state, base);
     const footnotesXml = await (
@@ -233,18 +292,26 @@ describe("structural edits in suggesting mode", () => {
     expect(note).toBeDefined();
     // The only reference mark is the one inside a deletion.
     expect(note?.match(/<w:footnoteRef\/>/gu)).toHaveLength(1);
-    expect(note).toMatch(/<w:del\b[^>]*>(?:(?!<\/w:del>)[\s\S])*<w:footnoteRef\/>/u);
+    expect(note).toMatch(
+      /<w:del\b[^>]*>(?:(?!<\/w:del>)[\s\S])*<w:footnoteRef\/>/u,
+    );
   });
 
   test("a note whose pending reference is taken back is not saved", async () => {
     const shape = documentShape("notes");
     const base = await parseShapeDocument(await shape.build());
-    const caret = placeSelection(createHarnessState(base, "suggesting"), shape.focus, "caret-end");
+    const caret = placeSelection(
+      createHarnessState(base, "suggesting"),
+      shape.focus,
+      "caret-end",
+    );
     if (!caret) {
       throw new Error("No caret");
     }
     const view = new HeadlessEditorView(caret);
-    const insertNote = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:insertFootnote");
+    const insertNote = CONFORMANCE_OPERATIONS.find(
+      ({ id }) => id === "command:insertFootnote",
+    );
     expect(insertNote?.run({ view, base, focus: shape.focus })).toBe(true);
     const added = normalFootnotes(base).at(-1);
     if (!added) {
@@ -255,15 +322,24 @@ describe("structural edits in suggesting mode", () => {
     const { from } = view.state.selection;
     view.dispatch(
       view.state.tr.setSelection(
-        TextSelection.create(view.state.doc, from - String(added.id).length, from),
+        TextSelection.create(
+          view.state.doc,
+          from - String(added.id).length,
+          from,
+        ),
       ),
     );
-    expect(harnessManager().requireCommand("deleteNoteRef")()(view.state, view.dispatch)).toBe(
-      true,
-    );
+    expect(
+      harnessManager().requireCommand("deleteNoteRef")()(
+        view.state,
+        view.dispatch,
+      ),
+    ).toBe(true);
 
     const { model } = await saveLikeEditors(inserted, view.state, base);
     expect(normalFootnotes(model).map(({ id }) => id)).not.toContain(added.id);
-    expect(normalFootnotes(model).length).toBe(normalFootnotes(base).length - 1);
+    expect(normalFootnotes(model).length).toBe(
+      normalFootnotes(base).length - 1,
+    );
   });
 });

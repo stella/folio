@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 /**
  * Deterministic DOCX fixtures for end-to-end performance scenarios.
  *
@@ -16,12 +17,13 @@ import { fileURLToPath } from "node:url";
 
 import { createDocx, createEmptyDocument } from "@stll/folio-core";
 import type { Document } from "@stll/folio-core";
-import JSZip from "jszip";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..");
 const FIXTURES_DIR = resolve(REPO_ROOT, "tests/visual/fixtures");
-const requireFromReact = createRequire(resolve(REPO_ROOT, "packages/react/package.json"));
+const requireFromReact = createRequire(
+  resolve(REPO_ROOT, "packages/react/package.json"),
+);
 const EMBEDDED_FONT_PATH = requireFromReact.resolve(
   "@fontsource/arimo/files/arimo-hebrew-400-normal.woff2",
 );
@@ -77,12 +79,16 @@ const buildLongTableDocument = (): Document => {
     cells: [
       tableCell(
         Array.from({ length: 80 }, (_, index) =>
-          paragraph(`Split-row paragraph ${index + 1}: this single table row exceeds one page.`),
+          paragraph(
+            `Split-row paragraph ${index + 1}: this single table row exceeds one page.`,
+          ),
         ),
       ),
       tableCell(
         Array.from({ length: 80 }, (_, index) =>
-          paragraph(`Parallel cell paragraph ${index + 1}: row fragments must remain aligned.`),
+          paragraph(
+            `Parallel cell paragraph ${index + 1}: row fragments must remain aligned.`,
+          ),
         ),
       ),
     ],
@@ -130,7 +136,9 @@ const addEmbeddedFont = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
   const contentTypesFile = zip.file("[Content_Types].xml");
   const documentRelsFile = zip.file("word/_rels/document.xml.rels");
   if (!contentTypesFile || !documentRelsFile) {
-    throw new Error("Generated DOCX is missing content types or document relationships");
+    throw new Error(
+      "Generated DOCX is missing content types or document relationships",
+    );
   }
 
   const fontTable = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -172,7 +180,10 @@ const generateDeterministicDocx = async (zip: JSZip): Promise<ArrayBuffer> => {
     const xml = await coreProperties.async("string");
     zip.file(
       "docProps/core.xml",
-      xml.replaceAll(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/gu, FIXED_DOCUMENT_TIMESTAMP),
+      xml.replaceAll(
+        /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/gu,
+        FIXED_DOCUMENT_TIMESTAMP,
+      ),
     );
   }
   for (const entry of Object.values(zip.files)) {
@@ -181,13 +192,21 @@ const generateDeterministicDocx = async (zip: JSZip): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
 };
 
-const writeDocument = async (name: string, document: Document): Promise<void> => {
+const writeDocument = async (
+  name: string,
+  document: Document,
+): Promise<void> => {
   const buffer = await createDocx(document);
-  const normalized = await generateDeterministicDocx(await JSZip.loadAsync(buffer));
+  const normalized = await generateDeterministicDocx(
+    await JSZip.loadAsync(buffer),
+  );
   await writeFile(resolve(FIXTURES_DIR, name), new Uint8Array(normalized));
 };
 
-const writeMixedScriptDocument = async (name: string, repetitions: number): Promise<void> => {
+const writeMixedScriptDocument = async (
+  name: string,
+  repetitions: number,
+): Promise<void> => {
   const buffer = await createDocx(buildMixedScriptDocument(repetitions));
   const withFont = await addEmbeddedFont(buffer);
   await writeFile(resolve(FIXTURES_DIR, name), new Uint8Array(withFont));

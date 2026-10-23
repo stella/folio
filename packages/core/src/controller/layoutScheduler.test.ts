@@ -74,7 +74,14 @@ const makeRig = ({ leadingFrame = false }: SchedulerRigOptions = {}) => {
     view.state = { id };
     scheduler.schedule();
   };
-  return { fake, view, runs, scheduler, edit, ids: () => runs.map((run) => run.state.id) };
+  return {
+    fake,
+    view,
+    runs,
+    scheduler,
+    edit,
+    ids: () => runs.map((run) => run.state.id),
+  };
 };
 
 describe("layoutScheduler", () => {

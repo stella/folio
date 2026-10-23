@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { parseInlineEmphasisRuns, stripInlineEmphasisMarkers } from "./inline-emphasis";
+import {
+  parseInlineEmphasisRuns,
+  stripInlineEmphasisMarkers,
+} from "./inline-emphasis";
 
 describe("parseInlineEmphasisRuns", () => {
   test("promotes a bold span and keeps surrounding literals", () => {
@@ -16,7 +19,9 @@ describe("parseInlineEmphasisRuns", () => {
   });
 
   test("handles a bold span mid-sentence", () => {
-    expect(parseInlineEmphasisRuns("(1) **Disclosing Party Name**, with office")).toEqual([
+    expect(
+      parseInlineEmphasisRuns("(1) **Disclosing Party Name**, with office"),
+    ).toEqual([
       { text: "(1) ", bold: false, italic: false },
       { text: "Disclosing Party Name", bold: true, italic: false },
       { text: ", with office", bold: false, italic: false },
@@ -30,7 +35,9 @@ describe("parseInlineEmphasisRuns", () => {
   });
 
   test("underscore placeholders stay literal (not emphasis)", () => {
-    expect(parseInlineEmphasisRuns("__Borrower__ and ___EffectiveDate___")).toEqual([
+    expect(
+      parseInlineEmphasisRuns("__Borrower__ and ___EffectiveDate___"),
+    ).toEqual([
       {
         text: "__Borrower__ and ___EffectiveDate___",
         bold: false,
@@ -91,7 +98,9 @@ describe("stripInlineEmphasisMarkers", () => {
   });
 
   test("keeps a backslash path when stripping an adjacent bold span", () => {
-    expect(stripInlineEmphasisMarkers("**Note:** path C:\\*.txt")).toBe("Note: path C:\\*.txt");
+    expect(stripInlineEmphasisMarkers("**Note:** path C:\\*.txt")).toBe(
+      "Note: path C:\\*.txt",
+    );
   });
 
   test("returns plain prose verbatim", () => {

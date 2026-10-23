@@ -84,7 +84,9 @@ const baseImageBlock = (overrides: Partial<ImageBlock> = {}): ImageBlock => ({
   ...overrides,
 });
 
-const baseImageFragment = (overrides: Partial<ImageFragment> = {}): ImageFragment => ({
+const baseImageFragment = (
+  overrides: Partial<ImageFragment> = {},
+): ImageFragment => ({
   kind: "image",
   blockId: "img-1",
   x: 0,
@@ -133,9 +135,15 @@ describe("renderImageFragment opacity (floating block path)", () => {
     const block = baseImageBlock({ opacity: 0.5 });
     const fragment = baseImageFragment({ isAnchored: true });
 
-    const containerEl = renderImageFragment(fragment, block, baseImageMeasure, fakeContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const containerEl = renderImageFragment(
+      fragment,
+      block,
+      baseImageMeasure,
+      fakeContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const imgEl = findImageDescendant(containerEl);
     expect(imgEl?.style["opacity"]).toBe("0.5");
@@ -145,9 +153,15 @@ describe("renderImageFragment opacity (floating block path)", () => {
     const block = baseImageBlock();
     const fragment = baseImageFragment({ isAnchored: true });
 
-    const containerEl = renderImageFragment(fragment, block, baseImageMeasure, fakeContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const containerEl = renderImageFragment(
+      fragment,
+      block,
+      baseImageMeasure,
+      fakeContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const imgEl = findImageDescendant(containerEl);
     expect(imgEl?.style["opacity"]).toBeUndefined();
@@ -163,9 +177,15 @@ describe("renderImageFragment image borders (floating block path)", () => {
     });
     const fragment = baseImageFragment({ isAnchored: true });
 
-    const containerEl = renderImageFragment(fragment, block, baseImageMeasure, fakeContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const containerEl = renderImageFragment(
+      fragment,
+      block,
+      baseImageMeasure,
+      fakeContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const imgEl = findImageDescendant(containerEl);
     expect(imgEl?.style["border"]).toBe("3px dashed currentColor");
@@ -182,9 +202,15 @@ describe("renderImageFragment image borders (floating block path)", () => {
     });
     const fragment = baseImageFragment({ isAnchored: true });
 
-    const containerEl = renderImageFragment(fragment, block, baseImageMeasure, fakeContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const containerEl = renderImageFragment(
+      fragment,
+      block,
+      baseImageMeasure,
+      fakeContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     expect(containerEl.style["border"]).toBe("2px solid #112233");
     expect(containerEl.style["boxSizing"]).toBe("border-box");
@@ -224,11 +250,18 @@ describe("renderLine inline image visual effects", () => {
       lineHeight: 23,
     };
 
-    const lineEl = renderLine(block, line, undefined, fakeDocument) as unknown as FakeElement;
+    const lineEl = renderLine(
+      block,
+      line,
+      undefined,
+      fakeDocument,
+    ) as unknown as FakeElement;
     const imgEl = findImageDescendant(lineEl);
 
     expect(imgEl?.style["opacity"]).toBe("0.5");
-    expect(imgEl?.style["filter"]).toBe("contrast(0.157067) brightness(1.910013)");
+    expect(imgEl?.style["filter"]).toBe(
+      "contrast(0.157067) brightness(1.910013)",
+    );
   });
 
   // Regression guard for the upstream null-default leak. ProseMirror schema
@@ -262,7 +295,12 @@ describe("renderLine inline image visual effects", () => {
       lineHeight: 23,
     };
 
-    const lineEl = renderLine(block, line, undefined, fakeDocument) as unknown as FakeElement;
+    const lineEl = renderLine(
+      block,
+      line,
+      undefined,
+      fakeDocument,
+    ) as unknown as FakeElement;
     const imgEl = findImageDescendant(lineEl);
 
     expect(imgEl?.style["opacity"]).toBeUndefined();
@@ -300,7 +338,12 @@ describe("renderLine inline image borders", () => {
       lineHeight: 23,
     };
 
-    const lineEl = renderLine(block, line, undefined, fakeDocument) as unknown as FakeElement;
+    const lineEl = renderLine(
+      block,
+      line,
+      undefined,
+      fakeDocument,
+    ) as unknown as FakeElement;
     const imgEl = findImageDescendant(lineEl);
 
     expect(imgEl?.style["border"]).toBe("2px dotted var(--image-border)");
@@ -318,7 +361,9 @@ describe("ImageVisualAttrs helpers", () => {
   });
 
   test("applies Word's combined luminance transfer", () => {
-    const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    const img = fakeDocument.createElement(
+      "img",
+    ) as unknown as HTMLImageElement;
     const attrs = { brightness: 70.001, contrast: -70 };
 
     expect(hasImageVisualAttrs(attrs)).toBe(true);
@@ -340,14 +385,18 @@ describe("ImageVisualAttrs helpers", () => {
   });
 
   test("applyImageVisualAttrs skips the opacity write for a null PM default", () => {
-    const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    const img = fakeDocument.createElement(
+      "img",
+    ) as unknown as HTMLImageElement;
     const attrs = { opacity: null } as unknown as { opacity?: number };
     applyImageVisualAttrs(img, attrs);
     expect((img as unknown as FakeElement).style["opacity"]).toBeUndefined();
   });
 
   test("preserves an existing transform when positioning a top crop", () => {
-    const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    const img = fakeDocument.createElement(
+      "img",
+    ) as unknown as HTMLImageElement;
     img.style.transform = "scaleX(-1)";
 
     applyImageVisualAttrs(img, {
@@ -357,36 +406,61 @@ describe("ImageVisualAttrs helpers", () => {
       cropLeft: 0.25,
     });
 
-    expect((img as unknown as FakeElement).style["transform"]).toBe("scaleX(-1) translateY(-25%)");
-    expect((img as unknown as FakeElement).style["transformOrigin"]).toBe("56.25% 56.25%");
+    expect((img as unknown as FakeElement).style["transform"]).toBe(
+      "scaleX(-1) translateY(-25%)",
+    );
+    expect((img as unknown as FakeElement).style["transformOrigin"]).toBe(
+      "56.25% 56.25%",
+    );
     expect((img as unknown as FakeElement).style["marginTop"]).toBeUndefined();
   });
 });
 
 describe("ImageBorderAttrs helpers", () => {
   test("defaults missing border style and color while applying a positive width", () => {
-    const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    const img = fakeDocument.createElement(
+      "img",
+    ) as unknown as HTMLImageElement;
 
     applyImageBorder(img, { borderWidth: 1 });
 
-    expect((img as unknown as FakeElement).style["border"]).toBe("1px solid #000000");
-    expect((img as unknown as FakeElement).style["boxSizing"]).toBe("border-box");
+    expect((img as unknown as FakeElement).style["border"]).toBe(
+      "1px solid #000000",
+    );
+    expect((img as unknown as FakeElement).style["boxSizing"]).toBe(
+      "border-box",
+    );
   });
 
   test("skips null PM defaults and zero border widths", () => {
-    const nullDefaultImg = fakeDocument.createElement("img") as unknown as HTMLImageElement;
-    const nullDefaultAttrs = { borderWidth: null } as unknown as { borderWidth?: number };
+    const nullDefaultImg = fakeDocument.createElement(
+      "img",
+    ) as unknown as HTMLImageElement;
+    const nullDefaultAttrs = { borderWidth: null } as unknown as {
+      borderWidth?: number;
+    };
     applyImageBorder(nullDefaultImg, nullDefaultAttrs);
 
-    const zeroWidthImg = fakeDocument.createElement("img") as unknown as HTMLImageElement;
-    applyImageBorder(zeroWidthImg, { borderWidth: 0, borderColor: "currentColor" });
+    const zeroWidthImg = fakeDocument.createElement(
+      "img",
+    ) as unknown as HTMLImageElement;
+    applyImageBorder(zeroWidthImg, {
+      borderWidth: 0,
+      borderColor: "currentColor",
+    });
 
-    expect((nullDefaultImg as unknown as FakeElement).style["border"]).toBeUndefined();
-    expect((zeroWidthImg as unknown as FakeElement).style["border"]).toBeUndefined();
+    expect(
+      (nullDefaultImg as unknown as FakeElement).style["border"],
+    ).toBeUndefined();
+    expect(
+      (zeroWidthImg as unknown as FakeElement).style["border"],
+    ).toBeUndefined();
   });
 
   test("applies borders to non-img containers for cropped frames", () => {
-    const container = fakeDocument.createElement("div") as unknown as HTMLElement;
+    const container = fakeDocument.createElement(
+      "div",
+    ) as unknown as HTMLElement;
 
     applyImageBorder(container, {
       borderWidth: 2,
@@ -394,7 +468,11 @@ describe("ImageBorderAttrs helpers", () => {
       borderColor: "#336699",
     });
 
-    expect((container as unknown as FakeElement).style["border"]).toBe("2px dashed #336699");
-    expect((container as unknown as FakeElement).style["boxSizing"]).toBe("border-box");
+    expect((container as unknown as FakeElement).style["border"]).toBe(
+      "2px dashed #336699",
+    );
+    expect((container as unknown as FakeElement).style["boxSizing"]).toBe(
+      "border-box",
+    );
   });
 });

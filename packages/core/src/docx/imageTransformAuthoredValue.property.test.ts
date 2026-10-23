@@ -18,15 +18,18 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document, Image } from "../types/document";
 import { EDITED_PREVIEW_FINGERPRINT } from "./imageRawXml";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const NS = [
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
@@ -139,7 +142,9 @@ describe("an authored image transform survives a save", () => {
     async () => {
       await fc.assert(
         fc.asyncProperty(authoredTransform, async (transform) => {
-          const parsed = await parseDocx(await docxWith(transform), { preloadFonts: false });
+          const parsed = await parseDocx(await docxWith(transform), {
+            preloadFonts: false,
+          });
           const authored = imageOf(parsed);
           const expected = structuredClone(authored.transform);
           forceRebuild(authored);
@@ -156,9 +161,12 @@ describe("an authored image transform survives a save", () => {
   );
 
   test("an authored zero rotation reaches the model", async () => {
-    const parsed = await parseDocx(await docxWith({ rot: "0", flipH: "0", flipV: undefined }), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await docxWith({ rot: "0", flipH: "0", flipV: undefined }),
+      {
+        preloadFonts: false,
+      },
+    );
 
     expect(imageOf(parsed).transform).toEqual({ rotation: 0, flipH: false });
   });

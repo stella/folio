@@ -12,7 +12,10 @@ export {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "./errors";
-export type { ContentControlFilter, ContentControlMatch } from "./findContentControls";
+export type {
+  ContentControlFilter,
+  ContentControlMatch,
+} from "./findContentControls";
 export {
   findContentControl,
   findContentControls,

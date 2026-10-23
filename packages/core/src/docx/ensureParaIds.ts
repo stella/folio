@@ -1,5 +1,3 @@
-import { encodeUtf8 } from "../utils/textEncoding";
-import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * Headless `w14:paraId` normalization for a `.docx` buffer.
  *
@@ -58,7 +56,10 @@ import { writeZipPart } from "@stll/docx-core/zip";
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
+import { writeZipPart } from "@stll/docx-core/zip";
+
 import { deterministicHexId } from "../utils/hexId";
+import { encodeUtf8 } from "../utils/textEncoding";
 import { resolvePackageRelationshipTarget } from "./packageParts";
 import { spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
@@ -69,10 +70,10 @@ import {
   getChildElements,
   getLocalName,
   getNamespaceUri,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   parseXmlDocument,
   resolveAttributeNamespaceUri,
   WORDPROCESSINGML_NAMESPACE_URIS,
-  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 
@@ -115,14 +116,17 @@ export type EnsureParaIdsOptions = {
   allowSignedPackageMutation?: boolean;
 };
 
-const W14_NAMESPACE_URI = "http://schemas.microsoft.com/office/word/2010/wordml";
-const MC_NAMESPACE_URI = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const W14_NAMESPACE_URI =
+  "http://schemas.microsoft.com/office/word/2010/wordml";
+const MC_NAMESPACE_URI =
+  "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const MC_IGNORABLE_W14 = "w14";
 const DIGITAL_SIGNATURE_PART_PREFIX = "_xmlsignatures/";
 /** Word reads an all-zero `w14:paraId` as "no id assigned". */
 const RESERVED_ZERO_ID_PATTERN = /^0*$/u;
 
-const PACKAGE_RELATIONSHIP_URI = "http://schemas.openxmlformats.org/package/2006/relationships";
+const PACKAGE_RELATIONSHIP_URI =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 const TARGET_PART_PATTERNS = [
   /^word\/header\d*\.xml$/u,
   /^word\/footer\d*\.xml$/u,
@@ -131,7 +135,8 @@ const TARGET_PART_PATTERNS = [
 ];
 
 /** Reserve package ids even in parts whose content the pass leaves untouched. */
-const ANY_PARA_ID_PATTERN = /\s[^\s=<>/"':]+:paraId\s*=\s*(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/gu;
+const ANY_PARA_ID_PATTERN =
+  /\s[^\s=<>/"':]+:paraId\s*=\s*(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/gu;
 
 type SpliceEdit = { start: number; end: number; text: string };
 
@@ -142,18 +147,27 @@ type SpliceEdit = { start: number; end: number; text: string };
  * should never cut across a range marker; the owner is what makes that
  * structural rather than a reading of the scanner.
  */
-const applySplices = (xml: string, edits: SpliceEdit[], partPath: string): string => {
+const applySplices = (
+  xml: string,
+  edits: SpliceEdit[],
+  partPath: string,
+): string => {
   const patched = spliceXml(
     xml,
     edits.map(({ start, end, text }) => ({ start, end, newXml: text })),
   );
   if (patched === null) {
-    throw createEnsureParaIdsError(`Stamping paragraph ids into ${partPath} broke a comment range`);
+    throw createEnsureParaIdsError(
+      `Stamping paragraph ids into ${partPath} broke a comment range`,
+    );
   }
   return patched;
 };
 
-const createEnsureParaIdsError = (message: string, cause?: unknown): EnsureParaIdsError =>
+const createEnsureParaIdsError = (
+  message: string,
+  cause?: unknown,
+): EnsureParaIdsError =>
   new EnsureParaIdsError({
     reason: ENSURE_PARA_IDS_REASONS.NORMALIZATION_FAILED,
     message,
@@ -199,7 +213,8 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
     xml,
     ({ element, attributeValueSpans: spans, nameEnd, parent }) => {
       const elementName = element.name ?? "";
-      const unboundElement = elementName.includes(":") && getNamespaceUri(element) === undefined;
+      const unboundElement =
+        elementName.includes(":") && getNamespaceUri(element) === undefined;
       const unboundAttribute = Object.keys(element.attributes ?? {}).some(
         (attribute) =>
           attribute.includes(":") &&
@@ -212,7 +227,8 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
           message: `Undeclared namespace prefix in ${partPath}`,
         });
       if (parent === undefined) {
-        if (root !== undefined) throw createEnsureParaIdsError(`Multiple roots in ${partPath}`);
+        if (root !== undefined)
+          throw createEnsureParaIdsError(`Multiple roots in ${partPath}`);
         root = element;
         rootNameEnd = nameEnd;
       }
@@ -237,7 +253,11 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
         const namespace = resolveAttributeNamespaceUri(element, name);
         const localName = getLocalName(name);
         const value = String(element.attributes?.[name] ?? "");
-        if (element === root && namespace === MC_NAMESPACE_URI && localName === "Ignorable")
+        if (
+          element === root &&
+          namespace === MC_NAMESPACE_URI &&
+          localName === "Ignorable"
+        )
           ignorable = { ...span, value };
         if (
           namespace !== W14_NAMESPACE_URI &&
@@ -245,7 +265,8 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
         )
           continue;
         if (localName === "paraId") {
-          if (paraId === undefined || namespace === W14_NAMESPACE_URI) paraId = { ...span, value };
+          if (paraId === undefined || namespace === W14_NAMESPACE_URI)
+            paraId = { ...span, value };
         }
         if (localName === "textId") textId = { ...span, value };
       }
@@ -260,12 +281,15 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
     throw createEnsureParaIdsError(`Malformed XML in ${partPath}`);
   const rootElement = root;
   const prefixFor = (uri: string, preferred: string): string => {
-    for (const [prefix, boundUri] of rootElement.namespaceScope?.bindings ?? []) {
+    for (const [prefix, boundUri] of rootElement.namespaceScope?.bindings ??
+      []) {
       if (prefix === "" || boundUri !== uri) continue;
-      if (uri !== W14_NAMESPACE_URI || bindings.get(prefix)?.size === 1) return prefix;
+      if (uri !== W14_NAMESPACE_URI || bindings.get(prefix)?.size === 1)
+        return prefix;
     }
     let candidate = preferred;
-    for (let suffix = 1; bindings.has(candidate); suffix += 1) candidate = `${preferred}_${suffix}`;
+    for (let suffix = 1; bindings.has(candidate); suffix += 1)
+      candidate = `${preferred}_${suffix}`;
     return candidate;
   };
   return {
@@ -278,7 +302,10 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
   };
 };
 
-const collectFallbackParaIds = (spelling: PartSpelling, into: Set<string>): void => {
+const collectFallbackParaIds = (
+  spelling: PartSpelling,
+  into: Set<string>,
+): void => {
   for (const { inFallback, paraId } of spelling.paragraphs) {
     if (inFallback && paraId?.value) into.add(paraId.value.toUpperCase());
   }
@@ -295,7 +322,11 @@ type MintContext = {
  * Deterministic fresh id for the paragraph at `ordinal` in `partPath`,
  * salted past collisions with any id anywhere in the document.
  */
-const mintParaId = (context: MintContext, partPath: string, ordinal: number): string => {
+const mintParaId = (
+  context: MintContext,
+  partPath: string,
+  ordinal: number,
+): string => {
   const seed = `${context.docKey}:${partPath}:${ordinal}`;
   let id = deterministicHexId(seed);
   for (let salt = 1; context.taken.has(id); salt += 1) {
@@ -325,7 +356,12 @@ type ScanPartOptions = {
   seen: Set<string>;
 };
 
-const scanPart = ({ partPath, spelling, context, seen }: ScanPartOptions): PartScanResult => {
+const scanPart = ({
+  partPath,
+  spelling,
+  context,
+  seen,
+}: ScanPartOptions): PartScanResult => {
   const edits: SpliceEdit[] = [];
   const minted: string[] = [];
   const w14 = spelling.w14Prefix;
@@ -342,7 +378,11 @@ const scanPart = ({ partPath, spelling, context, seen }: ScanPartOptions): PartS
     if (paraId === undefined) {
       const id = mintParaId(context, partPath, ordinal);
       if (textId !== undefined) {
-        edits.push({ start: nameEnd, end: nameEnd, text: ` ${w14}:paraId="${id}"` });
+        edits.push({
+          start: nameEnd,
+          end: nameEnd,
+          text: ` ${w14}:paraId="${id}"`,
+        });
         edits.push({ start: textId.start, end: textId.end, text: id });
       } else {
         edits.push({
@@ -369,7 +409,11 @@ const scanPart = ({ partPath, spelling, context, seen }: ScanPartOptions): PartS
     if (textId !== undefined) {
       edits.push({ start: textId.start, end: textId.end, text: id });
     } else {
-      edits.push({ start: nameEnd, end: nameEnd, text: ` ${w14}:textId="${id}"` });
+      edits.push({
+        start: nameEnd,
+        end: nameEnd,
+        text: ` ${w14}:textId="${id}"`,
+      });
     }
     if (unassigned) {
       assigned += 1;
@@ -402,7 +446,9 @@ const ensureRootNamespaces = ({
   if (resolveNamespaceUri(root.namespaceScope, w14Prefix) !== W14_NAMESPACE_URI)
     declarations.push(` xmlns:${w14Prefix}="${W14_NAMESPACE_URI}"`);
   if (ignorable !== undefined) {
-    const tokens = ignorable.value.split(/\s+/u).filter((token) => token.length > 0);
+    const tokens = ignorable.value
+      .split(/\s+/u)
+      .filter((token) => token.length > 0);
     if (!tokens.includes(w14Prefix))
       edits.push({
         start: ignorable.end,
@@ -413,7 +459,11 @@ const ensureRootNamespaces = ({
     declarations.push(` ${mcPrefix}:Ignorable="${w14Prefix}"`);
   }
   if (declarations.length > 0)
-    edits.push({ start: rootNameEnd, end: rootNameEnd, text: declarations.join("") });
+    edits.push({
+      start: rootNameEnd,
+      end: rootNameEnd,
+      text: declarations.join(""),
+    });
   return edits;
 };
 
@@ -432,7 +482,9 @@ const mainDocumentPart = (rels: string, entries: readonly string[]): string => {
     )
       return false;
     const type = getAttribute(element, null, "Type");
-    return [...OFFICE_RELATIONSHIP_NAMESPACE_URIS].some((uri) => type === `${uri}/officeDocument`);
+    return [...OFFICE_RELATIONSHIP_NAMESPACE_URIS].some(
+      (uri) => type === `${uri}/officeDocument`,
+    );
   });
   const document = documents.at(0);
   if (
@@ -440,13 +492,19 @@ const mainDocumentPart = (rels: string, entries: readonly string[]): string => {
     document === undefined ||
     getAttribute(document, null, "TargetMode") === "External"
   )
-    throw createEnsureParaIdsError("Package must have one internal officeDocument relationship");
+    throw createEnsureParaIdsError(
+      "Package must have one internal officeDocument relationship",
+    );
   const target = getAttribute(document, null, "Target");
   const partPath =
-    target === null ? undefined : resolvePackageRelationshipTarget(target, "_rels/.rels");
-  if (partPath === undefined) throw createEnsureParaIdsError("Invalid officeDocument target");
+    target === null
+      ? undefined
+      : resolvePackageRelationshipTarget(target, "_rels/.rels");
+  if (partPath === undefined)
+    throw createEnsureParaIdsError("Invalid officeDocument target");
   const name = entries.find((entry) => entry.toLowerCase() === partPath);
-  if (name === undefined) throw createEnsureParaIdsError("officeDocument part not found");
+  if (name === undefined)
+    throw createEnsureParaIdsError("officeDocument part not found");
   return name;
 };
 
@@ -459,7 +517,8 @@ const toUint8Array = (docx: Uint8Array | ArrayBuffer): Uint8Array =>
 
 const hasDigitalSignatureParts = (zip: JSZip): boolean =>
   Object.values(zip.files).some(
-    ({ dir, name }) => !dir && name.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
+    ({ dir, name }) =>
+      !dir && name.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
   );
 
 /**
@@ -478,9 +537,13 @@ const ensureParaIdsInternal = async (
   // bomb entry must fail fast instead of exhausting memory.
   const archive = await loadDocxArchive(docx);
 
-  const relsPath = archive.entries.find((name) => name.toLowerCase() === "_rels/.rels");
-  const rels = relsPath === undefined ? null : await archive.readEntryString(relsPath);
-  if (rels === null) throw createEnsureParaIdsError("Package relationships not found");
+  const relsPath = archive.entries.find(
+    (name) => name.toLowerCase() === "_rels/.rels",
+  );
+  const rels =
+    relsPath === undefined ? null : await archive.readEntryString(relsPath);
+  if (rels === null)
+    throw createEnsureParaIdsError("Package relationships not found");
   const documentPartName = mainDocumentPart(rels, archive.entries);
   const xmlPartNames = archive.entries.filter(
     (name) => name.toLowerCase().endsWith(".xml") || name === documentPartName,
@@ -503,7 +566,10 @@ const ensureParaIdsInternal = async (
   const documentXml = partTexts.get(documentPartName);
   if (documentXml === undefined)
     throw createEnsureParaIdsError("officeDocument part is unreadable");
-  const context: MintContext = { taken, docKey: deterministicHexId(documentXml) };
+  const context: MintContext = {
+    taken,
+    docKey: deterministicHexId(documentXml),
+  };
 
   // document.xml first so its paragraphs win the first-occurrence rule, then
   // the auxiliary parts in a deterministic order.
@@ -552,7 +618,11 @@ const ensureParaIdsInternal = async (
     }
     updates.set(
       partPath,
-      applySplices(xml, [...scan.edits, ...ensureRootNamespaces(spelling)], partPath),
+      applySplices(
+        xml,
+        [...scan.edits, ...ensureRootNamespaces(spelling)],
+        partPath,
+      ),
     );
   }
 
@@ -572,7 +642,10 @@ const ensureParaIdsInternal = async (
   // buffer whose shape is already bounded.
   const zip = await JSZip.loadAsync(docx);
 
-  if (hasDigitalSignatureParts(zip) && options.allowSignedPackageMutation !== true) {
+  if (
+    hasDigitalSignatureParts(zip) &&
+    options.allowSignedPackageMutation !== true
+  ) {
     throw new EnsureParaIdsError({
       reason: ENSURE_PARA_IDS_REASONS.SIGNED_PACKAGE,
       message:
@@ -583,7 +656,9 @@ const ensureParaIdsInternal = async (
   for (const [partPath, content] of updates) {
     const sourceEntry = zip.file(partPath);
     if (sourceEntry === null) {
-      throw createEnsureParaIdsError(`Package part disappeared during normalization: ${partPath}`);
+      throw createEnsureParaIdsError(
+        `Package part disappeared during normalization: ${partPath}`,
+      );
     }
     writeZipPart({
       zip,
@@ -602,7 +677,13 @@ const ensureParaIdsInternal = async (
     compressionOptions: { level: 6 },
   });
 
-  return { docx: output, assigned, deduplicated, alreadyComplete: false, mintedParaIds };
+  return {
+    docx: output,
+    assigned,
+    deduplicated,
+    alreadyComplete: false,
+    mintedParaIds,
+  };
 };
 
 /**
@@ -620,6 +701,9 @@ export const ensureParaIds = async (
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
-    throw createEnsureParaIdsError(`Failed to normalize paragraph IDs: ${message}`, error);
+    throw createEnsureParaIdsError(
+      `Failed to normalize paragraph IDs: ${message}`,
+      error,
+    );
   }
 };

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { compareWithModel, expectOperation, modelOf, type Row } from "../support/oracle.ts";
+import {
+  compareWithModel,
+  expectOperation,
+  modelOf,
+  type Row,
+} from "../support/oracle.ts";
 
 const row = (index: number): Row => ({
   id: `block-${index}`,
@@ -9,7 +14,11 @@ const row = (index: number): Row => ({
   kind: "paragraph",
 });
 
-const assertMergeSkipsDeletedBlocks = (count: number, deleted: number, followingTable = false) => {
+const assertMergeSkipsDeletedBlocks = (
+  count: number,
+  deleted: number,
+  followingTable = false,
+) => {
   const rows: Row[] = Array.from({ length: count }, (_, index) => row(index));
   if (followingTable) {
     rows.push({
@@ -46,14 +55,18 @@ const assertMergeSkipsDeletedBlocks = (count: number, deleted: number, following
   const actual = [
     {
       ...first,
-      text: joinsSurvivor ? `Block 0 ${survivor.text}` : `Block 0${survivor ? " " : ""}`,
+      text: joinsSurvivor
+        ? `Block 0 ${survivor.text}`
+        : `Block 0${survivor ? " " : ""}`,
     },
     ...rows.slice(deleted + (joinsSurvivor ? 2 : 1)),
   ];
   assert.deepEqual(compareWithModel(model, actual), []);
 };
 
-for (const seed of [2146507783, 1809931145, 1809931025, 1809931181, 1101252716, 1101252706]) {
+for (const seed of [
+  2146507783, 1809931145, 1809931025, 1809931181, 1101252716, 1101252706,
+]) {
   test(`seed ${seed}: a merge crosses blocks deleted by its batch`, () => {
     assertMergeSkipsDeletedBlocks(4, 1 + (seed % 2));
   });

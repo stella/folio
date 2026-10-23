@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   censusUndescribedCanonicalCommands,
@@ -16,7 +17,8 @@ const census = (source: string, helper = "") =>
     { file: registry, source },
     { file: "packages/core/src/prosemirror/helpers.ts", source: helper },
   ]);
-const imports = 'import { withCanonicalCommand as wrap } from "../../canonicalCommands";';
+const imports =
+  'import { withCanonicalCommand as wrap } from "../../canonicalCommands";';
 
 test("descriptor proof follows factory returns and the canonical wrapper owner", () => {
   const cases = {
@@ -57,7 +59,9 @@ test("descriptor proof follows factory returns and the canonical wrapper owner",
   ];
   for (const statement of untrustedImports) {
     expect(
-      census(`${statement} const extension = { commands: { wrapped: () => wrap(raw) } };`),
+      census(
+        `${statement} const extension = { commands: { wrapped: () => wrap(raw) } };`,
+      ),
     ).toEqual([`${registry}#wrapped`]);
   }
 });
@@ -65,19 +69,24 @@ test("descriptor proof follows factory returns and the canonical wrapper owner",
 test("registry additions and descriptor removals can only enlarge the derived remaining set", () => {
   assertProperty(
     fc.property(
-      fc.uniqueArray(fc.integer({ min: 0, max: 1000 }), { minLength: 1, maxLength: 12 }),
+      fc.uniqueArray(fc.integer({ min: 0, max: 1000 }), {
+        minLength: 1,
+        maxLength: 12,
+      }),
       (ids) => {
         const names = ids.map((id) => `command${id}`);
         const registryFor = (wrapped: boolean) =>
           `${imports} const extension = { commands: { ${names.map((name) => `${name}: () => ${wrapped ? "wrap(raw)" : "raw"}`).join(",")} } };`;
         const remaining = census(registryFor(false));
         expect(census(registryFor(true))).toEqual([]);
-        expect(remaining).toEqual(names.map((name) => `${registry}#${name}`).sort());
+        expect(remaining).toEqual(
+          names.map((name) => `${registry}#${name}`).sort(),
+        );
         expect(checkCanonicalCommandBaseline([], remaining)).toEqual([]);
         expect(checkCanonicalCommandBaseline(remaining, [])).toEqual(remaining);
-        expect(checkCanonicalCommandBaseline(remaining.concat(remaining), remaining)).toEqual(
-          remaining,
-        );
+        expect(
+          checkCanonicalCommandBaseline(remaining.concat(remaining), remaining),
+        ).toEqual(remaining);
       },
     ),
     {
@@ -89,8 +98,16 @@ test("registry additions and descriptor removals can only enlarge the derived re
 
 test("registry shapes cannot hide uncensused registrations", () => {
   expect(() => census("const extension = { commands }; ")).toThrow("census");
-  expect(() => census("const extension = { commands() { return other; } }; ")).toThrow("census");
-  for (const commands of ["other", "{ ...other }", "{ [dynamic]: () => raw }"]) {
-    expect(() => census(`const extension = { commands: ${commands} };`)).toThrow("census");
+  expect(() =>
+    census("const extension = { commands() { return other; } }; "),
+  ).toThrow("census");
+  for (const commands of [
+    "other",
+    "{ ...other }",
+    "{ [dynamic]: () => raw }",
+  ]) {
+    expect(() =>
+      census(`const extension = { commands: ${commands} };`),
+    ).toThrow("census");
   }
 });

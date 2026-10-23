@@ -27,7 +27,10 @@ const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
  * `new Date()`, so a corpus package changed every two seconds. Word writes no
  * folder entries either, so dropping them is also the more faithful package.
  */
-const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as const;
+const ZIP_ENTRY_OPTIONS = {
+  date: FIXED_ZIP_DATE,
+  createFolders: false,
+} as const;
 
 export const zipPackage = async (parts: DocxPackage): Promise<ArrayBuffer> => {
   const zip = new JSZip();
@@ -45,7 +48,9 @@ export const zipPackage = async (parts: DocxPackage): Promise<ArrayBuffer> => {
   });
 };
 
-export const unzipPackage = async (buffer: ArrayBuffer): Promise<Map<string, PackagePart>> => {
+export const unzipPackage = async (
+  buffer: ArrayBuffer,
+): Promise<Map<string, PackagePart>> => {
   const zip = await JSZip.loadAsync(buffer);
   const parts = new Map<string, PackagePart>();
   for (const [name, file] of Object.entries(zip.files)) {
@@ -120,7 +125,10 @@ export const splitBodyChildren = (documentXml: string): string[] => {
   return children;
 };
 
-export const replaceBodyChildren = (documentXml: string, children: readonly string[]): string => {
+export const replaceBodyChildren = (
+  documentXml: string,
+  children: readonly string[],
+): string => {
   const { start, end } = bodyBounds(documentXml);
   return `${documentXml.slice(0, start)}${children.join("")}${documentXml.slice(end)}`;
 };
@@ -138,13 +146,16 @@ export const blockText = (blockXml: string): string =>
  */
 export const withBlockText = (blockXml: string, text: string): string => {
   let replaced = false;
-  return blockXml.replaceAll(/<w:t(?:\s[^>]*?)?>[\s\S]*?<\/w:t>/gu, (): string => {
-    if (replaced) {
-      return "<w:t></w:t>";
-    }
-    replaced = true;
-    return `<w:t xml:space="preserve">${escapeXml(text)}</w:t>`;
-  });
+  return blockXml.replaceAll(
+    /<w:t(?:\s[^>]*?)?>[\s\S]*?<\/w:t>/gu,
+    (): string => {
+      if (replaced) {
+        return "<w:t></w:t>";
+      }
+      replaced = true;
+      return `<w:t xml:space="preserve">${escapeXml(text)}</w:t>`;
+    },
+  );
 };
 
 /** The document part of a package, or a throw when the package has none. */

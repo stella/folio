@@ -13,7 +13,8 @@ import { describe, expect, test } from "bun:test";
 
 import { withModelledControlState } from "./sdtPropertiesPatch";
 
-const checkbox = (checked: boolean) => ({ sdtType: "checkbox", checked }) as const;
+const checkbox = (checked: boolean) =>
+  ({ sdtType: "checkbox", checked }) as const;
 
 describe("withModelledControlState — checkbox state", () => {
   test("updates an existing w14:checked attribute when the user toggles on", () => {
@@ -29,14 +30,17 @@ describe("withModelledControlState — checkbox state", () => {
 
   test("updates an existing w:checked attribute (no w14: prefix variant)", () => {
     expect(
-      withModelledControlState('<w:checkbox><w:checked w:val="0"/></w:checkbox>', checkbox(true)),
+      withModelledControlState(
+        '<w:checkbox><w:checked w:val="0"/></w:checkbox>',
+        checkbox(true),
+      ),
     ).toContain('<w:checked w:val="1"/>');
   });
 
   test("injects a w14:checked when only the wrapper exists", () => {
-    expect(withModelledControlState("<w14:checkbox></w14:checkbox>", checkbox(true))).toContain(
-      '<w14:checked w14:val="1"/>',
-    );
+    expect(
+      withModelledControlState("<w14:checkbox></w14:checkbox>", checkbox(true)),
+    ).toContain('<w14:checked w14:val="1"/>');
   });
 
   test("replaces the expanded `<w14:checked></w14:checked>` form without leaving stray closing tags", () => {
@@ -134,7 +138,10 @@ describe("withModelledControlState — a kind that states nothing interactive", 
   test("leaves the element alone", () => {
     const text = '<w:text w:multiLine="1"/>';
     expect(withModelledControlState(text, { sdtType: "plainText" })).toBe(text);
-    const gallery = '<w:docPartObj><w:docPartGallery w:val="Quick Parts"/></w:docPartObj>';
-    expect(withModelledControlState(gallery, { sdtType: "buildingBlockGallery" })).toBe(gallery);
+    const gallery =
+      '<w:docPartObj><w:docPartGallery w:val="Quick Parts"/></w:docPartObj>';
+    expect(
+      withModelledControlState(gallery, { sdtType: "buildingBlockGallery" }),
+    ).toBe(gallery);
   });
 });

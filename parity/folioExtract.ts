@@ -13,14 +13,17 @@
  * — happens back in Node through `toPageGeom`, which is pure and unit-tested.
  */
 
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "@playwright/test";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
-
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../packages/playground/src/playgroundStatus";
-
 import {
   CACHE_DIR,
   FIXTURES_DIR,
@@ -35,10 +38,10 @@ import {
   parseUnsupportedProjectionConsoleError,
   readEditorReadinessState,
 } from "./editorReadiness";
-import { normalizeLineText } from "./textNorm";
-import { firstStrongTextDirection } from "./textDirection";
-import type { DocGeom, LineBox, PageGeom, Region, ReviewView } from "./types";
 import { projectFinalReviewView } from "./reviewProjection.mjs";
+import { firstStrongTextDirection } from "./textDirection";
+import { normalizeLineText } from "./textNorm";
+import type { DocGeom, LineBox, PageGeom, Region, ReviewView } from "./types";
 
 export class FolioExtractError extends Error {
   constructor(message: string) {
@@ -52,7 +55,9 @@ export type FolioExtraction = { geom: DocGeom; screenshotPaths: string[] };
 const MEANINGFUL_INK_CHARACTER = /[^\s\u00ad\u200b-\u200d\ufeff]/u;
 
 /** Character offsets whose glyphs should contribute to a line's ink bounds. */
-export const meaningfulTextRange = (text: string): { start: number; end: number } | null => {
+export const meaningfulTextRange = (
+  text: string,
+): { start: number; end: number } | null => {
   const first = text.search(MEANINGFUL_INK_CHARACTER);
   if (first < 0) {
     return null;
@@ -120,7 +125,9 @@ export type LocalFontDefinition = {
  * resolve, so it renders with the same face the reference renderer used.
  * Geometry reports such lines under `reportedFamily`, the face actually
  * painted, rather than the requested alias. */
-export type AliasedFontDefinition = LocalFontDefinition & { reportedFamily: string };
+export type AliasedFontDefinition = LocalFontDefinition & {
+  reportedFamily: string;
+};
 
 /** Rewrite the resolved family of lines painted with an aliased face to the
  * family of that face. */
@@ -130,14 +137,21 @@ export const reportAliasedFontFaces = (
 ): PageGeom[] => {
   if (aliasFonts.length === 0) return pages;
   const reportedByFamily = new Map(
-    aliasFonts.map(({ family, reportedFamily }) => [family.toLowerCase(), reportedFamily]),
+    aliasFonts.map(({ family, reportedFamily }) => [
+      family.toLowerCase(),
+      reportedFamily,
+    ]),
   );
   return pages.map((page) => ({
     ...page,
     lines: page.lines.map((line) => {
       const reportedFamily =
-        line.fontName === undefined ? undefined : reportedByFamily.get(line.fontName.toLowerCase());
-      return reportedFamily === undefined ? line : { ...line, fontName: reportedFamily };
+        line.fontName === undefined
+          ? undefined
+          : reportedByFamily.get(line.fontName.toLowerCase());
+      return reportedFamily === undefined
+        ? line
+        : { ...line, fontName: reportedFamily };
     }),
   }));
 };
@@ -162,8 +176,14 @@ export type CreateFolioExtractorOptions = {
 };
 
 export type FolioExtractor = {
-  extract: (docxPath: string, options?: FolioExtractOptions) => Promise<FolioExtraction>;
-  inspectPage: (docxPath: string, pageNumber: number) => Promise<FolioPageInspection>;
+  extract: (
+    docxPath: string,
+    options?: FolioExtractOptions,
+  ) => Promise<FolioExtraction>;
+  inspectPage: (
+    docxPath: string,
+    pageNumber: number,
+  ) => Promise<FolioPageInspection>;
   close: () => Promise<void>;
 };
 
@@ -203,9 +223,12 @@ const FONT_MIME_BY_EXTENSION = {
 
 export const localFontContentType = (filePath: string): string => {
   const extension = path.extname(filePath).toLowerCase();
-  const mime = FONT_MIME_BY_EXTENSION[extension as keyof typeof FONT_MIME_BY_EXTENSION];
+  const mime =
+    FONT_MIME_BY_EXTENSION[extension as keyof typeof FONT_MIME_BY_EXTENSION];
   if (!mime) {
-    throw new FolioExtractError(`unsupported local font format: ${extension || "(none)"}`);
+    throw new FolioExtractError(
+      `unsupported local font format: ${extension || "(none)"}`,
+    );
   }
   return mime;
 };
@@ -238,7 +261,9 @@ const loadBrowserFonts = async (
 
 type OutputTail = { read: () => string; done: Promise<void> };
 
-const captureOutputTail = (stream: ReadableStream<Uint8Array> | null | undefined): OutputTail => {
+const captureOutputTail = (
+  stream: ReadableStream<Uint8Array> | null | undefined,
+): OutputTail => {
   const decoder = new TextDecoder();
   let output = "";
 
@@ -255,7 +280,9 @@ const captureOutputTail = (stream: ReadableStream<Uint8Array> | null | undefined
       }
       output = `${output}${decoder.decode()}`.slice(-SERVER_LOG_TAIL_CHARS);
     } catch (error) {
-      output = `${output}\n[log capture failed: ${String(error)}]`.slice(-SERVER_LOG_TAIL_CHARS);
+      output = `${output}\n[log capture failed: ${String(error)}]`.slice(
+        -SERVER_LOG_TAIL_CHARS,
+      );
     }
   })();
 
@@ -277,7 +304,11 @@ export const formatServerStartFailure = (
     : `playground dev server ${reason}\nPlayground output:\n${output}`;
 };
 
-export const formatNavigationFailure = (url: string, error: unknown, output: string): string => {
+export const formatNavigationFailure = (
+  url: string,
+  error: unknown,
+  output: string,
+): string => {
   const message = error instanceof Error ? error.message : String(error);
   return output.length === 0
     ? `playground navigation failed for ${url}: ${message}`
@@ -285,7 +316,12 @@ export const formatNavigationFailure = (url: string, error: unknown, output: str
 };
 
 /** A raw rect as returned by `getBoundingClientRect()` (visual/CSS px). */
-export type RawRect = { left: number; top: number; width: number; height: number };
+export type RawRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
 
 /** One ink segment extracted from a `.layout-line` with DOM-only reads (no math). */
 export type RawLine = {
@@ -337,7 +373,10 @@ export type RawPage = {
 
 /** Ratio of layout px to visual (post-zoom) px. Guards divide-by-zero for a
  * detached/zero-size page rect by falling back to no zoom correction. */
-export const computeZoomFactor = (offsetWidth: number, pageRectWidth: number): number => {
+export const computeZoomFactor = (
+  offsetWidth: number,
+  pageRectWidth: number,
+): number => {
   if (!Number.isFinite(pageRectWidth) || pageRectWidth <= 0) {
     return 1;
   }
@@ -353,12 +392,18 @@ const MAX_BASELINE_OFFSET_RATIO = 1.5;
  * itself did not wrap. Keep only probe positions near the extracted ink box;
  * the comparator can fall back to ink-top geometry for rejected probes.
  */
-export const isPlausibleBaseline = (baselineTop: number, rect: RawRect): boolean => {
+export const isPlausibleBaseline = (
+  baselineTop: number,
+  rect: RawRect,
+): boolean => {
   if (!Number.isFinite(baselineTop) || rect.height <= 0) {
     return false;
   }
   const offsetRatio = (baselineTop - rect.top) / rect.height;
-  return offsetRatio >= MIN_BASELINE_OFFSET_RATIO && offsetRatio <= MAX_BASELINE_OFFSET_RATIO;
+  return (
+    offsetRatio >= MIN_BASELINE_OFFSET_RATIO &&
+    offsetRatio <= MAX_BASELINE_OFFSET_RATIO
+  );
 };
 
 type InsetClip = { top: number; right: number; bottom: number; left: number };
@@ -389,14 +434,20 @@ export const parseInsetClipPath = (
 
   const tokens = value.split(/\s+/u);
   if (tokens.length < 1 || tokens.length > 4) return null;
-  const [topToken, rightToken = topToken, bottomToken = topToken, leftToken = rightToken] = tokens;
+  const [
+    topToken,
+    rightToken = topToken,
+    bottomToken = topToken,
+    leftToken = rightToken,
+  ] = tokens;
   if (!topToken || !rightToken || !bottomToken || !leftToken) return null;
 
   const top = cssInsetLength(topToken, height);
   const right = cssInsetLength(rightToken, width);
   const bottom = cssInsetLength(bottomToken, height);
   const left = cssInsetLength(leftToken, width);
-  if (top === null || right === null || bottom === null || left === null) return null;
+  if (top === null || right === null || bottom === null || left === null)
+    return null;
   return { top, right, bottom, left };
 };
 
@@ -430,8 +481,14 @@ export const isFullyClippedByAncestors = (
       ancestor.offsetHeight,
     );
     if (inset) {
-      const scaleX = ancestor.offsetWidth > 0 ? ancestor.rect.width / ancestor.offsetWidth : 1;
-      const scaleY = ancestor.offsetHeight > 0 ? ancestor.rect.height / ancestor.offsetHeight : 1;
+      const scaleX =
+        ancestor.offsetWidth > 0
+          ? ancestor.rect.width / ancestor.offsetWidth
+          : 1;
+      const scaleY =
+        ancestor.offsetHeight > 0
+          ? ancestor.rect.height / ancestor.offsetHeight
+          : 1;
       left = Math.max(left, ancestor.rect.left + inset.left * scaleX);
       right = Math.min(right, ancestorRight - inset.right * scaleX);
       top = Math.max(top, ancestor.rect.top + inset.top * scaleY);
@@ -444,7 +501,9 @@ export const isFullyClippedByAncestors = (
 };
 
 /** First font-family in a CSS `font-family` list, with surrounding quotes stripped. */
-export const parseFirstFontFamily = (fontFamilyRaw: string | undefined): string | undefined => {
+export const parseFirstFontFamily = (
+  fontFamilyRaw: string | undefined,
+): string | undefined => {
   if (!fontFamilyRaw) {
     return undefined;
   }
@@ -471,7 +530,10 @@ export const parseCssFontFamilies = (fontFamilyRaw: string): string[] =>
  * the remaining lines by (yPt, xPt).
  */
 export const toPageGeom = (rawPage: RawPage): PageGeom => {
-  const zoomFactor = computeZoomFactor(rawPage.offsetWidth, rawPage.pageRect.width);
+  const zoomFactor = computeZoomFactor(
+    rawPage.offsetWidth,
+    rawPage.pageRect.width,
+  );
   const widthPt = rawPage.offsetWidth * PX_TO_PT;
   const heightPt = rawPage.offsetHeight * PX_TO_PT;
 
@@ -490,17 +552,23 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
       continue;
     }
 
-    const xPt = (rawLine.rect.left - rawPage.pageRect.left) * zoomFactor * PX_TO_PT;
-    const yPt = (rawLine.rect.top - rawPage.pageRect.top) * zoomFactor * PX_TO_PT;
+    const xPt =
+      (rawLine.rect.left - rawPage.pageRect.left) * zoomFactor * PX_TO_PT;
+    const yPt =
+      (rawLine.rect.top - rawPage.pageRect.top) * zoomFactor * PX_TO_PT;
     const lineWidthPt = rawLine.rect.width * zoomFactor * PX_TO_PT;
     const lineHeightPt = rawLine.rect.height * zoomFactor * PX_TO_PT;
     const baselinePt =
-      rawLine.baselineTop === undefined || !isPlausibleBaseline(rawLine.baselineTop, rawLine.rect)
+      rawLine.baselineTop === undefined ||
+      !isPlausibleBaseline(rawLine.baselineTop, rawLine.rect)
         ? undefined
         : (rawLine.baselineTop - rawPage.pageRect.top) * zoomFactor * PX_TO_PT;
 
     const fontName = parseFirstFontFamily(rawLine.fontFamilyRaw);
-    const fontSizePt = rawLine.fontSizePx !== undefined ? rawLine.fontSizePx * PX_TO_PT : undefined;
+    const fontSizePt =
+      rawLine.fontSizePx !== undefined
+        ? rawLine.fontSizePx * PX_TO_PT
+        : undefined;
 
     lines.push({
       text: rawLine.text,
@@ -511,7 +579,9 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
       widthPt: lineWidthPt,
       heightPt: lineHeightPt,
       region: rawLine.region,
-      ...(rawLine.visualGroup !== undefined ? { visualGroup: rawLine.visualGroup } : {}),
+      ...(rawLine.visualGroup !== undefined
+        ? { visualGroup: rawLine.visualGroup }
+        : {}),
       ...(rawLine.logicalLineGroup !== undefined
         ? { logicalLineGroup: rawLine.logicalLineGroup }
         : {}),
@@ -529,7 +599,10 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
   return { number: rawPage.pageNumber, widthPt, heightPt, lines };
 };
 
-const probeServer = async (url: string, timeoutMs: number): Promise<boolean> => {
+const probeServer = async (
+  url: string,
+  timeoutMs: number,
+): Promise<boolean> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -574,7 +647,10 @@ const waitForServerReady = async (
  * outlives its already-dead parent.
  */
 const killProcessTree = async (rootPid: number): Promise<void> => {
-  const psProcess = Bun.spawn(["ps", "-Ao", "pid,ppid"], { stdout: "pipe", stderr: "ignore" });
+  const psProcess = Bun.spawn(["ps", "-Ao", "pid,ppid"], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
   const output = await new Response(psProcess.stdout).text();
   await psProcess.exited;
 
@@ -714,7 +790,9 @@ const waitForSelectorOrEditorError = async (
       .then((handle) => handle.jsonValue());
     const state = await Promise.race([
       browserState,
-      errorMonitor.wait().then((message) => ({ type: "error" as const, message })),
+      errorMonitor
+        .wait()
+        .then((message) => ({ type: "error" as const, message })),
     ]);
     if (state?.type === "error") {
       throw new FolioExtractError(`folio editor failed: ${state.message}`);
@@ -727,7 +805,10 @@ const waitForSelectorOrEditorError = async (
   }
 };
 
-const waitForEditorLayout = async (page: Page, errorMonitor: EditorErrorMonitor): Promise<void> => {
+const waitForEditorLayout = async (
+  page: Page,
+  errorMonitor: EditorErrorMonitor,
+): Promise<void> => {
   await waitForSelectorOrEditorError(
     page,
     EDITOR_SELECTOR,
@@ -759,7 +840,9 @@ export type RoutedFontFaceDescriptor = {
 };
 
 /** A face currently in the browser's `document.fonts` set, as plain data. */
-type ObservedFontFace = RoutedFontFaceDescriptor & { status: FontFaceLoadStatus };
+type ObservedFontFace = RoutedFontFaceDescriptor & {
+  status: FontFaceLoadStatus;
+};
 
 const normalizeRoutedFontFamily = (family: string): string =>
   family
@@ -767,7 +850,9 @@ const normalizeRoutedFontFamily = (family: string): string =>
     .trim()
     .toLowerCase();
 
-const normalizeRoutedFontWeight = (weight: number | string | undefined): string => {
+const normalizeRoutedFontWeight = (
+  weight: number | string | undefined,
+): string => {
   const raw = String(weight ?? "normal")
     .trim()
     .toLowerCase();
@@ -794,14 +879,21 @@ export const unresolvedRoutedFontFaces = (
   expected.filter(({ family, weight, style }) => {
     const match = observed.find(
       (face) =>
-        normalizeRoutedFontFamily(face.family) === normalizeRoutedFontFamily(family) &&
-        normalizeRoutedFontWeight(face.weight) === normalizeRoutedFontWeight(weight) &&
-        normalizeRoutedFontStyle(face.style) === normalizeRoutedFontStyle(style),
+        normalizeRoutedFontFamily(face.family) ===
+          normalizeRoutedFontFamily(family) &&
+        normalizeRoutedFontWeight(face.weight) ===
+          normalizeRoutedFontWeight(weight) &&
+        normalizeRoutedFontStyle(face.style) ===
+          normalizeRoutedFontStyle(style),
     );
     return !match || match.status !== "loaded";
   });
 
-const describeRoutedFontFace = ({ family, weight, style }: RoutedFontFaceDescriptor): string =>
+const describeRoutedFontFace = ({
+  family,
+  weight,
+  style,
+}: RoutedFontFaceDescriptor): string =>
   `${family} (weight ${weight ?? "normal"}, style ${style ?? "normal"})`;
 
 /** Wait until every face routed to the playground (all weights/styles the
@@ -816,7 +908,8 @@ const describeRoutedFontFace = ({ family, weight, style }: RoutedFontFaceDescrip
 const waitForRoutedFontFaces = async (page: Page): Promise<void> => {
   const expected = (await page
     .evaluate(() => Reflect.get(globalThis, "__folioParityFonts"))
-    .catch(() => undefined)) as ReadonlyArray<RoutedFontFaceDescriptor> | undefined;
+    .catch(() => undefined)) as
+    ReadonlyArray<RoutedFontFaceDescriptor> | undefined;
   if (!expected || expected.length === 0) return;
 
   const deadline = Date.now() + ROUTED_FONT_LOAD_TIMEOUT_MS;
@@ -883,7 +976,10 @@ export const FINAL_VIEW_SCREENSHOT_CSS = `
       }
     `;
 
-const installCleanScreenshotStyle = async (page: Page, reviewView: ReviewView): Promise<void> => {
+const installCleanScreenshotStyle = async (
+  page: Page,
+  reviewView: ReviewView,
+): Promise<void> => {
   await page.addStyleTag({
     content:
       reviewView === "final"
@@ -892,9 +988,15 @@ const installCleanScreenshotStyle = async (page: Page, reviewView: ReviewView): 
   });
 };
 
-export const screenshotViewportHeight = (pageHeights: number[], currentHeight: number): number => {
+export const screenshotViewportHeight = (
+  pageHeights: number[],
+  currentHeight: number,
+): number => {
   const tallestPage = Math.max(0, ...pageHeights.filter(Number.isFinite));
-  return Math.max(currentHeight, Math.ceil(tallestPage + SCREENSHOT_VIEWPORT_VERTICAL_CHROME_PX));
+  return Math.max(
+    currentHeight,
+    Math.ceil(tallestPage + SCREENSHOT_VIEWPORT_VERTICAL_CHROME_PX),
+  );
 };
 
 const DETACHED_ELEMENT_SCREENSHOT_MARKER = "Element is not attached to the DOM";
@@ -902,13 +1004,16 @@ const DETACHED_ELEMENT_SCREENSHOT_MARKER = "Element is not attached to the DOM";
 /** Retry only the virtualized-page remount failure Playwright reports while
  * scrolling or screenshotting a locator. The caller repeats geometry
  * extraction too, keeping the screenshot paired with the same DOM instance. */
-export const retryDetachedPageCapture = async <T>(operation: () => Promise<T>): Promise<T> => {
+export const retryDetachedPageCapture = async <T>(
+  operation: () => Promise<T>,
+): Promise<T> => {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await operation();
     } catch (error) {
       const isDetached =
-        error instanceof Error && error.message.includes(DETACHED_ELEMENT_SCREENSHOT_MARKER);
+        error instanceof Error &&
+        error.message.includes(DETACHED_ELEMENT_SCREENSHOT_MARKER);
       if (!isDetached || attempt >= PAGE_CAPTURE_MAX_ATTEMPTS) {
         throw error;
       }
@@ -923,7 +1028,9 @@ const fitViewportToPages = async (page: Page): Promise<void> => {
   }
   const pageHeights = await page
     .locator(PAGE_SELECTOR)
-    .evaluateAll((pageEls) => pageEls.map((pageEl) => (pageEl as HTMLElement).offsetHeight));
+    .evaluateAll((pageEls) =>
+      pageEls.map((pageEl) => (pageEl as HTMLElement).offsetHeight),
+    );
   const height = screenshotViewportHeight(pageHeights, viewport.height);
   if (height === viewport.height) {
     return;
@@ -942,10 +1049,14 @@ type PageMeta = { domIndex: number; pageNumber: number };
  * geometry — so listing it doesn't force virtualized pages to populate. */
 const listPageMeta = (page: Page): Promise<PageMeta[]> =>
   page.evaluate<PageMeta[]>(() => {
-    const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
+    const pageEls = Array.from(
+      document.querySelectorAll(".layout-page"),
+    ) as HTMLElement[];
     const meta = pageEls.map((el, domIndex) => {
       const dataPageNumber = Number(el.dataset["pageNumber"]);
-      const pageNumber = Number.isFinite(dataPageNumber) ? dataPageNumber : domIndex + 1;
+      const pageNumber = Number.isFinite(dataPageNumber)
+        ? dataPageNumber
+        : domIndex + 1;
       return { domIndex, pageNumber };
     });
     meta.sort((a, b) => a.pageNumber - b.pageNumber);
@@ -966,15 +1077,28 @@ const listPageMeta = (page: Page): Promise<PageMeta[]> =>
  * page into view (and let layout stabilize) before calling this, or it will
  * read an empty/stale shell.
  */
-export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
+export const extractSinglePage = (
+  page: Page,
+  domIndex: number,
+): Promise<RawPage> =>
   page.evaluate<
     RawPage,
-    { domIndex: number; meaningfulInkPattern: string; fontFamilyTokenPattern: string }
+    {
+      domIndex: number;
+      meaningfulInkPattern: string;
+      fontFamilyTokenPattern: string;
+    }
   >(
     (input) => {
-      const { domIndex: idx, meaningfulInkPattern, fontFamilyTokenPattern } = input;
+      const {
+        domIndex: idx,
+        meaningfulInkPattern,
+        fontFamilyTokenPattern,
+      } = input;
       const meaningfulInkCharacter = new RegExp(meaningfulInkPattern, "u");
-      const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
+      const pageEls = Array.from(
+        document.querySelectorAll(".layout-page"),
+      ) as HTMLElement[];
       const el = pageEls[idx];
       if (!el) {
         throw new Error(`layout-page at domIndex ${idx} disappeared`);
@@ -982,10 +1106,14 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
 
       const pageRect = el.getBoundingClientRect();
       const dataPageNumber = Number(el.dataset["pageNumber"]);
-      const pageNumber = Number.isFinite(dataPageNumber) ? dataPageNumber : idx + 1;
+      const pageNumber = Number.isFinite(dataPageNumber)
+        ? dataPageNumber
+        : idx + 1;
 
       const tableCells = Array.from(el.querySelectorAll(".layout-table-cell"));
-      const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
+      const lineEls = Array.from(
+        el.querySelectorAll(".layout-line"),
+      ) as HTMLElement[];
       const resolvedFontCache = new Map<string, string>();
       const clippingValues = new Set(["auto", "clip", "hidden", "scroll"]);
       const ancestorClipCache = new Map<
@@ -1027,12 +1155,16 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
             resolvedFontCache.set(computed.fontFamily, family);
             return family;
           }
-          const escapedFamily = family.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
+          const escapedFamily = family
+            .replace(/\\/gu, "\\\\")
+            .replace(/"/gu, '\\"');
           const isAvailable = baselines.some((baseline) => {
             canvasContext.font = `${fontSize} ${baseline}`;
-            const baselineWidth = canvasContext.measureText(fontProbeText).width;
+            const baselineWidth =
+              canvasContext.measureText(fontProbeText).width;
             canvasContext.font = `${fontSize} "${escapedFamily}", ${baseline}`;
-            const candidateWidth = canvasContext.measureText(fontProbeText).width;
+            const candidateWidth =
+              canvasContext.measureText(fontProbeText).width;
             return Math.abs(candidateWidth - baselineWidth) > 0.01;
           });
           if (isAvailable) {
@@ -1081,7 +1213,10 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
             return rect.width > 0 && rect.height > 0 ? rect : null;
           }
 
-          const walker = document.createTreeWalker(segmentEl, NodeFilter.SHOW_TEXT);
+          const walker = document.createTreeWalker(
+            segmentEl,
+            NodeFilter.SHOW_TEXT,
+          );
           let firstNode: Text | null = null;
           let firstOffset = 0;
           let lastNode: Text | null = null;
@@ -1094,7 +1229,10 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
               continue;
             }
             let end = value.length;
-            while (end > start && !meaningfulInkCharacter.test(value[end - 1] ?? "")) {
+            while (
+              end > start &&
+              !meaningfulInkCharacter.test(value[end - 1] ?? "")
+            ) {
               end -= 1;
             }
             firstNode ??= textNode;
@@ -1132,7 +1270,12 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
             inkBottom = Math.max(inkBottom, segmentRect.bottom);
           }
           return inkRight > inkLeft && inkBottom > inkTop
-            ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
+            ? new DOMRect(
+                inkLeft,
+                inkTop,
+                inkRight - inkLeft,
+                inkBottom - inkTop,
+              )
             : null;
         };
         const region: Region = (() => {
@@ -1145,7 +1288,9 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           return "body";
         })();
         const tableCell = lineEl.closest(".layout-table-cell");
-        const visualGroup = tableCell ? `table-cell:${tableCells.indexOf(tableCell)}` : undefined;
+        const visualGroup = tableCell
+          ? `table-cell:${tableCells.indexOf(tableCell)}`
+          : undefined;
         const logicalLineGroup = `layout-line:${lineIndex}`;
 
         const fontFrom = (sourceEl: HTMLElement | null) => {
@@ -1183,7 +1328,8 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
               const computed = getComputedStyle(ancestor);
               const clipsX = clippingValues.has(computed.overflowX);
               const clipsY = clippingValues.has(computed.overflowY);
-              const clipPath = computed.clipPath === "none" ? undefined : computed.clipPath;
+              const clipPath =
+                computed.clipPath === "none" ? undefined : computed.clipPath;
               clipInfo = {
                 clipsX,
                 clipsY,
@@ -1230,9 +1376,18 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           return clippingAncestors;
         };
 
-        const toRawLine = (text: string, rect: DOMRect, sourceEl: HTMLElement | null) => ({
+        const toRawLine = (
+          text: string,
+          rect: DOMRect,
+          sourceEl: HTMLElement | null,
+        ) => ({
           text,
-          rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          rect: {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
           ...(Number.isFinite(baselineTop) ? { baselineTop } : {}),
           region,
           clippingAncestors: clippingAncestorsFor(sourceEl),
@@ -1244,7 +1399,9 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
         const markerEls = Array.from(
           lineEl.querySelectorAll(".layout-list-marker"),
         ) as HTMLElement[];
-        const runEls = Array.from(lineEl.querySelectorAll(".layout-run")) as HTMLElement[];
+        const runEls = Array.from(
+          lineEl.querySelectorAll(".layout-run"),
+        ) as HTMLElement[];
         if (markerEls.length > 0 && runEls.length > 0) {
           const markerRect = rectFor(markerEls);
           const runsRect = rectFor(runEls);
@@ -1274,9 +1431,14 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
 
         const visualRunEls = Array.from(lineEl.children).filter(
           (child): child is HTMLElement =>
-            child instanceof HTMLElement && child.classList.contains("layout-run"),
+            child instanceof HTMLElement &&
+            child.classList.contains("layout-run"),
         );
-        if (visualRunEls.some((runEl) => runEl.classList.contains("layout-run-tab"))) {
+        if (
+          visualRunEls.some((runEl) =>
+            runEl.classList.contains("layout-run-tab"),
+          )
+        ) {
           const segments: HTMLElement[][] = [];
           let currentSegment: HTMLElement[] = [];
           const flushSegment = () => {
@@ -1293,7 +1455,10 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
               continue;
             }
 
-            const tabText = (runEl.textContent ?? "").replace(/[­​-‍﻿\s]/gu, "");
+            const tabText = (runEl.textContent ?? "").replace(
+              /[­​-‍﻿\s]/gu,
+              "",
+            );
             if (tabText.length > 0) {
               currentSegment.push(runEl);
               continue;
@@ -1311,7 +1476,10 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
                 continue;
               }
               const sourceEl =
-                segment.find((segmentEl) => !segmentEl.classList.contains("layout-run-tab")) ??
+                segment.find(
+                  (segmentEl) =>
+                    !segmentEl.classList.contains("layout-run-tab"),
+                ) ??
                 segment[0] ??
                 null;
               splitLines.push(
@@ -1351,7 +1519,12 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           inkBottom = Math.max(inkBottom, segmentRect.bottom);
         }
         if (inkRight > inkLeft && inkBottom > inkTop) {
-          rect = new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop);
+          rect = new DOMRect(
+            inkLeft,
+            inkTop,
+            inkRight - inkLeft,
+            inkBottom - inkTop,
+          );
         }
 
         const runEl = lineEl.querySelector<HTMLElement>(".layout-run");
@@ -1384,9 +1557,14 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
     },
   );
 
-const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspection> =>
+const inspectSinglePage = (
+  page: Page,
+  domIndex: number,
+): Promise<FolioPageInspection> =>
   page.evaluate<FolioPageInspection, number>((idx) => {
-    const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
+    const pageEls = Array.from(
+      document.querySelectorAll(".layout-page"),
+    ) as HTMLElement[];
     const el = pageEls[idx];
     if (!el) {
       throw new Error(`layout-page at domIndex ${idx} disappeared`);
@@ -1402,9 +1580,13 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
     const pageNumber = Number.isFinite(numberAttr) ? numberAttr : idx + 1;
     const pageRect = el.getBoundingClientRect();
     const zoomFactor =
-      Number.isFinite(pageRect.width) && pageRect.width > 0 ? el.offsetWidth / pageRect.width : 1;
+      Number.isFinite(pageRect.width) && pageRect.width > 0
+        ? el.offsetWidth / pageRect.width
+        : 1;
 
-    const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
+    const lineEls = Array.from(
+      el.querySelectorAll(".layout-line"),
+    ) as HTMLElement[];
     const canvasContext = document.createElement("canvas").getContext("2d");
     const lines = lineEls.map((lineEl, lineIndex) => {
       const region: Region = (() => {
@@ -1441,7 +1623,9 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
           ) {
             canvasContext.fontKerning = computed.fontKerning;
           }
-          canvasAdvanceWidthPx = canvasContext.measureText(spanEl.textContent ?? "").width;
+          canvasAdvanceWidthPx = canvasContext.measureText(
+            spanEl.textContent ?? "",
+          ).width;
         }
         return {
           text: spanEl.textContent ?? "",
@@ -1455,7 +1639,9 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
           fontStyle: computed.fontStyle,
           fontKerning: computed.fontKerning,
           letterSpacing: computed.letterSpacing,
-          ...(canvasAdvanceWidthPx !== undefined ? { canvasAdvanceWidthPx } : {}),
+          ...(canvasAdvanceWidthPx !== undefined
+            ? { canvasAdvanceWidthPx }
+            : {}),
           fontLoaded: document.fonts.check(
             [
               computed.fontStyle,
@@ -1524,7 +1710,8 @@ export const createFolioExtractor = async (
   let serverStdoutTail: OutputTail | null = null;
   let serverStderrTail: OutputTail | null = null;
   const serverAlreadyUp =
-    reuseServer && (await probeServer(PLAYGROUND_URL, SERVER_REUSE_PROBE_TIMEOUT_MS));
+    reuseServer &&
+    (await probeServer(PLAYGROUND_URL, SERVER_REUSE_PROBE_TIMEOUT_MS));
   if (!serverAlreadyUp) {
     // Clear any leftover server on OUR per-worktree port (see killByPort:
     // port-scoped, so other worktrees' servers are untouched), then start
@@ -1538,10 +1725,14 @@ export const createFolioExtractor = async (
       stderr: "pipe",
     });
     serverStdoutTail = captureOutputTail(
-      typeof serverProcess.stdout === "number" ? undefined : serverProcess.stdout,
+      typeof serverProcess.stdout === "number"
+        ? undefined
+        : serverProcess.stdout,
     );
     serverStderrTail = captureOutputTail(
-      typeof serverProcess.stderr === "number" ? undefined : serverProcess.stderr,
+      typeof serverProcess.stderr === "number"
+        ? undefined
+        : serverProcess.stderr,
     );
     const startupProbe = new AbortController();
     const startup = await Promise.race([
@@ -1551,7 +1742,10 @@ export const createFolioExtractor = async (
         SERVER_POLL_INTERVAL_MS,
         startupProbe.signal,
       ).then((ready) => ({ type: "probe" as const, ready })),
-      serverProcess.exited.then((exitCode) => ({ type: "exit" as const, exitCode })),
+      serverProcess.exited.then((exitCode) => ({
+        type: "exit" as const,
+        exitCode,
+      })),
     ]);
     startupProbe.abort();
     if (startup.type === "exit" || !startup.ready) {
@@ -1566,7 +1760,9 @@ export const createFolioExtractor = async (
           PLAYGROUND_URL,
           SERVER_START_TIMEOUT_MS,
           startup.type === "exit" ? startup.exitCode : undefined,
-          [serverStdoutTail.read(), serverStderrTail.read()].filter(Boolean).join("\n"),
+          [serverStdoutTail.read(), serverStderrTail.read()]
+            .filter(Boolean)
+            .join("\n"),
         ),
       );
     }
@@ -1609,7 +1805,10 @@ export const createFolioExtractor = async (
       editorErrorMonitor.capture(`${error.name}: ${error.message}`);
     });
     page.on("console", (message) => {
-      const error = parseUnsupportedProjectionConsoleError(message.type(), message.text());
+      const error = parseUnsupportedProjectionConsoleError(
+        message.type(),
+        message.text(),
+      );
       if (error !== undefined) {
         editorErrorMonitor.capture(error);
       }
@@ -1642,7 +1841,9 @@ export const createFolioExtractor = async (
         const output = [serverStdoutTail?.read(), serverStderrTail?.read()]
           .filter(Boolean)
           .join("\n");
-        throw new FolioExtractError(formatNavigationFailure(documentUrl, error, output));
+        throw new FolioExtractError(
+          formatNavigationFailure(documentUrl, error, output),
+        );
       }
     };
 
@@ -1680,12 +1881,16 @@ export const createFolioExtractor = async (
 
       const pageMeta = await listPageMeta(page);
       if (pageMeta.length === 0) {
-        throw new FolioExtractError(`folio rendered zero pages for ${absoluteDocxPath}`);
+        throw new FolioExtractError(
+          `folio rendered zero pages for ${absoluteDocxPath}`,
+        );
       }
       await fitViewportToPages(page);
       await installCleanScreenshotStyle(page, reviewView);
       const pagesToExtract =
-        options.maxPages === undefined ? pageMeta : pageMeta.slice(0, options.maxPages);
+        options.maxPages === undefined
+          ? pageMeta
+          : pageMeta.slice(0, options.maxPages);
 
       // Large documents virtualize: pages scroll into (and back out of) a
       // populated state as an IntersectionObserver crosses them, so each
@@ -1693,7 +1898,11 @@ export const createFolioExtractor = async (
       // before its geometry and screenshot are captured. Doing both off the
       // same scroll keeps them consistent, and small (non-virtualized)
       // documents pay only a cheap no-op scroll per page.
-      const screenshotDir = path.join(CACHE_DIR, sha256, `folio-${reviewView}-pages`);
+      const screenshotDir = path.join(
+        CACHE_DIR,
+        sha256,
+        `folio-${reviewView}-pages`,
+      );
       await fs.mkdir(screenshotDir, { recursive: true });
       const rawPages: RawPage[] = [];
       const screenshotPaths: string[] = [];
@@ -1713,11 +1922,17 @@ export const createFolioExtractor = async (
         screenshotPaths.push(screenshotPath);
       }
 
-      const pages = reportAliasedFontFaces(rawPages.map(toPageGeom), options.aliasFonts ?? []);
+      const pages = reportAliasedFontFaces(
+        rawPages.map(toPageGeom),
+        options.aliasFonts ?? [],
+      );
 
       const firstRawPage = rawPages[0];
       const zoomFactor = firstRawPage
-        ? computeZoomFactor(firstRawPage.offsetWidth, firstRawPage.pageRect.width)
+        ? computeZoomFactor(
+            firstRawPage.offsetWidth,
+            firstRawPage.pageRect.width,
+          )
         : 1;
 
       const geom: DocGeom = {

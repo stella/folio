@@ -1,5 +1,5 @@
-import type { FolioAIBlock } from "./types";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
+import type { FolioAIBlock } from "./types";
 
 const IDENTITY_BLOCK_ATTRS = new Set(["paraId", "textId"]);
 
@@ -8,7 +8,8 @@ export const folioAIBlockIdStability = ({
   id,
   idStability,
 }: FolioAIBlock): "stable" | "positional" =>
-  idStability ?? (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
+  idStability ??
+  (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
 
 export const stripBlockIdentityAttrs = (attrs: Record<string, unknown>) => {
   const next: Record<string, unknown> = {};

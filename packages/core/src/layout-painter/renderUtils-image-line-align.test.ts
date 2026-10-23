@@ -20,14 +20,24 @@ function img(horizontal?: ImageRunPosition["horizontal"]): ImageRun {
 
 describe("resolveImageLineAlign", () => {
   test("anchored image keeps its explicit alignment, ignoring the paragraph jc", () => {
-    expect(resolveImageLineAlign(img({ align: "left" }), "center")).toBe("left");
-    expect(resolveImageLineAlign(img({ align: "right" }), "center")).toBe("right");
-    expect(resolveImageLineAlign(img({ align: "center" }), "left")).toBe("center");
+    expect(resolveImageLineAlign(img({ align: "left" }), "center")).toBe(
+      "left",
+    );
+    expect(resolveImageLineAlign(img({ align: "right" }), "center")).toBe(
+      "right",
+    );
+    expect(resolveImageLineAlign(img({ align: "center" }), "left")).toBe(
+      "center",
+    );
   });
 
   test("anchored image maps inside/outside to left/right", () => {
-    expect(resolveImageLineAlign(img({ align: "inside" }), "center")).toBe("left");
-    expect(resolveImageLineAlign(img({ align: "outside" }), "left")).toBe("right");
+    expect(resolveImageLineAlign(img({ align: "inside" }), "center")).toBe(
+      "left",
+    );
+    expect(resolveImageLineAlign(img({ align: "outside" }), "left")).toBe(
+      "right",
+    );
   });
 
   test("anchored image with no explicit alignment defaults to left, NOT the paragraph jc", () => {

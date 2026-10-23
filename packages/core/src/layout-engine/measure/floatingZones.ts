@@ -128,7 +128,11 @@ export function rectsToFloatingZones(
       // one contiguous strip through the excluded object. Until the
       // painter can render two physical line fragments at different x
       // offsets, fall back to the wider side here too.
-      ({ leftMargin, rightMargin } = largestSideMargins(rectLeft, rectRight, contentWidth));
+      ({ leftMargin, rightMargin } = largestSideMargins(
+        rectLeft,
+        rectRight,
+        contentWidth,
+      ));
     } else if (rect.side === "left") {
       leftMargin = leftObjectMargin(rectRight);
     } else {
@@ -138,7 +142,11 @@ export function rectsToFloatingZones(
     // Near-full-width floats can compute a wrap margin >= contentWidth; if we
     // let that propagate, body text after the float collapses to ~1 glyph per
     // line. Word falls back to full content width in that case.
-    const clamped = clampFloatingWrapMargins(leftMargin, rightMargin, contentWidth);
+    const clamped = clampFloatingWrapMargins(
+      leftMargin,
+      rightMargin,
+      contentWidth,
+    );
 
     return {
       leftMargin: clamped.leftMargin,
@@ -156,14 +164,20 @@ export function rectsToFloatingZones(
  * overlapping vertically with the centered float still reduces the budget.
  * Otherwise falls back to `baseWidth - leftMargin - rightMargin`.
  */
-export function getFloatingAvailableWidth(margins: FloatingLineMargins, baseWidth: number): number {
+export function getFloatingAvailableWidth(
+  margins: FloatingLineMargins,
+  baseWidth: number,
+): number {
   if (margins.segments?.length) {
     const leftLimit = margins.leftMargin;
     const rightLimit = baseWidth - margins.rightMargin;
     let total = 0;
     for (const segment of margins.segments) {
       const start = Math.max(segment.leftOffset, leftLimit);
-      const end = Math.min(segment.leftOffset + segment.availableWidth, rightLimit);
+      const end = Math.min(
+        segment.leftOffset + segment.availableWidth,
+        rightLimit,
+      );
       total += Math.max(0, end - start);
     }
     return total;
@@ -207,7 +221,9 @@ export function getFloatingMargins(
       };
     }
     if (zone.segments?.length) {
-      segments = segments ? intersectSegments(segments, zone.segments) : zone.segments;
+      segments = segments
+        ? intersectSegments(segments, zone.segments)
+        : zone.segments;
       continue;
     }
     leftMargin = Math.max(leftMargin, zone.leftMargin);

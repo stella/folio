@@ -22,7 +22,9 @@ const SECT_PR_NS = [
 ].join(" ");
 
 const parseSectPr = (inner: string) => {
-  const node = parseXmlDocument(`<w:sectPr ${SECT_PR_NS}>${inner}</w:sectPr>`) as XmlElement | null;
+  const node = parseXmlDocument(
+    `<w:sectPr ${SECT_PR_NS}>${inner}</w:sectPr>`,
+  ) as XmlElement | null;
   if (!node) {
     throw new Error("Failed to parse sectPr fixture");
   }
@@ -261,7 +263,9 @@ describe("pgBorders serializer round-trip", () => {
     `);
 
     const xml = serializeSectionProperties(section);
-    expect(xml).toContain('<w:pgBorders w:display="allPages" w:offsetFrom="text"/>');
+    expect(xml).toContain(
+      '<w:pgBorders w:display="allPages" w:offsetFrom="text"/>',
+    );
   });
 
   test("writes pgBorders back when neither attributes nor sides are set", () => {

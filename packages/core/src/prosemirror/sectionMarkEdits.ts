@@ -43,7 +43,8 @@ export const sectionMarkEditsOf = (
 ): SectionMarkEdits => {
   const deletedMarks = new Set<SectionProperties>();
   const carriers: { position: number; record: SectionProperties | null }[] = [];
-  const replacements: { step: ReplaceStep; doc: PMNode; mapIndex: number }[] = [];
+  const replacements: { step: ReplaceStep; doc: PMNode; mapIndex: number }[] =
+    [];
   const mapping = new Mapping();
   for (const transaction of transactions) {
     for (const [index, step] of transaction.steps.entries()) {
@@ -78,7 +79,9 @@ export const sectionMarkEditsOf = (
       }
       // The record the split copied is the split paragraph's record at that step.
       const $split = doc.resolve(from);
-      const record = isParagraph($split.parent) ? sectionPropertiesOf($split.parent) : null;
+      const record = isParagraph($split.parent)
+        ? sectionPropertiesOf($split.parent)
+        : null;
       if (record !== null && sectionPropertiesOf($left.parent) === record) {
         carriers.push({ position: $left.before(), record: null });
         // A split at the end of the paragraph creates the trailing half fresh,
@@ -101,13 +104,18 @@ export const sectionMarkEditsOf = (
       if (!isParagraph(node)) return true;
       const record = sectionPropertiesOf(node);
       const markFrom = position + node.nodeSize - 1;
-      if (record && markFrom >= from && markFrom + 1 <= to) deletedMarks.add(record);
+      if (record && markFrom >= from && markFrom + 1 <= to)
+        deletedMarks.add(record);
       return false;
     });
 
     const $from = doc.resolve(from);
     const $to = doc.resolve(to);
-    if (!isParagraph($from.parent) || !isParagraph($to.parent) || $from.start() === $to.start()) {
+    if (
+      !isParagraph($from.parent) ||
+      !isParagraph($to.parent) ||
+      $from.start() === $to.start()
+    ) {
       continue;
     }
     const leftRecord = sectionPropertiesOf($from.parent);

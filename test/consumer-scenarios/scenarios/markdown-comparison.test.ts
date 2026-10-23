@@ -34,7 +34,8 @@ test("revision span segmentation is a fixed point for every boundary and revisio
 });
 
 test("normalization keeps author, kind, text, hyperlink and untracked-gap changes detectable", () => {
-  const original = '<del author="First" id="1">Before [link](https://example.test/a) after</del>';
+  const original =
+    '<del author="First" id="1">Before [link](https://example.test/a) after</del>';
   for (const mutation of [
     original.replace('author="First"', 'author="Second"'),
     original.replaceAll("del", "ins"),

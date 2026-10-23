@@ -35,7 +35,10 @@ const childOffsets = (fragment: Fragment): Int32Array => {
 };
 
 /** The first child that ends after `pos` (its end is past `pos`), and its start. */
-const firstChildEndingAfter = (fragment: Fragment, pos: number): [index: number, start: number] => {
+const firstChildEndingAfter = (
+  fragment: Fragment,
+  pos: number,
+): [index: number, start: number] => {
   if (fragment.childCount <= LINEAR_SCAN_LIMIT) {
     let start = 0;
     for (let index = 0; index < fragment.childCount; index++) {
@@ -84,7 +87,10 @@ const visitBetween = (
   for (; pos < to; index++) {
     const child = fragment.child(index);
     const end = pos + child.nodeSize;
-    if (visit(child, nodeStart + pos, parent, index) !== false && child.content.size) {
+    if (
+      visit(child, nodeStart + pos, parent, index) !== false &&
+      child.content.size
+    ) {
       const start = pos + 1;
       visitBetween(
         child,
@@ -109,7 +115,10 @@ export const nodesBetweenIndexed = (
 };
 
 /** `Fragment.findIndex(pos)`: the child at `pos`, or the one after a boundary. */
-const findChildIndex = (fragment: Fragment, pos: number): [index: number, offset: number] => {
+const findChildIndex = (
+  fragment: Fragment,
+  pos: number,
+): [index: number, offset: number] => {
   if (pos === 0) {
     return [0, 0];
   }
@@ -117,7 +126,9 @@ const findChildIndex = (fragment: Fragment, pos: number): [index: number, offset
     return [fragment.childCount, pos];
   }
   if (pos > fragment.size || pos < 0) {
-    throw new RangeError(`Position ${String(pos)} outside of fragment (${fragment.toString()})`);
+    throw new RangeError(
+      `Position ${String(pos)} outside of fragment (${fragment.toString()})`,
+    );
   }
   // The first child whose end reaches `pos`: a child ending exactly there
   // hands `pos` to its successor, as `findIndex` does.

@@ -19,9 +19,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { Node as PMNode } from "prosemirror-model";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import type { Node as PMNode } from "prosemirror-model";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -37,7 +37,10 @@ const FIXTURE_FILES: string[] = readdirSync(FIXTURES_DIR)
 
 const readFixture = (filename: string): ArrayBuffer => {
   const bytes = readFileSync(path.join(FIXTURES_DIR, filename));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 const countTextBlocks = (doc: PMNode): number => {

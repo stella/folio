@@ -10,7 +10,11 @@ describe("reference cache directory", () => {
   });
 
   test("uses an override as an absolute path", () => {
-    expect(resolveReferenceCacheDir("/shared/reference-cache")).toBe("/shared/reference-cache");
-    expect(resolveReferenceCacheDir("shared-cache")).toBe(path.resolve("shared-cache"));
+    expect(resolveReferenceCacheDir("/shared/reference-cache")).toBe(
+      "/shared/reference-cache",
+    );
+    expect(resolveReferenceCacheDir("shared-cache")).toBe(
+      path.resolve("shared-cache"),
+    );
   });
 });

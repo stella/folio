@@ -1,14 +1,16 @@
-import type { BrowserDragTarget } from "./browserDragTarget";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-
-import { propertyConfig, propertyTestTimeout } from "../../test/property-testing";
 
 import { documentShape } from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import {
-  BROWSER_SHAPE_TARGETS,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../test/property-testing";
+import type { BrowserDragTarget } from "./browserDragTarget";
+import {
   BROWSER_INPUT_ACTION_DISPOSITIONS,
+  BROWSER_SHAPE_TARGETS,
   BROWSER_TRACE_FIXED_SEEDS,
   browserImeActionArbitrary,
   browserInputTraceArbitrary,
@@ -26,14 +28,30 @@ test("browser traces replay deterministically and exercise the declared shapes a
   expect(new Set(traces.map(({ shape }) => shape))).toEqual(
     new Set(Object.keys(BROWSER_SHAPE_TARGETS)),
   );
-  expect(new Set(browserSuggestionActionKinds)).toEqual(new Set(SUGGESTION_INPUT_KINDS));
-  const kinds = new Set(traces.flatMap(({ actions }) => actions.map(({ kind }) => kind)));
-  for (const kind of [...SUGGESTION_INPUT_KINDS, "undo", "redo", "historyBurst", "selectionDrag"]) {
+  expect(new Set(browserSuggestionActionKinds)).toEqual(
+    new Set(SUGGESTION_INPUT_KINDS),
+  );
+  const kinds = new Set(
+    traces.flatMap(({ actions }) => actions.map(({ kind }) => kind)),
+  );
+  for (const kind of [
+    ...SUGGESTION_INPUT_KINDS,
+    "undo",
+    "redo",
+    "historyBurst",
+    "selectionDrag",
+  ]) {
     expect(kinds.has(kind)).toBe(true);
   }
-  expect([...kinds].sort()).toEqual(Object.keys(BROWSER_INPUT_ACTION_DISPOSITIONS).sort());
+  expect([...kinds].sort()).toEqual(
+    Object.keys(BROWSER_INPUT_ACTION_DISPOSITIONS).sort(),
+  );
   for (const action of traces.flatMap(({ actions }) => actions)) {
-    if (action.kind === "undo" || action.kind === "redo" || action.kind === "historyBurst")
+    if (
+      action.kind === "undo" ||
+      action.kind === "redo" ||
+      action.kind === "historyBurst"
+    )
       expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("history");
     else if (action.kind === "selectionDrag")
       expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("selection");
@@ -54,28 +72,35 @@ test("browser traces replay deterministically and exercise the declared shapes a
         if (action.target === "list") {
           expect(
             fixture.features.some(
-              (feature) => feature === "list-decimal" || feature === "list-bullet",
+              (feature) =>
+                feature === "list-decimal" || feature === "list-bullet",
             ),
           ).toBe(true);
         } else {
           expect(fixture.features).toContain(targetFeatures[action.target]);
         }
       }
-      if (action.kind === "dragCellDelete") expect(fixture.features).toContain("table");
+      if (action.kind === "dragCellDelete")
+        expect(fixture.features).toContain("table");
     }
   }
 });
 
 test("IME generator covers cancellation, repeated updates and Unicode with valid shrinking", () => {
-  const actions = fc.sample(browserImeActionArbitrary, { seed: 431, numRuns: 300 });
+  const actions = fc.sample(browserImeActionArbitrary, {
+    seed: 431,
+    numRuns: 300,
+  });
   expect(new Set(actions.map(({ completion }) => completion))).toEqual(
     new Set(["commit", "cancel"]),
   );
   expect(actions.some(({ updates }) => updates.length > 1)).toBe(true);
   for (const text of ["東京", "e\u0301", "👩🏽‍⚖️", "مرحبا"]) {
-    expect(actions.some(({ updates }) => updates.some((update) => update.includes(text)))).toBe(
-      true,
-    );
+    expect(
+      actions.some(({ updates }) =>
+        updates.some((update) => update.includes(text)),
+      ),
+    ).toBe(true);
   }
   // An intentionally failing oracle proves lifecycle payloads shrink, rather than
   // treating each sampled multi-update action as an opaque constant.
@@ -109,12 +134,19 @@ test("browser lanes retain pinned seeds and reject malformed overrides", () => {
     runs: 2,
   });
   expect(
-    parseBrowserInputTraceConfig({ FOLIO_FUZZ_SEEDS: "11,-29", FOLIO_FUZZ_RUNS: "7" }, "nightly"),
+    parseBrowserInputTraceConfig(
+      { FOLIO_FUZZ_SEEDS: "11,-29", FOLIO_FUZZ_RUNS: "7" },
+      "nightly",
+    ),
   ).toEqual({ seeds: [11, -29], runs: 7 });
   for (const seeds of ["", " ", "11,", ",29", "11,,29", "NaN", "1.5"]) {
-    expect(() => parseBrowserInputTraceConfig({ FOLIO_FUZZ_SEEDS: seeds }, "nightly")).toThrow();
+    expect(() =>
+      parseBrowserInputTraceConfig({ FOLIO_FUZZ_SEEDS: seeds }, "nightly"),
+    ).toThrow();
   }
   for (const runs of ["", "0", "-1", "1.5", "NaN"]) {
-    expect(() => parseBrowserInputTraceConfig({ FOLIO_FUZZ_RUNS: runs }, "nightly")).toThrow();
+    expect(() =>
+      parseBrowserInputTraceConfig({ FOLIO_FUZZ_RUNS: runs }, "nightly"),
+    ).toThrow();
   }
 });

@@ -1,4 +1,4 @@
-import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import { panic, Result } from "better-result";
 /**
  * Command flags generated from a tool's JSON Schema. Each top-level property
  * becomes `--kebab-case-name`: booleans are switches, numbers and strings take
@@ -7,9 +7,9 @@ import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
  * whole argument object as JSON (inline, `@file`, or `-` for stdin), and
  * flags given alongside it override its fields.
  */
-
-import { panic, Result } from "better-result";
 import { readFile } from "node:fs/promises";
+
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import type { JsonObjectSchema } from "./registry";
@@ -17,7 +17,8 @@ import type { JsonObjectSchema } from "./registry";
 /** Largest `--input` document accepted. */
 export const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 
-export type FlagValueType = "boolean" | "integer" | "number" | "string" | "strings" | "json";
+export type FlagValueType =
+  "boolean" | "integer" | "number" | "string" | "strings" | "json";
 
 export type GeneratedFlag = {
   /** The schema property the flag sets. */
@@ -56,8 +57,11 @@ const valueTypeOf = (schema: unknown): FlagValueType => {
 
 const descriptionOf = (schema: unknown): string => {
   if (!isRecord(schema)) return "";
-  const description = typeof schema["description"] === "string" ? schema["description"] : "";
-  const values = Array.isArray(schema["enum"]) ? ` One of: ${schema["enum"].join(", ")}.` : "";
+  const description =
+    typeof schema["description"] === "string" ? schema["description"] : "";
+  const values = Array.isArray(schema["enum"])
+    ? ` One of: ${schema["enum"].join(", ")}.`
+    : "";
   return `${description}${values}`.trim();
 };
 
@@ -79,10 +83,16 @@ export const flagsForSchema = (
 const usage = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.usage, message, hint });
 
-type CoerceFlagOptions = { flag: GeneratedFlag; raw: string | boolean | readonly string[] };
+type CoerceFlagOptions = {
+  flag: GeneratedFlag;
+  raw: string | boolean | readonly string[];
+};
 
 /** Convert one parsed flag value to the type its schema property declares. */
-export const coerceFlag = ({ flag, raw }: CoerceFlagOptions): Result<unknown, FolioCliError> => {
+export const coerceFlag = ({
+  flag,
+  raw,
+}: CoerceFlagOptions): Result<unknown, FolioCliError> => {
   if (typeof raw === "boolean") {
     return flag.valueType === "boolean"
       ? Result.ok(raw)
@@ -90,12 +100,18 @@ export const coerceFlag = ({ flag, raw }: CoerceFlagOptions): Result<unknown, Fo
   }
   if (typeof raw !== "string") {
     return flag.valueType === "strings"
-      ? Result.ok(raw.flatMap((value) => value.split(",")).filter((value) => value !== ""))
+      ? Result.ok(
+          raw
+            .flatMap((value) => value.split(","))
+            .filter((value) => value !== ""),
+        )
       : Result.err(usage(`--${flag.flag} is given more than once.`));
   }
   switch (flag.valueType) {
     case "boolean":
-      return Result.err(usage(`--${flag.flag} is a switch and takes no value.`));
+      return Result.err(
+        usage(`--${flag.flag} is a switch and takes no value.`),
+      );
     case "string":
       return Result.ok(raw);
     case "strings":
@@ -104,10 +120,16 @@ export const coerceFlag = ({ flag, raw }: CoerceFlagOptions): Result<unknown, Fo
     case "number": {
       const value = Number(raw);
       if (raw.trim() === "" || !Number.isFinite(value)) {
-        return Result.err(usage(`--${flag.flag} expects a number, got ${JSON.stringify(raw)}.`));
+        return Result.err(
+          usage(`--${flag.flag} expects a number, got ${JSON.stringify(raw)}.`),
+        );
       }
       if (flag.valueType === "integer" && !Number.isInteger(value)) {
-        return Result.err(usage(`--${flag.flag} expects an integer, got ${JSON.stringify(raw)}.`));
+        return Result.err(
+          usage(
+            `--${flag.flag} expects an integer, got ${JSON.stringify(raw)}.`,
+          ),
+        );
       }
       return Result.ok(value);
     }
@@ -136,26 +158,36 @@ type ReadInputOptions = {
 export const readInputSource = async ({
   source,
   readStdin,
-}: ReadInputOptions): Promise<Result<Record<string, unknown> | unknown[], FolioCliError>> => {
+}: ReadInputOptions): Promise<
+  Result<Record<string, unknown> | unknown[], FolioCliError>
+> => {
   let text = source;
   if (source === "-") {
     text = await readStdin();
   } else if (source.startsWith("@")) {
     const inputPath = source.slice(1);
     const read = await Result.tryPromise({
-      try: () => readFile(inputPath).then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      try: () =>
+        readFile(inputPath).then((bytes) =>
+          decodeText(bytes, { ignoreBOM: true }),
+        ),
       catch: () => usage(`Cannot read --input file ${inputPath}.`),
     });
     if (read.isErr()) return Result.err(read.error);
     text = read.value;
   }
   if (encodeUtf8(text).byteLength > MAX_INPUT_BYTES) {
-    return Result.err(usage(`--input is over the ${MAX_INPUT_BYTES}-byte limit.`));
+    return Result.err(
+      usage(`--input is over the ${MAX_INPUT_BYTES}-byte limit.`),
+    );
   }
   const parsed = Result.try((): unknown => JSON.parse(text));
   if (parsed.isErr()) {
     return Result.err(
-      usage("--input is not valid JSON.", "Pass inline JSON, @file.json, or - for stdin."),
+      usage(
+        "--input is not valid JSON.",
+        "Pass inline JSON, @file.json, or - for stdin.",
+      ),
     );
   }
   const value = parsed.value;

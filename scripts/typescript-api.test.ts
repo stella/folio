@@ -10,14 +10,17 @@ const missingCompilerExports = (file: string, source: string): string[] => {
   const missing = new Set<string>();
   const visit = (node: ts.Node): void => {
     if (
-      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
       ts.isIdentifier(node.expression) &&
       node.expression.text === "ts"
     ) {
       let member: string | undefined;
       if (ts.isPropertyAccessExpression(node)) member = node.name.text;
-      else if (ts.isStringLiteral(node.argumentExpression)) member = node.argumentExpression.text;
-      if (member !== undefined && Reflect.get(ts, member) === undefined) missing.add(member);
+      else if (ts.isStringLiteral(node.argumentExpression))
+        member = node.argumentExpression.text;
+      if (member !== undefined && Reflect.get(ts, member) === undefined)
+        missing.add(member);
     }
     ts.forEachChild(node, visit);
   };
@@ -45,11 +48,19 @@ test("compiler export guard detects unavailable APIs without treating types or t
 });
 
 test("every script uses compiler APIs exported by the installed TypeScript version", () => {
-  const files = [...new Bun.Glob("scripts/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}").scanSync(root)];
+  const files = [
+    ...new Bun.Glob("scripts/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}").scanSync(
+      root,
+    ),
+  ];
   expect(files.length).toBeGreaterThan(0);
   const missing = files.flatMap((file) =>
-    missingCompilerExports(file, readFileSync(path.join(root, file), "utf8")).map(
-      (member) => `${file}: ts.${member} is unavailable in TypeScript ${ts.version}`,
+    missingCompilerExports(
+      file,
+      readFileSync(path.join(root, file), "utf8"),
+    ).map(
+      (member) =>
+        `${file}: ts.${member} is unavailable in TypeScript ${ts.version}`,
     ),
   );
   expect(missing).toEqual([]);

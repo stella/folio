@@ -59,11 +59,15 @@ export const PART_REBUILDERS = {
   footnotes: null,
   fonts: (document) => {
     const fontTable = document.package.fontTable;
-    return fontTable === undefined ? undefined : serializeFontTableXml(fontTable);
+    return fontTable === undefined
+      ? undefined
+      : serializeFontTableXml(fontTable);
   },
   numbering: (document) => {
     const numbering = document.package.numbering;
-    return numbering === undefined ? undefined : serializeNumberingXml(numbering);
+    return numbering === undefined
+      ? undefined
+      : serializeNumberingXml(numbering);
   },
   settings: null,
   styles: null,
@@ -78,7 +82,9 @@ export const PART_REBUILDERS = {
  * from this union and a reason left behind stops compiling.
  */
 type AbsentPartRoot = {
-  [Root in RebuiltPartRoot]: (typeof PART_REBUILDERS)[Root] extends null ? Root : never;
+  [Root in RebuiltPartRoot]: (typeof PART_REBUILDERS)[Root] extends null
+    ? Root
+    : never;
 }[RebuiltPartRoot];
 
 /**
@@ -92,7 +98,8 @@ export const PART_REBUILD_ABSENCES = {
   hdr: "a repack rebuilds it, so the law never asks",
   ftr: "a repack rebuilds it, so the law never asks",
   endnotes: "its serializer writes one note at a time and never the whole part",
-  footnotes: "its serializer writes one note at a time and never the whole part",
+  footnotes:
+    "its serializer writes one note at a time and never the whole part",
   // `webSettings` has no serializer at all; the other two have one that no
   // save path reaches for a document somebody else authored.
   settings: "folio copies it and rebuilds it from the model on no save path",

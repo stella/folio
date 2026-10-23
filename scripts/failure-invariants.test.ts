@@ -7,7 +7,9 @@ import {
 import { RELATIONS } from "../test/consumer-scenarios/support/relation-contract";
 
 test("every metamorphic relation has a stable failure invariant", () => {
-  expect(Object.keys(RELATION_INVARIANTS).toSorted()).toEqual([...RELATIONS].toSorted());
+  expect(Object.keys(RELATION_INVARIANTS).toSorted()).toEqual(
+    [...RELATIONS].toSorted(),
+  );
   for (const invariant of Object.values(RELATION_INVARIANTS)) {
     expect(FAILURE_INVARIANTS[invariant].title.length).toBeGreaterThan(0);
   }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { EditorState } from "prosemirror-state";
+
 import {
   expectedFailure,
   FINDING_SYMPTOMS,
@@ -15,7 +16,8 @@ const commands = {
     singletonManager.requireCommand("setTabs")([
       { position: 1440, alignment: "right", leader: "dot" },
     ]),
-  addTabStop: () => singletonManager.requireCommand("addTabStop")(1440, "right", "dot"),
+  addTabStop: () =>
+    singletonManager.requireCommand("addTabStop")(1440, "right", "dot"),
   removeTabStop: () => singletonManager.requireCommand("removeTabStop")(720),
 };
 for (const [name, factory] of Object.entries(commands)) {
@@ -31,8 +33,15 @@ for (const [name, factory] of Object.entries(commands)) {
               {
                 type: "paragraph",
                 paraId: "12345678",
-                content: [{ type: "run", content: [{ type: "text", text: "Paragraph" }] }],
-                formatting: { tabs: [{ position: 720, alignment: "left", leader: "none" }] },
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Paragraph" }],
+                  },
+                ],
+                formatting: {
+                  tabs: [{ position: 720, alignment: "left", leader: "none" }],
+                },
               },
             ],
           },
@@ -45,8 +54,12 @@ for (const [name, factory] of Object.entries(commands)) {
         }),
         true,
       );
-      const current = expectParagraphAttrs(state.doc.child(0)).tabs ?? undefined;
-      assert.notDeepEqual(current, original.package.document.content[0].formatting.tabs);
+      const current =
+        expectParagraphAttrs(state.doc.child(0)).tabs ?? undefined;
+      assert.notDeepEqual(
+        current,
+        original.package.document.content[0].formatting.tabs,
+      );
       const saved = fromProseDoc(state.doc, original, {
         stylesheetSource: { type: "package" },
       }).package.document.content.at(0);

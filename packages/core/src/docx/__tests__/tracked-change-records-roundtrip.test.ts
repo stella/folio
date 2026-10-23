@@ -19,17 +19,21 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Table } from "../../types/document";
+import { parseParagraph } from "../paragraphParser";
+import { serializeParagraph } from "../serializer/paragraphSerializer";
 import { serializeTable } from "../serializer/tableSerializer";
 import { parseTable } from "../tableParser";
 import { parseXmlDocument, type XmlElement } from "../xmlParser";
-import { parseParagraph } from "../paragraphParser";
-import { serializeParagraph } from "../serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const GRID_CHANGE =
   '<w:tblGridChange w:id="42"><w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="5000"/></w:tblGrid></w:tblGridChange>';
@@ -40,7 +44,8 @@ const TABLE_XML =
 
 const NUMBERING_CHANGE =
   '<w:numberingChange w:id="7" w:author="Reviewer" w:date="2024-01-01T00:00:00Z" w:original="1)."/>';
-const NUMBERING_INSERTION = '<w:ins w:id="8" w:author="Editor" w:date="2024-01-02T00:00:00Z"/>';
+const NUMBERING_INSERTION =
+  '<w:ins w:id="8" w:author="Editor" w:date="2024-01-02T00:00:00Z"/>';
 
 const PARAGRAPH_XML =
   `<w:p ${W_NS}><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/>` +
@@ -55,7 +60,11 @@ const modelOnly = (table: Table | undefined): Table => {
   if (!table) {
     throw new Error("the fixture did not parse into a table");
   }
-  const { sourceXml: _source, gridSourceXml: _grid, ...formatting } = table.formatting ?? {};
+  const {
+    sourceXml: _source,
+    gridSourceXml: _grid,
+    ...formatting
+  } = table.formatting ?? {};
   return { ...table, formatting };
 };
 
@@ -69,12 +78,22 @@ const parseElement = (xml: string): XmlElement => {
 
 describe("w:tblGridChange survives a grid the serializer has to rebuild", () => {
   test("a resized column keeps the record of the grid it replaced", () => {
-    const table = parseTable(parseElement(TABLE_XML), new Map(), null, null, null, null);
+    const table = parseTable(
+      parseElement(TABLE_XML),
+      new Map(),
+      null,
+      null,
+      null,
+      null,
+    );
     expect(table).toBeDefined();
     if (!table) {
       return;
     }
-    expect(table.formatting?.gridChange).toEqual({ id: 42, columnWidths: [1000, 5000] });
+    expect(table.formatting?.gridChange).toEqual({
+      id: 42,
+      columnWidths: [1000, 5000],
+    });
 
     // Resizing a column is what makes the captured grid stop matching the
     // model, so the serializer rebuilds it instead of replaying the capture.
@@ -87,7 +106,14 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
   });
 
   test("an unchanged grid still replays, record and all", () => {
-    const table = parseTable(parseElement(TABLE_XML), new Map(), null, null, null, null);
+    const table = parseTable(
+      parseElement(TABLE_XML),
+      new Map(),
+      null,
+      null,
+      null,
+      null,
+    );
     expect(table).toBeDefined();
     if (!table) {
       return;
@@ -103,21 +129,30 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
   test("the snapshot's own grid and columns survive a save the model alone builds", () => {
     fc.assert(
       fc.property(
-        fc.array(fc.option(fc.integer({ min: 1, max: 20_000 }), { nil: undefined }), {
-          minLength: 1,
-          maxLength: 6,
-        }),
+        fc.array(
+          fc.option(fc.integer({ min: 1, max: 20_000 }), { nil: undefined }),
+          {
+            minLength: 1,
+            maxLength: 6,
+          },
+        ),
         fc.integer({ min: 0, max: 9999 }),
         (snapshotWidths, changeId) => {
           const snapshot = snapshotWidths
-            .map((width) => (width === undefined ? "<w:gridCol/>" : `<w:gridCol w:w="${width}"/>`))
+            .map((width) =>
+              width === undefined
+                ? "<w:gridCol/>"
+                : `<w:gridCol w:w="${width}"/>`,
+            )
             .join("");
           const xml =
             `<w:tbl ${W_NS}><w:tblPr/><w:tblGrid><w:gridCol w:w="2400"/>` +
             `<w:tblGridChange w:id="${changeId}"><w:tblGrid>${snapshot}</w:tblGrid></w:tblGridChange>` +
             "</w:tblGrid><w:tr><w:tc><w:p/></w:tc></w:tr></w:tbl>";
 
-          const table = modelOnly(parseTable(parseElement(xml), new Map(), null, null, null, null));
+          const table = modelOnly(
+            parseTable(parseElement(xml), new Map(), null, null, null, null),
+          );
           expect(table.formatting?.gridChange).toEqual({
             id: changeId,
             columnWidths: snapshotWidths,
@@ -141,7 +176,9 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
             null,
             null,
           );
-          expect(reparsed?.formatting?.gridChange).toEqual(table.formatting?.gridChange);
+          expect(reparsed?.formatting?.gridChange).toEqual(
+            table.formatting?.gridChange,
+          );
         },
       ),
       propertyConfig({ numRuns: 100 }),
@@ -151,13 +188,27 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
 
 describe("numbering revision records survive a w:pPr the serializer has to rebuild", () => {
   test("both records reach the model", () => {
-    const paragraph = parseParagraph(parseElement(PARAGRAPH_XML), new Map(), null, null);
-    expect(paragraph.formatting?.numberingChangeXml).toContain('w:original="1)."');
-    expect(paragraph.formatting?.numberingInsertionXml).toContain('w:author="Editor"');
+    const paragraph = parseParagraph(
+      parseElement(PARAGRAPH_XML),
+      new Map(),
+      null,
+      null,
+    );
+    expect(paragraph.formatting?.numberingChangeXml).toContain(
+      'w:original="1)."',
+    );
+    expect(paragraph.formatting?.numberingInsertionXml).toContain(
+      'w:author="Editor"',
+    );
   });
 
   test("a rebuilt w:numPr writes both records back in schema order", () => {
-    const paragraph = parseParagraph(parseElement(PARAGRAPH_XML), new Map(), null, null);
+    const paragraph = parseParagraph(
+      parseElement(PARAGRAPH_XML),
+      new Map(),
+      null,
+      null,
+    );
     // Changing the numbering is what a reviewer's next edit does, and it is
     // what stops the captured `w:pPr` from being replayed.
     if (paragraph.formatting?.numPr) {
@@ -177,6 +228,8 @@ describe("numbering revision records survive a w:pPr the serializer has to rebui
     const paragraph = parseParagraph(parseElement(xml), new Map(), null, null);
 
     expect(paragraph.formatting?.numPr).toBeUndefined();
-    expect(serializeParagraph(paragraph)).toContain(`<w:numPr>${NUMBERING_INSERTION}</w:numPr>`);
+    expect(serializeParagraph(paragraph)).toContain(
+      `<w:numPr>${NUMBERING_INSERTION}</w:numPr>`,
+    );
   });
 });

@@ -11,8 +11,6 @@
  *   (retracting your own suggestion)
  */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
-import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
 import {
   joinBackward,
   joinForward,
@@ -21,39 +19,56 @@ import {
 } from "prosemirror-commands";
 import { isHistoryTransaction } from "prosemirror-history";
 import { undoInputRule } from "prosemirror-inputrules";
-import { Slice, type Fragment, type Node as PMNode, type MarkType } from "prosemirror-model";
-import { AllSelection, EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
+import {
+  type Fragment,
+  type MarkType,
+  type Node as PMNode,
+  Slice,
+} from "prosemirror-model";
+import {
+  AllSelection,
+  EditorState,
+  Plugin,
+  Selection,
+  TextSelection,
+} from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
+import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
 import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
-import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
-import { afterNativeCompositionFlush, handleEditorBeforeInput } from "../textInput";
+import { encloseWholeControls } from "../contentControlRevisions";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
-import { encloseWholeControls } from "../contentControlRevisions";
-import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
   recordReplacedParagraphProperties,
 } from "../paragraphPropertyCarry";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { rebaseParagraphRuns } from "../rebaseParagraphRunFormatting";
+import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { paragraphRunStyleContext } from "../runStyleFormatting";
+import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
+import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
+import {
+  afterNativeCompositionFlush,
+  handleEditorBeforeInput,
+} from "../textInput";
+import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { getDocumentNumbering } from "./documentNumbering";
 import { documentStylesKey, getDocumentStyleResolver } from "./documentStyles";
-import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
-export const suggestionModeKey = createPluginKeyOwner<SuggestionModeState>("suggestionMode");
+export const suggestionModeKey =
+  createPluginKeyOwner<SuggestionModeState>("suggestionMode");
 export const SUGGESTION_META = "suggestionModeApplied";
 export const SUGGESTION_BYPASS_META = "suggestionModeBypass";
 /**
@@ -121,7 +136,9 @@ function carryIntoParagraphLeft(
   });
 }
 
-function makeParagraphMarkInfo(pluginState: SuggestionModeState): TrackedChangeInfo {
+function makeParagraphMarkInfo(
+  pluginState: SuggestionModeState,
+): TrackedChangeInfo {
   const attrs = makeMarkAttrs(pluginState);
   return {
     id: attrs.revisionId,
@@ -212,8 +229,13 @@ function markRangeAsDeleted(
   });
 
   const delAttrs =
-    findAdjacentRevisionForRange(doc, from, to, "deletion", pluginState.author) ||
-    makeMarkAttrs(pluginState);
+    findAdjacentRevisionForRange(
+      doc,
+      from,
+      to,
+      "deletion",
+      pluginState.author,
+    ) || makeMarkAttrs(pluginState);
 
   let removedMark = false;
   doc.nodesBetween(from, to, (node, pos) => {
@@ -233,7 +255,11 @@ function markRangeAsDeleted(
     if (boundary > from && boundary <= to && node.attrs["pPrMark"] == null) {
       tr.setNodeAttribute(pos, "pPrMark", {
         kind: "del",
-        info: { id: delAttrs.revisionId, author: delAttrs.author, date: delAttrs.date },
+        info: {
+          id: delAttrs.revisionId,
+          author: delAttrs.author,
+          date: delAttrs.date,
+        },
       });
       removedMark = true;
     }
@@ -251,8 +277,11 @@ function markRangeAsDeleted(
     $first.parent !== $last.parent &&
     from > $first.start()
   ) {
-    const lastPos = doc === tr.doc ? $last.before() : tr.mapping.map($last.before());
-    const lastMark = tr.doc.nodeAt(lastPos)?.attrs["pPrMark"] as { kind?: unknown } | null;
+    const lastPos =
+      doc === tr.doc ? $last.before() : tr.mapping.map($last.before());
+    const lastMark = tr.doc.nodeAt(lastPos)?.attrs["pPrMark"] as {
+      kind?: unknown;
+    } | null;
     const lastGoes = lastMark?.kind === "del" || lastMark?.kind === "moveFrom";
     const survivorPos = lastGoes
       ? (paragraphLeftAfter({ doc: tr.doc, paragraphPos: lastPos }) ?? lastPos)
@@ -338,7 +367,11 @@ function markRangeAsInserted(
     if (!canCarryTrackedRunMark(node)) {
       return;
     }
-    if (node.marks.some((m) => m.type === insertionType || m.type === deletionType)) {
+    if (
+      node.marks.some(
+        (m) => m.type === insertionType || m.type === deletionType,
+      )
+    ) {
       return;
     }
     const start = Math.max(pos, from);
@@ -364,10 +397,19 @@ function markRangeAsInserted(
     if (node.type.name === "paragraph") {
       const boundary = pos + node.nodeSize;
       const keepsOwnMark = endsBetweenBlocks && boundary - 1 === from;
-      if (boundary > from && boundary < to && !keepsOwnMark && node.attrs["pPrMark"] == null) {
+      if (
+        boundary > from &&
+        boundary < to &&
+        !keepsOwnMark &&
+        node.attrs["pPrMark"] == null
+      ) {
         tr.setNodeAttribute(pos, "pPrMark", {
           kind: "ins",
-          info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+          info: {
+            id: attrs.revisionId,
+            author: attrs.author,
+            date: attrs.date,
+          },
         });
       }
     }
@@ -419,26 +461,42 @@ export function handleSuggestionPaste(
     const prefix = $from.parent.content.cut(0, $from.parentOffset);
     let deletedPrefix = prefix.size > 0;
     prefix.forEach((node) => {
-      if (!node.marks.some((mark) => mark.type === deletionType)) deletedPrefix = false;
+      if (!node.marks.some((mark) => mark.type === deletionType))
+        deletedPrefix = false;
     });
-    if (!closedTable || $from.parent.type.name !== "paragraph" || !deletedPrefix) {
+    if (
+      !closedTable ||
+      $from.parent.type.name !== "paragraph" ||
+      !deletedPrefix
+    ) {
       return false;
     }
     const suffix = $from.parent.content.cut($from.parentOffset);
     let deletedSuffix = true;
     suffix.forEach((node) => {
-      if (!node.marks.some((mark) => mark.type === deletionType)) deletedSuffix = false;
+      if (!node.marks.some((mark) => mark.type === deletionType))
+        deletedSuffix = false;
     });
     // The caret is at the visible start of this paragraph. Fit the table
     // before it, as direct paste does after deleting the prefix; fitting at
     // the physical caret instead splits off a paragraph of only struck runs.
-    const tr = view.state.tr.setMeta(SUGGESTION_META, true).setMeta("paste", true);
+    const tr = view.state.tr
+      .setMeta(SUGGESTION_META, true)
+      .setMeta("paste", true);
     const at = $from.before();
     tr.replaceRange(at, at, slice);
     const revision = makeMarkAttrs(pluginState);
     const end = tr.mapping.map(at, 1);
     enclosePastedRunRevisions({ tr, from: at, to: end, revision });
-    markRangeAsInserted(tr, tr.doc, at, end, insertionType, deletionType, revision);
+    markRangeAsInserted(
+      tr,
+      tr.doc,
+      at,
+      end,
+      insertionType,
+      deletionType,
+      revision,
+    );
     if (
       deletedSuffix &&
       $from.parent.attrs["pPrMark"] == null &&
@@ -449,7 +507,9 @@ export function handleSuggestionPaste(
         info: makeParagraphMarkInfo(pluginState),
       });
     }
-    tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(selection.from)));
+    tr.setSelection(
+      TextSelection.create(tr.doc, tr.mapping.map(selection.from)),
+    );
     view.dispatch(tr.scrollIntoView());
     return true;
   }
@@ -464,7 +524,10 @@ export function handleSuggestionPaste(
   // Select-all spans the block boundaries around the content; replace the text
   // span inside them, as a text selection over the whole document would.
   const { from, to } = selectsAll
-    ? { from: Selection.atStart(view.state.doc).from, to: Selection.atEnd(view.state.doc).to }
+    ? {
+        from: Selection.atStart(view.state.doc).from,
+        to: Selection.atEnd(view.state.doc).to,
+      }
     : selection;
   const tr = view.state.tr;
   tr.setMeta(SUGGESTION_META, true);
@@ -478,17 +541,22 @@ export function handleSuggestionPaste(
   const { doc } = view.state;
   const $from = doc.resolve(from);
   const $to = doc.resolve(to);
-  const closedBlocks = slice.openStart === 0 && slice.content.firstChild?.isBlock === true;
-  const beforeStruck = closedBlocks && $from.parent.isTextblock && $from.parentOffset === 0;
+  const closedBlocks =
+    slice.openStart === 0 && slice.content.firstChild?.isBlock === true;
+  const beforeStruck =
+    closedBlocks && $from.parent.isTextblock && $from.parentOffset === 0;
   const wholeBlocks =
-    beforeStruck && $to.parent.isTextblock && $to.parentOffset === $to.parent.content.size;
+    beforeStruck &&
+    $to.parent.isTextblock &&
+    $to.parentOffset === $to.parent.content.size;
   // The paragraph a container ends with never carries a tracked mark, so it
   // cannot be struck whole. Only its words are struck, and a table goes in
   // front of it: accepting leaves the table and the emptied paragraph after
   // it, which still ends the container. Closing paragraphs take its place
   // instead, see `rotateIntoFinalParagraph`.
   const endsContainer =
-    wholeBlocks && paragraphEndsItsContainer(doc.resolve($to.before()), $to.parent.type.name);
+    wholeBlocks &&
+    paragraphEndsItsContainer(doc.resolve($to.before()), $to.parent.type.name);
   const rotates =
     endsContainer &&
     slice.content.firstChild?.type === $to.parent.type &&
@@ -525,10 +593,20 @@ export function handleSuggestionPaste(
       return;
     }
     const firstPos = tr.mapping.map($from.before());
-    const mark = tr.doc.nodeAt(firstPos)?.attrs["pPrMark"] as ParagraphMarkAttr | null | undefined;
-    const survivorPos = paragraphLeftAfter({ doc: tr.doc, paragraphPos: firstPos });
+    const mark = tr.doc.nodeAt(firstPos)?.attrs["pPrMark"] as
+      ParagraphMarkAttr | null | undefined;
+    const survivorPos = paragraphLeftAfter({
+      doc: tr.doc,
+      paragraphPos: firstPos,
+    });
     if (mark?.kind === "del" && survivorPos !== null) {
-      carryIntoParagraphLeft(view.state, tr, $from.parent, survivorPos, mark.info);
+      carryIntoParagraphLeft(
+        view.state,
+        tr,
+        $from.parent,
+        survivorPos,
+        mark.info,
+      );
     }
   };
   const inlineSlice = slice.content.firstChild?.isInline === true;
@@ -563,8 +641,10 @@ export function handleSuggestionPaste(
     });
     return ranges;
   });
-  let insertFrom = placed.length === 0 ? at : Math.min(...placed.map((range) => range.from));
-  let insertTo = placed.length === 0 ? at : Math.max(...placed.map((range) => range.to));
+  let insertFrom =
+    placed.length === 0 ? at : Math.min(...placed.map((range) => range.from));
+  let insertTo =
+    placed.length === 0 ? at : Math.max(...placed.map((range) => range.to));
   if (tableFirst) {
     const struck = tr.steps.length;
     markRangeAsDeleted(
@@ -582,9 +662,23 @@ export function handleSuggestionPaste(
 
   // 3. Track the paste around any revisions the clipboard already carried.
   const insertAttrs =
-    findAdjacentRevision(doc, from, "insertion", pluginState.author) || makeMarkAttrs(pluginState);
-  enclosePastedRunRevisions({ tr, from: insertFrom, to: insertTo, revision: insertAttrs });
-  markRangeAsInserted(tr, tr.doc, insertFrom, insertTo, insertionType, deletionType, insertAttrs);
+    findAdjacentRevision(doc, from, "insertion", pluginState.author) ||
+    makeMarkAttrs(pluginState);
+  enclosePastedRunRevisions({
+    tr,
+    from: insertFrom,
+    to: insertTo,
+    revision: insertAttrs,
+  });
+  markRangeAsInserted(
+    tr,
+    tr.doc,
+    insertFrom,
+    insertTo,
+    insertionType,
+    deletionType,
+    insertAttrs,
+  );
 
   if (!inlineSlice) {
     carryAcross();
@@ -596,7 +690,10 @@ export function handleSuggestionPaste(
   // replacement. A carry onto the first pasted part cannot survive that join.
   if (!closedBlocks && $to.parent.type.name === "paragraph") {
     const $end = tr.doc.resolve(tr.mapping.map(to));
-    if ($end.parent.type.name === "paragraph" && $end.before() !== tr.mapping.map($from.before())) {
+    if (
+      $end.parent.type.name === "paragraph" &&
+      $end.before() !== tr.mapping.map($from.before())
+    ) {
       recordReplacedParagraphProperties({
         tr,
         position: $end.before(),
@@ -640,7 +737,10 @@ export function handleSuggestionPaste(
       tr.mapping.map($to.before()),
       insertAttrs,
     );
-    insertFrom = Math.min(tr.mapping.slice(rotation).map(insertFrom, -1), joined);
+    insertFrom = Math.min(
+      tr.mapping.slice(rotation).map(insertFrom, -1),
+      joined,
+    );
     insertTo = tr.mapping.slice(rotation).map(insertTo);
   }
 
@@ -708,9 +808,17 @@ export function handleSuggestionTableCellPaste(
         ) {
           tr.setNodeAttribute($pasteFrom.before(), "pPrMark", {
             kind: "ins",
-            info: { id: revision.revisionId, author: revision.author, date: revision.date },
+            info: {
+              id: revision.revisionId,
+              author: revision.author,
+              date: revision.date,
+            },
           });
-          tr.setNodeAttribute($pasteTo.before(), "pPrMark", finalParagraph.attrs["pPrMark"]);
+          tr.setNodeAttribute(
+            $pasteTo.before(),
+            "pPrMark",
+            finalParagraph.attrs["pPrMark"],
+          );
           recordReplacedParagraphProperties({
             tr,
             position: $pasteTo.before(),
@@ -734,17 +842,26 @@ export function handleSuggestionTableCellPaste(
             pos < pastedFrom &&
             node.type.name === "paragraph" &&
             node.content.size === 0 &&
-            isCurrentAuthorParagraphInsertion(node.attrs["pPrMark"], pluginState.author)
+            isCurrentAuthorParagraphInsertion(
+              node.attrs["pPrMark"],
+              pluginState.author,
+            )
           ) {
             emptyInsertions.push({ from: pos, to: pos + node.nodeSize });
           }
         });
         const retraction = tr.mapping.maps.length;
-        for (const range of emptyInsertions.toReversed()) tr.delete(range.from, range.to);
+        for (const range of emptyInsertions.toReversed())
+          tr.delete(range.from, range.to);
         const retracted = tr.mapping.slice(retraction);
         pastedFrom = retracted.map(pastedFrom);
         insertTo = retracted.map(insertTo);
-        enclosePastedRunRevisions({ tr, from: pastedFrom, to: insertTo, revision });
+        enclosePastedRunRevisions({
+          tr,
+          from: pastedFrom,
+          to: insertTo,
+          revision,
+        });
         markRangeAsInserted(
           tr,
           tr.doc,
@@ -763,7 +880,11 @@ export function handleSuggestionTableCellPaste(
           ) {
             tr.setNodeAttribute(pos, "pPrMark", {
               kind: "ins",
-              info: { id: revision.revisionId, author: revision.author, date: revision.date },
+              info: {
+                id: revision.revisionId,
+                author: revision.author,
+                date: revision.date,
+              },
             });
           }
         });
@@ -789,7 +910,9 @@ function rotateIntoFinalParagraph(
   attrs: MarkAttrs,
 ): number {
   const replaced = tr.doc.nodeAt(replacedPos);
-  const first = replaced ? tr.doc.nodeAt(replacedPos + replaced.nodeSize) : null;
+  const first = replaced
+    ? tr.doc.nodeAt(replacedPos + replaced.nodeSize)
+    : null;
   if (!replaced || !first) {
     return replacedPos;
   }
@@ -819,7 +942,11 @@ function rotateIntoFinalParagraph(
   const $joined = tr.doc.resolve(replacedPos);
   const container = $joined.parent;
   let finalPos = replacedPos;
-  for (let index = $joined.index(); index < container.childCount - 1; index += 1) {
+  for (
+    let index = $joined.index();
+    index < container.childCount - 1;
+    index += 1
+  ) {
     finalPos += container.child(index).nodeSize;
   }
   const final = tr.doc.nodeAt(finalPos);
@@ -827,11 +954,17 @@ function rotateIntoFinalParagraph(
     tr.setNodeMarkup(finalPos, undefined, {
       ...final.attrs,
       pPrMark: null,
-      ...(sectionProperties == null ? {} : { _sectionProperties: sectionProperties }),
+      ...(sectionProperties == null
+        ? {}
+        : { _sectionProperties: sectionProperties }),
       _propertyChanges: [
         {
           type: "paragraphPropertyChange",
-          info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+          info: {
+            id: attrs.revisionId,
+            author: attrs.author,
+            date: attrs.date,
+          },
           previousFormatting,
         } satisfies ParagraphPropertyChangeAttrs,
       ],
@@ -866,7 +999,8 @@ function applySuggestionInsert(
   const { selection } = view.state;
   // Typing over the selection (not a replacement range the browser names)
   // leaves the caret after the typed text, whatever kind of selection it was.
-  const typesOverSelection = !selection.empty && selection.from === from && selection.to === to;
+  const typesOverSelection =
+    !selection.empty && selection.from === from && selection.to === to;
   const selectsAll = selection instanceof AllSelection;
   if (selectsAll) {
     from = Math.max(from, Selection.atStart(view.state.doc).from);
@@ -879,13 +1013,25 @@ function applySuggestionInsert(
     : null;
 
   const insertAttrs =
-    findAdjacentRevision(view.state.doc, from, "insertion", pluginState.author) ||
-    makeMarkAttrs(pluginState);
+    findAdjacentRevision(
+      view.state.doc,
+      from,
+      "insertion",
+      pluginState.author,
+    ) || makeMarkAttrs(pluginState);
 
   if (from !== to) {
     const deletionType = view.state.schema.marks["deletion"];
     if (deletionType) {
-      markRangeAsDeleted(tr, view.state.doc, from, to, deletionType, pluginState, view.state);
+      markRangeAsDeleted(
+        tr,
+        view.state.doc,
+        from,
+        to,
+        deletionType,
+        pluginState,
+        view.state,
+      );
     }
   }
 
@@ -903,7 +1049,11 @@ function applySuggestionInsert(
   // insertAttrs will match — addMark is effectively a no-op that preserves
   // the continuous mark span. We intentionally do NOT removeMark(insertionType)
   // first, because that fragments the mark span and creates a nested change.
-  tr.addMark(insertAt, insertAt + text.length, insertionType.create(insertAttrs));
+  tr.addMark(
+    insertAt,
+    insertAt + text.length,
+    insertionType.create(insertAttrs),
+  );
   if (replacedFormatting) {
     for (const mark of tr.doc.resolve(insertAt).nodeAfter?.marks ?? []) {
       if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) {
@@ -914,7 +1064,12 @@ function applySuggestionInsert(
       tr.addMark(insertAt, insertAt + text.length, mark);
     }
   }
-  separateSplitStretch(tr, insertAt, insertAt + text.length, insertAttrs.revisionId);
+  separateSplitStretch(
+    tr,
+    insertAt,
+    insertAt + text.length,
+    insertAttrs.revisionId,
+  );
   if (typesOverSelection) {
     // `insertText` lands the caret at the selection's mapped end, which for a
     // node selection is before the typed text.
@@ -931,7 +1086,12 @@ function applySuggestionInsert(
  * `w:id`, so the stretch after the typed text gets a fresh id now: the editor
  * lists, resolves and saves the same changes a reopened package does.
  */
-function separateSplitStretch(tr: Transaction, from: number, to: number, typedId: number): void {
+function separateSplitStretch(
+  tr: Transaction,
+  from: number,
+  to: number,
+  typedId: number,
+): void {
   const $from = tr.doc.resolve(from);
   const $to = tr.doc.resolve(to);
   const before = $from.nodeBefore;
@@ -963,7 +1123,11 @@ function separateSplitStretch(tr: Transaction, from: number, to: number, typedId
       continue;
     }
     tr.removeMark(to, end, mark);
-    tr.addMark(to, end, mark.type.create({ ...mark.attrs, revisionId: mintRevisionId() }));
+    tr.addMark(
+      to,
+      end,
+      mark.type.create({ ...mark.attrs, revisionId: mintRevisionId() }),
+    );
   }
 }
 
@@ -997,7 +1161,10 @@ export function suggestRangeDeletion(
  * If the source paragraph already carries a `pPrMark`, leave it alone — a
  * prior author's revision must not be silently overwritten.
  */
-export function handleSuggestionEnter(view: EditorView, pluginState: SuggestionModeState): boolean {
+export function handleSuggestionEnter(
+  view: EditorView,
+  pluginState: SuggestionModeState,
+): boolean {
   const state = view.state;
   if (state.selection.$from.parent.type.name !== "paragraph") {
     return false;
@@ -1061,7 +1228,10 @@ export function handleSuggestionEnter(view: EditorView, pluginState: SuggestionM
       // The new paragraph holds the source's break: rejecting the inserted
       // one leaves it, so it records what the source read as.
       const $caret = tr.selection.$from;
-      if ($caret.parent.type.name === "paragraph" && $caret.before() !== sourcePos) {
+      if (
+        $caret.parent.type.name === "paragraph" &&
+        $caret.before() !== sourcePos
+      ) {
         recordReplacedParagraphProperties({
           tr,
           position: $caret.before(),
@@ -1081,8 +1251,7 @@ type ParagraphMarkAttr = {
 };
 
 type CaretDeleteTarget =
-  | { type: "inlineUnit"; from: number; to: number }
-  | { type: "paragraphEdge" };
+  { type: "inlineUnit"; from: number; to: number } | { type: "paragraphEdge" };
 
 /** Find the adjacent visible unit without consuming retained deletions or bookmark markers. */
 function caretDeleteTarget(
@@ -1099,7 +1268,9 @@ function caretDeleteTarget(
     if (!adjacent) return { type: "paragraphEdge" };
     if (
       adjacent.type.name !== "bookmarkBoundary" &&
-      !adjacent.marks.some((mark) => mark.type === state.schema.marks["deletion"])
+      !adjacent.marks.some(
+        (mark) => mark.type === state.schema.marks["deletion"],
+      )
     ) {
       // A non-leaf atom is still one editor unit: its whole carrier owns the
       // revision, including both boundary tokens and its result children.
@@ -1200,7 +1371,9 @@ function applyPPrDel(
       tr.setNodeAttribute(
         targetParagraphPos,
         "pPrMark",
-        joined?.type === targetNode.type ? expectParagraphAttrs(joined).pPrMark : null,
+        joined?.type === targetNode.type
+          ? expectParagraphAttrs(joined).pPrMark
+          : null,
       );
       if (joined?.type === targetNode.type) {
         recordReplacedParagraphProperties({
@@ -1214,7 +1387,11 @@ function applyPPrDel(
       // brings in drop what their old paragraph's style lent them and read in
       // this one's: a run with no formatting of its own stays without any.
       const styleResolver = getDocumentStyleResolver(view.state);
-      if (styleResolver && joined?.type === targetNode.type && joined.content.size > 0) {
+      if (
+        styleResolver &&
+        joined?.type === targetNode.type &&
+        joined.content.size > 0
+      ) {
         rebaseParagraphRuns({
           previousContext: paragraphRunStyleContext(joined, styleResolver),
           paragraphPosition: targetParagraphPos,
@@ -1263,7 +1440,11 @@ function isCurrentAuthorParagraphInsertion(
     return false;
   }
   const mark = value as { kind?: unknown; info?: unknown };
-  if (mark.kind !== "ins" || typeof mark.info !== "object" || mark.info === null) {
+  if (
+    mark.kind !== "ins" ||
+    typeof mark.info !== "object" ||
+    mark.info === null
+  ) {
     return false;
   }
   const info = mark.info as { author?: unknown };
@@ -1302,14 +1483,26 @@ function handleSuggestionDelete(
     const ranges = state.selection.ranges
       .map(
         ({ $from: rangeFrom, $to: rangeTo }) =>
-          expandNoteReferenceDeletionRange(state.doc, rangeFrom.pos, rangeTo.pos) ?? {
+          expandNoteReferenceDeletionRange(
+            state.doc,
+            rangeFrom.pos,
+            rangeTo.pos,
+          ) ?? {
             from: rangeFrom.pos,
             to: rangeTo.pos,
           },
       )
       .sort((a, b) => b.from - a.from);
     for (const { from, to } of ranges) {
-      markRangeAsDeleted(tr, state.doc, from, to, deletionType, pluginState, state);
+      markRangeAsDeleted(
+        tr,
+        state.doc,
+        from,
+        to,
+        deletionType,
+        pluginState,
+        state,
+      );
     }
     // Clearing cells preserves the rectangle, as the table deletion command
     // does, so the next input still acts on those cells. Text deletion instead
@@ -1345,7 +1538,11 @@ function handleSuggestionDelete(
   const deletePos = target.from;
   const deleteEnd = target.to;
 
-  const noteRange = expandNoteReferenceDeletionRange(state.doc, deletePos, deleteEnd);
+  const noteRange = expandNoteReferenceDeletionRange(
+    state.doc,
+    deletePos,
+    deleteEnd,
+  );
   const rangeFrom = noteRange?.from ?? deletePos;
   const rangeTo = noteRange?.to ?? deleteEnd;
   const $deletePos = state.doc.resolve(rangeFrom);
@@ -1360,7 +1557,14 @@ function handleSuggestionDelete(
 
   const mapFrom = tr.mapping.maps.length;
   if (noteRange) {
-    markRangeAsDeleted(tr, state.doc, noteRange.from, noteRange.to, deletionType, pluginState);
+    markRangeAsDeleted(
+      tr,
+      state.doc,
+      noteRange.from,
+      noteRange.to,
+      deletionType,
+      pluginState,
+    );
   } else {
     const hasDeletion = nodeAfter.marks.some((m) => m.type === deletionType);
     if (!hasDeletion) {
@@ -1382,7 +1586,9 @@ function handleSuggestionDelete(
     }
   }
   // A retracted insertion moves the cursor with the removed characters.
-  const newPos = tr.mapping.slice(mapFrom).map(isBackward ? rangeFrom : rangeTo);
+  const newPos = tr.mapping
+    .slice(mapFrom)
+    .map(isBackward ? rangeFrom : rangeTo);
   tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
 
   dispatch(tr.scrollIntoView());
@@ -1393,7 +1599,10 @@ function handleSuggestionDelete(
 export const deleteSelectionAsSuggestion = (
   state: EditorState,
   dispatch: (tr: Transaction) => void,
-): boolean => (state.selection.empty ? false : handleSuggestionDelete(state, dispatch, "forward"));
+): boolean =>
+  state.selection.empty
+    ? false
+    : handleSuggestionDelete(state, dispatch, "forward");
 
 /**
  * Mark the text committed by an IME composition as a tracked insertion.
@@ -1447,7 +1656,14 @@ function markComposedAsInsertion({
     // paragraphs. Inserting the closed fragment splits them again around an
     // extra empty paragraph instead of restoring the selected range.
     tr.replaceRange(from, from, replaced);
-    markRangeAsDeleted(tr, tr.doc, from, tr.mapping.map(from, 1), deletionType, pluginState);
+    markRangeAsDeleted(
+      tr,
+      tr.doc,
+      from,
+      tr.mapping.map(from, 1),
+      deletionType,
+      pluginState,
+    );
     // Native composition keeps the starting paragraph's properties even when
     // the selection starts at its first character. Carry that committed
     // formatting to the restored end paragraph; rejection restores its own.
@@ -1544,7 +1760,11 @@ function recordSplitParagraph(
   } else if ($last.nodeBefore?.type.name === "paragraph") {
     lastPos = insertedTo - $last.nodeBefore.nodeSize;
   }
-  if ($first.parent.type.name !== "paragraph" || lastPos === null || lastPos === $first.before()) {
+  if (
+    $first.parent.type.name !== "paragraph" ||
+    lastPos === null ||
+    lastPos === $first.before()
+  ) {
     return;
   }
   recordReplacedParagraphProperties({
@@ -1575,12 +1795,18 @@ function replacedInline(
     return null;
   }
   const $from = before.resolve(step.from);
-  if (!$from.parent.inlineContent || !$from.sameParent(before.resolve(step.to))) {
+  if (
+    !$from.parent.inlineContent ||
+    !$from.sameParent(before.resolve(step.to))
+  ) {
     return null;
   }
   return {
     from: step.from,
-    content: $from.parent.content.cut($from.parentOffset, step.to - $from.start()),
+    content: $from.parent.content.cut(
+      $from.parentOffset,
+      step.to - $from.start(),
+    ),
   };
 }
 
@@ -1613,7 +1839,14 @@ function restoreReplacedInline({
       continue;
     }
     tr.insert(pos, content);
-    markRangeAsDeleted(tr, tr.doc, pos, pos + content.size, deletionType, pluginState);
+    markRangeAsDeleted(
+      tr,
+      tr.doc,
+      pos,
+      pos + content.size,
+      deletionType,
+      pluginState,
+    );
   }
 }
 
@@ -1621,7 +1854,10 @@ function restoreReplacedInline({
  * Create the suggestion mode plugin.
  * When active, text edits become tracked changes.
  */
-export function createSuggestionModePlugin(initialActive = false, author = "User"): Plugin {
+export function createSuggestionModePlugin(
+  initialActive = false,
+  author = "User",
+): Plugin {
   // IME composition tracking. Each call returns a fresh Plugin, so a separate
   // view never shares this closure — the flag is per editor instance.
   //   - `composing` gates the `appendTransaction` catch-all so it never mutates
@@ -1650,7 +1886,11 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
       },
       apply(tr, state): SuggestionModeState {
         const nativeCompositionId = tr.getMeta("composition");
-        if (composing && tr.docChanged && typeof nativeCompositionId === "number") {
+        if (
+          composing &&
+          tr.docChanged &&
+          typeof nativeCompositionId === "number"
+        ) {
           compositionId = nativeCompositionId;
         }
         const meta = tr.getMeta(suggestionModeKey);
@@ -1664,14 +1904,19 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
     props: {
       handleDOMEvents: {
         cut(view: EditorView, event: ClipboardEvent) {
-          if (!suggestionModeKey.getState(view.state)?.active || view.state.selection.empty) {
+          if (
+            !suggestionModeKey.getState(view.state)?.active ||
+            view.state.selection.empty
+          ) {
             return false;
           }
           const data = event.clipboardData;
           if (!data) {
             return false;
           }
-          const { dom, text } = view.serializeForClipboard(view.state.selection.content());
+          const { dom, text } = view.serializeForClipboard(
+            view.state.selection.content(),
+          );
           data.clearData();
           data.setData("text/html", dom.innerHTML);
           data.setData("text/plain", text);
@@ -1693,7 +1938,8 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           compositionId = null;
           const { from, to } = view.state.selection;
           compositionFrom = from;
-          compositionReplaced = from === to ? null : view.state.doc.slice(from, to);
+          compositionReplaced =
+            from === to ? null : view.state.doc.slice(from, to);
           return false;
         },
         // Mark the committed text as a tracked insertion AFTER the composition
@@ -1737,7 +1983,8 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         // Keep standalone suggestion views on the same input path as Folio's
         // runtime. The shared handler invokes handleTextInput exactly once.
         beforeinput(view, event) {
-          if (!suggestionModeKey.getState(view.state)?.active || composing) return false;
+          if (!suggestionModeKey.getState(view.state)?.active || composing)
+            return false;
           return handleEditorBeforeInput(view, event);
         },
       },
@@ -1771,7 +2018,10 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         }
         // Backspace right after an autoformat puts the typed text back, as it
         // does while editing.
-        if (event.key === "Backspace" && undoInputRule(view.state, view.dispatch)) {
+        if (
+          event.key === "Backspace" &&
+          undoInputRule(view.state, view.dispatch)
+        ) {
           return true;
         }
         if (event.key === "Backspace" || event.key === "Delete") {
@@ -1793,7 +2043,11 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
                 tr,
                 position: $from.before(),
                 replaced: $from.parent,
-                revision: { id: revision.revisionId, author: revision.author, date: revision.date },
+                revision: {
+                  id: revision.revisionId,
+                  author: revision.author,
+                  date: revision.date,
+                },
               });
               view.dispatch(tr.setMeta(SUGGESTION_META, true));
             })
@@ -1814,7 +2068,12 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
       },
 
       // Shared beforeinput routing and native DOM reconciliation both use this hook.
-      handleTextInput(view: EditorView, from: number, to: number, text: string): boolean {
+      handleTextInput(
+        view: EditorView,
+        from: number,
+        to: number,
+        text: string,
+      ): boolean {
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {
           return false;
@@ -1891,15 +2150,24 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         .flatMap((transaction) => transaction.mapping.maps);
       // Another plugin's appended normalization is not a user's replacement:
       // restoring what it removed would hand it the same work again.
-      const restoresReplaced = userTr.getMeta("appendedTransaction") === undefined;
+      const restoresReplaced =
+        userTr.getMeta("appendedTransaction") === undefined;
       const replaced: ReplacedInline[] = [];
       for (const [stepIndex, step] of userTr.steps.entries()) {
         const stepMap = step.getMap();
-        const following = new Mapping([...userTr.mapping.maps.slice(stepIndex + 1), ...laterMaps]);
-        const removed = restoresReplaced ? replacedInline(userTr.docs[stepIndex], step) : null;
+        const following = new Mapping([
+          ...userTr.mapping.maps.slice(stepIndex + 1),
+          ...laterMaps,
+        ]);
+        const removed = restoresReplaced
+          ? replacedInline(userTr.docs[stepIndex], step)
+          : null;
         if (removed) {
           // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
-          replaced.push({ at: following.map(removed.from, -1), content: removed.content });
+          replaced.push({
+            at: following.map(removed.from, -1),
+            content: removed.content,
+          });
         }
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
         stepMap.forEach((_oldFrom, _oldTo, stepFrom, stepTo) => {
@@ -1909,7 +2177,12 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           const newTo = following.map(stepTo, 1);
           if (newTo > newFrom) {
             if (userTr.getMeta("paste")) {
-              enclosePastedRunRevisions({ tr, from: newFrom, to: newTo, revision: markAttrs });
+              enclosePastedRunRevisions({
+                tr,
+                from: newFrom,
+                to: newTo,
+                revision: markAttrs,
+              });
             }
             if (deletionType) {
               markRangeAsInserted(
@@ -1922,7 +2195,14 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
                 markAttrs,
               );
             }
-            recordSplitParagraph(tr, userTr.docs[stepIndex], step, newFrom, newTo, markAttrs);
+            recordSplitParagraph(
+              tr,
+              userTr.docs[stepIndex],
+              step,
+              newFrom,
+              newTo,
+              markAttrs,
+            );
           }
         });
       }

@@ -1,11 +1,12 @@
 import { panic } from "better-result";
+
 import {
-  NO_PARAGRAPH_NUMBERING,
   mergeParagraphNumbering,
-  resolveParagraphNumbering,
-  type ParagraphNumberingOverride,
+  NO_PARAGRAPH_NUMBERING,
   paragraphNumberingFromSlots,
+  type ParagraphNumberingOverride,
   paragraphNumberingReference,
+  resolveParagraphNumbering,
 } from "@stll/docx-core/model";
 
 export type ParagraphNumberingSources = {
@@ -28,13 +29,18 @@ export const paragraphNumberingSourcesFromBoundary = ({
 });
 
 /** Effective membership is derived; neither source slot becomes an authored override. */
-export const effectiveParagraphNumbering = ({ numPr, numPrFromStyle }: ParagraphNumberingSources) =>
+export const effectiveParagraphNumbering = ({
+  numPr,
+  numPrFromStyle,
+}: ParagraphNumberingSources) =>
   resolveParagraphNumbering(mergeParagraphNumbering(numPrFromStyle, numPr));
 
 /** A list reference for membership consumers; cancellation and absence are not lists.
  * OOXML defaults an omitted ilvl to zero only within an existing numbering reference.
  */
-export const effectiveParagraphNumberingReference = (sources: ParagraphNumberingSources) => {
+export const effectiveParagraphNumberingReference = (
+  sources: ParagraphNumberingSources,
+) => {
   const numbering = effectiveParagraphNumbering(sources);
   return numbering.kind === "reference" ? numbering : undefined;
 };
@@ -67,8 +73,9 @@ export type ParagraphNumberingAttr = ParagraphNumberingOverride & {
 // SAFETY: the brand is a phantom property that exists only in the type. The
 // runtime value is the union itself, and this is the one function allowed to
 // state that a value came from the codec.
-const branded = (numbering: ParagraphNumberingOverride): ParagraphNumberingAttr =>
-  numbering as ParagraphNumberingAttr;
+const branded = (
+  numbering: ParagraphNumberingOverride,
+): ParagraphNumberingAttr => numbering as ParagraphNumberingAttr;
 
 /** Mint the attr value for a stated override: the one model-to-attr crossing. */
 export const paragraphNumberingAttr = (
@@ -78,12 +85,19 @@ export const paragraphNumberingAttr = (
     case "none":
       return branded(NO_PARAGRAPH_NUMBERING);
     case "reference":
-      return branded(paragraphNumberingReference({ numId: numbering.numId, ilvl: numbering.ilvl }));
+      return branded(
+        paragraphNumberingReference({
+          numId: numbering.numId,
+          ilvl: numbering.ilvl,
+        }),
+      );
     case "levelOnly":
       return branded({ kind: "levelOnly", ilvl: numbering.ilvl });
     default: {
       const unhandled: never = numbering;
-      return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);
+      return panic(
+        `Unhandled paragraph numbering ${JSON.stringify(unhandled)}`,
+      );
     }
   }
 };
@@ -98,7 +112,9 @@ export const paragraphNumberingAttr = (
 export const removedNumberingAttr = (
   numPrFromStyle: ParagraphNumberingOverride | null | undefined,
 ): ParagraphNumberingAttr | null =>
-  numPrFromStyle?.kind === "reference" ? paragraphNumberingAttr(NO_PARAGRAPH_NUMBERING) : null;
+  numPrFromStyle?.kind === "reference"
+    ? paragraphNumberingAttr(NO_PARAGRAPH_NUMBERING)
+    : null;
 
 /** A `<w:numPr>` slot value: an ordinal, so a non-integer or a negative is not one. */
 const isNumberingSlot = (value: unknown): value is number =>
@@ -121,7 +137,9 @@ const isNumberingSlot = (value: unknown): value is number =>
  * `ilvl` is bounded below and not above: real packages carry levels past the
  * nine the format defines, and docx-core preserves them.
  */
-export const paragraphNumberingFromAttrValue = (value: unknown): ParagraphNumberingAttr | null => {
+export const paragraphNumberingFromAttrValue = (
+  value: unknown,
+): ParagraphNumberingAttr | null => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -137,7 +155,10 @@ export const paragraphNumberingFromAttrValue = (value: unknown): ParagraphNumber
     return null;
   }
   const numId: unknown = Reflect.get(value, "numId");
-  if (!isNumberingSlot(numId) || (ilvl !== undefined && !isNumberingSlot(ilvl))) {
+  if (
+    !isNumberingSlot(numId) ||
+    (ilvl !== undefined && !isNumberingSlot(ilvl))
+  ) {
     return null;
   }
   // The model's own constructor decides what the id means, so the reserved
@@ -157,7 +178,9 @@ export const paragraphNumberingFromAttrValue = (value: unknown): ParagraphNumber
  * attr schema this build does not read, and `yjsDocumentMetadata`'s version
  * gate exists to make that unreachable.
  */
-export const readParagraphNumberingAttr = (value: unknown): ParagraphNumberingAttr | null => {
+export const readParagraphNumberingAttr = (
+  value: unknown,
+): ParagraphNumberingAttr | null => {
   if (value === undefined || value === null) {
     return null;
   }

@@ -1,13 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
+import {
+  getFolioDocumentOutline,
+  readFolioDocumentSection,
+} from "./scoped-reading";
 import { hashFolioAIBlockText } from "./snapshot";
-import { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";
 import type { FolioAIEditSnapshot, FolioAIParagraphBlock } from "./types";
 
 const makeSnapshot = (
   blocks: Omit<FolioAIParagraphBlock, "statedNumbering">[],
 ): FolioAIEditSnapshot => ({
-  blocks: blocks.map((block) => ({ ...block, statedNumbering: { kind: "inherit" } })),
+  blocks: blocks.map((block) => ({
+    ...block,
+    statedNumbering: { kind: "inherit" },
+  })),
   anchors: Object.fromEntries(
     blocks.map((block, index) => [
       block.id,
@@ -38,14 +44,23 @@ describe("scoped document reading", () => {
   test("builds ordered section handles with explicit hierarchy", () => {
     const outline = getFolioDocumentOutline(snapshot);
 
-    expect(outline.sections.map(({ headingBlockId, level }) => [headingBlockId, level])).toEqual([
+    expect(
+      outline.sections.map(({ headingBlockId, level }) => [
+        headingBlockId,
+        level,
+      ]),
+    ).toEqual([
       ["h1", 1],
       ["h2", 2],
       ["h3", 2],
       ["h4", 1],
     ]);
-    expect(outline.sections.at(1)?.parentHandle).toEqual(outline.sections.at(0)?.handle);
-    expect(outline.sections.at(2)?.parentHandle).toEqual(outline.sections.at(0)?.handle);
+    expect(outline.sections.at(1)?.parentHandle).toEqual(
+      outline.sections.at(0)?.handle,
+    );
+    expect(outline.sections.at(2)?.parentHandle).toEqual(
+      outline.sections.at(0)?.handle,
+    );
     expect(outline.sections.at(3)?.parentHandle).toBeUndefined();
   });
 
@@ -73,7 +88,10 @@ describe("scoped document reading", () => {
     }
     expect(paymentRead.status).toBe("found");
     if (paymentRead.status === "found") {
-      expect(paymentRead.section.blocks.map(({ id }) => id)).toEqual(["h2", "p2"]);
+      expect(paymentRead.section.blocks.map(({ id }) => id)).toEqual([
+        "h2",
+        "p2",
+      ]);
     }
   });
 
@@ -88,7 +106,8 @@ describe("scoped document reading", () => {
       { id: "blank-0001", kind: "heading", headingLevel: 1, text: "" },
       { id: "p2", kind: "paragraph", text: "Still the agreement" },
     ]);
-    const handle = getFolioDocumentOutline(withBlankHeading).sections.at(0)?.handle;
+    const handle =
+      getFolioDocumentOutline(withBlankHeading).sections.at(0)?.handle;
     if (handle === undefined) {
       throw new Error("Expected outline handle");
     }
@@ -99,7 +118,11 @@ describe("scoped document reading", () => {
     if (result.status !== "found") {
       return;
     }
-    expect(result.section.blocks.map(({ id }) => id)).toEqual(["h1", "p1", "p2"]);
+    expect(result.section.blocks.map(({ id }) => id)).toEqual([
+      "h1",
+      "p1",
+      "p2",
+    ]);
   });
 
   test("distinguishes stale or structurally changed handles from deleted headings", () => {
@@ -114,8 +137,14 @@ describe("scoped document reading", () => {
       { id: "h1", kind: "heading", headingLevel: 2, text: "Agreement" },
     ]);
 
-    expect(readFolioDocumentSection(renamed, handle)).toEqual({ status: "stale" });
-    expect(readFolioDocumentSection(relevelled, handle)).toEqual({ status: "stale" });
-    expect(readFolioDocumentSection(makeSnapshot([]), handle)).toEqual({ status: "missing" });
+    expect(readFolioDocumentSection(renamed, handle)).toEqual({
+      status: "stale",
+    });
+    expect(readFolioDocumentSection(relevelled, handle)).toEqual({
+      status: "stale",
+    });
+    expect(readFolioDocumentSection(makeSnapshot([]), handle)).toEqual({
+      status: "missing",
+    });
   });
 });

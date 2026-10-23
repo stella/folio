@@ -14,10 +14,11 @@ import {
 
 type Context = { calls: { name: string; args: Record<string, unknown> }[] };
 
-const record = (name: string) => (args: Record<string, unknown>, context: Context) => {
-  context.calls.push({ name, args });
-  return Promise.resolve(success({ tool: name, args }));
-};
+const record =
+  (name: string) => (args: Record<string, unknown>, context: Context) => {
+    context.calls.push({ name, args });
+    return Promise.resolve(success({ tool: name, args }));
+  };
 
 const SEARCH: ToolDefinition<Context> = {
   name: "search",
@@ -67,7 +68,10 @@ const STATS: ToolDefinition<Context> = {
   access: "read",
   domain: "items",
   inputSchema: { type: "object", properties: {} },
-  run: () => Promise.resolve(failure({ code: "stale", message: "Out of date.", retryable: true })),
+  run: () =>
+    Promise.resolve(
+      failure({ code: "stale", message: "Out of date.", retryable: true }),
+    ),
 };
 
 const THROWS: ToolDefinition<Context> = {
@@ -115,7 +119,9 @@ describe("listing", () => {
       openWorldHint: false,
     });
     expect(tools.at(-1)?.annotations.destructiveHint).toBe(true);
-    expect(advertisedBytes(tools)).toBe(new TextEncoder().encode(JSON.stringify(tools)).length);
+    expect(advertisedBytes(tools)).toBe(
+      new TextEncoder().encode(JSON.stringify(tools)).length,
+    );
   });
 
   test("a surface with no lazy tools lists no capability tools", () => {
@@ -124,9 +130,13 @@ describe("listing", () => {
   });
 
   test("refuses duplicate or reserved names", () => {
-    expect(() => createToolSurface({ tools: [SEARCH, SEARCH] })).toThrow("taken");
+    expect(() => createToolSurface({ tools: [SEARCH, SEARCH] })).toThrow(
+      "taken",
+    );
     expect(() =>
-      createToolSurface({ tools: [{ ...STATS, name: CAPABILITY_TOOL_NAMES.invoke }] }),
+      createToolSurface({
+        tools: [{ ...STATS, name: CAPABILITY_TOOL_NAMES.invoke }],
+      }),
     ).toThrow("taken");
   });
 
@@ -136,8 +146,14 @@ describe("listing", () => {
         type: "object",
         description: "x",
         properties: {
-          description: { type: "string", description: "a property named description" },
-          nested: { type: "array", items: { type: "object", title: "t", default: {} } },
+          description: {
+            type: "string",
+            description: "a property named description",
+          },
+          nested: {
+            type: "array",
+            items: { type: "object", title: "t", default: {} },
+          },
         },
       }),
     ).toEqual({
@@ -155,7 +171,10 @@ describe("listing", () => {
       properties: { left: { type: "integer" }, right: { type: "integer" } },
     };
     const hoisted = hoistRepeatedSchemas(
-      { type: "object", properties: { first: shape, second: shape, third: { type: "string" } } },
+      {
+        type: "object",
+        properties: { first: shape, second: shape, third: { type: "string" } },
+      },
       { minBytes: 40 },
     );
 
@@ -168,7 +187,9 @@ describe("listing", () => {
       },
       $defs: { first: shape },
     });
-    expect(hoistRepeatedSchemas({ type: "object", properties: { only: shape } })).toEqual({
+    expect(
+      hoistRepeatedSchemas({ type: "object", properties: { only: shape } }),
+    ).toEqual({
       type: "object",
       properties: { only: shape },
     });
@@ -176,7 +197,11 @@ describe("listing", () => {
 
   test("compactSchema drops a maximum that only says integer", () => {
     expect(
-      compactSchema({ type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+      compactSchema({
+        type: "integer",
+        minimum: 0,
+        maximum: Number.MAX_SAFE_INTEGER,
+      }),
     ).toEqual({ type: "integer", minimum: 0 });
   });
 
@@ -190,7 +215,9 @@ describe("listing", () => {
           description: "the operations",
           items: {
             type: "object",
-            properties: { find: { type: "string", description: "text to find" } },
+            properties: {
+              find: { type: "string", description: "text to find" },
+            },
           },
         },
       },
@@ -219,7 +246,10 @@ describe("capability tools", () => {
 
   test("list_capabilities pages the unlisted tools and filters by domain and access", async () => {
     const all = await call(CAPABILITY_TOOL_NAMES.list, {});
-    const items = await call(CAPABILITY_TOOL_NAMES.list, { domain: "items", access: "write" });
+    const items = await call(CAPABILITY_TOOL_NAMES.list, {
+      domain: "items",
+      access: "write",
+    });
     const first = await call(CAPABILITY_TOOL_NAMES.list, { limit: 1 });
     const second = await call(CAPABILITY_TOOL_NAMES.list, {
       limit: 1,
@@ -228,21 +258,35 @@ describe("capability tools", () => {
 
     expect(all.body).toEqual({
       items: [
-        { id: "archive_item", summary: "Archive an item.", access: "write", destructive: true },
+        {
+          id: "archive_item",
+          summary: "Archive an item.",
+          access: "write",
+          destructive: true,
+        },
         { id: "explode", summary: "Throw.", access: "read" },
         { id: "item_stats", summary: "Count items.", access: "read" },
       ],
       nextCursor: null,
     });
     expect(items.body["items"]).toEqual([
-      { id: "archive_item", summary: "Archive an item.", access: "write", destructive: true },
+      {
+        id: "archive_item",
+        summary: "Archive an item.",
+        access: "write",
+        destructive: true,
+      },
     ]);
-    expect(second.body["items"]).toEqual([{ id: "explode", summary: "Throw.", access: "read" }]);
+    expect(second.body["items"]).toEqual([
+      { id: "explode", summary: "Throw.", access: "read" },
+    ]);
   });
 
   test("pages ids in one ordinal order, whatever their case, digits or underscores", async () => {
     const names = ["b_tool", "B2", "a10", "a9", "A_x", "item", "Item_2", "_z"];
-    const mixed = createToolSurface({ tools: names.map((name) => ({ ...STATS, name })) });
+    const mixed = createToolSurface({
+      tools: names.map((name) => ({ ...STATS, name })),
+    });
     const seen: string[] = [];
     let cursor: unknown;
     for (let page = 0; page <= names.length; page += 1) {
@@ -270,14 +314,22 @@ describe("capability tools", () => {
 
     expect(typo.result.isError).toBe(true);
     expect(typo.body).toMatchObject({
-      error: { code: "validation_error", issues: [{ path: "domian" }], retryable: true },
+      error: {
+        code: "validation_error",
+        issues: [{ path: "domian" }],
+        retryable: true,
+      },
     });
-    expect(stringy.body).toMatchObject({ error: { issues: [{ path: "validate_only" }] } });
+    expect(stringy.body).toMatchObject({
+      error: { issues: [{ path: "validate_only" }] },
+    });
     expect(stringy.calls).toEqual([]);
   });
 
   test("describe_capability outlines any tool, and gives its full schema on request", async () => {
-    const compact = await call(CAPABILITY_TOOL_NAMES.describe, { capability: "archive_item" });
+    const compact = await call(CAPABILITY_TOOL_NAMES.describe, {
+      capability: "archive_item",
+    });
     const lazy = await call(CAPABILITY_TOOL_NAMES.describe, {
       capability: "archive_item",
       detail: "full",
@@ -286,7 +338,9 @@ describe("capability tools", () => {
       capability: "search",
       detail: "full",
     });
-    const unknown = await call(CAPABILITY_TOOL_NAMES.describe, { capability: "archive" });
+    const unknown = await call(CAPABILITY_TOOL_NAMES.describe, {
+      capability: "archive",
+    });
     const badDetail = await call(CAPABILITY_TOOL_NAMES.describe, {
       capability: "search",
       detail: "everything",
@@ -297,22 +351,31 @@ describe("capability tools", () => {
       description: "Archive an item.",
       access: "write",
       destructive: true,
-      parameters: { id: "string (required)", mode: '"soft" | "hard"', force: "boolean" },
+      parameters: {
+        id: "string (required)",
+        mode: '"soft" | "hard"',
+        force: "boolean",
+      },
       more: 'detail: "full" returns the full input schema.',
     });
     expect(lazy.body).toEqual({
       id: "archive_item",
-      description: "Archive an item.\nArchived items can be restored within 30 days.",
+      description:
+        "Archive an item.\nArchived items can be restored within 30 days.",
       access: "write",
       destructive: true,
       inputSchema: ARCHIVE.inputSchema,
     });
     expect(direct.body["inputSchema"]).toEqual(SEARCH.inputSchema);
-    expect(badDetail.body).toMatchObject({ error: { issues: [{ path: "detail" }] } });
+    expect(badDetail.body).toMatchObject({
+      error: { issues: [{ path: "detail" }] },
+    });
     expect(unknown.body).toMatchObject({
       error: { code: "not_found", retryable: false },
     });
-    expect(String((unknown.body["error"] as { hint: string }).hint)).toContain('"archive_item"');
+    expect(String((unknown.body["error"] as { hint: string }).hint)).toContain(
+      '"archive_item"',
+    );
   });
 
   test("invoke_capability runs a tool with its input, or only validates it", async () => {
@@ -326,8 +389,12 @@ describe("capability tools", () => {
       validate_only: true,
     });
 
-    expect(ran.calls).toEqual([{ name: "archive_item", args: { id: "a", mode: "hard" } }]);
-    expect(ran.result.content.at(1)?.text).toBe('Input read: Read "HARD" as "hard".');
+    expect(ran.calls).toEqual([
+      { name: "archive_item", args: { id: "a", mode: "hard" } },
+    ]);
+    expect(ran.result.content.at(1)?.text).toBe(
+      'Input read: Read "HARD" as "hard".',
+    );
     expect(checked.body).toEqual({ valid: true, input: { id: "a" } });
     expect(checked.calls).toEqual([]);
   });
@@ -343,24 +410,39 @@ describe("calling a tool", () => {
     });
 
     expect(result.isError).toBe(false);
-    expect(calls).toEqual([{ name: "search", args: { query: "x", exact: true, limit: 5 } }]);
-    expect(body).toEqual({ tool: "search", args: { query: "x", exact: true, limit: 5 } });
+    expect(calls).toEqual([
+      { name: "search", args: { query: "x", exact: true, limit: 5 } },
+    ]);
+    expect(body).toEqual({
+      tool: "search",
+      args: { query: "x", exact: true, limit: 5 },
+    });
     expect(result.content.at(1)?.text).toContain('Read "yes" as true.');
   });
 
   test("drops null optionals, and keeps exact properties exactly as sent", async () => {
-    const { calls } = await call("archive_item", { id: "a", mode: null, force: "true" });
+    const { calls } = await call("archive_item", {
+      id: "a",
+      mode: null,
+      force: "true",
+    });
 
-    expect(calls).toEqual([{ name: "archive_item", args: { id: "a", force: "true" } }]);
+    expect(calls).toEqual([
+      { name: "archive_item", args: { id: "a", force: "true" } },
+    ]);
   });
 
   test("refuses inherited names such as toString and __proto__ as parameters", async () => {
     // JSON.parse makes `__proto__` an own key, as a client's arguments would.
-    const args: unknown = JSON.parse('{"query":"x","toString":"y","__proto__":{"polluted":true}}');
+    const args: unknown = JSON.parse(
+      '{"query":"x","toString":"y","__proto__":{"polluted":true}}',
+    );
     const tool = await call("search", args);
     const meta = await call(
       CAPABILITY_TOOL_NAMES.describe,
-      JSON.parse('{"capability":"search","__proto__":{"detail":"full"},"constructor":1}'),
+      JSON.parse(
+        '{"capability":"search","__proto__":{"detail":"full"},"constructor":1}',
+      ),
     );
 
     expect(tool.result.isError).toBe(true);
@@ -391,7 +473,9 @@ describe("calling a tool", () => {
       },
     });
     expect(missing.body).toMatchObject({ error: { issues: [{ path: "id" }] } });
-    expect(ambiguous.body).toMatchObject({ error: { issues: [{ path: "exact" }] } });
+    expect(ambiguous.body).toMatchObject({
+      error: { issues: [{ path: "exact" }] },
+    });
   });
 
   test("a tool's own failure and a throw both come back in the one envelope", async () => {
@@ -411,6 +495,8 @@ describe("calling a tool", () => {
     const { body } = await call("serach", {});
 
     expect(body).toMatchObject({ error: { code: "unknown_tool" } });
-    expect(String((body["error"] as { hint: string }).hint)).toContain('"search"');
+    expect(String((body["error"] as { hint: string }).hint)).toContain(
+      '"search"',
+    );
   });
 });

@@ -1,24 +1,27 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, type Page } from "@playwright/test";
-import { test } from "../parity/canonicalTest";
-import { createCanonicalSession } from "../../packages/core/src/controller/canonicalSession";
+
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
+import { createCanonicalSession } from "../../packages/core/src/controller/canonicalSession";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
+import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
+import type {} from "../parity/canonicalBridge";
+import type {} from "../parity/canonicalFuzzErrors";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { test } from "../parity/canonicalTest";
 import type { BrowserInputAction } from "./browserInputTrace";
-import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
 import {
   canonicalBrowserAcceptances,
   canonicalBrowserSourceRefusals,
 } from "./canonical-browser-acceptance-traces";
-import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
-import type {} from "../parity/canonicalBridge";
-import type {} from "../parity/canonicalFuzzErrors";
+import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
   await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
-  const value = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+  const value = await page.evaluate(() =>
+    globalThis.__folioCanonical?.snapshot(),
+  );
   expect(value?.active).toBe(true);
   expect(value?.projectionMatchesCanonical).toBe(true);
   expect(value?.projectionJSON).toEqual(value?.canonicalProjectionJSON);
@@ -33,7 +36,9 @@ const drainErrors = (page: Page) =>
 
 for (const { seed, trace } of canonicalBrowserAcceptances) {
   for (const mode of ["editing", "suggesting"] as const) {
-    test(`canonical acceptance seed ${seed} / ${mode}`, async ({ page }, info) => {
+    test(`canonical acceptance seed ${seed} / ${mode}`, async ({
+      page,
+    }, info) => {
       const missing = createMissingOpBurndown();
       await page.goto("/?session=canonical", { waitUntil: "networkidle" });
       await page.waitForSelector(".layout-page");
@@ -42,12 +47,17 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
       });
       const source = await shapeArrayBuffer(trace.shape);
       const eligibility = createCanonicalSession(
-        await parseDocx(source, { preloadFonts: false, detectVariables: false }),
+        await parseDocx(source, {
+          preloadFonts: false,
+          detectVariables: false,
+        }),
       );
       // Temporary source limits include tables (#1474) and images; these traces
       // exercise the canonical path automatically as source support expands.
       if (eligibility.isErr()) {
-        expect(eligibility.error).toMatchObject(canonicalBrowserSourceRefusals[trace.shape]);
+        expect(eligibility.error).toMatchObject(
+          canonicalBrowserSourceRefusals[trace.shape],
+        );
         missing.record(`source:${trace.shape}`);
         await info.attach("canonical-missing-ops", {
           body: JSON.stringify({ seed, mode, missing: missing.rows() }),
@@ -56,20 +66,35 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
         return;
       }
       await page.waitForFunction(() => globalThis.__folioCanonical != null);
-      expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
-      await page.waitForLoadState("networkidle");
-      await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
       expect(
-        await page.evaluate((value) => globalThis.__folioCanonical?.setMode(value), mode),
+        await evaluateCanonicalLoad(page, [...new Uint8Array(source)]),
       ).toBe(true);
-      expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1))).toBe(true);
+      await page.waitForLoadState("networkidle");
+      await page.waitForFunction(() =>
+        globalThis.__folioCanonical?.canSnapshot(),
+      );
+      expect(
+        await page.evaluate(
+          (value) => globalThis.__folioCanonical?.setMode(value),
+          mode,
+        ),
+      ).toBe(true);
+      expect(
+        await page.evaluate(() => globalThis.__folioCanonical?.select(1)),
+      ).toBe(true);
       await drainErrors(page);
       for (const action of trace.actions) {
-        if (action.kind === "selectionDrag" || action.kind === "dragCellDelete") {
+        if (
+          action.kind === "selectionDrag" ||
+          action.kind === "dragCellDelete"
+        ) {
           const structuralTarget =
-            action.kind === "selectionDrag" ? action.target : ("table" as const);
+            action.kind === "selectionDrag"
+              ? action.target
+              : ("table" as const);
           const selected = await page.evaluate(
-            (target) => globalThis.__folioCanonical?.selectStructuralTarget(target),
+            (target) =>
+              globalThis.__folioCanonical?.selectStructuralTarget(target),
             structuralTarget,
           );
           expect(selected).not.toBeNull();
@@ -77,7 +102,8 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
           if (action.kind === "selectionDrag") continue;
         }
         const before = await snapshot(page);
-        if (action.kind === "dragCellDelete") await page.keyboard.press("Delete");
+        if (action.kind === "dragCellDelete")
+          await page.keyboard.press("Delete");
         else await driveCanonicalBrowserInput(page, action);
         const after = await snapshot(page);
         const errors = await drainErrors(page);
@@ -92,7 +118,10 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
           expect(after.canRedo).toBe(before.canRedo);
           continue;
         }
-        if (action.kind === "imeReplacement" && action.completion === "cancel") {
+        if (
+          action.kind === "imeReplacement" &&
+          action.completion === "cancel"
+        ) {
           expect(after.document).toEqual(before.document);
           expect(after.projectionJSON).toEqual(before.projectionJSON);
           expect(after.selectionJSON).toEqual(before.selectionJSON);
@@ -114,16 +143,22 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
         }
       }
       const final = await snapshot(page);
-      const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+      const saved = await page.evaluate(() =>
+        globalThis.__folioCanonical?.save(),
+      );
       if (!saved) throw new TypeError("Canonical save unavailable");
-      expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
+      expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({
+        valid: true,
+      });
       const reopened = structuredClone(
         await parseDocx(new Uint8Array(saved), {
           preloadFonts: false,
           detectVariables: false,
         }),
       );
-      expect(reopened.package.document.content).toEqual(final.document.package.document.content);
+      expect(reopened.package.document.content).toEqual(
+        final.document.package.document.content,
+      );
       await info.attach("canonical-missing-ops", {
         body: JSON.stringify({ seed, mode, missing: missing.rows() }),
         contentType: "application/json",

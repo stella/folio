@@ -12,9 +12,11 @@ const cell = (text: string): PMNode =>
 
 const tableDoc = (originalFormatting: unknown): PMNode =>
   schema.node("doc", null, [
-    schema.node("table", { columnWidths: [2000, 3000], _originalFormatting: originalFormatting }, [
-      schema.node("tableRow", null, [cell("A"), cell("B")]),
-    ]),
+    schema.node(
+      "table",
+      { columnWidths: [2000, 3000], _originalFormatting: originalFormatting },
+      [schema.node("tableRow", null, [cell("A"), cell("B")])],
+    ),
   ]);
 
 const firstTable = (doc: PMNode): TableBlock => {
@@ -50,18 +52,24 @@ describe("toFlowBlocks table indent compatibility", () => {
   });
 
   test("drops the policy for a table whose indent measurement cannot be applied", () => {
-    const block = toFlowBlocks(tableDoc({ indent: { value: 108, type: "pct" } }), {
-      tableIndentCompatibility: { type: "legacy" },
-    }).find((b) => b.kind === "table");
+    const block = toFlowBlocks(
+      tableDoc({ indent: { value: 108, type: "pct" } }),
+      {
+        tableIndentCompatibility: { type: "legacy" },
+      },
+    ).find((b) => b.kind === "table");
 
     expect(block?.indent).toBeUndefined();
     expect(block?.indentCompatibility).toBeUndefined();
   });
 
   test("keeps the policy for a table with a usable indent measurement", () => {
-    const block = toFlowBlocks(tableDoc({ indent: { value: 108, type: "dxa" } }), {
-      tableIndentCompatibility: { type: "legacy" },
-    }).find((b) => b.kind === "table");
+    const block = toFlowBlocks(
+      tableDoc({ indent: { value: 108, type: "dxa" } }),
+      {
+        tableIndentCompatibility: { type: "legacy" },
+      },
+    ).find((b) => b.kind === "table");
 
     expect(block?.indent).toBeCloseTo(7.2, 3);
     expect(block?.indentCompatibility).toEqual({ type: "legacy" });

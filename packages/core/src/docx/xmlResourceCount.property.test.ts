@@ -17,10 +17,12 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseXml, type XmlElement } from "./xmlParser";
 import {
   assertXmlResourceLimits,
@@ -31,8 +33,25 @@ import {
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const name = fc.constantFrom("a", "b", "w:p", "w:r", "w:t", "ns:x");
-const attributeValue = fc.constantFrom("", "1", "x=y", "a<b", "a>b", "it's", 'say "hi"', "a=b=c");
-const text = fc.constantFrom("", " ", "text", "a < b", "a > b", "5 = 5", "&amp;");
+const attributeValue = fc.constantFrom(
+  "",
+  "1",
+  "x=y",
+  "a<b",
+  "a>b",
+  "it's",
+  'say "hi"',
+  "a=b=c",
+);
+const text = fc.constantFrom(
+  "",
+  " ",
+  "text",
+  "a < b",
+  "a > b",
+  "5 = 5",
+  "&amp;",
+);
 
 // The fixtures are escaped by the owner rather than by a local pair: a
 // generator that escapes differently from the writer under test would compare
@@ -41,7 +60,12 @@ const escapeAttribute = escapeXmlAttribute;
 const escapeText = escapeXmlText;
 
 type Node =
-  | { kind: "element"; name: string; attributes: [string, string][]; children: Node[] }
+  | {
+      kind: "element";
+      name: string;
+      attributes: [string, string][];
+      children: Node[];
+    }
   | { kind: "text"; value: string }
   | { kind: "comment" }
   | { kind: "cdata" }
@@ -98,7 +122,9 @@ const render = (value: Node): string => {
  * synthetic: no tag produced it, so the scan never sees it and it is not part
  * of what the two implementations have to agree on.
  */
-const treeCounts = (documentNode: XmlElement): { elements: number; attributes: number } => {
+const treeCounts = (
+  documentNode: XmlElement,
+): { elements: number; attributes: number } => {
   let elements = 0;
   let attributes = 0;
   const pending = [...(documentNode.elements ?? [])];
@@ -121,7 +147,10 @@ describe("preflight counts and parsed tree", () => {
     fc.assert(
       fc.property(node, (generated) => {
         const xml = `<root>${render(generated)}</root>`;
-        const scanned = assertXmlResourceLimits({ xml, limits: FOLIO_XML_RESOURCE_LIMITS });
+        const scanned = assertXmlResourceLimits({
+          xml,
+          limits: FOLIO_XML_RESOURCE_LIMITS,
+        });
         const counted = treeCounts(parseXml(xml));
 
         expect(scanned.elements).toBe(counted.elements);

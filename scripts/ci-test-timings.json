@@ -1211,7 +1211,7 @@
   "packages/react/src/components/DocxEditor.sectionSave.test.tsx": 437,
   "packages/react/src/components/DocxEditor.selectiveBaseline.test.tsx": 411,
   "packages/react/src/components/FormattingBar.overflow.test.tsx": 24,
-  "packages/react/src/components/HiddenHeaderFooterPMs.test.ts": 1,
+  "packages/react/src/components/HiddenHeaderFooterPMs.parts.test.ts": 1,
   "packages/react/src/components/HiddenHeaderFooterPMs.test.tsx": 12,
   "packages/react/src/components/InlineHeaderFooterEditor.committedGetter.test.tsx": 8,
   "packages/react/src/components/commentAnchors.test.ts": 1,

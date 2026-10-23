@@ -11,7 +11,9 @@ import {
 const document = (): Document => ({
   package: {
     document: { content: [] },
-    headers: new Map([["rId1", { type: "header", hdrFtrType: "default", content: [] }]]),
+    headers: new Map([
+      ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
+    ]),
     media: new Map([
       [
         "rId2",
@@ -28,7 +30,10 @@ const document = (): Document => ({
 
 describe("auto-save codec", () => {
   test("round-trips Maps and Dates without relying on JSON's lossy defaults", () => {
-    const encoded = encodeAutoSaveEnvelope(document(), "2026-08-23T11:00:00.000Z");
+    const encoded = encodeAutoSaveEnvelope(
+      document(),
+      "2026-08-23T11:00:00.000Z",
+    );
     const decoded = decodeAutoSaveEnvelope(encoded);
 
     expect(decoded?.version).toBe(AUTOSAVE_FORMAT_VERSION);
@@ -37,7 +42,10 @@ describe("auto-save codec", () => {
     expect(decoded?.document.package.headers?.get("rId1")?.type).toBe("header");
     expect(decoded?.document.package.properties?.created).toBeInstanceOf(Date);
     expect(
-      new Uint8Array(decoded?.document.package.media?.get("rId2")?.data ?? new ArrayBuffer(0)),
+      new Uint8Array(
+        decoded?.document.package.media?.get("rId2")?.data ??
+          new ArrayBuffer(0),
+      ),
     ).toEqual(new Uint8Array([1, 2, 3]));
     expect(encoded).toContain('"type":"arrayBuffer","value":"AQID"');
     expect(encoded).not.toContain('"value":[1,2,3]');
@@ -60,7 +68,10 @@ describe("auto-save codec", () => {
       data: new Uint8Array(mediaBytes).fill(255).buffer,
     });
 
-    const encoded = encodeAutoSaveEnvelope(largeDocument, "2026-08-23T11:00:00.000Z");
+    const encoded = encodeAutoSaveEnvelope(
+      largeDocument,
+      "2026-08-23T11:00:00.000Z",
+    );
 
     expect(encoded.length).toBeLessThan(mediaBytes * 1.5);
     expect(decodeAutoSaveEnvelope(encoded)).not.toBeNull();
@@ -73,7 +84,10 @@ describe("auto-save codec", () => {
       version: 1,
     });
     const malformed = JSON.stringify({
-      document: { type: "object", value: { package: { type: "object", value: {} } } },
+      document: {
+        type: "object",
+        value: { package: { type: "object", value: {} } },
+      },
       savedAt: "2026-08-23T11:00:00.000Z",
       version: AUTOSAVE_FORMAT_VERSION,
     });
@@ -83,7 +97,9 @@ describe("auto-save codec", () => {
   });
 
   test("keeps the manager from reintroducing direct document JSON serialization", async () => {
-    const source = await Bun.file(path.join(import.meta.dir, "AutoSaveManager.ts")).text();
+    const source = await Bun.file(
+      path.join(import.meta.dir, "AutoSaveManager.ts"),
+    ).text();
     expect(source).not.toContain("JSON.stringify");
   });
 });

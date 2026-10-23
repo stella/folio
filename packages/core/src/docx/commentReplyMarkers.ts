@@ -43,15 +43,25 @@ type ReplyThreadSurfaces = {
 const surfacesFromDocument = (doc: Document): ReplyThreadSurfaces => ({
   body: doc.package.document.content,
   comments: doc.package.document.comments ?? [],
-  ...(doc.package.headers !== undefined ? { headers: doc.package.headers } : {}),
-  ...(doc.package.footers !== undefined ? { footers: doc.package.footers } : {}),
-  ...(doc.package.footnotes !== undefined ? { footnotes: doc.package.footnotes } : {}),
-  ...(doc.package.endnotes !== undefined ? { endnotes: doc.package.endnotes } : {}),
+  ...(doc.package.headers !== undefined
+    ? { headers: doc.package.headers }
+    : {}),
+  ...(doc.package.footers !== undefined
+    ? { footers: doc.package.footers }
+    : {}),
+  ...(doc.package.footnotes !== undefined
+    ? { footnotes: doc.package.footnotes }
+    : {}),
+  ...(doc.package.endnotes !== undefined
+    ? { endnotes: doc.package.endnotes }
+    : {}),
 });
 
 // Malformed input can omit a container's children; guard every content / rows /
 // cells access with the same `?? []` so a walk never crashes on a bad model.
-const surfaceBlockGroups = (surfaces: ReplyThreadSurfaces): BlockContent[][] => {
+const surfaceBlockGroups = (
+  surfaces: ReplyThreadSurfaces,
+): BlockContent[][] => {
   const groups: BlockContent[][] = [surfaces.body ?? []];
   for (const header of surfaces.headers?.values() ?? []) {
     groups.push(header.content ?? []);
@@ -68,7 +78,10 @@ const surfaceBlockGroups = (surfaces: ReplyThreadSurfaces): BlockContent[][] => 
   return groups;
 };
 
-const eachParagraph = (blocks: BlockContent[], visit: (paragraph: Paragraph) => void): void => {
+const eachParagraph = (
+  blocks: BlockContent[],
+  visit: (paragraph: Paragraph) => void,
+): void => {
   for (const block of blocks ?? []) {
     if (block.type === "paragraph") {
       visit(block);
@@ -95,7 +108,10 @@ const scanAnchoredIds = (surfaces: ReplyThreadSurfaces): Set<number> => {
   for (const group of surfaceBlockGroups(surfaces)) {
     eachParagraph(group, (paragraph) => {
       for (const item of paragraph.content ?? []) {
-        if (item.type === "commentRangeStart" || item.type === "commentReference") {
+        if (
+          item.type === "commentRangeStart" ||
+          item.type === "commentReference"
+        ) {
           anchoredIds.add(item.id);
         }
       }
@@ -108,7 +124,8 @@ const scanAnchoredIds = (surfaces: ReplyThreadSurfaces): Set<number> => {
 const commentParentedReplies = (comments: readonly Comment[]): Comment[] => {
   const commentIds = new Set(comments.map((comment) => comment.id));
   return comments.filter(
-    (comment) => comment.parentId !== undefined && commentIds.has(comment.parentId),
+    (comment) =>
+      comment.parentId !== undefined && commentIds.has(comment.parentId),
   );
 };
 
@@ -124,7 +141,8 @@ const orderCoLocatedRanges = (content: Paragraph["content"]): void => {
     while (content[end]?.type === type) end += 1;
     const ordered = content.slice(start, end).toSorted((left, right) => {
       if (
-        (left.type === "commentRangeStart" || left.type === "commentRangeEnd") &&
+        (left.type === "commentRangeStart" ||
+          left.type === "commentRangeEnd") &&
         (right.type === "commentRangeStart" || right.type === "commentRangeEnd")
       ) {
         return left.id - right.id;

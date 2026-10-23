@@ -3,7 +3,10 @@ import { describe, expect, test } from "bun:test";
 import type { FolioAgentVersionDiff } from "./compare";
 import { formatVersionDiffForLLM } from "./compare";
 
-const mainHandle = (blockId: string) => ({ story: { type: "main" } as const, blockId });
+const mainHandle = (blockId: string) => ({
+  story: { type: "main" } as const,
+  blockId,
+});
 
 describe("formatVersionDiffForLLM", () => {
   test("renders summary counts and word-diff markers", () => {
@@ -133,7 +136,9 @@ describe("formatVersionDiffForLLM", () => {
       },
       stories: [],
       changes: [],
-      metadataChanges: [{ property: "revision", baseValue: 1, revisedValue: 2 }],
+      metadataChanges: [
+        { property: "revision", baseValue: 1, revisedValue: 2 },
+      ],
       privacyReport: {
         appliedTransforms: ["remove-attribution", "remove-timestamps"],
         removedMetadataProperties: ["creator", "modified"],

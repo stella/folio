@@ -2,8 +2,12 @@ import { expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  parseRelationships,
+  RELATIONSHIP_TYPES,
+  resolveRelativePath,
+} from "../docx/relsParser";
 import { createDocx } from "../docx/rezip";
-import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "../docx/relsParser";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
 
@@ -14,7 +18,9 @@ const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 test("Folio-exact imports an embedded watermark without replacing base media", async () => {
-  const baseZip = await JSZip.loadAsync(await createDocx(createEmptyDocument()));
+  const baseZip = await JSZip.loadAsync(
+    await createDocx(createEmptyDocument()),
+  );
   const originalMedia = new Uint8Array([1, 2, 3]);
   baseZip.file("word/media/image1.png", originalMedia);
   baseZip.file("word/media/folio-import-1.png", originalMedia);
@@ -27,7 +33,11 @@ test("Folio-exact imports an embedded watermark without replacing base media", a
   document.package.headers = new Map([
     [
       "rId_header",
-      { type: "header", hdrFtrType: "default", content: [{ type: "paragraph", content: [] }] },
+      {
+        type: "header",
+        hdrFtrType: "default",
+        content: [{ type: "paragraph", content: [] }],
+      },
     ],
   ]);
   const zip = await JSZip.loadAsync(await createDocx(document));
@@ -49,11 +59,15 @@ test("Folio-exact imports an embedded watermark without replacing base media", a
       '<Default Extension="png" ContentType="image/png"/></Types>',
     ),
   );
-  const result = await compareDocx(base, await zip.generateAsync({ type: "arraybuffer" }), {
-    author: "Reviewer",
-    timestamp: "2026-09-13T00:00:00.000Z",
-    revisionFormat: "folio-exact",
-  });
+  const result = await compareDocx(
+    base,
+    await zip.generateAsync({ type: "arraybuffer" }),
+    {
+      author: "Reviewer",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      revisionFormat: "folio-exact",
+    },
+  );
   if (result.isErr()) throw result.error;
   expect(result.value.verification.status).toBe("verified");
   for (const decision of ["accept", "reject"] as const) {
@@ -69,24 +83,31 @@ test("Folio-exact imports an embedded watermark without replacing base media", a
       expect(
         Object.keys(saved.files).filter(
           (name) =>
-            name.startsWith("word/media/folio-import-") && name !== "word/media/folio-import-1.png",
+            name.startsWith("word/media/folio-import-") &&
+            name !== "word/media/folio-import-1.png",
         ),
       ).toEqual([]);
       continue;
     }
-    expect(await saved.file("word/media/image1.png")?.async("uint8array")).toEqual(originalMedia);
-    expect(await saved.file("word/media/folio-import-1.png")?.async("uint8array")).toEqual(
-      originalMedia,
-    );
+    expect(
+      await saved.file("word/media/image1.png")?.async("uint8array"),
+    ).toEqual(originalMedia);
+    expect(
+      await saved.file("word/media/folio-import-1.png")?.async("uint8array"),
+    ).toEqual(originalMedia);
     const rels = saved.file("word/_rels/header1.xml.rels");
     if (!rels) throw new Error("Missing imported header relationships");
-    const image = [...parseRelationships(await rels.async("text")).values()].find(
-      ({ type }) => type === RELATIONSHIP_TYPES.image,
-    );
+    const image = [
+      ...parseRelationships(await rels.async("text")).values(),
+    ].find(({ type }) => type === RELATIONSHIP_TYPES.image);
     if (!image) throw new Error("Missing watermark image relationship");
-    const media = saved.file(resolveRelativePath("word/_rels/header1.xml.rels", image.target));
+    const media = saved.file(
+      resolveRelativePath("word/_rels/header1.xml.rels", image.target),
+    );
     if (!media) throw new Error("Missing imported image");
     expect(await media.async("uint8array")).toEqual(PNG);
-    expect(headers?.values().next().value?.rawWatermarkXml).toContain("width:72pt;height:72pt");
+    expect(headers?.values().next().value?.rawWatermarkXml).toContain(
+      "width:72pt;height:72pt",
+    );
   }
 });

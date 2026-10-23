@@ -6,7 +6,8 @@ const numbering = (definitions: string) =>
   `<w:numbering xmlns:w="${W}">${definitions}</w:numbering>`;
 const abstract = (format: string) =>
   `<w:abstractNum w:abstractNumId="41"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="${format}"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>`;
-const num = (id: string) => `<w:num w:numId="73"><w:abstractNumId w:val="${id}"/></w:num>`;
+const num = (id: string) =>
+  `<w:num w:numId="73"><w:abstractNumId w:val="${id}"/></w:num>`;
 const drawing = `<w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="914400" cy="914400"/><wp:docPr id="317" name="Collision fixture"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="urn:fixture"/></a:graphic></wp:inline></w:drawing></w:r>`;
 
 type CollisionFixture = {
@@ -40,7 +41,8 @@ const numberingFixture = (xml: string): CollisionFixture => ({
   contentTypes: [
     {
       partName: "/word/numbering.xml",
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
     },
   ],
   documentRelationships: [
@@ -64,7 +66,8 @@ export const IMPORTED_ID_COLLISION_FIXTURES = {
     contentTypes: [
       {
         partName: "/word/comments.xml",
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
       },
     ],
     documentRelationships: [
@@ -89,7 +92,10 @@ export const IMPORTED_ID_COLLISION_FIXTURES = {
   numId: numberingFixture(
     numbering(
       abstract("decimal") +
-        abstract("upperRoman").replace('abstractNumId="41"', 'abstractNumId="42"') +
+        abstract("upperRoman").replace(
+          'abstractNumId="41"',
+          'abstractNumId="42"',
+        ) +
         num("41") +
         num("42"),
     ),
@@ -106,6 +112,8 @@ export const IMPORTED_ID_COLLISION_FIXTURES = {
   },
 } as const satisfies Record<ImportedIdCollisionKind, CollisionFixture>;
 
-export const importedIdCollisionFixtures = Object.entries(IMPORTED_ID_COLLISION_FIXTURES).map(
-  ([kind, fixture]) => Object.assign({ filename: `duplicate-imported-${kind}.docx` }, fixture),
+export const importedIdCollisionFixtures = Object.entries(
+  IMPORTED_ID_COLLISION_FIXTURES,
+).map(([kind, fixture]) =>
+  Object.assign({ filename: `duplicate-imported-${kind}.docx` }, fixture),
 );

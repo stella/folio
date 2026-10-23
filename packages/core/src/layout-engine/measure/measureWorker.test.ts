@@ -8,7 +8,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { clearAllCaches, clearTextWidthCache, getCachedTextWidth } from "./cache";
+import {
+  clearAllCaches,
+  clearTextWidthCache,
+  getCachedTextWidth,
+} from "./cache";
 import { setFolioMeasurementFlags } from "./featureFlags";
 import { resetCanvasContext } from "./measureContainer";
 import { measureTextWidth } from "./measureProvider";
@@ -17,10 +21,13 @@ import {
   __flushMeasureQueueForTests,
   __isMeasureProxyLiveForTests,
   __setMeasureWorkerTransport,
-  prefetchMeasurement,
   type MeasureWorkerTransport,
+  prefetchMeasurement,
 } from "./measureWorker";
-import type { MeasureWorkerRequest, MeasureWorkerResponse } from "./measureWorkerProtocol";
+import type {
+  MeasureWorkerRequest,
+  MeasureWorkerResponse,
+} from "./measureWorkerProtocol";
 
 type FakeTransport = MeasureWorkerTransport & {
   posted: MeasureWorkerRequest[];
@@ -54,7 +61,8 @@ function prefetchForTest(
 }
 
 function makeFakeTransport(options?: { throwOnPost?: boolean }): FakeTransport {
-  const messageListeners: ((event: { data: MeasureWorkerResponse }) => void)[] = [];
+  const messageListeners: ((event: { data: MeasureWorkerResponse }) => void)[] =
+    [];
   const errorListeners: ((event: unknown) => void)[] = [];
   const posted: MeasureWorkerRequest[] = [];
   const transport = {
@@ -68,10 +76,14 @@ function makeFakeTransport(options?: { throwOnPost?: boolean }): FakeTransport {
     },
     addEventListener(
       type: "message" | "error",
-      listener: ((event: { data: MeasureWorkerResponse }) => void) | ((event: unknown) => void),
+      listener:
+        | ((event: { data: MeasureWorkerResponse }) => void)
+        | ((event: unknown) => void),
     ): void {
       if (type === "message") {
-        messageListeners.push(listener as (event: { data: MeasureWorkerResponse }) => void);
+        messageListeners.push(
+          listener as (event: { data: MeasureWorkerResponse }) => void,
+        );
       } else {
         errorListeners.push(listener as (event: unknown) => void);
       }
@@ -93,7 +105,9 @@ function makeFakeTransport(options?: { throwOnPost?: boolean }): FakeTransport {
   return transport;
 }
 
-function installFakeDocument(options?: { onMeasureText?: (text: string) => void }): void {
+function installFakeDocument(options?: {
+  onMeasureText?: (text: string) => void;
+}): void {
   const fakeDocument = {
     createElement() {
       return {
@@ -317,7 +331,9 @@ describe("response handling (cache fills)", () => {
       ],
     });
 
-    expect(getCachedTextWidth("stale", "11px Arial|scale:1", 0)).toBe(undefined);
+    expect(getCachedTextWidth("stale", "11px Arial|scale:1", 0)).toBe(
+      undefined,
+    );
 
     prefetchForTest("fresh", "11px Arial", 0, 1);
     __flushMeasureQueueForTests();
@@ -440,24 +456,27 @@ describe("integration with measureTextWidth", () => {
     expect(entry.fontFingerprintWidth).toBe(value);
   });
 
-  test.each(["Latin العربية", "Latin 漢字", "Latin Кириллица", "Latin हिन्दी", "office ffi fl"])(
-    "only prefetches directly measured text for %s",
-    (text) => {
-      installFakeDocument();
-      setFolioMeasurementFlags({ workerFontMetrics: true });
-      const transport = makeFakeTransport();
-      __setMeasureWorkerTransport(() => transport);
+  test.each([
+    "Latin العربية",
+    "Latin 漢字",
+    "Latin Кириллица",
+    "Latin हिन्दी",
+    "office ffi fl",
+  ])("only prefetches directly measured text for %s", (text) => {
+    installFakeDocument();
+    setFolioMeasurementFlags({ workerFontMetrics: true });
+    const transport = makeFakeTransport();
+    __setMeasureWorkerTransport(() => transport);
 
-      measureTextWidth(text, { fontFamily: "Arial" });
-      __flushMeasureQueueForTests();
+    measureTextWidth(text, { fontFamily: "Arial" });
+    __flushMeasureQueueForTests();
 
-      const entries = transport.posted.flatMap((message) => message.entries);
-      expect(entries).toHaveLength(1);
-      expect(entries[0]?.text).toBe(text);
-      expect(entries[0]?.fontFingerprintText).toBe(text);
-      expect(entries[0]?.fontFingerprintWidth).toBe(text.length * 7);
-    },
-  );
+    const entries = transport.posted.flatMap((message) => message.entries);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.text).toBe(text);
+    expect(entries[0]?.fontFingerprintText).toBe(text);
+    expect(entries[0]?.fontFingerprintWidth).toBe(text.length * 7);
+  });
 
   test("measureTextWidth cache hit does not enqueue (no main-thread cost, no worker cost)", () => {
     installFakeDocument();

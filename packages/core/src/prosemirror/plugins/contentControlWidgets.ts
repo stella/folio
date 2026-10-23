@@ -13,7 +13,6 @@
  * shell) can subscribe; the plugin does not own the menu/picker chrome.
  */
 
-import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
@@ -22,7 +21,11 @@ import {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "../../content-controls";
-import { findBlockSdtMatch, setContentControlValueTr } from "../commands/contentControls";
+import {
+  findBlockSdtMatch,
+  setContentControlValueTr,
+} from "../commands/contentControls";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 
 export type ContentControlWidgetAnchor = {
   getBoundingClientRect: () => { bottom: number; left: number };
@@ -56,10 +59,15 @@ export type ContentControlWidgetEvent =
       pmPos: number;
       sdtType: string;
       anchor: ContentControlWidgetAnchor;
-      error: ContentControlLockedError | ContentControlTypeError | ContentControlBoundError;
+      error:
+        | ContentControlLockedError
+        | ContentControlTypeError
+        | ContentControlBoundError;
     };
 
-export type ContentControlWidgetCallback = (event: ContentControlWidgetEvent) => void;
+export type ContentControlWidgetCallback = (
+  event: ContentControlWidgetEvent,
+) => void;
 
 type ContentControlWidgetClickEvent = {
   preventDefault: () => void;
@@ -78,8 +86,9 @@ type ContentControlWidgetElement = ContentControlWidgetAnchor & {
   dataset: DOMStringMap;
 };
 
-export const contentControlWidgetsPluginKey =
-  createPluginKeyOwner<unknown>("contentControlWidgets");
+export const contentControlWidgetsPluginKey = createPluginKeyOwner<unknown>(
+  "contentControlWidgets",
+);
 
 /**
  * CustomEvent name dispatched on the editor view DOM whenever the plugin
@@ -119,7 +128,9 @@ const findClosest = (target: unknown, selector: string): unknown => {
   return target.closest(selector);
 };
 
-const isContentControlWidgetElement = (value: unknown): value is ContentControlWidgetElement => {
+const isContentControlWidgetElement = (
+  value: unknown,
+): value is ContentControlWidgetElement => {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -134,7 +145,9 @@ const isContentControlWidgetElement = (value: unknown): value is ContentControlW
   return true;
 };
 
-const findSdtAncestor = (target: unknown): ContentControlWidgetElement | null => {
+const findSdtAncestor = (
+  target: unknown,
+): ContentControlWidgetElement | null => {
   const candidate = findClosest(target, SDT_TYPE_SELECTOR);
   return isContentControlWidgetElement(candidate) ? candidate : null;
 };
@@ -225,7 +238,8 @@ export const handleContentControlWidgetClick = ({
         tag,
         pmPos,
         anchor,
-        currentValue: findBlockSdtMatch(view.state.doc, { pmPos })?.node.textContent,
+        currentValue: findBlockSdtMatch(view.state.doc, { pmPos })?.node
+          .textContent,
       });
       event.preventDefault();
       return true;
@@ -260,7 +274,10 @@ export const handleContentControlWidgetClick = ({
 export function createContentControlWidgetsPlugin(
   onEvent: ContentControlWidgetCallback = () => undefined,
 ): Plugin {
-  const emit = (view: { dom: HTMLElement }, payload: ContentControlWidgetEvent): void => {
+  const emit = (
+    view: { dom: HTMLElement },
+    payload: ContentControlWidgetEvent,
+  ): void => {
     onEvent(payload);
     view.dom.dispatchEvent(
       new CustomEvent(CONTENT_CONTROL_WIDGET_EVENT_NAME, {
@@ -298,7 +315,11 @@ export function createContentControlWidgetsPlugin(
  * `pmPos` field) so the dispatch lands on the exact instance the user
  * interacted with — duplicate-tag SDTs are no longer ambiguous.
  */
-export function dispatchDropdownPick(view: EditorView, pmPos: number, value: string): boolean {
+export function dispatchDropdownPick(
+  view: EditorView,
+  pmPos: number,
+  value: string,
+): boolean {
   const match = findBlockSdtMatch(view.state.doc, { pmPos });
   if (!match) {
     return false;
@@ -333,7 +354,11 @@ export function dispatchDropdownPick(view: EditorView, pmPos: number, value: str
   }
 }
 
-export function dispatchDatePick(view: EditorView, pmPos: number, date: string): boolean {
+export function dispatchDatePick(
+  view: EditorView,
+  pmPos: number,
+  date: string,
+): boolean {
   try {
     const tr = setContentControlValueTr(
       view.state,

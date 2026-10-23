@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
+
 import type { Document } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { normalizeForOps } from "../contract";
-import { DOCUMENT_OP_TYPES, OP_STORIES, SPLIT_HALVES, type DocumentOp } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  SPLIT_HALVES,
+} from "../types";
 
 const originalDocument = (): Document =>
   normalizeForOps({
@@ -27,19 +33,27 @@ const originalDocument = (): Document =>
               {
                 type: "paragraph",
                 paraId: "00000001",
-                content: [{ type: "run", content: [{ type: "text", text: "a" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "a" }] },
+                ],
               },
               {
                 type: "paragraph",
                 paraId: "00000002",
-                content: [{ type: "run", content: [{ type: "text", text: "a" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "a" }] },
+                ],
               },
             ],
           },
         ],
         finalSectionProperties: { pageWidth: 12_240, pageHeight: 15_840 },
         comments: [
-          { id: 7, author: "A", content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }] },
+          {
+            id: 7,
+            author: "A",
+            content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
+          },
         ],
       },
       footnotes: [
@@ -116,19 +130,21 @@ describe("inverse paragraph review fields", () => {
 
     expect(result.document).toBe(document);
     expect(result.inverse).toEqual([]);
-    expect(result.document.package.document.content[0]).not.toHaveProperty("formatting");
+    expect(result.document.package.document.content[0]).not.toHaveProperty(
+      "formatting",
+    );
   });
 
   test("split, join, paragraph patch, and content inverses restore review fields in reverse", () => {
     const original = originalDocument();
     const sequence = appliedSequence();
-    expect(applyDocumentOps(sequence.document, sequence.inverse).unwrap().document).toStrictEqual(
-      original,
-    );
+    expect(
+      applyDocumentOps(sequence.document, sequence.inverse).unwrap().document,
+    ).toStrictEqual(original);
     const batch = applyDocumentOps(original, operations).unwrap();
     expect(batch.document).toStrictEqual(sequence.document);
-    expect(applyDocumentOps(batch.document, batch.inverse).unwrap().document).toStrictEqual(
-      original,
-    );
+    expect(
+      applyDocumentOps(batch.document, batch.inverse).unwrap().document,
+    ).toStrictEqual(original);
   });
 });

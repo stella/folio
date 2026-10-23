@@ -5,19 +5,22 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
+  type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
-  type DeleteBlocksOp,
-  type DocumentOp,
 } from "../types";
 
 const paragraph = (paraId: string, text: string): Paragraph => ({
   type: "paragraph",
   paraId,
-  content: text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+  content:
+    text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
 });
-const documentOf = (content: BlockContent[]): Document => ({ package: { document: { content } } });
+const documentOf = (content: BlockContent[]): Document => ({
+  package: { document: { content } },
+});
 const cell = (content: BlockContent[]): BlockContent => ({
   type: "table",
   rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }],
@@ -71,13 +74,21 @@ test.each(["body", "cell"] as const)(
       formatting: { alignment: "end", runProperties: { bold: true } },
     } satisfies Paragraph;
     const content = [first, final];
-    const document = documentOf(container === "body" ? content : [cell(content)]);
-    const { tracked, direct } = assertLaws(document, deletion(["00000001", "00000002"]));
-    expect(storyParagraphs(direct.document.package.document).map(({ paragraph: p }) => p)).toEqual([
-      { ...final, content: [] },
-    ]);
+    const document = documentOf(
+      container === "body" ? content : [cell(content)],
+    );
+    const { tracked, direct } = assertLaws(
+      document,
+      deletion(["00000001", "00000002"]),
+    );
     expect(
-      storyParagraphs(tracked.document.package.document).at(-1)?.paragraph.pPrMark,
+      storyParagraphs(direct.document.package.document).map(
+        ({ paragraph: p }) => p,
+      ),
+    ).toEqual([{ ...final, content: [] }]);
+    expect(
+      storyParagraphs(tracked.document.package.document).at(-1)?.paragraph
+        .pPrMark,
     ).toBeUndefined();
   },
 );
@@ -95,9 +106,13 @@ test.each(["body", "cell"] as const)(
         formatting: { alignment: "end", runProperties: { bold: true } },
       } satisfies Paragraph;
       const content = [previous, final];
-      const document = documentOf(container === "body" ? content : [cell(content)]);
+      const document = documentOf(
+        container === "body" ? content : [cell(content)],
+      );
       const { direct } = assertLaws(document, deletion(["00000002"]));
-      expect(storyParagraphs(direct.document.package.document).at(0)?.paragraph).toEqual({
+      expect(
+        storyParagraphs(direct.document.package.document).at(0)?.paragraph,
+      ).toEqual({
         ...final,
         content: previous.content,
         formatting: { alignment: "center", runProperties: { bold: true } },
@@ -109,11 +124,22 @@ test.each(["body", "cell"] as const)(
 test("interior deletion preserves the following object and reports physical changes", () => {
   const first = paragraph("00000001", "remove");
   const following = paragraph("00000002", "kept");
-  const { direct, tracked } = assertLaws(documentOf([first, following]), deletion(["00000001"]));
+  const { direct, tracked } = assertLaws(
+    documentOf([first, following]),
+    deletion(["00000001"]),
+  );
   expect(direct.document.package.document.content.at(0)).toBe(following);
   expect(tracked.document.package.document.content.at(-1)).toBe(following);
-  expect(direct.touched).toEqual({ modified: [], inserted: [], removed: [first.paraId] });
-  expect(tracked.touched).toEqual({ modified: [first.paraId], inserted: [], removed: [] });
+  expect(direct.touched).toEqual({
+    modified: [],
+    inserted: [],
+    removed: [first.paraId],
+  });
+  expect(tracked.touched).toEqual({
+    modified: [first.paraId],
+    inserted: [],
+    removed: [],
+  });
 });
 
 test("inverse restores a retired comment whose surviving anchors followed the deleted block", () => {
@@ -135,25 +161,37 @@ test("inverse restores a retired comment whose surviving anchors followed the de
   const document: Document = {
     package: {
       document: {
-        comments: [{ id: 7, author: "Reviewer", anchorKind: "range", content: [] }],
+        comments: [
+          { id: 7, author: "Reviewer", anchorKind: "range", content: [] },
+        ],
         content: [removed, following],
       },
     },
   };
 
-  const edit = apply(document, { ...deletion([removed.paraId ?? ""]), revision: undefined });
+  const edit = apply(document, {
+    ...deletion([removed.paraId ?? ""]),
+    revision: undefined,
+  });
   expect(edit.document.package.document.comments).toBeUndefined();
   expect(edit.touched.modified).toEqual([following.paraId]);
 
-  const restored = applyDocumentOps(edit.document, edit.inverse).unwrap().document;
+  const restored = applyDocumentOps(edit.document, edit.inverse).unwrap()
+    .document;
   expect(restored).toStrictEqual(document);
 });
 
 test("a sole paragraph after a table is cleared without marking its final break", () => {
   const table = cell([paragraph("00000003", "cell")]);
   const final = paragraph("00000001", "remove");
-  const { direct } = assertLaws(documentOf([table, final]), deletion(["00000001"]));
-  expect(direct.document.package.document.content).toEqual([table, { ...final, content: [] }]);
+  const { direct } = assertLaws(
+    documentOf([table, final]),
+    deletion(["00000001"]),
+  );
+  expect(direct.document.package.document.content).toEqual([
+    table,
+    { ...final, content: [] },
+  ]);
   expect(direct.document.package.document.content.at(0)).toBe(table);
 });
 
@@ -215,13 +253,20 @@ test("tracked deletion refuses existing inline review and missing physical ids",
       },
     ],
   };
-  const refused = applyDocumentOp(documentOf([reviewed, final]), deletion(["00000001"]));
-  expect(refused.isErr() && refused.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+  const refused = applyDocumentOp(
+    documentOf([reviewed, final]),
+    deletion(["00000001"]),
+  );
+  expect(refused.isErr() && refused.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  );
   const missing = applyDocumentOp(documentOf([first, final]), {
     ...deletion(["00000001"]),
     newIds: {},
   });
-  expect(missing.isErr() && missing.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
+  expect(missing.isErr() && missing.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+  );
 });
 
 test.each(["body", "cell"] as const)(
@@ -240,9 +285,13 @@ test.each(["body", "cell"] as const)(
         propertyChanges: [pending],
       },
     ] satisfies Paragraph[];
-    const original = documentOf(container === "body" ? content : [cell(content)]);
+    const original = documentOf(
+      container === "body" ? content : [cell(content)],
+    );
     const tracked = apply(original, deletion(["00000002"]));
-    const survivor = storyParagraphs(tracked.document.package.document).at(-1)?.paragraph;
+    const survivor = storyParagraphs(tracked.document.package.document).at(
+      -1,
+    )?.paragraph;
     expect(survivor?.formatting).toEqual({ alignment: "center" });
     expect(survivor?.propertyChanges).toEqual([
       {
@@ -257,13 +306,14 @@ test.each(["body", "cell"] as const)(
       decision: REVISION_DECISIONS.REJECT,
     });
     expect(
-      storyParagraphs(rejected.document.package.document).at(-1)?.paragraph.formatting,
+      storyParagraphs(rejected.document.package.document).at(-1)?.paragraph
+        .formatting,
     ).toEqual({ alignment: "start" });
-    expect(applyDocumentOps(tracked.document, tracked.inverse).unwrap().document).toStrictEqual(
-      original,
-    );
-    expect(applyDocumentOps(rejected.document, rejected.inverse).unwrap().document).toStrictEqual(
-      tracked.document,
-    );
+    expect(
+      applyDocumentOps(tracked.document, tracked.inverse).unwrap().document,
+    ).toStrictEqual(original);
+    expect(
+      applyDocumentOps(rejected.document, rejected.inverse).unwrap().document,
+    ).toStrictEqual(tracked.document);
   },
 );

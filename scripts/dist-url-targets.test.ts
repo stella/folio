@@ -11,7 +11,9 @@ let distDir: string;
 
 beforeAll(async () => {
   distDir = await mkdtemp(path.join(tmpdir(), "folio-url-scan-"));
-  await mkdir(path.join(distDir, "layout-engine", "measure"), { recursive: true });
+  await mkdir(path.join(distDir, "layout-engine", "measure"), {
+    recursive: true,
+  });
   await writeFile(
     path.join(distDir, "layout-engine", "measure", "font-metrics.worker.js"),
     "export {};\n",
@@ -22,12 +24,16 @@ afterAll(async () => {
   await rm(distDir, { recursive: true, force: true });
 });
 
-const measureModule = (code: string) => [{ file: "layout-engine/measure/measureWorker.js", code }];
+const measureModule = (code: string) => [
+  { file: "layout-engine/measure/measureWorker.js", code },
+];
 
 describe("scanDistUrlTargets", () => {
   test("an emitted .js target resolves", () => {
     const scan = scanDistUrlTargets(
-      measureModule('new Worker(new URL("font-metrics.worker.js", import.meta.url));'),
+      measureModule(
+        'new Worker(new URL("font-metrics.worker.js", import.meta.url));',
+      ),
       distDir,
     );
     expect(scan.total).toBe(1);
@@ -36,7 +42,9 @@ describe("scanDistUrlTargets", () => {
 
   test("a ?query-suffixed target passes when the file exists", () => {
     const scan = scanDistUrlTargets(
-      measureModule('new Worker(new URL("./font-metrics.worker.js?worker", import.meta.url));'),
+      measureModule(
+        'new Worker(new URL("./font-metrics.worker.js?worker", import.meta.url));',
+      ),
       distDir,
     );
     expect(scan.total).toBe(1);
@@ -45,7 +53,9 @@ describe("scanDistUrlTargets", () => {
 
   test("a #hash-suffixed target passes when the file exists", () => {
     const scan = scanDistUrlTargets(
-      measureModule('new URL("./font-metrics.worker.js#frag", import.meta.url);'),
+      measureModule(
+        'new URL("./font-metrics.worker.js#frag", import.meta.url);',
+      ),
       distDir,
     );
     expect(scan.dangling).toEqual([]);
@@ -53,7 +63,9 @@ describe("scanDistUrlTargets", () => {
 
   test("a dangling .ts target is reported (the 0.1.1 regression)", () => {
     const scan = scanDistUrlTargets(
-      measureModule('new Worker(new URL("font-metrics.worker.ts", import.meta.url));'),
+      measureModule(
+        'new Worker(new URL("font-metrics.worker.ts", import.meta.url));',
+      ),
       distDir,
     );
     expect(scan.total).toBe(1);

@@ -32,7 +32,11 @@ const SAFE_VML_COLORS = new Set([
   "teal",
   "aqua",
 ]);
-const PROTOTYPE_POLLUTION_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const PROTOTYPE_POLLUTION_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 export type VmlPreviewResult =
   | {
@@ -46,9 +50,7 @@ export type VmlPreviewResult =
   | { type: "invalid" };
 
 type PreviewFragmentResult =
-  | { type: "painted"; svg: string }
-  | { type: "empty" }
-  | { type: "invalid" };
+  { type: "painted"; svg: string } | { type: "empty" } | { type: "invalid" };
 
 type PreviewBudget = {
   elements: number;
@@ -79,7 +81,10 @@ type PathState =
       pathSets: string[];
     };
 
-type PathResult = { type: "painted"; pathSets: string[] } | { type: "empty" } | { type: "invalid" };
+type PathResult =
+  | { type: "painted"; pathSets: string[] }
+  | { type: "empty" }
+  | { type: "invalid" };
 
 type PathNumberCursor = {
   afterComma: boolean;
@@ -87,9 +92,11 @@ type PathNumberCursor = {
   raw: string;
 };
 
-type PathNumberResult = { type: "value"; value: number } | { type: "end" } | { type: "invalid" };
+type PathNumberResult =
+  { type: "value"; value: number } | { type: "end" } | { type: "invalid" };
 
-type ShapePaint = { type: "painted"; fill: string; stroke: string } | { type: "empty" };
+type ShapePaint =
+  { type: "painted"; fill: string; stroke: string } | { type: "empty" };
 
 const EMPTY_RESULT = { type: "empty" } as const;
 const INVALID_RESULT = { type: "invalid" } as const;
@@ -109,13 +116,16 @@ const isVmlPathCommand = (value: string): value is VmlPathCommand => {
 };
 
 /** Parse a VML/CSS length into CSS pixels without accepting partial numbers. */
-export const vmlCssLengthToPx = (raw: string | undefined): number | undefined => {
+export const vmlCssLengthToPx = (
+  raw: string | undefined,
+): number | undefined => {
   if (!raw) {
     return undefined;
   }
-  const match = /^(?<amount>-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?<unit>pt|in|px|cm|mm|pc)?$/iu.exec(
-    raw.trim(),
-  );
+  const match =
+    /^(?<amount>-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?<unit>pt|in|px|cm|mm|pc)?$/iu.exec(
+      raw.trim(),
+    );
   const amountText = match?.groups?.["amount"];
   if (amountText === undefined) {
     return undefined;
@@ -165,7 +175,9 @@ export const parseVmlStyle = (style: string | null): Record<string, string> => {
 };
 
 /** Parse a finite VML number without exponent or partial-number coercion. */
-export const parseVmlNumber = (raw: string | null | undefined): number | undefined => {
+export const parseVmlNumber = (
+  raw: string | null | undefined,
+): number | undefined => {
   if (!raw || !/^-?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(raw.trim())) {
     return undefined;
   }
@@ -174,11 +186,14 @@ export const parseVmlNumber = (raw: string | null | undefined): number | undefin
 };
 
 /** Check a physical preview dimension against the retained SVG layout bound. */
-export const isValidVmlPreviewDimension = (value: number | undefined): value is number =>
+export const isValidVmlPreviewDimension = (
+  value: number | undefined,
+): value is number =>
   value !== undefined && value > 0 && value <= MAX_VML_PREVIEW_DIMENSION_PX;
 
 /** Whether a generated, already-sanitized SVG is within the output cap a preview may retain. */
-export const fitsVmlSvgCap = (svg: string): boolean => svg.length <= MAX_VML_SVG_CHARACTERS;
+export const fitsVmlSvgCap = (svg: string): boolean =>
+  svg.length <= MAX_VML_SVG_CHARACTERS;
 
 const validCoordinate = (value: number | undefined): value is number =>
   value !== undefined && Math.abs(value) <= MAX_VML_PREVIEW_COORDINATE;
@@ -204,19 +219,28 @@ const localCoordinateSpace = (
   const originRaw = getAttribute(element, null, "coordorigin");
   const sizeRaw = getAttribute(element, null, "coordsize");
   const origin = originRaw ? coordinatePair(originRaw) : { x: 0, y: 0 };
-  const size = sizeRaw ? coordinatePair(sizeRaw) : { x: fallbackWidth, y: fallbackHeight };
+  const size = sizeRaw
+    ? coordinatePair(sizeRaw)
+    : { x: fallbackWidth, y: fallbackHeight };
   if (!origin || !size) {
     return undefined;
   }
-  return validExtent(size.x) && validExtent(size.y) ? { origin, size } : undefined;
+  return validExtent(size.x) && validExtent(size.y)
+    ? { origin, size }
+    : undefined;
 };
 
-const coordinateViewport = (style: Record<string, string>): CoordinateViewport | undefined => {
+const coordinateViewport = (
+  style: Record<string, string>,
+): CoordinateViewport | undefined => {
   const x = parseVmlNumber(style["left"]) ?? 0;
   const y = parseVmlNumber(style["top"]) ?? 0;
   const width = parseVmlNumber(style["width"]);
   const height = parseVmlNumber(style["height"]);
-  return validCoordinate(x) && validCoordinate(y) && validExtent(width) && validExtent(height)
+  return validCoordinate(x) &&
+    validCoordinate(y) &&
+    validExtent(width) &&
+    validExtent(height)
     ? { x, y, width, height }
     : undefined;
 };
@@ -231,7 +255,10 @@ const transformMatrix = (
   const translateY = viewport.y - space.origin.y * scaleY;
   const values = [scaleX, scaleY, translateX, translateY];
   if (
-    values.some((value) => !Number.isFinite(value) || Math.abs(value) > MAX_VML_PREVIEW_COORDINATE)
+    values.some(
+      (value) =>
+        !Number.isFinite(value) || Math.abs(value) > MAX_VML_PREVIEW_COORDINATE,
+    )
   ) {
     return undefined;
   }
@@ -273,13 +300,19 @@ const shapePaint = (shape: XmlElement): ShapePaint => {
   const stroke = isVmlFalse(getAttribute(shape, null, "stroked"))
     ? "none"
     : safeColor(getAttribute(shape, null, "strokecolor"), "black");
-  return fill === "none" && stroke === "none" ? EMPTY_RESULT : { type: "painted", fill, stroke };
+  return fill === "none" && stroke === "none"
+    ? EMPTY_RESULT
+    : { type: "painted", fill, stroke };
 };
 
 const isHidden = (style: Record<string, string>): boolean =>
-  style["visibility"]?.toLowerCase() === "hidden" || style["display"]?.toLowerCase() === "none";
+  style["visibility"]?.toLowerCase() === "hidden" ||
+  style["display"]?.toLowerCase() === "none";
 
-const consumeSvgCharacters = (budget: PreviewBudget, count: number): boolean => {
+const consumeSvgCharacters = (
+  budget: PreviewBudget,
+  count: number,
+): boolean => {
   if (budget.svgCharacters + count > MAX_VML_SVG_CHARACTERS) {
     return false;
   }
@@ -319,7 +352,10 @@ const nextPathNumber = (cursor: PathNumberCursor): PathNumberResult => {
 
   cursor.afterComma = false;
   const start = cursor.offset;
-  while (cursor.offset < cursor.raw.length && !/[,\s]/u.test(cursor.raw.charAt(cursor.offset))) {
+  while (
+    cursor.offset < cursor.raw.length &&
+    !/[,\s]/u.test(cursor.raw.charAt(cursor.offset))
+  ) {
     cursor.offset += 1;
   }
   const value = parseVmlNumber(cursor.raw.slice(start, cursor.offset));
@@ -341,12 +377,18 @@ const pathNumberCursor = (raw: string): PathNumberCursor => ({
   raw,
 });
 
-const parseMovePair = (raw: string, budget: PreviewBudget): CoordinatePair | undefined => {
+const parseMovePair = (
+  raw: string,
+  budget: PreviewBudget,
+): CoordinatePair | undefined => {
   const cursor = pathNumberCursor(raw);
   const x = nextPathNumber(cursor);
   const y = nextPathNumber(cursor);
   const end = nextPathNumber(cursor);
-  return x.type === "value" && y.type === "value" && end.type === "end" && consumePathPoint(budget)
+  return x.type === "value" &&
+    y.type === "value" &&
+    end.type === "end" &&
+    consumePathPoint(budget)
     ? { x: x.value, y: y.value }
     : undefined;
 };
@@ -395,7 +437,11 @@ const appendLinePairs = ({
   }
 };
 
-const appendPathCommand = (commands: string[], command: string, budget: PreviewBudget): boolean => {
+const appendPathCommand = (
+  commands: string[],
+  command: string,
+  budget: PreviewBudget,
+): boolean => {
   if (!consumeSvgCharacters(budget, command.length + 1)) {
     return false;
   }
@@ -526,13 +572,21 @@ const primitiveShapeFragment = (
   if (localName === "oval") {
     svg = `<ellipse cx="${viewport.x + viewport.width / 2}" cy="${viewport.y + viewport.height / 2}" rx="${viewport.width / 2}" ry="${viewport.height / 2}" fill="${paint.fill}" stroke="${paint.stroke}"/>`;
   } else {
-    const radius = localName === "roundrect" ? Math.min(viewport.width, viewport.height) * 0.1 : 0;
+    const radius =
+      localName === "roundrect"
+        ? Math.min(viewport.width, viewport.height) * 0.1
+        : 0;
     svg = `<rect x="${viewport.x}" y="${viewport.y}" width="${viewport.width}" height="${viewport.height}" rx="${radius}" fill="${paint.fill}" stroke="${paint.stroke}"/>`;
   }
-  return consumeSvgCharacters(budget, svg.length) ? { type: "painted", svg } : INVALID_RESULT;
+  return consumeSvgCharacters(budget, svg.length)
+    ? { type: "painted", svg }
+    : INVALID_RESULT;
 };
 
-const lineFragment = (line: XmlElement, budget: PreviewBudget): PreviewFragmentResult => {
+const lineFragment = (
+  line: XmlElement,
+  budget: PreviewBudget,
+): PreviewFragmentResult => {
   if (isVmlFalse(getAttribute(line, null, "stroked"))) {
     return EMPTY_RESULT;
   }
@@ -543,10 +597,15 @@ const lineFragment = (line: XmlElement, budget: PreviewBudget): PreviewFragmentR
   }
   const stroke = safeColor(getAttribute(line, null, "strokecolor"), "black");
   const svg = `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="${stroke}"/>`;
-  return consumeSvgCharacters(budget, svg.length) ? { type: "painted", svg } : INVALID_RESULT;
+  return consumeSvgCharacters(budget, svg.length)
+    ? { type: "painted", svg }
+    : INVALID_RESULT;
 };
 
-const pathShapeFragment = (shape: XmlElement, budget: PreviewBudget): PreviewFragmentResult => {
+const pathShapeFragment = (
+  shape: XmlElement,
+  budget: PreviewBudget,
+): PreviewFragmentResult => {
   if (findChild(shape, "v", "textbox") || findChild(shape, "v", "imagedata")) {
     return EMPTY_RESULT;
   }
@@ -613,7 +672,8 @@ const renderGroupChildren = (
         const space = viewport
           ? localCoordinateSpace(child, viewport.width, viewport.height)
           : undefined;
-        const transform = viewport && space ? transformMatrix(viewport, space) : undefined;
+        const transform =
+          viewport && space ? transformMatrix(viewport, space) : undefined;
         if (!transform) {
           return INVALID_RESULT;
         }
@@ -644,7 +704,9 @@ const renderGroupChildren = (
           break;
         }
         const viewport = coordinateViewport(style);
-        result = viewport ? primitiveShapeFragment(child, viewport, budget) : INVALID_RESULT;
+        result = viewport
+          ? primitiveShapeFragment(child, viewport, budget)
+          : INVALID_RESULT;
         break;
       }
       default:
@@ -662,21 +724,32 @@ const renderGroupChildren = (
         result satisfies never;
     }
   }
-  return fragments.length > 0 ? { type: "painted", svg: fragments.join("") } : EMPTY_RESULT;
+  return fragments.length > 0
+    ? { type: "painted", svg: fragments.join("") }
+    : EMPTY_RESULT;
 };
 
 /** Render a bounded standalone VML rectangle or oval preview. */
-export const renderStandaloneVmlPreview = (shape: XmlElement): VmlPreviewResult => {
+export const renderStandaloneVmlPreview = (
+  shape: XmlElement,
+): VmlPreviewResult => {
   if (findDeep(shape, "v", "textbox")) {
     return EMPTY_RESULT;
   }
   const style = parseVmlStyle(getAttribute(shape, null, "style"));
   const widthPx = vmlCssLengthToPx(style["width"]);
   const heightPx = vmlCssLengthToPx(style["height"]);
-  if (!isValidVmlPreviewDimension(widthPx) || !isValidVmlPreviewDimension(heightPx)) {
+  if (
+    !isValidVmlPreviewDimension(widthPx) ||
+    !isValidVmlPreviewDimension(heightPx)
+  ) {
     return INVALID_RESULT;
   }
-  const budget: PreviewBudget = { elements: 1, pathPoints: 0, svgCharacters: 0 };
+  const budget: PreviewBudget = {
+    elements: 1,
+    pathPoints: 0,
+    svgCharacters: 0,
+  };
   const content = primitiveShapeFragment(
     shape,
     { x: 0, y: 0, width: widthPx, height: heightPx },
@@ -697,14 +770,21 @@ export const renderVmlGroupPreview = (group: XmlElement): VmlPreviewResult => {
   const style = parseVmlStyle(getAttribute(group, null, "style"));
   const widthPx = vmlCssLengthToPx(style["width"]);
   const heightPx = vmlCssLengthToPx(style["height"]);
-  if (!isValidVmlPreviewDimension(widthPx) || !isValidVmlPreviewDimension(heightPx)) {
+  if (
+    !isValidVmlPreviewDimension(widthPx) ||
+    !isValidVmlPreviewDimension(heightPx)
+  ) {
     return INVALID_RESULT;
   }
   const space = localCoordinateSpace(group, widthPx, heightPx);
   if (!space) {
     return INVALID_RESULT;
   }
-  const budget: PreviewBudget = { elements: 1, pathPoints: 0, svgCharacters: 0 };
+  const budget: PreviewBudget = {
+    elements: 1,
+    pathPoints: 0,
+    svgCharacters: 0,
+  };
   const content = renderGroupChildren(group, budget, 0);
   if (content.type !== "painted") {
     return content;

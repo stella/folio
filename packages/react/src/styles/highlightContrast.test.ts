@@ -10,14 +10,21 @@ const AUTHORED_BACKGROUND_SELECTOR =
 
 describe("dark-mode authored run backgrounds", () => {
   test("inverts authored backgrounds and leaves their text on the document color path", () => {
-    const css = readFileSync(new URL("editor.css", import.meta.url), "utf-8");
+    // Whitespace-normalized, so a formatter wrapping a selector or a value
+    // across lines does not change what the rule says.
+    const css = readFileSync(
+      new URL("editor.css", import.meta.url),
+      "utf-8",
+    ).replaceAll(/\s+/gu, " ");
     const explicitColorRule = css.indexOf(EXPLICIT_COLOR_SELECTOR);
     const authoredBackgroundRule = css.indexOf(AUTHORED_BACKGROUND_SELECTOR);
 
     expect(explicitColorRule).toBeGreaterThanOrEqual(0);
     expect(authoredBackgroundRule).toBeGreaterThan(explicitColorRule);
     const ruleStart = css.lastIndexOf(".dark", authoredBackgroundRule);
-    expect(css.slice(ruleStart, css.indexOf("}", authoredBackgroundRule) + 1)).toContain(
+    expect(
+      css.slice(ruleStart, css.indexOf("}", authoredBackgroundRule) + 1),
+    ).toContain(
       "from var(--doc-authored-background-color) clamp(0, 1.22 - 0.95 * l, 1)",
     );
     expect(css).not.toContain(BACKGROUND_TEXT_SELECTOR);

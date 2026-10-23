@@ -1,7 +1,5 @@
-import {
-  paragraphNumberingReference,
-  type ParagraphNumberingOverride,
-} from "../model/paragraphNumbering";
+import { inlineMarkdownToRuns, plainTextRuns } from "../markdown/inline";
+import type { InlineRunFormat } from "../markdown/inline";
 import type {
   BlockContent,
   Document,
@@ -13,8 +11,10 @@ import type {
   TableRow,
 } from "../model/document";
 import type { NumberingDefinitions } from "../model/lists";
-import { inlineMarkdownToRuns, plainTextRuns } from "../markdown/inline";
-import type { InlineRunFormat } from "../markdown/inline";
+import {
+  type ParagraphNumberingOverride,
+  paragraphNumberingReference,
+} from "../model/paragraphNumbering";
 import { parseLegalSource } from "./parser";
 import type {
   Autofix,
@@ -52,7 +52,9 @@ export const compileLegalSourceToDocument = (
   );
   const validationDiagnostics = validateLegalDraft(parsed.draft);
   const diagnostics = [...parsed.diagnostics, ...validationDiagnostics];
-  const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  const errors = diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "error",
+  );
 
   if (errors.length > 0) {
     return {
@@ -69,7 +71,9 @@ export const compileLegalSourceToDocument = (
     document,
     draft: parsed.draft,
     fixes: parsed.fixes,
-    warnings: diagnostics.filter((diagnostic) => diagnostic.severity === "warning"),
+    warnings: diagnostics.filter(
+      (diagnostic) => diagnostic.severity === "warning",
+    ),
   };
 };
 
@@ -92,7 +96,10 @@ export const draftToDocument = (draft: LegalDraft): Document => {
   const docxPackage: Document["package"] = {
     document: {
       content,
-      finalSectionProperties: pageProperties(draft.meta.page.size, draft.meta.page.orientation),
+      finalSectionProperties: pageProperties(
+        draft.meta.page.size,
+        draft.meta.page.orientation,
+      ),
     },
     styles: createStyleDefinitions(),
     properties: {
@@ -146,7 +153,12 @@ const appendBlock = (
     case "list":
       for (const item of block.items) {
         content.push(
-          paragraph(item, "ListParagraph", {}, listNumbering(block, options.numberingProfile)),
+          paragraph(
+            item,
+            "ListParagraph",
+            {},
+            listNumbering(block, options.numberingProfile),
+          ),
         );
       }
       return;
@@ -154,7 +166,15 @@ const appendBlock = (
       content.push(table(block.table.headers, block.table.rows));
       return;
     case "schedule":
-      content.push(paragraph(block.heading, "ScheduleHeading", { bold: true }, undefined, true));
+      content.push(
+        paragraph(
+          block.heading,
+          "ScheduleHeading",
+          { bold: true },
+          undefined,
+          true,
+        ),
+      );
       appendParagraphs(content, block.paragraphs, "BodyText");
       return;
     case "signatures":
@@ -197,7 +217,10 @@ const listNumbering = (
     return undefined;
   }
   if (profile === "checklist") {
-    return paragraphNumberingReference({ numId: CHECKLIST_NUMBERING_ID, ilvl: 0 });
+    return paragraphNumberingReference({
+      numId: CHECKLIST_NUMBERING_ID,
+      ilvl: 0,
+    });
   }
   return paragraphNumberingReference({
     numId: block.ordered ? LEGAL_NUMBERING_ID : BULLET_NUMBERING_ID,
@@ -205,7 +228,11 @@ const listNumbering = (
   });
 };
 
-const appendParagraphs = (content: BlockContent[], paragraphs: string[], styleId: string) => {
+const appendParagraphs = (
+  content: BlockContent[],
+  paragraphs: string[],
+  styleId: string,
+) => {
   for (const text of paragraphs) {
     content.push(paragraph(text, styleId));
   }
@@ -237,7 +264,11 @@ const paragraph = (
 // rule), never markdown; a name with an asterisk or underscore must not
 // turn into emphasis. Placeholders still get their highlight: a model
 // that does not know the signatory writes `[[name]]` here too.
-const plainParagraph = (text: string, styleId: string, runOptions: RunOptions = {}): Paragraph => ({
+const plainParagraph = (
+  text: string,
+  styleId: string,
+  runOptions: RunOptions = {},
+): Paragraph => ({
   type: "paragraph",
   formatting: { styleId },
   content: plainTextRuns(text, runOptions),
@@ -264,11 +295,18 @@ const tableCell = (text: string, header: boolean): TableCell => ({
 // the bolded party name, a signing space, the `____` rule, and any
 // `by:` / `title:` values the AI supplied (raw, in whatever language
 // it wrote the document in).
-const signatureTable = (parties: { name: string; signatory?: string; title?: string }[]): Table => {
-  const partyList = parties.length > 0 ? parties : [{ name: "", signatory: "", title: "" }];
+const signatureTable = (
+  parties: { name: string; signatory?: string; title?: string }[],
+): Table => {
+  const partyList =
+    parties.length > 0 ? parties : [{ name: "", signatory: "", title: "" }];
   const empty = (): Paragraph => plainParagraph("", "SignatureSpacer");
 
-  const buildCell = (party: { name: string; signatory?: string; title?: string }): TableCell => {
+  const buildCell = (party: {
+    name: string;
+    signatory?: string;
+    title?: string;
+  }): TableCell => {
     const cellContent: (Paragraph | Table)[] = [
       plainParagraph(party.name, "SignatureParty", { bold: true }),
       empty(),
@@ -279,7 +317,9 @@ const signatureTable = (parties: { name: string; signatory?: string; title?: str
       cellContent.push(plainParagraph(party.signatory, "SignatureField"));
     }
     if (party.title) {
-      cellContent.push(plainParagraph(party.title, "SignatureField", { italic: true }));
+      cellContent.push(
+        plainParagraph(party.title, "SignatureField", { italic: true }),
+      );
     }
     return { type: "tableCell", content: cellContent };
   };

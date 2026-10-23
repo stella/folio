@@ -18,15 +18,17 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
 import {
-  buildBodySequenceDocx,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
   type BodyItem,
+  buildBodySequenceDocx,
   type CellContent,
 } from "../compare/__fixtures__/body-sequence";
-import type { FolioAIBlock } from "./types";
 import { FolioDocxReviewer } from "./headless";
+import type { FolioAIBlock } from "./types";
 
 const wordArb = fc.stringMatching(/^[A-Za-z]{3,9}$/u);
 
@@ -45,12 +47,14 @@ const nestedCellArb: fc.Arbitrary<CellContent> = fc.oneof(
   { weight: 5, arbitrary: textArb },
   {
     weight: 1,
-    arbitrary: fc.array(textArb, { minLength: 1, maxLength: 2 }).map((texts): CellContent => [
-      { kind: "paragraph", text: texts[0] ?? "" },
-      // A table as a cell's last child is the container edge the fixture
-      // closes with the paragraph the format requires.
-      { kind: "table", rows: [[texts[1] ?? ""]] },
-    ]),
+    arbitrary: fc
+      .array(textArb, { minLength: 1, maxLength: 2 })
+      .map((texts): CellContent => [
+        { kind: "paragraph", text: texts[0] ?? "" },
+        // A table as a cell's last child is the container edge the fixture
+        // closes with the paragraph the format requires.
+        { kind: "table", rows: [[texts[1] ?? ""]] },
+      ]),
   },
 );
 
@@ -77,7 +81,10 @@ const tableArb: fc.Arbitrary<BodyItem> = fc
     }
     // Never hide every row: a table with nothing visible is a different shape
     // from a table with a hidden row in it.
-    const hides = hiddenRow !== undefined && hiddenRow < squared.length && squared.length > 1;
+    const hides =
+      hiddenRow !== undefined &&
+      hiddenRow < squared.length &&
+      squared.length > 1;
     const table: BodyItem = { kind: "table", rows: squared };
     if (hides) {
       table.hiddenRows = [hiddenRow];
@@ -91,10 +98,16 @@ const tableArb: fc.Arbitrary<BodyItem> = fc
  * than a case this property is about.
  */
 const bodyArb: fc.Arbitrary<readonly BodyItem[]> = fc
-  .array(fc.oneof({ weight: 3, arbitrary: paragraphArb }, { weight: 1, arbitrary: tableArb }), {
-    minLength: 1,
-    maxLength: 6,
-  })
+  .array(
+    fc.oneof(
+      { weight: 3, arbitrary: paragraphArb },
+      { weight: 1, arbitrary: tableArb },
+    ),
+    {
+      minLength: 1,
+      maxLength: 6,
+    },
+  )
   .map((items) => {
     const body: BodyItem[] = [];
     body.push(...items);
@@ -113,10 +126,14 @@ const shapeOf = ({ id, text, table }: FolioAIBlock): BlockShape => ({
 });
 
 /** A style id that names the block it was meant for, so a swap is visible. */
-const styleFor = (index: number): string => `Probe${String(index).padStart(3, "0")}`;
+const styleFor = (index: number): string =>
+  `Probe${String(index).padStart(3, "0")}`;
 
 /** The package with a paragraph style defined for each of its first `count` blocks. */
-const withProbeStyles = async (docx: ArrayBuffer, count: number): Promise<ArrayBuffer> => {
+const withProbeStyles = async (
+  docx: ArrayBuffer,
+  count: number,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(docx);
   const styles = await zip.file("word/styles.xml")?.async("text");
   if (!styles) {
@@ -127,7 +144,10 @@ const withProbeStyles = async (docx: ArrayBuffer, count: number): Promise<ArrayB
     (_, index) =>
       `<w:style w:type="paragraph" w:styleId="${styleFor(index)}"><w:name w:val="${styleFor(index)}"/></w:style>`,
   ).join("");
-  zip.file("word/styles.xml", styles.replace("</w:styles>", `${probes}</w:styles>`));
+  zip.file(
+    "word/styles.xml",
+    styles.replace("</w:styles>", `${probes}</w:styles>`),
+  );
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
@@ -138,7 +158,9 @@ describe("block ids resolve against the live document", () => {
       await fc.assert(
         fc.asyncProperty(bodyArb, async (items) => {
           const docx = await buildBodySequenceDocx(items);
-          const blockCount = (await FolioDocxReviewer.fromBuffer(docx)).snapshot().blocks.length;
+          const blockCount = (
+            await FolioDocxReviewer.fromBuffer(docx)
+          ).snapshot().blocks.length;
           const reviewer = await FolioDocxReviewer.fromBuffer(
             await withProbeStyles(docx, blockCount),
             { author: "probe" },
@@ -160,7 +182,9 @@ describe("block ids resolve against the live document", () => {
           // The walk is the same walk: same blocks, same order, same
           // containers, same text — the batch changed only styles.
           expect(after.map(shapeOf)).toEqual(before.map(shapeOf));
-          expect(after.map(({ styleId }) => styleId)).toEqual(before.map((_, i) => styleFor(i)));
+          expect(after.map(({ styleId }) => styleId)).toEqual(
+            before.map((_, i) => styleFor(i)),
+          );
         }),
         propertyConfig({ numRuns: 25 }),
       );

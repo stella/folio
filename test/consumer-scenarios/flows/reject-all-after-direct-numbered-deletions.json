@@ -47,6 +47,12 @@
       ]
     }
   ],
-  "swarm": ["replaceInBlock", "replaceBlock", "deleteBlock", "splitBlock", "deleteTable"],
+  "swarm": [
+    "replaceInBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "deleteTable"
+  ],
   "origin": "shrunk from swap+splice+splice of 59fc9b62eeb8548c"
 }

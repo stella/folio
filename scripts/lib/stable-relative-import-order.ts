@@ -1,6 +1,7 @@
 import type { TsdownPlugin } from "tsdown";
 
-export const STABLE_RELATIVE_IMPORT_ORDER_PLUGIN = "stable-relative-import-order";
+export const STABLE_RELATIVE_IMPORT_ORDER_PLUGIN =
+  "stable-relative-import-order";
 
 type RelativeImport = {
   start: number;
@@ -44,7 +45,8 @@ export const canonicalizeRelativeImportOrder = (
   for (const group of sortedByGroup.values()) {
     group.sort(
       (left, right) =>
-        compareCodeUnits(left.source, right.source) || compareCodeUnits(left.code, right.code),
+        compareCodeUnits(left.source, right.source) ||
+        compareCodeUnits(left.code, right.code),
     );
   }
 
@@ -69,14 +71,19 @@ export const stableRelativeImportOrder = (): TsdownPlugin => ({
   name: STABLE_RELATIVE_IMPORT_ORDER_PLUGIN,
   renderChunk(code, _chunk, options) {
     if (options.sourcemap) {
-      this.error(`${STABLE_RELATIVE_IMPORT_ORDER_PLUGIN} requires sourcemaps to remain disabled`);
+      this.error(
+        `${STABLE_RELATIVE_IMPORT_ORDER_PLUGIN} requires sourcemaps to remain disabled`,
+      );
     }
 
     const imports: RelativeImport[] = [];
     let group = 0;
     let previousWasRelative = false;
     for (const statement of this.parse(code).body) {
-      if (statement.type === "ImportDeclaration" && statement.source.value.startsWith(".")) {
+      if (
+        statement.type === "ImportDeclaration" &&
+        statement.source.value.startsWith(".")
+      ) {
         if (!previousWasRelative) {
           group += 1;
         }

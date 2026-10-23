@@ -1,19 +1,28 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
+import {
+  BROWSER_FUZZ_BUDGET,
+  checkWithBoundedShrink,
+} from "../test/bounded-async-fuzz";
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
-import { BROWSER_FUZZ_BUDGET, checkWithBoundedShrink } from "../test/bounded-async-fuzz";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("browser fuzz budgets leave time for setup and durable reporting", () => {
-  expect(BROWSER_FUZZ_BUDGET.discoveryMs + BROWSER_FUZZ_BUDGET.shrinkMs).toBeLessThan(
-    BROWSER_FUZZ_BUDGET.testMs,
-  );
+  expect(
+    BROWSER_FUZZ_BUDGET.discoveryMs + BROWSER_FUZZ_BUDGET.shrinkMs,
+  ).toBeLessThan(BROWSER_FUZZ_BUDGET.testMs);
 });
 
 test("a stalled shrink retains the first assertion and seeded witness", async () => {
   const original = new TypeError("Original invariant failed");
-  const retained: { seed: number; path: string; value: number[]; error: unknown }[] = [];
+  const retained: {
+    seed: number;
+    path: string;
+    value: number[];
+    error: unknown;
+  }[] = [];
   const pending: (() => void)[] = [];
   let evaluations = 0;
   const result = await checkWithBoundedShrink({
@@ -76,7 +85,8 @@ test("non-root initial paths preserve discovery and minimized replay witnesses",
     propertyConfig({ seed: 347, numRuns: 1 }),
   );
   const seed = baseline.seed;
-  if (baseline.counterexamplePath === null) throw new TypeError("Missing generated replay path");
+  if (baseline.counterexamplePath === null)
+    throw new TypeError("Missing generated replay path");
   const result = await checkWithBoundedShrink({
     arbitrary,
     seed,
@@ -93,7 +103,13 @@ test("non-root initial paths preserve discovery and minimized replay witnesses",
     if (!verdict || verdict.counterexamplePath === null)
       throw new TypeError("Missing replay witness");
     expect(
-      fc.sample(arbitrary, { seed, path: verdict.counterexamplePath, numRuns: 1 }).at(0),
+      fc
+        .sample(arbitrary, {
+          seed,
+          path: verdict.counterexamplePath,
+          numRuns: 1,
+        })
+        .at(0),
     ).toEqual(verdict.counterexample?.at(0));
   }
 });
@@ -121,7 +137,9 @@ test("generated failures are saved once before shrinking without replaying the f
     expect(result.discovery.failed).toBe(true);
     expect(result.shrinking?.failed).toBe(true);
     expect(
-      evaluated.filter((value) => JSON.stringify(value) === JSON.stringify(evaluated.at(0))),
+      evaluated.filter(
+        (value) => JSON.stringify(value) === JSON.stringify(evaluated.at(0)),
+      ),
     ).toHaveLength(1);
   }
 });

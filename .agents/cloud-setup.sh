@@ -5,9 +5,9 @@
 # Supported platform: Ubuntu 24.04 (noble), amd64/arm64, root or passwordless sudo.
 set -euo pipefail
 
-usage() { echo 'Usage: cloud-setup.sh install|start' >&2; exit 2; }
+usage() { echo 'Usage: cloud-setup.sh install|start|session' >&2; exit 2; }
 [[ "$#" == 1 ]] || usage
-case "$1" in install|start) MODE="$1" ;; *) usage ;; esac
+case "$1" in install|start|session) MODE="$1" ;; *) usage ;; esac
 fail() { echo "cloud-setup: $*" >&2; exit 1; }
 trap 'echo "cloud-setup: command failed at line $LINENO" >&2' ERR
 # Each phase logs its start and duration so a stalled phase is visible in the task log.
@@ -36,13 +36,23 @@ OUTPUT_USER="$(getent passwd "$OUTPUT_UID" | cut -d: -f1)"
 OUTPUT_HOME="$(getent passwd "$OUTPUT_UID" | cut -d: -f6)"
 [[ -n "$OUTPUT_USER" && "$OUTPUT_HOME" == /* && -d "$OUTPUT_HOME" ]] || fail 'Invoking user requires an existing home directory'
 root() { "$@"; }
-service_run() { runuser -u stll-cloud -- "$@" 9>&-; }
-BUN_VERSION='1.4.3'
+# Service daemons outlive setup, so they inherit no descriptor beyond stdio: a cloud
+# runner can pass its terminal as extra descriptors and wait until every copy closes.
+service_run() (
+  for descriptor in "/proc/$BASHPID/fd/"*; do
+    descriptor="$(basename -- "$descriptor")"
+    if [[ "$descriptor" =~ ^[0-9]+$ ]] && (( descriptor > 2 )); then eval "exec $descriptor>&-"; fi
+  done
+  exec runuser -u stll-cloud -- "$@"
+)
+BUN_VERSION='1.4.4'
 NODE_VERSION='26.10.0'
 NODE_DIR="/opt/stll-cloud/node/$NODE_VERSION"
 BUN_DIR="/opt/stll-cloud/bun/$BUN_VERSION"
 export PATH="$NODE_DIR/bin:$BUN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BUN_CACHE="/var/cache/stll-cloud/bun/$OUTPUT_UID"
+DEPENDENCY_STATE_ROOT=/var/lib/stll-cloud
+DEPENDENCY_STAMP="$DEPENDENCY_STATE_ROOT/dependencies-$(printf '%s' "$REPO_ROOT" | sha256sum | cut -d' ' -f1).sha256"
 
 [[ -f "$REPO_ROOT/.node-version" && ! -L "$REPO_ROOT/.node-version" ]] || fail 'A regular root .node-version is required'
 [[ "$(awk 'NF { if (++count > 1 || NF != 1) exit 1; value=$1 } END { if (count != 1) exit 1; print value }' "$REPO_ROOT/.node-version")" == "$NODE_VERSION" ]] || fail 'Node selector changed; regenerate cloud-setup.sh'
@@ -54,22 +64,35 @@ case "$(uname -m)" in
 esac
 
 
+release_log_holders() {
+  # Processes left by package scripts may still hold a step log after the command exits.
+  # Setup starts its own services later, so end them rather than let them write into a
+  # deleted log for their whole lifetime.
+  # One find over all descriptor links; no process per descriptor.
+  local log="$1" root="${CLOUD_PROC_ROOT:-/proc}" fd pid
+  while IFS= read -r fd; do
+    pid="${fd%/fd/*}"
+    pid="${pid##*/}"
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" != "$$" ]] || continue
+    kill -TERM "$pid" 2>/dev/null || true
+  done < <(find "$root" -mindepth 3 -maxdepth 3 -path "$root/[0-9]*/fd/*" -lname "$log" 2>/dev/null)
+}
 network_run() (
   local host="$1" seconds="$2" status=0
   shift 2
-  set -o pipefail
   network_log="$(mktemp)" || return "$?"
   trap 'rm -f -- "$network_log"' EXIT
   trap 'exit 129' HUP
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  if timeout --signal=TERM --kill-after=5s "$seconds"s "$@" 2>&1 | tee "$network_log"; then
-    return 0
-  else
-    # Scalar Bash array expansion reads PIPESTATUS[0] before assignment resets it.
-    status="$PIPESTATUS"
-  fi
-  [[ "$status" != 0 ]] || fail 'Cannot capture network command output'
+  # Output goes to a file, never a pipe: package scripts may leave processes that keep
+  # inherited descriptors open, and a pipe reader would wait for them past the command.
+  # Input is never the terminal: timeout runs the command outside the foreground process
+  # group, where apt restoring terminal settings on a terminal stdin stops it for good.
+  timeout --signal=TERM --kill-after=5s "$seconds"s "$@" < /dev/null > "$network_log" 2>&1 || status=$?
+  release_log_holders "$network_log"
+  cat -- "$network_log" || fail 'Cannot capture network command output'
+  [[ "$status" != 0 ]] || return 0
   if [[ "$status" == 124 || "$status" == 137 || "$status" == 28 ]] || grep -Eiq 'timed[[:space:]-]+out|time[[:space:]-]+out|timeout[[:space:]]+(was[[:space:]]+)?(reached|expired)|(connection|operation|socket)[[:space:]-]+timeout' "$network_log"; then
     fail "download timed out: $host"
   fi
@@ -86,7 +109,8 @@ apt_network() {
   # --print-uris reads configured indexes without contacting their servers.
   hosts="$(set -o pipefail; apt-get --print-uris update | awk -F/ '/^\047https?:\/\// { host=$3; sub(/.*@/, "", host); if (!seen[host]++) { printf "%s%s", separator, host; separator="," } }')" || return "$?"
   [[ -n "$hosts" ]] || hosts='configured APT hosts'
-  network_run "$hosts" 180 apt-get -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Retries=3 -o APT::Update::Error-Mode=any "$@"
+  # APT_DEADLINE: whole-call seconds; callers that also unpack packages may extend it.
+  network_run "$hosts" "${APT_DEADLINE:-180}" apt-get -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Retries=3 -o APT::Update::Error-Mode=any "$@"
 }
 apt_refresh_for() {
   # Skip the refresh only when the install downloads nothing: then no package
@@ -99,19 +123,89 @@ apt_refresh_for() {
 }
 
 
+node_ready() {
+  local node_version npm_version npx_version
+  [[ -x "$NODE_DIR/bin/node" && -x "$NODE_DIR/bin/npm" && -x "$NODE_DIR/bin/npx" ]] || return 1
+  node_version="$("$NODE_DIR/bin/node" --version)" || return 1
+  [[ "$node_version" == "v$NODE_VERSION" ]] || return 1
+  npm_version="$("$NODE_DIR/bin/npm" --version)" || return 1
+  [[ "$npm_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  npx_version="$("$NODE_DIR/bin/npx" --version)" || return 1
+  [[ "$npx_version" == "$npm_version" ]] || return 1
+}
 runtime_ready() {
-  [[ -x "$NODE_DIR/bin/node" && "$($NODE_DIR/bin/node --version)" == "v$NODE_VERSION" ]] || fail 'Pinned Node is unavailable; run install'
+  node_ready || fail 'Pinned Node, npm or npx is unavailable; run install'
   [[ -x "$BUN_DIR/bun" && "$($BUN_DIR/bun --version)" == "$BUN_VERSION" ]] || fail 'Pinned Bun is unavailable; run install'
 }
-install_runtimes() {
+bun_route() {
+  local label="$1" resolved version
+  shift
+  resolved="$("$@" -c 'command -v bun')" || fail "Bun is unavailable through $label"
+  version="$("$@" -c 'bun --version')" || fail "Bun at $resolved failed through $label"
+  [[ "$version" == "$BUN_VERSION" ]] || fail "Bun at $resolved resolves version $version through $label; expected $BUN_VERSION"
+}
+verify_bun_routes() {
+  local configured_mise login_shell minimal_path mise_root root_mise shims
+  # Test-only overrides keep route executables and image locations inside fixtures.
+  login_shell="$(printenv STLL_CLOUD_TEST_LOGIN_SHELL || true)"
+  [[ -n "$login_shell" ]] || login_shell=bash
+  minimal_path="$(printenv STLL_CLOUD_TEST_MINIMAL_PATH || true)"
+  [[ -n "$minimal_path" ]] || minimal_path=/usr/local/bin:/usr/bin:/bin
+  root_mise="$(printenv STLL_CLOUD_TEST_ROOT_MISE || true)"
+  [[ -n "$root_mise" ]] || root_mise=/root/.local/share/mise
+  bun_route 'the setup PATH' env PATH="$PATH" sh
+  bun_route 'sh -c' sh
+  bun_route 'bash -lc' "$login_shell" -l
+  bun_route 'the minimal system PATH' env -i PATH="$minimal_path" sh
+  configured_mise="$(printenv MISE_DATA_DIR || true)"
+  for mise_root in "$configured_mise" "$OUTPUT_HOME/.local/share/mise" "$root_mise"; do
+    [[ -n "$mise_root" ]] || continue
+    shims="$mise_root/shims"
+    [[ -d "$shims" ]] || continue
+    bun_route "mise shims PATH $shims" env PATH="$shims:$PATH" sh
+  done
+}
+replace_image_buns() {
+  local candidate configured_mise directory mise_root root_mise
+  configured_mise="$(printenv MISE_DATA_DIR || true)"
+  root_mise="$(printenv STLL_CLOUD_TEST_ROOT_MISE || true)"
+  [[ -n "$root_mise" ]] || root_mise=/root/.local/share/mise
+  for mise_root in "$configured_mise" "$OUTPUT_HOME/.local/share/mise" "$root_mise"; do
+    [[ -n "$mise_root" ]] || continue
+    if [[ -d "$mise_root/installs/bun" ]]; then
+      while IFS= read -r -d '' candidate; do
+        [[ -d "$candidate" ]] || ln -sfnT -- "$BUN_DIR/bun" "$candidate"
+      done < <(find "$mise_root/installs/bun" \( -type f -o -type l \) \( -name bun -o -name bunx \) -print0)
+    fi
+    for candidate in "$mise_root/shims/bun" "$mise_root/shims/bunx"; do
+      [[ -e "$candidate" || -L "$candidate" ]] || continue
+      [[ -d "$candidate" ]] || ln -sfnT -- "$BUN_DIR/bun" "$candidate"
+    done
+  done
+  while IFS= read -r directory; do
+    [[ -n "$directory" ]] || directory=.
+    for candidate in "$directory/bun" "$directory/bunx"; do
+      [[ -e "$candidate" || -L "$candidate" ]] || continue
+      [[ -d "$candidate" ]] && continue
+      [[ "$(readlink -f -- "$candidate")" == "$(readlink -f -- "$BUN_DIR/bun")" ]] || ln -sfnT -- "$BUN_DIR/bun" "$candidate"
+    done
+  done < <(printf '%s' "$PATH" | tr : '\n')
+}
+install_runtimes() (
+  if [[ ! -s /etc/ssl/certs/ca-certificates.crt ]]; then
+    command -v update-ca-certificates >/dev/null || fail 'System CA certificate bundle is missing; restore ca-certificates in the base image offline before install'
+    update-ca-certificates || fail 'System CA certificate bundle could not be repaired offline; restore ca-certificates in the base image before install'
+  fi
+  [[ -s /etc/ssl/certs/ca-certificates.crt ]] || fail 'System CA certificate bundle is unavailable after offline repair; restore ca-certificates in the base image before install'
   if ! command -v curl >/dev/null || ! command -v unzip >/dev/null || ! command -v xz >/dev/null || ! command -v openssl >/dev/null || ! command -v gpg >/dev/null || ! ldconfig -p | awk '$1 == "libatomic.so.1" { found=1 } END { exit !found }'; then
     apt_refresh_for ca-certificates curl unzip xz-utils openssl gnupg util-linux libatomic1
     DEBIAN_FRONTEND=noninteractive apt_install ca-certificates curl unzip xz-utils openssl gnupg util-linux libatomic1
   fi
-  local scratch node_archive bun_archive bun_folder
+  local node_archive bun_archive bun_folder
+  # Subshell scope retains scratch for EXIT cleanup after a failed command.
   scratch="$(mktemp -d)"
-  trap 'rm -rf -- "$scratch"' RETURN
-  if [[ ! -x "$NODE_DIR/bin/node" ]] || [[ "$($NODE_DIR/bin/node --version)" != "v$NODE_VERSION" ]]; then
+  trap 'rm -rf -- "$scratch"' EXIT
+  if ! node_ready; then
     node_archive="node-v$NODE_VERSION-linux-$NODE_ARCH.tar.xz"
     download_file "https://nodejs.org/dist/v$NODE_VERSION/$node_archive" "$scratch/$node_archive" 120
     download_file "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt" "$scratch/node-sums" 45
@@ -134,9 +228,9 @@ install_runtimes() {
   ln -sfnT -- "$NODE_DIR/bin/npm" /usr/local/bin/npm
   ln -sfnT -- "$NODE_DIR/bin/npx" /usr/local/bin/npx
   ln -sfnT -- "$BUN_DIR/bun" /usr/local/bin/bun
-  rm -rf -- "$scratch"
-  trap - RETURN
-}
+  replace_image_buns
+  verify_bun_routes
+)
 
 dependency_install() {
   local directory download_hosts
@@ -174,6 +268,47 @@ process.stdout.write([...hosts].sort().join(","));
   network_run "$download_hosts" 240 runuser -u "$OUTPUT_USER" -- env HOME="$OUTPUT_HOME" BUN_INSTALL_CACHE_DIR="$BUN_CACHE" PATH="$PATH" BUN_CONFIG_HTTP_IDLE_TIMEOUT=20 "$BUN_DIR/bun" install --frozen-lockfile
 }
 
+dependency_hash() {
+  [[ -f bun.lock && ! -L bun.lock ]] || fail 'A regular root bun.lock is required'
+  sha256sum -- bun.lock | cut -d ' ' -f1
+}
+prepare_dependency_state() {
+  [[ ! -L "$DEPENDENCY_STATE_ROOT" ]] || fail 'Dependency state root must not be a symlink'
+  if [[ -e "$DEPENDENCY_STATE_ROOT" ]]; then
+    [[ -d "$DEPENDENCY_STATE_ROOT" && "$(stat -c '%u:%a' "$DEPENDENCY_STATE_ROOT")" == 0:755 ]] || fail 'Invalid dependency state root'
+  else
+    install -d -m 755 -o root -g root "$DEPENDENCY_STATE_ROOT"
+  fi
+  [[ ! -L "$DEPENDENCY_STAMP" ]] || fail 'Dependency stamp must not be a symlink'
+  if [[ -e "$DEPENDENCY_STAMP" ]]; then
+    [[ -f "$DEPENDENCY_STAMP" && "$(stat -c '%u:%a' "$DEPENDENCY_STAMP")" == 0:644 ]] || fail 'Invalid dependency stamp'
+  fi
+}
+write_dependency_stamp() {
+  local temporary
+  prepare_dependency_state
+  temporary="$(mktemp "$DEPENDENCY_STATE_ROOT/.dependencies.XXXXXX")"
+  chmod 644 "$temporary"
+  dependency_hash > "$temporary"
+  mv -f -- "$temporary" "$DEPENDENCY_STAMP"
+}
+install_dependencies() {
+  prepare_dependency_state
+  rm -f -- "$DEPENDENCY_STAMP"
+  dependency_install
+  write_dependency_stamp
+}
+sync_dependencies() {
+  local expected installed=''
+  prepare_dependency_state
+  expected="$(dependency_hash)"
+  if [[ -f "$DEPENDENCY_STAMP" ]]; then IFS= read -r installed < "$DEPENDENCY_STAMP" || true; fi
+  [[ "$installed" == "$expected" ]] && return
+  rm -f -- "$DEPENDENCY_STAMP"
+  dependency_install || fail 'bun.lock mismatch; dependency installation failed'
+  write_dependency_stamp
+}
+
 
 # Prevent package maintainer scripts from starting unmanaged system services.
 apt_install() (
@@ -207,7 +342,21 @@ apt_install() (
   policy_state=installed
   printf '%s\n' '#!/bin/sh' 'exit 101' > /usr/sbin/policy-rc.d
   chmod 755 /usr/sbin/policy-rc.d
-  DEBIAN_FRONTEND=noninteractive apt_network install -y --no-install-recommends "$@"
+  local package
+  for package in "$@"; do
+    if [[ "$package" == */* ]]; then
+      # apt cannot fetch local archives with --download-only, so their installs
+      # stay one call. Package triggers can be slow on cloud filesystems; the
+      # longer whole-call deadline covers them while Acquire timeouts still
+      # bound each network request.
+      APT_DEADLINE=600 DEBIAN_FRONTEND=noninteractive apt_network install -y --no-install-recommends "$@"
+      return
+    fi
+  done
+  # The network deadline covers downloads only; unpacking and maintainer scripts
+  # (for example locale generation or cluster creation) run offline afterwards.
+  DEBIAN_FRONTEND=noninteractive apt_network install -y --no-install-recommends --download-only "$@"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --no-download "$@"
 )
 
 
@@ -242,7 +391,7 @@ rust_run() {
     *) fail 'Invalid Rust execution mode' ;;
   esac
 }
-rust_ready() {
+primary_rust_ready() {
   local directory
   for directory in "$RUSTUP_HOME" "$CARGO_HOME"; do
     [[ -d "$directory" && ! -L "$directory" && "$(stat -c '%u' "$directory")" == "$OUTPUT_UID" ]] || return 1
@@ -257,13 +406,19 @@ rust_ready() {
   rust_run local "$CARGO_HOME/bin/rustup" target list --toolchain '1.99.0' --installed | awk -v name='wasm32-unknown-unknown' '$1 == name { found=1 } END { exit !found }' || return 1
   return 0
 }
+rust_ready() {
+  local additional_version
+  primary_rust_ready || return 1
+
+  return 0
+}
 verify_rust() { rust_ready || fail 'Pinned Rust, components or targets are unavailable; run install'; }
 install_rust() (
   if ! command -v cc >/dev/null || ! command -v ld >/dev/null || [[ ! -f /usr/include/stdlib.h ]]; then
     apt_refresh_for build-essential
     apt_install build-essential
   fi
-  local artifact_url artifact_sha
+  local artifact_url artifact_sha additional_version
   # Subshell scope retains scratch for EXIT cleanup after a failed command.
   scratch="$(mktemp -d)"
   trap 'rm -rf -- "$scratch"' EXIT
@@ -285,9 +440,10 @@ esac
     rust_run network "$scratch/rustup-init" -y --no-modify-path --default-toolchain none --profile minimal
   fi
   rust_run local "$CARGO_HOME/bin/rustup" set auto-self-update disable
-  if ! rust_ready; then
+  if ! primary_rust_ready; then
     rust_run network "$CARGO_HOME/bin/rustup" toolchain install 1.99.0 --profile minimal --no-self-update '--component' 'clippy' '--component' 'rustfmt' '--target' 'wasm32-unknown-unknown'
   fi
+
   rust_run local "$CARGO_HOME/bin/rustup" default 1.99.0
   verify_rust
   for tool in rustup cargo rustc rustdoc cargo-clippy clippy-driver rustfmt cargo-fmt; do
@@ -365,12 +521,12 @@ while :; do
     *) _stll_cloud_part="$_stll_cloud_remaining"; _stll_cloud_more=no ;;
   esac
   case "$_stll_cloud_part" in
-    '/opt/stll-cloud/node/26.10.0/bin'|'/opt/stll-cloud/bun/1.4.3'|/usr/local/bin) ;;
+    '/opt/stll-cloud/node/26.10.0/bin'|'/opt/stll-cloud/bun/1.4.4'|/usr/local/bin) ;;
     *) _stll_cloud_result="$_stll_cloud_result$_stll_cloud_separator$_stll_cloud_part"; _stll_cloud_separator=: ;;
   esac
   [ "$_stll_cloud_more" = yes ] || break
 done
-export PATH='/opt/stll-cloud/node/26.10.0/bin:/opt/stll-cloud/bun/1.4.3:/usr/local/bin'"${_stll_cloud_separator:+:}$_stll_cloud_result"
+export PATH='/opt/stll-cloud/node/26.10.0/bin:/opt/stll-cloud/bun/1.4.4:/usr/local/bin'"${_stll_cloud_separator:+:}$_stll_cloud_result"
 unset _stll_cloud_remaining _stll_cloud_result _stll_cloud_separator _stll_cloud_part _stll_cloud_more
 export RUSTUP_HOME=/opt/stll-cloud/rustup
 export CARGO_HOME=/opt/stll-cloud/cargo
@@ -411,13 +567,49 @@ done
 )
 verify_shell_environment() {
   [[ -f '/etc/profile.d/stll-cloud.sh' && ! -L '/etc/profile.d/stll-cloud.sh' && "$(stat -c '%h:%u' '/etc/profile.d/stll-cloud.sh')" == 1:0 ]] || fail 'Managed shell environment is unavailable; run install'
-  [[ "$(sha256sum -- '/etc/profile.d/stll-cloud.sh' | cut -d ' ' -f1)" == '056727e845ab7ff91ead2816d447c2c56c18249546768769d36468d7b38dc595' ]] || fail 'Managed shell environment differs; run install'
+  [[ "$(sha256sum -- '/etc/profile.d/stll-cloud.sh' | cut -d ' ' -f1)" == '2e96da10364dade2b051fb77195abb3c42a3e848804b86ef26ada7aa6d392858' ]] || fail 'Managed shell environment differs; run install'
 }
 
 
 [[ -f 'rust-toolchain.toml' && ! -L 'rust-toolchain.toml' ]] && [[ "$(sha256sum -- 'rust-toolchain.toml' | cut -d ' ' -f1)" == '607c9c0fcd9502cf74cb6b8c38cdf6381bec749e7560e82062c6f64a9f556659' ]] || fail 'rust-toolchain.toml changed; regenerate cloud-setup.sh'
 [[ ! -e 'rust-toolchain' && ! -L 'rust-toolchain' ]] || fail 'rust-toolchain appeared; regenerate cloud-setup.sh'
-[[ -f 'Cargo.lock' && ! -L 'Cargo.lock' ]] && [[ "$(sha256sum -- 'Cargo.lock' | cut -d ' ' -f1)" == '2b6eea2221f43074cfedc7e760f6f87ad6c5ed33b0dc3c0efb76c237d9d8e685' ]] || fail 'Cargo.lock changed; regenerate cloud-setup.sh'
+[[ -f 'Cargo.lock' && ! -L 'Cargo.lock' ]] && awk -v expected='0.2.129' '
+function validate_package() {
+  if (in_package && name == "wasm-bindgen") {
+    count++
+    if (version != expected) mismatch = 1
+  }
+}
+/^\[\[package\]\][[:space:]]*$/ {
+  validate_package()
+  in_package = 1
+  name = ""
+  version = ""
+  next
+}
+/^\[/ {
+  validate_package()
+  in_package = 0
+  next
+}
+in_package && /^[[:space:]]*name[[:space:]]*=/ {
+  name = $0
+  sub(/^[^=]*=[[:space:]]*"/, "", name)
+  sub(/"[[:space:]]*$/, "", name)
+}
+in_package && /^[[:space:]]*version[[:space:]]*=/ {
+  version = $0
+  sub(/^[^=]*=[[:space:]]*"/, "", version)
+  sub(/"[[:space:]]*$/, "", version)
+}
+END {
+  validate_package()
+  exit !(count >= 1 && !mismatch)
+}' 'Cargo.lock' || fail 'Cargo.lock wasm-bindgen version changed; regenerate cloud-setup.sh'
+
+
+
+
 
 
 
@@ -426,14 +618,24 @@ if [[ "$MODE" == install ]]; then
   step services install_services
   step tools install_tools
   step shell install_shell_environment
-  step dependencies dependency_install
+  step dependencies install_dependencies
+
   exit 0
 fi
-step runtime-check runtime_ready
-step tool-check verify_tools
-step shell install_shell_environment
-step shell-check verify_shell_environment
 
-step state prepare_state
-step service-start start_services
+start_environment() {
+  step runtime-check runtime_ready
+  step dependencies sync_dependencies
+  step tool-check verify_tools
+  step shell install_shell_environment
+  step shell-check verify_shell_environment
 
+  step state prepare_state
+  step service-start start_services
+
+}
+if [[ "$MODE" == session ]]; then
+  start_environment >&2
+else
+  start_environment
+fi

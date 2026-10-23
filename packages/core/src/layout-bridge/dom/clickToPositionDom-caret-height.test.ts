@@ -16,7 +16,11 @@ class FakeHTMLElement {
   private readonly children: FakeHTMLElement[] = [];
   private parent: FakeHTMLElement | null = null;
 
-  constructor(classes: string[] = [], rectInput: Partial<DOMRect> = {}, heightInput = 0) {
+  constructor(
+    classes: string[] = [],
+    rectInput: Partial<DOMRect> = {},
+    heightInput = 0,
+  ) {
     this.rect = rectInput;
     this.height = heightInput;
     for (const className of classes) {
@@ -30,7 +34,8 @@ class FakeHTMLElement {
 
   set firstChild(value: unknown) {
     this.first = value;
-    if (value !== undefined && this.childNodes.length === 0) this.childNodes.push(value);
+    if (value !== undefined && this.childNodes.length === 0)
+      this.childNodes.push(value);
   }
 
   get offsetHeight(): number {
@@ -113,7 +118,10 @@ class FakeHTMLElement {
         this.dataset["pmEnd"] !== undefined
       );
     }
-    if (selector === ".layout-page-content .layout-paragraph" || selector === ".layout-paragraph") {
+    if (
+      selector === ".layout-page-content .layout-paragraph" ||
+      selector === ".layout-paragraph"
+    ) {
       return this.classes.has("layout-paragraph");
     }
     if (selector === "span[data-pm-start][data-pm-end]") {
@@ -141,7 +149,8 @@ const fakeDocument = {
     ({
       setStart: () => undefined,
       setEnd: () => undefined,
-      getBoundingClientRect: () => rect({ left: 12, top: rangeTop, height: rangeHeight }),
+      getBoundingClientRect: () =>
+        rect({ left: 12, top: rangeTop, height: rangeHeight }),
     }) as Range,
 };
 
@@ -164,7 +173,11 @@ const buildContainer = (): HTMLElement => {
   page.dataset["pageNumber"] = "1";
   const content = new FakeHTMLElement(["layout-page-content"]);
   const line = new FakeHTMLElement(["layout-line"], {}, 80);
-  const span = new FakeHTMLElement(["layout-run-text"], { left: 10, top: 20 }, 18);
+  const span = new FakeHTMLElement(
+    ["layout-run-text"],
+    { left: 10, top: 20 },
+    18,
+  );
   span.dataset["pmStart"] = "1";
   span.dataset["pmEnd"] = "6";
   span.firstChild = textNode;
@@ -256,7 +269,9 @@ const buildCollapsedLeadingSpaceContainer = (): HTMLElement => {
   return container as unknown as HTMLElement;
 };
 
-const buildUnpaintedPrefixContainer = (target: "empty" | "tab" = "empty"): HTMLElement => {
+const buildUnpaintedPrefixContainer = (
+  target: "empty" | "tab" = "empty",
+): HTMLElement => {
   const container = new FakeHTMLElement();
   const page = new FakeHTMLElement(["layout-page"]);
   page.dataset["pageNumber"] = "1";
@@ -274,7 +289,9 @@ const buildUnpaintedPrefixContainer = (target: "empty" | "tab" = "empty"): HTMLE
     18,
   );
   const emptyTextSlot = new FakeHTMLElement(
-    target === "tab" ? ["layout-run-text", "layout-run-tab"] : ["layout-run-text"],
+    target === "tab"
+      ? ["layout-run-text", "layout-run-tab"]
+      : ["layout-run-text"],
     { left: 70, top: 30, right: 70, bottom: 30, width: 0, height: 0 },
   );
   emptyTextSlot.dataset["pmStart"] = "12";
@@ -320,7 +337,11 @@ describe("getCaretPositionFromDom caret height", () => {
   });
 
   test("anchors a caret after an unpainted inline prefix to the first painted text slot", () => {
-    const caret = getCaretPositionFromDom(buildUnpaintedPrefixContainer(), 11, rect({}));
+    const caret = getCaretPositionFromDom(
+      buildUnpaintedPrefixContainer(),
+      11,
+      rect({}),
+    );
 
     expect(caret).toEqual({ x: 70, y: 30, height: 36, pageIndex: 0 });
   });
@@ -328,9 +349,16 @@ describe("getCaretPositionFromDom caret height", () => {
   test.each(["empty", "tab"] as const)(
     "normalizes a transformed %s anchor back into document coordinates",
     (target) => {
-      const context = new RenderedDomContextImpl(buildUnpaintedPrefixContainer(target), 2);
+      const context = new RenderedDomContextImpl(
+        buildUnpaintedPrefixContainer(target),
+        2,
+      );
 
-      expect(context.getCoordinatesForPosition(11)).toEqual({ x: 35, y: 15, height: 18 });
+      expect(context.getCoordinatesForPosition(11)).toEqual({
+        x: 35,
+        y: 15,
+        height: 18,
+      });
     },
   );
 
@@ -344,27 +372,43 @@ describe("getCaretPositionFromDom caret height", () => {
 
   test("anchors collapsed trailing-space carets to the visible run", () => {
     rangeTop = 70;
-    const caret = getCaretPositionFromDom(buildCollapsedTrailingSpaceContainer(), 7, rect({}));
+    const caret = getCaretPositionFromDom(
+      buildCollapsedTrailingSpaceContainer(),
+      7,
+      rect({}),
+    );
 
     expect(caret).toEqual({ x: 34, y: 20, height: 18, pageIndex: 0 });
   });
 
   test("prefers collapsed trailing-space geometry at the shared run boundary", () => {
     rangeTop = 70;
-    const caret = getCaretPositionFromDom(buildCollapsedTrailingSpaceContainer(), 6, rect({}));
+    const caret = getCaretPositionFromDom(
+      buildCollapsedTrailingSpaceContainer(),
+      6,
+      rect({}),
+    );
 
     expect(caret).toEqual({ x: 30, y: 20, height: 18, pageIndex: 0 });
   });
 
   test("advances once for every collapsed trailing space", () => {
-    const caret = getCaretPositionFromDom(buildCollapsedTrailingSpaceContainer(), 8, rect({}));
+    const caret = getCaretPositionFromDom(
+      buildCollapsedTrailingSpaceContainer(),
+      8,
+      rect({}),
+    );
 
     expect(caret).toEqual({ x: 38, y: 20, height: 18, pageIndex: 0 });
   });
 
   test("keeps collapsed leading-space geometry at the shared run boundary", () => {
     rangeTop = 70;
-    const caret = getCaretPositionFromDom(buildCollapsedLeadingSpaceContainer(), 3, rect({}));
+    const caret = getCaretPositionFromDom(
+      buildCollapsedLeadingSpaceContainer(),
+      3,
+      rect({}),
+    );
 
     expect(caret).toEqual({ x: 10, y: 20, height: 18, pageIndex: 0 });
   });

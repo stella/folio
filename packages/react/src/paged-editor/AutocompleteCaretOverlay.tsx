@@ -77,7 +77,9 @@ export const AutocompleteCaretOverlay = ({
           left: caret.x,
           top: caret.y,
           lineHeight: `${caret.lineHeight}px`,
-          ...(caret.maxWidth !== undefined ? { maxWidth: `${caret.maxWidth}px` } : {}),
+          ...(caret.maxWidth !== undefined
+            ? { maxWidth: `${caret.maxWidth}px` }
+            : {}),
         }}
       >
         {text}

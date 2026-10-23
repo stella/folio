@@ -17,7 +17,10 @@
  * field pretending to describe it.
  */
 
-import { PRESET_LINE_DASH_VALS, type PresetLineDashVal } from "./presetLineDash.gen";
+import {
+  PRESET_LINE_DASH_VALS,
+  type PresetLineDashVal,
+} from "./presetLineDash.gen";
 
 /**
  * A `@val` the schema does not declare, kept exactly as the file spelled it.
@@ -33,13 +36,15 @@ export type UnrecognisedPresetLineDash = {
 };
 
 /** What `ShapeOutline.dash` holds: a schema member, or the raw token. */
-export type PresetLineDashValue = PresetLineDashVal | UnrecognisedPresetLineDash;
+export type PresetLineDashValue =
+  PresetLineDashVal | UnrecognisedPresetLineDash;
 
 const DECLARED: ReadonlySet<string> = new Set<string>(PRESET_LINE_DASH_VALS);
 
 /** Whether the schema declares this token. */
-export const isPresetLineDashVal = (value: string): value is PresetLineDashVal =>
-  DECLARED.has(value);
+export const isPresetLineDashVal = (
+  value: string,
+): value is PresetLineDashVal => DECLARED.has(value);
 
 /** Read a `@val` into the model, keeping an undeclared token verbatim. */
 export const presetLineDashFrom = (value: string): PresetLineDashValue =>

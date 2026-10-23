@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  type CliSaveRequest,
   fileVersionOf,
   parseSaveEnvelope,
   saveArgs,
   saveWithCli,
-  type CliSaveRequest,
 } from "./save";
 
 const VERSION = "a".repeat(64);
@@ -49,7 +49,10 @@ describe("saveArgs", () => {
       request({
         leaseToken: "tok",
         strategy: { type: "full-repack", reason: "noBodyView" },
-        destination: { path: "/work/Copy.docx", expectedVersion: "b".repeat(64) },
+        destination: {
+          path: "/work/Copy.docx",
+          expectedVersion: "b".repeat(64),
+        },
       }),
       "/tmp/saved.docx",
     );
@@ -71,7 +74,9 @@ describe("saveArgs", () => {
 
   test("writes a new destination without --overwrite", () => {
     const args = saveArgs(
-      request({ destination: { path: "/work/New.docx", expectedVersion: null } }),
+      request({
+        destination: { path: "/work/New.docx", expectedVersion: null },
+      }),
       "/tmp/saved.docx",
     );
 
@@ -83,7 +88,11 @@ describe("parseSaveEnvelope", () => {
   test("reads the receipt's version, status, and backup", () => {
     const stdout = JSON.stringify({
       ok: true,
-      data: { fileVersion: VERSION, status: "committed", backup: "/work/.folio/backups/x" },
+      data: {
+        fileVersion: VERSION,
+        status: "committed",
+        backup: "/work/.folio/backups/x",
+      },
     });
 
     expect(parseSaveEnvelope(stdout)).toEqual({
@@ -111,8 +120,12 @@ describe("parseSaveEnvelope", () => {
   test("is null for anything else", () => {
     expect(parseSaveEnvelope("")).toBeNull();
     expect(parseSaveEnvelope("oops")).toBeNull();
-    expect(parseSaveEnvelope(JSON.stringify({ ok: true, data: { status: "x" } }))).toBeNull();
-    expect(parseSaveEnvelope(JSON.stringify({ ok: false, error: { message: "m" } }))).toBeNull();
+    expect(
+      parseSaveEnvelope(JSON.stringify({ ok: true, data: { status: "x" } })),
+    ).toBeNull();
+    expect(
+      parseSaveEnvelope(JSON.stringify({ ok: false, error: { message: "m" } })),
+    ).toBeNull();
   });
 });
 
@@ -163,7 +176,11 @@ describe("saveWithCli", () => {
       ].join("\n"),
     );
 
-    expect(await save(cli)).toEqual({ type: "error", code: "stale_version", message: "changed" });
+    expect(await save(cli)).toEqual({
+      type: "error",
+      code: "stale_version",
+      message: "changed",
+    });
   });
 
   test("reports a crash with the end of its stderr", async () => {

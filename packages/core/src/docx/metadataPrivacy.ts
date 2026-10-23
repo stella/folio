@@ -1,8 +1,9 @@
-import { encodeUtf8, decodeText } from "../utils/textEncoding";
-import { writeZipPart } from "@stll/docx-core/zip";
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
+import { writeZipPart } from "@stll/docx-core/zip";
+
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 import {
   countCentralDirectoryRecords,
   createInflationBudget,
@@ -23,9 +24,12 @@ export const FOLIO_DOCUMENT_METADATA_PROPERTIES = Object.freeze([
   "modified",
 ] as const);
 
-export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
+export type FolioDocumentMetadataProperty =
+  (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
 
-const isFolioDocumentMetadataProperty = (value: string): value is FolioDocumentMetadataProperty =>
+const isFolioDocumentMetadataProperty = (
+  value: string,
+): value is FolioDocumentMetadataProperty =>
   FOLIO_DOCUMENT_METADATA_PROPERTIES.some((property) => property === value);
 
 export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS = Object.freeze([
@@ -34,7 +38,8 @@ export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS = Object.freeze([
   "remove-descriptive-metadata",
 ] as const);
 
-export type FolioDocumentPrivacyTransform = (typeof FOLIO_DOCUMENT_PRIVACY_TRANSFORMS)[number];
+export type FolioDocumentPrivacyTransform =
+  (typeof FOLIO_DOCUMENT_PRIVACY_TRANSFORMS)[number];
 
 export const isFolioDocumentPrivacyTransform = (
   value: unknown,
@@ -66,14 +71,23 @@ export class FolioDocumentPrivacyArchiveError extends TaggedError(
   "FolioDocumentPrivacyArchiveError",
 )<{
   message: string;
-  reason: "input-too-large" | "load-failed" | "too-many-entries" | "core-properties-too-large";
+  reason:
+    | "input-too-large"
+    | "load-failed"
+    | "too-many-entries"
+    | "core-properties-too-large";
   cause?: unknown;
 }> {}
 
 export const PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM = {
   "remove-attribution": ["creator", "lastModifiedBy"],
   "remove-timestamps": ["created", "modified"],
-  "remove-descriptive-metadata": ["title", "subject", "keywords", "description"],
+  "remove-descriptive-metadata": [
+    "title",
+    "subject",
+    "keywords",
+    "description",
+  ],
 } as const satisfies Record<
   FolioDocumentPrivacyTransform,
   readonly FolioDocumentMetadataProperty[]
@@ -92,7 +106,9 @@ export const resolveFolioDocumentPrivacyTransforms = (
     });
   }
   const requested = new Set(transforms);
-  return FOLIO_DOCUMENT_PRIVACY_TRANSFORMS.filter((transform) => requested.has(transform));
+  return FOLIO_DOCUMENT_PRIVACY_TRANSFORMS.filter((transform) =>
+    requested.has(transform),
+  );
 };
 
 const XML_DECLARATION_PATTERN = /^\s*<\?xml[^?]*\?>/u;
@@ -108,7 +124,10 @@ const CORE_PROPERTIES_PATH_LOWER = "docprops/core.xml";
  * found — otherwise the privacy rewrite silently no-ops and the unscrubbed
  * buffer round-trips untouched.
  */
-const findZipEntryCaseInsensitive = (zip: JSZip, lowerPath: string): JSZip.JSZipObject | null => {
+const findZipEntryCaseInsensitive = (
+  zip: JSZip,
+  lowerPath: string,
+): JSZip.JSZipObject | null => {
   const direct = zip.file(lowerPath);
   if (direct) {
     return direct;
@@ -129,7 +148,8 @@ const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<JSZip> => {
     });
   }
   if (
-    countCentralDirectoryRecords(new Uint8Array(buffer), MAX_ARCHIVE_ENTRIES) > MAX_ARCHIVE_ENTRIES
+    countCentralDirectoryRecords(new Uint8Array(buffer), MAX_ARCHIVE_ENTRIES) >
+    MAX_ARCHIVE_ENTRIES
   ) {
     throw new FolioDocumentPrivacyArchiveError({
       message: "Document privacy input exceeded the package-entry limit",
@@ -153,7 +173,10 @@ const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<JSZip> => {
       reason: "too-many-entries",
     });
   }
-  const coreProperties = findZipEntryCaseInsensitive(zip, CORE_PROPERTIES_PATH_LOWER);
+  const coreProperties = findZipEntryCaseInsensitive(
+    zip,
+    CORE_PROPERTIES_PATH_LOWER,
+  );
   if (!coreProperties) {
     return zip;
   }
@@ -162,7 +185,10 @@ const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<JSZip> => {
     typeof data === "object" && data !== null && "uncompressedSize" in data
       ? data.uncompressedSize
       : undefined;
-  if (typeof declaredBytes !== "number" || declaredBytes > MAX_CORE_PROPERTIES_BYTES) {
+  if (
+    typeof declaredBytes !== "number" ||
+    declaredBytes > MAX_CORE_PROPERTIES_BYTES
+  ) {
     throw new FolioDocumentPrivacyArchiveError({
       message: "Document privacy core properties exceeded the part-size limit",
       reason: "core-properties-too-large",
@@ -186,7 +212,9 @@ const rewriteCorePropertiesPrivacy = (
   }
   const propertiesToRemove = new Set<FolioDocumentMetadataProperty>();
   for (const transform of transforms) {
-    for (const property of PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM[transform]) {
+    for (const property of PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM[
+      transform
+    ]) {
       propertiesToRemove.add(property);
     }
   }
@@ -208,8 +236,8 @@ const rewriteCorePropertiesPrivacy = (
   const declaration = xml.match(XML_DECLARATION_PATTERN)?.at(0) ?? "";
   return {
     xml: `${declaration}${elementToXml(root)}`,
-    removedMetadataProperties: FOLIO_DOCUMENT_METADATA_PROPERTIES.filter((property) =>
-      removedPropertySet.has(property),
+    removedMetadataProperties: FOLIO_DOCUMENT_METADATA_PROPERTIES.filter(
+      (property) => removedPropertySet.has(property),
     ),
   };
 };
@@ -219,7 +247,9 @@ const rewriteCorePropertiesPrivacy = (
  * checked when the archive loaded, but only the inflation itself can show that
  * the part is no larger than it claims.
  */
-const readCoreProperties = async (entry: JSZip.JSZipObject): Promise<string> => {
+const readCoreProperties = async (
+  entry: JSZip.JSZipObject,
+): Promise<string> => {
   const result = await inflateEntryWithinLimits({
     entry,
     maxEntryBytes: MAX_CORE_PROPERTIES_BYTES,
@@ -243,7 +273,10 @@ export const rewriteDocxMetadataPrivacy = async (
 ): Promise<RewriteDocxMetadataPrivacyResult> => {
   const appliedTransforms = resolveFolioDocumentPrivacyTransforms(transforms);
   const zip = await loadPrivacyArchive(buffer);
-  const coreProperties = findZipEntryCaseInsensitive(zip, CORE_PROPERTIES_PATH_LOWER);
+  const coreProperties = findZipEntryCaseInsensitive(
+    zip,
+    CORE_PROPERTIES_PATH_LOWER,
+  );
   if (!coreProperties) {
     return {
       buffer,
@@ -262,9 +295,16 @@ export const rewriteDocxMetadataPrivacy = async (
   }
   // Write back under the entry's original name/casing so a non-conventional
   // producer doesn't end up with two core-properties-shaped parts.
-  writeZipPart({ zip, path: coreProperties.name, data: encodeUtf8(rewritten.xml) });
+  writeZipPart({
+    zip,
+    path: coreProperties.name,
+    data: encodeUtf8(rewritten.xml),
+  });
   return {
-    buffer: await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" }),
+    buffer: await zip.generateAsync({
+      type: "arraybuffer",
+      compression: "DEFLATE",
+    }),
     privacyReport: {
       appliedTransforms,
       removedMetadataProperties: rewritten.removedMetadataProperties,

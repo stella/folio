@@ -1,4 +1,10 @@
-import { sliceText } from "./sliceText";
+import {
+  isSchemeColorValue,
+  isThemeColor,
+  THEME_COLOR_BY_SCHEME_COLOR_VALUE,
+  type ThemeColor,
+  themeColorSlot,
+} from "@stll/docx-core/model";
 /**
  * Color Resolver - Convert OOXML colors to CSS
  *
@@ -20,15 +26,13 @@ import { sliceText } from "./sliceText";
  * - Value is in hex (00-FF), converted to 0-1 for calculation
  */
 
-import {
-  isSchemeColorValue,
-  isThemeColor,
-  THEME_COLOR_BY_SCHEME_COLOR_VALUE,
-  type ThemeColor,
-  themeColorSlot,
-} from "@stll/docx-core/model";
-
-import type { ColorValue, SchemeColorSlot, Theme, ThemeColorScheme } from "../types/document";
+import type {
+  ColorValue,
+  SchemeColorSlot,
+  Theme,
+  ThemeColorScheme,
+} from "../types/document";
+import { sliceText } from "./sliceText";
 
 /**
  * Strict hex-color validator shared by every OOXML → CSS color path in this
@@ -39,7 +43,8 @@ import type { ColorValue, SchemeColorSlot, Theme, ThemeColorScheme } from "../ty
  * hex string with an optional leading `#`; anything else (including the
  * literal `"auto"`, which callers handle separately) is rejected.
  */
-const HEX_COLOR_PATTERN = /^#?[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?(?:[0-9A-Fa-f]{2})?$/u;
+const HEX_COLOR_PATTERN =
+  /^#?[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?(?:[0-9A-Fa-f]{2})?$/u;
 
 /**
  * Normalize a raw color string to a bare uppercase hex value (no `#`), or
@@ -51,7 +56,9 @@ function normalizeHexColor(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
-  return HEX_COLOR_PATTERN.test(value) ? value.replace(/^#/u, "").toUpperCase() : undefined;
+  return HEX_COLOR_PATTERN.test(value)
+    ? value.replace(/^#/u, "").toUpperCase()
+    : undefined;
 }
 
 /**
@@ -135,7 +142,11 @@ function parseModifierValue(hexValue: string | undefined): number {
  */
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   // Ensure 6 characters
-  const normalized = sliceText({ text: hex.padStart(6, "0"), units: "codeUnits", end: 6 });
+  const normalized = sliceText({
+    text: hex.padStart(6, "0"),
+    units: "codeUnits",
+    end: 6,
+  });
 
   const r = Number.parseInt(normalized.slice(0, 2), 16);
   const g = Number.parseInt(normalized.slice(2, 4), 16);
@@ -211,7 +222,10 @@ function applyShade(hex: string, shade: number): string {
  * The hex a theme slot paints, falling back to the Office default theme when
  * the package carries no `theme1.xml` or leaves the slot empty.
  */
-function getThemeColorValue(theme: Theme | null | undefined, slot: SchemeColorSlot): string {
+function getThemeColorValue(
+  theme: Theme | null | undefined,
+  slot: SchemeColorSlot,
+): string {
   return theme?.colorScheme?.[slot] ?? DEFAULT_THEME_COLORS[slot];
 }
 
@@ -439,7 +453,9 @@ export function getContrastingColor(
  * @param colorString - Color string like "FF0000", "auto", or theme color name
  * @returns ColorValue object
  */
-export function parseColorString(colorString: string | undefined): ColorValue | undefined {
+export function parseColorString(
+  colorString: string | undefined,
+): ColorValue | undefined {
   if (!colorString) {
     return undefined;
   }
@@ -475,7 +491,9 @@ export function parseColorString(colorString: string | undefined): ColorValue | 
   }
 
   // Unknown format, return as RGB anyway
-  return { rgb: sliceText({ text: hex.padStart(6, "0"), units: "codeUnits", end: 6 }) };
+  return {
+    rgb: sliceText({ text: hex.padStart(6, "0"), units: "codeUnits", end: 6 }),
+  };
 }
 
 /**
@@ -717,7 +735,10 @@ export function generateThemeTintShadeMatrix(
   return THEME_MATRIX_ROWS.map((row) =>
     THEME_MATRIX_COLUMNS.map((col) => {
       const slot = themeColorSlot(col.slot);
-      const baseHex = slot === undefined ? "000000" : (scheme[slot] ?? DEFAULT_THEME_COLORS[slot]);
+      const baseHex =
+        slot === undefined
+          ? "000000"
+          : (scheme[slot] ?? DEFAULT_THEME_COLORS[slot]);
 
       let hex: string;
       if (row.type === "base") {

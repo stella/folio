@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import type { Document } from "@stll/docx-core/model";
 
 import { reviewDifferences } from "./reviewOracle";
@@ -13,7 +14,11 @@ const fixture = (): Document => ({
           content: [
             {
               type: "insertion",
-              info: { id: 41, author: "Reviewer", date: "2026-05-06T07:08:09Z" },
+              info: {
+                id: 41,
+                author: "Reviewer",
+                date: "2026-05-06T07:08:09Z",
+              },
               content: [
                 {
                   type: "run",
@@ -63,7 +68,10 @@ test("empty formatting is neutral while explicit false remains authored", () => 
       {
         type: "tableRow",
         cells: [
-          { type: "tableCell", content: [{ type: "paragraph", paraId: "00000002", content: [] }] },
+          {
+            type: "tableCell",
+            content: [{ type: "paragraph", paraId: "00000002", content: [] }],
+          },
         ],
       },
     ],
@@ -86,7 +94,10 @@ test("empty formatting is neutral while explicit false remains authored", () => 
     sourceXml: "<w:tblPr/>",
     gridSourceXml: "<w:tblGrid><w:gridCol/></w:tblGrid>",
   };
-  expect(reviewDifferences(original, changed)).toEqual({ messages: [], omitted: 0 });
+  expect(reviewDifferences(original, changed)).toEqual({
+    messages: [],
+    omitted: 0,
+  });
   table.formatting.bidi = false;
   expect(reviewDifferences(original, changed).messages).not.toEqual([]);
   delete table.formatting.bidi;
@@ -103,19 +114,29 @@ test("derived current formatting agrees while an incorrect capture differs", () 
   const run = insertion.content.at(0);
   if (run?.type !== "run") throw new Error("Expected run");
   run.formatting = { bold: true };
-  const change = { type: "runPropertyChange", info: { ...insertion.info, id: 42 } } as const;
+  const change = {
+    type: "runPropertyChange",
+    info: { ...insertion.info, id: 42 },
+  } as const;
   run.propertyChanges = [change];
   const captured = structuredClone(original);
   const capturedParagraph = captured.package.document.content.at(0);
-  if (capturedParagraph?.type !== "paragraph") throw new Error("Expected paragraph");
+  if (capturedParagraph?.type !== "paragraph")
+    throw new Error("Expected paragraph");
   const capturedInsertion = capturedParagraph.content.at(0);
-  if (capturedInsertion?.type !== "insertion") throw new Error("Expected insertion");
+  if (capturedInsertion?.type !== "insertion")
+    throw new Error("Expected insertion");
   const capturedRun = capturedInsertion.content.at(0);
   if (capturedRun?.type !== "run") throw new Error("Expected run");
   capturedRun.propertyChanges = [
     { ...change, previousFormatting: {}, currentFormatting: { bold: true } },
   ];
-  expect(reviewDifferences(original, captured)).toEqual({ messages: [], omitted: 0 });
-  capturedRun.propertyChanges = [{ ...change, currentFormatting: { bold: false } }];
+  expect(reviewDifferences(original, captured)).toEqual({
+    messages: [],
+    omitted: 0,
+  });
+  capturedRun.propertyChanges = [
+    { ...change, currentFormatting: { bold: false } },
+  ];
   expect(reviewDifferences(original, captured).messages).not.toEqual([]);
 });

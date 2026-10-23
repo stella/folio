@@ -42,9 +42,13 @@
         :disabled="item.disabled"
         @mousedown.prevent="onAction(item.action)"
       >
-        <span v-if="item.icon" class="ctx-menu__icon"><VNodeRenderer :node="item.icon" /></span>
+        <span v-if="item.icon" class="ctx-menu__icon"
+          ><VNodeRenderer :node="item.icon"
+        /></span>
         <span class="ctx-menu__label">{{ item.label }}</span>
-        <span v-if="item.shortcut" class="ctx-menu__shortcut">{{ item.shortcut }}</span>
+        <span v-if="item.shortcut" class="ctx-menu__shortcut">{{
+          item.shortcut
+        }}</span>
       </button>
     </div>
   </Teleport>
@@ -52,17 +56,19 @@
 
 <script setup lang="ts">
 import {
-  ref,
   computed,
-  watch,
-  nextTick,
   type CSSProperties,
   type FunctionalComponent,
+  nextTick,
+  ref,
   type VNodeChild,
+  watch,
 } from "vue";
+
 import type { ListNumberingMenuState } from "@stll/folio-core/prosemirror";
-import { useTranslation } from "../i18n";
+
 import { useDocxPortalClass } from "../composables/usePortalClass";
+import { useTranslation } from "../i18n";
 
 export type ContextMenuItem = {
   id: string;
@@ -107,7 +113,8 @@ const props = defineProps<{
 // component identity stays constant and Vue patches in place instead of
 // remounting the icon on every menu re-render. `props: ["node"]` consumes
 // `node` as a prop rather than forwarding it as a DOM attribute.
-const VNodeRenderer: FunctionalComponent<{ node: VNodeChild }> = ({ node }) => node;
+const VNodeRenderer: FunctionalComponent<{ node: VNodeChild }> = ({ node }) =>
+  node;
 VNodeRenderer.props = ["node"];
 
 const emit = defineEmits<{
@@ -192,7 +199,11 @@ const visibleItems = computed<ContextMenuItem[]>(() => {
   if (props.onImage && props.isEditable) {
     items.push(
       { id: "div-img", label: "", action: "", divider: true },
-      { id: "replaceImage", label: t("imageOverlay.replaceImage"), action: "replaceImage" },
+      {
+        id: "replaceImage",
+        label: t("imageOverlay.replaceImage"),
+        action: "replaceImage",
+      },
       {
         id: "imageProperties",
         label: t("imageWrap.menu.imageProperties"),
@@ -214,8 +225,16 @@ const visibleItems = computed<ContextMenuItem[]>(() => {
       { id: "addRowBelow", label: t("insertRowBelow"), action: "addRowBelow" },
       { id: "deleteRow", label: t("deleteRow"), action: "deleteRow" },
       { id: "div3", label: "", action: "", divider: true },
-      { id: "addColLeft", label: t("insertColumnLeft"), action: "addColumnLeft" },
-      { id: "addColRight", label: t("insertColumnRight"), action: "addColumnRight" },
+      {
+        id: "addColLeft",
+        label: t("insertColumnLeft"),
+        action: "addColumnLeft",
+      },
+      {
+        id: "addColRight",
+        label: t("insertColumnRight"),
+        action: "addColumnRight",
+      },
       { id: "deleteCol", label: t("deleteColumn"), action: "deleteColumn" },
       { id: "div4", label: "", action: "", divider: true },
       {
@@ -231,8 +250,16 @@ const visibleItems = computed<ContextMenuItem[]>(() => {
         disabled: !props.canSplitCell,
       },
       { id: "div5", label: "", action: "", divider: true },
-      { id: "selectTable", label: t("table.selectTable"), action: "selectTable" },
-      { id: "deleteTable", label: t("table.deleteTable"), action: "deleteTable" },
+      {
+        id: "selectTable",
+        label: t("table.selectTable"),
+        action: "selectTable",
+      },
+      {
+        id: "deleteTable",
+        label: t("table.deleteTable"),
+        action: "deleteTable",
+      },
     );
   }
 
@@ -336,7 +363,9 @@ watch(
   text-align: left;
   height: 32px;
 }
-.ctx-menu__item:hover:not(.ctx-menu__item--disabled):not(.ctx-menu__item--divider) {
+.ctx-menu__item:hover:not(.ctx-menu__item--disabled):not(
+    .ctx-menu__item--divider
+  ) {
   background: var(--doc-bg-hover);
 }
 .ctx-menu__item--disabled {

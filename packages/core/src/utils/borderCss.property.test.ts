@@ -16,15 +16,16 @@
  * these two entry points reach fails here.
  */
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { readFileSync } from "node:fs";
 
 import { BORDER_STYLES, type BorderStyle } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { convertBorderSpecToLayout } from "../layout-bridge/convert/toFlowBlocks";
 import { CSS_BORDER_STYLES, cssBorderStyle } from "./borderCss";
 import { borderToStyle } from "./formatToStyle";
@@ -60,7 +61,9 @@ const throughLayoutBridge = (style: BorderStyle): string | undefined =>
 
 describe("border style rendering", () => {
   test("the table is total over the enumeration", () => {
-    expect(Object.keys(CSS_BORDER_STYLES).toSorted()).toEqual([...ST_BORDER_VALUES].toSorted());
+    expect(Object.keys(CSS_BORDER_STYLES).toSorted()).toEqual(
+      [...ST_BORDER_VALUES].toSorted(),
+    );
     expect([...BORDER_STYLES]).toEqual([...ST_BORDER_VALUES]);
   });
 
@@ -85,6 +88,8 @@ describe("border style rendering", () => {
   test("a token outside the enumeration paints a plain line", () => {
     const unrecognised = { kind: "unrecognised", raw: "notAStyle" } as const;
     expect(cssBorderStyle(unrecognised)).toBe("solid");
-    expect(convertBorderSpecToLayout({ style: unrecognised, size: 8 })?.style).toBe("solid");
+    expect(
+      convertBorderSpecToLayout({ style: unrecognised, size: 8 })?.style,
+    ).toBe("solid");
   });
 });

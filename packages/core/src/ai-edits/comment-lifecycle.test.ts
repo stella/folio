@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
-import { createDocx } from "../docx/rezip";
-import type { Document, ParagraphContent, RunContent } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   openReviewer,
   paragraphsDocx,
   reviewComment,
   textRun,
 } from "../__tests__/operationBatchDocuments";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import { createDocx } from "../docx/rezip";
+import type { Document, ParagraphContent, RunContent } from "../types/document";
 
 const COMMENT_ID = 7;
 const PNG_DATA_URL =
@@ -35,7 +38,10 @@ const atomContent = {
     content: [],
   },
   tab: { type: "run", content: [{ type: "tab" }] },
-  noteMarker: { type: "run", content: [{ type: "noteMarker", kind: "footnote" }] },
+  noteMarker: {
+    type: "run",
+    content: [{ type: "noteMarker", kind: "footnote" }],
+  },
 } as const satisfies Record<string, ParagraphContent>;
 
 const commentedParagraph = (
@@ -55,7 +61,10 @@ const deleteGone = async (
   deleted = ["gone"],
 ) => {
   const reviewer = await openReviewer(
-    await paragraphsDocx([commentedParagraph(covered)], [reviewComment(COMMENT_ID)]),
+    await paragraphsDocx(
+      [commentedParagraph(covered)],
+      [reviewComment(COMMENT_ID)],
+    ),
   );
   const blockId = reviewer.snapshot().blocks.at(0)?.id;
   if (!blockId) throw new Error("Expected a paragraph block");
@@ -127,7 +136,10 @@ describe("accepted deletion comment anchors", () => {
               rows: [
                 {
                   type: "tableRow",
-                  structuralChange: { type: "tableRowDeletion", info: { ...info, id: 20 } },
+                  structuralChange: {
+                    type: "tableRowDeletion",
+                    info: { ...info, id: 20 },
+                  },
                   cells: [
                     {
                       type: "tableCell",
@@ -158,21 +170,35 @@ describe("accepted deletion comment anchors", () => {
     const reviewer = await openReviewer(await createDocx(document));
 
     expect(reviewer.acceptAll()).toBeGreaterThan(0);
-    expect(reviewer.getComments().some(({ id }) => id === COMMENT_ID)).toBe(false);
+    expect(reviewer.getComments().some(({ id }) => id === COMMENT_ID)).toBe(
+      false,
+    );
   });
 
   test.each(["all", "single"] as const)(
     "a retained inline image keeps the thread after accepting %s revisions",
     async (resolution) => {
       expect(
-        await deleteGone([textRun("gone"), atomContent.image], "tracked-changes", resolution),
+        await deleteGone(
+          [textRun("gone"), atomContent.image],
+          "tracked-changes",
+          resolution,
+        ),
       ).toBe(true);
     },
   );
 
-  test.each(["field", "tab"] as const)("a retained inline %s keeps the thread", async (kind) => {
-    expect(await deleteGone([textRun("gone"), atomContent[kind]], "tracked-changes")).toBe(true);
-  });
+  test.each(["field", "tab"] as const)(
+    "a retained inline %s keeps the thread",
+    async (kind) => {
+      expect(
+        await deleteGone(
+          [textRun("gone"), atomContent[kind]],
+          "tracked-changes",
+        ),
+      ).toBe(true);
+    },
+  );
 
   test("a surviving block loses a range when its last covered text is deleted", async () => {
     expect(await deleteGone([textRun("gone")], "tracked-changes")).toBe(false);
@@ -188,9 +214,12 @@ describe("accepted deletion comment anchors", () => {
       const property = fc.asyncProperty(
         fc.record({
           deletedTextCount: fc.integer({ min: 1, max: 4 }),
-          survivors: fc.array(fc.constantFrom("text", "image", "field", "tab", "noteMarker"), {
-            maxLength: 6,
-          }),
+          survivors: fc.array(
+            fc.constantFrom("text", "image", "field", "tab", "noteMarker"),
+            {
+              maxLength: 6,
+            },
+          ),
         }),
         async ({ deletedTextCount, survivors }) => {
           const covered: ParagraphContent[] = [];
@@ -201,15 +230,25 @@ describe("accepted deletion comment anchors", () => {
             deleted.push(value);
           }
           for (const [index, kind] of survivors.entries()) {
-            covered.push(kind === "text" ? textRun(`survivor${String(index)}`) : atomContent[kind]);
+            covered.push(
+              kind === "text"
+                ? textRun(`survivor${String(index)}`)
+                : atomContent[kind],
+            );
           }
           const expected = survivors.length > 0;
-          expect(await deleteGone(covered, "direct", "all", deleted)).toBe(expected);
-          expect(await deleteGone(covered, "tracked-changes", "all", deleted)).toBe(expected);
+          expect(await deleteGone(covered, "direct", "all", deleted)).toBe(
+            expected,
+          );
+          expect(
+            await deleteGone(covered, "tracked-changes", "all", deleted),
+          ).toBe(expected);
           expect(
             await rejectInserted(
               survivors.map((kind, index) =>
-                kind === "text" ? textRun(`survivor${String(index)}`) : atomContent[kind],
+                kind === "text"
+                  ? textRun(`survivor${String(index)}`)
+                  : atomContent[kind],
               ),
             ),
           ).toBe(expected);
@@ -223,7 +262,9 @@ describe("accepted deletion comment anchors", () => {
 
 describe("rejected insertion comment anchors", () => {
   test("rejecting inserted text retires its thread and source anchors", async () => {
-    const reviewer = await openReviewer(await paragraphsDocx([[textRun("Original")]]));
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun("Original")]]),
+    );
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) throw new Error("Expected a paragraph block");
     const inserted = reviewer.applyOperations(
@@ -231,7 +272,9 @@ describe("rejected insertion comment anchors", () => {
       { undefinedReferences: "refuse", mode: "tracked-changes" },
     );
     expect(inserted.skipped).toEqual([]);
-    const temporary = reviewer.snapshot().blocks.find(({ text }) => text === "Temporary");
+    const temporary = reviewer
+      .snapshot()
+      .blocks.find(({ text }) => text === "Temporary");
     expect(temporary).toBeDefined();
     const commented = reviewer.applyOperations(
       [
@@ -248,11 +291,15 @@ describe("rejected insertion comment anchors", () => {
 
     expect(reviewer.rejectAll()).toBeGreaterThan(0);
     expect(reviewer.getComments()).toEqual([]);
-    expect((await openReviewer(await reviewer.toBuffer())).getComments()).toEqual([]);
+    expect(
+      (await openReviewer(await reviewer.toBuffer())).getComments(),
+    ).toEqual([]);
   });
 
   test("rejecting inserted text keeps a range over surviving original text", async () => {
-    const reviewer = await openReviewer(await paragraphsDocx([[textRun("Original")]]));
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun("Original")]]),
+    );
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) throw new Error("Expected a paragraph block");
     const inserted = reviewer.applyOperations(
@@ -283,7 +330,9 @@ describe("rejected insertion comment anchors", () => {
 
     expect(reviewer.rejectAll()).toBeGreaterThan(0);
     expect(
-      reviewer.getComments().map(({ text, anchoredText }) => ({ text, anchoredText })),
+      reviewer
+        .getComments()
+        .map(({ text, anchoredText }) => ({ text, anchoredText })),
     ).toEqual([{ text: "Keep on original", anchoredText: "Original" }]);
   });
 });

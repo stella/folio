@@ -13,7 +13,7 @@
  * opening the document.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { collectLineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
 
@@ -52,7 +52,8 @@ async function installLayoutLog(page: Page): Promise<void> {
       ["U+0-FF", "latin"],
     ];
     const subsetOf = (range: string): string =>
-      SUBSET_BY_RANGE_START.find(([start]) => range.startsWith(start))?.[1] ?? range;
+      SUBSET_BY_RANGE_START.find(([start]) => range.startsWith(start))?.[1] ??
+      range;
     globalThis.__fontSubsetStatus = () => {
       const status: Record<string, string> = {};
       for (const face of document.fonts) {
@@ -100,7 +101,11 @@ async function expectMeasuredAsPainted(page: Page): Promise<void> {
   expect(lines.length).toBeGreaterThanOrEqual(MIN_LINES);
   expect(
     lines
-      .filter((line) => Math.abs(line.delta) > PER_RUN_TOLERANCE_PX * Math.max(1, line.runCount))
+      .filter(
+        (line) =>
+          Math.abs(line.delta) >
+          PER_RUN_TOLERANCE_PX * Math.max(1, line.runCount),
+      )
       .map(
         (line) =>
           `line ${line.index} "${line.text}": measured ${line.measured.toFixed(2)}px, painted ${line.painted.toFixed(2)}px`,
@@ -113,7 +118,9 @@ for (const host of EDITOR_HOSTS) {
     test.beforeEach(async ({ page }) => {
       await installLayoutLog(page);
       await page.goto(`${host.url}/?file=${FIXTURE}`);
-      await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
+      await page.waitForSelector(".layout-page .layout-line", {
+        timeout: 30_000,
+      });
     });
 
     test("the first layout waits for every subset the text needs, and nothing relays out", async ({
@@ -139,9 +146,11 @@ for (const host of EDITOR_HOSTS) {
       page,
     }) => {
       await settleLayout(page);
-      expect(await page.evaluate(() => globalThis.__fontSubsetStatus?.()["vietnamese"])).toBe(
-        "unloaded",
-      );
+      expect(
+        await page.evaluate(
+          () => globalThis.__fontSubsetStatus?.()["vietnamese"],
+        ),
+      ).toBe("unloaded");
 
       await page.locator(".layout-paragraph").first().click();
       await page.keyboard.press("End");
@@ -154,9 +163,11 @@ for (const host of EDITOR_HOSTS) {
       );
       await settleLayout(page);
 
-      expect(await page.evaluate(() => globalThis.__fontSubsetStatus?.()["vietnamese"])).toBe(
-        "loaded",
-      );
+      expect(
+        await page.evaluate(
+          () => globalThis.__fontSubsetStatus?.()["vietnamese"],
+        ),
+      ).toBe("loaded");
       await expectMeasuredAsPainted(page);
     });
   });

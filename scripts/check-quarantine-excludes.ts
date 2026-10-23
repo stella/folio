@@ -65,10 +65,12 @@ const readExcludeBlock = (bunfig: string): string => {
 
 const readExcludes = (bunfig: string): Set<string> =>
   new Set(
-    [...readExcludeBlock(bunfig).matchAll(/"(?<name>@?[^"]+)"/gu)].flatMap((match) => {
-      const name = match.groups?.["name"];
-      return name === undefined ? [] : [name];
-    }),
+    [...readExcludeBlock(bunfig).matchAll(/"(?<name>@?[^"]+)"/gu)].flatMap(
+      (match) => {
+        const name = match.groups?.["name"];
+        return name === undefined ? [] : [name];
+      },
+    ),
   );
 
 type TemporaryExclude = {
@@ -93,7 +95,9 @@ const parseTemporaryExcludeLine = (line: string): ParsedTemporaryExclude => {
   const commentStart = line.indexOf("#");
   const declaration = line.slice(0, commentStart).trim();
   const comment = line.slice(commentStart + 1).trim();
-  const quotedName = declaration.endsWith(",") ? declaration.slice(0, -1).trim() : declaration;
+  const quotedName = declaration.endsWith(",")
+    ? declaration.slice(0, -1).trim()
+    : declaration;
   const isQuotedName =
     quotedName.startsWith('"') &&
     quotedName.endsWith('"') &&
@@ -149,18 +153,23 @@ const readRegistryFirstPartyPackages = (lockfile: string): Set<string> =>
   new Set(
     // Scope plus exactly one segment. Bun also keys nested resolutions by path
     // ("@stll/template-conditions/better-result"); those are not package names.
-    [...lockfile.matchAll(/"(?<name>@stll\/[^"/]+)":\s*\[/gu)].flatMap((match) => {
-      const name = match.groups?.["name"];
-      if (name === undefined) return [];
-      // The entry's own resolution follows the name; workspace members carry
-      // the workspace protocol instead of a registry tarball. Read to the end
-      // of that line and no further: a fixed-width window spills into the next
-      // entry, and one workspace neighbour then hides a registry-resolved
-      // package from the coverage check entirely.
-      const lineEnd = lockfile.indexOf("\n", match.index);
-      const entry = lockfile.slice(match.index, lineEnd === -1 ? undefined : lineEnd);
-      return entry.includes(WORKSPACE_PROTOCOL) ? [] : [name];
-    }),
+    [...lockfile.matchAll(/"(?<name>@stll\/[^"/]+)":\s*\[/gu)].flatMap(
+      (match) => {
+        const name = match.groups?.["name"];
+        if (name === undefined) return [];
+        // The entry's own resolution follows the name; workspace members carry
+        // the workspace protocol instead of a registry tarball. Read to the end
+        // of that line and no further: a fixed-width window spills into the next
+        // entry, and one workspace neighbour then hides a registry-resolved
+        // package from the coverage check entirely.
+        const lineEnd = lockfile.indexOf("\n", match.index);
+        const entry = lockfile.slice(
+          match.index,
+          lineEnd === -1 ? undefined : lineEnd,
+        );
+        return entry.includes(WORKSPACE_PROTOCOL) ? [] : [name];
+      },
+    ),
   );
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -186,7 +195,9 @@ export const checkQuarantineExcludes = ({
 }): QuarantineExcludeCheckResult => {
   const excludes = readExcludes(bunfig);
   const firstPartyPackages = readRegistryFirstPartyPackages(lockfile);
-  const missing = [...firstPartyPackages].filter((name) => !excludes.has(name)).sort();
+  const missing = [...firstPartyPackages]
+    .filter((name) => !excludes.has(name))
+    .sort();
   const temporary = readTemporaryExcludes(bunfig);
   const errors = [...temporary.errors];
 
@@ -194,7 +205,9 @@ export const checkQuarantineExcludes = ({
     errors.push(
       `${BUNFIG} minimumReleaseAgeExcludes is missing ${missing.length} first-party package(s):\n${missing
         .map((name) => `  "${name}",`)
-        .join("\n")}\n\nAdd them. Until then, a fresh publish of any of these installs ` +
+        .join(
+          "\n",
+        )}\n\nAdd them. Until then, a fresh publish of any of these installs ` +
         `partially: the quarantine blocks it, and an optionalDependency that is ` +
         `blocked is skipped silently, so the failure surfaces at runtime rather ` +
         `than at install.`,
@@ -278,7 +291,10 @@ export const pruneExpiredExcludes = ({
     ? (lines[0] ?? "").trimEnd()
     : lines.join("\n");
 
-  return { bunfig: bunfig.slice(0, blockStart) + block + bunfig.slice(blockEnd), pruned };
+  return {
+    bunfig: bunfig.slice(0, blockStart) + block + bunfig.slice(blockEnd),
+    pruned,
+  };
 };
 
 const prune = async (): Promise<void> => {

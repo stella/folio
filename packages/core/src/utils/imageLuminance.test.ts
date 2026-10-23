@@ -8,7 +8,10 @@ const applyFilter = (filter: string, channel: number): number => {
   let value = channel / 255;
   for (const match of filter.matchAll(FILTER_FUNCTION)) {
     const amount = Number(match[2]);
-    value = match[1] === "contrast" ? amount * value + (1 - amount) / 2 : amount * value;
+    value =
+      match[1] === "contrast"
+        ? amount * value + (1 - amount) / 2
+        : amount * value;
     value = Math.max(0, Math.min(1, value));
   }
   return Math.round(value * 255);
@@ -28,10 +31,20 @@ describe("imageLuminanceFilter", () => {
   });
 
   test("handles identity and percentage boundaries", () => {
-    expect(imageLuminanceFilter({ brightness: 0, contrast: 0 })).toBeUndefined();
-    expect(imageLuminanceFilter({ brightness: 100 })).toBe("contrast(0.333333) brightness(3)");
-    expect(imageLuminanceFilter({ brightness: -100 })).toBe("brightness(0.333333) contrast(3)");
-    expect(imageLuminanceFilter({ contrast: 100 })).toBe("brightness(1) contrast(1000)");
-    expect(imageLuminanceFilter({ contrast: -100 })).toBe("contrast(0) brightness(1)");
+    expect(
+      imageLuminanceFilter({ brightness: 0, contrast: 0 }),
+    ).toBeUndefined();
+    expect(imageLuminanceFilter({ brightness: 100 })).toBe(
+      "contrast(0.333333) brightness(3)",
+    );
+    expect(imageLuminanceFilter({ brightness: -100 })).toBe(
+      "brightness(0.333333) contrast(3)",
+    );
+    expect(imageLuminanceFilter({ contrast: 100 })).toBe(
+      "brightness(1) contrast(1000)",
+    );
+    expect(imageLuminanceFilter({ contrast: -100 })).toBe(
+      "contrast(0) brightness(1)",
+    );
   });
 });

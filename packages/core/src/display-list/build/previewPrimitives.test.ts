@@ -28,7 +28,9 @@ const descriptorOf = (
 const rectsOf = (primitives: readonly DisplayPrimitive[]) =>
   primitives.map((primitive) => {
     if (primitive.kind !== "rect") {
-      throw new Error(`a preview drew a ${primitive.kind}, which no backend expects of one`);
+      throw new Error(
+        `a preview drew a ${primitive.kind}, which no backend expects of one`,
+      );
     }
     return primitive;
   });
@@ -76,7 +78,10 @@ describe("a preview is drawn", () => {
       color,
     });
     const drawn = rectsOf(
-      paintPreview(descriptorOf([at(0, "70AD47"), at(0, "C00000"), at(0, "4472C4")]), BOX),
+      paintPreview(
+        descriptorOf([at(0, "70AD47"), at(0, "C00000"), at(0, "4472C4")]),
+        BOX,
+      ),
     );
 
     expect(drawn.slice(1).map((primitive) => primitive.fill)).toEqual([
@@ -139,7 +144,14 @@ describe("a preview is drawn", () => {
     const [, drawn] = rectsOf(
       paintPreview(
         descriptorOf([
-          { type: "rect", x: 0, y: 0, width: EXTENT.width, height: EXTENT.height, color: "FF0000" },
+          {
+            type: "rect",
+            x: 0,
+            y: 0,
+            width: EXTENT.width,
+            height: EXTENT.height,
+            color: "FF0000",
+          },
         ]),
         BOX,
       ),
@@ -152,7 +164,14 @@ describe("a preview is drawn", () => {
     const [, drawn] = rectsOf(
       paintPreview(
         descriptorOf([
-          { type: "rect", x: 0, y: 0, width: EXTENT.width, height: EXTENT.height, color: "" },
+          {
+            type: "rect",
+            x: 0,
+            y: 0,
+            width: EXTENT.width,
+            height: EXTENT.height,
+            color: "",
+          },
         ]),
         BOX,
       ),
@@ -166,7 +185,9 @@ describe("a preview is drawn", () => {
       {
         kind: "diagram",
         extent: { width: 0, height: 0 },
-        shapes: [{ type: "rect", x: 0, y: 0, width: 10, height: 10, color: "70AD47" }],
+        shapes: [
+          { type: "rect", x: 0, y: 0, width: 10, height: 10, color: "70AD47" },
+        ],
       },
       BOX,
     );

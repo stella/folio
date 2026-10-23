@@ -11,7 +11,7 @@
  * blank paragraphs, and fails every comparison here.
  */
 
-import { test, type Page } from "@playwright/test";
+import { type Page, test } from "@playwright/test";
 
 import { expect, forEachAdapter, openEditor } from "../parity/parity-fixture";
 import type { AdapterFixture } from "../parity/parity-fixture";
@@ -44,7 +44,11 @@ const paintedBody = (page: Page): Promise<PaintedParagraph[]> =>
     ),
   );
 
-const chooseView = async (page: Page, adapter: AdapterFixture, label: string): Promise<void> => {
+const chooseView = async (
+  page: Page,
+  adapter: AdapterFixture,
+  label: string,
+): Promise<void> => {
   if (adapter.name === "react") {
     await page.getByRole("combobox").filter({ hasText: "All Markup" }).click();
     await page.getByRole("option", { name: label, exact: true }).click();
@@ -72,22 +76,31 @@ const chooseView = async (page: Page, adapter: AdapterFixture, label: string): P
 };
 
 for (const { label, companion } of VIEWS) {
-  forEachAdapter(`${label} paints the pages of the text it shows`, async (adapter, { page }) => {
-    await openEditor(page, adapter, companion);
-    await expect.poll(() => paintedBody(page).then((body) => body.length)).toBeGreaterThan(0);
-    const expected = await paintedBody(page);
+  forEachAdapter(
+    `${label} paints the pages of the text it shows`,
+    async (adapter, { page }) => {
+      await openEditor(page, adapter, companion);
+      await expect
+        .poll(() => paintedBody(page).then((body) => body.length))
+        .toBeGreaterThan(0);
+      const expected = await paintedBody(page);
 
-    await openEditor(page, adapter, TRACKED_FIXTURE);
-    await expect.poll(() => paintedBody(page)).not.toEqual(expected);
-    await chooseView(page, adapter, label);
+      await openEditor(page, adapter, TRACKED_FIXTURE);
+      await expect.poll(() => paintedBody(page)).not.toEqual(expected);
+      await chooseView(page, adapter, label);
 
-    await expect.poll(() => paintedBody(page)).toEqual(expected);
-  });
+      await expect.poll(() => paintedBody(page)).toEqual(expected);
+    },
+  );
 }
 
 test("document scroll closes the Vue markup menu", async ({ page }) => {
   const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
-  await openEditor(page, { name: "vue", baseUrl: `http://localhost:${vuePort}` }, TRACKED_FIXTURE);
+  await openEditor(
+    page,
+    { name: "vue", baseUrl: `http://localhost:${vuePort}` },
+    TRACKED_FIXTURE,
+  );
 
   await page.locator(".review-controls__display").click();
   await expect(page.locator(".review-controls__panel")).toBeVisible();

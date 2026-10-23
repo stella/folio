@@ -11,9 +11,9 @@ import path from "node:path";
 import { parseDocx } from "../packages/core/src/docx/parser";
 import { toFlowBlocks } from "../packages/core/src/layout-bridge/convert/toFlowBlocks";
 import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseDoc";
+import { createLiteralSearchScope } from "./literalSearch";
 import { traceFlowBlocks } from "./sourceTraceFlow";
 import { normalizeLineText } from "./textNorm";
-import { createLiteralSearchScope } from "./literalSearch";
 
 type Flags = {
   doc?: string | undefined;
@@ -95,7 +95,9 @@ const pickFormatting = (value: unknown): unknown => {
     "keepLines",
     "outlineLevel",
   ];
-  return Object.fromEntries(keys.flatMap((key) => (key in value ? [[key, value[key]]] : [])));
+  return Object.fromEntries(
+    keys.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
+  );
 };
 
 const textFromDocContent = (content: unknown): string => {
@@ -116,7 +118,10 @@ const textFromDocContent = (content: unknown): string => {
       Array.isArray(item["fieldResult"])
     ) {
       text += textFromDocContent(item["fieldResult"]);
-    } else if (item["type"] === "simpleField" && Array.isArray(item["content"])) {
+    } else if (
+      item["type"] === "simpleField" &&
+      Array.isArray(item["content"])
+    ) {
       text += textFromDocContent(item["content"]);
     } else if (item["type"] === "tab") {
       text += "\t";
@@ -149,7 +154,9 @@ const summarizeDocContent = (content: unknown): unknown[] => {
           type,
           fieldType: item["fieldType"],
           instruction: item["instruction"],
-          resultText: truncate(textFromDocContent(item["fieldResult"] ?? item["content"])),
+          resultText: truncate(
+            textFromDocContent(item["fieldResult"] ?? item["content"]),
+          ),
           fldLock: item["fldLock"],
           dirty: item["dirty"],
         },
@@ -218,7 +225,11 @@ const main = async (): Promise<void> => {
     }
     const children: unknown[] = [];
     node.descendants((child, childPos) => {
-      if (child.isText || child.type.name === "field" || child.type.name === "tab") {
+      if (
+        child.isText ||
+        child.type.name === "field" ||
+        child.type.name === "tab"
+      ) {
         children.push(summarizePmChild(child, pos + 1 + childPos));
       }
       return undefined;

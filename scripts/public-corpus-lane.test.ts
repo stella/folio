@@ -11,15 +11,20 @@ const parseWorkflow = (source: string) => {
     throw new TypeError("Invalid workflow structure");
   // Bun folds duplicate keys; bind the block-style trigger declarations to its result.
   const section = /^on:\n([\s\S]*?)(?=^\S|$(?![\s\S]))/mu.exec(source)?.at(1);
-  if (section === undefined) throw new TypeError("Missing block-style workflow triggers");
-  const declarations = [...section.matchAll(/^  ([a-z_]+):/gmu)].map((match) => match[1]);
+  if (section === undefined)
+    throw new TypeError("Missing block-style workflow triggers");
+  const declarations = [...section.matchAll(/^  ([a-z_]+):/gmu)].map(
+    (match) => match[1],
+  );
   if (new Set(declarations).size !== declarations.length)
     throw new TypeError("Duplicate workflow trigger declaration");
   expect(declarations.toSorted()).toEqual(Object.keys(parsed["on"]).toSorted());
   return { triggers: parsed["on"], jobs: parsed["jobs"] };
 };
 const workflow = (file: string) =>
-  parseWorkflow(readFileSync(path.join(ROOT, ".github/workflows", file), "utf8"));
+  parseWorkflow(
+    readFileSync(path.join(ROOT, ".github/workflows", file), "utf8"),
+  );
 
 test("duplicate declarations of every configured trigger are rejected before parser folding", () => {
   const source = readFileSync(
@@ -28,7 +33,9 @@ test("duplicate declarations of every configured trigger are rejected before par
   );
   for (const trigger of Object.keys(parseWorkflow(source).triggers)) {
     const duplicate = source.replace("on:\n", `on:\n  ${trigger}:\n`);
-    expect(() => parseWorkflow(duplicate)).toThrow("Duplicate workflow trigger declaration");
+    expect(() => parseWorkflow(duplicate)).toThrow(
+      "Duplicate workflow trigger declaration",
+    );
   }
 });
 
@@ -38,21 +45,31 @@ test("public corpus dispatch preserves the merged long-flow lane and avoids ordi
   const dispatch = triggers["workflow_dispatch"];
   if (!isRecord(dispatch) || !isRecord(dispatch["inputs"]))
     throw new TypeError("Missing dispatcher inputs");
-  const dedicated = Object.entries(jobs).filter(([, job]) => isRecord(job) && "uses" in job);
-  expect(dedicated.map(([id]) => id).toSorted()).toEqual(["long-flows", "public-corpus-flows"]);
+  const dedicated = Object.entries(jobs).filter(
+    ([, job]) => isRecord(job) && "uses" in job,
+  );
+  expect(dedicated.map(([id]) => id).toSorted()).toEqual([
+    "long-flows",
+    "public-corpus-flows",
+  ]);
   for (const [id, job] of dedicated) {
     if (!isRecord(job)) throw new TypeError("Invalid reusable job");
     const input = id.replaceAll("-", "_");
     expect(dispatch["inputs"]).toHaveProperty(input);
     expect(job["if"]).toBe(`\${{ inputs.${input} }}`);
     const target = job["uses"];
-    if (typeof target !== "string") throw new TypeError("Missing reusable workflow target");
-    expect(workflow(path.basename(target)).triggers).toHaveProperty("workflow_call");
+    if (typeof target !== "string")
+      throw new TypeError("Missing reusable workflow target");
+    expect(workflow(path.basename(target)).triggers).toHaveProperty(
+      "workflow_call",
+    );
   }
   for (const id of ["consumer-fuzz", "property-fuzz"]) {
     const job = jobs[id];
     if (!isRecord(job)) throw new TypeError(`Missing ${id}`);
-    expect(job["if"]).toBe("${{ !inputs.long_flows && !inputs.public_corpus_flows }}");
+    expect(job["if"]).toBe(
+      "${{ !inputs.long_flows && !inputs.public_corpus_flows }}",
+    );
   }
 });
 
@@ -65,7 +82,8 @@ test("public corpus generation stays outside PR gates and files findings with a 
   ]);
   const fuzz = jobs["corpus-flows"];
   const report = jobs["report"];
-  if (!isRecord(fuzz) || !isRecord(report)) throw new TypeError("Missing public corpus jobs");
+  if (!isRecord(fuzz) || !isRecord(report))
+    throw new TypeError("Missing public corpus jobs");
   expect(fuzz["permissions"]).toEqual({ contents: "read" });
   expect(fuzz["timeout-minutes"]).toBe(45);
   expect(report["permissions"]).toEqual({ contents: "read", issues: "write" });
@@ -79,7 +97,12 @@ test("public corpus generation stays outside PR gates and files findings with a 
     lane: "nightly-public-corpus-flows",
     result: "${{ needs.corpus-flows.result }}",
   });
-  const dispatcher = workflow("continuous-fuzz.yml").jobs["public-corpus-flows"];
+  const dispatcher = workflow("continuous-fuzz.yml").jobs[
+    "public-corpus-flows"
+  ];
   if (!isRecord(dispatcher)) throw new TypeError("Missing reusable caller");
-  expect(dispatcher["permissions"]).toEqual({ contents: "read", issues: "write" });
+  expect(dispatcher["permissions"]).toEqual({
+    contents: "read",
+    issues: "write",
+  });
 });

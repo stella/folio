@@ -30,7 +30,10 @@
 type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
-  report: (descriptor: { node: unknown; messageId: "sourceExtensionUrl" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "sourceExtensionUrl";
+  }) => void;
 };
 
 const isAstNode = (value: unknown): value is AstNode =>
@@ -64,7 +67,9 @@ const isImportMetaUrl = (node: unknown): boolean => {
   const property = node.property;
   const object = node.object;
   const propIsUrl =
-    isAstNode(property) && property.type === "Identifier" && property["name"] === "url";
+    isAstNode(property) &&
+    property.type === "Identifier" &&
+    property["name"] === "url";
   const objIsImportMeta = isAstNode(object) && object.type === "MetaProperty";
   return propIsUrl && objIsImportMeta;
 };
@@ -78,7 +83,11 @@ const literalStringValue = (node: unknown): string | null => {
 
 const checkUrlConstruction = (context: RuleContext, node: AstNode): void => {
   const callee = node.callee;
-  if (!isAstNode(callee) || callee.type !== "Identifier" || callee["name"] !== "URL") {
+  if (
+    !isAstNode(callee) ||
+    callee.type !== "Identifier" ||
+    callee["name"] !== "URL"
+  ) {
     return;
   }
   const args = Array.isArray(node.arguments) ? node.arguments : [];

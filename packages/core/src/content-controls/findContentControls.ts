@@ -8,7 +8,12 @@
  * every supplied field must match. Omit a field to ignore it.
  */
 
-import type { BlockContent, BlockSdt, Document, SdtProperties } from "../types/document";
+import type {
+  BlockContent,
+  BlockSdt,
+  Document,
+  SdtProperties,
+} from "../types/document";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 
 export type ContentControlFilter = {
@@ -73,7 +78,10 @@ function matches(control: BlockSdt, filter: ContentControlFilter): boolean {
   if (filter.id !== undefined && control.properties.id !== filter.id) {
     return false;
   }
-  if (filter.sdtType !== undefined && control.properties.sdtType !== filter.sdtType) {
+  if (
+    filter.sdtType !== undefined &&
+    control.properties.sdtType !== filter.sdtType
+  ) {
     return false;
   }
   return true;
@@ -102,7 +110,14 @@ function walk(
         });
       }
       // Recurse into the SDT — nested SDTs are addressable too.
-      walk(block.content, filter, out, [...ancestry, block], [...path, i], location);
+      walk(
+        block.content,
+        filter,
+        out,
+        [...ancestry, block],
+        [...path, i],
+        location,
+      );
     } else if (block.type === "table") {
       // Walk into table cells so their block controls are surfaced too.
       for (let r = 0; r < block.rows.length; r += 1) {
@@ -115,7 +130,14 @@ function walk(
           if (!cell) {
             continue;
           }
-          walk(cell.content, filter, out, ancestry, [...path, i, r, c], location);
+          walk(
+            cell.content,
+            filter,
+            out,
+            ancestry,
+            [...path, i, r, c],
+            location,
+          );
         }
       }
     }

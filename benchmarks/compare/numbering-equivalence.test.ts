@@ -1,19 +1,28 @@
 import { expect, test } from "bun:test";
+
 import { compareDocx } from "@stll/folio-core";
 
 import { buildDocumentPackage } from "./documents";
 import { checkInvariants } from "./invariants";
 import { equivalentNumberingAliases } from "./numbering-equivalence";
-import { zipPackage, type DocxPackage } from "./package-xml";
+import { type DocxPackage, zipPackage } from "./package-xml";
 import { applyVariant } from "./variants";
 
-const OPTIONS = { author: "folio compare benchmark", timestamp: "2000-01-01T00:00:00.000Z" };
+const OPTIONS = {
+  author: "folio compare benchmark",
+  timestamp: "2000-01-01T00:00:00.000Z",
+};
 
-const listParts = () => buildDocumentPackage({ documentClass: "lists", size: "s" });
+const listParts = () =>
+  buildDocumentPackage({ documentClass: "lists", size: "s" });
 
 const withSecondInstance = (
   parts: DocxPackage,
-  options: { remap: "all" | "first"; startOverride?: number; differentFormat?: boolean },
+  options: {
+    remap: "all" | "first";
+    startOverride?: number;
+    differentFormat?: boolean;
+  },
 ): DocxPackage => {
   const result = new Map(parts);
   const numbering = result.get("word/numbering.xml");
@@ -22,9 +31,12 @@ const withSecondInstance = (
     throw new Error("The list fixture needs document and numbering XML");
   }
   const abstract = options.differentFormat
-    ? numbering.match(/<w:abstractNum w:abstractNumId="0">[\s\S]*?<\/w:abstractNum>/u)?.at(0)
+    ? numbering
+        .match(/<w:abstractNum w:abstractNumId="0">[\s\S]*?<\/w:abstractNum>/u)
+        ?.at(0)
     : null;
-  if (options.differentFormat && !abstract) throw new Error("Missing abstract numbering");
+  if (options.differentFormat && !abstract)
+    throw new Error("Missing abstract numbering");
   const secondAbstract = abstract
     ?.replace('w:abstractNumId="0"', 'w:abstractNumId="1"')
     .replace('<w:numFmt w:val="decimal"/>', '<w:numFmt w:val="lowerRoman"/>');
@@ -37,7 +49,10 @@ const withSecondInstance = (
     "</w:num>";
   result.set(
     "word/numbering.xml",
-    numbering.replace("</w:numbering>", `${secondAbstract ?? ""}${instance}</w:numbering>`),
+    numbering.replace(
+      "</w:numbering>",
+      `${secondAbstract ?? ""}${instance}</w:numbering>`,
+    ),
   );
   result.set(
     "word/document.xml",
@@ -72,13 +87,17 @@ test("numbering alias equivalence preserves effective levels and sequence groups
   expect(
     await equivalentNumberingAliases(
       base,
-      await zipPackage(withSecondInstance(baseParts, { remap: "all", startOverride: 7 })),
+      await zipPackage(
+        withSecondInstance(baseParts, { remap: "all", startOverride: 7 }),
+      ),
     ),
   ).toBe(false);
   expect(
     await equivalentNumberingAliases(
       base,
-      await zipPackage(withSecondInstance(baseParts, { remap: "all", differentFormat: true })),
+      await zipPackage(
+        withSecondInstance(baseParts, { remap: "all", differentFormat: true }),
+      ),
     ),
   ).toBe(false);
 });
@@ -102,9 +121,12 @@ test("round-trip gate accepts a rebased numId only when the list remains equival
     validate: null,
   });
   expect(
-    result.outcomes.find(({ invariant }) => invariant === "accept-returns-target")?.status,
+    result.outcomes.find(
+      ({ invariant }) => invariant === "accept-returns-target",
+    )?.status,
   ).toBe("passed");
-  expect(result.outcomes.find(({ invariant }) => invariant === "reject-returns-base")?.status).toBe(
-    "passed",
-  );
+  expect(
+    result.outcomes.find(({ invariant }) => invariant === "reject-returns-base")
+      ?.status,
+  ).toBe("passed");
 });

@@ -5,16 +5,32 @@ import { initialMode, resolveEditorAuthor } from "./editor-settings";
 describe("resolveEditorAuthor", () => {
   test("prefers folio.author, then git, then the OS account", () => {
     expect(
-      resolveEditorAuthor({ setting: " Ada ", gitUserName: "Git Name", osUserName: "ada" }),
+      resolveEditorAuthor({
+        setting: " Ada ",
+        gitUserName: "Git Name",
+        osUserName: "ada",
+      }),
     ).toBe("Ada");
-    expect(resolveEditorAuthor({ setting: "", gitUserName: "Git Name", osUserName: "ada" })).toBe(
-      "Git Name",
-    );
-    expect(resolveEditorAuthor({ setting: undefined, gitUserName: " ", osUserName: "ada" })).toBe(
-      "ada",
-    );
     expect(
-      resolveEditorAuthor({ setting: undefined, gitUserName: undefined, osUserName: undefined }),
+      resolveEditorAuthor({
+        setting: "",
+        gitUserName: "Git Name",
+        osUserName: "ada",
+      }),
+    ).toBe("Git Name");
+    expect(
+      resolveEditorAuthor({
+        setting: undefined,
+        gitUserName: " ",
+        osUserName: "ada",
+      }),
+    ).toBe("ada");
+    expect(
+      resolveEditorAuthor({
+        setting: undefined,
+        gitUserName: undefined,
+        osUserName: undefined,
+      }),
     ).toBe("Folio user");
   });
 });

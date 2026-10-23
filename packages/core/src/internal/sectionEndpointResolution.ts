@@ -26,13 +26,18 @@ export type TrackedSectionEndpointRemoval = {
 type ActiveSectionEndpointRepack =
   | { status: "available"; authorization: TrackedSectionEndpointRemoval }
   | { status: "consumed"; authorization: TrackedSectionEndpointRemoval };
-const activeSectionEndpointRepacks = new WeakMap<Document, ActiveSectionEndpointRepack>();
+const activeSectionEndpointRepacks = new WeakMap<
+  Document,
+  ActiveSectionEndpointRepack
+>();
 
 const snapshotAuthorization = (
   authorization: TrackedSectionEndpointRemoval,
 ): TrackedSectionEndpointRemoval => {
   const removedReferences = Object.freeze(
-    authorization.removedReferences.map((reference) => Object.freeze({ ...reference })),
+    authorization.removedReferences.map((reference) =>
+      Object.freeze({ ...reference }),
+    ),
   );
   return Object.freeze({ ...authorization, removedReferences });
 };
@@ -50,14 +55,21 @@ export const withTrackedSectionEndpointRemoval = async <T>({
   repack,
 }: WithTrackedSectionEndpointRemovalOptions<T>): Promise<T> => {
   if (activeSectionEndpointRepacks.has(document)) {
-    panic("A tracked section-endpoint repack is already active for this document");
+    panic(
+      "A tracked section-endpoint repack is already active for this document",
+    );
   }
   const snapshot = snapshotAuthorization(resolution);
-  activeSectionEndpointRepacks.set(document, { status: "available", authorization: snapshot });
+  activeSectionEndpointRepacks.set(document, {
+    status: "available",
+    authorization: snapshot,
+  });
   try {
     const result = await repack();
     if (activeSectionEndpointRepacks.get(document)?.status !== "consumed") {
-      panic("Tracked section-endpoint repack did not consume its authorization");
+      panic(
+        "Tracked section-endpoint repack did not consume its authorization",
+      );
     }
     return result;
   } finally {

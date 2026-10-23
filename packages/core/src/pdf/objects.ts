@@ -1,4 +1,4 @@
-import { bytesToHex, encodeBinaryString, encodeUtf16BE, encodeUtf8 } from "../utils/textEncoding";
+import { panic } from "better-result";
 /**
  * The PDF object model: values, serialization, the cross-reference table and
  * the trailer.
@@ -10,9 +10,14 @@ import { bytesToHex, encodeBinaryString, encodeUtf16BE, encodeUtf8 } from "../ut
  * how it was built), and object numbers come from one allocator in call
  * order.
  */
-
-import { panic } from "better-result";
 import { deflateSync } from "node:zlib";
+
+import {
+  bytesToHex,
+  encodeBinaryString,
+  encodeUtf8,
+  encodeUtf16BE,
+} from "../utils/textEncoding";
 
 /**
  * PDF reals carry roughly five significant digits; four decimals on a
@@ -39,7 +44,10 @@ export const formatNumber = (value: number): string => {
   if (Math.abs(value) > MAX_ABS_NUMBER) {
     panic(`PDF number out of range: ${String(value)}`);
   }
-  const trimmed = value.toFixed(NUMBER_DECIMALS).replace(/0+$/u, "").replace(/\.$/u, "");
+  const trimmed = value
+    .toFixed(NUMBER_DECIMALS)
+    .replace(/0+$/u, "")
+    .replace(/\.$/u, "");
   // A signed zero, or any value that rounds to zero from below, collapses to
   // "0": "-0" and "0" are the same point but different bytes.
   return trimmed === "" || trimmed === "-" || trimmed === "-0" ? "0" : trimmed;
@@ -49,7 +57,10 @@ export type PdfRef = { readonly kind: "ref"; readonly id: number };
 
 export type PdfDictEntry = readonly [string, PdfValue];
 
-export type PdfDict = { readonly kind: "dict"; readonly entries: readonly PdfDictEntry[] };
+export type PdfDict = {
+  readonly kind: "dict";
+  readonly entries: readonly PdfDictEntry[];
+};
 
 export type PdfStream = {
   readonly kind: "stream";
@@ -75,12 +86,27 @@ export type PdfValue =
 
 export const pdfNull: PdfValue = { kind: "null" };
 export const pdfBool = (value: boolean): PdfValue => ({ kind: "bool", value });
-export const pdfNumber = (value: number): PdfValue => ({ kind: "number", value });
+export const pdfNumber = (value: number): PdfValue => ({
+  kind: "number",
+  value,
+});
 export const pdfName = (value: string): PdfValue => ({ kind: "name", value });
-export const pdfAsciiString = (value: string): PdfValue => ({ kind: "asciiString", value });
-export const pdfTextString = (value: string): PdfValue => ({ kind: "textString", value });
-export const pdfHexString = (value: string): PdfValue => ({ kind: "hexString", value });
-export const pdfArray = (items: readonly PdfValue[]): PdfValue => ({ kind: "array", items });
+export const pdfAsciiString = (value: string): PdfValue => ({
+  kind: "asciiString",
+  value,
+});
+export const pdfTextString = (value: string): PdfValue => ({
+  kind: "textString",
+  value,
+});
+export const pdfHexString = (value: string): PdfValue => ({
+  kind: "hexString",
+  value,
+});
+export const pdfArray = (items: readonly PdfValue[]): PdfValue => ({
+  kind: "array",
+  items,
+});
 export const pdfNumberArray = (values: readonly number[]): PdfValue =>
   pdfArray(values.map(pdfNumber));
 
@@ -93,7 +119,9 @@ export const pdfDict = (
   entries: readonly (readonly [string, PdfValue | undefined])[],
 ): PdfDict => ({
   kind: "dict",
-  entries: entries.filter((entry): entry is PdfDictEntry => entry[1] !== undefined),
+  entries: entries.filter(
+    (entry): entry is PdfDictEntry => entry[1] !== undefined,
+  ),
 });
 
 export const pdfStream = (dict: PdfDict, data: Uint8Array): PdfStream => ({
@@ -111,7 +139,11 @@ const DEFLATE_LEVEL = 9;
 
 export const deflateForPdf = (data: Uint8Array): Uint8Array => {
   const deflated = deflateSync(data, { level: DEFLATE_LEVEL });
-  return new Uint8Array(deflated.buffer, deflated.byteOffset, deflated.byteLength);
+  return new Uint8Array(
+    deflated.buffer,
+    deflated.byteOffset,
+    deflated.byteLength,
+  );
 };
 
 /** A `/FlateDecode` stream: the one place raw bytes become a compressed one. */
@@ -119,7 +151,10 @@ export const pdfFlateStream = (
   entries: readonly (readonly [string, PdfValue | undefined])[],
   data: Uint8Array,
 ): PdfStream =>
-  pdfStream(pdfDict([...entries, ["Filter", pdfName("FlateDecode")]]), deflateForPdf(data));
+  pdfStream(
+    pdfDict([...entries, ["Filter", pdfName("FlateDecode")]]),
+    deflateForPdf(data),
+  );
 
 /** Regular characters may appear in a name unescaped; everything else is `#xx`. */
 const NAME_REGULAR = /^[A-Za-z0-9._\-+]$/u;
@@ -128,7 +163,9 @@ const encodeName = (value: string): string => {
   let out = "/";
   for (const byte of encodeUtf8(value)) {
     const char = String.fromCharCode(byte);
-    out += NAME_REGULAR.test(char) ? char : `#${byte.toString(16).padStart(2, "0").toUpperCase()}`;
+    out += NAME_REGULAR.test(char)
+      ? char
+      : `#${byte.toString(16).padStart(2, "0").toUpperCase()}`;
   }
   return out;
 };
@@ -267,7 +304,10 @@ export const createPdfDocument = (): PdfDocument => {
   const writeObject = (sink: ByteSink, id: number, value: PdfValue) => {
     sink.writeAscii(`${String(id)} 0 obj\n`);
     if (value.kind === "stream") {
-      const withLength = pdfDict([...value.dict.entries, ["Length", pdfNumber(value.data.length)]]);
+      const withLength = pdfDict([
+        ...value.dict.entries,
+        ["Length", pdfNumber(value.data.length)],
+      ]);
       sink.writeAscii(`${serializeValue(withLength)}\nstream\n`);
       sink.writeBytes(value.data);
       sink.writeAscii("\nendstream");
@@ -308,7 +348,9 @@ export const createPdfDocument = (): PdfDocument => {
       sink.writeAscii(`xref\n0 ${String(nextId)}\n`);
       sink.writeAscii(XREF_FREE_ENTRY);
       for (let id = 1; id < nextId; id += 1) {
-        const offset = offsets.get(id) ?? panic(`missing offset for PDF object ${String(id)}`);
+        const offset =
+          offsets.get(id) ??
+          panic(`missing offset for PDF object ${String(id)}`);
         sink.writeAscii(`${String(offset).padStart(10, "0")} 00000 n \n`);
       }
 

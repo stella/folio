@@ -1,4 +1,5 @@
 import { sliceText } from "@stll/folio-core/utils/sliceText";
+
 import type { CollaborativeUser } from "./useCollaboration";
 
 type AvatarStackProps = {
@@ -22,12 +23,17 @@ export function AvatarStack({ users, max = 5 }: AvatarStackProps) {
     return null;
   }
 
-  const sorted = [...users].sort((a, b) => Number(b.isLocal) - Number(a.isLocal));
+  const sorted = [...users].sort(
+    (a, b) => Number(b.isLocal) - Number(a.isLocal),
+  );
   const visible = sorted.slice(0, max);
   const overflow = sorted.length - visible.length;
 
   return (
-    <div className="pg-avatar-stack" aria-label={`${users.length} active collaborator(s)`}>
+    <div
+      className="pg-avatar-stack"
+      aria-label={`${users.length} active collaborator(s)`}
+    >
       {visible.map((user) => (
         <div
           key={user.clientId}
@@ -39,7 +45,10 @@ export function AvatarStack({ users, max = 5 }: AvatarStackProps) {
         </div>
       ))}
       {overflow > 0 && (
-        <div className="pg-avatar pg-avatar--overflow" title={`${overflow} more`}>
+        <div
+          className="pg-avatar pg-avatar--overflow"
+          title={`${overflow} more`}
+        >
           +{overflow}
         </div>
       )}

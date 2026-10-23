@@ -5,40 +5,52 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "../prosemirror/commands/comments";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import {
   createNoteReferenceFollower,
   noteReferencesRestored,
   restoreNotes,
   withoutUnreferencedNotes,
 } from "../prosemirror/noteReferenceReview";
-import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
-import { FolioDocxReviewer } from "../ai-edits/headless";
-import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import { createHarnessState, parseShapeDocument } from "./editorHarness";
 
 type Fixture = { body: string; footnotes?: string; header?: string };
 const reference = JSON.parse(
   readFileSync(
-    path.join(import.meta.dir, "__fixtures__", "revision-resolution-reference.json"),
+    path.join(
+      import.meta.dir,
+      "__fixtures__",
+      "revision-resolution-reference.json",
+    ),
     "utf8",
   ),
 ) as {
-  package: { styles: string; numbering: string; settings: string; sectPr: string };
+  package: {
+    styles: string;
+    numbering: string;
+    settings: string;
+    sectPr: string;
+  };
   fixtures: Record<string, Fixture>;
 };
 
 const MAIN = "application/vnd.openxmlformats-officedocument.wordprocessingml";
-const RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const NAMESPACES =
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
   `xmlns:r="${RELATIONSHIPS}" ` +
@@ -48,7 +60,11 @@ const SEPARATORS =
   '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>' +
   '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
 
-const packageOf = async ({ body, footnotes, header }: Fixture): Promise<Uint8Array> => {
+const packageOf = async ({
+  body,
+  footnotes,
+  header,
+}: Fixture): Promise<Uint8Array> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -62,7 +78,9 @@ const packageOf = async ({ body, footnotes, header }: Fixture): Promise<Uint8Arr
     "word/_rels/document.xml.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIPS}/styles" Target="styles.xml"/><Relationship Id="rId3" Type="${RELATIONSHIPS}/settings" Target="settings.xml"/><Relationship Id="rId4" Type="${RELATIONSHIPS}/footnotes" Target="footnotes.xml"/>${header === undefined ? "" : `<Relationship Id="rId5" Type="${RELATIONSHIPS}/header" Target="header1.xml"/>`}</Relationships>`,
   );
-  const sectioned = body.includes("<w:sectPr") ? body : `${body}${reference.package.sectPr}`;
+  const sectioned = body.includes("<w:sectPr")
+    ? body
+    : `${body}${reference.package.sectPr}`;
   const withSection =
     header === undefined
       ? sectioned
@@ -108,20 +126,28 @@ const referenceDeletion = (doc: PMNode): number => {
 
 /** A note's text, and whether any of it is still pending deletion. */
 const noteState = (document: Document, id: number) => {
-  const note = document.package.footnotes?.find((candidate) => candidate.id === id);
+  const note = document.package.footnotes?.find(
+    (candidate) => candidate.id === id,
+  );
   if (!note) return null;
   const doc = footnoteToProseDoc(note.content);
   let deleted = false;
   doc.descendants((node) => {
-    if (node.marks.some((mark) => mark.type.name === "deletion")) deleted = true;
-    if ((node.attrs["pPrMark"] as { kind?: string } | null)?.kind === "del") deleted = true;
+    if (node.marks.some((mark) => mark.type.name === "deletion"))
+      deleted = true;
+    if ((node.attrs["pPrMark"] as { kind?: string } | null)?.kind === "del")
+      deleted = true;
     return true;
   });
   return { text: doc.textContent.trim(), deleted };
 };
 
-const resolve = (state: EditorState, mode: "accept" | "reject"): EditorState => {
-  const command = mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
+const resolve = (
+  state: EditorState,
+  mode: "accept" | "reject",
+): EditorState => {
+  const command =
+    mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
   let next = state;
   command(referenceDeletion(state.doc))(state, (transaction) => {
     next = state.apply(transaction);
@@ -135,7 +161,10 @@ describe("a note goes with its reference", () => {
 
   test("rejecting the reference's deletion gives the note its text back", async () => {
     const document = await open(fixture);
-    expect(noteState(document, 1)).toEqual({ text: "The note text.", deleted: true });
+    expect(noteState(document, 1)).toEqual({
+      text: "The note text.",
+      deleted: true,
+    });
     const state = createHarnessState(document, "editing");
     const rejected = resolve(state, "reject");
     const restored = noteReferencesRestored(state.doc, rejected.doc);
@@ -151,44 +180,73 @@ describe("a note goes with its reference", () => {
     const state = createHarnessState(document, "editing");
     const accepted = resolve(state, "accept");
     expect(noteReferencesRestored(state.doc, accepted.doc)).toEqual([]);
-    const model = fromProseDoc(accepted.doc, document, { stylesheetSource: { type: "package" } });
+    const model = fromProseDoc(accepted.doc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const saved = withoutUnreferencedNotes(model);
     expect(noteState(saved, 1)).toBeNull();
-    expect(saved.package.footnotes?.length).toBe((model.package.footnotes?.length ?? 0) - 1);
+    expect(saved.package.footnotes?.length).toBe(
+      (model.package.footnotes?.length ?? 0) - 1,
+    );
     expect(
       withoutUnreferencedNotes(
-        fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(state.doc, document, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
-    ).toEqual(fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }));
+    ).toEqual(
+      fromProseDoc(state.doc, document, {
+        stylesheetSource: { type: "package" },
+      }),
+    );
   });
 
   test("a note dropped on save takes the comments anchored only in it", async () => {
     const document = await open(fixture);
     const accepted = resolve(createHarnessState(document, "editing"), "accept");
-    const model = fromProseDoc(accepted.doc, document, { stylesheetSource: { type: "package" } });
+    const model = fromProseDoc(accepted.doc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const note = model.package.footnotes?.find(({ id }) => id === 1);
     const first = note?.content[0];
-    if (first?.type !== "paragraph") throw new Error("missing the note's paragraph");
+    if (first?.type !== "paragraph")
+      throw new Error("missing the note's paragraph");
     first.content.unshift({ type: "commentRangeStart", id: 7 });
     first.content.push({ type: "commentRangeEnd", id: 7 });
     model.package.document.comments = [
       { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z", content: [] },
     ];
-    expect(withoutUnreferencedNotes(model).package.document.comments).toBeUndefined();
+    expect(
+      withoutUnreferencedNotes(model).package.document.comments,
+    ).toBeUndefined();
   });
 
   test("the markup views show the notes as they resolve the body", async () => {
     const document = await open(fixture);
     const state = createHarnessState(document, "editing");
     const shown = (view: "all-markup" | "original" | "no-markup") => {
-      const footnotes = markupViewNotes(document.package.footnotes, view, state, document);
+      const footnotes = markupViewNotes(
+        document.package.footnotes,
+        view,
+        state,
+        document,
+      );
       return noteState(
-        { ...document, package: { ...document.package, ...(footnotes && { footnotes }) } },
+        {
+          ...document,
+          package: { ...document.package, ...(footnotes && { footnotes }) },
+        },
         1,
       );
     };
-    expect(shown("all-markup")).toEqual({ text: "The note text.", deleted: true });
-    expect(shown("original")).toEqual({ text: "The note text.", deleted: false });
+    expect(shown("all-markup")).toEqual({
+      text: "The note text.",
+      deleted: true,
+    });
+    expect(shown("original")).toEqual({
+      text: "The note text.",
+      deleted: false,
+    });
     expect(shown("no-markup")).toEqual({ text: "", deleted: false });
   });
 
@@ -213,7 +271,10 @@ describe("a note goes with its reference", () => {
     const follower = createNoteReferenceFollower();
     follower.noteBase(deleted.doc);
     const restored = follower.reconcile(document, rejected.doc);
-    expect(noteState(restored, 1)).toEqual({ text: "The note text.", deleted: false });
+    expect(noteState(restored, 1)).toEqual({
+      text: "The note text.",
+      deleted: false,
+    });
     // Undo puts the reference's deletion back: the note returns as it was.
     follower.noteBase(rejected.doc);
     const undone = follower.reconcile(restored, deleted.doc);
@@ -231,12 +292,17 @@ describe("a note goes with its reference", () => {
       ...restored,
       package: {
         ...restored.package,
-        footnotes: restored.package.footnotes?.map((note) => Object.assign({}, note)),
+        footnotes: restored.package.footnotes?.map((note) =>
+          Object.assign({}, note),
+        ),
       },
     };
     follower.noteBase(rejected.doc);
     const redeleted = follower.reconcile(edited, deleted.doc);
-    expect(noteState(redeleted, 1)).toEqual({ text: "The note text.", deleted: true });
+    expect(noteState(redeleted, 1)).toEqual({
+      text: "The note text.",
+      deleted: true,
+    });
   });
 
   for (const mode of ["accept", "reject"] as const) {
@@ -245,8 +311,14 @@ describe("a note goes with its reference", () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
       const state = createHarnessState(await open(fixture), "editing");
       const id = referenceDeletion(state.doc);
-      expect(mode === "accept" ? reviewer.acceptChange(id) : reviewer.rejectChange(id)).toBe(true);
-      const saved = await parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
+      expect(
+        mode === "accept"
+          ? reviewer.acceptChange(id)
+          : reviewer.rejectChange(id),
+      ).toBe(true);
+      const saved = await parseShapeDocument(
+        new Uint8Array(await reviewer.toBuffer()),
+      );
       expect(noteState(saved, 1)).toEqual(
         mode === "accept" ? null : { text: "The note text.", deleted: false },
       );
@@ -256,7 +328,8 @@ describe("a note goes with its reference", () => {
 
 describe("a note shared with other revisions and other stories", () => {
   const fixture = reference.fixtures["authored-delete-footnote-reference"];
-  if (!fixture?.footnotes) throw new Error("missing the deleted reference fixture");
+  if (!fixture?.footnotes)
+    throw new Error("missing the deleted reference fixture");
   // Deleted earlier, by someone else: not part of the reference's deletion.
   const struckEarlier =
     '<w:del w:id="3" w:author="Other" w:date="2025-06-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> Struck earlier.</w:delText></w:r></w:del></w:p></w:footnote>';
@@ -267,10 +340,15 @@ describe("a note shared with other revisions and other stories", () => {
 
   /** The note's text still pending deletion. */
   const deletedText = (document: Document, id: number): string => {
-    const note = document.package.footnotes?.find((candidate) => candidate.id === id);
+    const note = document.package.footnotes?.find(
+      (candidate) => candidate.id === id,
+    );
     let text = "";
     footnoteToProseDoc(note?.content ?? []).descendants((node) => {
-      if (node.isText && node.marks.some((mark) => mark.type.name === "deletion")) {
+      if (
+        node.isText &&
+        node.marks.some((mark) => mark.type.name === "deletion")
+      ) {
         text += node.text ?? "";
       }
       return true;
@@ -281,9 +359,14 @@ describe("a note shared with other revisions and other stories", () => {
   test("the reviewer rejecting the reference's deletion keeps the note's other deletion", async () => {
     const bytes = await packageOf(withEarlierDeletion);
     const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
-    const state = createHarnessState(await open(withEarlierDeletion), "editing");
+    const state = createHarnessState(
+      await open(withEarlierDeletion),
+      "editing",
+    );
     expect(reviewer.rejectChange(referenceDeletion(state.doc))).toBe(true);
-    const saved = await parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
+    const saved = await parseShapeDocument(
+      new Uint8Array(await reviewer.toBuffer()),
+    );
     expect(noteState(saved, 1)?.text).toBe("The note text. Struck earlier.");
     expect(deletedText(saved, 1)).toBe("Struck earlier.");
   });
@@ -298,7 +381,9 @@ describe("a note shared with other revisions and other stories", () => {
     expect(noteState(restored, 1)?.text).toBe("The note text. Struck earlier.");
     expect(deletedText(restored, 1)).toBe("Struck earlier.");
     const keys = noteReferencesRestored(deleted.doc, rejected.doc);
-    expect(deletedText(restoreNotes(document, keys, deleted.doc), 1)).toBe("Struck earlier.");
+    expect(deletedText(restoreNotes(document, keys, deleted.doc), 1)).toBe(
+      "Struck earlier.",
+    );
   });
 
   test("accepting the body reference's deletion keeps a note a header still refers to", async () => {
@@ -311,8 +396,12 @@ describe("a note shared with other revisions and other stories", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
     const state = createHarnessState(await open(withHeader), "editing");
     expect(reviewer.acceptChange(referenceDeletion(state.doc))).toBe(true);
-    expect(reviewer.listStories().some(({ handle }) => handle.type === "footnote")).toBe(true);
-    const saved = await parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
+    expect(
+      reviewer.listStories().some(({ handle }) => handle.type === "footnote"),
+    ).toBe(true);
+    const saved = await parseShapeDocument(
+      new Uint8Array(await reviewer.toBuffer()),
+    );
     expect(noteState(saved, 1)?.text).toBe("The note text.");
   });
 });
@@ -320,7 +409,8 @@ describe("a note shared with other revisions and other stories", () => {
 describe("an edit operation that deletes a note reference", () => {
   const deleted = reference.fixtures["authored-delete-footnote-reference"];
   const liveNote = reference.fixtures["nt-reference-only-deleted"]?.footnotes;
-  if (!deleted || liveNote === undefined) throw new Error("missing the note reference fixtures");
+  if (!deleted || liveNote === undefined)
+    throw new Error("missing the note reference fixtures");
   // The same body with its reference live, and a note whose text is not deleted.
   const live: Fixture = {
     body: deleted.body.replace(
@@ -331,8 +421,12 @@ describe("an edit operation that deletes a note reference", () => {
   };
 
   const deleteNotedParagraph = async (mode: "direct" | "tracked-changes") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer((await packageOf(live)).slice().buffer);
-    const block = reviewer.getContent().find(({ text }) => text.startsWith("Noted text"));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      (await packageOf(live)).slice().buffer,
+    );
+    const block = reviewer
+      .getContent()
+      .find(({ text }) => text.startsWith("Noted text"));
     if (!block) throw new Error("no noted paragraph");
     const result = reviewer.applyDocumentOperations(
       {
@@ -350,12 +444,18 @@ describe("an edit operation that deletes a note reference", () => {
 
   test("the fixture's reference and note are live", async () => {
     expect(live.body).not.toContain("<w:del ");
-    expect(noteState(await open(live), 1)).toEqual({ text: "The note text.", deleted: false });
+    expect(noteState(await open(live), 1)).toEqual({
+      text: "The note text.",
+      deleted: false,
+    });
   });
 
   test("tracked, it deletes the note's text with the reference", async () => {
     const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(noteState(await saved(reviewer), 1)).toEqual({ text: "The note text.", deleted: true });
+    expect(noteState(await saved(reviewer), 1)).toEqual({
+      text: "The note text.",
+      deleted: true,
+    });
   });
 
   test("tracked and accepted, the note goes", async () => {
@@ -367,14 +467,21 @@ describe("an edit operation that deletes a note reference", () => {
   test("tracked and rejected, the note keeps its text", async () => {
     const { reviewer } = await deleteNotedParagraph("tracked-changes");
     expect(reviewer.rejectAll()).toBeGreaterThan(0);
-    expect(noteState(await saved(reviewer), 1)).toEqual({ text: "The note text.", deleted: false });
+    expect(noteState(await saved(reviewer), 1)).toEqual({
+      text: "The note text.",
+      deleted: false,
+    });
   });
 
   test("tracked and undone, the note keeps its text", async () => {
-    const { reviewer, undoHandle } = await deleteNotedParagraph("tracked-changes");
+    const { reviewer, undoHandle } =
+      await deleteNotedParagraph("tracked-changes");
     if (!undoHandle) throw new Error("no undo handle");
     expect(reviewer.undoDocumentOperations(undoHandle).status).toBe("undone");
-    expect(noteState(await saved(reviewer), 1)).toEqual({ text: "The note text.", deleted: false });
+    expect(noteState(await saved(reviewer), 1)).toEqual({
+      text: "The note text.",
+      deleted: false,
+    });
   });
 
   test("direct, the note goes with its reference", async () => {

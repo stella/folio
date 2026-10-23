@@ -1,52 +1,78 @@
 import { expect, test } from "bun:test";
-import { Fragment } from "prosemirror-model";
-import { schema } from "../prosemirror/schema";
-import { resolveNumberedRefFields } from "../prosemirror/numberedRefFields";
 import fc from "fast-check";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { Fragment } from "prosemirror-model";
 import ts from "typescript";
-import { normalizeCanonicalListRendering } from "./canonicalListRendering";
-import { computeListMarker, type ComputeListMarkerOptions } from "../docx/listMarkerComputation";
-import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
-import { createDocx } from "../docx/rezip";
-import { parseDocx } from "../docx/parser";
+
 import { paragraphNumberingReference } from "@stll/docx-core/model";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { Document, Paragraph, ParagraphFormatting } from "../types/document";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
-import { newContext } from "../markdown/internals";
-import { renderParagraph } from "../markdown/renderParagraph";
+import {
+  computeListMarker,
+  type ComputeListMarkerOptions,
+} from "../docx/listMarkerComputation";
+import {
+  computeListRendering,
+  getCachedNumberingMap,
+} from "../docx/numberingParser";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { convertParagraphAttrs } from "../layout-bridge/convert/paragraphAttrs";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
+import { newContext } from "../markdown/internals";
+import { renderParagraph } from "../markdown/renderParagraph";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
-import type { ParagraphAttrs } from "../prosemirror/schema/nodes";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { createListLabelCounter, listLabelAttrsFromRendering } from "../prosemirror/listLabels";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  createListLabelCounter,
+  listLabelAttrsFromRendering,
+} from "../prosemirror/listLabels";
 import {
   advanceVisibleListMarker,
   cloneListCounterState,
   createListCounterState,
 } from "../prosemirror/listMarker";
+import { resolveNumberedRefFields } from "../prosemirror/numberedRefFields";
 import { paragraphNumberingSourcesFromBoundary } from "../prosemirror/numberingAttr";
+import { schema } from "../prosemirror/schema";
+import type { ParagraphAttrs } from "../prosemirror/schema/nodes";
+import type {
+  Document,
+  Paragraph,
+  ParagraphFormatting,
+} from "../types/document";
+import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 
 // Each production import of a counting owner belongs to an exercised reader.
 // Discovery below also catches aliases and new files, so this registry cannot
 // silently omit another counter producer.
 const PRODUCER_READERS = {
   "packages/core/src/prosemirror/listMarker.ts::advanceVisibleListMarker": "pm",
-  "packages/core/src/docx/listMarkerComputation.ts::computeListMarker": "parser",
+  "packages/core/src/docx/listMarkerComputation.ts::computeListMarker":
+    "parser",
   "packages/core/src/docx/blockContentParser.ts::p": "parser",
-  "packages/core/src/docx/listModelNormalization.ts::normalizeBody": "canonical",
-  "packages/core/src/prosemirror/listLabels.ts::listLabelAttrsFromRendering": "model",
-  "packages/core/src/prosemirror/listLabels.ts::createListLabelCounter": "snapshot",
-  "packages/core/src/markdown/renderParagraph.ts::renderParagraphBlock": "markdown",
+  "packages/core/src/docx/listModelNormalization.ts::normalizeBody":
+    "canonical",
+  "packages/core/src/prosemirror/listLabels.ts::listLabelAttrsFromRendering":
+    "model",
+  "packages/core/src/prosemirror/listLabels.ts::createListLabelCounter":
+    "snapshot",
+  "packages/core/src/markdown/renderParagraph.ts::renderParagraphBlock":
+    "markdown",
   "packages/core/src/markdown/internals.ts::newContext": "markdown",
-  "packages/core/src/ai-edits/snapshot.ts::createFolioAIEditSnapshotInternal": "snapshot",
-  "packages/core/src/layout-bridge/convert/paragraphAttrs.ts::convertParagraphAttrs": "layout",
-  "packages/core/src/prosemirror/numberedRefFields.ts::numberTargetForParagraph": "refs",
+  "packages/core/src/ai-edits/snapshot.ts::createFolioAIEditSnapshotInternal":
+    "snapshot",
+  "packages/core/src/layout-bridge/convert/paragraphAttrs.ts::convertParagraphAttrs":
+    "layout",
+  "packages/core/src/prosemirror/numberedRefFields.ts::numberTargetForParagraph":
+    "refs",
 } as const;
 const COUNTER_OWNERS = new Set([
   "computeListMarker",
@@ -56,11 +82,19 @@ const COUNTER_OWNERS = new Set([
   "listLabelAttrsFromRendering",
 ]);
 const producerFunctions = (source: string): string[] => {
-  const file = ts.createSourceFile("producer.ts", source, ts.ScriptTarget.Latest, true);
+  const file = ts.createSourceFile(
+    "producer.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const owners = new Set<string>();
   const namespaces = new Set<string>();
   for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier))
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier)
+    )
       continue;
     if (
       !/\/(?:listMarker|listLabels|listMarkerComputation)(?:\.[cm]?ts|\.js)?$/u.test(
@@ -81,12 +115,17 @@ const producerFunctions = (source: string): string[] => {
   }
   const functions = new Set<string>();
   const visit = (node: ts.Node): void => {
-    if (ts.isFunctionDeclaration(node) && node.name?.text === "advanceVisibleListMarker")
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === "advanceVisibleListMarker"
+    )
       functions.add(node.name.text);
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      ["listLabelAttrsFromRendering", "computeListMarker"].includes(node.name.text)
+      ["listLabelAttrsFromRendering", "computeListMarker"].includes(
+        node.name.text,
+      )
     )
       functions.add(node.name.text);
     if (
@@ -135,43 +174,65 @@ const discoveredProducers = (sources: ReadonlyMap<string, string>): string[] =>
   [...sources].flatMap(([file, source]) =>
     producerFunctions(source).map((name) => `${file}::${name}`),
   );
-const unregisteredProducers = (sources: ReadonlyMap<string, string>): string[] =>
-  discoveredProducers(sources).filter((producer) => !Object.hasOwn(PRODUCER_READERS, producer));
+const unregisteredProducers = (
+  sources: ReadonlyMap<string, string>,
+): string[] =>
+  discoveredProducers(sources).filter(
+    (producer) => !Object.hasOwn(PRODUCER_READERS, producer),
+  );
 
 const ROOT = path.resolve(import.meta.dir, "../../../..");
 test.each([
   ["listMarker", "advanceVisibleListMarker"],
   ["listLabels", "createListLabelCounter"],
   ["listMarkerComputation", "computeListMarker"],
-])("counter registry rejects aliased and namespace readers from %s", (module, helper) => {
-  for (const source of [
-    `import { ${helper} as advance } from './${module}'; export const newReader = () => advance(attrs, streams);`,
-    `import * as owner from './${module}'; export const newReader = () => owner.${helper}(attrs, streams);`,
-  ]) {
-    expect(unregisteredProducers(new Map([["packages/core/src/newReader.ts", source]]))).toEqual([
-      "packages/core/src/newReader.ts::newReader",
-    ]);
-  }
-});
+])(
+  "counter registry rejects aliased and namespace readers from %s",
+  (module, helper) => {
+    for (const source of [
+      `import { ${helper} as advance } from './${module}'; export const newReader = () => advance(attrs, streams);`,
+      `import * as owner from './${module}'; export const newReader = () => owner.${helper}(attrs, streams);`,
+    ]) {
+      expect(
+        unregisteredProducers(
+          new Map([["packages/core/src/newReader.ts", source]]),
+        ),
+      ).toEqual(["packages/core/src/newReader.ts::newReader"]);
+    }
+  },
+);
 test("every production counter producer belongs to an exercised reader", () => {
-  const files = execFileSync("git", ["ls-files", "packages/core/src"], { cwd: ROOT })
+  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
+    cwd: ROOT,
+  })
     .toString()
     .trim()
     .split("\n")
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
-  const sources = new Map(files.map((file) => [file, readFileSync(path.join(ROOT, file), "utf8")]));
+  const sources = new Map(
+    files.map((file) => [file, readFileSync(path.join(ROOT, file), "utf8")]),
+  );
   expect(unregisteredProducers(sources)).toEqual([]);
-  expect(discoveredProducers(sources).sort()).toEqual(Object.keys(PRODUCER_READERS).sort());
+  expect(discoveredProducers(sources).sort()).toEqual(
+    Object.keys(PRODUCER_READERS).sort(),
+  );
 });
 
-const streams = () => ({ final: createListCounterState(), original: createListCounterState() });
+const streams = () => ({
+  final: createListCounterState(),
+  original: createListCounterState(),
+});
 const stateSnapshot = (state: ReturnType<typeof streams>) => ({
   final: cloneListCounterState(state.final),
   original: cloneListCounterState(state.original),
 });
 const INFO = { id: 1636, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
 type Source = "absent" | "levelOnly" | "reference" | "none";
-const sourceFormatting = (source: Source, numId: number, ilvl: number): ParagraphFormatting => {
+const sourceFormatting = (
+  source: Source,
+  numId: number,
+  ilvl: number,
+): ParagraphFormatting => {
   const overrides = {
     absent: undefined,
     reference: paragraphNumberingReference({ numId, ilvl }),
@@ -179,10 +240,17 @@ const sourceFormatting = (source: Source, numId: number, ilvl: number): Paragrap
     none: { kind: "none" },
   } as const;
   const numPr = overrides[source];
-  return { styleId: `Numbered${numId}`, ...(numPr === undefined ? {} : { numPr }) };
+  return {
+    styleId: `Numbered${numId}`,
+    ...(numPr === undefined ? {} : { numPr }),
+  };
 };
 const PLAIN_STYLE_ID = "Plain";
-const plainFormatting = (source: Source, numId: number, ilvl: number): ParagraphFormatting => ({
+const plainFormatting = (
+  source: Source,
+  numId: number,
+  ilvl: number,
+): ParagraphFormatting => ({
   ...sourceFormatting(source, numId, ilvl),
   styleId: PLAIN_STYLE_ID,
 });
@@ -208,7 +276,11 @@ const documents = ({
 }): Document[] => {
   const result: Document[] = [];
   for (const source of ["absent", "levelOnly", "reference", "none"] as const) {
-    for (const direction of ["styleToDirect", "directToStyle", "directToPlain"] as const) {
+    for (const direction of [
+      "styleToDirect",
+      "directToStyle",
+      "directToPlain",
+    ] as const) {
       for (const before of [false, true])
         for (const after of [false, true]) {
           const inherited = sourceFormatting(source, numId, level);
@@ -216,12 +288,19 @@ const documents = ({
           const transitions = {
             styleToDirect: { original: inherited, current: direct },
             directToStyle: { original: direct, current: inherited },
-            directToPlain: { original: direct, current: plainFormatting(source, numId, level) },
+            directToPlain: {
+              original: direct,
+              current: plainFormatting(source, numId, level),
+            },
           } as const;
           const { original, current } = transitions[direction];
           const changed = paragraph(current);
           changed.propertyChanges = [
-            { type: "paragraphPropertyChange", info: INFO, previousFormatting: original },
+            {
+              type: "paragraphPropertyChange",
+              info: INFO,
+              previousFormatting: original,
+            },
           ];
           const deleted = paragraph(direct);
           deleted.pPrMark = { kind: "del", info: INFO };
@@ -244,7 +323,12 @@ const documents = ({
                   ...[numId, numId + 1].map((id) => ({
                     type: "paragraph",
                     styleId: `Numbered${id}`,
-                    pPr: { numPr: paragraphNumberingReference({ numId: id, ilvl: level }) },
+                    pPr: {
+                      numPr: paragraphNumberingReference({
+                        numId: id,
+                        ilvl: level,
+                      }),
+                    },
                   })),
                   { type: "paragraph", styleId: PLAIN_STYLE_ID },
                 ],
@@ -299,7 +383,9 @@ test(
           const exercised = new Set<string>();
           for (const document of documents(options)) {
             const pm = toProseDoc(document);
-            const converted = fromProseDoc(pm, document, { stylesheetSource: { type: "package" } });
+            const converted = fromProseDoc(pm, document, {
+              stylesheetSource: { type: "package" },
+            });
             const owner = streams();
             const snapshot = streams();
             const model = streams();
@@ -320,12 +406,16 @@ test(
               const attrs = expectParagraphAttrs(node);
               const para = converted.package.document.content[index];
               if (para?.type !== "paragraph")
-                throw new Error("Generated reader fixture must contain paragraphs");
-              const expected = advanceVisibleListMarker(attrs, owner).marker ?? undefined;
+                throw new Error(
+                  "Generated reader fixture must contain paragraphs",
+                );
+              const expected =
+                advanceVisibleListMarker(attrs, owner).marker ?? undefined;
               labels.push(expected);
-              expect(nextSnapshot(attrs).label, `snapshot label at paragraph ${index}`).toEqual(
-                expected,
-              );
+              expect(
+                nextSnapshot(attrs).label,
+                `snapshot label at paragraph ${index}`,
+              ).toEqual(expected);
               const adapted = listLabelAttrsFromRendering(
                 para.listRendering,
                 paragraphNumberingSourcesFromBoundary({
@@ -340,14 +430,23 @@ test(
                 pPrMark: attrs.pPrMark,
                 _propertyChanges: attrs._propertyChanges,
               };
-              expect(nextModel(modelAttrs).label, `model label at paragraph ${index}`).toEqual(
-                expected,
+              expect(
+                nextModel(modelAttrs).label,
+                `model label at paragraph ${index}`,
+              ).toEqual(expected);
+              const renderedMarkdown = renderParagraph(
+                ctx,
+                converted.package,
+                para,
               );
-              const renderedMarkdown = renderParagraph(ctx, converted.package, para);
-              expect(markdownLabel, `Markdown label at paragraph ${index}`).toEqual(expected);
-              expect(renderedMarkdown.trimStart(), `Markdown text at paragraph ${index}`).toBe(
-                expected === undefined ? "item" : `${expected} item`,
-              );
+              expect(
+                markdownLabel,
+                `Markdown label at paragraph ${index}`,
+              ).toEqual(expected);
+              expect(
+                renderedMarkdown.trimStart(),
+                `Markdown text at paragraph ${index}`,
+              ).toBe(expected === undefined ? "item" : `${expected} item`);
               const flow = convertParagraphAttrs(attrs, {
                 theme: undefined,
                 fontAlternates: undefined,
@@ -355,8 +454,16 @@ test(
                 defaultTabStopTwips: undefined,
                 paragraphMarkFormatting: () => undefined,
               });
-              expect(flow.listMarker, `layout label at paragraph ${index}`).toEqual(expected);
-              for (const [reader, actual] of Object.entries({ snapshot, model, markdown, layout }))
+              expect(
+                flow.listMarker,
+                `layout label at paragraph ${index}`,
+              ).toEqual(expected);
+              for (const [reader, actual] of Object.entries({
+                snapshot,
+                model,
+                markdown,
+                layout,
+              }))
                 expect(
                   stateSnapshot(actual),
                   `${reader} counter streams at paragraph ${index}`,
@@ -370,15 +477,21 @@ test(
             ).toEqual(labels);
             const numbering = document.package.numbering;
             const definedLevels = new Set(
-              (numbering?.nums ?? []).flatMap(({ numId: id, abstractNumId: abstractId }) =>
-                (
-                  numbering?.abstractNums.find((entry) => entry.abstractNumId === abstractId)
-                    ?.levels ?? []
-                ).map(({ ilvl }) => `${id}:${ilvl}`),
+              (numbering?.nums ?? []).flatMap(
+                ({ numId: id, abstractNumId: abstractId }) =>
+                  (
+                    numbering?.abstractNums.find(
+                      (entry) => entry.abstractNumId === abstractId,
+                    )?.levels ?? []
+                  ).map(({ ilvl }) => `${id}:${ilvl}`),
               ),
             );
             for (const [index, block] of snapshotBlocks.entries()) {
-              if (block.kind === "diagnostic" || block.displayLabel === undefined) continue;
+              if (
+                block.kind === "diagnostic" ||
+                block.displayLabel === undefined
+              )
+                continue;
               const reference = block.listReference;
               expect(
                 reference === undefined
@@ -401,16 +514,18 @@ test(
             const firstWithRef = first.type.create(
               {
                 ...first.attrs,
-                bookmarks: [{ id: 1636, name: "counter-target" }] satisfies NonNullable<
-                  ParagraphAttrs["bookmarks"]
-                >,
+                bookmarks: [
+                  { id: 1636, name: "counter-target" },
+                ] satisfies NonNullable<ParagraphAttrs["bookmarks"]>,
               },
               first.content.append(Fragment.from(field)),
               first.marks,
             );
             const refDocument = pm.type.create(pm.attrs, [
               firstWithRef,
-              ...Array.from({ length: pm.childCount - 1 }, (_, index) => pm.child(index + 1)),
+              ...Array.from({ length: pm.childCount - 1 }, (_, index) =>
+                pm.child(index + 1),
+              ),
             ]);
             const refs = streams();
             expect(
@@ -420,7 +535,14 @@ test(
               }).get(field),
             ).toBe(labels.at(0)?.replace(/\.$/u, ""));
             expect(stateSnapshot(refs)).toEqual(stateSnapshot(owner));
-            for (const reader of ["snapshot", "model", "markdown", "layout", "pm", "refs"])
+            for (const reader of [
+              "snapshot",
+              "model",
+              "markdown",
+              "layout",
+              "pm",
+              "refs",
+            ])
               exercised.add(reader);
           }
           await assertSparseReaders(options);
@@ -431,7 +553,10 @@ test(
           );
         },
       ),
-      { numRuns: 8, id: "all numbering readers preserve labels and complete counter streams" },
+      {
+        numRuns: 8,
+        id: "all numbering readers preserve labels and complete counter streams",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -461,7 +586,10 @@ const assertSparseReaders = async ({
           numFmt: "decimal" as const,
           start: 1,
           lvlText:
-            Array.from({ length: templateDepth }, (_, index) => `%${index + 1}`).join(".") + ".",
+            Array.from(
+              { length: templateDepth },
+              (_, index) => `%${index + 1}`,
+            ).join(".") + ".",
           ...(ilvl === hiddenLevel ? { rPr: { hidden: true } } : {}),
         })),
       },
@@ -492,12 +620,21 @@ const assertSparseReaders = async ({
         const para = {
           ...paragraph({ numPr }),
           paraId: (content.length + 1).toString(16).padStart(8, "0"),
-          ...(rendering === undefined ? {} : { listRendering: { ...rendering } }),
+          ...(rendering === undefined
+            ? {}
+            : { listRendering: { ...rendering } }),
         };
         computeListMarker(para, parser);
-        const label = para.listRendering?.markerHidden ? undefined : para.listRendering?.marker;
+        const label = para.listRendering?.markerHidden
+          ? undefined
+          : para.listRendering?.marker;
         expect(
-          next(listLabelAttrsFromRendering(rendering, { numPr, numPrFromStyle: undefined })).label,
+          next(
+            listLabelAttrsFromRendering(rendering, {
+              numPr,
+              numPrFromStyle: undefined,
+            }),
+          ).label,
         ).toEqual(label);
         for (const stream of [reader.final, reader.original]) {
           expect(stream.counters).toEqual(parser.listCounters);
@@ -509,21 +646,27 @@ const assertSparseReaders = async ({
         expected.push(label);
       }
     }
-  const document = { package: { document: { content }, numbering: numberingDefinitions } };
+  const document = {
+    package: { document: { content }, numbering: numberingDefinitions },
+  };
   const labels = (doc: Document) =>
     doc.package.document.content.map((block) =>
       block.type === "paragraph" && !block.listRendering?.markerHidden
         ? block.listRendering?.marker
         : undefined,
     );
-  expect(labels(normalizeCanonicalListRendering(document).document)).toEqual(expected);
+  expect(labels(normalizeCanonicalListRendering(document).document)).toEqual(
+    expected,
+  );
   const parsed = await parseDocx(await createDocx(document), {
     detectVariables: false,
     preloadFonts: false,
   });
   expect(labels(parsed)).toEqual(expected);
   const pm = toProseDoc(parsed);
-  const layoutBlocks = toFlowBlocks(pm).filter((block) => block.kind === "paragraph");
+  const layoutBlocks = toFlowBlocks(pm).filter(
+    (block) => block.kind === "paragraph",
+  );
   expect(
     layoutBlocks.map(({ attrs }) => ({
       marker: attrs?.listMarker,
@@ -531,15 +674,22 @@ const assertSparseReaders = async ({
     })),
   ).toEqual(
     parsed.package.document.content.map((block) => ({
-      marker: block.type === "paragraph" ? block.listRendering?.marker : undefined,
-      hidden: block.type === "paragraph" && block.listRendering?.markerHidden === true,
+      marker:
+        block.type === "paragraph" ? block.listRendering?.marker : undefined,
+      hidden:
+        block.type === "paragraph" &&
+        block.listRendering?.markerHidden === true,
     })),
   );
   // Layout retains a hidden marker as metadata; the painter consults this flag.
   expect(
-    layoutBlocks.map(({ attrs }) => (attrs?.listMarkerHidden ? undefined : attrs?.listMarker)),
+    layoutBlocks.map(({ attrs }) =>
+      attrs?.listMarkerHidden ? undefined : attrs?.listMarker,
+    ),
   ).toEqual(expected);
-  const converted = fromProseDoc(pm, parsed, { stylesheetSource: { type: "package" } });
+  const converted = fromProseDoc(pm, parsed, {
+    stylesheetSource: { type: "package" },
+  });
   expect(labels(converted)).toEqual(expected);
   const ctx = newContext({}, parsed.package.styles);
   ctx.nextListLabel = createListLabelCounter();
@@ -566,7 +716,9 @@ test("preserves template punctuation across readers for unresolved child placeho
             type: "paragraph",
             paraId: "12345678",
             formatting: { numPr: { kind: "reference", numId: 2, ilvl: 0 } },
-            content: [{ type: "run", content: [{ type: "text", text: "Parent" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Parent" }] },
+            ],
           },
         ],
       },
@@ -588,18 +740,31 @@ test("preserves template punctuation across readers for unresolved child placeho
       },
     },
   } satisfies Document;
-  const parsed = await parseDocx(await createDocx(source), { preloadFonts: false });
+  const parsed = await parseDocx(await createDocx(source), {
+    preloadFonts: false,
+  });
   const parsedParagraph = parsed.package.document.content.at(0);
   expect(
-    parsedParagraph?.type === "paragraph" ? parsedParagraph.listRendering?.marker : undefined,
+    parsedParagraph?.type === "paragraph"
+      ? parsedParagraph.listRendering?.marker
+      : undefined,
   ).toBe("1..");
-  const canonical = normalizeCanonicalListRendering(parsed).document.package.document.content.at(0);
-  expect(canonical?.type === "paragraph" ? canonical.listRendering?.marker : undefined).toBe("1..");
+  const canonical =
+    normalizeCanonicalListRendering(
+      parsed,
+    ).document.package.document.content.at(0);
+  expect(
+    canonical?.type === "paragraph"
+      ? canonical.listRendering?.marker
+      : undefined,
+  ).toBe("1..");
   const pm = toProseDoc(parsed);
   const snapshot = createFolioAIEditSnapshot(pm).blocks.at(0);
-  expect(snapshot && snapshot.kind !== "diagnostic" ? snapshot.displayLabel : undefined).toBe(
-    "1..",
-  );
+  expect(
+    snapshot && snapshot.kind !== "diagnostic"
+      ? snapshot.displayLabel
+      : undefined,
+  ).toBe("1..");
   const blocks = toFlowBlocks(pm);
   expect(blocks.at(0)?.kind).toBe("paragraph");
   expect(blocks.at(0)?.attrs?.listMarker).toBe("1..");

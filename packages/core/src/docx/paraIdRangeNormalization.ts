@@ -37,7 +37,8 @@ const PARA_ID_ATTRIBUTE =
   /\b(w|w14|w15|w16cid):(paraId|paraIdParent|textId)=(?<quote>["'])([0-9A-Fa-f]{8})\k<quote>/gu;
 
 /** A candidate part is one that mentions any of those attributes at all. */
-const PARA_ID_CANDIDATE = /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)=/u;
+const PARA_ID_CANDIDATE =
+  /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)=/u;
 
 /**
  * `value` when it already fits, and a value derived from it when it does not.
@@ -50,7 +51,9 @@ const PARA_ID_CANDIDATE = /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)
  * duplicate rather than a package a consumer refuses.
  */
 export const paraIdInRange = (value: string): string =>
-  Number.parseInt(value, 16) < MAX_PARA_ID_EXCLUSIVE ? value : deterministicHexId(value);
+  Number.parseInt(value, 16) < MAX_PARA_ID_EXCLUSIVE
+    ? value
+    : deterministicHexId(value);
 
 /**
  * Rewrite out-of-range paragraph ids across a whole package.
@@ -68,9 +71,17 @@ export const normalizeParaIdRangeInXmlParts = (
     }
     const rewritten = xml.replaceAll(
       PARA_ID_ATTRIBUTE,
-      (whole: string, prefix: string, name: string, quote: string, value: string) => {
+      (
+        whole: string,
+        prefix: string,
+        name: string,
+        quote: string,
+        value: string,
+      ) => {
         const replacement = paraIdInRange(value);
-        return replacement === value ? whole : `${prefix}:${name}=${quote}${replacement}${quote}`;
+        return replacement === value
+          ? whole
+          : `${prefix}:${name}=${quote}${replacement}${quote}`;
       },
     );
     if (rewritten !== xml) {

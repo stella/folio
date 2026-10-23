@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DOMParser, DOMSerializer } from "prosemirror-model";
+
 import { acquireHarnessDom } from "../../../../../../test/harnessDom";
 import { expectImageAttrs } from "../../attrs";
-
 import { schema } from "../../schema";
 
 const isStringRecord = (value: unknown): value is Record<string, string> =>
@@ -80,10 +80,13 @@ test.each([undefined, null, "", "null", "Drawing name"])(
       });
       const host = document.createElement("div");
       host.append(
-        DOMSerializer.fromSchema(schema).serializeNode(schema.node("paragraph", null, [image])),
+        DOMSerializer.fromSchema(schema).serializeNode(
+          schema.node("paragraph", null, [image]),
+        ),
       );
       const element = host.querySelector("img");
-      if (element === null) throw new TypeError("Clipboard image has no HTML element.");
+      if (element === null)
+        throw new TypeError("Clipboard image has no HTML element.");
       expect(element.getAttribute("data-doc-pr-name")).toBe(docPrName ?? null);
       for (const attribute of [
         "alt",
@@ -105,8 +108,11 @@ test.each([undefined, null, "", "null", "Drawing name"])(
       ]) {
         expect(element.getAttribute(attribute)).toBeNull();
       }
-      const parsed = DOMParser.fromSchema(schema).parseSlice(host).content.firstChild?.firstChild;
-      if (parsed?.type.name !== "image") throw new TypeError("Clipboard parse lost its image.");
+      const parsed =
+        DOMParser.fromSchema(schema).parseSlice(host).content.firstChild
+          ?.firstChild;
+      if (parsed?.type.name !== "image")
+        throw new TypeError("Clipboard parse lost its image.");
       expect(expectImageAttrs(parsed).docPrName).toBe(docPrName ?? undefined);
     } finally {
       releaseDom();

@@ -31,19 +31,47 @@
       </button>
     </template>
     <template #panel>
-      <div class="docx-tmore__panel" role="menu" :aria-label="t('tableAdvanced.tableOptionsMenu')">
+      <div
+        class="docx-tmore__panel"
+        role="menu"
+        :aria-label="t('tableAdvanced.tableOptionsMenu')"
+      >
         <!-- Insert -->
-        <button type="button" class="docx-tmore__item" @click.prevent="select('addRowAbove')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertRowAbove") }}</span>
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('addRowAbove')"
+        >
+          <MaterialSymbol name="add" :size="18" /><span>{{
+            t("insertRowAbove")
+          }}</span>
         </button>
-        <button type="button" class="docx-tmore__item" @click.prevent="select('addRowBelow')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertRowBelow") }}</span>
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('addRowBelow')"
+        >
+          <MaterialSymbol name="add" :size="18" /><span>{{
+            t("insertRowBelow")
+          }}</span>
         </button>
-        <button type="button" class="docx-tmore__item" @click.prevent="select('addColumnLeft')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertColumnLeft") }}</span>
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('addColumnLeft')"
+        >
+          <MaterialSymbol name="add" :size="18" /><span>{{
+            t("insertColumnLeft")
+          }}</span>
         </button>
-        <button type="button" class="docx-tmore__item" @click.prevent="select('addColumnRight')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertColumnRight") }}</span>
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('addColumnRight')"
+        >
+          <MaterialSymbol name="add" :size="18" /><span>{{
+            t("insertColumnRight")
+          }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
@@ -55,7 +83,9 @@
           :disabled="isDisabled('mergeCells')"
           @click.prevent="select('mergeCells')"
         >
-          <MaterialSymbol name="call_merge" :size="18" /><span>{{ t("table.mergeCells") }}</span>
+          <MaterialSymbol name="call_merge" :size="18" /><span>{{
+            t("table.mergeCells")
+          }}</span>
         </button>
         <button
           type="button"
@@ -63,14 +93,22 @@
           :disabled="isDisabled('splitCell')"
           @click.prevent="select('splitCell')"
         >
-          <MaterialSymbol name="call_split" :size="18" /><span>{{ t("table.splitCell") }}</span>
+          <MaterialSymbol name="call_split" :size="18" /><span>{{
+            t("table.splitCell")
+          }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
 
         <!-- Select -->
-        <button type="button" class="docx-tmore__item" @click.prevent="select('selectTable')">
-          <MaterialSymbol name="select_all" :size="18" /><span>{{ t("table.selectTable") }}</span>
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('selectTable')"
+        >
+          <MaterialSymbol name="select_all" :size="18" /><span>{{
+            t("table.selectTable")
+          }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
@@ -82,7 +120,9 @@
           :disabled="isDisabled('deleteRow')"
           @click.prevent="select('deleteRow')"
         >
-          <MaterialSymbol name="delete" :size="18" /><span>{{ t("deleteRow") }}</span>
+          <MaterialSymbol name="delete" :size="18" /><span>{{
+            t("deleteRow")
+          }}</span>
         </button>
         <button
           type="button"
@@ -90,20 +130,26 @@
           :disabled="isDisabled('deleteColumn')"
           @click.prevent="select('deleteColumn')"
         >
-          <MaterialSymbol name="delete" :size="18" /><span>{{ t("deleteColumn") }}</span>
+          <MaterialSymbol name="delete" :size="18" /><span>{{
+            t("deleteColumn")
+          }}</span>
         </button>
         <button
           type="button"
           class="docx-tmore__item docx-tmore__item--danger"
           @click.prevent="select('deleteTable')"
         >
-          <MaterialSymbol name="delete" :size="18" /><span>{{ t("table.deleteTable") }}</span>
+          <MaterialSymbol name="delete" :size="18" /><span>{{
+            t("table.deleteTable")
+          }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
 
         <!-- Vertical alignment -->
-        <div class="docx-tmore__section-label">{{ t("tableAdvanced.verticalAlignment") }}</div>
+        <div class="docx-tmore__section-label">
+          {{ t("tableAdvanced.verticalAlignment") }}
+        </div>
         <div class="docx-tmore__icon-row">
           <button
             type="button"
@@ -137,12 +183,16 @@
         <div class="docx-tmore__separator" />
 
         <!-- Table alignment -->
-        <div class="docx-tmore__section-label">{{ t("tableAdvanced.tableAlignment") }}</div>
+        <div class="docx-tmore__section-label">
+          {{ t("tableAdvanced.tableAlignment") }}
+        </div>
         <div class="docx-tmore__icon-row">
           <button
             type="button"
             class="docx-tmore__icon-btn"
-            :class="{ 'docx-tmore__icon-btn--active': currentJustification === 'left' }"
+            :class="{
+              'docx-tmore__icon-btn--active': currentJustification === 'left',
+            }"
             :title="t('tableAdvanced.alignTableLeft')"
             @mousedown.prevent
             @click.prevent="select('alignTableLeft')"
@@ -152,7 +202,9 @@
           <button
             type="button"
             class="docx-tmore__icon-btn"
-            :class="{ 'docx-tmore__icon-btn--active': currentJustification === 'center' }"
+            :class="{
+              'docx-tmore__icon-btn--active': currentJustification === 'center',
+            }"
             :title="t('tableAdvanced.alignTableCenter')"
             @mousedown.prevent
             @click.prevent="select('alignTableCenter')"
@@ -162,7 +214,9 @@
           <button
             type="button"
             class="docx-tmore__icon-btn"
-            :class="{ 'docx-tmore__icon-btn--active': currentJustification === 'right' }"
+            :class="{
+              'docx-tmore__icon-btn--active': currentJustification === 'right',
+            }"
             :title="t('tableAdvanced.alignTableRight')"
             @mousedown.prevent
             @click.prevent="select('alignTableRight')"
@@ -174,10 +228,19 @@
         <div class="docx-tmore__separator" />
 
         <!-- Cell margins (expandable) -->
-        <button type="button" class="docx-tmore__item" @click.prevent="marginsOpen = !marginsOpen">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="marginsOpen = !marginsOpen"
+        >
           <MaterialSymbol name="padding" :size="18" />
-          <span class="docx-tmore__grow">{{ t("tableAdvanced.cellMargins") }}</span>
-          <MaterialSymbol :name="marginsOpen ? 'expand_less' : 'expand_more'" :size="18" />
+          <span class="docx-tmore__grow">{{
+            t("tableAdvanced.cellMargins")
+          }}</span>
+          <MaterialSymbol
+            :name="marginsOpen ? 'expand_less' : 'expand_more'"
+            :size="18"
+          />
         </button>
         <div v-if="marginsOpen" class="docx-tmore__sub">
           <div class="docx-tmore__margin-grid">
@@ -197,28 +260,51 @@
               <span class="docx-tmore__unit">tw</span>
             </label>
           </div>
-          <button type="button" class="docx-tmore__apply" @click.prevent="applyMargins">
+          <button
+            type="button"
+            class="docx-tmore__apply"
+            @click.prevent="applyMargins"
+          >
             {{ t("common.apply") }}
           </button>
         </div>
 
         <!-- Row height (expandable) -->
-        <button type="button" class="docx-tmore__item" @click.prevent="heightOpen = !heightOpen">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="heightOpen = !heightOpen"
+        >
           <MaterialSymbol name="height" :size="18" />
-          <span class="docx-tmore__grow">{{ t("tableAdvanced.rowHeight") }}</span>
-          <MaterialSymbol :name="heightOpen ? 'expand_less' : 'expand_more'" :size="18" />
+          <span class="docx-tmore__grow">{{
+            t("tableAdvanced.rowHeight")
+          }}</span>
+          <MaterialSymbol
+            :name="heightOpen ? 'expand_less' : 'expand_more'"
+            :size="18"
+          />
         </button>
         <div v-if="heightOpen" class="docx-tmore__sub">
           <label class="docx-tmore__row-field">
-            <span class="docx-tmore__field-label">{{ t("tableAdvanced.rule") }}</span>
+            <span class="docx-tmore__field-label">{{
+              t("tableAdvanced.rule")
+            }}</span>
             <select v-model="heightRule" class="docx-tmore__select">
-              <option value="auto">{{ t("tableAdvanced.heightRules.auto") }}</option>
-              <option value="atLeast">{{ t("tableAdvanced.heightRules.atLeast") }}</option>
-              <option value="exact">{{ t("tableAdvanced.heightRules.exact") }}</option>
+              <option value="auto">
+                {{ t("tableAdvanced.heightRules.auto") }}
+              </option>
+              <option value="atLeast">
+                {{ t("tableAdvanced.heightRules.atLeast") }}
+              </option>
+              <option value="exact">
+                {{ t("tableAdvanced.heightRules.exact") }}
+              </option>
             </select>
           </label>
           <label v-if="heightRule !== 'auto'" class="docx-tmore__row-field">
-            <span class="docx-tmore__field-label">{{ t("tableAdvanced.height") }}</span>
+            <span class="docx-tmore__field-label">{{
+              t("tableAdvanced.height")
+            }}</span>
             <input
               type="number"
               min="0"
@@ -228,19 +314,34 @@
             />
             <span class="docx-tmore__unit">tw</span>
           </label>
-          <button type="button" class="docx-tmore__apply" @click.prevent="applyHeight">
+          <button
+            type="button"
+            class="docx-tmore__apply"
+            @click.prevent="applyHeight"
+          >
             {{ t("common.apply") }}
           </button>
         </div>
 
         <!-- Cell text direction (expandable) -->
-        <button type="button" class="docx-tmore__item" @click.prevent="dirOpen = !dirOpen">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="dirOpen = !dirOpen"
+        >
           <MaterialSymbol name="text_rotation_none" :size="18" />
           <span class="docx-tmore__grow">{{ t("textDirection") }}</span>
-          <MaterialSymbol :name="dirOpen ? 'expand_less' : 'expand_more'" :size="18" />
+          <MaterialSymbol
+            :name="dirOpen ? 'expand_less' : 'expand_more'"
+            :size="18"
+          />
         </button>
         <div v-if="dirOpen" class="docx-tmore__sub docx-tmore__sub--list">
-          <button type="button" class="docx-tmore__sub-item" @click.prevent="applyDirection(null)">
+          <button
+            type="button"
+            class="docx-tmore__sub-item"
+            @click.prevent="applyDirection(null)"
+          >
             {{ t("tableAdvanced.textDirections.horizontal") }}
           </button>
           <button
@@ -262,22 +363,38 @@
         <div class="docx-tmore__separator" />
 
         <!-- Other toggles -->
-        <button type="button" class="docx-tmore__item" @click.prevent="select('toggleHeaderRow')">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('toggleHeaderRow')"
+        >
           <MaterialSymbol name="table_rows" :size="18" /><span>{{
             t("tableAdvanced.toggleHeaderRow")
           }}</span>
         </button>
-        <button type="button" class="docx-tmore__item" @click.prevent="select('distributeColumns')">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('distributeColumns')"
+        >
           <MaterialSymbol name="view_column" :size="18" /><span>{{
             t("tableAdvanced.distributeColumns")
           }}</span>
         </button>
-        <button type="button" class="docx-tmore__item" @click.prevent="select('autoFit')">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('autoFit')"
+        >
           <MaterialSymbol name="fit_width" :size="18" /><span>{{
             t("tableAdvanced.autoFit")
           }}</span>
         </button>
-        <button type="button" class="docx-tmore__item" @click.prevent="select('toggleNoWrap')">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('toggleNoWrap')"
+        >
           <MaterialSymbol name="wrap_text" :size="18" /><span>{{
             t("tableAdvanced.toggleNoWrap")
           }}</span>
@@ -285,7 +402,11 @@
 
         <div class="docx-tmore__separator" />
 
-        <button type="button" class="docx-tmore__item" @click.prevent="select('tableProperties')">
+        <button
+          type="button"
+          class="docx-tmore__item"
+          @click.prevent="select('tableProperties')"
+        >
           <MaterialSymbol name="settings" :size="18" /><span>{{
             t("tableAdvanced.tableProperties")
           }}</span>
@@ -296,10 +417,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from "vue";
-import MaterialSymbol from "./MaterialSymbol.vue";
+import { reactive, ref, watch } from "vue";
+
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
+import MaterialSymbol from "./MaterialSymbol.vue";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).

@@ -13,15 +13,18 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 const ATTRS = 'w:id="3" w:author="A" w:date="2026-01-01T00:00:00Z"';
 
 type Layer = { open: string; close: string; removes: boolean | null };
@@ -37,7 +40,11 @@ const REVISIONS: Layer[] = [
 const WRAPPERS: Layer[] = [
   { open: '<w:bdo w:val="rtl">', close: "</w:bdo>", removes: null },
   { open: '<w:dir w:val="ltr">', close: "</w:dir>", removes: null },
-  { open: "<w:sdt><w:sdtPr/><w:sdtContent>", close: "</w:sdtContent></w:sdt>", removes: null },
+  {
+    open: "<w:sdt><w:sdtPr/><w:sdtContent>",
+    close: "</w:sdtContent></w:sdt>",
+    removes: null,
+  },
 ];
 
 /**
@@ -56,20 +63,28 @@ const markup = (layers: readonly Layer[], siblings: boolean): string => {
     return removed;
   });
 
-  let stack = removed ? "<w:r><w:delText>x</w:delText></w:r>" : "<w:r><w:t>x</w:t></w:r>";
+  let stack = removed
+    ? "<w:r><w:delText>x</w:delText></w:r>"
+    : "<w:r><w:t>x</w:t></w:r>";
   for (let index = layers.length - 1; index >= 0; index -= 1) {
     // SAFETY: index walks the array's own bounds downwards.
     const layer = layers[index]!;
     const textTag = dispositions[index] ? "delText" : "t";
-    const before = siblings ? `<w:r><w:${textTag}>before</w:${textTag}></w:r>` : "";
-    const after = siblings ? `<w:r><w:${textTag}>after</w:${textTag}></w:r>` : "";
+    const before = siblings
+      ? `<w:r><w:${textTag}>before</w:${textTag}></w:r>`
+      : "";
+    const after = siblings
+      ? `<w:r><w:${textTag}>after</w:${textTag}></w:r>`
+      : "";
     stack = `${layer.open}${before}${stack}${after}${layer.close}`;
   }
   return stack;
 };
 
 const save = (inner: string): string => {
-  const node = parseXmlDocument(`<w:p ${NS}>${inner}</w:p>`) as XmlElement | null;
+  const node = parseXmlDocument(
+    `<w:p ${NS}>${inner}</w:p>`,
+  ) as XmlElement | null;
   if (!node) {
     throw new Error("the fixture did not parse");
   }
@@ -79,10 +94,13 @@ const save = (inner: string): string => {
 const bodyOf = (paragraphXml: string): string =>
   paragraphXml.replace(/^<w:p>/u, "").replace(/<\/w:p>$/u, "");
 
-const layerStack = fc.array(fc.oneof(...[...REVISIONS, ...WRAPPERS].map(fc.constant)), {
-  minLength: 1,
-  maxLength: 3,
-});
+const layerStack = fc.array(
+  fc.oneof(...[...REVISIONS, ...WRAPPERS].map(fc.constant)),
+  {
+    minLength: 1,
+    maxLength: 3,
+  },
+);
 
 describe("nesting a revision and a transparent wrapper", () => {
   test("a save keeps the authored stack", () => {

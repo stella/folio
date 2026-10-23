@@ -11,7 +11,10 @@ describe("real DOCX fixture ProseMirror boundary", () => {
   for (const fixtureName of FIXTURE_NAMES) {
     test(`${fixtureName} parses into valid canonical ProseMirror attrs`, async () => {
       const buffer = await Bun.file(
-        new URL(`../../../../../tests/visual/fixtures/${fixtureName}`, import.meta.url),
+        new URL(
+          `../../../../../tests/visual/fixtures/${fixtureName}`,
+          import.meta.url,
+        ),
       ).arrayBuffer();
 
       const document = await parseDocx(buffer, { preloadFonts: false });
@@ -24,7 +27,9 @@ describe("real DOCX fixture ProseMirror boundary", () => {
       expect(validation.issues).toEqual([]);
       expect(validation.valid).toBe(true);
 
-      const roundtripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+      const roundtripped = fromProseDoc(pmDoc, document, {
+        stylesheetSource: { type: "package" },
+      });
       expect(roundtripped.package.document.content.length).toBeGreaterThan(0);
     });
   }

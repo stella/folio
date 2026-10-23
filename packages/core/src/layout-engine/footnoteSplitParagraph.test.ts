@@ -5,9 +5,9 @@ import type {
   FlowBlock,
   LayoutOptions,
   Measure,
+  PageMargins,
   ParagraphBlock,
   ParagraphMeasure,
-  PageMargins,
   TextRun,
 } from "./types";
 
@@ -25,7 +25,11 @@ import type {
 
 const MARGINS: PageMargins = { top: 0, right: 0, bottom: 0, left: 0 };
 
-function textRun(pmStart: number, text: string, footnoteRefId?: number): TextRun {
+function textRun(
+  pmStart: number,
+  text: string,
+  footnoteRefId?: number,
+): TextRun {
   const run: TextRun = {
     kind: "text",
     text,
@@ -92,7 +96,11 @@ describe("footnote routing across split paragraphs", () => {
       footnoteHeightById: new Map([[99, 30]]),
     };
 
-    const layout = layoutDocument([block as FlowBlock], [measure as Measure], layoutOptions);
+    const layout = layoutDocument(
+      [block as FlowBlock],
+      [measure as Measure],
+      layoutOptions,
+    );
 
     expect(layout.pages.length).toBeGreaterThanOrEqual(2);
     // Page 1 should NOT have fn 99 attributed to it.
@@ -100,7 +108,9 @@ describe("footnote routing across split paragraphs", () => {
     expect(p1Ids).not.toContain(99);
     // Page 2 (or wherever the ref-bearing line actually landed) is
     // the host page; assert fn 99 is attributed there.
-    const hostPage = layout.pages.find((p) => (p.footnoteIds ?? []).includes(99));
+    const hostPage = layout.pages.find((p) =>
+      (p.footnoteIds ?? []).includes(99),
+    );
     expect(hostPage).toBeDefined();
     expect(hostPage!.number).toBeGreaterThanOrEqual(2);
   });
@@ -116,7 +126,11 @@ describe("footnote routing across split paragraphs", () => {
       footnoteHeightById: new Map([[42, 20]]),
     };
 
-    const layout = layoutDocument([block as FlowBlock], [measure as Measure], layoutOptions);
+    const layout = layoutDocument(
+      [block as FlowBlock],
+      [measure as Measure],
+      layoutOptions,
+    );
     expect(layout.pages[0]!.footnoteIds).toContain(42);
   });
 });

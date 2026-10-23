@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
-import type { canonicalLoadFixture } from "./canonicalLoadFixture";
+
 import { evaluateCanonicalLoad } from "./canonicalLoadEvaluation";
+import type { canonicalLoadFixture } from "./canonicalLoadFixture";
 
 export const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 export const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
@@ -15,14 +16,19 @@ export const clearRefusals = (page: Page) =>
   });
 
 export const expectNoRefusals = async (page: Page) =>
-  expect(await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors)).toEqual([]);
+  expect(
+    await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors),
+  ).toEqual([]);
 
 export const select = async (page: Page, anchor: number, head = anchor) => {
   expect(
-    await page.evaluate(({ from, to }) => globalThis.__folioCanonical?.select(from, to), {
-      from: anchor,
-      to: head,
-    }),
+    await page.evaluate(
+      ({ from, to }) => globalThis.__folioCanonical?.select(from, to),
+      {
+        from: anchor,
+        to: head,
+      },
+    ),
   ).toBe(true);
 };
 

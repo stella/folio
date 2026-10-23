@@ -7,7 +7,11 @@ type Context = {
 };
 
 type Rule = {
-  meta: { type: "problem"; messages: Record<string, string>; schema?: unknown[] };
+  meta: {
+    type: "problem";
+    messages: Record<string, string>;
+    schema?: unknown[];
+  };
   create: (context: Context) => Record<string, (node: unknown) => void>;
 };
 
@@ -18,13 +22,16 @@ const isNode = (value: unknown): value is AstNode =>
   typeof value["type"] === "string";
 const propertyName = (value: unknown): string | null => {
   if (!isNode(value)) return null;
-  if (value.type === "Identifier") return typeof value["name"] === "string" ? value["name"] : null;
-  if (value.type === "Literal") return typeof value["value"] === "string" ? value["value"] : null;
+  if (value.type === "Identifier")
+    return typeof value["name"] === "string" ? value["name"] : null;
+  if (value.type === "Literal")
+    return typeof value["value"] === "string" ? value["value"] : null;
   return null;
 };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-const getFilename = (context: Context): string => context.getFilename?.() ?? context.filename ?? "";
+const getFilename = (context: Context): string =>
+  context.getFilename?.() ?? context.filename ?? "";
 
 const noStringZipEntry: Rule = {
   meta: {
@@ -44,14 +51,18 @@ const noStringZipEntry: Rule = {
   create(context) {
     const option = context.options?.at(0);
     const ownerPath =
-      isRecord(option) && typeof option["ownerPath"] === "string" ? option["ownerPath"] : "";
+      isRecord(option) && typeof option["ownerPath"] === "string"
+        ? option["ownerPath"]
+        : "";
     const filename = getFilename(context).replaceAll("\\", "/");
     const isOwner =
-      ownerPath !== "" && (filename === ownerPath || filename.endsWith(`/${ownerPath}`));
+      ownerPath !== "" &&
+      (filename === ownerPath || filename.endsWith(`/${ownerPath}`));
     return {
       CallExpression(raw) {
         const args = isNode(raw) ? raw["arguments"] : undefined;
-        if (isOwner || !isNode(raw) || !Array.isArray(args) || args.length < 2) return;
+        if (isOwner || !isNode(raw) || !Array.isArray(args) || args.length < 2)
+          return;
         const callee = raw["callee"];
         if (
           !isNode(callee) ||
@@ -62,12 +73,19 @@ const noStringZipEntry: Rule = {
         if (
           args.some(
             (arg) =>
-              isNode(arg) && ["ArrowFunctionExpression", "FunctionExpression"].includes(arg.type),
+              isNode(arg) &&
+              ["ArrowFunctionExpression", "FunctionExpression"].includes(
+                arg.type,
+              ),
           )
         )
           return;
         const receiver = callee["object"];
-        if (isNode(receiver) && receiver.type === "Identifier" && receiver["name"] === "Bun")
+        if (
+          isNode(receiver) &&
+          receiver.type === "Identifier" &&
+          receiver["name"] === "Bun"
+        )
           return;
         context.report({ node: raw, messageId: "direct" });
       },
@@ -96,7 +114,8 @@ const enablesStreaming = (options: unknown): boolean => {
     }
     if (propertyName(key) !== "stream") continue;
     const value = entry["value"];
-    stream = isNode(value) && value.type === "Literal" && value["value"] === true;
+    stream =
+      isNode(value) && value.type === "Literal" && value["value"] === true;
   }
   return stream;
 };
@@ -157,7 +176,8 @@ const noChunkedTextCodec: Rule = {
           if (loopDepth === 0 && streamDepth === 0) return;
           const args = raw["arguments"];
           const options = Array.isArray(args) ? args[1] : undefined;
-          if (!enablesStreaming(options)) context.report({ node: raw, messageId: "decode" });
+          if (!enablesStreaming(options))
+            context.report({ node: raw, messageId: "decode" });
         }
         if (
           isNode(callee) &&
@@ -168,7 +188,9 @@ const noChunkedTextCodec: Rule = {
           for (const argument of Array.isArray(args) ? args : []) {
             if (
               isNode(argument) &&
-              ["ArrowFunctionExpression", "FunctionExpression"].includes(argument.type)
+              ["ArrowFunctionExpression", "FunctionExpression"].includes(
+                argument.type,
+              )
             )
               streamCallbacks.add(argument);
           }
@@ -179,11 +201,15 @@ const noChunkedTextCodec: Rule = {
         const callee = raw["callee"];
         const args = raw["arguments"];
         const streamOptions = Array.isArray(args) ? args[0] : undefined;
-        const streamProperties = isNode(streamOptions) ? streamOptions["properties"] : undefined;
+        const streamProperties = isNode(streamOptions)
+          ? streamOptions["properties"]
+          : undefined;
         if (
           isNode(callee) &&
           callee.type === "Identifier" &&
-          STREAM_CONSTRUCTORS.has(typeof callee["name"] === "string" ? callee["name"] : "") &&
+          STREAM_CONSTRUCTORS.has(
+            typeof callee["name"] === "string" ? callee["name"] : "",
+          ) &&
           isNode(streamOptions) &&
           streamOptions.type === "ObjectExpression" &&
           Array.isArray(streamProperties)
@@ -191,7 +217,9 @@ const noChunkedTextCodec: Rule = {
           for (const property of streamProperties) {
             if (
               !isNode(property) ||
-              !STREAM_HANDLER_PROPERTIES.has(propertyName(property["key"]) ?? "")
+              !STREAM_HANDLER_PROPERTIES.has(
+                propertyName(property["key"]) ?? "",
+              )
             )
               continue;
             const handler = property["value"];
@@ -242,13 +270,15 @@ const noChunkedTextCodec: Rule = {
         if (isNode(node) && streamCallbacks.has(node)) streamDepth++;
       },
       "FunctionExpression:exit"(node) {
-        if (isNode(node) && streamCallbacks.has(node)) streamDepth = Math.max(0, streamDepth - 1);
+        if (isNode(node) && streamCallbacks.has(node))
+          streamDepth = Math.max(0, streamDepth - 1);
       },
       ArrowFunctionExpression(node) {
         if (isNode(node) && streamCallbacks.has(node)) streamDepth++;
       },
       "ArrowFunctionExpression:exit"(node) {
-        if (isNode(node) && streamCallbacks.has(node)) streamDepth = Math.max(0, streamDepth - 1);
+        if (isNode(node) && streamCallbacks.has(node))
+          streamDepth = Math.max(0, streamDepth - 1);
       },
     };
   },

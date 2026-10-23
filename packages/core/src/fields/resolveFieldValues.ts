@@ -1,6 +1,15 @@
-import { computePageNumber, getFormatSwitch, parseFieldInstruction } from "../docx/fieldParser";
+import {
+  computePageNumber,
+  getFormatSwitch,
+  parseFieldInstruction,
+} from "../docx/fieldParser";
 import type { ParsedFieldInstruction } from "../docx/fieldParser";
-import type { BlockId, FieldRun, FlowBlock, Page } from "../layout-engine/types";
+import type {
+  BlockId,
+  FieldRun,
+  FlowBlock,
+  Page,
+} from "../layout-engine/types";
 import type { NumberFormat } from "../types/document";
 import { evaluateField } from "./evaluateField";
 import type { FieldContext } from "./fieldContext";
@@ -21,7 +30,11 @@ export type HeaderFooterFieldInputs = Pick<
   "bookmarkPages" | "bookmarkText" | "seqValues" | "sectionPageCounts"
 >;
 
-type BlockLocation = { page: number; pageFormat?: NumberFormat; sectionIndex: number };
+type BlockLocation = {
+  page: number;
+  pageFormat?: NumberFormat;
+  sectionIndex: number;
+};
 type FieldAnchor =
   | { type: "block"; blockId: BlockId; run: FieldRun }
   | { type: "tableRow"; blockId: BlockId; rowIndex: number; run: FieldRun };
@@ -64,10 +77,14 @@ export function resolveFieldValues(
       continue;
     }
     const location = resolveAnchorLocation(field, blockPage, tableRowPage);
-    const sectionPages = location ? shared.sectionPageCounts.get(location.sectionIndex) : undefined;
+    const sectionPages = location
+      ? shared.sectionPageCounts.get(location.sectionIndex)
+      : undefined;
     const context: FieldContext = {
       pageNumber: location?.page ?? 1,
-      ...(location?.pageFormat === undefined ? {} : { pageNumberFormat: location.pageFormat }),
+      ...(location?.pageFormat === undefined
+        ? {}
+        : { pageNumberFormat: location.pageFormat }),
       totalPages: shared.totalPages,
       bookmarkPages: shared.bookmarkPages,
       bookmarkText: shared.bookmarkText,
@@ -75,11 +92,15 @@ export function resolveFieldValues(
       now: shared.now,
       ...(sectionPages === undefined ? {} : { sectionPages }),
     };
-    const value = evaluateField(parseFieldInstruction(run.instruction || run.fieldType), context, {
-      fallback: run.fallback ?? "",
-      instanceId: run.pmStart,
-      ...(run.fldLock ? { locked: true } : {}),
-    });
+    const value = evaluateField(
+      parseFieldInstruction(run.instruction || run.fieldType),
+      context,
+      {
+        fallback: run.fallback ?? "",
+        instanceId: run.pmStart,
+        ...(run.fldLock ? { locked: true } : {}),
+      },
+    );
     values.set(run.pmStart, value);
     if (value !== (run.fallback || "1")) {
       changed = true;
@@ -138,7 +159,11 @@ export function buildHeaderFooterFieldValues(
         : {}),
       ...(parsed.type === "SECTIONPAGES"
         ? {
-            sectionPages: widestSectionPageCount(parsed, pageCount, inputs?.sectionPageCounts),
+            sectionPages: widestSectionPageCount(
+              parsed,
+              pageCount,
+              inputs?.sectionPageCounts,
+            ),
           }
         : {}),
     };
@@ -165,14 +190,20 @@ function widestSectionPageCount(
   return widestFormattedCount(parsed, Array.from(sectionPageCounts.values()));
 }
 
-function widestFormattedPageNumber(parsed: ParsedFieldInstruction, pageCount: number): number {
+function widestFormattedPageNumber(
+  parsed: ParsedFieldInstruction,
+  pageCount: number,
+): number {
   return widestFormattedCount(
     parsed,
     Array.from({ length: pageCount }, (_, index) => index + 1),
   );
 }
 
-function widestFormattedCount(parsed: ParsedFieldInstruction, counts: readonly number[]): number {
+function widestFormattedCount(
+  parsed: ParsedFieldInstruction,
+  counts: readonly number[],
+): number {
   const format = getFormatSwitch(parsed)?.toUpperCase();
   if (format !== "ROMAN" && format !== "ALPHABETIC") {
     return Math.max(...counts, 1);
@@ -231,7 +262,9 @@ export function fieldValuesEqual(
 }
 
 /** First page (and its section) each top-level block lands on. */
-function buildBlockPageMap(pages: readonly Page[]): Map<BlockId, BlockLocation> {
+function buildBlockPageMap(
+  pages: readonly Page[],
+): Map<BlockId, BlockLocation> {
   const map = new Map<BlockId, BlockLocation>();
   for (const page of pages) {
     for (const fragment of page.fragments) {
@@ -249,14 +282,20 @@ function buildBlockPageMap(pages: readonly Page[]): Map<BlockId, BlockLocation> 
   return map;
 }
 
-function buildTableRowPageMap(pages: readonly Page[]): Map<string, BlockLocation> {
+function buildTableRowPageMap(
+  pages: readonly Page[],
+): Map<string, BlockLocation> {
   const map = new Map<string, BlockLocation>();
   for (const page of pages) {
     for (const fragment of page.fragments) {
       if (fragment.kind !== "table") {
         continue;
       }
-      for (let rowIndex = fragment.fromRow; rowIndex < fragment.toRow; rowIndex++) {
+      for (
+        let rowIndex = fragment.fromRow;
+        rowIndex < fragment.toRow;
+        rowIndex++
+      ) {
         const key = tableRowKey(fragment.blockId, rowIndex);
         if (!map.has(key)) {
           map.set(key, {
@@ -286,11 +325,16 @@ function resolveAnchorLocation(
     return blockPage.get(field.blockId);
   }
   return (
-    tableRowPage.get(tableRowKey(field.blockId, field.rowIndex)) ?? blockPage.get(field.blockId)
+    tableRowPage.get(tableRowKey(field.blockId, field.rowIndex)) ??
+    blockPage.get(field.blockId)
   );
 }
 
-function collectFieldAnchors(block: FlowBlock, topLevelId: BlockId, out: FieldAnchor[]): void {
+function collectFieldAnchors(
+  block: FlowBlock,
+  topLevelId: BlockId,
+  out: FieldAnchor[],
+): void {
   if (block.kind === "paragraph") {
     for (const run of block.runs) {
       if (run.kind === "field") {

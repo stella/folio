@@ -1,5 +1,5 @@
-import type { ParagraphFormatting } from "../types/document";
 import type { FolioAIParagraphSpacing } from "../ai-edits/types";
+import type { ParagraphFormatting } from "../types/document";
 import {
   autospacingMatchesBase,
   hasAutospacingBaseSide,
@@ -39,7 +39,9 @@ export const lineSpacingProvenanceFromSpacing = (
 };
 
 /** Resolve exact provenance, including editor states written with the former boolean marker. */
-const lineSpacingProvenance = (attrs: ParagraphAttrs): ExactLineSpacingProvenance | undefined => {
+const lineSpacingProvenance = (
+  attrs: ParagraphAttrs,
+): ExactLineSpacingProvenance | undefined => {
   if (typeof attrs.lineSpacingExplicit === "string") {
     return attrs.lineSpacingExplicit;
   }
@@ -49,8 +51,12 @@ const lineSpacingProvenance = (attrs: ParagraphAttrs): ExactLineSpacingProvenanc
     return originalProvenance;
   }
   return lineSpacingProvenanceFromSpacing({
-    ...(typeof attrs.lineSpacing === "number" ? { lineSpacing: attrs.lineSpacing } : {}),
-    ...(attrs.lineSpacingRule !== undefined ? { lineSpacingRule: attrs.lineSpacingRule } : {}),
+    ...(typeof attrs.lineSpacing === "number"
+      ? { lineSpacing: attrs.lineSpacing }
+      : {}),
+    ...(attrs.lineSpacingRule !== undefined
+      ? { lineSpacingRule: attrs.lineSpacingRule }
+      : {}),
   });
 };
 
@@ -62,9 +68,15 @@ export const paragraphSpacingFromFormatting = (
     return undefined;
   }
   const spacing: DirectParagraphSpacing = {
-    ...(formatting.spaceBefore !== undefined ? { spaceBefore: formatting.spaceBefore } : {}),
-    ...(formatting.spaceAfter !== undefined ? { spaceAfter: formatting.spaceAfter } : {}),
-    ...(formatting.lineSpacing !== undefined ? { lineSpacing: formatting.lineSpacing } : {}),
+    ...(formatting.spaceBefore !== undefined
+      ? { spaceBefore: formatting.spaceBefore }
+      : {}),
+    ...(formatting.spaceAfter !== undefined
+      ? { spaceAfter: formatting.spaceAfter }
+      : {}),
+    ...(formatting.lineSpacing !== undefined
+      ? { lineSpacing: formatting.lineSpacing }
+      : {}),
     ...(formatting.lineSpacingRule !== undefined
       ? { lineSpacingRule: formatting.lineSpacingRule }
       : {}),
@@ -86,11 +98,15 @@ export const paragraphSpacingFromFormatting = (
 export const directParagraphSpacing = (
   attrs: ParagraphAttrs,
 ): DirectParagraphSpacing | undefined => {
-  const spacing = paragraphSpacingFromFormatting(attrs._originalFormatting) ?? {};
+  const spacing =
+    paragraphSpacingFromFormatting(attrs._originalFormatting) ?? {};
   const lineProvenance = lineSpacingProvenance(attrs);
   const spaceBefore: unknown = attrs.spaceBefore;
   const spaceAfter: unknown = attrs.spaceAfter;
-  const beforeHasBase = hasAutospacingBaseSide(attrs._autospacingBase, "before");
+  const beforeHasBase = hasAutospacingBaseSide(
+    attrs._autospacingBase,
+    "before",
+  );
   const afterHasBase = hasAutospacingBaseSide(attrs._autospacingBase, "after");
   const beforeAutospacingEdited = beforeHasBase
     ? !autospacingMatchesBase(attrs._autospacingBase, "before", spaceBefore)
@@ -115,14 +131,20 @@ export const directParagraphSpacing = (
       Reflect.deleteProperty(spacing, "spaceAfter");
     }
   }
-  if (spacing.spaceBefore !== undefined || attrs.spacingExplicit?.before === true) {
+  if (
+    spacing.spaceBefore !== undefined ||
+    attrs.spacingExplicit?.before === true
+  ) {
     if (typeof spaceBefore === "number") {
       spacing.spaceBefore = spaceBefore;
     } else {
       Reflect.deleteProperty(spacing, "spaceBefore");
     }
   }
-  if (spacing.spaceAfter !== undefined || attrs.spacingExplicit?.after === true) {
+  if (
+    spacing.spaceAfter !== undefined ||
+    attrs.spacingExplicit?.after === true
+  ) {
     if (typeof spaceAfter === "number") {
       spacing.spaceAfter = spaceAfter;
     } else {
@@ -201,7 +223,8 @@ export const paragraphSpacingAttrPatch = ({
     ...(direct?.spaceAfter !== undefined ? { after: true } : {}),
   };
   const spacingFromStyle = {
-    ...(direct?.spaceBefore === undefined && inherited?.spaceBefore !== undefined
+    ...(direct?.spaceBefore === undefined &&
+    inherited?.spaceBefore !== undefined
       ? { before: true }
       : {}),
     ...(direct?.spaceAfter === undefined && inherited?.spaceAfter !== undefined
@@ -221,9 +244,11 @@ export const paragraphSpacingAttrPatch = ({
     lineSpacing: effective.lineSpacing ?? null,
     lineSpacingRule: effective.lineSpacingRule ?? null,
     lineSpacingExplicit: lineSpacingProvenanceFromSpacing(direct) ?? null,
-    spacingExplicit: Object.keys(spacingExplicit).length > 0 ? spacingExplicit : null,
+    spacingExplicit:
+      Object.keys(spacingExplicit).length > 0 ? spacingExplicit : null,
     spacingFromImplicitDefaultStyle:
       Object.keys(spacingFromStyle).length > 0 ? spacingFromStyle : null,
-    _autospacingBase: Object.keys(autospacingBase).length > 0 ? autospacingBase : null,
+    _autospacingBase:
+      Object.keys(autospacingBase).length > 0 ? autospacingBase : null,
   };
 };

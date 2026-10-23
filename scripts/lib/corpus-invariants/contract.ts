@@ -101,9 +101,13 @@ export const CORPUS_FAMILY_GATING = {
   [CORPUS_INVARIANT_FAMILIES.pipelineTotality]: "gating",
   [CORPUS_INVARIANT_FAMILIES.kernelDifferential]: "gating",
   [CORPUS_INVARIANT_FAMILIES.performance]: "report-only",
-} as const satisfies Record<CorpusInvariantFamily, "gating" | "zero" | "report-only">;
+} as const satisfies Record<
+  CorpusInvariantFamily,
+  "gating" | "zero" | "report-only"
+>;
 
-export type CorpusFamilyGating = (typeof CORPUS_FAMILY_GATING)[CorpusInvariantFamily];
+export type CorpusFamilyGating =
+  (typeof CORPUS_FAMILY_GATING)[CorpusInvariantFamily];
 
 export const isGatingFamily = (family: CorpusInvariantFamily): boolean =>
   CORPUS_FAMILY_GATING[family] !== "report-only";
@@ -113,17 +117,26 @@ export const isZeroFamily = (family: CorpusInvariantFamily): boolean =>
   CORPUS_FAMILY_GATING[family] === "zero";
 
 export const EXTENDED_INVARIANT_FAMILY = {
-  [EXTENDED_CORPUS_INVARIANTS.reserialize]: CORPUS_INVARIANT_FAMILIES.reserialize,
-  [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]: CORPUS_INVARIANT_FAMILIES.editorRoundTrip,
-  [EXTENDED_CORPUS_INVARIANTS.editorProjection]: CORPUS_INVARIANT_FAMILIES.editorProjection,
-  [EXTENDED_CORPUS_INVARIANTS.editLocality]: CORPUS_INVARIANT_FAMILIES.editLocality,
+  [EXTENDED_CORPUS_INVARIANTS.reserialize]:
+    CORPUS_INVARIANT_FAMILIES.reserialize,
+  [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]:
+    CORPUS_INVARIANT_FAMILIES.editorRoundTrip,
+  [EXTENDED_CORPUS_INVARIANTS.editorProjection]:
+    CORPUS_INVARIANT_FAMILIES.editorProjection,
+  [EXTENDED_CORPUS_INVARIANTS.editLocality]:
+    CORPUS_INVARIANT_FAMILIES.editLocality,
   [EXTENDED_CORPUS_INVARIANTS.opInverse]: CORPUS_INVARIANT_FAMILIES.opInverse,
   [EXTENDED_CORPUS_INVARIANTS.opLocality]: CORPUS_INVARIANT_FAMILIES.opLocality,
-  [EXTENDED_CORPUS_INVARIANTS.saveIdempotence]: CORPUS_INVARIANT_FAMILIES.saveIdempotence,
-  [EXTENDED_CORPUS_INVARIANTS.schemaValidity]: CORPUS_INVARIANT_FAMILIES.schemaValidity,
-  [EXTENDED_CORPUS_INVARIANTS.pipelineTotality]: CORPUS_INVARIANT_FAMILIES.pipelineTotality,
-  [EXTENDED_CORPUS_INVARIANTS.kernelDifferential]: CORPUS_INVARIANT_FAMILIES.kernelDifferential,
-  [EXTENDED_CORPUS_INVARIANTS.performance]: CORPUS_INVARIANT_FAMILIES.performance,
+  [EXTENDED_CORPUS_INVARIANTS.saveIdempotence]:
+    CORPUS_INVARIANT_FAMILIES.saveIdempotence,
+  [EXTENDED_CORPUS_INVARIANTS.schemaValidity]:
+    CORPUS_INVARIANT_FAMILIES.schemaValidity,
+  [EXTENDED_CORPUS_INVARIANTS.pipelineTotality]:
+    CORPUS_INVARIANT_FAMILIES.pipelineTotality,
+  [EXTENDED_CORPUS_INVARIANTS.kernelDifferential]:
+    CORPUS_INVARIANT_FAMILIES.kernelDifferential,
+  [EXTENDED_CORPUS_INVARIANTS.performance]:
+    CORPUS_INVARIANT_FAMILIES.performance,
 } as const satisfies Record<ExtendedCorpusInvariant, CorpusInvariantFamily>;
 
 /**
@@ -133,13 +146,20 @@ export const EXTENDED_INVARIANT_FAMILY = {
 export const familyOf = (invariant: CorpusInvariant): CorpusInvariantFamily =>
   // SAFETY: the map is total over the extended invariants; anything else is a
   // core invariant, which keeps `corpus/baseline.json`.
-  EXTENDED_INVARIANT_FAMILY[invariant as ExtendedCorpusInvariant] ?? CORPUS_INVARIANT_FAMILIES.core;
+  EXTENDED_INVARIANT_FAMILY[invariant as ExtendedCorpusInvariant] ??
+  CORPUS_INVARIANT_FAMILIES.core;
 
-export const isGatingFailure = ({ invariant }: { invariant: CorpusInvariant }): boolean =>
-  isGatingFamily(familyOf(invariant));
+export const isGatingFailure = ({
+  invariant,
+}: {
+  invariant: CorpusInvariant;
+}): boolean => isGatingFamily(familyOf(invariant));
 
-export const isZeroFailure = ({ invariant }: { invariant: CorpusInvariant }): boolean =>
-  isZeroFamily(familyOf(invariant));
+export const isZeroFailure = ({
+  invariant,
+}: {
+  invariant: CorpusInvariant;
+}): boolean => isZeroFamily(familyOf(invariant));
 
 /** Milliseconds a single invariant may take on one file before the overrun is a finding. */
 export const DEFAULT_INVARIANT_BUDGET_MS = 30_000;
@@ -164,7 +184,9 @@ export type CorpusEvaluatedOutcome = {
   timings: StageTimings;
 };
 
-export const DECLARED_REFUSAL_REASONS = { SIGNED_PACKAGE: "signed-package" } as const;
+export const DECLARED_REFUSAL_REASONS = {
+  SIGNED_PACKAGE: "signed-package",
+} as const;
 export type DeclaredRefusalReason =
   (typeof DECLARED_REFUSAL_REASONS)[keyof typeof DECLARED_REFUSAL_REASONS];
 

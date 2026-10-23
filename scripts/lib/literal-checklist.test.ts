@@ -22,12 +22,23 @@ describe("literal bundle checklists", () => {
   });
 
   test("keeps literals, accents, case, inflections and empty lists exact", () => {
-    const scan = createLiteralChecklist([".a+b[0]", "Novák", "Nováka", "novák", "Novak", "😀", ""]);
+    const scan = createLiteralChecklist([
+      ".a+b[0]",
+      "Novák",
+      "Nováka",
+      "novák",
+      "Novak",
+      "😀",
+      "",
+    ]);
     expect(scan("😀 .a+b[0] Nováka")).toEqual({
       present: [".a+b[0]", "Novák", "Nováka", "😀", ""],
       missing: ["novák", "Novak"],
     });
-    expect(createLiteralChecklist([])("anything")).toEqual({ present: [], missing: [] });
+    expect(createLiteralChecklist([])("anything")).toEqual({
+      present: [],
+      missing: [],
+    });
     expect(createLiteralChecklist(["", "x"])("")).toEqual({
       present: [""],
       missing: ["x"],
@@ -52,7 +63,12 @@ describe("literal bundle checklists", () => {
       for (const right of fragments) {
         const patterns = [left, right, left + right, left];
         const scan = createLiteralChecklist(patterns);
-        for (const text of ["", left + right, right + left, `(${left}) ${right}!`]) {
+        for (const text of [
+          "",
+          left + right,
+          right + left,
+          `(${left}) ${right}!`,
+        ]) {
           expect(scan(text)).toEqual({
             present: patterns.filter((pattern) => text.includes(pattern)),
             missing: patterns.filter((pattern) => !text.includes(pattern)),

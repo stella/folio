@@ -118,7 +118,10 @@ export const staleIgnoreReason = (
 type Manifest = { version: string; dependencies?: Record<string, string> };
 
 /** Whether the parent's latest manifest still pulls the vulnerable package in. */
-export const isStillRequired = (ignore: ExpiringIgnore, parent: Manifest): boolean => {
+export const isStillRequired = (
+  ignore: ExpiringIgnore,
+  parent: Manifest,
+): boolean => {
   const dependencies = parent.dependencies ?? {};
   const { requiredBy } = ignore;
   switch (requiredBy.type) {
@@ -158,7 +161,11 @@ export const fetchLatestManifest = async (
       reason = `request failed: ${String(error)}`;
       continue;
     }
-    if (response.ok) return { type: "manifest", manifest: (await response.json()) as Manifest };
+    if (response.ok)
+      return {
+        type: "manifest",
+        manifest: (await response.json()) as Manifest,
+      };
     if (response.status !== 429 && response.status < 500) {
       throw new Error(`npm registry returned ${response.status} for ${name}`);
     }
@@ -196,9 +203,17 @@ const main = async (): Promise<number> => {
     for (const reason of stale) console.error(reason);
     return 1;
   }
-  const ignores = [...PERMANENT_IGNORES, ...EXPIRING_IGNORES.map((ignore) => ignore.advisory)];
+  const ignores = [
+    ...PERMANENT_IGNORES,
+    ...EXPIRING_IGNORES.map((ignore) => ignore.advisory),
+  ];
   const audit = Bun.spawn(
-    ["bun", "audit", "--audit-level=moderate", ...ignores.map((id) => `--ignore=${id}`)],
+    [
+      "bun",
+      "audit",
+      "--audit-level=moderate",
+      ...ignores.map((id) => `--ignore=${id}`),
+    ],
     { stdout: "inherit", stderr: "inherit" },
   );
   return await audit.exited;

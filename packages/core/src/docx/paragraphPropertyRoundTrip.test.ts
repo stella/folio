@@ -1,40 +1,44 @@
-import { describe, expect, test } from "bun:test";
-import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import { Fragment, Slice } from "prosemirror-model";
 
+import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+
 import { tableFromTemplate } from "../ai-edits/table-template";
-import type { Document, Paragraph } from "../types/document";
 import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import type { Document, Paragraph } from "../types/document";
 import { replaceTextInDocument } from "../utils/replaceText";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
-import { parseDocx } from "./parser";
-import { DATE_UTC_NAMESPACE_URI } from "./trackedChangeInfo";
 import {
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
-  TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
-  ParagraphPropertySourceValidationError,
   assignParagraphPropertySource,
   copyParagraphPropertyCapture,
   decodeTableCellParagraphSourcePayload,
-  getParagraphPropertySourceCandidate,
   getParagraphPropertySource,
+  getParagraphPropertySourceCandidate,
   getParagraphPropertySourceToken,
-  transportTableCellsWithParagraphPropertySources,
+  ParagraphPropertySourceValidationError,
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+  TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
   transferProseParagraphPropertySource,
+  transportTableCellsWithParagraphPropertySources,
 } from "./paragraphPropertySource";
+import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { consolidateParagraph } from "./runConsolidator";
-import { serializeParagraph, serializeParagraphFormatting } from "./serializer/paragraphSerializer";
+import {
+  serializeParagraph,
+  serializeParagraphFormatting,
+} from "./serializer/paragraphSerializer";
+import { DATE_UTC_NAMESPACE_URI } from "./trackedChangeInfo";
 import { unzipDocx } from "./unzip";
 import { isSafeCapturedXmlDocument } from "./verbatimCapture";
 import {
-  getChildElements,
   getAttributeByNamespaceUri,
+  getChildElements,
   getLocalName,
   NAMESPACES,
   parseXmlDocument,
@@ -47,7 +51,8 @@ const SOURCE_PROPERTIES = `<w:pPr>
   <w:rPr><w:bCs/><w:sz w:val="21"/><w:szCs w:val="22"/><w:noProof/></w:rPr>
 </w:pPr>`;
 
-const STRICT_WORDPROCESSINGML_NAMESPACE = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+const STRICT_WORDPROCESSINGML_NAMESPACE =
+  "http://purl.oclc.org/ooxml/wordprocessingml/main";
 
 const adversarialParagraphPropertiesXml = (
   name: string,
@@ -89,24 +94,25 @@ const documentWithSourceProperties = async (
   return await zip.generateAsync({ type: "arraybuffer" });
 };
 
-const documentWithInheritedStrictProperties = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentFile = zip.file("word/document.xml");
-  const documentXml = await documentFile?.async("text");
-  if (!documentXml) {
-    panic("The generated package has no main document part.");
-  }
-  zip.file(
-    "word/document.xml",
-    documentXml
-      .replaceAll(NAMESPACES.w, STRICT_WORDPROCESSINGML_NAMESPACE)
-      .replace(
-        /<w:body>[\s\S]*<\/w:body>/u,
-        '<w:body><w:p w14:paraId="12345678"><w:pPr><w:spacing w:before="12pt"/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>',
-      ),
-  );
-  return await zip.generateAsync({ type: "arraybuffer" });
-};
+const documentWithInheritedStrictProperties =
+  async (): Promise<ArrayBuffer> => {
+    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const documentFile = zip.file("word/document.xml");
+    const documentXml = await documentFile?.async("text");
+    if (!documentXml) {
+      panic("The generated package has no main document part.");
+    }
+    zip.file(
+      "word/document.xml",
+      documentXml
+        .replaceAll(NAMESPACES.w, STRICT_WORDPROCESSINGML_NAMESPACE)
+        .replace(
+          /<w:body>[\s\S]*<\/w:body>/u,
+          '<w:body><w:p w14:paraId="12345678"><w:pPr><w:spacing w:before="12pt"/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>',
+        ),
+    );
+    return await zip.generateAsync({ type: "arraybuffer" });
+  };
 
 const documentWithDuplicateParagraphIds = async (): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
@@ -132,12 +138,16 @@ const canonicalElement = (element: XmlElement): string => {
     .toSorted(([left], [right]) => left.localeCompare(right))
     .map(([name, value]) => `${name}=${String(value)}`)
     .join(" ");
-  return `<${getLocalName(element.name)} ${attributes}>${getChildElements(element)
+  return `<${getLocalName(element.name)} ${attributes}>${getChildElements(
+    element,
+  )
     .map(canonicalElement)
     .join("")}</>`;
 };
 
-const firstParagraphProperties = async (buffer: ArrayBuffer): Promise<XmlElement> => {
+const firstParagraphProperties = async (
+  buffer: ArrayBuffer,
+): Promise<XmlElement> => {
   const { documentXml } = await unzipDocx(buffer);
   if (typeof documentXml !== "string") {
     panic("The package has no main document part.");
@@ -176,33 +186,48 @@ describe("paragraph properties survive a no-edit full repack", () => {
     [
       "editable model",
       (document: Document): Document =>
-        fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(toProseDoc(document), document, {
+          stylesheetSource: { type: "package" },
+        }),
     ],
   ] as const)("through the %s", async (_name, roundTrip) => {
     const source = await documentWithSourceProperties();
     const before = canonicalElement(await firstParagraphProperties(source));
     const parsed = await parseDocx(source, { preloadFonts: false });
-    const saved = await repackDocx(roundTrip(parsed), { updateModifiedDate: false });
+    const saved = await repackDocx(roundTrip(parsed), {
+      updateModifiedDate: false,
+    });
 
-    expect(canonicalElement(await firstParagraphProperties(saved))).toBe(before);
+    expect(canonicalElement(await firstParagraphProperties(saved))).toBe(
+      before,
+    );
   });
 
   test("the editable model recovers the source by paragraph identity", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const proseDoc = toProseDoc(parsed);
 
     expect(JSON.stringify(proseDoc.toJSON())).not.toContain("propertySource");
     expect(
       getParagraphPropertySource(
-        firstParagraph(fromProseDoc(proseDoc, parsed, { stylesheetSource: { type: "package" } })),
+        firstParagraph(
+          fromProseDoc(proseDoc, parsed, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
       ),
     ).toEqual(getParagraphPropertySource(firstParagraph(parsed)));
   });
 
   test("an unchanged id-less editable paragraph keeps its private source identity", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(SOURCE_PROPERTIES, null), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await documentWithSourceProperties(SOURCE_PROPERTIES, null),
+      {
+        preloadFonts: false,
+      },
+    );
     const restored = fromProseDoc(toProseDoc(parsed), parsed, {
       stylesheetSource: { type: "package" },
     });
@@ -223,18 +248,24 @@ describe("paragraph properties survive a no-edit full repack", () => {
       stylesheetSource: { type: "package" },
     });
     const restoredParagraph = firstParagraph(restored);
-    expect(getParagraphPropertySourceCandidate(restoredParagraph)).toBe(sourceParagraph);
+    expect(getParagraphPropertySourceCandidate(restoredParagraph)).toBe(
+      sourceParagraph,
+    );
 
     const cleaned = withoutOrphanCommentRanges(restored);
     const cleanedParagraph = firstParagraph(cleaned);
     expect(cleanedParagraph).not.toBe(restoredParagraph);
-    expect(getParagraphPropertySourceCandidate(cleanedParagraph)).toBe(sourceParagraph);
+    expect(getParagraphPropertySourceCandidate(cleanedParagraph)).toBe(
+      sourceParagraph,
+    );
     expect(getParagraphPropertySource(cleanedParagraph)).toEqual(
       getParagraphPropertySource(sourceParagraph),
     );
     expect(
       canonicalElement(
-        await firstParagraphProperties(await repackDocx(cleaned, { updateModifiedDate: false })),
+        await firstParagraphProperties(
+          await repackDocx(cleaned, { updateModifiedDate: false }),
+        ),
       ),
     ).toBe(before);
   });
@@ -246,16 +277,23 @@ describe("paragraph properties survive a no-edit full repack", () => {
 
     const replaced = replaceTextInDocument(
       parsed,
-      { start: { paragraphIndex: 0, offset: 0 }, end: { paragraphIndex: 0, offset: 4 } },
+      {
+        start: { paragraphIndex: 0, offset: 0 },
+        end: { paragraphIndex: 0, offset: 4 },
+      },
       "Edited",
     );
-    expect(firstParagraph(replaced).content).not.toEqual(firstParagraph(parsed).content);
+    expect(firstParagraph(replaced).content).not.toEqual(
+      firstParagraph(parsed).content,
+    );
     expect(getParagraphPropertySource(firstParagraph(replaced))).toEqual(
       getParagraphPropertySource(firstParagraph(parsed)),
     );
     expect(
       canonicalElement(
-        await firstParagraphProperties(await repackDocx(replaced, { updateModifiedDate: false })),
+        await firstParagraphProperties(
+          await repackDocx(replaced, { updateModifiedDate: false }),
+        ),
       ),
     ).toBe(before);
   });
@@ -276,11 +314,15 @@ describe("paragraph properties survive a no-edit full repack", () => {
 
     const consolidated = consolidateParagraph(paragraph);
     expect(consolidated).not.toBe(paragraph);
-    expect(getParagraphPropertySource(consolidated)).toEqual(getParagraphPropertySource(paragraph));
+    expect(getParagraphPropertySource(consolidated)).toEqual(
+      getParagraphPropertySource(paragraph),
+    );
     parsed.package.document.content[0] = consolidated;
     expect(
       canonicalElement(
-        await firstParagraphProperties(await repackDocx(parsed, { updateModifiedDate: false })),
+        await firstParagraphProperties(
+          await repackDocx(parsed, { updateModifiedDate: false }),
+        ),
       ),
     ).toBe(before);
   });
@@ -296,7 +338,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       proseParagraph.type.schema.text("Edited"),
     );
     const editedDoc = proseDoc.type.create(proseDoc.attrs, [editedParagraph]);
-    const restored = fromProseDoc(editedDoc, parsed, { stylesheetSource: { type: "package" } });
+    const restored = fromProseDoc(editedDoc, parsed, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(firstParagraph(restored).paraId).toMatch(/^[0-9A-F]{8}$/u);
     expect(getParagraphPropertySource(firstParagraph(restored))).toEqual(
@@ -304,7 +348,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     );
     expect(
       canonicalElement(
-        await firstParagraphProperties(await repackDocx(restored, { updateModifiedDate: false })),
+        await firstParagraphProperties(
+          await repackDocx(restored, { updateModifiedDate: false }),
+        ),
       ),
     ).toBe(before);
   });
@@ -320,18 +366,26 @@ describe("paragraph properties survive a no-edit full repack", () => {
       (block): block is Paragraph => block.type === "paragraph",
     );
     expect(paragraphs).toHaveLength(2);
-    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain('w:left="720"');
-    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain('w:left="1440"');
+    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain(
+      'w:left="720"',
+    );
+    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain(
+      'w:left="1440"',
+    );
   });
 
   test("a table crossing package ownership keeps its local properties without its durable token", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const sourceParagraph = firstParagraph(parsed);
     const proseDoc = toProseDoc(parsed);
     const sourceNode = proseDoc.child(0);
     const nodeSchema = proseDoc.type.schema;
     const template = nodeSchema.node("table", null, [
-      nodeSchema.node("tableRow", null, [nodeSchema.node("tableCell", null, [sourceNode])]),
+      nodeSchema.node("tableRow", null, [
+        nodeSchema.node("tableCell", null, [sourceNode]),
+      ]),
     ]);
     const copied = tableFromTemplate({ schema: nodeSchema, template });
     if (!copied) {
@@ -342,7 +396,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
       stylesheetSource: { type: "package" },
     });
     const table = restored.package.document.content.at(0);
-    const paragraph = table?.type === "table" ? table.rows.at(0)?.cells.at(0)?.content.at(0) : null;
+    const paragraph =
+      table?.type === "table"
+        ? table.rows.at(0)?.cells.at(0)?.content.at(0)
+        : null;
     if (paragraph?.type !== "paragraph") {
       panic("expected the copied table paragraph");
     }
@@ -352,11 +409,15 @@ describe("paragraph properties survive a no-edit full repack", () => {
     );
     expect(paragraph).not.toBe(sourceParagraph);
     expect(getParagraphPropertySourceToken(paragraph)).toBeUndefined();
-    expect(Reflect.get(paragraph, PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR)).toBeUndefined();
+    expect(
+      Reflect.get(paragraph, PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR),
+    ).toBeUndefined();
   });
 
   test("a foreign table paragraph stays unbound across repeated saves into a source-bound document", async () => {
-    const target = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const target = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const foreign = await parseDocx(
       await documentWithSourceProperties(
         SOURCE_PROPERTIES.replace('w:left="720"', 'w:left="1440"'),
@@ -368,18 +429,24 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const foreignProseDoc = toProseDoc(foreign);
     const schema = targetProseDoc.type.schema;
     const template = schema.node("table", null, [
-      schema.node("tableRow", null, [schema.node("tableCell", null, [foreignProseDoc.child(0)])]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [foreignProseDoc.child(0)]),
+      ]),
     ]);
     const copied = tableFromTemplate({ schema, template });
     if (!copied) {
-      panic("expected the foreign table template to cross the package boundary");
+      panic(
+        "expected the foreign table template to cross the package boundary",
+      );
     }
     const edited = targetProseDoc.type.create(targetProseDoc.attrs, [
       targetProseDoc.child(0),
       copied,
     ]);
 
-    const firstSave = fromProseDoc(edited, target, { stylesheetSource: { type: "package" } });
+    const firstSave = fromProseDoc(edited, target, {
+      stylesheetSource: { type: "package" },
+    });
     const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave, {
       stylesheetSource: { type: "package" },
     });
@@ -387,22 +454,33 @@ describe("paragraph properties survive a no-edit full repack", () => {
     for (const saved of [firstSave, secondSave]) {
       const table = saved.package.document.content.at(1);
       const paragraph =
-        table?.type === "table" ? table.rows.at(0)?.cells.at(0)?.content.at(0) : null;
+        table?.type === "table"
+          ? table.rows.at(0)?.cells.at(0)?.content.at(0)
+          : null;
       if (paragraph?.type !== "paragraph") {
         panic("expected the repeatedly saved foreign table paragraph");
       }
-      expect(getParagraphPropertySource(paragraph)?.xml).toContain('w:left="1440"');
+      expect(getParagraphPropertySource(paragraph)?.xml).toContain(
+        'w:left="1440"',
+      );
       expect(getParagraphPropertySourceToken(paragraph)).toBeUndefined();
     }
   });
 
   test("a hidden vertical-merge cell crosses with its local properties but no durable token", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const sourceParagraph = firstParagraph(parsed);
     const proseDoc = toProseDoc(parsed);
     const nodeSchema = proseDoc.type.schema;
-    const hiddenCell = { type: "tableCell" as const, content: [sourceParagraph] };
-    const continuationCells = transportTableCellsWithParagraphPropertySources([hiddenCell]);
+    const hiddenCell = {
+      type: "tableCell" as const,
+      content: [sourceParagraph],
+    };
+    const continuationCells = transportTableCellsWithParagraphPropertySources([
+      hiddenCell,
+    ]);
     const template = nodeSchema.node("table", null, [
       nodeSchema.node("tableRow", null, [
         nodeSchema.node(
@@ -414,7 +492,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     ]);
     const copied = tableFromTemplate({ schema: nodeSchema, template });
     if (!copied) {
-      panic("expected the vertical-merge table template to cross the package boundary");
+      panic(
+        "expected the vertical-merge table template to cross the package boundary",
+      );
     }
     const continuationPayload = expectTableCellAttrs(
       copied.child(0).child(0),
@@ -422,7 +502,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const continuation =
       continuationPayload === undefined || continuationPayload === null
         ? undefined
-        : decodeTableCellParagraphSourcePayload(continuationPayload).cells.at(0);
+        : decodeTableCellParagraphSourcePayload(continuationPayload).cells.at(
+            0,
+          );
     const paragraph = continuation?.content.at(0);
     if (paragraph?.type !== "paragraph") {
       panic("expected the hidden continuation paragraph");
@@ -434,7 +516,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(continuation).not.toBe(hiddenCell);
     expect(paragraph).not.toBe(sourceParagraph);
     expect(getParagraphPropertySourceToken(paragraph)).toBeUndefined();
-    expect(Reflect.get(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)).toEqual({
+    expect(
+      Reflect.get(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR),
+    ).toEqual({
       type: "authored",
     });
   });
@@ -447,17 +531,27 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const detached = normalized.type.create(
       normalized.attrs,
       normalized.content.content.map((paragraph) =>
-        paragraph.type.create(paragraph.attrs, paragraph.content, paragraph.marks),
+        paragraph.type.create(
+          paragraph.attrs,
+          paragraph.content,
+          paragraph.marks,
+        ),
       ),
     );
-    const restored = fromProseDoc(detached, parsed, { stylesheetSource: { type: "package" } });
+    const restored = fromProseDoc(detached, parsed, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );
 
     expect(paragraphs).toHaveLength(2);
-    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain('w:left="720"');
-    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain('w:left="1440"');
+    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain(
+      'w:left="720"',
+    );
+    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain(
+      'w:left="1440"',
+    );
   });
 
   test("durable duplicate-id sources survive a shallow document derivation and PM reconstruction", async () => {
@@ -466,7 +560,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     });
     const derived = { ...parsed, package: { ...parsed.package } };
     const normalized = ensureParaIdsInDoc(toProseDoc(parsed));
-    const reconstructed = normalized.type.schema.nodeFromJSON(normalized.toJSON());
+    const reconstructed = normalized.type.schema.nodeFromJSON(
+      normalized.toJSON(),
+    );
     const restored = fromProseDoc(reconstructed, derived, {
       stylesheetSource: { type: "package" },
     });
@@ -474,17 +570,26 @@ describe("paragraph properties survive a no-edit full repack", () => {
       (block): block is Paragraph => block.type === "paragraph",
     );
 
-    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain('w:left="720"');
-    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain('w:left="1440"');
+    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain(
+      'w:left="720"',
+    );
+    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain(
+      'w:left="1440"',
+    );
   });
 
   test("a durable id-less source survives a shallow document derivation and PM reconstruction", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(SOURCE_PROPERTIES, null), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await documentWithSourceProperties(SOURCE_PROPERTIES, null),
+      {
+        preloadFonts: false,
+      },
+    );
     const derived = { ...parsed, package: { ...parsed.package } };
     const normalized = ensureParaIdsInDoc(toProseDoc(parsed));
-    const reconstructed = normalized.type.schema.nodeFromJSON(normalized.toJSON());
+    const reconstructed = normalized.type.schema.nodeFromJSON(
+      normalized.toJSON(),
+    );
     const restored = fromProseDoc(reconstructed, derived, {
       stylesheetSource: { type: "package" },
     });
@@ -495,14 +600,21 @@ describe("paragraph properties survive a no-edit full repack", () => {
   });
 
   test("an authored paragraph stays unbound across repeated saves", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const proseDoc = toProseDoc(parsed);
     const authored = proseDoc.type.schema.node("paragraph", null, [
       proseDoc.type.schema.text("Authored"),
     ]);
-    const edited = proseDoc.type.create(proseDoc.attrs, [proseDoc.child(0), authored]);
+    const edited = proseDoc.type.create(proseDoc.attrs, [
+      proseDoc.child(0),
+      authored,
+    ]);
 
-    const firstSave = fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } });
+    const firstSave = fromProseDoc(edited, parsed, {
+      stylesheetSource: { type: "package" },
+    });
     const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave, {
       stylesheetSource: { type: "package" },
     });
@@ -510,13 +622,20 @@ describe("paragraph properties survive a no-edit full repack", () => {
     for (const saved of [firstSave, secondSave]) {
       const sourceParagraph = saved.package.document.content.at(0);
       const authoredParagraph = saved.package.document.content.at(1);
-      if (sourceParagraph?.type !== "paragraph" || authoredParagraph?.type !== "paragraph") {
+      if (
+        sourceParagraph?.type !== "paragraph" ||
+        authoredParagraph?.type !== "paragraph"
+      ) {
         panic("expected the source and authored paragraphs");
       }
-      expect(getParagraphPropertySource(sourceParagraph)?.xml).toContain('w:left="720"');
+      expect(getParagraphPropertySource(sourceParagraph)?.xml).toContain(
+        'w:left="720"',
+      );
       expect(getParagraphPropertySourceToken(sourceParagraph)).toBeDefined();
       expect(getParagraphPropertySource(authoredParagraph)).toBeUndefined();
-      expect(getParagraphPropertySourceToken(authoredParagraph)).toBeUndefined();
+      expect(
+        getParagraphPropertySourceToken(authoredParagraph),
+      ).toBeUndefined();
     }
   });
 
@@ -525,7 +644,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       preloadFonts: false,
     });
     const original = toProseDoc(parsed);
-    const withoutFirst = original.type.create(original.attrs, [original.child(1)]);
+    const withoutFirst = original.type.create(original.attrs, [
+      original.child(1),
+    ]);
 
     const afterDeletion = fromProseDoc(withoutFirst, parsed, {
       stylesheetSource: { type: "package" },
@@ -541,12 +662,18 @@ describe("paragraph properties survive a no-edit full repack", () => {
     );
 
     expect(paragraphs).toHaveLength(2);
-    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain('w:left="720"');
-    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain('w:left="1440"');
+    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain(
+      'w:left="720"',
+    );
+    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain(
+      'w:left="1440"',
+    );
   });
 
   test("a source-owned paragraph cannot lose its durable token", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const sourceParagraph = firstParagraph(parsed);
     const detached = { ...sourceParagraph };
     copyParagraphPropertyCapture(detached, sourceParagraph);
@@ -559,13 +686,16 @@ describe("paragraph properties survive a no-edit full repack", () => {
     };
 
     try {
-      fromProseDoc(toProseDoc(parsed), corrupted, { stylesheetSource: { type: "package" } });
+      fromProseDoc(toProseDoc(parsed), corrupted, {
+        stylesheetSource: { type: "package" },
+      });
       panic("expected source validation to reject the missing token");
     } catch (error) {
       expect(error).toBeInstanceOf(ParagraphPropertySourceValidationError);
       expect(error).toMatchObject({
         code: "invalid_token",
-        message: "A source-bound paragraph is missing its paragraph-property token.",
+        message:
+          "A source-bound paragraph is missing its paragraph-property token.",
       });
     }
   });
@@ -584,24 +714,40 @@ describe("paragraph properties survive a no-edit full repack", () => {
     second.paraId = "22222222";
     const proseDoc = toProseDoc(parsed);
     const firstProseParagraph = proseDoc.child(0);
-    transferProseParagraphPropertySource(firstProseParagraph, firstProseParagraph, "22222222");
+    transferProseParagraphPropertySource(
+      firstProseParagraph,
+      firstProseParagraph,
+      "22222222",
+    );
 
     const detached = proseDoc.type.create(
       proseDoc.attrs,
       proseDoc.content.content.map((paragraph) =>
-        paragraph.type.create(paragraph.attrs, paragraph.content, paragraph.marks),
+        paragraph.type.create(
+          paragraph.attrs,
+          paragraph.content,
+          paragraph.marks,
+        ),
       ),
     );
-    const restored = fromProseDoc(detached, parsed, { stylesheetSource: { type: "package" } });
+    const restored = fromProseDoc(detached, parsed, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );
-    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain('w:left="720"');
-    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain('w:left="1440"');
+    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain(
+      'w:left="720"',
+    );
+    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain(
+      'w:left="1440"',
+    );
   });
 
   test("duplicate editable paragraph identities cannot share a property capture", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const proseDoc = toProseDoc(parsed);
     const json = proseDoc.toJSON();
     const paragraph = json.content?.at(0);
@@ -613,22 +759,33 @@ describe("paragraph properties survive a no-edit full repack", () => {
       content: [paragraph, paragraph],
     });
     expect(() =>
-      fromProseDoc(duplicate, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(duplicate, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("one exact parser-linked paragraph node cannot lend its capture twice", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const proseDoc = toProseDoc(parsed);
     const paragraph = proseDoc.child(0);
-    const duplicate = proseDoc.type.create(proseDoc.attrs, [paragraph, paragraph]);
+    const duplicate = proseDoc.type.create(proseDoc.attrs, [
+      paragraph,
+      paragraph,
+    ]);
     expect(() =>
-      fromProseDoc(duplicate, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(duplicate, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("a copied slice cannot borrow the exact owner's property capture", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const proseDoc = toProseDoc(parsed);
     const paragraph = proseDoc.child(0);
     const copied = paragraph.type.create(
@@ -637,15 +794,26 @@ describe("paragraph properties survive a no-edit full repack", () => {
       paragraph.marks,
     );
     transferProseParagraphPropertySource(copied, paragraph, "87654321");
-    const copiedSlice = new Slice(Fragment.fromArray([paragraph, copied]), 0, 0);
-    const duplicated = proseDoc.type.create(proseDoc.attrs, copiedSlice.content);
+    const copiedSlice = new Slice(
+      Fragment.fromArray([paragraph, copied]),
+      0,
+      0,
+    );
+    const duplicated = proseDoc.type.create(
+      proseDoc.attrs,
+      copiedSlice.content,
+    );
     expect(() =>
-      fromProseDoc(duplicated, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(duplicated, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("rejects a source-bearing model paired with a contract-free ProseMirror document", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const proseDoc = toProseDoc(parsed);
     const contractFree = proseDoc.type.create(
       { ...proseDoc.attrs, _docxParagraphSourceContract: null },
@@ -654,28 +822,38 @@ describe("paragraph properties survive a no-edit full repack", () => {
     );
 
     expect(() =>
-      fromProseDoc(contractFree, parsed, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(contractFree, parsed, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("rejects a contract-bearing ProseMirror document paired with a source-free model", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const original = toProseDoc(parsed);
     const proseDoc = original.type.schema.nodeFromJSON(original.toJSON());
     const sourceFree = structuredClone(parsed);
 
     expect(() =>
-      fromProseDoc(proseDoc, sourceFree, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(proseDoc, sourceFree, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("a JSON-cloned model falls back to its typed paragraph properties", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const clone = structuredClone(parsed);
     expect(getParagraphPropertySource(firstParagraph(clone))).toBeUndefined();
 
     const properties = canonicalElement(
-      await firstParagraphProperties(await repackDocx(clone, { updateModifiedDate: false })),
+      await firstParagraphProperties(
+        await repackDocx(clone, { updateModifiedDate: false }),
+      ),
     );
     // `w:leftChars` has no model field and comes back from the indentation
     // record's attribute remainder, which the typed fallback writes as well:
@@ -685,9 +863,12 @@ describe("paragraph properties survive a no-edit full repack", () => {
   });
 
   test("an inherited Strict namespace is converted before the property source is detached", async () => {
-    const parsed = await parseDocx(await documentWithInheritedStrictProperties(), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await documentWithInheritedStrictProperties(),
+      {
+        preloadFonts: false,
+      },
+    );
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const properties = canonicalElement(await firstParagraphProperties(saved));
 
@@ -745,7 +926,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     // `w:cnfStyle` is a child folio models nothing of, and it comes back at
     // the ordinal `CT_PPrBase` gives it — after `w:jc`, not at the end.
     expect(savedProperties).toContain("<cnfStyle ");
-    expect(savedProperties.indexOf("<cnfStyle ")).toBeGreaterThan(savedProperties.indexOf("<jc "));
+    expect(savedProperties.indexOf("<cnfStyle ")).toBeGreaterThan(
+      savedProperties.indexOf("<jc "),
+    );
   });
 
   test("current structural and revision children are composed around the capture", async () => {
@@ -772,26 +955,18 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const properties = getChildElements(savedParagraph).find(
       (child) => getLocalName(child.name) === "pPr",
     );
-    expect(getChildElements(properties).map((child) => getLocalName(child.name))).toEqual([
-      "ind",
-      "cnfStyle",
-      "rPr",
-      "sectPr",
-      "pPrChange",
-    ]);
+    expect(
+      getChildElements(properties).map((child) => getLocalName(child.name)),
+    ).toEqual(["ind", "cnfStyle", "rPr", "sectPr", "pPrChange"]);
     const runProperties = getChildElements(properties).find(
       (child) => getLocalName(child.name) === "rPr",
     );
     if (!runProperties) {
       panic("The saved paragraph has no run properties.");
     }
-    expect(getChildElements(runProperties).map((child) => getLocalName(child.name))).toEqual([
-      "ins",
-      "bCs",
-      "sz",
-      "szCs",
-      "noProof",
-    ]);
+    expect(
+      getChildElements(runProperties).map((child) => getLocalName(child.name)),
+    ).toEqual(["ins", "bCs", "sz", "szCs", "noProof"]);
   });
 
   test.each(["ins", "del", "moveFrom", "moveTo"] as const)(
@@ -812,19 +987,19 @@ describe("paragraph properties survive a no-edit full repack", () => {
       const runProperties = getChildElements(properties).find(
         (child) => getLocalName(child.name) === "rPr",
       );
-      expect(getChildElements(runProperties).map((child) => getLocalName(child.name))).toEqual([
-        kind,
-        "rFonts",
-        "bCs",
-        "sz",
-        "noProof",
-      ]);
+      expect(
+        getChildElements(runProperties).map((child) =>
+          getLocalName(child.name),
+        ),
+      ).toEqual([kind, "rFonts", "bCs", "sz", "noProof"]);
     },
   );
 
   test("a hostile dateUtc prefix binding cannot capture an appended paragraph mark", async () => {
     const utcDate = "2026-09-08T08:07:06Z";
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const paragraph = firstParagraph(parsed);
     const propertySource = getParagraphPropertySource(paragraph);
     if (!propertySource) {
@@ -855,7 +1030,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
 
   test("a hostile dateUtc prefix binding cannot capture an appended property change", async () => {
     const utcDate = "2026-09-08T08:07:06Z";
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const paragraph = firstParagraph(parsed);
     const propertySource = getParagraphPropertySource(paragraph);
     if (!propertySource) {
@@ -884,11 +1061,15 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(documentXml).toContain(`w16du:dateUtc="${utcDate}"`);
     expect(isSafeCapturedXmlDocument(documentXml)).toBe(true);
     const reopened = await parseDocx(saved, { preloadFonts: false });
-    expect(firstParagraph(reopened).propertyChanges?.at(0)?.info.utcDate?.value).toBe(utcDate);
+    expect(
+      firstParagraph(reopened).propertyChanges?.at(0)?.info.utcDate?.value,
+    ).toBe(utcDate);
   });
 
   test("an otherwise unused foreign dateUtc prefix binding remains replayable", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const paragraph = firstParagraph(parsed);
     const propertySource = getParagraphPropertySource(paragraph);
     if (!propertySource) {
@@ -902,7 +1083,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
     expect(documentXml).toContain('xmlns:w16du="urn:foreign"');
-    expect(documentXml).toContain('<w:cnfStyle w:val="000000100000" w:oddHBand="1"/>');
+    expect(documentXml).toContain(
+      '<w:cnfStyle w:val="000000100000" w:oddHBand="1"/>',
+    );
     expect(isSafeCapturedXmlDocument(documentXml)).toBe(true);
   });
 
@@ -919,7 +1102,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       );
       const proseDoc = toProseDoc(parsed);
       const cloned = proseDoc.type.schema.nodeFromJSON(proseDoc.toJSON());
-      const restored = fromProseDoc(cloned, parsed, { stylesheetSource: { type: "package" } });
+      const restored = fromProseDoc(cloned, parsed, {
+        stylesheetSource: { type: "package" },
+      });
 
       expect(firstParagraph(restored).pPrMark?.info.utcDate).toEqual({
         attribute: "w16du:dateUtc",
@@ -941,7 +1126,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, `${propertySource.xml}<w:r><w:t>injected</w:t></w:r>`);
+    assignParagraphPropertySource(
+      paragraph,
+      `${propertySource.xml}<w:r><w:t>injected</w:t></w:r>`,
+    );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
@@ -950,8 +1138,18 @@ describe("paragraph properties survive a no-edit full repack", () => {
 
   test.each([
     ["XML declaration", '<?xml version="9.9"?>', "", 'version="9.9"'],
-    ["processing instruction before the root", "<?folio replay?>", "", "folio replay"],
-    ["processing instruction after the root", "", "<?folio replay?>", "folio replay"],
+    [
+      "processing instruction before the root",
+      "<?folio replay?>",
+      "",
+      "folio replay",
+    ],
+    [
+      "processing instruction after the root",
+      "",
+      "<?folio replay?>",
+      "folio replay",
+    ],
     ["comment", "<!-- replay -->", "", "<!-- replay -->"],
     ["document type", "<!DOCTYPE pPr>", "", "<!DOCTYPE pPr>"],
     ["extra root", "", "<w:r><w:t>injected root</w:t></w:r>", "injected root"],
@@ -975,7 +1173,12 @@ describe("paragraph properties survive a no-edit full repack", () => {
       }
       assignParagraphPropertySource(
         paragraph,
-        adversarialParagraphPropertiesXml(name, propertySource.xml, before, after),
+        adversarialParagraphPropertiesXml(
+          name,
+          propertySource.xml,
+          before,
+          after,
+        ),
       );
       paragraph.pPrMark = { kind: "ins", info: { id: 96, author: "Reviewer" } };
       paragraph.sectionProperties = { pageWidth: 12_240, pageHeight: 15_840 };
@@ -990,7 +1193,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       const saved = await repackDocx(parsed, { updateModifiedDate: false });
       const { documentXml } = await unzipDocx(saved);
       const properties = await firstParagraphProperties(saved);
-      const propertyNames = getChildElements(properties).map((child) => getLocalName(child.name));
+      const propertyNames = getChildElements(properties).map((child) =>
+        getLocalName(child.name),
+      );
       const runProperties = getChildElements(properties).find(
         (child) => getLocalName(child.name) === "rPr",
       );
@@ -999,9 +1204,11 @@ describe("paragraph properties survive a no-edit full repack", () => {
       expect(isSafeCapturedXmlDocument(documentXml)).toBe(true);
       expect(propertyNames).toContain("sectPr");
       expect(propertyNames).toContain("pPrChange");
-      expect(getChildElements(runProperties).map((child) => getLocalName(child.name))).toContain(
-        "ins",
-      );
+      expect(
+        getChildElements(runProperties).map((child) =>
+          getLocalName(child.name),
+        ),
+      ).toContain("ins");
     },
   );
 
@@ -1013,8 +1220,18 @@ describe("paragraph properties survive a no-edit full repack", () => {
       "pPrChange",
       "pPr",
     ],
-    ["paragraph-mark insertion", '<w:ins w:id="92" w:author="Injected"/>', "ins", "rPr"],
-    ["paragraph-mark deletion", '<w:del w:id="93" w:author="Injected"/>', "del", "rPr"],
+    [
+      "paragraph-mark insertion",
+      '<w:ins w:id="92" w:author="Injected"/>',
+      "ins",
+      "rPr",
+    ],
+    [
+      "paragraph-mark deletion",
+      '<w:del w:id="93" w:author="Injected"/>',
+      "del",
+      "rPr",
+    ],
   ] as const)(
     "an injected %s invalidates the captured properties",
     async (_name, injected, tag, parent) => {
@@ -1035,12 +1252,16 @@ describe("paragraph properties survive a no-edit full repack", () => {
       const properties = await firstParagraphProperties(
         await repackDocx(parsed, { updateModifiedDate: false }),
       );
-      const directNames = getChildElements(properties).map((child) => getLocalName(child.name));
+      const directNames = getChildElements(properties).map((child) =>
+        getLocalName(child.name),
+      );
       if (tag === "ins" || tag === "del") {
         const runPropertyNames = getChildElements(properties)
           .filter((child) => getLocalName(child.name) === "rPr")
           .flatMap((runProperties) =>
-            getChildElements(runProperties).map((child) => getLocalName(child.name)),
+            getChildElements(runProperties).map((child) =>
+              getLocalName(child.name),
+            ),
           );
         expect(runPropertyNames).not.toContain(tag);
       } else {
@@ -1111,12 +1332,12 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const runProperties = getChildElements(properties).find(
       (child) => getLocalName(child.name) === "rPr",
     );
-    expect(getChildElements(runProperties).map((child) => getLocalName(child.name))).toContain(
-      "ins",
-    );
-    expect(getChildElements(properties).map((child) => getLocalName(child.name))).toContain(
-      "wrapper",
-    );
+    expect(
+      getChildElements(runProperties).map((child) => getLocalName(child.name)),
+    ).toContain("ins");
+    expect(
+      getChildElements(properties).map((child) => getLocalName(child.name)),
+    ).toContain("wrapper");
   });
 
   test.each([
@@ -1135,28 +1356,33 @@ describe("paragraph properties survive a no-edit full repack", () => {
       '<mc:AlternateContent><mc:Choice Requires="w14"><w:ins w:id="92" w:author="Injected"/></mc:Choice></mc:AlternateContent>',
       "ins",
     ],
-  ] as const)("a nested injected %s invalidates the capture", async (_name, injected, tag) => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
-    const paragraph = firstParagraph(parsed);
-    const propertySource = getParagraphPropertySource(paragraph);
-    if (!propertySource) {
-      panic("The parsed paragraph has no property source.");
-    }
-    assignParagraphPropertySource(
-      paragraph,
-      tag === "ins"
-        ? propertySource.xml.replace("<w:rPr>", `<w:rPr>${injected}`)
-        : propertySource.xml.replace("</w:pPr>", `${injected}</w:pPr>`),
-    );
-    paragraph.pPrMark = { kind: "ins", info: { id: 98, author: "Current" } };
+  ] as const)(
+    "a nested injected %s invalidates the capture",
+    async (_name, injected, tag) => {
+      const parsed = await parseDocx(await documentWithSourceProperties(), {
+        preloadFonts: false,
+      });
+      const paragraph = firstParagraph(parsed);
+      const propertySource = getParagraphPropertySource(paragraph);
+      if (!propertySource) {
+        panic("The parsed paragraph has no property source.");
+      }
+      assignParagraphPropertySource(
+        paragraph,
+        tag === "ins"
+          ? propertySource.xml.replace("<w:rPr>", `<w:rPr>${injected}`)
+          : propertySource.xml.replace("</w:pPr>", `${injected}</w:pPr>`),
+      );
+      paragraph.pPrMark = { kind: "ins", info: { id: 98, author: "Current" } };
 
-    const properties = await firstParagraphProperties(
-      await repackDocx(parsed, { updateModifiedDate: false }),
-    );
-    const serialized = JSON.stringify(properties);
-    expect(serialized).not.toContain("Injected");
-    expect(serialized).toContain("Current");
-  });
+      const properties = await firstParagraphProperties(
+        await repackDocx(parsed, { updateModifiedDate: false }),
+      );
+      const serialized = JSON.stringify(properties);
+      expect(serialized).not.toContain("Injected");
+      expect(serialized).toContain("Current");
+    },
+  );
 
   test.each([
     "pPrChange",
@@ -1177,7 +1403,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
   ] as const)(
     "a nested WordprocessingML %s cannot bypass the modeled composition slots",
     async (revisionName) => {
-      const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+      const parsed = await parseDocx(await documentWithSourceProperties(), {
+        preloadFonts: false,
+      });
       const paragraph = firstParagraph(parsed);
       const propertySource = getParagraphPropertySource(paragraph);
       if (!propertySource) {
@@ -1191,7 +1419,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
             'w:author="Poison"/></w:ind>',
         ),
       );
-      paragraph.pPrMark = { kind: "moveTo", info: { id: 98, author: "Current" } };
+      paragraph.pPrMark = {
+        kind: "moveTo",
+        info: { id: 98, author: "Current" },
+      };
       paragraph.sectionProperties = { pageWidth: 12_240, pageHeight: 15_840 };
       paragraph.propertyChanges = [
         {
@@ -1215,7 +1446,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
   test.each(["p", "tbl", "r", "t"] as const)(
     "a nested WordprocessingML %s cannot hide beneath a paragraph property",
     async (contentName) => {
-      const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+      const parsed = await parseDocx(await documentWithSourceProperties(), {
+        preloadFonts: false,
+      });
       const paragraph = firstParagraph(parsed);
       const propertySource = getParagraphPropertySource(paragraph);
       if (!propertySource) {
@@ -1238,7 +1471,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
   );
 
   test("non-whitespace text cannot hide beneath a paragraph property", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const paragraph = firstParagraph(parsed);
     const propertySource = getParagraphPropertySource(paragraph);
     if (!propertySource) {
@@ -1265,7 +1500,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
   ] as const)(
     "modeled properties under an MC branch cannot shadow the current model (%s)",
     async (_name, injected) => {
-      const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+      const parsed = await parseDocx(await documentWithSourceProperties(), {
+        preloadFonts: false,
+      });
       const paragraph = firstParagraph(parsed);
       const propertySource = getParagraphPropertySource(paragraph);
       if (!propertySource) {
@@ -1296,7 +1533,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       '<mc:AlternateContent xmlns:x="urn:example:paragraph-extension">' +
       '<mc:Choice Requires="x"><x:property x:value="kept"/></mc:Choice>' +
       "<mc:Fallback/></mc:AlternateContent>";
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const paragraph = firstParagraph(parsed);
     const propertySource = getParagraphPropertySource(paragraph);
     if (!propertySource) {
@@ -1310,15 +1549,21 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const first = await repackDocx(parsed, { updateModifiedDate: false });
     const reparsed = await parseDocx(first, { preloadFonts: false });
     const second = await repackDocx(reparsed, { updateModifiedDate: false });
-    const firstProperties = canonicalElement(await firstParagraphProperties(first));
-    const secondProperties = canonicalElement(await firstParagraphProperties(second));
+    const firstProperties = canonicalElement(
+      await firstParagraphProperties(first),
+    );
+    const secondProperties = canonicalElement(
+      await firstParagraphProperties(second),
+    );
 
     expect(firstProperties).toContain("property");
     expect(secondProperties).toBe(firstProperties);
   });
 
   test("direct block content cannot replay inside paragraph properties", async () => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const parsed = await parseDocx(await documentWithSourceProperties(), {
+      preloadFonts: false,
+    });
     const paragraph = firstParagraph(parsed);
     const propertySource = getParagraphPropertySource(paragraph);
     if (!propertySource) {
@@ -1326,7 +1571,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     }
     assignParagraphPropertySource(
       paragraph,
-      propertySource.xml.replace("</w:pPr>", "<w:p><w:r><w:t>POISON</w:t></w:r></w:p></w:pPr>"),
+      propertySource.xml.replace(
+        "</w:pPr>",
+        "<w:p><w:r><w:t>POISON</w:t></w:r></w:p></w:pPr>",
+      ),
     );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
@@ -1354,7 +1602,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     // the model also writes — but refusing it no longer costs the revision:
     // the paragraph mark's `w:rPr` sink holds the snapshot, so the rebuild
     // writes it back beside the properties it belongs to.
-    expect(documentXml).toContain('<w:rPrChange w:id="12" w:author="Original">');
+    expect(documentXml).toContain(
+      '<w:rPrChange w:id="12" w:author="Original">',
+    );
     expect(documentXml).toContain("<w:bCs/>");
     expect(documentXml).toContain('<w:sz w:val="21"/>');
     expect(isSafeCapturedXmlDocument(documentXml)).toBe(true);
@@ -1381,41 +1631,55 @@ describe("paragraph properties survive a no-edit full repack", () => {
   test.each([
     ["r", NAMESPACES.r],
     ["w15", NAMESPACES.w15],
-  ] as const)("a shadowed %s prefix cannot capture appended section markup", async (prefix) => {
-    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
-    const paragraph = firstParagraph(parsed);
-    const propertySource = getParagraphPropertySource(paragraph);
-    if (!propertySource) {
-      panic("The parsed paragraph has no property source.");
-    }
-    assignParagraphPropertySource(
-      paragraph,
-      propertySource.xml.replace("<w:pPr>", `<w:pPr xmlns:${prefix}="urn:foreign">`),
-    );
-    paragraph.sectionProperties = {
-      headerReferences: [{ type: "default", rId: "rId1" }],
-      footnoteColumns: 2,
-    };
+  ] as const)(
+    "a shadowed %s prefix cannot capture appended section markup",
+    async (prefix) => {
+      const parsed = await parseDocx(await documentWithSourceProperties(), {
+        preloadFonts: false,
+      });
+      const paragraph = firstParagraph(parsed);
+      const propertySource = getParagraphPropertySource(paragraph);
+      if (!propertySource) {
+        panic("The parsed paragraph has no property source.");
+      }
+      assignParagraphPropertySource(
+        paragraph,
+        propertySource.xml.replace(
+          "<w:pPr>",
+          `<w:pPr xmlns:${prefix}="urn:foreign">`,
+        ),
+      );
+      paragraph.sectionProperties = {
+        headerReferences: [{ type: "default", rId: "rId1" }],
+        footnoteColumns: 2,
+      };
 
-    const document = parseXmlDocument(
-      `<w:document xmlns:w="${NAMESPACES.w}" xmlns:r="${NAMESPACES.r}" xmlns:w15="${NAMESPACES.w15}">${serializeParagraph(paragraph)}</w:document>`,
-    );
-    const savedParagraph = getChildElements(document).at(0);
-    const properties = getChildElements(savedParagraph).find(
-      (child) => getLocalName(child.name) === "pPr",
-    );
-    const section = getChildElements(properties).find(
-      (child) => getLocalName(child.name) === "sectPr",
-    );
-    const headerReference = getChildElements(section).find(
-      (child) => getLocalName(child.name) === "headerReference",
-    );
-    const footnoteColumns = getChildElements(section).find(
-      (child) => getLocalName(child.name) === "footnoteColumns",
-    );
-    expect(getAttributeByNamespaceUri(headerReference, new Set([NAMESPACES.r]), "id")).toBe("rId1");
-    expect(footnoteColumns?.namespaceUri).toBe(NAMESPACES.w15);
-  });
+      const document = parseXmlDocument(
+        `<w:document xmlns:w="${NAMESPACES.w}" xmlns:r="${NAMESPACES.r}" xmlns:w15="${NAMESPACES.w15}">${serializeParagraph(paragraph)}</w:document>`,
+      );
+      const savedParagraph = getChildElements(document).at(0);
+      const properties = getChildElements(savedParagraph).find(
+        (child) => getLocalName(child.name) === "pPr",
+      );
+      const section = getChildElements(properties).find(
+        (child) => getLocalName(child.name) === "sectPr",
+      );
+      const headerReference = getChildElements(section).find(
+        (child) => getLocalName(child.name) === "headerReference",
+      );
+      const footnoteColumns = getChildElements(section).find(
+        (child) => getLocalName(child.name) === "footnoteColumns",
+      );
+      expect(
+        getAttributeByNamespaceUri(
+          headerReference,
+          new Set([NAMESPACES.r]),
+          "id",
+        ),
+      ).toBe("rId1");
+      expect(footnoteColumns?.namespaceUri).toBe(NAMESPACES.w15);
+    },
+  );
 
   test("fallback paragraph properties retain schema child order", () => {
     const xml = serializeParagraphFormatting({
@@ -1424,7 +1688,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       shading: { fill: "FFFFFF" },
       tabs: [{ type: "left", position: 720 }],
     });
-    expect(xml.indexOf("<w:suppressLineNumbers")).toBeLessThan(xml.indexOf("<w:pBdr>"));
+    expect(xml.indexOf("<w:suppressLineNumbers")).toBeLessThan(
+      xml.indexOf("<w:pBdr>"),
+    );
     expect(xml.indexOf("<w:pBdr>")).toBeLessThan(xml.indexOf("<w:shd"));
     expect(xml.indexOf("<w:shd")).toBeLessThan(xml.indexOf("<w:tabs>"));
   });
@@ -1438,30 +1704,33 @@ describe("paragraph properties survive a no-edit full repack", () => {
       "paragraph-mark properties",
       `<w:pPr><x:rPr xmlns:x="${NAMESPACES.w}" xmlns:w="urn:example:foreign"><x:bCs/></x:rPr></w:pPr>`,
     ],
-  ] as const)("the %s cannot rebind the serializer's w prefix", async (_name, xml) => {
-    const source = await documentWithSourceProperties();
-    const parsed = await parseDocx(source, { preloadFonts: false });
-    const paragraph = firstParagraph(parsed);
-    const propertySource = getParagraphPropertySource(paragraph);
-    if (!propertySource) {
-      panic("The parsed paragraph has no property source.");
-    }
-    assignParagraphPropertySource(paragraph, xml);
-    paragraph.pPrMark = { kind: "ins", info: { id: 95, author: "Reviewer" } };
+  ] as const)(
+    "the %s cannot rebind the serializer's w prefix",
+    async (_name, xml) => {
+      const source = await documentWithSourceProperties();
+      const parsed = await parseDocx(source, { preloadFonts: false });
+      const paragraph = firstParagraph(parsed);
+      const propertySource = getParagraphPropertySource(paragraph);
+      if (!propertySource) {
+        panic("The parsed paragraph has no property source.");
+      }
+      assignParagraphPropertySource(paragraph, xml);
+      paragraph.pPrMark = { kind: "ins", info: { id: 95, author: "Reviewer" } };
 
-    const properties = await firstParagraphProperties(
-      await repackDocx(parsed, { updateModifiedDate: false }),
-    );
-    const runProperties = getChildElements(properties).find(
-      (child) => getLocalName(child.name) === "rPr",
-    );
-    const insertion = getChildElements(runProperties).find(
-      (child) => getLocalName(child.name) === "ins",
-    );
-    expect(properties.namespaceUri).toBe(NAMESPACES.w);
-    expect(runProperties?.namespaceUri).toBe(NAMESPACES.w);
-    expect(insertion?.namespaceUri).toBe(NAMESPACES.w);
-  });
+      const properties = await firstParagraphProperties(
+        await repackDocx(parsed, { updateModifiedDate: false }),
+      );
+      const runProperties = getChildElements(properties).find(
+        (child) => getLocalName(child.name) === "rPr",
+      );
+      const insertion = getChildElements(runProperties).find(
+        (child) => getLocalName(child.name) === "ins",
+      );
+      expect(properties.namespaceUri).toBe(NAMESPACES.w);
+      expect(runProperties?.namespaceUri).toBe(NAMESPACES.w);
+      expect(insertion?.namespaceUri).toBe(NAMESPACES.w);
+    },
+  );
 });
 
 // Revision-only rPr capture previously became authored empty formatting on resolution.
@@ -1470,7 +1739,9 @@ test.each(PARAGRAPH_MARK_CHANGE_KINDS)(
   async (kind) => {
     for (const runProperties of [undefined, {}, { bold: true }] as const) {
       for (const mode of ["normal", "runIn"] as const) {
-        const source = await parseDocx(await createEmptyDocx(), { preloadFonts: false });
+        const source = await parseDocx(await createEmptyDocx(), {
+          preloadFonts: false,
+        });
         const paragraph = firstParagraph(source);
         paragraph.formatting = {
           styleId: "Heading1",
@@ -1478,14 +1749,22 @@ test.each(PARAGRAPH_MARK_CHANGE_KINDS)(
           ...(mode === "runIn" ? { runInWithNext: true } : {}),
         };
         paragraph.pPrMark = { kind, info: { id: 7, author: "Reviewer" } };
-        const pending = await parseDocx(await repackDocx(source, { updateModifiedDate: false }), {
-          preloadFonts: false,
-        });
+        const pending = await parseDocx(
+          await repackDocx(source, { updateModifiedDate: false }),
+          {
+            preloadFonts: false,
+          },
+        );
         delete firstParagraph(pending).pPrMark;
-        const resolved = await parseDocx(await repackDocx(pending, { updateModifiedDate: false }), {
-          preloadFonts: false,
-        });
-        expect(firstParagraph(resolved).formatting?.runProperties).toStrictEqual(runProperties);
+        const resolved = await parseDocx(
+          await repackDocx(pending, { updateModifiedDate: false }),
+          {
+            preloadFonts: false,
+          },
+        );
+        expect(
+          firstParagraph(resolved).formatting?.runProperties,
+        ).toStrictEqual(runProperties);
         expect(firstParagraph(resolved).formatting?.runInWithNext).toBe(
           mode === "runIn" ? true : undefined,
         );

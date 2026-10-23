@@ -1,20 +1,28 @@
 import { expect, test } from "bun:test";
-import { singletonManager } from "../prosemirror/schema";
 import { Fragment, Slice } from "prosemirror-model";
 import { AllSelection, NodeSelection } from "prosemirror-state";
 
-import {
-  validateHarnessRefusalRows,
-  harnessRefusalProblems,
-} from "../../../../test/canonical-refusal-rows";
 import {
   canonicalConformanceRefusalRows,
   declareCanonicalRefusalCases,
   STORY_PROJECTION_REFUSAL_CASES,
 } from "../../../../test/canonical-conformance-refusals";
+import {
+  harnessRefusalProblems,
+  validateHarnessRefusalRows,
+} from "../../../../test/canonical-refusal-rows";
+import {
+  createCanonicalEditorHarness,
+  resolveCanonicalHarnessDocument,
+  saveCanonicalHarnessDocument,
+} from "../../../../test/canonicalEditorHarness";
 import { assertExactModel } from "../../../../test/exactModel";
+import { singletonManager } from "../prosemirror/schema";
+import {
+  CANONICAL_CAPABILITIES,
+  CANONICAL_GAP,
+} from "../types/canonicalCapabilities";
 import { createEmptyDocument } from "../utils/createDocument";
-import { modelMarkdown, parseShapeDocument, placeSelection } from "./editorHarness";
 import { documentShape, shapeArrayBuffer } from "./documentShapes";
 import {
   CANONICAL_TEXT_TOGGLE_OPERATIONS,
@@ -23,25 +31,37 @@ import {
   PASTED_TABLE,
   runConformanceCase,
 } from "./editorCommandConformance";
-import { CANONICAL_CAPABILITIES, CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
-  createCanonicalEditorHarness,
-  resolveCanonicalHarnessDocument,
-  saveCanonicalHarnessDocument,
-} from "../../../../test/canonicalEditorHarness";
+  modelMarkdown,
+  parseShapeDocument,
+  placeSelection,
+} from "./editorHarness";
 
 test("canonical refusal rows cannot survive a retired ledger id", () => {
-  const row = { id: "clipboard-table", gap: CANONICAL_GAP.dispatch, message: "refused" };
+  const row = {
+    id: "clipboard-table",
+    gap: CANONICAL_GAP.dispatch,
+    message: "refused",
+  };
   expect(() => validateHarnessRefusalRows([row])).not.toThrow();
   const retired = Object.fromEntries(
     Object.entries(CANONICAL_CAPABILITIES).filter(([gap]) => gap !== row.gap),
   );
-  expect(() => validateHarnessRefusalRows([row], retired)).toThrow("must become strict");
+  expect(() => validateHarnessRefusalRows([row], retired)).toThrow(
+    "must become strict",
+  );
   const refusal = { ...row, row: row.id, expectation: "declared" } as const;
-  expect(harnessRefusalProblems({ rows: [row], refusals: [refusal] })).toEqual([]);
-  expect(harnessRefusalProblems({ rows: [], refusals: [refusal] })).toHaveLength(1);
+  expect(harnessRefusalProblems({ rows: [row], refusals: [refusal] })).toEqual(
+    [],
+  );
   expect(
-    harnessRefusalProblems({ rows: [row], refusals: [{ ...refusal, message: "different" }] }),
+    harnessRefusalProblems({ rows: [], refusals: [refusal] }),
+  ).toHaveLength(1);
+  expect(
+    harnessRefusalProblems({
+      rows: [row],
+      refusals: [{ ...refusal, message: "different" }],
+    }),
   ).toHaveLength(1);
 });
 
@@ -50,7 +70,8 @@ test.each(["editing", "suggesting"] as const)(
   (mode) => {
     const source = createEmptyDocument({ initialText: "alpha beta" });
     const paragraph = source.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") throw new TypeError("Refusal fixture lost paragraph");
+    if (paragraph?.type !== "paragraph")
+      throw new TypeError("Refusal fixture lost paragraph");
     paragraph.paraId = "12345678";
     const driver = createCanonicalEditorHarness(source, mode);
     try {
@@ -61,7 +82,8 @@ test.each(["editing", "suggesting"] as const)(
       expect(driver.refusals).toEqual([
         {
           gap: CANONICAL_GAP.dispatch,
-          message: "Only plain character deletion is available in this session.",
+          message:
+            "Only plain character deletion is available in this session.",
           expectation: "declared",
           row: "modified-deletion",
         },
@@ -74,7 +96,8 @@ test.each(["editing", "suggesting"] as const)(
       driver.paste(PASTED_TABLE(driver.state.doc));
       expect(driver.refusals.at(-1)).toEqual({
         gap: CANONICAL_GAP.dispatch,
-        message: "Clipboard tables and embedded blocks require canonical table editing.",
+        message:
+          "Clipboard tables and embedded blocks require canonical table editing.",
         expectation: "declared",
         row: "clipboard-table",
       });
@@ -102,7 +125,9 @@ test.each(["editing", "suggesting"] as const)(
     paragraph.paraId = "12345678";
     const driver = createCanonicalEditorHarness(source, mode);
     try {
-      driver.dispatch(driver.state.tr.setSelection(NodeSelection.create(driver.state.doc, 0)));
+      driver.dispatch(
+        driver.state.tr.setSelection(NodeSelection.create(driver.state.doc, 0)),
+      );
       // Keep text replacement inside the paragraph; node replacement has its own image case.
       driver.history.setSelection(2, 4);
       const baseline = driver.snapshot();
@@ -123,9 +148,11 @@ test.each(["editing", "suggesting"] as const)(
       assertExactModel(driver.snapshot(), beforeBypass);
       expect(driver.state).toBe(state);
       if (mode === "suggesting") {
-        expect(modelMarkdown(resolveCanonicalHarnessDocument(edited, "reject").model)).toBe(
-          modelMarkdown(baseline),
-        );
+        expect(
+          modelMarkdown(
+            resolveCanonicalHarnessDocument(edited, "reject").model,
+          ),
+        ).toBe(modelMarkdown(baseline));
       }
     } finally {
       driver.dispose();
@@ -147,7 +174,8 @@ test.each(["editing", "suggesting"] as const)(
           driver.state.doc.descendants((node, offset) => {
             if (node.type.name === "image") position ??= offset;
           });
-          if (position === undefined) throw new TypeError("The image/node fixture has no image.");
+          if (position === undefined)
+            throw new TypeError("The image/node fixture has no image.");
           driver.dispatch(
             driver.state.tr.setSelection(
               placement === "node"
@@ -160,20 +188,30 @@ test.each(["editing", "suggesting"] as const)(
           if (kind === "text") driver.typeText("xyz");
           else if (kind === "list") driver.paste(PASTED_LIST(driver.state.doc));
           else
-            driver.paste(new Slice(Fragment.from(driver.state.schema.text("Inline paste")), 0, 0));
+            driver.paste(
+              new Slice(
+                Fragment.from(driver.state.schema.text("Inline paste")),
+                0,
+                0,
+              ),
+            );
           expect(driver.refusals).toEqual([]);
           const edited = driver.snapshot();
           expect(driver.history.canUndo()).toBe(true);
-          while (driver.history.canUndo()) expect(driver.history.undo()).toBe(true);
+          while (driver.history.canUndo())
+            expect(driver.history.undo()).toBe(true);
           assertExactModel(driver.snapshot(), baseline);
           expect(driver.state.selection.toJSON()).toEqual(selection);
           expect(driver.history.canRedo()).toBe(true);
-          while (driver.history.canRedo()) expect(driver.history.redo()).toBe(true);
+          while (driver.history.canRedo())
+            expect(driver.history.redo()).toBe(true);
           assertExactModel(driver.snapshot(), edited);
           if (mode === "suggesting")
-            expect(modelMarkdown(resolveCanonicalHarnessDocument(edited, "reject").model)).toBe(
-              modelMarkdown(baseline),
-            );
+            expect(
+              modelMarkdown(
+                resolveCanonicalHarnessDocument(edited, "reject").model,
+              ),
+            ).toBe(modelMarkdown(baseline));
         } finally {
           driver.dispose();
         }
@@ -193,12 +231,15 @@ for (const mode of ["editing", "suggesting"] as const) {
     "outline-level-numbered",
   ] as const) {
     test(`copied ${shape} blocks use the resource preflight and saved canonical authority in ${mode}`, async () => {
-      const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+      const source = await parseShapeDocument(
+        new Uint8Array(await shapeArrayBuffer(shape)),
+      );
       const driver = createCanonicalEditorHarness(source, mode);
       try {
         const slice = new Slice(driver.state.doc.content, 0, 0);
         const last = driver.state.doc.lastChild;
-        if (last === null) throw new TypeError("Copied-block fixture has no final paragraph");
+        if (last === null)
+          throw new TypeError("Copied-block fixture has no final paragraph");
         const end = driver.state.doc.content.size - 1;
         driver.history.setSelection(end, end);
         const before = driver.snapshot();
@@ -238,7 +279,8 @@ const REVIEW_HYPERLINK_COMMANDS = [
     id: "set",
     operation: "command:setHyperlink",
     placement: "word",
-    create: () => singletonManager.requireCommand("setHyperlink")("https://example.org/"),
+    create: () =>
+      singletonManager.requireCommand("setHyperlink")("https://example.org/"),
   },
   {
     id: "remove",
@@ -251,21 +293,31 @@ const REVIEW_HYPERLINK_COMMANDS = [
     operation: "command:insertHyperlink",
     placement: "caret-middle",
     create: () =>
-      singletonManager.requireCommand("insertHyperlink")("a link", "https://example.org/"),
+      singletonManager.requireCommand("insertHyperlink")(
+        "a link",
+        "https://example.org/",
+      ),
   },
 ] as const;
-const REVIEW_HYPERLINK_CASES = ["comments", "tracked-changes"].flatMap((shape) =>
-  (["editing", "suggesting"] as const).flatMap((mode) =>
-    REVIEW_HYPERLINK_COMMANDS.map((command) => ({ shape, mode, command })),
-  ),
+const REVIEW_HYPERLINK_CASES = ["comments", "tracked-changes"].flatMap(
+  (shape) =>
+    (["editing", "suggesting"] as const).flatMap((mode) =>
+      REVIEW_HYPERLINK_COMMANDS.map((command) => ({ shape, mode, command })),
+    ),
 );
 test.each(REVIEW_HYPERLINK_CASES)(
   "$shape $command.id hyperlink refusal preserves the complete session in $mode",
   async ({ shape, mode, command }) => {
-    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
     const driver = createCanonicalEditorHarness(source, mode);
     try {
-      const placed = placeSelection(driver.state, documentShape(shape).focus, command.placement);
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        command.placement,
+      );
       if (!placed) throw new TypeError("Review refusal fixture lost selection");
       driver.dispatch(driver.state.tr.setSelection(placed.selection));
       const before = driver.snapshot();
@@ -302,19 +354,37 @@ test.each(REVIEW_HYPERLINK_CASES)(
 test.each(STORY_PROJECTION_REFUSAL_CASES)(
   "$shape $operation/$placement projection refusal is exact and atomic in $mode",
   async ({ shape, mode, operation, placement }) => {
-    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
     const driver = createCanonicalEditorHarness(source, mode);
     try {
-      const placed = placeSelection(driver.state, documentShape(shape).focus, placement);
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        placement,
+      );
       if (!placed) throw new TypeError("Story refusal fixture lost selection");
       driver.dispatch(driver.state.tr.setSelection(placed.selection));
       const before = driver.snapshot();
       const state = driver.state;
-      driver.expectRefusals(canonicalConformanceRefusalRows({ shape, mode, operation, placement }));
+      driver.expectRefusals(
+        canonicalConformanceRefusalRows({ shape, mode, operation, placement }),
+      );
       if (operation === "paste:copied-blocks") {
-        const selected = placeSelection(driver.state, documentShape(shape).focus, "paragraph");
-        if (!selected) throw new TypeError("Copied field fixture lost its paragraph");
-        driver.paste(driver.state.doc.slice(selected.selection.from, selected.selection.to));
+        const selected = placeSelection(
+          driver.state,
+          documentShape(shape).focus,
+          "paragraph",
+        );
+        if (!selected)
+          throw new TypeError("Copied field fixture lost its paragraph");
+        driver.paste(
+          driver.state.doc.slice(
+            selected.selection.from,
+            selected.selection.to,
+          ),
+        );
       } else if (operation === "host:cut") driver.cut();
       else driver.pressKey(operation === "key:Enter" ? "Enter" : "Delete");
       expect(driver.refusals).toEqual([
@@ -322,7 +392,8 @@ test.each(STORY_PROJECTION_REFUSAL_CASES)(
           gap: CANONICAL_GAP.storyContentProjection,
           row: CANONICAL_GAP.storyContentProjection,
           expectation: "declared",
-          message: "The operations produce unsupported canonical story content.",
+          message:
+            "The operations produce unsupported canonical story content.",
         },
       ]);
       assertExactModel(driver.snapshot(), before);
@@ -342,7 +413,9 @@ const TEXT_TOGGLE_NO_OP_CASES = CANONICAL_TEXT_TOGGLE_OPERATIONS.flatMap((id) =>
 test.each(TEXT_TOGGLE_NO_OP_CASES)(
   "$id cannot silently change nothing with verdict $verdict in both modes",
   async ({ id, verdict }) => {
-    const registered = CONFORMANCE_OPERATIONS.find((operation) => operation.id === id);
+    const registered = CONFORMANCE_OPERATIONS.find(
+      (operation) => operation.id === id,
+    );
     if (!registered) throw new TypeError(`Missing text toggle operation ${id}`);
     const shape = documentShape("plain-markdown");
     const refusalCases = declareCanonicalRefusalCases(
@@ -363,7 +436,9 @@ test.each(TEXT_TOGGLE_NO_OP_CASES)(
     });
     expect(result).not.toBeNull();
     expect(result?.refusals).toEqual([]);
-    expect(result?.violations.map(({ kind, mode }) => ({ kind, mode }))).toEqual([
+    expect(
+      result?.violations.map(({ kind, mode }) => ({ kind, mode })),
+    ).toEqual([
       { kind: "silent-refusal", mode: "editing" },
       { kind: "silent-refusal", mode: "suggesting" },
     ]);
@@ -373,7 +448,9 @@ test.each(TEXT_TOGGLE_NO_OP_CASES)(
 test.each(CANONICAL_TEXT_TOGGLE_OPERATIONS)(
   "%s satisfies its selection-based expected-change contract",
   async (id) => {
-    const operation = CONFORMANCE_OPERATIONS.find((candidate) => candidate.id === id);
+    const operation = CONFORMANCE_OPERATIONS.find(
+      (candidate) => candidate.id === id,
+    );
     if (!operation) throw new TypeError(`Missing text toggle operation ${id}`);
     const shape = documentShape("plain-markdown");
     const result = await runConformanceCase({
@@ -398,7 +475,9 @@ test.each(["caret-middle", "document"] as const)(
   "the text-toggle change contract excludes %s",
   async (placement) => {
     const id = "command:toggleItalic";
-    const operation = CONFORMANCE_OPERATIONS.find((candidate) => candidate.id === id);
+    const operation = CONFORMANCE_OPERATIONS.find(
+      (candidate) => candidate.id === id,
+    );
     if (!operation) throw new TypeError(`Missing text toggle operation ${id}`);
     const shape = documentShape("plain-markdown");
     const result = await runConformanceCase({

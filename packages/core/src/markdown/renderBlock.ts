@@ -5,17 +5,23 @@
  */
 
 import { panic } from "better-result";
-import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "../docx/altChunk";
+
 import {
-  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+  ALT_CHUNK_READER_DIAGNOSTIC,
+  isAltChunkMarkup,
+} from "../docx/altChunk";
+import {
   isOpaqueNestedRowMarkup,
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
   opaqueRevisionCarrierName,
 } from "../docx/opaqueCarrier";
-
-import type { BlockContent, DocxPackage } from "../types/document";
 import { projectAcceptedBlocks } from "../internal/acceptedBlockProjection";
+import type { BlockContent, DocxPackage } from "../types/document";
 import { pushWarning } from "./internals";
-import { renderParagraphBlock, type RenderedParagraph } from "./renderParagraph";
+import {
+  type RenderedParagraph,
+  renderParagraphBlock,
+} from "./renderParagraph";
 import { renderTable } from "./renderTable";
 import type { RenderContext } from "./types";
 
@@ -32,7 +38,9 @@ export function renderBlocks(
   let prevWasListItem = false;
 
   const projection =
-    ctx.opts.trackedChanges === "clean" ? projectAcceptedBlocks(blocks, pkg) : null;
+    ctx.opts.trackedChanges === "clean"
+      ? projectAcceptedBlocks(blocks, pkg)
+      : null;
   if (projection?.completeness === "partial") {
     pushWarning(ctx, "Some tracked structural changes could not be resolved.");
   }
@@ -83,7 +91,9 @@ export function renderBlocks(
         return { type: "delimiter" };
       default: {
         const unsupported: never = block;
-        panic(`Unsupported block content in markdown: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported block content in markdown: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   };
@@ -100,7 +110,8 @@ export function renderBlocks(
         prevWasListItem = false;
         break;
       case "listItem":
-        if (out.length && (!prevWasListItem || rendered.separation === "loose")) out.push("");
+        if (out.length && (!prevWasListItem || rendered.separation === "loose"))
+          out.push("");
         prevWasListItem = true;
         break;
       default: {

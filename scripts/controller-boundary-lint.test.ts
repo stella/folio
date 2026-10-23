@@ -4,14 +4,24 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
-const CONTROLLER_RULE_MARKER = "folio-layer-boundaries(controller-and-engine-seams)";
-const PROJECTION_RULE_MARKER = "folio-layer-boundaries(rust-projection-boundary)";
+const CONTROLLER_RULE_MARKER =
+  "folio-layer-boundaries(controller-and-engine-seams)";
+const PROJECTION_RULE_MARKER =
+  "folio-layer-boundaries(rust-projection-boundary)";
 
 setDefaultTimeout(30_000);
 
 const lintPath = (relativePath: string, marker: string): number => {
   const result = Bun.spawnSync(
-    ["bun", "--bun", "oxlint", "-c", "oxlint.fixtures.config.ts", "--no-ignore", relativePath],
+    [
+      "bun",
+      "--bun",
+      "oxlint",
+      "-c",
+      "oxlint.fixtures.config.ts",
+      "--no-ignore",
+      relativePath,
+    ],
     { cwd: REPOSITORY_ROOT },
   );
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
@@ -29,7 +39,10 @@ const lintPath = (relativePath: string, marker: string): number => {
 describe("boundary lint fixture runner", () => {
   test("surfaces lint invocation failures", () => {
     expect(() =>
-      lintPath("test/__fixtures__/missing-boundary-fixture.ts", CONTROLLER_RULE_MARKER),
+      lintPath(
+        "test/__fixtures__/missing-boundary-fixture.ts",
+        CONTROLLER_RULE_MARKER,
+      ),
     ).toThrow("oxlint exited with 1 for 0");
   });
 });
@@ -102,13 +115,19 @@ describe("controller and engine boundary lint", () => {
 describe("Rust projection boundary lint", () => {
   test("rejects a TypeScript archive fallback in the projection boundary", () => {
     expect(
-      lintPath("test/__fixtures__/packages/docx-core/src/projection.ts", PROJECTION_RULE_MARKER),
+      lintPath(
+        "test/__fixtures__/packages/docx-core/src/projection.ts",
+        PROJECTION_RULE_MARKER,
+      ),
     ).toBe(1);
   });
 
   test("rejects a second generated-kernel entry point", () => {
     expect(
-      lintPath("test/__fixtures__/packages/docx-core/src/alternate.ts", PROJECTION_RULE_MARKER),
+      lintPath(
+        "test/__fixtures__/packages/docx-core/src/alternate.ts",
+        PROJECTION_RULE_MARKER,
+      ),
     ).toBe(1);
   });
 
@@ -149,7 +168,9 @@ describe("Rust projection boundary lint", () => {
   });
 
   test("accepts the canonical projection boundary", () => {
-    expect(lintPath("packages/docx-core/src/projection.ts", PROJECTION_RULE_MARKER)).toBe(0);
+    expect(
+      lintPath("packages/docx-core/src/projection.ts", PROJECTION_RULE_MARKER),
+    ).toBe(0);
   });
 
   test("accepts absolute URL parsing that carries no module base", () => {
@@ -171,7 +192,12 @@ describe("Rust projection boundary lint", () => {
   });
 
   test("accepts a projection test that loads the generated fixture", () => {
-    expect(lintPath("packages/docx-core/src/projection.test.ts", PROJECTION_RULE_MARKER)).toBe(0);
+    expect(
+      lintPath(
+        "packages/docx-core/src/projection.test.ts",
+        PROJECTION_RULE_MARKER,
+      ),
+    ).toBe(0);
   });
 
   test("rejects a second generated-shaper entry point", () => {
@@ -194,11 +220,16 @@ describe("Rust projection boundary lint", () => {
 
   test("rejects a TypeScript shaping implementation at the shaper boundary", () => {
     expect(
-      lintPath("test/__fixtures__/packages/core/src/shaping/shaper.ts", PROJECTION_RULE_MARKER),
+      lintPath(
+        "test/__fixtures__/packages/core/src/shaping/shaper.ts",
+        PROJECTION_RULE_MARKER,
+      ),
     ).toBe(1);
   });
 
   test("accepts the canonical shaper boundary", () => {
-    expect(lintPath("packages/core/src/shaping/shaper.ts", PROJECTION_RULE_MARKER)).toBe(0);
+    expect(
+      lintPath("packages/core/src/shaping/shaper.ts", PROJECTION_RULE_MARKER),
+    ).toBe(0);
   });
 });

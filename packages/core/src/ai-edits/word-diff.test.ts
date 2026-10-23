@@ -12,7 +12,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   createWordDiffSession,
   diffWordSegments,
@@ -37,14 +40,31 @@ const rebuildAfter = (segments: readonly WordDiffSegment[]): string =>
 
 /** Prose-shaped strings: the input the diff is for, rather than random bytes. */
 const sentence = fc
-  .array(fc.constantFrom("shall", "must", "the", "Goods", "Products", "thirty", "days", ",", "."), {
-    minLength: 0,
-    maxLength: 14,
-  })
+  .array(
+    fc.constantFrom(
+      "shall",
+      "must",
+      "the",
+      "Goods",
+      "Products",
+      "thirty",
+      "days",
+      ",",
+      ".",
+    ),
+    {
+      minLength: 0,
+      maxLength: 14,
+    },
+  )
   .map((words) => words.join(" "));
 
 /** Space, no-break space and narrow no-break space: each separates words. */
-const WORD_SEPARATORS = [" ", String.fromCodePoint(0xa0), String.fromCodePoint(0x20_2f)];
+const WORD_SEPARATORS = [
+  " ",
+  String.fromCodePoint(0xa0),
+  String.fromCodePoint(0x20_2f),
+];
 
 /** Latin, Czech/German low-high, guillemet and typographic quotes, brackets, dashes, ellipsis. */
 const PUNCTUATION_MARKS = [
@@ -71,10 +91,13 @@ const PUNCTUATION_MARKS = [
 ];
 
 const unicodeText = fc
-  .array(fc.constantFrom("a", " ", "\n", "😀", "👩‍⚖️", "§", "č", "م", "क", "e\u0301"), {
-    minLength: 0,
-    maxLength: 40,
-  })
+  .array(
+    fc.constantFrom("a", " ", "\n", "😀", "👩‍⚖️", "§", "č", "م", "क", "e\u0301"),
+    {
+      minLength: 0,
+      maxLength: 40,
+    },
+  )
   .map((units) => units.join(""));
 
 describe("diffWordSegments", () => {
@@ -113,9 +136,12 @@ describe("diffWordSegments", () => {
   });
 
   test("a token-subsequence edit never invents the opposite change direction", () => {
-    const tokenSequence = fc.array(fc.tuple(fc.constantFrom("a", "b", "c", "."), fc.boolean()), {
-      maxLength: 9,
-    });
+    const tokenSequence = fc.array(
+      fc.tuple(fc.constantFrom("a", "b", "c", "."), fc.boolean()),
+      {
+        maxLength: 9,
+      },
+    );
     fc.assert(
       fc.property(tokenSequence, (entries) => {
         const whole = entries.map(([token]) => token).join("");
@@ -124,17 +150,23 @@ describe("diffWordSegments", () => {
           .map(([token]) => token)
           .join("");
 
-        const insertion = diffWordSegments(subsequence, whole, { granularity: "character" });
+        const insertion = diffWordSegments(subsequence, whole, {
+          granularity: "character",
+        });
         expect(insertion.some(({ type }) => type === "del")).toBe(false);
         expect(rebuildBefore(insertion)).toBe(subsequence);
         expect(rebuildAfter(insertion)).toBe(whole);
 
-        const deletion = diffWordSegments(whole, subsequence, { granularity: "character" });
+        const deletion = diffWordSegments(whole, subsequence, {
+          granularity: "character",
+        });
         expect(deletion.some(({ type }) => type === "ins")).toBe(false);
         expect(rebuildBefore(deletion)).toBe(whole);
         expect(rebuildAfter(deletion)).toBe(subsequence);
 
-        const wholeWords = ["anchor", ...entries.map(([token]) => token)].join(" ");
+        const wholeWords = ["anchor", ...entries.map(([token]) => token)].join(
+          " ",
+        );
         const subsequenceWords = [
           "anchor",
           ...entries.filter(([, retained]) => retained).map(([token]) => token),
@@ -177,11 +209,17 @@ describe("diffWordSegments", () => {
   });
 
   test("inserting or deleting words at the start, middle or end marks only those words", () => {
-    const words = fc.array(fc.constantFrom("(1)", "Závislá", "práce", "the", "§", "15", ","), {
-      minLength: 1,
-      maxLength: 8,
-    });
-    const wordsOf = (segments: readonly WordDiffSegment[], type: WordDiffSegment["type"]) =>
+    const words = fc.array(
+      fc.constantFrom("(1)", "Závislá", "práce", "the", "§", "15", ","),
+      {
+        minLength: 1,
+        maxLength: 8,
+      },
+    );
+    const wordsOf = (
+      segments: readonly WordDiffSegment[],
+      type: WordDiffSegment["type"],
+    ) =>
       segments
         .filter((segment) => segment.type === type)
         .flatMap(({ text }) => text.split(/\s+/u))
@@ -195,9 +233,11 @@ describe("diffWordSegments", () => {
         (kept, inserted, rawSplit, separator) => {
           const split = rawSplit % (kept.length + 1);
           const shorter = kept.join(separator);
-          const longer = [...kept.slice(0, split), ...inserted, ...kept.slice(split)].join(
-            separator,
-          );
+          const longer = [
+            ...kept.slice(0, split),
+            ...inserted,
+            ...kept.slice(split),
+          ].join(separator);
 
           const insertion = diffWordSegments(shorter, longer);
           expect(rebuildBefore(insertion)).toBe(shorter);
@@ -220,7 +260,9 @@ describe("diffWordSegments", () => {
 
   test("changing only punctuation around words marks only the punctuation", () => {
     const mark = fc.constantFrom(...PUNCTUATION_MARKS);
-    const marks = fc.array(mark, { maxLength: 2 }).map((chosen) => chosen.join(""));
+    const marks = fc
+      .array(mark, { maxLength: 2 })
+      .map((chosen) => chosen.join(""));
     const punctuatedWord = fc.record({
       word: fc.constantFrom(
         "jmění",
@@ -241,10 +283,16 @@ describe("diffWordSegments", () => {
         fc.constantFrom(...WORD_SEPARATORS),
         (words, separator) => {
           const before = words
-            .map(({ word, before: [leading, trailing] }) => `${leading}${word}${trailing}`)
+            .map(
+              ({ word, before: [leading, trailing] }) =>
+                `${leading}${word}${trailing}`,
+            )
             .join(separator);
           const after = words
-            .map(({ word, after: [leading, trailing] }) => `${leading}${word}${trailing}`)
+            .map(
+              ({ word, after: [leading, trailing] }) =>
+                `${leading}${word}${trailing}`,
+            )
             .join(separator);
 
           const segments = diffWordSegments(before, after);
@@ -298,7 +346,9 @@ describe("diffWordSegments", () => {
     const after = ` ${".".repeat(100_000)}word,`;
     const tokens = tokenizeWords(before);
     expect(tokens.join("")).toBe(before);
-    expect(tokens.length).toBeLessThanOrEqual(2 * MAX_EDGE_PUNCTUATION_TOKENS + 1);
+    expect(tokens.length).toBeLessThanOrEqual(
+      2 * MAX_EDGE_PUNCTUATION_TOKENS + 1,
+    );
     const segments = diffWordSegments(before, after);
 
     expect(rebuildBefore(segments)).toBe(before);
@@ -312,7 +362,8 @@ describe("diffWordSegments", () => {
   });
 
   test("words removed before a closing mark are a pure deletion, and restoring them a pure insertion", () => {
-    const longer = "…ke společnému dítěti i o povinnostech a právech rodičů k němu.";
+    const longer =
+      "…ke společnému dítěti i o povinnostech a právech rodičů k němu.";
     const shorter = "…ke společnému dítěti.";
     expect(diffWordSegments(longer, shorter)).toEqual([
       { type: "equal", text: "…ke společnému dítěti" },
@@ -327,7 +378,9 @@ describe("diffWordSegments", () => {
   });
 
   test("punctuation inside a word stays part of it", () => {
-    expect(diffWordSegments("§ 755 odst. 2 písm. b)", "§ 755 odst. 3 písm. b)")).toEqual([
+    expect(
+      diffWordSegments("§ 755 odst. 2 písm. b)", "§ 755 odst. 3 písm. b)"),
+    ).toEqual([
       { type: "equal", text: "§ 755 odst." },
       { type: "del", text: " 2" },
       { type: "ins", text: " 3" },
@@ -343,7 +396,9 @@ describe("diffWordSegments", () => {
   test("a paragraph number prefixed to a sentence is the only insertion", () => {
     const provision = "Závislá práce nezletilých je zakázána.";
     for (const separator of WORD_SEPARATORS) {
-      expect(diffWordSegments(provision, `(1)${separator}${provision}`)).toEqual([
+      expect(
+        diffWordSegments(provision, `(1)${separator}${provision}`),
+      ).toEqual([
         { type: "ins", text: `(1)${separator}` },
         { type: "equal", text: provision },
       ]);
@@ -351,7 +406,12 @@ describe("diffWordSegments", () => {
   });
 
   test("a whitespace change around an unchanged word marks the whitespace only", () => {
-    expect(diffWordSegments("the goods  and the services", "the goods and the services")).toEqual([
+    expect(
+      diffWordSegments(
+        "the goods  and the services",
+        "the goods and the services",
+      ),
+    ).toEqual([
       { type: "equal", text: "the goods" },
       { type: "del", text: "  " },
       { type: "ins", text: " " },
@@ -363,7 +423,9 @@ describe("diffWordSegments", () => {
     fc.assert(
       fc.property(sentence, (text) => {
         const segments = diffWordSegments(text, text);
-        expect(segments).toEqual(text.length === 0 ? [] : [{ type: "equal", text }]);
+        expect(segments).toEqual(
+          text.length === 0 ? [] : [{ type: "equal", text }],
+        );
       }),
       propertyConfig({ numRuns: 100 }),
     );
@@ -385,7 +447,9 @@ describe("diffWordSegments", () => {
   });
 
   test("marks only the changed word in a small replacement", () => {
-    expect(diffWordSegments("The quick fox jumps.", "The slow fox jumps.")).toEqual([
+    expect(
+      diffWordSegments("The quick fox jumps.", "The slow fox jumps."),
+    ).toEqual([
       { type: "equal", text: "The" },
       { type: "del", text: " quick" },
       { type: "ins", text: " slow" },
@@ -456,14 +520,19 @@ describe("diffWordSegments", () => {
       "Risk in the goods passes to the buyer",
       "Title over goods vests in the purchaser",
     );
-    expect(island.some(({ type, text }) => type === "equal" && text.trim() === "goods")).toBe(
-      false,
-    );
+    expect(
+      island.some(
+        ({ type, text }) => type === "equal" && text.trim() === "goods",
+      ),
+    ).toBe(false);
   });
 
   test("anchors a unique term instead of matching more repeated boilerplate", () => {
     expect(
-      diffWordSegments("the the the the the SIGNATURE PAGE", "the the SIGNATURE PAGE the the the"),
+      diffWordSegments(
+        "the the the the the SIGNATURE PAGE",
+        "the the SIGNATURE PAGE the the the",
+      ),
     ).toEqual([
       { type: "del", text: "the the the " },
       { type: "equal", text: "the the SIGNATURE PAGE" },
@@ -505,17 +574,23 @@ describe("diffWordSegments", () => {
     ];
 
     for (const { before, after, granularity, expected } of cases) {
-      expect(diffWordSegments(before, after, { granularity })).toEqual(expected);
+      expect(diffWordSegments(before, after, { granularity })).toEqual(
+        expected,
+      );
     }
   });
 
   test("preserves historical ties when a weak selected anchor would be discarded", () => {
-    expect(diffWordSegments("ab", "aaba", { granularity: "character" })).toEqual([
+    expect(
+      diffWordSegments("ab", "aaba", { granularity: "character" }),
+    ).toEqual([
       { type: "ins", text: "a" },
       { type: "equal", text: "ab" },
       { type: "ins", text: "a" },
     ]);
-    expect(diffWordSegments("the the clause", "the the the clause the")).toEqual([
+    expect(
+      diffWordSegments("the the clause", "the the the clause the"),
+    ).toEqual([
       { type: "ins", text: "the " },
       { type: "equal", text: "the the clause" },
       { type: "ins", text: " the" },
@@ -523,7 +598,11 @@ describe("diffWordSegments", () => {
   });
 
   test("character granularity marks the changed letters inside one word", () => {
-    expect(diffWordSegments("clause 14.2", "clause 14.3", { granularity: "character" })).toEqual([
+    expect(
+      diffWordSegments("clause 14.2", "clause 14.3", {
+        granularity: "character",
+      }),
+    ).toEqual([
       { type: "equal", text: "clause 14." },
       { type: "del", text: "2" },
       { type: "ins", text: "3" },
@@ -554,9 +633,13 @@ describe("diffWordSegments", () => {
 
   test("whitespace normalization ignores a collapsed run of spaces", () => {
     expect(
-      diffWordSegments("the goods  and the services", "the goods and the services", {
-        normalization: { whitespace: true },
-      }),
+      diffWordSegments(
+        "the goods  and the services",
+        "the goods and the services",
+        {
+          normalization: { whitespace: true },
+        },
+      ),
     ).toEqual([{ type: "equal", text: "the goods  and the services" }]);
   });
 
@@ -570,12 +653,14 @@ describe("diffWordSegments", () => {
     // strings inside one `modified` block pair. 2,001 distinct words each
     // tokenize to 2,001 tokens; 2,001 * 2,001 = 4,004,001 cells, just over
     // the 4,000,000-cell budget, so the DP must be skipped entirely.
-    const before = Array.from({ length: 2001 }, (_unused, index) => `before${String(index)}`).join(
-      " ",
-    );
-    const after = Array.from({ length: 2001 }, (_unused, index) => `after${String(index)}`).join(
-      " ",
-    );
+    const before = Array.from(
+      { length: 2001 },
+      (_unused, index) => `before${String(index)}`,
+    ).join(" ");
+    const after = Array.from(
+      { length: 2001 },
+      (_unused, index) => `after${String(index)}`,
+    ).join(" ");
 
     expect(diffWordSegments(before, after)).toEqual([
       { type: "del", text: before },
@@ -584,9 +669,10 @@ describe("diffWordSegments", () => {
   });
 
   test("factors a usable common affix before applying the residual cell budget", () => {
-    const shared = Array.from({ length: 2001 }, (_unused, index) => `clause${String(index)}`).join(
-      " ",
-    );
+    const shared = Array.from(
+      { length: 2001 },
+      (_unused, index) => `clause${String(index)}`,
+    ).join(" ");
     const before = `${shared} former`;
     const after = `${shared} revised`;
 
@@ -598,9 +684,10 @@ describe("diffWordSegments", () => {
   });
 
   test("uses unique anchors when the whole input exceeds the residual cell budget", () => {
-    const shared = Array.from({ length: 2000 }, (_unused, index) => `clause${String(index)}`).join(
-      " ",
-    );
+    const shared = Array.from(
+      { length: 2000 },
+      (_unused, index) => `clause${String(index)}`,
+    ).join(" ");
     const before = `before ${shared} former`;
     const after = `after ${shared} revised`;
 
@@ -630,12 +717,14 @@ describe("diffWordSegments", () => {
     ).join("");
     const characterBefore = `a${characterAnchors}b`;
     const characterAfter = `c${characterAnchors}d`;
-    expect(diffWordSegments(characterBefore, characterAfter, { granularity: "character" })).toEqual(
-      [
-        { type: "del", text: characterBefore },
-        { type: "ins", text: characterAfter },
-      ],
-    );
+    expect(
+      diffWordSegments(characterBefore, characterAfter, {
+        granularity: "character",
+      }),
+    ).toEqual([
+      { type: "del", text: characterBefore },
+      { type: "ins", text: characterAfter },
+    ]);
   });
 
   test("does not normalize every token after an oversized residual is refused", () => {
@@ -649,7 +738,12 @@ describe("diffWordSegments", () => {
     const before = "ab".repeat(20_000);
     const after = "ba".repeat(20_000);
 
-    expect(diffWordSegments(before, after, { granularity: "character", normalization })).toEqual([
+    expect(
+      diffWordSegments(before, after, {
+        granularity: "character",
+        normalization,
+      }),
+    ).toEqual([
       { type: "del", text: before },
       { type: "ins", text: after },
     ]);
@@ -667,7 +761,12 @@ describe("diffWordSegments", () => {
     const before = "z";
     const after = "ab".repeat(10_000);
 
-    expect(diffWordSegments(before, after, { granularity: "character", normalization })).toEqual([
+    expect(
+      diffWordSegments(before, after, {
+        granularity: "character",
+        normalization,
+      }),
+    ).toEqual([
       { type: "del", text: before },
       { type: "ins", text: after },
     ]);
@@ -708,7 +807,12 @@ describe("diffWordSegments", () => {
     const before = "z";
     const after = `z${"a".repeat(16_384)}`;
 
-    expect(diffWordSegments(before, after, { granularity: "character", normalization })).toEqual([
+    expect(
+      diffWordSegments(before, after, {
+        granularity: "character",
+        normalization,
+      }),
+    ).toEqual([
       { type: "equal", text: before },
       { type: "ins", text: after.slice(1) },
     ]);
@@ -717,9 +821,9 @@ describe("diffWordSegments", () => {
 
   test("shares one dense-cell allowance across a comparison session", () => {
     const alternating = (first: string, second: string): string =>
-      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
-        " ",
-      );
+      Array.from({ length: 2000 }, (_unused, index) =>
+        index % 2 === 0 ? first : second,
+      ).join(" ");
     const before = alternating("a", "b");
     const after = alternating("b", "a");
     const session = createWordDiffSession();
@@ -739,24 +843,29 @@ const WORD_CHARACTER = /[\p{L}\p{N}\p{M}]/u;
 
 /** Sentences over disjoint vocabularies, each closed by its own mark. */
 const distinctSentences = (minLength: number) =>
-  fc.uniqueArray(fc.nat({ max: 60 }), { minLength, maxLength: 5 }).chain((ids) =>
-    fc.tuple(
-      ...ids.map((id) =>
-        fc
-          .tuple(
-            fc.array(fc.constantFrom("smlouva", "lhůta", "Goods", "days", "§", "15"), {
-              minLength: 1,
-              maxLength: 5,
-            }),
-            fc.constantFrom(".", "!", "?", "…", ";", ".)"),
-          )
-          .map(
-            ([stems, mark]) =>
-              `${stems.map((stem, index) => `${stem}${id}x${index}`).join(" ")}${mark}`,
-          ),
+  fc
+    .uniqueArray(fc.nat({ max: 60 }), { minLength, maxLength: 5 })
+    .chain((ids) =>
+      fc.tuple(
+        ...ids.map((id) =>
+          fc
+            .tuple(
+              fc.array(
+                fc.constantFrom("smlouva", "lhůta", "Goods", "days", "§", "15"),
+                {
+                  minLength: 1,
+                  maxLength: 5,
+                },
+              ),
+              fc.constantFrom(".", "!", "?", "…", ";", ".)"),
+            )
+            .map(
+              ([stems, mark]) =>
+                `${stems.map((stem, index) => `${stem}${id}x${index}`).join(" ")}${mark}`,
+            ),
+        ),
       ),
-    ),
-  );
+    );
 
 const SWAPPED_DIRECTION = {
   equal: "equal",
@@ -764,7 +873,9 @@ const SWAPPED_DIRECTION = {
   ins: "del",
 } as const satisfies Record<WordDiffSegment["type"], WordDiffSegment["type"]>;
 
-const swapDirection = (segments: readonly WordDiffSegment[]): WordDiffSegment[] =>
+const swapDirection = (
+  segments: readonly WordDiffSegment[],
+): WordDiffSegment[] =>
   segments.map(({ type, text }) => ({ type: SWAPPED_DIRECTION[type], text }));
 
 /** True when an unchanged run starts or ends inside a word, cutting it. */
@@ -789,7 +900,9 @@ describe("diffWordSegments change boundaries", () => {
           const [added = "", ...kept] = sentences;
           const at = rawAt % (kept.length + 1);
           const shorter = kept.join(separator);
-          const longer = [...kept.slice(0, at), added, ...kept.slice(at)].join(separator);
+          const longer = [...kept.slice(0, at), added, ...kept.slice(at)].join(
+            separator,
+          );
 
           const insertion = diffWordSegments(shorter, longer);
           expect(rebuildBefore(insertion)).toBe(shorter);
@@ -799,7 +912,9 @@ describe("diffWordSegments change boundaries", () => {
           expect(marked[0]?.text.trim()).toBe(added);
           expect(splitsAWord(insertion)).toBe(false);
 
-          expect(diffWordSegments(longer, shorter)).toEqual(swapDirection(insertion));
+          expect(diffWordSegments(longer, shorter)).toEqual(
+            swapDirection(insertion),
+          );
         },
       ),
       propertyConfig({ numRuns: 300 }),
@@ -808,21 +923,34 @@ describe("diffWordSegments change boundaries", () => {
 
   test("a prepended sentence leaves the old first word unmarked, even when it opens with that word", () => {
     fc.assert(
-      fc.property(distinctSentences(2), fc.boolean(), (sentences, sharesFirstWord) => {
-        const [added = "", ...kept] = sentences;
-        const shorter = kept.join(" ");
-        // The old first word, without a mark that would make it a sentence of its own.
-        const firstWord = (shorter.split(" ").at(0) ?? "").replace(/\p{P}+$/u, "");
-        const prepended = sharesFirstWord ? `${firstWord} ${added}` : added;
-        const longer = `${prepended} ${shorter}`;
+      fc.property(
+        distinctSentences(2),
+        fc.boolean(),
+        (sentences, sharesFirstWord) => {
+          const [added = "", ...kept] = sentences;
+          const shorter = kept.join(" ");
+          // The old first word, without a mark that would make it a sentence of its own.
+          const firstWord = (shorter.split(" ").at(0) ?? "").replace(
+            /\p{P}+$/u,
+            "",
+          );
+          const prepended = sharesFirstWord ? `${firstWord} ${added}` : added;
+          const longer = `${prepended} ${shorter}`;
 
-        const insertion = diffWordSegments(shorter, longer);
-        expect(insertion.filter(({ type }) => type !== "ins").map(({ text }) => text)).toEqual([
-          shorter,
-        ]);
-        expect(insertion.find(({ type }) => type === "ins")?.text.trim()).toBe(prepended);
-        expect(diffWordSegments(longer, shorter)).toEqual(swapDirection(insertion));
-      }),
+          const insertion = diffWordSegments(shorter, longer);
+          expect(
+            insertion
+              .filter(({ type }) => type !== "ins")
+              .map(({ text }) => text),
+          ).toEqual([shorter]);
+          expect(
+            insertion.find(({ type }) => type === "ins")?.text.trim(),
+          ).toBe(prepended);
+          expect(diffWordSegments(longer, shorter)).toEqual(
+            swapDirection(insertion),
+          );
+        },
+      ),
       propertyConfig({ numRuns: 300 }),
     );
   });
@@ -839,9 +967,11 @@ describe("diffWordSegments change boundaries", () => {
   });
 
   test("an appended sentence keeps its own full stop, not the one before it", () => {
-    expect(diffWordSegments("Alpha beta.", "Alpha beta. Gamma delta.")).toEqual([
-      { type: "equal", text: "Alpha beta." },
-      { type: "ins", text: " Gamma delta." },
-    ]);
+    expect(diffWordSegments("Alpha beta.", "Alpha beta. Gamma delta.")).toEqual(
+      [
+        { type: "equal", text: "Alpha beta." },
+        { type: "ins", text: " Gamma delta." },
+      ],
+    );
   });
 });

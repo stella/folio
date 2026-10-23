@@ -18,19 +18,28 @@ export type LayoutPhase =
 
 export type HiddenEditorStateReason = "external-document" | "mount";
 
-export type HiddenEditorPhase = "editor-state" | "editor-view" | "to-prose-doc" | "update-state";
+export type HiddenEditorPhase =
+  "editor-state" | "editor-view" | "to-prose-doc" | "update-state";
 
 export type DocumentLoadPhase = "docx-parse";
 
 export type LayoutInstrumentation = {
-  onDocumentLoadPhase?: (event: { durationMs: number; phase: DocumentLoadPhase }) => void;
+  onDocumentLoadPhase?: (event: {
+    durationMs: number;
+    phase: DocumentLoadPhase;
+  }) => void;
   onHiddenEditorPhase?: (event: {
     durationMs: number;
     phase: HiddenEditorPhase;
     reason: HiddenEditorStateReason;
   }) => void;
-  onHiddenEditorStateCreate?: (event: { reason: HiddenEditorStateReason }) => void;
-  onHyphenationDictionaryError?: (event: { dictionary: string; message: string }) => void;
+  onHiddenEditorStateCreate?: (event: {
+    reason: HiddenEditorStateReason;
+  }) => void;
+  onHyphenationDictionaryError?: (event: {
+    dictionary: string;
+    message: string;
+  }) => void;
   onLayoutComplete?: (event: { reason: LayoutRunReason }) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
   onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
@@ -44,7 +53,10 @@ export type LayoutInstrumentation = {
     phase: LayoutPhase;
     reason: LayoutRunReason;
   }) => void;
-  onMeasureBlock?: (event: { blockIndex: number; blockKind: FlowBlock["kind"] }) => void;
+  onMeasureBlock?: (event: {
+    blockIndex: number;
+    blockKind: FlowBlock["kind"];
+  }) => void;
   onMeasureBlockError?: (event: {
     blockIndex: number;
     blockKind: FlowBlock["kind"];
@@ -85,7 +97,10 @@ export function recordLayoutStart(reason: LayoutRunReason): void {
   globalThis.__folioLayoutInstrumentation?.onLayoutStart?.({ reason });
 }
 
-export function recordLayoutError(reason: LayoutRunReason, error: unknown): void {
+export function recordLayoutError(
+  reason: LayoutRunReason,
+  error: unknown,
+): void {
   const message = error instanceof Error ? error.message : String(error);
   globalThis.__folioLayoutInstrumentation?.onLayoutError?.({
     message,
@@ -98,7 +113,10 @@ export function recordMarkupViewIncomplete(view: string): void {
 }
 
 /** A dictionary failed to load; layout continues without hyphenating that language. */
-export function recordHyphenationDictionaryError(dictionary: string, error: Error): void {
+export function recordHyphenationDictionaryError(
+  dictionary: string,
+  error: Error,
+): void {
   globalThis.__folioLayoutInstrumentation?.onHyphenationDictionaryError?.({
     dictionary,
     message: error.message,
@@ -117,7 +135,9 @@ export function recordLayoutPhase(
   });
 }
 
-export function recordHiddenEditorStateCreate(reason: HiddenEditorStateReason): void {
+export function recordHiddenEditorStateCreate(
+  reason: HiddenEditorStateReason,
+): void {
   globalThis.__folioLayoutInstrumentation?.onHiddenEditorStateCreate?.({
     reason,
   });
@@ -135,7 +155,10 @@ export function recordHiddenEditorPhase(
   });
 }
 
-export function recordDocumentLoadPhase(phase: DocumentLoadPhase, durationMs: number): void {
+export function recordDocumentLoadPhase(
+  phase: DocumentLoadPhase,
+  durationMs: number,
+): void {
   globalThis.__folioLayoutInstrumentation?.onDocumentLoadPhase?.({
     durationMs,
     phase,

@@ -7,8 +7,8 @@ import { Result } from "better-result";
 
 import {
   type HyphenationDictionaryError,
-  type HyphenationDictionaryId,
   hyphenationDictionaryFor,
+  type HyphenationDictionaryId,
   requestHyphenationDictionary,
 } from "./hyphenationDictionaries";
 
@@ -27,7 +27,9 @@ export const preloadHyphenationDictionaries = async (
       dictionaries.add(dictionary);
     }
   }
-  const settled = await Promise.all([...dictionaries].map(requestHyphenationDictionary));
+  const settled = await Promise.all(
+    [...dictionaries].map(requestHyphenationDictionary),
+  );
   for (const outcome of settled) {
     if (outcome.status === "failed") {
       return Result.err(outcome.error);

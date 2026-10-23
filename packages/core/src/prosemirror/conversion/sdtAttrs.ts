@@ -16,13 +16,17 @@ export const onOffFromDataset = (raw: string | undefined): boolean | null => {
   return raw === "false" ? false : null;
 };
 
-export const sdtAttrsFromProperties = (properties: SdtProperties): SdtAttrs => ({
+export const sdtAttrsFromProperties = (
+  properties: SdtProperties,
+): SdtAttrs => ({
   sdtType: properties.sdtType,
   ...(properties.alias !== undefined ? { alias: properties.alias } : {}),
   ...(properties.tag !== undefined ? { tag: properties.tag } : {}),
   ...(properties.id !== undefined ? { id: properties.id } : {}),
   ...(properties.lock !== undefined ? { lock: properties.lock } : {}),
-  ...(properties.placeholder !== undefined ? { placeholder: properties.placeholder } : {}),
+  ...(properties.placeholder !== undefined
+    ? { placeholder: properties.placeholder }
+    : {}),
   // `?? false` here would make a control that never carried `w:showingPlcHdr`
   // indistinguishable from one that carried an explicit off, and the serializer
   // writes the off back as `w:val="0"`: every control that passed through the
@@ -30,8 +34,12 @@ export const sdtAttrsFromProperties = (properties: SdtProperties): SdtAttrs => (
   ...(properties.showingPlaceholder !== undefined
     ? { showingPlaceholder: properties.showingPlaceholder }
     : {}),
-  ...(properties.dateFormat !== undefined ? { dateFormat: properties.dateFormat } : {}),
-  ...(properties.dateValueISO !== undefined ? { dateValueISO: properties.dateValueISO } : {}),
+  ...(properties.dateFormat !== undefined
+    ? { dateFormat: properties.dateFormat }
+    : {}),
+  ...(properties.dateValueISO !== undefined
+    ? { dateValueISO: properties.dateValueISO }
+    : {}),
   ...(properties.listItems !== undefined
     ? { listItems: JSON.stringify(properties.listItems) }
     : {}),
@@ -39,11 +47,15 @@ export const sdtAttrsFromProperties = (properties: SdtProperties): SdtAttrs => (
     ? { dropdownLastValue: properties.dropdownLastValue }
     : {}),
   ...(properties.checked !== undefined ? { checked: properties.checked } : {}),
-  ...(properties.preserved !== undefined ? { _preserved: properties.preserved } : {}),
+  ...(properties.preserved !== undefined
+    ? { _preserved: properties.preserved }
+    : {}),
   ...(properties.rawEndPropertiesXml !== undefined
     ? { rawEndPropertiesXml: properties.rawEndPropertiesXml }
     : {}),
-  ...(properties.endProperties !== undefined ? { endProperties: properties.endProperties } : {}),
+  ...(properties.endProperties !== undefined
+    ? { endProperties: properties.endProperties }
+    : {}),
 });
 
 export const sdtPropertiesFromAttrs = (attrs: SdtAttrs): SdtProperties => {
@@ -93,24 +105,35 @@ export const sdtPropertiesFromAttrs = (attrs: SdtAttrs): SdtProperties => {
   return properties;
 };
 
-export const sdtPropertiesMatchAttrs = (properties: SdtProperties, attrs: SdtAttrs): boolean =>
+export const sdtPropertiesMatchAttrs = (
+  properties: SdtProperties,
+  attrs: SdtAttrs,
+): boolean =>
   JSON.stringify(sdtAttrsFromProperties(properties)) ===
   JSON.stringify(sdtAttrsFromProperties(sdtPropertiesFromAttrs(attrs)));
 
-export const decodeSdtListItems = (rawItems: string): NonNullable<SdtProperties["listItems"]> => {
+export const decodeSdtListItems = (
+  rawItems: string,
+): NonNullable<SdtProperties["listItems"]> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawItems);
   } catch {
-    throw new TypeError("Invalid ProseMirror sdt attrs: listItems is not valid JSON");
+    throw new TypeError(
+      "Invalid ProseMirror sdt attrs: listItems is not valid JSON",
+    );
   }
   if (!Array.isArray(parsed)) {
-    throw new TypeError("Invalid ProseMirror sdt attrs: listItems is not an array");
+    throw new TypeError(
+      "Invalid ProseMirror sdt attrs: listItems is not an array",
+    );
   }
 
   return parsed.map((item): NonNullable<SdtProperties["listItems"]>[number] => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new TypeError("Invalid ProseMirror sdt attrs: listItems contains an invalid item");
+      throw new TypeError(
+        "Invalid ProseMirror sdt attrs: listItems contains an invalid item",
+      );
     }
     if (
       !("displayText" in item) ||
@@ -118,7 +141,9 @@ export const decodeSdtListItems = (rawItems: string): NonNullable<SdtProperties[
       !("value" in item) ||
       typeof item.value !== "string"
     ) {
-      throw new TypeError("Invalid ProseMirror sdt attrs: listItems contains an invalid item");
+      throw new TypeError(
+        "Invalid ProseMirror sdt attrs: listItems contains an invalid item",
+      );
     }
     return { displayText: item.displayText, value: item.value };
   });

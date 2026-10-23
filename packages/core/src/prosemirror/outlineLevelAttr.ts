@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+
 import { headingOutlineLevel, type OutlineLevel } from "@stll/docx-core/model";
 
 /**
@@ -14,7 +15,9 @@ import { headingOutlineLevel, type OutlineLevel } from "@stll/docx-core/model";
  * as an `outlineLevel` no consumer recognises and every consumer silently
  * ignores. Returning `null` for it is what lets the caller refuse.
  */
-export const outlineLevelFromAttrValue = (value: unknown): OutlineLevel | null => {
+export const outlineLevelFromAttrValue = (
+  value: unknown,
+): OutlineLevel | null => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -26,7 +29,9 @@ export const outlineLevelFromAttrValue = (value: unknown): OutlineLevel | null =
     return null;
   }
   const level: unknown = Reflect.get(value, "level");
-  return typeof level === "number" ? (headingOutlineLevel(level) ?? null) : null;
+  return typeof level === "number"
+    ? (headingOutlineLevel(level) ?? null)
+    : null;
 };
 
 /**

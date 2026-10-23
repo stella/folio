@@ -14,16 +14,15 @@
  *   bun test src/core/docx/__tests__/roundtrip.property.test.ts
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import type { Node as PMNode, Mark } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import {
   assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
@@ -67,18 +66,22 @@ function arbMarks(): fc.Arbitrary<Mark[]> {
 
 /** Generate a text node with random marks */
 function arbTextNode(): fc.Arbitrary<PMNode> {
-  return fc.tuple(safeText, arbMarks()).map(([text, marks]) => schema.text(text, marks));
+  return fc
+    .tuple(safeText, arbMarks())
+    .map(([text, marks]) => schema.text(text, marks));
 }
 
 /** Generate a paragraph with random inline content */
 function arbParagraph(): fc.Arbitrary<PMNode> {
-  return fc.array(arbTextNode(), { minLength: 0, maxLength: 8 }).map((inlines) => {
-    // Empty paragraphs are valid in DOCX
-    if (inlines.length === 0) {
-      return schema.nodes.paragraph.create();
-    }
-    return schema.nodes.paragraph.create(null, inlines);
-  });
+  return fc
+    .array(arbTextNode(), { minLength: 0, maxLength: 8 })
+    .map((inlines) => {
+      // Empty paragraphs are valid in DOCX
+      if (inlines.length === 0) {
+        return schema.nodes.paragraph.create();
+      }
+      return schema.nodes.paragraph.create(null, inlines);
+    });
 }
 
 /** Generate a paragraph with formatting attributes */
@@ -140,7 +143,8 @@ function arbTrackedChangeNode(): fc.Arbitrary<PMNode> {
       fc.constantFrom("User A", "User B", "Reviewer"),
     )
     .map(([text, type, author]) => {
-      const markType = type === "insertion" ? schema.marks.insertion : schema.marks.deletion;
+      const markType =
+        type === "insertion" ? schema.marks.insertion : schema.marks.deletion;
       return schema.text(text, [
         markType.create({
           author,
@@ -274,7 +278,9 @@ function normalizeNode(node: PMNode): NormalizedNode {
  */
 function roundTrip(original: PMNode): PMNode {
   // Step 1: PM → Document model
-  const doc = fromProseDoc(original, undefined, { stylesheetSource: { type: "package" } });
+  const doc = fromProseDoc(original, undefined, {
+    stylesheetSource: { type: "package" },
+  });
 
   // Step 2: Document → XML string
   const xml = serializeDocument(doc);
@@ -298,7 +304,9 @@ describe("DOCX round-trip property tests", () => {
     () => {
       fc.assert(
         fc.property(arbDocument(), (doc) => {
-          const docModel = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
+          const docModel = fromProseDoc(doc, undefined, {
+            stylesheetSource: { type: "package" },
+          });
           const xml = serializeDocument(docModel);
           expect(typeof xml).toBe("string");
           expect(xml.length).toBeGreaterThan(0);
@@ -314,7 +322,9 @@ describe("DOCX round-trip property tests", () => {
     () => {
       fc.assert(
         fc.property(arbDocument(), (doc) => {
-          const docModel = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
+          const docModel = fromProseDoc(doc, undefined, {
+            stylesheetSource: { type: "package" },
+          });
           const xml = serializeDocument(docModel);
           const parsed = parseDocumentBody(xml);
           expect(parsed.content.length).toBeGreaterThan(0);
@@ -362,10 +372,16 @@ describe("DOCX round-trip property tests", () => {
     "round-trip preserves bold marks",
     () => {
       // Targeted test: paragraphs with bold text
-      const boldDoc = fc.array(safeText, { minLength: 1, maxLength: 5 }).map((texts) => {
-        const nodes = texts.map((t) => schema.text(t, [schema.marks.bold.create()]));
-        return schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, nodes)]);
-      });
+      const boldDoc = fc
+        .array(safeText, { minLength: 1, maxLength: 5 })
+        .map((texts) => {
+          const nodes = texts.map((t) =>
+            schema.text(t, [schema.marks.bold.create()]),
+          );
+          return schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, nodes),
+          ]);
+        });
 
       fc.assert(
         fc.property(boldDoc, (doc) => {
@@ -375,7 +391,9 @@ describe("DOCX round-trip property tests", () => {
             if (node.type.name === "paragraph") {
               node.forEach((child) => {
                 if (child.isText && child.text?.trim()) {
-                  const hasBold = child.marks.some((m) => m.type.name === "bold");
+                  const hasBold = child.marks.some(
+                    (m) => m.type.name === "bold",
+                  );
                   expect(hasBold).toBe(true);
                 }
               });
@@ -391,10 +409,16 @@ describe("DOCX round-trip property tests", () => {
   test(
     "round-trip preserves italic marks",
     () => {
-      const italicDoc = fc.array(safeText, { minLength: 1, maxLength: 5 }).map((texts) => {
-        const nodes = texts.map((t) => schema.text(t, [schema.marks.italic.create()]));
-        return schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, nodes)]);
-      });
+      const italicDoc = fc
+        .array(safeText, { minLength: 1, maxLength: 5 })
+        .map((texts) => {
+          const nodes = texts.map((t) =>
+            schema.text(t, [schema.marks.italic.create()]),
+          );
+          return schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, nodes),
+          ]);
+        });
 
       fc.assert(
         fc.property(italicDoc, (doc) => {
@@ -403,7 +427,9 @@ describe("DOCX round-trip property tests", () => {
             if (node.type.name === "paragraph") {
               node.forEach((child) => {
                 if (child.isText && child.text?.trim()) {
-                  const hasItalic = child.marks.some((m) => m.type.name === "italic");
+                  const hasItalic = child.marks.some(
+                    (m) => m.type.name === "italic",
+                  );
                   expect(hasItalic).toBe(true);
                 }
               });
@@ -464,7 +490,9 @@ describe("DOCX round-trip property tests", () => {
   test(
     "tables survive round-trip",
     () => {
-      const tableDoc = arbTable().map((table) => schema.nodes.doc.create(null, [table]));
+      const tableDoc = arbTable().map((table) =>
+        schema.nodes.doc.create(null, [table]),
+      );
 
       fc.assert(
         fc.property(tableDoc, (doc) => {
@@ -487,7 +515,9 @@ describe("DOCX round-trip property tests", () => {
   test(
     "table text content preserved through round-trip",
     () => {
-      const tableDoc = arbTable().map((table) => schema.nodes.doc.create(null, [table]));
+      const tableDoc = arbTable().map((table) =>
+        schema.nodes.doc.create(null, [table]),
+      );
 
       fc.assert(
         fc.property(tableDoc, (doc) => {
@@ -525,7 +555,10 @@ describe("DOCX round-trip property tests", () => {
           doc.descendants((node) => {
             if (node.isText) {
               for (const mark of node.marks) {
-                if (mark.type.name === "insertion" || mark.type.name === "deletion") {
+                if (
+                  mark.type.name === "insertion" ||
+                  mark.type.name === "deletion"
+                ) {
                   originalChanges++;
                 }
               }
@@ -537,7 +570,10 @@ describe("DOCX round-trip property tests", () => {
           result.descendants((node) => {
             if (node.isText) {
               for (const mark of node.marks) {
-                if (mark.type.name === "insertion" || mark.type.name === "deletion") {
+                if (
+                  mark.type.name === "insertion" ||
+                  mark.type.name === "deletion"
+                ) {
                   resultChanges++;
                 }
               }
@@ -565,7 +601,10 @@ describe("DOCX round-trip property tests", () => {
           doc.descendants((node) => {
             if (node.isText) {
               for (const mark of node.marks) {
-                if (mark.type.name === "insertion" || mark.type.name === "deletion") {
+                if (
+                  mark.type.name === "insertion" ||
+                  mark.type.name === "deletion"
+                ) {
                   originalAuthors.push(mark.attrs.author as string);
                 }
               }
@@ -577,7 +616,10 @@ describe("DOCX round-trip property tests", () => {
           result.descendants((node) => {
             if (node.isText) {
               for (const mark of node.marks) {
-                if (mark.type.name === "insertion" || mark.type.name === "deletion") {
+                if (
+                  mark.type.name === "insertion" ||
+                  mark.type.name === "deletion"
+                ) {
                   resultAuthors.push(mark.attrs.author as string);
                 }
               }

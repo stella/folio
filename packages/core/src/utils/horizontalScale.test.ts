@@ -44,18 +44,29 @@ describe("horizontal text scale normalization", () => {
     expect(parseHorizontalScalePercent(scale)).toBe(expected);
   });
 
-  test.each(["", "   ", "0garbage", "1e2", "600oops", "0x10", "50 %", "+50%", "-1", "601", "601%"])(
-    "rejects malformed lexical scale %p",
-    (scale) => {
-      expect(parseHorizontalScalePercent(scale)).toBeUndefined();
-    },
-  );
+  test.each([
+    "",
+    "   ",
+    "0garbage",
+    "1e2",
+    "600oops",
+    "0x10",
+    "50 %",
+    "+50%",
+    "-1",
+    "601",
+    "601%",
+  ])("rejects malformed lexical scale %p", (scale) => {
+    expect(parseHorizontalScalePercent(scale)).toBeUndefined();
+  });
 
   test("quantizes only in-range finite serialization values", () => {
     expect(roundHorizontalScalePercentForSerialization(99.99999)).toBe(100);
     expect(roundHorizontalScalePercentForSerialization(12.5)).toBe(13);
     expect(roundHorizontalScalePercentForSerialization(-0.1)).toBeUndefined();
     expect(roundHorizontalScalePercentForSerialization(600.1)).toBeUndefined();
-    expect(roundHorizontalScalePercentForSerialization(Number.NaN)).toBeUndefined();
+    expect(
+      roundHorizontalScalePercentForSerialization(Number.NaN),
+    ).toBeUndefined();
   });
 });

@@ -33,7 +33,9 @@ const overlayStyles: CSSProperties = {
   zIndex: 1,
 };
 
-export const PassageHighlightOverlay = ({ rects }: PassageHighlightOverlayProps) => {
+export const PassageHighlightOverlay = ({
+  rects,
+}: PassageHighlightOverlayProps) => {
   if (rects.length === 0) {
     return null;
   }

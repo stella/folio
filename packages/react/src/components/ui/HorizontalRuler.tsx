@@ -10,11 +10,27 @@
  * Drag tooltip shows value during any drag.
  */
 
-import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
-import type { SectionProperties, TabStop } from "@stll/folio-core/types/document";
-import { twipsToPixels, pixelsToTwips, formatPx } from "@stll/folio-core/utils/units";
+
 import { useTranslations } from "use-intl";
+
+import type {
+  SectionProperties,
+  TabStop,
+} from "@stll/folio-core/types/document";
+import {
+  formatPx,
+  pixelsToTwips,
+  twipsToPixels,
+} from "@stll/folio-core/utils/units";
 
 // ============================================================================
 // TYPES
@@ -41,7 +57,12 @@ export type HorizontalRulerProps = {
   onTabStopRemove?: (positionTwips: number) => void;
 };
 
-type MarkerType = "leftMargin" | "rightMargin" | "firstLineIndent" | "leftIndent" | "rightIndent";
+type MarkerType =
+  | "leftMargin"
+  | "rightMargin"
+  | "firstLineIndent"
+  | "leftIndent"
+  | "rightIndent";
 
 // ============================================================================
 // CONSTANTS
@@ -124,7 +145,9 @@ export function HorizontalRuler({
   const indentRightPx = twipsToPixels(indentRight) * zoom;
 
   // First line indent: hanging goes left, normal goes right
-  const effectiveFirstLineIndent = hangingIndent ? -firstLineIndent : firstLineIndent;
+  const effectiveFirstLineIndent = hangingIndent
+    ? -firstLineIndent
+    : firstLineIndent;
   const firstLineIndentPx = twipsToPixels(effectiveFirstLineIndent) * zoom;
 
   // Handle positions (in px from ruler left edge)
@@ -176,7 +199,9 @@ export function HorizontalRuler({
 
     if (params.dragging === "leftMargin") {
       const maxMargin = params.pageWidthTwips - params.rightMarginTwips - 720;
-      const rounded = Math.round(Math.max(0, Math.min(positionTwips, maxMargin)));
+      const rounded = Math.round(
+        Math.max(0, Math.min(positionTwips, maxMargin)),
+      );
       setDragValue(rounded);
       params.onLeftMarginChange?.(rounded);
     } else if (params.dragging === "rightMargin") {
@@ -188,21 +213,28 @@ export function HorizontalRuler({
     } else if (params.dragging === "firstLineIndent") {
       const base = params.leftMarginTwips + params.indentLeft;
       const indentFromBase = positionTwips - base;
-      const maxIndent = params.contentTwips - params.indentLeft - params.indentRight - 720;
-      const rounded = Math.round(Math.max(-params.indentLeft, Math.min(indentFromBase, maxIndent)));
+      const maxIndent =
+        params.contentTwips - params.indentLeft - params.indentRight - 720;
+      const rounded = Math.round(
+        Math.max(-params.indentLeft, Math.min(indentFromBase, maxIndent)),
+      );
       setDragValue(rounded);
       params.onFirstLineIndentChange?.(rounded);
     } else if (params.dragging === "leftIndent") {
       const indentFromMargin = positionTwips - params.leftMarginTwips;
       const maxIndent = params.contentTwips - params.indentRight - 720;
-      const rounded = Math.round(Math.max(0, Math.min(indentFromMargin, maxIndent)));
+      const rounded = Math.round(
+        Math.max(0, Math.min(indentFromMargin, maxIndent)),
+      );
       setDragValue(rounded);
       params.onIndentLeftChange?.(rounded);
     } else if (params.dragging === "rightIndent") {
       const rightEdge = params.pageWidthTwips - params.rightMarginTwips;
       const indentFromRight = rightEdge - positionTwips;
       const maxIndent = params.contentTwips - params.indentLeft - 720;
-      const rounded = Math.round(Math.max(0, Math.min(indentFromRight, maxIndent)));
+      const rounded = Math.round(
+        Math.max(0, Math.min(indentFromRight, maxIndent)),
+      );
       setDragValue(rounded);
       params.onIndentRightChange?.(rounded);
     }
@@ -264,7 +296,9 @@ export function HorizontalRuler({
           zIndex: 1,
         }}
         onMouseDown={
-          editable && onLeftMarginChange ? (e) => handleDragStart(e, "leftMargin") : undefined
+          editable && onLeftMarginChange
+            ? (e) => handleDragStart(e, "leftMargin")
+            : undefined
         }
       />
       <div
@@ -280,7 +314,9 @@ export function HorizontalRuler({
           zIndex: 1,
         }}
         onMouseDown={
-          editable && onRightMarginChange ? (e) => handleDragStart(e, "rightMargin") : undefined
+          editable && onRightMarginChange
+            ? (e) => handleDragStart(e, "rightMargin")
+            : undefined
         }
       />
 
@@ -352,7 +388,10 @@ export function HorizontalRuler({
 
       {/* Drag tooltip */}
       {dragging && dragValue !== null && dragPositionPx !== null && (
-        <DragTooltip value={formatValueForTooltip(dragValue, unit)} positionPx={dragPositionPx} />
+        <DragTooltip
+          value={formatValueForTooltip(dragValue, unit)}
+          positionPx={dragPositionPx}
+        />
       )}
     </div>
   );
@@ -431,8 +470,14 @@ function IndentTriangle({
 }: IndentTriangleProps): React.ReactElement {
   const color = resolveIndentColor(isDragging, isHovered);
   const triHeight = Math.round(TRI_SIZE * 1.6);
-  const handleMouseEnter = useCallback(() => onHoverChange(marker), [marker, onHoverChange]);
-  const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange]);
+  const handleMouseEnter = useCallback(
+    () => onHoverChange(marker),
+    [marker, onHoverChange],
+  );
+  const handleMouseLeave = useCallback(
+    () => onHoverChange(null),
+    [onHoverChange],
+  );
   const handleMouseDown = useCallback(
     (event: React.MouseEvent) => onDragStart(event, marker),
     [marker, onDragStart],
@@ -534,7 +579,11 @@ const TAB_SYMBOLS: Record<string, string> = {
   bar: "|",
 };
 
-function TabStopMarker({ tabStop, positionPx, onRemove }: TabStopMarkerProps): React.ReactElement {
+function TabStopMarker({
+  tabStop,
+  positionPx,
+  onRemove,
+}: TabStopMarkerProps): React.ReactElement {
   const handleDoubleClick = useCallback(
     (event: React.MouseEvent) => {
       event.stopPropagation();
@@ -572,7 +621,11 @@ function TabStopMarker({ tabStop, positionPx, onRemove }: TabStopMarkerProps): R
 // UTILITY FUNCTIONS
 // ============================================================================
 
-function generateTicks(pageWidthTwips: number, zoom: number, unit: "inch" | "cm"): TickData[] {
+function generateTicks(
+  pageWidthTwips: number,
+  zoom: number,
+  unit: "inch" | "cm",
+): TickData[] {
   const ticks: TickData[] = [];
 
   if (unit === "inch") {
@@ -583,7 +636,11 @@ function generateTicks(pageWidthTwips: number, zoom: number, unit: "inch" | "cm"
       if (twipsPos > pageWidthTwips) break;
       const pxPos = twipsToPixels(twipsPos) * zoom;
       if (i % 8 === 0) {
-        ticks.push({ position: pxPos, height: 10, label: i / 8 > 0 ? String(i / 8) : undefined });
+        ticks.push({
+          position: pxPos,
+          height: 10,
+          label: i / 8 > 0 ? String(i / 8) : undefined,
+        });
       } else if (i % 4 === 0) {
         ticks.push({ position: pxPos, height: 6 });
       } else if (i % 2 === 0) {
@@ -600,7 +657,11 @@ function generateTicks(pageWidthTwips: number, zoom: number, unit: "inch" | "cm"
       if (twipsPos > pageWidthTwips) break;
       const pxPos = twipsToPixels(twipsPos) * zoom;
       if (i % 10 === 0) {
-        ticks.push({ position: pxPos, height: 10, label: i / 10 > 0 ? String(i / 10) : undefined });
+        ticks.push({
+          position: pxPos,
+          height: 10,
+          label: i / 10 > 0 ? String(i / 10) : undefined,
+        });
       } else if (i % 5 === 0) {
         ticks.push({ position: pxPos, height: 6 });
       } else {
@@ -626,23 +687,39 @@ export function positionToMargin(
 export function getRulerDimensions(
   sectionProps?: SectionProperties | null,
   zoom: number = 1,
-): { width: number; leftMargin: number; rightMargin: number; contentWidth: number } {
+): {
+  width: number;
+  leftMargin: number;
+  rightMargin: number;
+  contentWidth: number;
+} {
   const pw = sectionProps?.pageWidth ?? DEFAULT_PAGE_WIDTH_TWIPS;
   const lm = sectionProps?.marginLeft ?? DEFAULT_MARGIN_TWIPS;
   const rm = sectionProps?.marginRight ?? DEFAULT_MARGIN_TWIPS;
   const width = twipsToPixels(pw) * zoom;
   const leftMargin = twipsToPixels(lm) * zoom;
   const rightMargin = twipsToPixels(rm) * zoom;
-  return { width, leftMargin, rightMargin, contentWidth: width - leftMargin - rightMargin };
+  return {
+    width,
+    leftMargin,
+    rightMargin,
+    contentWidth: width - leftMargin - rightMargin,
+  };
 }
 
-export function getMarginInUnits(marginTwips: number, unit: "inch" | "cm"): string {
+export function getMarginInUnits(
+  marginTwips: number,
+  unit: "inch" | "cm",
+): string {
   return unit === "inch"
     ? (marginTwips / TWIPS_PER_INCH).toFixed(2) + '"'
     : (marginTwips / TWIPS_PER_CM).toFixed(1) + " cm";
 }
 
-export function parseMarginFromUnits(value: string, unit: "inch" | "cm"): number | null {
+export function parseMarginFromUnits(
+  value: string,
+  unit: "inch" | "cm",
+): number | null {
   const num = parseFloat(value.replace(/[^\d.]/g, ""));
   if (isNaN(num)) return null;
   return Math.round(num * (unit === "inch" ? TWIPS_PER_INCH : TWIPS_PER_CM));

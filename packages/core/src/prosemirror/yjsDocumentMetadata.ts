@@ -1,19 +1,20 @@
-import { isNoteReferenceOccurrenceId } from "./noteReferenceOccurrenceId";
-import { Result, TaggedError, panic } from "better-result";
-import {
-  DRAWING_RAW_XML_MODES,
-  outlineLevelFromStatedValue,
-  type OutlineLevel,
-  type ParagraphNumberingOverride,
-  paragraphNumberingFromSlots,
-} from "@stll/docx-core/model";
+import { panic, Result, TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type * as Y from "yjs";
 
 import {
-  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  DRAWING_RAW_XML_MODES,
+  type OutlineLevel,
+  outlineLevelFromStatedValue,
+  paragraphNumberingFromSlots,
+  type ParagraphNumberingOverride,
+} from "@stll/docx-core/model";
+
+import {
   getProseDocumentParagraphPropertySourceContract,
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
 } from "../docx/paragraphPropertySource";
+import { isNoteReferenceOccurrenceId } from "./noteReferenceOccurrenceId";
 import { mintSectionProperties, parseSectionBreakType } from "./sectionCarrier";
 
 /**
@@ -91,7 +92,9 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
 const PARAGRAPH_ELEMENT_NAME = "paragraph";
 
 /** A stored outline level, or the absence of one in this carrier. */
-const versionSixOutlineLevel = (value: unknown): OutlineLevel | null | undefined => {
+const versionSixOutlineLevel = (
+  value: unknown,
+): OutlineLevel | null | undefined => {
   if (typeof value !== "number") {
     return undefined;
   }
@@ -99,11 +102,15 @@ const versionSixOutlineLevel = (value: unknown): OutlineLevel | null | undefined
 };
 
 /** Rewrite one persisted paragraph-formatting carrier when it stores a v6 number. */
-const versionSixFormatting = (value: unknown): Record<string, unknown> | null => {
+const versionSixFormatting = (
+  value: unknown,
+): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
-  const outlineLevel = versionSixOutlineLevel(Reflect.get(value, "outlineLevel"));
+  const outlineLevel = versionSixOutlineLevel(
+    Reflect.get(value, "outlineLevel"),
+  );
   if (outlineLevel === undefined) {
     return null;
   }
@@ -117,14 +124,20 @@ const versionSixFormatting = (value: unknown): Record<string, unknown> | null =>
 };
 
 /** Rewrite outline levels in paragraph-property-change formatting carriers. */
-const versionSixPropertyChanges = (value: unknown): Record<string, unknown>[] | null => {
+const versionSixPropertyChanges = (
+  value: unknown,
+): Record<string, unknown>[] | null => {
   if (!Array.isArray(value)) {
     return null;
   }
   const changes: Record<string, unknown>[] = [];
   let changed = false;
   for (const change of value) {
-    if (typeof change !== "object" || change === null || Array.isArray(change)) {
+    if (
+      typeof change !== "object" ||
+      change === null ||
+      Array.isArray(change)
+    ) {
       return null;
     }
     const migrated: Record<string, unknown> = { ...change };
@@ -168,7 +181,10 @@ const outlineLevelBecomesAUnion: AttrSchemaMigrationStep = (fragment) => {
         }
         changed = true;
       }
-      for (const attr of ["_originalFormatting", "_resolvedFormatting"] as const) {
+      for (const attr of [
+        "_originalFormatting",
+        "_resolvedFormatting",
+      ] as const) {
         const formatting = versionSixFormatting(attributes[attr]);
         if (formatting !== null) {
           // @ts-expect-error — a Yjs attribute holds JSON; the typings narrow
@@ -177,7 +193,9 @@ const outlineLevelBecomesAUnion: AttrSchemaMigrationStep = (fragment) => {
           changed = true;
         }
       }
-      const propertyChanges = versionSixPropertyChanges(attributes["_propertyChanges"]);
+      const propertyChanges = versionSixPropertyChanges(
+        attributes["_propertyChanges"],
+      );
       if (propertyChanges !== null) {
         // @ts-expect-error — as above.
         node.setAttribute("_propertyChanges", propertyChanges);
@@ -258,10 +276,16 @@ const migrateImageNode = (node: Y.XmlElement): boolean => {
  * names a relationship or states its mode. Still holding the capture is what
  * says the node has not been edited, which is what the stamped marker means.
  */
-const classifyUnrelatedCapturedDrawings: AttrSchemaMigrationStep = (fragment) => {
+const classifyUnrelatedCapturedDrawings: AttrSchemaMigrationStep = (
+  fragment,
+) => {
   let rewritten = 0;
   const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
-    if ("nodeName" in node && node.nodeName === IMAGE_ELEMENT_NAME && migrateImageNode(node)) {
+    if (
+      "nodeName" in node &&
+      node.nodeName === IMAGE_ELEMENT_NAME &&
+      migrateImageNode(node)
+    ) {
       rewritten += 1;
     }
     for (const child of node.toArray()) {
@@ -278,15 +302,25 @@ const classifyUnrelatedCapturedDrawings: AttrSchemaMigrationStep = (fragment) =>
 const TABLE_CELL_ELEMENT_NAMES = new Set(["tableCell", "tableHeader"]);
 
 /** Write a node attribute the binding stores as JSON. */
-const setJsonAttribute = (node: Y.XmlElement, name: string, value: object): void => {
+const setJsonAttribute = (
+  node: Y.XmlElement,
+  name: string,
+  value: object,
+): void => {
   // SAFETY: y-prosemirror reads this value back as the object written here;
   // Yjs's XML typing names a string even though the binding stores JSON.
   node.setAttribute(name, value as unknown as string);
 };
 
-const statedWidthOf = (attributes: Record<string, unknown>): object | undefined => {
+const statedWidthOf = (
+  attributes: Record<string, unknown>,
+): object | undefined => {
   const original = attributes["_originalFormatting"];
-  if (typeof original !== "object" || original === null || !("width" in original)) {
+  if (
+    typeof original !== "object" ||
+    original === null ||
+    !("width" in original)
+  ) {
     return undefined;
   }
   const { width } = original;
@@ -363,13 +397,19 @@ const dropUnstatedRowHidden: AttrSchemaMigrationStep = (fragment) => {
  * stored them: an array of records whose `previousFormatting` may carry the
  * numbering the paragraph had before a `w:pPrChange`.
  */
-const versionSevenPropertyChanges = (value: unknown): Record<string, unknown>[] | null => {
+const versionSevenPropertyChanges = (
+  value: unknown,
+): Record<string, unknown>[] | null => {
   if (!Array.isArray(value)) {
     return null;
   }
   const changes: Record<string, unknown>[] = [];
   for (const change of value) {
-    if (typeof change !== "object" || change === null || Array.isArray(change)) {
+    if (
+      typeof change !== "object" ||
+      change === null ||
+      Array.isArray(change)
+    ) {
       return null;
     }
     changes.push(change as Record<string, unknown>);
@@ -391,7 +431,9 @@ const NUMBERING_ATTR_KEYS = ["numPr", "numPrFromStyle"] as const;
  * slots, so a version-7 paragraph can hold both spellings at once: that
  * divergence is what version 8 exists to end.
  */
-const versionSevenNumbering = (value: unknown): ParagraphNumberingOverride | null | undefined => {
+const versionSevenNumbering = (
+  value: unknown,
+): ParagraphNumberingOverride | null | undefined => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
@@ -414,7 +456,9 @@ const versionSevenNumbering = (value: unknown): ParagraphNumberingOverride | nul
  * survives: in `previousFormatting` it is the tombstone for "the paragraph
  * carried no numbering before the change".
  */
-const versionSevenFormatting = (value: unknown): Record<string, unknown> | null => {
+const versionSevenFormatting = (
+  value: unknown,
+): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
@@ -470,19 +514,26 @@ const numberingBecomesAUnion: AttrSchemaMigrationStep = (fragment) => {
           node.setAttribute(attr, migrated);
         }
       }
-      const originalFormatting = versionSevenFormatting(attributes["_originalFormatting"]);
+      const originalFormatting = versionSevenFormatting(
+        attributes["_originalFormatting"],
+      );
       if (originalFormatting !== null) {
         changed = true;
         // @ts-expect-error — as above.
         node.setAttribute("_originalFormatting", originalFormatting);
       }
-      const changes = versionSevenPropertyChanges(attributes["_propertyChanges"]);
+      const changes = versionSevenPropertyChanges(
+        attributes["_propertyChanges"],
+      );
       if (changes !== null) {
         let changesChanged = false;
         const migratedChanges: Record<string, unknown>[] = [];
         for (const change of changes) {
           const migrated = Object.assign({}, change);
-          for (const tier of ["previousFormatting", "currentFormatting"] as const) {
+          for (const tier of [
+            "previousFormatting",
+            "currentFormatting",
+          ] as const) {
             const formatting = versionSevenFormatting(change[tier]);
             if (formatting !== null) {
               migrated[tier] = formatting;
@@ -521,14 +572,18 @@ const numberingBecomesAUnion: AttrSchemaMigrationStep = (fragment) => {
 const SECTION_BREAK_TYPE_ATTR = "sectionBreakType";
 const SECTION_PROPERTIES_ATTR = "_sectionProperties";
 
-const mintSectionPropertiesFromBreakType: AttrSchemaMigrationStep = (fragment) => {
+const mintSectionPropertiesFromBreakType: AttrSchemaMigrationStep = (
+  fragment,
+) => {
   let rewritten = 0;
   const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
     if ("nodeName" in node && node.nodeName === PARAGRAPH_ELEMENT_NAME) {
       // A Yjs attribute holds JSON, not a string; the typings say otherwise.
       const attributes: Record<string, unknown> = node.getAttributes();
       if (SECTION_BREAK_TYPE_ATTR in attributes) {
-        const breakType = parseSectionBreakType(attributes[SECTION_BREAK_TYPE_ATTR]);
+        const breakType = parseSectionBreakType(
+          attributes[SECTION_BREAK_TYPE_ATTR],
+        );
         if (breakType !== null && attributes[SECTION_PROPERTIES_ATTR] == null) {
           // SAFETY: a Yjs attribute holds JSON and is read back as the attr's
           // own shape; only `Y.XmlElement`'s typings narrow it to `string`.
@@ -604,8 +659,13 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
     }
     for (const { at, length, owner } of ranges) {
       const identity =
-        isRecord(owner) && typeof owner["id"] === "number" ? { id: owner["id"] } : {};
-      sharedText.format(at, length, { [OLD_MARK_NAME]: null, [NEW_MARK_NAME]: identity });
+        isRecord(owner) && typeof owner["id"] === "number"
+          ? { id: owner["id"] }
+          : {};
+      sharedText.format(at, length, {
+        [OLD_MARK_NAME]: null,
+        [NEW_MARK_NAME]: identity,
+      });
       rewritten += 1;
     }
   };
@@ -629,10 +689,13 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
 };
 
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+] as const;
 
 /** An attr-schema version this build can read. */
-export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
+export type FolioYjsAttrSchemaVersion =
+  (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
 
 /**
  * The one place a persisted attr-shape change is decided.
@@ -661,10 +724,15 @@ const ATTR_SCHEMA_MIGRATIONS = {
   // Inherited numbering ownership is a cutover, never inferred from values.
   12: stampMarkerOnly,
   13: "current",
-} as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
+} as const satisfies Record<
+  FolioYjsAttrSchemaVersion,
+  AttrSchemaMigrationStep | "current"
+>;
 
 type CurrentAttrSchemaVersion = {
-  [Version in FolioYjsAttrSchemaVersion]: (typeof ATTR_SCHEMA_MIGRATIONS)[Version] extends "current"
+  [
+    Version in FolioYjsAttrSchemaVersion
+  ]: (typeof ATTR_SCHEMA_MIGRATIONS)[Version] extends "current"
     ? Version
     : never;
 }[FolioYjsAttrSchemaVersion];
@@ -673,7 +741,8 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 13 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION =
+  13 satisfies CurrentAttrSchemaVersion;
 
 export class FolioYjsNoteReferenceSchemaError extends TaggedError(
   "FolioYjsNoteReferenceSchemaError",
@@ -701,14 +770,16 @@ const requireStatedNumberingSources = (
   const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
     if ("getAttributes" in node) pending.push(node.getAttributes());
     for (const child of node.toArray()) {
-      if (typeof child !== "string" && !isXmlText(child) && "toArray" in child) visit(child);
+      if (typeof child !== "string" && !isXmlText(child) && "toArray" in child)
+        visit(child);
     }
   };
   visit(fragment);
   const seen = new WeakSet<object>();
   while (pending.length > 0) {
     const value = pending.pop();
-    if (typeof value !== "object" || value === null || seen.has(value)) continue;
+    if (typeof value !== "object" || value === null || seen.has(value))
+      continue;
     seen.add(value);
     if (Array.isArray(value)) {
       for (const entry of value) pending.push(entry);
@@ -746,9 +817,14 @@ const requireNoteOccurrenceAttribution = (
       }
       for (const op of child.toDelta()) {
         const attributes: unknown = op.attributes;
-        if (!isRecord(attributes) || attributes["footnoteRef"] == null) continue;
+        if (!isRecord(attributes) || attributes["footnoteRef"] == null)
+          continue;
         const reference = attributes["footnoteRef"];
-        if (isRecord(reference) && isNoteReferenceOccurrenceId(reference["occurrenceId"])) continue;
+        if (
+          isRecord(reference) &&
+          isNoteReferenceOccurrenceId(reference["occurrenceId"])
+        )
+          continue;
         throw new FolioYjsNoteReferenceSchemaError({
           schemaVersion,
           requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,
@@ -768,7 +844,9 @@ const requireNoteOccurrenceAttribution = (
 export const attrSchemaMigrationSteps = (
   fromVersion: FolioYjsAttrSchemaVersion,
 ): readonly AttrSchemaMigrationStep[] =>
-  FOLIO_YJS_ATTR_SCHEMA_VERSIONS.filter((version) => version >= fromVersion).flatMap((version) => {
+  FOLIO_YJS_ATTR_SCHEMA_VERSIONS.filter(
+    (version) => version >= fromVersion,
+  ).flatMap((version) => {
     const step = ATTR_SCHEMA_MIGRATIONS[version];
     return step === "current" ? [] : [step];
   });
@@ -808,7 +886,9 @@ export const applyAttrSchemaMigrations = (
 };
 
 /** Raised when a snapshot's attr-schema marker is ahead of the running code. */
-export class FolioYjsAttrSchemaVersionError extends TaggedError("FolioYjsAttrSchemaVersionError")<{
+export class FolioYjsAttrSchemaVersionError extends TaggedError(
+  "FolioYjsAttrSchemaVersionError",
+)<{
   message: string;
   /** The marker exactly as stored, so the host can log what it refused. */
   marker: unknown;
@@ -816,7 +896,9 @@ export class FolioYjsAttrSchemaVersionError extends TaggedError("FolioYjsAttrSch
   supportedVersion: FolioYjsAttrSchemaVersion;
 }> {}
 
-const isReadableVersion = (marker: unknown): marker is FolioYjsAttrSchemaVersion =>
+const isReadableVersion = (
+  marker: unknown,
+): marker is FolioYjsAttrSchemaVersion =>
   typeof marker === "number" &&
   Number.isInteger(marker) &&
   marker >= 0 &&
@@ -835,7 +917,9 @@ const isReadableVersion = (marker: unknown): marker is FolioYjsAttrSchemaVersion
 export const readYjsAttrSchemaVersion = (
   ydoc: Y.Doc,
 ): Result<FolioYjsAttrSchemaVersion, FolioYjsAttrSchemaVersionError> => {
-  const marker: unknown = ydoc.getMap(FOLIO_YJS_METADATA_MAP_NAME).get(ATTR_SCHEMA_VERSION_KEY);
+  const marker: unknown = ydoc
+    .getMap(FOLIO_YJS_METADATA_MAP_NAME)
+    .get(ATTR_SCHEMA_VERSION_KEY);
   if (marker === undefined) {
     return Result.ok(0);
   }
@@ -852,7 +936,9 @@ export const readYjsAttrSchemaVersion = (
   );
 };
 
-export const proseDocumentParagraphSourceContract = (document: PMNode): string | null => {
+export const proseDocumentParagraphSourceContract = (
+  document: PMNode,
+): string | null => {
   return getProseDocumentParagraphPropertySourceContract(document);
 };
 
@@ -869,22 +955,34 @@ export const writeYjsAttrSchemaVersion = (ydoc: Y.Doc): void => {
  * contract only when the seeding document carries one, because a document
  * built in memory rather than parsed from a package has no source to bind to.
  */
-export const writeYjsDocumentMetadata = (ydoc: Y.Doc, document: PMNode): void => {
+export const writeYjsDocumentMetadata = (
+  ydoc: Y.Doc,
+  document: PMNode,
+): void => {
   writeYjsAttrSchemaVersion(ydoc);
   const contract = proseDocumentParagraphSourceContract(document);
   if (contract) {
-    ydoc.getMap(FOLIO_YJS_METADATA_MAP_NAME).set(PARAGRAPH_SOURCE_CONTRACT_KEY, contract);
+    ydoc
+      .getMap(FOLIO_YJS_METADATA_MAP_NAME)
+      .set(PARAGRAPH_SOURCE_CONTRACT_KEY, contract);
   }
 };
 
 export const readYjsParagraphSourceContract = (ydoc: Y.Doc): string | null => {
-  const contract = ydoc.getMap(FOLIO_YJS_METADATA_MAP_NAME).get(PARAGRAPH_SOURCE_CONTRACT_KEY);
+  const contract = ydoc
+    .getMap(FOLIO_YJS_METADATA_MAP_NAME)
+    .get(PARAGRAPH_SOURCE_CONTRACT_KEY);
   return typeof contract === "string" ? contract : null;
 };
 
-export const withParagraphSourceContract = (document: PMNode, contract: string): PMNode => {
+export const withParagraphSourceContract = (
+  document: PMNode,
+  contract: string,
+): PMNode => {
   if (document.type.name !== "doc") {
-    panic("A paragraph-property source contract can only attach to a document node");
+    panic(
+      "A paragraph-property source contract can only attach to a document node",
+    );
   }
   return document.type.create(
     { ...document.attrs, [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: contract },

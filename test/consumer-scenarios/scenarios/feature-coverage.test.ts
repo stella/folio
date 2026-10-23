@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { paragraphFeatures, type Feature } from "../support/targets.ts";
+import { type Feature, paragraphFeatures } from "../support/targets.ts";
 
 test("paragraph feature scan follows nested arrays and content controls", () => {
   const found = new Map<string, Set<Feature>>();
@@ -21,5 +21,8 @@ test("paragraph feature scan follows nested arrays and content controls", () => 
     found,
     new Set(),
   );
-  assert.deepEqual([...(found.get("A1B2C3D4") ?? [])].sort(), ["contentControl", "field"]);
+  assert.deepEqual([...(found.get("A1B2C3D4") ?? [])].sort(), [
+    "contentControl",
+    "field",
+  ]);
 });

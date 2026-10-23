@@ -27,7 +27,8 @@ import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
  */
 let referencePackage: ArrayBuffer | null = null;
 
-const buildReferencePackage = (): Promise<ArrayBuffer> => createDocx(createEmptyDocument());
+const buildReferencePackage = (): Promise<ArrayBuffer> =>
+  createDocx(createEmptyDocument());
 
 /**
  * Milliseconds the reference package took to parse, now.

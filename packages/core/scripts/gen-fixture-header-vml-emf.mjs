@@ -32,7 +32,8 @@ function crc32(buf) {
     table[n] = c >>> 0;
   }
   let crc = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) crc = table[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
+  for (let i = 0; i < buf.length; i++)
+    crc = table[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
   return (crc ^ 0xffffffff) >>> 0;
 }
 function chunk(type, data) {
@@ -143,9 +144,15 @@ zip.file("word/header1.xml", headerXml);
 zip.file("word/_rels/header1.xml.rels", headerRels);
 zip.file("word/footer1.xml", footerXml);
 zip.file("word/media/image1.emf", emf);
-zip.file("word/embeddings/oleObject1.bin", Buffer.from([0xd0, 0xcf, 0x11, 0xe0]));
+zip.file(
+  "word/embeddings/oleObject1.bin",
+  Buffer.from([0xd0, 0xcf, 0x11, 0xe0]),
+);
 
-const out = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+const out = await zip.generateAsync({
+  type: "nodebuffer",
+  compression: "DEFLATE",
+});
 writeFileSync("src/docx/__fixtures__/header-vml-emf.docx", out);
 console.log(
   `wrote src/docx/__fixtures__/header-vml-emf.docx (${out.length} bytes, EMF ${emf.length}b wrapping PNG ${png.length}b)`,

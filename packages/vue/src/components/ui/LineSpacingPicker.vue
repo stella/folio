@@ -13,7 +13,11 @@
     aria-label="Line spacing"
     @change="onChange"
   >
-    <option v-for="opt in resolvedOptions" :key="opt.twipsValue" :value="String(opt.twipsValue)">
+    <option
+      v-for="opt in resolvedOptions"
+      :key="opt.twipsValue"
+      :value="String(opt.twipsValue)"
+    >
       {{ opt.label }}
     </option>
   </select>

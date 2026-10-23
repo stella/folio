@@ -8,12 +8,21 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIEditApplyResult, FolioAIEditSnapshot } from "@stll/folio-core/server";
+import type {
+  FolioCommentAnchor,
+  FolioReviewChange,
+} from "@stll/folio-core/ai-edits";
+import type {
+  FolioAIEditApplyResult,
+  FolioAIEditSnapshot,
+} from "@stll/folio-core/server";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
-import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-edits";
 import type { Comment } from "@stll/folio-core/types/content";
 
-import { createEditorRefBridge, type FolioAgentEditorRefLike } from "./editor-ref";
+import {
+  createEditorRefBridge,
+  type FolioAgentEditorRefLike,
+} from "./editor-ref";
 
 const EMPTY_SNAPSHOT: FolioAIEditSnapshot = { blocks: [], anchors: {} };
 const EMPTY_APPLY_RESULT: FolioAIEditApplyResult = { applied: [], skipped: [] };
@@ -69,7 +78,12 @@ describe("createEditorRefBridge: document operations", () => {
       ...baseRef(),
       applyDocumentOperations: ({ batch }) => {
         receivedVersion = batch.version;
-        return { version: batch.version, status: "committed", applied: [], skipped: [] };
+        return {
+          version: batch.version,
+          status: "committed",
+          applied: [],
+          skipped: [],
+        };
       },
     };
     const bridge = createEditorRefBridge({
@@ -135,7 +149,14 @@ describe("createEditorRefBridge: document operations", () => {
       {
         operationId: "op-1",
         operationIndex: 0,
-        affected: [{ type: "block", story: "main", blockId: "para-1", effect: "deleted" }],
+        affected: [
+          {
+            type: "block",
+            story: "main",
+            blockId: "para-1",
+            effect: "deleted",
+          },
+        ],
       },
     ]);
   });
@@ -217,7 +238,9 @@ describe("createEditorRefBridge: document operations", () => {
     });
 
     expect(() =>
-      Reflect.apply(bridge.applyDocumentOperations, bridge, [{ version: 2, operations: [] }]),
+      Reflect.apply(bridge.applyDocumentOperations, bridge, [
+        { version: 2, operations: [] },
+      ]),
     ).toThrow("Unsupported document operation contract version.");
   });
 });
@@ -231,7 +254,11 @@ const makeComment = (id: number, parentId?: number): Comment => ({
       type: "paragraph",
       formatting: {},
       content: [
-        { type: "run", formatting: {}, content: [{ type: "text", text: `comment-${id}` }] },
+        {
+          type: "run",
+          formatting: {},
+          content: [{ type: "text", text: `comment-${id}` }],
+        },
       ],
     },
   ],
@@ -328,7 +355,9 @@ describe("createEditorRefBridge: getComments", () => {
   test("a comment with no matching anchor entry also falls back to null/empty", () => {
     const ref: FolioAgentEditorRefLike = {
       ...baseRef(),
-      getCommentAnchors: () => [{ commentId: 999, blockId: "block-z", quote: "unrelated" }],
+      getCommentAnchors: () => [
+        { commentId: 999, blockId: "block-z", quote: "unrelated" },
+      ],
     };
     const bridge = createEditorRefBridge({
       ref,
@@ -399,12 +428,18 @@ describe("createEditorRefBridge: capability-conditional members", () => {
   });
 
   test("getTargetPage and showInDocument are exposed only when the ref supports them", () => {
-    const target = { type: "block", story: "main", blockId: "AAAA0001" } as const;
+    const target = {
+      type: "block",
+      story: "main",
+      blockId: "AAAA0001",
+    } as const;
     const current = createEditorRefBridge({
       ref: {
         ...baseRef(),
         getTargetPage: (received) =>
-          received.type === "block" && received.blockId === "AAAA0001" ? 2 : null,
+          received.type === "block" && received.blockId === "AAAA0001"
+            ? 2
+            : null,
         showInDocument: (received) => received.type === "block",
       },
       author: "AI",

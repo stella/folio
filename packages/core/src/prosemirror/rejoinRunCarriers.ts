@@ -23,12 +23,13 @@ import { formattingEquals } from "../docx/runConsolidator";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import { readAuthoredRunFormatting } from "./runFormattingReconciliation";
 import {
-  paragraphRunStyleContextAt,
   type ParagraphRunStyleContext,
+  paragraphRunStyleContextAt,
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
-const isFormattingMark = (mark: Mark): boolean => RUN_FORMATTING_MARK_NAMES.has(mark.type.name);
+const isFormattingMark = (mark: Mark): boolean =>
+  RUN_FORMATTING_MARK_NAMES.has(mark.type.name);
 
 type ContinuedRunMarksOptions = {
   left: PMNode;
@@ -52,7 +53,8 @@ export const continuedRunMarks = ({
   if (!left.isText || !right.isText || Mark.sameSet(left.marks, right.marks)) {
     return null;
   }
-  const otherMarks = (node: PMNode) => node.marks.filter((mark) => !isFormattingMark(mark));
+  const otherMarks = (node: PMNode) =>
+    node.marks.filter((mark) => !isFormattingMark(mark));
   if (!Mark.sameSet(otherMarks(left), otherMarks(right))) {
     return null;
   }
@@ -74,8 +76,14 @@ type RejoinRunsAtOptions = {
 };
 
 /** Rejoin the runs meeting at each of `boundaries`, left to right. */
-export const rejoinRunsAt = ({ tr, boundaries, styleResolver }: RejoinRunsAtOptions): void => {
-  for (const boundary of [...new Set(boundaries)].toSorted((left, right) => left - right)) {
+export const rejoinRunsAt = ({
+  tr,
+  boundaries,
+  styleResolver,
+}: RejoinRunsAtOptions): void => {
+  for (const boundary of [...new Set(boundaries)].toSorted(
+    (left, right) => left - right,
+  )) {
     if (boundary <= 0 || boundary >= tr.doc.content.size) {
       continue;
     }
@@ -87,7 +95,12 @@ export const rejoinRunsAt = ({ tr, boundaries, styleResolver }: RejoinRunsAtOpti
     const marks = continuedRunMarks({
       left,
       right,
-      context: () => paragraphRunStyleContextAt({ doc: tr.doc, pos: boundary, styleResolver }),
+      context: () =>
+        paragraphRunStyleContextAt({
+          doc: tr.doc,
+          pos: boundary,
+          styleResolver,
+        }),
       styleResolver,
     });
     if (marks === null) {

@@ -3,7 +3,12 @@ import type { PageHeaderFooterRefs } from "./types";
 
 type InheritedHeaderFooterRefs = Pick<
   PageHeaderFooterRefs,
-  "headerDefault" | "headerFirst" | "headerEven" | "footerDefault" | "footerFirst" | "footerEven"
+  | "headerDefault"
+  | "headerFirst"
+  | "headerEven"
+  | "footerDefault"
+  | "footerFirst"
+  | "footerEven"
 >;
 
 const resolveSectionRefs = (
@@ -39,11 +44,17 @@ const resolveSectionRefs = (
   return refs;
 };
 
-const inheritedRefsFrom = (refs: PageHeaderFooterRefs): InheritedHeaderFooterRefs => ({
-  ...(refs.headerDefault === undefined ? {} : { headerDefault: refs.headerDefault }),
+const inheritedRefsFrom = (
+  refs: PageHeaderFooterRefs,
+): InheritedHeaderFooterRefs => ({
+  ...(refs.headerDefault === undefined
+    ? {}
+    : { headerDefault: refs.headerDefault }),
   ...(refs.headerFirst === undefined ? {} : { headerFirst: refs.headerFirst }),
   ...(refs.headerEven === undefined ? {} : { headerEven: refs.headerEven }),
-  ...(refs.footerDefault === undefined ? {} : { footerDefault: refs.footerDefault }),
+  ...(refs.footerDefault === undefined
+    ? {}
+    : { footerDefault: refs.footerDefault }),
   ...(refs.footerFirst === undefined ? {} : { footerFirst: refs.footerFirst }),
   ...(refs.footerEven === undefined ? {} : { footerEven: refs.footerEven }),
 });
@@ -65,10 +76,15 @@ export const resolveSectionHeaderFooterRefs = (
     return undefined;
   }
 
-  const documentEvenAndOddHeaders = documentModel.package.settings?.evenAndOddHeaders === true;
+  const documentEvenAndOddHeaders =
+    documentModel.package.settings?.evenAndOddHeaders === true;
   let inherited: InheritedHeaderFooterRefs = {};
   return sections.map((props) => {
-    const refs = resolveSectionRefs(props, inherited, documentEvenAndOddHeaders);
+    const refs = resolveSectionRefs(
+      props,
+      inherited,
+      documentEvenAndOddHeaders,
+    );
     inherited = inheritedRefsFrom(refs);
     return refs;
   });

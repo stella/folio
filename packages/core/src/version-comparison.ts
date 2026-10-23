@@ -61,31 +61,22 @@
 import { panic, TaggedError } from "better-result";
 
 import { folioAIBlockIdStability } from "./ai-edits/block-identity";
-import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
+import {
+  type FolioDocumentStoryHandle,
+  FolioDocxReviewer,
+} from "./ai-edits/headless";
 import type { FolioAIBlock } from "./ai-edits/types";
 import type { WordDiffSegment } from "./ai-edits/word-diff";
 import {
   compareAlignedFolioContent,
   createContentComparisonWorkSession,
-  FolioContentInlinePresentationProjectionError,
   type FolioContentBlockProperty,
   type FolioContentComparisonEvent,
   type FolioContentComparisonWorkSession,
   type FolioContentFormattingChange,
+  FolioContentInlinePresentationProjectionError,
   type FolioContentParagraphFormattingPatch,
 } from "./compare/content";
-import type { FolioContentInlineFormattingPatch } from "./compare/content-types";
-import { pairFolioDocumentStories, type FolioDocumentStoryPair } from "./document-stories";
-import {
-  FOLIO_DOCUMENT_METADATA_PROPERTIES,
-  FOLIO_DOCUMENT_PRIVACY_TRANSFORMS,
-  isFolioDocumentPrivacyTransform,
-  PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM,
-  type FolioDocumentMetadataProperty,
-  type FolioDocumentPrivacyOptions,
-  type FolioDocumentPrivacyReport,
-  type FolioDocumentPrivacyTransform,
-} from "./docx/metadataPrivacy";
 import {
   alignFolioContentBlocks,
   alignFolioContentStructure,
@@ -93,6 +84,21 @@ import {
   exceedsFolioContentLcsBudget,
   type FolioContentAlignedBlockEvent,
 } from "./compare/content-alignment";
+import type { FolioContentInlineFormattingPatch } from "./compare/content-types";
+import {
+  type FolioDocumentStoryPair,
+  pairFolioDocumentStories,
+} from "./document-stories";
+import {
+  FOLIO_DOCUMENT_METADATA_PROPERTIES,
+  FOLIO_DOCUMENT_PRIVACY_TRANSFORMS,
+  type FolioDocumentMetadataProperty,
+  type FolioDocumentPrivacyOptions,
+  type FolioDocumentPrivacyReport,
+  type FolioDocumentPrivacyTransform,
+  isFolioDocumentPrivacyTransform,
+  PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM,
+} from "./docx/metadataPrivacy";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
 export type FolioVersionDiffSegment = WordDiffSegment;
@@ -104,7 +110,8 @@ export const FOLIO_VERSION_COMPARISON_SCOPES = Object.freeze([
   "metadata",
 ] as const);
 
-export type FolioVersionComparisonScope = (typeof FOLIO_VERSION_COMPARISON_SCOPES)[number];
+export type FolioVersionComparisonScope =
+  (typeof FOLIO_VERSION_COMPARISON_SCOPES)[number];
 
 export const isFolioVersionComparisonScope = (
   value: unknown,
@@ -136,13 +143,16 @@ export type FolioMetadataDiff = {
   revisedValue: FolioDocumentMetadataValue;
 };
 
-export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS = FOLIO_DOCUMENT_PRIVACY_TRANSFORMS;
+export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS =
+  FOLIO_DOCUMENT_PRIVACY_TRANSFORMS;
 
-export type FolioVersionComparisonPrivacyTransform = FolioDocumentPrivacyTransform;
+export type FolioVersionComparisonPrivacyTransform =
+  FolioDocumentPrivacyTransform;
 
 export const isFolioVersionComparisonPrivacyTransform = (
   value: unknown,
-): value is FolioVersionComparisonPrivacyTransform => isFolioDocumentPrivacyTransform(value);
+): value is FolioVersionComparisonPrivacyTransform =>
+  isFolioDocumentPrivacyTransform(value);
 
 export type FolioVersionDiffPrivacyOptions = FolioDocumentPrivacyOptions;
 
@@ -183,7 +193,8 @@ export type FolioFormatProperty =
 export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
 
 /** One content or presentation property attached to a modified or moved block. */
-export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatProperty;
+export type FolioVersionChangeProperty =
+  FolioBlockProperty | FolioFormatProperty;
 
 /** Stable location of one compared block within its source document. */
 export type FolioVersionBlockHandle = {
@@ -285,7 +296,8 @@ const createLcsBudget = (): FolioVersionComparisonLcsBudget => {
   return { remainingCells: session.remainingLcsCells };
 };
 
-export type FolioAlignedBlockEvent = FolioContentAlignedBlockEvent<FolioAIBlock>;
+export type FolioAlignedBlockEvent =
+  FolioContentAlignedBlockEvent<FolioAIBlock>;
 
 /**
  * Compatibility adapter for the DOCX snapshot comparison surface.
@@ -311,10 +323,14 @@ export const alignFolioBlocks = (
   return events;
 };
 
-const legacySegments = (segments: readonly WordDiffSegment[]): FolioVersionDiffSegment[] =>
+const legacySegments = (
+  segments: readonly WordDiffSegment[],
+): FolioVersionDiffSegment[] =>
   segments.map(({ type, text }) => ({ type, text }));
 
-const ownStringKeys = <Value extends object>(value: Value): Extract<keyof Value, string>[] =>
+const ownStringKeys = <Value extends object>(
+  value: Value,
+): Extract<keyof Value, string>[] =>
   // SAFETY: Object.keys returns exactly the own enumerable string keys of these object literals.
   Object.keys(value) as Extract<keyof Value, string>[];
 
@@ -328,7 +344,11 @@ const legacyFormattingProperties = (
     }
   }
   for (const property of ownStringKeys(INLINE_FORMAT_PROPERTIES)) {
-    if (formatting.ranges.some(({ formatting: range }) => range[property] !== undefined)) {
+    if (
+      formatting.ranges.some(
+        ({ formatting: range }) => range[property] !== undefined,
+      )
+    ) {
       properties.push(property);
     }
   }
@@ -397,7 +417,9 @@ const excludedTextEventUnitCount = (
       return event.baseBlocks.length;
     default: {
       const unreachable: never = event;
-      return panic("Unhandled scoped neutral comparison event", { event: unreachable });
+      return panic("Unhandled scoped neutral comparison event", {
+        event: unreachable,
+      });
     }
   }
 };
@@ -438,14 +460,22 @@ const compareStoryBlocks = ({
     maxChanges: Number.MAX_SAFE_INTEGER,
   });
   if (compared.isErr()) {
-    if (compared.error instanceof FolioContentInlinePresentationProjectionError) {
-      return panic("Version comparison requires an alignable inline formatting projection", {
-        cause: compared.error,
-      });
+    if (
+      compared.error instanceof FolioContentInlinePresentationProjectionError
+    ) {
+      return panic(
+        "Version comparison requires an alignable inline formatting projection",
+        {
+          cause: compared.error,
+        },
+      );
     }
-    return panic("A version comparison exceeded an unreachable internal result limit", {
-      cause: compared.error,
-    });
+    return panic(
+      "A version comparison exceeded an unreachable internal result limit",
+      {
+        cause: compared.error,
+      },
+    );
   }
 
   const changes: FolioBlockDiff[] = [];
@@ -464,7 +494,9 @@ const compareStoryBlocks = ({
   };
   const revisedHandle = (block: FolioAIBlock): FolioVersionBlockHandle => {
     if (!revisedStory) {
-      return panic("A neutral comparison event requires a revised story handle");
+      return panic(
+        "A neutral comparison event requires a revised story handle",
+      );
     }
     return { story: revisedStory, blockId: block.id };
   };
@@ -506,7 +538,9 @@ const compareStoryBlocks = ({
     formatting: FolioContentFormattingChange | undefined;
   }): void => {
     const changedProperties =
-      includeFormatting && formatting ? legacyFormattingProperties(formatting) : [];
+      includeFormatting && formatting
+        ? legacyFormattingProperties(formatting)
+        : [];
     if (changedProperties.length === 0) {
       counts.unchanged++;
       return;
@@ -544,7 +578,12 @@ const compareStoryBlocks = ({
   };
 
   for (const event of compared.value.events) {
-    if (!includeText && includeFormatting && event.type === "movedTo" && event.formatting) {
+    if (
+      !includeText &&
+      includeFormatting &&
+      event.type === "movedTo" &&
+      event.formatting
+    ) {
       const baseBlock = baseBlockById.get(event.baseBlockId);
       if (!baseBlock) {
         return panic("A moved comparison event requires its base block", {
@@ -581,7 +620,8 @@ const compareStoryBlocks = ({
         const revisedBlock = event.revisedBlocks[0];
         if (
           includeText &&
-          (baseBlock.text !== revisedBlock.text || event.changedProperties.length)
+          (baseBlock.text !== revisedBlock.text ||
+            event.changedProperties.length)
         ) {
           addModified({
             baseBlock,
@@ -592,7 +632,11 @@ const compareStoryBlocks = ({
           });
           break;
         }
-        addFormattingOrUnchanged({ baseBlock, revisedBlock, formatting: event.formatting });
+        addFormattingOrUnchanged({
+          baseBlock,
+          revisedBlock,
+          formatting: event.formatting,
+        });
         break;
       }
       case "deleted":
@@ -660,7 +704,9 @@ const compareStoryBlocks = ({
       }
       default: {
         const unreachable: never = event;
-        panic("Unhandled neutral content comparison event", { event: unreachable });
+        panic("Unhandled neutral content comparison event", {
+          event: unreachable,
+        });
       }
     }
   }
@@ -677,7 +723,10 @@ const resolveComparisonScopes = (
   options: FolioCompareDocxVersionsOptions,
 ): ReadonlySet<FolioVersionComparisonScope> => {
   const include = options.include ?? DEFAULT_COMPARISON_SCOPES;
-  if (include.length === 0 || include.some((scope) => !isFolioVersionComparisonScope(scope))) {
+  if (
+    include.length === 0 ||
+    include.some((scope) => !isFolioVersionComparisonScope(scope))
+  ) {
     throw new InvalidFolioVersionComparisonOptionsError({
       message: "Version comparison requires at least one recognized scope",
       option: "include",
@@ -692,7 +741,9 @@ const resolvePrivacyTransforms = (
 ): FolioVersionComparisonPrivacyTransform[] => {
   if (
     !Array.isArray(transforms) ||
-    transforms.some((transform) => !isFolioVersionComparisonPrivacyTransform(transform))
+    transforms.some(
+      (transform) => !isFolioVersionComparisonPrivacyTransform(transform),
+    )
   ) {
     throw new InvalidFolioVersionComparisonOptionsError({
       message: "Version comparison received an unrecognized privacy transform",
@@ -716,12 +767,14 @@ export const applyFolioVersionDiffPrivacy = (
     ...diff.privacyReport.appliedTransforms,
     ...requestedTransforms,
   ]);
-  const appliedTransforms = FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS.filter((transform) =>
-    appliedTransformSet.has(transform),
+  const appliedTransforms = FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS.filter(
+    (transform) => appliedTransformSet.has(transform),
   );
   const removedPropertySet = new Set<FolioDocumentMetadataProperty>();
   for (const transform of appliedTransforms) {
-    for (const property of PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM[transform]) {
+    for (const property of PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM[
+      transform
+    ]) {
       removedPropertySet.add(property);
     }
   }
@@ -731,8 +784,8 @@ export const applyFolioVersionDiffPrivacy = (
       .filter(({ property }) => removedPropertySet.has(property))
       .map(({ property }) => property),
   ]);
-  const removedMetadataProperties = FOLIO_DOCUMENT_METADATA_PROPERTIES.filter((property) =>
-    actuallyRemovedPropertySet.has(property),
+  const removedMetadataProperties = FOLIO_DOCUMENT_METADATA_PROPERTIES.filter(
+    (property) => actuallyRemovedPropertySet.has(property),
   );
   const metadataChanges = diff.metadataChanges.filter(
     ({ property }) => !removedPropertySet.has(property),
@@ -742,11 +795,16 @@ export const applyFolioVersionDiffPrivacy = (
     ...diff,
     metadataChanges,
     privacyReport: { appliedTransforms, removedMetadataProperties },
-    summaryCounts: { ...diff.summaryCounts, metadataChanged: metadataChanges.length },
+    summaryCounts: {
+      ...diff.summaryCounts,
+      metadataChanged: metadataChanges.length,
+    },
   };
 };
 
-type DocumentProperties = ReturnType<FolioDocxReviewer["getDocumentProperties"]>;
+type DocumentProperties = ReturnType<
+  FolioDocxReviewer["getDocumentProperties"]
+>;
 
 const normalizeMetadataValue = (
   properties: DocumentProperties,
@@ -791,7 +849,9 @@ export const compareDocxVersions = async (
   const stories: FolioStoryDiff[] = [];
   const counts = createSummaryCounts();
   const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
-  const revisedStories = revisedReviewer.listStories().map(({ handle }) => handle);
+  const revisedStories = revisedReviewer
+    .listStories()
+    .map(({ handle }) => handle);
   let nextMoveGroupId = 1;
   // One neutral comparison session owns the aggregate alignment, word-diff,
   // and move allowances across every story in this package comparison.
@@ -799,12 +859,16 @@ export const compareDocxVersions = async (
 
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     const baseBlocks = pair.baseStory
-      ? (baseReviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot
-          .blocks ?? [])
+      ? (baseReviewer.readReviewedStory({
+          story: pair.baseStory,
+          view: "final",
+        })?.snapshot.blocks ?? [])
       : [];
     const revisedBlocks = pair.revisedStory
-      ? (revisedReviewer.readReviewedStory({ story: pair.revisedStory, view: "final" })?.snapshot
-          .blocks ?? [])
+      ? (revisedReviewer.readReviewedStory({
+          story: pair.revisedStory,
+          view: "final",
+        })?.snapshot.blocks ?? [])
       : [];
     const storyDiff = compareStoryBlocks({
       ...pair,
@@ -824,7 +888,10 @@ export const compareDocxVersions = async (
   }
 
   const metadataChanges = scopes.has("metadata")
-    ? compareMetadata(baseReviewer.getDocumentProperties(), revisedReviewer.getDocumentProperties())
+    ? compareMetadata(
+        baseReviewer.getDocumentProperties(),
+        revisedReviewer.getDocumentProperties(),
+      )
     : [];
   counts.metadataChanged = metadataChanges.length;
 
@@ -838,5 +905,7 @@ export const compareDocxVersions = async (
     },
     summaryCounts: counts,
   };
-  return options.privacy ? applyFolioVersionDiffPrivacy(diff, options.privacy) : diff;
+  return options.privacy
+    ? applyFolioVersionDiffPrivacy(diff, options.privacy)
+    : diff;
 };

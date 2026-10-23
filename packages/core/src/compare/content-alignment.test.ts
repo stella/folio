@@ -71,7 +71,10 @@ describe("longestIncreasingFolioContentPairs", () => {
       { baseIndex: 1, revisedIndex: 1 },
     ];
 
-    expect(longestIncreasingFolioContentPairs(pairs)).toEqual([pairs[0], pairs[2]]);
+    expect(longestIncreasingFolioContentPairs(pairs)).toEqual([
+      pairs[0],
+      pairs[2],
+    ]);
   });
 });
 
@@ -87,21 +90,29 @@ describe("non-quadratic exact anchors and shared structural work", () => {
   ];
 
   test("does not spend quadratic work on unique exact paragraph anchors", () => {
-    const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 10 });
+    const workSession = createFolioContentAlignmentWorkSession({
+      lcsCells: 10,
+    });
 
-    expect(alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type)).toEqual(
-      ["pair", "revisedOnly", "pair"],
-    );
+    expect(
+      alignFolioContentBlocks(base, revised, { workSession }).map(
+        ({ type }) => type,
+      ),
+    ).toEqual(["pair", "revisedOnly", "pair"]);
     expect(workSession.remainingLcsCells).toBe(10);
 
-    expect(alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type)).toEqual(
-      ["pair", "revisedOnly", "pair"],
-    );
+    expect(
+      alignFolioContentBlocks(base, revised, { workSession }).map(
+        ({ type }) => type,
+      ),
+    ).toEqual(["pair", "revisedOnly", "pair"]);
     expect(workSession.remainingLcsCells).toBe(10);
   });
 
   test("threads one aggregate allowance through body segments separated by a table", () => {
-    const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 10 });
+    const workSession = createFolioContentAlignmentWorkSession({
+      lcsCells: 10,
+    });
     const firstBase = base.map(({ id, kind, text, idStability }) => ({
       id: `first-${id}`,
       kind,
@@ -155,13 +166,20 @@ describe("non-quadratic exact anchors and shared structural work", () => {
     const secondAnchor = steps.at(-1);
     expect(secondAnchor?.type).toBe("pair");
     if (secondAnchor?.type !== "pair") {
-      throw new Error("Expected the second body segment to retain its exact anchor.");
+      throw new Error(
+        "Expected the second body segment to retain its exact anchor.",
+      );
     }
-    expect([secondAnchor.baseBlock.text, secondAnchor.revisedBlock.text]).toEqual(["Zeta", "Zeta"]);
+    expect([
+      secondAnchor.baseBlock.text,
+      secondAnchor.revisedBlock.text,
+    ]).toEqual(["Zeta", "Zeta"]);
   });
 
   test("shares one aggregate allowance across table-cell text matrices", () => {
-    const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 10 });
+    const workSession = createFolioContentAlignmentWorkSession({
+      lcsCells: 10,
+    });
     const tableParagraph = ({
       id,
       text,
@@ -244,7 +262,11 @@ describe("non-quadratic exact anchors and shared structural work", () => {
       }),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks, revisedBlocks, workSession });
+    const steps = alignFolioContentStructure({
+      baseBlocks,
+      revisedBlocks,
+      workSession,
+    });
 
     expect(steps.map(({ type }) => type)).toEqual([
       "pair",
@@ -257,12 +279,14 @@ describe("non-quadratic exact anchors and shared structural work", () => {
     expect(workSession.remainingLcsCells).toBe(10);
     const secondCellAnchor = steps.at(-1);
     if (secondCellAnchor?.type !== "pair") {
-      throw new Error("Expected the second table cell to retain its exact anchor.");
+      throw new Error(
+        "Expected the second table cell to retain its exact anchor.",
+      );
     }
-    expect([secondCellAnchor.baseBlock.text, secondCellAnchor.revisedBlock.text]).toEqual([
-      "Zeta",
-      "Zeta",
-    ]);
+    expect([
+      secondCellAnchor.baseBlock.text,
+      secondCellAnchor.revisedBlock.text,
+    ]).toEqual(["Zeta", "Zeta"]);
   });
 });
 
@@ -362,9 +386,15 @@ describe("container-safe structural alignment", () => {
       }),
     ];
 
-    expect(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })).toEqual([
+    expect(
+      alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised }),
+    ).toEqual([
       { type: "baseOnly", block: base[0], moveScope: { bucket: 0, gap: 0 } },
-      { type: "revisedOnly", block: revised[0], moveScope: { bucket: 0, gap: 1 } },
+      {
+        type: "revisedOnly",
+        block: revised[0],
+        moveScope: { bucket: 0, gap: 1 },
+      },
     ]);
   });
 
@@ -390,9 +420,15 @@ describe("container-safe structural alignment", () => {
       ),
     ];
 
-    expect(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })).toEqual([
+    expect(
+      alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised }),
+    ).toEqual([
       { type: "baseOnly", block: base[0], moveScope: { bucket: 1, gap: 0 } },
-      { type: "revisedOnly", block: revised[0], moveScope: { bucket: 2, gap: 0 } },
+      {
+        type: "revisedOnly",
+        block: revised[0],
+        moveScope: { bucket: 2, gap: 0 },
+      },
     ]);
   });
 
@@ -420,7 +456,10 @@ describe("container-safe structural alignment", () => {
       block("relocated", "Relocated body content"),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    });
 
     expect(
       steps.flatMap((step) =>
@@ -593,7 +632,9 @@ describe("table row and column structural alignment", () => {
       expect(
         steps
           .flatMap((step) =>
-            step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
+            step.type === "baseRow" || step.type === "revisedRow"
+              ? [step.type]
+              : [],
           )
           .toSorted(),
       ).toEqual(["baseRow", "baseRow", "revisedRow", "revisedRow"]);
@@ -642,9 +683,21 @@ describe("table row and column structural alignment", () => {
     const revised = [
       cell("anchor-a", "A1", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
       cell("anchor-b", "B1", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      cell("inserted-a", "New A", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
-      cell("inserted-b", "New B", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
-      cell("persisted-a", "A2", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("inserted-a", "New A", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("inserted-b", "New B", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("persisted-a", "A2", {
+        rowIndex: 2,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       cell("persisted-b", "Entirely different wording", {
         rowIndex: 2,
         cellIndex: 1,
@@ -676,7 +729,11 @@ describe("table row and column structural alignment", () => {
 
   test("prefers a rewritten persisted row over a similar inserted row", () => {
     const base = [
-      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("before", "Before", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       cell(
         "persisted-a",
         "Payment shall be made within thirty calendar days",
@@ -692,7 +749,11 @@ describe("table row and column structural alignment", () => {
       cell("after", "After", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
     ];
     const revised = [
-      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("before", "Before", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       cell("inserted-a", "Payment shall be made within forty calendar days", {
         rowIndex: 1,
         cellIndex: 0,
@@ -738,7 +799,11 @@ describe("table row and column structural alignment", () => {
 
   test("does not pair rows from a partial persisted id overlap", () => {
     const base = [
-      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("before", "Before", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       cell(
         "shared",
         "Original A",
@@ -754,7 +819,11 @@ describe("table row and column structural alignment", () => {
       cell("after", "After", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
     ];
     const revised = [
-      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("before", "Before", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       cell("shared", "Different X", {
         rowIndex: 1,
         cellIndex: 0,
@@ -793,7 +862,11 @@ describe("table row and column structural alignment", () => {
       textPrefix: string;
       idStability: FolioContentBlock["idStability"];
     };
-    const row = ({ rowIndex, textPrefix, idStability }: OversizedRowOptions): FolioContentBlock[] =>
+    const row = ({
+      rowIndex,
+      textPrefix,
+      idStability,
+    }: OversizedRowOptions): FolioContentBlock[] =>
       Array.from({ length: oversizedRowLength }, (_, paragraphIndex) =>
         cell(
           `persisted-${String(paragraphIndex)}`,
@@ -803,13 +876,29 @@ describe("table row and column structural alignment", () => {
         ),
       );
     const base = [
-      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      ...row({ rowIndex: 1, textPrefix: "original", idStability: "positional" }),
+      cell("before", "Before", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      ...row({
+        rowIndex: 1,
+        textPrefix: "original",
+        idStability: "positional",
+      }),
       cell("after", "After", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
     ];
     const revised = [
-      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
-      cell("inserted", "Inserted", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("before", "Before", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("inserted", "Inserted", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       ...row({ rowIndex: 2, textPrefix: "replacement", idStability: "stable" }),
       cell("after", "After", { rowIndex: 3, cellIndex: 0, gridColumnIndex: 0 }),
     ];
@@ -829,7 +918,9 @@ describe("table row and column structural alignment", () => {
     ).toEqual([]);
     expect(
       steps.flatMap((step) =>
-        step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
+        step.type === "baseRow" || step.type === "revisedRow"
+          ? [step.type]
+          : [],
       ),
     ).toEqual(["baseRow", "revisedRow", "revisedRow"]);
   });
@@ -862,8 +953,16 @@ describe("table row and column structural alignment", () => {
         cellIndex: 0,
         gridColumnIndex: 0,
       }),
-      cell("second-cell", "B1", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      cell("third-cell", "C1", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      cell("second-cell", "B1", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("third-cell", "C1", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
       cell("next-row", "A2", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
     ];
 
@@ -873,7 +972,12 @@ describe("table row and column structural alignment", () => {
       stableIdMismatch: "pair",
     });
 
-    expect(steps.map(({ type }) => type)).toEqual(["pair", "pair", "pair", "pair"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "pair",
+      "pair",
+      "pair",
+      "pair",
+    ]);
     expect(
       steps.flatMap((step) =>
         step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
@@ -924,7 +1028,11 @@ describe("table row and column structural alignment", () => {
     });
     const pairs = steps.filter((step) => step.type === "pair");
 
-    expect(steps.map(({ type }) => type)).toEqual(["revisedRow", "pair", "pair"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedRow",
+      "pair",
+      "pair",
+    ]);
     expect(
       pairs.map(({ baseBlock, revisedBlock }) => [
         baseBlock.table?.rowIndex,
@@ -976,7 +1084,11 @@ describe("table row and column structural alignment", () => {
     });
     const pairs = steps.filter((step) => step.type === "pair");
 
-    expect(steps.map(({ type }) => type)).toEqual(["revisedColumn", "pair", "pair"]);
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedColumn",
+      "pair",
+      "pair",
+    ]);
     expect(
       pairs.map(({ baseBlock, revisedBlock }) => [
         baseBlock.table?.gridColumnIndex,
@@ -998,12 +1110,28 @@ describe("table row and column structural alignment", () => {
       cell("b1", "100", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
     ];
     const revised = [
-      cell("a0-revised", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("a0-revised", "Account", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       cell("x0", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
-      cell("b0-revised", "Amount", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
-      cell("a1-revised", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("b0-revised", "Amount", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+      cell("a1-revised", "Fees", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       cell("x1", "EUR", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
-      cell("b1-revised", "100", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
+      cell("b1-revised", "100", {
+        rowIndex: 1,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
     ];
 
     const insertedColumn = alignFolioContentStructure({

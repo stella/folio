@@ -5,11 +5,10 @@
  * held under budgets.
  */
 
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-
-import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 
 import { fourPageContract, makeTempDir, writeDocx } from "./__tests__/fixtures";
 import { createFolioMcpServer } from "./mcp";
@@ -24,9 +23,13 @@ beforeAll(async () => {
   root = path.join(dir, "root");
   await mkdir(root);
   const server = createFolioMcpServer({ roots: [root], author: "Reviewer" });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
   client = new Client({ name: "folio-size", version: "0.0.0" });
-  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
 });
 
 afterAll(async () => {
@@ -34,9 +37,14 @@ afterAll(async () => {
   await cleanup();
 });
 
-const textOf = async (name: string, args: Record<string, unknown>): Promise<string> => {
+const textOf = async (
+  name: string,
+  args: Record<string, unknown>,
+): Promise<string> => {
   const result = await client.callTool({ name, arguments: args });
-  const first: unknown = Array.isArray(result.content) ? result.content.at(0) : undefined;
+  const first: unknown = Array.isArray(result.content)
+    ? result.content.at(0)
+    : undefined;
   if (typeof first !== "object" || first === null || !("text" in first)) {
     throw new Error(`${name} returned no text`);
   }
@@ -49,12 +57,17 @@ test("the MCP surface stays small", async () => {
   const sizes = {
     toolsList: JSON.stringify((await client.listTools()).tools).length,
     instructions: (client.getInstructions() ?? "").length,
-    describeSuggestChanges: (await textOf("describe_capability", { capability: "suggest_changes" }))
-      .length,
-    describeSuggestChangesFull: (
-      await textOf("describe_capability", { capability: "suggest_changes", detail: "full" })
+    describeSuggestChanges: (
+      await textOf("describe_capability", { capability: "suggest_changes" })
     ).length,
-    readFourPageContract: (await textOf("read_document", { path: file })).length,
+    describeSuggestChangesFull: (
+      await textOf("describe_capability", {
+        capability: "suggest_changes",
+        detail: "full",
+      })
+    ).length,
+    readFourPageContract: (await textOf("read_document", { path: file }))
+      .length,
   };
   console.log(JSON.stringify(sizes));
 

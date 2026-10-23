@@ -13,7 +13,9 @@ import { createMarkExtension } from "../create";
 
 type Variant = Exclude<TextEffect, "none">;
 
-const VARIANTS = TEXT_EFFECT_VALUES.filter((value): value is Variant => value !== "none");
+const VARIANTS = TEXT_EFFECT_VALUES.filter(
+  (value): value is Variant => value !== "none",
+);
 
 const isVariant = (value: string | null): value is Variant =>
   value !== null && (VARIANTS as readonly string[]).includes(value);

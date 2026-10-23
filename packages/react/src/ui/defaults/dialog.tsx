@@ -37,7 +37,10 @@ function DefaultDialogPortal({ children, ...props }: FolioDialogPortalProps) {
   );
 }
 
-function DefaultDialogBackdrop({ className, ...props }: FolioDialogBackdropProps) {
+function DefaultDialogBackdrop({
+  className,
+  ...props
+}: FolioDialogBackdropProps) {
   return (
     <DialogPrimitive.Backdrop
       className={cn("folio-default-dialog-backdrop", className)}
@@ -48,19 +51,28 @@ function DefaultDialogBackdrop({ className, ...props }: FolioDialogBackdropProps
 
 function DefaultDialogPopup({ className, ...props }: FolioDialogPopupProps) {
   return (
-    <DialogPrimitive.Popup className={cn("folio-default-dialog-popup", className)} {...props} />
+    <DialogPrimitive.Popup
+      className={cn("folio-default-dialog-popup", className)}
+      {...props}
+    />
   );
 }
 
 function DefaultDialogTitle({ className, ...props }: FolioDialogTitleProps) {
   return (
-    <DialogPrimitive.Title className={cn("folio-default-dialog-title", className)} {...props} />
+    <DialogPrimitive.Title
+      className={cn("folio-default-dialog-title", className)}
+      {...props}
+    />
   );
 }
 
 function DefaultDialogClose({ className, ...props }: FolioDialogCloseProps) {
   return (
-    <DialogPrimitive.Close className={cn("folio-default-dialog-close", className)} {...props} />
+    <DialogPrimitive.Close
+      className={cn("folio-default-dialog-close", className)}
+      {...props}
+    />
   );
 }
 

@@ -46,7 +46,9 @@ class FakeElement {
   }
 
   get textContent(): string {
-    return this.ownText + this.children.map((child) => child.textContent).join("");
+    return (
+      this.ownText + this.children.map((child) => child.textContent).join("")
+    );
   }
 
   set textContent(value: string) {
@@ -285,12 +287,20 @@ describe("renderTableFragment clipped header continuations", () => {
   test("keeps repeated headers pinned while clipping the body row", () => {
     const { fragment, block, measure } = buildHeaderContinuation();
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const rows = findRows(tableEl);
-    const headerRow = rows.find((row) => row.dataset["repeatedHeader"] === "true");
+    const headerRow = rows.find(
+      (row) => row.dataset["repeatedHeader"] === "true",
+    );
     const bodyRow = rows.find((row) => row.dataset["rowIndex"] === "1");
     const clipElement = tableEl.children.find(
       (child) =>
@@ -353,10 +363,21 @@ describe("renderTableFragment continuation row boundaries", () => {
     }) as unknown as FakeElement;
     const rows = findRows(table);
 
-    expect(rows.map((row) => row.style["top"])).toEqual(["0px", "10.2px", "17.9px"]);
-    expect(rows.map((row) => row.style["height"])).toEqual(["10.2px", "7.7px", "5.4px"]);
+    expect(rows.map((row) => row.style["top"])).toEqual([
+      "0px",
+      "10.2px",
+      "17.9px",
+    ]);
+    expect(rows.map((row) => row.style["height"])).toEqual([
+      "10.2px",
+      "7.7px",
+      "5.4px",
+    ]);
     const bottomBorders = findByClass(table, "layout-table-cell-bottom-border");
-    expect(bottomBorders.map((border) => border.style["height"])).toEqual(["10.75px", "8.55px"]);
+    expect(bottomBorders.map((border) => border.style["height"])).toEqual([
+      "10.75px",
+      "8.55px",
+    ]);
     const finalTop = Number.parseFloat(rows.at(-1)?.style["top"] ?? "0");
     const finalHeight = Number.parseFloat(rows.at(-1)?.style["height"] ?? "0");
     expect(finalTop + finalHeight).toBeCloseTo(fragment.height, 10);
@@ -375,7 +396,9 @@ describe("renderTableFragment split-row cell content", () => {
             {
               id: "synthetic-cell",
               blocks: [],
-              borders: { bottom: { width: 2, style: "solid", color: "#123456" } },
+              borders: {
+                bottom: { width: 2, style: "solid", color: "#123456" },
+              },
             },
           ],
         },
@@ -518,11 +541,22 @@ describe("renderTableFragment split-row cell content", () => {
     let clipPaths: (string | undefined)[] = [];
     withFakeTextMeasure(() => {
       clipPaths = fragments.map((fragment) => {
-        const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-          document: fakeDocument,
-        }) as unknown as FakeElement;
-        const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
-        const floatingLayer = findByClass(tableEl, "layout-cell-floating-images-layer").at(0);
+        const tableEl = renderTableFragment(
+          fragment,
+          block,
+          measure,
+          renderContext,
+          {
+            document: fakeDocument,
+          },
+        ) as unknown as FakeElement;
+        const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(
+          0,
+        );
+        const floatingLayer = findByClass(
+          tableEl,
+          "layout-cell-floating-images-layer",
+        ).at(0);
 
         expect(tableEl.style["overflow"]).toBe("visible");
         expect(content?.style["height"]).toBe("100px");
@@ -614,9 +648,15 @@ describe("renderTableFragment split-row cell content", () => {
     };
 
     withFakeTextMeasure(() => {
-      const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-        document: fakeDocument,
-      }) as unknown as FakeElement;
+      const tableEl = renderTableFragment(
+        fragment,
+        block,
+        measure,
+        renderContext,
+        {
+          document: fakeDocument,
+        },
+      ) as unknown as FakeElement;
       const contents = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent);
 
       expect(contents.at(0)?.style["clipPath"]).toBeUndefined();
@@ -696,9 +736,15 @@ describe("renderTableFragment cell paragraph spacing", () => {
       toRow: 1,
     };
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const paragraph = findByClass(tableEl, "layout-paragraph").at(0);
     const cellContent = findByClass(tableEl, "layout-table-cell-content").at(0);
@@ -766,16 +812,24 @@ describe("renderTableFragment bottom-to-top cell text", () => {
     };
 
     withFakeTextMeasure(() => {
-      const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-        document: fakeDocument,
-      }) as unknown as FakeElement;
+      const tableEl = renderTableFragment(
+        fragment,
+        block,
+        measure,
+        renderContext,
+        {
+          document: fakeDocument,
+        },
+      ) as unknown as FakeElement;
       const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
 
       expect(content?.style["position"]).toBe("absolute");
       expect(content?.style["left"]).toBe("50%");
       expect(content?.style["top"]).toBe("50%");
       expect(content?.style["width"]).toBe("74px");
-      expect(content?.style["transform"]).toBe("translate(-50%, -50%) rotate(-90deg)");
+      expect(content?.style["transform"]).toBe(
+        "translate(-50%, -50%) rotate(-90deg)",
+      );
     });
   });
 });
@@ -794,7 +848,9 @@ describe("renderTableFragment interior border ownership", () => {
       rows: [
         {
           id: "row",
-          cells: [{ id: "cell", borders: { top: hairline }, blocks: [paragraph] }],
+          cells: [
+            { id: "cell", borders: { top: hairline }, blocks: [paragraph] },
+          ],
         },
       ],
       columnWidths: [100],
@@ -804,7 +860,11 @@ describe("renderTableFragment interior border ownership", () => {
       rows: [
         {
           cells: [
-            { blocks: [{ kind: "paragraph", lines: [], totalHeight: 20 }], width: 100, height: 20 },
+            {
+              blocks: [{ kind: "paragraph", lines: [], totalHeight: 20 }],
+              width: 100,
+              height: 20,
+            },
           ],
           height: 20,
         },
@@ -824,9 +884,15 @@ describe("renderTableFragment interior border ownership", () => {
       toRow: 1,
     };
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
     const cell = findRows(tableEl).at(0)?.children.at(0);
 
     expect(cell?.style["borderTop"]).toBe("1px solid #000000");
@@ -898,14 +964,22 @@ describe("renderTableFragment interior border ownership", () => {
       toRow: 2,
     };
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
     const rows = findRows(tableEl);
     const cellAt = (rowIndex: string, columnIndex: string) =>
       rows
         .find((row) => row.dataset["rowIndex"] === rowIndex)
-        ?.children.find((candidate) => candidate.dataset["columnIndex"] === columnIndex);
+        ?.children.find(
+          (candidate) => candidate.dataset["columnIndex"] === columnIndex,
+        );
 
     expect(cellAt("1", "0")?.style["borderTop"]).toBeUndefined();
     expect(cellAt("1", "1")?.style["borderTop"]).toBe("1px solid #000000");
@@ -940,7 +1014,10 @@ describe("renderTableFragment floating cell content", () => {
                       wrapType: "inFront",
                       position: {
                         horizontal: { relativeTo: "column", posOffset: 95_250 },
-                        vertical: { relativeTo: "paragraph", posOffset: 47_625 },
+                        vertical: {
+                          relativeTo: "paragraph",
+                          posOffset: 47_625,
+                        },
                       },
                     },
                   ],
@@ -1022,13 +1099,25 @@ describe("renderTableFragment floating cell content", () => {
     };
 
     withFakeTextMeasure(() => {
-      const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-        document: fakeDocument,
-      }) as unknown as FakeElement;
+      const tableEl = renderTableFragment(
+        fragment,
+        block,
+        measure,
+        renderContext,
+        {
+          document: fakeDocument,
+        },
+      ) as unknown as FakeElement;
       const cell = findByClass(tableEl, TABLE_CLASS_NAMES.cell).at(0);
       const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
-      const imageLayer = findByClass(tableEl, "layout-cell-floating-images-layer").at(0);
-      const textBoxLayer = findByClass(tableEl, "layout-cell-floating-text-boxes-layer").at(0);
+      const imageLayer = findByClass(
+        tableEl,
+        "layout-cell-floating-images-layer",
+      ).at(0);
+      const textBoxLayer = findByClass(
+        tableEl,
+        "layout-cell-floating-text-boxes-layer",
+      ).at(0);
       const textBox = findByClass(tableEl, "layout-textbox").at(1);
 
       expect(tableEl.style["overflow"]).toBe("visible");
@@ -1040,7 +1129,9 @@ describe("renderTableFragment floating cell content", () => {
       expect(textBoxLayer?.style["left"]).toBe("4px");
       expect(textBoxLayer?.style["top"]).toBe("2px");
       expect(textBox?.style["left"]).toBe("20px");
-      expect(Number.parseFloat(textBox?.style["top"] ?? "0")).toBeGreaterThan(50);
+      expect(Number.parseFloat(textBox?.style["top"] ?? "0")).toBeGreaterThan(
+        50,
+      );
     });
   });
 });
@@ -1171,7 +1262,10 @@ describe("renderTableFragment cell floating images", () => {
     expect(container?.style["width"]).toBe("120px");
     expect(container?.style["height"]).toBe("40px");
     expect(container?.style["overflow"]).toBe("hidden");
-    expect(Number.parseFloat(image?.style["width"] ?? "")).toBeCloseTo((1 / 0.7) * 100, 6);
+    expect(Number.parseFloat(image?.style["width"] ?? "")).toBeCloseTo(
+      (1 / 0.7) * 100,
+      6,
+    );
     expect(image?.style["opacity"]).toBe("0.6");
     expect(image?.style["objectFit"]).toBe("fill");
   });
@@ -1220,7 +1314,12 @@ describe("renderTableFragment paragraph border groups", () => {
       rows: [
         {
           id: "row",
-          cells: [{ id: "cell", blocks: [paragraph("p1", "One"), paragraph("p2", "Two")] }],
+          cells: [
+            {
+              id: "cell",
+              blocks: [paragraph("p1", "One"), paragraph("p2", "Two")],
+            },
+          ],
         },
       ],
       columnWidths: [100],
@@ -1256,10 +1355,16 @@ describe("renderTableFragment paragraph border groups", () => {
   test("two identically bordered cell paragraphs draw one frame, not two", () => {
     withFakeTextMeasure(() => {
       const { fragment, block, measure } = borderedCellTable();
-      const table = renderTableFragment(fragment, block, measure, renderContext, {
-        document: fakeDocument,
-        pageGeometry,
-      }) as unknown as FakeElement;
+      const table = renderTableFragment(
+        fragment,
+        block,
+        measure,
+        renderContext,
+        {
+          document: fakeDocument,
+          pageGeometry,
+        },
+      ) as unknown as FakeElement;
 
       const boxes = findByClass(table, "layout-paragraph-border");
       expect(boxes).toHaveLength(2);
@@ -1288,7 +1393,13 @@ describe("renderTableFragment vertical cell text", () => {
             {
               id: "cell",
               textDirection,
-              blocks: [{ kind: "paragraph", id: "p", runs: [{ kind: "text", text: "Header" }] }],
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "p",
+                  runs: [{ kind: "text", text: "Header" }],
+                },
+              ],
             },
           ],
         },
@@ -1326,15 +1437,24 @@ describe("renderTableFragment vertical cell text", () => {
     return { fragment, block, measure };
   };
 
-  const contentTransform = (textDirection: NonNullable<TableCell["textDirection"]>) => {
+  const contentTransform = (
+    textDirection: NonNullable<TableCell["textDirection"]>,
+  ) => {
     let transform: string | undefined;
     withFakeTextMeasure(() => {
       const { fragment, block, measure } = rotatedCellTable(textDirection);
-      const table = renderTableFragment(fragment, block, measure, renderContext, {
-        document: fakeDocument,
-        pageGeometry,
-      }) as unknown as FakeElement;
-      transform = findByClass(table, TABLE_CLASS_NAMES.cellContent).at(0)?.style["transform"];
+      const table = renderTableFragment(
+        fragment,
+        block,
+        measure,
+        renderContext,
+        {
+          document: fakeDocument,
+          pageGeometry,
+        },
+      ) as unknown as FakeElement;
+      transform = findByClass(table, TABLE_CLASS_NAMES.cellContent).at(0)
+        ?.style["transform"];
     });
     return transform;
   };

@@ -1,16 +1,17 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
-import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
+
 import { CanonicalSessionRefusalError } from "../packages/core/src/controller/hiddenEditorManager";
 import { CanonicalSaveDiagnosticError } from "../packages/core/src/docx/canonicalSave";
 import type { SaveDiagnostic } from "../packages/core/src/docx/saveDiagnostics";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
+import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
-  recordCanonicalFuzzError,
-  isCanonicalSaveFallback,
   type CanonicalFuzzError,
   type CanonicalFuzzPhase,
+  isCanonicalSaveFallback,
+  recordCanonicalFuzzError,
 } from "../tests/parity/canonicalFuzzErrors";
 import {
   CanonicalBrowserOracleError,
@@ -19,9 +20,18 @@ import {
 } from "../tests/parity/canonicalOracleFailure";
 
 const DIAGNOSTICS = {
-  sourceReplayMismatch: { type: "sourceReplayMismatch", part: "word/document.xml" },
-  selectiveSaveRefused: { type: "selectiveSaveRefused", part: "word/document.xml" },
-  sourceReplayUnavailable: { type: "sourceReplayUnavailable", part: "word/document.xml" },
+  sourceReplayMismatch: {
+    type: "sourceReplayMismatch",
+    part: "word/document.xml",
+  },
+  selectiveSaveRefused: {
+    type: "selectiveSaveRefused",
+    part: "word/document.xml",
+  },
+  sourceReplayUnavailable: {
+    type: "sourceReplayUnavailable",
+    part: "word/document.xml",
+  },
   canonicalResourceReplacement: {
     type: "canonicalResourceReplacement",
     gap: CANONICAL_GAP.resourceReplacement,
@@ -98,9 +108,15 @@ test(
                 repro: "canonical seed 11",
                 failure,
               });
-              const record = canonicalOracleFailureRecord({ marker, failure, flow: [] });
+              const record = canonicalOracleFailureRecord({
+                marker,
+                failure,
+                flow: [],
+              });
               expect(record.error.length).toBeLessThan(5_000);
-              expect(JSON.parse(JSON.stringify(record)).observations).toEqual(observations);
+              expect(JSON.parse(JSON.stringify(record)).observations).toEqual(
+                observations,
+              );
             }
           }
         }),
@@ -130,7 +146,9 @@ test(
               const errors: CanonicalFuzzError[] = [];
               globalThis.__folioCanonicalFuzzErrors = errors;
               globalThis.__folioCanonicalFuzzPhase = phase;
-              recordCanonicalFuzzError(new CanonicalSessionRefusalError({ message, gap }));
+              recordCanonicalFuzzError(
+                new CanonicalSessionRefusalError({ message, gap }),
+              );
               expect(errors).toEqual([
                 {
                   status: "refusal",
@@ -167,7 +185,12 @@ test("unscoped ordinary errors retain their identity without becoming save diagn
     recordCanonicalFuzzError(new TypeError("unavailable"));
     expect(errors.some(isCanonicalSaveFallback)).toBe(false);
     expect(errors).toEqual([
-      { status: "error", type: "TypeError", message: "unavailable", phase: null },
+      {
+        status: "error",
+        type: "TypeError",
+        message: "unavailable",
+        phase: null,
+      },
     ]);
   } finally {
     globalThis.__folioCanonicalFuzzErrors = previousErrors;
@@ -194,7 +217,9 @@ test("failure capture retains pending diagnostics and records an unavailable bro
   });
   expect(captured.cause).toBe(cause);
   expect(captured.errorCapture).toEqual({ status: "complete" });
-  expect(captured.observations).toEqual([{ phase, errors: [pending, pending] }]);
+  expect(captured.observations).toEqual([
+    { phase, errors: [pending, pending] },
+  ]);
   const unavailable = await captureCanonicalOracleFailure({
     cause,
     observations,
@@ -203,7 +228,10 @@ test("failure capture retains pending diagnostics and records an unavailable bro
     },
   });
   expect(unavailable.cause).toBe(cause);
-  expect(unavailable.errorCapture).toEqual({ status: "unavailable", message: "Page closed" });
+  expect(unavailable.errorCapture).toEqual({
+    status: "unavailable",
+    message: "Page closed",
+  });
   expect(unavailable.observations).toEqual(observations);
 });
 

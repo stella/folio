@@ -91,10 +91,18 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
     if (!first || first.type !== "blockSdt") {
       throw new Error(`expected blockSdt, got ${String(first?.type)}`);
     }
-    expect(first.properties.rawSdtChildrenBeforeContent).toContain("w:bookmarkStart");
-    expect(first.properties.rawSdtChildrenBeforeContent).toContain("w:commentRangeStart");
-    expect(first.properties.rawSdtChildrenAfterContent).toContain("w:bookmarkEnd");
-    expect(first.properties.rawSdtChildrenAfterContent).toContain("w:commentRangeEnd");
+    expect(first.properties.rawSdtChildrenBeforeContent).toContain(
+      "w:bookmarkStart",
+    );
+    expect(first.properties.rawSdtChildrenBeforeContent).toContain(
+      "w:commentRangeStart",
+    );
+    expect(first.properties.rawSdtChildrenAfterContent).toContain(
+      "w:bookmarkEnd",
+    );
+    expect(first.properties.rawSdtChildrenAfterContent).toContain(
+      "w:commentRangeEnd",
+    );
     const xml = serializeBlockSdt(first, noChildSerializer);
     // Markers replay in original positions.
     expect(xml).toContain('<w:bookmarkStart w:id="1" w:name="b1"/>');
@@ -179,7 +187,9 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
 
       const reopened = parseBlocks(`<w:body ${NS}>${xml}</w:body>`).at(0);
       if (!reopened || reopened.type !== "blockSdt") {
-        throw new Error(`expected reopened blockSdt, got ${String(reopened?.type)}`);
+        throw new Error(
+          `expected reopened blockSdt, got ${String(reopened?.type)}`,
+        );
       }
       expect(reopened.properties.dropdownLastValue).toBeUndefined();
       expect(reopened.properties.preserved).toEqual(preserved);
@@ -198,12 +208,16 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Visible label" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Visible label" }] },
+          ],
         },
       ],
     };
 
-    expect(serializeBlockSdt(sdt, noChildSerializer)).not.toContain("lastValue");
+    expect(serializeBlockSdt(sdt, noChildSerializer)).not.toContain(
+      "lastValue",
+    );
   });
 
   test("dropdownLastValue from the model wins over body-text matching when displayText collides", () => {
@@ -227,7 +241,9 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Other" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Other" }] },
+          ],
         },
       ],
     };
@@ -256,7 +272,9 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text: "Other" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Other" }] },
+          ],
         },
       ],
     };

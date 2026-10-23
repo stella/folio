@@ -9,7 +9,9 @@ import { EXTENDED_INVARIANT_FAMILY } from "./lib/corpus-invariants/contract";
 import { CORPUS_INVARIANTS, failureSignature } from "./lib/corpus-signature";
 
 const row = (invariant: string, message: string, files: number) => {
-  const failure = { invariant, message, frame: "-" } as Parameters<typeof failureSignature>[0];
+  const failure = { invariant, message, frame: "-" } as Parameters<
+    typeof failureSignature
+  >[0];
   return { ...failure, signature: failureSignature(failure), files };
 };
 
@@ -20,12 +22,15 @@ const RESERIALIZE = "reserialize";
  * Nothing here reads a file: what is under test is which inconsistencies the
  * rules catch, not how the repository stores them.
  */
-const committedWith = (override: Partial<CommittedCorpusFiles>): CommittedCorpusFiles =>
+const committedWith = (
+  override: Partial<CommittedCorpusFiles>,
+): CommittedCorpusFiles =>
   ({
     baseline: {
       schemaVersion: 1,
       lockDigest: "t1-deadbeef",
-      reportOnlyDigest: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      reportOnlyDigest:
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       failedFiles: 1,
       entries: [],
     },
@@ -33,11 +38,20 @@ const committedWith = (override: Partial<CommittedCorpusFiles>): CommittedCorpus
     refusals: { schemaVersion: 1, entries: [] },
     dispositions: { schemaVersion: 1, entries: [] },
     reportOnly: { schemaVersion: 1, files: [] },
-    lock: { schemaVersion: 1, manifestDigest: "-", fileCount: 0, totalBytes: 0, sources: [] },
+    lock: {
+      schemaVersion: 1,
+      manifestDigest: "-",
+      fileCount: 0,
+      totalBytes: 0,
+      sources: [],
+    },
     ...override,
   }) as CommittedCorpusFiles;
 
-const detailsMatching = (files: CommittedCorpusFiles, pattern: RegExp): string[] =>
+const detailsMatching = (
+  files: CommittedCorpusFiles,
+  pattern: RegExp,
+): string[] =>
   corpusValidityIssues(files)
     .map(({ detail }) => detail)
     .filter((detail) => pattern.test(detail));
@@ -55,10 +69,15 @@ describe("the committed corpus files check out against themselves", () => {
  */
 describe("what the check catches", () => {
   test("a row whose signature disagrees with its own fields", () => {
-    const broken = { ...row(RESERIALIZE, "a difference", 3), signature: "hand | edited | -" };
+    const broken = {
+      ...row(RESERIALIZE, "a difference", 3),
+      signature: "hand | edited | -",
+    };
     expect(
       detailsMatching(
-        committedWith({ baseline: { ...committedWith({}).baseline, entries: [broken] } }),
+        committedWith({
+          baseline: { ...committedWith({}).baseline, entries: [broken] },
+        }),
         /disagrees with its own fields/u,
       ),
     ).toHaveLength(1);
@@ -70,7 +89,10 @@ describe("what the check catches", () => {
     expect(
       detailsMatching(
         committedWith({
-          baseline: { ...committedWith({}).baseline, entries: [second, first, first] },
+          baseline: {
+            ...committedWith({}).baseline,
+            entries: [second, first, first],
+          },
         }),
         /not sorted|duplicate signature/u,
       ).length,
@@ -81,7 +103,10 @@ describe("what the check catches", () => {
     expect(
       detailsMatching(
         committedWith({
-          baseline: { ...committedWith({}).baseline, entries: [row(RESERIALIZE, "a", 0)] },
+          baseline: {
+            ...committedWith({}).baseline,
+            entries: [row(RESERIALIZE, "a", 0)],
+          },
         }),
         /records 0 files/u,
       ),
@@ -110,7 +135,9 @@ describe("what the check catches", () => {
           baseline: { ...committedWith({}).baseline, entries: [entry] },
           refusals: {
             schemaVersion: 1,
-            entries: [{ signature: entry.signature, reason: "by design", files: 1 }],
+            entries: [
+              { signature: entry.signature, reason: "by design", files: 1 },
+            ],
           },
         }),
         /is also a baseline defect/u,
@@ -119,7 +146,9 @@ describe("what the check catches", () => {
   });
 
   test("a baseline measured over a lock the repository no longer carries", () => {
-    expect(detailsMatching(committedWith({}), /the committed lock is/u).length).toBeGreaterThan(0);
+    expect(
+      detailsMatching(committedWith({}), /the committed lock is/u).length,
+    ).toBeGreaterThan(0);
   });
 
   test("a report-only exemption the lock cannot honour", () => {
@@ -129,7 +158,12 @@ describe("what the check catches", () => {
           reportOnly: {
             schemaVersion: 1,
             files: [
-              { sourceId: "apache-poi", path: "gone.docx", sha256: "0".repeat(64), reason: "slow" },
+              {
+                sourceId: "apache-poi",
+                path: "gone.docx",
+                sha256: "0".repeat(64),
+                reason: "slow",
+              },
             ],
           },
         }),

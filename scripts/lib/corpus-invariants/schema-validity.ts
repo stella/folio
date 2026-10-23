@@ -14,9 +14,10 @@
  * disagree about what Transitional means.
  */
 
+import { Result } from "better-result";
+
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
-import { Result } from "better-result";
 
 import {
   loadSchemaGraph,
@@ -25,8 +26,8 @@ import {
 } from "../corpus-schema-validator";
 import { failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -44,7 +45,8 @@ const DIGITS_RE = /\d+/gu;
  * Losing validity in `word/header2.xml` and in `word/header7.xml` is one
  * defect, and the file that shows it is in the census example.
  */
-export const generalizePartPath = (path: string): string => path.replaceAll(DIGITS_RE, "N");
+export const generalizePartPath = (path: string): string =>
+  path.replaceAll(DIGITS_RE, "N");
 
 /** Parts whose markup this graph describes. Media, relationships and theme are not WordprocessingML. */
 const VALIDATED_PART_RE = /^word\/[\w/]+\.xml$/u;
@@ -67,7 +69,11 @@ const validatePackage = async (
     // Keyed by the real path, not the generalised one: two headers generalise
     // to the same name, and collapsing them here would let the last one in zip
     // order hide whatever folio did to the others.
-    const violations = validateOoxmlPart({ graph, xml, limit: VIOLATION_LIMIT });
+    const violations = validateOoxmlPart({
+      graph,
+      xml,
+      limit: VIOLATION_LIMIT,
+    });
     byPart.set(path, new Set(violations.map(violationKey)));
   }
   return byPart;
@@ -79,7 +85,10 @@ const validatePackage = async (
  * A part the input did not have is compared against nothing, which is correct:
  * folio wrote all of it, so everything wrong with it is folio's.
  */
-const introducedViolations = (before: PartViolations, after: PartViolations): string[] => {
+const introducedViolations = (
+  before: PartViolations,
+  after: PartViolations,
+): string[] => {
   const introduced = new Set<string>();
   for (const [part, violations] of after) {
     const known = before.get(part) ?? new Set<string>();
@@ -99,15 +108,25 @@ export const runSchemaValidityInvariant = async ({
   parsed,
 }: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: Record<string, number> = {};
-  const graph = await timeStage(timings, "load-schema", () => loadSchemaGraph());
+  const graph = await timeStage(timings, "load-schema", () =>
+    loadSchemaGraph(),
+  );
 
   const before = await timeStage(timings, "validate-input", () =>
-    Result.tryPromise({ try: () => validatePackage(buffer, graph), catch: (c: unknown) => c }),
+    Result.tryPromise({
+      try: () => validatePackage(buffer, graph),
+      catch: (c: unknown) => c,
+    }),
   );
   if (before.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.schemaValidity, before.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.schemaValidity,
+          before.error,
+        ),
+      ],
       timings,
     };
   }
@@ -121,7 +140,12 @@ export const runSchemaValidityInvariant = async ({
   if (saved.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.schemaValidity, saved.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.schemaValidity,
+          saved.error,
+        ),
+      ],
       timings,
     };
   }
@@ -135,7 +159,12 @@ export const runSchemaValidityInvariant = async ({
   if (after.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.schemaValidity, after.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.schemaValidity,
+          after.error,
+        ),
+      ],
       timings,
     };
   }
@@ -147,7 +176,9 @@ export const runSchemaValidityInvariant = async ({
     status: "evaluated",
     failures: introduced
       .slice(0, REPORTED_PER_FILE)
-      .map((detail) => failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.schemaValidity, detail)),
+      .map((detail) =>
+        failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.schemaValidity, detail),
+      ),
     timings,
   };
 };

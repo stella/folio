@@ -36,7 +36,10 @@ export const findHtmlElement = (
  * a runtime instanceof check (querySelector's generic does not
  * actually validate at runtime).
  */
-export const queryHtmlElement = (root: ParentNode, selector: string): HTMLElement | null => {
+export const queryHtmlElement = (
+  root: ParentNode,
+  selector: string,
+): HTMLElement | null => {
   const found = root.querySelector(selector);
   return found instanceof HTMLElement ? found : null;
 };
@@ -45,7 +48,10 @@ export const queryHtmlElement = (root: ParentNode, selector: string): HTMLElemen
  * Walk ancestors of `node` and return the nearest one matching
  * `selector` that is an HTMLElement.
  */
-export const closestHtmlElement = (node: Element | null, selector: string): HTMLElement | null => {
+export const closestHtmlElement = (
+  node: Element | null,
+  selector: string,
+): HTMLElement | null => {
   if (!node) {
     return null;
   }
@@ -57,7 +63,10 @@ export const closestHtmlElement = (node: Element | null, selector: string): HTML
  * Return `el.children[index]` only if it is an HTMLElement;
  * `undefined` otherwise.
  */
-export const childHtmlElement = (el: Element, index: number): HTMLElement | undefined => {
+export const childHtmlElement = (
+  el: Element,
+  index: number,
+): HTMLElement | undefined => {
   const child = el.children[index];
   return child instanceof HTMLElement ? child : undefined;
 };
@@ -71,7 +80,10 @@ export const childHtmlElement = (el: Element, index: number): HTMLElement | unde
  * The instanceof filter runs once at the source so downstream
  * iteration is statically-typed and pays zero per-element cost.
  */
-export const htmlQueryAll = (root: ParentNode, selector: string): HTMLElement[] => {
+export const htmlQueryAll = (
+  root: ParentNode,
+  selector: string,
+): HTMLElement[] => {
   const out: HTMLElement[] = [];
   for (const el of root.querySelectorAll(selector)) {
     if (el instanceof HTMLElement) {

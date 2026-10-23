@@ -9,7 +9,9 @@ import { paragraphToStyle } from "./formatToStyle";
 
 describe("paragraphToStyle — page-break properties", () => {
   test("pageBreakBefore forces a page break via break-before", () => {
-    expect(paragraphToStyle({ pageBreakBefore: true }).breakBefore).toBe("page");
+    expect(paragraphToStyle({ pageBreakBefore: true }).breakBefore).toBe(
+      "page",
+    );
   });
 
   test("keepNext avoids a break after the paragraph", () => {

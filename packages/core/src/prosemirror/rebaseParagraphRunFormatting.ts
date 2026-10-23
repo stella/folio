@@ -1,21 +1,21 @@
+import { panic } from "better-result";
 import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import type { Transform } from "prosemirror-transform";
-import { panic } from "better-result";
 
+import { sameRunStyleContext } from "./rebaseParagraphRuns";
 import {
   expandRunFormattingCarrier,
   type RunFormattingCarrierRepresentation,
 } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
-import { sameRunStyleContext } from "./rebaseParagraphRuns";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "./runFormattingReconciliation";
 import {
-  paragraphRunStyleContext,
   type ParagraphRunStyleContext,
+  paragraphRunStyleContext,
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
@@ -101,7 +101,8 @@ export const rebaseParagraphRuns = <T extends Transform>({
     // A text node can run past the range: two runs with the same marks are
     // one node once their paragraphs join. Only the range's part is rebased.
     const start = paragraphPosition + 1;
-    const from = node.isText && range ? Math.max(position, start + range.from) : position;
+    const from =
+      node.isText && range ? Math.max(position, start + range.from) : position;
     const to =
       node.isText && range
         ? Math.min(position + node.nodeSize, start + range.to)
@@ -125,7 +126,10 @@ export const rebaseParagraphRuns = <T extends Transform>({
     if (!node.isInline) {
       return true;
     }
-    const carrier = expandRunFormattingCarrier(node, paragraphPosition + 1 + relativePosition);
+    const carrier = expandRunFormattingCarrier(
+      node,
+      paragraphPosition + 1 + relativePosition,
+    );
     if (!carrier) {
       return !node.isAtom;
     }
@@ -140,7 +144,14 @@ export const rebaseParagraphRuns = <T extends Transform>({
     paragraph.nodesBetween(range.from, range.to, visit);
   }
 
-  for (const { attrs, currentFormattingMarks, from, isText, marks, to } of changes) {
+  for (const {
+    attrs,
+    currentFormattingMarks,
+    from,
+    isText,
+    marks,
+    to,
+  } of changes) {
     if (!isText) {
       tr = tr.setNodeMarkup(from, undefined, attrs, marks);
       continue;

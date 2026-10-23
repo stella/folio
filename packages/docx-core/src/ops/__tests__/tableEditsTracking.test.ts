@@ -1,7 +1,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -10,7 +13,12 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { tableGrid } from "../tableGrid";
-import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS, type DocumentOp } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+} from "../types";
 
 const exact = (actual: unknown, expected: unknown): void => {
   expect(actual === null).toBe(expected === null);
@@ -27,13 +35,15 @@ const exact = (actual: unknown, expected: unknown): void => {
   expect(Array.isArray(actual)).toBe(Array.isArray(expected));
   const keys = Object.keys(expected).sort();
   expect(Object.keys(actual).sort()).toEqual(keys);
-  for (const key of keys) exact(Reflect.get(actual, key), Reflect.get(expected, key));
+  for (const key of keys)
+    exact(Reflect.get(actual, key), Reflect.get(expected, key));
 };
 
 const paragraph = (paraId: string, text = "cell"): Paragraph => ({
   type: "paragraph",
   paraId,
-  content: text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+  content:
+    text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
 });
 
 const tableOf = (): Table => ({
@@ -61,16 +71,27 @@ const tableOf = (): Table => ({
 
 const documentOf = (table: Table): Document => ({
   package: {
-    document: { content: [paragraph("00000001", "before"), table, paragraph("00000002", "after")] },
+    document: {
+      content: [
+        paragraph("00000001", "before"),
+        table,
+        paragraph("00000002", "after"),
+      ],
+    },
   },
 });
 const tableIn = (document: Document): Table => {
   const block = document.package.document.content.at(1);
-  if (block?.type !== "table") throw new Error("The table remains at the fixture position.");
+  if (block?.type !== "table")
+    throw new Error("The table remains at the fixture position.");
   return block;
 };
 const tableTarget = { story: OP_STORIES.MAIN, blockId: "00000010" } as const;
-const revision = (id: number) => ({ id, author: "Reviewer", date: "2026-10-02T10:00:00Z" });
+const revision = (id: number) => ({
+  id,
+  author: "Reviewer",
+  date: "2026-10-02T10:00:00Z",
+});
 const propertyEdit = (
   kind: "table" | "row" | "cell",
   stamp?: ReturnType<typeof revision>,
@@ -129,7 +150,8 @@ const resolved = (
 const refused = (document: Document, op: DocumentOp, reason: string) => {
   const before = structuredClone(document);
   const result = applyDocumentOp(document, op);
-  if (result.isOk()) throw new Error(`Expected ${reason} refusal for ${op.type}.`);
+  if (result.isOk())
+    throw new Error(`Expected ${reason} refusal for ${op.type}.`);
   expect(result.error.reason).toBe(reason);
   exact(document, before);
 };
@@ -143,24 +165,40 @@ describe("tracked table edits", () => {
       const operation = propertyEdit(kind);
       const direct = applied(baseline, operation);
       const directlyEdited = tableIn(direct.document);
-      if (kind === "table") expect(directlyEdited.formatting?.styleId).toBe("tracked");
-      if (kind === "row") expect(directlyEdited.rows.at(0)?.formatting?.cantSplit).toBe(true);
+      if (kind === "table")
+        expect(directlyEdited.formatting?.styleId).toBe("tracked");
+      if (kind === "row")
+        expect(directlyEdited.rows.at(0)?.formatting?.cantSplit).toBe(true);
       if (kind === "cell")
-        expect(directlyEdited.rows.at(0)?.cells.at(0)?.formatting?.noWrap).toBe(true);
+        expect(directlyEdited.rows.at(0)?.cells.at(0)?.formatting?.noWrap).toBe(
+          true,
+        );
       const trackedOperation = propertyEdit(kind, revision(id));
       const tracked = applied(baseline, trackedOperation);
       const pending = tableIn(tracked.document);
       if (kind === "table")
-        expect(pending.propertyChanges?.at(0)?.type).toBe("tablePropertyChange");
-      if (kind === "row")
-        expect(pending.rows.at(0)?.propertyChanges?.at(0)?.type).toBe("tableRowPropertyChange");
-      if (kind === "cell")
-        expect(pending.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)?.type).toBe(
-          "tableCellPropertyChange",
+        expect(pending.propertyChanges?.at(0)?.type).toBe(
+          "tablePropertyChange",
         );
-      const rejected = resolved(tracked.document, [id], REVISION_DECISIONS.REJECT);
+      if (kind === "row")
+        expect(pending.rows.at(0)?.propertyChanges?.at(0)?.type).toBe(
+          "tableRowPropertyChange",
+        );
+      if (kind === "cell")
+        expect(
+          pending.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)?.type,
+        ).toBe("tableCellPropertyChange");
+      const rejected = resolved(
+        tracked.document,
+        [id],
+        REVISION_DECISIONS.REJECT,
+      );
       exact(rejected.document, baseline);
-      const accepted = resolved(tracked.document, [id], REVISION_DECISIONS.ACCEPT);
+      const accepted = resolved(
+        tracked.document,
+        [id],
+        REVISION_DECISIONS.ACCEPT,
+      );
       exact(accepted.document, direct.document);
     },
   );
@@ -184,9 +222,14 @@ describe("tracked table edits", () => {
       id: 400,
       columnWidths: [500, 600, 700],
     });
-    exact(resolved(tracked.document, [400, 401], REVISION_DECISIONS.REJECT).document, baseline);
     exact(
-      resolved(tracked.document, [400, 401], REVISION_DECISIONS.ACCEPT).document,
+      resolved(tracked.document, [400, 401], REVISION_DECISIONS.REJECT)
+        .document,
+      baseline,
+    );
+    exact(
+      resolved(tracked.document, [400, 401], REVISION_DECISIONS.ACCEPT)
+        .document,
       direct.document,
     );
   });
@@ -197,7 +240,8 @@ describe("tracked table edits", () => {
       const table = tableOf();
       if (formattingKind === "absent") delete table.formatting;
       if (formattingKind === "empty") table.formatting = {};
-      if (formattingKind === "sourceXml") table.formatting = { sourceXml: "<w:tblPr/>" };
+      if (formattingKind === "sourceXml")
+        table.formatting = { sourceXml: "<w:tblPr/>" };
       const baseline = documentOf(table);
       const operation = {
         ...tableTarget,
@@ -210,9 +254,17 @@ describe("tracked table edits", () => {
         revision: revision(410),
         newIds: { revision: [411] },
       } satisfies DocumentOp);
-      const rejected = resolved(tracked.document, [410, 411], REVISION_DECISIONS.REJECT);
+      const rejected = resolved(
+        tracked.document,
+        [410, 411],
+        REVISION_DECISIONS.REJECT,
+      );
       exact(rejected.document, baseline);
-      const accepted = resolved(tracked.document, [410, 411], REVISION_DECISIONS.ACCEPT);
+      const accepted = resolved(
+        tracked.document,
+        [410, 411],
+        REVISION_DECISIONS.ACCEPT,
+      );
       exact(accepted.document, direct.document);
     },
   );
@@ -260,11 +312,19 @@ describe("tracked table edits", () => {
       newIds: { revision: [501, 502, 503] },
     });
     exact(
-      resolved(tracked.document, [500, 501, 502, 503], REVISION_DECISIONS.REJECT).document,
+      resolved(
+        tracked.document,
+        [500, 501, 502, 503],
+        REVISION_DECISIONS.REJECT,
+      ).document,
       baseline,
     );
     exact(
-      resolved(tracked.document, [500, 501, 502, 503], REVISION_DECISIONS.ACCEPT).document,
+      resolved(
+        tracked.document,
+        [500, 501, 502, 503],
+        REVISION_DECISIONS.ACCEPT,
+      ).document,
       direct.document,
     );
   });
@@ -290,11 +350,19 @@ describe("tracked table edits", () => {
         newIds: { revision: [431, 432, 433] },
       } satisfies DocumentOp);
       exact(
-        resolved(tracked.document, [430, 431, 432, 433], REVISION_DECISIONS.REJECT).document,
+        resolved(
+          tracked.document,
+          [430, 431, 432, 433],
+          REVISION_DECISIONS.REJECT,
+        ).document,
         baseline,
       );
       exact(
-        resolved(tracked.document, [430, 431, 432, 433], REVISION_DECISIONS.ACCEPT).document,
+        resolved(
+          tracked.document,
+          [430, 431, 432, 433],
+          REVISION_DECISIONS.ACCEPT,
+        ).document,
         direct.document,
       );
     },
@@ -317,11 +385,19 @@ describe("tracked table edits", () => {
       newIds: { revision: [601, 602, 603] },
     });
     exact(
-      resolved(tracked.document, [600, 601, 602, 603], REVISION_DECISIONS.REJECT).document,
+      resolved(
+        tracked.document,
+        [600, 601, 602, 603],
+        REVISION_DECISIONS.REJECT,
+      ).document,
       baseline,
     );
     exact(
-      resolved(tracked.document, [600, 601, 602, 603], REVISION_DECISIONS.ACCEPT).document,
+      resolved(
+        tracked.document,
+        [600, 601, 602, 603],
+        REVISION_DECISIONS.ACCEPT,
+      ).document,
       direct.document,
     );
   });
@@ -332,7 +408,8 @@ describe("tracked table edits", () => {
     if (firstRow === undefined) throw new Error("The fixture has a first row.");
     const first = firstRow.cells.at(0);
     const last = firstRow.cells.at(2);
-    if (first === undefined || last === undefined) throw new Error("The fixture cells exist.");
+    if (first === undefined || last === undefined)
+      throw new Error("The fixture cells exist.");
     baseTable.rows[0] = {
       ...firstRow,
       cells: [{ ...first, formatting: { gridSpan: 2 } }, last],
@@ -344,7 +421,9 @@ describe("tracked table edits", () => {
       newBlockIds: ["00000303"],
     });
     expect(tableIn(direct.document).rows.at(0)?.cells).toHaveLength(3);
-    expect(tableIn(direct.document).rows.at(0)?.cells.at(0)?.formatting?.gridSpan).toBeUndefined();
+    expect(
+      tableIn(direct.document).rows.at(0)?.cells.at(0)?.formatting?.gridSpan,
+    ).toBeUndefined();
     const tracked = applied(baseline, {
       ...tableTarget,
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
@@ -352,9 +431,14 @@ describe("tracked table edits", () => {
       revision: revision(650),
       newIds: { revision: [651] },
     });
-    exact(resolved(tracked.document, [650, 651], REVISION_DECISIONS.REJECT).document, baseline);
     exact(
-      resolved(tracked.document, [650, 651], REVISION_DECISIONS.ACCEPT).document,
+      resolved(tracked.document, [650, 651], REVISION_DECISIONS.REJECT)
+        .document,
+      baseline,
+    );
+    exact(
+      resolved(tracked.document, [650, 651], REVISION_DECISIONS.ACCEPT)
+        .document,
       direct.document,
     );
   });
@@ -370,7 +454,8 @@ describe("tracked table edits", () => {
         else delete cell.formatting;
       }
       const second = table.rows.at(1)?.cells.at(0);
-      if (second === undefined) throw new Error("The continuation cell exists.");
+      if (second === undefined)
+        throw new Error("The continuation cell exists.");
       second.content = [paragraph("00000020", "")];
       const baseline = documentOf(table);
       const direct = applied(baseline, {
@@ -409,30 +494,61 @@ describe("tracked table edits", () => {
       const continuationMergeId = continuation.structuralChange.info.id;
       const continuationPropertyId = continuationProperty.info.id;
 
-      for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
-        const propertyResolved = resolved(tracked.document, [ownerPropertyId], decision);
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const propertyResolved = resolved(
+          tracked.document,
+          [ownerPropertyId],
+          decision,
+        );
         const partialTable = tableIn(propertyResolved.document);
-        expect(partialTable.rows.at(0)?.cells.at(0)?.structuralChange?.info.id).toBe(ownerMergeId);
-        expect(partialTable.rows.at(0)?.cells.at(0)?.propertyChanges).toBeUndefined();
-        expect(partialTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
-        expect(tableGrid(partialTable, DOCUMENT_OP_TYPES.MERGE_CELLS).isOk()).toBe(true);
+        expect(
+          partialTable.rows.at(0)?.cells.at(0)?.structuralChange?.info.id,
+        ).toBe(ownerMergeId);
+        expect(
+          partialTable.rows.at(0)?.cells.at(0)?.propertyChanges,
+        ).toBeUndefined();
+        expect(partialTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+          "restart",
+        );
+        expect(
+          tableGrid(partialTable, DOCUMENT_OP_TYPES.MERGE_CELLS).isOk(),
+        ).toBe(true);
 
-        const remaining = [ownerMergeId, continuationMergeId, continuationPropertyId];
+        const remaining = [
+          ownerMergeId,
+          continuationMergeId,
+          continuationPropertyId,
+        ];
         const final = resolved(propertyResolved.document, remaining, decision);
-        if (decision === REVISION_DECISIONS.ACCEPT) exact(final.document, direct.document);
+        if (decision === REVISION_DECISIONS.ACCEPT)
+          exact(final.document, direct.document);
         else if (formattingKind === "absent") exact(final.document, baseline);
         else {
           // OOXML has no distinction between absent and empty formatting once its tcPrChange was resolved alone.
           const rejectedTable = tableIn(final.document);
-          expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
-          expect(rejectedTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
-          expect(tableGrid(rejectedTable, DOCUMENT_OP_TYPES.MERGE_CELLS).isOk()).toBe(true);
+          expect(
+            rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+          ).toBeUndefined();
+          expect(
+            rejectedTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge,
+          ).toBeUndefined();
+          expect(
+            tableGrid(rejectedTable, DOCUMENT_OP_TYPES.MERGE_CELLS).isOk(),
+          ).toBe(true);
         }
       }
       exact(
         resolved(
           tracked.document,
-          [ownerMergeId, ownerPropertyId, continuationMergeId, continuationPropertyId],
+          [
+            ownerMergeId,
+            ownerPropertyId,
+            continuationMergeId,
+            continuationPropertyId,
+          ],
           REVISION_DECISIONS.REJECT,
         ).document,
         baseline,
@@ -440,7 +556,12 @@ describe("tracked table edits", () => {
       exact(
         resolved(
           tracked.document,
-          [ownerMergeId, ownerPropertyId, continuationMergeId, continuationPropertyId],
+          [
+            ownerMergeId,
+            ownerPropertyId,
+            continuationMergeId,
+            continuationPropertyId,
+          ],
           REVISION_DECISIONS.ACCEPT,
         ).document,
         direct.document,
@@ -452,7 +573,8 @@ describe("tracked table edits", () => {
     const table = tableOf();
     const first = table.rows.at(0)?.cells.at(0);
     const second = table.rows.at(1)?.cells.at(0);
-    if (first === undefined || second === undefined) throw new Error("The merge cells exist.");
+    if (first === undefined || second === undefined)
+      throw new Error("The merge cells exist.");
     first.formatting = { vMerge: "restart" };
     second.formatting = { vMerge: "continue" };
     second.structuralChange = {
@@ -463,11 +585,19 @@ describe("tracked table edits", () => {
     };
     const baseline = documentOf(table);
     const accepted = resolved(baseline, [700], REVISION_DECISIONS.ACCEPT);
-    expect(tableIn(accepted.document).rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBe("continue");
-    expect(tableIn(accepted.document).rows.at(1)?.cells.at(0)?.structuralChange).toBeUndefined();
+    expect(
+      tableIn(accepted.document).rows.at(1)?.cells.at(0)?.formatting?.vMerge,
+    ).toBe("continue");
+    expect(
+      tableIn(accepted.document).rows.at(1)?.cells.at(0)?.structuralChange,
+    ).toBeUndefined();
     const rejected = resolved(baseline, [700], REVISION_DECISIONS.REJECT);
-    expect(tableIn(rejected.document).rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
-    expect(tableIn(rejected.document).rows.at(1)?.cells.at(0)?.structuralChange).toBeUndefined();
+    expect(
+      tableIn(rejected.document).rows.at(1)?.cells.at(0)?.formatting?.vMerge,
+    ).toBe("restart");
+    expect(
+      tableIn(rejected.document).rows.at(1)?.cells.at(0)?.structuralChange,
+    ).toBeUndefined();
   });
 
   test("stale table inverses and incomplete cell-column revisions refuse atomically", () => {
@@ -488,7 +618,10 @@ describe("tracked table edits", () => {
     const markedTable = tableIn(malformed);
     const cell = markedTable.rows.at(0)?.cells.at(1);
     if (cell === undefined) throw new Error("The target cell exists.");
-    cell.structuralChange = { type: "tableCellDeletion", info: { id: 800, author: "Reviewer" } };
+    cell.structuralChange = {
+      type: "tableCellDeletion",
+      info: { id: 800, author: "Reviewer" },
+    };
     refused(
       malformed,
       {
@@ -536,14 +669,20 @@ test("imported grid and table property histories resolve with the selected basel
         );
         const after = tableIn(result.document);
         let expectedWidth = currentWidth;
-        if (reject) expectedWidth = selectBoth ? originalWidth : intermediateWidth;
+        if (reject)
+          expectedWidth = selectBoth ? originalWidth : intermediateWidth;
         expect(after.formatting?.width).toBe(expectedWidth);
         expect(after.formatting?.gridChange).toBeUndefined();
-        expect(after.columnWidths).toEqual(reject ? [510, 610, 710] : [500, 600, 700]);
+        expect(after.columnWidths).toEqual(
+          reject ? [510, 610, 710] : [500, 600, 700],
+        );
         expect(after.propertyChanges?.map(({ info }) => info.id) ?? []).toEqual(
           selectBoth ? [] : [501],
         );
-        exact(applyDocumentOps(result.document, result.inverse).unwrap().document, before);
+        exact(
+          applyDocumentOps(result.document, result.inverse).unwrap().document,
+          before,
+        );
       },
     ),
     {

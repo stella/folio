@@ -22,7 +22,10 @@ export type CliCommand = {
  * binary on the desktop; `ELECTRON_RUN_AS_NODE` makes it behave as Node.js. A
  * remote extension host already runs plain Node.js, which ignores the variable.
  */
-export const cliCommand = (runtime: CliRuntime, args: readonly string[]): CliCommand => ({
+export const cliCommand = (
+  runtime: CliRuntime,
+  args: readonly string[],
+): CliCommand => ({
   command: runtime.nodePath,
   args: [runtime.cliEntry, ...args],
   env: { ELECTRON_RUN_AS_NODE: "1" },

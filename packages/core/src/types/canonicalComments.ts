@@ -1,6 +1,7 @@
 import type { OpStory } from "@stll/docx-core/ops";
-import type { Comment } from "./content";
+
 import type { CanonicalGap } from "./canonicalCapabilities";
+import type { Comment } from "./content";
 
 /** Requests name their anchor; comment metadata never creates an unanchored root. */
 export type CanonicalCommentRequest =

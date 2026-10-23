@@ -10,6 +10,7 @@
 
 import fc from "fast-check";
 
+import { finalizeParagraphFormatting } from "../../model/canonical";
 import type {
   BlockContent,
   Document,
@@ -28,10 +29,8 @@ import type {
   TextFormatting,
   TrackedRunContent,
 } from "../../model/document";
-import { finalizeParagraphFormatting } from "../../model/canonical";
 import { paragraphNumberingReference } from "../../model/paragraphNumbering";
-import { captureDocumentOp } from "../wire";
-import { storyParagraphs, storyBody } from "../blocks";
+import { storyBody, storyParagraphs } from "../blocks";
 import { normalizeForOps } from "../contract";
 import { IDENTITY_SPACES, packageIdentityKeys, paragraphIdsIn } from "../ids";
 import { deleteBetween } from "../inline";
@@ -41,9 +40,9 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type DocumentOpType,
-  type OpStory,
   INHERIT_RUN_PROPS,
   OP_STORIES,
+  type OpStory,
   type ParagraphPropsPatch,
   type RevisionStamp,
   type RunPropsPatch,
@@ -51,8 +50,10 @@ import {
   type SplitParagraphFields,
   type TextPosition,
 } from "../types";
+import { captureDocumentOp } from "../wire";
 
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 // Includes a surrogate pair, so positions inside one are generated too.
 const textArbitrary = fc
@@ -63,18 +64,20 @@ const nonEmptyTextArbitrary = fc
   .array(fc.constantFrom("x", "y", "ü", "😀"), { minLength: 1, maxLength: 3 })
   .map((parts) => parts.join(""));
 
-const preservedAttributesArbitrary: fc.Arbitrary<PreservedAttribute[]> = fc.array(
-  fc.record({
-    namespace: fc.constant(W_NAMESPACE),
-    name: fc.constantFrom("rsidR", "rsidRPr", "rsidDel"),
-    value: fc.constantFrom("00A1B2C3", "00FF0011"),
-  }),
-  { minLength: 1, maxLength: 2 },
-);
+const preservedAttributesArbitrary: fc.Arbitrary<PreservedAttribute[]> =
+  fc.array(
+    fc.record({
+      namespace: fc.constant(W_NAMESPACE),
+      name: fc.constantFrom("rsidR", "rsidRPr", "rsidDel"),
+      value: fc.constantFrom("00A1B2C3", "00FF0011"),
+    }),
+    { minLength: 1, maxLength: 2 },
+  );
 
-const paragraphPreservedMarkup: NonNullable<ParagraphFormatting["preserved"]> = {
-  children: [{ index: 3, xml: "<w:suppressOverlap/>" }],
-};
+const paragraphPreservedMarkup: NonNullable<ParagraphFormatting["preserved"]> =
+  {
+    children: [{ index: 3, xml: "<w:suppressOverlap/>" }],
+  };
 
 export const textFormattingArbitrary: fc.Arbitrary<TextFormatting> = fc.record(
   {
@@ -82,12 +85,16 @@ export const textFormattingArbitrary: fc.Arbitrary<TextFormatting> = fc.record(
     italic: fc.boolean(),
     fontSize: fc.integer({ min: 16, max: 28 }),
     styleId: fc.constantFrom("Emphasis", "Strong"),
-    preserved: fc.constant({ children: [{ index: 38, xml: "<w:webHidden/>" }] }),
+    preserved: fc.constant({
+      children: [{ index: 38, xml: "<w:webHidden/>" }],
+    }),
   },
   { requiredKeys: [] },
 );
 
-const paragraphFormattingArbitrary: fc.Arbitrary<ParagraphFormatting | undefined> = fc
+const paragraphFormattingArbitrary: fc.Arbitrary<
+  ParagraphFormatting | undefined
+> = fc
   .record(
     {
       alignment: fc.constantFrom("start", "center", "end"),
@@ -96,9 +103,12 @@ const paragraphFormattingArbitrary: fc.Arbitrary<ParagraphFormatting | undefined
       styleId: fc.constantFrom("Heading1", "BodyText"),
       runProperties: textFormattingArbitrary,
       preserved: fc.constant(paragraphPreservedMarkup),
-      numPr: fc.option(fc.constant(paragraphNumberingReference({ numId: 1, ilvl: 0 })), {
-        nil: undefined,
-      }),
+      numPr: fc.option(
+        fc.constant(paragraphNumberingReference({ numId: 1, ilvl: 0 })),
+        {
+          nil: undefined,
+        },
+      ),
     },
     { requiredKeys: [] },
   )
@@ -114,7 +124,13 @@ const ATOM_RUN_CONTENT: readonly RunContent[] = [
 ];
 
 const runContentArbitrary: fc.Arbitrary<RunContent> = fc.oneof(
-  { weight: 6, arbitrary: textArbitrary.map((text): RunContent => ({ type: "text", text })) },
+  {
+    weight: 6,
+    arbitrary: textArbitrary.map((text): RunContent => ({
+      type: "text",
+      text,
+    })),
+  },
   { weight: 2, arbitrary: fc.constantFrom(...ATOM_RUN_CONTENT) },
 );
 
@@ -151,7 +167,10 @@ const bookmarkStartArbitrary = markerId.map((id): ParagraphContent => ({
   id,
   name: `_Ref${id}`,
 }));
-const bookmarkEndArbitrary = markerId.map((id): ParagraphContent => ({ type: "bookmarkEnd", id }));
+const bookmarkEndArbitrary = markerId.map((id): ParagraphContent => ({
+  type: "bookmarkEnd",
+  id,
+}));
 
 const markerArbitrary: fc.Arbitrary<ParagraphContent> = fc.oneof(
   bookmarkStartArbitrary,
@@ -169,7 +188,12 @@ const markerArbitrary: fc.Arbitrary<ParagraphContent> = fc.oneof(
 
 const ATOMS: readonly ParagraphContent[] = [
   { type: "commentReference", id: 7 },
-  { type: "mathEquation", display: "inline", ommlXml: "<m:oMath/>", plainText: "x" },
+  {
+    type: "mathEquation",
+    display: "inline",
+    ommlXml: "<m:oMath/>",
+    plainText: "x",
+  },
   {
     type: "simpleField",
     instruction: "PAGE",
@@ -180,10 +204,16 @@ const ATOMS: readonly ParagraphContent[] = [
     type: "complexField",
     instruction: "DATE",
     fieldType: "DATE",
-    fieldCode: [{ type: "run", content: [{ type: "instrText", text: " DATE " }] }],
+    fieldCode: [
+      { type: "run", content: [{ type: "instrText", text: " DATE " }] },
+    ],
     fieldResult: [{ type: "run", content: [{ type: "text", text: "today" }] }],
   },
-  { type: "preservedInline", xml: "<w:proofErr w:type='spellStart'/>", text: "" },
+  {
+    type: "preservedInline",
+    xml: "<w:proofErr w:type='spellStart'/>",
+    text: "",
+  },
   { type: "preservedInline", xml: "<w:customXml/>", text: "c" },
 ];
 
@@ -192,11 +222,19 @@ const atomArbitrary = fc.constantFrom(...ATOMS);
 const runItem = runArbitrary.map((run): ParagraphContent => run);
 
 const wrapperArbitrary: fc.Arbitrary<InlineWrapper> = fc
-  .array(fc.oneof({ weight: 4, arbitrary: runItem }, markerArbitrary, atomArbitrary), {
-    minLength: 1,
-    maxLength: 3,
-  })
-  .map((content) => ({ type: "inlineWrapper", kind: "bidi", control: "embedding", content }));
+  .array(
+    fc.oneof({ weight: 4, arbitrary: runItem }, markerArbitrary, atomArbitrary),
+    {
+      minLength: 1,
+      maxLength: 3,
+    },
+  )
+  .map((content) => ({
+    type: "inlineWrapper",
+    kind: "bidi",
+    control: "embedding",
+    content,
+  }));
 
 type HyperlinkChild = Hyperlink["children"][number];
 
@@ -204,12 +242,21 @@ const hyperlinkArbitrary: fc.Arbitrary<Hyperlink> = fc
   .array(
     fc.oneof(
       { weight: 4, arbitrary: runArbitrary.map((run): HyperlinkChild => run) },
-      markerId.map((id): HyperlinkChild => ({ type: "bookmarkStart", id, name: "_Link" })),
+      markerId.map((id): HyperlinkChild => ({
+        type: "bookmarkStart",
+        id,
+        name: "_Link",
+      })),
       wrapperArbitrary,
     ),
     { minLength: 1, maxLength: 3 },
   )
-  .map((children) => ({ type: "hyperlink", rId: "rId9", href: "https://example.org", children }));
+  .map((children) => ({
+    type: "hyperlink",
+    rId: "rId9",
+    href: "https://example.org",
+    children,
+  }));
 
 const trackedContentArbitrary: fc.Arbitrary<TrackedRunContent[]> = fc.array(
   fc.oneof(
@@ -236,7 +283,10 @@ const trackedArbitrary: fc.Arbitrary<ParagraphContent> = fc
 const inlineSdtArbitrary: fc.Arbitrary<InlineSdt> = fc
   .array(
     fc.oneof(
-      { weight: 4, arbitrary: runArbitrary.map((run): InlineSdt["content"][number] => run) },
+      {
+        weight: 4,
+        arbitrary: runArbitrary.map((run): InlineSdt["content"][number] => run),
+      },
       hyperlinkArbitrary,
     ),
     { minLength: 1, maxLength: 3 },
@@ -249,8 +299,14 @@ const inlineSdtArbitrary: fc.Arbitrary<InlineSdt> = fc
 
 // Two runs alike in everything but their text, as a producer splitting one writes them.
 const alikeRunsArbitrary = fc
-  .tuple(runArbitrary, fc.array(runContentArbitrary, { minLength: 1, maxLength: 2 }))
-  .map(([run, content]): ParagraphContent[] => [run, Object.assign({}, run, { content })]);
+  .tuple(
+    runArbitrary,
+    fc.array(runContentArbitrary, { minLength: 1, maxLength: 2 }),
+  )
+  .map(([run, content]): ParagraphContent[] => [
+    run,
+    Object.assign({}, run, { content }),
+  ]);
 
 const paragraphContentArbitrary: fc.Arbitrary<ParagraphContent[]> = fc
   .array(
@@ -259,10 +315,23 @@ const paragraphContentArbitrary: fc.Arbitrary<ParagraphContent[]> = fc
       { weight: 2, arbitrary: alikeRunsArbitrary },
       { weight: 2, arbitrary: markerArbitrary.map((marker) => [marker]) },
       { weight: 1, arbitrary: atomArbitrary.map((atom) => [atom]) },
-      { weight: 1, arbitrary: hyperlinkArbitrary.map((link): ParagraphContent[] => [link]) },
+      {
+        weight: 1,
+        arbitrary: hyperlinkArbitrary.map((link): ParagraphContent[] => [link]),
+      },
       { weight: 1, arbitrary: trackedArbitrary.map((change) => [change]) },
-      { weight: 1, arbitrary: wrapperArbitrary.map((wrapper): ParagraphContent[] => [wrapper]) },
-      { weight: 1, arbitrary: inlineSdtArbitrary.map((control): ParagraphContent[] => [control]) },
+      {
+        weight: 1,
+        arbitrary: wrapperArbitrary.map((wrapper): ParagraphContent[] => [
+          wrapper,
+        ]),
+      },
+      {
+        weight: 1,
+        arbitrary: inlineSdtArbitrary.map((control): ParagraphContent[] => [
+          control,
+        ]),
+      },
     ),
     { maxLength: 5 },
   )
@@ -293,7 +362,12 @@ const paragraphFields = {
   ]),
   pPrMark: trackedInfoArbitrary.map((info) => ({ kind: "ins" as const, info })),
   renderedPageBreakBefore: fc.constant(true),
-  listRendering: fc.constant({ marker: "1.", level: 0, numId: 1, isBullet: false }),
+  listRendering: fc.constant({
+    marker: "1.",
+    level: 0,
+    numId: 1,
+    isBullet: false,
+  }),
 };
 
 type ParagraphBeforeCanonicalization = Omit<Paragraph, "formatting"> & {
@@ -329,7 +403,10 @@ const paragraphArbitrary: fc.Arbitrary<Paragraph> = fc.oneof(
   },
 );
 
-const nestedParagraphs = fc.array(paragraphArbitrary, { minLength: 1, maxLength: 2 });
+const nestedParagraphs = fc.array(paragraphArbitrary, {
+  minLength: 1,
+  maxLength: 2,
+});
 
 const blockArbitrary: fc.Arbitrary<BlockContent> = fc.oneof(
   { weight: 8, arbitrary: paragraphArbitrary },
@@ -360,18 +437,28 @@ const blockArbitrary: fc.Arbitrary<BlockContent> = fc.oneof(
   },
   {
     weight: 1,
-    arbitrary: fc.constant<BlockContent>({ type: "preservedBlock", xml: "<w:altChunk/>" }),
+    arbitrary: fc.constant<BlockContent>({
+      type: "preservedBlock",
+      xml: "<w:altChunk/>",
+    }),
   },
   {
     weight: 1,
-    arbitrary: fc.constant<BlockContent>({ type: "bookmarkStart", id: 90, name: "_GoBack" }),
+    arbitrary: fc.constant<BlockContent>({
+      type: "bookmarkStart",
+      id: 90,
+      name: "_GoBack",
+    }),
   },
 );
 
-const toHexId = (value: number): string => value.toString(16).toUpperCase().padStart(8, "0");
+const toHexId = (value: number): string =>
+  value.toString(16).toUpperCase().padStart(8, "0");
 
 /** Name every paragraph in the block tree, in document order, from `0x00000001`. */
-const assignParagraphIds = (blocks: readonly BlockContent[]): BlockContent[] => {
+const assignParagraphIds = (
+  blocks: readonly BlockContent[],
+): BlockContent[] => {
   let next = 1;
   const name = (list: readonly BlockContent[]): BlockContent[] =>
     list.map((block): BlockContent => {
@@ -383,7 +470,10 @@ const assignParagraphIds = (blocks: readonly BlockContent[]): BlockContent[] => 
             ...block,
             rows: block.rows.map((row) => ({
               ...row,
-              cells: row.cells.map((cell) => ({ ...cell, content: name(cell.content) })),
+              cells: row.cells.map((cell) => ({
+                ...cell,
+                content: name(cell.content),
+              })),
             })),
           };
         case "blockSdt":
@@ -432,7 +522,8 @@ const withUniqueRecordIds = (
     return value;
   }
   const out: Record<string, unknown> = {};
-  for (const [key, field] of Object.entries(value)) out[key] = withUniqueRecordIds(field, next);
+  for (const [key, field] of Object.entries(value))
+    out[key] = withUniqueRecordIds(field, next);
   const info = out["info"];
   if (
     typeof info === "object" &&
@@ -463,10 +554,14 @@ const reviewValid = (
   choices: readonly number[],
 ): BlockContent[] => {
   let drawn = 0;
-  const choose = (): number => choices[drawn++ % Math.max(1, choices.length)] ?? 0;
+  const choose = (): number =>
+    choices[drawn++ % Math.max(1, choices.length)] ?? 0;
   let nestedId = NESTED_REVISION_IDS;
   const nestDeletion = (item: ParagraphContent): ParagraphContent => {
-    if ((item.type !== "insertion" && item.type !== "moveTo") || choose() % 2 !== 0) {
+    if (
+      (item.type !== "insertion" && item.type !== "moveTo") ||
+      choose() % 2 !== 0
+    ) {
       return item;
     }
     const [first, ...rest] = item.content;
@@ -480,16 +575,28 @@ const reviewValid = (
     };
     return { ...item, content: [deletion, ...rest] };
   };
-  const visit = (list: readonly BlockContent[], endsContainer: boolean): BlockContent[] =>
+  const visit = (
+    list: readonly BlockContent[],
+    endsContainer: boolean,
+  ): BlockContent[] =>
     list.map((block, index): BlockContent => {
       const last = index === list.length - 1;
       switch (block.type) {
         case "paragraph": {
-          const paragraph: Paragraph = { ...block, content: block.content.map(nestDeletion) };
+          const paragraph: Paragraph = {
+            ...block,
+            content: block.content.map(nestDeletion),
+          };
           const mark = paragraph.pPrMark;
           if (mark === undefined) return paragraph;
-          paragraph.pPrMark = { ...mark, kind: REVIEW_MARK_KINDS[choose() % 4] ?? "ins" };
-          if ((last && endsContainer) || paragraph.sectionProperties !== undefined) {
+          paragraph.pPrMark = {
+            ...mark,
+            kind: REVIEW_MARK_KINDS[choose() % 4] ?? "ins",
+          };
+          if (
+            (last && endsContainer) ||
+            paragraph.sectionProperties !== undefined
+          ) {
             delete paragraph.pPrMark;
           }
           return paragraph;
@@ -499,11 +606,17 @@ const reviewValid = (
             ...block,
             rows: block.rows.map((row) => ({
               ...row,
-              cells: row.cells.map((cell) => ({ ...cell, content: visit(cell.content, true) })),
+              cells: row.cells.map((cell) => ({
+                ...cell,
+                content: visit(cell.content, true),
+              })),
             })),
           };
         case "blockSdt":
-          return { ...block, content: visit(block.content, last && endsContainer) };
+          return {
+            ...block,
+            content: visit(block.content, last && endsContainer),
+          };
         default:
           return block;
       }
@@ -541,10 +654,17 @@ const documentArbitraryIn = (mode: DocumentMode): fc.Arbitrary<Document> =>
  * independently built, structurally equal copy in the view. Paragraphs in a
  * comment and a note share the id space.
  */
-const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document => {
-  const content = normalizeForOps({ package: { document: { content: blocks } } }).package.document
-    .content;
-  const finalSectionProperties: SectionProperties = { pageWidth: 12240, pageHeight: 15840 };
+const documentFrom = (
+  blocks: BlockContent[],
+  shareSections: boolean,
+): Document => {
+  const content = normalizeForOps({
+    package: { document: { content: blocks } },
+  }).package.document.content;
+  const finalSectionProperties: SectionProperties = {
+    pageWidth: 12240,
+    pageHeight: 15840,
+  };
   const sections = buildSections(content, finalSectionProperties);
   const body: DocumentBody = {
     content,
@@ -566,7 +686,10 @@ const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document 
       )
         ? {
             abstractNums: [
-              { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+              {
+                abstractNumId: 1,
+                levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+              },
             ],
             nums: [{ numId: 1, abstractNumId: 1 }],
           }
@@ -586,14 +709,16 @@ const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document 
 };
 
 /** Synthetic documents meeting the seed contract, marks and tracked changes of every shape. */
-export const documentArbitrary: fc.Arbitrary<Document> = documentArbitraryIn("any");
+export const documentArbitrary: fc.Arbitrary<Document> =
+  documentArbitraryIn("any");
 
 /**
  * Review-valid synthetic documents: as {@link documentArbitrary}, with marks
  * of every kind but none on a paragraph that ends its container or a
  * section, and deletions nested in insertions.
  */
-export const reviewDocumentArbitrary: fc.Arbitrary<Document> = documentArbitraryIn("review");
+export const reviewDocumentArbitrary: fc.Arbitrary<Document> =
+  documentArbitraryIn("review");
 
 /** A structurally equal copy that shares no record with its source. */
 export const independentCopy = <Value>(value: Value): Value => {
@@ -634,7 +759,9 @@ const runPatchArbitrary: fc.Arbitrary<RunPropsPatch> = fc.record(
 
 const paragraphPatchArbitrary: fc.Arbitrary<ParagraphPropsPatch> = fc.record(
   {
-    alignment: fc.option(fc.constantFrom("start" as const, "center" as const), { nil: null }),
+    alignment: fc.option(fc.constantFrom("start" as const, "center" as const), {
+      nil: null,
+    }),
     keepNext: fc.option(fc.boolean(), { nil: null }),
     styleId: fc.option(fc.constant("Heading2"), { nil: null }),
   },
@@ -724,7 +851,11 @@ const rawOpFor = (document: Document, seed: OpSeed): DocumentOp =>
   opForStory({ document, seed, story: OP_STORIES.MAIN });
 
 type StoryOpArgs = { document: Document; seed: OpSeed; story: OpStory };
-export const opForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp =>
+export const opForStory = ({
+  document,
+  seed,
+  story,
+}: StoryOpArgs): DocumentOp =>
   captureDocumentOp(rawOpForStory({ document, seed, story }));
 
 const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
@@ -736,7 +867,10 @@ const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
   const { paragraph } = target;
   const blockId = paragraph.paraId ?? "";
   const length = paragraphLength(paragraph);
-  const position = (offset: number, zeroWidth: number | undefined): TextPosition => {
+  const position = (
+    offset: number,
+    zeroWidth: number | undefined,
+  ): TextPosition => {
     const base = { story, blockId, offset };
     if (zeroWidth === undefined) {
       return base;
@@ -749,7 +883,8 @@ const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
   const from = position(Math.min(first, second), seed.zeroWidth?.first);
   const to = position(Math.max(first, second), seed.zeroWidth?.second);
   const at = position(seed.third % (length + 1), seed.zeroWidth?.first);
-  const kind = OP_KINDS[seed.kind % OP_KINDS.length] ?? DOCUMENT_OP_TYPES.INSERT_TEXT;
+  const kind =
+    OP_KINDS[seed.kind % OP_KINDS.length] ?? DOCUMENT_OP_TYPES.INSERT_TEXT;
   // One operation in five names no new ids, so a cut through an identified
   // record is refused for want of them.
   const ids =
@@ -830,7 +965,10 @@ const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
       // One split in three names the new half instead of taking the default.
       const newHalf =
         seed.depth % 3 === 0
-          ? { newHalf: seed.first % 2 === 0 ? SPLIT_HALVES.FIRST : SPLIT_HALVES.SECOND }
+          ? {
+              newHalf:
+                seed.first % 2 === 0 ? SPLIT_HALVES.FIRST : SPLIT_HALVES.SECOND,
+            }
           : {};
       return seed.newParagraph === undefined
         ? { type: kind, at, newBlockId: toHexId(fresh), ...newHalf, ...ids }
@@ -859,7 +997,9 @@ const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
       );
       // Sometimes two paragraphs become one, which may move a section break.
       const expected =
-        seed.inherit && follower !== undefined ? [paragraph, follower.paragraph] : [paragraph];
+        seed.inherit && follower !== undefined
+          ? [paragraph, follower.paragraph]
+          : [paragraph];
       return { type: kind, story, expected, blocks: [replacement] };
     }
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
@@ -869,7 +1009,9 @@ const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
             candidate.index === location.index + 1 &&
             JSON.stringify(candidate.list) === JSON.stringify(location.list),
         );
-      const joinable = paragraphs.filter((location) => followerOf(location) !== undefined);
+      const joinable = paragraphs.filter(
+        (location) => followerOf(location) !== undefined,
+      );
       const leading = joinable[seed.block % Math.max(1, joinable.length)];
       // One join in ten names a paragraph that does not follow, to exercise the refusal.
       const trailing =
@@ -904,26 +1046,33 @@ const TRACKED_OP_KINDS = [
 ] as const;
 
 /** The operation kinds {@link trackedOpFor} draws. */
-export const GENERATED_TRACKED_OP_KINDS: readonly DocumentOpType[] = TRACKED_OP_KINDS;
+export const GENERATED_TRACKED_OP_KINDS: readonly DocumentOpType[] =
+  TRACKED_OP_KINDS;
 
 /** A revision id no record in the document carries. */
 export const unusedRevisionId = (document: Document): number => {
   const prefix = `${IDENTITY_SPACES.REVISION}:`;
   let largest = 0;
   for (const key of packageIdentityKeys(document.package)) {
-    if (key.startsWith(prefix)) largest = Math.max(largest, Number(key.slice(prefix.length)));
+    if (key.startsWith(prefix))
+      largest = Math.max(largest, Number(key.slice(prefix.length)));
   }
   return largest + 1;
 };
 
-const twoDigits = (value: number): string => String(value % 60).padStart(2, "0");
+const twoDigits = (value: number): string =>
+  String(value % 60).padStart(2, "0");
 
 /**
  * The stamp of the `index`th tracked operation of a run: a date no generated
  * record and no other operation of the run carries, so no operation merges
  * into a change that was there before it.
  */
-export const stampFor = (document: Document, seed: OpSeed, index: number): RevisionStamp => {
+export const stampFor = (
+  document: Document,
+  seed: OpSeed,
+  index: number,
+): RevisionStamp => {
   const stamp: RevisionStamp = {
     id: unusedRevisionId(document),
     author: seed.inherit ? "A" : "C",
@@ -953,7 +1102,12 @@ const unmarkedJoin = (
       location.paragraph.sectionProperties !== undefined ||
       (seed.inherit && (next.paragraph.propertyChanges?.length ?? 0) > 0)
       ? []
-      : [{ blockId: location.paragraph.paraId ?? "", nextBlockId: next.paragraph.paraId ?? "" }];
+      : [
+          {
+            blockId: location.paragraph.paraId ?? "",
+            nextBlockId: next.paragraph.paraId ?? "",
+          },
+        ];
   });
   return pairs[seed.block % Math.max(1, pairs.length)];
 };
@@ -964,18 +1118,31 @@ const unmarkedJoin = (
  * and new ids for the records it creates past the first (one operation in
  * five names none, exercising the refusal).
  */
-export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): DocumentOp =>
-  captureDocumentOp(rawTrackedOpFor(document, seed, index));
+export const trackedOpFor = (
+  document: Document,
+  seed: OpSeed,
+  index = 0,
+): DocumentOp => captureDocumentOp(rawTrackedOpFor(document, seed, index));
 
-const rawTrackedOpFor = (document: Document, seed: OpSeed, index: number): DocumentOp => {
+const rawTrackedOpFor = (
+  document: Document,
+  seed: OpSeed,
+  index: number,
+): DocumentOp => {
   const kind =
-    TRACKED_OP_KINDS[seed.kind % TRACKED_OP_KINDS.length] ?? DOCUMENT_OP_TYPES.INSERT_TEXT;
+    TRACKED_OP_KINDS[seed.kind % TRACKED_OP_KINDS.length] ??
+    DOCUMENT_OP_TYPES.INSERT_TEXT;
   const op = rawOpFor(document, { ...seed, kind: OP_KINDS.indexOf(kind) });
   const revision = stampFor(document, seed, index);
   const pool = (base: number, length: number) =>
-    Array.from({ length }, (_, offset) => base + (seed.fresh % 100_000) * 8 + offset);
+    Array.from(
+      { length },
+      (_, offset) => base + (seed.fresh % 100_000) * 8 + offset,
+    );
   const ids =
-    seed.depth % 5 === 0 ? {} : { newIds: { revision: pool(20_000, 8), control: pool(10_000, 3) } };
+    seed.depth % 5 === 0
+      ? {}
+      : { newIds: { revision: pool(20_000, 8), control: pool(10_000, 3) } };
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -985,7 +1152,8 @@ const rawTrackedOpFor = (document: Document, seed: OpSeed, index: number): Docum
       return { ...op, ...ids, revision };
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
       // Mostly a paragraph whose mark carries no change: a tracked join refuses the others.
-      const unmarked = seed.first % 4 === 0 ? undefined : unmarkedJoin(document, seed);
+      const unmarked =
+        seed.first % 4 === 0 ? undefined : unmarkedJoin(document, seed);
       // A tracked join records only a boundary deletion and leaves the second paragraph.
       // Positive merge depths are covered by the refusal invariant, not successful-op laws.
       const join = { ...op, ...unmarked, ...ids, depth: 0, revision };

@@ -4,7 +4,11 @@ import { compareSide, withoutCarriers } from "./corpus-baseline-respell";
 
 const EDITOR_ROUND_TRIP = "editor-round-trip";
 
-const row = (message: string, files = 1) => ({ invariant: EDITOR_ROUND_TRIP, message, files });
+const row = (message: string, files = 1) => ({
+  invariant: EDITOR_ROUND_TRIP,
+  message,
+  files,
+});
 
 const PREFIX = "editor round trip changed";
 
@@ -14,13 +18,15 @@ describe("the carriers come back out of a message", () => {
       withoutCarriers(
         `${PREFIX} package.document.content[run].preservedAttributes: array [1] absent`,
       ),
-    ).toBe(`${PREFIX} package.document.content[].preservedAttributes: array [1] absent`);
+    ).toBe(
+      `${PREFIX} package.document.content[].preservedAttributes: array [1] absent`,
+    );
   });
 
   test("a message with no model path is left alone", () => {
-    expect(withoutCarriers("DocxParseError: part word/document.xml [truncated]")).toBe(
-      "DocxParseError: part word/document.xml [truncated]",
-    );
+    expect(
+      withoutCarriers("DocxParseError: part word/document.xml [truncated]"),
+    ).toBe("DocxParseError: part word/document.xml [truncated]");
   });
 });
 
@@ -33,10 +39,16 @@ describe("the carriers come back out of a message", () => {
 describe("what a re-spelling explains", () => {
   test("one recorded row split across two carriers is explained", () => {
     const recorded = [
-      row(`${PREFIX} package.document.content[].preservedAttributes: array became absent`, 9),
+      row(
+        `${PREFIX} package.document.content[].preservedAttributes: array became absent`,
+        9,
+      ),
     ];
     const observed = [
-      row(`${PREFIX} package.document.content[run].preservedAttributes: array became absent`, 7),
+      row(
+        `${PREFIX} package.document.content[run].preservedAttributes: array became absent`,
+        7,
+      ),
       row(
         `${PREFIX} package.document.content[paragraph].preservedAttributes: array became absent`,
         4,
@@ -51,8 +63,12 @@ describe("what a re-spelling explains", () => {
   });
 
   test("an observed row nothing recorded explains is reported, not counted", () => {
-    const recorded = [row(`${PREFIX} package.document.content[].bold: true became false`)];
-    const observed = [row(`${PREFIX} package.document.content[run].italic: true became false`)];
+    const recorded = [
+      row(`${PREFIX} package.document.content[].bold: true became false`),
+    ];
+    const observed = [
+      row(`${PREFIX} package.document.content[run].italic: true became false`),
+    ];
     const { appeared, vanished } = compareSide(recorded, observed);
     expect(appeared).toEqual(observed);
     expect(vanished).toEqual(recorded);
@@ -63,7 +79,9 @@ describe("what a re-spelling explains", () => {
    * tail is a prefix of the row it grew into, and the two are one defect.
    */
   test("a recorded row the old cap cut matches the row it grew into", () => {
-    const recorded = [row(`${PREFIX} package.document.content[].rows[].cells[].conte…`)];
+    const recorded = [
+      row(`${PREFIX} package.document.content[].rows[].cells[].conte…`),
+    ];
     const observed = [
       row(
         `${PREFIX} package.document.content[table].rows[tableRow].cells[tableCell].content[run].preservedAttributes: array became absent`,
@@ -90,7 +108,9 @@ describe("what a re-spelling explains", () => {
       ),
     ];
     const observed = [
-      row(`${PREFIX} package.….content[run].preservedAttributes: array became absent`),
+      row(
+        `${PREFIX} package.….content[run].preservedAttributes: array became absent`,
+      ),
     ];
     expect(compareSide(recorded, observed)).toEqual({
       exact: 0,

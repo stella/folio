@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 
 import { MARKDOWN_BLOCK_BOUNDARY_FIXTURES } from "../../typecheck/markdown/blockBoundaries.typecheck";
-
 import type { BlockContent, ListRendering, Paragraph } from "../types/document";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
@@ -21,12 +20,15 @@ const listParagraph = (text: string): Paragraph =>
 const importedTexts = (markdown: string): string[] =>
   fromMarkdown(markdown).package.document.content.map((block) => {
     expect(block.type).toBe("paragraph");
-    if (block.type !== "paragraph") throw new Error(`Unexpected block ${block.type}`);
+    if (block.type !== "paragraph")
+      throw new Error(`Unexpected block ${block.type}`);
     expect(block.formatting?.outlineLevel).toBeUndefined();
     return block.content
       .flatMap((item) =>
         item.type === "run"
-          ? item.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+          ? item.content.flatMap((part) =>
+              part.type === "text" ? [part.text] : [],
+            )
           : [],
       )
       .join("");
@@ -39,14 +41,20 @@ test("each text-emitting block stays separated from preceding paragraph and list
   for (const fixture of Object.values(MARKDOWN_BLOCK_BOUNDARY_FIXTURES)) {
     if (fixture.marker === null) {
       for (const lead of leads) {
-        expect(render([lead, fixture.block, suffix])).toBe(render([lead, suffix]));
+        expect(render([lead, fixture.block, suffix])).toBe(
+          render([lead, suffix]),
+        );
       }
       continue;
     }
 
     for (const lead of leads) {
       const actual = render([lead, fixture.block, suffix]);
-      const expected = [render([lead]), render([fixture.block]), render([suffix])].join("\n\n");
+      const expected = [
+        render([lead]),
+        render([fixture.block]),
+        render([suffix]),
+      ].join("\n\n");
       expect(actual).toBe(expected);
       expect(actual).toContain(fixture.marker);
     }
@@ -60,20 +68,41 @@ test("block syntax-like text after paragraph text keeps a blank block boundary",
       expect(markdown).toContain("PREFIX\n\n");
       expect(importedTexts(markdown)).toEqual(["PREFIX", text]);
     }
-    const custom = paragraph("", { marker: text, level: 1, numId: 2, isBullet: false });
-    expect(importedTexts(render([listParagraph("PREFIX"), custom]))).toEqual(["PREFIX", text]);
+    const custom = paragraph("", {
+      marker: text,
+      level: 1,
+      numId: 2,
+      isBullet: false,
+    });
+    expect(importedTexts(render([listParagraph("PREFIX"), custom]))).toEqual([
+      "PREFIX",
+      text,
+    ]);
   }
 });
 
 test("list paragraph text cannot introduce nested Markdown block syntax", () => {
-  for (const text of ["# Literal", "=", "===", "---", "-----", "> Literal", "1. Literal"]) {
+  for (const text of [
+    "# Literal",
+    "=",
+    "===",
+    "---",
+    "-----",
+    "> Literal",
+    "1. Literal",
+  ]) {
     expect(importedTexts(render([listParagraph(text)]))).toEqual([text]);
   }
 });
 
 test("custom list labels remain separate paragraph text in Markdown", () => {
   for (const marker of ["=", "---", "a.", "1.2."]) {
-    const custom = paragraph("Value", { marker, level: 1, numId: 2, isBullet: false });
+    const custom = paragraph("Value", {
+      marker,
+      level: 1,
+      numId: 2,
+      isBullet: false,
+    });
     expect(importedTexts(render([listParagraph("PREFIX"), custom]))).toEqual([
       "PREFIX",
       `${marker} Value`,

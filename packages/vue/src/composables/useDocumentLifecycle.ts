@@ -5,7 +5,8 @@
  * doc gets the auto-open treatment. Also handles first-mount load.
  */
 
-import { watch, onMounted, nextTick, type Ref } from "vue";
+import { nextTick, onMounted, type Ref, watch } from "vue";
+
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
