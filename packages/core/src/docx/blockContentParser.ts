@@ -30,6 +30,10 @@ import {
   computeListMarker,
   type PreviousListState,
 } from "./listMarkerComputation";
+import {
+  parseMarkupRangeMarker,
+  parseMoveBookmarkMarker,
+} from "./markupRangeMarker";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
@@ -283,6 +287,30 @@ export const BLOCK_CONTENT_HANDLERS = {
   bookmarkEnd: (child, { modelled }) => {
     modelled.push(parseBookmarkEnd(child));
   },
+  // A move's range markers stand between blocks for the same reason, and are
+  // typed for the same one: the passes that pair a start with its end can see
+  // them, so a range that loses its paragraph can keep its place here.
+  moveFromRangeStart: (child, { modelled }) => {
+    modelled.push({
+      type: "moveFromRangeStart",
+      ...parseMoveBookmarkMarker(child),
+    });
+  },
+  moveFromRangeEnd: (child, { modelled }) => {
+    modelled.push({
+      type: "moveFromRangeEnd",
+      ...parseMarkupRangeMarker(child),
+    });
+  },
+  moveToRangeStart: (child, { modelled }) => {
+    modelled.push({
+      type: "moveToRangeStart",
+      ...parseMoveBookmarkMarker(child),
+    });
+  },
+  moveToRangeEnd: (child, { modelled }) => {
+    modelled.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
+  },
   ...BLOCK_CHILD_OWNERS,
   altChunk: CAPTURE,
   commentRangeEnd: CAPTURE,
@@ -298,11 +326,7 @@ export const BLOCK_CONTENT_HANDLERS = {
   del: CAPTURE,
   ins: CAPTURE,
   moveFrom: CAPTURE,
-  moveFromRangeEnd: CAPTURE,
-  moveFromRangeStart: CAPTURE,
   moveTo: CAPTURE,
-  moveToRangeEnd: CAPTURE,
-  moveToRangeStart: CAPTURE,
   permEnd: CAPTURE,
   permStart: CAPTURE,
   proofErr: CAPTURE,

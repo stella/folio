@@ -203,6 +203,10 @@ function renderGfmCell(
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
         default: {
           const unsupported: never = item;
@@ -347,6 +351,10 @@ function renderHtmlCell(
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
         default: {
           const unsupported: never = item;

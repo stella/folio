@@ -90,6 +90,10 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return true;
       default: {
         const unreachable: never = block;
@@ -317,6 +321,10 @@ const commitBlocks = ({
         case "preservedBlock":
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           return block;
         default: {
           const unreachable: never = block;

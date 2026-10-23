@@ -15,6 +15,10 @@ import type {
   BookmarkStart,
   MarkupRangeMarker,
   MoveBookmarkMarker,
+  MoveFromRangeEnd,
+  MoveFromRangeStart,
+  MoveToRangeEnd,
+  MoveToRangeStart,
 } from "../../types/document";
 
 const attribute = (name: string, value: string | number): string =>
@@ -68,4 +72,26 @@ export const moveBookmarkAttributes = (
     attributes.push(attribute("w:date", marker.date.trim()));
   }
   return attributes;
+};
+
+/**
+ * One move range marker, wherever it stands: a paragraph child or a block, so
+ * the serializers share one writer as they do for bookmarks.
+ */
+export const serializeMoveRangeMarker = (
+  marker:
+    MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd,
+): string => {
+  switch (marker.type) {
+    case "moveFromRangeStart":
+    case "moveToRangeStart":
+      return `<w:${marker.type} ${moveBookmarkAttributes(marker).join(" ")}/>`;
+    case "moveFromRangeEnd":
+    case "moveToRangeEnd":
+      return `<w:${marker.type} ${markupRangeAttributes(marker).join(" ")}/>`;
+    default: {
+      const unwritten: never = marker;
+      return unwritten;
+    }
+  }
 };

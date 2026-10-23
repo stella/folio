@@ -613,6 +613,10 @@ const replayNestedBlock = ({
     case "preservedBlock":
     case "bookmarkStart":
     case "bookmarkEnd":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
       return null;
     default: {
       const unreachable: never = current;

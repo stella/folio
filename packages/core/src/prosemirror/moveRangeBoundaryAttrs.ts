@@ -146,12 +146,16 @@ export const readMoveRangeBoundaryAttrs = (
   node: PMNode,
 ): ReadProseMirrorAttrsResult<MoveRangeMarker> => {
   const result = readMoveRangeMarker(node.attrs["marker"]);
-  if (node.type.name === "moveRangeBoundary") {
+  // The inline boundary and its block-level twin carry the same marker.
+  if (
+    node.type.name === "moveRangeBoundary" ||
+    node.type.name === "blockMoveRangeBoundary"
+  ) {
     return result;
   }
   const issue = {
     path: "moveRangeBoundary.type.name",
-    message: `Expected moveRangeBoundary, got ${node.type.name}.`,
+    message: `Expected moveRangeBoundary or blockMoveRangeBoundary, got ${node.type.name}.`,
   };
   return result.ok
     ? { ok: false, issues: [issue] }

@@ -29,6 +29,10 @@ const hasBlockRevision = (blocks: readonly BlockContent[]): boolean =>
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return false;
       default: {
         const unsupported: never = block;
