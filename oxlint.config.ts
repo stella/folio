@@ -63,6 +63,7 @@ export default library({
   },
   rules: {
     "folio-editor-commands/command-owner-boundary": "error",
+    "folio-editor-commands/run-formatting-lock-boundary": "error",
     "folio-canonical-load/evaluation-owner": "error",
     "folio-deletion-marks/preserve-pending-deletions": "error",
     // AST rules that oxlint delegates to the (dormant) type-aware pass in the

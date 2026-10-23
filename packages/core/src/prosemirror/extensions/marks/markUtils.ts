@@ -412,11 +412,6 @@ export const canonicalSetMarkFormatting = ({
   type,
   attrs,
 }: CanonicalSetMarkFormattingOptions) => {
-  if (
-    RUN_FORMATTING_MARK_NAMES.has(type.name) &&
-    selectionTouchesContentLockedControl(state)
-  )
-    return [];
   const markType = documentMarkType(state, type);
   const { empty } = state.selection;
   if (empty) {
@@ -1188,7 +1183,6 @@ export function textFormattingToMarks(
  * text, orphaned the note and silently resolved the revision.
  */
 const clearFormattingCommand: Command = (state, dispatch) => {
-  if (selectionTouchesContentLockedControl(state)) return false;
   const { empty } = state.selection;
 
   if (empty) {

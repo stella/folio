@@ -1,10 +1,12 @@
+import { RUN_FORMATTING_MARK_NAMES } from "../packages/core/src/prosemirror/runFormattingMarkNames.ts";
+
 /** Adapter commands enter the owning view's canonical journal before dispatch. */
 type AstNode = Record<string, unknown> & { type: string };
 type RuleContext = {
   filename: string;
   report: (descriptor: {
     node: unknown;
-    messageId: "rawCommand" | "foreignOwner";
+    messageId: "rawCommand" | "foreignOwner" | "rawRunFormattingCommand";
   }) => void;
 };
 const isNode = (value: unknown): value is AstNode =>
@@ -29,6 +31,23 @@ const containsDispatch = (node: unknown): boolean => {
       : containsDispatch(value);
   });
 };
+const visit = (node: unknown, callback: (node: AstNode) => void): void => {
+  if (!isNode(node)) return;
+  callback(node);
+  for (const [key, value] of Object.entries(node)) {
+    if (["parent", "loc", "range"].includes(key)) continue;
+    if (Array.isArray(value)) value.forEach((child) => visit(child, callback));
+    else visit(value, callback);
+  }
+};
+const stringValue = (node: unknown): string | undefined =>
+  !isNode(node)
+    ? undefined
+    : node.type === "Literal" && typeof node.value === "string"
+      ? node.value
+      : node.type === "Identifier" && typeof node.name === "string"
+        ? node.name
+        : undefined;
 const OWNER = "packages/core/src/controller/hiddenEditorManager.ts";
 const REACT = "packages/react/src/components/DocxEditor.tsx";
 const VUE = [
@@ -96,6 +115,77 @@ export default {
               containsDispatch(dispatch)
             )
               context.report({ node, messageId: "rawCommand" });
+          },
+        };
+      },
+    },
+    "run-formatting-lock-boundary": {
+      meta: {
+        type: "problem",
+        messages: {
+          rawRunFormattingCommand:
+            "Run-formatting commands must use withRunFormattingLock so direct execution and canonical intent planning share content-lock policy.",
+        },
+      },
+      create(context: RuleContext) {
+        const filename = context.filename.replaceAll("\\", "/");
+        if (
+          !filename.includes(
+            "/packages/core/src/prosemirror/extensions/marks/",
+          ) ||
+          !filename.endsWith("Extension.ts")
+        )
+          return {};
+        return {
+          Program: (program: unknown) => {
+            const bindings = new Set<string>();
+            const markNames = new Set<string>();
+            const calls: AstNode[] = [];
+            visit(program, (node) => {
+              if (
+                node.type === "ImportDeclaration" &&
+                Array.isArray(node.specifiers)
+              ) {
+                for (const specifier of node.specifiers) {
+                  if (
+                    isNode(specifier) &&
+                    specifier.type === "ImportSpecifier" &&
+                    stringValue(specifier.imported) ===
+                      "withCanonicalCommand" &&
+                    isNode(specifier.local) &&
+                    typeof specifier.local.name === "string"
+                  )
+                    bindings.add(specifier.local.name);
+                }
+              }
+              if (
+                (node.type === "Property" ||
+                  node.type === "PropertyDefinition") &&
+                isNode(node.key) &&
+                node.key.name === "schemaMarkName"
+              ) {
+                const markName = stringValue(node.value);
+                if (markName) markNames.add(markName);
+              }
+            });
+            visit(program, (node) => {
+              if (
+                node.type === "CallExpression" &&
+                isNode(node.callee) &&
+                node.callee.type === "Identifier" &&
+                typeof node.callee.name === "string" &&
+                bindings.has(node.callee.name)
+              )
+                calls.push(node);
+            });
+            if (
+              ![...markNames].some((name) =>
+                RUN_FORMATTING_MARK_NAMES.has(name),
+              )
+            )
+              return;
+            for (const node of calls)
+              context.report({ node, messageId: "rawRunFormattingCommand" });
           },
         };
       },
