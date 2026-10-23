@@ -85,7 +85,9 @@ export function useFontLifecycle(
     { immediate: true },
   );
 
-  const hostFonts = new FontFaceLifecycle(dependencies.remove);
+  const hostFonts = new FontFaceLifecycle((faces: readonly FontFace[]) =>
+    dependencies.remove(faces),
+  );
   const unsubscribe = hostFonts.subscribe(options.remeasure);
   onScopeDispose(() => {
     unsubscribe();
