@@ -60,6 +60,7 @@ describe("SymbolExtension parseDOM", () => {
 describe("SymbolExtension display", () => {
   test.each([
     ["Symbol", "F0B7", "\u2022"],
+    ["Wingdings", "F06E", "\u25A0"],
     ["Wingdings", "F06F", "\u25CB"],
     ["Wingdings", "F0A7", "\u25A0"],
     ["Wingdings", "F0FC", "\u2713"],
@@ -93,6 +94,24 @@ describe("SymbolExtension display", () => {
         style: 'font-family: "Wingdings", sans-serif;',
       },
       "\uF06C",
+    ]);
+  });
+
+  test.each([
+    ["Symbol", "006F"],
+    ["Wingdings 2", "F06E"],
+    ["Other Font", "F06E"],
+  ])("keeps unverified %s code %s unchanged", (font, char) => {
+    const symbol = schema.nodes.symbol.create({ font, char });
+
+    expect(symbol.type.spec.toDOM?.(symbol)).toEqual([
+      "span",
+      {
+        "data-docx-symbol-char": char,
+        "data-docx-symbol-font": font,
+        style: `font-family: "${font}", sans-serif;`,
+      },
+      String.fromCodePoint(Number.parseInt(char, 16)),
     ]);
   });
 });

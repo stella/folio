@@ -38,6 +38,14 @@ const SYMBOL_FONT_NAMES: ReadonlySet<string> = new Set([
   "webdings",
 ]);
 
+const SYMBOL_DISPLAY_TWIN_CODES: ReadonlyMap<
+  string,
+  ReadonlySet<number>
+> = new Map([
+  ["symbol", new Set([0xf0_b7])],
+  ["wingdings", new Set([0xf0_6e, 0xf0_6f, 0xf0_a7, 0xf0_fc])],
+]);
+
 export const isOoxmlSymbolFont = (font: string): boolean =>
   SYMBOL_FONT_NAMES.has(font.trim().toLowerCase());
 
@@ -56,7 +64,12 @@ export const displayOoxmlSymbolCharacter = (
 ): string | null => {
   if (!isOoxmlSymbolCharacter(value)) return null;
   const codePoint = Number.parseInt(value, 16);
-  if (!isOoxmlSymbolFont(font)) return decodeOoxmlSymbolCharacter(value);
+  const displayTwinCodes = SYMBOL_DISPLAY_TWIN_CODES.get(
+    font.trim().toLowerCase(),
+  );
+  if (!displayTwinCodes?.has(codePoint)) {
+    return decodeOoxmlSymbolCharacter(value);
+  }
   return (
     lookupOoxmlSymbolUnicodeTwin(codePoint) ?? decodeOoxmlSymbolCharacter(value)
   );
