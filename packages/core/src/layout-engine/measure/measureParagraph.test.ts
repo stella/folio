@@ -185,7 +185,7 @@ describe("script measurement", () => {
             kind: "paragraph",
             id: "full-size-script-line",
             runs: [
-              { kind: "text", text: "xxxxx", fontSize: 12 },
+              { kind: "text", text: "xxxxxx", fontSize: 12 },
               {
                 kind: "text",
                 text: "abcdefghijkl",
@@ -199,7 +199,31 @@ describe("script measurement", () => {
           30,
         );
 
-        expect(scripted.lines).toHaveLength(5);
+        expect(scripted.lines).toHaveLength(4);
+        expect(scripted.lines.at(0)).toMatchObject({
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 6,
+        });
+        expect(scripted.lines.at(1)).toMatchObject({
+          fromRun: 1,
+          fromChar: 0,
+          toRun: 1,
+          toChar: 6,
+        });
+        expect(scripted.lines.at(2)).toMatchObject({
+          fromRun: 1,
+          fromChar: 6,
+          toRun: 1,
+          toChar: 12,
+        });
+        expect(scripted.lines.at(3)).toMatchObject({
+          fromRun: 3,
+          fromChar: 0,
+          toRun: 3,
+          toChar: 1,
+        });
         expect(scripted.lines.at(0)?.lineHeight).toBeCloseTo(
           12 * PT_TO_PX * 1.15,
           5,
@@ -212,7 +236,7 @@ describe("script measurement", () => {
           12 * PT_TO_PX * 0.2,
           5,
         );
-        for (const line of scripted.lines.slice(1, 4)) {
+        for (const line of scripted.lines.slice(1, 3)) {
           expect(line.lineHeight).toBeCloseTo(
             fullSize.lines.at(0)!.lineHeight,
             5,
@@ -220,8 +244,16 @@ describe("script measurement", () => {
           expect(line.ascent).toBeCloseTo(fullSize.lines.at(0)!.ascent, 5);
           expect(line.descent).toBeCloseTo(fullSize.lines.at(0)!.descent, 5);
         }
-        expect(scripted.lines.at(4)?.lineHeight).toBeCloseTo(
+        expect(scripted.lines.at(3)?.lineHeight).toBeCloseTo(
           12 * PT_TO_PX * 1.15,
+          5,
+        );
+        expect(scripted.lines.at(3)?.ascent).toBeCloseTo(
+          12 * PT_TO_PX * 0.8,
+          5,
+        );
+        expect(scripted.lines.at(3)?.descent).toBeCloseTo(
+          12 * PT_TO_PX * 0.2,
           5,
         );
       }, fakeMeasure);
