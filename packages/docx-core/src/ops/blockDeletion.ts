@@ -296,7 +296,11 @@ export const deleteBlocks = ({
         ? following
         : { ...following, content: [...kept, ...following.content] },
     ];
-  if (outcome.kind === "keep") directBlocks = [survivor];
+  // A deletion is refused before a table and keeps the paragraph that ends
+  // its container, so no outcome here removes the boundaries it kept: a
+  // removal, were one decided, keeps the survivor holding them.
+  if (outcome.kind === "keep" || outcome.kind === "remove")
+    directBlocks = [survivor];
   const direct = applyOps(document, [replacement(directBlocks)]);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   if (op.revision === undefined) {

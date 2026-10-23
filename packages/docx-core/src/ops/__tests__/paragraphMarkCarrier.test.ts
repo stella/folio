@@ -515,3 +515,26 @@ describe("paragraphMarkOutcome", () => {
     },
   );
 });
+
+test("deleting a bookmark-only paragraph directly before a table is refused and keeps the bookmark", () => {
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [
+      { type: "bookmarkStart", id: 1, name: "kept" },
+      { type: "bookmarkEnd", id: 1 },
+    ],
+  };
+  const document: Document = {
+    package: { document: { content: [paragraph, table, finalParagraph] } },
+  };
+
+  const result = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds: ["00000001"],
+  });
+
+  expect(result.isErr()).toBe(true);
+  expect(document.package.document.content[0]).toBe(paragraph);
+});
