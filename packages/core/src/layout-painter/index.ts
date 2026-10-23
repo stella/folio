@@ -7,6 +7,7 @@
 
 import { panic } from "better-result";
 
+import { releaseDisplayPageResources } from "../display-list/dom/renderDisplayListToDom";
 import type {
   FlowBlock,
   Fragment,
@@ -47,6 +48,8 @@ export {
   TEXTBOX_CLASS_NAMES,
   type RenderContext,
 };
+
+export { releaseDisplayPageResources } from "../display-list/dom/renderDisplayListToDom";
 
 // Re-export feature-module registry surface
 export { createFeatureRegistry } from "./registry/registry";
@@ -150,6 +153,7 @@ export class LayoutPainter {
    */
   unmount(): void {
     if (this.container) {
+      releaseDisplayPageResources(this.container);
       this.container.innerHTML = "";
     }
     this.container = null;
@@ -188,6 +192,7 @@ export class LayoutPainter {
     this.totalPages = pages.length;
 
     // Full repaint for now (reconciliation can be added later)
+    releaseDisplayPageResources(this.container);
     this.container.innerHTML = "";
     this.pageStates = [];
 

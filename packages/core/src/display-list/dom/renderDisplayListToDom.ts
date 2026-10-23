@@ -27,9 +27,9 @@
  * surfaces it, because a page missing marks must say so.
  *
  * Object URLs minted for images and embedded fonts outlive this call, one per
- * image and one per embedded face for the whole render. A caller that discards
- * the returned elements should revoke them (`img[src^="blob:"]` and the `src`
- * of each `@font-face` rule).
+ * image and one embedded face for the whole render. A caller that discards a
+ * rendered page must release its resources with `releaseDisplayPageResources`
+ * before removing the page.
  */
 
 import { panic } from "better-result";
@@ -186,6 +186,47 @@ const isBlobPart = (bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> =>
  */
 export type DisplayBinaryUrls = "objectUrl" | "dataUrl";
 
+const objectUrlsByElement = new WeakMap<object, string[]>();
+const objectUrlReferences = new Map<string, number>();
+
+const retainObjectUrl = (element: object, url: string): void => {
+  const urls = objectUrlsByElement.get(element) ?? [];
+  urls.push(url);
+  objectUrlsByElement.set(element, urls);
+  objectUrlReferences.set(url, (objectUrlReferences.get(url) ?? 0) + 1);
+};
+
+/** Release blob URLs owned by a rendered page or one of its replaced subtrees. */
+export const releaseDisplayPageResources = (root: Element): void => {
+  const pending: Element[] = [root];
+  const urlsToRelease: string[] = [];
+  while (pending.length > 0) {
+    const element = pending.pop();
+    if (!element) continue;
+    const ownedUrls = objectUrlsByElement.get(element) ?? [];
+    for (const url of ownedUrls) urlsToRelease.push(url);
+    objectUrlsByElement.delete(element);
+    for (const child of Array.from(element.children)) pending.push(child);
+  }
+  for (const url of urlsToRelease) {
+    const references = objectUrlReferences.get(url);
+    if (references === undefined || references < 1) {
+      panic(`releaseDisplayPageResources: object URL ${url} has no owner`);
+    }
+    if (references === 1) {
+      objectUrlReferences.delete(url);
+      if (
+        typeof URL !== "undefined" &&
+        typeof URL.revokeObjectURL === "function"
+      ) {
+        URL.revokeObjectURL(url);
+      }
+    } else {
+      objectUrlReferences.set(url, references - 1);
+    }
+  }
+};
+
 const binarySrc = (
   bytes: Uint8Array,
   mimeType: string,
@@ -218,8 +259,9 @@ const fontFaceRule = (
 const embeddedFontFaceCss = (
   fonts: readonly DisplayFontFace[],
   urls: DisplayBinaryUrls,
-) => {
+): { readonly css: string; readonly objectUrls: readonly string[] } => {
   const srcById = new Map<string, string>();
+  const objectUrls: string[] = [];
   const rules: string[] = [];
   for (const face of fonts) {
     const embedded = face.embedded;
@@ -230,10 +272,11 @@ const embeddedFontFaceCss = (
     const src = cached ?? binarySrc(embedded.bytes, FONT_MIME_TYPE, urls);
     if (cached === undefined) {
       srcById.set(embedded.id, src);
+      if (src.startsWith("blob:")) objectUrls.push(src);
     }
     rules.push(fontFaceRule(face, embedded, src));
   }
-  return rules.join("\n");
+  return { css: rules.join("\n"), objectUrls };
 };
 
 /**
@@ -681,11 +724,13 @@ const paintImage = (
 
   // The display list carries no description for an image.
   element.alt = "";
-  element.src = binarySrc(
+  const src = binarySrc(
     source.bytes,
     IMAGE_MIME_TYPES[source.format],
     context.binaryUrls,
   );
+  element.src = src;
+  if (src.startsWith("blob:")) retainObjectUrl(element, src);
   clip.append(element);
   context.parent.append(clip);
 };
@@ -864,7 +909,7 @@ export type RenderDisplayPageOptions = RenderDisplayListOptions & {
 
 type RenderPageOptions = RenderDisplayPageOptions & {
   /** Resolved once per render so every page shares one blob per face. */
-  readonly fontFaceCss: string;
+  readonly fontFaceCss: ReturnType<typeof embeddedFontFaceCss>;
 };
 
 const renderPage = (page: DisplayPage, options: RenderPageOptions) => {
@@ -879,9 +924,11 @@ const renderPage = (page: DisplayPage, options: RenderPageOptions) => {
     element.style.backgroundColor = cssColor(options.pageBackground);
   }
 
-  if (options.fontFaceCss.length > 0) {
+  if (options.fontFaceCss.css.length > 0) {
     const style = options.doc.createElement("style");
-    style.textContent = options.fontFaceCss;
+    style.textContent = options.fontFaceCss.css;
+    for (const url of options.fontFaceCss.objectUrls)
+      retainObjectUrl(style, url);
     element.append(style);
   }
 
@@ -1037,6 +1084,7 @@ const paintRegionTree = (
   });
 };
 
+/** Render one page; release its resources before discarding the element. */
 export const renderDisplayPageToDom = (
   page: DisplayPage,
   options: RenderDisplayPageOptions,
@@ -1049,11 +1097,12 @@ export const renderDisplayPageToDom = (
     ),
   });
 
-/** One `div.layout-page` per display page, in page order. */
+/** One `div.layout-page` per display page, in page order. Release each page's resources before discarding it. */
 export const renderDisplayListToDom = (
   list: DisplayList,
   options: RenderDisplayListOptions,
 ): HTMLElement[] => {
+  if (list.pages.length === 0) return [];
   const fontFaceCss = embeddedFontFaceCss(
     list.fonts,
     options.binaryUrls ?? "objectUrl",
