@@ -71,7 +71,11 @@ import {
   isCommentAnchor,
   leafSpans,
 } from "../leaves";
-import { paragraphLength, paragraphLogicalText } from "../offsets";
+import {
+  paragraphHoldsContent,
+  paragraphLength,
+  paragraphLogicalText,
+} from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
@@ -918,7 +922,7 @@ describe("tracked operations and their resolution", () => {
               markGoes &&
               paragraphMarkOutcome({
                 follows: "table",
-                holdsContent: paragraphLength(paragraph) > 0,
+                holdsContent: paragraphHoldsContent(paragraph),
                 markWasAdded,
                 containerStillEndsWithParagraph:
                   blockListAt(

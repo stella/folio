@@ -155,6 +155,38 @@ test("accepting a mark deletion before a table keeps a bookmark the paragraph ho
   expect(content).toContain('"bookmarkEnd"');
 });
 
+test("accepting a mark deletion before a table runs a comment anchor into the first cell and touches only those paragraphs", () => {
+  const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    content: [{ type: "commentRangeEnd", id: 1 }],
+    pPrMark: { kind: "del", info },
+  };
+  const document: Document = {
+    package: { document: { content: [paragraph, table, finalParagraph] } },
+  };
+  // A range boundary is content to keep, so the paragraph runs on into the table.
+  expect(paragraphHoldsContent(paragraph)).toBe(true);
+
+  const applied = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.ACCEPT,
+  });
+  if (applied.isErr()) throw applied.error;
+  expect(applied.value.touched).toEqual({
+    modified: ["00000002"],
+    inserted: [],
+    removed: ["00000001"],
+  });
+  const [first, ...rest] = applied.value.document.package.document.content;
+  expect(first?.type).toBe("table");
+  expect(JSON.stringify(first)).toContain('"commentRangeEnd"');
+  expect(rest).toEqual([finalParagraph]);
+});
+
 test("accepting a non-empty paragraph-mark deletion runs it into the first cell paragraph", () => {
   const paragraph: Paragraph = {
     type: "paragraph",
