@@ -3,8 +3,8 @@
   "family": "editor-round-trip",
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
-  "files": 1945,
-  "failedFiles": 616,
+  "files": 1946,
+  "failedFiles": 318,
   "entries": [
     {
       "signature": "editor-round-trip | editor round trip changed package.conformanceClass: \"strict\" became \"transitional\" | -",
@@ -13,9 +13,9 @@
       "frame": "-",
       "files": 66,
       "producers": {
-        "word/16": 6,
-        "word/14": 59,
-        "word/15": 1
+        "p1/16": 6,
+        "p1/14": 59,
+        "p1/15": 1
       }
     },
     {
@@ -25,9 +25,33 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word-online/0": 3,
-        "word/0": 1,
-        "word/16": 1
+        "p3/0": 3,
+        "p1/0": 1,
+        "p1/16": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.comments: array became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.comments: array became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/16": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.comments[].anchorKind: \"<string A>\" became \"<string B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.comments[].anchorKind: \"<string A>\" became \"<string B>\"",
+      "frame": "-",
+      "files": 8,
+      "producers": {
+        "p1/15": 2,
+        "unnamed": 1,
+        "p1/12": 1,
+        "wps-office/11": 2,
+        "p1/14": 2
       }
     },
     {
@@ -37,12 +61,12 @@
       "frame": "-",
       "files": 11,
       "producers": {
-        "word-online/0": 3,
-        "word/15": 2,
-        "word/12": 1,
+        "p3/0": 3,
+        "p1/15": 2,
+        "p1/12": 1,
         "no-extended-properties": 1,
-        "word/0": 1,
-        "word/16": 2,
+        "p1/0": 1,
+        "p1/16": 2,
         "libreoffice/6": 1
       }
     },
@@ -53,8 +77,8 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/12": 3,
-        "word/14": 1
+        "p1/12": 3,
+        "p1/14": 1
       }
     },
     {
@@ -64,30 +88,19 @@
       "frame": "-",
       "files": 12,
       "producers": {
-        "word/15": 6,
-        "word/16": 5,
-        "word/14": 1
+        "p1/15": 6,
+        "p1/16": 5,
+        "p1/14": 1
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[blockSdt].content[paragraph].content[run].formatting: object became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[blockSdt].content[paragraph].content[]: length changed | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[blockSdt].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/15": 4,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[blockSdt].content[paragraph].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[blockSdt].content[paragraph].content[run].preservedAttributes: array became absent",
+      "message": "editor round trip changed package.document.content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -97,7 +110,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -105,272 +118,24 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 85,
+      "files": 82,
       "producers": {
-        "word/12": 12,
-        "outlook/12": 3,
-        "word/14": 11,
+        "p4/12": 3,
         "no-extended-properties": 2,
-        "unnamed": 1,
-        "word/16": 18,
-        "word/15": 6,
-        "word-mac/15": 9,
+        "p1/16": 18,
+        "p2/15": 9,
         "libreoffice/6": 3,
         "libreoffice/7": 6,
         "wps-office/11": 5,
-        "word": 4,
-        "word/0": 1,
+        "p1": 4,
+        "p1/14": 11,
+        "p1/15": 3,
+        "p1/12": 12,
+        "p1/0": 1,
         "libreoffice/24": 1,
         "libreoffice/5": 2,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[bookmarkStart].content: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[bookmarkStart].content: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[bookmarkStart].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[bookmarkStart].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[bookmarkStart].id: N became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[bookmarkStart].id: N became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[bookmarkStart].name: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[bookmarkStart].name: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[bookmarkStart].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[bookmarkStart].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 17,
-      "producers": {
-        "word/16": 9,
-        "word/12": 4,
-        "word/14": 4
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.bold: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.bold: true became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.boldCs: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.boldCs: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.color: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.cs: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.cs: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.eastAsia: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.eastAsia: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hint: absent became \"eastAsia\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hint: absent became \"eastAsia\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 8,
-      "producers": {
-        "word/12": 5,
-        "word/14": 1,
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.styleId: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.styleId: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.underline: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting.underline: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 25,
-      "producers": {
-        "word/12": 1,
-        "word/16": 10,
-        "word/14": 7,
-        "word/15": 7
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting: object became absent",
-      "frame": "-",
-      "files": 8,
-      "producers": {
-        "word/16": 1,
-        "libreoffice/7": 2,
-        "outlook/12": 2,
-        "word/12": 1,
-        "word/14": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 25,
-      "producers": {
-        "word/12": 8,
-        "word/14": 6,
-        "word/16": 7,
-        "outlook/12": 2,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].propertyChanges: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
+        "unnamed": 1,
+        "p1/13": 1
       }
     },
     {
@@ -378,12 +143,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldResult[]: length changed",
       "frame": "-",
-      "files": 9,
+      "files": 3,
       "producers": {
-        "word/12": 4,
-        "word/14": 2,
-        "word/16": 1,
-        "word/15": 2
+        "p1/14": 1,
+        "p1/12": 1,
+        "p1/15": 1
       }
     },
     {
@@ -391,23 +155,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldResult[run].formatting: object became absent",
       "frame": "-",
-      "files": 2,
+      "files": 1,
       "producers": {
-        "libreoffice/7": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 24,
-      "producers": {
-        "word/12": 6,
-        "word/16": 7,
-        "word/15": 4,
-        "word/14": 6,
-        "word/13": 1
+        "p1/12": 1
       }
     },
     {
@@ -417,7 +167,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -427,8 +177,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 1,
-        "word/16": 1
+        "p1/12": 1,
+        "p1/16": 1
       }
     },
     {
@@ -438,9 +188,9 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 1,
-        "word/16": 1,
-        "word/14": 1
+        "p1/12": 1,
+        "p1/14": 1,
+        "p1/16": 1
       }
     },
     {
@@ -450,7 +200,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -460,7 +210,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -470,7 +220,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -480,7 +230,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -490,7 +240,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -500,7 +250,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -510,7 +260,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -520,7 +270,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -530,7 +280,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -540,7 +290,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 2
+        "p1/16": 2
       }
     },
     {
@@ -550,7 +300,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -560,7 +310,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -570,9 +320,9 @@
       "frame": "-",
       "files": 9,
       "producers": {
-        "word/12": 5,
-        "word/16": 3,
-        "word/14": 1
+        "p1/12": 5,
+        "p1/16": 3,
+        "p1/14": 1
       }
     },
     {
@@ -582,7 +332,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 2
+        "p1/16": 2
       }
     },
     {
@@ -592,8 +342,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 1,
-        "word/12": 1
+        "p1/16": 1,
+        "p1/12": 1
       }
     },
     {
@@ -603,7 +353,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -613,7 +363,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -621,65 +371,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 5,
-        "libreoffice/5": 1,
-        "word/16": 6,
-        "libreoffice/7": 2,
-        "outlook/12": 2,
-        "word/12": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.color: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[deletion].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 1,
-        "word/16": 1
+        "p1/12": 1,
+        "libreoffice/5": 1
       }
     },
     {
@@ -689,7 +384,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -699,7 +394,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -709,7 +404,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -719,7 +414,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -729,7 +424,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -739,7 +434,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -749,7 +444,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -759,7 +454,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -769,7 +464,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -777,9 +472,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[deletion].content[run].formatting: absent became object",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/16": 1
+        "p1/16": 1,
+        "p1/14": 1
       }
     },
     {
@@ -789,39 +485,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[deletion].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[deletion].info.id: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].anchor: \"<path>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].anchor: \"<path>\" became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/16": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].anchor: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].anchor: \"<string>\" became absent",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/14": 3,
-        "word/16": 3
+        "p1/15": 2,
+        "p1/14": 1
       }
     },
     {
@@ -831,10 +496,10 @@
       "frame": "-",
       "files": 15,
       "producers": {
-        "word/14": 1,
-        "word/16": 6,
-        "word/12": 7,
-        "word/13": 1
+        "p1/14": 1,
+        "p1/16": 6,
+        "p1/12": 7,
+        "p1/13": 1
       }
     },
     {
@@ -844,8 +509,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/16": 2,
-        "word/12": 1
+        "p1/16": 2,
+        "p1/12": 1
       }
     },
     {
@@ -855,7 +520,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 2
+        "p1/12": 2
       }
     },
     {
@@ -865,37 +530,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[inlineSdt].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[inlineSdt].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
+        "p1/12": 1
       }
     },
     {
@@ -905,7 +540,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -915,7 +550,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -925,7 +560,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -935,78 +570,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.color: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].propertyChanges: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldCode[run].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldResult[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldResult[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/15": 1
+        "p1/12": 1
       }
     },
     {
@@ -1016,7 +580,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1026,7 +590,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1036,7 +600,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1056,7 +620,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -1066,39 +630,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].info.id: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
+        "p1/14": 1
       }
     },
     {
@@ -1108,7 +640,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -1118,7 +650,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -1128,17 +660,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
+        "p1/15": 2
       }
     },
     {
@@ -1146,15 +668,15 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].content[]: length changed",
       "frame": "-",
-      "files": 17,
+      "files": 18,
       "producers": {
-        "word/12": 6,
-        "word/14": 4,
-        "word/15": 1,
-        "libreoffice/25": 1,
+        "p1/12": 6,
+        "p1/14": 4,
+        "libreoffice/25": 2,
         "no-extended-properties": 2,
         "libreoffice/7": 1,
-        "word/16": 2
+        "p1/16": 2,
+        "p1/15": 1
       }
     },
     {
@@ -1164,7 +686,37 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.hlinkClickSource.rId: \"<id A>\" became \"<id B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.hlinkClickSource.rId: \"<id A>\" became \"<id B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/15": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.hlinkClickSource.xml: \"<path A>\" became \"<path B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.hlinkClickSource.xml: \"<path A>\" became \"<path B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/15": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.hlinkRId: \"<id A>\" became \"<id B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.hlinkRId: \"<id A>\" became \"<id B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/15": 1
       }
     },
     {
@@ -1174,7 +726,17 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.rId: \"<id>\" became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[paragraph].content[run].content[drawing].image.rId: \"<id>\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/12": 1
       }
     },
     {
@@ -1184,8 +746,8 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/14": 3,
-        "word/13": 1
+        "p1/14": 3,
+        "p1/13": 1
       }
     },
     {
@@ -1195,8 +757,8 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/14": 3,
-        "word/13": 1
+        "p1/14": 3,
+        "p1/13": 1
       }
     },
     {
@@ -1206,11 +768,11 @@
       "frame": "-",
       "files": 13,
       "producers": {
-        "word/15": 1,
-        "word/12": 8,
-        "outlook/12": 1,
-        "word/14": 2,
-        "word/13": 1
+        "p1/15": 1,
+        "p1/12": 8,
+        "p4/12": 1,
+        "p1/14": 2,
+        "p1/13": 1
       }
     },
     {
@@ -1220,8 +782,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 1,
-        "word/14": 1
+        "p1/12": 1,
+        "p1/14": 1
       }
     },
     {
@@ -1231,7 +793,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -1241,7 +803,17 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "libreoffice/25": 1
       }
     },
     {
@@ -1251,8 +823,8 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word/12": 3,
-        "word/14": 2
+        "p1/12": 3,
+        "p1/14": 2
       }
     },
     {
@@ -1262,7 +834,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1272,7 +844,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1283,9 +855,9 @@
       "files": 11,
       "producers": {
         "no-extended-properties": 1,
-        "word/14": 3,
-        "word/12": 6,
-        "word/16": 1
+        "p1/14": 3,
+        "p1/12": 6,
+        "p1/16": 1
       }
     },
     {
@@ -1293,35 +865,13 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 70,
+      "files": 30,
       "producers": {
-        "word/16": 37,
-        "word/14": 9,
-        "word/15": 12,
-        "wps-office/11": 1,
-        "word/12": 8,
-        "outlook/12": 2,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].id: absent became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].id: absent became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].name: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].name: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
+        "p1/16": 12,
+        "p1/14": 5,
+        "p1/12": 5,
+        "p1/15": 6,
+        "p4/12": 2
       }
     },
     {
@@ -1329,44 +879,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 32,
+      "files": 11,
       "producers": {
-        "word/14": 4,
-        "word/15": 2,
-        "word/16": 23,
-        "word/12": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[simpleField].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[simpleField].content[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 7,
-      "producers": {
-        "word/12": 5,
-        "word/16": 1,
-        "word/13": 1
+        "p1/14": 4,
+        "p1/16": 6,
+        "p1/12": 1
       }
     },
     {
@@ -1376,10 +893,10 @@
       "frame": "-",
       "files": 12,
       "producers": {
-        "word/16": 7,
-        "word/15": 3,
-        "word/14": 1,
-        "outlook/12": 1
+        "p1/16": 7,
+        "p1/15": 3,
+        "p1/14": 1,
+        "p4/12": 1
       }
     },
     {
@@ -1389,7 +906,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -1399,10 +916,10 @@
       "frame": "-",
       "files": 12,
       "producers": {
-        "word/16": 7,
-        "word/15": 3,
-        "word/14": 1,
-        "outlook/12": 1
+        "p1/16": 7,
+        "p1/15": 3,
+        "p1/14": 1,
+        "p4/12": 1
       }
     },
     {
@@ -1422,7 +939,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/15": 1
+        "p1/15": 1
       }
     },
     {
@@ -1432,105 +949,17 @@
       "frame": "-",
       "files": 35,
       "producers": {
-        "word/14": 2,
-        "word/15": 5,
-        "word/16": 14,
-        "word-mac/14": 3,
-        "word": 2,
+        "p1/14": 2,
+        "p1/15": 5,
+        "p1/16": 14,
+        "p2/14": 3,
+        "p1": 2,
         "libreoffice/24": 1,
-        "word/12": 2,
-        "outlook/12": 1,
-        "word-mac/15": 3,
+        "p1/12": 2,
+        "p2/15": 3,
         "libreoffice/5": 1,
+        "p4/12": 1,
         "docx4j/4": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/12": 1,
-        "word/14": 2,
-        "word/16": 2,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/12": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/12": 2,
-        "word/14": 1,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/12": 4,
-        "word/14": 1,
-        "word/16": 1
       }
     },
     {
@@ -1538,21 +967,29 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[]: length changed",
       "frame": "-",
-      "files": 5,
+      "files": 1,
       "producers": {
-        "word/12": 3,
-        "word/14": 1,
-        "word/16": 1
+        "p1/12": 1
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting.underline: absent became object | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
+      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting.underline: absent became object",
       "frame": "-",
-      "files": 3,
+      "files": 1,
       "producers": {
-        "word/14": 3
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting: object became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting: object became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/12": 1
       }
     },
     {
@@ -1562,7 +999,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 2
+        "p1/14": 2
       }
     },
     {
@@ -1572,7 +1009,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 2
+        "p1/14": 2
       }
     },
     {
@@ -1582,7 +1019,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1592,7 +1029,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1602,7 +1039,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 2
+        "p1/14": 2
       }
     },
     {
@@ -1612,8 +1049,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 2,
-        "word/16": 1
+        "p1/12": 2,
+        "p1/16": 1
       }
     },
     {
@@ -1623,7 +1060,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -1631,10 +1068,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 4,
+      "files": 1,
       "producers": {
-        "word/16": 3,
-        "word/15": 1
+        "p1/12": 1
       }
     },
     {
@@ -1644,7 +1080,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -1654,7 +1090,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -1664,7 +1100,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -1674,7 +1110,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -1684,8 +1120,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 1,
-        "word/15": 1
+        "p1/14": 1,
+        "p1/15": 1
       }
     },
     {
@@ -1695,7 +1131,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -1705,7 +1141,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -1715,9 +1151,9 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/12": 2,
-        "word/14": 1,
-        "word/15": 1
+        "p1/12": 2,
+        "p1/14": 1,
+        "p1/15": 1
       }
     },
     {
@@ -1727,9 +1163,9 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/12": 2,
-        "word/14": 1,
-        "word/15": 1
+        "p1/12": 2,
+        "p1/14": 1,
+        "p1/15": 1
       }
     },
     {
@@ -1739,7 +1175,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -1749,49 +1185,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/16": 4,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].formatting: absent became object",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word-mac/14": 2,
-        "word/14": 1
+        "p1/12": 1
       }
     },
     {
@@ -1801,9 +1195,9 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word-online/0": 3,
-        "word/0": 1,
-        "word/16": 1
+        "p3/0": 3,
+        "p1/0": 1,
+        "p1/16": 1
       }
     },
     {
@@ -1813,11 +1207,11 @@
       "frame": "-",
       "files": 6,
       "producers": {
-        "word/15": 2,
-        "word/12": 1,
+        "p1/15": 2,
+        "p1/12": 1,
         "no-extended-properties": 1,
         "libreoffice/6": 1,
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -1827,8 +1221,8 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/12": 3,
-        "word/14": 1
+        "p1/12": 3,
+        "p1/14": 1
       }
     },
     {
@@ -1838,30 +1232,19 @@
       "frame": "-",
       "files": 12,
       "producers": {
-        "word/15": 6,
-        "word/16": 5,
-        "word/14": 1
+        "p1/15": 6,
+        "p1/16": 5,
+        "p1/14": 1
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[run].formatting: object became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[blockSdt].content[paragraph].content[]: length changed | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/15": 4,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[run].preservedAttributes: array became absent",
+      "message": "editor round trip changed package.document.sections[].content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -1871,7 +1254,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -1879,242 +1262,24 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 85,
+      "files": 82,
       "producers": {
-        "word/12": 12,
-        "outlook/12": 3,
-        "word/14": 11,
+        "p4/12": 3,
         "no-extended-properties": 2,
-        "unnamed": 1,
-        "word/16": 18,
-        "word/15": 6,
-        "word-mac/15": 9,
+        "p1/16": 18,
+        "p2/15": 9,
         "libreoffice/6": 3,
         "libreoffice/7": 6,
         "wps-office/11": 5,
-        "word": 4,
-        "word/0": 1,
+        "p1": 4,
+        "p1/14": 11,
+        "p1/15": 3,
+        "p1/12": 12,
+        "p1/0": 1,
         "libreoffice/24": 1,
         "libreoffice/5": 2,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].content: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].content: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].id: N became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].id: N became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].name: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].name: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[bookmarkStart].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 17,
-      "producers": {
-        "word/16": 9,
-        "word/12": 4,
-        "word/14": 4
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.bold: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.bold: true became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.boldCs: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.boldCs: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.color: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.cs: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.cs: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.eastAsia: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.eastAsia: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 8,
-      "producers": {
-        "word/12": 5,
-        "word/14": 1,
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.styleId: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.styleId: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.underline: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.underline: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 25,
-      "producers": {
-        "word/12": 1,
-        "word/16": 10,
-        "word/14": 7,
-        "word/15": 7
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting: object became absent",
-      "frame": "-",
-      "files": 8,
-      "producers": {
-        "word/16": 1,
-        "libreoffice/7": 2,
-        "outlook/12": 2,
-        "word/12": 1,
-        "word/14": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 25,
-      "producers": {
-        "word/12": 8,
-        "word/14": 6,
-        "word/16": 7,
-        "outlook/12": 2,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].propertyChanges: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
+        "unnamed": 1,
+        "p1/13": 1
       }
     },
     {
@@ -2122,12 +1287,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldResult[]: length changed",
       "frame": "-",
-      "files": 9,
+      "files": 3,
       "producers": {
-        "word/12": 4,
-        "word/14": 2,
-        "word/16": 1,
-        "word/15": 2
+        "p1/14": 1,
+        "p1/12": 1,
+        "p1/15": 1
       }
     },
     {
@@ -2135,23 +1299,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldResult[run].formatting: object became absent",
       "frame": "-",
-      "files": 2,
+      "files": 1,
       "producers": {
-        "libreoffice/7": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 24,
-      "producers": {
-        "word/12": 6,
-        "word/16": 7,
-        "word/15": 4,
-        "word/14": 6,
-        "word/13": 1
+        "p1/12": 1
       }
     },
     {
@@ -2161,7 +1311,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2171,8 +1321,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 1,
-        "word/16": 1
+        "p1/12": 1,
+        "p1/16": 1
       }
     },
     {
@@ -2182,9 +1332,9 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 1,
-        "word/16": 1,
-        "word/14": 1
+        "p1/12": 1,
+        "p1/14": 1,
+        "p1/16": 1
       }
     },
     {
@@ -2194,7 +1344,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2204,7 +1354,17 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/12": 1
       }
     },
     {
@@ -2214,7 +1374,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2224,7 +1384,27 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hint: absent became \"eastAsia\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hint: absent became \"eastAsia\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/12": 1
       }
     },
     {
@@ -2234,7 +1414,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2244,7 +1424,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2254,7 +1434,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 2
+        "p1/16": 2
       }
     },
     {
@@ -2264,7 +1444,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2274,7 +1454,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2284,9 +1464,9 @@
       "frame": "-",
       "files": 9,
       "producers": {
-        "word/12": 5,
-        "word/16": 3,
-        "word/14": 1
+        "p1/12": 5,
+        "p1/16": 3,
+        "p1/14": 1
       }
     },
     {
@@ -2296,7 +1476,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 2
+        "p1/16": 2
       }
     },
     {
@@ -2306,8 +1486,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 1,
-        "word/12": 1
+        "p1/16": 1,
+        "p1/12": 1
       }
     },
     {
@@ -2317,7 +1497,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2327,7 +1507,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2335,65 +1515,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 5,
-        "libreoffice/5": 1,
-        "word/16": 6,
-        "libreoffice/7": 2,
-        "outlook/12": 2,
-        "word/12": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.color: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 1,
-        "word/16": 1
+        "p1/12": 1,
+        "libreoffice/5": 1
       }
     },
     {
@@ -2403,7 +1528,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2413,7 +1538,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -2423,7 +1548,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2433,7 +1558,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -2443,7 +1568,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2453,7 +1578,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2463,7 +1588,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2473,7 +1598,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2483,7 +1608,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2491,9 +1616,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[deletion].content[run].formatting: absent became object",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/16": 1
+        "p1/16": 1,
+        "p1/14": 1
       }
     },
     {
@@ -2503,39 +1629,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[deletion].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[deletion].info.id: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].anchor: \"<path>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].anchor: \"<path>\" became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/16": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].anchor: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].anchor: \"<string>\" became absent",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/14": 3,
-        "word/16": 3
+        "p1/15": 2,
+        "p1/14": 1
       }
     },
     {
@@ -2545,10 +1640,10 @@
       "frame": "-",
       "files": 15,
       "producers": {
-        "word/14": 1,
-        "word/16": 6,
-        "word/12": 7,
-        "word/13": 1
+        "p1/14": 1,
+        "p1/16": 6,
+        "p1/12": 7,
+        "p1/13": 1
       }
     },
     {
@@ -2558,8 +1653,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/16": 2,
-        "word/12": 1
+        "p1/16": 2,
+        "p1/12": 1
       }
     },
     {
@@ -2569,7 +1664,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 2
+        "p1/12": 2
       }
     },
     {
@@ -2579,37 +1674,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
+        "p1/12": 1
       }
     },
     {
@@ -2619,7 +1684,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -2629,7 +1694,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -2639,7 +1704,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2649,78 +1714,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.color: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].propertyChanges: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldCode[run].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldResult[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldResult[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/15": 1
+        "p1/12": 1
       }
     },
     {
@@ -2730,7 +1724,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2740,7 +1734,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2750,7 +1744,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2770,7 +1764,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2780,39 +1774,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.id: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
+        "p1/14": 1
       }
     },
     {
@@ -2822,7 +1784,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -2832,7 +1794,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -2842,17 +1804,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
+        "p1/15": 2
       }
     },
     {
@@ -2860,15 +1812,15 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[]: length changed",
       "frame": "-",
-      "files": 17,
+      "files": 18,
       "producers": {
-        "word/12": 6,
-        "word/14": 4,
-        "word/15": 1,
-        "libreoffice/25": 1,
+        "p1/12": 6,
+        "p1/14": 4,
+        "libreoffice/25": 2,
         "no-extended-properties": 2,
         "libreoffice/7": 1,
-        "word/16": 2
+        "p1/16": 2,
+        "p1/15": 1
       }
     },
     {
@@ -2878,7 +1830,37 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.hlinkClickSource.rId: \"<id A>\" became \"<id B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.hlinkClickSource.rId: \"<id A>\" became \"<id B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/15": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.hlinkClickSource.xml: \"<path A>\" became \"<path B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.hlinkClickSource.xml: \"<path A>\" became \"<path B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/15": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.hlinkRId: \"<id A>\" became \"<id B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.hlinkRId: \"<id A>\" became \"<id B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/15": 1
       }
     },
     {
@@ -2888,7 +1870,17 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.rId: \"<id>\" became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[drawing].image.rId: \"<id>\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/12": 1
       }
     },
     {
@@ -2898,8 +1890,8 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/14": 3,
-        "word/13": 1
+        "p1/14": 3,
+        "p1/13": 1
       }
     },
     {
@@ -2909,8 +1901,8 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/14": 3,
-        "word/13": 1
+        "p1/14": 3,
+        "p1/13": 1
       }
     },
     {
@@ -2920,11 +1912,11 @@
       "frame": "-",
       "files": 13,
       "producers": {
-        "word/15": 1,
-        "word/12": 8,
-        "outlook/12": 1,
-        "word/14": 2,
-        "word/13": 1
+        "p1/15": 1,
+        "p1/12": 8,
+        "p4/12": 1,
+        "p1/14": 2,
+        "p1/13": 1
       }
     },
     {
@@ -2934,8 +1926,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/12": 1,
-        "word/14": 1
+        "p1/12": 1,
+        "p1/14": 1
       }
     },
     {
@@ -2945,7 +1937,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -2955,7 +1947,17 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "libreoffice/25": 1
       }
     },
     {
@@ -2965,8 +1967,8 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word/12": 3,
-        "word/14": 2
+        "p1/12": 3,
+        "p1/14": 2
       }
     },
     {
@@ -2976,7 +1978,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2986,7 +1988,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -2997,9 +1999,9 @@
       "files": 11,
       "producers": {
         "no-extended-properties": 1,
-        "word/14": 3,
-        "word/12": 6,
-        "word/16": 1
+        "p1/14": 3,
+        "p1/12": 6,
+        "p1/16": 1
       }
     },
     {
@@ -3007,35 +2009,13 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 70,
+      "files": 30,
       "producers": {
-        "word/16": 37,
-        "word/14": 9,
-        "word/15": 12,
-        "wps-office/11": 1,
-        "word/12": 8,
-        "outlook/12": 2,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].id: absent became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].id: absent became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].name: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].name: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
+        "p1/16": 12,
+        "p1/14": 5,
+        "p1/12": 5,
+        "p1/15": 6,
+        "p4/12": 2
       }
     },
     {
@@ -3043,44 +2023,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 32,
+      "files": 11,
       "producers": {
-        "word/14": 4,
-        "word/15": 2,
-        "word/16": 23,
-        "word/12": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[simpleField].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[simpleField].content[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 7,
-      "producers": {
-        "word/12": 5,
-        "word/16": 1,
-        "word/13": 1
+        "p1/14": 4,
+        "p1/16": 6,
+        "p1/12": 1
       }
     },
     {
@@ -3090,10 +2037,10 @@
       "frame": "-",
       "files": 12,
       "producers": {
-        "word/16": 7,
-        "word/15": 3,
-        "word/14": 1,
-        "outlook/12": 1
+        "p1/16": 7,
+        "p1/15": 3,
+        "p1/14": 1,
+        "p4/12": 1
       }
     },
     {
@@ -3103,7 +2050,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -3113,10 +2060,10 @@
       "frame": "-",
       "files": 12,
       "producers": {
-        "word/16": 7,
-        "word/15": 3,
-        "word/14": 1,
-        "outlook/12": 1
+        "p1/16": 7,
+        "p1/15": 3,
+        "p1/14": 1,
+        "p4/12": 1
       }
     },
     {
@@ -3136,7 +2083,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/15": 1
+        "p1/15": 1
       }
     },
     {
@@ -3146,105 +2093,17 @@
       "frame": "-",
       "files": 35,
       "producers": {
-        "word/14": 2,
-        "word/15": 5,
-        "word/16": 14,
-        "word-mac/14": 3,
-        "word": 2,
+        "p1/14": 2,
+        "p1/15": 5,
+        "p1/16": 14,
+        "p2/14": 3,
+        "p1": 2,
         "libreoffice/24": 1,
-        "word/12": 2,
-        "outlook/12": 1,
-        "word-mac/15": 3,
+        "p1/12": 2,
+        "p2/15": 3,
         "libreoffice/5": 1,
+        "p4/12": 1,
         "docx4j/4": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/12": 1,
-        "word/14": 2,
-        "word/16": 2,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/12": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/12": 2,
-        "word/14": 1,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/12": 4,
-        "word/14": 1,
-        "word/16": 1
       }
     },
     {
@@ -3252,21 +2111,29 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[]: length changed",
       "frame": "-",
-      "files": 5,
+      "files": 1,
       "producers": {
-        "word/12": 3,
-        "word/14": 1,
-        "word/16": 1
+        "p1/12": 1
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting.underline: absent became object | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
+      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting.underline: absent became object",
       "frame": "-",
-      "files": 3,
+      "files": 1,
       "producers": {
-        "word/14": 3
+        "p1/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting: object became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].formatting: object became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/12": 1
       }
     },
     {
@@ -3276,7 +2143,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 2
+        "p1/14": 2
       }
     },
     {
@@ -3286,7 +2153,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 2
+        "p1/14": 2
       }
     },
     {
@@ -3296,7 +2163,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -3306,7 +2173,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -3316,7 +2183,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 2
+        "p1/14": 2
       }
     },
     {
@@ -3326,8 +2193,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 2,
-        "word/16": 1
+        "p1/12": 2,
+        "p1/16": 1
       }
     },
     {
@@ -3337,7 +2204,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "p1/12": 1
       }
     },
     {
@@ -3345,10 +2212,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 4,
+      "files": 1,
       "producers": {
-        "word/16": 3,
-        "word/15": 1
+        "p1/12": 1
       }
     },
     {
@@ -3358,7 +2224,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -3368,7 +2234,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -3378,7 +2244,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -3388,7 +2254,7 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/15": 2
+        "p1/15": 2
       }
     },
     {
@@ -3398,8 +2264,8 @@
       "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 1,
-        "word/15": 1
+        "p1/14": 1,
+        "p1/15": 1
       }
     },
     {
@@ -3409,7 +2275,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -3419,7 +2285,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "p1/14": 1
       }
     },
     {
@@ -3429,9 +2295,9 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/12": 2,
-        "word/14": 1,
-        "word/15": 1
+        "p1/12": 2,
+        "p1/14": 1,
+        "p1/15": 1
       }
     },
     {
@@ -3441,9 +2307,9 @@
       "frame": "-",
       "files": 4,
       "producers": {
-        "word/12": 2,
-        "word/14": 1,
-        "word/15": 1
+        "p1/12": 2,
+        "p1/14": 1,
+        "p1/15": 1
       }
     },
     {
@@ -3453,7 +2319,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -3463,49 +2329,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/16": 4,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].formatting: absent became object",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word-mac/14": 2,
-        "word/14": 1
+        "p1/12": 1
       }
     },
     {
@@ -3515,7 +2339,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
       }
     },
     {
@@ -3525,7 +2349,17 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
+        "p1/16": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.headers[][header].content[paragraph].content[run].content[drawing].image.rId: \"<id>\" became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.headers[][header].content[paragraph].content[run].content[drawing].image.rId: \"<id>\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "p1/16": 1
       }
     },
     {
@@ -3533,10 +2367,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.relationships[]: length changed",
       "frame": "-",
-      "files": 3,
+      "files": 4,
       "producers": {
-        "word/12": 2,
-        "word/16": 1
+        "p1/12": 1,
+        "p1/16": 2,
+        "p1/15": 1
       }
     },
     {
@@ -3546,37 +2381,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.bold: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.bold: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.boldCs: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting.boldCs: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/12": 1
+        "p1/16": 1
       }
     },
     {
@@ -3586,17 +2391,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
+        "p4/12": 1
       }
     },
     {
@@ -3616,7 +2411,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "outlook/12": 1
+        "p4/12": 1
       }
     },
     {
@@ -3626,7 +2421,7 @@
       "frame": "-",
       "files": 1,
       "producers": {
-        "outlook/12": 1
+        "p4/12": 1
       }
     }
   ]
