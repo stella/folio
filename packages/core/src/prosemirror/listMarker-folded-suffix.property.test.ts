@@ -99,3 +99,32 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
     },
   );
 });
+
+test("an empty level marker remains an empty marker through layout conversion", () => {
+  const numPr = paragraphNumberingReference({ numId: 1, ilvl: 0 });
+  const rendering = {
+    level: 0,
+    numId: 1,
+    isBullet: false,
+    numFmt: "none",
+    marker: "",
+    markerTemplate: "",
+    markerSuffix: "tab",
+  } as const satisfies Parameters<typeof listRenderingAttrPatch>[0];
+  const doc = schema.node("doc", null, [
+    schema.node(
+      "paragraph",
+      {
+        numPr,
+        ...listRenderingAttrPatch(rendering),
+      },
+      schema.text("first"),
+    ),
+  ]);
+
+  const paragraph = toFlowBlocks(doc).find(
+    (block) => block.kind === "paragraph",
+  );
+  expect(paragraph?.attrs?.listMarker).toBe("");
+  expect(paragraph?.attrs?.listMarkerSuffix).toBe("tab");
+});
