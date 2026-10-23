@@ -338,6 +338,16 @@ describe("ommlToMathml — delimiters, matrices, accents", () => {
     expect(mml).toContain('<mover accent="true">');
   });
 
+  test("defaults an unpositioned bar below its body", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS}>
+        <m:bar><m:e><m:r><m:t>x</m:t></m:r></m:e></m:bar>
+      </m:oMath>
+    `);
+
+    expect(ommlToMathml(omml)).toContain("<munder>");
+  });
+
   test("defaults top group characters to the overbrace glyph", () => {
     const omml = parse(`
       <m:oMath ${MATH_NS}>

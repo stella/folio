@@ -599,7 +599,7 @@ function renderAccent(el: XmlElement): string {
 function renderBar(el: XmlElement): string {
   const barPr = findChildByLocalName(el, "barPr");
   const posEl = barPr ? findChildByLocalName(barPr, "pos") : null;
-  const pos = posEl ? (getAttrValue(posEl, "val") ?? "top") : "top";
+  const pos = posEl ? (getAttrValue(posEl, "val") ?? "bot") : "bot";
   const base = findChildByLocalName(el, "e");
   const baseMml = base ? wrapMrow(renderChildren(base)) : "<mrow/>";
   const bar = '<mo stretchy="true">¯</mo>';
