@@ -47,6 +47,12 @@ type BoundaryItem = Extract<
   }
 >;
 
+/** The marks that say a node is in a revision: its wrappers, in the engine. */
+const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
+  "insertion",
+  "deletion",
+]);
+
 /** Every editor node that carries range boundaries. Comment ranges carried as marks are the comment's. */
 type BoundaryNodeName =
   | typeof BOOKMARK_BOUNDARY_NODE_NAME
@@ -154,30 +160,56 @@ const boundariesIn = (doc: PMNode, kept: ReadonlySet<PMNode>): Found[] => {
   return found;
 };
 
-/** One boundary as a node of its own beside `beside`, at that node's level. */
-const nodeFor = (item: BoundaryItem, beside: PMNode): PMNode | undefined => {
-  const schema = beside.type.schema;
-  if (item.type === "bookmarkStart" || item.type === "bookmarkEnd") {
-    const attrs =
-      item.type === "bookmarkStart"
-        ? { type: "start", id: item.id, name: item.name }
-        : { type: "end", id: item.id };
-    return schema.nodes[
-      beside.isInline
-        ? BOOKMARK_BOUNDARY_NODE_NAME
-        : BLOCK_BOOKMARK_BOUNDARY_NODE_NAME
-    ]?.create(attrs);
-  }
-  if (isComment(item) || !beside.isInline) return undefined;
-  return schema.nodes[MOVE_RANGE_BOUNDARY_NODE_NAME]?.create({
-    marker: item satisfies MoveRangeMarker,
-  });
+const isBookmark = (
+  item: BoundaryItem,
+): item is Extract<BoundaryItem, { type: "bookmarkStart" | "bookmarkEnd" }> =>
+  item.type === "bookmarkStart" || item.type === "bookmarkEnd";
+
+/**
+ * The one half a move's point range keeps, as a node of its own on `marks`:
+ * the only boundary the repair makes, since one node holds both halves of a
+ * point range. A comment's point range goes with its comment, and a bookmark
+ * is never one.
+ */
+const pointRangeHalf = (
+  node: PMNode,
+  half: BoundaryItem,
+  marks: readonly Mark[],
+): PMNode | undefined => {
+  if (isComment(half) || isBookmark(half)) return undefined;
+  return node.type.schema.nodes[MOVE_RANGE_BOUNDARY_NODE_NAME]?.create(
+    { marker: half satisfies MoveRangeMarker },
+    null,
+    marks,
+  );
 };
 
-/** One change to `tr.doc` the plan asks for, at a position in that document. */
+/** The revision marks of `start`, with the other marks of `node`. */
+const marksBeside = (node: PMNode, start: PMNode): Mark[] => [
+  ...node.marks.filter((mark) => !REVISION_MARK_NAMES.has(mark.type.name)),
+  ...start.marks.filter((mark) => REVISION_MARK_NAMES.has(mark.type.name)),
+];
+
+/**
+ * The boundary `end` names, moved to just after `start`: the same node, its
+ * attributes and its own marks, inside the revisions `start` stands in, as
+ * the engine moves a boundary into its start's wrappers.
+ */
+const movedBeside = (end: Found, start: PMNode): PMNode | undefined =>
+  rangeBoundaryItemsOf(end.node).length === 1
+    ? end.node.mark(marksBeside(end.node, start))
+    : pointRangeHalf(end.node, end.item, marksBeside(end.node, start));
+
+/**
+ * One change the plan asks of `tr.doc`, at a position in that document. The
+ * repair deletes a copy or moves the original node, attributes and marks and
+ * all; it builds a node only for the half a point range keeps
+ * ({@link pointRangeHalf}), on the point range's own marks.
+ */
 type BoundaryEdit =
-  | { kind: "replace"; position: number; size: number; node?: PMNode }
-  | { kind: "insert"; position: number; node: PMNode };
+  | { kind: "delete"; position: number; node: PMNode }
+  | { kind: "narrow"; position: number; node: PMNode; half: BoundaryItem }
+  | { kind: "move"; position: number; node: PMNode };
 
 /**
  * Make every range a rejection kept boundaries of well-formed, by the
@@ -204,16 +236,12 @@ export const normalizeKeptRangeBoundaries = (
     const staying = indices.filter((index) => !leaving.has(index));
     const node = found[indices[0] ?? -1]?.node;
     if (node === undefined || staying.length === indices.length) continue;
-    // A point range that keeps only one half becomes a node of that half.
-    const only = staying.length === 1 ? found[staying[0] ?? -1] : undefined;
-    const replacement =
-      only === undefined ? undefined : nodeFor(only.item, node);
-    edits.push({
-      kind: "replace",
-      position,
-      size: node.nodeSize,
-      ...(replacement === undefined ? {} : { node: replacement }),
-    });
+    const half = staying.length === 1 ? found[staying[0] ?? -1] : undefined;
+    edits.push(
+      half === undefined
+        ? { kind: "delete", position, node }
+        : { kind: "narrow", position, node, half: half.item },
+    );
   }
   for (const { end: endIndex, start: startIndex } of plan.moved) {
     const end = found[endIndex];
@@ -221,25 +249,31 @@ export const normalizeKeptRangeBoundaries = (
     const moved =
       end === undefined || start === undefined
         ? undefined
-        : nodeFor(end.item, start.node);
+        : movedBeside(end, start.node);
     if (start !== undefined && moved !== undefined)
       edits.push({
-        kind: "insert",
+        kind: "move",
         position: start.position + start.node.nodeSize,
         node: moved,
       });
   }
   // Last position first, so every edit lands where the plan read it; at one
-  // position a node's own change goes before what is inserted ahead of it.
-  const order = (edit: BoundaryEdit) => (edit.kind === "replace" ? 0 : 1);
+  // position a node's own change goes before what moves in ahead of it.
+  const order = (edit: BoundaryEdit) => (edit.kind === "move" ? 1 : 0);
   for (const edit of edits.toSorted(
     (left, right) =>
       right.position - left.position || order(left) - order(right),
   )) {
-    if (edit.kind === "insert") tr.insert(edit.position, edit.node);
-    else if (edit.node === undefined)
-      tr.delete(edit.position, edit.position + edit.size);
-    else tr.replaceWith(edit.position, edit.position + edit.size, edit.node);
+    if (edit.kind === "move") tr.insert(edit.position, edit.node);
+    else if (edit.kind === "delete")
+      tr.delete(edit.position, edit.position + edit.node.nodeSize);
+    else {
+      const half = pointRangeHalf(edit.node, edit.half, edit.node.marks);
+      if (half === undefined)
+        tr.delete(edit.position, edit.position + edit.node.nodeSize);
+      else
+        tr.replaceWith(edit.position, edit.position + edit.node.nodeSize, half);
+    }
   }
 };
 
@@ -255,11 +289,6 @@ export type RemovedSubtree = {
   readonly kept: readonly PMNode[];
   readonly [removedSubtreeBrand]: true;
 };
-
-const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
-  "insertion",
-  "deletion",
-]);
 
 /**
  * Remove `node` and everything in it. Rejecting keeps every range boundary

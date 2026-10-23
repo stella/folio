@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import type { EditorState } from "prosemirror-state";
+import type { Command, EditorState } from "prosemirror-state";
 
 import {
   applyDocumentOp,
@@ -58,10 +58,20 @@ const firstParagraphContent = (document: Document) => {
   return first?.type === "paragraph" ? first.content : [];
 };
 
-const rejectInState = (state: EditorState, document: Document) => {
+/** Each deletion's text and range boundaries, in order. */
+const deletedOutline = (content: readonly Paragraph["content"][number][]) =>
+  content.flatMap((item) =>
+    item.type === "deletion" ? [outline(item.content)] : [],
+  );
+
+const rejectInState = (
+  state: EditorState,
+  document: Document,
+  command: Command = rejectAllChanges(),
+) => {
   let resolved = state;
   expect(
-    rejectAllChanges()(state, (tr) => {
+    command(state, (tr) => {
       resolved = state.apply(tr);
     }),
   ).toBe(true);
@@ -74,6 +84,17 @@ const rejectInState = (state: EditorState, document: Document) => {
 
 const rejectInEditor = (document: Document) =>
   rejectInState(createHarnessState(document, "editing"), document);
+
+/** Whether the engine takes `document`'s revision records as they stand. */
+const acceptsRecords = (document: Document): boolean => {
+  const applied = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [insertion.id],
+    decision: REVISION_DECISIONS.REJECT,
+  });
+  return applied.isOk() || applied.error.reason !== "duplicateRecordId";
+};
 
 const rejectInEngine = (document: Document) => {
   const applied = applyDocumentOp(document, {
@@ -202,6 +223,54 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     ]);
   });
 
+  test("an inserted move range end moved after its start stays inside the deletion around both, in both", () => {
+    const deletion = { id: 20, author: "B", date: "2026-03-04T05:00:04Z" };
+    const document = documentWith([
+      { type: "run", content: [{ type: "text", text: "a" }] },
+      {
+        type: "deletion",
+        info: deletion,
+        content: [
+          { type: "run", content: [{ type: "text", text: "d" }] },
+          {
+            type: "insertion",
+            info: insertion,
+            content: [{ type: "moveToRangeEnd", id: 6 }],
+          },
+          { type: "run", content: [{ type: "text", text: "t" }] },
+          { type: "moveToRangeStart", id: 6, name: "move6", author: "A" },
+          { type: "run", content: [{ type: "text", text: "e" }] },
+        ],
+      },
+      { type: "run", content: [{ type: "text", text: "b" }] },
+    ]);
+    const state = createHarnessState(document, "editing");
+    let resolved = state;
+    expect(
+      rejectAIEditRevision(insertion.id)(state, (tr) => {
+        resolved = state.apply(tr);
+      }),
+    ).toBe(true);
+    const editor = firstParagraphContent(
+      fromProseDoc(resolved.doc, document, {
+        stylesheetSource: { type: "package" },
+      }),
+    );
+    const deleted = (content: Paragraph["content"]) =>
+      content.flatMap((item) =>
+        item.type === "deletion" ? [outline(item.content)] : [],
+      );
+    expect(deleted(editor)).toEqual(deleted(rejectInEngine(document)));
+    expect(deleted(editor)).toEqual([
+      [
+        "text:dt",
+        "type:moveToRangeStart,id:6",
+        "type:moveToRangeEnd,id:6",
+        "text:e",
+      ],
+    ]);
+  });
+
   test("dropping an inserted copy leaves the next range alone, in both", () => {
     // The copy sits right before another range's end, which comes before its
     // own start; only the range the rejection kept a boundary of is repaired.
@@ -266,6 +335,10 @@ describe("rejecting an insertion keeps its range boundaries", () => {
       // insertion holds (the rejection removes it whole), two nested so, or
       // one around the insertion (it stays, emptied).
       const controls = fc.constantFrom("none", "inside", "nested", "around");
+      // Whether the insertion, and the boundaries after it, sit inside a
+      // deletion that stays: only the insertion is rejected then.
+      const inDeletion = fc.boolean();
+      const deletion = { id: 20, author: "B", date: "2026-03-04T05:00:04Z" };
       const control = (
         id: number,
         content: InlineSdt["content"],
@@ -281,7 +354,8 @@ describe("rejecting an insertion keeps its range boundaries", () => {
           moves,
           bookmark,
           controls,
-          (before, inside, after, placement, wrapping) => {
+          inDeletion,
+          (before, inside, after, placement, wrapping, deleted) => {
             const start = {
               type: "bookmarkStart" as const,
               id: 9,
@@ -313,12 +387,29 @@ describe("rejecting an insertion keeps its range boundaries", () => {
                 : []),
               ...before,
               ...(placement === "outside" ? [end] : []),
-              wrapping === "around"
-                ? control(43, [insertionNode])
-                : insertionNode,
+              ...(deleted
+                ? [
+                    {
+                      type: "deletion" as const,
+                      info: deletion,
+                      content: [
+                        run("p"),
+                        wrapping === "around"
+                          ? control(43, [insertionNode])
+                          : insertionNode,
+                        run("q"),
+                        ...after,
+                      ],
+                    },
+                  ]
+                : [
+                    wrapping === "around"
+                      ? control(43, [insertionNode])
+                      : insertionNode,
+                  ]),
               run("b"),
               ...(placement === "endOutside" ? [end] : []),
-              ...after,
+              ...(deleted ? [] : after),
               run("c"),
             ]);
             let state: EditorState;
@@ -334,9 +425,18 @@ describe("rejecting an insertion keeps its range boundaries", () => {
             const imported = fromProseDoc(state.doc, document, {
               stylesheetSource: { type: "package" },
             });
-            expect(outline(rejectInState(state, document))).toEqual(
-              outline(rejectInEngine(imported)),
+            const editor = rejectInState(
+              state,
+              document,
+              deleted ? rejectAIEditRevision(insertion.id) : undefined,
             );
+            // The editor writes a content control in an insertion nested in a
+            // deletion back as one record per piece, which the engine reads
+            // as copies of one record: it holds nothing both can reject.
+            fc.pre(acceptsRecords(imported));
+            const engine = rejectInEngine(imported);
+            expect(outline(editor)).toEqual(outline(engine));
+            expect(deletedOutline(editor)).toEqual(deletedOutline(engine));
           },
         ),
         {
