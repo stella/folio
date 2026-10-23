@@ -752,6 +752,43 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("keeps an empty paragraph at its flow position beside a full-column float", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "empty-paragraph-float",
+        columnWidths: [400],
+        floating: { horzAnchor: "margin", tblpXSpec: "left" },
+        rows: [
+          {
+            id: "row",
+            cells: [{ id: "cell", blocks: [para("cell", "cell")] }],
+          },
+        ],
+      };
+      const measures = measureBlocks(
+        [table, para("mark-only", "")],
+        [350, 350],
+        0,
+        {
+          pageWidth: 1_000,
+          pageHeight: 1_000,
+          marginLeft: 100,
+          marginRight: 100,
+          marginBottom: 40,
+          contentLeft: [100, 100],
+        },
+      );
+      const empty = measures.at(1);
+      if (empty?.kind !== "paragraph") {
+        throw new Error("Expected empty paragraph measure");
+      }
+
+      expect(empty.lines.at(0)?.lineHeight).toBeGreaterThan(0);
+      expect(empty.lines.at(0)?.floatSkipBefore).toBeUndefined();
+    }, fakeMeasure);
+  });
+
   test("keeps paragraph-anchored bands from one textbox group active together", () => {
     withFakeTextMeasure(() => {
       const firstBand: TextBoxBlock = {
