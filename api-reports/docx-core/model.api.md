@@ -268,6 +268,7 @@ export type DocumentBody = {
 // @public
 export type DocumentSettings = {
     compatibilityMode?: number;
+    noColumnBalance?: boolean;
     defaultTabStop: number;
     evenAndOddHeaders?: boolean;
     mirrorMargins?: boolean;
