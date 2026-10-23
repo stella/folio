@@ -160,6 +160,10 @@ export const withBoundariesAtEdge = (
 
 type Occurrence = { paragraph: string; node: Boundary };
 
+/**
+ * `nodes` without `target`. A container `target` was all of goes with it:
+ * the model holds no empty link or revision wrapper.
+ */
 const withoutNode = (
   nodes: readonly InlineNode[],
   target: InlineNode,
@@ -167,21 +171,31 @@ const withoutNode = (
   nodes.flatMap((node) => {
     if (node === target) return [];
     const children = childNodes(node);
-    if (children === undefined) return [node];
+    if (
+      children === undefined ||
+      !children.some((child) => holds(child, target))
+    )
+      return [node];
     const next = withoutNode(children, target);
-    return [next === children ? node : rebuildNode(node, next)];
+    return next.length === 0 ? [] : [rebuildNode(node, next)];
   });
 
-const withAfter = (
+const holds = (node: InlineNode, target: InlineNode): boolean =>
+  node === target ||
+  (childNodes(node) ?? []).some((child) => holds(child, target));
+
+const withBeside = (
   nodes: readonly InlineNode[],
   anchor: InlineNode,
   inserted: InlineNode,
+  side: "before" | "after",
 ): readonly InlineNode[] =>
   nodes.flatMap((node) => {
-    if (node === anchor) return [node, inserted];
+    if (node === anchor)
+      return side === "after" ? [node, inserted] : [inserted, node];
     const children = childNodes(node);
     if (children === undefined) return [node];
-    const next = withAfter(children, anchor, inserted);
+    const next = withBeside(children, anchor, inserted, side);
     return [next === children ? node : rebuildNode(node, next)];
   });
 
@@ -199,8 +213,8 @@ export type BoundaryOccurrence = {
 /** What makes kept boundaries' ranges well-formed, by index into the occurrences. */
 export type WellFormedRangePlan = {
   dropped: number[];
-  /** Each end that moves to just after its range's start. */
-  moved: { end: number; start: number }[];
+  /** Each kept boundary that moves to just before or after the other end of its range. */
+  moved: { moving: number; anchor: number; side: "before" | "after" }[];
 };
 
 /**
@@ -208,7 +222,9 @@ export type WellFormedRangePlan = {
  * well-formed, for the engine's model and the editor's document alike. A
  * kept copy of a boundary the story still holds is no boundary of its own and
  * goes (of several kept copies, the first stays); then, where such a range's
- * end comes before its start, the end moves to just after the start. A range
+ * end comes before its start, the half the rejection kept closes on the
+ * other: a kept end moves to just after the start, or else a kept start to
+ * just before the end. A boundary that was standing never moves, and a range
  * still with more than one start or end is left as it is.
  */
 export const planWellFormedRanges = (
@@ -245,7 +261,10 @@ export const planWellFormedRanges = (
     const [end, ...moreEnds] = sides("end");
     if (start === undefined || end === undefined) continue;
     if (moreStarts.length > 0 || moreEnds.length > 0 || end > start) continue;
-    moved.push({ end, start });
+    if (occurrences[end]?.kept === true)
+      moved.push({ moving: end, anchor: start, side: "after" });
+    else if (occurrences[start]?.kept === true)
+      moved.push({ moving: start, anchor: end, side: "before" });
   }
   return {
     dropped: [...dropped].toSorted((left, right) => left - right),
@@ -300,14 +319,17 @@ export const wellFormedRanges = ({
         withoutNode(current(occurrence.paragraph), occurrence.node),
       );
   }
-  for (const { end: endIndex, start: startIndex } of plan.moved) {
-    const end = found[endIndex];
-    const start = found[startIndex];
-    if (end === undefined || start === undefined) continue;
-    changed.set(end.paragraph, withoutNode(current(end.paragraph), end.node));
+  for (const { moving: movingIndex, anchor: anchorIndex, side } of plan.moved) {
+    const moving = found[movingIndex];
+    const anchor = found[anchorIndex];
+    if (moving === undefined || anchor === undefined) continue;
     changed.set(
-      start.paragraph,
-      withAfter(current(start.paragraph), start.node, end.node),
+      moving.paragraph,
+      withoutNode(current(moving.paragraph), moving.node),
+    );
+    changed.set(
+      anchor.paragraph,
+      withBeside(current(anchor.paragraph), anchor.node, moving.node, side),
     );
   }
   return changed;

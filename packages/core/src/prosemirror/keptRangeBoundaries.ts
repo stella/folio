@@ -189,21 +189,26 @@ const pointRangeHalf = (
   );
 };
 
-/** The revision marks of `start`, with the other marks of `node`. */
-const marksBeside = (node: PMNode, start: PMNode): Mark[] => [
+/** The revision marks of `anchor`, with the other marks of `node`. */
+const marksBeside = (node: PMNode, anchor: PMNode): Mark[] => [
   ...node.marks.filter((mark) => !REVISION_MARK_NAMES.has(mark.type.name)),
-  ...start.marks.filter((mark) => REVISION_MARK_NAMES.has(mark.type.name)),
+  ...anchor.marks.filter((mark) => REVISION_MARK_NAMES.has(mark.type.name)),
 ];
 
 /**
- * The boundary `end` names, moved to just after `start`: the same node, its
- * attributes and its own marks, inside the revisions `start` stands in, as
- * the engine moves a boundary into its start's wrappers.
+ * The kept boundary `moving` names, moved beside the other end of its range,
+ * `anchor`: the same node, its attributes and its own marks, inside the
+ * revisions `anchor` stands in, as the engine moves a boundary in among its
+ * anchor's wrappers.
  */
-const movedBeside = (end: Found, start: PMNode): PMNode | undefined =>
-  rangeBoundaryItemsOf(end.node).length === 1
-    ? end.node.mark(marksBeside(end.node, start))
-    : pointRangeHalf(end.node, end.item, marksBeside(end.node, start));
+const movedBeside = (moving: Found, anchor: PMNode): PMNode | undefined =>
+  rangeBoundaryItemsOf(moving.node).length === 1
+    ? moving.node.mark(marksBeside(moving.node, anchor))
+    : pointRangeHalf(
+        moving.node,
+        moving.item,
+        marksBeside(moving.node, anchor),
+      );
 
 /**
  * One change the plan asks of `tr.doc`, at a position in that document. The
@@ -232,7 +237,7 @@ export const normalizeKeptRangeBoundaries = (
   const found = boundariesIn(tr.doc, kept);
   const plan = planWellFormedRanges(found.map(({ occurrence }) => occurrence));
   const leaving = new Set(plan.dropped);
-  for (const { end } of plan.moved) leaving.add(end);
+  for (const { moving } of plan.moved) leaving.add(moving);
   const edits: BoundaryEdit[] = [];
   const byNode = new Map<number, number[]>();
   for (const [index, { position }] of found.entries())
@@ -248,17 +253,20 @@ export const normalizeKeptRangeBoundaries = (
         : { kind: "narrow", position, node, half: half.item },
     );
   }
-  for (const { end: endIndex, start: startIndex } of plan.moved) {
-    const end = found[endIndex];
-    const start = found[startIndex];
+  for (const { moving: movingIndex, anchor: anchorIndex, side } of plan.moved) {
+    const moving = found[movingIndex];
+    const anchor = found[anchorIndex];
     const moved =
-      end === undefined || start === undefined
+      moving === undefined || anchor === undefined
         ? undefined
-        : movedBeside(end, start.node);
-    if (start !== undefined && moved !== undefined)
+        : movedBeside(moving, anchor.node);
+    if (anchor !== undefined && moved !== undefined)
       edits.push({
         kind: "move",
-        position: start.position + start.node.nodeSize,
+        position:
+          side === "after"
+            ? anchor.position + anchor.node.nodeSize
+            : anchor.position,
         node: moved,
       });
   }

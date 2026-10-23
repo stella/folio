@@ -1228,8 +1228,9 @@ export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, 
 export type WellFormedRangePlan = {
     dropped: number[];
     moved: {
-        end: number;
-        start: number;
+        moving: number;
+        anchor: number;
+        side: "before" | "after";
     }[];
 };
 

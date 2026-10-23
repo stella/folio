@@ -103,6 +103,37 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     ]);
   });
 
+  test("a kept start before a standing end moves to the end, never the end out of its revision", () => {
+    // The end stands in an insertion this rejection leaves; the start the
+    // rejection kept comes after it, so the start closes on the end.
+    const document = documentWith([
+      {
+        type: "insertion",
+        info: { id: 1, author: "A" },
+        content: [{ type: "bookmarkEnd", id: 3 }],
+      },
+      {
+        type: "insertion",
+        info: { id: 2, author: "A" },
+        content: [
+          { type: "run", content: [{ type: "text", text: "x" }] },
+          { type: "bookmarkStart", id: 3, name: "_Ref3" },
+        ],
+      },
+    ]);
+
+    expect(firstParagraph(rejectAll(document, [2]))).toEqual([
+      {
+        type: "insertion",
+        info: { id: 1, author: "A" },
+        content: [
+          { type: "bookmarkStart", id: 3, name: "_Ref3" },
+          { type: "bookmarkEnd", id: 3 },
+        ],
+      },
+    ]);
+  });
+
   test("a bookmark inside a rejected insertion stays where the insertion was", () => {
     const base = documentWith([
       { type: "run", content: [{ type: "text", text: "ab" }] },
