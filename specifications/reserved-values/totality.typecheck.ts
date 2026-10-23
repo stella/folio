@@ -31,9 +31,9 @@ const COMPLETE = {
 } satisfies Record<keyof FixtureFormatting, ReservedValueDisposition>;
 
 // A key the model type does not declare is rejected by the alias constraint.
-// @ts-expect-error `notAField` is not a field of FixtureFormatting
 type RejectsUnknownField = ExhaustiveFields<
   FixtureFormatting,
+  // @ts-expect-error `notAField` is not a field of FixtureFormatting
   "alignment" | "notAField"
 >;
 

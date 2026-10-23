@@ -34,11 +34,6 @@ const INTENTIONAL_BREAKS: Readonly<Record<string, IntentionalBreak>> = {
     range: "^7.0.1",
     reason: "archiver 8 resolves a dependency advisory",
   },
-  "simple-git": {
-    dependent: "@nuxt/devtools",
-    range: "^3.36.0",
-    reason: "simple-git 4 resolves dependency advisories",
-  },
   valibot: {
     dependent: "@stll/conditions",
     range: "1.4.2",
