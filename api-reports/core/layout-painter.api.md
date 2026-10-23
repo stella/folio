@@ -128,7 +128,7 @@ export type PainterOptions = {
     registry?: FeatureRegistry;
 };
 
-// @public
+// @public (undocumented)
 export const releaseDisplayPageResources: (root: Element) => void;
 
 // @public
