@@ -93,27 +93,6 @@ export function complexScriptLineHeightStyle(
     : baseStyle;
 }
 
-type ScriptLineHeightStyleOptions = {
-  run: TextRun;
-  style: FontStyle;
-  unshiftedFontSize: number;
-};
-
-/** Script glyphs paint smaller, but their source font still sets line ascent and descent. */
-export function scriptLineHeightStyle({
-  run,
-  style,
-  unshiftedFontSize,
-}: ScriptLineHeightStyleOptions): FontStyle {
-  if (
-    (!run.superscript && !run.subscript) ||
-    unshiftedFontSize <= (style.fontSize ?? DEFAULT_FONT_SIZE)
-  ) {
-    return style;
-  }
-  return { ...style, fontSize: unshiftedFontSize };
-}
-
 /**
  * Calculate typography metrics from font size and spacing settings
  *

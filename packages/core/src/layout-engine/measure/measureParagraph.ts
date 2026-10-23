@@ -67,7 +67,6 @@ import {
   calculateTypographyMetrics,
   cjkLineHeightStyle,
   complexScriptLineHeightStyle,
-  scriptLineHeightStyle,
 } from "./lineTypography";
 import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import {
@@ -113,6 +112,26 @@ export {
   MIN_WRAP_SEGMENT_WIDTH,
   findClearLineY,
 } from "./floatingLineClearance";
+
+type ScriptLineHeightStyleOptions = {
+  run: TextRun;
+  style: FontStyle;
+  unshiftedFontSize: number;
+};
+
+const scriptLineHeightStyle = ({
+  run,
+  style,
+  unshiftedFontSize,
+}: ScriptLineHeightStyleOptions): FontStyle => {
+  if (
+    (!run.superscript && !run.subscript) ||
+    unshiftedFontSize <= (style.fontSize ?? DEFAULT_FONT_SIZE)
+  ) {
+    return style;
+  }
+  return { ...style, fontSize: unshiftedFontSize };
+};
 
 /**
  * Options for paragraph measurement
