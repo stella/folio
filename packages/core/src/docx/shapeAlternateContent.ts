@@ -17,6 +17,7 @@ import {
   getNamespaceUri,
   NAMESPACES,
   parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
@@ -92,20 +93,20 @@ export const refingerprintShapeAlternateContent = (
 
 type DescendantsNamedOptions = {
   readonly root: XmlElement;
-  readonly namespaceUri: string;
+  readonly namespaceUris: ReadonlySet<string>;
   readonly localName: string;
 };
 
 const descendantsNamed = ({
   root,
-  namespaceUri,
+  namespaceUris,
   localName,
 }: DescendantsNamedOptions): XmlElement[] => {
   const result: XmlElement[] = [];
   const visit = (element: XmlElement): void => {
     for (const child of getChildElements(element)) {
       if (
-        getNamespaceUri(child) === namespaceUri &&
+        namespaceUris.has(getNamespaceUri(child) ?? "") &&
         getLocalName(child.name ?? "") === localName
       ) {
         result.push(child);
@@ -145,20 +146,20 @@ const updateAlternateContentText = (
   const choiceBodies = choice
     ? descendantsNamed({
         root: choice,
-        namespaceUri: NAMESPACES.w,
+        namespaceUris: WORDPROCESSINGML_NAMESPACE_URIS,
         localName: "txbxContent",
       })
     : [];
   const fallbackBodies = fallback
     ? descendantsNamed({
         root: fallback,
-        namespaceUri: NAMESPACES.w,
+        namespaceUris: WORDPROCESSINGML_NAMESPACE_URIS,
         localName: "txbxContent",
       })
     : [];
   const drawingBodies = descendantsNamed({
     root: drawing,
-    namespaceUri: NAMESPACES.w,
+    namespaceUris: WORDPROCESSINGML_NAMESPACE_URIS,
     localName: "txbxContent",
   });
   if (
@@ -171,9 +172,11 @@ const updateAlternateContentText = (
   const choiceBody = choiceBodies[0];
   const fallbackBody = fallbackBodies[0];
   const drawingBody = drawingBodies[0];
-  const prefix = getNamespacePrefix(drawingBody.name ?? "");
+  const qualifiedName = drawingBody.name ?? "txbxContent";
+  const prefix = getNamespacePrefix(qualifiedName);
   const declaration = prefix === null ? "xmlns" : `xmlns:${prefix}`;
   for (const body of [choiceBody, fallbackBody]) {
+    body.name = qualifiedName;
     body.attributes = {
       ...body.attributes,
       [declaration]: NAMESPACES.w,
