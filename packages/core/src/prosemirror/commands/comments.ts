@@ -58,7 +58,9 @@ import { requestDeterministicParaIds } from "../extensions/features/ParaIdAlloca
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../fieldRepresentation";
 import {
+  isBlockBoundaryNode,
   normalizeKeptRangeBoundaries,
+  paragraphRemainsOf,
   type RemovedSubtree,
   removeResolvedSubtree,
   revisionLayerRemovesContent,
@@ -771,7 +773,7 @@ function resolveChange(
         const boundaries: PMNode[] = [];
         while (nextPos < tr.doc.content.size) {
           const boundary = tr.doc.nodeAt(nextPos);
-          if (boundary?.type.name !== "blockBookmarkBoundary") break;
+          if (boundary === null || !isBlockBoundaryNode(boundary)) break;
           boundaries.push(boundary);
           nextPos += boundary.nodeSize;
         }
@@ -862,7 +864,24 @@ function resolveChange(
           // Section properties live on the removed paragraph mark. The shared
           // paragraph-mark rule decides whether the preceding mark inherits
           // them, as it does for a join.
-          if (outcome.kind === "remove") {
+          //
+          // What the paragraph held that is no content stays where it was
+          // (the engine's `paragraphRemains`): before a table, bookmarks and
+          // moves stand in its place and comment anchors go to the paragraph
+          // before it; ending its container, where only a paragraph stands
+          // last, all of them go there. With no paragraph there to take
+          // them, the paragraph stays.
+          const remains =
+            outcome.kind === "remove" ? paragraphRemainsOf(paragraph) : null;
+          const between = follows === "table" ? (remains?.blocks ?? []) : [];
+          const toPrevious =
+            follows === "table"
+              ? (remains?.comments ?? [])
+              : (remains?.inline ?? []);
+          if (
+            remains !== null &&
+            (toPrevious.length === 0 || preceding?.type.name === "paragraph")
+          ) {
             if (
               outcome.sectionDestination === "preceding" &&
               preceding?.type.name === "paragraph"
@@ -874,7 +893,8 @@ function resolveChange(
               );
             }
             countRemovedSectionEndpoint(paragraph);
-            tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
+            tr.replaceWith(mappedPos, mappedPos + paragraph.nodeSize, between);
+            if (toPrevious.length > 0) tr.insert(mappedPos - 1, toPrevious);
             continue;
           }
           tr.setNodeAttribute(mappedPos, "pPrMark", null);

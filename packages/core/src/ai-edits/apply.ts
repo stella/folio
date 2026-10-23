@@ -54,6 +54,11 @@ import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/Jo
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
+import {
+  blockBoundariesOf,
+  isBlockBoundaryNode,
+  removeResolvedSubtree,
+} from "../prosemirror/keptRangeBoundaries";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   effectiveParagraphNumbering,
@@ -2827,6 +2832,38 @@ const holdsOnlyInsertedContent = (
 };
 
 /**
+ * Take back the wholly pending paragraph between `from` and `to`, as
+ * rejecting it would: the range boundaries it holds stay where it was. With
+ * a paragraph after it they open that paragraph, where the joined break
+ * leaves them; before a table they stand between blocks; ending its
+ * container, they close the paragraph before it.
+ */
+const retractParagraph = (
+  tr: Transaction,
+  from: number,
+  to: number,
+): Transaction => {
+  const paragraph = tr.doc.nodeAt(from);
+  const kept =
+    paragraph === null ? [] : removeResolvedSubtree(paragraph, "reject").kept;
+  if (kept.length === 0) return tr.delete(from, to);
+  const at = tr.doc.resolve(from);
+  let followingIndex = at.index() + 1;
+  while (isBlockBoundaryNode(at.parent.maybeChild(followingIndex)))
+    followingIndex++;
+  const following = at.parent.maybeChild(followingIndex);
+  if (following?.type.name === "paragraph") {
+    let opening = to;
+    for (let index = at.index() + 1; index < followingIndex; index++)
+      opening += at.parent.child(index).nodeSize;
+    return tr.insert(opening + 1, kept).delete(from, to);
+  }
+  if (following !== null)
+    return tr.replaceWith(from, to, blockBoundariesOf(kept));
+  return tr.delete(from, to).insert(from - 1, kept);
+};
+
+/**
  * How to take back the paragraph at `position` when it is wholly a pending
  * insertion (the break that introduced it inserted, and everything in it
  * inserted text), or `null` when it is not. Such a paragraph goes outright:
@@ -2856,9 +2893,7 @@ const pendingParagraphRetraction = (
     return null;
   }
   let followingIndex = at.index() + 1;
-  while (
-    at.parent.maybeChild(followingIndex)?.type.name === "blockBookmarkBoundary"
-  ) {
+  while (isBlockBoundaryNode(at.parent.maybeChild(followingIndex))) {
     followingIndex++;
   }
   const following = at.parent.maybeChild(followingIndex);
@@ -5875,7 +5910,7 @@ const applyFolioAIEditOperationsInternal = ({
           // paragraph mark cannot say: accepting kept a blank paragraph, and
           // a suggested one failed to accept at all.
           const retracted = tr.doc.nodeAt(item.blockFrom);
-          tr = tr.delete(item.blockFrom, item.blockTo);
+          tr = retractParagraph(tr, item.blockFrom, item.blockTo);
           if (retraction.clearBreakAt !== null) {
             tr = tr.setNodeAttribute(retraction.clearBreakAt, "pPrMark", null);
             // The paragraph before now ends the container with the retracted

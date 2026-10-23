@@ -15,7 +15,8 @@ import { createEmptyDocument } from "../utils/createDocument";
 
 // The editor and the engine decide a paragraph-mark outcome by one content
 // rule: accepting the same deleted mark before a table must leave the same
-// blocks, with any range boundary the paragraph held still in the document.
+// blocks, with any range boundary the paragraph held still in the document,
+// where the paragraph was.
 
 const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
 
@@ -59,14 +60,12 @@ const documentWith = (content: Paragraph["content"]): Document => {
   return document;
 };
 
-/** What the outcome decides: the block kinds left, and which range boundaries survive where. */
+/** What the outcome decides: the block kinds left, and the range boundaries in order. */
 const outcome = (blocks: readonly BlockContent[]) => ({
   kinds: blocks.map((block) => block.type),
-  boundariesInTable: [
-    ...JSON.stringify(blocks[0]).matchAll(/"type":"(bookmark(?:Start|End))"/gu),
-  ]
-    .map((match) => match[1])
-    .toSorted(),
+  boundaries: [
+    ...JSON.stringify(blocks).matchAll(/"type":"(bookmark(?:Start|End))"/gu),
+  ].map((match) => match[1]),
 });
 
 const acceptInEditor = (document: Document) => {
@@ -94,7 +93,7 @@ const acceptInEngine = (document: Document) => {
 };
 
 describe("editor and engine share one paragraph-content rule", () => {
-  test("a bookmark-only paragraph whose mark is accepted before a table runs into the cell in both", () => {
+  test("a bookmark-only paragraph whose mark is accepted before a table leaves its bookmark ahead of the table in both", () => {
     const document = documentWith([
       { type: "bookmarkStart", id: 1, name: "kept" },
       { type: "bookmarkEnd", id: 1 },
@@ -102,8 +101,8 @@ describe("editor and engine share one paragraph-content rule", () => {
     const editor = outcome(acceptInEditor(document));
     expect(editor).toEqual(outcome(acceptInEngine(document)));
     expect(editor).toEqual({
-      kinds: ["table", "paragraph"],
-      boundariesInTable: ["bookmarkEnd", "bookmarkStart"],
+      kinds: ["bookmarkStart", "bookmarkEnd", "table", "paragraph"],
+      boundaries: ["bookmarkStart", "bookmarkEnd"],
     });
   });
 

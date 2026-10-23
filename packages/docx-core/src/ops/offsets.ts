@@ -95,19 +95,21 @@ type RangeBoundaryType = {
 
 /**
  * The zero-width items a paragraph can hold, and whether each is content its
- * mark must not take away. A range boundary is: it anchors a bookmark, comment
- * or move that outlives the paragraph mark. A cached page break and a note's
- * own marker are not.
+ * mark must not take away. None is. A range boundary is a position, not
+ * content: a paragraph that goes leaves it where the paragraph was
+ * (`paragraphRemains` in `rangeBoundaries.ts`), so it keeps no blank
+ * paragraph standing. A cached page break and a note's own marker mark
+ * nothing a reader placed.
  */
 const ZERO_WIDTH_ITEMS_HOLD_CONTENT = {
-  bookmarkStart: true,
-  bookmarkEnd: true,
-  commentRangeStart: true,
-  commentRangeEnd: true,
-  moveFromRangeStart: true,
-  moveFromRangeEnd: true,
-  moveToRangeStart: true,
-  moveToRangeEnd: true,
+  bookmarkStart: false,
+  bookmarkEnd: false,
+  commentRangeStart: false,
+  commentRangeEnd: false,
+  moveFromRangeStart: false,
+  moveFromRangeEnd: false,
+  moveToRangeStart: false,
+  moveToRangeEnd: false,
   renderedPageBreak: false,
   noteMarker: false,
 } as const satisfies Record<

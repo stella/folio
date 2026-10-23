@@ -53,8 +53,11 @@ import {
 } from "./leaves";
 import { paragraphHoldsContent } from "./offsets";
 import {
+  isBlockBoundary,
   noRelocatedBoundaries,
   pairedCommentRanges,
+  paragraphRemains,
+  rangeBoundariesIn,
   type RelocatedBoundaries,
   removedContentBoundaries,
   wellFormedRanges,
@@ -1487,6 +1490,38 @@ const deferSplitSeam = ({
  * The operations that remove a paragraph's resolved mark, against the document
  * as it stands. `ends` is updated for the paragraph a join leaves.
  */
+/**
+ * `blocks` without the paragraph at `index`, and with what it leaves
+ * ({@link paragraphRemains}). Before a table its bookmark and move boundaries
+ * stand in its place and its comment anchors go to the end of the paragraph
+ * right before it; ending its container, where only a paragraph may stand
+ * last, every boundary goes there. `undefined` when there is no such
+ * paragraph to take them: the paragraph then stays.
+ */
+const blocksWithoutParagraph = (
+  blocks: readonly BlockContent[],
+  index: number,
+  place: "blocks" | "previous",
+): BlockContent[] | undefined => {
+  const paragraph = blocks[index];
+  if (paragraph?.type !== "paragraph")
+    return panic("Only a paragraph leaves its range boundaries.");
+  const { blocks: boundaries, comments } = paragraphRemains(paragraph.content);
+  const between = place === "blocks" ? boundaries : [];
+  const toPrevious =
+    place === "blocks" ? comments : rangeBoundariesIn(paragraph.content);
+  const remaining = [
+    ...blocks.slice(0, index),
+    ...between,
+    ...blocks.slice(index + 1),
+  ];
+  if (toPrevious.length === 0) return remaining;
+  const host = remaining[index - 1];
+  if (host?.type !== "paragraph") return undefined;
+  remaining[index - 1] = { ...host, content: [...host.content, ...toPrevious] };
+  return remaining;
+};
+
 const joinOps = (
   document: Document,
   { op, story, paraId, added, depth }: JoinPlan,
@@ -1602,15 +1637,21 @@ const joinOps = (
       },
     ]);
   }
-  if (
-    next !== undefined &&
-    (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
-  ) {
+  // A paragraph that went before a table left its range boundaries there:
+  // this mark reads past them to the table.
+  let tableIndex = location.index + 1;
+  while (
+    blocks[tableIndex] !== undefined &&
+    isBlockBoundary(blocks[tableIndex]!)
+  )
+    tableIndex += 1;
+  const after = blocks[tableIndex];
+  if (tableIndex > location.index + 1 && after?.type !== "table") {
     return Result.err(
       refusal(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `A block-level bookmark stands between ${paraId} and the next paragraph.`,
+        `A range boundary stands between ${paraId} and the next block.`,
       ),
     );
   }
@@ -1620,22 +1661,23 @@ const joinOps = (
   const cellFinal =
     containerFinal && location.list.some((step) => step.kind === "tableCell");
   const outcome = paragraphMarkOutcome({
-    follows: next?.type === "table" ? "table" : "nothing",
+    follows: after?.type === "table" ? "table" : "nothing",
     holdsContent: paragraphHoldsContent(paragraph),
     markWasAdded: added,
     containerStillEndsWithParagraph:
-      next?.type === "table"
+      after?.type === "table"
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last.
           containerFinal &&
           !cellFinal &&
           blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn:
-      next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
+      after?.type === "table" &&
+      tableCanReceiveParagraphRunIn(paragraph, after),
     tableRemovalIsTrackable:
-      next?.type !== "table" ||
+      after?.type !== "table" ||
       (blocks.at(-1)?.type === "paragraph" &&
-        tableCanReceiveParagraphRunIn(paragraph, next)),
+        tableCanReceiveParagraphRunIn(paragraph, after)),
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),
@@ -1653,7 +1695,7 @@ const joinOps = (
   if (
     (outcome.kind === "remove" || outcome.kind === "run-in") &&
     blocks.length > 1 &&
-    next?.type === "table"
+    after?.type === "table"
   ) {
     const anchor = blocks.find(
       (block, index): block is Paragraph =>
@@ -1668,46 +1710,65 @@ const joinOps = (
         ),
       );
     }
-    const replacement =
-      outcome.kind === "remove" ? next : runParagraphIntoTable(paragraph, next);
-    if (replacement === undefined) {
-      return Result.err(
-        refusal(
-          op,
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
-        ),
+    if (outcome.kind === "remove") {
+      const remaining = blocksWithoutParagraph(
+        blocks,
+        location.index,
+        "blocks",
       );
+      if (remaining !== undefined)
+        return Result.ok([
+          {
+            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+            story,
+            blockId: anchor.paraId ?? "",
+            expected: blocks,
+            blocks: remaining,
+          },
+        ]);
+    } else {
+      const replacement = runParagraphIntoTable(paragraph, after);
+      if (replacement === undefined) {
+        return Result.err(
+          refusal(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
+          ),
+        );
+      }
+      return Result.ok([
+        {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story,
+          blockId: anchor.paraId ?? "",
+          expected: blocks,
+          blocks: blocks.flatMap((block, index) => {
+            if (index === location.index) return [];
+            return index === tableIndex ? [replacement] : [block];
+          }),
+        },
+      ]);
     }
-    return Result.ok([
-      {
-        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-        story,
-        blockId: anchor.paraId ?? "",
-        expected: blocks,
-        blocks: blocks.flatMap((block, index) => {
-          if (index === location.index) return [];
-          return index === location.index + 1 ? [replacement] : [block];
-        }),
-      },
-    ]);
   }
   if (outcome.kind === "remove" && blocks.length > 1) {
     const anchor = blocks.find(
       (block, index): block is Paragraph =>
         index !== location.index && block.type === "paragraph",
     );
-    if (anchor !== undefined) {
-      const replacementBlocks = blocks.filter(
-        (_, index) => index !== location.index,
-      );
+    const replacementBlocks = blocksWithoutParagraph(
+      blocks,
+      location.index,
+      "previous",
+    );
+    if (anchor !== undefined && replacementBlocks !== undefined) {
+      const preceding = replacementBlocks[location.index - 1];
       if (
         outcome.sectionDestination === "preceding" &&
-        previous?.type === "paragraph"
+        preceding?.type === "paragraph"
       ) {
-        const previousIndex = replacementBlocks.indexOf(previous);
-        replacementBlocks[previousIndex] = {
-          ...previous,
+        replacementBlocks[location.index - 1] = {
+          ...preceding,
           sectionProperties: paragraph.sectionProperties,
         };
       }

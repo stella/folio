@@ -14,8 +14,14 @@
  *
  * A comment whose whole range was removed is the comment owner's to retire
  * (see `isCommentExhausted`); its boundaries go with it.
+ *
+ * A paragraph that goes whole takes none of its boundaries with it
+ * ({@link paragraphRemains}): bookmarks and move ranges stand between blocks
+ * where it was, and comment anchors, which only a paragraph holds, go to the
+ * nearest paragraph that stays.
  */
 
+import type { BlockContent } from "../model/document";
 import {
   childNodes,
   type InlineNode,
@@ -44,8 +50,12 @@ const isBoundary = (node: InlineNode): node is Boundary =>
 const rangeKey = (boundary: Boundary): string =>
   `${BOUNDARY_SIDES[boundary.type].family}:${boundary.id}`;
 
-const isCommentAnchor = (node: InlineNode): node is Boundary =>
-  node.type === "commentRangeStart" || node.type === "commentRangeEnd";
+const isCommentAnchor = (
+  node: InlineNode,
+): node is Extract<
+  Boundary,
+  { type: "commentRangeStart" | "commentRangeEnd" }
+> => node.type === "commentRangeStart" || node.type === "commentRangeEnd";
 
 /** Comment ids with both a start and an end among `nodes`. */
 export const pairedCommentRanges = (
@@ -106,6 +116,44 @@ export const removedContentBoundaries = ({
       relocated,
     });
   });
+
+type CommentAnchor = Extract<
+  Boundary,
+  { type: "commentRangeStart" | "commentRangeEnd" }
+>;
+
+/** A boundary a block list holds between its blocks. */
+export type BlockBoundary = Exclude<Boundary, CommentAnchor>;
+
+export const isBlockBoundary = (block: BlockContent): block is BlockBoundary =>
+  Object.hasOwn(BOUNDARY_SIDES, block.type) &&
+  block.type !== "commentRangeStart" &&
+  block.type !== "commentRangeEnd";
+
+/** Every range boundary in `content`, at any depth, in document order. */
+export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
+  content.flatMap((node) =>
+    isBoundary(node) ? [node] : rangeBoundariesIn(childNodes(node) ?? []),
+  );
+
+/**
+ * What a paragraph that goes whole leaves where it was: every bookmark and
+ * move range boundary it holds, at any depth, as blocks in its place, and its
+ * comment anchors, in document order, for the nearest paragraph that stays to
+ * take. A comment with both anchors there becomes a point there, so the
+ * comment and its anchor survive the paragraph.
+ */
+export const paragraphRemains = (
+  content: readonly InlineNode[],
+): { blocks: BlockBoundary[]; comments: CommentAnchor[] } => {
+  const boundaries = rangeBoundariesIn(content);
+  return {
+    blocks: boundaries.filter(
+      (boundary): boundary is BlockBoundary => !isCommentAnchor(boundary),
+    ),
+    comments: boundaries.filter(isCommentAnchor),
+  };
+};
 
 /** Which kept boundaries each container may hold, as its model declares. */
 const HOLDS: Partial<

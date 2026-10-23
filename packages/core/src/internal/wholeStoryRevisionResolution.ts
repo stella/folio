@@ -24,6 +24,10 @@ import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin
 import { resolveAllTableChanges } from "../prosemirror/commands/resolveAllTableChanges";
 import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
+import {
+  isBlockBoundaryNode,
+  paragraphRemainsOf,
+} from "../prosemirror/keptRangeBoundaries";
 import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
@@ -557,7 +561,7 @@ const resolveStructure = ({
       paragraph = filler;
     }
     if (paragraph.type.name !== "paragraph") {
-      if (paragraph.type.name === "blockBookmarkBoundary") {
+      if (isBlockBoundaryNode(paragraph)) {
         pendingBookmarks.push(paragraph);
         continue;
       }
@@ -659,14 +663,40 @@ const resolveStructure = ({
       ),
       followingHasSectionProperties: chain !== null && ownsSection(chain.node),
     });
-    if (
+    // A paragraph that goes leaves its range boundaries where it was; its
+    // comment anchors go to the paragraph before it, and with none there to
+    // take them it stays.
+    const removes =
       marker &&
       !paragraphContentOf(paragraph) &&
       outcome.kind === "remove" &&
       joins &&
-      index + reversed.length + 1 > 1
+      index + reversed.length + 1 > 1;
+    const remains = removes ? paragraphRemainsOf(paragraph) : undefined;
+    // Before a table, bookmarks and moves stand in the paragraph's place; a
+    // container ends with a paragraph, so ending it every boundary goes back.
+    const between = follows === "table" ? (remains?.blocks ?? []) : [];
+    const toPrevious =
+      follows === "table" ? (remains?.comments ?? []) : (remains?.inline ?? []);
+    const commentHost = entries[index - 1]?.node;
+    if (
+      remains !== undefined &&
+      (toPrevious.length === 0 || commentHost?.type.name === "paragraph")
     ) {
       const properties = expectParagraphAttrs(paragraph)._sectionProperties;
+      const hostEntry = entries[index - 1];
+      if (toPrevious.length > 0 && commentHost && hostEntry) {
+        const comments = Fragment.fromArray(toPrevious);
+        hostEntry.node = rebuild(commentHost, {
+          content: commentHost.content.append(comments),
+        });
+        const hostEnd = hostEntry.position + hostEntry.original.nodeSize - 1;
+        context.replacements.push({
+          from: hostEnd,
+          to: hostEnd,
+          slice: new Slice(comments, 0, 0),
+        });
+      }
       const preceding = entries[index - 1]?.node;
       if (
         outcome.sectionDestination === "preceding" &&
@@ -680,10 +710,13 @@ const resolveStructure = ({
           attrs: { ...chain.node.attrs, _sectionProperties: properties },
         });
       }
-      context.deleted.push({
+      context.replacements.push({
         from: entry.position,
-        to: entry.position + paragraph.nodeSize,
+        to: entry.position + entry.original.nodeSize,
+        slice: new Slice(Fragment.fromArray(between), 0, 0),
       });
+      // The children are collected last to first.
+      for (const block of between.toReversed()) reversed.push(block);
       removedEndpoint(paragraph, context);
       continue;
     }
