@@ -79,7 +79,7 @@ describe("resolveEffectiveLineBreakPolicy", () => {
       }),
     ).toEqual({
       provider: {},
-      hangingPunctuation: true,
+      hangingPunctuation: false,
       automaticHyphenation: { type: "disabled" },
     });
   });
