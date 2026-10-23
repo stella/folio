@@ -377,6 +377,7 @@ export const resolveParagraphLineGeometryForBlock = ({
     indent?.hanging !== undefined && indent.hanging > 0
       ? -indent.hanging
       : (indent?.firstLine ?? 0);
+  const imageOnlyRun = paragraphImageOnlyRun(block, line);
   return resolveParagraphLineGeometry({
     fragment,
     line,
@@ -388,7 +389,7 @@ export const resolveParagraphLineGeometryForBlock = ({
     firstLineOffsetPx,
     markerInlineWidthPx: getListMarkerInlineWidth(block),
     isFirstLine,
-    imageOnlyRun: paragraphImageOnlyRun(block, line),
+    ...(imageOnlyRun === undefined ? {} : { imageOnlyRun }),
   });
 };
 

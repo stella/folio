@@ -2060,7 +2060,7 @@ export function renderPage(
       section: "body" as const,
       contentWidth,
       inlinePictureSizing: "authoredExtent" as const,
-      inlinePictureViewport,
+      ...(inlinePictureViewport === undefined ? {} : { inlinePictureViewport }),
       inlinePictureOriginX: fragment.x,
     };
 

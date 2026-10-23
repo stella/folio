@@ -324,8 +324,9 @@ function renderCellContent({
           : undefined;
       const nextBorders =
         nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
-      const inlinePictureSizing =
-        cell.textDirection === "btLr" ? "textColumnFit" : "authoredExtent";
+      const inlinePictureSizing = (
+        cell.textDirection === "btLr" ? "textColumnFit" : "authoredExtent"
+      ) satisfies NonNullable<RenderContext["inlinePictureSizing"]>;
       const cellContext = {
         ...context,
         insideTableCell: true as const,
