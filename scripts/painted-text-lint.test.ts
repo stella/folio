@@ -6,7 +6,7 @@ const RULE_MARKER = "folio-painted-text(no-direct-text-shape)";
 
 setDefaultTimeout(30_000);
 
-const lintFixture = (fixture: string) => {
+const lintFixture = (fixture: string, marker = RULE_MARKER) => {
   const result = Bun.spawnSync(
     [
       "bun",
@@ -22,11 +22,22 @@ const lintFixture = (fixture: string) => {
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
   return {
     status: result.exitCode,
-    violations: output.split(RULE_MARKER).length - 1,
+    violations: output.split(marker).length - 1,
   };
 };
 
 describe("painted text DOM shape", () => {
+  test("text geometry consumes positioned advances rather than raw or prefix widths", () => {
+    const marker = "folio-painted-text(positioned-advance-owner)";
+    expect(lintFixture("positioned-advance.invalid.ts", marker)).toEqual({
+      status: 1,
+      violations: 4,
+    });
+    expect(lintFixture("positioned-advance.valid.ts", marker)).toEqual({
+      status: 0,
+      violations: 0,
+    });
+  });
   test("rejects direct-child assumptions", () => {
     expect(lintFixture("painted-text.invalid.ts")).toEqual({
       status: 1,

@@ -5,6 +5,7 @@ import { sliceText } from "../../utils/sliceText";
  */
 import { splitTrailingToken } from "../../utils/trailingText";
 import type { ParagraphBlock, TextRun } from "../types";
+import { automaticRunGap } from "./automaticTextSpacing";
 import { resolveEffectiveLineBreakPolicy } from "./effectiveLineBreakPolicy";
 import { MAX_HYPHENATION_WORD_LENGTH } from "./lineBreakProvider";
 import { findHyphenationBreaks, findWordBreaks } from "./lineBreaks";
@@ -52,6 +53,7 @@ export function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
         ? text
         : trimLineEndWhitespace(text.slice(0, firstBreak));
     widths[index] =
+      automaticRunGap(runs[index], nextRun) +
       measureTextWidth(leading, style) +
       (firstBreak === undefined ? (widths[index + 1] ?? 0) : 0);
   }
@@ -248,6 +250,7 @@ export function collectCrossRunWord({
     }
 
     const style = runToFontStyle(run);
+    width += automaticRunGap(segments.at(-1)?.run, run);
     segments.push({
       runIndex,
       startChar: start,
@@ -300,6 +303,7 @@ export function measureCrossRunPrefix(
   for (const segment of word.segments) {
     const length = Math.min(remaining, segment.text.length);
     if (length > 0) {
+      width += automaticRunGap(measuredSegments.at(-1)?.run, segment.run);
       width += measureTextWidth(segment.text.slice(0, length), segment.style);
       measuredSegments.push(segment);
     }

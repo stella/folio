@@ -12,11 +12,14 @@ import {
   measuredLineAdvance,
   measuredLineContentOffset,
 } from "../../layout-engine/lineFlow";
+import { automaticRunGap } from "../../layout-engine/measure/automaticTextSpacing";
 import {
   buildRunFontStyle,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_SIZE,
   findCharacterAtX as findCharAtX,
 } from "../../layout-engine/measure/measureHelpers";
-import { measureRun } from "../../layout-engine/measure/measureProvider";
+import { measurePositionedRun } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import type {
   MeasuredLine,
@@ -58,7 +61,7 @@ export type PositionResult = {
  * Extract FontStyle from a run for measurement.
  */
 function runToFontStyle(run: TextRun | TabRun): FontStyle {
-  return buildRunFontStyle(run, "Arial", 12);
+  return buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
 }
 
 /**
@@ -99,11 +102,7 @@ function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run[] {
     }
 
     // Handle non-text runs as atomic units
-    if (
-      run.kind === "tab" ||
-      run.kind === "image" ||
-      run.kind === "lineBreak"
-    ) {
+    if (run.kind !== "text") {
       result.push(run);
       continue;
     }
@@ -322,7 +321,9 @@ function findCharacterInLine({
   let currentX = 0;
   let currentCharOffset = 0;
 
-  for (const run of runs) {
+  for (let runIndex = 0; runIndex < runs.length; runIndex += 1) {
+    const run = runs[runIndex];
+    if (run === undefined) continue;
     // Handle tab runs
     if (run.kind === "tab") {
       const tabWidth = run.width ?? 48; // Default tab width
@@ -395,7 +396,11 @@ function findCharacterInLine({
       }
 
       const style = runToFontStyle(run);
-      const measurement = measureRun(text, style);
+      const measurement = measurePositionedRun({
+        text,
+        style,
+        trailingAutomaticSpacingPx: automaticRunGap(run, runs[runIndex + 1]),
+      });
       const runEndX = currentX + measurement.width;
 
       if (adjustedX <= runEndX) {
@@ -618,7 +623,9 @@ export function positionToX(
       let x = 0;
       let charsProcessed = 0;
 
-      for (const run of runs) {
+      for (let runIndex = 0; runIndex < runs.length; runIndex += 1) {
+        const run = runs[runIndex];
+        if (run === undefined) continue;
         if (run.kind === "tab") {
           if (offsetInLine <= charsProcessed + 1) {
             if (offsetInLine <= charsProcessed) {
@@ -644,14 +651,21 @@ export function positionToX(
           charsProcessed += 1;
         } else if (run.kind === "text") {
           const text = run.text;
+          const measurement = measurePositionedRun({
+            text,
+            style: runToFontStyle(run),
+            trailingAutomaticSpacingPx: automaticRunGap(
+              run,
+              runs[runIndex + 1],
+            ),
+          });
           if (offsetInLine <= charsProcessed + text.length) {
             const charInRun = offsetInLine - charsProcessed;
-            const style = runToFontStyle(run);
-            const measurement = measureRun(text.slice(0, charInRun), style);
-            return { x: x + measurement.width, lineIndex };
+            let prefix = 0;
+            for (let index = 0; index < charInRun; index += 1)
+              prefix += measurement.charWidths[index] ?? 0;
+            return { x: x + prefix, lineIndex };
           }
-          const style = runToFontStyle(run);
-          const measurement = measureRun(text, style);
           x += measurement.width;
           charsProcessed += text.length;
         }

@@ -28,6 +28,7 @@ import type { OutlineStyleAttr } from "../types/documentEnumValues";
 import type { NoteStoryKey } from "../types/editor-story";
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
 import type { CssBorderStyle } from "../utils/borderCss";
+import type { AutomaticTextSpacingPolicy } from "./measure/measureTypes";
 
 /**
  * Unique identifier for a block in the document.
@@ -43,6 +44,7 @@ export type BlockId = string | number;
  * Common run formatting properties applied to text runs.
  */
 export type RunFormatting = {
+  automaticTextSpacing?: AutomaticTextSpacingPolicy;
   /** Embedded families owned by this editor, never ambient process state. */
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   /** Authored font-table facts owned by this document. */

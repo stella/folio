@@ -4,8 +4,9 @@
  */
 
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
-import type { FieldRun, MathRun, Run, TextRun } from "../types";
+import type { Run } from "../types";
 import { isFloatingImageRun } from "../types";
+import { automaticRunGap } from "./automaticTextSpacing";
 import { measureTextWidth } from "./measureProvider";
 import {
   fieldMeasureText,
@@ -41,6 +42,7 @@ export function measureInlineWidthAfterTab(
       continue;
     }
     if (isTextRun(next)) {
+      width += automaticRunGap(runs[i - 1], next);
       width += measureTextWidth(next.text || "", runToFontStyle(next));
     } else if (isFieldRun(next)) {
       width += measureTextWidth(
@@ -120,30 +122,24 @@ export function measureDecimalPrefixWidthAfterTab(
   tabIndex: number,
   fieldValues?: ReadonlyMap<number, string>,
 ): number {
-  let text = "";
-  let firstRun: TextRun | FieldRun | MathRun | undefined;
+  let width = 0;
   for (let i = tabIndex + 1; i < runs.length; i++) {
     const next = runs[i];
     if (!next || isTabRun(next) || isLineBreakRun(next)) {
       break;
     }
-    if (isTextRun(next)) {
-      text += next.text || "";
-      firstRun ??= next;
-    } else if (isFieldRun(next)) {
-      text += fieldMeasureText(next, fieldValues);
-      firstRun ??= next;
-    } else if (isMathRun(next)) {
-      text += next.plainText || "[equation]";
-      firstRun ??= next;
-    }
+    let text: string;
+    if (isTextRun(next)) text = next.text;
+    else if (isFieldRun(next)) text = fieldMeasureText(next, fieldValues);
+    else if (isMathRun(next)) text = next.plainText || "[equation]";
+    else continue;
+    const decimalIndex = text.indexOf(".");
+    width += automaticRunGap(runs[i - 1], next);
+    width += measureTextWidth(
+      decimalIndex === -1 ? text : text.slice(0, decimalIndex),
+      runToFontStyle(next),
+    );
+    if (decimalIndex !== -1) return width;
   }
-  const decimalIndex = text.indexOf(".");
-  if (decimalIndex === -1 || !firstRun) {
-    return 0;
-  }
-  return measureTextWidth(
-    text.slice(0, decimalIndex),
-    runToFontStyle(firstRun),
-  );
+  return 0;
 }

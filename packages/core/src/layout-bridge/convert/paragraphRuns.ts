@@ -8,6 +8,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { sharedMathRunFontSize } from "../../docx/mathToMathml";
 import { getFontAlternate } from "../../fonts/fontAlternates";
+import { hasAutomaticTextSpacingCandidates } from "../../layout-engine/measure/automaticTextSpacing";
 import type {
   FieldRun,
   Run,
@@ -23,6 +24,7 @@ import {
   expectPreservedXmlAttrs,
   expectSymbolAttrs,
 } from "../../prosemirror/attrs";
+import { directionIsRtl } from "../../prosemirror/paragraphDirection";
 import { displayOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import type { FlowConversionOptions } from "./flowConversionShared";
@@ -78,6 +80,13 @@ export type PageBreakRunProjection = {
 const isTrackedRunMark = ({ type }: Mark): boolean =>
   type.name === "insertion" || type.name === "deletion";
 
+type PushInlineChildOptions = {
+  child: PMNode;
+  childPos: number;
+  inheritedMarks?: readonly Mark[];
+  source: "literal" | "field-result";
+};
+
 /**
  * Inline wrappers own marks that apply to every projected descendant. A
  * descendant's mark of the same type is more specific, and any descendant
@@ -114,6 +123,9 @@ export function paragraphToRuns(
   const theme = _options.theme;
   const fontAlternates = _options.fontAlternates;
   const pmAttrs = expectParagraphAttrs(node);
+  const hasAutomaticSpacingCandidates = hasAutomaticTextSpacingCandidates(
+    node.textContent,
+  );
   const paraDefaults = paragraphRunDefaults(pmAttrs, theme, fontAlternates);
   const paragraphStyleId = pmAttrs.styleId;
   const inTocParagraph =
@@ -128,11 +140,12 @@ export function paragraphToRuns(
   // SDT children — the previous SDT branch only handled text/hardBreak/
   // tab/image and silently dropped fields, math, and nested SDTs even
   // when the parser preserved them (see eigenpal #482).
-  function pushRunsForChild(
-    child: PMNode,
-    childPos: number,
-    inheritedMarks: readonly Mark[] = [],
-  ): void {
+  function pushRunsForChild({
+    child,
+    childPos,
+    inheritedMarks = [],
+    source,
+  }: PushInlineChildOptions): void {
     if (child.type.name === "bookmarkBoundary") {
       return;
     }
@@ -237,6 +250,16 @@ export function paragraphToRuns(
         kind: "text",
         text: child.text,
         ...mergeRunFormatting(paraDefaults, formatting),
+        ...(source === "literal" &&
+        !directionIsRtl(pmAttrs.direction) &&
+        hasAutomaticSpacingCandidates
+          ? {
+              automaticTextSpacing: {
+                latin: pmAttrs.autoSpaceDE !== false,
+                numbers: pmAttrs.autoSpaceDN !== false,
+              },
+            }
+          : {}),
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,
       };
@@ -392,11 +415,12 @@ export function paragraphToRuns(
         const fieldContentStart = childPos + 1;
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
         child.forEach((fieldChild, fieldChildOffset) => {
-          pushRunsForChild(
-            fieldChild,
-            fieldContentStart + fieldChildOffset,
-            effectiveMarks,
-          );
+          pushRunsForChild({
+            child: fieldChild,
+            childPos: fieldContentStart + fieldChildOffset,
+            inheritedMarks: effectiveMarks,
+            source: "field-result",
+          });
         });
         return;
       }
@@ -482,18 +506,23 @@ export function paragraphToRuns(
       const sdtInnerOffset = childPos + 1; // +1 for opening tag
       // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
       child.forEach((sdtChild, sdtChildOffset) => {
-        pushRunsForChild(
-          sdtChild,
-          sdtInnerOffset + sdtChildOffset,
-          effectiveMarks,
-        );
+        pushRunsForChild({
+          child: sdtChild,
+          childPos: sdtInnerOffset + sdtChildOffset,
+          inheritedMarks: effectiveMarks,
+          source,
+        });
       });
     }
   }
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child, childOffset) => {
-    pushRunsForChild(child, offset + childOffset);
+    pushRunsForChild({
+      child,
+      childPos: offset + childOffset,
+      source: "literal",
+    });
   });
 
   const { defaultFont, defaultSize } = _options;
