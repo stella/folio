@@ -14,7 +14,11 @@ import {
 import { type CorpusCheckResult, runCorpusChecks } from "./lib/corpus-check";
 import type { NotADocxReason } from "./lib/corpus-classify";
 import { familyBaselineFromCensus } from "./lib/corpus-family-baseline";
-import { FamilyCensusBuilder } from "./lib/corpus-family-census";
+import {
+  countedFailures,
+  FamilyCensusBuilder,
+} from "./lib/corpus-family-census";
+import { fileSignatureRows } from "./lib/corpus-file-signatures";
 import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 import { CORPUS_TIERS } from "./lib/corpus-manifest";
 import {
@@ -114,24 +118,27 @@ export const editorRoundTripVerdict = (
   const parseFailures = result.failures.filter(
     (failure) => failure.invariant === CORPUS_INVARIANTS.parse,
   );
-  const fileResult: CorpusFileResult = listedReportOnly
-    ? {
-        kind: "report-only",
-        failures: result.failures,
-        declaredRefusals: result.declaredRefusals,
-      }
-    : result.truncatedAt === undefined
-      ? {
-          kind: "complete",
-          failures: result.failures,
-          declaredRefusals: result.declaredRefusals,
-        }
-      : {
-          kind: "truncated",
-          failures: result.failures,
-          declaredRefusals: result.declaredRefusals,
-          stage: result.truncatedAt,
-        };
+  let fileResult: CorpusFileResult;
+  if (listedReportOnly) {
+    fileResult = {
+      kind: "report-only",
+      failures: result.failures,
+      declaredRefusals: result.declaredRefusals,
+    };
+  } else if (result.truncatedAt === undefined) {
+    fileResult = {
+      kind: "complete",
+      failures: result.failures,
+      declaredRefusals: result.declaredRefusals,
+    };
+  } else {
+    fileResult = {
+      kind: "truncated",
+      failures: result.failures,
+      declaredRefusals: result.declaredRefusals,
+      stage: result.truncatedAt,
+    };
+  }
 
   const evidence = evidenceOf(fileResult);
   const editorFailures = result.failures.filter(
@@ -423,6 +430,9 @@ const run = async (shard: Shard, outPath: string): Promise<void> => {
     },
     declaredRefusals: familyCensus.declaredRefusals,
     failures,
+    fileSignatures: failures.flatMap(({ file, evidence, failures }) =>
+      fileSignatureRows(file, countedFailures(failures, evidence)),
+    ),
     baseline: familyBaselineFromCensus(
       familyCensus,
       EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
