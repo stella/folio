@@ -99,6 +99,14 @@ export type BlockInsertionPoint = {
 };
 
 // @public
+export type BoundaryOccurrence = {
+    boundary: string;
+    range: string;
+    side: "start" | "end";
+    kept: boolean;
+};
+
+// @public
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
@@ -849,6 +857,9 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
 };
 
 // @public
+export const planWellFormedRanges: (occurrences: readonly BoundaryOccurrence[]) => WellFormedRangePlan;
+
+// @public
 export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";
 }>;
@@ -1212,6 +1223,15 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 
 // @public
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
+
+// @public
+export type WellFormedRangePlan = {
+    dropped: number[];
+    moved: {
+        end: number;
+        start: number;
+    }[];
+};
 
 // @public
 export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => DocumentBody;
