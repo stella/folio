@@ -65,6 +65,7 @@ import {
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { getDocumentNumbering } from "./documentNumbering";
 import { documentStylesKey, getDocumentStyleResolver } from "./documentStyles";
+import { selectLockedInlineControl } from "./lockedControlKeyHandling";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
 export const suggestionModeKey =
@@ -435,8 +436,10 @@ function markRangeAsInserted(
  * default paste + the `appendTransaction` catch-all marks a plain insertion
  * (eigenpal/docx-editor#784).
  */
+type SuggestionPasteView = Pick<EditorView, "dispatch" | "state">;
+
 export function handleSuggestionPaste(
-  view: EditorView,
+  view: SuggestionPasteView,
   slice: Slice,
   pluginState: SuggestionModeState,
 ): boolean {
@@ -1995,6 +1998,9 @@ export function createSuggestionModePlugin(
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {
           return false;
+        }
+        if (selectLockedInlineControl(view, event)) {
+          return true;
         }
 
         // Only a plain Enter ends a paragraph: Shift-Enter breaks the line and
