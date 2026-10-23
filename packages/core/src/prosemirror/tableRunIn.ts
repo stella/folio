@@ -37,7 +37,7 @@ import {
   paragraphRunStyleContext,
   type RunStyleResolver,
 } from "./runStyleFormatting";
-import { holdsNoContent } from "./zeroWidthAnchors";
+import { paragraphContentOf } from "./zeroWidthAnchors";
 
 /**
  * Whether the cell a paragraph's words would run into is itself pending: its
@@ -119,7 +119,7 @@ export const runParagraphIntoTable = ({
         ),
       )
     : paragraph;
-  if (holdsNoContent(left)) return null;
+  if (!paragraphContentOf(left)) return null;
   const tablePos = paragraphPos + paragraph.nodeSize;
   const target = runInTarget(tr.doc, tablePos);
   if (!target) return null;
@@ -206,7 +206,7 @@ export const runsIntoFollowingTable = (
   return (
     paragraphMarkOutcome({
       follows: "table",
-      holdsContent: !holdsNoContent(paragraph),
+      holdsContent: paragraphContentOf(paragraph),
       markWasAdded:
         expectParagraphAttrs(paragraph).pPrMark?.kind === "ins" ||
         expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo",

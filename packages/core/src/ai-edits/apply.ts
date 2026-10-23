@@ -54,6 +54,13 @@ import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/Jo
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
+import {
+  blockBoundariesOf,
+  carriesCommentAnchor,
+  inlineBoundariesOf,
+  isBlockBoundaryNode,
+  removeResolvedSubtree,
+} from "../prosemirror/keptRangeBoundaries";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   effectiveParagraphNumbering,
@@ -2827,6 +2834,86 @@ const holdsOnlyInsertedContent = (
 };
 
 /**
+ * Remove the paragraph between `from` and `to`, its content with it but not
+ * the range boundaries it holds: those stay where it was, as rejecting a
+ * pending paragraph or accepting a deleted one leaves them. With a paragraph
+ * after it they open that paragraph, where the joined break leaves them,
+ * with any standing between the two; before a table they stand between
+ * blocks; ending its container, they close the paragraph before it.
+ */
+const removeParagraph = (
+  tr: Transaction,
+  from: number,
+  to: number,
+): Transaction => {
+  const paragraph = tr.doc.nodeAt(from);
+  const kept =
+    paragraph === null
+      ? []
+      : removeResolvedSubtree(paragraph, {
+          mode: "reject",
+          resolves: () => true,
+        }).kept;
+  if (kept.length === 0) return tr.delete(from, to);
+  const at = tr.doc.resolve(from);
+  let followingIndex = at.index() + 1;
+  while (isBlockBoundaryNode(at.parent.maybeChild(followingIndex)))
+    followingIndex++;
+  const following = at.parent.maybeChild(followingIndex);
+  if (following?.type.name === "paragraph") {
+    const between: PMNode[] = [];
+    let opening = to;
+    for (let index = at.index() + 1; index < followingIndex; index++) {
+      between.push(at.parent.child(index));
+      opening += at.parent.child(index).nodeSize;
+    }
+    const joined = inlineBoundariesOf(between);
+    if (joined === null) return tr.delete(from, to);
+    return tr.insert(opening + 1, [...kept, ...joined]).delete(from, opening);
+  }
+  if (following !== null) {
+    // As the revision paths leave them: comment anchors, which only a
+    // paragraph holds, close the paragraph before; with none there the
+    // paragraph stays, holding them.
+    const comments = kept.filter(carriesCommentAnchor);
+    const between = blockBoundariesOf(
+      kept.filter((node) => !carriesCommentAnchor(node)),
+    );
+    if (comments.length === 0) return tr.replaceWith(from, to, between);
+    // Kept only to hold the anchors, the paragraph is no pending insertion
+    // any more: the mark that inserted it goes with its content.
+    if (at.nodeBefore?.type.name !== "paragraph")
+      return tr
+        .replaceWith(from + 1, to - 1, kept)
+        .setNodeAttribute(from, "pPrMark", null);
+    return tr.replaceWith(from, to, between).insert(from - 1, comments);
+  }
+  return tr.delete(from, to).insert(from - 1, kept);
+};
+
+/**
+ * Empty the paragraph between `from` and `to`, which ends its container and
+ * so stays: its content goes, the range boundaries it holds stay in it.
+ */
+const emptyParagraph = (
+  tr: Transaction,
+  from: number,
+  to: number,
+): Transaction => {
+  const paragraph = tr.doc.nodeAt(from);
+  const kept =
+    paragraph === null
+      ? []
+      : removeResolvedSubtree(paragraph, {
+          mode: "reject",
+          resolves: () => true,
+        }).kept;
+  return kept.length === 0
+    ? tr.delete(from + 1, to - 1)
+    : tr.replaceWith(from + 1, to - 1, kept);
+};
+
+/**
  * How to take back the paragraph at `position` when it is wholly a pending
  * insertion (the break that introduced it inserted, and everything in it
  * inserted text), or `null` when it is not. Such a paragraph goes outright:
@@ -2856,9 +2943,7 @@ const pendingParagraphRetraction = (
     return null;
   }
   let followingIndex = at.index() + 1;
-  while (
-    at.parent.maybeChild(followingIndex)?.type.name === "blockBookmarkBoundary"
-  ) {
+  while (isBlockBoundaryNode(at.parent.maybeChild(followingIndex))) {
     followingIndex++;
   }
   const following = at.parent.maybeChild(followingIndex);
@@ -5853,8 +5938,8 @@ const applyFolioAIEditOperationsInternal = ({
             !endsItsContainer ||
             at.nodeBefore?.type.name === item.blockNode.type.name;
           tr = leavesAParagraph
-            ? tr.delete(item.blockFrom, item.blockTo)
-            : tr.delete(item.blockFrom + 1, item.blockTo - 1);
+            ? removeParagraph(tr, item.blockFrom, item.blockTo)
+            : emptyParagraph(tr, item.blockFrom, item.blockTo);
           break;
         }
 
@@ -5875,7 +5960,7 @@ const applyFolioAIEditOperationsInternal = ({
           // paragraph mark cannot say: accepting kept a blank paragraph, and
           // a suggested one failed to accept at all.
           const retracted = tr.doc.nodeAt(item.blockFrom);
-          tr = tr.delete(item.blockFrom, item.blockTo);
+          tr = removeParagraph(tr, item.blockFrom, item.blockTo);
           if (retraction.clearBreakAt !== null) {
             tr = tr.setNodeAttribute(retraction.clearBreakAt, "pPrMark", null);
             // The paragraph before now ends the container with the retracted

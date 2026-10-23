@@ -212,6 +212,10 @@ export const buildPageBreakRunSourceDescendantIndex = (
         // Neither holds a run a page break could be indexed against.
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           return 0;
         default: {
           const unsupported: never = block;

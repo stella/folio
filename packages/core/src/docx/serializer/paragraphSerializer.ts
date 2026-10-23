@@ -32,9 +32,7 @@ import type {
   InlineWrapper,
   Insertion,
   MoveFrom,
-  MoveFromRangeStart,
   MoveTo,
-  MoveToRangeStart,
   Paragraph,
   ParagraphContent,
   ParagraphFormatting,
@@ -89,8 +87,8 @@ import {
 import { writeGroupTextBoxesBack } from "./groupTextBoxWriteBack";
 import {
   markupRangeAttributes,
-  moveBookmarkAttributes,
   serializeBookmarkMarker,
+  serializeMoveRangeMarker,
 } from "./markupRangeAttributes";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun, serializeShapeTextBody } from "./runSerializer";
@@ -894,13 +892,10 @@ function serializeInlineSdt(
         case "bookmarkEnd":
           return serializeBookmarkMarker(item);
         case "moveFromRangeStart":
-          return serializeMoveRangeStart("moveFromRangeStart", item);
         case "moveFromRangeEnd":
-          return `<w:moveFromRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
         case "moveToRangeStart":
-          return serializeMoveRangeStart("moveToRangeStart", item);
         case "moveToRangeEnd":
-          return `<w:moveToRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
+          return serializeMoveRangeMarker(item);
         case "insertion":
           return serializeTrackedChange("ins", item);
         case "deletion":
@@ -930,13 +925,6 @@ function serializeInlineSdt(
   // The shared rule, with the inline level's own rebuild: `w:sdtPr` replayed
   // while the capture holds and synthesized otherwise, then `w:sdtEndPr`.
   return serializeSdtWrapper(props, contentXml);
-}
-
-function serializeMoveRangeStart(
-  tag: "moveFromRangeStart" | "moveToRangeStart",
-  marker: MoveFromRangeStart | MoveToRangeStart,
-): string {
-  return `<w:${tag} ${moveBookmarkAttributes(marker).join(" ")}/>`;
 }
 
 /**
@@ -1378,19 +1366,10 @@ function serializeParagraphContent(
     case "moveTo":
       return serializeTrackedChange("moveTo", content);
     case "moveFromRangeStart":
-      return serializeMoveRangeStart(
-        "moveFromRangeStart",
-        content as MoveFromRangeStart,
-      );
     case "moveFromRangeEnd":
-      return `<w:moveFromRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
     case "moveToRangeStart":
-      return serializeMoveRangeStart(
-        "moveToRangeStart",
-        content as MoveToRangeStart,
-      );
     case "moveToRangeEnd":
-      return `<w:moveToRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
+      return serializeMoveRangeMarker(content);
     case "inlineWrapper": {
       const inner = content.content
         .map((child) => serializeParagraphContent(child, disposition))

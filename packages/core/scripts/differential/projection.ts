@@ -99,6 +99,10 @@ export function projectFolioDocument(doc: Document): StructuralProjection {
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         return;
       default: {
         const unreachable: never = block;

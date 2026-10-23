@@ -225,6 +225,10 @@ export const findParagraph = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
         break;
       default:
         return block satisfies never;
