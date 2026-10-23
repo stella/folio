@@ -23,7 +23,7 @@ import { buildSectionPageCounts } from "../fields/sectionPageCounts";
 import { buildSeqValues } from "../fields/seqValues";
 import {
   buildDocumentFontFacts,
-  documentFontFactsFingerprint,
+  documentFontFactsCacheIdentity,
 } from "../fonts/documentFontFacts";
 import { buildFontAlternates } from "../fonts/fontAlternates";
 import {
@@ -150,7 +150,8 @@ const sameMeasureInputs = (
   right: LayoutMeasureInputs,
 ): boolean =>
   left.embeddedFontFamilyMap === right.embeddedFontFamilyMap &&
-  left.documentFontFactsFingerprint === right.documentFontFactsFingerprint &&
+  left.documentFontFactsCacheIdentity ===
+    right.documentFontFactsCacheIdentity &&
   left.styles === right.styles &&
   left.theme === right.theme &&
   left.defaultTabStop === right.defaultTabStop &&
@@ -555,8 +556,8 @@ function runLayoutPipelineMeasured<THfPMs>(
       : {};
     const measureInputs: LayoutMeasureInputs = {
       ...embeddedFontFamilies,
-      documentFontFactsFingerprint:
-        documentFontFactsFingerprint(documentFontFacts),
+      documentFontFactsCacheIdentity:
+        documentFontFactsCacheIdentity(documentFontFacts),
       styles,
       theme: _theme,
       defaultTabStop,

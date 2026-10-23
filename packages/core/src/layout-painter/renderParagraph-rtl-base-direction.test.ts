@@ -18,6 +18,7 @@ import type {
   ParagraphMeasure,
   TextRun,
 } from "../layout-engine/types";
+import { parseFontFamilyList } from "../utils/fontResolver";
 import { renderParagraphFragment } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
@@ -176,11 +177,19 @@ describe("Issue #719 — RTL base direction detection", () => {
       },
     ]) as unknown as FakeElement;
 
-    expect(
-      findAllByTag(paragraph, "span").some((span) =>
-        span.style.fontFamily?.includes('"Times New Roman", Times, serif'),
-      ),
-    ).toBe(true);
+    const hasRomanFallback = findAllByTag(paragraph, "span").some((span) => {
+      const families = parseFontFamilyList(span.style.fontFamily ?? "");
+      const timesNewRomanIndex = families.indexOf("Times New Roman");
+      const timesIndex = families.indexOf("Times");
+      const serifIndex = families.indexOf("serif");
+      return (
+        timesNewRomanIndex >= 0 &&
+        timesIndex > timesNewRomanIndex &&
+        serifIndex > timesIndex &&
+        serifIndex === families.length - 1
+      );
+    });
+    expect(hasRomanFallback).toBe(true);
   });
 
   test("Hebrew-led paragraph with rtl runs renders dir=rtl", () => {

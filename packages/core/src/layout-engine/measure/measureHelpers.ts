@@ -8,7 +8,7 @@
  * Script sizing: eigenpal/docx-editor@585413d0 (Apache-2.0), modified for Folio.
  */
 
-import { documentFontFactsFingerprint } from "../../fonts/documentFontFacts";
+import { documentFontFactsCacheIdentity } from "../../fonts/documentFontFacts";
 import {
   parseFontFamilyList,
   resolveFontFamily,
@@ -173,7 +173,7 @@ export function getResolvedData(
     cache = owned ?? new Map<string, ResolvedFontCache>();
     if (!owned) embeddedFontResolvedCaches.set(embeddedFontFamilyMap, cache);
   }
-  const cacheKey = `${fontFamily}\u0000${alternateFontFamily ?? ""}\u0000${documentFontFactsFingerprint(documentFontFacts) ?? ""}`;
+  const cacheKey = `${fontFamily}\u0000${alternateFontFamily ?? ""}\u0000${documentFontFactsCacheIdentity(documentFontFacts) ?? ""}`;
   let cached = cache.get(cacheKey);
   if (cached === undefined) {
     const resolved = resolveFontFamily(fontFamily, {

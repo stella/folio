@@ -203,6 +203,7 @@ export type RunFormatting = {
 export type ListMarkerFormatting = Pick<
   RunFormatting,
   | "embeddedFontFamilyMap"
+  | "documentFontFacts"
   | "fontFamily"
   | "alternateFontFamily"
   | "eastAsiaFontFamily"

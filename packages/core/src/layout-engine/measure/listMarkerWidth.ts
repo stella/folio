@@ -42,7 +42,7 @@ const TWIPS_TO_PX = 96 / 1440;
  */
 export function resolveListMarkerFont(block: ParagraphBlock): {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
-  documentFontFacts?: FontStyle["documentFontFacts"];
+  documentFontFacts?: NonNullable<FontStyle["documentFontFacts"]>;
   fontFamily: string;
   alternateFontFamily?: string;
   fontSize: number;

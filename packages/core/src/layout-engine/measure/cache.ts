@@ -5,9 +5,11 @@
  * Improves performance by avoiding repeated measurements of identical content.
  */
 
+import { panic } from "better-result";
+
 import {
   type DocumentFontFacts,
-  documentFontFactsFingerprint,
+  documentFontFactsCacheIdentity,
 } from "../../fonts/documentFontFacts";
 import { embeddedFontFingerprint } from "../../fonts/embeddedFontFingerprint";
 import type {
@@ -285,6 +287,7 @@ export function getFontCacheSize(): number {
 type ParagraphMeasureEntry = {
   measure: ParagraphMeasure;
   maxWidth: number;
+  bytes: number;
 };
 
 /**
@@ -292,6 +295,7 @@ type ParagraphMeasureEntry = {
  * Large documents can have 500+ unique paragraphs.
  */
 const DEFAULT_PARAGRAPH_CACHE_SIZE = 5000;
+const MAX_PARAGRAPH_CACHE_BYTES = 16 * 1024 * 1024;
 
 /**
  * Current max size for paragraph measure cache
@@ -303,6 +307,7 @@ let paragraphCacheMaxSize = DEFAULT_PARAGRAPH_CACHE_SIZE;
  * Key format: block content hash
  */
 const paragraphMeasureCache = new Map<string, ParagraphMeasureEntry>();
+let paragraphCacheBytes = 0;
 
 type ImageMeasureCacheField =
   | "kind"
@@ -443,13 +448,13 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     return index;
   };
   const documentFontContextRef: DocumentFontContextRef = (facts) => {
-    const fingerprint = documentFontFactsFingerprint(facts);
-    if (fingerprint === undefined) return undefined;
-    const existing = documentContextRefs.get(fingerprint);
+    const identity = documentFontFactsCacheIdentity(facts);
+    if (identity === undefined) return undefined;
+    const existing = documentContextRefs.get(identity);
     if (existing !== undefined) return existing;
     const index = documentFontContexts.length;
-    documentContextRefs.set(fingerprint, index);
-    documentFontContexts.push(fingerprint);
+    documentContextRefs.set(identity, index);
+    documentFontContexts.push(identity);
     return index;
   };
   const attrs = paragraphAttrsMeasureCacheInput(
@@ -473,12 +478,17 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
  * Evict oldest entries if paragraph cache exceeds max size
  */
 function evictParagraphEntries(): void {
-  while (paragraphMeasureCache.size > paragraphCacheMaxSize) {
-    const oldestKey = paragraphMeasureCache.keys().next().value;
-    if (oldestKey === undefined) {
-      break;
+  while (
+    paragraphMeasureCache.size > paragraphCacheMaxSize ||
+    paragraphCacheBytes > MAX_PARAGRAPH_CACHE_BYTES
+  ) {
+    const oldest = paragraphMeasureCache.entries().next().value;
+    if (oldest === undefined) {
+      panic("Paragraph cache byte accounting must match retained entries.");
     }
+    const [oldestKey, entry] = oldest;
     paragraphMeasureCache.delete(oldestKey);
+    paragraphCacheBytes -= entry.bytes;
   }
 }
 
@@ -511,7 +521,15 @@ export function setCachedParagraphMeasure(
   measure: ParagraphMeasure,
 ): void {
   const key = hashParagraphBlock(block);
-  paragraphMeasureCache.set(key, { measure, maxWidth });
+  const bytes = (key.length + JSON.stringify(measure).length) * 2;
+  const previous = paragraphMeasureCache.get(key);
+  if (previous !== undefined) {
+    paragraphMeasureCache.delete(key);
+    paragraphCacheBytes -= previous.bytes;
+  }
+  if (bytes > MAX_PARAGRAPH_CACHE_BYTES) return;
+  paragraphMeasureCache.set(key, { measure, maxWidth, bytes });
+  paragraphCacheBytes += bytes;
   evictParagraphEntries();
 }
 
@@ -520,6 +538,7 @@ export function setCachedParagraphMeasure(
  */
 export function clearParagraphMeasureCache(): void {
   paragraphMeasureCache.clear();
+  paragraphCacheBytes = 0;
 }
 
 /**

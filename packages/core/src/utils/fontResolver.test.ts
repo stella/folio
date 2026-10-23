@@ -4,7 +4,7 @@ import type { FontTable } from "@stll/docx-core/model";
 
 import {
   buildDocumentFontFacts,
-  documentFontFactsFingerprint,
+  documentFontFactsCacheIdentity,
   documentFontInfoOf,
 } from "../fonts/documentFontFacts";
 import {
@@ -134,7 +134,7 @@ describe("fontResolver — alternate families", () => {
     if (!facts) {
       throw new Error("Expected document font facts");
     }
-    const fingerprint = documentFontFactsFingerprint(facts);
+    const cacheIdentity = documentFontFactsCacheIdentity(facts);
 
     sourceFont.family = "swiss";
     sourceFont.pitch = "fixed";
@@ -142,7 +142,7 @@ describe("fontResolver — alternate families", () => {
       sourceFont.charset.val = "02";
     }
 
-    expect(documentFontFactsFingerprint(facts)).toBe(fingerprint);
+    expect(documentFontFactsCacheIdentity(facts)).toBe(cacheIdentity);
     expect("byName" in facts).toBe(false);
     expect(documentFontInfoOf("ledgerface", facts)).toMatchObject({
       family: "roman",
@@ -166,9 +166,17 @@ describe("fontResolver — alternate families", () => {
     });
 
     expect(
-      resolveFontFamily("LedgerFace", { documentFontFacts: romanFacts })
-        .cssFallback,
-    ).toContain("Times New Roman, Times, serif");
+      parseFontFamilyList(
+        resolveFontFamily("LedgerFace", { documentFontFacts: romanFacts })
+          .cssFallback,
+      ),
+    ).toEqual([
+      "LedgerFace",
+      "Times New Roman",
+      "Times",
+      "Noto Sans Arabic",
+      "serif",
+    ]);
     expect(
       resolveFontFamily("LedgerFace", { documentFontFacts: fixedFacts })
         .cssFallback,

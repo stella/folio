@@ -12,7 +12,7 @@ import { statesNoBorder } from "@stll/docx-core/model";
 import { releaseDisplayPageResources } from "../display-list/pageResourceOwnership";
 import {
   type DocumentFontFacts,
-  documentFontFactsFingerprint,
+  documentFontFactsCacheIdentity,
 } from "../fonts/documentFontFacts";
 import { embeddedFontFingerprint } from "../fonts/embeddedFontFingerprint";
 import {
@@ -3056,11 +3056,11 @@ function computeOptionsHash(options: RenderPageOptions): string {
       `embedded-fonts:${embeddedFontFingerprint(options.embeddedFontFamilyMap)}`,
     );
   }
-  const documentFactsFingerprint = documentFontFactsFingerprint(
+  const documentFactsIdentity = documentFontFactsCacheIdentity(
     options.documentFontFacts,
   );
-  if (documentFactsFingerprint !== undefined) {
-    parts.push(`document-font-facts:${documentFactsFingerprint}`);
+  if (documentFactsIdentity !== undefined) {
+    parts.push(`document-font-facts:${documentFactsIdentity}`);
   }
 
   // Header/footer content changes affect all pages. Include `textSig` so

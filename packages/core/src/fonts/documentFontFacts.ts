@@ -1,5 +1,6 @@
 import type { FontInfo, FontTable } from "@stll/docx-core/model";
 
+import { boundedContentIdentity } from "../utils/boundedContentIdentity";
 import { canonicalJson } from "../utils/canonicalJson";
 
 type DocumentFontInfo = Readonly<
@@ -8,20 +9,17 @@ type DocumentFontInfo = Readonly<
   }
 >;
 
-export type DocumentFontFacts = Readonly<{
-  fingerprint: string;
-  fontInfoOf(name: string): DocumentFontInfo | undefined;
-}>;
+export type DocumentFontFacts = OwnedDocumentFontFacts;
 
 const normalizeFontName = (name: string): string => name.trim().toLowerCase();
 
-class OwnedDocumentFontFacts implements DocumentFontFacts {
+class OwnedDocumentFontFacts {
   readonly #fontsByName: ReadonlyMap<string, DocumentFontInfo>;
-  readonly fingerprint: string;
+  readonly cacheIdentity: string;
 
   constructor(fontsByName: Map<string, DocumentFontInfo>) {
     this.#fontsByName = fontsByName;
-    this.fingerprint = fingerprintEntries(fontsByName);
+    this.cacheIdentity = cacheIdentityForEntries(fontsByName);
     Object.freeze(this);
   }
 
@@ -57,7 +55,7 @@ export const buildDocumentFontFacts = (
   return new OwnedDocumentFontFacts(fontsByName);
 };
 
-const fingerprintEntries = (
+const cacheIdentityForEntries = (
   facts: ReadonlyMap<string, DocumentFontInfo>,
 ): string => {
   const entries = [...facts].sort(([left], [right]) => {
@@ -65,12 +63,12 @@ const fingerprintEntries = (
     if (left > right) return 1;
     return 0;
   });
-  return canonicalJson(entries);
+  return boundedContentIdentity(canonicalJson(entries));
 };
 
-export const documentFontFactsFingerprint = (
+export const documentFontFactsCacheIdentity = (
   facts: DocumentFontFacts | undefined,
-): string | undefined => facts?.fingerprint;
+): string | undefined => facts?.cacheIdentity;
 
 export const documentFontInfoOf = (
   fontName: string,
