@@ -1,8 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-
-if (!GlobalRegistrator.isRegistered) GlobalRegistrator.register();
-
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { DOMParser } from "prosemirror-model";
 import {
   EditorState,
@@ -16,6 +13,18 @@ import {
   handleSuggestionPaste,
   suggestionModeKey,
 } from "./suggestionMode";
+
+let ownsDomRegistration = false;
+
+beforeAll(() => {
+  if (GlobalRegistrator.isRegistered) return;
+  GlobalRegistrator.register();
+  ownsDomRegistration = true;
+});
+
+afterAll(() => {
+  if (ownsDomRegistration) GlobalRegistrator.unregister();
+});
 
 const copiedWordHtml =
   '<p>keep <ins cite="mailto:Ann%20Author" datetime="2026-10-22T14:18">added</ins> ' +
