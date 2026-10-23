@@ -3374,17 +3374,49 @@ type ChangeRange = {
   type: "insertion" | "deletion";
 };
 
+type PairedReplacementRange = { from: number; to: number };
+const pairedReplacementRangesByDoc = new WeakMap<
+  PMNode,
+  readonly PairedReplacementRange[]
+>();
+
 const pairedReplacementRanges = (state: EditorState) => {
-  const ranges = new Map<number, { from: number; to: number }>();
+  const cached = pairedReplacementRangesByDoc.get(state.doc);
+  if (cached) return cached;
+
+  const ranges: PairedReplacementRange[] = [];
   const { entries } = extractTrackedChanges(state);
   for (const entry of entries) {
     if (entry.type !== "replacement" || entry.insertionRevisionId === undefined)
       continue;
-    const range = { from: entry.from, to: entry.to };
-    ranges.set(entry.revisionId, range);
-    ranges.set(entry.insertionRevisionId, range);
+    ranges.push({ from: entry.from, to: entry.to });
   }
+  pairedReplacementRangesByDoc.set(state.doc, ranges);
   return ranges;
+};
+
+type PairedReplacementRangeAtOptions = {
+  ranges: readonly PairedReplacementRange[];
+  from: number;
+  to: number;
+};
+
+const pairedReplacementRangeAt = ({
+  ranges,
+  from,
+  to,
+}: PairedReplacementRangeAtOptions): PairedReplacementRange | undefined => {
+  let low = 0;
+  let high = ranges.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (ranges[middle]!.from <= from) low = middle + 1;
+    else high = middle;
+  }
+  const candidate = ranges[low - 1];
+  return candidate && from >= candidate.from && to <= candidate.to
+    ? candidate
+    : undefined;
 };
 
 /**
@@ -3588,11 +3620,11 @@ export function findNextChange(
         // returned range must see the whole revision — clamping `from`
         // up to `startPos` truncates the earlier portion of the same
         // change and leaves orphaned marks behind after accept.
-        const revisionId = mark.attrs["revisionId"];
-        const paired =
-          typeof revisionId === "number"
-            ? replacementRanges.get(revisionId)
-            : undefined;
+        const paired = pairedReplacementRangeAt({
+          ranges: replacementRanges,
+          from: pos,
+          to: pos + node.nodeSize,
+        });
         const expanded =
           paired ??
           expandTrackedChangeRange(state, mark, pos, pos + node.nodeSize);
@@ -3666,11 +3698,11 @@ export function findPreviousChange(
 
     for (const mark of node.marks) {
       if (mark.type === insertionType || mark.type === deletionType) {
-        const revisionId = mark.attrs["revisionId"];
-        const paired =
-          typeof revisionId === "number"
-            ? replacementRanges.get(revisionId)
-            : undefined;
+        const paired = pairedReplacementRangeAt({
+          ranges: replacementRanges,
+          from: pos,
+          to: pos + node.nodeSize,
+        });
         const expanded =
           paired ??
           expandTrackedChangeRange(state, mark, pos, pos + node.nodeSize);

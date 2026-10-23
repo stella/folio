@@ -1781,8 +1781,8 @@ describe("tracked change navigation", () => {
           ]),
           schema.text(" tail"),
           schema.text("later", [
-            schema.marks.insertion.create({
-              revisionId: 13,
+            schema.marks.deletion.create({
+              revisionId: 11,
               author: "Another reviewer",
               date: "2026-01-01T10:02:00Z",
             }),
@@ -1796,10 +1796,13 @@ describe("tracked change navigation", () => {
       to: 12,
       type: "deletion",
     });
-    expect(findNextChange(state, 12)).toMatchObject({
+    const selectedState = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 12)),
+    );
+    expect(findNextChange(selectedState, 12)).toMatchObject({
       from: 17,
       to: 22,
-      type: "insertion",
+      type: "deletion",
     });
     expect(findPreviousChange(state, 17)).toMatchObject({
       from: 6,
