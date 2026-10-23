@@ -14,7 +14,7 @@ import {
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
-const SHA = "5764ab66e4df84cfd2e642c7d7e4678261e668f8";
+const SHA = "12eb83b8c6bd42a0bead73d9c6bc30b4caad6433";
 const USES = `stella/.github/.github/workflows/release.yml@${SHA}`;
 const caller = (permissions: unknown) =>
   parsePermissionWorkflow(
