@@ -200,6 +200,18 @@ const propertiesOf = (saved: string): string =>
   );
 
 describe("a run property set survives a rebuild", () => {
+  test("language attributes must use the WordprocessingML namespace", () => {
+    const formatting = parseRunProperties(
+      parseOne(
+        `<w:rPr xmlns:w="${W}" xmlns:x="urn:example:vendor"><w:lang w:val="en-US" x:eastAsia="ja-JP" x:bidi="ar-SA"/></w:rPr>`,
+      ),
+      null,
+      RUN_PROPERTY_OWNERS.standalone,
+    );
+
+    expect(formatting.language).toEqual({ val: "en-US" });
+  });
+
   test("every declared child comes back on a run, and the save after it is a fixed point", () => {
     fc.assert(
       fc.property(fc.constantFrom(...DECLARED), (name) => {
