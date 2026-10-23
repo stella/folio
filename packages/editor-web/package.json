@@ -22,7 +22,7 @@
     "use-intl": "^4.14.9"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.0",
+    "@happy-dom/global-registrator": "^21.0.3",
     "@playwright/test": "1.61.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
