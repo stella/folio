@@ -19,7 +19,8 @@ const RUN_CONTENT_PROJECTION = {
   shape: ["shape", "textBoxAnchor"],
 } as const satisfies Record<RunContent["type"], readonly string[]>;
 
-export const RUN_CONTENT_INLINE_NODE_NAMES = [
+// Consumers need names, not a literal union whose declaration order can vary across builds.
+export const RUN_CONTENT_INLINE_NODE_NAMES: readonly string[] = [
   ...new Set(Object.values(RUN_CONTENT_PROJECTION).flat()),
 ];
 
