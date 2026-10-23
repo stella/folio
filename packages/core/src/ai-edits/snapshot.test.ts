@@ -679,7 +679,7 @@ describe("createFolioAIEditSnapshot", () => {
       ),
       numberedParagraph({ numPr: numbered, listMarker: "4." }, "Item"),
       numberedParagraph(
-        { numPr: numbered, listMarker: "" },
+        { numPr: numbered, listMarkerTemplate: "" },
         "Empty marker item",
       ),
     ]);

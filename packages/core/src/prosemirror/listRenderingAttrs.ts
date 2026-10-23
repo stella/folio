@@ -118,9 +118,13 @@ export const listRenderingAttrPatch = (
  * names a level nothing defines: Word paints no marker for it.
  */
 export const hasListRendering = (
-  attrs: Pick<ParagraphAttrs, "listMarker" | "listIsBullet" | "listNumFmt">,
+  attrs: Pick<
+    ParagraphAttrs,
+    "listMarker" | "listMarkerTemplate" | "listIsBullet" | "listNumFmt"
+  >,
 ): boolean =>
   attrs.listMarker != null ||
+  attrs.listMarkerTemplate != null ||
   attrs.listIsBullet === true ||
   attrs.listNumFmt != null;
 
