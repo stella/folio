@@ -165,7 +165,10 @@ import { presetDashForCssBorderStyle } from "../../utils/borderCss";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
-import { unchangedAlternateContentXml } from "../alternateContentAttrs";
+import {
+  editedAlternateContent,
+  unchangedAlternateContentXml,
+} from "../alternateContentAttrs";
 import {
   expectBlockCustomXmlAttrs,
   expectBlockSdtAttrs,
@@ -5709,12 +5712,25 @@ const shapeContentFromNode = ({
   captured,
 }: ShapeContentFromNodeOptions): ShapeContent => {
   const xml = unchangedAlternateContentXml(node, captured);
-  return xml === undefined
+  if (xml !== undefined) {
+    return {
+      type: "shape",
+      shape,
+      alternateContent: refingerprintShapeAlternateContent(shape, xml),
+    };
+  }
+  const editedCapture = editedAlternateContent(node, captured);
+  return editedCapture?.shapeFingerprint === undefined ||
+    editedCapture.structureFingerprint === undefined
     ? { type: "shape", shape }
     : {
         type: "shape",
         shape,
-        alternateContent: refingerprintShapeAlternateContent(shape, xml),
+        alternateContent: {
+          verbatimXml: editedCapture.xml,
+          verbatimFingerprint: editedCapture.shapeFingerprint,
+          verbatimStructureFingerprint: editedCapture.structureFingerprint,
+        },
       };
 };
 

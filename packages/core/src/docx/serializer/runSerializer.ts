@@ -1032,11 +1032,10 @@ function serializeRunContent(content: RunContent): string {
         return content.rawXml;
       }
       return serializeDrawingContent(content);
-    case "shape":
-      return (
-        replayableShapeAlternateContent(content) ??
-        serializeShapeContent(content)
-      );
+    case "shape": {
+      const drawingXml = serializeShapeContent(content);
+      return replayableShapeAlternateContent(content, drawingXml) ?? drawingXml;
+    }
     default:
       return "";
   }

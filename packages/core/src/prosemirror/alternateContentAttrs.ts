@@ -1,5 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { ShapeAlternateContent } from "../types/content";
 import { canonicalJson } from "../utils/canonicalJson";
 import type { AlternateContentAttrs } from "./schema/nodes";
 
@@ -19,10 +20,16 @@ const nodeFingerprint = (node: PMNode): string => {
   return canonicalJson({ attrs, content: node.content.toJSON() });
 };
 
+const nodeAttributesFingerprint = (node: PMNode): string => {
+  const { [ALTERNATE_CONTENT_ATTR]: _captured, ...attrs } = node.attrs;
+  return canonicalJson(attrs);
+};
+
 /** Attach a captured `mc:AlternateContent` to a freshly projected node. */
 export const withAlternateContent = (
   node: PMNode,
   xml: string | undefined,
+  source?: ShapeAlternateContent,
 ): PMNode => {
   if (xml === undefined) {
     return node;
@@ -30,6 +37,13 @@ export const withAlternateContent = (
   const alternateContent: AlternateContentAttrs = {
     xml,
     fingerprint: nodeFingerprint(node),
+    ...(source === undefined
+      ? {}
+      : {
+          attributesFingerprint: nodeAttributesFingerprint(node),
+          shapeFingerprint: source.verbatimFingerprint,
+          structureFingerprint: source.verbatimStructureFingerprint,
+        }),
   };
   return node.type.create(
     { ...node.attrs, [ALTERNATE_CONTENT_ATTR]: alternateContent },
@@ -37,6 +51,14 @@ export const withAlternateContent = (
     node.marks,
   );
 };
+
+export const editedAlternateContent = (
+  node: PMNode,
+  captured: AlternateContentAttrs | undefined,
+): AlternateContentAttrs | undefined =>
+  captured?.attributesFingerprint === nodeAttributesFingerprint(node)
+    ? captured
+    : undefined;
 
 /** The captured element, while the node is still the one it was attached to. */
 export const unchangedAlternateContentXml = (

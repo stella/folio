@@ -9,7 +9,7 @@
  * Two laws, over arbitrary text-box text and an optional edit, through the
  * model and through the editor projection:
  * - an unedited shape writes its element back whole;
- * - no save writes a Fallback whose text disagrees with its Choice.
+ * - a text-only edit updates both branches; structural edits do not replay stale fallback markup.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -242,7 +242,7 @@ describe("a shape read from mc:AlternateContent", () => {
   );
 
   test(
-    "an edited text box is regenerated without the stale Fallback",
+    "a text-only model edit updates the VML fallback",
     async () => {
       await fc.assert(
         fc.asyncProperty(safeText, safeText, async (original, replacement) => {
@@ -251,11 +251,21 @@ describe("a shape read from mc:AlternateContent", () => {
             documentXml(textBoxAlternateContent(original)),
           );
           editTextBoxInModel(parsed, replacement);
+          const shape = shapesOf(parsed).at(0)?.shape;
+          const beforeSave = shape ? structuredClone(shape) : undefined;
           const saved = await savedDocumentPart(parsed);
 
-          expect(saved).not.toContain("mc:Fallback");
-          expect(textOf(saved)).toBe(`Host${replacement}`);
+          const alternateContent = alternateContentsOf(saved).at(0);
+          expect(alternateContent).toBeDefined();
+          expect(branchText(alternateContent ?? "", "Choice")).toBe(
+            replacement,
+          );
+          expect(branchText(alternateContent ?? "", "Fallback")).toBe(
+            replacement,
+          );
           expectFallbacksAgree(saved);
+          expect(shape).toEqual(beforeSave);
+          expect(await savedDocumentPart(parsed)).toBe(saved);
         }),
         propertyConfig({ numRuns: 20 }),
       );
@@ -264,7 +274,7 @@ describe("a shape read from mc:AlternateContent", () => {
   );
 
   test(
-    "typing into a text box in the editor drops the stale Fallback",
+    "typing into a text box in the editor updates the VML fallback",
     async () => {
       await fc.assert(
         fc.asyncProperty(safeText, safeText, async (original, typed) => {
@@ -275,8 +285,13 @@ describe("a shape read from mc:AlternateContent", () => {
             typeInEditor(parsed, "textBox", typed),
           );
 
-          expect(saved).not.toContain("mc:Fallback");
-          expect(textOf(saved)).toBe(`Host${typed}${original}`);
+          const alternateContent = alternateContentsOf(saved).at(0) ?? "";
+          expect(branchText(alternateContent, "Choice")).toBe(
+            `${typed}${original}`,
+          );
+          expect(branchText(alternateContent, "Fallback")).toBe(
+            `${typed}${original}`,
+          );
           expectFallbacksAgree(saved);
         }),
         propertyConfig({ numRuns: 20 }),
@@ -325,6 +340,25 @@ describe("a shape read from mc:AlternateContent", () => {
     const saved = await savedDocumentPart(parsed);
     expect(saved).not.toContain("mc:AlternateContent");
     expect(saved).toContain('<wp:extent cx="3657600"');
+  });
+
+  test("a strict aliased Word namespace remains declared in the synchronized fallback", async () => {
+    const strictWordNamespace =
+      "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    const sourceXml = documentXml(textBoxAlternateContent("Before"))
+      .replaceAll("w:", "q:")
+      .replaceAll(NAMESPACES.w, strictWordNamespace);
+    const parsed = await open(sourceXml);
+    editTextBoxInModel(parsed, "After");
+    const saved = await savedDocumentPart(parsed);
+
+    expectFallbacksAgree(saved);
+    const fallback = branchText(
+      alternateContentsOf(saved).at(0) ?? "",
+      "Fallback",
+    );
+    expect(fallback).toContain("<w:p");
+    expect(fallback).toContain(`xmlns:w="${NAMESPACES.w}"`);
   });
 
   test("a branch holding more than the shape is not replayed in its place", async () => {
