@@ -113,6 +113,28 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Editor round-trip regressions
+        if: matrix.shard == 1
+        working-directory: packages/core
+        run: >-
+          bun test
+          ./src/prosemirror/conversion/fieldResultRunMetadataRoundtrip.test.ts
+          ./src/prosemirror/conversion/fromProseDoc.test.ts
+          ./src/prosemirror/conversion/hyperlinkDestinationRoundtrip.property.test.ts
+          ./src/prosemirror/conversion/pageBreakRunFieldOwnership.test.ts
+          ./src/prosemirror/extensions/nodes/FieldExtension.test.ts
+          ./src/prosemirror/extensions/features/pasteCleanup.test.ts
+          ./src/prosemirror/validation.test.ts
+          ./src/prosemirror/yjsDocumentMetadata.test.ts
+
+      - name: Editor census and run-record guards
+        if: matrix.shard == 1
+        run: >-
+          bun test
+          ./scripts/corpus-editor-round-trip-census.test.ts
+          ./scripts/corpus-editor-round-trip.test.ts
+          ./scripts/run-record-lint.test.ts
+
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.FOLIO_CORPUS_CACHE }}

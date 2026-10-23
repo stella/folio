@@ -307,6 +307,7 @@ describe("field result run metadata round-trip", () => {
         },
         ...followingContent,
         { type: "commentRangeEnd", id: 17 },
+        { type: "commentReference", id: 17 },
         { type: "run", content: [{ type: "text", text: "Outside range" }] },
       ] satisfies ParagraphContent[];
       const source: Document = {
