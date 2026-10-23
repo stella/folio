@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 
+import { buildDocumentFontFacts } from "../../fonts/documentFontFacts";
 import type { ParagraphBlock } from "../types";
 import {
   fixedCharWidth,
@@ -444,4 +445,40 @@ test("embedded font cache identity is content-based and stores each map once per
   expect(firstKey).toBe(hashParagraphBlock(paragraph(equal)));
   expect(firstKey).not.toBe(hashParagraphBlock(paragraph(different)));
   expect(firstKey.split("folio-embedded-one-Calibri")).toHaveLength(2);
+});
+
+test("document font facts cache keys use content fingerprints", () => {
+  const serifFacts = buildDocumentFontFacts({
+    fonts: [{ name: "LedgerFace", family: "roman" }],
+  });
+  const sansFacts = buildDocumentFontFacts({
+    fonts: [{ name: "LedgerFace", family: "swiss" }],
+  });
+  const equalSerifFacts = buildDocumentFontFacts({
+    fonts: [{ name: "LedgerFace", family: "roman" }],
+  });
+  if (!serifFacts || !sansFacts || !equalSerifFacts) {
+    throw new Error("Expected document font facts");
+  }
+  const blockWithFacts = (
+    documentFontFacts: NonNullable<typeof serifFacts>,
+  ): ParagraphBlock => ({
+    kind: "paragraph",
+    id: "p",
+    runs: [
+      {
+        kind: "text",
+        text: "text",
+        fontFamily: "LedgerFace",
+        documentFontFacts,
+      },
+    ],
+  });
+
+  expect(hashParagraphBlock(blockWithFacts(serifFacts))).not.toBe(
+    hashParagraphBlock(blockWithFacts(sansFacts)),
+  );
+  expect(hashParagraphBlock(blockWithFacts(serifFacts))).toBe(
+    hashParagraphBlock(blockWithFacts(equalSerifFacts)),
+  );
 });

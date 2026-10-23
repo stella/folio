@@ -21,6 +21,10 @@ import {
 import type { HeaderFooterFieldInputs } from "../fields/resolveFieldValues";
 import { buildSectionPageCounts } from "../fields/sectionPageCounts";
 import { buildSeqValues } from "../fields/seqValues";
+import {
+  buildDocumentFontFacts,
+  documentFontFactsFingerprint,
+} from "../fonts/documentFontFacts";
 import { buildFontAlternates } from "../fonts/fontAlternates";
 import {
   prepareEndnoteAreas,
@@ -146,6 +150,7 @@ const sameMeasureInputs = (
   right: LayoutMeasureInputs,
 ): boolean =>
   left.embeddedFontFamilyMap === right.embeddedFontFamilyMap &&
+  left.documentFontFactsFingerprint === right.documentFontFactsFingerprint &&
   left.styles === right.styles &&
   left.theme === right.theme &&
   left.defaultTabStop === right.defaultTabStop &&
@@ -538,6 +543,9 @@ function runLayoutPipelineMeasured<THfPMs>(
     let phaseStartedAt = performance.now();
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
     const fontAlternates = buildFontAlternates(document?.package.fontTable);
+    const documentFontFacts = buildDocumentFontFacts(
+      document?.package.fontTable,
+    );
     const displayCommentHighlights =
       showCommentHighlights &&
       markupView !== "no-markup" &&
@@ -547,6 +555,8 @@ function runLayoutPipelineMeasured<THfPMs>(
       : {};
     const measureInputs: LayoutMeasureInputs = {
       ...embeddedFontFamilies,
+      documentFontFactsFingerprint:
+        documentFontFactsFingerprint(documentFontFacts),
       styles,
       theme: _theme,
       defaultTabStop,
@@ -559,6 +569,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     const flowOpts: ToFlowBlocksOptions = {
       showCommentHighlights: displayCommentHighlights,
       ...embeddedFontFamilies,
+      ...(documentFontFacts === undefined ? {} : { documentFontFacts }),
       pageContentHeight,
       fontAlternates,
       ...(styles ? { styles } : {}),
@@ -790,6 +801,9 @@ function runLayoutPipelineMeasured<THfPMs>(
         ...(_theme !== undefined ? { theme: _theme } : {}),
         fontAlternates,
         ...embeddedFontFamilies,
+        ...(flowOpts.documentFontFacts === undefined
+          ? {}
+          : { documentFontFacts: flowOpts.documentFontFacts }),
         measureBlocks: hfMeasureBlocks,
         ...(defaultTabStop !== undefined
           ? { defaultTabStopTwips: defaultTabStop }
@@ -1052,6 +1066,9 @@ function runLayoutPipelineMeasured<THfPMs>(
       noteOptions.fontAlternates = fontAlternates;
       if (session.embeddedFontFamilyMap) {
         noteOptions.embeddedFontFamilyMap = session.embeddedFontFamilyMap;
+      }
+      if (flowOpts.documentFontFacts !== undefined) {
+        noteOptions.documentFontFacts = flowOpts.documentFontFacts;
       }
       if (defaultTabStop !== undefined) {
         noteOptions.defaultTabStopTwips = defaultTabStop;
@@ -1468,6 +1485,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         footnotesByPage?: Map<number, FootnoteRenderItem[]>;
       } = {
         ...embeddedFontFamilies,
+        ...(documentFontFacts === undefined ? {} : { documentFontFacts }),
         pageGap,
         showShadow: true,
         blockLookup,

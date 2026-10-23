@@ -7,6 +7,10 @@
  * This module provides mappings to metrically-compatible Google Fonts alternatives.
  */
 
+import {
+  type DocumentFontFacts,
+  documentFontInfoOf,
+} from "../fonts/documentFontFacts";
 import type { ThemeFont, ThemeFontScheme } from "../types";
 
 /**
@@ -886,6 +890,31 @@ function detectFontCategory(fontName: string): FontCategory {
   return "sans-serif";
 }
 
+const categoryFromDocumentFacts = (
+  fontName: string,
+  documentFontFacts: DocumentFontFacts | undefined,
+): FontCategory => {
+  const font = documentFontInfoOf(fontName, documentFontFacts);
+  if (font?.pitch === "fixed") {
+    return "monospace";
+  }
+  switch (font?.family) {
+    case "decorative":
+      return "fantasy";
+    case "modern":
+      return "monospace";
+    case "roman":
+      return "serif";
+    case "script":
+      return "cursive";
+    case "swiss":
+      return "sans-serif";
+    case "auto":
+    case undefined:
+      return detectFontCategory(fontName);
+  }
+};
+
 /**
  * Romanized CJK font spellings → the native key already present in
  * FONT_MAPPINGS (port of eigenpal/docx-editor#957). Word writes either the
@@ -992,6 +1021,7 @@ export const getGoogleFontsEnabled = (): boolean => googleFontsEnabled;
 type FontResolutionOptions = {
   alternateFontName?: string | undefined;
   embeddedFontFamilyMap?: ReadonlyMap<string, string> | undefined;
+  documentFontFacts?: DocumentFontFacts | undefined;
 };
 
 /** Resolve against the calling editor's immutable embedded-font lookup. */
@@ -999,7 +1029,8 @@ export function resolveFontFamily(
   docxFontName: string,
   options: FontResolutionOptions = {},
 ): ResolvedFont {
-  const { alternateFontName, embeddedFontFamilyMap } = options;
+  const { alternateFontName, embeddedFontFamilyMap, documentFontFacts } =
+    options;
   const normalizedName = docxFontName.trim().toLowerCase();
   const scopedFamily = embeddedFontFamilyMap?.get(docxFontName) ?? null;
 
@@ -1043,6 +1074,7 @@ export function resolveFontFamily(
 
     const alternate = resolveFontFamily(alternateFontName, {
       embeddedFontFamilyMap,
+      documentFontFacts,
     });
     const category = mapping.category;
     const concreteStack = dedupeFontFamilies([
@@ -1067,8 +1099,9 @@ export function resolveFontFamily(
   if (alternateName && alternateName.toLowerCase() !== normalizedName) {
     const alternate = resolveFontFamily(alternateName, {
       embeddedFontFamilyMap,
+      documentFontFacts,
     });
-    const category = detectFontCategory(docxFontName);
+    const category = categoryFromDocumentFacts(docxFontName, documentFontFacts);
     const concreteStack = dedupeFontFamilies([
       scopedFamily ?? docxFontName,
       ...parseFontFamilyList(alternate.cssFallback),
@@ -1085,7 +1118,7 @@ export function resolveFontFamily(
     };
   }
 
-  const category = detectFontCategory(docxFontName);
+  const category = categoryFromDocumentFacts(docxFontName, documentFontFacts);
   const defaultFallback = DEFAULT_FALLBACKS[category];
   return {
     googleFont: null,
