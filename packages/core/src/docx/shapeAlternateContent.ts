@@ -135,7 +135,9 @@ const updateAlternateContentText = (
   assertXmlResourceLimits({ xml: capturedXml });
   assertXmlResourceLimits({ xml: drawingXml });
   const alternateContent = parseXmlDocument(capturedXml);
-  const drawing = parseXmlDocument(drawingXml);
+  const drawing = parseXmlDocument(
+    `<root xmlns:w="${NAMESPACES.w}">${drawingXml}</root>`,
+  );
   if (alternateContent === null || drawing === null) {
     panic(
       "Captured shape alternate content failed to parse during serialization.",
@@ -169,9 +171,16 @@ const updateAlternateContentText = (
   ) {
     return undefined;
   }
-  const choiceBody = choiceBodies[0];
-  const fallbackBody = fallbackBodies[0];
-  const drawingBody = drawingBodies[0];
+  const choiceBody = choiceBodies.at(0);
+  const fallbackBody = fallbackBodies.at(0);
+  const drawingBody = drawingBodies.at(0);
+  if (
+    choiceBody === undefined ||
+    fallbackBody === undefined ||
+    drawingBody === undefined
+  ) {
+    return undefined;
+  }
   const qualifiedName = drawingBody.name ?? "txbxContent";
   const prefix = getNamespacePrefix(qualifiedName);
   const declaration = prefix === null ? "xmlns" : `xmlns:${prefix}`;
