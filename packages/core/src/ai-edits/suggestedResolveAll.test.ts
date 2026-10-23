@@ -762,4 +762,70 @@ describe("resolving every suggestion headlessly", () => {
       "Signed in two copies.",
     ]);
   });
+
+  for (const accept of ["acceptChange", "acceptSuggestion"] as const) {
+    test(`a suggested paragraph after a break pending deletion persists once accepted (${accept})`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildDocument(),
+        { author: "AI" },
+      );
+      const first = reviewer
+        .getContent()
+        .find(({ text }) => text === "First clause.");
+      if (!first) throw new Error("the fixture paragraph is missing");
+      // The join leaves the paragraph's break pending deletion; the suggested
+      // paragraph inserted after it then carries that break.
+      const joined = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            { id: "join", type: "mergeBlockWithNext", blockId: first.id },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(joined.applied).toHaveLength(1);
+      const inserted = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "suggested",
+          operations: [
+            {
+              id: "heading",
+              type: "insertAfterBlock",
+              blockId: first.id,
+              text: "Added heading.",
+              styleId: "Heading2",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(inserted.applied).toHaveLength(1);
+      if (accept === "acceptChange") {
+        const insertion = reviewer
+          .getChanges()
+          .find(
+            ({ type, text }) =>
+              type === "insertion" && text === "Added heading.",
+          );
+        if (!insertion) throw new Error("the suggested insertion is missing");
+        expect(reviewer.acceptChange(insertion)).toBe(true);
+      } else {
+        expect(reviewer.acceptSuggestion("heading")).toBe(true);
+      }
+      const live = reviewer.getContent().map(({ text }) => text);
+      expect(live).toEqual([
+        "First clause.",
+        "Added heading.",
+        "Signed in two copies.",
+      ]);
+      expect(await savedTexts(reviewer)).toEqual(live);
+      // The join stays pending, now ending at the accepted paragraph.
+      expect(reviewer.getChanges().map(({ type }) => type)).toContain(
+        "paragraphMarkDeleted",
+      );
+    });
+  }
 });

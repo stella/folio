@@ -2788,8 +2788,12 @@ export class FolioDocxReviewer {
     // suggested paragraph insert is flagged on its node, which accepting the
     // revision marks alone leaves behind, and a save drops a flagged node.
     const suggestionId = suggestionIdOfRevision(this.state, id);
-    if (suggestionId !== null) {
-      this.runCommand(acceptSuggestion(suggestionId, { author: this.author }));
+    // Accepting its marks alone would leave the node flag a save drops.
+    if (
+      suggestionId !== null &&
+      !this.runCommand(acceptSuggestion(suggestionId, { author: this.author }))
+    ) {
+      return false;
     }
     let bodyChanged = false;
     for (const memberId of ids) {
