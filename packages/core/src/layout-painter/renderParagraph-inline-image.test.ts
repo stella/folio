@@ -169,7 +169,13 @@ describe("renderLine inline image handling", () => {
       lineHeight: 35,
     };
 
-    const lineEl = renderLine(block, line, undefined, fakeDocument);
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      context: {
+        inlinePictureSizing: "textColumnFit",
+        pageNumber: 1,
+        totalPages: 1,
+      },
+    });
     const imageEl = lineEl.children[0] as HTMLElement | undefined;
 
     expect(lineEl.style.display).toBe("flex");
@@ -179,6 +185,65 @@ describe("renderLine inline image handling", () => {
     expect(imageEl?.style.aspectRatio).toBe("186 / 29");
     expect(imageEl?.style.maxWidth).toBe("100%");
   });
+
+  test.each([
+    ["body", { section: "body" as const }],
+    ["header", { section: "header" as const }],
+    ["footer", { section: "footer" as const }],
+    ["table cell", { section: "body" as const, insideTableCell: true }],
+  ])(
+    "keeps an oversized inline image at its authored width in %s flow",
+    (_label, context) => {
+      const imageRun: ImageRun = {
+        kind: "image",
+        src: "data:image/png;base64,",
+        width: 600,
+        height: 30,
+        pmStart: 1,
+        pmEnd: 2,
+      };
+      const block: ParagraphBlock = {
+        kind: "paragraph",
+        id: "oversized-inline-picture",
+        runs: [imageRun],
+        pmStart: 0,
+        pmEnd: 3,
+      };
+      const line: MeasuredLine = {
+        fromRun: 0,
+        fromChar: 0,
+        toRun: 0,
+        toChar: 1,
+        width: 600,
+        ascent: 30,
+        descent: 0,
+        lineHeight: 30,
+      };
+
+      const lineEl = renderLine(block, line, undefined, fakeDocument, {
+        availableWidth: 468,
+        isLastLine: true,
+        isFirstLine: true,
+        paragraphEndsWithLineBreak: false,
+        context: { ...context, pageNumber: 1, totalPages: 1 },
+      });
+      const imageEl = lineEl.children.at(0);
+
+      expect(imageEl?.style.width).toBe("600px");
+      expect(imageEl?.style.maxWidth).toBeFalsy();
+
+      for (const alignment of ["center", "right"] as const) {
+        const alignedLine = renderLine(block, line, alignment, fakeDocument, {
+          availableWidth: 468,
+          isLastLine: true,
+          isFirstLine: true,
+          paragraphEndsWithLineBreak: false,
+          context: { ...context, pageNumber: 1, totalPages: 1 },
+        });
+        expect(alignedLine.style.justifyContent).toBeFalsy();
+      }
+    },
+  );
 
   // eigenpal #424 (image-crop subset): an inline image with crop fractions
   // must render the cropped slice scaled to the visible extent (wp:extent),

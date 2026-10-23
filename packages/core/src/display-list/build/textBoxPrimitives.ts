@@ -198,6 +198,10 @@ const paintUnrotatedTextBoxFragment = ({
             block: contentBlock,
             measure: contentMeasure,
             context,
+            inlinePictureViewport: {
+              left: contentFragment.x,
+              right: contentFragment.x + contentFragment.width,
+            },
             ...(previous?.kind === "paragraph" &&
             previous.attrs?.borders !== undefined
               ? { prevBorders: previous.attrs.borders }

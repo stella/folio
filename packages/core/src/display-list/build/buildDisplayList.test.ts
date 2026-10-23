@@ -11,6 +11,7 @@ import { measureBlocks } from "../../layout-engine/measure/measureBlocks";
 import type {
   FlowBlock,
   ImageBlock,
+  ImageRun,
   Layout,
   LayoutOptions,
   PageMargins,
@@ -65,6 +66,283 @@ const pagePrimitives = (blocks: FlowBlock[]): readonly DisplayPrimitive[] => {
   // Index 0 is always the page background rect; the body starts after it.
   return page?.primitives.slice(1) ?? [];
 };
+
+const buildOversizedInlinePicture = (
+  width: number,
+  alignment: "left" | "center" | "right" = "center",
+  indentLeft = 0,
+) => {
+  const image: ImageRun = {
+    kind: "image",
+    src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    width,
+    height: 30,
+  };
+  const block: ParagraphBlock = {
+    kind: "paragraph",
+    id: "oversized-inline-picture",
+    runs: [image],
+    attrs: {
+      alignment,
+      ...(indentLeft === 0 ? {} : { indent: { left: indentLeft } }),
+    },
+  };
+  return buildLayout([block]);
+};
+
+describe("inline picture paper clipping", () => {
+  test("keeps authored advance while clipping body paint at the paper edge", () => {
+    withFakeTextMeasure(() => {
+      const built = buildOversizedInlinePicture(800);
+      const fragment = built.layout.pages[0]?.fragments[0];
+      if (fragment?.kind !== "paragraph") {
+        throw new Error("Expected a paragraph fragment");
+      }
+
+      const page = buildDisplayList(built).pages[0];
+      const clip = page?.primitives.find(
+        (primitive) => primitive.kind === "clipGroup",
+      );
+      if (clip?.kind !== "clipGroup") {
+        throw new Error("Expected inline image clip group");
+      }
+      const image = clip.children.find(
+        (primitive) => primitive.kind === "image",
+      );
+
+      expect(clip.rect).toEqual({
+        xPx: MARGINS.left,
+        yPx: clip.rect.yPx,
+        widthPx: PAGE_SIZE.w - MARGINS.left,
+        heightPx: 30,
+      });
+      expect(image?.kind === "image" ? image.rect.widthPx : undefined).toBe(
+        800,
+      );
+      expect(fragment.width).toBe(CONTENT_WIDTH);
+    }, fakeMeasure);
+  });
+
+  test("allows a negative paragraph indent to extend picture paint to paper", () => {
+    withFakeTextMeasure(() => {
+      const built = buildOversizedInlinePicture(800, "left", -120);
+      const clip = buildDisplayList(built).pages[0]?.primitives.find(
+        (primitive) => primitive.kind === "clipGroup",
+      );
+      if (clip?.kind !== "clipGroup") {
+        throw new Error("Expected inline image clip group");
+      }
+
+      expect(clip.rect).toMatchObject({ xPx: 0, widthPx: PAGE_SIZE.w });
+      expect(
+        clip.children.find((primitive) => primitive.kind === "image"),
+      ).toMatchObject({
+        kind: "image",
+        rect: { xPx: MARGINS.left - 120, widthPx: 800 },
+      });
+    }, fakeMeasure);
+  });
+
+  test("anchors overwide center and right image-only lines at the leading edge", () => {
+    withFakeTextMeasure(() => {
+      for (const alignment of ["center", "right"] as const) {
+        const built = buildOversizedInlinePicture(800, alignment);
+        const picture = buildDisplayList(built).pages[0]?.primitives.find(
+          (primitive) => primitive.kind === "clipGroup",
+        );
+        if (picture?.kind !== "clipGroup") {
+          throw new Error("Expected inline image clip group");
+        }
+        const image = picture.children.find(
+          (primitive) => primitive.kind === "image",
+        );
+
+        expect(image).toMatchObject({
+          kind: "image",
+          rect: { xPx: MARGINS.left, widthPx: 800 },
+        });
+      }
+    }, fakeMeasure);
+  });
+
+  test("stops first-column inline picture paint at the middle of the gap", () => {
+    withFakeTextMeasure(() => {
+      const built = buildOversizedInlinePicture(800);
+      const page = built.layout.pages[0];
+      const fragment = page?.fragments[0];
+      if (page === undefined || fragment?.kind !== "paragraph") {
+        throw new Error("Expected a paragraph fragment");
+      }
+      page.columns = { count: 2, gap: 40 };
+      fragment.width = (CONTENT_WIDTH - 40) / 2;
+      fragment.inlinePictureViewport = {
+        left: MARGINS.left,
+        right: MARGINS.left + fragment.width + 20,
+      };
+
+      const clip = buildDisplayList(built).pages[0]?.primitives.find(
+        (primitive) => primitive.kind === "clipGroup",
+      );
+      if (clip?.kind !== "clipGroup") {
+        throw new Error("Expected inline image clip group");
+      }
+
+      expect(clip.rect.xPx).toBe(MARGINS.left);
+      expect(clip.rect.widthPx).toBe((CONTENT_WIDTH - 40) / 2 + 20);
+      expect(
+        clip.children.find((primitive) => primitive.kind === "image"),
+      ).toMatchObject({
+        kind: "image",
+        rect: { xPx: MARGINS.left, widthPx: 800 },
+      });
+    }, fakeMeasure);
+  });
+
+  test("clips ordinary cell pictures at the cell box, not its text column", () => {
+    withFakeTextMeasure(() => {
+      const picture: ImageRun = {
+        kind: "image",
+        src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        width: 300,
+        height: 30,
+      };
+      const paragraph: ParagraphBlock = {
+        kind: "paragraph",
+        id: "cell-picture-paragraph",
+        runs: [picture],
+      };
+      const table: TableBlock = {
+        kind: "table",
+        id: "cell-picture-table",
+        columnWidths: [200],
+        rows: [
+          {
+            id: "cell-picture-row",
+            cells: [
+              {
+                id: "cell-picture-cell",
+                blocks: [paragraph],
+                padding: { top: 0, right: 36, bottom: 0, left: 36 },
+              },
+            ],
+          },
+        ],
+      };
+      const primitives = pagePrimitives([table]);
+      const clip = primitives.find(
+        (primitive) => primitive.kind === "clipGroup",
+      );
+      if (clip?.kind !== "clipGroup") {
+        throw new Error("Expected cell content clip group");
+      }
+      const image = clip.children.find(
+        (primitive) => primitive.kind === "image",
+      );
+
+      expect(clip.rect.xPx).toBe(MARGINS.left);
+      expect(clip.rect.widthPx).toBe(200);
+      expect(image).toMatchObject({
+        kind: "image",
+        rect: { xPx: MARGINS.left + 36, widthPx: 300 },
+      });
+    }, fakeMeasure);
+  });
+
+  test("clips nested table pictures at both cell boxes", () => {
+    withFakeTextMeasure(() => {
+      const picture: ImageRun = {
+        kind: "image",
+        src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        width: 300,
+        height: 30,
+      };
+      const innerTable: TableBlock = {
+        kind: "table",
+        id: "nested-picture-table",
+        columnWidths: [100],
+        rows: [
+          {
+            id: "nested-picture-row",
+            cells: [
+              {
+                id: "nested-picture-cell",
+                blocks: [
+                  {
+                    kind: "paragraph",
+                    id: "nested-picture-paragraph",
+                    runs: [picture],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const outerTable: TableBlock = {
+        kind: "table",
+        id: "outer-picture-table",
+        columnWidths: [200],
+        rows: [
+          {
+            id: "outer-picture-row",
+            cells: [
+              {
+                id: "outer-picture-cell",
+                blocks: [innerTable],
+              },
+            ],
+          },
+        ],
+      };
+      const collectClips = (
+        primitives: readonly DisplayPrimitive[],
+      ): DisplayPrimitive[] =>
+        primitives.flatMap((primitive) => {
+          if (primitive.kind === "clipGroup") {
+            return [primitive, ...collectClips(primitive.children)];
+          }
+          if (
+            primitive.kind === "rotateGroup" ||
+            primitive.kind === "opacityGroup"
+          ) {
+            return collectClips(primitive.children);
+          }
+          return [];
+        });
+      const clips = collectClips(pagePrimitives([outerTable])).filter(
+        (
+          primitive,
+        ): primitive is Extract<DisplayPrimitive, { kind: "clipGroup" }> =>
+          primitive.kind === "clipGroup",
+      );
+
+      expect(clips.map((clip) => clip.rect.widthPx)).toEqual([200, 100]);
+      expect(
+        clips.at(1)?.children.find((primitive) => primitive.kind === "image"),
+      ).toMatchObject({ kind: "image", rect: { widthPx: 300 } });
+    }, fakeMeasure);
+  });
+
+  test("keeps an earlier full-width section's paper viewport on a shared page", () => {
+    withFakeTextMeasure(() => {
+      const built = buildOversizedInlinePicture(800);
+      const page = built.layout.pages[0];
+      if (page === undefined) {
+        throw new Error("Expected a laid out page");
+      }
+      page.columns = { count: 2, gap: 40 };
+
+      const clip = buildDisplayList(built).pages[0]?.primitives.find(
+        (primitive) => primitive.kind === "clipGroup",
+      );
+      if (clip?.kind !== "clipGroup") {
+        throw new Error("Expected inline image clip group");
+      }
+
+      expect(clip.rect).toMatchObject({ xPx: 0, widthPx: PAGE_SIZE.w });
+    }, fakeMeasure);
+  });
+});
 
 const glyphRuns = (
   primitives: readonly DisplayPrimitive[],
