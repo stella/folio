@@ -22,6 +22,7 @@ import {
 import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
+import { keepsRangeBoundary } from "../prosemirror/keptRangeBoundaries";
 import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
@@ -192,7 +193,12 @@ const resolveInlineNode = ({
     (context.removeType &&
       node.marks.some((mark) => mark.type === context.removeType))
   ) {
-    return null;
+    if (context.mode !== "reject" || !keepsRangeBoundary(node)) return null;
+    // A range boundary is a position, not revision payload: it stays where
+    // the removed content was, carrying no revision of its own.
+    marks = marks.filter(
+      (mark) => mark.type.name !== "insertion" && mark.type.name !== "deletion",
+    );
   }
   if (context.keepType) {
     marks = marks.filter((mark) => mark.type !== context.keepType);

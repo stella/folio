@@ -57,6 +57,7 @@ import {
 import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../fieldRepresentation";
+import { keepsRangeBoundary } from "../keptRangeBoundaries";
 import { resolveStateStory } from "../markupViewProjection";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
@@ -259,6 +260,18 @@ function resolveChange(
       // Joins below re-read the runs they move themselves.
       tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
       const deleteRanges: { from: number; to: number }[] = [];
+      // A range boundary is a position, not revision payload: resolving away
+      // the content around it keeps it there, carrying no revision of its own.
+      const keepBoundary = (
+        boundaryFrom: number,
+        boundaryTo: number,
+        boundary: PMNode,
+      ): void => {
+        for (const mark of boundary.marks) {
+          if (mark.type === insertionType || mark.type === deletionType)
+            tr.removeMark(boundaryFrom, boundaryTo, mark);
+        }
+      };
       /** Where resolved inline content began and ended, in `state.doc`. */
       const resolvedBoundaries: number[] = [];
       const pPrMarkOps: PPrMarkOp[] = [];
@@ -506,7 +519,11 @@ function resolveChange(
                   selected(layer) && revisionLayerRemovesContent(layer, mode),
               )
             ) {
-              deleteRanges.push({ from: rangeFrom, to: rangeTo });
+              if (mode === "reject" && keepsRangeBoundary(node)) {
+                keepBoundary(rangeFrom, rangeTo, node);
+              } else {
+                deleteRanges.push({ from: rangeFrom, to: rangeTo });
+              }
             } else {
               tr.removeMark(rangeFrom, rangeTo, nestedMark);
               const retained = retainedTrackedRevisionMark(
@@ -525,7 +542,11 @@ function resolveChange(
         }
 
         if (removesNode) {
-          deleteRanges.push({ from: rangeFrom, to: rangeTo });
+          if (mode === "reject" && keepsRangeBoundary(node)) {
+            keepBoundary(rangeFrom, rangeTo, node);
+          } else {
+            deleteRanges.push({ from: rangeFrom, to: rangeTo });
+          }
         }
 
         if (

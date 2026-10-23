@@ -2,11 +2,15 @@
  * Range boundaries in content a resolution removes.
  *
  * A bookmark, comment or move range boundary is a position, not revision
- * payload. Removing the content that holds one (rejecting an insertion,
- * accepting a deletion, resolving a move) keeps the boundary where that
- * content was, so the range shrinks to what remains and nothing a user placed
- * is dropped. A range the move leaves with its end before its start covers
- * nothing, so its end closes on its start: every range stays well-formed.
+ * payload. Rejecting a change removes the content it added (an insertion, a
+ * move's destination) but keeps every boundary that content held where it
+ * was, so a range shrinks to what remains and nothing a user placed is
+ * dropped. A range that leaves ending before its start covers nothing, so
+ * its end closes on its start: every range stays well-formed.
+ *
+ * Accepting a change removes what a direct deletion made earlier would: it
+ * keeps the anchors of comment ranges that continue past the removed content
+ * and nothing else, so accepting a tracked deletion equals deleting directly.
  *
  * A comment whose whole range was removed is the comment owner's to retire
  * (see `isCommentExhausted`); its boundaries go with it.
@@ -35,21 +39,67 @@ const isBoundary = (node: InlineNode): node is Boundary =>
 const rangeKey = (boundary: Boundary): string =>
   `${BOUNDARY_SIDES[boundary.type].family}:${boundary.id}`;
 
-/**
- * The range boundaries held anywhere in `nodes`, in document order: what
- * stays where removed content was. Each one's range is recorded in
- * `relocated`, for {@link wellFormedRanges}.
- */
-export const removedContentBoundaries = (
+const isCommentAnchor = (node: InlineNode): node is Boundary =>
+  node.type === "commentRangeStart" || node.type === "commentRangeEnd";
+
+/** Comment ids with both a start and an end among `nodes`. */
+export const pairedCommentRanges = (
   nodes: readonly InlineNode[],
-  relocated: Set<string>,
-): InlineNode[] =>
+): ReadonlySet<number> => {
+  const starts = new Set<number>();
+  const ends = new Set<number>();
+  const visit = (items: readonly InlineNode[]): void => {
+    for (const node of items) {
+      if (node.type === "commentRangeStart") starts.add(node.id);
+      if (node.type === "commentRangeEnd") ends.add(node.id);
+      visit(childNodes(node) ?? []);
+    }
+  };
+  visit(nodes);
+  return new Set([...starts].filter((id) => ends.has(id)));
+};
+
+/** The boundaries a rejection kept from removed content, and their ranges. */
+export type RelocatedBoundaries = {
+  ranges: Set<string>;
+  nodes: WeakSet<InlineNode>;
+};
+
+export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
+  ranges: new Set(),
+  nodes: new WeakSet(),
+});
+
+/**
+ * The range boundaries removed content leaves where it was, in document
+ * order. Rejecting keeps every one and records it in `relocated`, for
+ * {@link wellFormedRanges}; accepting keeps the anchors of
+ * `pairedComments`, as a direct deletion does.
+ */
+export const removedContentBoundaries = ({
+  nodes,
+  rejecting,
+  pairedComments,
+  relocated,
+}: {
+  nodes: readonly InlineNode[];
+  rejecting: boolean;
+  pairedComments: ReadonlySet<number>;
+  relocated: RelocatedBoundaries;
+}): InlineNode[] =>
   nodes.flatMap((node) => {
-    if (isBoundary(node)) {
-      relocated.add(rangeKey(node));
+    if (isBoundary(node) && rejecting) {
+      relocated.ranges.add(rangeKey(node));
+      relocated.nodes.add(node);
       return [node];
     }
-    return removedContentBoundaries(childNodes(node) ?? [], relocated);
+    if (isCommentAnchor(node)) return pairedComments.has(node.id) ? [node] : [];
+    return removedContentBoundaries({
+      nodes: childNodes(node) ?? [],
+      rejecting,
+      pairedComments,
+      relocated,
+    });
   });
 
 type Occurrence = { paragraph: string; node: Boundary };
@@ -80,10 +130,12 @@ const withAfter = (
   });
 
 /**
- * The paragraphs' contents with every relocated range well-formed: where a
- * range's end now comes before its start, the end moves to just after the
+ * The paragraphs' contents with every range a rejection kept boundaries of
+ * well-formed. A kept copy of a boundary the story still holds is no boundary
+ * of its own and goes (of several kept copies, the first stays); then, where
+ * a range's end comes before its start, the end moves to just after the
  * start. `order` lists the story's paragraph keys in document order; a range
- * with more than one start or end is left as it is. Returns only the
+ * still with more than one start or end is left as it is. Returns only the
  * paragraphs it changed.
  */
 export const wellFormedRanges = ({
@@ -93,38 +145,56 @@ export const wellFormedRanges = ({
 }: {
   contents: ReadonlyMap<string, readonly InlineNode[]>;
   order: readonly string[];
-  relocated: ReadonlySet<string>;
+  relocated: RelocatedBoundaries;
 }): Map<string, readonly InlineNode[]> => {
   const changed = new Map<string, readonly InlineNode[]>();
-  if (relocated.size === 0) return changed;
-  const starts = new Map<string, Occurrence[]>();
-  const ends = new Map<string, Occurrence[]>();
-  const rank = new Map<Boundary, number>();
-  const visit = (paragraph: string, nodes: readonly InlineNode[]): void => {
-    for (const node of nodes) {
-      if (isBoundary(node)) {
-        const key = rangeKey(node);
-        if (relocated.has(key)) {
-          rank.set(node, rank.size);
-          const sides =
-            BOUNDARY_SIDES[node.type].side === "start" ? starts : ends;
-          sides.set(key, [...(sides.get(key) ?? []), { paragraph, node }]);
-        }
-        continue;
-      }
-      visit(paragraph, childNodes(node) ?? []);
-    }
-  };
-  for (const paragraph of order)
-    visit(paragraph, contents.get(paragraph) ?? []);
+  if (relocated.ranges.size === 0) return changed;
   const current = (paragraph: string) =>
     changed.get(paragraph) ?? contents.get(paragraph) ?? [];
-  for (const key of relocated) {
-    const [start, ...moreStarts] = starts.get(key) ?? [];
-    const [end, ...moreEnds] = ends.get(key) ?? [];
+  const occurrences = (): Occurrence[] => {
+    const found: Occurrence[] = [];
+    const visit = (paragraph: string, nodes: readonly InlineNode[]): void => {
+      for (const node of nodes) {
+        if (isBoundary(node)) {
+          if (relocated.ranges.has(rangeKey(node)))
+            found.push({ paragraph, node });
+          continue;
+        }
+        visit(paragraph, childNodes(node) ?? []);
+      }
+    };
+    for (const paragraph of order) visit(paragraph, current(paragraph));
+    return found;
+  };
+  const copies = new Map<string, Occurrence[]>();
+  for (const occurrence of occurrences()) {
+    const key = `${occurrence.node.type}:${occurrence.node.id}`;
+    copies.set(key, [...(copies.get(key) ?? []), occurrence]);
+  }
+  for (const group of copies.values()) {
+    if (group.length < 2) continue;
+    const held = group.some(({ node }) => !relocated.nodes.has(node));
+    const dropped = held
+      ? group.filter(({ node }) => relocated.nodes.has(node))
+      : group.slice(1);
+    for (const { paragraph, node } of dropped)
+      changed.set(paragraph, withoutNode(current(paragraph), node));
+  }
+  const remaining = occurrences();
+  const side = (key: string, wanted: "start" | "end") =>
+    remaining.flatMap((occurrence, rank) =>
+      rangeKey(occurrence.node) === key &&
+      BOUNDARY_SIDES[occurrence.node.type].side === wanted
+        ? [{ paragraph: occurrence.paragraph, node: occurrence.node, rank }]
+        : [],
+    );
+  for (const key of relocated.ranges) {
+    const starts = side(key, "start");
+    const ends = side(key, "end");
+    const [start] = starts;
+    const [end] = ends;
     if (start === undefined || end === undefined) continue;
-    if (moreStarts.length > 0 || moreEnds.length > 0) continue;
-    if ((rank.get(end.node) ?? 0) > (rank.get(start.node) ?? 0)) continue;
+    if (starts.length > 1 || ends.length > 1 || end.rank > start.rank) continue;
     changed.set(end.paragraph, withoutNode(current(end.paragraph), end.node));
     changed.set(
       start.paragraph,

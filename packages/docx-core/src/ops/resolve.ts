@@ -52,7 +52,13 @@ import {
   sameOwnFields,
 } from "./leaves";
 import { paragraphHoldsContent, paragraphLength } from "./offsets";
-import { removedContentBoundaries, wellFormedRanges } from "./rangeBoundaries";
+import {
+  noRelocatedBoundaries,
+  pairedCommentRanges,
+  type RelocatedBoundaries,
+  removedContentBoundaries,
+  wellFormedRanges,
+} from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import {
@@ -325,8 +331,10 @@ type Resolution = {
   acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
   /** Unconsumed source-cut edges on the actual rebuilt container. */
   cutEdges: WeakMap<InlineNode, CutEdges>;
-  /** Ranges with a boundary this resolution kept from removed content. */
-  relocatedRanges: Set<string>;
+  /** Comment ranges with a start and an end in the paragraphs resolved. */
+  pairedComments: ReadonlySet<number>;
+  /** Boundaries this resolution kept from removed content. */
+  relocated: RelocatedBoundaries;
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -940,7 +948,12 @@ const resolveList = (
           );
         }
         out.push(
-          ...removedContentBoundaries(node.content, resolution.relocatedRanges),
+          ...removedContentBoundaries({
+            nodes: node.content,
+            rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
+            pairedComments: resolution.pairedComments,
+            relocated: resolution.relocated,
+          }),
         );
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
@@ -1759,7 +1772,8 @@ export const resolveRevision = (
     emptied: new WeakSet(),
     acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
     cutEdges: new WeakMap(),
-    relocatedRanges: new Set(),
+    pairedComments: new Set(),
+    relocated: noRelocatedBoundaries(),
   };
   const noteReferences = removedNoteReferences(document, op, ids);
   const paragraphs = storyParagraphs(storyBody(document, op.story));
@@ -1834,6 +1848,9 @@ export const resolveRevision = (
     paragraph,
     content: prepareDeferredRemovals(paragraph.content, resolution),
   }));
+  resolution.pairedComments = pairedCommentRanges(
+    preparedContents.flatMap(({ content }) => content),
+  );
   const removedCommentIds = removedCommentRangeIds(
     preparedContents.flatMap(({ content }) => content),
     resolution,
@@ -1857,7 +1874,7 @@ export const resolveRevision = (
     order: preparedContents.map(({ paragraph }) =>
       idKey(paragraph.paraId ?? ""),
     ),
-    relocated: resolution.relocatedRanges,
+    relocated: resolution.relocated,
   })) {
     resolvedContents.set(key, content);
     resolvedChanged.add(key);

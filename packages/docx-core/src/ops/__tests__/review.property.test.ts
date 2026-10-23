@@ -192,14 +192,21 @@ const boundariesBelow = (value: unknown): RangeBoundary[] => {
 /**
  * The range boundaries rejecting `ids` keeps from the content it removes: all
  * held in their insertions, but a comment's whole range inside one insertion,
- * which goes with its comment.
+ * which goes with its comment, and a copy of a boundary the document still
+ * holds elsewhere (of several copies, the first).
  */
 const boundariesKeptByRejecting = (
   document: Document,
   ids: ReadonlySet<number>,
 ): RangeBoundary[] => {
-  const kept: RangeBoundary[] = [];
+  const held: RangeBoundary[] = [];
+  const outside = new Set<string>();
   const visit = (value: unknown): void => {
+    const boundary = asRangeBoundary(value);
+    if (boundary !== undefined) {
+      outside.add(`${boundary.type}:${boundary.id}`);
+      return;
+    }
     if (Array.isArray(value)) {
       for (const item of value) visit(item);
       return;
@@ -216,20 +223,20 @@ const boundariesKeptByRejecting = (
       typeof id === "number" &&
       ids.has(id)
     ) {
-      const held = boundariesBelow(Reflect.get(value, "content"));
+      const inside = boundariesBelow(Reflect.get(value, "content"));
       const whole = new Set(
-        held
+        inside
           .filter(({ type: kind }) => kind === "commentRangeStart")
           .map(({ id: comment }) => comment)
           .filter((comment) =>
-            held.some(
+            inside.some(
               ({ type: kind, id: end }) =>
                 kind === "commentRangeEnd" && end === comment,
             ),
           ),
       );
-      kept.push(
-        ...held.filter(
+      held.push(
+        ...inside.filter(
           ({ type: kind, id: range }) =>
             RANGE_BOUNDARY_PAIRS[kind] !== "comment" || !whole.has(range),
         ),
@@ -239,7 +246,13 @@ const boundariesKeptByRejecting = (
     for (const child of Object.values(value)) visit(child);
   };
   visit(document.package.document.content);
-  return kept;
+  const seen = new Set<string>();
+  return held.filter(({ type, id }) => {
+    const key = `${type}:${id}`;
+    if (outside.has(key) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 /** `document` with the last occurrence of each of `boundaries` taken out; each must be there. */

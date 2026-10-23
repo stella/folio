@@ -117,6 +117,45 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     ]);
   });
 
+  test("a rejected copy of a boundary the paragraph still holds goes, so no id repeats", () => {
+    const link = {
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [
+        { type: "run", content: [{ type: "text", text: "a" }] },
+        { type: "bookmarkStart", id: 1, name: "_Link" },
+      ],
+    } as const satisfies ParagraphContent;
+    const base = documentWith([link]);
+    const tracked = insertAt(base, [structuredClone(link)], 0);
+    expect(firstParagraph(rejectAll(tracked, [3]))).toEqual([link]);
+  });
+
+  test("accepting a deletion removes the bookmark inside it, as deleting directly does", () => {
+    const base = documentWith([
+      {
+        type: "deletion",
+        info: { id: 4, author: "A", date: "2026-03-04T05:00:04Z" },
+        content: [
+          { type: "run", content: [{ type: "deletedText", text: "x" }] },
+          { type: "bookmarkStart", id: 6, name: "_Ref6" },
+        ],
+      },
+      { type: "run", content: [{ type: "text", text: "b" }] },
+    ]);
+    const applied = applyDocumentOp(base, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [4],
+      decision: REVISION_DECISIONS.ACCEPT,
+    });
+    if (applied.isErr()) throw applied.error;
+    expect(firstParagraph(applied.value.document)).toEqual([
+      { type: "run", content: [{ type: "text", text: "b" }] },
+    ]);
+  });
+
   test("a boundary nested in rejected content is kept, the content around it goes", () => {
     const base = documentWith([
       { type: "commentRangeStart", id: 9 },
