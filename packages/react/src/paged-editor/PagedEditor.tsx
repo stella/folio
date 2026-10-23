@@ -209,9 +209,11 @@ import type {
 } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import {
+  clampRowResizeDelta,
   commitColumnResize,
   commitRightEdgeResize,
   commitRowResize,
+  MIN_ROW_HEIGHT_TWIPS,
 } from "@stll/folio-core/prosemirror/tableResize";
 import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
@@ -1974,6 +1976,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const resizeRowIndexRef = useRef(0);
     const resizeRowTablePmStartRef = useRef(0);
     const resizeRowOrigHeightRef = useRef(0); // twips
+    const resizeRowMinimumHeightRef = useRef(MIN_ROW_HEIGHT_TWIPS);
     const resizeRowHandleRef = useRef<HTMLElement | null>(null);
     const resizeRowIsEdgeRef = useRef(false);
 
@@ -4111,6 +4114,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               }
             }
           }
+          resizeRowMinimumHeightRef.current = Math.min(
+            MIN_ROW_HEIGHT_TWIPS,
+            resizeRowOrigHeightRef.current,
+          );
           return;
         }
 
@@ -4388,16 +4395,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             const origTop = Number.parseFloat(
               resizeRowHandleRef.current.style.top,
             );
-            resizeRowHandleRef.current.style.top = `${origTop + delta}px`;
+            const deltaTwips = Math.round(delta * 15);
+            const clampedDelta = clampRowResizeDelta({
+              currentHeight: resizeRowOrigHeightRef.current,
+              delta: deltaTwips,
+              minimumHeight: resizeRowMinimumHeightRef.current,
+            });
+            resizeRowHandleRef.current.style.top = `${origTop + clampedDelta / 15}px`;
             resizeStartYRef.current = e.clientY;
 
             // Update stored height (convert pixel delta to twips)
-            const deltaTwips = Math.round(delta * 15);
-            const minHeight = 200; // ~0.14 inches minimum
-            const newHeight = resizeRowOrigHeightRef.current + deltaTwips;
-            if (newHeight >= minHeight) {
-              resizeRowOrigHeightRef.current = newHeight;
-            }
+            resizeRowOrigHeightRef.current += clampedDelta;
           }
           return;
         }
