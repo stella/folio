@@ -79,8 +79,9 @@ const definedFields = (
 
 /**
  * Editor attrs carrying `rendering`. A falsy marker, flag or format is left
- * unset: the editor treats `null` and absent alike for those, and the parser
- * never authors them as `false` or `""` deliberately.
+ * unset: the editor treats `null` and absent alike for those. An empty marker
+ * is distinct from an absent one: it keeps a numbered paragraph a list item
+ * while reserving the marker suffix's body spacing.
  */
 export const listRenderingAttrPatch = (
   rendering: ListRendering,
