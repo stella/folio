@@ -86,12 +86,24 @@ const resolved = async (
   const copy = await reopen(reviewer);
   if (resolution === "accept") copy.acceptAll();
   else copy.rejectAll();
-  return (await reopen(copy)).getContent().map((block) => {
+  const saved = await copy.toBuffer();
+  const blocks = (await open(saved)).getContent().map((block) => {
     if (block.kind === "diagnostic")
       panic("The added-break fixture contains an opaque block");
     const { text, kind, directAlignment } = block;
     return { text, kind, directAlignment };
   });
+  // A paragraph that goes takes no bookmark with it: both ends stay, in place.
+  const xml =
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("string")) ?? "";
+  const bookmarks = [
+    ...xml.matchAll(/<w:(bookmarkStart|bookmarkEnd)\b|<w:(p|tbl)\b/gu),
+  ].map((match) => match[1] ?? match[2]);
+  return { blocks, bookmarks };
 };
 
 const checkDeletion = async (options: FixtureOptions) => {
