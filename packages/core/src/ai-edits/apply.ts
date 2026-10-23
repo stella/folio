@@ -56,6 +56,7 @@ import { requestDeterministicParaIds } from "../prosemirror/extensions/features/
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
 import {
   blockBoundariesOf,
+  carriesCommentAnchor,
   inlineBoundariesOf,
   isBlockBoundaryNode,
   removeResolvedSubtree,
@@ -2870,8 +2871,19 @@ const removeParagraph = (
     if (joined === null) return tr.delete(from, to);
     return tr.insert(opening + 1, [...kept, ...joined]).delete(from, opening);
   }
-  if (following !== null)
-    return tr.replaceWith(from, to, blockBoundariesOf(kept));
+  if (following !== null) {
+    // As the revision paths leave them: comment anchors, which only a
+    // paragraph holds, close the paragraph before; with none there the
+    // paragraph stays, holding them.
+    const comments = kept.filter(carriesCommentAnchor);
+    const between = blockBoundariesOf(
+      kept.filter((node) => !carriesCommentAnchor(node)),
+    );
+    if (comments.length === 0) return tr.replaceWith(from, to, between);
+    if (at.nodeBefore?.type.name !== "paragraph")
+      return tr.replaceWith(from + 1, to - 1, kept);
+    return tr.replaceWith(from, to, between).insert(from - 1, comments);
+  }
   return tr.delete(from, to).insert(from - 1, kept);
 };
 

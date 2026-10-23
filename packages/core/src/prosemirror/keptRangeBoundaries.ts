@@ -225,6 +225,10 @@ export const blockBoundariesOf = (nodes: readonly PMNode[]): PMNode[] =>
     }),
   );
 
+/** Whether `node` holds a comment's anchor, which only a paragraph holds. */
+export const carriesCommentAnchor = (node: PMNode): boolean =>
+  rangeBoundaryItemsOf(node).some(isComment);
+
 /** Whether `node` is a range boundary standing between blocks. */
 export const isBlockBoundaryNode = (node: PMNode | null | undefined): boolean =>
   node != null && !node.isInline && rangeBoundaryItemsOf(node).length > 0;
@@ -266,7 +270,7 @@ export const paragraphRemainsOf = (
   paragraph.descendants((node) => {
     const carried = rangeBoundaryItemsOf(node);
     if (carried.length > 0) inline.push(node);
-    if (carried.some(isComment)) comments.push(node);
+    if (carriesCommentAnchor(node)) comments.push(node);
     items.push(...carried);
     return true;
   });
