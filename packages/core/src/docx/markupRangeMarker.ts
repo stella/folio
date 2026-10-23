@@ -92,7 +92,12 @@ export const parseMoveBookmarkMarker = (
  * They are typed blocks, not captured bytes, so the passes that pair a start
  * with its end can see both halves wherever a container holds them.
  */
-export const BLOCK_MOVE_RANGE_MARKER_HANDLERS = {
+export const BLOCK_MOVE_RANGE_MARKER_HANDLERS: Readonly<
+  Record<
+    Extract<BlockContent["type"], `move${string}`>,
+    (child: XmlElement, walk: { modelled: BlockContent[] }) => void
+  >
+> = {
   moveFromRangeStart: (
     child: XmlElement,
     { modelled }: { modelled: BlockContent[] },
@@ -126,4 +131,4 @@ export const BLOCK_MOVE_RANGE_MARKER_HANDLERS = {
   ): void => {
     modelled.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
   },
-} as const;
+};

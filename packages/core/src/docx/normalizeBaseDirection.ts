@@ -167,7 +167,11 @@ const normalizeBlocks = (
     if (
       block.type === "preservedBlock" ||
       block.type === "bookmarkStart" ||
-      block.type === "bookmarkEnd"
+      block.type === "bookmarkEnd" ||
+      block.type === "moveFromRangeStart" ||
+      block.type === "moveFromRangeEnd" ||
+      block.type === "moveToRangeStart" ||
+      block.type === "moveToRangeEnd"
     ) {
       return block;
     }
