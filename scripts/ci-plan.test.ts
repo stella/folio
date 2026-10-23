@@ -847,7 +847,7 @@ describe("CI plan", () => {
         scheduled: "nightly-corpus-gate.yml",
         fuzz: ["edit-fuzz", "edit-fuzz-ratchet"],
         manual: "corpus-proofs.yml",
-        proofs: ["shard", "tier2", "ratchet"],
+        proofs: ["shard", "editor-round-trip", "tier2", "ratchet"],
       },
     ];
     for (const lane of lanes) {

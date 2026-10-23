@@ -24,7 +24,7 @@ import {
   reportOnlyFilesDigest,
 } from "./lib/corpus-report-only";
 import { corpusFileId } from "./lib/corpus-selection";
-import type { CorpusFailure } from "./lib/corpus-signature";
+import { CORPUS_INVARIANTS, type CorpusFailure } from "./lib/corpus-signature";
 
 const INVARIANT_BUDGET_MS = 300_000;
 const FILE_BUDGET_MS = 600_000;
@@ -51,20 +51,43 @@ type EditorRoundTripVerdict =
   | {
       kind: "not-a-docx";
       status: "complete";
+      editorRun: "not-run";
       evidence: CorpusEvidence;
+      parseFailures: [];
       editorFailures: [];
       notADocx: NotADocxReason;
     }
   | {
+      kind: "parse-failed";
+      status: "complete";
+      editorRun: "not-run";
+      evidence: CorpusEvidence;
+      parseFailures: CorpusFailure[];
+      editorFailures: [];
+    }
+  | {
       kind: "checked";
       status: "complete";
+      editorRun: "evaluated";
       evidence: CorpusEvidence;
+      parseFailures: CorpusFailure[];
       editorFailures: CorpusFailure[];
     }
   | {
       kind: "checked";
       status: "incomplete";
+      editorRun: "evaluated" | "not-run";
       evidence: CorpusEvidence;
+      parseFailures: CorpusFailure[];
+      editorFailures: CorpusFailure[];
+      reason: string;
+    }
+  | {
+      kind: "incomplete";
+      status: "incomplete";
+      editorRun: "not-run";
+      evidence: CorpusEvidence;
+      parseFailures: CorpusFailure[];
       editorFailures: CorpusFailure[];
       reason: string;
     };
@@ -77,7 +100,9 @@ export const editorRoundTripVerdict = (
     return {
       kind: "not-a-docx",
       status: "complete",
+      editorRun: "not-run",
       evidence: evidenceOf({ kind: "not-a-docx", reason: result.reason }),
+      parseFailures: [],
       editorFailures: [],
       notADocx: result.reason,
     };
@@ -86,19 +111,16 @@ export const editorRoundTripVerdict = (
   const hasEditorRoundTripTimings = Object.keys(result.timings).some((stage) =>
     stage.startsWith(`${EXTENDED_CORPUS_INVARIANTS.editorRoundTrip}.`),
   );
-  const reason =
-    result.truncatedAt !== undefined
-      ? `Truncated at ${result.truncatedAt}`
-      : hasEditorRoundTripTimings
-        ? undefined
-        : "Editor round-trip invariant did not run";
+  const parseFailures = result.failures.filter(
+    (failure) => failure.invariant === CORPUS_INVARIANTS.parse,
+  );
   const fileResult: CorpusFileResult = listedReportOnly
     ? {
         kind: "report-only",
         failures: result.failures,
         declaredRefusals: result.declaredRefusals,
       }
-    : reason === undefined
+    : result.truncatedAt === undefined
       ? {
           kind: "complete",
           failures: result.failures,
@@ -108,7 +130,7 @@ export const editorRoundTripVerdict = (
           kind: "truncated",
           failures: result.failures,
           declaredRefusals: result.declaredRefusals,
-          stage: reason,
+          stage: result.truncatedAt,
         };
 
   const evidence = evidenceOf(fileResult);
@@ -116,20 +138,46 @@ export const editorRoundTripVerdict = (
     (failure) =>
       failure.invariant === EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
   );
-  return reason === undefined
-    ? {
-        kind: "checked",
-        status: "complete",
-        evidence,
-        editorFailures,
-      }
-    : {
-        kind: "checked",
-        status: "incomplete",
-        evidence,
-        editorFailures,
-        reason,
-      };
+  if (result.truncatedAt !== undefined) {
+    return {
+      kind: "checked",
+      status: "incomplete",
+      editorRun: hasEditorRoundTripTimings ? "evaluated" : "not-run",
+      evidence,
+      parseFailures,
+      editorFailures,
+      reason: `Truncated at ${result.truncatedAt}`,
+    };
+  }
+  if (!hasEditorRoundTripTimings && parseFailures.length > 0) {
+    return {
+      kind: "parse-failed",
+      status: "complete",
+      editorRun: "not-run",
+      evidence,
+      parseFailures,
+      editorFailures: [],
+    };
+  }
+  if (!hasEditorRoundTripTimings) {
+    return {
+      kind: "incomplete",
+      status: "incomplete",
+      editorRun: "not-run",
+      evidence,
+      parseFailures,
+      editorFailures,
+      reason: "Editor round-trip invariant did not run",
+    };
+  }
+  return {
+    kind: "checked",
+    status: "complete",
+    editorRun: "evaluated",
+    evidence,
+    parseFailures,
+    editorFailures,
+  };
 };
 
 type MeasuredFile =
@@ -200,7 +248,7 @@ const currentHead = (): string => {
       message: "Could not resolve the measured git head",
     });
   }
-  const fromEnvironment = Bun.env.GITHUB_SHA?.trim();
+  const fromEnvironment = Bun.env["GITHUB_SHA"]?.trim();
   if (fromEnvironment && fromEnvironment !== head) {
     throw new ScopedCensusError({
       message: `GITHUB_SHA ${fromEnvironment} does not match checked-out HEAD ${head}`,
@@ -249,8 +297,10 @@ const run = async (shard: Shard, outPath: string): Promise<void> => {
   const incomplete: IncompleteReason[] = [];
   const notADocx: { file: ReturnType<typeof fileId>; reason: string }[] = [];
   const failures: FileFailure[] = [];
+  const parseFailures: FileFailure[] = [];
   let duplicates = 0;
   let checked = 0;
+  let editorEvaluatedFiles = 0;
 
   for (const entry of assigned) {
     if (entry.duplicateOf !== null) {
@@ -305,8 +355,16 @@ const run = async (shard: Shard, outPath: string): Promise<void> => {
       continue;
     }
 
-    checked += 1;
     const verdict = editorRoundTripVerdict(result, reportOnlyIds.has(id));
+    checked += 1;
+    if (verdict.editorRun === "evaluated") editorEvaluatedFiles += 1;
+    if (verdict.parseFailures.length > 0) {
+      parseFailures.push({
+        file,
+        evidence: verdict.evidence,
+        failures: verdict.parseFailures,
+      });
+    }
     if (verdict.editorFailures.length > 0) {
       failures.push({
         file,
@@ -353,9 +411,16 @@ const run = async (shard: Shard, outPath: string): Promise<void> => {
     shard,
     assignedFiles: assigned.length,
     checkedFiles: checked,
+    editorEvaluatedFiles,
     duplicates,
     notADocx,
     incomplete,
+    parseFailures,
+    metadata: {
+      denominator: "all-checked-results-including-parse-refusals",
+      editorEvaluation: "results-with-editor-round-trip-timings",
+      completion: "parse-refusals-count-as-complete-editor-scoped-outcomes",
+    },
     declaredRefusals: familyCensus.declaredRefusals,
     failures,
     baseline: familyBaselineFromCensus(
