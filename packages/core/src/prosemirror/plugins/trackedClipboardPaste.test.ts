@@ -88,6 +88,12 @@ test("tracked HTML paste keeps source deletions while proposing the rich slice",
   expect(removed?.revisionId).toBeGreaterThan(0);
   expect(
     revisions.some(
+      ({ text, kind, author }) =>
+        text === "removed" && kind === "insertion" && author === "Reviewer",
+    ),
+  ).toBe(true);
+  expect(
+    revisions.some(
       ({ text, kind }) => text === "added" && kind === "insertion",
     ),
   ).toBe(true);

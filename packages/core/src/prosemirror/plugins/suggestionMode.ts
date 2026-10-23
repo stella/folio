@@ -368,11 +368,7 @@ function markRangeAsInserted(
     if (!canCarryTrackedRunMark(node)) {
       return;
     }
-    if (
-      node.marks.some(
-        (m) => m.type === insertionType || m.type === deletionType,
-      )
-    ) {
+    if (node.marks.some((mark) => mark.type === insertionType)) {
       return;
     }
     const start = Math.max(pos, from);
