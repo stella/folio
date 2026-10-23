@@ -119,6 +119,9 @@ describe("new-list placement", () => {
         expect(result.skipped).toEqual([]);
         const saved = await open(await reviewer.toBuffer());
         saved.acceptAll();
+        reviewer.acceptAll();
+        // Accepting the live reviewer reads as accepting the saved package.
+        expect(lists(reviewer)).toEqual(lists(saved));
         return lists(saved);
       }),
     );
@@ -316,12 +319,26 @@ describe("new-list placement", () => {
         blockId: idOf(reviewer, "Payment happens in stages."),
         text: "An unnumbered note.",
       },
+      {
+        id: "op-2",
+        suggestionId: "op-1",
+        type: "replaceInBlock",
+        blockId: idOf(reviewer, "Closing remarks."),
+        find: "Closing",
+        replace: "Final",
+      },
     ]);
     const firstId = first.applied.at(0)?.suggestionId;
-    const secondId = second.applied.at(0)?.suggestionId;
+    const secondId = second.applied.find(
+      ({ id }) => id === "op-1",
+    )?.suggestionId;
     expect(firstId).toBe("op-1");
     expect(secondId).toBeDefined();
     expect(secondId).not.toBe(firstId);
+    // An operation of the batch grouping with it by that id follows it.
+    expect(second.applied.find(({ id }) => id === "op-2")?.suggestionId).toBe(
+      secondId,
+    );
 
     // Both stay pending, so the list the first one defines stays exported.
     expect(

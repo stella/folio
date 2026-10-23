@@ -179,6 +179,8 @@ export type ApplyFolioDocumentOperationsOptions = {
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
     undefinedReferences: FolioUndefinedReferencePolicy;
+    pendingSuggestionIds?: ReadonlySet<string>;
+    restagesSuggestions?: boolean;
 };
 
 // @public (undocumented)

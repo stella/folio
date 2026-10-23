@@ -69,8 +69,11 @@ export type BatchClaim =
       joinsNow: boolean;
       /**
        * The merge sets the merged paragraph's properties
-       * (`mergedParagraphProperties`): `block`'s applied directly, `next`'s,
-       * whose mark survives acceptance, tracked.
+       * (`mergedParagraphProperties`). Which paragraph takes them depends on
+       * the break: `block` when the join lands now (applied directly, or a
+       * pending inserted break retracted), `next`, whose mark survives
+       * acceptance, when the break stays pending. Either paragraph's other
+       * property edits therefore conflict with it, in both modes.
        */
       setsProperties: boolean;
     }

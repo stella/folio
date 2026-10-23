@@ -677,6 +677,8 @@ type ApplyDocumentOperationsInternalOptions = {
   replacementBackground?: FolioReplacementBackground;
   undefinedReferences: FolioUndefinedReferencePolicy;
   createUndoEntry: boolean;
+  /** The batch restages suggestions that already carry their ids. */
+  restagesSuggestions?: boolean;
 };
 
 type FolioDocxComparisonProjectionMode =
@@ -1701,43 +1703,6 @@ export class FolioDocxReviewer {
     return active;
   }
 
-  /**
-   * A suggested operation without a `suggestionId` is its own suggestion,
-   * named by its id. An id an earlier batch's still pending suggestion already
-   * carries would fold the two into one (accepted, rejected and exported
-   * together), so such an operation gets a distinct suggestion id of its own;
-   * its receipt reports it.
-   */
-  private withDistinctSuggestionIds(
-    batch: FolioDocumentOperationBatch,
-  ): FolioDocumentOperationBatch {
-    if (batch.mode !== "suggested" || !Array.isArray(batch.operations))
-      return batch;
-    const taken = this.activeSuggestionIds();
-    if (taken.size === 0) return batch;
-    let changed = false;
-    const operations = batch.operations.map((operation) => {
-      if (
-        typeof operation !== "object" ||
-        operation === null ||
-        typeof operation.id !== "string" ||
-        operation.type === "commentOnRange" ||
-        ("suggestionId" in operation && operation.suggestionId !== undefined) ||
-        !taken.has(operation.id)
-      )
-        return operation;
-      let ordinal = 2;
-      while (taken.has(`${operation.id}#${String(ordinal)}`)) ordinal += 1;
-      const suggestionId = `${operation.id}#${String(ordinal)}`;
-      taken.add(suggestionId);
-      changed = true;
-      return { ...operation, suggestionId };
-    });
-    return changed
-      ? ({ ...batch, operations } as FolioDocumentOperationBatch)
-      : batch;
-  }
-
   /** Export staged AI operations for storage by the host, outside the DOCX. */
   exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
     const active = this.activeSuggestionIds();
@@ -1768,6 +1733,7 @@ export class FolioDocxReviewer {
       apply: (record, snapshot) => {
         const result = this.applyDocumentOperationsInternal({
           undefinedReferences: "refuse",
+          restagesSuggestions: true,
           story: record.story,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -2029,11 +1995,11 @@ export class FolioDocxReviewer {
   ): FolioAIEditApplyResult {
     const { applied, skipped } = this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
-      batch: this.withDistinctSuggestionIds({
+      batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         operations,
         mode: options.mode ?? "tracked-changes",
-      }),
+      },
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && {
         revisionStamp: options.revisionStamp,
@@ -2057,7 +2023,7 @@ export class FolioDocxReviewer {
   ): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
-      batch: this.withDistinctSuggestionIds(batch),
+      batch,
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && {
         revisionStamp: options.revisionStamp,
@@ -2081,7 +2047,7 @@ export class FolioDocxReviewer {
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
-      batch: this.withDistinctSuggestionIds(batch),
+      batch,
       ...(snapshot !== undefined && { snapshot }),
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
@@ -2115,6 +2081,7 @@ export class FolioDocxReviewer {
     replacementBackground,
     undefinedReferences,
     createUndoEntry,
+    restagesSuggestions,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
     const operationAuthor = author ?? this.author;
@@ -2138,6 +2105,9 @@ export class FolioDocxReviewer {
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
       undefinedReferences,
+      ...(restagesSuggestions === true
+        ? { restagesSuggestions }
+        : { pendingSuggestionIds: this.activeSuggestionIds() }),
       createCommentId: (text) => {
         const comment = createReviewerComment({
           id: this.nextCommentId(),
@@ -3204,6 +3174,7 @@ export class FolioDocxReviewer {
       };
       const result = applyFolioDocumentOperations({
         undefinedReferences: "refuse",
+        restagesSuggestions: true,
         view,
         snapshot,
         batch: {
