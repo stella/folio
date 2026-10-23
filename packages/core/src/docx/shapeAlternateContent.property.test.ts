@@ -28,6 +28,13 @@ import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import type { Document, Paragraph, ShapeContent } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+import {
+  getChildElements,
+  getLocalName,
+  getNamespaceUri,
+  parseXmlDocument,
+  type XmlElement,
+} from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -161,6 +168,18 @@ const expectFallbacksAgree = (xml: string): void => {
       branchText(alternateContent, "Choice"),
     );
   }
+};
+
+const descendants = (root: XmlElement): XmlElement[] => {
+  const result: XmlElement[] = [];
+  const visit = (element: XmlElement): void => {
+    for (const child of getChildElements(element)) {
+      result.push(child);
+      visit(child);
+    }
+  };
+  visit(root);
+  return result;
 };
 
 /** Replace the text of the first text box's first run, the way an edit to the model would. */
@@ -342,7 +361,7 @@ describe("a shape read from mc:AlternateContent", () => {
     expect(saved).toContain('<wp:extent cx="3657600"');
   });
 
-  test("a strict aliased Word namespace remains declared in the synchronized fallback", async () => {
+  test("strict source markup is canonically transitional in both synchronized branches", async () => {
     const strictWordNamespace =
       "http://purl.oclc.org/ooxml/wordprocessingml/main";
     const sourceXml = documentXml(textBoxAlternateContent("Before"))
@@ -353,12 +372,37 @@ describe("a shape read from mc:AlternateContent", () => {
     const saved = await savedDocumentPart(parsed);
 
     expectFallbacksAgree(saved);
-    const fallback = branchText(
-      alternateContentsOf(saved).at(0) ?? "",
-      "Fallback",
-    );
-    expect(fallback).toContain("<w:p");
-    expect(fallback).toContain(`xmlns:w="${NAMESPACES.w}"`);
+    const parsedOutput = parseXmlDocument(saved);
+    expect(parsedOutput).not.toBeNull();
+    const alternateContent = descendants(parsedOutput ?? { elements: [] }).find(
+      (element) =>
+        getNamespaceUri(element) === NAMESPACES.mc &&
+        getLocalName(element.name ?? "") === "AlternateContent",
+    ) ?? { elements: [] };
+    for (const branchName of ["Choice", "Fallback"] as const) {
+      const branch = getChildElements(alternateContent).find(
+        (element) =>
+          getNamespaceUri(element) === NAMESPACES.mc &&
+          getLocalName(element.name ?? "") === branchName,
+      );
+      const paragraphs = branch
+        ? descendants(branch).filter(
+            (element) => getLocalName(element.name ?? "") === "p",
+          )
+        : [];
+      expect(paragraphs).toHaveLength(1);
+      expect(
+        paragraphs.every(
+          (element) => getNamespaceUri(element) === NAMESPACES.w,
+        ),
+      ).toBe(true);
+      expect(
+        branchText(alternateContentsOf(saved).at(0) ?? "", branchName),
+      ).toBe("After");
+      expect(
+        branchText(alternateContentsOf(saved).at(0) ?? "", branchName),
+      ).not.toContain("Before");
+    }
   });
 
   test("a branch holding more than the shape is not replayed in its place", async () => {

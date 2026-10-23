@@ -90,11 +90,17 @@ export const refingerprintShapeAlternateContent = (
   verbatimStructureFingerprint: shapeStructureFingerprint(shape),
 });
 
-const descendantsNamed = (
-  root: XmlElement,
-  namespaceUri: string,
-  localName: string,
-): XmlElement[] => {
+type DescendantsNamedOptions = {
+  readonly root: XmlElement;
+  readonly namespaceUri: string;
+  readonly localName: string;
+};
+
+const descendantsNamed = ({
+  root,
+  namespaceUri,
+  localName,
+}: DescendantsNamedOptions): XmlElement[] => {
   const result: XmlElement[] = [];
   const visit = (element: XmlElement): void => {
     for (const child of getChildElements(element)) {
@@ -121,7 +127,7 @@ const branchNamed = (
       getLocalName(child.name ?? "") === localName,
   );
 
-const updateFallbackText = (
+const updateAlternateContentText = (
   capturedXml: string,
   drawingXml: string,
 ): string | undefined => {
@@ -134,23 +140,46 @@ const updateFallbackText = (
       "Captured shape alternate content failed to parse during serialization.",
     );
   }
+  const choice = branchNamed(alternateContent, "Choice");
   const fallback = branchNamed(alternateContent, "Fallback");
-  const fallbackBodies = fallback
-    ? descendantsNamed(fallback, NAMESPACES.w, "txbxContent")
+  const choiceBodies = choice
+    ? descendantsNamed({
+        root: choice,
+        namespaceUri: NAMESPACES.w,
+        localName: "txbxContent",
+      })
     : [];
-  const drawingBodies = descendantsNamed(drawing, NAMESPACES.w, "txbxContent");
-  if (fallbackBodies.length !== 1 || drawingBodies.length !== 1) {
+  const fallbackBodies = fallback
+    ? descendantsNamed({
+        root: fallback,
+        namespaceUri: NAMESPACES.w,
+        localName: "txbxContent",
+      })
+    : [];
+  const drawingBodies = descendantsNamed({
+    root: drawing,
+    namespaceUri: NAMESPACES.w,
+    localName: "txbxContent",
+  });
+  if (
+    choiceBodies.length !== 1 ||
+    fallbackBodies.length !== 1 ||
+    drawingBodies.length !== 1
+  ) {
     return undefined;
   }
+  const choiceBody = choiceBodies[0];
   const fallbackBody = fallbackBodies[0];
   const drawingBody = drawingBodies[0];
   const prefix = getNamespacePrefix(drawingBody.name ?? "");
   const declaration = prefix === null ? "xmlns" : `xmlns:${prefix}`;
-  fallbackBody.attributes = {
-    ...fallbackBody.attributes,
-    [declaration]: NAMESPACES.w,
-  };
-  fallbackBody.elements = drawingBody.elements;
+  for (const body of [choiceBody, fallbackBody]) {
+    body.attributes = {
+      ...body.attributes,
+      [declaration]: NAMESPACES.w,
+    };
+    body.elements = drawingBody.elements;
+  }
   const synchronizedXml = captureVerbatimXml(alternateContent);
   if (!isSafeCapturedXmlDocument(synchronizedXml)) {
     panic("Synchronized shape alternate content failed XML validation.");
@@ -162,13 +191,11 @@ const updateFallbackText = (
  * The captured `mc:AlternateContent` to write in place of the shape's drawing,
  * or undefined when the shape must be regenerated.
  *
- * Replay requires the modeled shape to match the capture. Text-only edits
- * regenerate the drawing and synchronize its VML Fallback; structural edits
+ * Replay requires the modeled shape to match the capture. Structural edits
  * regenerate a bare drawing rather than replaying stale geometry.
  */
 export const replayableShapeAlternateContent = (
   content: ShapeContent,
-  regeneratedDrawingXml?: string,
 ): string | undefined => {
   const captured = content.alternateContent;
   if (captured === undefined) {
@@ -177,13 +204,25 @@ export const replayableShapeAlternateContent = (
   if (captured.verbatimFingerprint === shapeFingerprint(content.shape)) {
     return captured.verbatimXml;
   }
+  return undefined;
+};
+
+/** Synchronize only a text-only edit, after the caller needs regenerated drawing markup. */
+export const synchronizedTextShapeAlternateContent = (
+  content: ShapeContent,
+  regeneratedDrawingXml: string,
+): string | undefined => {
+  const captured = content.alternateContent;
   if (
-    regeneratedDrawingXml !== undefined &&
-    captured.verbatimStructureFingerprint !== undefined &&
-    captured.verbatimStructureFingerprint ===
+    captured === undefined ||
+    captured.verbatimStructureFingerprint === undefined ||
+    captured.verbatimStructureFingerprint !==
       shapeStructureFingerprint(content.shape)
   ) {
-    return updateFallbackText(captured.verbatimXml, regeneratedDrawingXml);
+    return undefined;
   }
-  return undefined;
+  return updateAlternateContentText(
+    captured.verbatimXml,
+    regeneratedDrawingXml,
+  );
 };
