@@ -229,3 +229,58 @@ test("retracting an inserted paragraph before a table keeps a comment that ends 
     xml.indexOf("<w:tbl"),
   );
 });
+
+test("retracting an inserted paragraph first in its container keeps a comment that starts in it and leaves no insertion", async () => {
+  const document = createEmptyDocument();
+  const info = { author: "Earlier Reviewer", date: "2026-01-01T00:00:00Z" };
+  document.package.document.comments = [
+    {
+      id: 8,
+      author: "Earlier Reviewer",
+      content: [paragraph("Check this.")],
+    },
+  ];
+  document.package.document.content = [
+    {
+      ...paragraph([
+        { type: "commentRangeStart", id: 8 },
+        {
+          type: "insertion",
+          info: { ...info, id: 4 },
+          content: [run("Pending clause.")],
+        },
+      ]),
+      paraId: "10000002",
+      pPrMark: { kind: "ins", info: { ...info, id: 3 } },
+    },
+    table({ rows: [["Cell."]] }),
+    paragraph([
+      run("Closing clause."),
+      { type: "commentRangeEnd", id: 8 },
+      { type: "run", content: [{ type: "commentReference", id: 8 }] },
+    ]),
+  ];
+  const reviewer = await open(await createDocx(document));
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: "10000002" }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.skipped).toEqual([]);
+  const xml =
+    (await (
+      await JSZip.loadAsync(await reviewer.toBuffer())
+    )
+      .file("word/document.xml")
+      ?.async("string")) ?? "";
+  expect(xml).toMatch(/<w:commentRangeStart w:id="8"\/>/u);
+  expect(xml).toMatch(/<w:commentRangeEnd w:id="8"\/>/u);
+  expect(xml.indexOf('commentRangeStart w:id="8"')).toBeLessThan(
+    xml.indexOf('commentRangeEnd w:id="8"'),
+  );
+  // Nothing of the retracted insertion stays pending.
+  expect(xml).not.toMatch(/<w:ins\b/u);
+});

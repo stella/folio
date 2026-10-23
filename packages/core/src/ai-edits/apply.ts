@@ -2880,8 +2880,12 @@ const removeParagraph = (
       kept.filter((node) => !carriesCommentAnchor(node)),
     );
     if (comments.length === 0) return tr.replaceWith(from, to, between);
+    // Kept only to hold the anchors, the paragraph is no pending insertion
+    // any more: the mark that inserted it goes with its content.
     if (at.nodeBefore?.type.name !== "paragraph")
-      return tr.replaceWith(from + 1, to - 1, kept);
+      return tr
+        .replaceWith(from + 1, to - 1, kept)
+        .setNodeAttribute(from, "pPrMark", null);
     return tr.replaceWith(from, to, between).insert(from - 1, comments);
   }
   return tr.delete(from, to).insert(from - 1, kept);
