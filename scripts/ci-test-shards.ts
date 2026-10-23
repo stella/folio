@@ -509,19 +509,46 @@ export const selectFastTestSuitesWithReason = ({
     ),
   );
   const fullCount = new Set([...discovered, ...focused]).size;
-  const preloadFiles = suites.flatMap(({ cwd, preloads }) =>
-    preloads.map((preload) =>
-      normalize(path.relative(repoRoot, path.resolve(repoRoot, cwd, preload))),
-    ),
+  // Resolve each preload the way the suite command loads it, so an
+  // extensionless or directory preload still joins the graph. A supplied graph
+  // may name the preload path directly.
+  const workspaces = readWorkspaces(repoRoot);
+  const unresolvedPreloads: string[] = [];
+  const suitePreloads = new Map(
+    suites.map((suite) => [
+      suite,
+      suite.preloads.flatMap((preload) => {
+        let resolved: string | null | undefined;
+        try {
+          resolved = resolveSpecifier(
+            preload,
+            path.posix.join(suite.cwd, "package.json"),
+            repoRoot,
+            workspaces,
+          );
+        } catch {
+          resolved = undefined;
+        }
+        const literal = path.posix.join(suite.cwd, preload);
+        if (resolved === undefined && suppliedGraph?.codeFiles.has(literal))
+          resolved = literal;
+        if (resolved === undefined) unresolvedPreloads.push(literal);
+        return resolved ? [resolved] : [];
+      }),
+    ]),
   );
+  const preloadFiles = [...suitePreloads.values()].flat();
   const graph = suppliedGraph ?? buildModuleGraph(repoRoot, preloadFiles);
   const packageData = new Set<string>();
   for (const file of changedFiles) {
     const match = /^packages\/([^/]+)\/(.+)$/u.exec(file);
     if (match && !CODE_FILE.test(file)) packageData.add(match[1]);
   }
-  let fallbackCause: string | undefined;
-  for (const file of changedFiles) {
+  let fallbackCause: string | undefined =
+    unresolvedPreloads.length > 0
+      ? `suite preload cannot be resolved: ${unresolvedPreloads.join(", ")}`
+      : undefined;
+  for (const file of fallbackCause ? [] : changedFiles) {
     const isUntrackedCode =
       CODE_FILE.test(file) && !/\.d\.[cm]?ts$/u.test(file);
     if (
@@ -552,14 +579,8 @@ export const selectFastTestSuitesWithReason = ({
   }
   const candidates = new Set<string>(focused);
   const suitesReachedThroughPreload = new Set(
-    suites.filter(({ cwd, preloads }) =>
-      preloads.some((preload) =>
-        reached.has(
-          normalize(
-            path.relative(repoRoot, path.resolve(repoRoot, cwd, preload)),
-          ),
-        ),
-      ),
+    suites.filter((suite) =>
+      (suitePreloads.get(suite) ?? []).some((preload) => reached.has(preload)),
     ),
   );
   for (const suite of suitesReachedThroughPreload) {

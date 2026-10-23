@@ -374,27 +374,58 @@ describe("reverse import closure", () => {
   });
 
   test("scans a suite preload outside the graph roots and follows its imports", () => {
+    for (const preload of ["./setup.ts", "./setup"]) {
+      const root = fixture({
+        "packages/app/package.json": JSON.stringify({
+          name: "@stll/app",
+          scripts: { test: `bun test --preload ${preload} src` },
+        }),
+        "packages/app/setup.ts": 'import "./src/value";',
+        "packages/app/src/value.ts": "export {};",
+        "packages/app/src/one.test.ts": "export {};",
+        "packages/app/src/two.test.ts": "export {};",
+        "packages/app/src/three.test.ts": "export {};",
+        "packages/other/package.json": JSON.stringify({
+          name: "@stll/other",
+          scripts: { test: "bun test src" },
+        }),
+        "packages/other/src/four.test.ts": "export {};",
+        "packages/other/src/five.test.ts": "export {};",
+      });
+      const suites = discoverTestSuites(root);
+      const result = selectFastTestSuitesWithReason({
+        suites,
+        changedFiles: ["packages/app/src/value.ts"],
+        focusedFiles: [],
+        repoRoot: root,
+      });
+      expect(result.reason).toBe("closure");
+      expect(result.suites.flatMap(({ files }) => files)).toEqual([
+        "packages/app/src/one.test.ts",
+        "packages/app/src/three.test.ts",
+        "packages/app/src/two.test.ts",
+      ]);
+    }
+  });
+
+  test("fails closed when a suite preload cannot be resolved", () => {
     const root = fixture({
       "packages/app/package.json": JSON.stringify({
         name: "@stll/app",
-        scripts: { test: "bun test --preload ./setup.ts src" },
+        scripts: { test: "bun test --preload ./missing src" },
       }),
-      "packages/app/setup.ts": 'import "./src/value";',
       "packages/app/src/value.ts": "export {};",
       "packages/app/src/one.test.ts": "export {};",
       "packages/app/src/two.test.ts": "export {};",
     });
-    const suites = discoverTestSuites(root);
     const result = selectFastTestSuitesWithReason({
-      suites,
+      suites: discoverTestSuites(root),
       changedFiles: ["packages/app/src/value.ts"],
       focusedFiles: [],
       repoRoot: root,
     });
-    expect(result.suites.flatMap(({ files }) => files)).toEqual([
-      "packages/app/src/one.test.ts",
-      "packages/app/src/two.test.ts",
-    ]);
+    expect(result.reason).toBe("full-fallback");
+    expect(result.cause).toContain("packages/app/missing");
   });
 
   test("fails closed when a changed declaration source is excluded from the graph", () => {

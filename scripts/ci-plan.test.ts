@@ -457,6 +457,7 @@ describe("CI plan", () => {
         [
           "packages/example/src/parser/parse.ts",
           "packages/example/src/other/added.test.ts",
+          "packages/example/test/setup.ts",
           "scripts/new.test.ts",
         ],
       ),
