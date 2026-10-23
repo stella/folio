@@ -9,7 +9,7 @@ import { panic } from "better-result";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
-import { releaseDisplayPageResources } from "../display-list/dom/renderDisplayListToDom";
+import { releaseDisplayPageResources } from "../display-list/pageResourceOwnership";
 import { embeddedFontFingerprint } from "../fonts/embeddedFontFingerprint";
 import {
   measureParagraph,
