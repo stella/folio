@@ -6,6 +6,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
+import { sharedMathRunFontSize } from "../../docx/mathToMathml";
 import { getFontAlternate } from "../../fonts/fontAlternates";
 import type {
   FieldRun,
@@ -452,6 +453,15 @@ export function paragraphToRuns(
     if (child.type.name === "math") {
       const attrs = expectMathAttrs(child);
       const plainText = attrs.plainText || "[equation]";
+      const mathFormatting = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
+      const fontSize =
+        sharedMathRunFontSize(attrs.ommlXml) ??
+        mathFormatting.fontSize ??
+        paraDefaults.fontSize;
       runs.push({
         kind: "math",
         display: attrs.display ?? "inline",
@@ -459,6 +469,7 @@ export function paragraphToRuns(
         plainText,
         italic: true,
         fontFamily: "Cambria Math",
+        ...(fontSize === undefined ? {} : { fontSize }),
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,
       });

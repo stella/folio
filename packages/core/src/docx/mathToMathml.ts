@@ -31,9 +31,87 @@ import { escapeXmlText } from "@stll/docx-core";
 
 import {
   findChildByLocalName,
+  findChildByNamespaceUri,
+  getAttributeByNamespaceUri,
   getLocalName,
+  getNamespaceUri,
+  parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+
+const MATH_NAMESPACE_URIS = new Set([
+  "http://schemas.openxmlformats.org/officeDocument/2006/math",
+  "http://purl.oclc.org/ooxml/officeDocument/math",
+]);
+
+/**
+ * Return the shared run size when every OMML math run explicitly carries
+ * the same `w:sz`. Mixed or partially specified equations inherit surrounding
+ * text size instead.
+ */
+export function sharedMathRunFontSize(ommlXml: string): number | undefined {
+  const root = parseXmlDocument(ommlXml);
+  if (
+    !root ||
+    !MATH_NAMESPACE_URIS.has(getNamespaceUri(root) ?? "") ||
+    (getLocalName(root.name) !== "oMath" &&
+      getLocalName(root.name) !== "oMathPara")
+  ) {
+    return undefined;
+  }
+
+  let sharedHalfPoints: number | undefined;
+  let hasRun = false;
+  let hasMixedSize = false;
+  const visit = (element: XmlElement): void => {
+    if (hasMixedSize) {
+      return;
+    }
+    if (
+      element.type === "element" &&
+      MATH_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
+      getLocalName(element.name) === "r"
+    ) {
+      hasRun = true;
+      const runProperties = findChildByNamespaceUri(
+        element,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "rPr",
+      );
+      const size = findChildByNamespaceUri(
+        runProperties,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "sz",
+      );
+      const halfPoints = Number(
+        getAttributeByNamespaceUri(
+          size,
+          WORDPROCESSINGML_NAMESPACE_URIS,
+          "val",
+        ),
+      );
+      if (!Number.isFinite(halfPoints) || halfPoints <= 0) {
+        hasMixedSize = true;
+        return;
+      }
+      if (sharedHalfPoints === undefined) {
+        sharedHalfPoints = halfPoints;
+      } else if (sharedHalfPoints !== halfPoints) {
+        hasMixedSize = true;
+        return;
+      }
+    }
+    for (const child of element.elements ?? []) {
+      visit(child);
+    }
+  };
+  visit(root);
+  if (!hasRun || hasMixedSize || sharedHalfPoints === undefined) {
+    return undefined;
+  }
+  return sharedHalfPoints / 2;
+}
 
 /**
  * Convert an OMML element (`<m:oMath>` or `<m:oMathPara>`) into a MathML

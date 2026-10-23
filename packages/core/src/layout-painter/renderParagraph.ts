@@ -1613,6 +1613,7 @@ function renderMathRun(run: MathRun, doc: Document): HTMLElement {
   // Cambria Math fallback chain for browsers that don't ship a math font.
   host.style.fontFamily =
     '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
+  applyMathFontSize(host, run);
   applyHorizontalScaleTransform(host, run.horizontalScale);
 
   try {
@@ -1650,10 +1651,17 @@ function renderMathFallback(
   span.style.fontStyle = "italic";
   span.style.fontFamily =
     '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
+  applyMathFontSize(span, run);
   applyHorizontalScaleTransform(span, run.horizontalScale);
   span.textContent = fallbackText;
   applyPmPositions(span, run.pmStart, run.pmEnd);
   return span;
+}
+
+function applyMathFontSize(element: HTMLElement, run: MathRun): void {
+  if (run.fontSize !== undefined) {
+    element.style.fontSize = `${fontSizePtToPx(run.fontSize)}px`;
+  }
 }
 
 /**
