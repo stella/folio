@@ -31,7 +31,7 @@ describe("painted text DOM shape", () => {
     const marker = "folio-painted-text(positioned-advance-owner)";
     expect(lintFixture("positioned-advance.invalid.ts", marker)).toEqual({
       status: 1,
-      violations: 4,
+      violations: 6,
     });
     expect(lintFixture("positioned-advance.valid.ts", marker)).toEqual({
       status: 0,

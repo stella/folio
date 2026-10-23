@@ -36,6 +36,7 @@ import {
 } from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import type { FragmentHit, TableCellHit } from "./hitTest";
+import { computeLinePmRange } from "./linePmRange";
 
 // =============================================================================
 // TYPES
@@ -132,91 +133,6 @@ function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run[] {
   }
 
   return result;
-}
-
-/**
- * Calculate the PM position range for a line.
- */
-function computeLinePmRange(
-  block: ParagraphBlock,
-  line: MeasuredLine,
-): { pmStart: number | undefined; pmEnd: number | undefined } {
-  // Walk through runs to find PM positions
-  let pmStart: number | undefined;
-  let pmEnd: number | undefined;
-
-  // Get block's PM start as base
-  const blockPmStart = block.pmStart ?? 0;
-
-  // Calculate character offset to line start
-  let charOffset = 0;
-  for (
-    let runIndex = 0;
-    runIndex < block.runs.length && runIndex <= line.toRun;
-    runIndex++
-  ) {
-    const run = block.runs[runIndex];
-    if (!run) {
-      continue;
-    }
-
-    if (runIndex < line.fromRun) {
-      // Before the line - count all characters
-      if (run.kind === "text") {
-        charOffset += run.text.length;
-      } else if (
-        run.kind === "tab" ||
-        run.kind === "lineBreak" ||
-        run.kind === "renderedPageBreak"
-      ) {
-        charOffset += 1;
-      } else if (run.kind === "image") {
-        charOffset += 1;
-      }
-    } else if (runIndex === line.fromRun) {
-      // First run of line - add fromChar offset
-      charOffset += line.fromChar;
-      pmStart = blockPmStart + charOffset;
-
-      // Continue to find pmEnd
-      if (run.kind === "text") {
-        charOffset = line.fromChar;
-      }
-    }
-  }
-
-  // Calculate pmEnd
-  if (pmStart !== undefined) {
-    let lineLength = 0;
-    for (
-      let runIndex = line.fromRun;
-      runIndex <= line.toRun && runIndex < block.runs.length;
-      runIndex++
-    ) {
-      const run = block.runs[runIndex];
-      if (!run) {
-        continue;
-      }
-
-      if (run.kind === "text") {
-        const text = run.text;
-        const start = runIndex === line.fromRun ? line.fromChar : 0;
-        const end = runIndex === line.toRun ? line.toChar : text.length;
-        lineLength += end - start;
-      } else if (
-        run.kind === "tab" ||
-        run.kind === "lineBreak" ||
-        run.kind === "renderedPageBreak"
-      ) {
-        lineLength += 1;
-      } else if (run.kind === "image") {
-        lineLength += 1;
-      }
-    }
-    pmEnd = pmStart + lineLength;
-  }
-
-  return { pmStart, pmEnd };
 }
 
 /**
