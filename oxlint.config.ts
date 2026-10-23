@@ -72,26 +72,10 @@ export default library({
     // uses non-null assertions; keep parity with the rule set it conforms to.
     "typescript/no-non-null-assertion": "off",
     "no-useless-assignment": "off",
-    // Stylistic unicorn rules the full stella config disables (they are "error"
-    // in ultracite's base preset, which `library()` does not include). Folio's
-    // source predates them; they catch no bugs, only style. Mirror the
-    // monorepo's posture so the standalone lint matches what folio conforms to.
+    // Correctness rules the shared preset enables; folio's source still has
+    // findings for both.
     "unicorn/no-useless-spread": "off",
     "unicorn/prefer-string-starts-ends-with": "off",
-    "unicorn/prefer-string-replace-all": "off",
-    "unicorn/switch-case-braces": "off",
-    "unicorn/prefer-ternary": "off",
-    "unicorn/no-array-sort": "off",
-    "unicorn/throw-new-error": "off",
-    "unicorn/consistent-function-scoping": "off",
-    "unicorn/no-await-expression-member": "off",
-    "unicorn/prefer-spread": "off",
-    "unicorn/no-immediate-mutation": "off",
-    "unicorn/filename-case": "off",
-    "unicorn/escape-case": "off",
-    "unicorn/no-hex-escape": "off",
-    "unicorn/number-literal-case": "off",
-    "unicorn/prefer-response-static-json": "off",
   },
   jsPlugins: [
     "./packages/utf8-boundaries/src/oxlint.ts",
