@@ -185,7 +185,7 @@ describe("toProseDoc", () => {
         "data-docx-symbol-font": "Wingdings",
         style: 'font-family: "Wingdings";',
       },
-      "\uF06F",
+      "\u25CB",
     ]);
 
     const paragraph = toFlowBlocks(pmDoc).at(0);
@@ -194,7 +194,7 @@ describe("toProseDoc", () => {
       return;
     }
     expect(paragraph.runs).toMatchObject([
-      { kind: "text", text: "\uF06F", fontFamily: "Wingdings" },
+      { kind: "text", text: "\u25CB", fontFamily: "Wingdings" },
     ]);
 
     const rebuilt = fromProseDoc(pmDoc, document, {

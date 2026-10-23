@@ -22,7 +22,7 @@ import {
   expectPreservedXmlAttrs,
   expectSymbolAttrs,
 } from "../../prosemirror/attrs";
-import { decodeOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
+import { displayOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import type { FlowConversionOptions } from "./flowConversionShared";
 import {
@@ -244,7 +244,7 @@ export function paragraphToRuns(
     }
     if (child.type.name === "symbol") {
       const attrs = expectSymbolAttrs(child);
-      const text = decodeOoxmlSymbolCharacter(attrs.char);
+      const text = displayOoxmlSymbolCharacter(attrs.font, attrs.char);
       if (text === null) {
         return;
       }

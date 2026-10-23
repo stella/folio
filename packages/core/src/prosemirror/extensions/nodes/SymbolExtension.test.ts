@@ -56,3 +56,43 @@ describe("SymbolExtension parseDOM", () => {
     expect(parseSymbolAttrs(dataset)).toBe(false);
   });
 });
+
+describe("SymbolExtension display", () => {
+  test.each([
+    ["Symbol", "F0B7", "\u2022"],
+    ["Wingdings", "F06F", "\u25CB"],
+    ["Wingdings", "F0A7", "\u25A0"],
+    ["Wingdings", "F0FC", "\u2713"],
+  ])("uses the verified Unicode twin for %s %s", (font, char, display) => {
+    const symbol = schema.nodes.symbol.create({ font, char });
+    const rendered = symbol.type.spec.toDOM?.(symbol);
+
+    expect(symbol.attrs).toEqual({ font, char });
+    expect(rendered).toEqual([
+      "span",
+      {
+        "data-docx-symbol-char": char,
+        "data-docx-symbol-font": font,
+        style: `font-family: "${font}", sans-serif;`,
+      },
+      display,
+    ]);
+  });
+
+  test("keeps unmapped symbol codes unchanged", () => {
+    const symbol = schema.nodes.symbol.create({
+      font: "Wingdings",
+      char: "F06C",
+    });
+
+    expect(symbol.type.spec.toDOM?.(symbol)).toEqual([
+      "span",
+      {
+        "data-docx-symbol-char": "F06C",
+        "data-docx-symbol-font": "Wingdings",
+        style: 'font-family: "Wingdings", sans-serif;',
+      },
+      "\uF06C",
+    ]);
+  });
+});
