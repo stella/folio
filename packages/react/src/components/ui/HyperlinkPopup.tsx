@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "use-intl";
 
+import { onDocumentPointerDown } from "@stll/folio-core/utils/documentPointerDown";
 import { anchorTargetAttrs } from "@stll/folio-core/utils/urlSecurity";
 
 import { containedHandler } from "../../utils/contained-handler";
@@ -144,19 +145,17 @@ function HyperlinkPopupContent({
     if (!data) {
       return;
     }
-    const handle = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+    const handle = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        popupRef.current &&
+        !popupRef.current.contains(target)
+      ) {
         onClose();
       }
     };
-    const timer = setTimeout(
-      () => document.addEventListener("mousedown", handle),
-      0,
-    );
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handle);
-    };
+    return onDocumentPointerDown(document, handle);
   }, [data, onClose]);
 
   // Close on Escape

@@ -8,6 +8,8 @@
  */
 import { type CSSProperties, onScopeDispose, type Ref, ref, watch } from "vue";
 
+import { onDocumentPointerDown } from "@stll/folio-core/utils/documentPointerDown";
+
 export type UseFixedDropdownOptions = {
   isOpen: Ref<boolean>;
   onClose: () => void;
@@ -45,7 +47,7 @@ export function useFixedDropdown({
     };
   }
 
-  function handleClickOutside(e: MouseEvent) {
+  function handleClickOutside(e: PointerEvent) {
     const target = e.target;
     if (!(target instanceof Node)) return;
     if (
@@ -75,13 +77,15 @@ export function useFixedDropdown({
     onClose();
   }
 
+  let detachPointerDown: (() => void) | undefined;
   function attach() {
-    document.addEventListener("mousedown", handleClickOutside);
+    detachPointerDown = onDocumentPointerDown(document, handleClickOutside);
     document.addEventListener("keydown", handleEscape);
     window.addEventListener("scroll", handleScroll, true);
   }
   function detach() {
-    document.removeEventListener("mousedown", handleClickOutside);
+    detachPointerDown?.();
+    detachPointerDown = undefined;
     document.removeEventListener("keydown", handleEscape);
     window.removeEventListener("scroll", handleScroll, true);
   }

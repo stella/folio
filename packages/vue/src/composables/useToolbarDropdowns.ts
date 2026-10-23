@@ -17,6 +17,8 @@ import {
   ref,
 } from "vue";
 
+import { onDocumentPointerDown } from "@stll/folio-core/utils/documentPointerDown";
+
 export type UseToolbarDropdownsOptions = {
   zoom: Ref<HTMLElement | null>;
   style: Ref<HTMLElement | null>;
@@ -66,7 +68,7 @@ export function useToolbarDropdowns(refs: UseToolbarDropdownsOptions) {
     openDropdown.value = openDropdown.value === name ? null : name;
   }
 
-  function closeDropdowns(e: MouseEvent) {
+  function closeDropdowns(e: PointerEvent) {
     const target = e.target;
     if (!(target instanceof Node)) return;
     const allRefs = [
@@ -82,10 +84,11 @@ export function useToolbarDropdowns(refs: UseToolbarDropdownsOptions) {
     }
   }
 
-  onMounted(() => document.addEventListener("mousedown", closeDropdowns));
-  onBeforeUnmount(() =>
-    document.removeEventListener("mousedown", closeDropdowns),
-  );
+  let detachPointerDown: (() => void) | undefined;
+  onMounted(() => {
+    detachPointerDown = onDocumentPointerDown(document, closeDropdowns);
+  });
+  onBeforeUnmount(() => detachPointerDown?.());
 
   return {
     openDropdown,
