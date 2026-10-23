@@ -561,6 +561,8 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
       underline === undefined || underline.decorationStyle !== undefined;
     if (paintsLine && !isNoteReferenceRun(run)) {
       decorations.push("underline");
+      element.style.setProperty("text-decoration-skip-ink", "none");
+      element.style.setProperty("text-decoration-skip-spaces", "none");
     }
     if (underline?.decorationStyle !== undefined) {
       element.style.textDecorationStyle = underline.decorationStyle;

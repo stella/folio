@@ -730,4 +730,36 @@ describe("renderLine box model", () => {
     expect(space?.style["borderBottom"]).toBeUndefined();
     expect(space?.style["textDecorationLine"]).toBe("");
   });
+
+  test("keeps underlines continuous through glyph descenders and spaces", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "continuous-underline",
+      runs: [{ kind: "text", text: "g y", underline: { style: "single" } }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 3,
+      width: 20,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const textRun = lineEl.children.at(0);
+
+    expect(textRun?.textContent).toBe("g y");
+    expect(textRun?.style["textDecorationLine"]).toBe("underline");
+    expect(textRun?.style["text-decoration-skip-ink"]).toBe("none");
+    expect(textRun?.style["text-decoration-skip-spaces"]).toBe("none");
+  });
 });
