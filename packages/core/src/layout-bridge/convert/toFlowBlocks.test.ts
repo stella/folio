@@ -2452,7 +2452,7 @@ describe("toFlowBlocks field handling", () => {
         fieldType: "REF",
         instruction: "REF target",
         displayText: "One\nTwo",
-        fieldKind: "complex",
+        fieldKind: "simple",
       },
       [schema.text("One"), schema.node("hardBreak"), schema.text("Two")],
     );
