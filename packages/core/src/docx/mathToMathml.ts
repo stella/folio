@@ -39,6 +39,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+import { assertXmlResourceLimits } from "./xmlResourceLimits";
 
 const MATH_NAMESPACE_URIS = new Set([
   "http://schemas.openxmlformats.org/officeDocument/2006/math",
@@ -51,6 +52,7 @@ const MATH_NAMESPACE_URIS = new Set([
  * text size instead.
  */
 export function sharedMathRunFontSize(ommlXml: string): number | undefined {
+  assertXmlResourceLimits({ xml: ommlXml });
   const root = parseXmlDocument(ommlXml);
   if (
     !root ||
