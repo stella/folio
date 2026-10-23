@@ -144,7 +144,10 @@ import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/CommentRan
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
-import { fieldRequiresStructuredContent } from "../fieldRepresentation";
+import {
+  fieldCommentCoverage,
+  fieldRequiresStructuredContent,
+} from "../fieldRepresentation";
 import { getInlineDisplayText } from "../inlineDisplayText";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
@@ -3202,7 +3205,10 @@ function convertField(
     createStructuredField ? inlineNodes : undefined,
     marks,
   );
-  return createStructuredField && field.type === "simpleField"
+  return createStructuredField &&
+    fieldCommentCoverage(
+      field.type === "simpleField" ? "simple" : "complex",
+    ) === "children"
     ? fieldNode
     : (applyCommentMarks([fieldNode], commentsOpenBeforeField).at(0) ??
         fieldNode);

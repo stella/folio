@@ -223,6 +223,7 @@ import { textFormattingToMarks } from "../extensions/marks/markUtils";
 import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/CommentRangeBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
+import { fieldCommentCoverage } from "../fieldRepresentation";
 import {
   inlineWrapperMember,
   inlineWrapperStackKey,
@@ -3604,8 +3605,14 @@ function extractParagraphContent(
   };
 
   const syncCommentRanges = (node: PMNode, offset: number) => {
+    // Simple field results and SDTs carry comments on their children. Complex
+    // field results are Run[] and cannot carry range boundaries themselves, so
+    // the field node owns the comment mark like the atomic field did.
     const ownsStructuredCommentCoverage =
-      (node.type.name === "structuredField" || node.type.name === "sdt") &&
+      ((node.type.name === "structuredField" &&
+        fieldCommentCoverage(expectFieldAttrs(node).fieldKind) ===
+          "children") ||
+        node.type.name === "sdt") &&
       node.childCount > 0;
     const nodeCommentIds = ownsStructuredCommentCoverage
       ? getCommentMarkIds(node.child(0).marks)
@@ -3725,7 +3732,12 @@ function extractParagraphContent(
     const finalCommentIds =
       node.type.name === "sdt"
         ? commentsAfterStructuredNode(node, offset)
-        : getCommentMarkIds(node.child(node.childCount - 1).marks);
+        : getCommentMarkIds(
+            (fieldCommentCoverage(expectFieldAttrs(node).fieldKind) === "field"
+              ? node
+              : node.child(node.childCount - 1)
+            ).marks,
+          );
     openedComments.clear();
     for (const commentId of finalCommentIds) openedComments.add(commentId);
   };
