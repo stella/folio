@@ -26,6 +26,8 @@ const BOOLEAN_TOGGLES = [
   "suppressLineNumbers",
   "suppressAutoHyphens",
   "kinsoku",
+  "autoSpaceDE",
+  "autoSpaceDN",
   "overflowPunctuation",
   "bidi",
 ] as const satisfies readonly (keyof ParagraphFormatting)[];
@@ -41,6 +43,8 @@ const TAG: Record<BooleanToggle, string> = {
   suppressLineNumbers: "w:suppressLineNumbers",
   suppressAutoHyphens: "w:suppressAutoHyphens",
   kinsoku: "w:kinsoku",
+  autoSpaceDE: "w:autoSpaceDE",
+  autoSpaceDN: "w:autoSpaceDN",
   overflowPunctuation: "w:overflowPunct",
   bidi: "w:bidi",
 };
@@ -86,16 +90,7 @@ describe("serializeParagraph — explicit-false paragraph toggles (eigenpal #687
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:pPr>
-          <w:keepNext w:val="0"/>
-          <w:keepLines w:val="0"/>
-          <w:pageBreakBefore w:val="0"/>
-          <w:snapToGrid w:val="0"/>
-          <w:suppressLineNumbers w:val="0"/>
-          <w:suppressAutoHyphens w:val="0"/>
-          <w:kinsoku w:val="0"/>
-          <w:overflowPunct w:val="0"/>
-          <w:bidi w:val="0"/>
-          <w:contextualSpacing w:val="0"/>
+          ${BOOLEAN_TOGGLES.map((field) => `<${TAG[field]} w:val="0"/>`).join("")}
         </w:pPr>
       </w:p>
     `);

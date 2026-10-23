@@ -178,6 +178,8 @@ export type ParagraphAttrs = {
   alignmentFromStyle?: ParagraphAlignment;
   /** Effective East Asian line-edge policy (`w:kinsoku`). */
   kinsoku?: boolean;
+  autoSpaceDE?: boolean;
+  autoSpaceDN?: boolean;
   /** Effective hanging-punctuation policy (`w:overflowPunct`). */
   overflowPunctuation?: boolean;
   /** Effective paragraph opt-out from document automatic hyphenation. */

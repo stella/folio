@@ -2483,6 +2483,8 @@ type BooleanToggleKey = Extract<
   | "runInWithNext"
   | "snapToGrid"
   | "kinsoku"
+  | "autoSpaceDE"
+  | "autoSpaceDN"
   | "overflowPunctuation"
   | "suppressAutoHyphens"
 >;
@@ -2733,6 +2735,8 @@ function paragraphAttrsToFormatting(
     assignBooleanToggle(result, attrs, orig, "runInWithNext");
     assignBooleanToggle(result, attrs, orig, "snapToGrid");
     assignBooleanToggle(result, attrs, orig, "kinsoku");
+    assignBooleanToggle(result, attrs, orig, "autoSpaceDE");
+    assignBooleanToggle(result, attrs, orig, "autoSpaceDN");
     assignBooleanToggle(result, attrs, orig, "overflowPunctuation");
     assignBooleanToggle(result, attrs, orig, "suppressAutoHyphens");
     if (attrs.spacingExplicit !== orig.spacingExplicit) {
@@ -2813,6 +2817,8 @@ function paragraphAttrsToFormatting(
   const keepLines = authored("keepLines", attrs.keepLines);
   const runInWithNext = authored("runInWithNext", attrs.runInWithNext);
   const kinsoku = authored("kinsoku", attrs.kinsoku);
+  const autoSpaceDE = authored("autoSpaceDE", attrs.autoSpaceDE);
+  const autoSpaceDN = authored("autoSpaceDN", attrs.autoSpaceDN);
   const overflowPunctuation = authored(
     "overflowPunctuation",
     attrs.overflowPunctuation,
@@ -2852,6 +2858,8 @@ function paragraphAttrsToFormatting(
     keepLines != null ||
     runInWithNext != null ||
     kinsoku != null ||
+    autoSpaceDE != null ||
+    autoSpaceDN != null ||
     overflowPunctuation != null ||
     suppressAutoHyphens != null;
 
@@ -2945,6 +2953,12 @@ function paragraphAttrsToFormatting(
   }
   if (kinsoku != null) {
     f.kinsoku = kinsoku;
+  }
+  if (autoSpaceDE != null) {
+    f.autoSpaceDE = autoSpaceDE;
+  }
+  if (autoSpaceDN != null) {
+    f.autoSpaceDN = autoSpaceDN;
   }
   if (overflowPunctuation != null) {
     f.overflowPunctuation = overflowPunctuation;

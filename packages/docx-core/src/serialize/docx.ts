@@ -297,6 +297,8 @@ const serializeParagraphProperties = (paragraph: Paragraph): string => {
         "</w:numPr>",
     );
   }
+  pushOnOffElement(parts, formatting?.autoSpaceDE, "autoSpaceDE");
+  pushOnOffElement(parts, formatting?.autoSpaceDN, "autoSpaceDN");
   if (
     formatting?.spaceBefore !== undefined ||
     formatting?.spaceAfter !== undefined ||

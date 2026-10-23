@@ -196,6 +196,8 @@ const paragraphPropertyFields = {
   alignment: literal(...PARAGRAPH_ALIGNMENTS),
   bidi: boolean,
   kinsoku: boolean,
+  autoSpaceDE: boolean,
+  autoSpaceDN: boolean,
   overflowPunctuation: boolean,
   spaceBefore: number,
   spaceAfter: number,

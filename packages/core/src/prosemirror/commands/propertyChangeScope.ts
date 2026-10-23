@@ -312,6 +312,8 @@ const PPR_CHANGE_SCOPED_FORMATTING_KEYS = [
   "numPr",
   "alignment",
   "bidi",
+  "autoSpaceDE",
+  "autoSpaceDN",
   "spaceBefore",
   "spaceAfter",
   "lineSpacing",

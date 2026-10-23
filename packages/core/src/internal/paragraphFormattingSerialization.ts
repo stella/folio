@@ -74,6 +74,8 @@ type ClassifiedParagraphFormattingField =
   | "alignment"
   | "bidi"
   | "kinsoku"
+  | "autoSpaceDE"
+  | "autoSpaceDN"
   | "overflowPunctuation"
   | "spaceBefore"
   | "spaceAfter"
@@ -423,6 +425,8 @@ export const modelParagraphFormattingEmission = (
     alignment,
     bidi,
     kinsoku,
+    autoSpaceDE,
+    autoSpaceDN,
     overflowPunctuation,
     spaceBefore,
     spaceAfter,
@@ -497,6 +501,8 @@ export const modelParagraphFormattingEmission = (
         serializeOnOffElement(suppressAutoHyphens, "suppressAutoHyphens"),
       ],
       ["kinsoku", serializeOnOffElement(kinsoku, "kinsoku")],
+      ["autoSpaceDE", serializeOnOffElement(autoSpaceDE, "autoSpaceDE")],
+      ["autoSpaceDN", serializeOnOffElement(autoSpaceDN, "autoSpaceDN")],
       [
         "overflowPunct",
         serializeOnOffElement(overflowPunctuation, "overflowPunct"),
