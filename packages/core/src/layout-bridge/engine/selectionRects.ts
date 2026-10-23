@@ -53,6 +53,7 @@ import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { resolvePhysicalParagraphInlineLayout } from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { getPageTop } from "./hitTest";
+import { computeLinePmRange } from "./linePmRange";
 
 /**
  * Width (px) of the highlight sliver painted for an empty paragraph the
@@ -164,96 +165,6 @@ function getMeasuredBlockHeight(measure: Measure | undefined): number {
 /** Clamp a projected PM position to the run's own end position. */
 function clampToRunPmEnd(run: { pmEnd?: number }, position: number): number {
   return run.pmEnd === undefined ? position : Math.min(position, run.pmEnd);
-}
-
-/**
- * Calculate the PM range for a line.
- * Note: ProseMirror positions include node boundaries:
- * - blockPmStart is the position of the paragraph node itself
- * - The actual text content starts at blockPmStart + 1 (after the opening tag)
- *
- * Prefers the runs' own PM metadata over cumulative character counting:
- * template-preview value runs carry the source marker's PM range with a
- * different text length, so the one-PM-position-per-character assumption
- * the char-counting fallback makes does not hold for them.
- */
-function computeLinePmRange(
-  block: ParagraphBlock,
-  line: MeasuredLine,
-): { pmStart: number | undefined; pmEnd: number | undefined } {
-  const fromRun = block.runs[line.fromRun];
-  const toRun = block.runs[line.toRun];
-  if (fromRun?.pmStart !== undefined && toRun?.pmStart !== undefined) {
-    const pmStart =
-      fromRun.kind === "text"
-        ? clampToRunPmEnd(fromRun, fromRun.pmStart + line.fromChar)
-        : fromRun.pmStart;
-    const pmEnd =
-      toRun.kind === "text"
-        ? clampToRunPmEnd(toRun, toRun.pmStart + line.toChar)
-        : (toRun.pmEnd ?? toRun.pmStart + 1);
-    return { pmStart, pmEnd };
-  }
-
-  const blockPmStart = block.pmStart ?? 0;
-  // Text content starts after the paragraph's opening tag
-  const contentStart = blockPmStart + 1;
-
-  // Calculate character offset to line start
-  let charOffset = 0;
-  let pmStart: number | undefined;
-
-  for (
-    let runIndex = 0;
-    runIndex < block.runs.length && runIndex <= line.toRun;
-    runIndex++
-  ) {
-    const run = block.runs[runIndex];
-    if (!run) {
-      continue;
-    }
-
-    if (runIndex < line.fromRun) {
-      if (run.kind === "text") {
-        charOffset += run.text.length;
-      } else {
-        charOffset += 1;
-      }
-    } else if (runIndex === line.fromRun) {
-      charOffset += line.fromChar;
-      pmStart = contentStart + charOffset;
-      break;
-    }
-  }
-
-  if (pmStart === undefined) {
-    pmStart = contentStart;
-  }
-
-  // Calculate line length
-  let lineLength = 0;
-  for (
-    let runIndex = line.fromRun;
-    runIndex <= line.toRun && runIndex < block.runs.length;
-    runIndex++
-  ) {
-    const run = block.runs[runIndex];
-    if (!run) {
-      continue;
-    }
-
-    if (run.kind === "text") {
-      const text = run.text;
-      const start = runIndex === line.fromRun ? line.fromChar : 0;
-      const end = runIndex === line.toRun ? line.toChar : text.length;
-      lineLength += end - start;
-    } else {
-      lineLength += 1;
-    }
-  }
-
-  const pmEnd = pmStart + lineLength;
-  return { pmStart, pmEnd };
 }
 
 /**

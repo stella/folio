@@ -3,7 +3,8 @@ type AstNode = Record<string, unknown> & { type: string };
 type RuleContext = {
   report: (descriptor: {
     node: unknown;
-    messageId: "directTextShape" | "positionedAdvanceOwner";
+    messageId:
+      "directTextShape" | "positionedAdvanceOwner" | "linePmRangeOwner";
   }) => void;
 };
 
@@ -49,10 +50,26 @@ export default {
         messages: {
           positionedAdvanceOwner:
             "Glyph and text-position geometry must consume measurePositionedRun so shaping cannot rescale automatic advances or omit boundary advances.",
+          linePmRangeOwner:
+            "Text-position geometry must import computeLinePmRange from linePmRange instead of duplicating PM-boundary arithmetic.",
         },
       },
       create(context: RuleContext) {
         return {
+          FunctionDeclaration: (node: unknown) => {
+            if (
+              isAstNode(node) &&
+              identifierName(node["id"]) === "computeLinePmRange"
+            )
+              context.report({ node, messageId: "linePmRangeOwner" });
+          },
+          VariableDeclarator: (node: unknown) => {
+            if (
+              isAstNode(node) &&
+              identifierName(node["id"]) === "computeLinePmRange"
+            )
+              context.report({ node, messageId: "linePmRangeOwner" });
+          },
           ImportDeclaration: (node: unknown) => {
             if (!isAstNode(node)) return;
             const source = literalName(node.source);

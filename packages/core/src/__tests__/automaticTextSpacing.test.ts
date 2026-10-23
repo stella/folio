@@ -7,7 +7,6 @@ import {
 } from "../../../../test/property-testing";
 import { buildGlyphs } from "../display-list/build/glyphs";
 import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
-import { paragraphToRuns } from "../layout-bridge/convert/paragraphRuns";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import {
   clickToPositionInParagraph,
@@ -38,6 +37,7 @@ import {
   setMeasureProvider,
 } from "../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../layout-engine/measure/measureTypes";
+import { canonicalLineWidth } from "../layout-engine/measure/paragraphMeasureShared";
 import type {
   Layout,
   ParagraphBlock,
@@ -69,12 +69,15 @@ const literal = (text: string): TextRun => ({ ...style, kind: "text", text });
 
 test("paragraphs without inter-script candidates keep their existing flow shape", () => {
   for (const text of ["ordinary Latin text", "123", "漢字", "漢α"]) {
-    const run = paragraphToRuns(
-      schema.node("paragraph", null, [schema.text(text)]),
-      0,
-      {},
+    const block = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text(text)]),
+      ]),
     ).at(0);
-    expect(run).not.toHaveProperty("automaticTextSpacing");
+    expect(block?.kind).toBe("paragraph");
+    if (block?.kind !== "paragraph")
+      throw new TypeError("Expected paragraph flow.");
+    expect(block.runs.at(0)).not.toHaveProperty("automaticTextSpacing");
   }
 });
 
@@ -85,19 +88,22 @@ test("unstyled geometry uses the same default em as paragraph measurement", () =
         kind: "paragraph",
         id: "unstyled-spacing",
         pmStart: 0,
-        pmEnd: 2,
+        pmEnd: 4,
         runs: [
           {
             kind: "text",
             text: "漢A",
+            pmStart: 1,
+            pmEnd: 3,
             automaticTextSpacing: { latin: true, numbers: true },
           },
         ],
       } satisfies ParagraphBlock;
       const measured = measureParagraph(block, 1000);
-      expect(positionToX(block, measured, 2, 1000)?.x).toBeCloseTo(
-        measured.lines.at(0)?.width ?? 0,
-        8,
+      const position = positionToX(block, measured, 3, 1000);
+      expect(position).not.toBeNull();
+      expect(canonicalLineWidth(position?.x ?? 0)).toBe(
+        measured.lines.at(0)?.width,
       );
     },
     { charWidth: fixedCharWidth(10) },
@@ -115,13 +121,17 @@ test("literal policy follows canonical manual and automatic paragraph direction"
     enabled: boolean;
   }[];
   for (const entry of cases) {
-    const run = paragraphToRuns(
-      schema.node("paragraph", { direction: entry.direction }, [
-        schema.text("漢A"),
+    const block = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", { direction: entry.direction }, [
+          schema.text("漢A"),
+        ]),
       ]),
-      0,
-      {},
     ).at(0);
+    expect(block?.kind).toBe("paragraph");
+    if (block?.kind !== "paragraph")
+      throw new TypeError("Expected paragraph flow.");
+    const run = block.runs.at(0);
     const policy = run?.kind === "text" ? run.automaticTextSpacing : undefined;
     expect(policy !== undefined).toBe(entry.enabled);
   }
@@ -136,11 +146,7 @@ test("literal source is explicit across content controls, symbols, and projected
       displayText: "漢A",
       fieldKind: "simple",
     },
-    [
-      schema.node("sdt", null, [schema.text("漢A")]),
-      schema.node("pageBreakRun"),
-      schema.text("漢1"),
-    ],
+    [schema.text("漢A"), schema.node("pageBreakRun"), schema.text("漢1")],
   );
   const node = schema.node("paragraph", null, [
     schema.text("漢A"),
@@ -148,7 +154,9 @@ test("literal source is explicit across content controls, symbols, and projected
     schema.node("symbol", { font: "Arial", char: "6F22" }),
     field,
   ]);
-  const runs = paragraphToRuns(node, 0, {});
+  const runs = toFlowBlocks(schema.node("doc", null, [node])).flatMap(
+    (block) => (block.kind === "paragraph" ? block.runs : []),
+  );
   expect(
     runs.map((run) =>
       "automaticTextSpacing" in run ? run.automaticTextSpacing : undefined,
@@ -204,11 +212,23 @@ test("glyph advances, engine caret, selection and hit testing own identical sour
     () => {
       const text = "𠀀Aé\u0301漢1";
       const expected = measurePositionedRun({ text, style });
-      for (const runs of [
-        [literal(text)],
-        [literal("𠀀"), literal("Aé\u0301漢1")],
-      ]) {
-        const block = { ...paragraph(runs), pmStart: 0, pmEnd: text.length };
+      for (const parts of [[text], ["𠀀", "Aé\u0301漢1"]]) {
+        const document = createEmptyDocument();
+        const first = document.package.document.content.at(0);
+        if (first?.type !== "paragraph")
+          throw new TypeError("Expected a paragraph.");
+        first.content = parts.map((part, index) => ({
+          type: "run",
+          formatting: {
+            fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+            fontSize: 24,
+            color: { rgb: index === 0 ? "000000" : "112233" },
+          },
+          content: [{ type: "text", text: part }],
+        }));
+        const block = toFlowBlocks(toProseDoc(document)).at(0);
+        if (block?.kind !== "paragraph")
+          throw new TypeError("Expected paragraph flow.");
         const measured = measureParagraph(block, 1000);
         const fragment = {
           kind: "paragraph",
@@ -235,15 +255,15 @@ test("glyph advances, engine caret, selection and hit testing own identical sour
           const width = expected.charWidths
             .slice(0, offset)
             .reduce((sum, advance) => sum + advance, 0);
-          expect(positionToX(block, measured, offset, 1000)?.x).toBeCloseTo(
+          expect(positionToX(block, measured, offset + 1, 1000)?.x).toBeCloseTo(
             width,
             8,
           );
           expect(
-            getCaretPosition(layout, [block], [measured], offset)?.x,
+            getCaretPosition(layout, [block], [measured], offset + 1)?.x,
           ).toBeCloseTo(width, 8);
           expect(
-            selectionToRects(layout, [block], [measured], 0, offset).at(0)
+            selectionToRects(layout, [block], [measured], 1, offset + 1).at(0)
               ?.width,
           ).toBeCloseTo(width, 8);
           expect(
@@ -255,7 +275,7 @@ test("glyph advances, engine caret, selection and hit testing own identical sour
               localY: measured.totalHeight / 2,
               localX: width + 0.01,
             })?.pmPosition,
-          ).toBe(offset);
+          ).toBe(offset + 1);
         }
       }
     },
