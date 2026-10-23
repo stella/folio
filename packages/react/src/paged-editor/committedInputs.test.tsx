@@ -79,6 +79,7 @@ const createSeedProbe = () => {
 const createSelectionMeasureProvider = (installed: MeasureProvider) =>
   ({
     ...installed,
+    measureTextWidth: (text) => text.length * 7,
     measureRun: (text) => ({
       width: text.length * 7,
       charWidths: Array.from(text, () => 7),
