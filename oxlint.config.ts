@@ -86,6 +86,7 @@ export default library({
     "./.oxlint-plugins/folio-base64.ts",
     "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-deletion-marks.ts",
+    "./.oxlint-plugins/folio-run-record.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
     "./.oxlint-plugins/folio-find-navigation.ts",
     "./.oxlint-plugins/folio-identity-attributes.ts",
@@ -225,6 +226,17 @@ export default library({
       ],
       rules: {
         "folio-verbatim-capture/no-direct-element-to-xml": "error",
+      },
+    },
+    {
+      // Every source-backed run rebuilt from editor marks restores its source
+      // run record. Fresh run builders without source marks need no restoration.
+      files: [
+        "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
+        "test/__fixtures__/run-record-metadata.*.ts",
+      ],
+      rules: {
+        "folio-run-record/restore-source-run-record": "error",
       },
     },
     {

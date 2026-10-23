@@ -40,6 +40,29 @@ const seededDocument = () => {
 };
 
 describe("attr-schema version marker", () => {
+  test("older hyperlink snapshots keep an absent bookmark target absent", () => {
+    const ydoc = new Y.Doc();
+    const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+    const paragraph = new Y.XmlElement("paragraph");
+    const text = new Y.XmlText();
+    fragment.insert(0, [paragraph]);
+    paragraph.insert(0, [text]);
+    text.insert(0, "Link", {
+      hyperlink: { href: "https://example.test/document.docx" },
+    });
+    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 13);
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, 13)).toBe(0);
+    const restored = initProseMirrorDoc(fragment, schema).doc;
+    const link = restored.firstChild?.firstChild?.marks.find(
+      (mark) => mark.type.name === "hyperlink",
+    );
+    expect(link).toBeDefined();
+    expect(link?.attrs["anchor"]).toBeNull();
+    expect(link?.attrs["href"]).toBe("https://example.test/document.docx");
+    ydoc.destroy();
+  });
+
   test("seeding writes the marker this build reads", () => {
     const { ydoc } = seededDocument();
 

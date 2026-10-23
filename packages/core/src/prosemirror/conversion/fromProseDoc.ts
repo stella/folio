@@ -2082,9 +2082,10 @@ function replaceTextBoxAnchorInBlocks(
   marker: Run,
   textBoxRun: Run,
 ): boolean {
+  marker.content = textBoxRun.content;
   for (const block of blocks) {
     if (block.type === "paragraph") {
-      if (editTextBoxAnchorInContent(block.content, marker, textBoxRun)) {
+      if (editTextBoxAnchorInContent(block.content, marker, marker)) {
         return true;
       }
       continue;
@@ -3879,6 +3880,14 @@ function extractParagraphContent(
       }
       const { anchorId } = expectTextBoxAnchorAttrs(node);
       const marker: Run = { type: "run", content: [] };
+      const formatting = getAtomRunFormattingFromMarks(
+        node.marks,
+        formattingContext,
+      );
+      if (formatting) {
+        marker.formatting = formatting;
+      }
+      restoreRunRecord(marker, node.marks);
       if (textBoxAnchorMarkers.has(anchorId)) {
         return;
       }
@@ -4497,6 +4506,7 @@ function getLinkKey(mark: Mark): string {
   const attrs = expectHyperlinkMarkAttrs(mark);
   return [
     attrs.href,
+    attrs.anchor ?? "",
     attrs.rId ?? "",
     attrs.tooltip ?? "",
     attrs.target ?? "",
@@ -4547,6 +4557,7 @@ function createHyperlink(linkMark: Mark): Hyperlink {
   const hyperlink: Hyperlink = {
     type: "hyperlink",
     href,
+    ...(attrs.anchor === undefined ? {} : { anchor: attrs.anchor }),
     ...metadata,
     children: [],
   };
@@ -5228,7 +5239,7 @@ function createFieldFromNode(
     content: [{ type: "text" as const, text: displayText }],
     ...(formatting && Object.keys(formatting).length > 0 ? { formatting } : {}),
   };
-  if (marks && node.type.name === "field") {
+  if (marks) {
     restoreRunRecord(displayRun, marks);
   }
   const fieldContent =

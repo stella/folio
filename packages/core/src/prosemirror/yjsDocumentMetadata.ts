@@ -690,7 +690,7 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
 
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
 const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
 ] as const;
 
 /** An attr-schema version this build can read. */
@@ -723,7 +723,9 @@ const ATTR_SCHEMA_MIGRATIONS = {
   11: stampMarkerOnly,
   // Inherited numbering ownership is a cutover, never inferred from values.
   12: stampMarkerOnly,
-  13: "current",
+  // Hyperlink bookmark targets are additive; absent targets stay absent.
+  13: stampMarkerOnly,
+  14: "current",
 } as const satisfies Record<
   FolioYjsAttrSchemaVersion,
   AttrSchemaMigrationStep | "current"
@@ -742,7 +744,7 @@ type CurrentAttrSchemaVersion = {
  * so the constant and the map cannot disagree.
  */
 export const FOLIO_YJS_ATTR_SCHEMA_VERSION =
-  13 satisfies CurrentAttrSchemaVersion;
+  14 satisfies CurrentAttrSchemaVersion;
 
 export class FolioYjsNoteReferenceSchemaError extends TaggedError(
   "FolioYjsNoteReferenceSchemaError",
