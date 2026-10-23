@@ -99,7 +99,7 @@ type RangeBoundaryType = {
  * or move that outlives the paragraph mark. A cached page break and a note's
  * own marker are not.
  */
-export const ZERO_WIDTH_ITEMS_HOLD_CONTENT = {
+const ZERO_WIDTH_ITEMS_HOLD_CONTENT = {
   bookmarkStart: true,
   bookmarkEnd: true,
   commentRangeStart: true,
